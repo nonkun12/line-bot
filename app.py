@@ -1,106 +1,75 @@
-from flask import Flask, request, abort
+from flask import Flask, request
+from linebot.v3.webhook import WebhookHandler
+from linebot.v3.webhooks import MessageEvent, TextMessageContent
+from linebot.v3.messaging import (
+    Configuration,
+    ApiClient,
+    MessagingApi,
+    ReplyMessageRequest,
+    TextMessage,
+)
+from linebot.v3 import WebhookParser
+from groq import Groq
 import os
-import traceback
-
-from google import genai
-
-from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
 
 app = Flask(__name__)
 
-# ======================
-# 環境変数
-# ======================
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# LINE
+CHANNEL_ACCESS_TOKEN = os.environ["CHANNEL_ACCESS_TOKEN"]
+CHANNEL_SECRET = os.environ["CHANNEL_SECRET"]
 
-# ★ デバッグ出力（重要）
-print("===== ENV CHECK =====")
-print("LINE_CHANNEL_ACCESS_TOKEN =", "OK" if LINE_CHANNEL_ACCESS_TOKEN else "NG")
-print("LINE_CHANNEL_SECRET =", "OK" if LINE_CHANNEL_SECRET else "NG")
-print("GEMINI_API_KEY =", GEMINI_API_KEY)
-print("=====================")
+configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
+handler = WebhookHandler(CHANNEL_SECRET)
 
-# ======================
-# 安全チェック
-# ======================
-if not LINE_CHANNEL_ACCESS_TOKEN:
-    raise Exception("LINE_CHANNEL_ACCESS_TOKEN missing")
+# Groq
+client = Groq(
+    api_key=os.environ["GROQ_API_KEY"]
+)
 
-if not LINE_CHANNEL_SECRET:
-    raise Exception("LINE_CHANNEL_SECRET missing")
 
-if not GEMINI_API_KEY:
-    raise Exception("GEMINI_API_KEY missing")
+def ask_ai(message):
+    completion = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {
+                "role": "user",
+                "content": message,
+            }
+        ],
+    )
 
-# ======================
-# LINE初期化
-# ======================
-line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(LINE_CHANNEL_SECRET)
+    return completion.choices[0].message.content
 
-# ======================
-# Gemini初期化（新SDK）
-# ======================
-client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ======================
-# Webhook
-# ======================
-@app.route("/webhook", methods=["POST"])
-def webhook():
+@app.route("/callback", methods=["POST"])
+def callback():
+
+    signature = request.headers["X-Line-Signature"]
+
     body = request.get_data(as_text=True)
-    signature = request.headers.get("X-Line-Signature")
 
-    try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        print("Invalid Signature")
-        abort(400)
-    except Exception:
-        traceback.print_exc()
-        abort(500)
+    handler.handle(body, signature)
 
     return "OK"
 
-# ======================
-# メイン処理
-# ======================
-@handler.add(MessageEvent, message=TextMessage)
+
+@handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
 
-    user_text = event.message.text
+    user_message = event.message.text
 
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=user_text
-        )
+    reply = ask_ai(user_message)
 
-        reply_text = response.text
+    with ApiClient(configuration) as api_client:
+        line_bot_api = MessagingApi(api_client)
 
-        print("===== GEMINI RESPONSE =====")
-        print(reply_text)
-
-    except Exception as e:
-        print("===== GEMINI ERROR =====")
-        traceback.print_exc()
-        reply_text = f"Geminiエラー:\n{e}"
-
-    try:
         line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=reply_text)
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[TextMessage(text=reply)],
+            )
         )
-    except Exception:
-        traceback.print_exc()
 
-# ======================
-# start
-# ======================
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
