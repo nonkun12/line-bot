@@ -11,31 +11,31 @@ from linebot.v3.messaging import (
 from groq import Groq
 import os
 import sqlite3
+import traceback
 
 app = Flask(__name__)
 
 # =========================
-# 環境変数（必須）
+# 環境変数（Render必須）
 # =========================
 CHANNEL_ACCESS_TOKEN = os.environ.get("CHANNEL_ACCESS_TOKEN")
 CHANNEL_SECRET = os.environ.get("CHANNEL_SECRET")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 if not CHANNEL_ACCESS_TOKEN or not CHANNEL_SECRET or not GROQ_API_KEY:
-    print("❌ 環境変数不足")
-    raise Exception("Missing env vars")
+    raise Exception("Missing environment variables")
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 client = Groq(api_key=GROQ_API_KEY)
 
 # =========================
-# モデル（最新安定）
+# ★最新Groqモデル
 # =========================
-MODEL = "llama-3.1-70b-versatile"
+MODEL = "llama-3.3-70b-versatile"
 
 # =========================
-# DB
+# SQLite
 # =========================
 DB = "chat.db"
 
@@ -56,7 +56,7 @@ def init_db():
 init_db()
 
 # =========================
-# 保存
+# 保存処理
 # =========================
 def save_message(user_id, role, content):
     try:
@@ -77,11 +77,12 @@ def save_message(user_id, role, content):
                 LIMIT 100
             )
             """, (user_id, user_id))
+
     except Exception as e:
         print("DB error:", e)
 
 # =========================
-# 履歴
+# 履歴取得
 # =========================
 def load_history(user_id, limit=20):
     try:
@@ -99,7 +100,7 @@ def load_history(user_id, limit=20):
         messages = [
             {
                 "role": "system",
-                "content": "あなたは親切で自然な日本語を話すAIです。"
+                "content": "あなたは親切で自然な日本語を話すAIです。会話を理解して自然に答えてください。"
             }
         ]
 
@@ -109,11 +110,11 @@ def load_history(user_id, limit=20):
         return messages
 
     except Exception as e:
-        print("history error:", e)
+        print("history error:", traceback.format_exc())
         return [{"role": "system", "content": "あなたはAIです"}]
 
 # =========================
-# AI
+# AI呼び出し
 # =========================
 def ask_ai(user_id, message):
     try:
@@ -135,7 +136,7 @@ def ask_ai(user_id, message):
         return reply
 
     except Exception as e:
-        print("AI error:", e)
+        print("AI error:", traceback.format_exc())
         return "AIエラーが発生しました"
 
 # =========================
@@ -151,7 +152,7 @@ def callback():
     return "OK"
 
 # =========================
-# ヘルスチェック（超重要）
+# ヘルスチェック（Render必須）
 # =========================
 @app.route("/")
 def home():
@@ -162,18 +163,22 @@ def home():
 # =========================
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
-    user_id = event.source.user_id
-    text = event.message.text
+    try:
+        user_id = event.source.user_id
+        text = event.message.text
 
-    reply = ask_ai(user_id, text)
+        reply = ask_ai(user_id, text)
 
-    with ApiClient(configuration) as api:
-        MessagingApi(api).reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[TextMessage(text=reply)]
+        with ApiClient(configuration) as api:
+            MessagingApi(api).reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=reply)]
+                )
             )
-        )
+
+    except Exception as e:
+        print("LINE error:", traceback.format_exc())
 
 # =========================
 # 起動
