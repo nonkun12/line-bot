@@ -17,9 +17,6 @@ LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# ======================
-# 安全チェック
-# ======================
 if not LINE_CHANNEL_ACCESS_TOKEN:
     raise Exception("LINE_CHANNEL_ACCESS_TOKEN missing")
 
@@ -30,18 +27,18 @@ if not GEMINI_API_KEY:
     raise Exception("GEMINI_API_KEY missing")
 
 # ======================
-# LINE初期化
+# LINE
 # ======================
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 # ======================
-# Gemini初期化（最新版SDK）
+# Gemini（新SDK）
 # ======================
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ======================
-# Webhook
+# webhook
 # ======================
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -51,7 +48,6 @@ def webhook():
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
-        print("Invalid Signature")
         abort(400)
     except Exception:
         traceback.print_exc()
@@ -60,14 +56,12 @@ def webhook():
     return "OK"
 
 # ======================
-# メイン処理
+# LINE message
 # ======================
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
 
     user_text = event.message.text
-    print("===== USER MESSAGE =====")
-    print(user_text)
 
     try:
         response = client.models.generate_content(
@@ -77,28 +71,21 @@ def handle_message(event):
 
         reply_text = response.text
 
-        print("===== GEMINI RESPONSE =====")
-        print(reply_text)
-
     except Exception as e:
-        print("===== GEMINI ERROR =====")
+        print("GEMINI ERROR:", e)
         traceback.print_exc()
-        reply_text = f"Geminiエラー:\n{str(e)}"
+        reply_text = f"Geminiエラー:\n{e}"
 
     try:
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text=reply_text)
         )
-
-        print("===== LINE REPLY OK =====")
-
     except Exception:
-        print("===== LINE ERROR =====")
         traceback.print_exc()
 
 # ======================
-# Render用起動
+# start
 # ======================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
