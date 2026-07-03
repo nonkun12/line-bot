@@ -1,117 +1,75 @@
-from flask import Flask, request
-import requests
+from flask import Flask, request, abort
 import os
 
-app = Flask(__name__)
+import google.generativeai as genai
 
-LINE_TOKEN = os.environ.get("LINE_TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-
+from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
 
 # =========================
-# LINE Webhook
+# Flask
+# =========================
+app = Flask(__name__)
+
+# =========================
+# 環境変数（Render設定）
+# =========================
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# =========================
+# LINE初期化
+# =========================
+line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
+handler = WebhookHandler(LINE_CHANNEL_SECRET)
+
+# =========================
+# Gemini初期化（重要）
+# =========================
+genai.configure(api_key=GEMINI_API_KEY)
+
+model = genai.GenerativeModel("gemini-1.5-flash")
+
+# =========================
+# Webhook
 # =========================
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    body = request.get_data(as_text=True)
+    signature = request.headers.get("X-Line-Signature")
+
     try:
-        body = request.json
-        print("受信:", body)
-
-        # 空イベント対策
-        if not body or "events" not in body or len(body["events"]) == 0:
-            return "OK"
-
-        event = body["events"][0]
-
-        # メッセージ以外無視
-        if event.get("type") != "message":
-            return "OK"
-
-        if event["message"].get("type") != "text":
-            return "OK"
-
-        user_text = event["message"]["text"]
-        reply_token = event["replyToken"]
-
-        # Gemini呼び出し
-        answer = gemini(user_text)
-
-        # LINE返信
-        reply_to_line(reply_token, answer)
-
-    except Exception as e:
-        print("Webhook Error:", str(e))
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
 
     return "OK"
 
-
 # =========================
-# Gemini API（最新安定）
+# LINEメッセージ処理
 # =========================
-def gemini(text):
-    # ★ 安定モデル（ここ重要）
-    url = (
-        "https://generativelanguage.googleapis.com/v1/models/"
-        "gemini-1.5-pro:generateContent"
-        "?key=" + GEMINI_API_KEY
-    )
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
 
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": text}
-                ]
-            }
-        ]
-    }
+    user_text = event.message.text
 
     try:
-        r = requests.post(url, json=payload)
-        data = r.json()
-
-        print("Gemini Response:", data)
-
-        # エラー処理
-        if "error" in data:
-            return "Geminiエラー: " + data["error"]["message"]
-
-        # 安全チェック
-        if "candidates" not in data or len(data["candidates"]) == 0:
-            return "AIの応答が空でした"
-
-        return data["candidates"][0]["content"]["parts"][0]["text"]
+        response = model.generate_content(user_text)
+        reply_text = response.text
 
     except Exception as e:
-        return "Gemini通信エラー: " + str(e)
+        reply_text = f"Geminiエラー: {str(e)}"
 
-
-# =========================
-# LINE返信
-# =========================
-def reply_to_line(token, text):
-    url = "https://api.line.me/v2/bot/message/reply"
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {LINE_TOKEN}"
-    }
-
-    payload = {
-        "replyToken": token,
-        "messages": [
-            {
-                "type": "text",
-                "text": text[:4900]
-            }
-        ]
-    }
-
-    requests.post(url, headers=headers, json=payload)
-
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=reply_text)
+    )
 
 # =========================
-# 起動
+# Render用起動
 # =========================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)

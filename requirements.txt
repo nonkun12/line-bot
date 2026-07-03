@@ -1,3 +1,5 @@
 flask
 requests
+google-generativeai
+line-bot-sdk
 gunicorn
