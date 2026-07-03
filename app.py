@@ -11,34 +11,28 @@ from linebot.v3.messaging import (
 from groq import Groq
 import os
 import sqlite3
-import traceback
+import json
 
 app = Flask(__name__)
 
 # =========================
-# 環境変数（Render必須）
+# 環境変数
 # =========================
-CHANNEL_ACCESS_TOKEN = os.environ.get("CHANNEL_ACCESS_TOKEN")
-CHANNEL_SECRET = os.environ.get("CHANNEL_SECRET")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-
-if not CHANNEL_ACCESS_TOKEN or not CHANNEL_SECRET or not GROQ_API_KEY:
-    raise Exception("Missing environment variables")
+CHANNEL_ACCESS_TOKEN = os.environ["CHANNEL_ACCESS_TOKEN"]
+CHANNEL_SECRET = os.environ["CHANNEL_SECRET"]
+GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 client = Groq(api_key=GROQ_API_KEY)
 
-# =========================
-# ★最新Groqモデル
-# =========================
 MODEL = "llama-3.3-70b-versatile"
 
-# =========================
-# SQLite
-# =========================
 DB = "chat.db"
 
+# =========================
+# DB
+# =========================
 def get_conn():
     return sqlite3.connect(DB, check_same_thread=False)
 
@@ -53,135 +47,166 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
+
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS memory (
+            user_id TEXT PRIMARY KEY,
+            profile TEXT
+        )
+        """)
+
 init_db()
 
 # =========================
-# 保存処理
+# 会話保存
 # =========================
 def save_message(user_id, role, content):
-    try:
-        with get_conn() as conn:
-            conn.execute(
-                "INSERT INTO messages(user_id, role, content) VALUES (?, ?, ?)",
-                (user_id, role, content)
-            )
-
-            # 最新100件保持
-            conn.execute("""
-            DELETE FROM messages
-            WHERE user_id = ?
-            AND id NOT IN (
-                SELECT id FROM messages
-                WHERE user_id = ?
-                ORDER BY id DESC
-                LIMIT 100
-            )
-            """, (user_id, user_id))
-
-    except Exception as e:
-        print("DB error:", e)
-
-# =========================
-# 履歴取得
-# =========================
-def load_history(user_id, limit=20):
-    try:
-        with get_conn() as conn:
-            rows = conn.execute("""
-            SELECT role, content
-            FROM messages
-            WHERE user_id = ?
-            ORDER BY id DESC
-            LIMIT ?
-            """, (user_id, limit)).fetchall()
-
-        rows.reverse()
-
-        messages = [
-            {
-                "role": "system",
-                "content": "あなたは親切で自然な日本語を話すAIです。会話を理解して自然に答えてください。"
-            }
-        ]
-
-        for role, content in rows:
-            messages.append({"role": role, "content": content})
-
-        return messages
-
-    except Exception as e:
-        print("history error:", traceback.format_exc())
-        return [{"role": "system", "content": "あなたはAIです"}]
-
-# =========================
-# AI呼び出し
-# =========================
-def ask_ai(user_id, message):
-    try:
-        save_message(user_id, "user", message)
-
-        messages = load_history(user_id)
-
-        completion = client.chat.completions.create(
-            model=MODEL,
-            messages=messages,
-            temperature=0.7,
-            max_tokens=1024
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO messages(user_id, role, content) VALUES (?, ?, ?)",
+            (user_id, role, content)
         )
 
-        reply = completion.choices[0].message.content
+# =========================
+# 長期記憶取得
+# =========================
+def get_memory(user_id):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT profile FROM memory WHERE user_id=?",
+            (user_id,)
+        ).fetchone()
 
-        save_message(user_id, "assistant", reply)
+    if row:
+        return row[0]
+    return ""
 
-        return reply
+# =========================
+# 長期記憶更新（重要）
+# =========================
+def update_memory(user_id, text):
+    prompt = f"""
+この会話からユーザー情報を抽出してJSONで返してください。
 
-    except Exception as e:
-        print("AI error:", traceback.format_exc())
-        return "AIエラーが発生しました"
+抽出項目:
+- name（名前）
+- hobby（趣味）
+- job（仕事）
+- notes（その他重要情報）
+
+会話:
+{text}
+
+JSONのみ返答:
+"""
+
+    res = client.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2
+    )
+
+    try:
+        profile = res.choices[0].message.content
+
+        with get_conn() as conn:
+            conn.execute("""
+            INSERT INTO memory(user_id, profile)
+            VALUES (?, ?)
+            ON CONFLICT(user_id)
+            DO UPDATE SET profile=excluded.profile
+            """, (user_id, profile))
+
+    except:
+        pass
+
+# =========================
+# 会話履歴
+# =========================
+def load_history(user_id):
+    with get_conn() as conn:
+        rows = conn.execute("""
+        SELECT role, content FROM messages
+        WHERE user_id=?
+        ORDER BY id DESC
+        LIMIT 20
+        """, (user_id,)).fetchall()
+
+    rows.reverse()
+
+    return rows
+
+# =========================
+# AI
+# =========================
+def ask_ai(user_id, message):
+    save_message(user_id, "user", message)
+
+    history = load_history(user_id)
+    memory = get_memory(user_id)
+
+    system_prompt = f"""
+あなたは人間のように記憶するAIです。
+
+ユーザーの長期記憶:
+{memory}
+
+この情報を踏まえて自然に会話してください。
+"""
+
+    messages = [{"role": "system", "content": system_prompt}]
+    messages += [{"role": r, "content": c} for r, c in history]
+
+    res = client.chat.completions.create(
+        model=MODEL,
+        messages=messages,
+        temperature=0.7,
+        max_tokens=1024
+    )
+
+    reply = res.choices[0].message.content
+
+    save_message(user_id, "assistant", reply)
+
+    # ★重要：会話から記憶更新
+    update_memory(user_id, message + " / " + reply)
+
+    return reply
 
 # =========================
 # LINE webhook
 # =========================
 @app.route("/callback", methods=["POST"])
 def callback():
-    signature = request.headers.get("X-Line-Signature")
     body = request.get_data(as_text=True)
-
+    signature = request.headers.get("X-Line-Signature")
     handler.handle(body, signature)
-
     return "OK"
 
+@handler.add(MessageEvent, message=TextMessageContent)
+def handle(event):
+    user_id = event.source.user_id
+    text = event.message.text
+
+    reply = ask_ai(user_id, text)
+
+    with ApiClient(configuration) as api:
+        MessagingApi(api).reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[TextMessage(text=reply)]
+            )
+        )
+
 # =========================
-# ヘルスチェック（Render必須）
+# health check
 # =========================
 @app.route("/")
 def home():
     return "OK"
 
 # =========================
-# メッセージ処理
-# =========================
-@handler.add(MessageEvent, message=TextMessageContent)
-def handle_message(event):
-    try:
-        user_id = event.source.user_id
-        text = event.message.text
-
-        reply = ask_ai(user_id, text)
-
-        with ApiClient(configuration) as api:
-            MessagingApi(api).reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text=reply)]
-                )
-            )
-
-    except Exception as e:
-        print("LINE error:", traceback.format_exc())
-
-# =========================
-# 起動
+# run
 # =========================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
