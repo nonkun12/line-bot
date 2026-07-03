@@ -2,7 +2,7 @@ from flask import Flask, request, abort
 import os
 import traceback
 
-import google.generativeai as genai
+from google import genai
 
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
@@ -36,10 +36,9 @@ line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 # ======================
-# Gemini初期化（安定版）
+# Gemini初期化（最新版SDK）
 # ======================
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ======================
 # Webhook
@@ -54,8 +53,7 @@ def webhook():
     except InvalidSignatureError:
         print("Invalid Signature")
         abort(400)
-    except Exception as e:
-        print("Webhook ERROR:", str(e))
+    except Exception:
         traceback.print_exc()
         abort(500)
 
@@ -71,32 +69,32 @@ def handle_message(event):
     print("===== USER MESSAGE =====")
     print(user_text)
 
-    reply_text = ""
-
-    # --- Gemini処理 ---
     try:
-        response = model.generate_content(user_text)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=user_text
+        )
+
         reply_text = response.text
+
         print("===== GEMINI RESPONSE =====")
         print(reply_text)
 
     except Exception as e:
         print("===== GEMINI ERROR =====")
-        print(str(e))
         traceback.print_exc()
-        reply_text = "Geminiエラーが発生しました"
+        reply_text = f"Geminiエラー:\n{str(e)}"
 
-    # --- LINE返信 ---
     try:
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text=reply_text)
         )
+
         print("===== LINE REPLY OK =====")
 
-    except Exception as e:
+    except Exception:
         print("===== LINE ERROR =====")
-        print(str(e))
         traceback.print_exc()
 
 # ======================
