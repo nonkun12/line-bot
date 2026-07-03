@@ -29,17 +29,25 @@ configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 client = Groq(api_key=GROQ_API_KEY)
 
-MODEL = "llama3-70b-8192"
+# =========================
+# ★最新Groqモデル（重要）
+# =========================
+MODEL = "llama-3.1-70b-versatile"
+# 軽量版:
+# MODEL = "llama-3.1-8b-instant"
 
+# =========================
+# DB設定
+# =========================
 DB = "chat.db"
 
-# =========================
-# DB接続
-# =========================
 def get_conn():
     conn = sqlite3.connect(DB, check_same_thread=False)
     return conn
 
+# =========================
+# DB初期化
+# =========================
 def init_db():
     with get_conn() as conn:
         conn.execute("""
@@ -51,10 +59,11 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
+
 init_db()
 
 # =========================
-# 保存
+# メッセージ保存
 # =========================
 def save_message(user_id, role, content):
     try:
@@ -64,7 +73,7 @@ def save_message(user_id, role, content):
                 (user_id, role, content)
             )
 
-            # 最新100件のみ保持
+            # 最新100件だけ保持（メモリ暴走防止）
             conn.execute("""
             DELETE FROM messages
             WHERE user_id = ?
@@ -98,34 +107,39 @@ def load_history(user_id, limit=20):
         messages = [
             {
                 "role": "system",
-                "content": "あなたは親切で自然な日本語を話すAIです。会話の流れを理解して応答してください。"
+                "content": "あなたは親切で自然な日本語を話すAIアシスタントです。会話の流れを理解して回答してください。"
             }
         ]
 
         for role, content in rows:
-            messages.append({"role": role, "content": content})
+            messages.append({
+                "role": role,
+                "content": content
+            })
 
         return messages
 
     except Exception as e:
-        print("履歴取得エラー:", e)
-        return [{
-            "role": "system",
-            "content": "あなたは親切なAIアシスタントです。"
-        }]
+        print("履歴取得エラー:", traceback.format_exc())
+        return [
+            {
+                "role": "system",
+                "content": "あなたは親切なAIアシスタントです。"
+            }
+        ]
 
 # =========================
-# AI
+# AI処理
 # =========================
 def ask_ai(user_id, message):
     try:
         save_message(user_id, "user", message)
 
-        msgs = load_history(user_id)
+        messages = load_history(user_id)
 
         completion = client.chat.completions.create(
             model=MODEL,
-            messages=msgs,
+            messages=messages,
             temperature=0.7,
             max_tokens=1024
         )
@@ -150,11 +164,10 @@ def callback():
         body = request.get_data(as_text=True)
 
         handler.handle(body, signature)
-
         return "OK"
 
     except Exception as e:
-        print("Webhookエラー:", e)
+        print("Webhookエラー:", traceback.format_exc())
         abort(500)
 
 # =========================
@@ -177,10 +190,10 @@ def handle_message(event):
             )
 
     except Exception as e:
-        print("LINE処理エラー:", e)
+        print("LINE処理エラー:", traceback.format_exc())
 
 # =========================
-# 起動（Render用）
+# 起動（Render）
 # =========================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
