@@ -17,26 +17,27 @@ def webhook():
         body = request.json
         print("受信:", body)
 
-        # 安全チェック（超重要）
+        # 空イベント対策
         if not body or "events" not in body or len(body["events"]) == 0:
             return "OK"
 
         event = body["events"][0]
 
+        # メッセージ以外無視
         if event.get("type") != "message":
             return "OK"
 
         if event["message"].get("type") != "text":
             return "OK"
 
-        msg = event["message"]["text"]
+        user_text = event["message"]["text"]
         reply_token = event["replyToken"]
 
-        # Gemini
-        answer = gemini(msg)
+        # Gemini呼び出し
+        answer = gemini(user_text)
 
         # LINE返信
-        reply(reply_token, answer)
+        reply_to_line(reply_token, answer)
 
     except Exception as e:
         print("Webhook Error:", str(e))
@@ -45,13 +46,13 @@ def webhook():
 
 
 # =========================
-# Gemini API（修正版）
+# Gemini API（最新安定）
 # =========================
 def gemini(text):
-    # ★ここが重要（最新版モデル）
+    # ★ 安定モデル（ここ重要）
     url = (
         "https://generativelanguage.googleapis.com/v1/models/"
-        "gemini-1.5-flash-latest:generateContent"
+        "gemini-1.5-pro:generateContent"
         "?key=" + GEMINI_API_KEY
     )
 
@@ -68,25 +69,27 @@ def gemini(text):
     try:
         r = requests.post(url, json=payload)
         data = r.json()
+
         print("Gemini Response:", data)
 
-        # エラーチェック
+        # エラー処理
         if "error" in data:
             return "Geminiエラー: " + data["error"]["message"]
 
+        # 安全チェック
         if "candidates" not in data or len(data["candidates"]) == 0:
-            return "AIが空の応答を返しました"
+            return "AIの応答が空でした"
 
         return data["candidates"][0]["content"]["parts"][0]["text"]
 
     except Exception as e:
-        return f"Gemini通信エラー: {str(e)}"
+        return "Gemini通信エラー: " + str(e)
 
 
 # =========================
 # LINE返信
 # =========================
-def reply(token, text):
+def reply_to_line(token, text):
     url = "https://api.line.me/v2/bot/message/reply"
 
     headers = {
@@ -99,7 +102,7 @@ def reply(token, text):
         "messages": [
             {
                 "type": "text",
-                "text": text[:4900]  # LINE制限対策
+                "text": text[:4900]
             }
         ]
     }
@@ -108,7 +111,7 @@ def reply(token, text):
 
 
 # =========================
-# 起動（Render用）
+# 起動
 # =========================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
