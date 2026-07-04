@@ -12,11 +12,12 @@ from groq import Groq
 import os
 import sqlite3
 import json
+import random
 
 app = Flask(__name__)
 
 # =========================
-# 環境変数
+# ENV
 # =========================
 CHANNEL_ACCESS_TOKEN = os.environ["CHANNEL_ACCESS_TOKEN"]
 CHANNEL_SECRET = os.environ["CHANNEL_SECRET"]
@@ -27,7 +28,6 @@ handler = WebhookHandler(CHANNEL_SECRET)
 client = Groq(api_key=GROQ_API_KEY)
 
 MODEL = "llama-3.3-70b-versatile"
-
 DB = "chat.db"
 
 # =========================
@@ -39,7 +39,7 @@ def get_conn():
 def init_db():
     with get_conn() as conn:
         conn.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
+        CREATE TABLE IF NOT EXISTS messages(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT,
             role TEXT,
@@ -49,9 +49,10 @@ def init_db():
         """)
 
         conn.execute("""
-        CREATE TABLE IF NOT EXISTS memory (
+        CREATE TABLE IF NOT EXISTS memory(
             user_id TEXT PRIMARY KEY,
-            profile TEXT
+            profile TEXT,
+            score INTEGER DEFAULT 0
         )
         """)
 
@@ -68,60 +69,78 @@ def save_message(user_id, role, content):
         )
 
 # =========================
-# 長期記憶取得
+# 記憶取得
 # =========================
 def get_memory(user_id):
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT profile FROM memory WHERE user_id=?",
+            "SELECT profile, score FROM memory WHERE user_id=?",
             (user_id,)
         ).fetchone()
 
     if row:
-        return row[0]
-    return ""
+        try:
+            return json.loads(row[0]), row[1]
+        except:
+            return {}, 0
+
+    return {}, 0
 
 # =========================
-# 長期記憶更新（重要）
+# 記憶更新（重要なものだけ）
 # =========================
 def update_memory(user_id, text):
     prompt = f"""
-この会話からユーザー情報を抽出してJSONで返してください。
+ユーザー情報を抽出してJSONで返してください。
 
-抽出項目:
-- name（名前）
-- hobby（趣味）
-- job（仕事）
-- notes（その他重要情報）
+項目:
+- name
+- hobby
+- job
+- personality
+- important_notes
 
 会話:
 {text}
 
-JSONのみ返答:
+JSONのみ:
 """
 
-    res = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2
-    )
-
     try:
-        profile = res.choices[0].message.content
+        res = client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2
+        )
 
-        with get_conn() as conn:
-            conn.execute("""
-            INSERT INTO memory(user_id, profile)
-            VALUES (?, ?)
-            ON CONFLICT(user_id)
-            DO UPDATE SET profile=excluded.profile
-            """, (user_id, profile))
+        data = json.loads(res.choices[0].message.content)
 
     except:
-        pass
+        data = {}
+
+    with get_conn() as conn:
+        conn.execute("""
+        INSERT INTO memory(user_id, profile, score)
+        VALUES (?, ?, 1)
+        ON CONFLICT(user_id)
+        DO UPDATE SET
+            profile=excluded.profile,
+            score=memory.score + 1
+        """, (user_id, json.dumps(data, ensure_ascii=False)))
 
 # =========================
-# 会話履歴
+# 忘却（人間っぽさの核）
+# =========================
+def decay_memory(user_id):
+    with get_conn() as conn:
+        conn.execute("""
+        UPDATE memory
+        SET score = MAX(score - 1, 0)
+        WHERE user_id=?
+        """, (user_id,))
+
+# =========================
+# 履歴取得
 # =========================
 def load_history(user_id):
     with get_conn() as conn:
@@ -129,30 +148,42 @@ def load_history(user_id):
         SELECT role, content FROM messages
         WHERE user_id=?
         ORDER BY id DESC
-        LIMIT 20
+        LIMIT 15
         """, (user_id,)).fetchall()
 
-    rows.reverse()
-
-    return rows
+    return list(reversed(rows))
 
 # =========================
-# AI
+# AI本体（最終形）
 # =========================
 def ask_ai(user_id, message):
     save_message(user_id, "user", message)
 
-    history = load_history(user_id)
-    memory = get_memory(user_id)
+    memory, score = get_memory(user_id)
+
+    # 人間っぽい性格固定
+    personalities = [
+        "あなたは優しくフレンドリーなAIです。",
+        "あなたは少し冗談を言う親しみやすいAIです。",
+        "あなたは落ち着いた相談相手のようなAIです。"
+    ]
 
     system_prompt = f"""
-あなたは人間のように記憶するAIです。
+{random.choice(personalities)}
 
-ユーザーの長期記憶:
+ユーザー情報（記憶）:
 {memory}
 
-この情報を踏まえて自然に会話してください。
+関係性スコア:
+{score}
+
+ルール:
+- スコアが高いほど親しく話す
+- 初対面は丁寧
+- 少しだけ曖昧さを持たせる（人間っぽさ）
 """
+
+    history = load_history(user_id)
 
     messages = [{"role": "system", "content": system_prompt}]
     messages += [{"role": r, "content": c} for r, c in history]
@@ -160,7 +191,7 @@ def ask_ai(user_id, message):
     res = client.chat.completions.create(
         model=MODEL,
         messages=messages,
-        temperature=0.7,
+        temperature=0.85,
         max_tokens=1024
     )
 
@@ -168,8 +199,9 @@ def ask_ai(user_id, message):
 
     save_message(user_id, "assistant", reply)
 
-    # ★重要：会話から記憶更新
-    update_memory(user_id, message + " / " + reply)
+    # ★人間化の核心
+    update_memory(user_id, message + " " + reply)
+    decay_memory(user_id)
 
     return reply
 
@@ -180,6 +212,7 @@ def ask_ai(user_id, message):
 def callback():
     body = request.get_data(as_text=True)
     signature = request.headers.get("X-Line-Signature")
+
     handler.handle(body, signature)
     return "OK"
 
@@ -209,5 +242,4 @@ def home():
 # run
 # =========================
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
