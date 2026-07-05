@@ -87,7 +87,7 @@ def get_memory(user_id):
     return {}, 0
 
 # =========================
-# 記憶更新（重要なものだけ）
+# 記憶更新
 # =========================
 def update_memory(user_id, text):
     prompt = f"""
@@ -115,7 +115,8 @@ JSONのみ:
 
         data = json.loads(res.choices[0].message.content)
 
-    except:
+    except Exception as e:
+        print("MEMORY ERROR:", e)
         data = {}
 
     with get_conn() as conn:
@@ -129,7 +130,7 @@ JSONのみ:
         """, (user_id, json.dumps(data, ensure_ascii=False)))
 
 # =========================
-# 忘却（人間っぽさの核）
+# 忘却
 # =========================
 def decay_memory(user_id):
     with get_conn() as conn:
@@ -140,7 +141,7 @@ def decay_memory(user_id):
         """, (user_id,))
 
 # =========================
-# 履歴取得
+# 履歴
 # =========================
 def load_history(user_id):
     with get_conn() as conn:
@@ -154,14 +155,17 @@ def load_history(user_id):
     return list(reversed(rows))
 
 # =========================
-# AI本体（最終形）
+# AI本体（デバッグ強化）
 # =========================
 def ask_ai(user_id, message):
+    print("===== ASK_AI START =====")
+    print("USER:", user_id)
+    print("MESSAGE:", message)
+
     save_message(user_id, "user", message)
 
     memory, score = get_memory(user_id)
 
-    # 人間っぽい性格固定
     personalities = [
         "あなたは優しくフレンドリーなAIです。",
         "あなたは少し冗談を言う親しみやすいAIです。",
@@ -171,16 +175,11 @@ def ask_ai(user_id, message):
     system_prompt = f"""
 {random.choice(personalities)}
 
-ユーザー情報（記憶）:
+ユーザー情報:
 {memory}
 
-関係性スコア:
+スコア:
 {score}
-
-ルール:
-- スコアが高いほど親しく話す
-- 初対面は丁寧
-- 少しだけ曖昧さを持たせる（人間っぽさ）
 """
 
     history = load_history(user_id)
@@ -188,48 +187,80 @@ def ask_ai(user_id, message):
     messages = [{"role": "system", "content": system_prompt}]
     messages += [{"role": r, "content": c} for r, c in history]
 
-    res = client.chat.completions.create(
-        model=MODEL,
-        messages=messages,
-        temperature=0.85,
-        max_tokens=1024
-    )
+    try:
+        res = client.chat.completions.create(
+            model=MODEL,
+            messages=messages,
+            temperature=0.85,
+            max_tokens=1024
+        )
 
-    reply = res.choices[0].message.content
+        print("GROQ RAW:", res)
+
+        reply = res.choices[0].message.content
+
+    except Exception as e:
+        print("AI ERROR:", e)
+        reply = "AIエラーが発生しました"
 
     save_message(user_id, "assistant", reply)
 
-    # ★人間化の核心
     update_memory(user_id, message + " " + reply)
     decay_memory(user_id)
+
+    print("===== ASK_AI END =====")
 
     return reply
 
 # =========================
-# LINE webhook
+# LINE webhook（デバッグ強化）
 # =========================
 @app.route("/callback", methods=["POST"])
 def callback():
     body = request.get_data(as_text=True)
     signature = request.headers.get("X-Line-Signature")
 
-    handler.handle(body, signature)
+    print("===== CALLBACK RECEIVED =====")
+    print("BODY:", body)
+    print("SIGNATURE:", signature)
+
+    try:
+        handler.handle(body, signature)
+    except Exception as e:
+        print("===== HANDLER ERROR =====")
+        print(e)
+
     return "OK"
 
+# =========================
+# EVENT HANDLER（超重要）
+# =========================
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle(event):
-    user_id = event.source.user_id
-    text = event.message.text
+    print("===== EVENT TRIGGERED =====")
 
-    reply = ask_ai(user_id, text)
+    try:
+        user_id = event.source.user_id
+        text = event.message.text
 
-    with ApiClient(configuration) as api:
-        MessagingApi(api).reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[TextMessage(text=reply)]
+        print("USER:", user_id)
+        print("TEXT:", text)
+
+        reply = ask_ai(user_id, text)
+
+        with ApiClient(configuration) as api:
+            MessagingApi(api).reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=reply)]
+                )
             )
-        )
+
+        print("REPLY SENT SUCCESS")
+
+    except Exception as e:
+        print("===== HANDLE ERROR =====")
+        print(e)
 
 # =========================
 # health check
