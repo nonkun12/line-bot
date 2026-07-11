@@ -16,6 +16,7 @@ import json
 import random
 import threading
 import requests
+import re
 from datetime import datetime, timezone, timedelta
 
 app = Flask(__name__)
@@ -175,6 +176,19 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
 # Groq(OpenAI互換)のfunction calling形式でMCPツールを公開する。
 # ユーザーごとの記憶を分離するため、モデルには生の key/value だけを
 # 触らせ、実際にMCPへ渡す際はサーバー側でuser_idを前置して名前空間を分ける。
+# =========================
+# 「」内の文字列を抽出するヘルパー
+# =========================
+# set_reminder / save_memory 等でユーザーが「」で明示的に指定した文言は、
+# AIに言い換えさせず、原文からそのまま抜き出して使う。
+# (AIが1回目のツール呼び出し判断時にtemperature=0.2でも稀に数文字だけ
+#  言い換えてしまう(例: 「文字化けテスト」→「文字化ケトスト」)ことがあるため、
+#  正確性が必要な箇所は原文優先にする)
+def extract_quoted_text(original_message):
+    matches = re.findall(r"「(.+?)」", original_message)
+    return matches[-1] if matches else None
+
+
 MCP_TOOLS_SCHEMA = [
     {
         "type": "function",
@@ -269,7 +283,7 @@ MCP_TOOLS_SCHEMA = [
     }
 ]
 
-def dispatch_tool_call(user_id, name, arguments):
+def dispatch_tool_call(user_id, name, arguments, original_message=""):
     """
     LINEのuser_idはGroq(LLM)には見せず、ここでMCPツールの正式パラメータとして注入する。
     以前はkeyに"{user_id}:"を前置する自前ルールで分離していたが、
@@ -290,10 +304,15 @@ def dispatch_tool_call(user_id, name, arguments):
         })
 
     if name == "set_reminder":
+        # AIが生成したmessageは稀に数文字言い換わることがあるため、
+        # ユーザーの原文に「」で明示された文言があれば、そちらを優先して使う。
+        quoted = extract_quoted_text(original_message)
+        final_message = quoted if quoted else arguments.get("message", "")
+
         return call_mcp_tool("set_reminder", {
             "user_id": user_id,
             "remind_at": arguments.get("remind_at", ""),
-            "message": arguments.get("message", "")
+            "message": final_message
         })
 
     if name == "list_reminders":
@@ -412,7 +431,7 @@ cancel_reminder を呼び出してください。
                     args = {}
 
                 try:
-                    tool_result = dispatch_tool_call(user_id, tc.function.name, args)
+                    tool_result = dispatch_tool_call(user_id, tc.function.name, args, original_message=message)
                 except Exception as e:
                     print("MCP TOOL CALL ERROR:", e)
                     tool_result = f"ツール実行エラー: {e}"
