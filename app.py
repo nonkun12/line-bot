@@ -192,6 +192,26 @@ def extract_quoted_text(original_message):
     return matches[-1] if matches else None
 
 
+# =========================
+# remind_atのタイムゾーン補正
+# =========================
+# システムプロンプトでモデルに「+09:00付きのISO 8601で出力する」よう指示しているが、
+# Groq/Llama系モデルは稀にタイムゾーン部分を省略して出力することがある
+# (例: "2026-07-12T21:19:00" のようにオフセットなし)。
+# JS(MCPサーバー側)のnew Date()はオフセットなしの文字列をUTCとして解釈するため、
+# 「日本時間のつもりだった時刻」が実際には9時間ズレて登録されてしまう。
+# これを防ぐため、タイムゾーン表記(Z または +HH:MM/-HH:MM)が末尾になければ、
+# ここで明示的に +09:00 を補う。
+TZ_SUFFIX_RE = re.compile(r"(Z|[+-]\d{2}:\d{2})$")
+
+def ensure_jst_offset(remind_at):
+    if not remind_at:
+        return remind_at
+    if TZ_SUFFIX_RE.search(remind_at):
+        return remind_at
+    return remind_at + "+09:00"
+
+
 MCP_TOOLS_SCHEMA = [
     {
         "type": "function",
@@ -326,7 +346,7 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
 
         return call_mcp_tool("set_reminder", {
             "user_id": user_id,
-            "remind_at": arguments.get("remind_at", ""),
+            "remind_at": ensure_jst_offset(arguments.get("remind_at", "")),
             "message": final_message,
             "repeat": arguments.get("repeat", "none")
         })
