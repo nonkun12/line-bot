@@ -29,6 +29,10 @@ GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 # 例: https://my-mcp-server.onrender.com/mcp
 MCP_SERVER_URL = os.environ["MCP_SERVER_URL"]
 
+# MCPサーバー側のrequireApiKeyと照合される固定キー。
+# my-mcp-server側の環境変数 MCP_API_KEY と同じ値をここに設定する。
+MCP_API_KEY = os.environ["MCP_API_KEY"]
+
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 # timeoutを明示的に指定し、Groq側が詰まってもgunicorn workerごと
@@ -114,7 +118,9 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
     headers = {
         "Content-Type": "application/json",
         # stateless MCPサーバー側の要求に合わせて両方受け入れる旨を明示
-        "Accept": "application/json, text/event-stream"
+        "Accept": "application/json, text/event-stream",
+        # MCPサーバー側のrequireApiKeyミドルウェアで照合される
+        "x-api-key": MCP_API_KEY
     }
 
     res = requests.post(
@@ -184,18 +190,23 @@ MCP_TOOLS_SCHEMA = [
 ]
 
 def dispatch_tool_call(user_id, name, arguments):
-    """LINEのuser_idごとに記憶が混ざらないよう、keyをここで名前空間化してMCPへ渡す"""
-    namespaced_key = f"{user_id}:{arguments.get('key', '')}"
-
+    """
+    LINEのuser_idはGroq(LLM)には見せず、ここでMCPツールの正式パラメータとして注入する。
+    以前はkeyに"{user_id}:"を前置する自前ルールで分離していたが、
+    MCPサーバー側がuser_idを必須パラメータとして受け取るようになったため、
+    そのまま渡すだけでよくなった。
+    """
     if name == "save_memory":
         return call_mcp_tool("save_memory", {
-            "key": namespaced_key,
+            "user_id": user_id,
+            "key": arguments.get("key", ""),
             "value": arguments.get("value", "")
         })
 
     if name == "get_memory":
         return call_mcp_tool("get_memory", {
-            "key": namespaced_key
+            "user_id": user_id,
+            "key": arguments.get("key", "")
         })
 
     return f"不明なツールです: {name}"
