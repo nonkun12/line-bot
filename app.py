@@ -13,6 +13,8 @@ import os
 import sqlite3
 import json
 import random
+import threading
+import requests
 
 app = Flask(__name__)
 
@@ -23,9 +25,15 @@ CHANNEL_ACCESS_TOKEN = os.environ["CHANNEL_ACCESS_TOKEN"]
 CHANNEL_SECRET = os.environ["CHANNEL_SECRET"]
 GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 
+# MCPサーバー(Render上のmy-mcp-server)のURL。
+# 例: https://my-mcp-server.onrender.com/mcp
+MCP_SERVER_URL = os.environ["MCP_SERVER_URL"]
+
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
-client = Groq(api_key=GROQ_API_KEY)
+# timeoutを明示的に指定し、Groq側が詰まってもgunicorn workerごと
+# ハングしないようにする(Renderがクラッシュと誤認して再起動する原因になっていた)
+client = Groq(api_key=GROQ_API_KEY, timeout=15.0, max_retries=1)
 
 MODEL = "llama-3.3-70b-versatile"
 DB = "chat.db"
@@ -47,14 +55,9 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
-
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS memory(
-            user_id TEXT PRIMARY KEY,
-            profile TEXT,
-            score INTEGER DEFAULT 0
-        )
-        """)
+        # 旧・自前memoryテーブルはもう使わない(MCPサーバー側のSQLiteに一元化)。
+        # 既存データを残したい場合はこのテーブル定義とget_memory/update_memory関数を
+        # 復活させて併用することも可能。
 
 init_db()
 
@@ -62,109 +65,151 @@ init_db()
 # 会話保存
 # =========================
 def save_message(user_id, role, content):
-    with get_conn() as conn:
-        conn.execute(
-            "INSERT INTO messages(user_id, role, content) VALUES (?, ?, ?)",
-            (user_id, role, content)
-        )
-
-# =========================
-# 記憶取得
-# =========================
-def get_memory(user_id):
-    with get_conn() as conn:
-        row = conn.execute(
-            "SELECT profile, score FROM memory WHERE user_id=?",
-            (user_id,)
-        ).fetchone()
-
-    if row:
-        try:
-            return json.loads(row[0]), row[1]
-        except:
-            return {}, 0
-
-    return {}, 0
-
-# =========================
-# 記憶更新
-# =========================
-def update_memory(user_id, text):
-    prompt = f"""
-ユーザー情報を抽出してJSONで返してください。
-
-項目:
-- name
-- hobby
-- job
-- personality
-- important_notes
-
-会話:
-{text}
-
-JSONのみ:
-"""
-
     try:
-        res = client.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2
-        )
-
-        data = json.loads(res.choices[0].message.content)
-
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO messages(user_id, role, content) VALUES (?, ?, ?)",
+                (user_id, role, content)
+            )
     except Exception as e:
-        print("MEMORY ERROR:", e)
-        data = {}
-
-    with get_conn() as conn:
-        conn.execute("""
-        INSERT INTO memory(user_id, profile, score)
-        VALUES (?, ?, 1)
-        ON CONFLICT(user_id)
-        DO UPDATE SET
-            profile=excluded.profile,
-            score=memory.score + 1
-        """, (user_id, json.dumps(data, ensure_ascii=False)))
-
-# =========================
-# 忘却
-# =========================
-def decay_memory(user_id):
-    with get_conn() as conn:
-        conn.execute("""
-        UPDATE memory
-        SET score = MAX(score - 1, 0)
-        WHERE user_id=?
-        """, (user_id,))
+        print("DB SAVE_MESSAGE ERROR:", e)
 
 # =========================
 # 履歴
 # =========================
 def load_history(user_id):
-    with get_conn() as conn:
-        rows = conn.execute("""
-        SELECT role, content FROM messages
-        WHERE user_id=?
-        ORDER BY id DESC
-        LIMIT 15
-        """, (user_id,)).fetchall()
+    try:
+        with get_conn() as conn:
+            rows = conn.execute("""
+            SELECT role, content FROM messages
+            WHERE user_id=?
+            ORDER BY id DESC
+            LIMIT 15
+            """, (user_id,)).fetchall()
+    except Exception as e:
+        print("DB LOAD_HISTORY ERROR:", e)
+        return []
 
     return list(reversed(rows))
 
+# =========================================================
+# MCPクライアント(StreamableHTTP / stateless)
+# =========================================================
+def call_mcp_tool(tool_name, arguments, timeout=10.0):
+    """
+    my-mcp-server の /mcp エンドポイントへ JSON-RPC で tools/call を送る。
+    StreamableHTTPServerTransport はレスポンスを
+    application/json または text/event-stream のどちらでも返し得るため両方に対応する。
+    """
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": tool_name,
+            "arguments": arguments
+        }
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        # stateless MCPサーバー側の要求に合わせて両方受け入れる旨を明示
+        "Accept": "application/json, text/event-stream"
+    }
+
+    res = requests.post(
+        MCP_SERVER_URL,
+        json=payload,
+        headers=headers,
+        timeout=timeout
+    )
+    res.raise_for_status()
+
+    content_type = res.headers.get("content-type", "")
+
+    if "text/event-stream" in content_type:
+        # SSE形式: "data: {...}" 行からJSONを取り出す
+        data_line = None
+        for line in res.text.splitlines():
+            if line.startswith("data:"):
+                data_line = line[len("data:"):].strip()
+        if data_line is None:
+            raise RuntimeError("MCP SSEレスポンスにdataが見つかりません")
+        body = json.loads(data_line)
+    else:
+        body = res.json()
+
+    if "error" in body:
+        raise RuntimeError(f"MCP error: {body['error']}")
+
+    result = body.get("result", {})
+    parts = result.get("content", [])
+    texts = [p.get("text", "") for p in parts if p.get("type") == "text"]
+    return "\n".join(texts) if texts else ""
+
+
+# Groq(OpenAI互換)のfunction calling形式でMCPツールを公開する。
+# ユーザーごとの記憶を分離するため、モデルには生の key/value だけを
+# 触らせ、実際にMCPへ渡す際はサーバー側でuser_idを前置して名前空間を分ける。
+MCP_TOOLS_SCHEMA = [
+    {
+        "type": "function",
+        "function": {
+            "name": "save_memory",
+            "description": "ユーザーに関する情報をkey/valueの形で記憶として保存する",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "記憶の項目名(例: name, hobby)"},
+                    "value": {"type": "string", "description": "記憶する内容"}
+                },
+                "required": ["key", "value"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_memory",
+            "description": "以前保存したユーザーの記憶をkeyで取得する",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "取得したい記憶の項目名"}
+                },
+                "required": ["key"]
+            }
+        }
+    }
+]
+
+def dispatch_tool_call(user_id, name, arguments):
+    """LINEのuser_idごとに記憶が混ざらないよう、keyをここで名前空間化してMCPへ渡す"""
+    namespaced_key = f"{user_id}:{arguments.get('key', '')}"
+
+    if name == "save_memory":
+        return call_mcp_tool("save_memory", {
+            "key": namespaced_key,
+            "value": arguments.get("value", "")
+        })
+
+    if name == "get_memory":
+        return call_mcp_tool("get_memory", {
+            "key": namespaced_key
+        })
+
+    return f"不明なツールです: {name}"
+
+
 # =========================
-# AI本体（デバッグ強化）
+# AI本体(返信生成 + MCPツール呼び出しループ)
 # =========================
-def ask_ai(user_id, message):
-    print("===== ASK_AI START =====")
+def generate_reply(user_id, message):
+    print("===== GENERATE_REPLY START =====")
     print("USER:", user_id)
     print("MESSAGE:", message)
 
     save_message(user_id, "user", message)
-
-    memory, score = get_memory(user_id)
 
     personalities = [
         "あなたは優しくフレンドリーなAIです。",
@@ -175,11 +220,9 @@ def ask_ai(user_id, message):
     system_prompt = f"""
 {random.choice(personalities)}
 
-ユーザー情報:
-{memory}
-
-スコア:
-{score}
+ユーザーについて覚えておくべきことがあれば save_memory ツールで保存し、
+思い出す必要があれば get_memory ツールで確認してください。
+ツールのkeyはユーザーごとに自動で区別されるので、あなたはkey名(name, hobbyなど)だけ気にしてください。
 """
 
     history = load_history(user_id)
@@ -188,16 +231,63 @@ def ask_ai(user_id, message):
     messages += [{"role": r, "content": c} for r, c in history]
 
     try:
+        # 1回目: Groqにツール一覧を渡して呼び出す
         res = client.chat.completions.create(
             model=MODEL,
             messages=messages,
             temperature=0.85,
-            max_tokens=1024
+            max_tokens=1024,
+            tools=MCP_TOOLS_SCHEMA,
+            tool_choice="auto"
         )
 
-        print("GROQ RAW:", res)
+        choice = res.choices[0].message
 
-        reply = res.choices[0].message.content
+        # ツール呼び出しが指定された場合はMCPサーバーを実行し、結果を持たせて再度問い合わせる
+        if choice.tool_calls:
+            messages.append({
+                "role": "assistant",
+                "content": choice.content or "",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    } for tc in choice.tool_calls
+                ]
+            })
+
+            for tc in choice.tool_calls:
+                try:
+                    args = json.loads(tc.function.arguments)
+                except Exception:
+                    args = {}
+
+                try:
+                    tool_result = dispatch_tool_call(user_id, tc.function.name, args)
+                except Exception as e:
+                    print("MCP TOOL CALL ERROR:", e)
+                    tool_result = f"ツール実行エラー: {e}"
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": tool_result
+                })
+
+            # 2回目: ツール結果を踏まえた最終回答を生成
+            res2 = client.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                temperature=0.85,
+                max_tokens=1024
+            )
+            reply = res2.choices[0].message.content
+        else:
+            reply = choice.content
 
     except Exception as e:
         print("AI ERROR:", e)
@@ -205,15 +295,13 @@ def ask_ai(user_id, message):
 
     save_message(user_id, "assistant", reply)
 
-    update_memory(user_id, message + " " + reply)
-    decay_memory(user_id)
-
-    print("===== ASK_AI END =====")
+    print("===== GENERATE_REPLY END =====")
 
     return reply
 
+
 # =========================
-# LINE webhook（デバッグ強化）
+# LINE webhook
 # =========================
 @app.route("/callback", methods=["POST"])
 def callback():
@@ -233,7 +321,7 @@ def callback():
     return "OK"
 
 # =========================
-# EVENT HANDLER（超重要）
+# EVENT HANDLER
 # =========================
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle(event):
@@ -246,7 +334,8 @@ def handle(event):
         print("USER:", user_id)
         print("TEXT:", text)
 
-        reply = ask_ai(user_id, text)
+        # 返信の生成 → 送信を最優先で行う(reply_tokenは約1分で失効するため)
+        reply = generate_reply(user_id, text)
 
         with ApiClient(configuration) as api:
             MessagingApi(api).reply_message(
