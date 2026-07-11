@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from linebot.v3.webhook import WebhookHandler
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from linebot.v3.messaging import (
@@ -6,6 +6,7 @@ from linebot.v3.messaging import (
     ApiClient,
     MessagingApi,
     ReplyMessageRequest,
+    PushMessageRequest,
     TextMessage
 )
 from groq import Groq
@@ -15,6 +16,7 @@ import json
 import random
 import threading
 import requests
+from datetime import datetime, timezone, timedelta
 
 app = Flask(__name__)
 
@@ -32,6 +34,12 @@ MCP_SERVER_URL = os.environ["MCP_SERVER_URL"]
 # MCPサーバー側のrequireApiKeyと照合される固定キー。
 # my-mcp-server側の環境変数 MCP_API_KEY と同じ値をここに設定する。
 MCP_API_KEY = os.environ["MCP_API_KEY"]
+
+# MCPサーバー(スケジューラー)がリマインダー送信を依頼してくる際に
+# このLINE Bot側の /internal/push エンドポイントを叩く。
+# その時に付けてくるヘッダー "x-internal-key" と照合する値。
+# my-mcp-server側の環境変数 INTERNAL_PUSH_KEY と同じ値をここに設定する。
+INTERNAL_PUSH_KEY = os.environ["INTERNAL_PUSH_KEY"]
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
@@ -186,6 +194,31 @@ MCP_TOOLS_SCHEMA = [
                 "required": ["key"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_reminder",
+            "description": (
+                "指定した日時にユーザーへリマインドメッセージを送るよう予約する。"
+                "「n分後」「n時間後」「明日の朝9時」のような相対/絶対どちらの表現でも、"
+                "現在時刻を基準に具体的なISO 8601日時に変換してから呼び出すこと。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "remind_at": {
+                        "type": "string",
+                        "description": "ISO 8601形式の日時(タイムゾーン付き推奨、例: 2026-07-12T15:00:00+09:00)"
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "リマインド時に送る内容"
+                    }
+                },
+                "required": ["remind_at", "message"]
+            }
+        }
     }
 ]
 
@@ -209,6 +242,13 @@ def dispatch_tool_call(user_id, name, arguments):
             "key": arguments.get("key", "")
         })
 
+    if name == "set_reminder":
+        return call_mcp_tool("set_reminder", {
+            "user_id": user_id,
+            "remind_at": arguments.get("remind_at", ""),
+            "message": arguments.get("message", "")
+        })
+
     return f"不明なツールです: {name}"
 
 
@@ -228,12 +268,26 @@ def generate_reply(user_id, message):
         "あなたは落ち着いた相談相手のようなAIです。"
     ]
 
+    # 現在時刻をシステムプロンプトに含める。
+    # 「5分後」のような相対時間をモデルが正しくISO 8601へ変換するには、
+    # 「今が何時か」を明示的に与えておく必要がある(モデル自身は現在時刻を知らない)。
+    now_jst = datetime.now(timezone(timedelta(hours=9)))
+    now_str = now_jst.strftime("%Y-%m-%dT%H:%M:%S+09:00")
+
     system_prompt = f"""
 {random.choice(personalities)}
+
+現在の日時: {now_str} (JST)
 
 ユーザーについて覚えておくべきことがあれば save_memory ツールで保存し、
 思い出す必要があれば get_memory ツールで確認してください。
 ツールのkeyはユーザーごとに自動で区別されるので、あなたはkey名(name, hobbyなど)だけ気にしてください。
+
+ユーザーが「n分後に教えて」「明日の朝リマインドして」のように、
+将来のある時点で何かを伝えてほしいと頼んできた場合は、
+必ず set_reminder ツールを呼び出してください。
+remind_atは上記の現在日時を基準に計算した具体的なISO 8601日時にすること。
+「わかりました」と答えるだけでツールを呼ばずに済ませてはいけません。
 """
 
     history = load_history(user_id)
@@ -377,6 +431,41 @@ def handle(event):
     except Exception as e:
         print("===== HANDLE ERROR =====")
         print(e)
+
+# =========================
+# internal push (MCPサーバーのスケジューラーから呼ばれる)
+# =========================
+# my-mcp-server の index.js が1分おきに、送信予定時刻を過ぎたリマインダーを
+# 見つけるとここへPOSTしてくる。ここでLINEのpush APIを使って実際に送信する。
+# MCPサーバーはLINEのトークンを持たない設計のため、送信はこちら側の役割。
+@app.route("/internal/push", methods=["POST"])
+def internal_push():
+    provided_key = request.headers.get("x-internal-key")
+    if provided_key != INTERNAL_PUSH_KEY:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    message = data.get("message")
+
+    if not user_id or not message:
+        return jsonify({"ok": False, "error": "user_id and message are required"}), 400
+
+    try:
+        with ApiClient(configuration) as api:
+            MessagingApi(api).push_message(
+                PushMessageRequest(
+                    to=user_id,
+                    messages=[TextMessage(text=message)]
+                )
+            )
+        save_message(user_id, "assistant", message)
+        print(f"INTERNAL PUSH SENT: user_id={user_id}")
+        return jsonify({"ok": True})
+
+    except Exception as e:
+        print("INTERNAL PUSH ERROR:", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 # =========================
 # health check
