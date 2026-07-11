@@ -143,15 +143,25 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
 
     if "text/event-stream" in content_type:
         # SSE形式: "data: {...}" 行からJSONを取り出す
+        #
+        # 注意: res.text は使わない。
+        # requestsはContent-Typeヘッダーにcharsetの指定がない場合、
+        # 日本語などのUTF-8バイト列を誤った文字コード(ISO-8859-1相当)として
+        # 解釈してしまい、文字化け(mojibake)を起こすことがある。
+        # MCPサーバー(index.js)側はUTF-8で返しているとわかっているため、
+        # res.content(生バイト列)を明示的にUTF-8でデコードする。
+        raw_text = res.content.decode("utf-8")
         data_line = None
-        for line in res.text.splitlines():
+        for line in raw_text.splitlines():
             if line.startswith("data:"):
                 data_line = line[len("data:"):].strip()
         if data_line is None:
             raise RuntimeError("MCP SSEレスポンスにdataが見つかりません")
         body = json.loads(data_line)
     else:
-        body = res.json()
+        # JSONの場合もrequestsの自動エンコーディング判定に頼らず、
+        # 生バイト列からUTF-8として明示的にパースする。
+        body = json.loads(res.content.decode("utf-8"))
 
     if "error" in body:
         raise RuntimeError(f"MCP error: {body['error']}")
