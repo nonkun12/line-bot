@@ -230,17 +230,23 @@ MCP_TOOLS_SCHEMA = [
                 "指定した日時にユーザーへリマインドメッセージを送るよう予約する。"
                 "「n分後」「n時間後」「明日の朝9時」のような相対/絶対どちらの表現でも、"
                 "現在時刻を基準に具体的なISO 8601日時に変換してから呼び出すこと。"
+                "「毎日」「毎朝」のように繰り返しを希望された場合は repeat='daily' を指定すること。"
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "remind_at": {
                         "type": "string",
-                        "description": "ISO 8601形式の日時(タイムゾーン付き推奨、例: 2026-07-12T15:00:00+09:00)"
+                        "description": "ISO 8601形式の日時(タイムゾーン付き推奨、例: 2026-07-12T15:00:00+09:00)。repeat='daily'の場合は1回目に送る日時。"
                     },
                     "message": {
                         "type": "string",
                         "description": "リマインド時に送る内容"
+                    },
+                    "repeat": {
+                        "type": "string",
+                        "enum": ["none", "daily"],
+                        "description": "繰り返しの種類。「毎日」「毎朝」等と言われた場合は'daily'、単発なら'none'(省略可、省略時はnone)。"
                     }
                 },
                 "required": ["remind_at", "message"]
@@ -321,7 +327,8 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
         return call_mcp_tool("set_reminder", {
             "user_id": user_id,
             "remind_at": arguments.get("remind_at", ""),
-            "message": final_message
+            "message": final_message,
+            "repeat": arguments.get("repeat", "none")
         })
 
     if name == "list_reminders":
@@ -374,6 +381,11 @@ def generate_reply(user_id, message):
 必ず set_reminder ツールを呼び出してください。
 remind_atは上記の現在日時を基準に計算した具体的なISO 8601日時にすること。
 「わかりました」と答えるだけでツールを呼ばずに済ませてはいけません。
+
+ユーザーが「毎日」「毎朝」のように繰り返しを希望した場合は、
+set_reminderのrepeatパラメータに'daily'を指定してください。
+その場合のremind_atは「1回目に送る日時」で構いません(以降は自動で毎日繰り返されます)。
+繰り返しを希望していない場合はrepeatを省略するか'none'にしてください。
 
 ユーザーが「今何がセットされてる?」のように予定を確認したい場合は list_reminders を、
 「さっきのキャンセルして」のように取り消したい場合はまず list_reminders でidを確認してから
