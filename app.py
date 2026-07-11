@@ -243,14 +243,30 @@ def generate_reply(user_id, message):
 
     try:
         # 1回目: Groqにツール一覧を渡して呼び出す
-        res = client.chat.completions.create(
-            model=MODEL,
-            messages=messages,
-            temperature=0.85,
-            max_tokens=1024,
-            tools=MCP_TOOLS_SCHEMA,
-            tool_choice="auto"
-        )
+        # ツール呼び出しの構文はtemperatureが高いと崩れやすい(Groq/Llama系の既知の傾向)ため、
+        # ここは低めのtemperatureにして呼び出し判断を安定させる。
+        # 自然な受け答えのランダム性は2回目(最終返信生成)側で確保する。
+        try:
+            res = client.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                temperature=0.2,
+                max_tokens=1024,
+                tools=MCP_TOOLS_SCHEMA,
+                tool_choice="auto"
+            )
+        except Exception as e:
+            # モデルがツール呼び出し構文を壊して生成してしまう(tool_use_failed)ことが
+            # まれにあるため、1回だけリトライする
+            print("TOOL CALL GENERATION FAILED, RETRYING:", e)
+            res = client.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                temperature=0.2,
+                max_tokens=1024,
+                tools=MCP_TOOLS_SCHEMA,
+                tool_choice="auto"
+            )
 
         choice = res.choices[0].message
 
