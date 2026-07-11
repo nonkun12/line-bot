@@ -185,7 +185,10 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
 #  言い換えてしまう(例: 「文字化けテスト」→「文字化ケトスト」)ことがあるため、
 #  正確性が必要な箇所は原文優先にする)
 def extract_quoted_text(original_message):
-    matches = re.findall(r"「(.+?)」", original_message)
+    # 「」(一重)と『』(二重)の両方に対応する。
+    # ユーザーが「私の名前は『のんくん』です」のように、文中の引用は『』、
+    # 全体の括りは「」を使うケース(逆のケースも)があるため、両方拾う。
+    matches = re.findall(r"[「『](.+?)[」』]", original_message)
     return matches[-1] if matches else None
 
 
@@ -291,10 +294,16 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
     そのまま渡すだけでよくなった。
     """
     if name == "save_memory":
+        # set_reminderと同様、AIが生成したvalueは稀に数文字言い換わることがあるため、
+        # ユーザーの原文に「」/『』で明示された文言があれば、そちらを優先して使う。
+        # (例: 「私の名前は『のんくん』です、覚えておいて」)
+        quoted = extract_quoted_text(original_message)
+        final_value = quoted if quoted else arguments.get("value", "")
+
         return call_mcp_tool("save_memory", {
             "user_id": user_id,
             "key": arguments.get("key", ""),
-            "value": arguments.get("value", "")
+            "value": final_value
         })
 
     if name == "get_memory":
@@ -444,15 +453,21 @@ cancel_reminder を呼び出してください。
                     "content": tool_result
                 })
 
-            # list_reminders は日時やidのような正確な情報を答える必要があるツール。
+            # list_reminders / get_memory は、日時・id・記憶した値のような
+            # 正確な情報をそのまま答える必要があるツール。
             # 2回目のAI呼び出し(temperature=0.85)で自然な文章に言い換えさせると、
-            # 特に似た内容の項目が複数あるとき、日時やidを取り違えて答えてしまう
-            # (ハルシネーション)ことが確認されたため、このツールが呼ばれた場合は
-            # 言い換えさせず、MCPサーバーが返した生の結果をそのまま返信として使う。
+            # 値を微妙に取り違えて答えてしまう(ハルシネーション)ことが確認されたため、
+            # これらのツールだけが呼ばれた場合は言い換えさせず、
+            # MCPサーバーが返した生の結果をそのまま返信として使う。
+            # (save_memory等、他のツールも一緒に呼ばれた場合は従来通り2回目の呼び出しを行う)
+            PRECISE_TOOLS = {"list_reminders", "get_memory"}
             called_tool_names = set(tool_results_by_name.keys())
-            if called_tool_names == {"list_reminders"}:
-                # tool_results_by_nameの値はlist(通常1件)なので結合して返す
-                reply = "\n".join(tool_results_by_name["list_reminders"])
+            if called_tool_names and called_tool_names.issubset(PRECISE_TOOLS):
+                reply = "\n".join(
+                    text
+                    for tool_name in called_tool_names
+                    for text in tool_results_by_name[tool_name]
+                )
             else:
                 # 2回目: ツール結果を踏まえた最終回答を生成
                 res2 = client.chat.completions.create(
