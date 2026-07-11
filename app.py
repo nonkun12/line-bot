@@ -219,6 +219,43 @@ MCP_TOOLS_SCHEMA = [
                 "required": ["remind_at", "message"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_reminders",
+            "description": (
+                "まだ送信されていない(予定されている)リマインダーの一覧を取得する。"
+                "「今何がセットされてる?」「リマインダー一覧」のように聞かれたら使う。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cancel_reminder",
+            "description": (
+                "指定したidのリマインダーをキャンセルする。"
+                "idはlist_remindersで確認したものを使う。"
+                "ユーザーが「さっきのキャンセルして」のように言った場合、"
+                "まずlist_remindersでidを確認してから呼び出すこと。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "description": "キャンセルしたいリマインダーのid"
+                    }
+                },
+                "required": ["id"]
+            }
+        }
     }
 ]
 
@@ -247,6 +284,17 @@ def dispatch_tool_call(user_id, name, arguments):
             "user_id": user_id,
             "remind_at": arguments.get("remind_at", ""),
             "message": arguments.get("message", "")
+        })
+
+    if name == "list_reminders":
+        return call_mcp_tool("list_reminders", {
+            "user_id": user_id
+        })
+
+    if name == "cancel_reminder":
+        return call_mcp_tool("cancel_reminder", {
+            "user_id": user_id,
+            "id": arguments.get("id")
         })
 
     return f"不明なツールです: {name}"
@@ -288,6 +336,10 @@ def generate_reply(user_id, message):
 必ず set_reminder ツールを呼び出してください。
 remind_atは上記の現在日時を基準に計算した具体的なISO 8601日時にすること。
 「わかりました」と答えるだけでツールを呼ばずに済ませてはいけません。
+
+ユーザーが「今何がセットされてる?」のように予定を確認したい場合は list_reminders を、
+「さっきのキャンセルして」のように取り消したい場合はまず list_reminders でidを確認してから
+cancel_reminder を呼び出してください。
 """
 
     history = load_history(user_id)
