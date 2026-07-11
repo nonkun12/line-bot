@@ -393,6 +393,8 @@ cancel_reminder を呼び出してください。
                 ]
             })
 
+            tool_results_by_name = {}
+
             for tc in choice.tool_calls:
                 try:
                     args = json.loads(tc.function.arguments)
@@ -405,20 +407,32 @@ cancel_reminder を呼び出してください。
                     print("MCP TOOL CALL ERROR:", e)
                     tool_result = f"ツール実行エラー: {e}"
 
+                tool_results_by_name.setdefault(tc.function.name, []).append(tool_result)
+
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
                     "content": tool_result
                 })
 
-            # 2回目: ツール結果を踏まえた最終回答を生成
-            res2 = client.chat.completions.create(
-                model=MODEL,
-                messages=messages,
-                temperature=0.85,
-                max_tokens=1024
-            )
-            reply = res2.choices[0].message.content
+            # list_reminders は日時やidのような正確な情報を答える必要があるツール。
+            # 2回目のAI呼び出し(temperature=0.85)で自然な文章に言い換えさせると、
+            # 特に似た内容の項目が複数あるとき、日時やidを取り違えて答えてしまう
+            # (ハルシネーション)ことが確認されたため、このツールが呼ばれた場合は
+            # 言い換えさせず、MCPサーバーが返した生の結果をそのまま返信として使う。
+            called_tool_names = set(tool_results_by_name.keys())
+            if called_tool_names == {"list_reminders"}:
+                # tool_results_by_nameの値はlist(通常1件)なので結合して返す
+                reply = "\n".join(tool_results_by_name["list_reminders"])
+            else:
+                # 2回目: ツール結果を踏まえた最終回答を生成
+                res2 = client.chat.completions.create(
+                    model=MODEL,
+                    messages=messages,
+                    temperature=0.85,
+                    max_tokens=1024
+                )
+                reply = res2.choices[0].message.content
         else:
             reply = choice.content
 
