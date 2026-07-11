@@ -467,7 +467,24 @@ cancel_reminder を呼び出してください。
 
     except Exception as e:
         print("AI ERROR:", e)
-        reply = "AIエラーが発生しました"
+
+        # Groqの例外(RateLimitError等)は status_code を持つ。
+        # 念のため文字列に "429" が含まれるケースも拾っておく。
+        status_code = getattr(e, "status_code", None)
+
+        if status_code == 429 or "429" in str(e):
+            reply = (
+                "ごめんなさい、今日利用できるAIの上限に達してしまいました🙏\n"
+                "しばらく時間をおいてから、もう一度話しかけてみてください。"
+            )
+        elif status_code == 401 or status_code == 403:
+            reply = "AIサービスへの接続設定に問題があるようです。少し時間を置いてもう一度お試しください。"
+        elif status_code is not None and status_code >= 500:
+            reply = "AIサービス側で一時的な不具合が起きているようです。少ししてからもう一度お試しください。"
+        elif "timeout" in str(e).lower() or "timed out" in str(e).lower():
+            reply = "応答に時間がかかりすぎたため、一度中断しました。もう一度話しかけてみてください。"
+        else:
+            reply = "エラーが発生してしまいました。もう一度試してみてください🙏"
 
     save_message(user_id, "assistant", reply)
 
