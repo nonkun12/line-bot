@@ -286,7 +286,17 @@ MCP_TOOLS_SCHEMA = [
             ),
             "parameters": {
                 "type": "object",
-                "properties": {},
+                # 注意: properties を空にすると、Groq上のLlama 3.1/3.3系モデルが
+                # 正しいtool_call JSONの代わりに疑似タグ '<function=list_reminders />' を
+                # そのままテキストとして生成し、tool_use_failed(400)になることがある
+                # (Groq/Llama系の既知の傾向)。
+                # これを避けるため、実際には使わない任意パラメータを1つ持たせておく。
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "description": "このツールを呼ぶ理由(任意、省略可。指定されなくてもよい)"
+                    }
+                },
                 "required": []
             }
         }
@@ -425,6 +435,8 @@ cancel_reminder を呼び出してください。
         # ツール呼び出しの構文はtemperatureが高いと崩れやすい(Groq/Llama系の既知の傾向)ため、
         # ここは低めのtemperatureにして呼び出し判断を安定させる。
         # 自然な受け答えのランダム性は2回目(最終返信生成)側で確保する。
+        forced_tool_call = None  # フォールバックで手動再現したtool_callがあればここに入れる
+
         try:
             res = client.chat.completions.create(
                 model=MODEL,
@@ -434,23 +446,94 @@ cancel_reminder を呼び出してください。
                 tools=MCP_TOOLS_SCHEMA,
                 tool_choice="auto"
             )
+            choice = res.choices[0].message
+
         except Exception as e:
             # モデルがツール呼び出し構文を壊して生成してしまう(tool_use_failed)ことが
-            # まれにあるため、1回だけリトライする
+            # まれにあるため、まずtemperatureを変えて1回だけリトライする。
+            # (同じtemperature=0.2で同じmessagesを再送すると、同じ壊れた出力を
+            #  再現してしまいやすいため、あえて値を変える)
             print("TOOL CALL GENERATION FAILED, RETRYING:", e)
-            res = client.chat.completions.create(
-                model=MODEL,
-                messages=messages,
-                temperature=0.2,
-                max_tokens=1024,
-                tools=MCP_TOOLS_SCHEMA,
-                tool_choice="auto"
-            )
+            try:
+                res = client.chat.completions.create(
+                    model=MODEL,
+                    messages=messages,
+                    temperature=0.5,
+                    max_tokens=1024,
+                    tools=MCP_TOOLS_SCHEMA,
+                    tool_choice="auto"
+                )
+                choice = res.choices[0].message
 
-        choice = res.choices[0].message
+            except Exception as e2:
+                # リトライでも壊れた場合のフォールバック:
+                # Groqのエラーレスポンスにはmodelが生成しようとした壊れたテキストが
+                # failed_generation として含まれている(例: "<function=list_reminders />")。
+                # ここから関数名だけ正規表現で拾い、引数なしツール呼び出しとして
+                # 手動で再現することで、ユーザーには「エラー」ではなく結果を返す。
+                print("TOOL CALL RETRY ALSO FAILED, ATTEMPTING FALLBACK PARSE:", e2)
+
+                failed_name = None
+                try:
+                    body = getattr(e2, "body", None) or {}
+                    failed_gen = body.get("error", {}).get("failed_generation", "")
+                    m = re.search(r"<function=(\w+)", failed_gen)
+                    if m:
+                        failed_name = m.group(1)
+                except Exception as parse_err:
+                    print("FAILED_GENERATION PARSE ERROR:", parse_err)
+
+                # 引数なしで安全に実行できるツールのみフォールバック対象にする。
+                # (set_reminderやcancel_reminderのように必須引数があるツールは、
+                #  失敗した生成テキストから安全に引数を復元できないため対象外)
+                SAFE_NO_ARG_TOOLS = {"list_reminders"}
+
+                if failed_name in SAFE_NO_ARG_TOOLS:
+                    forced_tool_call = failed_name
+                    choice = None
+                else:
+                    # 復元できない場合はそのまま例外を上位に投げて、
+                    # 既存のエラーメッセージ分岐(status_code等)に処理させる
+                    raise
 
         # ツール呼び出しが指定された場合はMCPサーバーを実行し、結果を持たせて再度問い合わせる
-        if choice.tool_calls:
+        tool_calls_happened = bool(forced_tool_call) or bool(choice.tool_calls if choice else False)
+
+        if forced_tool_call:
+            # フォールバック経路: モデルの生成が壊れていたため、
+            # 疑似的なtool_call情報をこちらで組み立てて同じ処理に合流させる
+            fallback_id = "fallback_call_1"
+            messages.append({
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": fallback_id,
+                        "type": "function",
+                        "function": {
+                            "name": forced_tool_call,
+                            "arguments": "{}"
+                        }
+                    }
+                ]
+            })
+
+            tool_results_by_name = {}
+            try:
+                tool_result = dispatch_tool_call(user_id, forced_tool_call, {}, original_message=message)
+            except Exception as e:
+                print("MCP TOOL CALL ERROR:", e)
+                tool_result = f"ツール実行エラー: {e}"
+
+            tool_results_by_name.setdefault(forced_tool_call, []).append(tool_result)
+
+            messages.append({
+                "role": "tool",
+                "tool_call_id": fallback_id,
+                "content": tool_result
+            })
+
+        elif choice.tool_calls:
             messages.append({
                 "role": "assistant",
                 "content": choice.content or "",
@@ -488,6 +571,7 @@ cancel_reminder を呼び出してください。
                     "content": tool_result
                 })
 
+        if tool_calls_happened:
             # list_reminders / get_memory は、日時・id・記憶した値のような
             # 正確な情報をそのまま答える必要があるツール。
             # 2回目のAI呼び出し(temperature=0.85)で自然な文章に言い換えさせると、
