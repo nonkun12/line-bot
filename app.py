@@ -207,9 +207,12 @@ TZ_SUFFIX_RE = re.compile(r"(Z|[+-]\d{2}:\d{2})$")
 def ensure_jst_offset(remind_at):
     if not remind_at:
         return remind_at
-    if TZ_SUFFIX_RE.search(remind_at):
-        return remind_at
-    return remind_at + "+09:00"
+    # モデルはJSTのつもりで時刻を生成しているが、稀に Z(UTC扱い)や
+    # 誤ったオフセットを付けてしまうことがある(例: 21:19+JSTのつもりが21:19Zになる)。
+    # このBotはJST運用のみを想定しているため、モデルが何を付けてきたかに関わらず、
+    # 末尾のタイムゾーン表記を一旦取り除き、常に +09:00 を明示的に付け直す。
+    stripped = TZ_SUFFIX_RE.sub("", remind_at)
+    return stripped + "+09:00"
 
 
 MCP_TOOLS_SCHEMA = [
