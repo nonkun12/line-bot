@@ -97,7 +97,7 @@ def load_history(user_id):
             SELECT role, content FROM messages
             WHERE user_id=?
             ORDER BY id DESC
-            LIMIT 15
+            LIMIT 8
             """, (user_id,)).fetchall()
     except Exception as e:
         print("DB LOAD_HISTORY ERROR:", e)
