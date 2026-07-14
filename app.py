@@ -193,6 +193,24 @@ def extract_quoted_text(original_message):
 
 
 # =========================
+# 名前に関するkeyの統一
+# =========================
+# AIにkey名を自由に選ばせると、「name」「名前」「username」のように
+# 保存時と取得時でkeyがブレて、get_memoryで見つからなくなることがある
+# (「前に覚えた名前を忘れる」症状の主因)。
+# ユーザーの原文が明らかに名乗り(「〜という名前です」等)を意味している場合は、
+# AIが選んだkeyを無視して "name" に強制的に統一する。
+NAME_INTENT_PATTERN = re.compile(
+    r"(名前は|名前を覚え|名前を教え|って呼んで|と呼んで|といいます|って言います)"
+)
+
+def normalize_memory_key(key, original_message):
+    if NAME_INTENT_PATTERN.search(original_message or ""):
+        return "name"
+    return key
+
+
+# =========================
 # remind_atのタイムゾーン補正
 # =========================
 # システムプロンプトでモデルに「+09:00付きのISO 8601で出力する」よう指示しているが、
@@ -338,17 +356,19 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
         # (例: 「私の名前は『のんくん』です、覚えておいて」)
         quoted = extract_quoted_text(original_message)
         final_value = quoted if quoted else arguments.get("value", "")
+        final_key = normalize_memory_key(arguments.get("key", ""), original_message)
 
         return call_mcp_tool("save_memory", {
             "user_id": user_id,
-            "key": arguments.get("key", ""),
+            "key": final_key,
             "value": final_value
         })
 
     if name == "get_memory":
+        final_key = normalize_memory_key(arguments.get("key", ""), original_message)
         return call_mcp_tool("get_memory", {
             "user_id": user_id,
-            "key": arguments.get("key", "")
+            "key": final_key
         })
 
     if name == "set_reminder":
@@ -400,14 +420,35 @@ def generate_reply(user_id, message):
     now_jst = datetime.now(timezone(timedelta(hours=9)))
     now_str = now_jst.strftime("%Y-%m-%dT%H:%M:%S+09:00")
 
+    # 会話履歴(直近8件)には載っていない可能性があるため、
+    # 名前だけはAIの判断(get_memoryを呼ぶかどうか)に頼らず、
+    # 毎ターン必ずMCPサーバーから直接取得してプロンプトに埋め込む。
+    # こうすることで「何ターンか前に名乗ったのに、履歴から流れたら忘れる」
+    # という症状を防ぐ。
+    try:
+        stored_name = call_mcp_tool("get_memory", {"user_id": user_id, "key": "name"})
+    except Exception as e:
+        print("GET STORED NAME ERROR:", e)
+        stored_name = ""
+
+    known_facts_block = f"名前: {stored_name}" if stored_name else "(まだ何も記憶していません)"
+
     system_prompt = f"""
 {random.choice(personalities)}
 
 現在の日時: {now_str} (JST)
 
-ユーザーについて覚えておくべきことがあれば save_memory ツールで保存し、
-思い出す必要があれば get_memory ツールで確認してください。
+【このユーザーについて既に記憶している情報】
+{known_facts_block}
+
+上記に情報がある場合は、それが必ず正しい最新の情報です。
+会話履歴に見当たらなくても、上記の記憶している情報を優先して答えてください。
+「覚えていません」「わかりません」と答える前に、必ず上記を確認してください。
+
+ユーザーについて新しく覚えておくべきことがあれば save_memory ツールで保存し、
+上記に載っていないその他の情報を思い出す必要があれば get_memory ツールで確認してください。
 ツールのkeyはユーザーごとに自動で区別されるので、あなたはkey名(name, hobbyなど)だけ気にしてください。
+名前を保存・取得する際は、必ずkey="name"を使ってください。
 
 ユーザーが「n分後に教えて」「明日の朝リマインドして」のように、
 将来のある時点で何かを伝えてほしいと頼んできた場合は、
