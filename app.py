@@ -436,6 +436,7 @@ cancel_reminder を呼び出してください。
         # ここは低めのtemperatureにして呼び出し判断を安定させる。
         # 自然な受け答えのランダム性は2回目(最終返信生成)側で確保する。
         forced_tool_call = None  # フォールバックで手動再現したtool_callがあればここに入れる
+        forced_tool_args = {}    # forced_tool_callの引数(failed_generationから復元できた分)
 
         try:
             res = client.chat.completions.create(
@@ -474,22 +475,37 @@ cancel_reminder を呼び出してください。
                 print("TOOL CALL RETRY ALSO FAILED, ATTEMPTING FALLBACK PARSE:", e2)
 
                 failed_name = None
+                failed_args = {}
                 try:
                     body = getattr(e2, "body", None) or {}
                     failed_gen = body.get("error", {}).get("failed_generation", "")
-                    m = re.search(r"<function=(\w+)", failed_gen)
+                    # 関数名だけでなく、後ろに続くJSON引数部分も一緒に拾う。
+                    # 例: '<function=save_memory {"key": "plan", "value": "..."} </function>'
+                    #     '<function=get_memory{"key": "name"}</function>'
+                    m = re.search(r"<function=(\w+)\s*(\{.*\})?\s*/?>?", failed_gen)
                     if m:
                         failed_name = m.group(1)
+                        if m.group(2):
+                            try:
+                                failed_args = json.loads(m.group(2))
+                            except Exception as args_err:
+                                print("FAILED_GENERATION ARGS PARSE ERROR:", args_err)
+                                failed_args = {}
                 except Exception as parse_err:
                     print("FAILED_GENERATION PARSE ERROR:", parse_err)
 
-                # 引数なしで安全に実行できるツールのみフォールバック対象にする。
-                # (set_reminderやcancel_reminderのように必須引数があるツールは、
-                #  失敗した生成テキストから安全に引数を復元できないため対象外)
-                SAFE_NO_ARG_TOOLS = {"list_reminders"}
+                # フォールバック対象にできるツール。
+                # - list_reminders: 引数なしで安全に実行できる
+                # - get_memory: 読み取り専用で副作用がないため、keyが復元できなくても安全
+                # - save_memory: 保存内容はdispatch_tool_call内でユーザー原文の「」引用を
+                #   優先して使うため、JSON引数の復元が多少不完全でも実害が小さい
+                # (set_reminder/cancel_reminderは実際の予約/取消という副作用があり、
+                #  引数を誤って復元すると影響が大きいため引き続き対象外)
+                SAFE_FALLBACK_TOOLS = {"list_reminders", "get_memory", "save_memory"}
 
-                if failed_name in SAFE_NO_ARG_TOOLS:
+                if failed_name in SAFE_FALLBACK_TOOLS:
                     forced_tool_call = failed_name
+                    forced_tool_args = failed_args
                     choice = None
                 else:
                     # 復元できない場合はそのまま例外を上位に投げて、
@@ -512,7 +528,7 @@ cancel_reminder を呼び出してください。
                         "type": "function",
                         "function": {
                             "name": forced_tool_call,
-                            "arguments": "{}"
+                            "arguments": json.dumps(forced_tool_args, ensure_ascii=False)
                         }
                     }
                 ]
@@ -520,7 +536,7 @@ cancel_reminder を呼び出してください。
 
             tool_results_by_name = {}
             try:
-                tool_result = dispatch_tool_call(user_id, forced_tool_call, {}, original_message=message)
+                tool_result = dispatch_tool_call(user_id, forced_tool_call, forced_tool_args, original_message=message)
             except Exception as e:
                 print("MCP TOOL CALL ERROR:", e)
                 tool_result = f"ツール実行エラー: {e}"
