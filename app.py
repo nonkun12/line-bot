@@ -376,10 +376,18 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
         })
 
     if name == "set_reminder":
-        # AIが生成したmessageは稀に数文字言い換わることがあるため、
-        # ユーザーの原文に「」で明示された文言があれば、そちらを優先して使う。
+        # AIが生成するmessageは、稀に数文字の言い換えどころか、
+        # 全く無関係な過去の話題を持ち出してしまうことがある(ハルシネーション)。
+        # そのため「」による明示的な引用がなくても、原則としてユーザーの原文を
+        # そのままリマインダー本文として使う。AI生成テキストはそれすら取れない
+        # 場合の最終フォールバックとしてのみ使う。
         quoted = extract_quoted_text(original_message)
-        final_message = quoted if quoted else arguments.get("message", "")
+        if quoted:
+            final_message = quoted
+        elif original_message:
+            final_message = original_message
+        else:
+            final_message = arguments.get("message", "")
 
         return call_mcp_tool("set_reminder", {
             "user_id": user_id,
