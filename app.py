@@ -705,20 +705,22 @@ def callback():
     return "OK"
 
 # =========================
-# EVENT HANDLER
+# 重複イベント防止
 # =========================
-@handler.add(MessageEvent, message=TextMessageContent)
-def handle(event):
-    print("===== EVENT TRIGGERED =====")
+# LINEのWebhookは応答が遅いと同じイベントを再送してくることがある。
+# (今回、set_reminderの内容が微妙に異なる状態で3重に保存されたのはこれが原因)
+# 同じmessage_idを2回以上処理しないよう、直近処理済みIDをメモリに保持する。
+# ※ workers=1構成のプロセス内メモリのみで完結する簡易対策。
+#   プロセス再起動で消えるが、再送は通常同一プロセスが動いている短時間内に来るため実用上問題ない。
+_processed_message_ids = set()
+_processed_lock = threading.Lock()
+_MAX_TRACKED_IDS = 2000
 
+
+def _process_and_reply(event, user_id, text):
+    """generate_reply〜reply_messageまでを非同期に実行する。
+    LINEへのWebhook応答(200 OK)を待たせないためにスレッドへ切り出している。"""
     try:
-        user_id = event.source.user_id
-        text = event.message.text
-
-        print("USER:", user_id)
-        print("TEXT:", text)
-
-        # 返信の生成 → 送信を最優先で行う(reply_tokenは約1分で失効するため)
         reply = generate_reply(user_id, text)
 
         with ApiClient(configuration) as api:
@@ -730,6 +732,44 @@ def handle(event):
             )
 
         print("REPLY SENT SUCCESS")
+
+    except Exception as e:
+        print("===== HANDLE ERROR (async) =====")
+        print(e)
+
+
+# =========================
+# EVENT HANDLER
+# =========================
+@handler.add(MessageEvent, message=TextMessageContent)
+def handle(event):
+    print("===== EVENT TRIGGERED =====")
+
+    try:
+        user_id = event.source.user_id
+        text = event.message.text
+        message_id = event.message.id
+
+        print("USER:", user_id)
+        print("TEXT:", text)
+
+        # 同じmessage_idを既に処理済みならスキップ(Webhook再送による二重実行を防ぐ)
+        with _processed_lock:
+            if message_id in _processed_message_ids:
+                print("DUPLICATE EVENT SKIPPED:", message_id)
+                return
+            _processed_message_ids.add(message_id)
+            if len(_processed_message_ids) > _MAX_TRACKED_IDS:
+                _processed_message_ids.clear()
+
+        # 実際のAI応答生成・reply送信には数秒〜十数秒かかることがあり、
+        # ここで待つとLINE側がタイムアウトして同じイベントを再送してくる原因になる。
+        # そのためこの関数(handle)はすぐにreturnし、実処理はバックグラウンドで行う。
+        threading.Thread(
+            target=_process_and_reply,
+            args=(event, user_id, text),
+            daemon=True
+        ).start()
 
     except Exception as e:
         print("===== HANDLE ERROR =====")
