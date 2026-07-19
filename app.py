@@ -314,6 +314,23 @@ MCP_TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
+            "name": "search_notes",
+            "description": "保存したメモをキーワードで検索する",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "keyword": {
+                        "type": "string",
+                        "description": "検索する文字"
+                    }
+                },
+                "required": ["keyword"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "set_reminder",
             "description": (
                 "指定した日時にユーザーへリマインドメッセージを送るよう予約する。"
@@ -438,6 +455,12 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
             "user_id": user_id,
             "title": arguments.get("title", "無題"),
             "body": arguments.get("body", "")
+        })
+
+    if name == "search_notes":
+        return call_mcp_tool("search_notes", {
+            "user_id": user_id,
+            "keyword": arguments.get("keyword", "")
         })
 
     if name == "set_reminder":
