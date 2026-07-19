@@ -441,30 +441,19 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
         })
 
     if name == "set_reminder":
-    
-    　　quoted = extract_quoted_text(original_message)
+        quoted = extract_quoted_text(original_message)
 
-    　　if quoted:
-      　　  final_message = quoted
+        if quoted:
+            final_message = quoted
+        else:
+            final_message = re.sub(
+                r"^(.*?)(後に|後で|あとで|に|まで).*?(教えて|知らせて|リマインドして|通知して|言って|連絡して)",
+                "",
+                original_message
+            ).strip()
 
-   　　 else:
-        # 「1分後に」「明日の朝9時に」などの時間指定部分を削除
-       　　 final_message = re.sub(
-            r"^(.*?)(後に|後で|あとで|に|まで).*?(教えて|知らせて|リマインドして|通知して|言って|連絡して)",
-            "",
-            original_message
-     　　   ).strip()
-
-        # うまく削れなかった場合はAI生成messageを使用
         if not final_message:
             final_message = arguments.get("message", "")
-
-    return call_mcp_tool("set_reminder", {
-        "user_id": user_id,
-        "remind_at": ensure_jst_offset(arguments.get("remind_at", "")),
-        "message": final_message,
-        "repeat": arguments.get("repeat", "none")
-    })
 
         return call_mcp_tool("set_reminder", {
             "user_id": user_id,
