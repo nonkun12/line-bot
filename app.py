@@ -117,6 +117,9 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
     StreamableHTTPServerTransport はレスポンスを
     application/json または text/event-stream のどちらでも返し得るため両方に対応する。
     """
+    
+    print("MCP CALL:", tool_name, arguments)
+    
     payload = {
         "jsonrpc": "2.0",
         "id": 1,
