@@ -441,18 +441,30 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
         })
 
     if name == "set_reminder":
-        # AIが生成するmessageは、稀に数文字の言い換えどころか、
-        # 全く無関係な過去の話題を持ち出してしまうことがある(ハルシネーション)。
-        # そのため「」による明示的な引用がなくても、原則としてユーザーの原文を
-        # そのままリマインダー本文として使う。AI生成テキストはそれすら取れない
-        # 場合の最終フォールバックとしてのみ使う。
-        quoted = extract_quoted_text(original_message)
-        if quoted:
-            final_message = quoted
-        elif original_message:
-            final_message = original_message
-        else:
+    
+    quoted = extract_quoted_text(original_message)
+
+    if quoted:
+        final_message = quoted
+
+    else:
+        # 「1分後に」「明日の朝9時に」などの時間指定部分を削除
+        final_message = re.sub(
+            r"^(.*?)(後に|後で|あとで|に|まで).*?(教えて|知らせて|リマインドして|通知して|言って|連絡して)",
+            "",
+            original_message
+        ).strip()
+
+        # うまく削れなかった場合はAI生成messageを使用
+        if not final_message:
             final_message = arguments.get("message", "")
+
+    return call_mcp_tool("set_reminder", {
+        "user_id": user_id,
+        "remind_at": ensure_jst_offset(arguments.get("remind_at", "")),
+        "message": final_message,
+        "repeat": arguments.get("repeat", "none")
+    })
 
         return call_mcp_tool("set_reminder", {
             "user_id": user_id,
