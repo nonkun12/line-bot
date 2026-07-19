@@ -252,6 +252,27 @@ MCP_TOOLS_SCHEMA = [
             }
         }
     },
+        {
+        "type": "function",
+        "function": {
+            "name": "save_note",
+            "description": "ユーザーのメモを保存する",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "メモタイトル"
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "メモ内容"
+                    }
+                },
+                "required": ["title", "body"]
+            }
+        }
+    },
     {
         "type": "function",
         "function": {
@@ -381,6 +402,16 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
     MCPサーバー側がuser_idを必須パラメータとして受け取るようになったため、
     そのまま渡すだけでよくなった。
     """
+    if name == "save_note":
+    
+        return call_mcp_tool(
+            "save_note",
+            {
+                "user_id": user_id,
+                "title": arguments.get("title", "無題"),
+                "body": arguments.get("body", "")
+            }
+        )
     if name == "save_memory":
         # set_reminderと同様、AIが生成したvalueは稀に数文字言い換わることがあるため、
         # ユーザーの原文に「」/『』で明示された文言があれば、そちらを優先して使う。
@@ -402,7 +433,7 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
             "key": final_key
         })
     if name == "save_note":
-    
+
         return call_mcp_tool("save_note", {
             "user_id": user_id,
             "title": arguments.get("title", "無題"),
