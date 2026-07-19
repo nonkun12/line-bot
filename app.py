@@ -11,6 +11,9 @@ from linebot.v3.messaging import (
 )
 from groq import Groq
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 import sqlite3
 import json
 import random
@@ -263,6 +266,30 @@ MCP_TOOLS_SCHEMA = [
             }
         }
     },
+        {
+        "type": "function",
+        "function": {
+            "name": "save_note",
+            "description": "ユーザーのメモを保存する",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "メモタイトル"
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "メモ内容"
+                    }
+                },
+                "required": [
+                    "title",
+                    "body"
+                ]
+            }
+        }
+    },
     {
         "type": "function",
         "function": {
@@ -373,6 +400,13 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
         return call_mcp_tool("get_memory", {
             "user_id": user_id,
             "key": final_key
+        })
+    if name == "save_note":
+    
+        return call_mcp_tool("save_note", {
+            "user_id": user_id,
+            "title": arguments.get("title", "無題"),
+            "body": arguments.get("body", "")
         })
 
     if name == "set_reminder":
