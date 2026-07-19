@@ -449,14 +449,6 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
             "user_id": user_id,
             "key": final_key
         })
-    if name == "save_note":
-
-        return call_mcp_tool("save_note", {
-            "user_id": user_id,
-            "title": arguments.get("title", "無題"),
-            "body": arguments.get("body", "")
-        })
-
     if name == "search_notes":
         return call_mcp_tool("search_notes", {
             "user_id": user_id,
