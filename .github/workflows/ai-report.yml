@@ -12,11 +12,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-　　　- name: Check URL
+      - name: Check URL
         run: |
           echo "${{ secrets.AI_REPORT_URL }}"
-      
-　　　- name: Call AI Report API
+
+      - name: Call AI Report API
         run: |
           curl -X POST "${{ secrets.AI_REPORT_URL }}" \
           -H "Content-Type: application/json" \
