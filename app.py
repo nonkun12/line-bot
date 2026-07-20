@@ -11,6 +11,7 @@ from linebot.v3.messaging import (
 )
 from groq import Groq
 import os
+import unicodedata
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -529,6 +530,7 @@ def generate_reply(user_id, message):
 
     if message.startswith("メモ削除"):
         note_id = message.replace("メモ削除", "").strip()
+        note_id = unicodedata.normalize("NFKC", note_id)
 
         return call_mcp_tool(
             "delete_note",
