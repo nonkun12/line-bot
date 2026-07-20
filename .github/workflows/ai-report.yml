@@ -15,7 +15,8 @@ jobs:
       - name: Check URL
         run: |
           echo "${{ secrets.AI_REPORT_URL }}"
-　　　- name: Show AI_REPORT_URL
+
+      - name: Show AI_REPORT_URL
         run: |
           echo "${{ secrets.AI_REPORT_URL }}"
 
@@ -23,7 +24,7 @@ jobs:
         run: |
           curl -X POST "${{ secrets.AI_REPORT_URL }}" \
           -H "Content-Type: application/json" \
-          -H "x-internal-key: ${{ secrets.REPORT_USER_ID }}" \
+          -H "x-internal-key: ${{ secrets.INTERNAL_KEY }}" \
           -d '{
             "user_id":"${{ secrets.REPORT_USER_ID }}",
             "prompt":"昨日のAI開発状況を確認して、GitHub変更、メモ、作業内容をまとめて報告してください"
