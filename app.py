@@ -53,7 +53,8 @@ client = Groq(api_key=GROQ_API_KEY, timeout=15.0, max_retries=1)
 
 MODEL = "llama-3.3-70b-versatile"
 DB = "chat.db"
-
+print("===== APP VERSION CHECK =====")
+print("search_notes enabled")
 # =========================
 # DB
 # =========================
