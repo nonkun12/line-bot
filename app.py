@@ -146,6 +146,10 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
         headers=headers,
         timeout=timeout
     )
+
+    print("MCP STATUS:", res.status_code)
+    print("MCP RESPONSE:", res.text)
+
     res.raise_for_status()
 
     content_type = res.headers.get("content-type", "")
