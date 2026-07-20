@@ -499,6 +499,41 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
 # AI本体(返信生成 + MCPツール呼び出しループ)
 # =========================
 def generate_reply(user_id, message):
+
+    # =========================
+    # メモ系はAIを使わずMCP直行
+    # =========================
+
+    if message.startswith("メモして"):
+        body = message.replace("メモして", "").strip()
+
+        return call_mcp_tool(
+            "save_note",
+            {
+                "user_id": user_id,
+                "title": "LINEメモ",
+                "body": body
+            }
+        )
+
+
+    if "メモを探して" in message or "探して" in message:
+        keyword = (
+            message
+            .replace("LINE Botのメモを探して", "")
+            .replace("メモを探して", "")
+            .strip()
+        )
+
+        return call_mcp_tool(
+            "search_notes",
+            {
+                "user_id": user_id,
+                "keyword": keyword
+            }
+        )
+
+
     print("===== GENERATE_REPLY START =====")
     print("USER:", user_id)
     print("MESSAGE:", message)
