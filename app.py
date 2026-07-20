@@ -531,6 +531,23 @@ def generate_reply(user_id, message):
         )
 
 
+    # =========================
+    # 予定・目標系は自動メモ保存（Groq不要）
+    # =========================
+    if (
+        ("予定" in message or "したい" in message or "忘れないように" in message)
+        and len(message) > 5
+    ):
+        return call_mcp_tool(
+            "save_note",
+            {
+                "user_id": user_id,
+                "title": "自動メモ",
+                "body": message
+            }
+        )
+
+
 
     if message == "メモ削除全部":
         return call_mcp_tool(
