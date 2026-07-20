@@ -500,6 +500,10 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
 # AI本体(返信生成 + MCPツール呼び出しループ)
 # =========================
 def generate_reply(user_id, message):
+    print("=== GENERATE_REPLY ===", repr(message))
+
+    print("=== GENERATE_REPLY TEST ===", user_id, message)
+
 
     # =========================
     # メモ系はAIを使わずMCP直行
@@ -558,9 +562,12 @@ def generate_reply(user_id, message):
             message
             .replace("LINE Botのメモを探して", "")
             .replace("メモを探して", "")
+            .replace("メモを見せて", "")
             .replace("メモ", "")
+            .replace("を見せて", "")
+            .replace("を検索して", "")
             .replace("検索", "")
-            .replace("して", "")
+            .replace("探して", "")
             .replace("見せて", "")
             .strip()
         )
