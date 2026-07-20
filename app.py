@@ -503,6 +503,15 @@ def generate_reply(user_id, message):
     # =========================
     # メモ系はAIを使わずMCP直行
     # =========================
+\n
+    if message == "メモ一覧":
+        return call_mcp_tool(
+            "list_notes",
+            {
+                "user_id": user_id
+            }
+        )
+
 
     if message.startswith("メモして"):
         body = message.replace("メモして", "").strip()
