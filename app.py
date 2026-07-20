@@ -503,7 +503,7 @@ def generate_reply(user_id, message):
     # =========================
     # メモ系はAIを使わずMCP直行
     # =========================
-\n
+
     if message == "メモ一覧":
         return call_mcp_tool(
             "list_notes",
