@@ -596,6 +596,19 @@ def generate_reply(user_id, message):
                 }
             )
 
+
+    # =========================
+    # リマインダー一覧はAIを使わずMCP直行
+    # =========================
+    if message == "リマインダー一覧":
+        return call_mcp_tool(
+            "list_reminders",
+            {
+                "user_id": user_id
+            }
+        )
+
+
     print("===== GENERATE_REPLY START =====")
     print("USER:", user_id)
     print("MESSAGE:", message)
