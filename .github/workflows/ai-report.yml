@@ -15,6 +15,9 @@ jobs:
       - name: Check URL
         run: |
           echo "${{ secrets.AI_REPORT_URL }}"
+　　　- name: Show AI_REPORT_URL
+        run: |
+          echo "${{ secrets.AI_REPORT_URL }}"
 
       - name: Call AI Report API
         run: |
