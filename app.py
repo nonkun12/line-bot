@@ -583,6 +583,16 @@ def generate_reply(user_id, message):
         )
 
 
+    if "忘れて" in message:
+        return call_mcp_tool(
+            "delete_memory",
+            {
+                "user_id": user_id,
+                "key": "name"
+            }
+        )
+
+
     if "覚えて" in message:
         import re
 
