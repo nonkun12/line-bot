@@ -707,7 +707,6 @@ def generate_reply(user_id, message):
     # =========================
     if "分後に" in message and ("言って" in message or "教えて" in message or "知らせて" in message):
         import re
-        from datetime import datetime, timedelta, timezone
 
         m = re.search(r"(\d+)分後に(.+?)(?:と言って|教えて|知らせて)$", message)
 
