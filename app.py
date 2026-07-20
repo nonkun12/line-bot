@@ -526,7 +526,8 @@ def generate_reply(user_id, message):
             {
                 "user_id": user_id,
                 "title": "LINEメモ",
-                "body": body
+                "body": body,
+                "category": "一般"
             }
         )
 
@@ -543,7 +544,8 @@ def generate_reply(user_id, message):
             {
                 "user_id": user_id,
                 "title": "自動メモ",
-                "body": message
+                "body": message,
+                "category": "一般"
             }
         )
 
