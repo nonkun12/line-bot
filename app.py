@@ -1190,6 +1190,66 @@ def handle(event):
 # my-mcp-server の index.js が1分おきに、送信予定時刻を過ぎたリマインダーを
 # 見つけるとここへPOSTしてくる。ここでLINEのpush APIを使って実際に送信する。
 # MCPサーバーはLINEのトークンを持たない設計のため、送信はこちら側の役割。
+
+
+# =========================
+# AI開発報告 API
+# =========================
+@app.route("/internal/ai-report", methods=["POST"])
+def internal_ai_report():
+
+    provided_key = request.headers.get("x-internal-key")
+
+    if provided_key != INTERNAL_PUSH_KEY:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+
+    user_id = data.get("user_id")
+    prompt = data.get("prompt")
+
+    if not user_id or not prompt:
+        return jsonify({
+            "ok": False,
+            "error": "user_id and prompt are required"
+        }), 400
+
+    try:
+        res = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "あなたはAI開発秘書です。簡潔に報告してください。"
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.3,
+            max_tokens=500
+        )
+
+        report = res.choices[0].message.content
+
+        with ApiClient(configuration) as api:
+            MessagingApi(api).push_message(
+                PushMessageRequest(
+                    to=user_id,
+                    messages=[TextMessage(text=report)]
+                )
+            )
+
+        save_message(user_id, "assistant", report)
+
+        return jsonify({"ok": True})
+
+    except Exception as e:
+        print("AI REPORT ERROR:", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/internal/push", methods=["POST"])
 def internal_push():
     provided_key = request.headers.get("x-internal-key")
