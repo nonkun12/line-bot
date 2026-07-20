@@ -609,6 +609,23 @@ def generate_reply(user_id, message):
         )
 
 
+
+    # =========================
+    # リマインダー削除はAIを使わずMCP直行
+    # =========================
+    if message.startswith("リマインダー削除"):
+        reminder_id = message.replace("リマインダー削除", "").strip()
+        reminder_id = unicodedata.normalize("NFKC", reminder_id)
+
+        return call_mcp_tool(
+            "cancel_reminder",
+            {
+                "user_id": user_id,
+                "id": int(reminder_id)
+            }
+        )
+
+
     print("===== GENERATE_REPLY START =====")
     print("USER:", user_id)
     print("MESSAGE:", message)
