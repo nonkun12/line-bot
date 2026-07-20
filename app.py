@@ -549,7 +549,13 @@ def generate_reply(user_id, message):
 
 
 
-    if message == "メモ削除全部":
+    if message in [
+        "メモ削除全部",
+        "メモ全て削除",
+        "メモを全部削除",
+        "全メモ削除",
+        "メモを全削除"
+    ]:
         return call_mcp_tool(
             "delete_all_notes",
             {
