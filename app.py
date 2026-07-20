@@ -521,13 +521,25 @@ def generate_reply(user_id, message):
     if message.startswith("メモして"):
         body = message.replace("メモして", "").strip()
 
+        # 簡易カテゴリ判定
+        if any(k in body.lower() for k in ["python", "program", "プログラム", "ai", "コード"]):
+            category = "技術"
+        elif any(k in body for k in ["勉強", "英語", "資格", "学習"]):
+            category = "学習"
+        elif any(k in body for k in ["予定", "予約", "会議", "行く"]):
+            category = "予定"
+        elif any(k in body for k in ["買う", "購入", "買い物"]):
+            category = "生活"
+        else:
+            category = "一般"
+
         return call_mcp_tool(
             "save_note",
             {
                 "user_id": user_id,
                 "title": "LINEメモ",
                 "body": body,
-                "category": "一般"
+                "category": category
             }
         )
 
