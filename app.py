@@ -564,6 +564,25 @@ def generate_reply(user_id, message):
         )
 
 
+    # =========================
+    # 自然文メモ削除
+    # =========================
+    import re
+
+    m = re.search(r"(\d+)番.*メモ.*削除", message)
+
+    if m:
+        note_id = m.group(1)
+
+        return call_mcp_tool(
+            "delete_note",
+            {
+                "user_id": user_id,
+                "id": note_id
+            }
+        )
+
+
     if message.startswith("メモ削除"):
         note_id = message.replace("メモ削除", "").strip()
         note_id = unicodedata.normalize("NFKC", note_id)
