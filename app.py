@@ -528,6 +528,15 @@ def generate_reply(user_id, message):
 
 
 
+    if message == "メモ削除全部":
+        return call_mcp_tool(
+            "delete_all_notes",
+            {
+                "user_id": user_id
+            }
+        )
+
+
     if message.startswith("メモ削除"):
         note_id = message.replace("メモ削除", "").strip()
         note_id = unicodedata.normalize("NFKC", note_id)
