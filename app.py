@@ -567,6 +567,35 @@ def generate_reply(user_id, message):
         )
 
 
+
+    # =========================
+    # リマインダー系はAIを使わずMCP直行
+    # =========================
+    if "分後に" in message and ("言って" in message or "教えて" in message or "知らせて" in message):
+        import re
+        from datetime import datetime, timedelta, timezone
+
+        m = re.search(r"(\d+)分後に(.+?)(?:と言って|教えて|知らせて)$", message)
+
+        if m:
+            minutes = int(m.group(1))
+            reminder_text = m.group(2).strip()
+
+            remind_at = (
+                datetime.now(timezone(timedelta(hours=9)))
+                + timedelta(minutes=minutes)
+            ).isoformat()
+
+            return call_mcp_tool(
+                "set_reminder",
+                {
+                    "user_id": user_id,
+                    "remind_at": remind_at,
+                    "message": reminder_text,
+                    "repeat": "none"
+                }
+            )
+
     print("===== GENERATE_REPLY START =====")
     print("USER:", user_id)
     print("MESSAGE:", message)
