@@ -561,6 +561,10 @@ def generate_reply(user_id, message):
     if message.startswith("メモ削除"):
         note_id = message.replace("メモ削除", "").strip()
         note_id = unicodedata.normalize("NFKC", note_id)
+
+        if not note_id:
+            return "削除するメモIDを指定してください。\n例: メモ削除25"
+
         print("DELETE DEBUG user_id=", user_id, "note_id=", note_id)
 
         return call_mcp_tool(
