@@ -550,11 +550,18 @@ def generate_reply(user_id, message):
             }
         )
 
-    if "メモを探して" in message or "探して" in message:
+    if (
+        "メモ" in message
+        and ("探して" in message or "検索" in message or "見せて" in message)
+    ):
         keyword = (
             message
             .replace("LINE Botのメモを探して", "")
             .replace("メモを探して", "")
+            .replace("メモ", "")
+            .replace("検索", "")
+            .replace("して", "")
+            .replace("見せて", "")
             .strip()
         )
 
