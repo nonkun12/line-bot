@@ -644,7 +644,7 @@ set_reminderを勝手に呼び出して新しい時刻で登録し直したり�
                     # <function=search_notes{"keyword":"LINE Bot"}</function>
                     # <function=list_reminders />
                     m = re.search(
-                        r"<function=(\w+)\s*(\{.*?\})?\s*(?:/?>|</function>)",
+                        r"<function=([a-zA-Z0-9_]+)\s*(\{.*\})?\s*(?:/?>|</function>)",
                         failed_gen
                     )
 
