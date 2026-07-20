@@ -572,6 +572,17 @@ def generate_reply(user_id, message):
     # =========================
     # 記憶系はAIを使わずMCP直行
     # =========================
+
+    if message in ["私の名前は？", "名前は？", "私の名前を教えて"]:
+        return call_mcp_tool(
+            "get_memory",
+            {
+                "user_id": user_id,
+                "key": "name"
+            }
+        )
+
+
     if "覚えて" in message:
         import re
 
