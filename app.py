@@ -517,6 +517,18 @@ def generate_reply(user_id, message):
         )
 
 
+
+    if message.startswith("メモ削除"):
+        note_id = message.replace("メモ削除", "").strip()
+
+        return call_mcp_tool(
+            "delete_note",
+            {
+                "user_id": user_id,
+                "id": note_id
+            }
+        )
+
     if "メモを探して" in message or "探して" in message:
         keyword = (
             message
