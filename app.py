@@ -568,6 +568,34 @@ def generate_reply(user_id, message):
 
 
 
+
+    # =========================
+    # 記憶系はAIを使わずMCP直行
+    # =========================
+    if "覚えて" in message:
+        import re
+
+        text = message.replace("覚えて", "").strip()
+
+        key = "memory"
+        value = text
+
+        m = re.search(r"(?:私の)?名前は(.+?)(?:です|、|。|$)", message)
+
+        if m:
+            key = "name"
+            value = m.group(1).strip()
+
+        return call_mcp_tool(
+            "save_memory",
+            {
+                "user_id": user_id,
+                "key": key,
+                "value": value
+            }
+        )
+
+
     # =========================
     # リマインダー系はAIを使わずMCP直行
     # =========================
