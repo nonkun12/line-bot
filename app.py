@@ -285,6 +285,18 @@ MCP_TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
+            "name": "get_all_memory",
+            "description": "ユーザーの全ての記憶を取得する",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_memory",
             "description": "以前保存したユーザーの記憶をkeyで取得する",
             "parameters": {
