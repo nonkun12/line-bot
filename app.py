@@ -160,6 +160,7 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
             allow_redirects=False,
             verify=True
         )
+        print("MCP AFTER REQUESTS POST")
     except Exception as e:
         import traceback
         print("MCP REQUEST ERROR:", repr(e))
