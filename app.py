@@ -520,6 +520,15 @@ def generate_reply(user_id, message):
 
     print("=== GENERATE_REPLY TEST ===", user_id, message)
 
+    # 名前確認はAI判断に任せず全記憶取得
+    if "名前" in message:
+        return call_mcp_tool(
+            "get_all_memory",
+            {
+                "user_id": user_id
+            }
+        )
+
 
     # =========================
     # メモ系はAIを使わずMCP直行
