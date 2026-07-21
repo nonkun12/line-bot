@@ -522,12 +522,22 @@ def generate_reply(user_id, message):
 
     # 名前確認はAI判断に任せず全記憶取得
     if "名前" in message:
-        return call_mcp_tool(
+        memories = call_mcp_tool(
             "get_all_memory",
             {
                 "user_id": user_id
             }
         )
+
+        try:
+            data = json.loads(memories)
+            for item in data:
+                if item.get("key") == "name":
+                    return f"あなたの名前は {item.get('value')} です。"
+        except Exception:
+            pass
+
+        return "名前はまだ記憶されていません。"
 
 
     # =========================
