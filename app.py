@@ -529,6 +529,8 @@ def generate_reply(user_id, message):
             }
         )
 
+        print("GET_ALL_MEMORY RESULT:", repr(memories))
+
         try:
             if isinstance(memories, str):
                 data = json.loads(memories)
