@@ -340,30 +340,6 @@ MCP_TOOLS_SCHEMA = [
             }
         }
     },
-        {
-        "type": "function",
-        "function": {
-            "name": "save_note",
-            "description": "ユーザーのメモを保存する",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "title": {
-                        "type": "string",
-                        "description": "メモタイトル"
-                    },
-                    "body": {
-                        "type": "string",
-                        "description": "メモ内容"
-                    }
-                },
-                "required": [
-                    "title",
-                    "body"
-                ]
-            }
-        }
-    },
     {
         "type": "function",
         "function": {
