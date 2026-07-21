@@ -20,7 +20,6 @@ import json
 import random
 import threading
 import requests
-import socket
 import logging
 logging.basicConfig(level=logging.DEBUG)
 import re
@@ -151,6 +150,7 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
     print("POST START TIME:", time.time())
     try:
         # stream=True に変更し、レスポンスヘッダー受信時点で即時 return させる
+        print("REQUEST START")
         print("MCP BEFORE REQUESTS POST")
         print("DNS START")
         print(socket.getaddrinfo("my-mcp-server-dqbx.onrender.com",443))
@@ -170,6 +170,7 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
         print("MCP REQUEST ERROR:", repr(e))
         traceback.print_exc()
         raise
+    print("REQUEST END")
     print("AFTER MCP REQUEST")
     print("POST END TIME:", time.time())
 
