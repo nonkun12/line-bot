@@ -142,6 +142,7 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
     }
 
     print("BEFORE MCP REQUEST")
+    print("TIMEOUT:", timeout)
     res = requests.post(
         MCP_SERVER_URL,
         json=payload,
