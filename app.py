@@ -552,6 +552,52 @@ def generate_reply(user_id, message):
 
     print("=== GENERATE_REPLY TEST ===", user_id, message)
 
+    # =========================
+    # 記憶系はAIを使わずMCP直行
+    # =========================
+
+    if "覚えて" in message:
+        if message.startswith("覚えて"):
+            text = re.sub(r"^覚えて\s*[:：]?\s*", "", message)
+        else:
+            text = message.strip()
+
+        key = "memory"
+        value = text
+
+        m = re.search(r"(?:私の)?名前は(.+?)(?:です|、|。|$)", message)
+
+        if m:
+            key = "name"
+            value = m.group(1).strip()
+
+        return call_mcp_tool(
+            "save_memory",
+            {
+                "user_id": user_id,
+                "key": key,
+                "value": value
+            }
+        )
+
+    if "忘れて" in message:
+        return call_mcp_tool(
+            "delete_memory",
+            {
+                "user_id": user_id,
+                "key": "name"
+            }
+        )
+
+    if message in ["私の名前は？", "名前は？", "私の名前を教えて"]:
+        return call_mcp_tool(
+            "get_memory",
+            {
+                "user_id": user_id,
+                "key": "name"
+            }
+        )
+
     # 名前確認はAI判断に任せず全記憶取得
     if "名前" in message:
         memories = call_mcp_tool(
@@ -594,9 +640,20 @@ def generate_reply(user_id, message):
             }
         )
 
+    if message.startswith("メモ検索"):
+        keyword = re.sub(r"^メモ検索\s*[:：]?\s*", "", message)
+        if not keyword:
+            return "検索キーワードを指定してください。\n例: メモ検索 テニス"
+        return call_mcp_tool(
+            "search_notes",
+            {
+                "user_id": user_id,
+                "keyword": keyword
+            }
+        )
 
     if message.startswith("メモして"):
-        body = message.replace("メモして", "").strip()
+        body = re.sub(r"^メモして\s*[:：]?\s*", "", message)
 
         # 簡易カテゴリ判定
         if any(k in body.lower() for k in ["python", "program", "プログラム", "ai", "コード"]):
@@ -669,8 +726,6 @@ def generate_reply(user_id, message):
     # =========================
     # 自然文メモ削除
     # =========================
-    import re
-
     m = re.search(r"(\d+)番.*メモ.*削除", message)
 
     if m:
@@ -731,60 +786,13 @@ def generate_reply(user_id, message):
 
 
 
-    # =========================
-    # 記憶系はAIを使わずMCP直行
-    # =========================
 
-    if message in ["私の名前は？", "名前は？", "私の名前を教えて"]:
-        return call_mcp_tool(
-            "get_memory",
-            {
-                "user_id": user_id,
-                "key": "name"
-            }
-        )
-
-
-    if "忘れて" in message:
-        return call_mcp_tool(
-            "delete_memory",
-            {
-                "user_id": user_id,
-                "key": "name"
-            }
-        )
-
-
-    if "覚えて" in message:
-        import re
-
-        text = message.replace("覚えて", "").strip()
-
-        key = "memory"
-        value = text
-
-        m = re.search(r"(?:私の)?名前は(.+?)(?:です|、|。|$)", message)
-
-        if m:
-            key = "name"
-            value = m.group(1).strip()
-
-        return call_mcp_tool(
-            "save_memory",
-            {
-                "user_id": user_id,
-                "key": key,
-                "value": value
-            }
-        )
 
 
     # =========================
     # リマインダー系はAIを使わずMCP直行
     # =========================
     if "分後に" in message and ("言って" in message or "教えて" in message or "知らせて" in message):
-        import re
-
         m = re.search(r"(\d+)分後に(.+?)(?:と言って|教えて|知らせて)$", message)
 
         if m:
