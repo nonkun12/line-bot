@@ -151,7 +151,7 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
         json=payload,
         headers=headers,
         timeout=timeout,
-        stream=True,
+        stream=False,
         allow_redirects=False,
         verify=True
     )
@@ -160,7 +160,7 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
 
     print("MCP STATUS:", res.status_code)
     print("MCP HEADERS:", res.headers)
-    print("MCP FIRST CHUNK:", next(res.iter_content(1024)))
+    print("MCP RESPONSE:", res.text)
 
     res.raise_for_status()
 
