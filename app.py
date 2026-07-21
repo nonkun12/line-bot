@@ -138,7 +138,8 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
         # stateless MCPサーバー側の要求に合わせて両方受け入れる旨を明示
         "Accept": "application/json, text/event-stream",
         # MCPサーバー側のrequireApiKeyミドルウェアで照合される
-        "x-api-key": MCP_API_KEY
+        "x-api-key": MCP_API_KEY,
+        "Connection": "close"
     }
 
     import time
