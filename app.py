@@ -530,12 +530,17 @@ def generate_reply(user_id, message):
         )
 
         try:
-            data = json.loads(memories)
+            if isinstance(memories, str):
+                data = json.loads(memories)
+            else:
+                data = memories
+
             for item in data:
                 if item.get("key") == "name":
                     return f"あなたの名前は {item.get('value')} です。"
-        except Exception:
-            pass
+
+        except Exception as e:
+            print("NAME FORMAT ERROR:", e)
 
         return "名前はまだ記憶されていません。"
 
