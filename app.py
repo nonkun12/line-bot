@@ -326,20 +326,7 @@ MCP_TOOLS_SCHEMA = [
             }
         }
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_memory",
-            "description": "以前保存したユーザーの記憶をkeyで取得する",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "key": {"type": "string", "description": "取得したい記憶の項目名"}
-                },
-                "required": ["key"]
-            }
-        }
-    },
+
     {
         "type": "function",
         "function": {
@@ -886,6 +873,9 @@ def generate_reply(user_id, message):
 上記に情報がある場合は、それが必ず正しい最新の情報です。
 会話履歴に見当たらなくても、上記の記憶している情報を優先して答えてください。
 「覚えていません」「わかりません」と答える前に、必ず上記を確認してください。
+
+記憶情報は既に提供されています。
+get_memoryツールは使用しないでください。
 
 外部検索ツール(brave_searchなど)は存在しません。検索が必要な場合でも、利用可能なツール一覧にあるものだけを使用してください。
 メモ検索は必ず search_notes ツールを使用してください。
