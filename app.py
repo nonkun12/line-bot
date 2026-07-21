@@ -149,7 +149,7 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
     try:
         # stream=True に変更し、レスポンスヘッダー受信時点で即時 return させる
         print("MCP BEFORE REQUESTS POST")
-    res = requests.post(
+        res = requests.post(
             MCP_SERVER_URL,
             json=payload,
             headers=headers,
