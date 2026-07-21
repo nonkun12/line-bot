@@ -1209,6 +1209,8 @@ def _process_and_reply(event, user_id, text):
     try:
         reply = generate_reply(user_id, text)
 
+        print("GENERATED REPLY:", repr(reply))
+
         with ApiClient(configuration) as api:
             MessagingApi(api).reply_message(
                 ReplyMessageRequest(
