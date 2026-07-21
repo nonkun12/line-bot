@@ -121,6 +121,7 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
     """
     
     print("MCP CALL:", tool_name, arguments)
+    print("MCP URL:", MCP_SERVER_URL)
     
     payload = {
         "jsonrpc": "2.0",
