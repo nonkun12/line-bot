@@ -294,16 +294,7 @@ MCP_TOOLS_SCHEMA = [
             }
         }
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_memory",
-            "description": "以前保存したユーザーの記憶をkeyで取得する",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "key": {"type": "string", "description": "取得したい記憶の項目名"}
-                },
+
                 "required": ["key"]
             }
         }
