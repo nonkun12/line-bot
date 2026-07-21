@@ -152,7 +152,7 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
             MCP_SERVER_URL,
             json=payload,
             headers=headers,
-            timeout=timeout,
+            timeout=(3,3),
             stream=True,
             allow_redirects=False,
             verify=True
