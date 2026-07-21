@@ -140,12 +140,14 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
         "x-api-key": MCP_API_KEY
     }
 
+    print("BEFORE MCP REQUEST")
     res = requests.post(
         MCP_SERVER_URL,
         json=payload,
         headers=headers,
         timeout=timeout
     )
+    print("AFTER MCP REQUEST")
 
     print("MCP STATUS:", res.status_code)
     print("MCP RESPONSE:", res.text)
