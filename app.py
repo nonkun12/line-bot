@@ -806,12 +806,17 @@ def generate_reply(user_id, message):
     # こうすることで「何ターンか前に名乗ったのに、履歴から流れたら忘れる」
     # という症状を防ぐ。
     try:
-        stored_name = call_mcp_tool("get_memory", {"user_id": user_id, "key": "name"})
+        stored_memory = call_mcp_tool(
+            "get_all_memory",
+            {
+                "user_id": user_id
+            }
+        )
     except Exception as e:
-        print("GET STORED NAME ERROR:", e)
-        stored_name = ""
+        print("GET ALL MEMORY ERROR:", e)
+        stored_memory = ""
 
-    known_facts_block = f"名前: {stored_name}" if stored_name else "(まだ何も記憶していません)"
+    known_facts_block = stored_memory if stored_memory else "(まだ何も記憶していません)"
 
     system_prompt = f"""
 {random.choice(personalities)}
