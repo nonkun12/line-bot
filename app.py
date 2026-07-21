@@ -113,7 +113,7 @@ def load_history(user_id):
 # =========================================================
 # MCPクライアント(StreamableHTTP / stateless)
 # =========================================================
-def call_mcp_tool(tool_name, arguments, timeout=10.0):
+def call_mcp_tool(tool_name, arguments, timeout=3.0):
     """
     my-mcp-server の /mcp エンドポイントへ JSON-RPC で tools/call を送る。
     StreamableHTTPServerTransport はレスポンスを
@@ -146,15 +146,19 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
     print("BEFORE MCP REQUEST")
     print("TIMEOUT:", timeout)
     print("POST START TIME:", time.time())
-    res = requests.post(
-        MCP_SERVER_URL,
-        json=payload,
-        headers=headers,
-        timeout=timeout,
-        stream=False,
-        allow_redirects=False,
-        verify=True
-    )
+    try:
+        res = requests.post(
+            MCP_SERVER_URL,
+            json=payload,
+            headers=headers,
+            timeout=timeout,
+            stream=False,
+            allow_redirects=False,
+            verify=True
+        )
+    except Exception as e:
+        print("MCP REQUEST ERROR:", repr(e))
+        raise
     print("AFTER MCP REQUEST")
     print("POST END TIME:", time.time())
 
