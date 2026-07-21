@@ -563,6 +563,9 @@ def generate_reply(user_id, message):
             else:
                 data = memories
 
+            print("NAME DATA:", data)
+            print("NAME DATA TYPE:", type(data))
+
             for item in data:
                 if item.get("key") == "name":
                     return f"あなたの名前は {item.get('value')} です。"
