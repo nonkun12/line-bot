@@ -162,8 +162,9 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
             verify=True
         )
         print("MCP AFTER REQUESTS POST")
-    except Exception:
+    except Exception as e:
         import traceback
+        print("EXCEPTION TYPE:", type(e))
         traceback.print_exc()
         raise
     print("REQUEST END")
