@@ -148,7 +148,8 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
         headers=headers,
         timeout=timeout,
         stream=False,
-        allow_redirects=False
+        allow_redirects=False,
+        verify=True
     )
     print("AFTER MCP REQUEST")
     print("MCP RESPONSE LENGTH:", len(res.content))
