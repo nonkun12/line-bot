@@ -20,6 +20,8 @@ import json
 import random
 import threading
 import requests
+import logging
+logging.basicConfig(level=logging.DEBUG)
 import re
 from datetime import datetime, timezone, timedelta
 
