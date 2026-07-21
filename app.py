@@ -151,7 +151,6 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
     )
     print("AFTER MCP REQUEST")
     print("MCP RESPONSE LENGTH:", len(res.content))
-    print("MCP RESPONSE LENGTH:", len(res.content))
 
     print("MCP STATUS:", res.status_code)
     print("MCP RESPONSE:", res.text)
