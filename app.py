@@ -152,6 +152,8 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
         # stream=True に変更し、レスポンスヘッダー受信時点で即時 return させる
         print("REQUEST START")
         print("MCP BEFORE REQUESTS POST")
+        import threading
+        print("THREAD:", threading.current_thread().name)
         res = requests.post(
             MCP_SERVER_URL,
             json=payload,
