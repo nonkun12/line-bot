@@ -152,18 +152,19 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
         # stream=True に変更し、レスポンスヘッダー受信時点で即時 return させる
         print("REQUEST START")
         print("MCP BEFORE REQUESTS POST")
-        import threading
-        print("THREAD:", threading.current_thread().name)
-        res = requests.post(
+        print("BEFORE POST CALL", time.time())
+        session = requests.Session()
+        session.trust_env = False
+        res = session.post(
             MCP_SERVER_URL,
             json=payload,
             headers=headers,
-            timeout=(3,3),
-            stream=True,
+            timeout=(10,10),
             allow_redirects=False,
             verify=True
         )
         print("MCP AFTER REQUESTS POST")
+        print("RESPONSE OBJECT:", res)
     except Exception as e:
         import traceback
         print("EXCEPTION TYPE:", type(e))
@@ -201,7 +202,7 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
     else:
         # JSON形式: 全体を読み込む
         try:
-            body = json.loads(res.content.decode("utf-8"))
+            body = res.json()
         finally:
             res.close()
 
