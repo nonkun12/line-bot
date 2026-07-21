@@ -146,7 +146,8 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
         MCP_SERVER_URL,
         json=payload,
         headers=headers,
-        timeout=timeout
+        timeout=timeout,
+        stream=False
     )
     print("AFTER MCP REQUEST")
 
