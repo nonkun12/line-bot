@@ -147,7 +147,8 @@ def call_mcp_tool(tool_name, arguments, timeout=10.0):
         json=payload,
         headers=headers,
         timeout=timeout,
-        stream=False
+        stream=False,
+        allow_redirects=False
     )
     print("AFTER MCP REQUEST")
     print("MCP RESPONSE LENGTH:", len(res.content))
