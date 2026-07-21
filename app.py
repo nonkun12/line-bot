@@ -152,9 +152,6 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
         # stream=True に変更し、レスポンスヘッダー受信時点で即時 return させる
         print("REQUEST START")
         print("MCP BEFORE REQUESTS POST")
-        print("DNS START")
-        print(socket.getaddrinfo("my-mcp-server-dqbx.onrender.com",443))
-        print("DNS END")
         res = requests.post(
             MCP_SERVER_URL,
             json=payload,
@@ -165,9 +162,8 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
             verify=True
         )
         print("MCP AFTER REQUESTS POST")
-    except Exception as e:
+    except Exception:
         import traceback
-        print("MCP REQUEST ERROR:", repr(e))
         traceback.print_exc()
         raise
     print("REQUEST END")
@@ -1227,8 +1223,9 @@ def _process_and_reply(event, user_id, text):
         print("REPLY SENT SUCCESS")
 
     except Exception as e:
+        import traceback
         print("===== HANDLE ERROR (async) =====")
-        print(e)
+        traceback.print_exc()
 
 
 # =========================
