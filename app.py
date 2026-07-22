@@ -149,20 +149,16 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
     print("TIMEOUT:", timeout)
     print("POST START TIME:", time.time())
     try:
-        # stream=True に変更し、レスポンスヘッダー受信時点で即時 return させる
         print("REQUEST START")
         print("MCP BEFORE REQUESTS POST")
         print("BEFORE POST CALL", time.time())
         session = requests.Session()
-        session.trust_env = False
         res = session.post(
             MCP_SERVER_URL,
             json=payload,
             headers=headers,
             timeout=(10,10),
             allow_redirects=False,
-            verify=True,
-            stream=True
         )
         print("MCP AFTER REQUESTS POST")
         print("MCP RESPONSE STATUS:", res.status_code)
@@ -186,7 +182,6 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
 
     if "text/event-stream" in content_type:
         # SSE形式: "data: {...}" 行からJSONを取り出す
-        # stream=True のため、必要なデータ行を受け取ったら即座に break して close() する。
         # これにより、サーバーから送られ続ける keep-alive 改行などの無限ストリームによるハングを防ぐ。
         body = None
         try:
