@@ -428,7 +428,29 @@ MCP_TOOLS_SCHEMA = [
     }
 ]
 
+# 記憶するvalueの整形
+MEMORY_VALUE_EXTRACT_PATTERNS = {
+    "favorite_food": re.compile(r"(?:私は)?好きな食べ物は(.+?)(?:です|だ)?[。.!！]*$"),
+    "favorite_drink": re.compile(r"(?:私は)?好きな飲み物は(.+?)(?:です|だ)?[。.!！]*$"),
+    "name": re.compile(r"(?:私の)?名前は(.+?)(?:です|だ)?[。.!！]*$"),
+}
+
+def clean_memory_value(key, value):
+    pattern = MEMORY_VALUE_EXTRACT_PATTERNS.get(key)
+
+    if not pattern:
+        return value
+
+    match = pattern.search(value or "")
+
+    if match:
+        return match.group(1).strip()
+
+    return value
+
 def dispatch_tool_call(user_id, name, arguments, original_message=""):
+
+
     """
     LINEのuser_idはGroq(LLM)には見せず、ここでMCPツールの正式パラメータとして注入する。
     以前はkeyに"{user_id}:"を前置する自前ルールで分離していたが、
@@ -446,12 +468,37 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
             }
         )
     if name == "save_memory":
+        # ユーザーの質問文（「〜は？」で終わる）である場合は保存をスキップする
+        msg_stripped = (original_message or "").strip()
+        if msg_stripped.endswith(("は？", "は?")):
+            print("SAVE_MEMORY SKIPPED: message ends with 'は？' or 'は?'")
+            return "ユーザーの質問文であるため、記憶への保存はスキップされました。"
+
+        # 「覚えて」「覚えておいて」などの命令文を除去し、arguments["value"]へ戻す
+        val = arguments.get("value", "")
+        for word in ["記憶してください", "覚えておいて", "記憶して", "覚えて"]:
+            val = val.replace(word, "")
+        arguments["value"] = val.strip()
+
+        # arguments["key"] が "memory" の場合、内容から適切に分類
+        if arguments.get("key") == "memory":
+            val_content = arguments.get("value", "")
+            if "好きな食べ物" in val_content:
+                arguments["key"] = "favorite_food"
+            elif "好きな飲み物" in val_content:
+                arguments["key"] = "favorite_drink"
+            elif "私の名前" in val_content or "名前は" in val_content:
+                arguments["key"] = "name"
+            elif "Python" in val_content:
+                arguments["key"] = "study_plan"
+
         # set_reminderと同様、AIが生成したvalueは稀に数文字言い換わることがあるため、
         # ユーザーの原文に「」/『』で明示された文言があれば、そちらを優先して使う。
         # (例: 「私の名前は『のんくん』です、覚えておいて」)
         quoted = extract_quoted_text(original_message)
         final_value = quoted if quoted else arguments.get("value", "")
         final_key = normalize_memory_key(arguments.get("key", ""), original_message)
+        final_value = clean_memory_value(final_key, final_value)
 
         return call_mcp_tool("save_memory", {
             "user_id": user_id,
@@ -597,9 +644,10 @@ def generate_reply(user_id, message):
 
     if message == "メモ一覧":
         return call_mcp_tool(
-            "list_notes",
+            "search_notes",
             {
-                "user_id": user_id
+                "user_id": user_id,
+                "keyword": ""
             }
         )
 
@@ -876,6 +924,7 @@ def generate_reply(user_id, message):
 
 記憶情報は既に提供されています。
 get_memoryツールは使用しないでください。
+ユーザーの発言が質問形式（「〜は？」で終わるもの）の場合、save_memory ツールは使用しないでください。
 
 外部検索ツール(brave_searchなど)は存在しません。検索が必要な場合でも、利用可能なツール一覧にあるものだけを使用してください。
 メモ検索は必ず search_notes ツールを使用してください。
