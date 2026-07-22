@@ -561,6 +561,15 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
 
 
 # =========================
+# 削除確認の保留状態
+# =========================
+# 「メモ全部削除」「記憶全部削除」等の後に送られる「はい」が、
+# どちらの削除を指しているか区別するため、user_idごとに保留する。
+_pending_delete_confirmation = {}
+_pending_confirm_lock = threading.Lock()
+
+
+# =========================
 # AI本体(返信生成 + MCPツール呼び出しループ)
 # =========================
 def generate_reply(user_id, message):
@@ -717,6 +726,18 @@ def generate_reply(user_id, message):
 
 
     if message in [
+        "記憶全部削除",
+        "記憶をすべて削除",
+        "記憶を全部削除",
+        "全ての記憶を削除",
+        "全部の記憶を削除"
+    ]:
+        with _pending_confirm_lock:
+            _pending_delete_confirmation[user_id] = "delete_all_memory"
+        return "記憶をすべて削除しますか？「はい」と送ってください"
+
+
+    if message in [
         "メモ削除全部",
         "メモ全て削除",
         "メモを全部削除",
@@ -725,16 +746,32 @@ def generate_reply(user_id, message):
         "全メモ削除",
         "メモを全削除"
     ]:
+        with _pending_confirm_lock:
+            _pending_delete_confirmation[user_id] = "delete_all_notes"
         return "全メモを削除しますか？「はい」と送ってください"
 
 
     if message == "はい":
-        return call_mcp_tool(
-            "delete_all_notes",
-            {
-                "user_id": user_id
-            }
-        )
+        with _pending_confirm_lock:
+            pending = _pending_delete_confirmation.pop(user_id, None)
+
+        if pending == "delete_all_notes":
+            return call_mcp_tool(
+                "delete_all_notes",
+                {
+                    "user_id": user_id
+                }
+            )
+
+        if pending == "delete_all_memory":
+            return call_mcp_tool(
+                "delete_all_memory",
+                {
+                    "user_id": user_id
+                }
+            )
+
+        # 確認待ちがなければ削除処理はせず、通常のAI応答へ流す(returnしない)
 
 
     # =========================
