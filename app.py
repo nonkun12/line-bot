@@ -572,7 +572,9 @@ def generate_reply(user_id, message):
     # 記憶系はAIを使わずMCP直行
     # =========================
 
-    if "覚えて" in message:
+    if "覚えて" in message and not any(
+        p in message for p in ("教えて", "覚えていること", "覚えてること")
+    ):
         if message.startswith("覚えて"):
             text = re.sub(r"^覚えて\s*[:：]?\s*", "", message)
         else:
