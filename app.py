@@ -161,9 +161,12 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
             headers=headers,
             timeout=(10,10),
             allow_redirects=False,
-            verify=True
+            verify=True,
+            stream=True
         )
         print("MCP AFTER REQUESTS POST")
+        print("MCP RESPONSE STATUS:", res.status_code)
+        print("MCP RESPONSE BODY:", res.text)
         print("RESPONSE OBJECT:", res)
     except Exception as e:
         import traceback
