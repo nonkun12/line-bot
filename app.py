@@ -19,7 +19,7 @@ import sqlite3
 import json
 import random
 import threading
-import requests
+import httpx
 import logging
 logging.basicConfig(level=logging.DEBUG)
 import re
@@ -152,12 +152,12 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
         print("REQUEST START")
         print("MCP BEFORE REQUESTS POST")
         print("BEFORE POST CALL", time.time())
-        res = requests.post(
+        res = httpx.post(
             MCP_SERVER_URL,
             json=payload,
             headers=headers,
-            timeout=(10,10),
-            allow_redirects=False,
+            timeout=httpx.Timeout(10.0, connect=10.0),
+            follow_redirects=False,
         )
         print("MCP AFTER REQUESTS POST")
         print("MCP RESPONSE STATUS:", res.status_code)
