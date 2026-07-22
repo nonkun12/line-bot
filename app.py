@@ -512,6 +512,12 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
             "user_id": user_id,
             "key": final_key
         })
+
+    if name == "get_all_memory":
+        return call_mcp_tool("get_all_memory", {
+            "user_id": user_id
+        })
+
     if name == "search_notes":
         return call_mcp_tool("search_notes", {
             "user_id": user_id,
@@ -721,13 +727,6 @@ def generate_reply(user_id, message):
 
 
     if message == "はい":
-        return call_mcp_tool(
-            "delete_all_notes",
-            {
-                "user_id": user_id
-            }
-        )
-
         return call_mcp_tool(
             "delete_all_notes",
             {
