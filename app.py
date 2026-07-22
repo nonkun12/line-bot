@@ -595,6 +595,7 @@ def generate_reply(user_id, message):
             key = "name"
             value = m.group(1).strip()
 
+        print("BEFORE SAVE_MEMORY MCP")
         return call_mcp_tool(
             "save_memory",
             {
