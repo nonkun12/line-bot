@@ -717,6 +717,16 @@ def generate_reply(user_id, message):
     if (
         ("予定" in message or "したい" in message or "忘れないように" in message)
         and len(message) > 5
+        and not any(q in message for q in [
+            "ある？",
+            "ありますか",
+            "あるか",
+            "あった？",
+            "あったか",
+            "確認",
+            "教えて",
+            "覚えて"
+        ])
     ):
         return call_mcp_tool(
             "save_note",
