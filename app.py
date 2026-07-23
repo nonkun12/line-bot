@@ -815,9 +815,12 @@ def generate_reply(user_id, message):
             or "私のメモ" in message
         )
     ):
-        keyword = (
-            message
-            .replace("LINE Botのメモを探して", "")
+        if "私のメモ" in message:
+            keyword = ""
+        else:
+            keyword = (
+                message
+                .replace("LINE Botのメモを探して", "")
             .replace("メモを探して", "")
             .replace("メモを見せて", "")
             .replace("メモ", "")
