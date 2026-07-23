@@ -808,7 +808,12 @@ def generate_reply(user_id, message):
 
     if (
         "メモ" in message
-        and ("探して" in message or "検索" in message or "見せて" in message)
+        and (
+            "探して" in message
+            or "検索" in message
+            or "見せて" in message
+            or "私のメモ" in message
+        )
     ):
         keyword = (
             message
