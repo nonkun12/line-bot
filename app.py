@@ -516,9 +516,26 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
         })
 
     if name == "search_notes":
+        keyword = arguments.get("keyword", "")
+
+        # 検索質問の余計な表現を除去
+        for word in [
+            "のメモ",
+            "メモある",
+            "メモありますか",
+            "ありますか",
+            "ある？",
+            "ある?"
+        ]:
+            keyword = keyword.replace(word, "")
+
+        keyword = keyword.strip()
+
+        print("SEARCH KEYWORD CLEANED:", keyword)
+
         return call_mcp_tool("search_notes", {
             "user_id": user_id,
-            "keyword": arguments.get("keyword", "")
+            "keyword": keyword
         })
 
     if name == "set_reminder":
