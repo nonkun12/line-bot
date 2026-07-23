@@ -615,13 +615,20 @@ def generate_reply(user_id, message):
         )
 
     if message in ["私の名前は？", "名前は？", "私の名前を教えて"]:
-        return call_mcp_tool(
+        name = call_mcp_tool(
             "get_memory",
             {
                 "user_id": user_id,
                 "key": "name"
             }
         )
+
+        print("NAME FROM MCP:", repr(name))
+
+        if name:
+            return f"あなたの名前は {name} です。"
+
+        return "名前はまだ記憶されていません。"
 
     # 名前確認はAI判断に任せず全記憶取得
     if "名前" in message:
