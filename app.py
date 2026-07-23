@@ -1440,6 +1440,10 @@ def internal_push():
 def home():
     return "OK"
 
+@app.route("/health")
+def health():
+    return jsonify({"ok": True, "service": "line-bot"})
+
 # =========================
 # run
 # =========================
