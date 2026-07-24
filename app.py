@@ -655,20 +655,20 @@ def generate_reply(user_id, message):
     # 「今日の予定」確認はAIを使わずMCP直行 (Phase 1: AIエージェント化)
     # =========================
     # 「今日の予定」「今日のリマインダー」「予定を教えて」等は、
-    # Groqのtool calling判断に渡さず、ここで検出して直接list_remindersを呼び、
-    # 当日(JST)分だけを抽出してPython側で自然な日本語に整形して返す。
-    # (list_reminders自体はAI秘書レポートでも使っているものをそのまま再利用し、
-    #  MCPサーバー側には一切手を加えない)
+    # Groqのtool calling判断に渡さず、ここで検出して直接get_today_schedule(MCP)を呼び、
+    # 当日(JST・sent true/false両方含む)分をPython側で自然な日本語に整形して返す。
+    # (list_reminders(通知スケジューラー用・sent=falseのみ)とは別ツールなので、
+    #  list_reminders / set_reminder / memory系には一切影響しない)
     TODAY_SCHEDULE_PATTERN = re.compile(r"今日の(予定|リマインダー)|予定を教えて")
 
     if TODAY_SCHEDULE_PATTERN.search(message):
         print("FORCE TODAY SCHEDULE DETECTED")
 
         try:
-            reminders_raw = call_mcp_tool("list_reminders", {"user_id": user_id})
+            reminders_raw = call_mcp_tool("get_today_schedule", {"user_id": user_id})
             reminders = _parse_mcp_json_list(reminders_raw)
         except Exception as e:
-            print("TODAY SCHEDULE: LIST_REMINDERS ERROR:", e)
+            print("TODAY SCHEDULE: GET_TODAY_SCHEDULE ERROR:", e)
             return "予定の取得に失敗しました。時間をおいてもう一度お試しください。"
 
         jst = timezone(timedelta(hours=9))
