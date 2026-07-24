@@ -49,7 +49,7 @@ def test_get_memory_direct():
             "user_id": "user123",
             "key": "name"
         })
-        assert res == "たろう"
+        assert res == "あなたの名前は たろう です。"
         print("PASS: ○○は？ -> get_memory")
 
 def test_save_note():
