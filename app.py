@@ -595,6 +595,32 @@ _pending_confirm_lock = threading.Lock()
 def generate_reply(user_id, message):
     print("=== GENERATE_REPLY ===", repr(message))
 
+    # =========================
+    # 時間指定リマインダー強制処理
+    # =========================
+    if re.search(r"\d+分後|\d+時間後|明日|明日の", message):
+        print("FORCE REMINDER DETECTED")
+
+        minutes = re.search(r"(\d+)分後", message)
+
+        if minutes:
+            from datetime import datetime, timedelta, timezone
+            jst = timezone(timedelta(hours=9))
+            remind_at = (
+                datetime.now(jst)
+                + timedelta(minutes=int(minutes.group(1)))
+            ).isoformat()
+
+            return call_mcp_tool(
+                "set_reminder",
+                {
+                    "user_id": user_id,
+                    "remind_at": remind_at,
+                    "message": message,
+                    "repeat": "none"
+                }
+            )
+
     print("=== GENERATE_REPLY TEST ===", user_id, message)
 
     # =========================
@@ -1432,6 +1458,8 @@ def handle(event):
 
         print("USER:", user_id)
         print("TEXT:", text)
+        print("MESSAGE_ID:", message_id)
+        print("REPLY_TOKEN:", event.reply_token)
 
         # 同じmessage_idを既に処理済みならスキップ(Webhook再送による二重実行を防ぐ)
         with _processed_lock:
