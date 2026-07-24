@@ -889,7 +889,7 @@ def generate_reply(user_id, message):
     # =========================
     # 明日○時 のリマインダー
     if "明日" in message and "時" in message and ("覚えて" in message or "教えて" in message or "知らせて" in message):
-        m = re.search(r"明日(\d+)時(.+?)(?:を覚えて|覚えて|教えて|知らせて)$", message)
+        m = re.search(r"明日(\d+)時(.+)", message)
 
         if m:
             hour = int(m.group(1))
