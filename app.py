@@ -887,6 +887,35 @@ def generate_reply(user_id, message):
 
 
     # =========================
+    # 明日○時 のリマインダー
+    if "明日" in message and "時" in message and ("覚えて" in message or "教えて" in message or "知らせて" in message):
+        m = re.search(r"明日(\d+)時(.+?)(?:を覚えて|覚えて|教えて|知らせて)$", message)
+
+        if m:
+            hour = int(m.group(1))
+            reminder_text = m.group(2).strip()
+
+            now = datetime.now(timezone(timedelta(hours=9)))
+            remind_at = (
+                now.replace(
+                    hour=hour,
+                    minute=0,
+                    second=0,
+                    microsecond=0
+                )
+                + timedelta(days=1)
+            ).isoformat()
+
+            return call_mcp_tool(
+                "set_reminder",
+                {
+                    "user_id": user_id,
+                    "remind_at": remind_at,
+                    "message": reminder_text,
+                    "repeat": "none"
+                }
+            )
+
     # リマインダー系はAIを使わずMCP直行
     # =========================
     if "分後に" in message and ("言って" in message or "教えて" in message or "知らせて" in message):
