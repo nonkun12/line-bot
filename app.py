@@ -604,8 +604,6 @@ def generate_reply(user_id, message):
         minutes = re.search(r"(\d+)分後", message)
 
         if minutes:
-            from datetime import datetime, timedelta, timezone
-            jst = timezone(timedelta(hours=9))
             remind_at = (
                 datetime.now(jst)
                 + timedelta(minutes=int(minutes.group(1)))
