@@ -1,0 +1,33 @@
+
+name: MCP Connection Test
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+jobs:
+  mcp-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          pip install pytest httpx
+
+      - name: Run MCP Test
+        env:
+          MCP_SERVER_URL: ${{ secrets.MCP_SERVER_URL }}
+          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
+        run: |
+          python3 -m pytest tests/test_mcp.py -v
