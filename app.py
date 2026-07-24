@@ -598,12 +598,19 @@ def generate_reply(user_id, message):
     # =========================
     # 時間指定リマインダー強制処理
     # =========================
-    if re.search(r"\d+分後|\d+時間後|明日|明日の", message):
+    if re.search(r"\d+秒後|\d+分後|\d+時間後|明日|明日の", message):
         print("FORCE REMINDER DETECTED")
 
+        seconds = re.search(r"(\d+)秒後", message)
         minutes = re.search(r"(\d+)分後", message)
 
-        if minutes:
+        if seconds:
+            remind_at = (
+                datetime.now(jst)
+                + timedelta(seconds=int(seconds.group(1)))
+            ).isoformat()
+
+        elif minutes:
             remind_at = (
                 datetime.now(jst)
                 + timedelta(minutes=int(minutes.group(1)))
