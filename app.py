@@ -893,7 +893,13 @@ def generate_reply(user_id, message):
 
         if m:
             hour = int(m.group(1))
-            reminder_text = m.group(2).strip()
+            reminder_text = (
+                m.group(2)
+                .replace("を覚えて", "")
+                .replace("覚えて", "")
+                .lstrip("に")
+                .strip()
+            )
 
             now = datetime.now(timezone(timedelta(hours=9)))
             remind_at = (
