@@ -601,6 +601,8 @@ def generate_reply(user_id, message):
     if re.search(r"\d+秒後|\d+分後|\d+時間後|明日|明日の", message):
         print("FORCE REMINDER DETECTED")
 
+        jst = timezone(timedelta(hours=9))
+
         seconds = re.search(r"(\d+)秒後", message)
         minutes = re.search(r"(\d+)分後", message)
 
