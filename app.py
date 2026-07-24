@@ -48,6 +48,12 @@ MCP_API_KEY = os.environ["MCP_API_KEY"]
 # my-mcp-server側の環境変数 INTERNAL_PUSH_KEY と同じ値をここに設定する。
 INTERNAL_PUSH_KEY = os.environ["INTERNAL_PUSH_KEY"]
 
+# AI秘書レポートで「昨日の実際のコミット」を取得する対象リポジトリ。
+# GITHUB_TOKENは必須ではない(公開リポジトリなら未認証でも取得可)が、
+# レート制限回避のためread-onlyのPATを設定することを推奨。
+AI_REPORT_GITHUB_REPO = os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 # timeoutを明示的に指定し、Groq側が詰まってもgunicorn workerごと
@@ -1413,6 +1419,255 @@ def handle(event):
 
 
 # =========================
+# AI秘書レポート: 事実取得
+# =========================
+# ここで集める情報だけがGroqに渡される「事実」。
+# ここに無いものをAIが書き足すことは、システムプロンプト側で禁止する。
+
+def fetch_recent_github_commits(hours=24):
+    """
+    直近hours時間分のコミットをGitHubから取得する。
+    取得できない場合(API失敗・レート制限等)は空リストを返す。
+    (「架空の内容を書かない」ため、失敗時にAIへ嘘のデータを渡さないのが目的)
+    """
+    try:
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        headers = {"Accept": "application/vnd.github+json"}
+        if GITHUB_TOKEN:
+            headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+
+        res = httpx.get(
+            f"https://api.github.com/repos/{AI_REPORT_GITHUB_REPO}/commits",
+            params={"since": since, "per_page": 30},
+            headers=headers,
+            timeout=10.0,
+        )
+        res.raise_for_status()
+
+        commits = []
+        for c in res.json():
+            commit_info = c.get("commit", {})
+            message = commit_info.get("message", "").split("\n")[0].strip()
+            author_date = commit_info.get("author", {}).get("date", "")
+            if message:
+                commits.append({"message": message, "date": author_date})
+
+        # 新しい順→古い順に並び直す(会話として自然な時系列にするため)
+        commits.reverse()
+        return commits
+
+    except Exception as e:
+        print("AI REPORT: GITHUB FETCH ERROR:", e)
+        return []
+
+
+def _parse_mcp_json_list(raw):
+    """
+    call_mcp_toolの戻り値(文字列 or 既にパース済みのlist/dict)を
+    安全にPythonのlistへ変換する。失敗時は空リスト。
+    """
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return raw
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def fetch_ai_secretary_facts(user_id):
+    """
+    AI秘書レポートに使う「事実」一式を集める。
+    どれか1つの取得に失敗しても、他は取得できた分だけを使う。
+    """
+    facts = {"commits": [], "memories": [], "reminders": []}
+
+    facts["commits"] = fetch_recent_github_commits(hours=24)
+
+    try:
+        memories_raw = call_mcp_tool("get_all_memory", {"user_id": user_id})
+        facts["memories"] = _parse_mcp_json_list(memories_raw)
+    except Exception as e:
+        print("AI REPORT: GET_ALL_MEMORY ERROR:", e)
+
+    try:
+        reminders_raw = call_mcp_tool("list_reminders", {"user_id": user_id})
+        facts["reminders"] = _parse_mcp_json_list(reminders_raw)
+    except Exception as e:
+        print("AI REPORT: LIST_REMINDERS ERROR:", e)
+
+    return facts
+
+
+def build_ai_secretary_fact_block(facts):
+    """収集した事実を、Groqに渡すためのテキストブロックに整形する。"""
+
+    if facts["commits"]:
+        commits_text = "\n".join(f"- {c['message']}" for c in facts["commits"])
+    else:
+        commits_text = "(昨日24時間以内のコミットは記録されていません)"
+
+    if facts["memories"]:
+        memories_text = "\n".join(
+            f"- {m.get('key')}: {m.get('value')}" for m in facts["memories"]
+        )
+    else:
+        memories_text = "(保存済みメモはありません)"
+
+    if facts["reminders"]:
+        reminders_text = "\n".join(
+            f"- {r.get('message')}" for r in facts["reminders"]
+        )
+    else:
+        reminders_text = "(未完了のタスク・リマインダーはありません)"
+
+    return (
+        "【昨日の実際のコミット(GitHubより取得・事実)】\n"
+        f"{commits_text}\n\n"
+        "【保存済みメモ(事実)】\n"
+        f"{memories_text}\n\n"
+        "【未完了タスク・リマインダー(事実)】\n"
+        f"{reminders_text}\n"
+    )
+
+
+AI_SECRETARY_SYSTEM_PROMPT = """あなたは「のりみつさん」専属のAI秘書です。
+毎朝LINEに届く開発レポートを作成します。
+
+【絶対厳守のルール】
+- ユーザーメッセージに書かれている「事実」以外の内容を絶対に書かないでください。
+  コミット・メモ・タスクについて、事実にない内容を推測や創作で補ってはいけません。
+- 事実が「ありません」と書かれている項目は、正直に「特にありません」等と書いてください。空想で埋めないこと。
+- 「今日おすすめの作業」は、渡された未完了タスクや昨日のコミット内容から自然に続けられるものを、事実の範囲内で最大3件提案してください。事実にない新機能やタスクを作り出さないでください。
+
+【構成(この優先順位・順番を厳守)】
+1. 「おはようございます、のりみつさん」から始める
+2. 昨日の実際の成果(コミット内容)
+3. 未完了タスク
+4. 今日おすすめの作業(最大3件)
+5. AI秘書からの一言(励まし)
+
+さらに、2と3の間か3と4の間の自然な位置に、
+「今日は昨日の続きから始めましょう」のように、
+前日の作業から今日へ自然につなぐ一文を入れてください。
+
+全体はLINEで読みやすいよう10〜15行程度にまとめてください。
+"""
+
+
+def collect_development_section(user_id):
+    """
+    「開発」セクション: GitHubの実コミット・保存済みメモ・未完了タスクをまとめる。
+    現状のAI秘書レポートの唯一の有効セクション。
+    """
+    facts = fetch_ai_secretary_facts(user_id)
+    return {
+        "key": "development",
+        "title": "開発",
+        "text": build_ai_secretary_fact_block(facts),
+    }
+
+
+def collect_stock_section(user_id):
+    """
+    「株」セクション(ダミー / 未実装)。
+    将来的に株価・ポートフォリオAPI等と連携する想定。
+    現時点ではデータソースが無いため、架空の内容を書かないようNoneを返し、
+    レポートには一切含めない。
+    """
+    return None
+
+
+def collect_english_section(user_id):
+    """
+    「英語」セクション(ダミー / 未実装)。
+    将来的に英語学習の記録(単語帳・学習時間など)と連携する想定。
+    現時点ではデータソースが無いためNoneを返す。
+    """
+    return None
+
+
+def collect_ai_news_section(user_id):
+    """
+    「AIニュース」セクション(ダミー / 未実装)。
+    将来的にニュースAPI等と連携する想定。
+    現時点ではデータソースが無いためNoneを返す。
+    """
+    return None
+
+
+# =========================
+# AI秘書セクションの登録リスト
+# =========================
+# 新しいセクションを追加したい場合は、collect_xxx_section(user_id)を実装し、
+# ここにリストの要素として追加するだけでよい(削除する場合はここから外すだけ)。
+# 各collectorは、データが無い/未実装の場合はNoneを返すこと
+# (=そのセクションはレポートに一切含まれず、架空の内容が混ざらない)。
+AI_SECRETARY_SECTION_COLLECTORS = [
+    collect_development_section,
+    collect_stock_section,
+    collect_english_section,
+    collect_ai_news_section,
+]
+
+
+def collect_ai_secretary_sections(user_id):
+    """
+    登録された全セクションのcollectorを実行し、
+    データが取得できた(Noneでない)セクションのみを集めて返す。
+    1つのセクションの取得失敗が他のセクションに影響しないよう、
+    collectorごとに例外を握りつぶす。
+    """
+    sections = []
+
+    for collector in AI_SECRETARY_SECTION_COLLECTORS:
+        try:
+            section = collector(user_id)
+        except Exception as e:
+            print(f"AI REPORT: SECTION COLLECT ERROR ({collector.__name__}):", e)
+            section = None
+
+        if section:
+            sections.append(section)
+
+    return sections
+
+
+def build_ai_secretary_prompt_body(sections):
+    """収集済みの各セクションを、Groqに渡す1本のテキストへ組み立てる。"""
+    blocks = [
+        f"■{section['title']}セクション(事実)\n{section['text']}"
+        for section in sections
+    ]
+    return "\n\n".join(blocks)
+
+
+def generate_ai_secretary_report(user_id):
+    """
+    登録済みの各セクション(現状は「開発」のみ有効)から実データを収集し、
+    それだけを事実としてGroqに渡してAI秘書レポートを生成する。
+    """
+    sections = collect_ai_secretary_sections(user_id)
+    prompt_body = build_ai_secretary_prompt_body(sections)
+
+    res = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": AI_SECRETARY_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt_body},
+        ],
+        temperature=0.2,
+        max_tokens=700,
+    )
+
+    return res.choices[0].message.content
+
+
+# =========================
 # AI開発報告 API
 # =========================
 @app.route("/internal/ai-report", methods=["POST"])
@@ -1426,33 +1681,20 @@ def internal_ai_report():
     data = request.get_json(silent=True) or {}
 
     user_id = data.get("user_id")
-    prompt = data.get("prompt")
 
-    if not user_id or not prompt:
+    if not user_id:
         return jsonify({
             "ok": False,
-            "error": "user_id and prompt are required"
+            "error": "user_id is required"
         }), 400
 
     try:
-        res = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "あなたはAI開発秘書です。簡潔に報告してください。"
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            temperature=0.3,
-            max_tokens=500
-        )
+        report = generate_ai_secretary_report(user_id)
+    except Exception as e:
+        print("AI REPORT ERROR (レポート生成に失敗):", e)
+        return jsonify({"ok": False, "error": f"report generation failed: {e}"}), 500
 
-        report = res.choices[0].message.content
-
+    try:
         with ApiClient(configuration) as api:
             MessagingApi(api).push_message(
                 PushMessageRequest(
@@ -1460,14 +1702,18 @@ def internal_ai_report():
                     messages=[TextMessage(text=report)]
                 )
             )
-
-        save_message(user_id, "assistant", report)
-
-        return jsonify({"ok": True})
-
     except Exception as e:
-        print("AI REPORT ERROR:", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        print("AI REPORT ERROR (LINE Push送信に失敗):", e)
+        return jsonify({"ok": False, "error": f"line push failed: {e}"}), 500
+
+    try:
+        save_message(user_id, "assistant", report)
+    except Exception as e:
+        # LINE送信自体は成功しているため、履歴DB保存の失敗は警告のみに留め、
+        # クライアント(GitHub Actions)には成功として返す。
+        print("AI REPORT WARNING (履歴DB保存に失敗、LINE送信自体は成功):", e)
+
+    return jsonify({"ok": True})
 
 
 @app.route("/internal/push", methods=["POST"])
