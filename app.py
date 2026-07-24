@@ -598,35 +598,56 @@ def generate_reply(user_id, message):
     # =========================
     # 時間指定リマインダー強制処理
     # =========================
-    if re.search(r"\d+秒後|\d+分後|\d+時間後|明日|明日の", message):
-        print("FORCE REMINDER DETECTED")
+    # 「30秒後」「1分後」「10分後」「1時間後」のような相対時間指定は、
+    # Groqのtool calling判断に渡さず、ここで検出して直接MCPのset_reminderを呼ぶ。
+    # (Groqに判断させると、モデルが独自にISO 8601文字列を組み立ててfunction callを
+    #  試み、稀にフォーマット崩れで `groq.BadRequestError: Failed to call a function`
+    #  になっていたため。datetime/timezone/timedeltaはファイル先頭でimport済みのものを使う)
+    relative_time_match = re.search(r"(\d+)(秒|分|時間)後", message)
+
+    if relative_time_match:
+        print("FORCE REMINDER DETECTED (relative time)")
+
+        amount = int(relative_time_match.group(1))
+        unit = relative_time_match.group(2)
 
         jst = timezone(timedelta(hours=9))
 
-        seconds = re.search(r"(\d+)秒後", message)
-        minutes = re.search(r"(\d+)分後", message)
+        if unit == "秒":
+            delta = timedelta(seconds=amount)
+        elif unit == "分":
+            delta = timedelta(minutes=amount)
+        else:  # "時間"
+            delta = timedelta(hours=amount)
 
-        if seconds:
-            remind_at = (
-                datetime.now(jst)
-                + timedelta(seconds=int(seconds.group(1)))
-            ).isoformat()
+        remind_at = (datetime.now(jst) + delta).isoformat()
 
-        elif minutes:
-            remind_at = (
-                datetime.now(jst)
-                + timedelta(minutes=int(minutes.group(1)))
-            ).isoformat()
+        # 「」で明示的に指定されていればそちらを優先し、なければ
+        # 「n〇後に」の後ろに続く本文だけをリマインダー本文として使う。
+        quoted = extract_quoted_text(message)
+        if quoted:
+            reminder_text = quoted
+        else:
+            reminder_text = message[relative_time_match.end():]
+            reminder_text = re.sub(r"^(に|、|,)+", "", reminder_text).strip()
+            reminder_text = re.sub(
+                r"(と言って|教えて|知らせて|リマインドして|通知して|連絡して)$",
+                "",
+                reminder_text
+            ).strip()
 
-            return call_mcp_tool(
-                "set_reminder",
-                {
-                    "user_id": user_id,
-                    "remind_at": remind_at,
-                    "message": message,
-                    "repeat": "none"
-                }
-            )
+        if not reminder_text:
+            reminder_text = message
+
+        return call_mcp_tool(
+            "set_reminder",
+            {
+                "user_id": user_id,
+                "remind_at": remind_at,
+                "message": reminder_text,
+                "repeat": "none"
+            }
+        )
 
     print("=== GENERATE_REPLY TEST ===", user_id, message)
 
