@@ -585,6 +585,17 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
             "id": arguments.get("id")
         })
 
+    if name == "delete_memory":
+        final_key = normalize_memory_key(
+            arguments.get("key", ""),
+            original_message
+        )
+
+        return call_mcp_tool("delete_memory", {
+            "user_id": user_id,
+            "key": final_key
+        })
+
     return f"不明なツールです: {name}"
 
 
