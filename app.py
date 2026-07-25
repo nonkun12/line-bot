@@ -221,7 +221,7 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
 
     result = body.get("result", {})
     parts = result.get("content", [])
-    texts = [p.get("text", "") for p in parts if p.get("type"] == "text"] # typeチェック部分もそのまま維持
+    texts = [p.get("text", "") for p in parts if p.get("type") == "text"] # typeチェック部分もそのまま維持
     return "\n".join(texts) if texts else ""
 
 
