@@ -1453,8 +1453,24 @@ _processed_message_ids = OrderedDict()
 _processed_lock = threading.Lock()
 _MAX_TRACKED_IDS = 2000
 
+# ユーザー単位の同時処理防止
+# 同じユーザーの質問が重なった場合、返信順序が崩れないようにする
+_user_processing_locks = {}
+_user_processing_lock = threading.Lock()
+
+
 def _process_and_reply(event, user_id, text):
     print(f"[LOG] _process_and_reply called: user_id={user_id}")
+
+    # 同じユーザーの処理が同時実行されないようにする
+    with _user_processing_lock:
+        if user_id not in _user_processing_locks:
+            _user_processing_locks[user_id] = threading.Lock()
+
+    user_lock = _user_processing_locks[user_id]
+
+    with user_lock:
+        print(f"[LOG] USER LOCK ACQUIRED: {user_id}")
     """generate_reply〜reply_messageまでを非同期に実行する。
     LINEへのWebhook応答(200 OK)を待たせないためにスレッドへ切り出している。"""
     try:
