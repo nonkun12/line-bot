@@ -6,9 +6,9 @@ import os
 import httpx
 
 
-MCP_SERVER_URL = "https://my-mcp-server-dqbx.onrender.com/mcp"
+MCP_SERVER_URL = os.environ["MCP_SERVER_URL"]
 
-MCP_API_KEY = "c6b3d7d988a0ce90066bc30225553b7862b36e1ab9c3f596ac2a3e1cd986768c"
+MCP_API_KEY = os.environ["MCP_API_KEY"]
 
 
 def call_mcp(tool_name, arguments):

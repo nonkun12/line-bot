@@ -23,6 +23,7 @@ import httpx
 import logging
 logging.basicConfig(level=logging.DEBUG)
 import re
+from collections import OrderedDict
 from datetime import datetime, timezone, timedelta
 
 app = Flask(__name__)
@@ -1445,7 +1446,10 @@ def callback():
 # 同じmessage_idを2回以上処理しないよう、直近処理済みIDをメモリに保持する。
 # ※ workers=1構成のプロセス内メモリのみで完結する簡易対策。
 # プロセス再起動で消えるが、再送は通常同一プロセスが動いている短時間内に来るため実用上問題ない。
-_processed_message_ids = set()
+# OrderedDictを使い、上限超過時は挿入順(古い順)で確実に間引く。
+# (setのpop()は削除順が保証されないため、直近処理したIDが誤って
+#  間引かれる可能性があった)
+_processed_message_ids = OrderedDict()
 _processed_lock = threading.Lock()
 _MAX_TRACKED_IDS = 2000
 
@@ -1456,14 +1460,29 @@ def _process_and_reply(event, user_id, text):
     try:
         reply = generate_reply(user_id, text)
         print("GENERATED REPLY:", repr(reply))
-        with ApiClient(configuration) as api:
-            MessagingApi(api).reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text=reply)]
+
+        try:
+            with ApiClient(configuration) as api:
+                MessagingApi(api).reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=reply)]
+                    )
                 )
-            )
-        print("REPLY SENT SUCCESS")
+            print("REPLY SENT SUCCESS")
+        except Exception as reply_err:
+            # reply_tokenの失効(Webhook受信から短時間で無効になる)等でreply_messageが
+            # 失敗した場合のみ、push_messageで同じ内容を送り直す。
+            # reply_messageが成功する通常時はこのフォールバックには入らない。
+            print("REPLY FAILED, FALLBACK TO PUSH:", reply_err)
+            with ApiClient(configuration) as api:
+                MessagingApi(api).push_message(
+                    PushMessageRequest(
+                        to=user_id,
+                        messages=[TextMessage(text=reply)]
+                    )
+                )
+            print("PUSH FALLBACK SENT SUCCESS")
     except Exception as e:
         import traceback
         print("===== HANDLE ERROR (async) =====")
@@ -1491,10 +1510,10 @@ def handle(event):
                 print("DUPLICATE MESSAGE IGNORED:", message_id)
                 return
 
-            _processed_message_ids.add(message_id)
+            _processed_message_ids[message_id] = True
             if len(_processed_message_ids) > _MAX_TRACKED_IDS:
-                # 古いものを適当に間引く(setなのでpopで適当に1つ消す)
-                _processed_message_ids.pop()
+                # 最も古く追加されたIDから確実に間引く(last=Falseで先頭=最古を削除)
+                _processed_message_ids.popitem(last=False)
 
         threading.Thread(
             target=_process_and_reply,
