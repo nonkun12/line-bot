@@ -580,10 +580,32 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
         })
 
     if name == "cancel_reminder":
-        return call_mcp_tool("cancel_reminder", {
-            "user_id": user_id,
-            "id": arguments.get("id")
-        })
+
+        reminder_id = arguments.get("id")
+
+        if not reminder_id:
+            reminders = call_mcp_tool(
+                "list_reminders",
+                {
+                    "user_id": user_id
+                }
+            )
+
+            reminder_list = _parse_mcp_json_list(reminders)
+
+            if reminder_list:
+                reminder_id = reminder_list[-1].get("id")
+
+        if not reminder_id:
+            return "キャンセルできるリマインダーがありません。"
+
+        return call_mcp_tool(
+            "cancel_reminder",
+            {
+                "user_id": user_id,
+                "id": reminder_id
+            }
+        )
 
     if name == "delete_memory":
         final_key = normalize_memory_key(
