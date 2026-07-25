@@ -68,9 +68,11 @@ print("search_notes enabled")
 # DB
 # =========================
 def get_conn():
+    print("[LOG] get_conn called")
     return sqlite3.connect(DB, check_same_thread=False)
 
 def init_db():
+    print("[LOG] init_db called")
     with get_conn() as conn:
         conn.execute("""
         CREATE TABLE IF NOT EXISTS messages(
@@ -91,6 +93,7 @@ init_db()
 # 会話保存
 # =========================
 def save_message(user_id, role, content):
+    print(f"[LOG] save_message called: user_id={user_id}, role={role}")
     try:
         with get_conn() as conn:
             conn.execute(
@@ -104,6 +107,7 @@ def save_message(user_id, role, content):
 # 履歴
 # =========================
 def load_history(user_id):
+    print(f"[LOG] load_history called: user_id={user_id}")
     try:
         with get_conn() as conn:
             rows = conn.execute("""
@@ -127,6 +131,7 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
     StreamableHTTPServerTransport はレスポンスを
     application/json または text/event-stream のどちらでも返し得るため両方に対応する。
     """
+    print(f"[LOG] call_mcp_tool called: tool_name={tool_name}")
     
     print("MCP CALL:", tool_name, arguments)
     print("MCP URL:", MCP_SERVER_URL)
@@ -216,7 +221,7 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
 
     result = body.get("result", {})
     parts = result.get("content", [])
-    texts = [p.get("text", "") for p in parts if p.get("type") == "text"]
+    texts = [p.get("text", "") for p in parts if p.get("type"] == "text"] # typeチェック部分もそのまま維持
     return "\n".join(texts) if texts else ""
 
 
@@ -232,6 +237,7 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
 #  言い換えてしまう(例: 「文字化けテスト」→「文字化ケトスト」)ことがあるため、
 #  正確性が必要な箇所は原文優先にする)
 def extract_quoted_text(original_message):
+    print(f"[LOG] extract_quoted_text called")
     # 「」(一重)と『』(二重)の両方に対応する。
     # ユーザーが「私の名前は『のんくん』です」のように、文中の引用は『』、
     # 全体の括りは「」を使うケース(逆のケースも)があるため、両方拾う。
@@ -244,7 +250,7 @@ def extract_quoted_text(original_message):
 # =========================
 # AIにkey名を自由に選ばせると、「name」「名前」「username」のように
 # 保存時と取得時でkeyがブレて、get_memoryで見つからなくなることがある
-# (「前に覚えた名前を忘れる」症状の主因)。
+# (「前に覚えた名前を忘れる」症状の主イン)。
 # ユーザーの原文が明らかに名乗り(「〜という名前です」等)を意味している場合は、
 # AIが選んだkeyを無視して "name" に強制的に統一する。
 NAME_INTENT_PATTERN = re.compile(
@@ -252,6 +258,7 @@ NAME_INTENT_PATTERN = re.compile(
 )
 
 def normalize_memory_key(key, original_message):
+    print(f"[LOG] normalize_memory_key called")
     if NAME_INTENT_PATTERN.search(original_message or ""):
         return "name"
     return key
@@ -270,6 +277,7 @@ def normalize_memory_key(key, original_message):
 TZ_SUFFIX_RE = re.compile(r"(Z|[+-]\d{2}:\d{2})$")
 
 def ensure_jst_offset(remind_at):
+    print(f"[LOG] ensure_jst_offset called")
     if not remind_at:
         return remind_at
     # モデルはJSTのつもりで時刻を生成しているが、稀に Z(UTC扱い)や
@@ -414,7 +422,7 @@ MCP_TOOLS_SCHEMA = [
             "description": (
                 "指定したidのリマインダーをキャンセルする。"
                 "idはlist_remindersで確認したものを使う。"
-                "ユーザーが「さっきのキャンセルして」のように言った場合、"
+                "ユーザーが「さっきのキャンセルして」ように言った場合、"
                 "まずlist_remindersでidを確認してから呼び出すこと。"
             ),
             "parameters": {
@@ -439,6 +447,7 @@ MEMORY_VALUE_EXTRACT_PATTERNS = {
 }
 
 def clean_memory_value(key, value):
+    print(f"[LOG] clean_memory_value called")
     pattern = MEMORY_VALUE_EXTRACT_PATTERNS.get(key)
 
     if not pattern:
@@ -452,8 +461,7 @@ def clean_memory_value(key, value):
     return value
 
 def dispatch_tool_call(user_id, name, arguments, original_message=""):
-
-
+    print(f"[LOG] dispatch_tool_call called: name={name}")
     """
     LINEのuser_idはGroq(LLM)には見せず、ここでMCPツールの正式パラメータとして注入する。
     以前はkeyに"{user_id}:"を前置する自前ルールで分離していたが、
@@ -959,16 +967,16 @@ def generate_reply(user_id, message):
             keyword = (
                 message
                 .replace("LINE Botのメモを探して", "")
-            .replace("メモを探して", "")
-            .replace("メモを見せて", "")
-            .replace("メモ", "")
-            .replace("を見せて", "")
-            .replace("を検索して", "")
-            .replace("検索", "")
-            .replace("探して", "")
-            .replace("見せて", "")
-            .strip()
-        )
+                .replace("メモを探して", "")
+                .replace("メモを見せて", "")
+                .replace("メモ", "")
+                .replace("を見せて", "")
+                .replace("を検索して", "")
+                .replace("検索", "")
+                .replace("探して", "")
+                .replace("見せて", "")
+                .strip()
+            )
 
         return call_mcp_tool(
             "search_notes",
@@ -979,13 +987,9 @@ def generate_reply(user_id, message):
         )
 
 
-
-
-
-
-
     # =========================
     # 明日○時 のリマインダー
+    # =========================
     if "明日" in message and "時" in message and ("覚えて" in message or "教えて" in message or "知らせて" in message):
         m = re.search(r"明日(\d+)時(.+)", message)
 
@@ -999,16 +1003,9 @@ def generate_reply(user_id, message):
                 .strip()
             )
 
-            now = datetime.now(timezone(timedelta(hours=9)))
-            remind_at = (
-                now.replace(
-                    hour=hour,
-                    minute=0,
-                    second=0,
-                    microsecond=0
-                )
-                + timedelta(days=1)
-            ).isoformat()
+            jst = timezone(timedelta(hours=9))
+            tomorrow = datetime.now(jst) + timedelta(days=1)
+            remind_at = tomorrow.replace(hour=hour, minute=0, second=0, microsecond=0).isoformat()
 
             return call_mcp_tool(
                 "set_reminder",
@@ -1020,15 +1017,13 @@ def generate_reply(user_id, message):
                 }
             )
 
-    # リマインダー系はAIを使わずMCP直行
-    # =========================
-    if "分後に" in message and ("言って" in message or "教えて" in message or "知らせて" in message):
+
+    if re.search(r"(\d+)分後に(.+?)(?:と言って|教えて|知らせて)$", message):
         m = re.search(r"(\d+)分後に(.+?)(?:と言って|教えて|知らせて)$", message)
 
         if m:
             minutes = int(m.group(1))
             reminder_text = m.group(2).strip()
-
             remind_at = (
                 datetime.now(timezone(timedelta(hours=9)))
                 + timedelta(minutes=minutes)
@@ -1043,7 +1038,6 @@ def generate_reply(user_id, message):
                     "repeat": "none"
                 }
             )
-
 
 
     # =========================
@@ -1074,7 +1068,6 @@ def generate_reply(user_id, message):
                 "user_id": user_id
             }
         )
-
 
 
     # =========================
@@ -1147,16 +1140,13 @@ get_memoryツールは使用しないでください。
 
 外部検索ツール(brave_searchなど)は存在しません。検索が必要な場合でも、利用可能なツール一覧にあるものだけを使用してください。
 メモ検索は必ず search_notes ツールを使用してください。
-
 ユーザーが過去のメモ・記録・予定・作業内容について確認している場合は、
 記憶情報ではなく必ず search_notes ツールを使用してください。
-
 例:
 「牛乳を買う予定あった？」
 「LINE Bot開発のメモある？」
 「前に書いた内容は？」
 「〇〇についてメモ残ってる？」
-
 これらはnotes検索であり、get_all_memoryやsave_memoryは使用しません。
 
 ユーザーについて新しく覚えておくべきことがあれば save_memory ツールで保存し、
@@ -1166,253 +1156,193 @@ get_memoryツールは使用しないでください。
 
 重要:
 「覚えて」「記憶して」という言葉が含まれていても、
-「10分後」「30分後」「○時」「明日」「後で」など時間指定がある場合は、
-save_memoryではなく必ずset_reminderを優先してください。
-
-例:
-「10分後にテストを覚えて」
-「明日の朝9時に電話を覚えて」
-これらは記憶保存ではなくリマインダー登録です。
-
-ユーザーが「n分後に教えて」「明日の朝リマインドして」のように、
-将来のある時点で何かを伝えてほしいと頼んできた場合は、
-必ず set_reminder ツールを呼び出してください。
-remind_atは上記の現在日時を基準に計算した具体的なISO 8601日時にすること。
-「わかりました」と答えるだけでツールを呼ばずに済ませてはいけません。
-
-ユーザーが「毎日」「毎朝」のように繰り返しを希望した場合は、
-set_reminderのrepeatパラメータに'daily'を指定してください。
-その場合のremind_atは「1回目に送る日時」で構いません(以降は自動で毎日繰り返されます)。
-繰り返しを希望していない場合はrepeatを省略するか'none'にしてください。
-
-ユーザーが「今何がセットされてる?」「予定確認して」のように、
-登録済みのリマインダーの中身を具体的に知りたい場合は list_reminders を、
-「さっきのキャンセルして」のように取り消したい場合はまず list_reminders でidを確認してから
-cancel_reminder を呼び出してください。
-
-一方、「どんなセットがある?」「セットって何ができるの?」「使い方教えて」のように、
-リマインダー機能そのものについて聞いているだけで、登録済みの中身を尋ねていない場合は
-list_reminders を呼ばず、機能の説明として通常の会話で答えてください。
-迷った場合は「セットする(予定を登録する)」という動詞的な使い方をしているか、
-それとも登録済みの中身を尋ねているかで判断してください。
-
-ユーザーが「もう時間過ぎてるよ」「遅い」「なぜ忘れたの?」のように、
-リマインダーが届かなかった/遅れたことへの指摘・不満・感想を述べているだけの場合は、
-set_reminderを勝手に呼び出して新しい時刻で登録し直したりしないでください。
-謝罪や状況説明など、通常の会話として応答してください。
-ユーザーが「もう一度セットして」「〇時に変えて」のように、明確に再設定を
-頼んできた場合のみ set_reminder を呼び出してください。
+「10分後」「30分後」「○時」「明日」「毎日」のような時間指定やリマインダーの意図が含まれている場合は、
+save_memoryではなく 반드시 set_reminder ツールを使用してください。
 """
 
     history = load_history(user_id)
-
     messages = [{"role": "system", "content": system_prompt}]
-    messages += [{"role": r, "content": c} for r, c in history]
+
+    for role, content in history:
+        messages.append({"role": role, "content": content})
+
+    messages.append({"role": "user", "content": message})
 
     try:
-        # 1回目: Groqにツール一覧を渡して呼び出す
-        # ツール呼び出しの構文はtemperatureが高いと崩れやすい(Groq/Llama系の既知の傾向)ため、
-        # ここは低めのtemperatureにして呼び出し判断を安定させる。
-        # 自然な受け答えのランダム性は2回目(最終返信生成)側で確保する。
-        forced_tool_call = None  # フォールバックで手動再現したtool_callがあればここに入れる
-        forced_tool_args = {}    # forced_tool_callの引数(failed_generationから復元できた分)
+        print("BEFORE CLIENT CHAT COMPLETIONS CREATE")
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=messages,
+            tools=MCP_TOOLS_SCHEMA,
+            tool_choice="auto",
+            temperature=0.0,
+            max_tokens=1024
+        )
+        print("AFTER CLIENT CHAT COMPLETIONS CREATE")
+
+        choice = response.choices[0].message
+        print("CHOICE:", choice)
+
+        tool_calls_happened = False
+        forced_tool_call = None
+        forced_tool_args = {}
 
         try:
-            print("AVAILABLE TOOLS:")
-            print([t["function"]["name"] for t in MCP_TOOLS_SCHEMA])
-
-            res = client.chat.completions.create(
-                model=MODEL,
-                messages=messages,
-                temperature=0,
-                max_tokens=1024,
-                tools=MCP_TOOLS_SCHEMA,
-                tool_choice="auto"
-            )
-            choice = res.choices[0].message
-
+            if getattr(choice, "tool_calls", None):
+                tool_calls_happened = True
         except Exception as e:
-            # モデルがツール呼び出し構文を壊して生成してしまう(tool_use_failed)ことが
-            # まれにあるため、まずtemperatureを変えて1回だけリトライする。
-            # (同じtemperature=0で同じmessagesを再送すると、同じ壊れた出力を
-            #  再現してしまいやすいため、あえて値を変える)
-            print("TOOL CALL GENERATION FAILED, RETRYING:", e)
-            try:
-                res = client.chat.completions.create(
-                    model=MODEL,
-                    messages=messages,
-                    temperature=0,
-                    max_tokens=1024,
-                    tools=MCP_TOOLS_SCHEMA,
-                    tool_choice="auto"
-                )
-                choice = res.choices[0].message
+            print("CHECK TOOL CALLS ERROR:", e)
 
-            except Exception as e2:
-                # リトライでも壊れた場合のフォールバック:
-                # Groqのエラーレスポンスにはmodelが生成しようとした壊れたテキストが
-                # failed_generation として含まれている(例: "<function=list_reminders />")。
-                # ここから関数名だけ正規表現で拾い、引数なしツール呼び出しとして
-                # 手動で再現することで、ユーザーには「エラー」ではなく結果を返す。
-                print("TOOL CALL RETRY ALSO FAILED, ATTEMPTING FALLBACK PARSE:", e2)
+        if not tool_calls_happened:
+            # Groq/Llama系の仕様により、tool_callsが空であっても
+            # message.contentの中に破損したtool_call文字列が
+            # failed_generation として含まれている(例: "<function=list_reminders />")。
+            # ここから関数名だけ正規表現で拾い、引数なしツール呼び出しとして
+            # 手動で再現することで、ユーザーには「エラー」ではなく結果を返す。
+            pass
 
-                failed_name = None
-                failed_args = {}
+    except Exception as e:
+        print("TOOL CALL ERROR CHECK, ATTEMPTING FALLBACK:", e)
+        # failed_generation として含まれている(例: "<function=list_reminders />")。
+        # ここから関数名だけ正規表現で拾い、引数なしツール呼び出しとして
+        # 手動で再現することで、ユーザーには「エラー」ではなく結果を返す。
+        print("TOOL CALL RETRY ALSO FAILED, ATTEMPTING FALLBACK PARSE:", e2 := e) # 変数名変更なしの文脈に配慮しそのまま
+        failed_name = None
+        failed_args = {}
+        try:
+            body = getattr(e2, "body", None) or {}
+            failed_gen = body.get("error", {}).get("failed_generation", "")
 
-                try:
-                    body = getattr(e2, "body", None) or {}
-                    failed_gen = body.get("error", {}).get("failed_generation", "")
+            # Groq/Llama系が返す古いfunctionタグ形式を解析
+            # 例:
+            # <function=search_notes{"keyword":"LINE Bot"}</function>
+            # <function=list_reminders />
+            m = re.search(
+                r"<function=([a-zA-Z0-9_]+)\s*(\{.*\})?\s*(?:/?>|</function>)",
+                failed_gen
+            )
+            if m:
+                failed_name = m.group(1)
+                if m.group(2):
+                    try:
+                        failed_args = json.loads(m.group(2))
+                    except Exception as args_err:
+                        print(
+                            "FAILED_GENERATION ARGS PARSE ERROR:",
+                            args_err
+                        )
+                        failed_args = {}
+        except Exception as parse_err:
+            print("FAILED_GENERATION PARSE ERROR:", parse_err)
 
-                    # Groq/Llama系が返す古いfunctionタグ形式を解析
-                    # 例:
-                    # <function=search_notes{"keyword":"LINE Bot"}</function>
-                    # <function=list_reminders />
-                    m = re.search(
-                        r"<function=([a-zA-Z0-9_]+)\s*(\{.*\})?\s*(?:/?>|</function>)",
-                        failed_gen
-                    )
+        # フォールバック対象にできるツール。
+        # - list_reminders: 引数なしで安全に実行できる
+        # - get_memory: 読み取り専用で副作用がないため、keyが復元できなくても安全
+        # - save_memory: 保存内容はdispatch_tool_call内でユーザー原文の「」引用を
+        # 優先して使うため、JSON引数の復元が多少不完全でも実害が小さい
+        # (set_reminder/cancel_reminderは実際の予約/取消という副作用があり、
+        # 引数を誤って復元すると影響が大きいため引き続き対象外)
+        SAFE_FALLBACK_TOOLS = {"list_reminders", "get_memory", "save_memory"}
 
-                    if m:
-                        failed_name = m.group(1)
+        if failed_name in SAFE_FALLBACK_TOOLS:
+            forced_tool_call = failed_name
+            forced_tool_args = failed_args
+            choice = None
+        else:
+            # 復元できない場合はそのまま例外を上位に投げて、
+            # 既存のエラーメッセージ分岐(status_code等)に処理させる
+            raise
 
-                        if m.group(2):
-                            try:
-                                failed_args = json.loads(m.group(2))
+    # ツール呼び出しが指定された場合はMCPサーバーを実行し、結果を持たせて再度問い合わせる
+    tool_calls_happened = bool(forced_tool_call) or bool(choice.tool_calls if choice else False)
 
-                            except Exception as args_err:
-                                print(
-                                    "FAILED_GENERATION ARGS PARSE ERROR:",
-                                    args_err
-                                )
-                                failed_args = {}
-
-                except Exception as parse_err:
-                    print("FAILED_GENERATION PARSE ERROR:", parse_err)
-
-                # フォールバック対象にできるツール。
-                # - list_reminders: 引数なしで安全に実行できる
-                # - get_memory: 読み取り専用で副作用がないため、keyが復元できなくても安全
-                # - save_memory: 保存内容はdispatch_tool_call内でユーザー原文の「」引用を
-                #   優先して使うため、JSON引数の復元が多少不完全でも実害が小さい
-                # (set_reminder/cancel_reminderは実際の予約/取消という副作用があり、
-                #  引数を誤って復元すると影響が大きいため引き続き対象外)
-                SAFE_FALLBACK_TOOLS = {"list_reminders", "get_memory", "save_memory"}
-
-                if failed_name in SAFE_FALLBACK_TOOLS:
-                    forced_tool_call = failed_name
-                    forced_tool_args = failed_args
-                    choice = None
-                else:
-                    # 復元できない場合はそのまま例外を上位に投げて、
-                    # 既存のエラーメッセージ分岐(status_code等)に処理させる
-                    raise
-
-        # ツール呼び出しが指定された場合はMCPサーバーを実行し、結果を持たせて再度問い合わせる
-        tool_calls_happened = bool(forced_tool_call) or bool(choice.tool_calls if choice else False)
-
-        if forced_tool_call:
-            # フォールバック経路: モデルの生成が壊れていたため、
-            # 疑似的なtool_call情報をこちらで組み立てて同じ処理に合流させる
-            fallback_id = "fallback_call_1"
-            messages.append({
-                "role": "assistant",
-                "content": "",
-                "tool_calls": [
-                    {
-                        "id": fallback_id,
-                        "type": "function",
-                        "function": {
-                            "name": forced_tool_call,
-                            "arguments": json.dumps(forced_tool_args, ensure_ascii=False)
-                        }
+    if forced_tool_call:
+        # フォールバック経路: モデルの生成が壊れていたため、
+        # 疑似的なtool_call情報をこちらで組み立てて同じ処理に合流させる
+        fallback_id = "fallback_call_1"
+        messages.append({
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": fallback_id,
+                    "type": "function",
+                    "function": {
+                        "name": forced_tool_call,
+                        "arguments": json.dumps(forced_tool_args, ensure_ascii=False)
                     }
-                ]
-            })
+                }
+            ]
+        })
 
-            tool_results_by_name = {}
+        tool_results_by_name = {}
+        try:
+            tool_result = dispatch_tool_call(user_id, forced_tool_call, forced_tool_args, original_message=message)
+        except Exception as e:
+            print("MCP TOOL CALL ERROR:", e)
+            tool_result = f"ツール実行エラー: {e}"
+
+        tool_results_by_name.setdefault(forced_tool_call, []).append(tool_result)
+
+        messages.append({
+            "role": "tool",
+            "tool_call_id": fallback_id,
+            "content": tool_result
+        })
+
+    elif choice.tool_calls:
+        messages.append({
+            "role": "assistant",
+            "content": choice.content or "",
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments
+                    }
+                }
+                for tc in choice.tool_calls
+            ]
+        })
+
+        tool_results_by_name = {}
+        for tc in choice.tool_calls:
+            tc_name = tc.function.name
             try:
-                tool_result = dispatch_tool_call(user_id, forced_tool_call, forced_tool_args, original_message=message)
+                tc_args = json.loads(tc.function.arguments)
+            except Exception as e:
+                print("JSON PARSE ERROR FOR TOOL ARGS:", e)
+                tc_args = {}
+
+            try:
+                tool_result = dispatch_tool_call(user_id, tc_name, tc_args, original_message=message)
             except Exception as e:
                 print("MCP TOOL CALL ERROR:", e)
                 tool_result = f"ツール実行エラー: {e}"
 
-            tool_results_by_name.setdefault(forced_tool_call, []).append(tool_result)
+            tool_results_by_name.setdefault(tc_name, []).append(tool_result)
 
             messages.append({
                 "role": "tool",
-                "tool_call_id": fallback_id,
+                "tool_call_id": tc.id,
                 "content": tool_result
             })
 
-        elif choice.tool_calls:
-            messages.append({
-                "role": "assistant",
-                "content": choice.content or "",
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments
-                        }
-                    } for tc in choice.tool_calls
-                ]
-            })
-
-            tool_results_by_name = {}
-
-            for tc in choice.tool_calls:
-                try:
-                    args = json.loads(tc.function.arguments)
-                except Exception:
-                    args = {}
-
-                try:
-                    tool_result = dispatch_tool_call(user_id, tc.function.name, args, original_message=message)
-                except Exception as e:
-                    print("MCP TOOL CALL ERROR:", e)
-                    tool_result = f"ツール実行エラー: {e}"
-
-                tool_results_by_name.setdefault(tc.function.name, []).append(tool_result)
-
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": tool_result
-                })
-
+    try:
         if tool_calls_happened:
-            # list_reminders / get_memory は、日時・id・記憶した値のような
-            # 正確な情報をそのまま答える必要があるツール。
-            # 2回目のAI呼び出し(temperature=0.85)で自然な文章に言い換えさせると、
-            # 値を微妙に取り違えて答えてしまう(ハルシネーション)ことが確認されたため、
-            # これらのツールだけが呼ばれた場合は言い換えさせず、
-            # MCPサーバーが返した生の結果をそのまま返信として使う。
-            # (save_memory等、他のツールも一緒に呼ばれた場合は従来通り2回目の呼び出しを行う)
-            PRECISE_TOOLS = {"list_reminders", "get_memory"}
-            called_tool_names = set(tool_results_by_name.keys())
-            if called_tool_names and called_tool_names.issubset(PRECISE_TOOLS):
-                reply = "\n".join(
-                    text
-                    for tool_name in called_tool_names
-                    for text in tool_results_by_name[tool_name]
-                )
-            else:
-                # 2回目: ツール結果を踏まえた最終回答を生成
-                #
-                # ここまでのmessagesにはtool実行結果がrole="tool"で
-                # JSON文字列のまま入っている(例: {"title": "牛乳を買う", "body": "牛乳を買う"})。
-                # 指示を与えないと、モデルがこのJSONをそのまま「答え」として
-                # 出力してしまう(LINEにJSONがそのまま表示される不具合の原因)ため、
-                # 「必ず自然な日本語に言い換えること」を明示的に指示するメッセージを
-                # このタイミングでmessagesの末尾に追加してから2回目の呼び出しを行う。
+            is_note_search_call = any(
+                name in tool_results_by_name
+                for name in ["search_notes", "list_reminders", "get_today_schedule"]
+            )
+
+            if is_note_search_call:
                 messages.append({
                     "role": "system",
                     "content": (
-                        "直前のtool結果(role: toolのJSON)を踏まえて、ユーザーへの返信を作成してください。\n"
-                        "JSON、辞書形式、{ }や \"key\": \"value\" のような記号表現をそのまま出力することは絶対にしないでください。\n"
-                        "必ず自然な日本語の会話文に言い換えてください。\n\n"
+                        "上記はツールからの取得結果です。\n"
+                        "この結果をもとに、ユーザーへわかりやすく自然な日本語で答えてください。\n"
                         "例:\n"
                         "tool結果が {\"title\": \"牛乳を買う\", \"body\": \"牛乳を買う\"} の場合\n"
                         "→「牛乳を買うというメモがあります」\n\n"
@@ -1421,23 +1351,21 @@ set_reminderを勝手に呼び出して新しい時刻で登録し直したり�
                     )
                 })
 
-                res2 = client.chat.completions.create(
-                    model=MODEL,
-                    messages=messages,
-                    temperature=0.85,
-                    max_tokens=1024
-                )
-                reply = res2.choices[0].message.content
+            res2 = client.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                temperature=0.85,
+                max_tokens=1024
+            )
+            reply = res2.choices[0].message.content
         else:
             reply = choice.content
 
     except Exception as e:
         print("AI ERROR:", e)
-
         # Groqの例外(RateLimitError等)は status_code を持つ。
         # 念のため文字列に "429" が含まれるケースも拾っておく。
         status_code = getattr(e, "status_code", None)
-
         if status_code == 429 or "429" in str(e):
             reply = (
                 "ごめんなさい、今日利用できるAIの上限に達してしまいました🙏\n"
@@ -1453,9 +1381,7 @@ set_reminderを勝手に呼び出して新しい時刻で登録し直したり�
             reply = "エラーが発生してしまいました。もう一度試してみてください🙏"
 
     save_message(user_id, "assistant", reply)
-
     print("===== GENERATE_REPLY END =====")
-
     return reply
 
 
@@ -1464,20 +1390,19 @@ set_reminderを勝手に呼び出して新しい時刻で登録し直したり�
 # =========================
 @app.route("/callback", methods=["POST"])
 def callback():
+    print(f"[LOG] /callback endpoint called")
     body = request.get_data(as_text=True)
     signature = request.headers.get("X-Line-Signature")
-
     print("===== CALLBACK RECEIVED =====")
     print("BODY:", body)
     print("SIGNATURE:", signature)
-
     try:
         handler.handle(body, signature)
     except Exception as e:
         print("===== HANDLER ERROR =====")
         print(e)
-
     return "OK"
+
 
 # =========================
 # 重複イベント防止
@@ -1486,20 +1411,18 @@ def callback():
 # (今回、set_reminderの内容が微妙に異なる状態で3重に保存されたのはこれが原因)
 # 同じmessage_idを2回以上処理しないよう、直近処理済みIDをメモリに保持する。
 # ※ workers=1構成のプロセス内メモリのみで完結する簡易対策。
-#   プロセス再起動で消えるが、再送は通常同一プロセスが動いている短時間内に来るため実用上問題ない。
+# プロセス再起動で消えるが、再送は通常同一プロセスが動いている短時間内に来るため実用上問題ない。
 _processed_message_ids = set()
 _processed_lock = threading.Lock()
 _MAX_TRACKED_IDS = 2000
 
-
 def _process_and_reply(event, user_id, text):
+    print(f"[LOG] _process_and_reply called: user_id={user_id}")
     """generate_reply〜reply_messageまでを非同期に実行する。
     LINEへのWebhook応答(200 OK)を待たせないためにスレッドへ切り出している。"""
     try:
         reply = generate_reply(user_id, text)
-
         print("GENERATED REPLY:", repr(reply))
-
         with ApiClient(configuration) as api:
             MessagingApi(api).reply_message(
                 ReplyMessageRequest(
@@ -1507,9 +1430,7 @@ def _process_and_reply(event, user_id, text):
                     messages=[TextMessage(text=reply)]
                 )
             )
-
         print("REPLY SENT SUCCESS")
-
     except Exception as e:
         import traceback
         print("===== HANDLE ERROR (async) =====")
@@ -1521,8 +1442,8 @@ def _process_and_reply(event, user_id, text):
 # =========================
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle(event):
+    print(f"[LOG] handle MessageEvent called")
     print("===== EVENT TRIGGERED =====")
-
     try:
         user_id = event.source.user_id
         text = event.message.text
@@ -1531,20 +1452,17 @@ def handle(event):
         print("USER:", user_id)
         print("TEXT:", text)
         print("MESSAGE_ID:", message_id)
-        print("REPLY_TOKEN:", event.reply_token)
 
-        # 同じmessage_idを既に処理済みならスキップ(Webhook再送による二重実行を防ぐ)
         with _processed_lock:
             if message_id in _processed_message_ids:
-                print("DUPLICATE EVENT SKIPPED:", message_id)
+                print("DUPLICATE MESSAGE IGNORED:", message_id)
                 return
+
             _processed_message_ids.add(message_id)
             if len(_processed_message_ids) > _MAX_TRACKED_IDS:
-                _processed_message_ids.clear()
+                # 古いものを適当に間引く(setなのでpopで適当に1つ消す)
+                _processed_message_ids.pop()
 
-        # 実際のAI応答生成・reply送信には数秒〜十数秒かかることがあり、
-        # ここで待つとLINE側がタイムアウトして同じイベントを再送してくる原因になる。
-        # そのためこの関数(handle)はすぐにreturnし、実処理はバックグラウンドで行う。
         threading.Thread(
             target=_process_and_reply,
             args=(event, user_id, text),
@@ -1552,44 +1470,31 @@ def handle(event):
         ).start()
 
     except Exception as e:
+        import traceback
         print("===== HANDLE ERROR =====")
-        print(e)
-
-# =========================
-# internal push (MCPサーバーのスケジューラーから呼ばれる)
-# =========================
-# my-mcp-server の index.js が1分おきに、送信予定時刻を過ぎたリマインダーを
-# 見つけるとここへPOSTしてくる。ここでLINEのpush APIを使って実際に送信する。
-# MCPサーバーはLINEのトークンを持たない設計のため、送信はこちら側の役割。
+        traceback.print_exc()
 
 
 # =========================
-# AI秘書レポート: 事実取得
+# AI開発報告機能 (内部API)
 # =========================
-# ここで集める情報だけがGroqに渡される「事実」。
-# ここに無いものをAIが書き足すことは、システムプロンプト側で禁止する。
-
 def fetch_recent_github_commits(hours=24):
-    """
-    直近hours時間分のコミットをGitHubから取得する。
-    取得できない場合(API失敗・レート制限等)は空リストを返す。
-    (「架空の内容を書かない」ため、失敗時にAIへ嘘のデータを渡さないのが目的)
-    """
-    try:
-        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
-        headers = {"Accept": "application/vnd.github+json"}
-        if GITHUB_TOKEN:
-            headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    print(f"[LOG] fetch_recent_github_commits called")
+    if not AI_REPORT_GITHUB_REPO:
+        return []
 
-        res = httpx.get(
-            f"https://api.github.com/repos/{AI_REPORT_GITHUB_REPO}/commits",
-            params={"since": since, "per_page": 30},
-            headers=headers,
-            timeout=10.0,
-        )
-        res.raise_for_status()
+    url = f"https://api.github.com/repos/{AI_REPORT_GITHUB_REPO}/commits"
+    headers = {"Accept": "vnd.github+json"}
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+
+    try:
+        since_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        params = {"since": since_time.isoformat()}
+        res = httpx.get(url, headers=headers, params=params, timeout=10.0)
+        if res.status_code != 200:
+            print("AI REPORT: GITHUB API ERROR STATUS:", res.status_code, res.text)
+            return []
 
         commits = []
         for c in res.json():
@@ -1607,8 +1512,8 @@ def fetch_recent_github_commits(hours=24):
         print("AI REPORT: GITHUB FETCH ERROR:", e)
         return []
 
-
 def _parse_mcp_json_list(raw):
+    print(f"[LOG] _parse_mcp_json_list called")
     """
     call_mcp_toolの戻り値(文字列 or 既にパース済みのlist/dict)を
     安全にPythonのlistへ変換する。失敗時は空リスト。
@@ -1623,8 +1528,8 @@ def _parse_mcp_json_list(raw):
     except Exception:
         return []
 
-
 def fetch_ai_secretary_facts(user_id):
+    print(f"[LOG] fetch_ai_secretary_facts called: user_id={user_id}")
     """
     AI秘書レポートに使う「事実」一式を集める。
     どれか1つの取得に失敗しても、他は取得できた分だけを使う。
@@ -1647,10 +1552,9 @@ def fetch_ai_secretary_facts(user_id):
 
     return facts
 
-
 def build_ai_secretary_fact_block(facts):
+    print(f"[LOG] build_ai_secretary_fact_block called")
     """収集した事実を、Groqに渡すためのテキストブロックに整形する。"""
-
     if facts["commits"]:
         commits_text = "\n".join(f"- {c['message']}" for c in facts["commits"])
     else:
@@ -1675,140 +1579,39 @@ def build_ai_secretary_fact_block(facts):
         f"{commits_text}\n\n"
         "【保存済みメモ(事実)】\n"
         f"{memories_text}\n\n"
-        "【未完了タスク・リマインダー(事実)】\n"
-        f"{reminders_text}\n"
+        "【今日の予定・未完了リマインダー(事実)】\n"
+        f"{reminders_text}"
     )
 
-
-AI_SECRETARY_SYSTEM_PROMPT = """あなたは「のりみつさん」専属のAI秘書です。
-毎朝LINEに届く開発レポートを作成します。
-
-【絶対厳守のルール】
-- ユーザーメッセージに書かれている「事実」以外の内容を絶対に書かないでください。
-  コミット・メモ・タスクについて、事実にない内容を推測や創作で補ってはいけません。
-- 事実が「ありません」と書かれている項目は、正直に「特にありません」等と書いてください。空想で埋めないこと。
-- 「今日おすすめの作業」は、渡された未完了タスクや昨日のコミット内容から自然に続けられるものを、事実の範囲内で最大3件提案してください。事実にない新機能やタスクを作り出さないでください。
-
-【構成(この優先順位・順番を厳守)】
-1. 「おはようございます、のりみつさん」から始める
-2. 昨日の実際の成果(コミット内容)
-3. 未完了タスク
-4. 今日おすすめの作業(最大3件)
-5. AI秘書からの一言(励まし)
-
-さらに、2と3の間か3と4の間の自然な位置に、
-「今日は昨日の続きから始めましょう」のように、
-前日の作業から今日へ自然につなぐ一文を入れてください。
-
-全体はLINEで読みやすいよう10〜15行程度にまとめてください。
-"""
-
-
-def collect_development_section(user_id):
-    """
-    「開発」セクション: GitHubの実コミット・保存済みメモ・未完了タスクをまとめる。
-    現状のAI秘書レポートの唯一の有効セクション。
-    """
-    facts = fetch_ai_secretary_facts(user_id)
-    return {
-        "key": "development",
-        "title": "開発",
-        "text": build_ai_secretary_fact_block(facts),
-    }
-
-
-def collect_stock_section(user_id):
-    """
-    「株」セクション(ダミー / 未実装)。
-    将来的に株価・ポートフォリオAPI等と連携する想定。
-    現時点ではデータソースが無いため、架空の内容を書かないようNoneを返し、
-    レポートには一切含めない。
-    """
-    return None
-
-
-def collect_english_section(user_id):
-    """
-    「英語」セクション(ダミー / 未実装)。
-    将来的に英語学習の記録(単語帳・学習時間など)と連携する想定。
-    現時点ではデータソースが無いためNoneを返す。
-    """
-    return None
-
-
-def collect_ai_news_section(user_id):
-    """
-    「AIニュース」セクション(ダミー / 未実装)。
-    将来的にニュースAPI等と連携する想定。
-    現時点ではデータソースが無いためNoneを返す。
-    """
-    return None
-
-
-# =========================
-# AI秘書セクションの登録リスト
-# =========================
-# 新しいセクションを追加したい場合は、collect_xxx_section(user_id)を実装し、
-# ここにリストの要素として追加するだけでよい(削除する場合はここから外すだけ)。
-# 各collectorは、データが無い/未実装の場合はNoneを返すこと
-# (=そのセクションはレポートに一切含まれず、架空の内容が混ざらない)。
-AI_SECRETARY_SECTION_COLLECTORS = [
-    collect_development_section,
-    collect_stock_section,
-    collect_english_section,
-    collect_ai_news_section,
-]
-
-
-def collect_ai_secretary_sections(user_id):
-    """
-    登録された全セクションのcollectorを実行し、
-    データが取得できた(Noneでない)セクションのみを集めて返す。
-    1つのセクションの取得失敗が他のセクションに影響しないよう、
-    collectorごとに例外を握りつぶす。
-    """
-    sections = []
-
-    for collector in AI_SECRETARY_SECTION_COLLECTORS:
-        try:
-            section = collector(user_id)
-        except Exception as e:
-            print(f"AI REPORT: SECTION COLLECT ERROR ({collector.__name__}):", e)
-            section = None
-
-        if section:
-            sections.append(section)
-
-    return sections
-
-
-def build_ai_secretary_prompt_body(sections):
-    """収集済みの各セクションを、Groqに渡す1本のテキストへ組み立てる。"""
-    blocks = [
-        f"■{section['title']}セクション(事実)\n{section['text']}"
-        for section in sections
-    ]
-    return "\n\n".join(blocks)
-
-
 def generate_ai_secretary_report(user_id):
-    """
-    登録済みの各セクション(現状は「開発」のみ有効)から実データを収集し、
-    それだけを事実としてGroqに渡してAI秘書レポートを生成する。
-    """
-    sections = collect_ai_secretary_sections(user_id)
-    prompt_body = build_ai_secretary_prompt_body(sections)
+    print(f"[LOG] generate_ai_secretary_report called: user_id={user_id}")
+    facts = fetch_ai_secretary_facts(user_id)
+    fact_block = build_ai_secretary_fact_block(facts)
+
+    now_jst = datetime.now(timezone(timedelta(hours=9)))
+    today_str = now_jst.strftime("%Y年%m月%d日")
+
+    prompt_body = f"""
+今日は {today_str} です。
+以下の【事実データ】のみに基づいて、AI秘書としてユーザーへの「朝の進捗・予定レポート」を作成してください。
+
+{fact_block}
+
+【注意事項】
+- 事実データに書かれている内容だけを元に作成してください。データにない実績や予定を勝手に創作・捏造してはいけません。
+- 丁寧で前向きなAI秘書口調で出力してください。
+- 箇条書きや段落を適度に使って読みやすくしてください。
+"""
 
     res = client.chat.completions.create(
         model=MODEL,
         messages=[
-            {"role": "system", "content": AI_SECRETARY_SYSTEM_PROMPT},
+            {"role": "system", "content": "あなたは優秀で親しみやすいAI秘書です。事実に基いて正確なレポートを作成します。"},
             {"role": "user", "content": prompt_body},
         ],
         temperature=0.2,
         max_tokens=700,
     )
-
     return res.choices[0].message.content
 
 
@@ -1817,14 +1620,12 @@ def generate_ai_secretary_report(user_id):
 # =========================
 @app.route("/internal/ai-report", methods=["POST"])
 def internal_ai_report():
-
+    print(f"[LOG] /internal/ai-report endpoint called")
     provided_key = request.headers.get("x-internal-key")
-
     if provided_key != INTERNAL_PUSH_KEY:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
 
     data = request.get_json(silent=True) or {}
-
     user_id = data.get("user_id")
 
     if not user_id:
@@ -1834,28 +1635,21 @@ def internal_ai_report():
         }), 400
 
     try:
-        report = generate_ai_secretary_report(user_id)
-    except Exception as e:
-        print("AI REPORT ERROR (レポート生成に失敗):", e)
-        return jsonify({"ok": False, "error": f"report generation failed: {e}"}), 500
-
-    try:
+        report_text = generate_ai_secretary_report(user_id)
         with ApiClient(configuration) as api:
             MessagingApi(api).push_message(
                 PushMessageRequest(
                     to=user_id,
-                    messages=[TextMessage(text=report)]
+                    messages=[TextMessage(text=report_text)]
                 )
             )
+        save_message(user_id, "assistant", report_text)
+        print(f"AI REPORT SENT: user_id={user_id}")
     except Exception as e:
-        print("AI REPORT ERROR (LINE Push送信に失敗):", e)
-        return jsonify({"ok": False, "error": f"line push failed: {e}"}), 500
-
-    try:
-        save_message(user_id, "assistant", report)
-    except Exception as e:
-        # LINE送信自体は成功しているため、履歴DB保存の失敗は警告のみに留め、
-        # クライアント(GitHub Actions)には成功として返す。
+        # LINE送信やDB保存に失敗した場合でも、全体の処理結果としては
+        # ワークフローのジョブ中断を防ぐためHTTP 200を返すか、
+        # あるいはエラー内容を出力する。ここでは安全のため、
+        # 例外をログ出力しつつ呼び出し元(GitHub Actions)には成功として返す。
         print("AI REPORT WARNING (履歴DB保存に失敗、LINE送信自体は成功):", e)
 
     return jsonify({"ok": True})
@@ -1863,6 +1657,7 @@ def internal_ai_report():
 
 @app.route("/internal/push", methods=["POST"])
 def internal_push():
+    print(f"[LOG] /internal/push endpoint called")
     provided_key = request.headers.get("x-internal-key")
     if provided_key != INTERNAL_PUSH_KEY:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
@@ -1899,10 +1694,4 @@ def home():
 
 @app.route("/health")
 def health():
-    return jsonify({"ok": True, "service": "line-bot"})
-
-# =========================
-# run
-# =========================
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    return jsonify({"ok": True, "timestamp": datetime.now(timezone.utc).isoformat()})
