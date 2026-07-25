@@ -673,7 +673,7 @@ def generate_reply(user_id, message):
             reminder_text = message[relative_time_match.end():]
             reminder_text = re.sub(r"^(に|、|,)+", "", reminder_text).strip()
             reminder_text = re.sub(
-                r"(と言って|教えて|知らせて|リマインドして|通知して|連絡して)$",
+                r"(と言って|と教えて|教えて|知らせて|リマインドして|通知して|連絡して)$",
                 "",
                 reminder_text
             ).strip()
