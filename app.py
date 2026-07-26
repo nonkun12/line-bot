@@ -722,7 +722,14 @@ def generate_reply(user_id, message):
             if not remind_at:
                 continue
             try:
-                dt = datetime.fromisoformat(ensure_jst_offset(remind_at))
+                if remind_at.endswith("Z"):
+                    dt = datetime.fromisoformat(
+                        remind_at.replace("Z", "+00:00")
+                    )
+                else:
+                    dt = datetime.fromisoformat(
+                        ensure_jst_offset(remind_at)
+                    )
             except Exception:
                 # 日時のパースに失敗した1件だけをスキップし、他の予定表示には影響させない
                 continue
