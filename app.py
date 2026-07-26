@@ -40,6 +40,7 @@ from db import (
     create_processed_event,
     is_processed_event,
 )
+from reminders import handle_relative_time_reminder
 
 app = Flask(__name__)
 
@@ -578,46 +579,15 @@ def generate_reply(user_id, message):
     if relative_time_match:
         print("FORCE REMINDER DETECTED (relative time)")
 
-        amount = int(relative_time_match.group(1))
-        unit = relative_time_match.group(2)
-
-        jst = timezone(timedelta(hours=9))
-
-        if unit == "秒":
-            delta = timedelta(seconds=amount)
-        elif unit == "分":
-            delta = timedelta(minutes=amount)
-        else:  # "時間"
-            delta = timedelta(hours=amount)
-
-        remind_at = (datetime.now(jst) + delta).isoformat()
-
-        # 「」で明示的に指定されていればそちらを優先し、なければ
-        # 「n〇後に」の後ろに続く本文だけをリマインダー本文として使う。
-        quoted = extract_quoted_text(message)
-        if quoted:
-            reminder_text = quoted
-        else:
-            reminder_text = message[relative_time_match.end():]
-            reminder_text = re.sub(r"^(に|、|,)+", "", reminder_text).strip()
-            reminder_text = re.sub(
-                r"(と言って|と教えて|教えて|知らせて|リマインドして|通知して|連絡して)$",
-                "",
-                reminder_text
-            ).strip()
-
-        if not reminder_text:
-            reminder_text = message
-
-        return call_mcp_tool(
-            "set_reminder",
-            {
-                "user_id": user_id,
-                "remind_at": remind_at,
-                "message": reminder_text,
-                "repeat": "none"
-            }
+        # 既存のロジックは保持しつつ、まずは新しいヘルパーへ接続する。
+        reminder_result = handle_relative_time_reminder(
+            message,
+            user_id,
+            call_mcp_tool,
+            extract_quoted_text,
         )
+        if reminder_result is not None:
+            return reminder_result
 
     print("=== GENERATE_REPLY TEST ===", user_id, message)
 
