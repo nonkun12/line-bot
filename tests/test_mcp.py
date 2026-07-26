@@ -123,3 +123,40 @@ def test_save_note_and_search_notes():
     assert "result" in search_result
 
     print(search_result)
+
+
+def test_reminder_flow():
+    set_result = call_mcp(
+        "set_reminder",
+        {
+            "user_id": "test-user",
+            "remind_at": "2026-07-27T10:00:00+09:00",
+            "message": "pytestリマインダーテスト",
+            "repeat": "none"
+        }
+    )
+
+    assert "result" in set_result
+
+    list_result = call_mcp(
+        "list_reminders",
+        {
+            "user_id": "test-user"
+        }
+    )
+
+    assert "result" in list_result
+
+    print(list_result)
+
+    cancel_result = call_mcp(
+        "cancel_reminder",
+        {
+            "user_id": "test-user",
+            "id": 1
+        }
+    )
+
+    assert "result" in cancel_result
+
+    print(cancel_result)
