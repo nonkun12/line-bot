@@ -722,16 +722,23 @@ def generate_reply(user_id, message):
             if not remind_at:
                 continue
             try:
-                if remind_at.endswith("Z"):
-                    dt = datetime.fromisoformat(
-                        remind_at.replace("Z", "+00:00")
-                    )
-                else:
-                    dt = datetime.fromisoformat(
-                        ensure_jst_offset(remind_at)
-                    )
-            except Exception:
-                # 日時のパースに失敗した1件だけをスキップし、他の予定表示には影響させない
+                try:
+                    if remind_at.endswith("Z"):
+                        dt = datetime.fromisoformat(
+                            remind_at.replace("Z", "+00:00")
+                        )
+                    else:
+                        dt = datetime.fromisoformat(
+                            ensure_jst_offset(remind_at)
+                        )
+                except Exception:
+                    dt = datetime.strptime(
+                        remind_at,
+                        "%Y/%m/%d %H:%M:%S"
+                    ).replace(tzinfo=jst)
+
+            except Exception as e:
+                print("DATE PARSE ERROR:", remind_at, e)
                 continue
 
             if dt.astimezone(jst).date() == today:
