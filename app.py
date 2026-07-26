@@ -1283,9 +1283,24 @@ save_memoryではなく 반드시 set_reminder ツールを使用してくださ
             forced_tool_args = failed_args
             choice = None
         else:
-            # 復元できない場合はそのまま例外を上位に投げて、
-            # 既存のエラーメッセージ分岐(status_code等)に処理させる
-            raise
+            status_code = getattr(e, "status_code", None)
+
+            if status_code == 429 or "429" in str(e):
+                reply = (
+                    "ごめんなさい、今日利用できるAIの上限に達してしまいました🙏\n"
+                    "しばらく時間をおいてから、もう一度話しかけてみてください。"
+                )
+            elif status_code == 401 or status_code == 403:
+                reply = "AIサービスへの接続設定に問題があるようです。少し時間を置いてもう一度お試しください。"
+            elif status_code is not None and status_code >= 500:
+                reply = "AIサービス側で一時的な不具合が起きているようです。少ししてからもう一度お試しください。"
+            elif "timeout" in str(e).lower() or "timed out" in str(e).lower():
+                reply = "応答に時間がかかりすぎたため、一度中断しました。もう一度話しかけてみてください。"
+            else:
+                reply = "エラーが発生してしまいました。もう一度試してみてください🙏"
+
+            print("===== GENERATE_REPLY END (UNRECOVERABLE FIRST-CALL ERROR) =====")
+            return reply
 
     # ツール呼び出しが指定された場合はMCPサーバーを実行し、結果を持たせて再度問い合わせる
     tool_calls_happened = bool(forced_tool_call) or bool(choice.tool_calls if choice else False)
