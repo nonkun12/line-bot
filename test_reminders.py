@@ -52,11 +52,22 @@ def test_handle_tomorrow_reminder_uses_tomorrow_time():
         return "ok"
 
     now = datetime(2026, 7, 26, 9, 0, tzinfo=timezone(timedelta(hours=9)))
-    result = handle_tomorrow_reminder("明日12時に覚えて", "user-1", fake_call_mcp, now=now)
+    result = handle_tomorrow_reminder("明日10時 会議を覚えて", "user-1", fake_call_mcp, now=now)
 
     assert result == "ok"
+    assert calls[0][0] == "set_reminder"
     assert calls[0][1]["repeat"] == "none"
-    assert calls[0][1]["message"] == ""
+    assert calls[0][1]["message"] == "会議"
+    assert calls[0][1]["remind_at"].startswith("2026-07-27T10:00:00")
+
+
+def test_handle_tomorrow_reminder_returns_none_for_non_target_message():
+    def fake_call_mcp(name, arguments):
+        raise AssertionError("should not be called")
+
+    result = handle_tomorrow_reminder("今日は会議です", "user-1", fake_call_mcp)
+
+    assert result is None
 
 
 def test_handle_cancel_reminder_uses_latest_id():

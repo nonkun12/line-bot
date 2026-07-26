@@ -40,7 +40,11 @@ from db import (
     create_processed_event,
     is_processed_event,
 )
-from reminders import handle_relative_time_reminder
+from reminders import (
+    handle_daily_reminder,
+    handle_relative_time_reminder,
+    handle_tomorrow_reminder,
+)
 
 app = Flask(__name__)
 
@@ -939,74 +943,26 @@ def generate_reply(user_id, message):
     # 毎日・毎朝のリマインダー
     # =========================
     if ("毎日" in message or "毎朝" in message) and "時" in message:
-        m = re.search(r"(?:毎日|毎朝)(\d+)時(.+)", message)
-
-        if m:
-            hour = int(m.group(1))
-
-            reminder_text = (
-                m.group(2)
-                .replace("を覚えて", "")
-                .replace("覚えて", "")
-                .replace("教えて", "")
-                .replace("知らせて", "")
-                .lstrip("に")
-                .strip()
-            )
-
-            jst = timezone(timedelta(hours=9))
-            now = datetime.now(jst)
-
-            remind_at = now.replace(
-                hour=hour,
-                minute=0,
-                second=0,
-                microsecond=0
-            )
-
-            if remind_at <= now:
-                remind_at += timedelta(days=1)
-
-            return call_mcp_tool(
-                "set_reminder",
-                {
-                    "user_id": user_id,
-                    "remind_at": remind_at.isoformat(),
-                    "message": reminder_text,
-                    "repeat": "daily"
-                }
-            )
+        reminder_result = handle_daily_reminder(
+            message,
+            user_id,
+            call_mcp_tool,
+        )
+        if reminder_result is not None:
+            return reminder_result
 
 
     # =========================
     # 明日○時 のリマインダー
     # =========================
     if "明日" in message and "時" in message and ("覚えて" in message or "教えて" in message or "知らせて" in message):
-        m = re.search(r"明日(\d+)時(.+)", message)
-
-        if m:
-            hour = int(m.group(1))
-            reminder_text = (
-                m.group(2)
-                .replace("を覚えて", "")
-                .replace("覚えて", "")
-                .lstrip("に")
-                .strip()
-            )
-
-            jst = timezone(timedelta(hours=9))
-            tomorrow = datetime.now(jst) + timedelta(days=1)
-            remind_at = tomorrow.replace(hour=hour, minute=0, second=0, microsecond=0).isoformat()
-
-            return call_mcp_tool(
-                "set_reminder",
-                {
-                    "user_id": user_id,
-                    "remind_at": remind_at,
-                    "message": reminder_text,
-                    "repeat": "none"
-                }
-            )
+        reminder_result = handle_tomorrow_reminder(
+            message,
+            user_id,
+            call_mcp_tool,
+        )
+        if reminder_result is not None:
+            return reminder_result
 
 
     if re.search(r"(\d+)分後に(.+?)(?:と言って|教えて|知らせて)$", message):
