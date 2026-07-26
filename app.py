@@ -1605,18 +1605,35 @@ def fetch_recent_github_commits(hours=24):
 
 def _parse_mcp_json_list(raw):
     print(f"[LOG] _parse_mcp_json_list called")
-    """
-    call_mcp_toolの戻り値(文字列 or 既にパース済みのlist/dict)を
-    安全にPythonのlistへ変換する。失敗時は空リスト。
-    """
+
     if not raw:
         return []
+
     if isinstance(raw, list):
         return raw
+
     try:
         data = json.loads(raw)
+
+        if isinstance(data, dict):
+            content = (
+                data.get("result", {})
+                .get("content", [])
+            )
+
+            if content and isinstance(content[0], dict):
+                text = content[0].get("text", "")
+
+                try:
+                    parsed = json.loads(text)
+                    return parsed if isinstance(parsed, list) else []
+                except Exception:
+                    return []
+
         return data if isinstance(data, list) else []
-    except Exception:
+
+    except Exception as e:
+        print("parse error:", e)
         return []
 
 def fetch_ai_secretary_facts(user_id):
