@@ -6,12 +6,18 @@ import os
 import httpx
 
 
-MCP_SERVER_URL = os.environ["MCP_SERVER_URL"]
+def get_config():
+    load_dotenv(override=True)
 
-MCP_API_KEY = os.environ["MCP_API_KEY"]
+    return (
+        os.environ["MCP_SERVER_URL"],
+        os.environ["MCP_API_KEY"]
+    )
 
 
 def call_mcp(tool_name, arguments):
+    MCP_SERVER_URL, MCP_API_KEY = get_config()
+
     payload = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -51,3 +57,43 @@ def test_get_memory():
     print(result)
 
     assert "result" in result
+
+
+def test_save_memory():
+    result = call_mcp(
+        "save_memory",
+        {
+            "user_id": "test-user",
+            "key": "name",
+            "value": "nonkun"
+        }
+    )
+
+    print(result)
+
+    assert "result" in result
+
+
+def test_save_and_get_memory():
+    save_result = call_mcp(
+        "save_memory",
+        {
+            "user_id": "test-user",
+            "key": "test_key",
+            "value": "hello_mcp"
+        }
+    )
+
+    assert "result" in save_result
+
+    get_result = call_mcp(
+        "get_memory",
+        {
+            "user_id": "test-user",
+            "key": "test_key"
+        }
+    )
+
+    assert "result" in get_result
+
+    print(get_result)
