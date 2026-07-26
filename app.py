@@ -46,8 +46,16 @@ from mcp_client import (
     call_mcp_tool as _call_mcp_tool_impl,
     parse_mcp_json_list as _parse_mcp_json_list_impl,
 )
+from ai_client import (
+    generate_chat_completion,
+    generate_secretary_report,
+    client as _ai_client_client,
+)
 
 app = Flask(__name__)
+
+# テスト互換用: 既存の app.client 参照を維持する
+client = _ai_client_client
 
 print("===== APP VERSION CHECK =====")
 print("search_notes enabled")
@@ -1028,13 +1036,12 @@ save_memoryではなく 반드시 set_reminder ツールを使用してくださ
 
     try:
         print("BEFORE CLIENT CHAT COMPLETIONS CREATE")
-        response = client.chat.completions.create(
-            model=MODEL,
+        response = generate_chat_completion(
             messages=messages,
             tools=MCP_TOOLS_SCHEMA,
             tool_choice="auto",
             temperature=0.0,
-            max_tokens=1024
+            max_tokens=1024,
         )
         print("AFTER CLIENT CHAT COMPLETIONS CREATE")
 
@@ -1224,11 +1231,10 @@ save_memoryではなく 반드시 set_reminder ツールを使用してくださ
                     )
                 })
 
-            res2 = client.chat.completions.create(
-                model=MODEL,
+            res2 = generate_chat_completion(
                 messages=messages,
                 temperature=0.85,
-                max_tokens=1024
+                max_tokens=1024,
             )
             reply = res2.choices[0].message.content
         else:
@@ -1504,15 +1510,7 @@ def generate_ai_secretary_report(user_id):
 - 箇条書きや段落を適度に使って読みやすくしてください。
 """
 
-    res = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": "あなたは優秀で親しみやすいAI秘書です。事実に基いて正確なレポートを作成します。"},
-            {"role": "user", "content": prompt_body},
-        ],
-        temperature=0.2,
-        max_tokens=700,
-    )
+    res = generate_secretary_report(prompt_body)
     return res.choices[0].message.content
 
 
