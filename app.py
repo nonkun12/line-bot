@@ -11,6 +11,7 @@ import unicodedata
 import json
 import random
 import threading
+import uuid
 import httpx
 import logging
 logging.basicConfig(level=logging.DEBUG)
@@ -60,7 +61,7 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
     
     payload = {
         "jsonrpc": "2.0",
-        "id": 1,
+        "id": str(uuid.uuid4()),
         "method": "tools/call",
         "params": {
             "name": tool_name,
@@ -89,7 +90,7 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
             MCP_SERVER_URL,
             json=payload,
             headers=headers,
-            timeout=httpx.Timeout(10.0, connect=10.0),
+            timeout=httpx.Timeout(timeout, connect=10.0),
             follow_redirects=False,
         )
         print("MCP AFTER REQUESTS POST")
