@@ -741,7 +741,9 @@ def generate_reply(user_id, message):
                 print("DATE PARSE ERROR:", remind_at, e)
                 continue
 
-            if dt.astimezone(jst).date() == today:
+            now = datetime.now(jst)
+
+            if dt.astimezone(jst).date() == today and dt.astimezone(jst) >= now:
                 todays_reminders.append((dt.astimezone(jst), r.get("message", "")))
 
         if not todays_reminders:
