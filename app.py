@@ -1,21 +1,13 @@
 from flask import Flask, request, jsonify
-from linebot.v3.webhook import WebhookHandler
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from linebot.v3.messaging import (
-    Configuration,
     ApiClient,
     MessagingApi,
     ReplyMessageRequest,
     PushMessageRequest,
     TextMessage
 )
-from groq import Groq
-import os
 import unicodedata
-from dotenv import load_dotenv
-
-load_dotenv()
-import sqlite3
 import json
 import random
 import threading
@@ -26,102 +18,31 @@ import re
 from collections import OrderedDict
 from datetime import datetime, timezone, timedelta
 
+from config import (
+    CHANNEL_ACCESS_TOKEN,
+    CHANNEL_SECRET,
+    GROQ_API_KEY,
+    MCP_SERVER_URL,
+    MCP_API_KEY,
+    INTERNAL_PUSH_KEY,
+    AI_REPORT_GITHUB_REPO,
+    GITHUB_TOKEN,
+    configuration,
+    handler,
+    client,
+    MODEL,
+)
+from db import init_db, save_message, load_history
+
 app = Flask(__name__)
 
-# =========================
-# ENV
-# =========================
-CHANNEL_ACCESS_TOKEN = os.environ["CHANNEL_ACCESS_TOKEN"]
-CHANNEL_SECRET = os.environ["CHANNEL_SECRET"]
-GROQ_API_KEY = os.environ["GROQ_API_KEY"]
-
-# MCPサーバー(Render上のmy-mcp-server)のURL。
-# 例: https://my-mcp-server.onrender.com/mcp
-MCP_SERVER_URL = os.environ["MCP_SERVER_URL"]
-
-# MCPサーバー側のrequireApiKeyと照合される固定キー。
-# my-mcp-server側の環境変数 MCP_API_KEY と同じ値をここに設定する。
-MCP_API_KEY = os.environ["MCP_API_KEY"]
-
-# MCPサーバー(スケジューラー)がリマインダー送信を依頼してくる際に
-# このLINE Bot側の /internal/push エンドポイントを叩く。
-# その時に付けてくるヘッダー "x-internal-key" と照合する値。
-# my-mcp-server側の環境変数 INTERNAL_PUSH_KEY と同じ値をここに設定する。
-INTERNAL_PUSH_KEY = os.environ["INTERNAL_PUSH_KEY"]
-
-# AI秘書レポートで「昨日の実際のコミット」を取得する対象リポジトリ。
-# GITHUB_TOKENは必須ではない(公開リポジトリなら未認証でも取得可)が、
-# レート制限回避のためread-onlyのPATを設定することを推奨。
-AI_REPORT_GITHUB_REPO = os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-
-configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(CHANNEL_SECRET)
-# timeoutを明示的に指定し、Groq側が詰まってもgunicorn workerごと
-# ハングしないようにする(Renderがクラッシュと誤認して再起動する原因になっていた)
-client = Groq(api_key=GROQ_API_KEY, timeout=15.0, max_retries=1)
-
-MODEL = "llama-3.1-8b-instant"
-DB = "chat.db"
 print("===== APP VERSION CHECK =====")
 print("search_notes enabled")
-# =========================
-# DB
-# =========================
-def get_conn():
-    print("[LOG] get_conn called")
-    return sqlite3.connect(DB, check_same_thread=False)
 
-def init_db():
-    print("[LOG] init_db called")
-    with get_conn() as conn:
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS messages(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT,
-            role TEXT,
-            content TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-        # 旧・自前memoryテーブルはもう使わない(MCPサーバー側のSQLiteに一元化)。
-        # 既存データを残したい場合はこのテーブル定義とget_memory/update_memory関数を
-        # 復活させて併用することも可能。
-
+# アプリ起動時にDBスキーマを初期化する
+# (Phase 2-1: db.pyへ移設に伴い、import時の暗黙実行から明示呼び出しに変更。
+#  呼び出しタイミング自体は変更前と同じ位置を維持している)
 init_db()
-
-# =========================
-# 会話保存
-# =========================
-def save_message(user_id, role, content):
-    print(f"[LOG] save_message called: user_id={user_id}, role={role}")
-    try:
-        with get_conn() as conn:
-            conn.execute(
-                "INSERT INTO messages(user_id, role, content) VALUES (?, ?, ?)",
-                (user_id, role, content)
-            )
-    except Exception as e:
-        print("DB SAVE_MESSAGE ERROR:", e)
-
-# =========================
-# 履歴
-# =========================
-def load_history(user_id):
-    print(f"[LOG] load_history called: user_id={user_id}")
-    try:
-        with get_conn() as conn:
-            rows = conn.execute("""
-            SELECT role, content FROM messages
-            WHERE user_id=?
-            ORDER BY id DESC
-            LIMIT 8
-            """, (user_id,)).fetchall()
-    except Exception as e:
-        print("DB LOAD_HISTORY ERROR:", e)
-        return []
-
-    return list(reversed(rows))
 
 # =========================================================
 # MCPクライアント(StreamableHTTP / stateless)
