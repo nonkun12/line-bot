@@ -33,7 +33,13 @@ from config import (
     client,
     MODEL,
 )
-from db import init_db, save_message, load_history
+from db import (
+    init_db,
+    save_message,
+    load_history,
+    create_processed_event,
+    is_processed_event,
+)
 
 app = Flask(__name__)
 
@@ -1520,7 +1526,16 @@ def handle(event):
 
         with _processed_lock:
             if message_id in _processed_message_ids:
-                print("DUPLICATE MESSAGE IGNORED:", message_id)
+                print("DUPLICATE MESSAGE IGNORED (memory):", message_id)
+                return
+
+            if is_processed_event(message_id):
+                print("DUPLICATE MESSAGE IGNORED (db):", message_id)
+                return
+
+            created = create_processed_event(message_id, user_id=user_id, source="line")
+            if not created:
+                print("DUPLICATE MESSAGE IGNORED (create_failed):", message_id)
                 return
 
             _processed_message_ids[message_id] = True
