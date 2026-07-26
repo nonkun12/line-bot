@@ -1471,38 +1471,39 @@ def _process_and_reply(event, user_id, text):
 
     with user_lock:
         print(f"[LOG] USER LOCK ACQUIRED: {user_id}")
-    """generate_reply〜reply_messageまでを非同期に実行する。
-    LINEへのWebhook応答(200 OK)を待たせないためにスレッドへ切り出している。"""
-    try:
-        reply = generate_reply(user_id, text)
-        print("GENERATED REPLY:", repr(reply))
 
+        """generate_reply〜reply_messageまでを非同期に実行する。
+        LINEへのWebhook応答(200 OK)を待たせないためにスレッドへ切り出している。"""
         try:
-            with ApiClient(configuration) as api:
-                MessagingApi(api).reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text=reply)]
+            reply = generate_reply(user_id, text)
+            print("GENERATED REPLY:", repr(reply))
+
+            try:
+                with ApiClient(configuration) as api:
+                    MessagingApi(api).reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text=reply)]
+                        )
                     )
-                )
-            print("REPLY SENT SUCCESS")
-        except Exception as reply_err:
-            # reply_tokenの失効(Webhook受信から短時間で無効になる)等でreply_messageが
-            # 失敗した場合のみ、push_messageで同じ内容を送り直す。
-            # reply_messageが成功する通常時はこのフォールバックには入らない。
-            print("REPLY FAILED, FALLBACK TO PUSH:", reply_err)
-            with ApiClient(configuration) as api:
-                MessagingApi(api).push_message(
-                    PushMessageRequest(
-                        to=user_id,
-                        messages=[TextMessage(text=reply)]
+                print("REPLY SENT SUCCESS")
+            except Exception as reply_err:
+                # reply_tokenの失効(Webhook受信から短時間で無効になる)等でreply_messageが
+                # 失敗した場合のみ、push_messageで同じ内容を送り直す。
+                # reply_messageが成功する通常時はこのフォールバックには入らない。
+                print("REPLY FAILED, FALLBACK TO PUSH:", reply_err)
+                with ApiClient(configuration) as api:
+                    MessagingApi(api).push_message(
+                        PushMessageRequest(
+                            to=user_id,
+                            messages=[TextMessage(text=reply)]
+                        )
                     )
-                )
-            print("PUSH FALLBACK SENT SUCCESS")
-    except Exception as e:
-        import traceback
-        print("===== HANDLE ERROR (async) =====")
-        traceback.print_exc()
+                print("PUSH FALLBACK SENT SUCCESS")
+        except Exception as e:
+            import traceback
+            print("===== HANDLE ERROR (async) =====")
+            traceback.print_exc()
 
 
 # =========================
