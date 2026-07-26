@@ -14,6 +14,7 @@ os.environ["INTERNAL_PUSH_KEY"] = "dummy_push_key"
 sys.path.append("/Users/manabenorimitsu1/Desktop/line-bot")
 
 import app
+import mcp_client
 
 # テスト項目
 # 1. 覚えて ○○ -> save_memory 成功（AIを介さないルート）
@@ -91,7 +92,7 @@ def test_save_memory_query():
 
 def test_save_memory_statement():
     # 記述形式「好きな飲み物はコーヒー」 -> save_memory がスキップされずに通常通り呼ばれることを確認
-    with patch("app.call_mcp_tool") as mock_call:
+    with patch("mcp_client.call_mcp_tool") as mock_call:
         mock_call.return_value = "記憶しました"
         res = app.dispatch_tool_call("user123", "save_memory", {"key": "favorite_drink", "value": "コーヒー"}, original_message="好きな飲み物はコーヒー")
         
@@ -105,7 +106,7 @@ def test_save_memory_statement():
 
 def test_save_memory_clean_words():
     # 「覚えて」「覚えておいて」「記憶して」「記憶してください」が含まれている場合に除去されることを確認
-    with patch("app.call_mcp_tool") as mock_call:
+    with patch("mcp_client.call_mcp_tool") as mock_call:
         mock_call.return_value = "記憶しました"
         
         # 覚えておいて の除去
@@ -143,7 +144,7 @@ def test_save_memory_clean_words():
         print("PASS: 命令文の除去（覚えて、覚えておいて、記憶して、記憶してください）")
 
 def test_save_memory_auto_classify():
-    with patch("app.call_mcp_tool") as mock_call:
+    with patch("mcp_client.call_mcp_tool") as mock_call:
         mock_call.return_value = "記憶しました"
 
         # 1. 好きな食べ物 -> favorite_food

@@ -1,15 +1,8 @@
 import re
-import sys
 
-from mcp_client import call_mcp_tool as _mcp_client_call_mcp_tool, parse_mcp_json_list
+import mcp_client
+from mcp_client import parse_mcp_json_list
 
-
-def _resolve_call_mcp_tool():
-    app_module = sys.modules.get("app")
-    patched = getattr(app_module, "call_mcp_tool", None) if app_module else None
-    if callable(patched):
-        return patched
-    return _mcp_client_call_mcp_tool
 
 
 # Groq(OpenAI互換)のfunction calling形式でMCPツールを公開する。
@@ -253,7 +246,7 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
     MCPサーバー側がuser_idを必須パラメータとして受け取るようになったため、
     そのまま渡すだけでよくなった。
     """
-    call_mcp_tool_fn = _resolve_call_mcp_tool()
+    call_mcp_tool_fn = mcp_client.call_mcp_tool
 
     if name == "save_note":
         return call_mcp_tool_fn(

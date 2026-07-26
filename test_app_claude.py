@@ -13,6 +13,7 @@ os.environ.setdefault("INTERNAL_PUSH_KEY", "dummy")
 
 sys.path.insert(0, os.path.dirname(__file__))
 import app  # noqa: E402
+import mcp_client
 
 
 def _dispatch_save_memory(key, value, original_message):
@@ -21,7 +22,7 @@ def _dispatch_save_memory(key, value, original_message):
     call_mcp_toolへ渡されたargumentsを検証する。
     call_mcp_tool自体は実際のMCPサーバーへHTTPリクエストするため、モックする。
     """
-    with patch.object(app, "call_mcp_tool") as mock_call:
+    with patch.object(mcp_client, "call_mcp_tool") as mock_call:
         mock_call.return_value = "OK"
         app.dispatch_tool_call(
             "test_user",
@@ -113,7 +114,7 @@ def test_name_intent_pattern_still_forces_name_key():
 
 
 def test_question_message_still_skips_save():
-    with patch.object(app, "call_mcp_tool") as mock_call:
+    with patch.object(mcp_client, "call_mcp_tool") as mock_call:
         result = app.dispatch_tool_call(
             "test_user",
             "save_memory",
