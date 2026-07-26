@@ -97,3 +97,29 @@ def test_save_and_get_memory():
     assert "result" in get_result
 
     print(get_result)
+
+
+def test_save_note_and_search_notes():
+    save_result = call_mcp(
+        "save_note",
+        {
+            "user_id": "test-user",
+            "title": "pytestテストメモ",
+            "body": "MCP検索テスト用のメモです",
+            "category": "test"
+        }
+    )
+
+    assert "result" in save_result
+
+    search_result = call_mcp(
+        "search_notes",
+        {
+            "user_id": "test-user",
+            "keyword": "MCP検索"
+        }
+    )
+
+    assert "result" in search_result
+
+    print(search_result)
