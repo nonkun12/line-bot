@@ -1038,6 +1038,49 @@ def generate_reply(user_id, message):
 
 
     # =========================
+    # 毎日・毎朝のリマインダー
+    # =========================
+    if ("毎日" in message or "毎朝" in message) and "時" in message:
+        m = re.search(r"(?:毎日|毎朝)(\d+)時(.+)", message)
+
+        if m:
+            hour = int(m.group(1))
+
+            reminder_text = (
+                m.group(2)
+                .replace("を覚えて", "")
+                .replace("覚えて", "")
+                .replace("教えて", "")
+                .replace("知らせて", "")
+                .lstrip("に")
+                .strip()
+            )
+
+            jst = timezone(timedelta(hours=9))
+            now = datetime.now(jst)
+
+            remind_at = now.replace(
+                hour=hour,
+                minute=0,
+                second=0,
+                microsecond=0
+            )
+
+            if remind_at <= now:
+                remind_at += timedelta(days=1)
+
+            return call_mcp_tool(
+                "set_reminder",
+                {
+                    "user_id": user_id,
+                    "remind_at": remind_at.isoformat(),
+                    "message": reminder_text,
+                    "repeat": "daily"
+                }
+            )
+
+
+    # =========================
     # 明日○時 のリマインダー
     # =========================
     if "明日" in message and "時" in message and ("覚えて" in message or "教えて" in message or "知らせて" in message):
