@@ -3,11 +3,23 @@ import sys
 from unittest.mock import patch, MagicMock
 
 # モック環境変数の設定
+# モック環境変数の設定
 os.environ["CHANNEL_ACCESS_TOKEN"] = "dummy_token"
 os.environ["CHANNEL_SECRET"] = "dummy_secret"
 os.environ["GROQ_API_KEY"] = "dummy_groq_key"
-os.environ["MCP_SERVER_URL"] = "http://dummy-mcp-server/mcp"
-os.environ["MCP_API_KEY"] = "dummy_mcp_key"
+
+# MCP_SERVER_URL と MCP_API_KEY は GitHub Actions secrets を使用する
+# ローカルテスト時だけ未設定ならダミーを入れる
+os.environ.setdefault(
+    "MCP_SERVER_URL",
+    "http://dummy-mcp-server/mcp"
+)
+
+os.environ.setdefault(
+    "MCP_API_KEY",
+    "dummy_mcp_key"
+)
+
 os.environ["INTERNAL_PUSH_KEY"] = "dummy_push_key"
 
 # app.pyがロードされるパスを追加
