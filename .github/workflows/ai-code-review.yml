@@ -13,9 +13,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Get changed files
         run: |
+          git fetch origin main
           git diff origin/main...HEAD > diff.txt
 
       - name: Show diff
