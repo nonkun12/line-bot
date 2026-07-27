@@ -154,6 +154,22 @@ _pending_confirm_lock = threading.Lock()
 
 
 # =========================
+# 削除系コマンドの自然文パターン
+# =========================
+# generate_reply() は毎回呼ばれるため、正規表現はここで1回だけコンパイルする
+_DELETE_ALL_MEMORY_PATTERN = re.compile(
+    r"記憶.*(全部|全て|すべて).*(消して|消す|削除|消していい)"
+    r"|(全部|全て|すべて).*記憶.*(消して|消す|削除|消していい)"
+)
+
+_DELETE_ALL_NOTES_PATTERN = re.compile(
+    r"メモ.*(全部|全て|すべて).*(消して|消す|削除|消していい)"
+    r"|(全部|全て|すべて).*メモ.*(消して|消す|削除|消していい)"
+    r"|^メモ(を)?消して$"
+)
+
+
+# =========================
 # AI本体(返信生成 + MCPツール呼び出しループ)
 # =========================
 def generate_reply(user_id, message):
@@ -416,7 +432,7 @@ def generate_reply(user_id, message):
         "記憶を全部削除",
         "全ての記憶を削除",
         "全部の記憶を削除"
-    ]:
+    ] or _DELETE_ALL_MEMORY_PATTERN.search(message):
         with _pending_confirm_lock:
             _pending_delete_confirmation[user_id] = "delete_all_memory"
         return "記憶をすべて削除しますか？「はい」と送ってください"
@@ -430,7 +446,7 @@ def generate_reply(user_id, message):
         "メモ全部削除",
         "全メモ削除",
         "メモを全削除"
-    ]:
+    ] or _DELETE_ALL_NOTES_PATTERN.search(message):
         with _pending_confirm_lock:
             _pending_delete_confirmation[user_id] = "delete_all_notes"
         return "全メモを削除しますか？「はい」と送ってください"
@@ -738,10 +754,33 @@ save_memoryではなく 반드시 set_reminder ツールを使用してくださ
 
     except Exception as e:
         print("TOOL CALL ERROR CHECK, ATTEMPTING FALLBACK:", e)
-        # failed_generation として含まれている(例: "<function=list_reminders />")。
-        # ここから関数名だけ正規表現で拾い、引数なしツール呼び出しとして
-        # 手動で再現することで、ユーザーには「エラー」ではなく結果を返す。
-        print("TOOL CALL RETRY ALSO FAILED, ATTEMPTING FALLBACK PARSE:", e2 := e) # 変数名変更なしの文脈に配慮しそのまま
+
+        # 明確なAIサービスエラーの場合はfallback解析を実行しない。
+        # failed_generation内にfunction文字列が残っていても
+        # 誤ってMCPツールを実行しないための安全対策。
+        status_code = getattr(e, "status_code", None)
+
+        if status_code == 429 or "429" in str(e):
+            print("===== GENERATE_REPLY END (RATE LIMIT, NO TOOL CALL) =====")
+            return (
+                "ごめんなさい、今日利用できるAIの上限に達してしまいました🙏\n"
+                "しばらく時間をおいてから、もう一度話しかけてみてください。"
+            )
+
+        if status_code == 401 or status_code == 403:
+            print("===== GENERATE_REPLY END (AUTH ERROR, NO TOOL CALL) =====")
+            return "AIサービスへの接続設定に問題があるようです。少し時間を置いてもう一度お試しください。"
+
+        if status_code is not None and status_code >= 500:
+            print("===== GENERATE_REPLY END (SERVER ERROR, NO TOOL CALL) =====")
+            return "AIサービス側で一時的な不具合が起きています。少ししてからもう一度お試しください。"
+
+        if "timeout" in str(e).lower() or "timed out" in str(e).lower():
+            print("===== GENERATE_REPLY END (TIMEOUT, NO TOOL CALL) =====")
+            return "応答に時間がかかりすぎたため、一度中断しました。もう一度話しかけてみてください。"
+
+        # ここから先はfunction形式崩れなどの場合のみfallback解析する
+        print("TOOL CALL RETRY ALSO FAILED, ATTEMPTING FALLBACK PARSE:", e2 := e)
         failed_name = None
         failed_args = {}
         try:

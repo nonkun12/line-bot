@@ -258,11 +258,19 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
             }
         )
     if name == "save_memory":
-        # ユーザーの質問文（「〜は？」で終わる）である場合は保存をスキップする
+        # ユーザーの質問文・確認文・削除依頼の場合は保存をスキップする
+        # 平叙文の記憶保存（例: 好きな飲み物はコーラ）は維持する
         msg_stripped = (original_message or "").strip()
-        if msg_stripped.endswith(("は？", "は?")):
-            print("SAVE_MEMORY SKIPPED: message ends with 'は？' or 'は?'")
+
+        _DELETE_INTENT_WORDS = ("消して", "消す", "削除")
+
+        if msg_stripped.endswith(("？", "?")):
+            print("SAVE_MEMORY SKIPPED: message ends with question mark")
             return "ユーザーの質問文であるため、記憶への保存はスキップされました。"
+
+        if any(w in msg_stripped for w in _DELETE_INTENT_WORDS):
+            print("SAVE_MEMORY SKIPPED: delete intent:", repr(msg_stripped))
+            return "削除依頼のため、記憶への保存はスキップされました。"
 
         # 「覚えて」「覚えておいて」などの命令文を除去し、arguments["value"]へ戻す
         val = arguments.get("value", "")
