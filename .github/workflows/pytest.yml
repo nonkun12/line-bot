@@ -36,6 +36,10 @@ jobs:
           echo "MCP host:"
           echo $MCP_SERVER_URL | sed 's#https://##' | cut -d/ -f1
 
+      - name: Check DNS
+        run: |
+          nslookup my-mcp-server-dqbx.onrender.com
+
       - name: Run pytest
         env:
           MCP_SERVER_URL: ${{ secrets.MCP_SERVER_URL }}
