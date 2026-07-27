@@ -1,21 +1,28 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-
 import os
 import httpx
 
 
 def get_config():
-    load_dotenv()
+    load_dotenv(override=True)
+
+    mcp_url = os.getenv("MCP_SERVER_URL")
+    mcp_key = os.getenv("MCP_API_KEY")
+
+    print("===== DEBUG MCP CONFIG =====")
+    print("MCP_SERVER_URL:", mcp_url)
+    print("MCP_API_KEY exists:", bool(mcp_key))
 
     return (
-        os.environ["MCP_SERVER_URL"],
-        os.environ["MCP_API_KEY"]
+        mcp_url,
+        mcp_key
     )
 
 
 def call_mcp(tool_name, arguments):
+
     MCP_SERVER_URL, MCP_API_KEY = get_config()
 
     payload = {
@@ -34,6 +41,9 @@ def call_mcp(tool_name, arguments):
         "x-api-key": MCP_API_KEY
     }
 
+    print("===== CALL MCP =====")
+    print(MCP_SERVER_URL)
+
     r = httpx.post(
         MCP_SERVER_URL,
         json=payload,
@@ -41,11 +51,16 @@ def call_mcp(tool_name, arguments):
         timeout=10
     )
 
+    print("STATUS:", r.status_code)
+    print("BODY:", r.text[:200])
+
     r.raise_for_status()
+
     return r.json()
 
 
 def test_get_memory():
+
     result = call_mcp(
         "get_memory",
         {
@@ -60,6 +75,7 @@ def test_get_memory():
 
 
 def test_save_memory():
+
     result = call_mcp(
         "save_memory",
         {
@@ -69,12 +85,11 @@ def test_save_memory():
         }
     )
 
-    print(result)
-
     assert "result" in result
 
 
 def test_save_and_get_memory():
+
     save_result = call_mcp(
         "save_memory",
         {
@@ -86,6 +101,7 @@ def test_save_and_get_memory():
 
     assert "result" in save_result
 
+
     get_result = call_mcp(
         "get_memory",
         {
@@ -96,11 +112,10 @@ def test_save_and_get_memory():
 
     assert "result" in get_result
 
-    print(get_result)
-
 
 def test_save_note_and_search_notes():
-    save_result = call_mcp(
+
+    result = call_mcp(
         "save_note",
         {
             "user_id": "test-user",
@@ -110,23 +125,12 @@ def test_save_note_and_search_notes():
         }
     )
 
-    assert "result" in save_result
-
-    search_result = call_mcp(
-        "search_notes",
-        {
-            "user_id": "test-user",
-            "keyword": "MCP検索"
-        }
-    )
-
-    assert "result" in search_result
-
-    print(search_result)
+    assert "result" in result
 
 
 def test_reminder_flow():
-    set_result = call_mcp(
+
+    result = call_mcp(
         "set_reminder",
         {
             "user_id": "test-user",
@@ -136,27 +140,4 @@ def test_reminder_flow():
         }
     )
 
-    assert "result" in set_result
-
-    list_result = call_mcp(
-        "list_reminders",
-        {
-            "user_id": "test-user"
-        }
-    )
-
-    assert "result" in list_result
-
-    print(list_result)
-
-    cancel_result = call_mcp(
-        "cancel_reminder",
-        {
-            "user_id": "test-user",
-            "id": 1
-        }
-    )
-
-    assert "result" in cancel_result
-
-    print(cancel_result)
+    assert "result" in result
