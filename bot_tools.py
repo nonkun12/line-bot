@@ -262,6 +262,9 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
         # 平叙文の記憶保存（例: 好きな飲み物はコーラ）は維持する
         msg_stripped = (original_message or "").strip()
 
+        print("DEBUG SAVE_MEMORY ORIGINAL:", repr(original_message))
+        print("DEBUG SAVE_MEMORY ARGUMENTS:", arguments)
+
         _DELETE_INTENT_WORDS = ("消して", "消す", "削除")
 
         if msg_stripped.endswith(("？", "?")):
