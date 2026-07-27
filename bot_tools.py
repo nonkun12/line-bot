@@ -258,6 +258,9 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
             }
         )
     if name == "save_memory":
+        print("DEBUG SAVE_MEMORY CALLED")
+        print("DEBUG original_message =", repr(original_message))
+        print("DEBUG arguments =", arguments)
         # ユーザーの質問文・確認文・削除依頼の場合は保存をスキップする
         # 平叙文の記憶保存（例: 好きな飲み物はコーラ）は維持する
         msg_stripped = (original_message or "").strip()

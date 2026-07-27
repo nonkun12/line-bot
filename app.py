@@ -265,7 +265,15 @@ def generate_reply(user_id, message):
     # =========================
 
     if "覚えて" in message and not ("明日" in message and "時" in message) and not any(
-        p in message for p in ("教えて", "覚えていること", "覚えてること")
+        p in message for p in (
+        "教えて",
+        "覚えていること",
+        "覚えてること",
+        "何を覚えてる",
+        "何を覚えている",
+        "覚えてる？",
+        "覚えている？"
+    )
     ):
         if message.startswith("覚えて"):
             text = re.sub(r"^覚えて\s*[:：]?\s*", "", message)
