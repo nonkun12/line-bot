@@ -320,6 +320,18 @@ def generate_reply(user_id, message):
         print("NAME FROM MCP:", repr(name))
 
         if name:
+            try:
+                if isinstance(name, str):
+                    name_data = json.loads(name)
+                else:
+                    name_data = name
+
+                if isinstance(name_data, dict):
+                    name = name_data.get("value", name)
+
+            except Exception as e:
+                print("NAME PARSE ERROR:", e)
+
             return f"あなたの名前は {name} です。"
 
         return "名前はまだ記憶されていません。"
