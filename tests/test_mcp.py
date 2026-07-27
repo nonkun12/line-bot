@@ -7,7 +7,7 @@ import httpx
 
 
 def get_config():
-    load_dotenv(override=True)
+    load_dotenv()
 
     return (
         os.environ["MCP_SERVER_URL"],
