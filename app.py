@@ -1432,6 +1432,11 @@ def internal_push():
             print("FINAL TYPE:", type(user_id))
             print("FINAL LEN:", len(user_id))
 
+            print("REQUEST BODY:", PushMessageRequest(
+                to=user_id,
+                messages=[TextMessage(text=message)]
+            ).dict())
+
             MessagingApi(api).push_message(
                 PushMessageRequest(
                     to=user_id,
