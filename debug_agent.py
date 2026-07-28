@@ -1,21 +1,30 @@
 from github_client import get_github_file
+from render_client import get_render_logs
 from ai_client import generate_chat_completion
 
 
-def run_debug_agent(error_text):
+def run_debug_agent(error_text=""):
 
     try:
+        # Render本番ログ取得
+        logs = get_render_logs()
+
+        # GitHubコード取得
         code = get_github_file("app.py")
 
         prompt = f"""
 あなたはAIデバッグエージェントです。
 
-以下のエラーを解析してください。
+本番環境(Render)で発生している問題を解析してください。
+ログ内のERROR、Exception、HTTPエラーを最優先してください。推測ではなくログに存在する事実を使ってください。
 
-エラー:
+Renderログ:
+{logs[-8000:]}
+
+ユーザー入力:
 {error_text}
 
-対象コード:
+対象コード(app.py):
 {code[:12000]}
 
 回答形式:
@@ -30,7 +39,7 @@ def run_debug_agent(error_text):
             messages=[
                 {
                     "role": "system",
-                    "content": "あなたは優秀なPythonデバッグエンジニアです。"
+                    "content": "あなたは優秀なPythonデバッグエンジニアです。ログとコードから原因を特定してください。"
                 },
                 {
                     "role": "user",
