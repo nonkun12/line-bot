@@ -1099,6 +1099,7 @@ def handle(event):
     print("===== EVENT TRIGGERED =====")
     try:
         user_id = event.source.user_id
+        print(f"[DEBUG LINE USER ID] {user_id}")
         text = event.message.text
         message_id = event.message.id
 
