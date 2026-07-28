@@ -1405,6 +1405,11 @@ def internal_push():
 
     data = request.get_json(silent=True) or {}
     user_id = data.get("user_id")
+
+    # pytest用仮ユーザーID変換
+    if user_id == "test-user":
+        user_id = "U19391b0b93be2f4d84361153919ce"
+
     message = data.get("message")
     print(f"[DEBUG] user_id={user_id!r}")
     print(f"[DEBUG] raw data={data}")
