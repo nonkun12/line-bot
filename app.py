@@ -1200,6 +1200,7 @@ def handle(event):
     print(f"[LOG] handle MessageEvent called")
 
     print("=== NORMAL LINE DEBUG ===")
+    print("=== WEBHOOK RECEIVED ===")
     print("LINE USER ID:", repr(event.source.user_id))
     print("TYPE:", type(event.source.user_id))
     print("LEN:", len(event.source.user_id))
