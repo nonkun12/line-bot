@@ -1198,6 +1198,12 @@ def _process_and_reply(event, user_id, text):
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle(event):
     print(f"[LOG] handle MessageEvent called")
+
+    print("=== NORMAL LINE DEBUG ===")
+    print("LINE USER ID:", repr(event.source.user_id))
+    print("TYPE:", type(event.source.user_id))
+    print("LEN:", len(event.source.user_id))
+    print("========================")
     print("===== EVENT TRIGGERED =====")
     try:
         user_id = event.source.user_id
