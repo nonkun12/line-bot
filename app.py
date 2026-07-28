@@ -1428,6 +1428,10 @@ def internal_push():
 
     try:
         with ApiClient(configuration) as api:
+            print("FINAL TO:", repr(user_id))
+            print("FINAL TYPE:", type(user_id))
+            print("FINAL LEN:", len(user_id))
+
             MessagingApi(api).push_message(
                 PushMessageRequest(
                     to=user_id,
