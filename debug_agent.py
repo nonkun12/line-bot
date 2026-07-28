@@ -1,6 +1,7 @@
 from github_client import get_github_file
 from render_client import get_render_logs
 from ai_client import generate_chat_completion
+from code_analyzer import find_relevant_code
 
 
 def run_debug_agent(error_text=""):
@@ -11,6 +12,9 @@ def run_debug_agent(error_text=""):
 
         # GitHubコード取得
         code = get_github_file("app.py")
+
+        # エラー関連コード抽出
+        relevant_code = find_relevant_code(code, logs)
 
         prompt = f"""
 あなたはAIデバッグエージェントです。
@@ -25,7 +29,7 @@ Renderログ:
 {error_text}
 
 対象コード(app.py):
-{code[:12000]}
+{relevant_code[:12000]}
 
 回答形式:
 
