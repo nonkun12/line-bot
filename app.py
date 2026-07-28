@@ -60,6 +60,8 @@ from bot_tools import (
     dispatch_tool_call as _dispatch_tool_call_impl,
 )
 
+from debug_agent import run_debug_agent
+
 app = Flask(__name__)
 
 # テスト互換用: 既存の app.client 参照を維持する
@@ -174,6 +176,14 @@ _DELETE_ALL_NOTES_PATTERN = re.compile(
 # =========================
 def generate_reply(user_id, message):
     print("=== GENERATE_REPLY ===", repr(message))
+
+    # =========================
+    # AI Debug Agent
+    # =========================
+    if message.startswith("debug"):
+        error_text = message.replace("debug", "", 1).strip()
+        return run_debug_agent(error_text)
+
 
     # =========================
     # 時間指定リマインダー強制処理
