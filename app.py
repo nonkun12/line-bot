@@ -750,6 +750,11 @@ save_memoryではなく 반드시 set_reminder ツールを使用してくださ
 
     messages.append({"role": "user", "content": message})
 
+    # [FIX] choice.content内に壊れたfunction-call文字列("<function=...>")が
+    # 混入していた場合に、ユーザー向け返信を差し替えるためのオーバーライド。
+    # try/exceptどちらの経路を通っても参照できるよう、tryブロックの外で初期化する。
+    sanitized_override_reply = None
+
     try:
         print("BEFORE CLIENT CHAT COMPLETIONS CREATE")
         response = generate_chat_completion(
@@ -780,7 +785,88 @@ save_memoryではなく 반드시 set_reminder ツールを使用してくださ
             # failed_generation として含まれている(例: "<function=list_reminders />")。
             # ここから関数名だけ正規表現で拾い、引数なしツール呼び出しとして
             # 手動で再現することで、ユーザーには「エラー」ではなく結果を返す。
-            pass
+            #
+            # [FIX] 従来はここが未実装(pass)のままだったため、
+            # choice.contentに "<function=set_reminder>{...}</function>" のような
+            # 壊れたfunction-call文字列が混入した場合、そのままユーザーへの
+            # 返信文として送信されてしまっていた(症状③の直接原因)。
+            # ここでcontentを検査し、該当パターンがあれば例外時fallbackと同じ
+            # forced_tool_call経路に合流させ、既存のtool実行フロー(dispatch_tool_call)
+            # をそのまま利用する。set_reminder等のtool実行ロジック自体は変更しない。
+            inline_content = choice.content or ""
+            inline_match = re.search(
+                r"<function=([a-zA-Z0-9_]+)\s*(\{.*\})?\s*(?:/?>|</function>)",
+                inline_content,
+                re.DOTALL
+            )
+            if inline_match:
+                print("INLINE FUNCTION-CALL STRING DETECTED IN CONTENT:", repr(inline_content))
+                inline_name = inline_match.group(1)
+                inline_args = {}
+                if inline_match.group(2):
+                    try:
+                        inline_args = json.loads(inline_match.group(2))
+                    except Exception as args_err:
+                        print("INLINE FUNCTION-CALL ARGS PARSE ERROR:", args_err)
+                        inline_args = {}
+
+                if inline_name in {
+                    "list_reminders",
+                    "get_memory",
+                    "save_memory",
+                    "search_notes",
+                    "get_today_schedule",
+                }:
+                    # 副作用のない読み取り系ツールはそのまま合流させる。
+                    forced_tool_call = inline_name
+                    forced_tool_args = inline_args
+
+                elif inline_name == "set_reminder":
+                    # [FIX] set_reminderは実際の予約という副作用があるため、
+                    # 壊れた文字列から復元した引数をそのまま渡すのではなく、
+                    # 既存の ensure_jst_offset() を使って以下を検証し、
+                    # 全て満たした場合のみ既存tool処理へ合流させる。
+                    #   - message が存在する
+                    #   - remind_at が存在する
+                    #   - remind_at が正しい日時形式として解釈できる
+                    reminder_message = inline_args.get("message")
+                    reminder_remind_at = inline_args.get("remind_at")
+
+                    validated_args = None
+                    if reminder_message and reminder_remind_at:
+                        try:
+                            normalized_remind_at = ensure_jst_offset(reminder_remind_at)
+                            datetime.fromisoformat(normalized_remind_at)
+                            validated_args = dict(inline_args)
+                            validated_args["remind_at"] = normalized_remind_at
+                        except Exception as validate_err:
+                            print(
+                                "INLINE SET_REMINDER VALIDATION ERROR:",
+                                validate_err
+                            )
+                            validated_args = None
+
+                    if validated_args is not None:
+                        forced_tool_call = "set_reminder"
+                        forced_tool_args = validated_args
+                    else:
+                        # 検証に失敗した場合はset_reminderを実行せず、
+                        # 誤った時刻でのリマインダー誤登録を防ぐ。
+                        print(
+                            "INLINE SET_REMINDER REJECTED (invalid args):",
+                            repr(inline_args)
+                        )
+                        sanitized_override_reply = (
+                            "うまく処理できませんでした。もう一度お試しください🙏"
+                        )
+
+                else:
+                    # 上記以外のツール名、または副作用が大きく検証手段がない
+                    # ツール(cancel_reminder等)はこれまで通り対象外とし、
+                    # function文字列がユーザーに見えないよう定型文へ差し替える。
+                    sanitized_override_reply = (
+                        "うまく処理できませんでした。もう一度お試しください🙏"
+                    )
 
     except Exception as e:
         print("TOOL CALL ERROR CHECK, ATTEMPTING FALLBACK:", e)
@@ -977,7 +1063,12 @@ save_memoryではなく 반드시 set_reminder ツールを使用してくださ
             )
             reply = res2.choices[0].message.content
         else:
-            reply = choice.content
+            # [FIX] inline function-call検出で差し替え済みならそちらを優先する
+            reply = (
+                sanitized_override_reply
+                if sanitized_override_reply is not None
+                else choice.content
+            )
 
     except Exception as e:
         print("AI ERROR:", e)
@@ -997,6 +1088,17 @@ save_memoryではなく 반드시 set_reminder ツールを使用してくださ
             reply = "応答に時間がかかりすぎたため、一度中断しました。もう一度話しかけてみてください。"
         else:
             reply = "エラーが発生してしまいました。もう一度試してみてください🙏"
+
+    # [FIX] LINE送信直前の最終防波堤としてのサニタイズ。
+    # 上記のどの分岐でも拾いきれなかった場合に備え、reply確定後・
+    # save_message/reply_messageに渡す前に、function-call文字列が
+    # 残っていないかを必ず再チェックする。reply_message自体の呼び出し
+    # フロー(_process_and_reply側)は変更していない。
+    if reply and re.search(
+        r"<function=[a-zA-Z0-9_]+.*?(?:/>|</function>)", reply, re.DOTALL
+    ):
+        print("SANITIZE: FUNCTION-CALL STRING FOUND IN FINAL REPLY, REPLACING:", repr(reply))
+        reply = "うまく処理できませんでした。もう一度お試しください🙏"
 
     save_message(user_id, "assistant", reply)
     print("===== GENERATE_REPLY END =====")
@@ -1337,3 +1439,6 @@ def home():
 @app.route("/health")
 def health():
     return jsonify({"ok": True, "timestamp": datetime.now(timezone.utc).isoformat()})
+if __name__ == "__main__":
+    print("===== FLASK SERVER START =====")
+    app.run(host="0.0.0.0", port=5001)
