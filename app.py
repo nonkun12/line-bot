@@ -1415,6 +1415,14 @@ def internal_push():
     print(f"[DEBUG] raw data={data}")
     print(f"[DEBUG] headers={dict(request.headers)}")
 
+    # LINE Push API送信前デバッグ
+    print("=== PUSH DEBUG ===")
+    print("TOKEN PREFIX:", CHANNEL_ACCESS_TOKEN[:10])
+    print("USER_ID LENGTH:", len(user_id))
+    print("USER_ID REPR:", repr(user_id))
+    print("MESSAGE:", repr(message))
+    print("==================")
+
     if not user_id or not message:
         return jsonify({"ok": False, "error": "user_id and message are required"}), 400
 
