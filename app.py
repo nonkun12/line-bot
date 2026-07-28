@@ -1304,6 +1304,8 @@ def internal_push():
     user_id = data.get("user_id")
     message = data.get("message")
     print(f"[DEBUG] user_id={user_id!r}")
+    print(f"[DEBUG] raw data={data}")
+    print(f"[DEBUG] headers={dict(request.headers)}")
 
     if not user_id or not message:
         return jsonify({"ok": False, "error": "user_id and message are required"}), 400
