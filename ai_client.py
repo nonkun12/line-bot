@@ -2,14 +2,18 @@ from config import client, MODEL
 
 
 def generate_chat_completion(*, messages, tools=None, tool_choice="auto", temperature=0.0, max_tokens=1024):
-    return client.chat.completions.create(
-        model=MODEL,
-        messages=messages,
-        tools=tools,
-        tool_choice=tool_choice,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
+    kwargs = {
+        "model": MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+
+    if tools:
+        kwargs["tools"] = tools
+        kwargs["tool_choice"] = tool_choice
+
+    return client.chat.completions.create(**kwargs)
 
 
 def generate_secretary_report(prompt_body):
