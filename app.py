@@ -676,7 +676,6 @@ def generate_reply(user_id, message):
     print("USER:", user_id)
     print("MESSAGE:", message)
 
-    save_message(user_id, "user", message)
 
     personalities = [
         "あなたは優しくフレンドリーなAIです。",
@@ -1126,6 +1125,7 @@ save_memoryではなく 반드시 set_reminder ツールを使用してくださ
         print("SANITIZE: FUNCTION-CALL STRING FOUND IN FINAL REPLY, REPLACING:", repr(reply))
         reply = "うまく処理できませんでした。もう一度お試しください🙏"
 
+    save_message(user_id, "user", message)
     save_message(user_id, "assistant", reply)
     print("===== GENERATE_REPLY END =====")
     return reply
