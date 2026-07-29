@@ -9,9 +9,10 @@ def generate_chat_completion(*, messages, tools=None, tool_choice="auto", temper
         "max_tokens": max_tokens,
     }
 
-    if tools:
-        kwargs["tools"] = tools
-        kwargs["tool_choice"] = tool_choice
+    # 一時テスト: Groq tools 400対策
+    # if tools:
+    #     kwargs["tools"] = tools
+    #     kwargs["tool_choice"] = tool_choice
 
     return client.chat.completions.create(**kwargs)
 
