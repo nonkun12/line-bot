@@ -1,6 +1,8 @@
 import sqlite3
+import os
 
-DB = "chat.db"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB = os.environ.get("CHAT_DB_PATH", os.path.join(BASE_DIR, "chat.db"))
 
 
 # =========================
