@@ -774,6 +774,8 @@ save_memoryではなく 반드시 set_reminder ツールを使用してくださ
 
         choice = response.choices[0].message
         print("CHOICE:", choice)
+        print("CHOICE CONTENT:", repr(choice.content))
+        print("CHOICE TOOL_CALLS:", getattr(choice, "tool_calls", None))
 
         tool_calls_happened = False
         forced_tool_call = None
