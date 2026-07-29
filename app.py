@@ -1073,6 +1073,11 @@ save_memoryではなく 반드시 set_reminder ツールを使用してくださ
                     )
                 })
 
+            print("===== RES2 DEBUG START =====")
+            for m in messages:
+                print(m)
+            print("===== RES2 DEBUG END =====")
+
             res2 = generate_chat_completion(
                 messages=messages,
                 temperature=0.85,
