@@ -750,6 +750,8 @@ save_memoryではなく 반드시 set_reminder ツールを使用してくださ
     messages = [{"role": "system", "content": system_prompt}]
 
     for role, content in history:
+        if role == "user" and content == message:
+            continue
         messages.append({"role": role, "content": content})
 
     messages.append({"role": "user", "content": message})
