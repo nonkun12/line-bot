@@ -745,7 +745,7 @@ get_memoryツールは使用しないでください。
 save_memoryではなく 반드시 set_reminder ツールを使用してください。
 """
 
-    history = load_history(user_id)
+    history = load_history(user_id)[-6:]
     messages = [{"role": "system", "content": system_prompt}]
 
     for role, content in history:
