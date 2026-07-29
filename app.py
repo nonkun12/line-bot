@@ -1017,8 +1017,21 @@ save_memoryではなく 반드시 set_reminder ツールを使用してくださ
         })
 
         tool_results_by_name = {}
+        executed_side_effect_tools = set()
+
         for tc in choice.tool_calls:
             tc_name = tc.function.name
+
+            if tc_name in {
+                "set_reminder",
+                "cancel_reminder",
+                "save_memory"
+            }:
+                if tc_name in executed_side_effect_tools:
+                    print(f"[SKIP DUPLICATE TOOL] {tc_name}")
+                    continue
+
+                executed_side_effect_tools.add(tc_name)
             try:
                 tc_args = json.loads(tc.function.arguments)
             except Exception as e:
