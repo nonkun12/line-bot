@@ -936,7 +936,7 @@ save_memoryではなく 반드시 set_reminder ツールを使用してくださ
         # 優先して使うため、JSON引数の復元が多少不完全でも実害が小さい
         # (set_reminder/cancel_reminderは実際の予約/取消という副作用があり、
         # 引数を誤って復元すると影響が大きいため引き続き対象外)
-        SAFE_FALLBACK_TOOLS = {"list_reminders", "get_memory", "save_memory"}
+        SAFE_FALLBACK_TOOLS = {"list_reminders", "get_memory"}
 
         if failed_name in SAFE_FALLBACK_TOOLS:
             forced_tool_call = failed_name
