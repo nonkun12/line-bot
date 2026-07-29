@@ -3,36 +3,22 @@ import difflib
 from datetime import datetime
 
 
-def extract_python_code(text):
+def clean_code_block(text):
     """
-    LLM出力から純粋なPythonコードのみを抽出する
+    LLM出力からMarkdown記法や説明文を除去し、Pythonコードのみを抽出する
     """
     if not text:
         return ""
 
-    # 1. ```python ... ``` または ``` ... ``` コードブロックを優先抽出
-    pattern = r"```(?:python|py)?\s*\n?(.*?)\s*```"
+    # ```python ... ``` または ``` ... ``` コードブロックを抽出
+    pattern = r"```(?:python|diff)?\s*\n?(.*?)\s*```"
     match = re.search(pattern, text, re.DOTALL)
     if match:
         return match.group(1).strip()
 
-    # 2. コードフェンス記号がない場合、def / async def / class / import / from 等の開始位置を探索
-    lines = text.splitlines()
-    code_start_keywords = ("def ", "async def ", "class ", "import ", "from ", "@")
-    start_idx = None
-
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if any(stripped.startswith(kw) for kw in code_start_keywords):
-            start_idx = i
-            break
-
-    if start_idx is not None:
-        code_lines = lines[start_idx:]
-        return "\n".join(code_lines).strip()
-
-    # 3. 抽出失敗時は元のtextを返す
-    return text.strip()
+    # コードフェンス記号を除去
+    cleaned = re.sub(r"^```.*$", "", text, flags=re.MULTILINE).strip()
+    return cleaned
 
 
 def generate_patch(original_code, fixed_code, filename="app.py"):
@@ -40,7 +26,7 @@ def generate_patch(original_code, fixed_code, filename="app.py"):
     AI修正案をdiff形式で生成する
     """
 
-    cleaned_fixed = extract_python_code(fixed_code)
+    cleaned_fixed = clean_code_block(fixed_code)
 
     orig_lines = original_code.splitlines()
     fixed_lines = cleaned_fixed.splitlines()

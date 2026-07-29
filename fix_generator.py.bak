@@ -1,0 +1,55 @@
+from datetime import datetime
+
+
+def generate_patch(original_code, fixed_code, filename="app.py"):
+    """
+    AI修正案をdiff形式で生成する
+    """
+
+    import difflib
+
+    diff = difflib.unified_diff(
+        original_code.splitlines(),
+        fixed_code.splitlines(),
+        fromfile=filename,
+        tofile=filename + ".fixed",
+        lineterm=""
+    )
+
+    patch = "\n".join(diff)
+
+    return f"""
+🛠️ Fix Generator
+
+Patch generated
+
+File:
+{filename}
+
+Created:
+{datetime.now()}
+
+--- PATCH START ---
+
+{patch}
+
+--- PATCH END ---
+"""
+
+
+def create_backup(filename):
+
+    import os
+
+    if not os.path.exists(filename):
+        return "バックアップ対象なし"
+
+    backup = filename + ".backup"
+
+    with open(filename, "r", encoding="utf-8") as src:
+        data = src.read()
+
+    with open(backup, "w", encoding="utf-8") as dst:
+        dst.write(data)
+
+    return f"バックアップ作成: {backup}"

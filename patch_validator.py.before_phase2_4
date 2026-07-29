@@ -1,0 +1,152 @@
+import ast
+import re
+
+
+def validate_python_code(code):
+
+    try:
+        ast.parse(code)
+        return {
+            "ok": True,
+            "message": "Python syntax OK"
+        }
+
+    except SyntaxError as e:
+        return {
+            "ok": False,
+            "message": f"Syntax Error: {e}"
+        }
+
+
+def review_patch(patch):
+
+    result = []
+
+    result.append("🔎 Patch Validator")
+
+    # diff形式チェック
+    if not patch.startswith("--- "):
+        result.append(
+            "❌ diff形式ではありません"
+        )
+        result.append(
+            "自動適用禁止"
+        )
+        return "\n".join(result)
+
+    result.append(
+        "✅ diff形式を検出"
+    )
+
+    # Markdown混入チェック
+    if "```" in patch:
+        result.append(
+            "⚠️ Markdownコードブロック混入"
+        )
+        result.append(
+            "自動適用禁止"
+        )
+
+    # 対象ファイルチェック
+    if "set_reminder.py" in patch:
+        result.append(
+            "⚠️ 対象外ファイル変更"
+        )
+        result.append(
+            "自動適用禁止"
+        )
+
+
+    # 変更ファイル数チェック(1ファイルのみ許可)
+    changed_files = re.findall(r"^\\+\\+\\+ (.+)$", patch, re.MULTILINE)
+
+    if len(changed_files) > 1:
+        result.append(
+            "⚠️ 変更ファイルが複数あります(1ファイルのみ許可)"
+        )
+        result.append(
+            "自動適用禁止"
+        )
+
+
+    # 危険ファイル変更禁止チェック
+    dangerous_files = [
+        "config.py",
+        "mcp_client.py",
+        ".env"
+    ]
+
+    for danger_file in dangerous_files:
+        if danger_file in patch:
+            result.append(
+                f"⚠️ 危険ファイル変更検出: {danger_file}"
+            )
+            result.append(
+                "自動適用禁止"
+            )
+
+
+    # 削除・追加行数確認
+    removed = len(
+        re.findall(r"^-", patch, re.MULTILINE)
+    )
+
+    added = len(
+        re.findall(r"^\+", patch, re.MULTILINE)
+    )
+
+    result.append(
+        f"削除行数: {removed}"
+    )
+
+    result.append(
+        f"追加行数: {added}"
+    )
+
+
+    # 変更行数チェック(追加+削除 合計30行以内)
+    total_changed = removed + added
+
+    if total_changed > 30:
+        result.append(
+            f"⚠️ 変更行数が上限を超えています(合計{total_changed}行 / 上限30行)"
+        )
+        result.append(
+            "自動適用禁止"
+        )
+
+
+    # 大量削除防止
+    if removed > 100:
+        result.append(
+            "⚠️ 大量削除を検出"
+        )
+        result.append(
+            "自動適用禁止"
+        )
+
+
+    # 危険変更
+    if "except Exception" in patch:
+        result.append(
+            "⚠️ except Exception変更あり"
+        )
+
+    if "os.remove" in patch:
+        result.append(
+            "⚠️ ファイル削除処理あり"
+        )
+
+    if "subprocess" in patch:
+        result.append(
+            "⚠️ subprocess変更あり"
+        )
+
+
+    if removed <= 100:
+        result.append(
+            "✅ 基本安全チェック通過"
+        )
+
+
+    return "\n".join(result)
