@@ -10,5 +10,6 @@ def collect_memory_hint(error_text):
 
     return {
         "has_memory": False,
-        "matches": []
+        "matches": [],
+        "query": error_text
     }
