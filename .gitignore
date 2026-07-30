@@ -4,3 +4,4 @@ __pycache__/
 *.sqlite
 venv/
 .aider*
+.ai_debug_checkpoint.json
