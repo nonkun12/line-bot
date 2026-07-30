@@ -13,3 +13,15 @@ def collect_memory_hint(error_text):
         "matches": [],
         "query": error_text
     }
+
+
+def search_memory(query):
+    """
+    Phase 1.8 Memory Search
+
+    read_only only
+
+    現在は検索口のみ。
+    """
+
+    return []
