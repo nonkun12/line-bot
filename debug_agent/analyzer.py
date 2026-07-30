@@ -1,3 +1,22 @@
+import re
+
+
+def extract_location(error_text):
+    """
+    Tracebackからファイル名・行番号を抽出
+    """
+
+    match = re.search(
+        r'File "(.+?)", line (\d+)',
+        error_text
+    )
+
+    if match:
+        return f"{match.group(1)} line {match.group(2)}"
+
+    return None
+
+
 def analyze_error(error_text):
     """
     Phase 1.5 error analyzer
@@ -5,6 +24,8 @@ def analyze_error(error_text):
     """
 
     text = error_text.lower()
+
+    location = extract_location(error_text)
 
 
     if "modulenotfounderror" in text:
@@ -18,6 +39,7 @@ def analyze_error(error_text):
     if "keyerror" in text:
         return {
             "type": "Python Key Error",
+            "location": location,
             "cause": "辞書型データに存在しないキーを参照しています。",
             "solution": "キー存在確認（get()など）を追加してください。",
             "risk": "LOW"

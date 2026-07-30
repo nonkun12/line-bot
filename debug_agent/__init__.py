@@ -42,6 +42,7 @@ def run_debug_agent(error_text=""):
         f"{received}\n\n"
         "【解析結果】\n"
         f"種類: {analysis['type']}\n"
+        f"発生場所: {analysis.get('location', '不明')}\n"
         f"原因: {analysis['cause']}\n"
         f"対策: {analysis['solution']}\n"
         f"安全レベル: {analysis['risk']}\n\n"
