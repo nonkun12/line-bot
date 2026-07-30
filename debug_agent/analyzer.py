@@ -6,6 +6,8 @@ def analyze_error(error_text):
 
     text = error_text.lower()
 
+    print("DEBUG ANALYZER TEXT:", repr(text))
+
     if "modulenotfounderror" in text:
         return {
             "type": "Python Import Error",
