@@ -1,5 +1,6 @@
 from .safety import SafetyGuard
 from .analyzer import analyze_error
+from .collectors import collect_error
 
 __all__ = ["run_debug_agent"]
 
@@ -31,6 +32,8 @@ def run_debug_agent(error_text=""):
         )
 
     received = error_text.strip() if error_text else "(入力なし)"
+
+    collected = collect_error(received)
 
     analysis = analyze_error(received)
 
