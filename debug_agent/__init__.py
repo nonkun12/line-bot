@@ -1,14 +1,16 @@
 from .safety import SafetyGuard
+from .analyzer import analyze_error
 
 __all__ = ["run_debug_agent"]
 
 
 def run_debug_agent(error_text=""):
     """
-    AI Debug Agent Phase 1 entry point.
+    AI Debug Agent Phase 1.5 entry point.
 
-    Phase 1:
+    Phase 1.5:
     - read_only mode only
+    - analysis only
     - no file modification
     - no git commit
     - no git push
@@ -25,10 +27,12 @@ def run_debug_agent(error_text=""):
         return (
             "🔍 AI Debug Agent\n\n"
             "安全設定が read_only ではないため、"
-            "Phase 1では処理を受け付けられません。"
+            "処理を受け付けられません。"
         )
 
     received = error_text.strip() if error_text else "(入力なし)"
+
+    analysis = analyze_error(received)
 
     return (
         "🔍 AI Debug Agent\n\n"
@@ -36,6 +40,10 @@ def run_debug_agent(error_text=""):
         "ファイル変更・git commit・git push・deployは行いません。\n\n"
         "【受付内容】\n"
         f"{received}\n\n"
-        "Phase 1では解析の受付のみを行います。"
-        "自動修正はPhase 2以降で対応予定です。"
+        "【解析結果】\n"
+        f"種類: {analysis['type']}\n"
+        f"原因: {analysis['cause']}\n"
+        f"対策: {analysis['solution']}\n"
+        f"安全レベル: {analysis['risk']}\n\n"
+        "※現在は解析・提案のみです。"
     )
