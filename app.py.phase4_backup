@@ -185,18 +185,8 @@ def generate_reply(user_id, message):
     # AI Debug Agent
     # =========================
     if message.startswith("debug"):
-        from graph.graph import graph
-
-        result = graph.invoke(
-            {
-                "raw_message": message
-            }
-        )
-
-        return result.get(
-            "final_reply",
-            "Debug Agent結果なし"
-        )
+        error_text = message.replace("debug", "", 1).strip()
+        return run_debug_agent(error_text)
 
 
     # =========================
