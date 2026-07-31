@@ -1,0 +1,133 @@
+"""
+LangGraph Phase1 graph definition
+
+構成:
+
+START
+ ↓
+Supervisor
+ ↓
+Conditional Router
+ ↓
+Debug Agent / Fallback
+ ↓
+Finalizer
+ ↓
+END
+
+既存 app.py には接続しない。
+"""
+
+from langgraph.graph import StateGraph, START, END
+
+from graph.state import AgentState
+from graph.supervisor import supervisor_node
+from graph.router import route_from_supervisor
+from agents.debug.node import debug_agent_node
+
+
+def fallback_node(state: AgentState) -> AgentState:
+    """
+    未対応Agent用の仮ノード
+    """
+
+    results = dict(
+        state.get("agent_results", {})
+    )
+
+    results["fallback"] = (
+        "この機能はLangGraph Phase1では未対応です。"
+    )
+
+    return {
+        **state,
+        "agent_results": results,
+    }
+
+
+def finalize_node(state: AgentState) -> AgentState:
+    """
+    最終返信生成ノード
+    Phase1では単純に結果を返すだけ
+    """
+
+    results = state.get("agent_results", {})
+
+    if state.get("next_agent") == "debug":
+        reply = results.get(
+            "debug",
+            "解析結果なし"
+        )
+    else:
+        reply = results.get(
+            "fallback",
+            "対応できません"
+        )
+
+    return {
+        **state,
+        "final_reply": reply,
+    }
+
+
+def build_graph():
+
+    builder = StateGraph(AgentState)
+
+    builder.add_node(
+        "supervisor",
+        supervisor_node
+    )
+
+    builder.add_node(
+        "debug_agent",
+        debug_agent_node
+    )
+
+    builder.add_node(
+        "fallback_agent",
+        fallback_node
+    )
+
+    builder.add_node(
+        "finalizer",
+        finalize_node
+    )
+
+
+    builder.add_edge(
+        START,
+        "supervisor"
+    )
+
+
+    builder.add_conditional_edges(
+        "supervisor",
+        route_from_supervisor,
+        {
+            "debug_agent": "debug_agent",
+            "fallback_agent": "fallback_agent",
+        },
+    )
+
+
+    builder.add_edge(
+        "debug_agent",
+        "finalizer"
+    )
+
+    builder.add_edge(
+        "fallback_agent",
+        "finalizer"
+    )
+
+    builder.add_edge(
+        "finalizer",
+        END
+    )
+
+
+    return builder.compile()
+
+
+graph = build_graph()
