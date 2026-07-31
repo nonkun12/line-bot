@@ -19,7 +19,6 @@ LangGraph Phase1: Debug Agent Adapter
 from debug_agent import run_debug_agent
 from agents.debug.collector import collect_error
 from agents.debug.analyzer import analyze_error
-from agents.debug.fixer import generate_fix_suggestion
 from graph.state import AgentState
 
 
@@ -47,12 +46,7 @@ def debug_agent_node(state: AgentState) -> AgentState:
 
     try:
         collected = collect_error(error_text)
-
-        analysis = analyze_error(collected)
-
-        fix = generate_fix_suggestion(collected)
-
-        result = analysis + "\n\n" + fix
+        result = analyze_error(collected)
 
     except Exception as e:
         result = (
