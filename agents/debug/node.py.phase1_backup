@@ -17,8 +17,6 @@ LangGraph Phase1: Debug Agent Adapter
 
 
 from debug_agent import run_debug_agent
-from agents.debug.collector import collect_error
-from agents.debug.analyzer import analyze_error
 from graph.state import AgentState
 
 
@@ -45,8 +43,7 @@ def debug_agent_node(state: AgentState) -> AgentState:
     error_text = _strip_debug_prefix(message)
 
     try:
-        collected = collect_error(error_text)
-        result = analyze_error(collected)
+        result = run_debug_agent(error_text)
 
     except Exception as e:
         result = (
