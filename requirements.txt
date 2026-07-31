@@ -5,3 +5,4 @@ groq
 python-dotenv
 pytest
 httpx
+langgraph==1.2.10
