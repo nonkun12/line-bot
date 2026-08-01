@@ -19,4 +19,7 @@ class AgentState(TypedDict, total=False):
     final_reply: Optional[str]
 
     error: Optional[str]
-    
+
+    # Phase4a: patch適用 / pytest実行結果
+    patch_result: Optional[dict[str, Any]]
+    test_result: Optional[dict[str, Any]]

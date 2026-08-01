@@ -11,11 +11,20 @@ Conditional Router
  ↓
 Debug Agent / Fallback
  ↓
+(Debug Agentルートのみ) Fix Agent → Patch Agent → Test Agent
+ ↓
 Finalizer
  ↓
 END
 
 既存 app.py には接続しない。
+
+Phase4a:
+- patch_agent / test_agent を追加。
+- AUTO_APPLY_PATCH=false (デフォルト) の場合、
+  patch_agentは何もせず素通りするだけなので、
+  Fix Agentまでの既存動作は変わらない。
+- commit_agent / deploy_agentはまだ追加しない(Phase4bで対応)。
 """
 
 from langgraph.graph import StateGraph, START, END
@@ -25,6 +34,8 @@ from graph.supervisor import supervisor_node
 from graph.router import route_from_supervisor
 from agents.debug.node import debug_agent_node
 from agents.fix.node import fix_agent_node
+from agents.patch.node import patch_apply_node
+from agents.test.node import test_runner_node
 
 
 def fallback_node(state: AgentState) -> AgentState:
@@ -96,6 +107,16 @@ def build_graph():
     )
 
     builder.add_node(
+        "patch_agent",
+        patch_apply_node
+    )
+
+    builder.add_node(
+        "test_agent",
+        test_runner_node
+    )
+
+    builder.add_node(
         "fallback_agent",
         fallback_node
     )
@@ -129,6 +150,16 @@ def build_graph():
 
     builder.add_edge(
         "fix_agent",
+        "patch_agent"
+    )
+
+    builder.add_edge(
+        "patch_agent",
+        "test_agent"
+    )
+
+    builder.add_edge(
+        "test_agent",
         "finalizer"
     )
 
