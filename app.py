@@ -1333,12 +1333,22 @@ def fetch_ai_secretary_facts(user_id):
     try:
         memories_raw = call_mcp_tool("get_all_memory", {"user_id": user_id})
         facts["memories"] = _parse_mcp_json_list(memories_raw)
+
+        print("===== AI REPORT MEMORY RAW =====")
+        print(memories_raw)
+        print("===== AI REPORT MEMORY PARSED =====")
+        print(facts["memories"])
     except Exception as e:
         print("AI REPORT: GET_ALL_MEMORY ERROR:", e)
 
     try:
         reminders_raw = call_mcp_tool("list_reminders", {"user_id": user_id})
         facts["reminders"] = _parse_mcp_json_list(reminders_raw)
+
+        print("===== AI REPORT REMINDER RAW =====")
+        print(reminders_raw)
+        print("===== AI REPORT REMINDER PARSED =====")
+        print(facts["reminders"])
     except Exception as e:
         print("AI REPORT: LIST_REMINDERS ERROR:", e)
 
