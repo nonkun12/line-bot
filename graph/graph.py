@@ -37,6 +37,7 @@ from agents.fix.node import fix_agent_node
 from agents.patch.node import patch_apply_node
 from agents.test.node import test_runner_node
 from agents.commit.node import commit_node
+from agents.deploy.node import deploy_node
 
 
 def fallback_node(state: AgentState) -> AgentState:
@@ -123,6 +124,11 @@ def build_graph():
     )
 
     builder.add_node(
+        "deploy_agent",
+        deploy_node
+    )
+
+    builder.add_node(
         "fallback_agent",
         fallback_node
     )
@@ -171,6 +177,11 @@ def build_graph():
 
     builder.add_edge(
         "commit_agent",
+        "deploy_agent"
+    )
+
+    builder.add_edge(
+        "deploy_agent",
         "finalizer"
     )
 
