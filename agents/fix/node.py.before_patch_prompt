@@ -1,0 +1,120 @@
+"""
+AI Fix Agent Node
+
+Debug Agent結果を受け取り、
+Groqで修正案(Patch候補)を生成する。
+"""
+
+import os
+
+from langchain_groq import ChatGroq
+
+from graph.state import AgentState
+from agents.fix.schema import FixResult
+
+
+FIX_MODEL_NAME = os.environ.get(
+    "FIX_AGENT_MODEL",
+    "llama-3.3-70b-versatile"
+)
+
+
+_SYSTEM_PROMPT = """
+あなたはAI Fix Agentです。
+
+入力されたエラー情報を解析し、
+安全な修正案を作成してください。
+
+必ず以下を返してください。
+
+- summary
+- patch
+- modified_files
+- test_command
+- commit_message
+- deploy_required
+- confidence
+
+patchはunified diff形式で生成してください。
+
+不明な場合はpatchを空文字にしてください。
+"""
+
+
+def _build_llm():
+
+    return ChatGroq(
+        model=FIX_MODEL_NAME,
+        temperature=0,
+    )
+
+
+def fix_agent_node(state: AgentState) -> AgentState:
+
+    debug_result = (
+        state
+        .get("agent_results", {})
+        .get("debug", {})
+    )
+
+    structured = debug_result.get(
+        "structured",
+        {}
+    )
+
+    error_info = structured.get(
+        "error_info",
+        {}
+    )
+
+
+    try:
+
+        llm = _build_llm().with_structured_output(
+            FixResult
+        )
+
+        result = llm.invoke(
+            [
+                (
+                    "system",
+                    _SYSTEM_PROMPT
+                ),
+                (
+                    "user",
+                    str(error_info)
+                ),
+            ]
+        )
+
+        fix_result = dict(result)
+
+
+    except Exception as e:
+
+        fix_result = {
+            "summary": "Fix Agent error",
+            "patch": "",
+            "modified_files": [],
+            "test_command": "pytest",
+            "commit_message": "fix: auto generated",
+            "deploy_required": False,
+            "confidence": 0.0,
+            "error": str(e),
+        }
+
+
+    results = dict(
+        state.get(
+            "agent_results",
+            {}
+        )
+    )
+
+    results["fix"] = fix_result
+
+
+    return {
+        **state,
+        "agent_results": results,
+    }

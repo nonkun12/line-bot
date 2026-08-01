@@ -1,0 +1,37 @@
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from graph.graph import graph
+
+
+state = {
+    "raw_message": """debug
+Traceback (most recent call last):
+  File "app.py", line 120
+KeyError: user_id
+""",
+    "agent_results": {},
+}
+
+
+result = graph.invoke(state)
+
+
+print("===== FIX RESULT =====")
+
+fix = (
+    result
+    .get("agent_results", {})
+    .get("fix")
+)
+
+print(fix)
+
+if fix:
+    patch = fix.get("patch", "")
+
+    with open("fix_test.patch", "w") as f:
+        f.write(patch)
+
+    print("patch saved")

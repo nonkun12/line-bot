@@ -1,0 +1,182 @@
+"""
+AI Fix Agent Node
+
+Debug Agent結果を受け取り、
+Groqで修正案(Patch候補)を生成する。
+"""
+
+import os
+
+from langchain_groq import ChatGroq
+
+from graph.state import AgentState
+from agents.fix.schema import FixResult
+from agents.fix.patch_utils import (
+    get_code_context,
+    validate_patch,
+)
+
+
+FIX_MODEL_NAME = os.environ.get(
+    "FIX_AGENT_MODEL",
+    "llama-3.3-70b-versatile"
+)
+
+
+_SYSTEM_PROMPT = """
+あなたはAI Fix Agentです。
+
+入力されたエラー情報を解析し、
+安全な修正案を作成してください。
+
+必ず以下を返してください。
+
+- summary
+- patch
+- modified_files
+- test_command
+- commit_message
+- deploy_required
+- confidence
+
+patchは必ずunified diff形式で生成してください。
+
+patchを空文字にはしないでください。
+
+対象ファイルが特定できる場合は、
+必ず以下の形式で修正差分を作成してください。
+
+diff --git a/<file> b/<file>
+--- a/<file>
++++ b/<file>
+@@
+- 修正前
++ 修正後
+
+実際に変更可能な最小限の差分を生成してください。
+
+unified diffは必ずgit apply可能な形式で生成してください。
+
+@@ hunk headerの行数は実際の変更行数と一致させてください。
+
+変更前後のコードは必ず対象コードcontext内から引用してください。
+
+存在しないコードを生成しないでください。
+"""
+
+
+def _build_llm():
+
+    return ChatGroq(
+        model=FIX_MODEL_NAME,
+        temperature=0,
+        api_key=os.getenv(
+            "GROQ_API_KEY"
+        ),
+    )
+
+
+def fix_agent_node(state: AgentState) -> AgentState:
+
+    debug_result = (
+        state
+        .get("agent_results", {})
+        .get("debug", {})
+    )
+
+    structured = debug_result.get(
+        "structured",
+        {}
+    )
+
+    error_info = structured.get(
+        "error_info",
+        {}
+    )
+
+    file_name = error_info.get(
+        "file"
+    )
+
+    line_number = error_info.get(
+        "line"
+    )
+
+    code_context = ""
+
+    if file_name and line_number:
+        code_context = get_code_context(
+            file_name,
+            line_number,
+            5
+        )
+
+
+    try:
+
+        llm = _build_llm().with_structured_output(
+            FixResult
+        )
+
+        result = llm.invoke(
+            [
+                (
+                    "system",
+                    _SYSTEM_PROMPT
+                ),
+                (
+                    "user",
+                    f"""
+エラー情報:
+{error_info}
+
+対象コード:
+{code_context}
+
+このコードを確認して、
+実際に適用可能なunified diffを生成してください。
+"""
+                ),
+            ]
+        )
+
+        fix_result = dict(result)
+
+        patch_ok, patch_error = validate_patch(
+            fix_result.get("patch", "")
+        )
+
+        fix_result["patch_valid"] = patch_ok
+
+        if not patch_ok:
+            fix_result["patch_error"] = patch_error
+
+
+    except Exception as e:
+
+        fix_result = {
+            "summary": "Fix Agent error",
+            "patch": "",
+            "modified_files": [],
+            "test_command": "pytest",
+            "commit_message": "fix: auto generated",
+            "deploy_required": False,
+            "confidence": 0.0,
+            "error": str(e),
+        }
+
+
+    results = dict(
+        state.get(
+            "agent_results",
+            {}
+        )
+    )
+
+    results["fix"] = fix_result
+
+
+    return {
+        **state,
+        "agent_results": results,
+    }

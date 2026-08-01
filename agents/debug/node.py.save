@@ -1,3 +1,7 @@
+
+
+
+
 """
 LangGraph Phase1: Debug Agent Adapter
 
@@ -52,29 +56,19 @@ def debug_agent_node(state: AgentState) -> AgentState:
 
         fix = generate_fix_suggestion(collected)
 
-        structured_result = {
-            "error_info": collected,
-            "analysis": analysis,
-            "fix": fix,
-        }
+        result = analysis + "\n\n" + fix
 
     except Exception as e:
-        structured_result = {
-            "error": str(e)
-        }
-
-        analysis = ""
-        fix = ""
-
+        result = (
+            "🔍 AI Debug Agent\n\n"
+            f"解析エラー:\n{e}"
+        )
 
     agent_results = dict(
         state.get("agent_results", {})
     )
 
-    agent_results["debug"] = {
-        "text": analysis + "\n\n" + fix,
-        "structured": structured_result,
-    }
+    agent_results["debug"] = result
 
     return {
         **state,

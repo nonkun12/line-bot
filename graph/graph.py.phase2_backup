@@ -24,7 +24,6 @@ from graph.state import AgentState
 from graph.supervisor import supervisor_node
 from graph.router import route_from_supervisor
 from agents.debug.node import debug_agent_node
-from agents.fix.node import fix_agent_node
 
 
 def fallback_node(state: AgentState) -> AgentState:
@@ -91,11 +90,6 @@ def build_graph():
     )
 
     builder.add_node(
-        "fix_agent",
-        fix_agent_node
-    )
-
-    builder.add_node(
         "fallback_agent",
         fallback_node
     )
@@ -124,11 +118,6 @@ def build_graph():
 
     builder.add_edge(
         "debug_agent",
-        "fix_agent"
-    )
-
-    builder.add_edge(
-        "fix_agent",
         "finalizer"
     )
 
