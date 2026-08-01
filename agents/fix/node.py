@@ -159,8 +159,33 @@ def fix_agent_node(state: AgentState) -> AgentState:
         code_context = get_code_context(
             file_name,
             line_number,
-            20
+            50
         )
+
+
+    # KeyError安全チェック
+    # 対象コード内に直接キー参照が存在しない場合は
+    # 推測修正を禁止する
+    if error_info.get("error_type") == "KeyError":
+        key = error_info.get("key")
+
+        if key:
+            target = f'data["{key}"]'
+
+            if target not in code_context:
+                return {
+                    "agent_results": {
+                        "fix": {
+                            "summary": "修正対象コード内に直接キー参照が存在しません",
+                            "patch": "",
+                            "modified_files": [],
+                            "test_command": "",
+                            "commit_message": "",
+                            "deploy_required": False,
+                            "confidence": 0
+                        }
+                    }
+                }
 
 
     try:

@@ -11,11 +11,13 @@ def collect_error(error_text: str) -> dict:
         "file": None,
         "line": None,
         "message": None,
+        "key": None,
         "raw": error_text,
     }
 
     if not error_text:
         return result
+
 
     # Error type
     match = re.search(
@@ -26,6 +28,7 @@ def collect_error(error_text: str) -> dict:
     if match:
         result["error_type"] = match.group(1)
 
+
     # file name
     match = re.search(
         r'File "([^"]+)"',
@@ -34,6 +37,7 @@ def collect_error(error_text: str) -> dict:
 
     if match:
         result["file"] = match.group(1)
+
 
     # line number
     match = re.search(
@@ -44,10 +48,24 @@ def collect_error(error_text: str) -> dict:
     if match:
         result["line"] = int(match.group(1))
 
+
     # message
     lines = error_text.strip().splitlines()
 
     if lines:
         result["message"] = lines[-1]
+
+
+    # KeyError専用
+    if result["error_type"] == "KeyError":
+
+        key_match = re.search(
+            r"KeyError:\s*['\"]?([^'\"]+)['\"]?",
+            error_text
+        )
+
+        if key_match:
+            result["key"] = key_match.group(1)
+
 
     return result
