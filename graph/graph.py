@@ -24,7 +24,7 @@ Phase4a:
 - AUTO_APPLY_PATCH=false (デフォルト) の場合、
   patch_agentは何もせず素通りするだけなので、
   Fix Agentまでの既存動作は変わらない。
-- commit_agent / deploy_agentはまだ追加しない(Phase4bで対応)。
+- commit_agentを追加。deploy_agentはまだ追加しない(Phase4cで対応)。
 """
 
 from langgraph.graph import StateGraph, START, END
@@ -36,6 +36,7 @@ from agents.debug.node import debug_agent_node
 from agents.fix.node import fix_agent_node
 from agents.patch.node import patch_apply_node
 from agents.test.node import test_runner_node
+from agents.commit.node import commit_node
 
 
 def fallback_node(state: AgentState) -> AgentState:
@@ -117,6 +118,11 @@ def build_graph():
     )
 
     builder.add_node(
+        "commit_agent",
+        commit_node
+    )
+
+    builder.add_node(
         "fallback_agent",
         fallback_node
     )
@@ -160,6 +166,11 @@ def build_graph():
 
     builder.add_edge(
         "test_agent",
+        "commit_agent"
+    )
+
+    builder.add_edge(
+        "commit_agent",
         "finalizer"
     )
 
