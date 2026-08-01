@@ -174,7 +174,9 @@ def fix_agent_node(state: AgentState) -> AgentState:
 
             if target not in code_context:
                 return {
+                    **state,
                     "agent_results": {
+                        **state.get("agent_results", {}),
                         "fix": {
                             "summary": "修正対象コード内に直接キー参照が存在しません",
                             "patch": "",
