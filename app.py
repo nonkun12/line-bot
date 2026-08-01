@@ -180,7 +180,7 @@ def generate_reply(user_id, message):
     # =========================
     # Daily AI Report
     # =========================
-    if "Daily AI Report" in message:
+    if "Daily AI Repo" in message:
         print("DAILY AI REPORT TRIGGERED")
 
         report = generate_ai_secretary_report(user_id)
