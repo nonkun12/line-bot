@@ -177,6 +177,16 @@ _DELETE_ALL_NOTES_PATTERN = re.compile(
 def generate_reply(user_id, message):
     print("=== GENERATE_REPLY ===", repr(message))
 
+    # =========================
+    # Daily AI Report
+    # =========================
+    if "Daily AI Report" in message:
+        print("DAILY AI REPORT TRIGGERED")
+
+        report = generate_ai_secretary_report(user_id)
+
+        return report
+
     # pytest内部テストはAI処理しない
     if message.startswith("pytest"):
         return "pytestテストメッセージを受信しました。"
