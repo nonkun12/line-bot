@@ -475,7 +475,14 @@ def generate_reply(user_id, message):
         "記憶をすべて削除",
         "記憶を全部削除",
         "全ての記憶を削除",
-        "全部の記憶を削除"
+        "全部の記憶を削除",
+        "memoryを全部削除して",
+        "保存しているメモを全部削除して",
+        "保存している記憶を消して",
+        "覚えていること全部消して",
+        "覚えていることを全部削除して",
+        "記憶をリセットして",
+        "memoryをリセットして"
     ] or _DELETE_ALL_MEMORY_PATTERN.search(message):
         with _pending_confirm_lock:
             _pending_delete_confirmation[user_id] = "delete_all_memory"
