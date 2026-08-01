@@ -62,17 +62,16 @@ def fallback_node(state: AgentState) -> AgentState:
 def finalize_node(state: AgentState) -> AgentState:
     """
     最終返信生成ノード
-    Phase1では単純に結果を返すだけ
     """
 
     results = state.get("agent_results", {})
 
-    if state.get("next_agent") == "debug":
-        debug_result = results.get(
-            "debug",
-            {}
-        )
+    debug_result = results.get(
+        "debug",
+        {}
+    )
 
+    if debug_result:
         reply = debug_result.get(
             "text",
             "解析結果なし"
