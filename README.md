@@ -31,3 +31,25 @@ Features:
 - Automatic fix generation
 - GitHub Pull Request creation
 - Self-improving development assistant
+
+
+## Future Candidates
+
+External projects that may improve AI Debug Agent.
+
+### slopguard
+
+Repository:
+https://github.com/Blue-B/slopguard
+
+Purpose:
+AI generated code quality check
+
+Possible Integration Point:
+fix_agent → approval_agent
+
+Notes:
+- Candidate only
+- No integration yet
+- Evaluate after approval workflow is completed
+
