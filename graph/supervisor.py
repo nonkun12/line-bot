@@ -13,6 +13,7 @@ Phase1では debug のみ Debug Agentへ振り分ける。
 """
 
 from graph.state import AgentState
+from pending_approvals import PendingStatus, get_pending_status
 
 
 _DEBUG_PREFIX = "debug"
@@ -51,8 +52,17 @@ def supervisor_node(state: AgentState) -> AgentState:
         "fallback"
     )
 
+    user_id = state.get("user_id")
+
+    pending_status = (
+        get_pending_status(user_id).value
+        if user_id is not None
+        else PendingStatus.NONE.value
+    )
+
     return {
         **state,
         "intent": intent,
         "next_agent": next_agent,
+        "pending_status": pending_status,
     }

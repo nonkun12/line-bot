@@ -23,3 +23,6 @@ class AgentState(TypedDict, total=False):
     # Phase4a: patch適用 / pytest実行結果
     patch_result: Optional[dict[str, Any]]
     test_result: Optional[dict[str, Any]]
+
+    # Phase1: 承認状態判定（pending / expired / none）
+    pending_status: Optional[str]

@@ -199,7 +199,8 @@ def generate_reply(user_id, message):
 
         result = graph.invoke(
             {
-                "raw_message": message
+                "raw_message": message,
+                "user_id": user_id
             }
         )
 

@@ -39,6 +39,21 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_processed_events_event_id
         ON processed_events(event_id)
         """)
+
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS approvals(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP,
+            approved INTEGER DEFAULT 0,
+            rejected INTEGER DEFAULT 0
+        )
+        """)
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_approvals_user_id
+        ON approvals(user_id)
+        """)
         # 旧・自前memoryテーブルはもう使わない(MCPサーバー側のSQLiteに一元化)。
         # 既存データを残したい場合はこのテーブル定義とget_memory/update_memory関数を
         # 復活させて併用することも可能。
