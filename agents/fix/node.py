@@ -164,15 +164,25 @@ def fix_agent_node(state: AgentState) -> AgentState:
 
 
     # KeyError安全チェック
-    # 対象コード内に直接キー参照が存在しない場合は
+    # 対象コード内に該当キー参照が存在しない場合は
     # 推測修正を禁止する
     if error_info.get("error_type") == "KeyError":
+
         key = error_info.get("key")
 
         if key:
-            target = f'data["{key}"]'
 
-            if target not in code_context:
+            patterns = [
+                f'"{key}"',
+                f"'{key}'",
+            ]
+
+            found = any(
+                pattern in code_context
+                for pattern in patterns
+            )
+
+            if not found:
                 return {
                     **state,
                     "agent_results": {
