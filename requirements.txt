@@ -7,3 +7,5 @@ pytest
 httpx
 langgraph==1.2.10
 langchain-groq
+fastapi
+uvicorn[standard]
