@@ -62,25 +62,98 @@ def fallback_node(state: AgentState) -> AgentState:
 def finalize_node(state: AgentState) -> AgentState:
     """
     最終返信生成ノード
+
+    Debug / Fix / Patch / Test / Commit / Deploy
+    各Agent結果をまとめて返す。
     """
 
     results = state.get("agent_results", {})
 
-    debug_result = results.get(
-        "debug",
-        {}
-    )
+    if not results:
+        reply = "対応できません"
 
-    if debug_result:
-        reply = debug_result.get(
-            "text",
-            "解析結果なし"
-        )
-    else:
+    elif "fallback" in results:
         reply = results.get(
             "fallback",
             "対応できません"
         )
+
+    else:
+        lines = []
+
+        debug_result = results.get(
+            "debug",
+            {}
+        )
+
+        if debug_result:
+            lines.append(
+                "【Debug】\n"
+                + debug_result.get(
+                    "text",
+                    ""
+                )
+            )
+
+        fix_result = results.get(
+            "fix",
+            {}
+        )
+
+        if fix_result:
+            lines.append(
+                "【Fix】\n"
+                + fix_result.get(
+                    "summary",
+                    ""
+                )
+            )
+
+        patch_result = results.get(
+            "patch",
+            {}
+        )
+
+        if patch_result:
+            lines.append(
+                "【Patch】\n"
+                + str(patch_result)
+            )
+
+        test_result = results.get(
+            "test",
+            {}
+        )
+
+        if test_result:
+            lines.append(
+                "【Test】\n"
+                + str(test_result)
+            )
+
+        commit_result = results.get(
+            "commit",
+            {}
+        )
+
+        if commit_result:
+            lines.append(
+                "【Commit】\n"
+                + str(commit_result)
+            )
+
+        deploy_result = results.get(
+            "deploy",
+            {}
+        )
+
+        if deploy_result:
+            lines.append(
+                "【Deploy】\n"
+                + str(deploy_result)
+            )
+
+        reply = "\n\n".join(lines)
 
     return {
         **state,
