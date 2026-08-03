@@ -24,5 +24,8 @@ class AgentState(TypedDict, total=False):
     patch_result: Optional[dict[str, Any]]
     test_result: Optional[dict[str, Any]]
 
+    # Phase3: Fix Agent結果から生成したPatch候補(適用は行わない)
+    patch_candidates: Optional[list[dict[str, Any]]]
+
     # Phase1: 承認状態判定（pending / expired / none）
     pending_status: Optional[str]

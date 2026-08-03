@@ -11,7 +11,8 @@ Conditional Router
  ↓
 Debug Agent / Fallback
  ↓
-(Debug Agentルートのみ) Fix Agent → Patch Agent → Test Agent
+(Debug Agentルートのみ)
+Fix Agent → Patch Generate Agent → Patch Agent → Test Agent
  ↓
 Finalizer
  ↓
@@ -25,6 +26,13 @@ Phase4a:
   patch_agentは何もせず素通りするだけなので、
   Fix Agentまでの既存動作は変わらない。
 - commit_agentを追加。deploy_agentはまだ追加しない(Phase4cで対応)。
+
+Phase3 (Patch Agent基盤):
+- fix_agentとpatch_agent(Phase4a適用ノード)の間に
+  patch_generate_agentを追加。
+- Fix Agentの結果からPatch候補(PatchCandidate)を生成するのみで、
+  実際のファイル変更・git操作は一切行わない。
+- 既存のpatch_agent(適用ロジック)は無変更。
 """
 
 from langgraph.graph import StateGraph, START, END
@@ -34,7 +42,7 @@ from graph.supervisor import supervisor_node
 from graph.router import route_from_supervisor
 from agents.debug.node import debug_agent_node
 from agents.fix.node import fix_agent_node
-from agents.patch.node import patch_apply_node
+from agents.patch.node import patch_apply_node, patch_generate_node
 from agents.test.node import test_runner_node
 from agents.commit.node import commit_node
 from agents.deploy.node import deploy_node
@@ -181,6 +189,11 @@ def build_graph():
     )
 
     builder.add_node(
+        "patch_generate_agent",
+        patch_generate_node
+    )
+
+    builder.add_node(
         "patch_agent",
         patch_apply_node
     )
@@ -234,6 +247,11 @@ def build_graph():
 
     builder.add_edge(
         "fix_agent",
+        "patch_generate_agent"
+    )
+
+    builder.add_edge(
+        "patch_generate_agent",
         "patch_agent"
     )
 
