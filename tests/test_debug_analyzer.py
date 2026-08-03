@@ -1,0 +1,76 @@
+from agents.debug.analyzer import analyze_error
+
+
+def _base_error_info(error_type):
+    return {
+        "error_type": error_type,
+        "file": "app.py",
+        "line": 42,
+        "message": f"{error_type}: sample message",
+    }
+
+
+def test_analyze_error_key_error_includes_dedicated_guidance():
+    report = analyze_error(_base_error_info("KeyError"))
+
+    assert "KeyError" in report
+    assert "app.py" in report
+    assert "42" in report
+    assert "辞書型データに存在しないキーを参照しています" in report
+    assert "get()による安全な取得" in report
+
+
+def test_analyze_error_type_error_includes_dedicated_guidance():
+    report = analyze_error(_base_error_info("TypeError"))
+
+    assert "TypeError" in report
+    assert "型が一致していない可能性があります" in report
+    assert "Noneチェック" in report
+
+
+def test_analyze_error_value_error_includes_dedicated_guidance():
+    report = analyze_error(_base_error_info("ValueError"))
+
+    assert "ValueError" in report
+    assert "値の形式が期待値と異なる可能性があります" in report
+    assert "変換処理確認" in report
+
+
+def test_analyze_error_attribute_error_includes_dedicated_guidance():
+    report = analyze_error(_base_error_info("AttributeError"))
+
+    assert "AttributeError" in report
+    assert "オブジェクトに存在しない属性・メソッドを参照している可能性があります" in report
+    assert "変数がNoneになっていないか確認" in report
+
+
+def test_analyze_error_name_error_includes_dedicated_guidance():
+    report = analyze_error(_base_error_info("NameError"))
+
+    assert "NameError" in report
+    assert "定義されていない変数・関数を参照している可能性があります" in report
+    assert "import漏れの確認" in report
+
+
+def test_analyze_error_unknown_error_type_falls_back_to_generic_guidance():
+    report = analyze_error(_base_error_info("ZeroDivisionError"))
+
+    assert "ZeroDivisionError" in report
+    # KeyError/TypeError/ValueError/AttributeError/NameError以外は
+    # 汎用メッセージにフォールバックする
+    assert "ログ詳細を追加確認する必要があります" in report
+
+
+def test_analyze_error_missing_fields_does_not_raise():
+    report = analyze_error({})
+
+    assert "None" in report
+    assert "原因推測" in report
+    assert "修正方針" in report
+
+
+def test_analyze_error_always_appends_fix_policy_section():
+    for error_type in ["KeyError", "TypeError", "ValueError", "AttributeError", "NameError"]:
+        report = analyze_error(_base_error_info(error_type))
+        assert "■ 修正方針" in report
+        assert "原因箇所を確認し、安全な修正を行ってください。" in report

@@ -5,18 +5,19 @@ LangGraph Phase1: Debug Agent Adapter
 このファイルはLangGraph用のアダプターです。
 
 実際の解析処理:
-    debug_agent.run_debug_agent()
+    agents.debug.collector.collect_error()
+    agents.debug.analyzer.analyze_error()
+    agents.debug.fixer.generate_fix_suggestion()
 
-を呼び出すだけです。
+を順に呼び出して結果を組み立てます。
 
 既存:
     debug_agent/
 
-のread_only設計は変更しません。
+のread_only設計とは独立しており、このAdapterからは呼び出しません。
 """
 
 
-from debug_agent import run_debug_agent
 from agents.debug.collector import collect_error
 from agents.debug.analyzer import analyze_error
 from agents.debug.fixer import generate_fix_suggestion
