@@ -2,6 +2,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
+import pytest
+
+CI = os.getenv("CI") == "true"
 import httpx
 
 
@@ -59,6 +62,7 @@ def call_mcp(tool_name, arguments):
     return r.json()
 
 
+@pytest.mark.skipif(CI, reason="MCP server required in CI")
 def test_get_memory():
 
     result = call_mcp(
@@ -74,6 +78,7 @@ def test_get_memory():
     assert "result" in result
 
 
+@pytest.mark.skipif(CI, reason="MCP server required in CI")
 def test_save_memory():
 
     result = call_mcp(
@@ -88,6 +93,7 @@ def test_save_memory():
     assert "result" in result
 
 
+@pytest.mark.skipif(CI, reason="MCP server required in CI")
 def test_save_and_get_memory():
 
     save_result = call_mcp(
@@ -113,6 +119,7 @@ def test_save_and_get_memory():
     assert "result" in get_result
 
 
+@pytest.mark.skipif(CI, reason="MCP server required in CI")
 def test_save_note_and_search_notes():
 
     result = call_mcp(
@@ -128,6 +135,7 @@ def test_save_note_and_search_notes():
     assert "result" in result
 
 
+@pytest.mark.skipif(CI, reason="MCP server required in CI")
 def test_reminder_flow():
 
     result = call_mcp(
