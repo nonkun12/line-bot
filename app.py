@@ -42,6 +42,11 @@ from reminders import (
     handle_relative_time_reminder,
     handle_tomorrow_reminder,
 )
+from notes import (
+    handle_list_notes,
+    handle_search_notes,
+    handle_natural_note_search,
+)
 from mcp_client import (
     call_mcp_tool as _call_mcp_tool_impl,
     parse_mcp_json_list as _parse_mcp_json_list_impl,
@@ -406,25 +411,10 @@ def generate_reply(user_id, message):
     # =========================
 
     if message == "メモ一覧":
-        return call_mcp_tool(
-            "search_notes",
-            {
-                "user_id": user_id,
-                "keyword": ""
-            }
-        )
+        return handle_list_notes(user_id, call_mcp_tool)
 
     if message.startswith("メモ検索"):
-        keyword = re.sub(r"^メモ検索\s*[:：]?\s*", "", message)
-        if not keyword:
-            return "検索キーワードを指定してください。\n例: メモ検索 テニス"
-        return call_mcp_tool(
-            "search_notes",
-            {
-                "user_id": user_id,
-                "keyword": keyword
-            }
-        )
+        return handle_search_notes(message, user_id, call_mcp_tool)
 
     if message.startswith("メモして"):
         body = re.sub(r"^メモして\s*[:：]?\s*", "", message)
@@ -580,30 +570,7 @@ def generate_reply(user_id, message):
             or "私のメモ" in message
         )
     ):
-        if "私のメモ" in message:
-            keyword = ""
-        else:
-            keyword = (
-                message
-                .replace("LINE Botのメモを探して", "")
-                .replace("メモを探して", "")
-                .replace("メモを見せて", "")
-                .replace("メモ", "")
-                .replace("を見せて", "")
-                .replace("を検索して", "")
-                .replace("検索", "")
-                .replace("探して", "")
-                .replace("見せて", "")
-                .strip()
-            )
-
-        return call_mcp_tool(
-            "search_notes",
-            {
-                "user_id": user_id,
-                "keyword": keyword
-            }
-        )
+        return handle_natural_note_search(message, user_id, call_mcp_tool)
 
 
     # =========================
