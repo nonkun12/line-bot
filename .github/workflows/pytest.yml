@@ -35,11 +35,16 @@ jobs:
 
 
 
-
       - name: Run pytest
-
         run: |
-
           echo "Running pytest..."
+          pytest -v 2>&1 | tee pytest_output.log
+          exit ${PIPESTATUS[0]}
 
-          pytest -v
+      - name: Upload pytest log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-log
+          path: pytest_output.log
+          retention-days: 7
