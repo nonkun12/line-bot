@@ -1,1 +1,37 @@
-pbpaste > .github/workflows/ai-debug-agent.yml
+name: AI Debug Agent
+
+on:
+  workflow_run:
+    workflows: ["Pytest"]
+    types:
+      - completed
+
+jobs:
+  debug-agent:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository (failed commit)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Download pytest failure log
+        uses: actions/download-artifact@v4
+        with:
+          name: pytest-log
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          path: ./artifact
+
+      - name: Analyze pytest failure log (read-only)
+        run: |
+          echo "Pytest failed on commit \`${{ github.event.workflow_run.head_sha }}\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci_debug_trigger.py ./artifact/pytest_output.log >> "$GITHUB_STEP_SUMMARY"
