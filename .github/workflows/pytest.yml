@@ -33,32 +33,10 @@ jobs:
           pip install -r requirements.txt
 
 
-      - name: Check MCP URL
-        env:
-          MCP_SERVER_URL: ${{ secrets.MCP_SERVER_URL }}
-        run: |
-
-          echo "===== MCP URL ====="
-          echo "$MCP_SERVER_URL"
-
-          echo "===== MCP HOST ====="
-          HOST=$(echo "$MCP_SERVER_URL" | sed 's#https://##' | cut -d/ -f1)
-          echo "$HOST"
-
-
-          echo "===== DNS CHECK ====="
-          nslookup "$HOST" || true
-
-
-          echo "===== CURL CHECK ====="
-          curl -I "https://$HOST" || true
 
 
 
       - name: Run pytest
-        env:
-          MCP_SERVER_URL: ${{ secrets.MCP_SERVER_URL }}
-          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
 
         run: |
 
