@@ -1,7 +1,7 @@
 import os
 
 
-_DEV_NOTES_ENV_KEY = "DEV_NOTES_LOGGING_ENABLED"
+_DEV_NOTES_ENV_KEY = "ENABLE_EXECUTION_LOGGING"
 
 
 def _parse_bool(value: str) -> bool:
@@ -18,8 +18,16 @@ def is_logging_enabled() -> bool:
     """
     Returns whether development notes logging is enabled.
 
-    Default: False.
-    Controlled via DEV_NOTES_LOGGING_ENABLED.
+    Default: False (safe-by-default).
+    Controlled via ENABLE_EXECUTION_LOGGING environment variable.
+
+    Valid values for enabled:
+    - "1"
+    - "true"
+    - "yes"
+    - "on"
+
+    Anything else (including "false", "0", or missing) disables logging.
     """
     raw = os.getenv(_DEV_NOTES_ENV_KEY, "").strip()
 
