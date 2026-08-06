@@ -15,6 +15,7 @@ Phase1では debug のみ Debug Agentへ振り分ける。
 from graph.state import AgentState
 from pending_approvals import PendingStatus, get_pending_status
 from agents.notes.intents import is_note_intent
+from agents.memory.intents import is_memory_intent
 
 
 _DEBUG_PREFIX = "debug"
@@ -23,6 +24,7 @@ _DEBUG_PREFIX = "debug"
 _INTENT_TO_AGENT = {
     "debug": "debug",
     "note": "notes",
+    "memory": "memory",
     "unsupported": "fallback",
 }
 
@@ -39,6 +41,9 @@ def classify_intent(raw_message: str) -> str:
 
     if is_note_intent(text):
         return "note"
+
+    if is_memory_intent(text):
+        return "memory"
 
     return "unsupported"
 

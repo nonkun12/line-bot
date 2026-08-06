@@ -20,6 +20,7 @@ from graph.state import AgentState
 _ROUTE_TABLE = {
     "debug": "debug_agent",
     "notes": "notes_agent",
+    "memory": "memory_agent",
     "fallback": "fallback_agent",
 }
 
