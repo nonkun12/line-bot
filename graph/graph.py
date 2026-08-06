@@ -178,6 +178,20 @@ def finalize_node(state: AgentState) -> AgentState:
                 )
             )
 
+        memory_result = results.get(
+            "memory",
+            {}
+        )
+
+        if memory_result:
+            lines.append(
+                "【Memory】\n"
+                + memory_result.get(
+                    "text",
+                    ""
+                )
+            )
+
         fix_result = results.get(
             "fix",
             {}

@@ -17,11 +17,14 @@ def memory_agent_node(state):
         state.get("call_mcp_tool")
     )
 
-    state.setdefault(
-        "agent_results",
-        {}
-    )
+    agent_results = dict(state.get("agent_results", {}))
 
-    state["agent_results"]["memory"] = result
+    if result is not None:
+        agent_results["memory"] = {
+            "text": result,
+        }
 
-    return state
+    return {
+        **state,
+        "agent_results": agent_results,
+    }
