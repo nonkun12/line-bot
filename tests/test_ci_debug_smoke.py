@@ -1,2 +1,4 @@
 def test_ci_debug_agent_smoke():
-    assert True, "AI Debug Agent smoke test passed"
+    # Intentional failing assertion for CI debug smoke verification.
+    # Temporary test — remove after confirmation.
+    assert False, "Intentional failure to generate pytest failure log for CI debug smoke"
