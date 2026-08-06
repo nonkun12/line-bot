@@ -123,6 +123,14 @@ def handle_get_name(
         }
     )
 
+    invalid_values = {
+        "",
+        None,
+        "記憶がありません",
+        "ありません",
+        "null",
+    }
+
     if name:
         try:
             if isinstance(name, str):
@@ -139,6 +147,7 @@ def handle_get_name(
         except Exception:
             pass
 
+    if name not in invalid_values:
         return f"あなたの名前は {name} です。"
 
     return "名前はまだ記憶されていません。"
