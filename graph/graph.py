@@ -41,6 +41,7 @@ from graph.state import AgentState
 from graph.supervisor import supervisor_node
 from graph.router import route_from_supervisor
 from agents.debug.node import debug_agent_node
+from agents.notes.node import notes_agent_node
 from dev_notes.wrappers.graph_node_wrapper import with_execution_logging
 from dev_notes.factory import get_default_adapter
 
@@ -48,6 +49,12 @@ from dev_notes.factory import get_default_adapter
 debug_agent_node = with_execution_logging(
     debug_agent_node,
     "debug",
+    get_default_adapter(),
+)
+
+notes_agent_node = with_execution_logging(
+    notes_agent_node,
+    "notes",
     get_default_adapter(),
 )
 from agents.fix.node import fix_agent_node
@@ -150,6 +157,20 @@ def finalize_node(state: AgentState) -> AgentState:
                 )
             )
 
+        notes_result = results.get(
+            "notes",
+            {}
+        )
+
+        if notes_result:
+            lines.append(
+                "【Notes】\n"
+                + notes_result.get(
+                    "text",
+                    ""
+                )
+            )
+
         fix_result = results.get(
             "fix",
             {}
@@ -231,6 +252,11 @@ def build_graph():
     )
 
     builder.add_node(
+        "notes_agent",
+        notes_agent_node
+    )
+
+    builder.add_node(
         "fix_agent",
         fix_agent_node
     )
@@ -282,6 +308,7 @@ def build_graph():
         route_from_supervisor,
         {
             "debug_agent": "debug_agent",
+            "notes_agent": "notes_agent",
             "fallback_agent": "fallback_agent",
         },
     )
@@ -290,6 +317,11 @@ def build_graph():
     builder.add_edge(
         "debug_agent",
         "fix_agent"
+    )
+
+    builder.add_edge(
+        "notes_agent",
+        "finalizer"
     )
 
     builder.add_edge(

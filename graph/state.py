@@ -2,7 +2,7 @@
 LangGraph Phase1: State定義
 """
 
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from typing_extensions import TypedDict
 
 
@@ -10,6 +10,7 @@ class AgentState(TypedDict, total=False):
 
     user_id: str
     raw_message: str
+    call_mcp_tool: Callable[..., Any]
 
     intent: Optional[str]
     next_agent: Optional[str]

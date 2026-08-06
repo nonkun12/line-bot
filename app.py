@@ -42,14 +42,7 @@ from reminders import (
     handle_relative_time_reminder,
     handle_tomorrow_reminder,
 )
-from notes import (
-    handle_list_notes,
-    handle_search_notes,
-    handle_natural_note_search,
-    handle_save_note,
-    handle_auto_save_note,
-    handle_delete_note,
-)
+from agents.notes.intents import is_note_intent
 from mcp_client import (
     call_mcp_tool as _call_mcp_tool_impl,
     parse_mcp_json_list as _parse_mcp_json_list_impl,
@@ -94,6 +87,33 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
 def _parse_mcp_json_list(raw):
     """既存内部呼び出し互換のための薄いラッパー。"""
     return _parse_mcp_json_list_impl(raw)
+
+
+def _invoke_note_graph(user_id: str, message: str) -> str | None:
+    """Invoke the LangGraph notes route and return note-specific text."""
+    try:
+        from graph.graph import graph
+
+        result = graph.invoke(
+            {
+                "user_id": user_id,
+                "raw_message": message,
+                "call_mcp_tool": call_mcp_tool,
+                "agent_results": {},
+            }
+        )
+
+        if result is None:
+            return None
+
+        notes_result = result.get("agent_results", {}).get("notes", {})
+        if isinstance(notes_result, dict) and "text" in notes_result:
+            return notes_result["text"]
+
+        return result.get("final_reply")
+    except Exception as e:
+        print("NOTE GRAPH INVOCATION ERROR:", e)
+        return None
 
 
 # Groq(OpenAI互換)のfunction calling形式でMCPツールを公開する。
@@ -171,13 +191,6 @@ _DELETE_ALL_MEMORY_PATTERN = re.compile(
     r"記憶.*(全部|全て|すべて).*(消して|消す|削除|消していい)"
     r"|(全部|全て|すべて).*記憶.*(消して|消す|削除|消していい)"
 )
-
-_DELETE_ALL_NOTES_PATTERN = re.compile(
-    r"メモ.*(全部|全て|すべて).*(消して|消す|削除|消していい)"
-    r"|(全部|全て|すべて).*メモ.*(消して|消す|削除|消していい)"
-    r"|^メモ(を)?消して$"
-)
-
 
 # =========================
 # AI本体(返信生成 + MCPツール呼び出しループ)
@@ -410,28 +423,17 @@ def generate_reply(user_id, message):
 
 
     # =========================
-    # メモ系はAIを使わずMCP直行
+    # Notes機能はLangGraph経由で処理
     # =========================
-
-    if message == "メモ一覧":
-        return handle_list_notes(user_id, call_mcp_tool)
-
-    if message.startswith("メモ検索"):
-        return handle_search_notes(message, user_id, call_mcp_tool)
-
-    if message.startswith("メモして"):
-        return handle_save_note(message, user_id, call_mcp_tool)
+    if is_note_intent(message, user_id):
+        note_result = _invoke_note_graph(user_id, message)
+        if note_result is not None:
+            return note_result
 
 
     # =========================
     # 予定・目標系は自動メモ保存（Groq不要）
     # =========================
-    auto_save_result = handle_auto_save_note(message, user_id, call_mcp_tool)
-    if auto_save_result is not None:
-        return auto_save_result
-
-
-
     if message in [
         "記憶全部削除",
         "記憶をすべて削除",
@@ -451,31 +453,9 @@ def generate_reply(user_id, message):
         return "記憶をすべて削除しますか？「はい」と送ってください"
 
 
-    if message in [
-        "メモ削除全部",
-        "メモ全て削除",
-        "メモを全部削除",
-        "メモ全部消して",
-        "メモ全部削除",
-        "全メモ削除",
-        "メモを全削除"
-    ] or _DELETE_ALL_NOTES_PATTERN.search(message):
-        with _pending_confirm_lock:
-            _pending_delete_confirmation[user_id] = "delete_all_notes"
-        return "全メモを削除しますか？「はい」と送ってください"
-
-
     if message == "はい":
         with _pending_confirm_lock:
             pending = _pending_delete_confirmation.pop(user_id, None)
-
-        if pending == "delete_all_notes":
-            return call_mcp_tool(
-                "delete_all_notes",
-                {
-                    "user_id": user_id
-                }
-            )
 
         if pending == "delete_all_memory":
             return call_mcp_tool(
@@ -486,25 +466,6 @@ def generate_reply(user_id, message):
             )
 
         # 確認待ちがなければ削除処理はせず、通常のAI応答へ流す(returnしない)
-
-
-    # =========================
-    # 自然文メモ削除
-    # =========================
-    delete_result = handle_delete_note(message, user_id, call_mcp_tool)
-    if delete_result is not None:
-        return delete_result
-
-    if (
-        "メモ" in message
-        and (
-            "探して" in message
-            or "検索" in message
-            or "見せて" in message
-            or "私のメモ" in message
-        )
-    ):
-        return handle_natural_note_search(message, user_id, call_mcp_tool)
 
 
     # =========================

@@ -19,6 +19,7 @@ from graph.state import AgentState
 
 _ROUTE_TABLE = {
     "debug": "debug_agent",
+    "notes": "notes_agent",
     "fallback": "fallback_agent",
 }
 

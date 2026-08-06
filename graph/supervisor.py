@@ -14,6 +14,7 @@ Phase1では debug のみ Debug Agentへ振り分ける。
 
 from graph.state import AgentState
 from pending_approvals import PendingStatus, get_pending_status
+from agents.notes.intents import is_note_intent
 
 
 _DEBUG_PREFIX = "debug"
@@ -21,6 +22,7 @@ _DEBUG_PREFIX = "debug"
 
 _INTENT_TO_AGENT = {
     "debug": "debug",
+    "note": "notes",
     "unsupported": "fallback",
 }
 
@@ -28,12 +30,15 @@ _INTENT_TO_AGENT = {
 def classify_intent(raw_message: str) -> str:
     """
     メッセージ内容からintentを判定する。
-    Phase1ではdebugプレフィックスのみ対応。
+    Phase1ではdebugプレフィックスとNotes系コマンドを対応させる。
     """
     text = (raw_message or "").strip()
 
     if text.startswith(_DEBUG_PREFIX):
         return "debug"
+
+    if is_note_intent(text):
+        return "note"
 
     return "unsupported"
 
