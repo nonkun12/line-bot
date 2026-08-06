@@ -41,6 +41,15 @@ from graph.state import AgentState
 from graph.supervisor import supervisor_node
 from graph.router import route_from_supervisor
 from agents.debug.node import debug_agent_node
+from dev_notes.wrappers.graph_node_wrapper import with_execution_logging
+from dev_notes.factory import get_default_adapter
+
+
+debug_agent_node = with_execution_logging(
+    debug_agent_node,
+    "debug",
+    get_default_adapter(),
+)
 from agents.fix.node import fix_agent_node
 from agents.patch.node import patch_apply_node, patch_generate_node
 from agents.test.node import test_runner_node
