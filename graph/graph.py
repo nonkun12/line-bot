@@ -56,6 +56,44 @@ from agents.test.node import test_runner_node
 from agents.commit.node import commit_node
 from agents.deploy.node import deploy_node
 
+# Wrap LangGraph agent nodes with dev_notes execution logging.
+# Wrappers are added only — original logic inside each node is unchanged.
+fix_agent_node = with_execution_logging(
+    fix_agent_node,
+    "fix",
+    get_default_adapter(),
+)
+
+patch_generate_node = with_execution_logging(
+    patch_generate_node,
+    "patch_generate",
+    get_default_adapter(),
+)
+
+patch_apply_node = with_execution_logging(
+    patch_apply_node,
+    "patch_apply",
+    get_default_adapter(),
+)
+
+test_runner_node = with_execution_logging(
+    test_runner_node,
+    "test",
+    get_default_adapter(),
+)
+
+commit_node = with_execution_logging(
+    commit_node,
+    "commit",
+    get_default_adapter(),
+)
+
+deploy_node = with_execution_logging(
+    deploy_node,
+    "deploy",
+    get_default_adapter(),
+)
+
 
 def fallback_node(state: AgentState) -> AgentState:
     """
