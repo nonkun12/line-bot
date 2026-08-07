@@ -215,7 +215,17 @@ def generate_reply(user_id, message):
     # =========================
     # AI Debug Agent
     # =========================
-    if message.startswith("debug"):
+    if (
+        message.startswith("debug")
+        or (
+            "github" in message.lower()
+            and (
+                "探して" in message
+                or "検索" in message
+                or "repo" in message.lower()
+            )
+        )
+    ):
         from graph.graph import graph
 
         result = graph.invoke(
@@ -227,9 +237,8 @@ def generate_reply(user_id, message):
 
         return result.get(
             "final_reply",
-            "Debug Agent結果なし"
+            "Agent結果なし"
         )
-
 
     # =========================
     # 時間指定リマインダー強制処理
