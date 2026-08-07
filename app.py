@@ -204,6 +204,8 @@ _DELETE_ALL_MEMORY_PATTERN = re.compile(
 # AI本体(返信生成 + MCPツール呼び出しループ)
 # =========================
 def generate_reply(user_id, message):
+    print("===== APP VERSION CHECK =====")
+    print("GITHUB ROUTE ENABLED")
     print("=== GENERATE_REPLY ===", repr(message))
 
     # =========================
