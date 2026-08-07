@@ -61,6 +61,57 @@ def handle_latest_commits(message: str) -> Optional[str]:
     return "最新コミット取得機能はまだ準備中です。"
 
 
+
+
+def format_search_results(result: dict) -> str:
+    items = result.get("items", [])
+
+    if not items:
+        return "GitHub検索結果が見つかりませんでした。"
+
+    lines = ["【GitHub Search Results】"]
+
+    for i, item in enumerate(items[:5], start=1):
+        lines.append(
+            f"{i}. {item.get('full_name')}\n"
+            f"   説明: {item.get('description')}\n"
+            f"   ⭐ Stars: {item.get('stargazers_count')}\n"
+            f"   🔗 {item.get('html_url')}"
+        )
+
+    return "\n".join(lines)
+
+
+def handle_github_search(message: str):
+    patterns = [
+        r"githubで(.+)探して",
+        r"githubで(.+)検索",
+        r"github search (.+)",
+        r"github repo (.+)",
+    ]
+
+    query = None
+
+    for pattern in patterns:
+        match = re.search(
+            pattern,
+            message,
+            re.IGNORECASE
+        )
+
+        if match:
+            query = match.group(1)
+            break
+
+    if not query:
+        return None
+
+    client = GitHubClient()
+
+    result = client.search_repositories(query)
+
+    return format_search_results(result)
+
 def handle_github_message(
     message: str,
     user_id: str,
@@ -100,4 +151,8 @@ def handle_github_message(
     if latest_commits is not None:
         return latest_commits
 
-    return "GitHub Agent: 対応コマンド github repo / commits / file です。"
+    search_result = handle_github_search(text)
+    if search_result is not None:
+        return search_result
+
+    return "GitHub Agent: 対応コマンド github repo / commits / file / search です。"
