@@ -241,18 +241,7 @@ def generate_reply(user_id, message):
 
     if (
         message.startswith("debug")
-        or (
-            "github" in message.lower()
-            and any(
-                keyword in message.lower()
-                for keyword in [
-                    "探して",
-                    "検索",
-                    "search",
-                    "repo",
-                ]
-            )
-        )
+        or "github" in message.lower()
     ):
         from graph.graph import graph
 
