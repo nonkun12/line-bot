@@ -16,6 +16,7 @@ from graph.state import AgentState
 from pending_approvals import PendingStatus, get_pending_status
 from agents.notes.intents import is_note_intent
 from agents.memory.intents import is_memory_intent
+from agents.github.intents import is_github_intent
 
 
 _DEBUG_PREFIX = "debug"
@@ -43,7 +44,7 @@ def classify_intent(raw_message: str) -> str:
     if text.startswith(_DEBUG_PREFIX):
         return "debug"
 
-    if text.startswith("github"):
+    if is_github_intent(text):
         print("SUPERVISOR: github intent")
         return "github"
 

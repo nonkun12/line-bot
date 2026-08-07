@@ -1,13 +1,30 @@
 from agents.github.node import github_agent_node
-from agents.github.intents import is_github_intent
+from agents.github.intents import is_github_intent, is_issue_or_pr_intent
 from agents.github.handlers import (
     handle_latest_commits,
     handle_github_search,
+    handle_issue_or_pr_request,
+    handle_github_message,
     format_search_results,
+    format_commits,
 )
 
 
-def test_github_agent_node_returns_placeholder_text():
+def test_github_agent_node_calls_real_commit_api_for_natural_language_request(monkeypatch):
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_latest_commits(self, count=5):
+            return [
+                {
+                    "sha": "abc1234567",
+                    "commit": {"message": "fix: something\n\nlonger body"},
+                }
+            ]
+
+    monkeypatch.setattr("agents.github.handlers.GitHubClient", FakeClient)
+
     result = github_agent_node(
         {
             "user_id": "user123",
@@ -16,18 +33,45 @@ def test_github_agent_node_returns_placeholder_text():
         }
     )
 
-    assert result["agent_results"]["github"]["text"] == "最新コミット取得機能はまだ準備中です。"
+    text = result["agent_results"]["github"]["text"]
+
+    assert "準備中" not in text
+    assert "【Latest Commits】" in text
+    assert "abc1234" in text
+    assert "fix: something" in text
 
 
-def test_handle_latest_commits_returns_placeholder_for_latest_commit_queries():
-    assert handle_latest_commits("最新コミットを教えて") == "最新コミット取得機能はまだ準備中です。"
-    assert handle_latest_commits("latest commit please") == "最新コミット取得機能はまだ準備中です。"
-    assert handle_latest_commits("commit historyを見せて") == "最新コミット取得機能はまだ準備中です。"
+def test_handle_latest_commits_calls_client_and_formats_result(monkeypatch):
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_latest_commits(self, count=5):
+            return [
+                {"sha": "1111111aaaa", "commit": {"message": "first commit"}},
+                {"sha": "2222222bbbb", "commit": {"message": "second commit"}},
+            ]
+
+    monkeypatch.setattr("agents.github.handlers.GitHubClient", FakeClient)
+
+    for message in [
+        "最新コミットを教えて",
+        "latest commit please",
+        "commit historyを見せて",
+        "このリポジトリのコミットを見せて",
+        "GitHubのコミットを確認して",
+    ]:
+        text = handle_latest_commits(message)
+        assert text is not None
+        assert "準備中" not in text
+        assert "【Latest Commits】" in text
+        assert "first commit" in text
 
 
 def test_handle_latest_commits_returns_none_for_non_latest_commit_queries():
     assert handle_latest_commits("GitHubについて教えて") is None
     assert handle_latest_commits("今日は天気がいいですね") is None
+
 
 
 def test_is_github_intent_detects_github_related_queries():
@@ -280,3 +324,122 @@ def test_client_search_repositories_returns_error_dict_on_exception(monkeypatch)
     assert result["ok"] is False
     assert result["items"] == []
     assert "network down" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# format_commits (Phase3-5)
+# ---------------------------------------------------------------------------
+
+def _make_commit(sha="abcdef1234567890", message="fix: bug"):
+    return {"sha": sha, "commit": {"message": message}}
+
+
+def test_format_commits_normal_list():
+    commits = [_make_commit(sha="1111111", message="first"), _make_commit(sha="2222222", message="second")]
+
+    text = format_commits(commits)
+
+    assert "【Latest Commits】" in text
+    assert "1111111" in text
+    assert "first" in text
+    assert "second" in text
+
+
+def test_format_commits_zero_commits():
+    assert format_commits([]) == "コミットが見つかりませんでした。"
+    assert format_commits({"items": []}) == "コミットが見つかりませんでした。"
+
+
+def test_format_commits_api_error_list_shape():
+    text = format_commits([{"error": "GitHub API error", "status": 500}])
+
+    assert text == "GitHubコミット取得でエラーが発生しました。"
+    assert "None" not in text
+
+
+def test_format_commits_api_error_dict_shape():
+    text = format_commits({"error": "GitHub API error", "status": 403})
+
+    assert text == "GitHubコミット取得でエラーが発生しました。"
+
+
+def test_format_commits_none_input_is_treated_as_error():
+    assert format_commits(None) == "GitHubコミット取得でエラーが発生しました。"
+
+
+def test_format_commits_handles_incomplete_commit_data():
+    incomplete_commit = {"sha": "abcdefg"}
+
+    text = format_commits([incomplete_commit])
+
+    assert "abcdefg" in text
+    assert "(no message)" in text
+
+
+def test_format_commits_limits_to_five():
+    commits = [_make_commit(sha=f"{i}" * 7, message=f"commit{i}") for i in range(10)]
+
+    text = format_commits(commits)
+
+    assert "commit0" in text
+    assert "commit4" in text
+    assert "commit5" not in text
+
+
+# ---------------------------------------------------------------------------
+# github commits prefix command still works (Phase3-4 behaviour, unchanged)
+# ---------------------------------------------------------------------------
+
+def test_handle_github_message_github_commits_prefix_still_works(monkeypatch):
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_latest_commits(self, count=5):
+            return [_make_commit(sha="deadbee", message="prefix command works")]
+
+    monkeypatch.setattr("agents.github.handlers.GitHubClient", FakeClient)
+
+    text = handle_github_message("github commits", user_id="user123")
+
+    assert "prefix command works" in text
+    assert "【Latest Commits】" in text
+
+
+# ---------------------------------------------------------------------------
+# Issue / Pull Request intent recognition (Phase3-5 - intent only, no API)
+# ---------------------------------------------------------------------------
+
+def test_is_issue_or_pr_intent_detects_issue_and_pr_queries():
+    assert is_issue_or_pr_intent("PRある？")
+    assert is_issue_or_pr_intent("Issueを確認して")
+    assert is_issue_or_pr_intent("プルリクエストを見せて")
+    assert is_issue_or_pr_intent("pull request please")
+
+
+def test_is_issue_or_pr_intent_returns_false_for_unrelated_messages():
+    assert not is_issue_or_pr_intent("今日は天気がいいですね")
+    assert not is_issue_or_pr_intent("最新コミットを教えて")
+
+
+def test_handle_issue_or_pr_request_returns_not_supported_message():
+    for message in ["PRある？", "Issueを確認して", "プルリクエストを見せて"]:
+        text = handle_issue_or_pr_request(message)
+        assert text is not None
+        assert "未対応" in text
+
+
+def test_handle_issue_or_pr_request_returns_none_for_unrelated_messages():
+    assert handle_issue_or_pr_request("今日は天気がいいですね") is None
+
+
+def test_handle_github_message_returns_not_supported_for_issue_or_pr(monkeypatch):
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr("agents.github.handlers.GitHubClient", FakeClient)
+
+    text = handle_github_message("PRある？", user_id="user123")
+
+    assert "未対応" in text

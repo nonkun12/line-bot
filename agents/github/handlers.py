@@ -1,5 +1,6 @@
 import re
 from .client import GitHubClient
+from .intents import is_issue_or_pr_intent
 from typing import Any, Callable, Optional
 
 CallMcpTool = Callable[[str, dict[str, Any]], Any]
@@ -16,21 +17,56 @@ def format_repo_info(repo_info: dict) -> str:
     )
 
 
-def format_commits(commits: list) -> str:
+def format_commits(commits: Any) -> str:
+    """
+    Format a GitHub commits response for display.
+
+    Handles the same edge cases as format_search_results:
+    - a normal list of commit dicts
+    - zero commits
+    - an error response (either the legacy `[{"error": ...}]` shape or a
+      dict with an "error" key)
+    - malformed/incomplete commit entries
+    """
+
+    if commits is None:
+        return "GitHubコミット取得でエラーが発生しました。"
+
+    if isinstance(commits, dict):
+        if commits.get("error"):
+            return "GitHubコミット取得でエラーが発生しました。"
+        items = commits.get("items", []) or []
+    elif isinstance(commits, list):
+        if len(commits) == 1 and isinstance(commits[0], dict) and "error" in commits[0]:
+            return "GitHubコミット取得でエラーが発生しました。"
+        items = commits
+    else:
+        return "GitHubコミット取得でエラーが発生しました。"
+
+    if not items:
+        return "コミットが見つかりませんでした。"
+
     lines = ["【Latest Commits】"]
 
-    for commit in commits[:5]:
-        sha = commit.get("sha", "")[:7]
+    for commit in items[:5]:
+        if not isinstance(commit, dict):
+            continue
+
+        sha = (commit.get("sha") or "")[:7] or "-------"
 
         message = (
-            commit.get("commit", {})
+            (commit.get("commit") or {})
             .get("message", "")
             .split("\n")[0]
-        )
+        ) or "(no message)"
 
         lines.append(
             f"- {sha}: {message}"
         )
+
+    if len(lines) == 1:
+        # Every entry was malformed (not a dict) - treat as no results.
+        return "コミットが見つかりませんでした。"
 
     return "\n".join(lines)
 
@@ -40,9 +76,9 @@ _LATEST_COMMIT_PATTERNS = [
     r"latest commit",
     r"commit history",
     r"コミット履歴",
-    r"最新のPR",
-    r"最新のプルリク",
-    r"最新のpull request",
+    r"コミットを見せて",
+    r"コミットを確認",
+    r"コミットを教えて",
 ]
 
 
@@ -55,10 +91,38 @@ def _is_latest_commit_request(text: str) -> bool:
 
 
 def handle_latest_commits(message: str) -> Optional[str]:
+    """
+    Handle natural-language requests for the latest commits
+    (e.g. "最新コミットを教えて", "このリポジトリのコミットを見せて").
+
+    Reuses the existing GitHubClient.get_latest_commits() / format_commits()
+    implementation that already backs the "github commits" command -
+    no new API logic is introduced here.
+    """
+
     if not _is_latest_commit_request(message):
         return None
 
-    return "最新コミット取得機能はまだ準備中です。"
+    client = GitHubClient()
+    commits = client.get_latest_commits()
+
+    return format_commits(commits)
+
+
+def handle_issue_or_pr_request(message: str) -> Optional[str]:
+    """
+    Handle natural-language requests about GitHub Issues or Pull Requests.
+
+    Phase3-5 scope: intent recognition only. Actual Issue/PR API calls are
+    not implemented yet, so this returns a clear "not yet supported"
+    message instead of falling through to the generic unknown-command
+    reply.
+    """
+
+    if not is_issue_or_pr_intent(message):
+        return None
+
+    return "Issue / Pull Requestの取得機能は現在未対応です。"
 
 
 
@@ -203,5 +267,9 @@ def handle_github_message(
     search_result = handle_github_search(text)
     if search_result is not None:
         return search_result
+
+    issue_or_pr = handle_issue_or_pr_request(text)
+    if issue_or_pr is not None:
+        return issue_or_pr
 
     return "GitHub Agent: 対応コマンド github repo / commits / file / search です。"
