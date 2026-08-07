@@ -64,7 +64,10 @@ def handle_latest_commits(message: str) -> Optional[str]:
 
 
 def format_search_results(result: dict) -> str:
-    items = result.get("items", [])
+    if isinstance(result, list):
+        items = result
+    else:
+        items = result.get("items", [])
 
     if not items:
         return "GitHub検索結果が見つかりませんでした。"
