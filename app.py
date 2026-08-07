@@ -222,7 +222,8 @@ def generate_reply(user_id, message):
             and (
                 "探して" in message
                 or "検索" in message
-                or "repo" in message.lower()
+            or "search" in message.lower()
+            or "repo" in message.lower()
             )
         )
     ):
