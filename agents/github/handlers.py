@@ -1,7 +1,38 @@
 import re
+from .client import GitHubClient
 from typing import Any, Callable, Optional
 
 CallMcpTool = Callable[[str, dict[str, Any]], Any]
+
+
+def format_repo_info(repo_info: dict) -> str:
+    return (
+        "【GitHub Repository】\n"
+        f"📦 {repo_info.get('full_name')}\n"
+        f"🐍 Language: {repo_info.get('language')}\n"
+        f"🌿 Branch: {repo_info.get('default_branch')}\n"
+        f"⭐ Stars: {repo_info.get('stargazers_count')}\n"
+        f"🔗 {repo_info.get('html_url')}"
+    )
+
+
+def format_commits(commits: list) -> str:
+    lines = ["【Latest Commits】"]
+
+    for commit in commits[:5]:
+        sha = commit.get("sha", "")[:7]
+
+        message = (
+            commit.get("commit", {})
+            .get("message", "")
+            .split("\n")[0]
+        )
+
+        lines.append(
+            f"- {sha}: {message}"
+        )
+
+    return "\n".join(lines)
 
 
 _LATEST_COMMIT_PATTERNS = [
@@ -47,8 +78,26 @@ def handle_github_message(
     if not text:
         return "GitHub Agentに質問してください。"
 
+    client = GitHubClient()
+
+    if text.startswith("github repo"):
+        repo_info = client.get_repo_info()
+        return format_repo_info(repo_info)
+
+    if text.startswith("github commits"):
+        commits = client.get_latest_commits()
+        return format_commits(commits)
+
+    if text.startswith("github file"):
+        parts = text.split()
+        if len(parts) >= 3:
+            filename = parts[2]
+            content = client.get_file_contents(filename)
+            return content
+        return "ファイル名を指定してください。"
+
     latest_commits = handle_latest_commits(text)
     if latest_commits is not None:
         return latest_commits
 
-    return "GitHub関連の処理を準備中です。"
+    return "GitHub Agent: 対応コマンド github repo / commits / file です。"

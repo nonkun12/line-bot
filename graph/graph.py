@@ -43,6 +43,7 @@ from graph.router import route_from_supervisor
 from agents.debug.node import debug_agent_node
 from agents.memory.node import memory_agent_node
 from agents.notes.node import notes_agent_node
+from agents.github.node import github_agent_node
 from dev_notes.wrappers.graph_node_wrapper import with_execution_logging
 from dev_notes.factory import get_default_adapter
 
@@ -192,6 +193,20 @@ def finalize_node(state: AgentState) -> AgentState:
                 )
             )
 
+        github_result = results.get(
+            "github",
+            {}
+        )
+
+        if github_result:
+            lines.append(
+                "【GitHub】\n"
+                + github_result.get(
+                    "text",
+                    ""
+                )
+            )
+
         fix_result = results.get(
             "fix",
             {}
@@ -308,6 +323,11 @@ def build_graph():
     )
 
     builder.add_node(
+        "github_agent",
+        github_agent_node
+    )
+
+    builder.add_node(
         "deploy_agent",
         deploy_node
     )
@@ -336,6 +356,7 @@ def build_graph():
             "debug_agent": "debug_agent",
             "notes_agent": "notes_agent",
             "memory_agent": "memory_agent",
+            "github_agent": "github_agent",
             "fallback_agent": "fallback_agent",
         },
     )
@@ -353,6 +374,11 @@ def build_graph():
 
     builder.add_edge(
         "memory_agent",
+        "finalizer"
+    )
+
+    builder.add_edge(
+        "github_agent",
         "finalizer"
     )
 

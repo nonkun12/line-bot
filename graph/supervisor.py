@@ -25,6 +25,7 @@ _INTENT_TO_AGENT = {
     "debug": "debug",
     "note": "notes",
     "memory": "memory",
+    "github": "github",
     "unsupported": "fallback",
 }
 
@@ -38,6 +39,9 @@ def classify_intent(raw_message: str) -> str:
 
     if text.startswith(_DEBUG_PREFIX):
         return "debug"
+
+    if text.startswith("github"):
+        return "github"
 
     if is_note_intent(text):
         return "note"
