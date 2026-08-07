@@ -226,6 +226,12 @@ def generate_reply(user_id, message):
     # =========================
     # AI Debug Agent
     # =========================
+    print("DEBUG CONDITION CHECK")
+    print("startswith debug:", message.startswith("debug"))
+    print("has github:", "github" in message.lower())
+    print("has search:", "search" in message.lower())
+    print("has repo:", "repo" in message.lower())
+
     if (
         message.startswith("debug")
         or (
