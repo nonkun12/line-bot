@@ -78,6 +78,41 @@ class GitHubClient:
         except Exception as e:
             return [{"error": str(e)}]
 
+
+
+    def search_repositories(self, query: str, count: int = 5) -> list[dict[str, Any]]:
+        """
+        Search GitHub repositories.
+        """
+
+        url = "https://api.github.com/search/repositories"
+
+        params = {
+            "q": query,
+            "per_page": count,
+            "sort": "stars",
+            "order": "desc",
+        }
+
+        try:
+            response = requests.get(
+                url,
+                headers=self._build_headers(),
+                params=params,
+                timeout=10,
+            )
+
+            if response.status_code != 200:
+                return [{
+                    "error": "GitHub API error",
+                    "status": response.status_code,
+                }]
+
+            return response.json().get("items", [])
+
+        except Exception as e:
+            return [{"error": str(e)}]
+
     def get_file_contents(self, path: str) -> str:
         if not self.repo:
             return "GITHUB_REPO is not configured"
@@ -114,3 +149,37 @@ class GitHubClient:
 
 def get_default_github_client() -> GitHubClient:
     return GitHubClient()
+
+
+def search_repositories(self, query: str, count: int = 5) -> list[dict[str, Any]]:
+    """
+    Search GitHub repositories.
+    """
+
+    url = "https://api.github.com/search/repositories"
+
+    params = {
+        "q": query,
+        "per_page": count,
+        "sort": "stars",
+        "order": "desc",
+    }
+
+    try:
+        response = requests.get(
+            url,
+            headers=self._build_headers(),
+            params=params,
+            timeout=10,
+        )
+
+        if response.status_code != 200:
+            return [{
+                "error": "GitHub API error",
+                "status": response.status_code,
+            }]
+
+        return response.json().get("items", [])
+
+    except Exception as e:
+        return [{"error": str(e)}]
