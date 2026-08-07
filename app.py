@@ -110,6 +110,14 @@ def _invoke_note_graph(user_id: str, message: str) -> str | None:
         if isinstance(notes_result, dict) and "text" in notes_result:
             return notes_result["text"]
 
+        print("===== AFTER GRAPH.INVOKE =====")
+        print(result)
+        print("===== AFTER GRAPH.INVOKE =====")
+        print(result)
+        print("===== AFTER GRAPH.INVOKE =====")
+        print(result)
+        print("===== AFTER GRAPH.INVOKE =====")
+        print(result)
         return result.get("final_reply")
     except Exception as e:
         print("NOTE GRAPH INVOCATION ERROR:", e)
@@ -229,6 +237,9 @@ def generate_reply(user_id, message):
     ):
         from graph.graph import graph
 
+        print("===== GITHUB ROUTE =====")
+        print("MESSAGE:", message)
+        print("===== BEFORE GRAPH.INVOKE =====")
         result = graph.invoke(
         {
             "raw_message": message,
@@ -237,6 +248,9 @@ def generate_reply(user_id, message):
             "agent_results": {},
         }
     )
+
+        print("===== AFTER GRAPH.INVOKE =====")
+        print(result)
 
         return result.get(
             "final_reply",
