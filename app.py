@@ -229,11 +229,13 @@ def generate_reply(user_id, message):
         from graph.graph import graph
 
         result = graph.invoke(
-            {
-                "raw_message": message,
-                "user_id": user_id
-            }
-        )
+        {
+            "raw_message": message,
+            "user_id": user_id,
+            "call_mcp_tool": call_mcp_tool,
+            "agent_results": {},
+        }
+    )
 
         return result.get(
             "final_reply",
