@@ -236,11 +236,14 @@ def generate_reply(user_id, message):
         message.startswith("debug")
         or (
             "github" in message.lower()
-            and (
-                "探して" in message
-                or "検索" in message
-            or "search" in message.lower()
-            or "repo" in message.lower()
+            and any(
+                keyword in message.lower()
+                for keyword in [
+                    "探して",
+                    "検索",
+                    "search",
+                    "repo",
+                ]
             )
         )
     ):
