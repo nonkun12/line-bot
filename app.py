@@ -207,6 +207,7 @@ def generate_reply(user_id, message):
     print("===== APP VERSION CHECK =====")
     print("GITHUB ROUTE ENABLED")
     print("=== GENERATE_REPLY ===", repr(message))
+    print("MESSAGE DEBUG:", repr(message), type(message))
 
     # =========================
     # Daily AI Report
