@@ -63,11 +63,42 @@ def handle_latest_commits(message: str) -> Optional[str]:
 
 
 
-def format_search_results(result: dict) -> str:
+def _extract_search_items(result: Any) -> tuple[list, Optional[str]]:
+    """
+    Normalize a GitHub search result into (items, error_message).
+
+    Accepts the client's dict contract ({"ok", "items", "error", "status"})
+    but also defensively handles a bare list or a raw {"items": [...]}
+    dict, in case the shape ever changes or the function is called with
+    a mocked/legacy response.
+    """
+
+    if result is None:
+        return [], "GitHub検索でエラーが発生しました。"
+
     if isinstance(result, list):
-        items = result
-    else:
-        items = result.get("items", [])
+        # Legacy/bare-list shape. A list of error dicts (e.g.
+        # [{"error": ..., "status": ...}]) is treated as an error rather
+        # than rendered as if it were search results.
+        if len(result) == 1 and isinstance(result[0], dict) and "error" in result[0]:
+            return [], "GitHub検索でエラーが発生しました。"
+        return result, None
+
+    if isinstance(result, dict):
+        if result.get("error"):
+            return [], "GitHub検索でエラーが発生しました。"
+        if result.get("ok") is False:
+            return [], "GitHub検索でエラーが発生しました。"
+        return result.get("items", []) or [], None
+
+    return [], "GitHub検索でエラーが発生しました。"
+
+
+def format_search_results(result: Any) -> str:
+    items, error_message = _extract_search_items(result)
+
+    if error_message:
+        return error_message
 
     if not items:
         return "GitHub検索結果が見つかりませんでした。"
@@ -75,12 +106,27 @@ def format_search_results(result: dict) -> str:
     lines = ["【GitHub Search Results】"]
 
     for i, item in enumerate(items[:5], start=1):
+        if not isinstance(item, dict):
+            continue
+
+        full_name = item.get("full_name") or "(不明なリポジトリ)"
+        description = item.get("description") or "説明なし"
+        language = item.get("language") or "-"
+        stars = item.get("stargazers_count")
+        stars_display = stars if isinstance(stars, int) else "-"
+        url = item.get("html_url") or "-"
+
         lines.append(
-            f"{i}. {item.get('full_name')}\n"
-            f"   説明: {item.get('description')}\n"
-            f"   ⭐ Stars: {item.get('stargazers_count')}\n"
-            f"   🔗 {item.get('html_url')}"
+            f"{i}. 📦 {full_name}\n"
+            f"   📝 Description: {description}\n"
+            f"   🐍 Language: {language}\n"
+            f"   ⭐ Stars: {stars_display}\n"
+            f"   🔗 {url}"
         )
+
+    if len(lines) == 1:
+        # Every item was malformed (not a dict) - treat as no results.
+        return "GitHub検索結果が見つかりませんでした。"
 
     return "\n".join(lines)
 

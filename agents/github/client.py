@@ -80,9 +80,19 @@ class GitHubClient:
 
 
 
-    def search_repositories(self, query: str, count: int = 5) -> list[dict[str, Any]]:
+    def search_repositories(self, query: str, count: int = 5) -> dict[str, Any]:
         """
         Search GitHub repositories.
+
+        Always returns a dict with a consistent shape so callers never need
+        to guess whether they received a list or a dict:
+
+            {
+                "ok": bool,
+                "items": list[dict],
+                "error": str | None,
+                "status": int | None,
+            }
         """
 
         url = "https://api.github.com/search/repositories"
@@ -103,15 +113,39 @@ class GitHubClient:
             )
 
             if response.status_code != 200:
-                return [{
+                return {
+                    "ok": False,
+                    "items": [],
                     "error": "GitHub API error",
                     "status": response.status_code,
-                }]
+                }
 
-            return response.json().get("items", [])
+            data = response.json()
+
+            # GitHub's search endpoint returns {"items": [...]}, but we
+            # defensively accept a bare list too in case the response
+            # shape ever changes or is mocked differently in tests.
+            if isinstance(data, dict):
+                items = data.get("items", [])
+            elif isinstance(data, list):
+                items = data
+            else:
+                items = []
+
+            return {
+                "ok": True,
+                "items": items,
+                "error": None,
+                "status": response.status_code,
+            }
 
         except Exception as e:
-            return [{"error": str(e)}]
+            return {
+                "ok": False,
+                "items": [],
+                "error": str(e),
+                "status": None,
+            }
 
     def get_file_contents(self, path: str) -> str:
         if not self.repo:
@@ -149,37 +183,3 @@ class GitHubClient:
 
 def get_default_github_client() -> GitHubClient:
     return GitHubClient()
-
-
-def search_repositories(self, query: str, count: int = 5) -> list[dict[str, Any]]:
-    """
-    Search GitHub repositories.
-    """
-
-    url = "https://api.github.com/search/repositories"
-
-    params = {
-        "q": query,
-        "per_page": count,
-        "sort": "stars",
-        "order": "desc",
-    }
-
-    try:
-        response = requests.get(
-            url,
-            headers=self._build_headers(),
-            params=params,
-            timeout=10,
-        )
-
-        if response.status_code != 200:
-            return [{
-                "error": "GitHub API error",
-                "status": response.status_code,
-            }]
-
-        return response.json().get("items", [])
-
-    except Exception as e:
-        return [{"error": str(e)}]

@@ -1,6 +1,10 @@
 from agents.github.node import github_agent_node
 from agents.github.intents import is_github_intent
-from agents.github.handlers import handle_latest_commits
+from agents.github.handlers import (
+    handle_latest_commits,
+    handle_github_search,
+    format_search_results,
+)
 
 
 def test_github_agent_node_returns_placeholder_text():
@@ -38,3 +42,241 @@ def test_is_github_intent_returns_false_for_non_github_messages():
     assert not is_github_intent("今日は天気がいいですね")
     assert not is_github_intent("メモを保存して")
     assert not is_github_intent("明日のリマインダーを設定して")
+
+
+# ---------------------------------------------------------------------------
+# GitHub Search result formatting (Phase3-4)
+# ---------------------------------------------------------------------------
+
+def _make_repo_item(
+    full_name="octocat/Hello-World",
+    description="My first repository",
+    language="Python",
+    stars=42,
+    url="https://github.com/octocat/Hello-World",
+):
+    return {
+        "full_name": full_name,
+        "description": description,
+        "language": language,
+        "stargazers_count": stars,
+        "html_url": url,
+    }
+
+
+def test_format_search_results_single_result_dict_shape():
+    result = {
+        "ok": True,
+        "items": [_make_repo_item()],
+        "error": None,
+        "status": 200,
+    }
+
+    text = format_search_results(result)
+
+    assert "【GitHub Search Results】" in text
+    assert "octocat/Hello-World" in text
+    assert "Python" in text
+    assert "⭐ Stars: 42" in text
+    assert "https://github.com/octocat/Hello-World" in text
+
+
+def test_format_search_results_multiple_results():
+    result = {
+        "ok": True,
+        "items": [
+            _make_repo_item(full_name="owner/repo1", stars=100),
+            _make_repo_item(full_name="owner/repo2", stars=45),
+        ],
+        "error": None,
+        "status": 200,
+    }
+
+    text = format_search_results(result)
+
+    assert "1. 📦 owner/repo1" in text
+    assert "2. 📦 owner/repo2" in text
+    assert "⭐ Stars: 100" in text
+    assert "⭐ Stars: 45" in text
+
+
+def test_format_search_results_zero_results():
+    result = {"ok": True, "items": [], "error": None, "status": 200}
+
+    text = format_search_results(result)
+
+    assert text == "GitHub検索結果が見つかりませんでした。"
+
+
+def test_format_search_results_accepts_legacy_bare_list_shape():
+    # Defensive support for the pre-Phase3-4 shape where the client
+    # returned a bare list of items instead of a dict envelope.
+    items = [_make_repo_item(full_name="owner/legacy-repo")]
+
+    text = format_search_results(items)
+
+    assert "owner/legacy-repo" in text
+
+
+def test_format_search_results_handles_dict_with_raw_items_key():
+    # Defensive support for a raw {"items": [...]} dict (e.g. the raw
+    # GitHub API response passed straight through).
+    result = {"items": [_make_repo_item(full_name="owner/raw-items")]}
+
+    text = format_search_results(result)
+
+    assert "owner/raw-items" in text
+
+
+def test_format_search_results_api_error_dict_shape():
+    result = {
+        "ok": False,
+        "items": [],
+        "error": "GitHub API error",
+        "status": 403,
+    }
+
+    text = format_search_results(result)
+
+    assert text == "GitHub検索でエラーが発生しました。"
+
+
+def test_format_search_results_legacy_list_of_error_dicts_is_not_rendered_as_items():
+    # This is the historical list/dict bug: an error response shaped as
+    # [{"error": ..., "status": ...}] must never be rendered as if it
+    # were a search result item.
+    result = [{"error": "GitHub API error", "status": 500}]
+
+    text = format_search_results(result)
+
+    assert text == "GitHub検索でエラーが発生しました。"
+    assert "None" not in text
+
+
+def test_format_search_results_none_input_is_treated_as_error():
+    text = format_search_results(None)
+
+    assert text == "GitHub検索でエラーが発生しました。"
+
+
+def test_format_search_results_handles_incomplete_item_data():
+    incomplete_item = {"full_name": "owner/incomplete-repo"}
+    result = {"ok": True, "items": [incomplete_item], "error": None, "status": 200}
+
+    text = format_search_results(result)
+
+    assert "owner/incomplete-repo" in text
+    assert "説明なし" in text
+    assert "Language: -" in text
+    assert "⭐ Stars: -" in text
+
+
+def test_format_search_results_limits_to_five_items():
+    items = [_make_repo_item(full_name=f"owner/repo{i}") for i in range(10)]
+    result = {"ok": True, "items": items, "error": None, "status": 200}
+
+    text = format_search_results(result)
+
+    assert "owner/repo0" in text
+    assert "owner/repo4" in text
+    assert "owner/repo5" not in text
+
+
+def test_handle_github_search_uses_client_and_formats_result(monkeypatch):
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def search_repositories(self, query, count=5):
+            assert query == "line bot"
+            return {
+                "ok": True,
+                "items": [_make_repo_item(full_name="owner/line-bot")],
+                "error": None,
+                "status": 200,
+            }
+
+    monkeypatch.setattr("agents.github.handlers.GitHubClient", FakeClient)
+
+    text = handle_github_search("github search line bot")
+
+    assert text is not None
+    assert "owner/line-bot" in text
+
+
+def test_handle_github_search_returns_none_when_no_query_pattern_matches():
+    assert handle_github_search("今日は天気がいいですね") is None
+
+
+# ---------------------------------------------------------------------------
+# GitHubClient.search_repositories contract (Phase3-4)
+# ---------------------------------------------------------------------------
+
+from agents.github.client import GitHubClient
+
+
+class _FakeResponse:
+    def __init__(self, status_code, json_data):
+        self.status_code = status_code
+        self._json_data = json_data
+
+    def json(self):
+        return self._json_data
+
+
+def test_client_search_repositories_returns_ok_dict_with_items(monkeypatch):
+    def fake_get(url, headers=None, params=None, timeout=None):
+        return _FakeResponse(200, {"items": [_make_repo_item()]})
+
+    monkeypatch.setattr("agents.github.client.requests.get", fake_get)
+
+    client = GitHubClient(token="dummy")
+    result = client.search_repositories("hello")
+
+    assert result["ok"] is True
+    assert result["error"] is None
+    assert len(result["items"]) == 1
+    assert result["items"][0]["full_name"] == "octocat/Hello-World"
+
+
+def test_client_search_repositories_handles_bare_list_response(monkeypatch):
+    # Defensive handling in case the API/mocked response is a bare list
+    # instead of the usual {"items": [...]} envelope.
+    def fake_get(url, headers=None, params=None, timeout=None):
+        return _FakeResponse(200, [_make_repo_item(full_name="owner/bare-list")])
+
+    monkeypatch.setattr("agents.github.client.requests.get", fake_get)
+
+    client = GitHubClient(token="dummy")
+    result = client.search_repositories("hello")
+
+    assert result["ok"] is True
+    assert result["items"][0]["full_name"] == "owner/bare-list"
+
+
+def test_client_search_repositories_returns_error_dict_on_non_200(monkeypatch):
+    def fake_get(url, headers=None, params=None, timeout=None):
+        return _FakeResponse(403, {"message": "API rate limit exceeded"})
+
+    monkeypatch.setattr("agents.github.client.requests.get", fake_get)
+
+    client = GitHubClient(token="dummy")
+    result = client.search_repositories("hello")
+
+    assert result["ok"] is False
+    assert result["items"] == []
+    assert result["status"] == 403
+
+
+def test_client_search_repositories_returns_error_dict_on_exception(monkeypatch):
+    def fake_get(url, headers=None, params=None, timeout=None):
+        raise ConnectionError("network down")
+
+    monkeypatch.setattr("agents.github.client.requests.get", fake_get)
+
+    client = GitHubClient(token="dummy")
+    result = client.search_repositories("hello")
+
+    assert result["ok"] is False
+    assert result["items"] == []
+    assert "network down" in result["error"]
