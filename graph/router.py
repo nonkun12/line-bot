@@ -38,6 +38,10 @@ def route_from_supervisor(state: AgentState) -> str:
 
     next_agent = state.get("next_agent")
 
+    print("===== ROUTER =====")
+    print("next_agent =", next_agent)
+    print("route =", _ROUTE_TABLE.get(next_agent, _DEFAULT_ROUTE))
+
     return _ROUTE_TABLE.get(
         next_agent,
         _DEFAULT_ROUTE

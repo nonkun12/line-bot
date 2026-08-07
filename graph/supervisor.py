@@ -37,10 +37,14 @@ def classify_intent(raw_message: str) -> str:
     """
     text = (raw_message or "").strip()
 
+    print("===== SUPERVISOR =====")
+    print("RAW:", text)
+
     if text.startswith(_DEBUG_PREFIX):
         return "debug"
 
     if text.startswith("github"):
+        print("SUPERVISOR: github intent")
         return "github"
 
     if is_note_intent(text):
@@ -49,6 +53,7 @@ def classify_intent(raw_message: str) -> str:
     if is_memory_intent(text):
         return "memory"
 
+    print("SUPERVISOR: unsupported")
     return "unsupported"
 
 

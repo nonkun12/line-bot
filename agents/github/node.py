@@ -11,6 +11,11 @@ def github_agent_node(state: AgentState) -> AgentState:
     raw_message = state.get("raw_message", "") or ""
     call_mcp_tool = state.get("call_mcp_tool")
 
+    print("===== GITHUB AGENT START =====")
+    print("user_id:", user_id)
+    print("message:", raw_message)
+    print("call_mcp_tool:", call_mcp_tool is not None)
+
     result_text = handle_github_message(
         raw_message,
         user_id,

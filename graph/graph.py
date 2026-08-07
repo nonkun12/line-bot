@@ -139,6 +139,9 @@ def finalize_node(state: AgentState) -> AgentState:
 
     results = state.get("agent_results", {})
 
+    print("===== FINALIZER =====")
+    print("agent_results =", results)
+
     if not results:
         reply = "対応できません"
 
