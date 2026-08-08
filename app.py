@@ -240,9 +240,12 @@ def generate_reply(user_id, message):
     print("has search:", "search" in message.lower())
     print("has repo:", "repo" in message.lower())
 
+    github_intent_result = is_github_intent(message)
+    print("GITHUB INTENT RESULT:", github_intent_result)
+
     if (
         message.startswith("debug")
-        or is_github_intent(message)
+        or github_intent_result
     ):
         from graph.graph import graph
 
