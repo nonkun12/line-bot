@@ -247,7 +247,17 @@ def generate_reply(user_id, message):
         message.startswith("debug")
         or github_intent_result
     ):
-        from graph.graph import graph
+        print("===== GITHUB ROUTE CONDITION PASSED =====")
+
+        try:
+            from graph.graph import graph
+            print("===== GRAPH IMPORT SUCCESS =====")
+        except Exception as e:
+            print("===== GRAPH IMPORT ERROR =====")
+            print(type(e).__name__, str(e))
+            import traceback
+            traceback.print_exc()
+            return f"GitHub Agent起動エラー: {type(e).__name__}: {e}"
 
         print("===== GITHUB ROUTE =====")
         print("MESSAGE:", message)
