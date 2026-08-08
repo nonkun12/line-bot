@@ -27,7 +27,11 @@ _INTENT_TO_AGENT = {
     "note": "notes",
     "memory": "memory",
     "github": "github",
-    "unsupported": "fallback",
+    # "unsupported" (=GitHub/Debug/Memory/Notesのいずれにも該当しない通常
+    # メッセージ) は、旧 generate_reply() 末尾にあった通常のGroq応答へ
+    # 振り分ける。以前はここが "fallback" 固定になっており、
+    # 通常のAI応答ルートが存在していなかった(未移植の原因)。
+    "unsupported": "normal",
 }
 
 

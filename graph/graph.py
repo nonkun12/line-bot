@@ -44,6 +44,7 @@ from agents.debug.node import debug_agent_node
 from agents.memory.node import memory_agent_node
 from agents.notes.node import notes_agent_node
 from agents.github.node import github_agent_node
+from agents.normal.node import normal_agent_node
 from dev_notes.wrappers.graph_node_wrapper import with_execution_logging
 from dev_notes.factory import get_default_adapter
 
@@ -63,6 +64,12 @@ notes_agent_node = with_execution_logging(
 memory_agent_node = with_execution_logging(
     memory_agent_node,
     "memory",
+    get_default_adapter(),
+)
+
+normal_agent_node = with_execution_logging(
+    normal_agent_node,
+    "normal",
     get_default_adapter(),
 )
 from agents.fix.node import fix_agent_node
@@ -196,6 +203,19 @@ def finalize_node(state: AgentState) -> AgentState:
                 )
             )
 
+        normal_result = results.get(
+            "normal",
+            {}
+        )
+
+        if normal_result:
+            lines.append(
+                normal_result.get(
+                    "text",
+                    ""
+                )
+            )
+
         github_result = results.get(
             "github",
             {}
@@ -301,6 +321,11 @@ def build_graph():
     )
 
     builder.add_node(
+        "normal_agent",
+        normal_agent_node
+    )
+
+    builder.add_node(
         "fix_agent",
         fix_agent_node
     )
@@ -360,6 +385,7 @@ def build_graph():
             "notes_agent": "notes_agent",
             "memory_agent": "memory_agent",
             "github_agent": "github_agent",
+            "normal_agent": "normal_agent",
             "fallback_agent": "fallback_agent",
         },
     )
@@ -377,6 +403,11 @@ def build_graph():
 
     builder.add_edge(
         "memory_agent",
+        "finalizer"
+    )
+
+    builder.add_edge(
+        "normal_agent",
         "finalizer"
     )
 

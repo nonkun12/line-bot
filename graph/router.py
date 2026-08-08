@@ -22,6 +22,7 @@ _ROUTE_TABLE = {
     "notes": "notes_agent",
     "memory": "memory_agent",
 "github": "github_agent",
+    "normal": "normal_agent",
     "fallback": "fallback_agent",
 }
 

@@ -90,39 +90,50 @@ def _parse_mcp_json_list(raw):
     return _parse_mcp_json_list_impl(raw)
 
 
-def _invoke_note_graph(user_id: str, message: str) -> str | None:
-    """Invoke the LangGraph notes route and return note-specific text."""
-    try:
-        from graph.graph import graph
+# LangGraphの finalize_node は、Debug/Fix/Patch/Test/Commit/Deploy等の
+# 複数Agent結果を1通のLINEメッセージへまとめる目的で、
+# 各結果を "【Memory】\n..." のように見出し付きで連結する。
+# これはGitHub/Debugのような複数Agentが連鎖するルートには適しているが、
+# Memory/Notes/Normal(通常Groq応答)は単一Agentの結果をそのまま
+# ユーザーへ返す旧 generate_reply() の挙動(見出しなし)を踏襲する必要がある。
+# そのため、これらのintentについては final_reply ではなく
+# agent_results から該当Agentの生テキストを直接取り出して使う。
+_DIRECT_TEXT_AGENT_KEYS = ("memory", "notes", "normal")
 
-        result = graph.invoke(
-            {
-                "user_id": user_id,
-                "raw_message": message,
-                "call_mcp_tool": call_mcp_tool,
-                "agent_results": {},
-            }
-        )
 
-        if result is None:
-            return None
+def _invoke_graph(user_id: str, message: str):
+    """LangGraphを実行し、結果のstate(dict)を返す。"""
+    from graph.graph import graph
 
-        notes_result = result.get("agent_results", {}).get("notes", {})
-        if isinstance(notes_result, dict) and "text" in notes_result:
-            return notes_result["text"]
+    return graph.invoke(
+        {
+            "user_id": user_id,
+            "raw_message": message,
+            "call_mcp_tool": call_mcp_tool,
+            "agent_results": {},
+        }
+    )
 
-        print("===== AFTER GRAPH.INVOKE =====")
-        print(result)
-        print("===== AFTER GRAPH.INVOKE =====")
-        print(result)
-        print("===== AFTER GRAPH.INVOKE =====")
-        print(result)
-        print("===== AFTER GRAPH.INVOKE =====")
-        print(result)
-        return result.get("final_reply")
-    except Exception as e:
-        print("NOTE GRAPH INVOCATION ERROR:", e)
+
+def _extract_graph_reply(result):
+    """
+    graph.invoke() の結果から、ユーザーへ返す返信テキストを取り出す。
+
+    Memory/Notes/Normalは見出しなしの生テキストを返し、
+    GitHub/Debug/その他(fallbackを含む)は従来通り final_reply を使う。
+    """
+
+    if result is None:
         return None
+
+    agent_results = result.get("agent_results", {}) or {}
+
+    for key in _DIRECT_TEXT_AGENT_KEYS:
+        agent_result = agent_results.get(key)
+        if isinstance(agent_result, dict) and "text" in agent_result:
+            return agent_result["text"]
+
+    return result.get("final_reply", "Agent結果なし")
 
 
 # Groq(OpenAI互換)のfunction calling形式でMCPツールを公開する。
@@ -202,8 +213,14 @@ _DELETE_ALL_MEMORY_PATTERN = re.compile(
 )
 
 # =========================
-# AI本体(返信生成 + MCPツール呼び出しループ)
+# AI本体(返信生成)
 # =========================
+# 旧 generate_reply() に存在していた各処理(Debug / GitHub / Memory /
+# Notes / 通常のGroq応答)は、現在はすべてLangGraph側
+# (Supervisor → Router → 各Agent Node → Finalizer)へ移植されている。
+# ここでは、Daily AI Report / pytest向けの特別扱いのみ従来通り関数内で
+# 処理し、それ以外の全メッセージをLangGraphの入口として graph.invoke()
+# に委譲する。
 def generate_reply(user_id, message):
     print("===== APP VERSION CHECK =====")
     print("GITHUB ROUTE ENABLED")
@@ -225,60 +242,30 @@ def generate_reply(user_id, message):
         return "pytestテストメッセージを受信しました。"
 
     # =========================
+    # LangGraph 入口
     # =========================
-    # AI Debug Agent
-    # =========================
-
-
-    # =========================
-    # AI Debug Agent
-    # =========================
-
+    # Debug / GitHub / Memory / Notes / 通常応答のいずれも、
+    # Supervisorのintent判定によって適切なAgent Nodeへ振り分けられる。
     print("DEBUG CONDITION CHECK")
     print("startswith debug:", message.startswith("debug"))
     print("has github:", "github" in message.lower())
     print("has search:", "search" in message.lower())
     print("has repo:", "repo" in message.lower())
+    print("GITHUB INTENT RESULT:", is_github_intent(message))
 
-    github_intent_result = is_github_intent(message)
-    print("GITHUB INTENT RESULT:", github_intent_result)
+    try:
+        result = _invoke_graph(user_id, message)
+    except Exception as e:
+        print("===== GRAPH INVOCATION ERROR =====")
+        print(type(e).__name__, str(e))
+        import traceback
+        traceback.print_exc()
+        return f"Agent起動エラー: {type(e).__name__}: {e}"
 
-    if (
-        message.startswith("debug")
-        or github_intent_result
-    ):
-        print("===== GITHUB ROUTE CONDITION PASSED =====")
+    print("===== AFTER GRAPH.INVOKE =====")
+    print(result)
 
-        try:
-            from graph.graph import graph
-            print("===== GRAPH IMPORT SUCCESS =====")
-        except Exception as e:
-            print("===== GRAPH IMPORT ERROR =====")
-            print(type(e).__name__, str(e))
-            import traceback
-            traceback.print_exc()
-            return f"GitHub Agent起動エラー: {type(e).__name__}: {e}"
-
-        print("===== GITHUB ROUTE =====")
-        print("MESSAGE:", message)
-        print("===== BEFORE GRAPH.INVOKE =====")
-
-        result = graph.invoke(
-            {
-                "raw_message": message,
-                "user_id": user_id,
-                "call_mcp_tool": call_mcp_tool,
-                "agent_results": {},
-            }
-        )
-
-        print("===== AFTER GRAPH.INVOKE =====")
-        print(result)
-
-        return result.get(
-            "final_reply",
-            "Agent結果なし"
-        )
+    return _extract_graph_reply(result)
 # =========================
 # =========================
 # LINE webhook
