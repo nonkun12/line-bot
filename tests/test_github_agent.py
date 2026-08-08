@@ -443,3 +443,108 @@ def test_handle_github_message_returns_not_supported_for_issue_or_pr(monkeypatch
     text = handle_github_message("PRある？", user_id="user123")
 
     assert "未対応" in text
+
+
+def test_handle_latest_repo_info_calls_client_and_formats_result(monkeypatch):
+    from agents.github import handlers
+
+    messages = [
+        "最新のGitHubリポジトリを教えて",
+        "GitHubのリポジトリを教えて",
+        "GitHubリポジトリ情報を教えて",
+        "GitHub repo info",
+    ]
+
+    fake_repo = {
+        "full_name": "nonkun12/line-bot",
+        "language": "Python",
+        "default_branch": "main",
+        "stargazers_count": 1,
+        "html_url": "https://github.com/nonkun12/line-bot",
+    }
+
+    class FakeClient:
+        def get_repo_info(self):
+            return fake_repo
+
+    monkeypatch.setattr(handlers, "GitHubClient", FakeClient)
+
+    for message in messages:
+        result = handlers.handle_latest_repo_info(message)
+        assert result == handlers.format_repo_info(fake_repo)
+
+
+def test_handle_latest_repo_info_returns_none_for_non_repo_info_queries():
+    from agents.github import handlers
+
+    assert handlers.handle_latest_repo_info("最新コミットを教えて") is None
+    assert handlers.handle_latest_repo_info("GitHubでPythonを検索して") is None
+    assert handlers.handle_latest_repo_info("Issueを確認して") is None
+    assert handlers.handle_latest_repo_info("今日は天気がいいですね") is None
+
+
+def test_handle_github_message_natural_language_repo_info(monkeypatch):
+    from agents.github import handlers
+
+    fake_repo = {
+        "full_name": "nonkun12/line-bot",
+        "language": "Python",
+        "default_branch": "main",
+        "stargazers_count": 1,
+        "html_url": "https://github.com/nonkun12/line-bot",
+    }
+
+    class FakeClient:
+        def get_repo_info(self):
+            return fake_repo
+
+    monkeypatch.setattr(handlers, "GitHubClient", FakeClient)
+
+    result = handlers.handle_github_message(
+        "最新のGitHubリポジトリを教えて",
+        "user123",
+    )
+
+    assert result == handlers.format_repo_info(fake_repo)
+
+
+def test_handle_github_message_github_repo_exact_command_still_works(monkeypatch):
+    from agents.github import handlers
+
+    fake_repo = {
+        "full_name": "nonkun12/line-bot",
+        "language": "Python",
+        "default_branch": "main",
+        "stargazers_count": 1,
+        "html_url": "https://github.com/nonkun12/line-bot",
+    }
+
+    class FakeClient:
+        def get_repo_info(self):
+            return fake_repo
+
+    monkeypatch.setattr(handlers, "GitHubClient", FakeClient)
+
+    result = handlers.handle_github_message(
+        "github repo",
+        "user123",
+    )
+
+    assert result == handlers.format_repo_info(fake_repo)
+
+
+def test_handle_github_message_commits_search_file_not_shadowed_by_repo_info(monkeypatch):
+    from agents.github import handlers
+
+    class FakeClient:
+        def get_latest_commits(self):
+            return []
+
+    monkeypatch.setattr(handlers, "GitHubClient", FakeClient)
+
+    result = handlers.handle_github_message(
+        "github commits",
+        "user123",
+    )
+
+    assert result == "コミットが見つかりませんでした。"

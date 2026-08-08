@@ -109,6 +109,36 @@ def handle_latest_commits(message: str) -> Optional[str]:
     return format_commits(commits)
 
 
+_REPO_INFO_PATTERNS = [
+    r"リポジトリ.*教えて",
+    r"リポジトリ情報",
+    r"repo info",
+    r"最新の.*リポジトリ",
+]
+
+
+def _is_repo_info_request(text: str) -> bool:
+    lower_text = text.lower()
+    for pattern in _REPO_INFO_PATTERNS:
+        if re.search(pattern, lower_text, re.IGNORECASE):
+            return True
+    return False
+
+
+def handle_latest_repo_info(message: str) -> Optional[str]:
+    """
+    Handle natural-language requests for GitHub repository information.
+    Reuses the existing GitHubClient.get_repo_info() / format_repo_info().
+    """
+    if not _is_repo_info_request(message):
+        return None
+
+    client = GitHubClient()
+    repo_info = client.get_repo_info()
+
+    return format_repo_info(repo_info)
+
+
 def handle_issue_or_pr_request(message: str) -> Optional[str]:
     """
     Handle natural-language requests about GitHub Issues or Pull Requests.
@@ -271,5 +301,9 @@ def handle_github_message(
     issue_or_pr = handle_issue_or_pr_request(text)
     if issue_or_pr is not None:
         return issue_or_pr
+
+    repo_info_result = handle_latest_repo_info(text)
+    if repo_info_result is not None:
+        return repo_info_result
 
     return "GitHub Agent: 対応コマンド github repo / commits / file / search です。"
