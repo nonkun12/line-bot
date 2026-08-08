@@ -104,15 +104,29 @@ def _build_llm():
 
 def _parse_fix_response(raw_content: str) -> dict:
 
-    content = raw_content.strip()
+    content = (raw_content or "").strip()
 
-    if content.startswith("```json"):
-        content = content.removeprefix("```json")
-        content = content.removesuffix("```")
-        content = content.strip()
+    if content.startswith("```"):
+        lines = content.splitlines()
+
+        if lines and lines[0].strip().lower() in {
+            "```json",
+            "```",
+        }:
+            lines = lines[1:]
+
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+
+        content = "\n".join(lines).strip()
 
     try:
-        return json.loads(content)
+        parsed = json.loads(content)
+
+        if not isinstance(parsed, dict):
+            raise ValueError("Fix Agent response is not a JSON object")
+
+        return parsed
 
     except Exception:
         return {

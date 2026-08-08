@@ -62,6 +62,20 @@ def analyze_error(error_info: dict) -> str:
 - 属性名・メソッド名のタイプミス確認
 """
 
+    elif error_type == "ModuleNotFoundError":
+        report += """
+Pythonが指定されたモジュールを読み込めていません。
+
+確認ポイント:
+
+- importしているモジュール名が正しいか確認
+- プロジェクト内に対象モジュールが存在するか確認
+- 自作モジュールの場合はファイル配置とimportパスを確認
+- 外部パッケージの場合はインストール状況を確認
+- requirements.txtに必要なパッケージが含まれているか確認
+- ローカル環境とデプロイ環境の依存関係を確認
+"""
+
     elif error_type == "NameError":
         report += """
 定義されていない変数・関数を参照している可能性があります。
