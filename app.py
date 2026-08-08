@@ -43,6 +43,7 @@ from reminders import (
     handle_tomorrow_reminder,
 )
 from agents.notes.intents import is_note_intent
+from agents.github.intents import is_github_intent
 from mcp_client import (
     call_mcp_tool as _call_mcp_tool_impl,
     parse_mcp_json_list as _parse_mcp_json_list_impl,
@@ -241,7 +242,7 @@ def generate_reply(user_id, message):
 
     if (
         message.startswith("debug")
-        or "github" in message.lower()
+        or is_github_intent(message)
     ):
         from graph.graph import graph
 
