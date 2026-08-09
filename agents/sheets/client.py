@@ -16,6 +16,9 @@ class GoogleSheetsClient:
             or os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID")
         )
 
+        if self.spreadsheet_id:
+            self.spreadsheet_id = self.spreadsheet_id.strip()
+
         credentials_json = os.getenv(
             "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON"
         )
@@ -41,6 +44,10 @@ class GoogleSheetsClient:
             print(
                 "SHEETS DEBUG: spreadsheet_id_length=",
                 len(self.spreadsheet_id),
+            )
+            print(
+                "SHEETS DEBUG: spreadsheet_id_repr=",
+                repr(self.spreadsheet_id),
             )
             print(
                 "SHEETS DEBUG: client_email=",
