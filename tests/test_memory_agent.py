@@ -78,6 +78,25 @@ def test_handle_delete_memory_calls_delete():
     )
 
 
+def test_handle_delete_memory_calls_delete_for_delete_request():
+    call_mcp_tool = MagicMock(return_value="deleted")
+
+    result = handle_memory_message(
+        "名前を削除して",
+        "user123",
+        call_mcp_tool,
+    )
+
+    assert result == "deleted"
+    call_mcp_tool.assert_called_once_with(
+        "delete_memory",
+        {
+            "user_id": "user123",
+            "key": "name",
+        },
+    )
+
+
 def test_handle_delete_all_memory_returns_confirmation():
     call_mcp_tool = MagicMock()
 

@@ -87,7 +87,15 @@ def handle_delete_memory(
     Delete single memory
     """
 
-    if "忘れて" not in message:
+    delete_keywords = [
+        "忘れて",
+        "削除して",
+        "削除する",
+        "消して",
+        "消す",
+    ]
+
+    if not any(keyword in message for keyword in delete_keywords):
         return None
 
     return call_mcp_tool(
