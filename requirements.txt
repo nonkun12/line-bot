@@ -9,3 +9,6 @@ langgraph==1.2.10
 langchain-groq
 fastapi
 uvicorn[standard]
+
+google-auth
+google-api-python-client
