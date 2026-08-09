@@ -1,6 +1,10 @@
 import re
 from .client import GitHubClient
-from .intents import is_issue_or_pr_intent
+from .intents import (
+    is_issue_or_pr_intent,
+    is_pull_request_intent,
+    is_issue_intent,
+)
 from typing import Any, Callable, Optional
 
 CallMcpTool = Callable[[str, dict[str, Any]], Any]
@@ -139,15 +143,121 @@ def handle_latest_repo_info(message: str) -> Optional[str]:
     return format_repo_info(repo_info)
 
 
+def _extract_issue_or_pr_items(result: Any, error_message: str) -> tuple[list, Optional[str]]:
+    """
+    Normalize a GitHub Issues/PRs client result into (items, error_message).
+
+    Accepts the client's dict contract ({"ok", "items", "error", "status"})
+    but also defensively handles a bare list, following the same pattern
+    as _extract_search_items().
+    """
+
+    if result is None:
+        return [], error_message
+
+    if isinstance(result, list):
+        if len(result) == 1 and isinstance(result[0], dict) and "error" in result[0]:
+            return [], error_message
+        return result, None
+
+    if isinstance(result, dict):
+        if result.get("error"):
+            return [], error_message
+        if result.get("ok") is False:
+            return [], error_message
+        return result.get("items", []) or [], None
+
+    return [], error_message
+
+
+def format_issues(result: Any) -> str:
+    """Format a GitHub Issues API response for display."""
+
+    items, error_message = _extract_issue_or_pr_items(
+        result, "GitHub Issue取得でエラーが発生しました。"
+    )
+
+    if error_message:
+        return error_message
+
+    if not items:
+        return "Issueが見つかりませんでした。"
+
+    lines = ["【GitHub Issues】"]
+
+    for item in items[:5]:
+        if not isinstance(item, dict):
+            continue
+
+        number = item.get("number", "-")
+        title = item.get("title") or "(no title)"
+        state = item.get("state") or "-"
+        url = item.get("html_url") or "-"
+
+        lines.append(f"\n#{number} {title}\n{state}\n{url}")
+
+    if len(lines) == 1:
+        return "Issueが見つかりませんでした。"
+
+    return "\n".join(lines)
+
+
+def format_pull_requests(result: Any) -> str:
+    """Format a GitHub Pull Requests API response for display."""
+
+    items, error_message = _extract_issue_or_pr_items(
+        result, "GitHub Pull Request取得でエラーが発生しました。"
+    )
+
+    if error_message:
+        return error_message
+
+    if not items:
+        return "Pull Requestが見つかりませんでした。"
+
+    lines = ["【GitHub Pull Requests】"]
+
+    for item in items[:5]:
+        if not isinstance(item, dict):
+            continue
+
+        number = item.get("number", "-")
+        title = item.get("title") or "(no title)"
+        # A merged PR still reports state="closed" from the API; surface
+        # "merged" explicitly when merged_at is set so it isn't shown as
+        # a plain close.
+        if item.get("merged_at"):
+            state = "merged"
+        else:
+            state = item.get("state") or "-"
+        url = item.get("html_url") or "-"
+
+        lines.append(f"\n#{number} {title}\n{state}\n{url}")
+
+    if len(lines) == 1:
+        return "Pull Requestが見つかりませんでした。"
+
+    return "\n".join(lines)
+
+
 def handle_issue_or_pr_request(message: str) -> Optional[str]:
     """
     Handle natural-language requests about GitHub Issues or Pull Requests.
 
-    Phase3-5 scope: intent recognition only. Actual Issue/PR API calls are
-    not implemented yet, so this returns a clear "not yet supported"
-    message instead of falling through to the generic unknown-command
-    reply.
+    Pull Request intent is checked first since "pr" is a substring of the
+    PR keyword set only, keeping Issue-only phrases (e.g. "Issueを教えて")
+    from ever being misrouted to the PR path.
     """
+
+    if is_pull_request_intent(message):
+        client = GitHubClient()
+        result = client.get_pull_requests()
+        return format_pull_requests(result)
+
+    if is_issue_intent(message):
+        client = GitHubClient()
+        result = client.get_issues()
+        return format_issues(result)
 
     if not is_issue_or_pr_intent(message):
         return None

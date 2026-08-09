@@ -147,6 +147,148 @@ class GitHubClient:
                 "status": None,
             }
 
+    def get_issues(self, count: int = 5, state: str = "open") -> dict[str, Any]:
+        """
+        Fetch GitHub Issues for the configured repository.
+
+        GitHub's `issues` endpoint also returns Pull Requests (a PR is
+        internally an Issue), so results whose payload contains a
+        `pull_request` key are filtered out here to keep this method
+        Issue-only. Use get_pull_requests() for PRs.
+
+        Returns a dict with a consistent shape, matching
+        search_repositories():
+
+            {
+                "ok": bool,
+                "items": list[dict],
+                "error": str | None,
+                "status": int | None,
+            }
+        """
+
+        if not self.repo:
+            return {
+                "ok": False,
+                "items": [],
+                "error": "GITHUB_REPO is not configured",
+                "status": None,
+            }
+
+        url = f"https://api.github.com/repos/{self.repo}/issues"
+
+        params = {
+            "state": state,
+            "per_page": count,
+        }
+
+        try:
+            response = requests.get(
+                url,
+                headers=self._build_headers(),
+                params=params,
+                timeout=10,
+            )
+
+            if response.status_code != 200:
+                return {
+                    "ok": False,
+                    "items": [],
+                    "error": "GitHub API error",
+                    "status": response.status_code,
+                }
+
+            data = response.json()
+
+            items = data if isinstance(data, list) else []
+
+            # Exclude pull requests, which GitHub's issues endpoint
+            # includes alongside real issues.
+            issues_only = [
+                item
+                for item in items
+                if isinstance(item, dict) and "pull_request" not in item
+            ]
+
+            return {
+                "ok": True,
+                "items": issues_only,
+                "error": None,
+                "status": response.status_code,
+            }
+
+        except Exception as e:
+            return {
+                "ok": False,
+                "items": [],
+                "error": str(e),
+                "status": None,
+            }
+
+    def get_pull_requests(self, count: int = 5, state: str = "open") -> dict[str, Any]:
+        """
+        Fetch GitHub Pull Requests for the configured repository.
+
+        Returns a dict with a consistent shape, matching get_issues() /
+        search_repositories():
+
+            {
+                "ok": bool,
+                "items": list[dict],
+                "error": str | None,
+                "status": int | None,
+            }
+        """
+
+        if not self.repo:
+            return {
+                "ok": False,
+                "items": [],
+                "error": "GITHUB_REPO is not configured",
+                "status": None,
+            }
+
+        url = f"https://api.github.com/repos/{self.repo}/pulls"
+
+        params = {
+            "state": state,
+            "per_page": count,
+        }
+
+        try:
+            response = requests.get(
+                url,
+                headers=self._build_headers(),
+                params=params,
+                timeout=10,
+            )
+
+            if response.status_code != 200:
+                return {
+                    "ok": False,
+                    "items": [],
+                    "error": "GitHub API error",
+                    "status": response.status_code,
+                }
+
+            data = response.json()
+            items = data if isinstance(data, list) else []
+
+            return {
+                "ok": True,
+                "items": items,
+                "error": None,
+                "status": response.status_code,
+            }
+
+        except Exception as e:
+            return {
+                "ok": False,
+                "items": [],
+                "error": str(e),
+                "status": None,
+            }
+
     def get_file_contents(self, path: str) -> str:
         if not self.repo:
             return "GITHUB_REPO is not configured"
