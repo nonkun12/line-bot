@@ -17,6 +17,7 @@ from pending_approvals import PendingStatus, get_pending_status
 from agents.notes.intents import is_note_intent
 from agents.memory.intents import is_memory_intent
 from agents.github.intents import is_github_intent
+from agents.sheets.intents import is_sheets_intent
 
 
 _DEBUG_PREFIX = "debug"
@@ -27,6 +28,7 @@ _INTENT_TO_AGENT = {
     "note": "notes",
     "memory": "memory",
     "github": "github",
+"sheets": "sheets",
     # "unsupported" (=GitHub/Debug/Memory/Notesのいずれにも該当しない通常
     # メッセージ) は、旧 generate_reply() 末尾にあった通常のGroq応答へ
     # 振り分ける。以前はここが "fallback" 固定になっており、
@@ -57,6 +59,10 @@ def classify_intent(raw_message: str) -> str:
 
     if is_memory_intent(text):
         return "memory"
+
+    if is_sheets_intent(text):
+        print("SUPERVISOR: sheets intent")
+        return "sheets"
 
     print("SUPERVISOR: unsupported")
     return "unsupported"
