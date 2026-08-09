@@ -98,7 +98,7 @@ def _parse_mcp_json_list(raw):
 # ユーザーへ返す旧 generate_reply() の挙動(見出しなし)を踏襲する必要がある。
 # そのため、これらのintentについては final_reply ではなく
 # agent_results から該当Agentの生テキストを直接取り出して使う。
-_DIRECT_TEXT_AGENT_KEYS = ("memory", "notes", "normal")
+_DIRECT_TEXT_AGENT_KEYS = ("memory", "notes", "normal", "sheets")
 
 
 def _invoke_graph(user_id: str, message: str):
