@@ -16,6 +16,10 @@ class GoogleSheetsClient:
             or os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID")
         )
 
+        credentials_json = os.getenv(
+            "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON"
+        )
+
         credentials_file = os.getenv(
             "GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE"
         )
@@ -25,19 +29,30 @@ class GoogleSheetsClient:
                 "GOOGLE_SHEETS_SPREADSHEET_ID is not configured."
             )
 
-        if not credentials_file:
-            raise ValueError(
-                "GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE is not configured."
-            )
-
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets"
         ]
 
-        credentials = Credentials.from_service_account_file(
-            credentials_file,
-            scopes=scopes,
-        )
+        if credentials_json:
+            import json
+
+            credentials_info = json.loads(credentials_json)
+
+            credentials = Credentials.from_service_account_info(
+                credentials_info,
+                scopes=scopes,
+            )
+
+        elif credentials_file:
+            credentials = Credentials.from_service_account_file(
+                credentials_file,
+                scopes=scopes,
+            )
+
+        else:
+            raise ValueError(
+                "Google Sheets service account credentials are not configured."
+            )
 
         self.service = build(
             "sheets",
