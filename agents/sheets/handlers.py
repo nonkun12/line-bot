@@ -18,7 +18,9 @@ def handle_sheets_message(
         return None
 
     # Delete
-    if "削除" in message:
+    if "削除して" in message or (
+        "シートから" in message and "削除" in message
+    ):
         keyword = (
             message
             .replace("シートから", "")
