@@ -17,20 +17,28 @@ def handle_sheets_message(
     if not message:
         return None
 
-    # Delete
+        # Delete
     if "削除して" in message or (
         "シートから" in message and "削除" in message
     ):
-        keyword = (
-            message
-            .replace("シートから", "")
-            .replace("シートを", "")
-            .replace("削除して", "")
-            .replace("削除する", "")
-            .replace("削除", "")
-            .replace("を", "")
-            .strip()
-        )
+        keyword = message
+
+        if "シートから" in keyword:
+            keyword = keyword.split("シートから", 1)[1]
+        elif "シートを" in keyword:
+            keyword = keyword.split("シートを", 1)[1]
+
+        for suffix in [
+            "を削除して",
+            "を削除する",
+            "削除して",
+            "削除する",
+        ]:
+            if suffix in keyword:
+                keyword = keyword.split(suffix, 1)[0]
+                break
+
+        keyword = keyword.strip()
 
         if not keyword:
             return {
@@ -53,7 +61,7 @@ def handle_sheets_message(
             "success": True,
         }
 
-    # Search
+# Search
     if "検索" in message:
         keyword = (
             message
