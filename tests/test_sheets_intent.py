@@ -67,3 +67,22 @@ def test_supervisor_node_sets_next_agent_to_sheets_for_analysis_request():
 
     assert result["intent"] == "sheets"
     assert result["next_agent"] == "sheets"
+
+
+def test_classify_intent_routes_sheets_before_note_and_memory_generic_keywords():
+    """
+    回帰テスト: Supervisorの判定順序バグ。
+
+    「シートに記録 明日の予定」のようなSheets向けメッセージが、
+    Notes/Memory Agentの汎用キーワード判定(「予定」「したい」「名前」等)に
+    先に捕捉され、誤って note/memory へルーティングされていた問題を防ぐ。
+    """
+    messages = [
+        "シートに記録 明日の予定",
+        "シートに名前を記録して",
+        "シートに私の予定を記録して",
+        "シートに記録したい予定がある",
+    ]
+
+    for message in messages:
+        assert classify_intent(message) == "sheets"

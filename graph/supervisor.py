@@ -54,15 +54,15 @@ def classify_intent(raw_message: str) -> str:
         print("SUPERVISOR: github intent")
         return "github"
 
+    if is_sheets_intent(text):
+        print("SUPERVISOR: sheets intent")
+        return "sheets"
+
     if is_note_intent(text):
         return "note"
 
     if is_memory_intent(text):
         return "memory"
-
-    if is_sheets_intent(text):
-        print("SUPERVISOR: sheets intent")
-        return "sheets"
 
     print("SUPERVISOR: unsupported")
     return "unsupported"
