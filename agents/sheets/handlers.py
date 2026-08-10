@@ -17,6 +17,40 @@ def handle_sheets_message(
     if not message:
         return None
 
+    # Delete
+    if "削除" in message:
+        keyword = (
+            message
+            .replace("シートから", "")
+            .replace("シートを", "")
+            .replace("削除して", "")
+            .replace("削除する", "")
+            .replace("削除", "")
+            .replace("を", "")
+            .strip()
+        )
+
+        if not keyword:
+            return {
+                "text": "削除する内容を指定してください。",
+                "success": False,
+            }
+
+        rows = client.search("A:Z", keyword)
+
+        if not rows:
+            return {
+                "text": f"削除対象が見つかりませんでした：{keyword}",
+                "success": False,
+            }
+
+        client.delete_row(keyword)
+
+        return {
+            "text": f"Google Sheetsから削除しました：{keyword}",
+            "success": True,
+        }
+
     # Search
     if "検索" in message:
         keyword = (

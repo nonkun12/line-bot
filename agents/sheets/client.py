@@ -120,3 +120,37 @@ class GoogleSheetsClient:
                 for cell in row
             )
         ]
+
+    def delete_row(self, keyword: str):
+        """
+        Delete the first row in the first sheet containing keyword.
+        """
+        rows = self.read_rows("A:Z")
+
+        for row_number, row in enumerate(rows, start=1):
+            if any(keyword in str(cell) for cell in row):
+                body = {
+                    "requests": [
+                        {
+                            "deleteDimension": {
+                                "range": {
+                                    "sheetId": 0,
+                                    "dimension": "ROWS",
+                                    "startIndex": row_number - 1,
+                                    "endIndex": row_number,
+                                }
+                            }
+                        }
+                    ]
+                }
+
+                return (
+                    self.service.spreadsheets()
+                    .batchUpdate(
+                        spreadsheetId=self.spreadsheet_id,
+                        body=body,
+                    )
+                    .execute()
+                )
+
+        return None

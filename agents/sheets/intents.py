@@ -15,4 +15,10 @@ def is_sheets_intent(message: str) -> bool:
         "シートを検索",
     ]
 
-    return any(keyword in message for keyword in keywords)
+    if any(keyword in message for keyword in keywords):
+        return True
+
+    if "シート" in message and "削除" in message:
+        return True
+
+    return False
