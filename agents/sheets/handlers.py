@@ -17,7 +17,7 @@ def handle_sheets_message(
     if not message:
         return None
 
-        # Delete
+    # Delete
     if "削除して" in message or (
         "シートから" in message and "削除" in message
     ):
@@ -61,7 +61,7 @@ def handle_sheets_message(
             "success": True,
         }
 
-# Search
+    # Search
     if "検索" in message:
         keyword = (
             message
@@ -88,8 +88,22 @@ def handle_sheets_message(
     if "見て" in message or "読んで" in message:
         rows = client.read_rows("A:Z")
 
+        if not rows:
+            return {
+                "text": "Google Sheetsにはデータがありません。",
+                "rows": [],
+                "success": True,
+            }
+
+        lines = ["Google Sheetsの内容："]
+
+        for index, row in enumerate(rows, start=1):
+            lines.append(
+                f"{index}. " + " | ".join(str(cell) for cell in row)
+            )
+
         return {
-            "text": f"Google Sheetsを読み取りました：{len(rows)}行",
+            "text": "\n".join(lines),
             "rows": rows,
             "success": True,
         }
