@@ -113,6 +113,41 @@ def handle_latest_commits(message: str) -> Optional[str]:
     return format_commits(commits)
 
 
+_FILE_CONTENT_PATTERN = re.compile(
+    r"(?:github\s*の)?(?P<path>[\w\-./]+\.[A-Za-z0-9]+)"
+    r"(?:の(?:ファイル内容|内容))?を(?:見せて|表示して|教えて)",
+    re.IGNORECASE,
+)
+
+
+def _extract_file_content_path(text: str) -> Optional[str]:
+    match = _FILE_CONTENT_PATTERN.search(text)
+    if not match:
+        return None
+    return match.group("path")
+
+
+def handle_file_contents(message: str) -> Optional[str]:
+    """
+    Handle natural-language requests for GitHub file contents
+    (e.g. "app.pyのファイル内容を見せて", "app.pyを表示して",
+    "README.mdの内容を見せて", "GitHubのapp.pyを見せて").
+
+    Reuses the existing GitHubClient.get_file_contents() implementation
+    that already backs the "github file <path>" command - no new API
+    logic is introduced here. Returns None when the message does not
+    contain a recognizable "<path>...を見せて/表示して/教えて" request,
+    so callers can fall through to other handlers.
+    """
+
+    path = _extract_file_content_path(message)
+    if path is None:
+        return None
+
+    client = GitHubClient()
+    return client.get_file_contents(path)
+
+
 _REPO_INFO_PATTERNS = [
     r"リポジトリ.*教えて",
     r"リポジトリ情報",
@@ -403,6 +438,10 @@ def handle_github_message(
     latest_commits = handle_latest_commits(text)
     if latest_commits is not None:
         return latest_commits
+
+    file_contents_result = handle_file_contents(text)
+    if file_contents_result is not None:
+        return file_contents_result
 
     search_result = handle_github_search(text)
     if search_result is not None:

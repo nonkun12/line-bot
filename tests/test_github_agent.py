@@ -7,6 +7,7 @@ from agents.github.intents import (
 )
 from agents.github.handlers import (
     handle_latest_commits,
+    handle_file_contents,
     handle_github_search,
     handle_issue_or_pr_request,
     handle_github_message,
@@ -843,3 +844,186 @@ def test_handle_github_message_commits_search_file_not_shadowed_by_repo_info(mon
     )
 
     assert result == "コミットが見つかりませんでした。"
+
+
+# ---------------------------------------------------------------------------
+# Natural-language file content requests (handle_file_contents)
+# ---------------------------------------------------------------------------
+
+def test_handle_file_contents_extracts_path_and_calls_client(monkeypatch):
+    calls = []
+
+    class FakeClient:
+        def get_file_contents(self, path):
+            calls.append(path)
+            return f"# contents of {path}"
+
+    monkeypatch.setattr(
+        "agents.github.handlers.GitHubClient", FakeClient
+    )
+
+    cases = [
+        ("app.pyのファイル内容を見せて", "app.py"),
+        ("app.pyを表示して", "app.py"),
+        ("README.mdの内容を見せて", "README.md"),
+        ("GitHubのapp.pyを見せて", "app.py"),
+    ]
+
+    for message, expected_path in cases:
+        result = handle_file_contents(message)
+        assert result == f"# contents of {expected_path}"
+
+    assert calls == ["app.py", "app.py", "README.md", "app.py"]
+
+
+def test_handle_file_contents_returns_none_for_unrelated_messages():
+    assert handle_file_contents("今日は天気がいいですね") is None
+    assert handle_file_contents("最新コミットを教えて") is None
+    assert handle_file_contents("githubで requests 探して") is None
+    # 既存の完全一致コマンドは別ルートで処理されるため、自然文ハンドラ
+    # 単体としては拾わない(handle_github_message側の順序で非衝突)。
+    assert handle_file_contents("github file app.py") is None
+
+
+def test_handle_file_contents_passes_through_client_error_message(monkeypatch):
+    class FakeClient:
+        def get_file_contents(self, path):
+            return "GitHub API error: 404"
+
+    monkeypatch.setattr(
+        "agents.github.handlers.GitHubClient", FakeClient
+    )
+
+    result = handle_file_contents("missing.pyの内容を見せて")
+
+    assert result == "GitHub API error: 404"
+
+
+def test_handle_file_contents_passes_through_client_exception_message(monkeypatch):
+    class FakeClient:
+        def get_file_contents(self, path):
+            return "network down"
+
+    monkeypatch.setattr(
+        "agents.github.handlers.GitHubClient", FakeClient
+    )
+
+    result = handle_file_contents("app.pyを表示して")
+
+    assert result == "network down"
+
+
+def test_handle_github_message_natural_language_file_contents(monkeypatch):
+    from agents.github import handlers
+
+    class FakeClient:
+        def get_file_contents(self, path):
+            assert path == "app.py"
+            return "print('hello')"
+
+    monkeypatch.setattr(handlers, "GitHubClient", FakeClient)
+
+    result = handlers.handle_github_message(
+        "app.pyのファイル内容を見せて",
+        "user123",
+    )
+
+    assert result == "print('hello')"
+
+
+def test_handle_github_message_github_file_exact_command_still_works(monkeypatch):
+    """
+    Regression: the pre-existing "github file <path>" exact command must
+    keep working unchanged after adding natural-language file content
+    support. This command is matched before the natural-language handler
+    chain runs, so it must not be shadowed by handle_file_contents().
+    """
+    from agents.github import handlers
+
+    calls = []
+
+    class FakeClient:
+        def get_file_contents(self, path):
+            calls.append(path)
+            return "print('from exact command')"
+
+    monkeypatch.setattr(handlers, "GitHubClient", FakeClient)
+
+    result = handlers.handle_github_message(
+        "github file app.py",
+        "user123",
+    )
+
+    assert result == "print('from exact command')"
+    assert calls == ["app.py"]
+
+
+def test_handle_github_message_github_file_missing_filename_still_works(monkeypatch):
+    """Regression: unchanged behavior when no filename is given."""
+    from agents.github import handlers
+
+    result = handlers.handle_github_message(
+        "github file",
+        "user123",
+    )
+
+    assert result == "ファイル名を指定してください。"
+
+
+# ---------------------------------------------------------------------------
+# GitHubClient.get_file_contents() contract (previously untested)
+# ---------------------------------------------------------------------------
+
+def test_client_get_file_contents_decodes_base64_content(monkeypatch):
+    import base64
+
+    encoded = base64.b64encode(b"print('hi')").decode("ascii")
+
+    def fake_get(url, headers=None, timeout=None):
+        return _FakeResponse(
+            200,
+            {"content": encoded, "encoding": "base64"},
+        )
+
+    monkeypatch.setattr("agents.github.client.requests.get", fake_get)
+
+    client = GitHubClient(token="dummy")
+    result = client.get_file_contents("app.py")
+
+    assert result == "print('hi')"
+
+
+def test_client_get_file_contents_returns_error_message_on_non_200(monkeypatch):
+    def fake_get(url, headers=None, timeout=None):
+        return _FakeResponse(404, {"message": "Not Found"})
+
+    monkeypatch.setattr("agents.github.client.requests.get", fake_get)
+
+    client = GitHubClient(token="dummy")
+    result = client.get_file_contents("missing.py")
+
+    assert result == "GitHub API error: 404"
+
+
+def test_client_get_file_contents_returns_error_message_on_exception(monkeypatch):
+    def fake_get(url, headers=None, timeout=None):
+        raise ConnectionError("network down")
+
+    monkeypatch.setattr("agents.github.client.requests.get", fake_get)
+
+    client = GitHubClient(token="dummy")
+    result = client.get_file_contents("app.py")
+
+    assert "network down" in result
+
+
+def test_client_get_file_contents_returns_error_when_repo_not_configured():
+    # GitHubClient.__init__ always falls back to a default repo name, so
+    # the "not configured" branch is reached by clearing the attribute
+    # directly after construction rather than via the constructor.
+    client = GitHubClient(token="dummy")
+    client.repo = None
+
+    result = client.get_file_contents("app.py")
+
+    assert result == "GITHUB_REPO is not configured"
