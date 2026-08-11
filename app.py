@@ -69,6 +69,113 @@ app = Flask(__name__)
 # テスト互換用: 既存の app.client 参照を維持する
 client = _ai_client_client
 
+# =========================================================
+# LINE送信共通層: 5000文字制限対策
+# =========================================================
+# LINE Messaging APIは1メッセージ最大5000文字までしか受け付けない
+# (超過するとmessages[0].textでHTTP 400になる)。
+# GitHub Agentの長文ファイル取得結果に限らず、Sheets/Notes/Memory/
+# Debug/Fix等どのAgentが返した文章でも同様にエラーになり得るため、
+# reply_message() / push_message() を呼ぶ直前の共通層でここに集約して対応する。
+LINE_MAX_MESSAGE_LENGTH = 5000
+LINE_MAX_MESSAGES_PER_SEND = 5
+LINE_MAX_TOTAL_LENGTH = LINE_MAX_MESSAGE_LENGTH * LINE_MAX_MESSAGES_PER_SEND  # 25000
+_LINE_TRUNCATION_NOTICE = "\n\n(※文字数が多いため一部を省略しました)"
+
+
+def split_line_message(
+    text,
+    max_len=LINE_MAX_MESSAGE_LENGTH,
+    max_messages=LINE_MAX_MESSAGES_PER_SEND,
+    max_total=LINE_MAX_TOTAL_LENGTH,
+):
+    """LINEの1メッセージ文字数制限に合わせてテキストを分割する。
+
+    - text が空/None の場合は既存挙動を維持するため [""] を返す
+      (呼び出し側はこれまで通り TextMessage(text="") を1件送る)。
+    - max_len以下ならそのまま1件のリストを返す(従来と同じ1メッセージ)。
+    - max_lenを超える場合、直近max_len文字以内に改行があればそこで分割する
+      (改行文字自体は前側のチャンクの末尾に残し、原文の内容を欠落させない)。
+      改行が無ければmax_len文字で機械的に分割する。
+    - 分割結果がmax_messages件を超える場合はmax_messages件に切り詰める。
+    - 元テキストがmax_totalを超える場合は、分割前にmax_total文字で切り詰める。
+    - 上記いずれかの理由で切り詰めが発生した場合、最後のメッセージの末尾に
+      省略した旨の通知を追加する(通知を追加してもmax_lenを超えないよう、
+      本文側を必要な分だけ削る)。
+    """
+    if not text:
+        return [text or ""]
+
+    truncated = False
+    working = text
+    if len(working) > max_total:
+        working = working[:max_total]
+        truncated = True
+
+    if len(working) <= max_len:
+        chunks = [working]
+    else:
+        chunks = []
+        remaining = working
+        while len(remaining) > max_len:
+            window = remaining[:max_len]
+            split_at = window.rfind("\n")
+            if split_at <= 0:
+                # 改行が見つからない(または先頭にしかない)場合はmax_len文字で強制分割
+                chunks.append(remaining[:max_len])
+                remaining = remaining[max_len:]
+            else:
+                # 改行位置を優先して分割する。改行文字は前側のチャンクの末尾に残し、
+                # 原文の内容(改行含む)を欠落させないようにする。
+                chunks.append(remaining[:split_at + 1])
+                remaining = remaining[split_at + 1:]
+        if remaining:
+            chunks.append(remaining)
+
+    if len(chunks) > max_messages:
+        chunks = chunks[:max_messages]
+        truncated = True
+
+    if not chunks:
+        chunks = [""]
+
+    if truncated:
+        notice = _LINE_TRUNCATION_NOTICE
+        last = chunks[-1]
+        available = max(0, max_len - len(notice))
+        if len(last) > available:
+            last = last[:available]
+        chunks[-1] = last + notice
+
+    return chunks
+
+
+def _build_line_messages(text):
+    """分割済みテキストをLINE送信用のTextMessageリストに変換する。"""
+    return [TextMessage(text=chunk) for chunk in split_line_message(text)]
+
+
+def _line_reply(reply_token, text):
+    """reply_message()の共通ラッパー。5000文字超は自動的に複数メッセージに分割する。"""
+    with ApiClient(configuration) as api:
+        MessagingApi(api).reply_message(
+            ReplyMessageRequest(
+                reply_token=reply_token,
+                messages=_build_line_messages(text)
+            )
+        )
+
+
+def _line_push(user_id, text):
+    """push_message()の共通ラッパー。5000文字超は自動的に複数メッセージに分割する。"""
+    with ApiClient(configuration) as api:
+        MessagingApi(api).push_message(
+            PushMessageRequest(
+                to=user_id,
+                messages=_build_line_messages(text)
+            )
+        )
+
 print("===== APP VERSION CHECK =====")
 print("search_notes enabled")
 
@@ -327,26 +434,14 @@ def _process_and_reply(event, user_id, text):
             print("GENERATED REPLY:", repr(reply))
 
             try:
-                with ApiClient(configuration) as api:
-                    MessagingApi(api).reply_message(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
-                            messages=[TextMessage(text=reply)]
-                        )
-                    )
+                _line_reply(event.reply_token, reply)
                 print("REPLY SENT SUCCESS")
             except Exception as reply_err:
                 # reply_tokenの失効(Webhook受信から短時間で無効になる)等でreply_messageが
                 # 失敗した場合のみ、push_messageで同じ内容を送り直す。
                 # reply_messageが成功する通常時はこのフォールバックには入らない。
                 print("REPLY FAILED, FALLBACK TO PUSH:", reply_err)
-                with ApiClient(configuration) as api:
-                    MessagingApi(api).push_message(
-                        PushMessageRequest(
-                            to=user_id,
-                            messages=[TextMessage(text=reply)]
-                        )
-                    )
+                _line_push(user_id, reply)
                 print("PUSH FALLBACK SENT SUCCESS")
         except Exception as e:
             import traceback
@@ -562,13 +657,7 @@ def internal_ai_report():
 
     try:
         report_text = generate_ai_secretary_report(user_id)
-        with ApiClient(configuration) as api:
-            MessagingApi(api).push_message(
-                PushMessageRequest(
-                    to=user_id,
-                    messages=[TextMessage(text=report_text)]
-                )
-            )
+        _line_push(user_id, report_text)
         save_message(user_id, "assistant", report_text)
         print(f"AI REPORT SENT: user_id={user_id}")
     except Exception as e:
@@ -612,22 +701,18 @@ def internal_push():
         return jsonify({"ok": False, "error": "user_id and message are required"}), 400
 
     try:
-        with ApiClient(configuration) as api:
-            print("FINAL TO:", repr(user_id))
-            print("FINAL TYPE:", type(user_id))
-            print("FINAL LEN:", len(user_id))
+        print("FINAL TO:", repr(user_id))
+        print("FINAL TYPE:", type(user_id))
+        print("FINAL LEN:", len(user_id))
 
-            print("REQUEST BODY:", PushMessageRequest(
-                to=user_id,
-                messages=[TextMessage(text=message)]
-            ).dict())
+        line_messages = _build_line_messages(message)
+        print("SPLIT MESSAGE COUNT:", len(line_messages))
+        print("REQUEST BODY:", PushMessageRequest(
+            to=user_id,
+            messages=line_messages
+        ).dict())
 
-            MessagingApi(api).push_message(
-                PushMessageRequest(
-                    to=user_id,
-                    messages=[TextMessage(text=message)]
-                )
-            )
+        _line_push(user_id, message)
         save_message(user_id, "assistant", message)
         print(f"INTERNAL PUSH SENT: user_id={user_id}")
         return jsonify({"ok": True})
