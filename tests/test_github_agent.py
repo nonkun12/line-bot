@@ -96,6 +96,26 @@ def test_is_github_intent_returns_false_for_non_github_messages():
     assert not is_github_intent("明日のリマインダーを設定して")
 
 
+def test_is_github_intent_detects_natural_language_file_content_requests():
+    """
+    Regression test: is_github_intent() must recognize the same
+    natural-language file content phrasing that handle_file_contents()
+    already handles (e.g. "README.mdを見せて"), so these requests are
+    routed to the GitHub Agent instead of falling through to the Normal
+    Agent.
+    """
+    assert is_github_intent("README.mdを見せて")
+    assert is_github_intent("README.mdの内容を見せて")
+    assert is_github_intent("README.mdを表示して")
+    assert is_github_intent("app.pyを表示して")
+    assert is_github_intent("github file README.md")
+
+
+def test_is_github_intent_returns_false_for_unrelated_readme_questions():
+    assert not is_github_intent("READMEの書き方を教えて")
+    assert not is_github_intent("READMEって何ですか？")
+
+
 # ---------------------------------------------------------------------------
 # GitHub Search result formatting (Phase3-4)
 # ---------------------------------------------------------------------------

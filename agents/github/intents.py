@@ -30,6 +30,18 @@ _GITHUB_PATTERN = re.compile(
 )
 
 
+# Natural-language file content requests (e.g. "README.mdを見せて",
+# "app.pyを表示して"). Shared with agents.github.handlers.handle_file_contents()
+# so the pattern used to *detect* these requests (for routing) and the
+# pattern used to *extract the path* (for handling) stay in sync - defined
+# once here and reused, rather than duplicated.
+_FILE_CONTENT_PATTERN = re.compile(
+    r"(?:github\s*の)?(?P<path>[\w\-./]+\.[A-Za-z0-9]+)"
+    r"(?:の(?:ファイル内容|内容))?を(?:見せて|表示して|教えて)",
+    re.IGNORECASE,
+)
+
+
 def is_github_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
     """Detect whether a user message is asking for GitHub-related functionality."""
 
@@ -42,7 +54,10 @@ def is_github_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
     if any(keyword in lower_text for keyword in _GITHUB_KEYWORDS):
         return True
 
-    return bool(_GITHUB_PATTERN.search(text))
+    if _GITHUB_PATTERN.search(text):
+        return True
+
+    return bool(_FILE_CONTENT_PATTERN.search(text))
 
 
 _PR_KEYWORDS = [

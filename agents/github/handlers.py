@@ -4,6 +4,7 @@ from .intents import (
     is_issue_or_pr_intent,
     is_pull_request_intent,
     is_issue_intent,
+    _FILE_CONTENT_PATTERN,
 )
 from typing import Any, Callable, Optional
 
@@ -111,13 +112,6 @@ def handle_latest_commits(message: str) -> Optional[str]:
     commits = client.get_latest_commits()
 
     return format_commits(commits)
-
-
-_FILE_CONTENT_PATTERN = re.compile(
-    r"(?:github\s*の)?(?P<path>[\w\-./]+\.[A-Za-z0-9]+)"
-    r"(?:の(?:ファイル内容|内容))?を(?:見せて|表示して|教えて)",
-    re.IGNORECASE,
-)
 
 
 def _extract_file_content_path(text: str) -> Optional[str]:
