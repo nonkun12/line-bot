@@ -152,8 +152,8 @@ LINE Messaging API には「1メッセージあたり最大5000文字」「1回�
    # Google Sheets Agent (必須)
    GOOGLE_SHEETS_SPREADSHEET_ID=your_google_sheets_spreadsheet_id
    # 以下のいずれか一方 (または両方) で Google の認証情報を指定します
-   GOOGLE_SHEETS_CREDENTIALS_JSON=your_google_service_account_credentials_json_string
-   GOOGLE_SHEETS_CREDENTIALS_FILE=path/to/your/credentials.json
+   GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON=your_google_service_account_credentials_json_string
+   GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE=path/to/your/credentials.json
 
    # GitHub Agent (任意)
    AI_REPORT_GITHUB_REPO=nonkun12/line-bot
