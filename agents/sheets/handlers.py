@@ -85,6 +85,84 @@ def generate_ai_sheet_reply(message: str, rows: list) -> str:
         )
 
 
+# Append用の完全一致プレフィックス。
+# 「シートに記録 ○○」のように、キーワードが先頭・本文が後ろに続く
+# 従来形式との後方互換のため、まずこちらを優先して判定する。
+_APPEND_PREFIXES = [
+    "シートに記録",
+    "シートに追加",
+    "Google Sheetsに記録",
+    "Googleスプレッドシートに記録",
+]
+
+# 自然文フォールバック用の開始/終了マーカー。
+# 「シートに<本文>を記録して」のように、本文がキーワードより前に
+# 来る語順を抽出するために使う。
+_APPEND_START_MARKERS = [
+    "Googleスプレッドシートに",
+    "Google Sheetsに",
+    "シートに",
+]
+
+_APPEND_END_MARKERS = [
+    "を記録して",
+    "を記録する",
+    "を記録",
+    "を追加して",
+    "を追加する",
+    "を追加",
+    "記録して",
+    "記録する",
+    "記録",
+    "追加して",
+    "追加する",
+    "追加",
+]
+
+
+def _extract_append_content(message: str) -> str:
+    """
+    「シートに記録して」系のメッセージから、実際に保存すべき本文だけを
+    抽出する。
+
+    既知の限界:
+    本文自体に「を記録」「を追加」という文字列が含まれる場合
+    (例: 「シートに来週の記録を追加して」)、最初に出現した位置で
+    本文が区切られるため、意図しない切り詰めが起きる可能性がある。
+    これは単純な文字列ヒューリスティックによる既知のトレードオフであり、
+    完全な自然言語解析は行わない。
+    """
+
+    # 1. 既存の完全一致プレフィックス方式(後方互換)。
+    #    例: 「シートに記録 テストデータ」→「テストデータ」
+    for prefix in _APPEND_PREFIXES:
+        if prefix in message:
+            return message.replace(prefix, "", 1).strip()
+
+    # 2. 自然文パターン。
+    #    例: 「シートにテスト1を記録」→「テスト1」
+    #    例: 「シートに名前を記録して」→「名前」
+    start_idx = None
+
+    for marker in _APPEND_START_MARKERS:
+        idx = message.find(marker)
+        if idx != -1 and (start_idx is None or idx < start_idx):
+            start_idx = idx + len(marker)
+
+    remainder = message[start_idx:] if start_idx is not None else message
+
+    end_idx = None
+
+    for marker in _APPEND_END_MARKERS:
+        idx = remainder.find(marker)
+        if idx != -1 and (end_idx is None or idx < end_idx):
+            end_idx = idx
+
+    content = remainder[:end_idx] if end_idx is not None else remainder
+
+    return content.strip()
+
+
 def handle_sheets_message(
     message: str,
     user_id: str,
@@ -204,19 +282,7 @@ def handle_sheets_message(
 
     # Append
     if "記録" in message or "追加" in message:
-        prefix_list = [
-            "シートに記録",
-            "シートに追加",
-            "Google Sheetsに記録",
-            "Googleスプレッドシートに記録",
-        ]
-
-        content = message
-
-        for prefix in prefix_list:
-            if prefix in content:
-                content = content.replace(prefix, "", 1).strip()
-                break
+        content = _extract_append_content(message)
 
         if not content:
             return {

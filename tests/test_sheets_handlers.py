@@ -49,6 +49,176 @@ def test_handle_sheets_message_append():
     )
 
 
+def test_handle_sheets_message_append_legacy_prefix_still_works():
+    """
+    従来の「シートに記録 ○○」形式(キーワードが先頭・本文が後ろ)が
+    引き続き正常に動作すること。
+    """
+    client = MagicMock()
+
+    result = handle_sheets_message(
+        "シートに記録 テストデータ",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["text"] == "Google Sheetsに記録しました：テストデータ"
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["テストデータ"],
+    )
+
+
+def test_handle_sheets_message_append_natural_phrase_record():
+    """
+    「シートに<本文>を記録」のような自然な語順から、
+    本文だけを抽出して保存すること(今回の回帰テスト)。
+    """
+    client = MagicMock()
+
+    result = handle_sheets_message(
+        "シートにテスト1を記録",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["text"] == "Google Sheetsに記録しました：テスト1"
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["テスト1"],
+    )
+
+
+def test_handle_sheets_message_append_natural_phrase_record_te_form():
+    """
+    実際にLINEで報告された「シートにテスト2を記録して」のケース。
+    テ形が付いても本文だけを抽出して保存すること。
+    """
+    client = MagicMock()
+
+    result = handle_sheets_message(
+        "シートにテスト2を記録して",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["text"] == "Google Sheetsに記録しました：テスト2"
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["テスト2"],
+    )
+
+
+def test_handle_sheets_message_append_natural_phrase_add():
+    """「シートに<本文>を追加」のような自然な語順にも対応すること。"""
+    client = MagicMock()
+
+    result = handle_sheets_message(
+        "シートにテスト3を追加",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["テスト3"],
+    )
+
+
+def test_handle_sheets_message_append_natural_phrase_name_te_form():
+    """「シートに名前を記録して」のような一般的な自然文にも対応すること。"""
+    client = MagicMock()
+
+    result = handle_sheets_message(
+        "シートに名前を記録して",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["名前"],
+    )
+
+
+def test_handle_sheets_message_append_natural_phrase_shopping_list():
+    """「シートに買い物リストを追加」のような自然文にも対応すること。"""
+    client = MagicMock()
+
+    result = handle_sheets_message(
+        "シートに買い物リストを追加",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["買い物リスト"],
+    )
+
+
+def test_handle_sheets_message_append_natural_phrase_google_sheets():
+    """「Google Sheetsに」始まりの自然文でも本文だけを抽出すること。"""
+    client = MagicMock()
+
+    result = handle_sheets_message(
+        "Google Sheetsに会議メモを記録して",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["会議メモ"],
+    )
+
+
+def test_handle_sheets_message_append_empty_content_returns_error():
+    """
+    抽出結果が空文字になる場合(本文を伴わない「シートに記録」)は、
+    Sheetsへ書き込まず、安全にエラーメッセージを返すこと。
+    """
+    client = MagicMock()
+
+    result = handle_sheets_message(
+        "シートに記録",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is False
+    assert result["text"] == "記録する内容を指定してください。"
+    client.append_row.assert_not_called()
+
+
+def test_handle_sheets_message_append_content_containing_keyword_is_known_limitation():
+    """
+    既知の限界: 本文自体に「記録」という語が含まれる場合、
+    最初に出現した位置で本文が区切られてしまう。
+    完全な自然言語解析ではないことをテストで明示しておく。
+    """
+    client = MagicMock()
+
+    result = handle_sheets_message(
+        "シートに来週の記録を追加して",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["来週の"],
+    )
+
+
 def test_handle_sheets_message_delete():
     client = MagicMock()
     client.search.return_value = [
