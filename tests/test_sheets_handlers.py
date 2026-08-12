@@ -354,6 +354,125 @@ def test_handle_sheets_message_ai_analysis_falls_back_on_api_error(mock_generate
     assert "エラー" in result["text"]
 
 
+def test_handle_sheets_message_natural_language_read_variants_route_to_existing_read():
+    """
+    「シートの内容は？」「シートを確認して」のような自然な言い方でも、
+    既存のRead処理(生データの一覧表示、AI分析には渡さない)へ
+    ルーティングされること。
+
+    LINEで実際に報告された回帰:
+    「シートを読んで」は動作するが「シートの内容は？」は
+    「Google Sheetsの操作を理解できませんでした。」になっていた。
+    """
+    natural_read_phrases = [
+        "シートの内容は？",
+        "シートの中身を見せて",
+        "シートを確認して",
+        "シートのデータを見せて",
+        "Google Sheetsを確認して",
+    ]
+
+    for phrase in natural_read_phrases:
+        client = MagicMock()
+        client.read_rows.return_value = [["テスト"]]
+
+        with patch(
+            "agents.sheets.handlers.generate_chat_completion"
+        ) as mock_generate:
+            result = handle_sheets_message(
+                phrase,
+                "user123",
+                client,
+            )
+            mock_generate.assert_not_called()
+
+        assert result is not None, f"{phrase!r} was not handled"
+        assert result["success"] is True
+        assert result["text"].startswith("Google Sheetsの内容：")
+        client.read_rows.assert_called_once_with("A:Z")
+
+
+def test_handle_sheets_message_read_question_mark_variant():
+    """
+    実際にLINEで報告された「シートの内容は？」のケース単体での回帰テスト。
+    """
+    client = MagicMock()
+    client.read_rows.return_value = [["テスト1"], ["テスト2"]]
+
+    result = handle_sheets_message(
+        "シートの内容は？",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["text"] == (
+        "Google Sheetsの内容：\n1. テスト1\n2. テスト2"
+    )
+    client.read_rows.assert_called_once_with("A:Z")
+
+
+def test_handle_sheets_message_natural_read_still_yields_none_only_when_unmatched():
+    """
+    今回のRead判定拡張が、既存のNone(未対応)フォールバックの動作自体を
+    壊していないことを確認する回帰テスト。
+    Sheetsに一切関係のない操作要求は引き続きNoneを返し、
+    node.py側で「Google Sheetsの操作を理解できませんでした。」に
+    変換される。
+    """
+    client = MagicMock()
+
+    result = handle_sheets_message(
+        "シート",
+        "user123",
+        client,
+    )
+
+    assert result is None
+    client.read_rows.assert_not_called()
+    client.append_row.assert_not_called()
+
+
+def test_handle_sheets_message_append_still_works_after_read_expansion():
+    """
+    Read判定を拡張した後も、既存の書き込み(Append)処理が
+    引き続き正常に動作することを確認する回帰テスト。
+    """
+    client = MagicMock()
+
+    result = handle_sheets_message(
+        "シートにテスト1を記録",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["text"] == "Google Sheetsに記録しました：テスト1"
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["テスト1"],
+    )
+
+
+def test_handle_sheets_message_read_still_works_after_read_expansion():
+    """
+    Read判定を拡張した後も、既存の「シートを読んで」が
+    引き続き正常に動作することを確認する回帰テスト。
+    """
+    client = MagicMock()
+    client.read_rows.return_value = [["テスト1"]]
+
+    result = handle_sheets_message(
+        "シートを読んで",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["text"] == "Google Sheetsの内容：\n1. テスト1"
+    client.read_rows.assert_called_once_with("A:Z")
+
+
 def test_handle_sheets_message_plain_read_does_not_call_ai():
     """
     分析トリガーワードを含まない単純な「シートを見て」は、

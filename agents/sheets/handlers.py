@@ -30,6 +30,34 @@ def _is_ai_analysis_request(message: str) -> bool:
     )
 
 
+# 「見て」「読んで」に加え、「シートの内容は？」「シートを確認して」のような
+# 自然な言い回しでも、既存のRead処理(生データの一覧表示)を呼び出せるように
+# するためのキーワード集。
+#
+# AI分析トリガー(_AI_ANALYSIS_TRIGGER_KEYWORDS)とは意図的に判定順序を
+# 変えていない: handle_sheets_message内ではAI分析判定を従来通りRead判定より
+# 先に行うため、「シートに何が記録されている？」のようにAI分析キーワード
+# ("何が" 等)と同時に該当するメッセージは、これまで通りAI分析へ渡る。
+# ここではAI分析キーワードに当てはまらない、単純な読み取り要求のみを
+# 追加で拾う。
+_READ_TRIGGER_KEYWORDS = [
+    "見て",
+    "読んで",
+    "見せて",
+    "確認して",
+    "内容は",
+    "内容が",
+    "中身",
+]
+
+
+def _is_read_request(message: str) -> bool:
+    return any(
+        keyword in message
+        for keyword in _READ_TRIGGER_KEYWORDS
+    )
+
+
 def _format_sheet_rows_for_ai(rows: list) -> str:
     if not rows:
         return "(シートにはまだデータがありません)"
@@ -257,7 +285,7 @@ def handle_sheets_message(
         }
 
     # Read
-    if "見て" in message or "読んで" in message:
+    if _is_read_request(message):
         rows = client.read_rows("A:Z")
 
         if not rows:
