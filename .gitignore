@@ -5,3 +5,9 @@ __pycache__/
 venv/
 .aider*
 .ai_debug_checkpoint.json
+
+# Backups and patches
+chat.db.backup_before_cleanup
+ai_client.py.backup_before_groq_fix
+*.patch
+*.fixed
