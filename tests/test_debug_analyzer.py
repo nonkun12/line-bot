@@ -74,3 +74,24 @@ def test_analyze_error_always_appends_fix_policy_section():
         report = analyze_error(_base_error_info(error_type))
         assert "■ 修正方針" in report
         assert "原因箇所を確認し、安全な修正を行ってください。" in report
+
+
+def test_analyze_error_with_file_hint_does_not_show_raw_none():
+    report = analyze_error({
+        "error_type": None,
+        "file_hint": "app.py",
+    })
+
+    assert "app.py" in report
+    assert "■ 対象ファイル" in report
+    assert "tracebackが見つかりませんでした" in report
+    assert "■ エラー種類" not in report
+
+
+def test_analyze_error_without_file_hint_keeps_generic_behavior():
+    report = analyze_error({
+        "error_type": None,
+    })
+
+    assert "■ エラー種類" in report
+    assert "ログ詳細を追加確認する必要があります" in report

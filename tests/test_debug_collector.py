@@ -125,3 +125,38 @@ def test_collect_error_no_match_returns_none_fields():
     assert result["line"] is None
     assert result["message"] == text
     assert result["raw"] == text
+
+
+def test_collect_error_natural_language_extracts_file_hint():
+    text = "app.pyのエラーを確認して"
+
+    result = collect_error(text)
+
+    assert result["file_hint"] == "app.py"
+    assert result["error_type"] is None
+    assert result["file"] is None
+    assert result["line"] is None
+    assert result["key"] is None
+
+
+def test_collect_error_without_file_hint_keeps_file_hint_none():
+    text = "エラーを確認して"
+
+    result = collect_error(text)
+
+    assert result["file_hint"] is None
+
+
+def test_collect_error_traceback_still_extracts_existing_fields():
+    text = """Traceback (most recent call last):
+  File "app.py", line 120
+KeyError: 'user_id'
+"""
+
+    result = collect_error(text)
+
+    assert result["error_type"] == "KeyError"
+    assert result["file"] == "app.py"
+    assert result["line"] == 120
+    assert result["key"] == "user_id"
+    assert result["file_hint"] == "app.py"

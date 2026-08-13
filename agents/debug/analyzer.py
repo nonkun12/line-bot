@@ -7,6 +7,28 @@ def analyze_error(error_info: dict) -> str:
     file = error_info.get("file")
     line = error_info.get("line")
     message = error_info.get("message")
+    file_hint = error_info.get("file_hint")
+
+    # tracebackが認識できず、自然言語から対象ファイルだけ認識できた場合
+    if error_type is None and file_hint:
+        return f"""
+【AI Debug Agent 解析結果】
+
+■ 対象ファイル
+{file_hint}
+
+■ 状態
+tracebackが見つかりませんでした。
+
+■ 原因推測
+「{file_hint}」に関するエラーの確認を依頼されましたが、
+実際のエラーメッセージ・tracebackがメッセージ内に含まれていないため、
+自動解析ができませんでした。
+
+■ 修正方針
+{file_hint} を実行した際に発生したエラーメッセージ・tracebackを
+そのまま貼り付けて再度お送りください。
+"""
 
     report = f"""
 【AI Debug Agent 解析結果】

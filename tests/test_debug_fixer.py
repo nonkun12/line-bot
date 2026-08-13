@@ -74,3 +74,24 @@ def test_generate_fix_suggestion_always_includes_header_sections():
         assert "■ 対象ファイル" in result
         assert "■ 行番号" in result
         assert "■ 修正案" in result
+
+
+def test_generate_fix_suggestion_with_file_hint_does_not_show_raw_none():
+    result = generate_fix_suggestion({
+        "error_type": None,
+        "file_hint": "app.py",
+    })
+
+    assert "app.py" in result
+    assert "■ 対象ファイル" in result
+    assert "tracebackが見つからなかった" in result
+    assert "■ 行番号" not in result
+
+
+def test_generate_fix_suggestion_without_file_hint_keeps_generic_behavior():
+    result = generate_fix_suggestion({
+        "error_type": None,
+    })
+
+    assert "■ 行番号" in result
+    assert "詳細ログを確認して修正箇所を特定してください。" in result

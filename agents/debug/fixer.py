@@ -7,6 +7,22 @@ def generate_fix_suggestion(error_info: dict) -> str:
     file = error_info.get("file")
     line = error_info.get("line")
     message = error_info.get("message")
+    file_hint = error_info.get("file_hint")
+
+    # tracebackが認識できず、自然言語から対象ファイルだけ認識できた場合
+    if error_type is None and file_hint:
+        return f"""
+【AI Debug Agent 修正提案】
+
+■ 対象ファイル
+{file_hint}
+
+■ 状態
+tracebackが見つからなかったため、修正案は生成できません。
+
+■ 次のアクション
+{file_hint} のエラーメッセージ・tracebackを貼り付けて再度お送りください。
+"""
 
     result = f"""
 【AI Debug Agent 修正提案】

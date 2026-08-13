@@ -1,6 +1,30 @@
 import re
 
 
+
+
+# 自然言語文中の「拡張子付きファイル名らしきトークン」を検出するためのパターン。
+# 例: "app.pyのエラーを確認して" -> "app.py"
+_FILE_HINT_PATTERN = re.compile(
+    r"(?P<path>[\w\-./]+\.[A-Za-z0-9]+)"
+)
+
+
+def _extract_file_hint(text: str):
+    """
+    テキスト中から拡張子付きファイル名らしきトークンを1つ抽出する。
+    見つからない場合は None を返す。
+    """
+    if not text:
+        return None
+
+    match = _FILE_HINT_PATTERN.search(text)
+
+    if not match:
+        return None
+
+    return match.group("path")
+
 def collect_error(error_text: str) -> dict:
     """
     tracebackやログ文字列から基本情報を抽出する
@@ -13,11 +37,13 @@ def collect_error(error_text: str) -> dict:
         "message": None,
         "key": None,
         "raw": error_text,
+        "file_hint": None,
     }
 
     if not error_text:
         return result
 
+    result["file_hint"] = _extract_file_hint(error_text)
 
     # Error type
     match = re.search(
