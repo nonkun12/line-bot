@@ -18,6 +18,7 @@ from agents.notes.intents import is_note_intent
 from agents.memory.intents import is_memory_intent
 from agents.github.intents import is_github_intent
 from agents.sheets.intents import is_sheets_intent
+from agents.debug.intents import is_debug_intent
 
 
 _DEBUG_PREFIX = "debug"
@@ -63,6 +64,13 @@ def classify_intent(raw_message: str) -> str:
 
     if is_memory_intent(text):
         return "memory"
+
+    # 「debug」プレフィックスなしの自然文(例: 「app.pyのエラーを確認して」)
+    # からのDebug Agentルーティング。既存Agent(GitHub/Sheets/Notes/Memory)
+    # の判定より後に置くことで、既存の誤ルーティング防止を優先する。
+    if is_debug_intent(text):
+        print("SUPERVISOR: natural language debug intent")
+        return "debug"
 
     print("SUPERVISOR: unsupported")
     return "unsupported"
