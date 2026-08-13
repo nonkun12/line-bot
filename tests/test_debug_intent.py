@@ -36,3 +36,46 @@ def test_is_debug_intent_true_with_debug_prefix_message_too():
     # (Supervisor側では別ロジックで先に捕捉されるが)
     # 関数単体としては矛盾なくTrueを返すことを確認する
     assert is_debug_intent("debug app.pyのエラーを確認して") is True
+
+
+def test_is_debug_intent_matches_python_exception_class_names():
+    """
+    回帰テスト: LINE実機で
+    「app.pyでModuleNotFoundErrorが発生しました。確認して」が
+    Debug Agentに届かなかった問題(is_debug_intentがFalseを返していた)
+    の修正確認。
+
+    日本語の「エラー」(カタカナ)を含まない、Pythonの例外クラス名
+    (英字表記)のみのメッセージでもDebug Agentへ振り分けられること。
+    """
+    messages = [
+        "app.pyでModuleNotFoundErrorが発生しました。確認して",
+        "TypeErrorが出ました。確認して",
+        "ValueErrorを調べて",
+        "KeyErrorが発生しました。調査して",
+        "AttributeErrorを確認して",
+        "NameErrorが出た。確認して",
+        "ImportErrorが発生しました。調べて",
+    ]
+
+    for message in messages:
+        assert is_debug_intent(message) is True, message
+
+
+def test_is_debug_intent_matches_unknown_python_exception_naming_pattern():
+    """
+    明示的なリストに含まれない例外名でも、"Xxxx" + "Error"/"Exception"
+    という一般的な命名パターンであれば検出できることを確認する。
+    """
+    assert is_debug_intent("ZeroDivisionErrorが出た。確認して") is True
+    assert is_debug_intent("CustomExceptionが発生しました。調べて") is True
+
+
+def test_is_debug_intent_does_not_false_positive_on_bare_error_word():
+    # 英単語"Error"単体(例外クラス名らしき接頭辞なし)では反応しない
+    assert is_debug_intent("Errorが出た。確認して") is False
+
+
+def test_is_debug_intent_python_exception_name_still_requires_investigate_word():
+    # 例外クラス名があっても、調査依頼系キーワードが無ければ反応しない
+    assert is_debug_intent("ModuleNotFoundErrorが発生しました") is False

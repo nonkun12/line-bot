@@ -45,6 +45,23 @@ def test_classify_intent_unrelated_messages_still_unsupported():
     assert classify_intent("今日は天気がいいですね") == "unsupported"
 
 
+def test_classify_intent_routes_python_exception_name_messages_to_debug():
+    """
+    回帰テスト: LINE実機バグ修正確認。
+    「app.pyでModuleNotFoundErrorが発生しました。確認して」のような、
+    日本語の「エラー」を含まずPython例外クラス名(英字表記)のみを
+    含む自然文でも、Debug Agentへルーティングされること。
+    """
+    messages = [
+        "app.pyでModuleNotFoundErrorが発生しました。確認して",
+        "TypeErrorが出ました。確認して",
+        "KeyErrorが発生しました。調査して",
+    ]
+
+    for message in messages:
+        assert classify_intent(message) == "debug"
+
+
 def test_debug_agent_node_reached_via_natural_language_without_prefix():
     """
     エンドツーエンド回帰テスト:
@@ -67,3 +84,25 @@ def test_debug_agent_node_reached_via_natural_language_without_prefix():
     assert "app.py" in text
     assert "tracebackが見つか" in text
     assert "エラー種類\nNone" not in text
+
+
+def test_debug_agent_node_reached_via_python_exception_name_without_prefix():
+    """
+    エンドツーエンド回帰テスト:
+    「app.pyでModuleNotFoundErrorが発生しました。確認して」のような、
+    Python例外クラス名を含む自然文でもDebug Agentまで到達すること。
+    """
+    raw_message = "app.pyでModuleNotFoundErrorが発生しました。確認して"
+
+    intent = classify_intent(raw_message)
+    assert intent == "debug"
+
+    state = {
+        "raw_message": raw_message,
+        "agent_results": {},
+    }
+
+    result = debug_agent_node(state)
+    text = result["agent_results"]["debug"]["text"]
+
+    assert "app.py" in text
