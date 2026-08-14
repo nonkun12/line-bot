@@ -99,3 +99,53 @@ def test_debug_agent_node_marks_missing_traceback_as_unknown(monkeypatch):
     debug_result = result["agent_results"]["debug"]
     assert debug_result["structured"]["log_fetch_error"] is None
     assert "原因を特定できません" in debug_result["text"]
+
+
+def test_debug_agent_node_word_traceback_only_does_not_reach_fix_ready_state(monkeypatch):
+    """
+    「traceback」という単語だけを含む自然文(実際のtraceback形式なし)では、
+    has_traceback=Falseとなり、Fix経路へ進める状態にならないこと。
+    """
+    monkeypatch.setattr(
+        "agents.debug.node.get_render_logs",
+        lambda: "INFO service started successfully",
+    )
+
+    result = debug_agent_node({
+        "raw_message": "さっきのtracebackの件、直りましたか？",
+        "agent_results": {},
+    })
+
+    structured = result["agent_results"]["debug"]["structured"]
+    assert structured["error_info"]["has_traceback"] is False
+
+
+def test_debug_agent_node_trailing_render_log_does_not_leak_into_agent_results_or_reply(monkeypatch):
+    """
+    traceback後に続くDEBUG/INFOログ行(機密情報を模したダミー文字列)が、
+    agent_results(state)にもLINE返信本文にも混入しないこと。
+
+    ダミー文字列は実際の秘密情報ではなく、混入検知用のマーカー文字列。
+    """
+    monkeypatch.setattr(
+        "agents.debug.node.get_render_logs",
+        lambda: (
+            "2026-08-14T10:00:00 INFO service started\n"
+            "2026-08-14T10:00:05 Traceback (most recent call last):\n"
+            '  File "app.py", line 42, in handler\n'
+            "KeyError: 'user_id'\n"
+            "2026-08-14T10:00:06 DEBUG dummy_marker_should_not_leak\n"
+        ),
+    )
+
+    result = debug_agent_node({
+        "raw_message": "app.pyのエラーを確認して",
+        "agent_results": {},
+    })
+
+    debug_result = result["agent_results"]["debug"]
+    structured = debug_result["structured"]
+
+    assert structured["error_info"]["message"] == "KeyError: 'user_id'"
+    assert "dummy_marker_should_not_leak" not in repr(result["agent_results"])
+    assert "dummy_marker_should_not_leak" not in debug_result["text"]

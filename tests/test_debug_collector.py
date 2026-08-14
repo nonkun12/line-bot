@@ -184,3 +184,105 @@ def test_collect_error_recognizes_exception_name_in_natural_language_only():
     assert result["file"] is None
     assert result["line"] is None
     assert result["has_traceback"] is False
+
+
+# --- 回帰テスト: "traceback"という単語だけでの誤判定を防ぐ ---
+
+
+def test_collect_error_word_traceback_only_in_natural_language_is_not_traceback():
+    """
+    「さっきのtracebackの件」のように、実際のtraceback形式を伴わず
+    "traceback"という単語だけを含む自然文はhas_traceback=Falseとなること。
+    """
+    result = collect_error("さっきのtracebackの件、直りましたか？")
+
+    assert result["has_traceback"] is False
+    assert result["source"] == "user_message"
+
+
+def test_collect_error_word_traceback_only_in_render_log_is_not_traceback():
+    """
+    Renderログ本文に"traceback"という単語が含まれていても、
+    実際のPython traceback形式(開始マーカー)がなければ
+    has_traceback=Falseとなり、render_logsは解析対象として採用されないこと。
+    """
+    result = collect_error(
+        "app.pyのエラーを確認して",
+        log_text="INFO: traceback機能は現在利用できません",
+    )
+
+    assert result["has_traceback"] is False
+    assert result["source"] == "user_message"
+
+
+def test_collect_error_real_traceback_marker_is_still_detected():
+    """
+    Python標準のtraceback開始マーカーを含む場合は、
+    これまで通りhas_traceback=Trueとなり、
+    file / line / message が正しく取得できること。
+    """
+    text = """Traceback (most recent call last):
+  File "app.py", line 120, in handler
+KeyError: 'user_id'
+"""
+
+    result = collect_error(text)
+
+    assert result["has_traceback"] is True
+    assert result["error_type"] == "KeyError"
+    assert result["file"] == "app.py"
+    assert result["line"] == 120
+    assert result["message"] == "KeyError: 'user_id'"
+
+
+# --- 回帰テスト: traceback後の後続ログ行が抽出結果に混入しないこと ---
+
+
+def test_collect_error_trailing_log_lines_do_not_leak_into_message():
+    """
+    Renderログでtracebackの後にDEBUG/INFOなどの後続ログ行が続いても、
+    error_info["message"]にはtraceback内の例外サマリ行のみが入り、
+    後続ログの内容(ここではテスト用のダミー文字列)が混入しないこと。
+    """
+    fake_render_log = (
+        "2026-08-14T10:00:00 INFO service started\n"
+        "2026-08-14T10:00:05 Traceback (most recent call last):\n"
+        '  File "app.py", line 42, in handler\n'
+        "KeyError: 'user_id'\n"
+        "2026-08-14T10:00:06 DEBUG dummy_marker_should_not_leak\n"
+    )
+
+    result = collect_error(
+        "app.pyのエラーを確認して",
+        log_text=fake_render_log,
+    )
+
+    assert result["has_traceback"] is True
+    assert result["error_type"] == "KeyError"
+    assert result["file"] == "app.py"
+    assert result["line"] == 42
+    assert result["key"] == "user_id"
+    assert result["message"] == "KeyError: 'user_id'"
+    assert "dummy_marker_should_not_leak" not in result["message"]
+    assert "dummy_marker_should_not_leak" not in str(result["file"])
+    assert "dummy_marker_should_not_leak" not in str(result["key"])
+
+
+def test_collect_error_trailing_log_lines_do_not_leak_into_key():
+    """
+    KeyErrorのキー抽出も、traceback後の後続ログ行の影響を受けないこと。
+    """
+    fake_render_log = (
+        "Traceback (most recent call last):\n"
+        '  File "app.py", line 10, in handler\n'
+        "KeyError: 'user_id'\n"
+        "DEBUG KeyError: 'unrelated_later_key'\n"
+    )
+
+    result = collect_error(
+        "app.pyのエラーを確認して",
+        log_text=fake_render_log,
+    )
+
+    assert result["key"] == "user_id"
+    assert result["key"] != "unrelated_later_key"

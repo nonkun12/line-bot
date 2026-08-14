@@ -16,9 +16,60 @@ _EXCEPTION_PATTERN = re.compile(
     r"(?![A-Za-z0-9_])"
 )
 
+# Python標準のtraceback出力の先頭に必ず現れるマーカー文字列。
+# "traceback"という単語だけの自然文・通常ログとの誤判定を避けるため、
+# 単語一致ではなくこの正規マーカーの有無で実tracebackかどうかを判定する。
+_TRACEBACK_MARKER = "Traceback (most recent call last):"
+
+# tracebackの末尾に現れる例外サマリ行(行頭が"ExceptionName: メッセージ"の形式)。
+# tracebackブロックの終端を特定するために使用する。
+_TRACEBACK_SUMMARY_LINE_PATTERN = re.compile(
+    r"^[A-Za-z][A-Za-z0-9_]*(?:Error|Exception):.*$",
+    re.MULTILINE,
+)
+
 
 def _has_traceback(text: str) -> bool:
-    return "traceback" in (text or "").lower()
+    """
+    Python標準tracebackの開始マーカーが含まれているかどうかを判定する。
+
+    "traceback"という単語だけの自然文や通常ログ(例:
+    「さっきのtracebackの件」「traceback機能は利用できません」)は
+    Falseとなり、実際にPythonが出力したtraceback形式のみをTrueとする。
+    """
+    return _TRACEBACK_MARKER in (text or "")
+
+
+def _isolate_traceback_block(text: str) -> str:
+    """
+    実tracebackの開始マーカーから例外サマリ行までを解析対象として切り出す。
+
+    Renderログはtraceback発生後もDEBUG/INFOログが継続して出力されるため、
+    解析範囲を絞らないとtraceback終了後の後続ログ行がfile/line/message/key
+    の抽出に混入してしまう。この関数はtracebackマーカーが見つかった場合のみ、
+    マーカーから例外サマリ行(行頭が"ExceptionName: ..."の行)までの範囲に
+    テキストを限定する。
+
+    tracebackマーカーが存在しない場合は元のテキストをそのまま返す。
+    (自然文中の例外名だけを認識する既存の後方互換動作を維持するため)
+    """
+    if not text:
+        return text
+
+    start = text.find(_TRACEBACK_MARKER)
+
+    if start == -1:
+        return text
+
+    summary_match = _TRACEBACK_SUMMARY_LINE_PATTERN.search(text, start)
+
+    if summary_match:
+        return text[start:summary_match.end()]
+
+    # 例外サマリ行が見つからない(tracebackが途中で途切れている等)場合は
+    # マーカー以降を解析対象とする。マーカーより前の内容(tracebackと無関係な
+    # 先行ログ)は含めない。
+    return text[start:]
 
 
 def _extract_file_hint(text: str):
@@ -79,8 +130,15 @@ def collect_error(error_text: str, log_text: str | None = None) -> dict:
     if not parse_text:
         return result
 
+    # tracebackが見つかった場合は、tracebackブロック(開始マーカー〜例外サマリ行)
+    # の範囲だけを以降の抽出対象にする。これにより、traceback終了後に続く
+    # DEBUG/INFOログなどの後続ログ行がfile/line/message/keyへ混入しない。
+    # tracebackが見つからない場合(自然文中の例外名検出など)は、
+    # 既存の後方互換動作のためparse_text全体を対象とする。
+    extract_text = _isolate_traceback_block(parse_text)
+
     # Error type
-    match = _EXCEPTION_PATTERN.search(parse_text)
+    match = _EXCEPTION_PATTERN.search(extract_text)
 
     if match:
         result["error_type"] = match.group(1)
@@ -89,7 +147,7 @@ def collect_error(error_text: str, log_text: str | None = None) -> dict:
     # file name
     match = re.search(
         r'File "([^"]+)"',
-        parse_text
+        extract_text
     )
 
     if match:
@@ -99,7 +157,7 @@ def collect_error(error_text: str, log_text: str | None = None) -> dict:
     # line number
     match = re.search(
         r"line (\d+)",
-        parse_text
+        extract_text
     )
 
     if match:
@@ -107,7 +165,7 @@ def collect_error(error_text: str, log_text: str | None = None) -> dict:
 
 
     # message
-    lines = parse_text.strip().splitlines()
+    lines = extract_text.strip().splitlines()
 
     if lines:
         result["message"] = lines[-1]
@@ -118,7 +176,7 @@ def collect_error(error_text: str, log_text: str | None = None) -> dict:
 
         key_match = re.search(
             r"KeyError:\s*['\"]?([^'\"]+)['\"]?",
-            parse_text
+            extract_text
         )
 
         if key_match:
