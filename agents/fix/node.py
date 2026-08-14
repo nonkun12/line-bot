@@ -9,6 +9,7 @@ import json
 import os
 
 from langchain_groq import ChatGroq
+from config import GROQ_API_KEY
 
 from graph.state import AgentState
 from agents.fix.schema import FixResult
@@ -95,9 +96,7 @@ def _build_llm():
     return ChatGroq(
         model=FIX_MODEL_NAME,
         temperature=0,
-        api_key=os.getenv(
-            "GROQ_API_KEY"
-        ),
+        api_key=GROQ_API_KEY,
     )
 
 
