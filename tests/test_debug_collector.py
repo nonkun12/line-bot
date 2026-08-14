@@ -160,3 +160,27 @@ KeyError: 'user_id'
     assert result["line"] == 120
     assert result["key"] == "user_id"
     assert result["file_hint"] == "app.py"
+
+
+def test_collect_error_prefers_render_traceback_over_user_message():
+    result = collect_error(
+        "app.pyのエラーを確認して",
+        log_text='''Traceback (most recent call last):
+  File "app.py", line 31, in start
+ModuleNotFoundError: No module named 'linebot'\n''',
+    )
+
+    assert result["source"] == "render"
+    assert result["error_type"] == "ModuleNotFoundError"
+    assert result["file"] == "app.py"
+    assert result["line"] == 31
+    assert result["has_traceback"] is True
+
+
+def test_collect_error_recognizes_exception_name_in_natural_language_only():
+    result = collect_error("ModuleNotFoundErrorが発生しました。確認して")
+
+    assert result["error_type"] == "ModuleNotFoundError"
+    assert result["file"] is None
+    assert result["line"] is None
+    assert result["has_traceback"] is False

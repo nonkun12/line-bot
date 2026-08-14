@@ -8,20 +8,30 @@ def generate_fix_suggestion(error_info: dict) -> str:
     line = error_info.get("line")
     message = error_info.get("message")
     file_hint = error_info.get("file_hint")
+    has_traceback = error_info.get("has_traceback")
+    log_fetch_error = error_info.get("log_fetch_error")
 
-    # tracebackが認識できず、自然言語から対象ファイルだけ認識できた場合
-    if error_type is None and file_hint:
+    if has_traceback is False:
+        target = file_hint or "未特定"
+        log_status = (
+            f"Renderログ取得に失敗しました: {log_fetch_error}"
+            if log_fetch_error
+            else "Renderログ内にtracebackが見つかりませんでした。"
+        )
         return f"""
 【AI Debug Agent 修正提案】
 
 ■ 対象ファイル
-{file_hint}
+{target}
 
 ■ 状態
-tracebackが見つからなかったため、修正案は生成できません。
+{log_status}
+
+■ 結論
+原因を特定できないため、安全な修正案は生成しません。
 
 ■ 次のアクション
-{file_hint} のエラーメッセージ・tracebackを貼り付けて再度お送りください。
+tracebackと発生時刻を確認してから、修正対象を特定してください。
 """
 
     result = f"""

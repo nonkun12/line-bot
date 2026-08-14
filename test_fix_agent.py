@@ -2,29 +2,50 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from graph.graph import graph
+from graph.graph import route_from_debug
 
 
-def test_fix_agent():
+def test_debug_request_with_traceback_routes_to_fix_agent():
     state = {
-        "raw_message": """debug
-Traceback (most recent call last):
-  File "app.py", line 120
-KeyError: user_id
-""",
-        "agent_results": {},
+        "agent_results": {
+            "debug": {
+                "structured": {
+                    "error_info": {
+                        "has_traceback": True,
+                    }
+                }
+            }
+        },
     }
 
-    result = graph.invoke(state)
+    assert route_from_debug(state) == "fix_agent"
 
-    fix = (
-        result
-        .get("agent_results", {})
-        .get("fix")
-    )
 
-    assert fix is not None
+def test_debug_request_without_traceback_routes_to_finalizer():
+    state = {
+        "agent_results": {
+            "debug": {
+                "structured": {
+                    "error_info": {
+                        "has_traceback": False,
+                    }
+                }
+            }
+        },
+    }
 
-    patch = fix.get("patch", "")
+    assert route_from_debug(state) == "finalizer"
 
-    assert isinstance(patch, str)
+
+def test_debug_request_with_missing_traceback_flag_routes_to_finalizer():
+    state = {
+        "agent_results": {
+            "debug": {
+                "structured": {
+                    "error_info": {},
+                }
+            }
+        },
+    }
+
+    assert route_from_debug(state) == "finalizer"

@@ -8,26 +8,36 @@ def analyze_error(error_info: dict) -> str:
     line = error_info.get("line")
     message = error_info.get("message")
     file_hint = error_info.get("file_hint")
+    has_traceback = error_info.get("has_traceback")
+    log_fetch_error = error_info.get("log_fetch_error")
 
-    # tracebackが認識できず、自然言語から対象ファイルだけ認識できた場合
-    if error_type is None and file_hint:
+    # tracebackがない場合、自然文の例外名はユーザー申告に過ぎない。
+    # 原因・発生場所を推測せず、確認不能であることを明示する。
+    if has_traceback is False:
+        target = file_hint or "未特定"
+        error_label = error_type or "未特定"
+        log_status = (
+            f"Renderログ取得失敗: {log_fetch_error}"
+            if log_fetch_error
+            else "Renderログは取得できましたが、tracebackは見つかりませんでした。"
+        )
         return f"""
 【AI Debug Agent 解析結果】
 
 ■ 対象ファイル
-{file_hint}
+{target}
+
+■ 例外種別
+{error_label}
 
 ■ 状態
-tracebackが見つかりませんでした。
+{log_status}
 
-■ 原因推測
-「{file_hint}」に関するエラーの確認を依頼されましたが、
-実際のエラーメッセージ・tracebackがメッセージ内に含まれていないため、
-自動解析ができませんでした。
+■ 結論
+tracebackがないため、原因を特定できません。
 
-■ 修正方針
-{file_hint} を実行した際に発生したエラーメッセージ・tracebackを
-そのまま貼り付けて再度お送りください。
+■ 次のアクション
+Renderの該当時間帯のtraceback、または実行時のエラーメッセージを確認してください。
 """
 
     report = f"""

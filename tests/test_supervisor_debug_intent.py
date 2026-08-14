@@ -8,6 +8,18 @@ Debug Agentへ正しくルーティングされること、かつGitHub/Sheets/N
 
 from agents.debug.node import debug_agent_node
 from graph.supervisor import classify_intent
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def mock_render_logs(monkeypatch):
+    """Debug node単体テストが実Render APIへ接続しないようにする。"""
+    monkeypatch.setattr(
+        "agents.debug.node.get_render_logs",
+        lambda: '''Traceback (most recent call last):
+  File "app.py", line 10, in main
+ModuleNotFoundError: No module named 'linebot'\n''',
+    )
 
 
 def test_classify_intent_routes_natural_language_debug_requests_to_debug():
@@ -82,8 +94,8 @@ def test_debug_agent_node_reached_via_natural_language_without_prefix():
     text = result["agent_results"]["debug"]["text"]
 
     assert "app.py" in text
-    assert "tracebackが見つか" in text
-    assert "エラー種類\nNone" not in text
+    assert "ModuleNotFoundError" in text
+    assert "原因を特定できません" not in text
 
 
 def test_debug_agent_node_reached_via_python_exception_name_without_prefix():

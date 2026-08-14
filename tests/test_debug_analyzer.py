@@ -80,11 +80,12 @@ def test_analyze_error_with_file_hint_does_not_show_raw_none():
     report = analyze_error({
         "error_type": None,
         "file_hint": "app.py",
+        "has_traceback": False,
     })
 
     assert "app.py" in report
     assert "■ 対象ファイル" in report
-    assert "tracebackが見つかりませんでした" in report
+    assert "原因を特定できません" in report
     assert "■ エラー種類" not in report
 
 
@@ -95,3 +96,15 @@ def test_analyze_error_without_file_hint_keeps_generic_behavior():
 
     assert "■ エラー種類" in report
     assert "ログ詳細を追加確認する必要があります" in report
+
+
+def test_analyze_error_without_traceback_does_not_claim_a_cause():
+    report = analyze_error({
+        "error_type": "ModuleNotFoundError",
+        "file_hint": "app.py",
+        "has_traceback": False,
+        "log_fetch_error": "RENDER_API_KEY が設定されていません",
+    })
+
+    assert "原因を特定できません" in report
+    assert "Renderログ取得失敗" in report

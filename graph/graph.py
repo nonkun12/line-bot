@@ -297,6 +297,20 @@ def finalize_node(state: AgentState) -> AgentState:
     }
 
 
+def route_from_debug(state: AgentState) -> str:
+    """tracebackを確認できたDebug結果だけを既存Fix経路へ送る。"""
+
+    try:
+        has_traceback = (
+            state["agent_results"]["debug"]["structured"]
+            ["error_info"]["has_traceback"]
+        )
+    except (KeyError, TypeError):
+        return "finalizer"
+
+    return "fix_agent" if has_traceback is True else "finalizer"
+
+
 def build_graph():
 
     builder = StateGraph(AgentState)
@@ -398,9 +412,15 @@ def build_graph():
     )
 
 
-    builder.add_edge(
+    # tracebackを確認できた場合だけ既存のFix以降の経路へ進める。
+    # 自然文だけの依頼、情報欠損、予期しない構造は安全側でFinalizerへ送る。
+    builder.add_conditional_edges(
         "debug_agent",
-        "fix_agent"
+        route_from_debug,
+        {
+            "fix_agent": "fix_agent",
+            "finalizer": "finalizer",
+        },
     )
 
     builder.add_edge(
