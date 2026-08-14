@@ -79,3 +79,46 @@ def test_is_debug_intent_does_not_false_positive_on_bare_error_word():
 def test_is_debug_intent_python_exception_name_still_requires_investigate_word():
     # 例外クラス名があっても、調査依頼系キーワードが無ければ反応しない
     assert is_debug_intent("ModuleNotFoundErrorが発生しました") is False
+
+def test_is_debug_intent_matches_file_and_natural_investigation_requests():
+    """
+    ファイル名 + 自然な調査依頼表現でもDebug Agentへ振り分ける。
+    """
+    messages = [
+        "app.pyの原因を調べて",
+        "app.pyの問題を確認して",
+        "app.pyがおかしいので見て",
+        "app.pyの問題を見て",
+        "app.pyのエラー、原因わかる？",
+        "app.pyのどこが悪いか調べて",
+    ]
+
+    for message in messages:
+        assert is_debug_intent(message) is True, message
+
+
+def test_is_debug_intent_does_not_false_positive_on_non_debug_file_requests():
+    """
+    ファイル名や「問題」だけではDebug Agentへ誤ルーティングしない。
+    """
+    messages = [
+        "仕事の問題を調べて",
+        "今日の予定を確認して",
+        "READMEの問題を調べて",
+    ]
+
+    for message in messages:
+        assert is_debug_intent(message) is False, message
+
+
+def test_is_debug_intent_does_not_treat_general_python_file_questions_as_debug():
+    """
+    Pythonファイル名 + 「教えて」だけではDebugにしない。
+    """
+    messages = [
+        "app.pyの書き方を教えて",
+        "app.pyの使い方を教えて",
+    ]
+
+    for message in messages:
+        assert is_debug_intent(message) is False, message

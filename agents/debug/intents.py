@@ -68,6 +68,16 @@ _PYTHON_EXCEPTION_PATTERN = re.compile(
     r"[A-Za-z][A-Za-z0-9]*(?:Error|Exception)(?![A-Za-z0-9])"
 )
 
+_DEBUG_HINT_KEYWORDS = [
+    "エラー",
+    "原因",
+    "問題",
+    "おかしい",
+    "悪い",
+    "バグ",
+]
+
+
 _INVESTIGATE_KEYWORDS = [
     "確認して",
     "確認したい",
@@ -78,6 +88,7 @@ _INVESTIGATE_KEYWORDS = [
     "見て",
     "チェックして",
     "教えて",
+    "原因わかる",
 ]
 
 
@@ -114,5 +125,14 @@ def is_debug_intent(raw_message: str) -> bool:
     has_investigate_word = any(
         keyword in text for keyword in _INVESTIGATE_KEYWORDS
     )
+
+    # Pythonファイル名 + 調査依頼の自然文もDebugとして扱う。
+    # 「仕事の問題を調べて」のような一般会話をDebugへ誤ルーティング
+    # しないため、.pyファイル名の存在を条件にする。
+    has_python_file = bool(re.search(r"[A-Za-z_][A-Za-z0-9_]*\.py", text))
+    has_debug_hint = any(keyword in text for keyword in _DEBUG_HINT_KEYWORDS)
+
+    if has_python_file and has_debug_hint and has_investigate_word:
+        return True
 
     return has_error_word and has_investigate_word
