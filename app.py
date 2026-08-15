@@ -63,8 +63,10 @@ from bot_tools import (
 )
 
 from debug_agent import run_debug_agent
+from internal_ask_route import register_internal_ask_route
 
 app = Flask(__name__)
+
 
 # テスト互換用: 既存の app.client 参照を維持する
 client = _ai_client_client
@@ -669,6 +671,9 @@ def internal_ai_report():
 
     return jsonify({"ok": True})
 
+
+# n8n / LangGraph AI API
+register_internal_ask_route(app, INTERNAL_PUSH_KEY, generate_reply)
 
 @app.route("/internal/push", methods=["POST"])
 def internal_push():
