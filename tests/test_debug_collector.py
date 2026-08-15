@@ -286,3 +286,56 @@ def test_collect_error_trailing_log_lines_do_not_leak_into_key():
 
     assert result["key"] == "user_id"
     assert result["key"] != "unrelated_later_key"
+
+
+# --- 回帰テスト: render_logsとrequest_text(自然文)の優先順序 ---
+
+
+def test_collect_error_render_traceback_order_beats_request_text_exception_name():
+    """
+    request_text(ユーザー発言)に例外名らしき語が含まれていても、
+    log_textに実際のtracebackがあれば、そちらのfile/lineが優先され、
+    request_text側の情報で上書きされないこと。
+    """
+    result = collect_error(
+        "TypeErrorが起きた気がするので確認して",
+        log_text=(
+            "Traceback (most recent call last):\n"
+            '  File "worker.py", line 9, in run\n'
+            "KeyError: 'job_id'\n"
+        ),
+    )
+
+    assert result["source"] == "render"
+    assert result["error_type"] == "KeyError"
+    assert result["file"] == "worker.py"
+    assert result["line"] == 9
+    assert result["key"] == "job_id"
+
+
+def test_collect_error_multiple_tracebacks_in_log_uses_first_block_only():
+    """
+    render_logsに複数のtracebackブロックが含まれる場合でも、
+    file/line/message/keyは最初のtracebackブロックの内容から取得され、
+    2つ目以降のブロックの内容が混入しないこと。
+    """
+    fake_render_log = (
+        "Traceback (most recent call last):\n"
+        '  File "first.py", line 1, in run\n'
+        "KeyError: 'first_key'\n"
+        "2026-08-14T10:00:06 DEBUG retry scheduled\n"
+        "Traceback (most recent call last):\n"
+        '  File "second.py", line 2, in run\n'
+        "KeyError: 'second_key'\n"
+    )
+
+    result = collect_error(
+        "app.pyのエラーを確認して",
+        log_text=fake_render_log,
+    )
+
+    assert result["file"] == "first.py"
+    assert result["line"] == 1
+    assert result["key"] == "first_key"
+    assert "second.py" not in str(result["file"])
+    assert "second_key" != result["key"]
