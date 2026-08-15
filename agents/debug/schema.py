@@ -57,25 +57,72 @@ class FixResult(TypedDict, total=False):
 
 class TestResult(TypedDict, total=False):
     """
-    Test Agentの出力
+    Test Agentの出力 (agents/test/node.py test_runner_node)
+
+    patch未適用時 (skipped=True):
+        skipped: True
+        passed: None
+        reason: "patch not applied"
+
+    patch適用済みでpytestを実行した場合
+    (agents/test/runner.py run_tests, skipped=False):
+        skipped: False
+        passed: bool
+        returncode: Optional[int]
+        stdout: str
+        stderr: str
+        timed_out: bool
     """
 
-    passed: bool
+    skipped: bool
 
-    failed_tests: list[str]
+    passed: Optional[bool]
 
-    logs: str
+    reason: Optional[str]
+
+    returncode: Optional[int]
+
+    stdout: Optional[str]
+
+    stderr: Optional[str]
+
+    timed_out: Optional[bool]
 
 
 class DeployResult(TypedDict, total=False):
     """
-    Deploy Agentの出力
+    Deploy Agentの出力 (agents/deploy/node.py deploy_node)
+
+    commit未完了時:
+        deployed: False
+        skipped: True
+        reason: "commit not completed"
+
+    commit完了だがAUTO_DEPLOY無効(デフォルト)時:
+        deployed: False
+        pending: True
+        reason: "waiting for manual approval"
+        commit_hash: Optional[str]
+
+    AUTO_DEPLOY有効時 (実際にRenderへデプロイをトリガー):
+        deployed: bool
+        pending: False
+        deploy_id: Optional[str]
+        status: Optional[str]
+        commit_hash: Optional[str]
+        reason: Optional[str] (トリガー失敗時のみ)
     """
 
-    commit: Optional[str]
+    deployed: bool
 
-    push: bool
+    skipped: bool
 
-    deploy: bool
+    pending: bool
 
-    url: Optional[str]
+    reason: Optional[str]
+
+    commit_hash: Optional[str]
+
+    deploy_id: Optional[str]
+
+    status: Optional[str]
