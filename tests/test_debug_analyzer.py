@@ -52,6 +52,14 @@ def test_analyze_error_name_error_includes_dedicated_guidance():
     assert "import漏れの確認" in report
 
 
+def test_analyze_error_module_not_found_error_includes_dedicated_guidance():
+    report = analyze_error(_base_error_info("ModuleNotFoundError"))
+
+    assert "ModuleNotFoundError" in report
+    assert "Pythonが指定されたモジュールを読み込めていません" in report
+    assert "requirements.txtに必要なパッケージが含まれているか確認" in report
+
+
 def test_analyze_error_unknown_error_type_falls_back_to_generic_guidance():
     report = analyze_error(_base_error_info("ZeroDivisionError"))
 

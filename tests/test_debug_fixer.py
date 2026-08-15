@@ -52,6 +52,14 @@ def test_generate_fix_suggestion_name_error_includes_dedicated_advice():
     assert "必要なimport文を追加" in result
 
 
+def test_generate_fix_suggestion_module_not_found_error_includes_dedicated_advice():
+    result = generate_fix_suggestion(_base_error_info("ModuleNotFoundError"))
+
+    assert "ModuleNotFoundError" in result
+    assert "エラーメッセージから対象モジュール名を確認" in result
+    assert "requirements.txtの依存関係を確認" in result
+
+
 def test_generate_fix_suggestion_unknown_error_type_falls_back_to_generic_advice():
     result = generate_fix_suggestion(_base_error_info("ZeroDivisionError"))
 
