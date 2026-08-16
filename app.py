@@ -688,7 +688,6 @@ register_internal_ask_route(app, INTERNAL_PUSH_KEY, generate_reply)
 
 @app.route("/internal/push", methods=["POST"])
 def internal_push():
-    print(f"[LOG] /internal/push endpoint called")
     provided_key = request.headers.get("x-internal-key")
     if provided_key != INTERNAL_PUSH_KEY:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
@@ -701,40 +700,24 @@ def internal_push():
         user_id = "U19391b0b93be2f4d94284361153919ce"
 
     message = data.get("message")
-    print(f"[DEBUG] user_id={user_id!r}")
-    print(f"[DEBUG] raw data={data}")
-    print(f"[DEBUG] headers={dict(request.headers)}")
 
-    # LINE Push API送信前デバッグ
-    print("=== PUSH DEBUG ===")
-    print("TOKEN PREFIX:", CHANNEL_ACCESS_TOKEN[:10])
-    print("USER_ID LENGTH:", len(user_id))
-    print("USER_ID REPR:", repr(user_id))
-    print("MESSAGE:", repr(message))
-    print("==================")
-
+    # user_id / message が None・欠落・空文字の場合はここで400を返す。
+    # (len()などの呼び出しより前に検証することで、TypeErrorに起因する
+    #  意図しない500応答を防ぐ)
     if not user_id or not message:
+        print("[LOG] /internal/push: user_id or message missing/empty")
         return jsonify({"ok": False, "error": "user_id and message are required"}), 400
 
+    print(f"[LOG] /internal/push called: user_id={user_id!r}")
+
     try:
-        print("FINAL TO:", repr(user_id))
-        print("FINAL TYPE:", type(user_id))
-        print("FINAL LEN:", len(user_id))
-
-        line_messages = _build_line_messages(message)
-        print("SPLIT MESSAGE COUNT:", len(line_messages))
-        print("REQUEST BODY:", PushMessageRequest(
-            to=user_id,
-            messages=line_messages
-        ).dict())
-
         _line_push(user_id, message)
         save_message(user_id, "assistant", message)
-        print(f"INTERNAL PUSH SENT: user_id={user_id}")
+        print(f"[LOG] /internal/push sent: user_id={user_id!r}")
         return jsonify({"ok": True})
 
     except Exception as e:
-        print("INTERNAL PUSH ERROR:", e)
+        print("[LOG] /internal/push error:", type(e).__name__, str(e))
         return jsonify({"ok": False, "error": str(e)}), 500
 
 # =========================

@@ -28,7 +28,7 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
                 "error": f"{type(exc).__name__}: {exc}",
             }), 500
 
-        print("INTERNAL ASK SUCCESS:", repr(reply))
+        print(f"[LOG] /internal/ask success: user_id={user_id!r}")
         return jsonify({"ok": True, "reply": str(reply or "")})
 
     return internal_ask
