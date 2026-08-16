@@ -33,6 +33,12 @@ INTERNAL_PUSH_KEY = os.environ["INTERNAL_PUSH_KEY"]
 AI_REPORT_GITHUB_REPO = os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 
+# n8n WebhookのURL(任意設定)。
+# 設定されている場合、LINEからのメッセージ処理をn8nに委譲する
+# (_process_and_reply内で分岐)。未設定の場合は従来通りローカルの
+# generate_reply()で処理する。
+N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "")
+
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 # timeoutを明示的に指定し、Groq側が詰まってもgunicorn workerごと

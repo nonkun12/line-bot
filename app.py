@@ -25,6 +25,7 @@ from config import (
     INTERNAL_PUSH_KEY,
     AI_REPORT_GITHUB_REPO,
     GITHUB_TOKEN,
+    N8N_WEBHOOK_URL,
     configuration,
     handler,
     client,
@@ -64,6 +65,7 @@ from bot_tools import (
 
 from debug_agent import run_debug_agent
 from internal_ask_route import register_internal_ask_route
+from n8n_delegate import _delegate_to_n8n
 
 app = Flask(__name__)
 
@@ -428,6 +430,15 @@ def _process_and_reply(event, user_id, text):
 
     with user_lock:
         print(f"[LOG] USER LOCK ACQUIRED: {user_id}")
+
+        # N8N_WEBHOOK_URLが設定されている場合はn8nに処理を委譲する。
+        # 返信(reply_message/push_message)はn8n workflow側が既存の
+        # /internal/ask, /internal/push を呼び出して行う想定のため、
+        # ここではn8nへの送信のみを行いreturnする。
+        if N8N_WEBHOOK_URL:
+            print(f"[LOG] DELEGATING TO N8N: user_id={user_id}")
+            _delegate_to_n8n(user_id, text, N8N_WEBHOOK_URL)
+            return
 
         """generate_reply〜reply_messageまでを非同期に実行する。
         LINEへのWebhook応答(200 OK)を待たせないためにスレッドへ切り出している。"""
