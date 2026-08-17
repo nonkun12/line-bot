@@ -2,6 +2,8 @@
 Google Sheets Agent handlers
 """
 
+import re
+
 from agents.sheets.client import GoogleSheetsClient
 from ai_client import generate_chat_completion
 
@@ -20,6 +22,11 @@ _AI_ANALYSIS_TRIGGER_KEYWORDS = [
     "何が",
     "何を",
     "内容を",
+    "順位",
+    "整理",
+    "タスク",
+    "やるべきこと",
+    "アドバイス",
 ]
 
 
@@ -30,16 +37,21 @@ def _is_ai_analysis_request(message: str) -> bool:
     )
 
 
+# 「シート」「Google Sheets」だけのような、具体的な操作意図がない
+# メッセージはAI分析へフォールバックさせない。
+_GENERIC_SHEET_MENTION_ONLY_PATTERN = re.compile(
+    r"^(?:シート|Google Sheets|Googleスプレッドシート)[。！？!?]*$"
+)
+
+
+# AI分析へ渡すシート行数の上限。元のrowsは切り詰めず、AIコンテキスト
+# のみを制限することで既存の一覧表示・検索等への影響を避ける。
+_MAX_ROWS_FOR_AI = 200
+
+
 # 「見て」「読んで」に加え、「シートの内容は？」「シートを確認して」のような
-# 自然な言い回しでも、既存のRead処理(生データの一覧表示)を呼び出せるように
+# 自然な言い回しでも、既存のRead処理(生データ一覧表示)を呼び出せるように
 # するためのキーワード集。
-#
-# AI分析トリガー(_AI_ANALYSIS_TRIGGER_KEYWORDS)とは意図的に判定順序を
-# 変えていない: handle_sheets_message内ではAI分析判定を従来通りRead判定より
-# 先に行うため、「シートに何が記録されている？」のようにAI分析キーワード
-# ("何が" 等)と同時に該当するメッセージは、これまで通りAI分析へ渡る。
-# ここではAI分析キーワードに当てはまらない、単純な読み取り要求のみを
-# 追加で拾う。
 _READ_TRIGGER_KEYWORDS = [
     "見て",
     "読んで",
@@ -62,11 +74,21 @@ def _format_sheet_rows_for_ai(rows: list) -> str:
     if not rows:
         return "(シートにはまだデータがありません)"
 
+    total_rows = len(rows)
+    is_truncated = total_rows > _MAX_ROWS_FOR_AI
+    display_rows = rows[:_MAX_ROWS_FOR_AI] if is_truncated else rows
+
     lines = []
 
-    for index, row in enumerate(rows, start=1):
+    for index, row in enumerate(display_rows, start=1):
         lines.append(
             f"{index}. " + " | ".join(str(cell) for cell in row)
+        )
+
+    if is_truncated:
+        lines.append(
+            f"\n(※シートの行数が多いため、全{total_rows}行のうち"
+            f"先頭{_MAX_ROWS_FOR_AI}行のみを対象に回答しています)"
         )
 
     return "\n".join(lines)
@@ -113,9 +135,6 @@ def generate_ai_sheet_reply(message: str, rows: list) -> str:
         )
 
 
-# Append用の完全一致プレフィックス。
-# 「シートに記録 ○○」のように、キーワードが先頭・本文が後ろに続く
-# 従来形式との後方互換のため、まずこちらを優先して判定する。
 _APPEND_PREFIXES = [
     "シートに記録",
     "シートに追加",
@@ -123,9 +142,6 @@ _APPEND_PREFIXES = [
     "Googleスプレッドシートに記録",
 ]
 
-# 自然文フォールバック用の開始/終了マーカー。
-# 「シートに<本文>を記録して」のように、本文がキーワードより前に
-# 来る語順を抽出するために使う。
 _APPEND_START_MARKERS = [
     "Googleスプレッドシートに",
     "Google Sheetsに",
@@ -152,24 +168,11 @@ def _extract_append_content(message: str) -> str:
     """
     「シートに記録して」系のメッセージから、実際に保存すべき本文だけを
     抽出する。
-
-    既知の限界:
-    本文自体に「を記録」「を追加」という文字列が含まれる場合
-    (例: 「シートに来週の記録を追加して」)、最初に出現した位置で
-    本文が区切られるため、意図しない切り詰めが起きる可能性がある。
-    これは単純な文字列ヒューリスティックによる既知のトレードオフであり、
-    完全な自然言語解析は行わない。
     """
-
-    # 1. 既存の完全一致プレフィックス方式(後方互換)。
-    #    例: 「シートに記録 テストデータ」→「テストデータ」
     for prefix in _APPEND_PREFIXES:
         if prefix in message:
             return message.replace(prefix, "", 1).strip()
 
-    # 2. 自然文パターン。
-    #    例: 「シートにテスト1を記録」→「テスト1」
-    #    例: 「シートに名前を記録して」→「名前」
     start_idx = None
 
     for marker in _APPEND_START_MARKERS:
@@ -196,9 +199,7 @@ def handle_sheets_message(
     user_id: str,
     client: GoogleSheetsClient,
 ):
-    """
-    Google Sheets request handler.
-    """
+    """Google Sheets request handler."""
 
     if not message:
         return None
@@ -271,9 +272,6 @@ def handle_sheets_message(
         }
 
     # AI Analysis
-    # 「シートの内容を分析して」「重要な予定を教えて」のような自然文の
-    # 質問は、単なる一覧表示ではなくAIにシートの内容を理解・判断させた
-    # 上で回答させる。Read(単純な一覧表示)より優先して判定する。
     if _is_ai_analysis_request(message):
         rows = client.read_rows("A:Z")
         reply_text = generate_ai_sheet_reply(message, rows)
@@ -322,6 +320,19 @@ def handle_sheets_message(
 
         return {
             "text": f"Google Sheetsに記録しました：{content}",
+            "success": True,
+        }
+
+    # AI Analysis fallback: after all explicit operations above, treat a
+    # natural-language Sheets question as an analysis request. Keep a bare
+    # Sheets mention unchanged so it does not trigger an unnecessary AI call.
+    if not _GENERIC_SHEET_MENTION_ONLY_PATTERN.fullmatch(message.strip()):
+        rows = client.read_rows("A:Z")
+        reply_text = generate_ai_sheet_reply(message, rows)
+
+        return {
+            "text": reply_text,
+            "rows": rows,
             "success": True,
         }
 
