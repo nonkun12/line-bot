@@ -45,4 +45,4 @@ handler = WebhookHandler(CHANNEL_SECRET)
 # ハングしないようにする(Renderがクラッシュと誤認して再起動する原因になっていた)
 client = Groq(api_key=GROQ_API_KEY, timeout=15.0, max_retries=1)
 
-MODEL = "llama-3.1-8b-instant"
+MODEL = "openai/gpt-oss-20b"
