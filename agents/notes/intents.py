@@ -20,6 +20,13 @@ _AUTO_SAVE_NEGATIVE_PHRASES = [
     "覚えて",
 ]
 
+# 「明日15時の予定は？」「さっきの予定は？」のように、既存メモの検索・確認を
+# 意図する疑問文を自動保存対象から除外するための判定。
+# agents/normal/node.py の _LOOKUP_QUESTION_RE と同じ考え方を用いる。
+_LOOKUP_QUESTION_RE = re.compile(
+    r"(?:は|って|ある|あります|残ってる|残っています|教えて|確認して|見せて)[？?]?$"
+)
+
 
 def is_note_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
     text = (raw_message or "").strip()
@@ -68,6 +75,7 @@ def is_note_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
         ("予定" in text or "したい" in text or "忘れないように" in text)
         and len(text) > 5
         and not any(neg in text for neg in _AUTO_SAVE_NEGATIVE_PHRASES)
+        and not _LOOKUP_QUESTION_RE.search(text)
     ):
         return True
 

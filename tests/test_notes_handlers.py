@@ -110,6 +110,22 @@ def test_handle_auto_save_note_no_match():
     call_mcp_tool.assert_not_called()
 
 
+def test_handle_auto_save_note_excludes_schedule_lookup_questions():
+    # 既存メモの検索・確認を意図する疑問文は自動保存(save_note)対象外。
+    for message in [
+        "明日15時の予定は？",
+        "明日の予定は？",
+        "予定を教えて",
+        "さっきの予定は？",
+    ]:
+        call_mcp_tool = MagicMock()
+
+        result = handle_auto_save_note(message, "user123", call_mcp_tool)
+
+        assert result is None, f"{message!r} should not be auto-saved"
+        call_mcp_tool.assert_not_called()
+
+
 def test_handle_delete_note_natural():
     call_mcp_tool = MagicMock(return_value="deleted")
 

@@ -16,6 +16,13 @@ _DELETE_ALL_NOTES_PATTERN = re.compile(
 _pending_note_confirmations: dict[str, str] = {}
 _pending_note_confirm_lock = threading.Lock()
 
+# 「明日15時の予定は？」「さっきの予定は？」のように、既存メモの検索・確認を
+# 意図する疑問文を自動保存対象から除外するための判定。
+# agents/normal/node.py の _LOOKUP_QUESTION_RE と同じ考え方を用いる。
+_LOOKUP_QUESTION_RE = re.compile(
+    r"(?:は|って|ある|あります|残ってる|残っています|教えて|確認して|見せて)[？?]?$"
+)
+
 
 def _extract_search_keyword(message: str) -> str:
     return re.sub(r"^メモ検索\s*[:：]?\s*", "", message)
@@ -98,6 +105,9 @@ def _should_auto_save(message: str) -> bool:
     ]:
         if phrase in message:
             return False
+
+    if _LOOKUP_QUESTION_RE.search(message):
+        return False
 
     return True
 
