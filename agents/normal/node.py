@@ -34,6 +34,43 @@ def _is_note_lookup_question(message: str) -> bool:
     return bool(_LOOKUP_QUESTION_RE.search(text))
 
 
+def _extract_note_lookup_keyword(message: str) -> str:
+    """予定確認などの質問から、search_notes 用の検索語を取り出す。"""
+    text = (message or "").strip()
+    text = re.sub(r"[？?]+$", "", text).strip()
+
+    # 「さっきのメモは？」「予定を教えて」など、
+    # 特定の検索語を持たない照会は全件検索にする。
+    generic_queries = [
+        "さっきのメモは",
+        "さっきのメモって",
+        "さっきの予定は",
+        "さっきの予定って",
+        "メモを教えて",
+        "メモを確認して",
+        "メモを見せて",
+        "予定を教えて",
+        "予定を確認して",
+        "予定を見せて",
+        "明日の予定は",
+        "今日の予定は",
+    ]
+    if text in generic_queries:
+        if text.startswith("明日の"):
+            return "明日"
+        if text.startswith("今日の"):
+            return "今日"
+        return ""
+
+    # 「明日16時の予定は」→「明日16時」
+    text = re.sub(
+        r"(?:の)?(?:予定|用事|スケジュール)(?:は|って|ある|あります|残ってる|残っています|教えて|確認して|見せて)?$",
+        "",
+        text,
+    )
+
+    return text.strip()
+
 def _format_note_lookup_result(result):
     """search_notes の結果をLINE向けの簡潔な日本語へ整形する。"""
     if result is None:
@@ -81,7 +118,10 @@ def normal_agent_node(state: AgentState) -> AgentState:
         try:
             result_text = call_mcp_tool(
                 "search_notes",
-                {"user_id": user_id, "keyword": ""},
+                {
+                    "user_id": user_id,
+                    "keyword": _extract_note_lookup_keyword(raw_message),
+                },
             )
             result_text = _format_note_lookup_result(result_text)
         except Exception as e:
