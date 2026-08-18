@@ -9,10 +9,14 @@ def generate_chat_completion(*, messages, tools=None, tool_choice="auto", temper
         "max_tokens": max_tokens,
     }
 
-    # 一時テスト: Groq tools 400対策
-    # if tools:
-    #     kwargs["tools"] = tools
-    #     kwargs["tool_choice"] = tool_choice
+    # Tool Callingを使う呼び出しでは、toolsをGroqへ明示的に渡す。
+    # tool_choice=None はGroq側で「Toolを使わせない」と解釈され、
+    # モデルがtool callを生成した場合に
+    # "Tool choice is none, but model called a tool" (400) になるため、
+    # Noneはautoへ正規化する。
+    if tools:
+        kwargs["tools"] = tools
+        kwargs["tool_choice"] = tool_choice if tool_choice is not None else "auto"
 
     return client.chat.completions.create(**kwargs)
 
