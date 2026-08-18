@@ -15,7 +15,7 @@ from agents.normal.handlers import handle_normal_message
 
 
 _LOOKUP_QUESTION_RE = re.compile(
-    r"(?:は|って|ある|あります|残ってる|残っています|教えて|確認して|見せて)[？?]?$"
+    r"(?:予定|メモ|用事|スケジュール).*(?:は|って|ある|あります|残ってる|残っています|教えて|確認して|見せて)[？?]?$"
 )
 
 
@@ -81,7 +81,7 @@ def normal_agent_node(state: AgentState) -> AgentState:
         try:
             result_text = call_mcp_tool(
                 "search_notes",
-                {"user_id": user_id, "keyword": raw_message},
+                {"user_id": user_id, "keyword": ""},
             )
             result_text = _format_note_lookup_result(result_text)
         except Exception as e:
