@@ -69,6 +69,10 @@ from n8n_delegate import _delegate_to_n8n
 
 app = Flask(__name__)
 
+from routes.dashboard import dashboard_bp
+app.register_blueprint(dashboard_bp)
+
+
 
 # テスト互換用: 既存の app.client 参照を維持する
 client = _ai_client_client
