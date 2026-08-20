@@ -2,16 +2,18 @@
 Normal Agent LangGraph Node
 
 GitHub / Debug / Memory / Notes のいずれの意図にも該当しない
-通常メッセージに対して、Groq(function calling)ベースの
+通常メッセージに対して、Groq または Gemini 2.5 Flash ベースの
 AI応答を生成するノード。
 """
 
 import json
+import os
 import re
 
 import mcp_client
 from graph.state import AgentState
 from agents.normal.handlers import handle_normal_message
+from agents.normal.gemini_n8n_client import GeminiN8nError, call_gemini_via_n8n
 
 
 _LOOKUP_QUESTION_RE = re.compile(
@@ -24,6 +26,30 @@ def _call_mcp_tool(state: AgentState):
     if callable(call_mcp_tool):
         return call_mcp_tool
     return mcp_client.call_mcp_tool
+
+
+def _normal_provider() -> str:
+    """Return the Normal Agent provider; Groq remains the safe default."""
+    provider = (os.getenv("NORMAL_AGENT_PROVIDER") or "groq").strip().lower()
+    return provider if provider in {"groq", "gemini"} else "groq"
+
+
+def _generate_normal_reply(raw_message: str, user_id: str, call_mcp_tool) -> str:
+    """Generate a normal reply, using Gemini only when explicitly enabled.
+
+    Gemini failures always fall back to the existing Groq implementation.
+    This keeps the new provider from turning a transient n8n/Gemini problem
+    into a LINE no-response.
+    """
+    if _normal_provider() == "gemini":
+        try:
+            print("[NORMAL AGENT] provider=gemini")
+            return call_gemini_via_n8n(raw_message, user_id)
+        except GeminiN8nError as exc:
+            print("[NORMAL AGENT] Gemini failed; falling back to Groq:", exc)
+
+    print("[NORMAL AGENT] provider=groq")
+    return handle_normal_message(raw_message, user_id, call_mcp_tool)
 
 
 def _is_note_lookup_question(message: str) -> bool:
@@ -39,8 +65,6 @@ def _extract_note_lookup_keyword(message: str) -> str:
     text = (message or "").strip()
     text = re.sub(r"[？?]+$", "", text).strip()
 
-    # 「さっきのメモは？」「予定を教えて」など、
-    # 特定の検索語を持たない照会は全件検索にする。
     generic_queries = [
         "さっきのメモは",
         "さっきのメモって",
@@ -62,7 +86,6 @@ def _extract_note_lookup_keyword(message: str) -> str:
             return "今日"
         return ""
 
-    # 「明日16時の予定は」→「明日16時」
     text = re.sub(
         r"(?:の)?(?:予定|用事|スケジュール)(?:は|って|ある|あります|残ってる|残っています|教えて|確認して|見せて)?$",
         "",
@@ -70,6 +93,7 @@ def _extract_note_lookup_keyword(message: str) -> str:
     )
 
     return text.strip()
+
 
 def _format_note_lookup_result(result):
     """search_notes の結果をLINE向けの簡潔な日本語へ整形する。"""
@@ -110,9 +134,6 @@ def normal_agent_node(state: AgentState) -> AgentState:
     raw_message = state.get("raw_message", "") or ""
     call_mcp_tool = _call_mcp_tool(state)
 
-    # 「明日15時の予定は？」「さっきのメモは？」などの照会文を
-    # Normal Agent のLLM判断に任せると、save_note/save_memory/set_reminderを
-    # 誤って実行することがあるため、照会はここで決定的に検索へ振り分ける。
     if _is_note_lookup_question(raw_message):
         print("[NOTE LOOKUP GUARD] routing question to search_notes:", raw_message)
         try:
@@ -128,7 +149,7 @@ def normal_agent_node(state: AgentState) -> AgentState:
             print("[NOTE LOOKUP GUARD] search_notes error:", e)
             result_text = "メモの検索中にエラーが発生しました。もう一度お試しください。"
     else:
-        result_text = handle_normal_message(raw_message, user_id, call_mcp_tool)
+        result_text = _generate_normal_reply(raw_message, user_id, call_mcp_tool)
 
     agent_results = dict(state.get("agent_results", {}))
     agent_results["normal"] = {
