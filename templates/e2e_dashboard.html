@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LINE AI Secretary - E2E Status</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/e2e_dashboard.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <div class="logo-area">
+                <span class="logo-icon">🛰️</span>
+                <h1 class="logo-title">LINE AI Secretary</h1>
+                <span class="badge">E2E STATUS</span>
+            </div>
+            <div class="user-info">
+                <button id="e2eRefreshBtn" class="btn btn-primary">
+                    <span class="btn-icon">🔄</span>
+                    <span class="btn-text">更新</span>
+                </button>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- E2E STATUS -->
+            <section class="section-card e2e-status-card">
+                <div class="section-header">
+                    <div class="title-group">
+                        <span class="section-icon">📡</span>
+                        <h2 class="section-title">E2E STATUS</h2>
+                    </div>
+                    <div id="overallStatusBadge" class="overall-badge overall-unknown">UNKNOWN</div>
+                </div>
+                <div id="e2eChain" class="e2e-chain">
+                    <div class="loading-state"><div class="spinner"></div><p>読み込み中...</p></div>
+                </div>
+            </section>
+
+            <!-- SERVICES -->
+            <section class="section-card">
+                <div class="section-header">
+                    <div class="title-group">
+                        <span class="section-icon">🧩</span>
+                        <h2 class="section-title">SERVICES</h2>
+                    </div>
+                </div>
+                <div id="servicesGrid" class="services-grid">
+                    <div class="loading-state"><div class="spinner"></div><p>読み込み中...</p></div>
+                </div>
+            </section>
+
+            <div class="two-col">
+                <!-- LAST SUCCESS / FAILURE -->
+                <section class="section-card">
+                    <div class="section-header">
+                        <div class="title-group">
+                            <span class="section-icon">✅</span>
+                            <h2 class="section-title">LAST SUCCESS</h2>
+                        </div>
+                    </div>
+                    <div id="lastSuccessBox" class="info-box">-</div>
+                </section>
+
+                <section class="section-card">
+                    <div class="section-header">
+                        <div class="title-group">
+                            <span class="section-icon">🛑</span>
+                            <h2 class="section-title">LAST FAILURE</h2>
+                        </div>
+                    </div>
+                    <div id="lastFailureBox" class="info-box">-</div>
+                </section>
+            </div>
+
+            <!-- ERROR LOG -->
+            <section class="section-card">
+                <div class="section-header">
+                    <div class="title-group">
+                        <span class="section-icon">🧾</span>
+                        <h2 class="section-title">ERROR LOG</h2>
+                    </div>
+                </div>
+                <div id="errorLogContainer" class="error-log-container">
+                    <div class="loading-state"><div class="spinner"></div><p>読み込み中...</p></div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2026 LINE AI Secretary. E2E Monitoring.</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/e2e_dashboard.js') }}"></script>
+</body>
+</html>

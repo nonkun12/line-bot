@@ -66,11 +66,15 @@ from bot_tools import (
 from debug_agent import run_debug_agent
 from internal_ask_route import register_internal_ask_route
 from n8n_delegate import _delegate_to_n8n
+from e2e_status import init_e2e_table, record_step, StepTimer
 
 app = Flask(__name__)
 
 from routes.dashboard import dashboard_bp
 app.register_blueprint(dashboard_bp)
+
+from routes.e2e_dashboard import e2e_bp
+app.register_blueprint(e2e_bp)
 
 
 
@@ -191,6 +195,8 @@ print("search_notes enabled")
 # (Phase 2-1: db.pyへ移設に伴い、import時の暗黙実行から明示呼び出しに変更。
 #  呼び出しタイミング自体は変更前と同じ位置を維持している)
 init_db()
+# E2E監視ダッシュボード用テーブルの初期化(既存テーブルには影響しない)
+init_e2e_table()
 
 # =========================================================
 # MCPクライアント(StreamableHTTP / stateless)
@@ -393,11 +399,15 @@ def callback():
     print("===== CALLBACK RECEIVED =====")
     print("BODY:", body)
     print("SIGNATURE:", signature)
+    # E2E監視: LINEからのWebhookが届いた時点で LINE / line-bot をOK記録する
+    record_step("line_in", True)
     try:
         handler.handle(body, signature)
+        record_step("line_bot", True)
     except Exception as e:
         print("===== HANDLER ERROR =====")
         print(e)
+        record_step("line_bot", False, error=str(e), error_location="callback/handler.handle")
     return "OK"
 
 
@@ -714,15 +724,20 @@ def internal_push():
 
     print(f"[LOG] /internal/push called: user_id={user_id!r}")
 
-    try:
-        _line_push(user_id, message)
-        save_message(user_id, "assistant", message)
-        print(f"[LOG] /internal/push sent: user_id={user_id!r}")
-        return jsonify({"ok": True})
+    with StepTimer("internal_push") as push_timer, StepTimer("line_out") as line_timer:
+        try:
+            _line_push(user_id, message)
+            line_timer.ok()
+            save_message(user_id, "assistant", message)
+            push_timer.ok(http_status=200)
+            print(f"[LOG] /internal/push sent: user_id={user_id!r}")
+            return jsonify({"ok": True})
 
-    except Exception as e:
-        print("[LOG] /internal/push error:", type(e).__name__, str(e))
-        return jsonify({"ok": False, "error": str(e)}), 500
+        except Exception as e:
+            print("[LOG] /internal/push error:", type(e).__name__, str(e))
+            line_timer.fail(error=e, error_location="_line_push")
+            push_timer.fail(http_status=500, error=e, error_location="internal_push")
+            return jsonify({"ok": False, "error": str(e)}), 500
 
 # =========================
 # health check
