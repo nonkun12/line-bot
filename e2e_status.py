@@ -345,6 +345,21 @@ def get_e2e_status():
                 results.append({"key": step_key, "label": label, "state": "ok", "detail": row})
                 continue
 
+        if step_key == "line_out" and row and row["status"] == "ok":
+            # line_outはinternal_pushと同じwith文内の兄弟StepTimerであり、
+            # line_timer.ok()がpush_timer.ok()より先に呼ばれるため、
+            # internal_pushより数ms早く記録されるのが正常。
+            # prev_ok_atではなく、今回のcycle_start以降ならOKとする。
+            line_updated = _parse_ts(row["updated_at"])
+            if line_updated and cycle_start and line_updated >= cycle_start:
+                results.append({
+                    "key": step_key,
+                    "label": label,
+                    "state": "ok",
+                    "detail": row,
+                })
+                continue
+
         row_updated = _parse_ts(row["updated_at"]) if row else None
 
         if row_updated and prev_ok_at and row_updated >= prev_ok_at:
