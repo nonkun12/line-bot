@@ -334,6 +334,17 @@ def get_e2e_status():
             # まだ内部askに到達していない → タイムアウト判定へフォールスルー
             row = None
 
+        if step_key == "ai_mcp" and row and row["status"] == "ok":
+            # ai_mcpはinternal_ask内部の入れ子StepTimerであり、
+            # ai_timer.ok()がinternal_ask自身のok()より先に呼ばれるため、
+            # 直前ステップ(internal_ask)のupdated_atより数ms早い記録になる
+            # のが正常な順序。prev_ok_atではなくcycle_start以降の成功記録
+            # であればOKとする。
+            ai_updated = _parse_ts(row["updated_at"])
+            if ai_updated and cycle_start and ai_updated >= cycle_start:
+                results.append({"key": step_key, "label": label, "state": "ok", "detail": row})
+                continue
+
         row_updated = _parse_ts(row["updated_at"]) if row else None
 
         if row_updated and prev_ok_at and row_updated >= prev_ok_at:
