@@ -51,6 +51,53 @@ def _get_weather(latitude: float, longitude: float) -> dict:
     return response.json()
 
 
+def get_weather_report(location: str | None = None) -> str:
+    """Fetch current weather for a named location."""
+    try:
+        target = (location or "東京").strip() or "東京"
+
+        geo = requests.get(
+            "https://geocoding-api.open-meteo.com/v1/search",
+            params={
+                "name": target,
+                "count": 1,
+                "language": "ja",
+                "format": "json",
+            },
+            timeout=10,
+        )
+        geo.raise_for_status()
+        results = geo.json().get("results") or []
+
+        if results:
+            place = results[0]
+            latitude = float(place["latitude"])
+            longitude = float(place["longitude"])
+            display_name = place.get("name", target)
+        else:
+            latitude = 35.6762
+            longitude = 139.6503
+            display_name = target
+
+        data = _get_weather(latitude, longitude)
+        current = data.get("current", {})
+        temperature = current.get("temperature_2m")
+        unit = current.get("temperature_2m_unit", "°C")
+        code = current.get("weather_code")
+
+        if temperature is None or code is None:
+            raise RuntimeError("Open-Meteo returned incomplete weather data")
+
+        return (
+            f"{display_name}の現在の天気です。\n"
+            f"天気: {_weather_code_text(int(code))}\n"
+            f"気温: {temperature}{unit}"
+        )
+
+    except Exception as exc:
+        print("[WEATHER ERROR]", exc)
+        return f"{location or '東京'}の天気情報を取得できませんでした。"
+
 def weather_agent_node(state):
     """Fetch current Tokyo weather and return it to the finalizer."""
 
