@@ -45,8 +45,59 @@ _CITY_SUFFIXES = ("都", "府", "県", "市")
 
 # 地名 -> (取得時刻, 結果文字列) の簡易キャッシュ。
 # 同一地名への短時間の再問い合わせを減らし、429の再発リスクを下げる。
-_WEATHER_CACHE_TTL_SECONDS = 300
+# 天気の「現在値」は数分単位で大きく変わるものではないため、
+# 429対策として以前の5分から15分へ延長し、外部呼び出し自体を減らす。
+_WEATHER_CACHE_TTL_SECONDS = 900
 _weather_cache: dict[str, tuple[float, str]] = {}
+
+# 429(レート制限)発生時のリトライ設定。
+# Open-Meteoの無料枠はIPアドレス単位でレート制限されており、
+# ホスティング環境によっては他サービスと送信元IPを共有し、
+# 一時的なレート制限に巻き込まれることがある。
+# 短いバックオフで1〜2回だけ再試行し、それでも失敗する場合のみ
+# ユーザーへレート制限エラーを返す。
+_RATE_LIMIT_MAX_RETRIES = 2
+_RATE_LIMIT_BACKOFF_SECONDS = (1, 2)
+
+
+def _retry_after_seconds(response, attempt: int) -> float:
+    """Retry-Afterヘッダーがあれば優先し、なければ既定のバックオフ秒数を返す。"""
+    header_value = None
+    if response is not None:
+        header_value = response.headers.get("Retry-After")
+
+    if header_value:
+        try:
+            return float(header_value)
+        except ValueError:
+            pass
+
+    if attempt < len(_RATE_LIMIT_BACKOFF_SECONDS):
+        return _RATE_LIMIT_BACKOFF_SECONDS[attempt]
+    return _RATE_LIMIT_BACKOFF_SECONDS[-1]
+
+
+def _request_with_rate_limit_retry(url, params, timeout=10):
+    """429の場合のみ短いバックオフで再試行し、それ以外はそのまま返す。"""
+    last_response = None
+
+    for attempt in range(_RATE_LIMIT_MAX_RETRIES + 1):
+        response = requests.get(url, params=params, timeout=timeout)
+
+        if response.status_code != 429:
+            return response
+
+        last_response = response
+
+        if attempt < _RATE_LIMIT_MAX_RETRIES:
+            wait_seconds = _retry_after_seconds(response, attempt)
+            print(
+                f"[WEATHER] 429 received, retrying in {wait_seconds}s "
+                f"(attempt {attempt + 1}/{_RATE_LIMIT_MAX_RETRIES}) url={url}"
+            )
+            time.sleep(wait_seconds)
+
+    return last_response
 
 
 def _normalize_city_name(name: str) -> str:
@@ -94,7 +145,7 @@ def _weather_code_text(code: int) -> str:
 
 
 def _get_weather(latitude: float, longitude: float) -> dict:
-    response = requests.get(
+    response = _request_with_rate_limit_retry(
         "https://api.open-meteo.com/v1/forecast",
         params={
             "latitude": latitude,
@@ -122,7 +173,7 @@ def get_weather_report(location: str | None = None) -> str:
         if known:
             latitude, longitude, display_name = known
         else:
-            geo = requests.get(
+            geo = _request_with_rate_limit_retry(
                 "https://geocoding-api.open-meteo.com/v1/search",
                 params={
                     "name": target,

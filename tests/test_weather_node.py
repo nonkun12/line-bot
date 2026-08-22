@@ -4,9 +4,10 @@ from agents.weather import node as weather_node
 
 
 class _FakeResponse:
-    def __init__(self, status_code=200, json_data=None):
+    def __init__(self, status_code=200, json_data=None, headers=None):
         self.status_code = status_code
         self._json_data = json_data or {}
+        self.headers = headers or {}
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -116,6 +117,41 @@ def test_unknown_location_resolved_via_geocoding(monkeypatch):
 
 
 def test_open_meteo_429_gives_clear_message_not_generic_failure(monkeypatch):
+    monkeypatch.setattr(weather_node.time, "sleep", lambda seconds: None)
+
+    def fake_get(url, params=None, timeout=None):
+        return _FakeResponse(429, {})
+
+    monkeypatch.setattr(weather_node.requests, "get", fake_get)
+
+    result = weather_node.get_weather_report("京都")
+
+    assert "上限" in result or "しばらく" in result
+
+
+def test_429_is_retried_before_failing(monkeypatch):
+    monkeypatch.setattr(weather_node.time, "sleep", lambda seconds: None)
+
+    call_count = {"n": 0}
+
+    def fake_get(url, params=None, timeout=None):
+        call_count["n"] += 1
+        if call_count["n"] < 3:
+            return _FakeResponse(429, {})
+        return _forecast_response()
+
+    monkeypatch.setattr(weather_node.requests, "get", fake_get)
+
+    result = weather_node.get_weather_report("京都")
+
+    assert call_count["n"] == 3
+    assert "京都" in result
+    assert "上限" not in result
+
+
+def test_429_still_fails_gracefully_after_exhausting_retries(monkeypatch):
+    monkeypatch.setattr(weather_node.time, "sleep", lambda seconds: None)
+
     def fake_get(url, params=None, timeout=None):
         return _FakeResponse(429, {})
 
