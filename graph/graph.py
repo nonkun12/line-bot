@@ -46,6 +46,7 @@ from agents.notes.node import notes_agent_node
 from agents.github.node import github_agent_node
 from agents.sheets.node import sheets_agent_node
 from agents.normal.node import normal_agent_node
+from agents.weather.node import weather_agent_node
 from dev_notes.wrappers.graph_node_wrapper import with_execution_logging
 from dev_notes.factory import get_default_adapter
 
@@ -199,6 +200,19 @@ def finalize_node(state: AgentState) -> AgentState:
             lines.append(
                 "【Memory】\n"
                 + memory_result.get(
+                    "text",
+                    ""
+                )
+            )
+
+        weather_result = results.get(
+            "weather",
+            {}
+        )
+        if weather_result:
+            lines.append(
+                "【Weather】\n"
+                + weather_result.get(
                     "text",
                     ""
                 )
@@ -373,6 +387,10 @@ def build_graph():
         "sheets_agent",
         sheets_agent_node
     )
+    builder.add_node(
+        "weather_agent",
+        weather_agent_node
+    )
 
 
     builder.add_node(
@@ -407,6 +425,7 @@ def build_graph():
             "github_agent": "github_agent",
         "sheets_agent": "sheets_agent",
             "normal_agent": "normal_agent",
+            "weather_agent": "weather_agent",
             "fallback_agent": "fallback_agent",
         },
     )

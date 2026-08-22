@@ -19,6 +19,7 @@ from agents.memory.intents import is_memory_intent
 from agents.github.intents import is_github_intent
 from agents.sheets.intents import is_sheets_intent
 from agents.debug.intents import is_debug_intent
+from agents.weather.intents import is_weather_intent
 
 
 _DEBUG_PREFIX = "debug"
@@ -30,6 +31,7 @@ _INTENT_TO_AGENT = {
     "memory": "memory",
     "github": "github",
 "sheets": "sheets",
+    "weather": "weather",
     # "unsupported" (=GitHub/Debug/Memory/Notesのいずれにも該当しない通常
     # メッセージ) は、旧 generate_reply() 末尾にあった通常のGroq応答へ
     # 振り分ける。以前はここが "fallback" 固定になっており、
@@ -54,6 +56,10 @@ def classify_intent(raw_message: str) -> str:
     if is_github_intent(text):
         print("SUPERVISOR: github intent")
         return "github"
+
+    if is_weather_intent(text):
+        print("SUPERVISOR: weather intent")
+        return "weather"
 
     if is_sheets_intent(text):
         print("SUPERVISOR: sheets intent")

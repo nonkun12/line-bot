@@ -23,6 +23,7 @@ _ROUTE_TABLE = {
     "memory": "memory_agent",
 "github": "github_agent",
 "sheets": "sheets_agent",
+    "weather": "weather_agent",
     "normal": "normal_agent",
     "fallback": "fallback_agent",
 }
