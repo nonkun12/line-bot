@@ -399,8 +399,6 @@ def callback():
     print("===== CALLBACK RECEIVED =====")
     print("BODY:", body)
     print("SIGNATURE:", signature)
-    # E2E監視: LINEからのWebhookが届いた時点で LINE / line-bot をOK記録する
-    record_step("line_in", True)
     try:
         handler.handle(body, signature)
         record_step("line_bot", True)
@@ -513,6 +511,10 @@ def handle(event):
             if not created:
                 print("DUPLICATE MESSAGE IGNORED (create_failed):", message_id)
                 return
+
+            # E2E監視: 重複排除を通過した「実際に処理される」メッセージのみを
+            # 新サイクルの起点として記録する(重複Webhookで偽サイクルを作らないため)
+            record_step("line_in", True)
 
             _processed_message_ids[message_id] = True
             if len(_processed_message_ids) > _MAX_TRACKED_IDS:
