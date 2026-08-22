@@ -74,6 +74,24 @@ MCP_TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
+            "name": "check_weather",
+            "description": "指定した場所の現在の天気を取得する。東京、京都、大阪など、ユーザーが指定した地名をそのままlocationに渡す。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "天気を調べる場所。ユーザーが地名を指定しなかった場合は東京。"
+                    }
+                },
+                "required": ["location"]
+            }
+        }
+    },
+
+    {
+        "type": "function",
+        "function": {
             "name": "save_memory",
             "description": "ユーザーに関する情報をkey/valueの形で記憶として保存する",
             "parameters": {
@@ -247,6 +265,11 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
     そのまま渡すだけでよくなった。
     """
     call_mcp_tool_fn = mcp_client.call_mcp_tool
+
+    if name == "check_weather":
+        from agents.weather.node import get_weather_report
+        location = arguments.get("location") or "東京"
+        return get_weather_report(location)
 
     if name == "save_note":
         return call_mcp_tool_fn(

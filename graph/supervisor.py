@@ -57,9 +57,6 @@ def classify_intent(raw_message: str) -> str:
         print("SUPERVISOR: github intent")
         return "github"
 
-    if is_weather_intent(text):
-        print("SUPERVISOR: weather intent")
-        return "weather"
 
     if is_sheets_intent(text):
         print("SUPERVISOR: sheets intent")
