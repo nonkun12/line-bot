@@ -468,6 +468,11 @@ def build_graph():
     )
 
     builder.add_edge(
+        "weather_agent",
+        "finalizer"
+    )
+
+    builder.add_edge(
         "fix_agent",
         "patch_generate_agent"
     )
