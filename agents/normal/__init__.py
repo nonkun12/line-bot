@@ -21,7 +21,12 @@ _original_dispatch_tool_call = _bot_tools.dispatch_tool_call
 
 def _dispatch_tool_call_with_wikipedia(user_id, name, arguments, original_message=""):
     if name == "wikipedia_search":
-        return wikipedia_search(arguments.get("query", ""))
+        try:
+            return wikipedia_search(arguments.get("query", ""))
+        except Exception as exc:
+            print("WIKIPEDIA TOOL ERROR:", exc)
+            return "Wikipedia検索中にエラーが発生しました。"
+
     return _original_dispatch_tool_call(
         user_id,
         name,
