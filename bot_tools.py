@@ -2,6 +2,7 @@ import re
 
 import mcp_client
 from mcp_client import parse_mcp_json_list
+from wikipedia_tool import WIKIPEDIA_TOOL_SCHEMA, wikipedia_search
 
 
 
@@ -212,7 +213,8 @@ MCP_TOOLS_SCHEMA = [
                 "required": ["id"]
             }
         }
-    }
+    },
+    WIKIPEDIA_TOOL_SCHEMA,
 ]
 
 # 記憶するvalueの整形
@@ -247,6 +249,14 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
     そのまま渡すだけでよくなった。
     """
     call_mcp_tool_fn = mcp_client.call_mcp_tool
+
+    if name == "wikipedia_search":
+        try:
+            print(f"[LOG] wikipedia_search called: query={arguments.get('query', '')!r}")
+            return wikipedia_search(arguments.get("query", ""))
+        except Exception as exc:
+            print("WIKIPEDIA TOOL ERROR:", exc)
+            return "Wikipedia検索中にエラーが発生しました。"
 
     if name == "save_note":
         return call_mcp_tool_fn(
