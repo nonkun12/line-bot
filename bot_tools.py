@@ -63,8 +63,7 @@ def ensure_jst_offset(remind_at):
     if not remind_at:
         return remind_at
     # モデルはJSTのつもりで時刻を生成しているが、稀に Z(UTC扱い)や
-    # 誤ったオフセットを付けてしまうことがある(例: 21:19+JSTのつもりが21:19Zになる)。
-    # このBotはJST運用のみを想定しているため、モデルが何を付けてきたかに関わらず、
+    # 誤ったオフセットを付けてきた場合でも、このBotはJST運用のみを想定しているため、
     # 末尾のタイムゾーン表記を一旦取り除き、常に +09:00 を明示的に付け直す。
     stripped = TZ_SUFFIX_RE.sub("", remind_at)
     return stripped + "+09:00"
@@ -212,6 +211,23 @@ MCP_TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
+            "name": "github_lookup",
+            "description": "GitHubリポジトリに関するユーザーの問い合わせ(最新コミット、リポジトリ情報、ファイル内容、Issue/PR、検索など)に対応する。GitHubに関する自然文をそのままqueryに渡す。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "GitHubに関するユーザーの問い合わせ"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "cancel_reminder",
             "description": (
                 "指定したidのリマインダーをキャンセルする。"
@@ -270,6 +286,11 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
         from agents.weather.node import get_weather_report
         location = arguments.get("location") or "東京"
         return get_weather_report(location)
+
+    if name == "github_lookup":
+        from agents.github.handlers import handle_github_message
+        query = arguments.get("query", "")
+        return handle_github_message(query, user_id)
 
     if name == "save_note":
         return call_mcp_tool_fn(
