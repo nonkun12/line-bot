@@ -49,8 +49,7 @@ def normalize_memory_key(key, original_message):
 # remind_atのタイムゾーン補正
 # =========================
 # システムプロンプトでモデルに「+09:00付きのISO 8601で出力する」よう指示しているが、
-# Groq/Llama系モデルは稀にタイムゾーン部分を省略して出力することがある
-# (例: "2026-07-12T21:19:00" のようにオフセットなし)。
+# Groq/Llama系モデルは稀にタイムゾーン部分を省略して出力することがある。
 # JS(MCPサーバー側)のnew Date()はオフセットなしの文字列をUTCとして解釈するため、
 # 「日本時間のつもりだった時刻」が実際には9時間ズレて登録されてしまう。
 # これを防ぐため、タイムゾーン表記(Z または +HH:MM/-HH:MM)が末尾になければ、
@@ -228,6 +227,23 @@ MCP_TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
+            "name": "sheets_lookup",
+            "description": "Google Sheetsに関するユーザーの問い合わせ(読み取り、検索、記録、削除、内容についての質問など)に対応する。Google Sheetsに関する自然文をそのままqueryに渡す。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Google Sheetsに関するユーザーの問い合わせ"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "cancel_reminder",
             "description": (
                 "指定したidのリマインダーをキャンセルする。"
@@ -291,6 +307,19 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
         from agents.github.handlers import handle_github_message
         query = arguments.get("query", "")
         return handle_github_message(query, user_id)
+
+    if name == "sheets_lookup":
+        import os
+        from agents.sheets.client import GoogleSheetsClient
+        from agents.sheets.handlers import handle_sheets_message
+        query = arguments.get("query", "")
+        client = GoogleSheetsClient(
+            spreadsheet_id=os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID")
+        )
+        result = handle_sheets_message(query, user_id, client)
+        if result is None:
+            return "Google Sheetsの操作を理解できませんでした。"
+        return result.get("text", "Google Sheetsの操作を理解できませんでした。")
 
     if name == "save_note":
         return call_mcp_tool_fn(
