@@ -1,5 +1,7 @@
 from flask import jsonify, request
 
+import debug_agent
+
 try:
     from e2e_status import StepTimer
 except Exception:  # 監視層が使えなくても既存動作に影響させない
@@ -59,5 +61,25 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
 
         print(f"[LOG] /internal/ask success: user_id={user_id!r}")
         return jsonify({"ok": True, "reply": str(reply or "")})
+
+    @app.route("/internal/debug/run", methods=["POST"])
+    def internal_debug_run():
+        provided_key = request.headers.get("x-internal-key")
+        if provided_key != internal_push_key:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+        data = request.get_json(silent=True) or {}
+        error_text = data.get("error_text", "") or ""
+
+        try:
+            result = debug_agent.run_debug_agent(error_text)
+        except Exception as exc:
+            print("INTERNAL DEBUG RUN ERROR:", exc)
+            return jsonify({
+                "ok": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }), 500
+
+        return jsonify({"result": result})
 
     return internal_ask
