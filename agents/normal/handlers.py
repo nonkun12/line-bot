@@ -112,7 +112,9 @@ def handle_normal_message(message, user_id, call_mcp_tool):
 get_memoryツールは使用しないでください。
 ユーザーの発言が質問形式（「〜は？」で終わるもの）の場合、save_memory ツールは使用しないでください。
 
-外部検索ツール(brave_searchなど)は存在しません。検索が必要な場合でも、利用可能なツール一覧にあるものだけを使用してください。
+検索が必要な場合は、利用可能なツール一覧にあるものだけを使用してください。
+Wikipediaについて明示的に調べるよう求められた場合は、必ず wikipedia_search ツールを使用してください。
+Wikipedia以外の外部検索ツール(brave_searchなど)は利用できません。
 メモ検索は必ず search_notes ツールを使用してください。
 ユーザーが過去のメモ・記録・予定・作業内容について確認している場合は、
 記憶情報ではなく必ず search_notes ツールを使用してください。
