@@ -14,8 +14,8 @@ from mcp_client import parse_mcp_json_list
 # set_reminder / save_memory 等でユーザーが「」で明示的に指定した文言は、
 # AIに言い換えさせず、原文からそのまま抜き出して使う。
 # (AIが1回目のツール呼び出し判断時にtemperature=0でも稀に数文字だけ
-#  言い換えてしまう(例: 「文字化けテスト」→「文字化ケトスト」)ことがあるため、
-#  正確性が必要な箇所は原文優先にする)
+# 言い換えてしまう(例: 「文字化けテスト」→「文字化ケトスト」)ことがあるため、
+# 正確性が必要な箇所は原文優先にする)
 def extract_quoted_text(original_message):
     print(f"[LOG] extract_quoted_text called")
     # 「」(一重)と『』(二重)の両方に対応する。
@@ -244,6 +244,23 @@ MCP_TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
+            "name": "debug_lookup",
+            "description": "エラー内容をDebug Agentに渡して原因分析と修正案を取得する。解析のみを行い、コード変更・Git操作・デプロイは行わない。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "解析したいエラー内容や症状"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "cancel_reminder",
             "description": (
                 "指定したidのリマインダーをキャンセルする。"
@@ -320,6 +337,14 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
         if result is None:
             return "Google Sheetsの操作を理解できませんでした。"
         return result.get("text", "Google Sheetsの操作を理解できませんでした。")
+
+    if name == "debug_lookup":
+        from agents.debug.node import debug_agent_node
+        query = arguments.get("query", "")
+        state = debug_agent_node({"raw_message": query, "agent_results": {}})
+        return state.get("agent_results", {}).get("debug", {}).get(
+            "text", "Debug Agentの解析結果を取得できませんでした。"
+        )
 
     if name == "save_note":
         return call_mcp_tool_fn(
