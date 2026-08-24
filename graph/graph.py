@@ -9,7 +9,7 @@ Supervisor
  ↓
 Conditional Router
  ↓
-Debug Agent / Fallback
+Debug Agent / Fallback / Work Status Agent
  ↓
 (Debug Agentルートのみ)
 Fix Agent → Patch Generate Agent → Patch Agent → Test Agent
@@ -23,8 +23,7 @@ END
 Phase4a:
 - patch_agent / test_agent を追加。
 - AUTO_APPLY_PATCH=false (デフォルト) の場合、
-  patch_agentは何もせず素通りするだけなので、
-  Fix Agentまでの既存動作は変わらない。
+  patch_agentは何もせず素通りするだけなので、Fix Agentまでの既存動作は変わらない。
 - commit_agentを追加。deploy_agentはまだ追加しない(Phase4cで対応)。
 
 Phase3 (Patch Agent基盤):
@@ -47,6 +46,7 @@ from agents.github.node import github_agent_node
 from agents.sheets.node import sheets_agent_node
 from agents.normal.node import normal_agent_node
 from agents.weather.node import weather_agent_node
+from agents.work_status.node import work_status_agent_node
 from dev_notes.wrappers.graph_node_wrapper import with_execution_logging
 from dev_notes.factory import get_default_adapter
 
@@ -74,6 +74,13 @@ normal_agent_node = with_execution_logging(
     "normal",
     get_default_adapter(),
 )
+
+work_status_agent_node = with_execution_logging(
+    work_status_agent_node,
+    "work_status",
+    get_default_adapter(),
+)
+
 from agents.fix.node import fix_agent_node
 from agents.patch.node import patch_apply_node, patch_generate_node
 from agents.test.node import test_runner_node
@@ -218,6 +225,19 @@ def finalize_node(state: AgentState) -> AgentState:
                 )
             )
 
+        work_status_result = results.get(
+            "work_status",
+            {}
+        )
+
+        if work_status_result:
+            lines.append(
+                work_status_result.get(
+                    "text",
+                    ""
+                )
+            )
+
         normal_result = results.get(
             "normal",
             {}
@@ -355,6 +375,11 @@ def build_graph():
     )
 
     builder.add_node(
+        "work_status_agent",
+        work_status_agent_node
+    )
+
+    builder.add_node(
         "fix_agent",
         fix_agent_node
     )
@@ -423,9 +448,10 @@ def build_graph():
             "notes_agent": "notes_agent",
             "memory_agent": "memory_agent",
             "github_agent": "github_agent",
-        "sheets_agent": "sheets_agent",
+            "sheets_agent": "sheets_agent",
             "normal_agent": "normal_agent",
             "weather_agent": "weather_agent",
+            "work_status_agent": "work_status_agent",
             "fallback_agent": "fallback_agent",
         },
     )
@@ -464,6 +490,16 @@ def build_graph():
 
     builder.add_edge(
         "sheets_agent",
+        "finalizer"
+    )
+
+    builder.add_edge(
+        "weather_agent",
+        "finalizer"
+    )
+
+    builder.add_edge(
+        "work_status_agent",
         "finalizer"
     )
 
