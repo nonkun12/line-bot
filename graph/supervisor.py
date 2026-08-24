@@ -23,6 +23,13 @@ from agents.weather.intents import is_weather_intent
 
 
 _DEBUG_PREFIX = "debug"
+_WORK_STATUS_MESSAGES = {
+    "作業確認",
+    "作業状況確認",
+    "作業状況を確認",
+    "進捗確認",
+    "進捗を確認",
+}
 
 
 _INTENT_TO_AGENT = {
@@ -30,8 +37,9 @@ _INTENT_TO_AGENT = {
     "note": "notes",
     "memory": "memory",
     "github": "github",
-"sheets": "sheets",
+    "sheets": "sheets",
     "weather": "weather",
+    "work_status": "work_status",
     # "unsupported" (=GitHub/Debug/Memory/Notesのいずれにも該当しない通常
     # メッセージ) は、旧 generate_reply() 末尾にあった通常のGroq応答へ
     # 振り分ける。以前はここが "fallback" 固定になっており、
@@ -49,6 +57,10 @@ def classify_intent(raw_message: str) -> str:
 
     print("===== SUPERVISOR =====")
     print("RAW:", text)
+
+    if text in _WORK_STATUS_MESSAGES:
+        print("SUPERVISOR: work status intent")
+        return "work_status"
 
     if text.startswith(_DEBUG_PREFIX):
         return "debug"
