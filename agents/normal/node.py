@@ -25,6 +25,15 @@ _LOOKUP_QUESTION_RE = re.compile(
 )
 
 
+_WORK_STATUS_MESSAGES = {
+    "作業確認",
+    "作業状況確認",
+    "作業状況を確認",
+    "進捗確認",
+    "進捗を確認",
+}
+
+
 def _call_mcp_tool(state: AgentState):
     call_mcp_tool = state.get("call_mcp_tool")
     if callable(call_mcp_tool):
@@ -151,7 +160,21 @@ def normal_agent_node(state: AgentState) -> AgentState:
     raw_message = state.get("raw_message", "") or ""
     call_mcp_tool = _call_mcp_tool(state)
 
-    if _is_note_lookup_question(raw_message):
+    if raw_message.strip() in _WORK_STATUS_MESSAGES:
+        print("[WORK STATUS] routing to existing AI secretary report:", raw_message)
+        try:
+            # app.py loads the LangGraph at request time, so importing the already
+            # initialized report function here avoids changing the graph structure
+            # or duplicating the existing fact-collection/report implementation.
+            from app import generate_ai_secretary_report
+
+            result_text = generate_ai_secretary_report(user_id)
+            provider = "ai_secretary_report"
+        except Exception as e:
+            print("[WORK STATUS] AI secretary report error:", e)
+            result_text = "作業確認の取得中にエラーが発生しました。もう一度お試しください。"
+            provider = "ai_secretary_report_error"
+    elif _is_note_lookup_question(raw_message):
         print("[NOTE LOOKUP GUARD] routing question to search_notes:", raw_message)
         try:
             result_text = call_mcp_tool(
