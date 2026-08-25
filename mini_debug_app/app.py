@@ -1,3 +1,8 @@
+# このファイルは本番LangGraph (graph.graph.graph) 経由の手動確認用フォームUIです。
+# mini_debug_app/main.py + service.py (agents/debug/collector・analyzer・fixerを
+# 直接呼び出す独立DEBUG TOOL) とは別のエントリーポイントであり、今回のDEBUG TOOL
+# 完成対象ではありません。現状維持のため、ロジックには手を入れていません。
+
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse
 from graph.graph import graph
