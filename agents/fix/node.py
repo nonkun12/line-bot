@@ -24,6 +24,8 @@ FIX_MODEL_NAME = os.environ.get(
     "llama-3.3-70b-versatile"
 )
 
+FIX_AGENT_TIMEOUT = float(os.environ.get("FIX_AGENT_TIMEOUT", "15.0"))
+
 
 _SYSTEM_PROMPT = """
 あなたはAI Fix Agentです。
@@ -110,6 +112,7 @@ def _build_llm():
         model=FIX_MODEL_NAME,
         temperature=0,
         api_key=GROQ_API_KEY,
+        timeout=FIX_AGENT_TIMEOUT,
     )
 
 
