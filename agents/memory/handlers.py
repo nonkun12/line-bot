@@ -152,7 +152,8 @@ def handle_get_name(
                     name
                 )
 
-        except Exception:
+        except Exception as e:
+            print(f"[MEMORY AGENT] parse failed: {type(e).__name__}: {e}")
             pass
 
     if name not in invalid_values:
@@ -190,7 +191,8 @@ def handle_get_all_memory(
             if item.get("key") == "name":
                 return f"あなたの名前は {item.get('value')} です。"
 
-    except Exception:
+    except Exception as e:
+        print(f"[MEMORY AGENT] parse failed: {type(e).__name__}: {e}")
         pass
 
     return "名前はまだ記憶されていません。"
