@@ -1,4 +1,5 @@
 import os
+import certifi
 from dotenv import load_dotenv
 from linebot.v3.messaging import Configuration
 from linebot.v3.webhook import WebhookHandler
@@ -39,7 +40,10 @@ GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 # generate_reply()で処理する。
 N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "")
 
-configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
+configuration = Configuration(
+    access_token=CHANNEL_ACCESS_TOKEN,
+    ssl_ca_cert=certifi.where()
+)
 handler = WebhookHandler(CHANNEL_SECRET)
 # timeoutを明示的に指定し、Groq側が詰まってもgunicorn workerごと
 # ハングしないようにする(Renderがクラッシュと誤認して再起動する原因になっていた)
