@@ -170,11 +170,20 @@ unified diff形式のみ
             apply_res = apply_patch(patch, filename="app.py")
             if apply_res["ok"]:
                 # pytest 実行検証
-                test_proc = subprocess.run(
-                    ["arch", "-arm64", "venv/bin/pytest"],
-                    capture_output=True,
-                    text=True
-                )
+                DEBUG_AGENT_TEST_TIMEOUT = float(os.environ.get("DEBUG_AGENT_TEST_TIMEOUT", "30.0"))
+                try:
+                    test_proc = subprocess.run(
+                        ["arch", "-arm64", "venv/bin/pytest"],
+                        capture_output=True,
+                        text=True,
+                        timeout=DEBUG_AGENT_TEST_TIMEOUT,
+                    )
+                except subprocess.TimeoutExpired as e:
+                    class _TimedOutTestProc:
+                        returncode = 1
+                        stdout = e.stdout or ""
+                        stderr = (e.stderr or "") + f"\n[DEBUG_AGENT] pytest timed out after {DEBUG_AGENT_TEST_TIMEOUT}s"
+                    test_proc = _TimedOutTestProc()
                 if test_proc.returncode == 0:
                     auto_apply_output = f"""
 
