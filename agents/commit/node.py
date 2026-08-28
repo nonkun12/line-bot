@@ -10,14 +10,25 @@ Phase4b: Commit Agent
 import os
 import subprocess
 
+GIT_COMMAND_TIMEOUT = float(os.environ.get("GIT_COMMAND_TIMEOUT", "10.0"))
+
 
 def _run_git(args: list[str], cwd: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git"] + args,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        return subprocess.run(
+            ["git"] + args,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=GIT_COMMAND_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired as e:
+        return subprocess.CompletedProcess(
+            args=["git"] + args,
+            returncode=1,
+            stdout=e.stdout or "",
+            stderr=(e.stderr or "") + f"\n[TIMEOUT] git command timed out after {GIT_COMMAND_TIMEOUT}s",
+        )
 
 
 def commit_node(state):

@@ -3,6 +3,8 @@ import shutil
 import subprocess
 from git_safety import create_checkpoint, restore_checkpoint, remove_checkpoint
 
+GIT_COMMAND_TIMEOUT = float(os.environ.get("GIT_COMMAND_TIMEOUT", "10.0"))
+
 
 def check_patch(patch, filename="app.py"):
     """
@@ -25,7 +27,8 @@ def check_patch(patch, filename="app.py"):
             ["git", "apply", "--check", "--ignore-space-change", "--ignore-whitespace"],
             input=patch,
             text=True,
-            capture_output=True
+            capture_output=True,
+            timeout=GIT_COMMAND_TIMEOUT,
         )
 
         if check_proc.returncode == 0:
@@ -68,7 +71,8 @@ def apply_patch(patch, filename="app.py"):
             ["git", "apply", "--ignore-space-change", "--ignore-whitespace"],
             input=patch,
             text=True,
-            capture_output=True
+            capture_output=True,
+            timeout=GIT_COMMAND_TIMEOUT,
         )
 
         if proc.returncode == 0:

@@ -5,8 +5,11 @@ git applyを利用して
 patch検証・適用を行う。
 """
 
+import os
 import subprocess
 from dataclasses import dataclass
+
+GIT_COMMAND_TIMEOUT = float(os.environ.get("GIT_COMMAND_TIMEOUT", "10.0"))
 
 
 @dataclass
@@ -31,18 +34,25 @@ def validate_patch(
             stderr="empty patch"
         )
 
-    result = subprocess.run(
-        [
-            "git",
-            "apply",
-            "--check",
-            "-"
-        ],
-        input=patch,
-        text=True,
-        capture_output=True,
-        cwd=repo_root,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "apply",
+                "--check",
+                "-"
+            ],
+            input=patch,
+            text=True,
+            capture_output=True,
+            cwd=repo_root,
+            timeout=GIT_COMMAND_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return ApplyResult(
+            success=False,
+            stderr=f"git apply --check timed out after {GIT_COMMAND_TIMEOUT}s",
+        )
 
     return ApplyResult(
         success=result.returncode == 0,
@@ -68,17 +78,24 @@ def apply_patch(
         return check
 
 
-    result = subprocess.run(
-        [
-            "git",
-            "apply",
-            "-"
-        ],
-        input=patch,
-        text=True,
-        capture_output=True,
-        cwd=repo_root,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "apply",
+                "-"
+            ],
+            input=patch,
+            text=True,
+            capture_output=True,
+            cwd=repo_root,
+            timeout=GIT_COMMAND_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return ApplyResult(
+            success=False,
+            stderr=f"git apply timed out after {GIT_COMMAND_TIMEOUT}s",
+        )
 
 
     return ApplyResult(
