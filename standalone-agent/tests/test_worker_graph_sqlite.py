@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import sqlite3
 import sys
@@ -18,7 +19,15 @@ for key in (
 
 STANDALONE_DIR = Path(__file__).resolve().parents[1]
 ROOT_DIR = STANDALONE_DIR.parent
-sys.path.insert(0, str(ROOT_DIR))
+
+# Preload the repository-root db module so standalone-agent/db.py does not
+# shadow it for other tests during a single pytest process.
+_ROOT_DB_SPEC = importlib.util.spec_from_file_location("db", ROOT_DIR / "db.py")
+_ROOT_DB = importlib.util.module_from_spec(_ROOT_DB_SPEC)
+sys.modules["db"] = _ROOT_DB
+assert _ROOT_DB_SPEC.loader is not None
+_ROOT_DB_SPEC.loader.exec_module(_ROOT_DB)
+
 sys.path.insert(0, str(STANDALONE_DIR))
 
 import graph.graph as graph_module
@@ -57,7 +66,6 @@ def test_worker_graph_persists_and_resumes_with_sqlite(tmp_path, monkeypatch):
     assert first.next == ("fallback_agent",)
     assert first.values["intent"] == "fallback"
 
-    # Re-create the graph around the same SQLite database to prove persistence.
     conn.close()
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     saver2 = SqliteSaver(conn)
@@ -72,7 +80,6 @@ def test_worker_graph_persists_and_resumes_with_sqlite(tmp_path, monkeypatch):
     assert resumed.values["intent"] == "fallback"
 
     worker_graph2.invoke(None, config)
-    # fallback_agent was the second breakpoint; finalizer is the next node.
     assert worker_graph2.get_state(config).next == ("finalizer",)
     worker_graph2.invoke(None, config)
     assert worker_graph2.get_state(config).next == ()
