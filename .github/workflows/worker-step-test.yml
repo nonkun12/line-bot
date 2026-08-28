@@ -21,4 +21,5 @@ jobs:
         run: |
           pytest -q \
             standalone-agent/tests/test_worker_graph_controls.py \
+            standalone-agent/tests/test_worker_graph_sqlite.py \
             tests/test_job_worker.py
