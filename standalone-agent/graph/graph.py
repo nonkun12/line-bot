@@ -34,7 +34,11 @@ Phase3 (Patch Agent基盤):
 - 既存のpatch_agent(適用ロジック)は無変更。
 """
 
+import os
+import sqlite3
+
 from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 from graph.state import AgentState
 from graph.supervisor import supervisor_node
@@ -345,7 +349,52 @@ def route_from_debug(state: AgentState) -> str:
     return "fix_agent" if has_traceback is True else "finalizer"
 
 
-def build_graph():
+# Worker mode uses these node boundaries as static breakpoints.
+# The normal graph remains unchanged unless a checkpointer / breakpoint is passed.
+WORKER_STEP_NODES = (
+    "supervisor",
+    "debug_agent",
+    "notes_agent",
+    "memory_agent",
+    "normal_agent",
+    "work_status_agent",
+    "fix_agent",
+    "patch_generate_agent",
+    "patch_agent",
+    "test_agent",
+    "github_agent",
+    "sheets_agent",
+    "weather_agent",
+    "fallback_agent",
+    "finalizer",
+)
+
+WORKER_APPROVAL_NODES = (
+    "commit_agent",
+    "deploy_agent",
+)
+
+
+def _build_checkpointer():
+    path = os.environ.get(
+        "LANGGRAPH_CHECKPOINT_DB",
+        os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "langgraph-checkpoints.sqlite3",
+        ),
+    )
+    conn = sqlite3.connect(path, check_same_thread=False)
+    saver = SqliteSaver(conn)
+    saver.setup()
+    return saver
+
+
+def build_graph(
+    *,
+    checkpointer=None,
+    interrupt_after=None,
+    interrupt_before=None,
+):
 
     builder = StateGraph(AgentState)
 
@@ -543,8 +592,15 @@ def build_graph():
         END
     )
 
+    compile_kwargs = {}
+    if checkpointer is not None:
+        compile_kwargs["checkpointer"] = checkpointer
+    if interrupt_after is not None:
+        compile_kwargs["interrupt_after"] = interrupt_after
+    if interrupt_before is not None:
+        compile_kwargs["interrupt_before"] = interrupt_before
 
-    return builder.compile()
+    return builder.compile(**compile_kwargs)
 
 
 graph = build_graph()
