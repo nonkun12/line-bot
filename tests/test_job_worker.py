@@ -92,6 +92,7 @@ def test_execute_one_step_uses_same_thread_id_for_resume():
         def __init__(self):
             self.calls = []
             self._snapshot = FakeSnapshot()
+            self._invocations = 0
 
         def get_state(self, config):
             self.calls.append(("get_state", config))
@@ -99,7 +100,8 @@ def test_execute_one_step_uses_same_thread_id_for_resume():
 
         def invoke(self, input_state, config):
             self.calls.append(("invoke", input_state, config))
-            if not input_state:
+            self._invocations += 1
+            if self._invocations == 1:
                 self._snapshot = FakeSnapshot(
                     values={"intent": "fallback", "request_id": "job-7"},
                     next_nodes=("fallback_agent",),
