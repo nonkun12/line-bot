@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 
+import job_approvals
 import job_store
-import pending_approvals
 from job_lease import recover_stale_jobs
 
 
@@ -21,7 +21,6 @@ def _get_worker_graph():
     global _WORKER_GRAPH
     if _WORKER_GRAPH is None:
         from standalone_agent_graph import build_worker_graph
-
         _WORKER_GRAPH = build_worker_graph()
     return _WORKER_GRAPH
 
@@ -52,11 +51,7 @@ def _checkpoint_summary(values: dict) -> str:
 
 def _request_and_wait(job: dict, next_node: str, values: dict) -> dict:
     operation = APPROVAL_NODES[next_node]
-    approval = pending_approvals.request_job_approval(
-        job_id=job["id"],
-        user_id=job["user_id"],
-        operation=operation,
-    )
+    approval = job_approvals.request(job["id"], job["user_id"], operation)
     return {
         "status": "waiting_approval",
         "thread_id": _thread_id(job["id"]),
@@ -87,10 +82,10 @@ def execute_one_step(job: dict, graph=None) -> dict:
     # one unless this exact Job+operation has an approved one-use record.
     if current_node in APPROVAL_NODES:
         operation = APPROVAL_NODES[current_node]
-        status = pending_approvals.get_job_approval_status(job["id"], operation)
-        if status != "approved":
+        approval_status = job_approvals.status(job["id"], operation)
+        if approval_status != "approved":
             return _request_and_wait(job, current_node, snapshot.values or {})
-        if not pending_approvals.consume_job_approval(job["id"], operation):
+        if not job_approvals.consume(job["id"], operation):
             return _request_and_wait(job, current_node, snapshot.values or {})
 
     graph.invoke(input_state, config)
