@@ -1,6 +1,7 @@
 """AI Secretary work-status Agent."""
 
 from graph.state import AgentState
+from ai_secretary_report import generate_ai_secretary_report
 
 
 def work_status_agent_node(state: AgentState) -> AgentState:
@@ -8,10 +9,6 @@ def work_status_agent_node(state: AgentState) -> AgentState:
     user_id = state.get("user_id", "")
 
     try:
-        # Reuse the already-tested report implementation in app.py instead of
-        # duplicating GitHub/memory/reminder collection logic.
-        from app import generate_ai_secretary_report
-
         result_text = generate_ai_secretary_report(user_id)
     except Exception as exc:
         print("[WORK STATUS] AI secretary report error:", exc)
