@@ -1,20 +1,18 @@
-"""One-step asynchronous Job worker.
-
-Each invocation claims at most one pending Job, advances the LangGraph by one
-logical node, records a lightweight Job checkpoint, and then exits.  The
-LangGraph checkpoint stores the resumable AgentState; job_checkpoints stores
-Worker-facing progress only.
-"""
+"""One-step asynchronous Job worker with job-scoped approval gates."""
 
 from __future__ import annotations
 
 import json
 
 import job_store
+import pending_approvals
 from job_lease import recover_stale_jobs
 
 
-APPROVAL_NODES = {"commit_agent", "deploy_agent"}
+APPROVAL_NODES = {
+    "commit_agent": "commit",
+    "deploy_agent": "deploy",
+}
 
 _WORKER_GRAPH = None
 
@@ -33,12 +31,10 @@ def _thread_id(job_id: int) -> str:
 
 
 def _initial_state(job: dict) -> dict:
-    # Do not put the callable MCP client into checkpointed state.  The graph's
-    # agents already fall back to the module-level client when absent.
     return {
         "user_id": job["user_id"],
         "raw_message": job["message"],
-        "request_id": f"job-{job['id']}",
+        "request_id": _thread_id(job["id"]),
         "agent_results": {},
     }
 
@@ -54,8 +50,26 @@ def _checkpoint_summary(values: dict) -> str:
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
+def _request_and_wait(job: dict, next_node: str, values: dict) -> dict:
+    operation = APPROVAL_NODES[next_node]
+    approval = pending_approvals.request_job_approval(
+        job_id=job["id"],
+        user_id=job["user_id"],
+        operation=operation,
+    )
+    return {
+        "status": "waiting_approval",
+        "thread_id": _thread_id(job["id"]),
+        "step_name": next_node,
+        "next_step": next_node,
+        "operation": operation,
+        "approval_id": approval["id"],
+        "summary": _checkpoint_summary(values),
+    }
+
+
 def execute_one_step(job: dict, graph=None) -> dict:
-    """Advance one logical graph step for one Job and return a Worker result."""
+    """Advance exactly one graph node, enforcing approval before dangerous nodes."""
     graph = graph or _get_worker_graph()
     thread_id = _thread_id(job["id"])
     config = {"configurable": {"thread_id": thread_id}}
@@ -68,6 +82,16 @@ def execute_one_step(job: dict, graph=None) -> dict:
     else:
         current_node = "supervisor"
         input_state = _initial_state(job)
+
+    # interrupt_before leaves dangerous nodes in snapshot.next. Never invoke
+    # one unless this exact Job+operation has an approved one-use record.
+    if current_node in APPROVAL_NODES:
+        operation = APPROVAL_NODES[current_node]
+        status = pending_approvals.get_job_approval_status(job["id"], operation)
+        if status != "approved":
+            return _request_and_wait(job, current_node, snapshot.values or {})
+        if not pending_approvals.consume_job_approval(job["id"], operation):
+            return _request_and_wait(job, current_node, snapshot.values or {})
 
     graph.invoke(input_state, config)
     snapshot = graph.get_state(config)
@@ -84,13 +108,7 @@ def execute_one_step(job: dict, graph=None) -> dict:
 
     next_node = next_nodes[0]
     if next_node in APPROVAL_NODES:
-        return {
-            "status": "waiting_approval",
-            "thread_id": thread_id,
-            "step_name": current_node or "unknown",
-            "next_step": next_node,
-            "summary": _checkpoint_summary(values),
-        }
+        return _request_and_wait(job, next_node, values)
 
     return {
         "status": "step_completed",
@@ -106,23 +124,18 @@ def _handle_executor_failure(job: dict, exc: Exception):
     message = str(exc)
     if retry_count <= int(job.get("max_retries") or 0):
         job_store.update_job(
-            job["id"],
-            status="pending",
-            last_error=message,
-            retry_count=retry_count,
+            job["id"], status="pending", last_error=message,
+            retry_count=retry_count, clear_claimed_at=True,
         )
         status = "pending"
     else:
         job_store.update_job(
-            job["id"],
-            status="failed",
-            last_error=message,
-            retry_count=retry_count,
+            job["id"], status="failed", last_error=message,
+            retry_count=retry_count, clear_claimed_at=True,
         )
         status = "failed"
     job_store.save_checkpoint(
-        job["id"],
-        "worker",
+        job["id"], "worker",
         "failed" if status == "failed" else "retry_scheduled",
         message,
     )
@@ -130,7 +143,7 @@ def _handle_executor_failure(job: dict, exc: Exception):
 
 
 def run_once(executor=None):
-    """Claim one pending Job, advance one step, then return immediately."""
+    """Claim one Job, advance one logical step, and exit."""
     recover_stale_jobs()
     job = job_store.claim_pending_job()
     if job is None:
@@ -144,44 +157,34 @@ def run_once(executor=None):
         status = result.get("status")
         if status == "graph_done":
             job_store.update_job(
-                job_id,
-                status="done",
-                result=result.get("summary", ""),
-                last_error=None,
+                job_id, status="done", result=result.get("summary", ""),
+                last_error=None, clear_claimed_at=True,
             )
             checkpoint_status = "completed"
         elif status == "waiting_approval":
             job_store.update_job(
-                job_id,
-                status="waiting_approval",
-                result=result.get("summary", ""),
-                last_error=None,
+                job_id, status="waiting_approval", result=result.get("summary", ""),
+                last_error=None, clear_claimed_at=True,
             )
             checkpoint_status = "waiting_approval"
         elif status == "step_completed":
             job_store.update_job(
-                job_id,
-                status="pending",
-                result=result.get("summary", ""),
-                last_error=None,
+                job_id, status="pending", result=result.get("summary", ""),
+                last_error=None, clear_claimed_at=True,
             )
             checkpoint_status = "completed"
         elif status == "failed":
             job_store.update_job(
-                job_id,
-                status="failed",
-                result=result.get("summary", ""),
-                last_error=result.get("error"),
+                job_id, status="failed", result=result.get("summary", ""),
+                last_error=result.get("error"), clear_claimed_at=True,
             )
             checkpoint_status = "failed"
         else:
             raise RuntimeError(f"unknown executor status: {status!r}")
 
         job_store.save_checkpoint(
-            job_id,
-            result.get("step_name", "worker"),
-            checkpoint_status,
-            result.get("summary"),
+            job_id, result.get("step_name", "worker"),
+            checkpoint_status, result.get("summary"),
         )
         return job_store.get_job(job_id)
 
