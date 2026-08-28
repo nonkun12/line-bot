@@ -18,6 +18,7 @@ import mcp_client
 from graph.state import AgentState
 from agents.normal.handlers import handle_normal_message
 from gemini_n8n_client import GeminiN8nError, call_gemini_via_n8n
+from ai_secretary_report import generate_ai_secretary_report
 
 
 _LOOKUP_QUESTION_RE = re.compile(
@@ -161,13 +162,8 @@ def normal_agent_node(state: AgentState) -> AgentState:
     call_mcp_tool = _call_mcp_tool(state)
 
     if raw_message.strip() in _WORK_STATUS_MESSAGES:
-        print("[WORK STATUS] routing to existing AI secretary report:", raw_message)
+        print("[WORK STATUS] routing to standalone AI secretary report:", raw_message)
         try:
-            # app.py loads the LangGraph at request time, so importing the already
-            # initialized report function here avoids changing the graph structure
-            # or duplicating the existing fact-collection/report implementation.
-            from app import generate_ai_secretary_report
-
             result_text = generate_ai_secretary_report(user_id)
             provider = "ai_secretary_report"
         except Exception as e:
