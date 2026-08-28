@@ -10,6 +10,8 @@ from linebot.v3.messaging import (
 import unicodedata
 import json
 import random
+import os
+import concurrent.futures
 import threading
 import httpx
 import logging
@@ -222,18 +224,26 @@ def _parse_mcp_json_list(raw):
 _DIRECT_TEXT_AGENT_KEYS = ("memory", "notes", "normal", "sheets")
 
 
+GRAPH_INVOKE_TIMEOUT = float(os.environ.get("GRAPH_INVOKE_TIMEOUT", "60.0"))
+_graph_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+
+
 def _invoke_graph(user_id: str, message: str):
     """LangGraphを実行し、結果のstate(dict)を返す。"""
     from graph.graph import graph
 
-    return graph.invoke(
-        {
-            "user_id": user_id,
-            "raw_message": message,
-            "call_mcp_tool": call_mcp_tool,
-            "agent_results": {},
-        }
-    )
+    def _run():
+        return graph.invoke(
+            {
+                "user_id": user_id,
+                "raw_message": message,
+                "call_mcp_tool": call_mcp_tool,
+                "agent_results": {},
+            }
+        )
+
+    future = _graph_executor.submit(_run)
+    return future.result(timeout=GRAPH_INVOKE_TIMEOUT)
 
 
 def _extract_graph_reply(result):

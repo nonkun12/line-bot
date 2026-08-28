@@ -1,11 +1,16 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+import os
+import concurrent.futures
 
 from graph.graph import graph
 from mcp_client import call_mcp_tool
 
 
 app = FastAPI()
+
+GRAPH_INVOKE_TIMEOUT = float(os.environ.get("GRAPH_INVOKE_TIMEOUT", "60.0"))
+_graph_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
 
 class AgentRequest(BaseModel):
@@ -38,14 +43,16 @@ def _extract_reply(result):
 
 @app.post("/agent")
 def agent(request: AgentRequest):
-    result = graph.invoke(
+    future = _graph_executor.submit(
+        graph.invoke,
         {
             "user_id": request.user_id,
             "raw_message": request.message,
             "call_mcp_tool": call_mcp_tool,
             "agent_results": {},
-        }
+        },
     )
+    result = future.result(timeout=GRAPH_INVOKE_TIMEOUT)
 
     reply = _extract_reply(result)
 
