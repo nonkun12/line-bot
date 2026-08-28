@@ -5,9 +5,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB = os.environ.get("CHAT_DB_PATH", os.path.join(BASE_DIR, "chat.db"))
 
 
-# =========================
-# DB
-# =========================
 def get_conn():
     print("[LOG] get_conn called")
     return sqlite3.connect(DB, check_same_thread=False)
@@ -39,7 +36,6 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_processed_events_event_id
         ON processed_events(event_id)
         """)
-
         conn.execute("""
         CREATE TABLE IF NOT EXISTS approvals(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,9 +50,45 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_approvals_user_id
         ON approvals(user_id)
         """)
-        # 旧・自前memoryテーブルはもう使わない(MCPサーバー側のSQLiteに一元化)。
-        # 既存データを残したい場合はこのテーブル定義とget_memory/update_memory関数を
-        # 復活させて併用することも可能。
+
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS jobs(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            job_type TEXT NOT NULL DEFAULT 'ai_task',
+            message TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            max_retries INTEGER NOT NULL DEFAULT 3,
+            last_error TEXT,
+            result TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_jobs_status_created_at
+        ON jobs(status, created_at)
+        """)
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_jobs_user_id
+        ON jobs(user_id)
+        """)
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS job_checkpoints(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL,
+            step_name TEXT NOT NULL,
+            step_status TEXT NOT NULL,
+            output_snapshot TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(job_id) REFERENCES jobs(id)
+        )
+        """)
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_job_checkpoints_job_id
+        ON job_checkpoints(job_id, id)
+        """)
 
 
 # =========================
@@ -92,6 +124,120 @@ def load_history(user_id):
         return []
 
     return list(reversed(rows))
+
+
+# =========================
+# Jobs
+# =========================
+def create_job(user_id, message, job_type="ai_task", max_retries=3):
+    """夜間/非同期実行用のJobをpending状態で登録する。"""
+    with get_conn() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO jobs(user_id, job_type, message, status, max_retries)
+            VALUES (?, ?, ?, 'pending', ?)
+            """,
+            (user_id, job_type, message, max_retries),
+        )
+        return cursor.lastrowid
+
+
+def get_job(job_id):
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT id, user_id, job_type, message, status, retry_count,
+                   max_retries, last_error, result, created_at, updated_at
+            FROM jobs WHERE id=?
+            """,
+            (job_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    keys = (
+        "id", "user_id", "job_type", "message", "status", "retry_count",
+        "max_retries", "last_error", "result", "created_at", "updated_at"
+    )
+    return dict(zip(keys, row))
+
+
+def claim_pending_job():
+    """最古のpending Jobを1件だけrunningへ移す。SQLite向けの最小claim実装。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM jobs WHERE status='pending' ORDER BY id LIMIT 1"
+        ).fetchone()
+        if row is None:
+            return None
+        job_id = row[0]
+        cursor = conn.execute(
+            """
+            UPDATE jobs
+            SET status='running', updated_at=CURRENT_TIMESTAMP
+            WHERE id=? AND status='pending'
+            """,
+            (job_id,),
+        )
+        if cursor.rowcount != 1:
+            return None
+    return get_job(job_id)
+
+
+def update_job(job_id, status=None, result=None, last_error=None, retry_count=None):
+    """Job状態を部分更新する。指定された値だけを更新する。"""
+    fields = []
+    values = []
+    if status is not None:
+        fields.append("status=?")
+        values.append(status)
+    if result is not None:
+        fields.append("result=?")
+        values.append(result)
+    if last_error is not None:
+        fields.append("last_error=?")
+        values.append(last_error)
+    if retry_count is not None:
+        fields.append("retry_count=?")
+        values.append(retry_count)
+    if not fields:
+        return False
+    fields.append("updated_at=CURRENT_TIMESTAMP")
+    values.append(job_id)
+    with get_conn() as conn:
+        cursor = conn.execute(
+            f"UPDATE jobs SET {', '.join(fields)} WHERE id=?",
+            values,
+        )
+        return cursor.rowcount > 0
+
+
+def save_checkpoint(job_id, step_name, step_status, output_snapshot=None):
+    with get_conn() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO job_checkpoints(job_id, step_name, step_status, output_snapshot)
+            VALUES (?, ?, ?, ?)
+            """,
+            (job_id, step_name, step_status, output_snapshot),
+        )
+        return cursor.lastrowid
+
+
+def get_latest_checkpoint(job_id):
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT id, job_id, step_name, step_status, output_snapshot, created_at
+            FROM job_checkpoints
+            WHERE job_id=?
+            ORDER BY id DESC LIMIT 1
+            """,
+            (job_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    keys = ("id", "job_id", "step_name", "step_status", "output_snapshot", "created_at")
+    return dict(zip(keys, row))
 
 
 # =========================
