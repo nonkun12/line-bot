@@ -8,15 +8,12 @@ import db
 
 
 def create_job(user_id, message, job_type="ai_task", source="line", parent_job_id=None, max_retries=3):
-    """Create a Job.
-
-    ``source`` and ``parent_job_id`` are accepted for forward compatibility;
-    the current db.py schema does not persist those fields yet.
-    """
     return db.create_job(
         user_id=user_id,
         message=message,
         job_type=job_type,
+        source=source,
+        parent_job_id=parent_job_id,
         max_retries=max_retries,
     )
 
@@ -29,13 +26,23 @@ def claim_pending_job():
     return db.claim_pending_job()
 
 
-def update_job(job_id, status=None, result=None, last_error=None, retry_count=None):
+def update_job(
+    job_id,
+    status=None,
+    result=None,
+    last_error=None,
+    retry_count=None,
+    claimed_at=None,
+    clear_claimed_at=False,
+):
     return db.update_job(
         job_id,
         status=status,
         result=result,
         last_error=last_error,
         retry_count=retry_count,
+        claimed_at=claimed_at,
+        clear_claimed_at=clear_claimed_at,
     )
 
 
