@@ -4,7 +4,10 @@ Patch utility
 unified diffから対象ファイルを抽出する。
 """
 
+import os
 import re
+
+GIT_COMMAND_TIMEOUT = float(os.environ.get("GIT_COMMAND_TIMEOUT", "10.0"))
 
 
 def extract_target_files(patch: str) -> list[str]:
@@ -113,18 +116,22 @@ def validate_patch(patch: str, repo="."):
     if not patch:
         return False, "empty patch"
 
-    result = subprocess.run(
-        [
-            "git",
-            "apply",
-            "--check",
-            "-"
-        ],
-        input=patch,
-        text=True,
-        capture_output=True,
-        cwd=repo,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "apply",
+                "--check",
+                "-"
+            ],
+            input=patch,
+            text=True,
+            capture_output=True,
+            cwd=repo,
+            timeout=GIT_COMMAND_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f"git apply --check timed out after {GIT_COMMAND_TIMEOUT}s"
 
     if result.returncode == 0:
         return True, ""
