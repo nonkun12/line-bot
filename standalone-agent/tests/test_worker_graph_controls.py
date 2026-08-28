@@ -1,7 +1,21 @@
+import os
 import sys
 from pathlib import Path
 
 from langgraph.checkpoint.memory import InMemorySaver
+
+
+# graph imports transitively load standalone-agent/config.py.
+# This test never calls LINE/Groq/MCP, so use harmless dummy values.
+for key in (
+    "CHANNEL_ACCESS_TOKEN",
+    "CHANNEL_SECRET",
+    "GROQ_API_KEY",
+    "MCP_SERVER_URL",
+    "MCP_API_KEY",
+    "INTERNAL_PUSH_KEY",
+):
+    os.environ.setdefault(key, "test-value")
 
 
 STANDALONE_DIR = Path(__file__).resolve().parents[1]
