@@ -38,6 +38,7 @@ def test_worker_graph_persists_and_resumes_with_sqlite(tmp_path, monkeypatch):
     db_path = tmp_path / "checkpoint.sqlite"
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     saver = SqliteSaver(conn)
+    saver.setup()
     worker_graph = graph_module.build_graph(
         checkpointer=saver,
         interrupt_after=["supervisor", "fallback_agent"],
@@ -60,6 +61,7 @@ def test_worker_graph_persists_and_resumes_with_sqlite(tmp_path, monkeypatch):
     conn.close()
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     saver2 = SqliteSaver(conn)
+    saver2.setup()
     worker_graph2 = graph_module.build_graph(
         checkpointer=saver2,
         interrupt_after=["supervisor", "fallback_agent"],
@@ -69,6 +71,9 @@ def test_worker_graph_persists_and_resumes_with_sqlite(tmp_path, monkeypatch):
     assert resumed.next == ("fallback_agent",)
     assert resumed.values["intent"] == "fallback"
 
+    worker_graph2.invoke(None, config)
+    # fallback_agent was the second breakpoint; finalizer is the next node.
+    assert worker_graph2.get_state(config).next == ("finalizer",)
     worker_graph2.invoke(None, config)
     assert worker_graph2.get_state(config).next == ()
     conn.close()
