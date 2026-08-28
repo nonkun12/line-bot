@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import sys
 from pathlib import Path
@@ -5,8 +6,6 @@ from pathlib import Path
 from langgraph.checkpoint.memory import InMemorySaver
 
 
-# graph imports transitively load standalone-agent/config.py.
-# This test never calls LINE/Groq/MCP, so use harmless dummy values.
 for key in (
     "CHANNEL_ACCESS_TOKEN",
     "CHANNEL_SECRET",
@@ -17,18 +16,23 @@ for key in (
 ):
     os.environ.setdefault(key, "test-value")
 
-
 STANDALONE_DIR = Path(__file__).resolve().parents[1]
 ROOT_DIR = STANDALONE_DIR.parent
-sys.path.insert(0, str(ROOT_DIR))
+
+# Preload the repository-root db module so standalone-agent/db.py does not
+# shadow it for other tests during a single pytest process.
+_ROOT_DB_SPEC = importlib.util.spec_from_file_location("db", ROOT_DIR / "db.py")
+_ROOT_DB = importlib.util.module_from_spec(_ROOT_DB_SPEC)
+sys.modules["db"] = _ROOT_DB
+assert _ROOT_DB_SPEC.loader is not None
+_ROOT_DB_SPEC.loader.exec_module(_ROOT_DB)
+
 sys.path.insert(0, str(STANDALONE_DIR))
 
 import graph.graph as graph_module
 
 
 def test_worker_graph_resumes_one_node_per_invoke(monkeypatch):
-    """A worker-mode graph must advance one node per invocation on one thread."""
-
     def fake_supervisor(state):
         return {**state, "intent": "fallback"}
 
