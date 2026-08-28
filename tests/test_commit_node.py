@@ -34,7 +34,7 @@ def test_commit_node_skips_when_test_result_missing():
 def test_commit_node_commits_when_pytest_passed(monkeypatch):
     calls = []
 
-    def fake_run(args, cwd=None, capture_output=None, text=None):
+    def fake_run(args, cwd=None, capture_output=None, text=None, timeout=None):
         calls.append(args)
 
         class _Result:
@@ -68,7 +68,7 @@ def test_commit_node_commits_when_pytest_passed(monkeypatch):
 
 
 def test_commit_node_uses_default_message_when_fix_result_missing(monkeypatch):
-    def fake_run(args, cwd=None, capture_output=None, text=None):
+    def fake_run(args, cwd=None, capture_output=None, text=None, timeout=None):
         class _Result:
             returncode = 0
             stdout = "cafebabe\n"
@@ -92,7 +92,7 @@ def test_commit_node_uses_default_message_when_fix_result_missing(monkeypatch):
 
 
 def test_commit_node_reports_error_when_git_add_fails(monkeypatch):
-    def fake_run(args, cwd=None, capture_output=None, text=None):
+    def fake_run(args, cwd=None, capture_output=None, text=None, timeout=None):
         class _Result:
             returncode = 1
             stdout = ""
@@ -118,7 +118,7 @@ def test_commit_node_reports_error_when_git_add_fails(monkeypatch):
 def test_commit_node_reports_error_when_git_commit_fails(monkeypatch):
     call_count = {"n": 0}
 
-    def fake_run(args, cwd=None, capture_output=None, text=None):
+    def fake_run(args, cwd=None, capture_output=None, text=None, timeout=None):
         call_count["n"] += 1
 
         class _Result:
