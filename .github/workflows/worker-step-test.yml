@@ -17,10 +17,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run Worker graph and lifecycle tests
+      - name: Run Worker graph, lifecycle, and approval tests
         run: |
           pytest -q \
             standalone-agent/tests/test_worker_graph_controls.py \
             standalone-agent/tests/test_worker_graph_sqlite.py \
             tests/test_job_worker.py \
+            tests/test_job_worker_approval_gate.py \
+            tests/test_job_approvals.py \
             tests/test_job_lease.py
