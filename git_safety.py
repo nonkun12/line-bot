@@ -4,6 +4,7 @@ import os
 import subprocess
 
 CHECKPOINT_FILE = ".ai_debug_checkpoint.json"
+GIT_COMMAND_TIMEOUT = float(os.environ.get("GIT_COMMAND_TIMEOUT", "10.0"))
 
 
 def create_checkpoint(cwd=None):
@@ -18,7 +19,8 @@ def create_checkpoint(cwd=None):
             ["git", "rev-parse", "HEAD"],
             cwd=cwd,
             capture_output=True,
-            text=True
+            text=True,
+            timeout=GIT_COMMAND_TIMEOUT
         )
         commit_hash = commit_proc.stdout.strip() if commit_proc.returncode == 0 else "UNKNOWN"
 
@@ -26,7 +28,8 @@ def create_checkpoint(cwd=None):
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             cwd=cwd,
             capture_output=True,
-            text=True
+            text=True,
+            timeout=GIT_COMMAND_TIMEOUT
         )
         branch = branch_proc.stdout.strip() if branch_proc.returncode == 0 else "UNKNOWN"
 
@@ -34,7 +37,8 @@ def create_checkpoint(cwd=None):
             ["git", "status", "--porcelain"],
             cwd=cwd,
             capture_output=True,
-            text=True
+            text=True,
+            timeout=GIT_COMMAND_TIMEOUT
         )
         modified_files = []
         if status_proc.returncode == 0:
@@ -84,13 +88,17 @@ def restore_checkpoint(filename="app.py", cwd=None):
         shutil.copyfile(backup_file, shutil_file)
         restored = True
     else:
-        proc = subprocess.run(
-            ["git", "checkout", "--", filename],
-            cwd=cwd,
-            capture_output=True,
-            text=True
-        )
-        restored = proc.returncode == 0
+        try:
+            proc = subprocess.run(
+                ["git", "checkout", "--", filename],
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=GIT_COMMAND_TIMEOUT
+            )
+            restored = proc.returncode == 0
+        except subprocess.TimeoutExpired:
+            restored = False
 
     remove_checkpoint(cwd=cwd)
 
