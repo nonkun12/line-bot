@@ -475,3 +475,42 @@ def get_error_log(limit=30):
         }
         for r in rows
     ]
+
+def build_line_status_message():
+    """LINE向けにE2Eステータスを短く整形して返す"""
+    status = get_e2e_status()
+
+    state_emoji = {
+        "ok": "🟢",
+        "error": "🔴",
+        "stop_timeout": "🔴",
+        "not_reached": "⚪",
+        "unknown": "⚪",
+    }
+
+    lines = []
+
+    if status.get("overall") == "error":
+        lines.append("⚠️ システムエラーが発生しています")
+        lines.append("")
+
+    lines.append("🖥 システム状態")
+    lines.append("")
+
+    for step in status.get("steps", []):
+        emoji = state_emoji.get(step.get("state"), "⚪")
+        label = step.get("label", step.get("key", "unknown"))
+        lines.append(f"{emoji} {label}")
+
+    lines.append("")
+
+    last_success = get_last_success()
+    lines.append(f"最終成功: {last_success or 'なし'}")
+
+    last_failure = get_last_failure()
+    if last_failure:
+        lines.append(f"直近エラー: {last_failure.get('error', '不明なエラー')}")
+    else:
+        lines.append("直近エラー: なし")
+
+    return "\n".join(lines)

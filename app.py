@@ -453,6 +453,12 @@ def _process_and_reply(event, user_id, text):
     with user_lock:
         print(f"[LOG] USER LOCK ACQUIRED: {user_id}")
 
+        if text.strip() in ("ステータス", "システム状態", "E2E状態"):
+            from e2e_status import build_line_status_message
+            reply = build_line_status_message()
+            _line_reply(event.reply_token, reply)
+            return
+
         # N8N_WEBHOOK_URLが設定されている場合はn8nに処理を委譲する。
         # 返信(reply_message/push_message)はn8n workflow側が既存の
         # /internal/ask, /internal/push を呼び出して行う想定のため、
