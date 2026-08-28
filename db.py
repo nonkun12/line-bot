@@ -3,24 +3,11 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB = os.environ.get("CHAT_DB_PATH", os.path.join(BASE_DIR, "chat.db"))
-STALE_JOB_SECONDS = int(os.environ.get("JOB_STALE_SECONDS", "1800"))
 
 
 def get_conn():
     print("[LOG] get_conn called")
     return sqlite3.connect(DB, check_same_thread=False)
-
-
-def _table_columns(conn, table_name):
-    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-    return {row[1] for row in rows}
-
-
-def _ensure_column(conn, table_name, column_name, definition):
-    if column_name not in _table_columns(conn, table_name):
-        conn.execute(
-            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"
-        )
 
 
 def init_db():
@@ -75,18 +62,10 @@ def init_db():
             max_retries INTEGER NOT NULL DEFAULT 3,
             last_error TEXT,
             result TEXT,
-            source TEXT NOT NULL DEFAULT 'line',
-            parent_job_id INTEGER,
-            claimed_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
-        # Migrate databases created before the Worker fields existed.
-        _ensure_column(conn, "jobs", "source", "TEXT NOT NULL DEFAULT 'line'")
-        _ensure_column(conn, "jobs", "parent_job_id", "INTEGER")
-        _ensure_column(conn, "jobs", "claimed_at", "TIMESTAMP")
-
         conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_jobs_status_created_at
         ON jobs(status, created_at)
@@ -95,10 +74,6 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_jobs_user_id
         ON jobs(user_id)
         """)
-        conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_jobs_claimed_at
-        ON jobs(status, claimed_at)
-        """")
         conn.execute("""
         CREATE TABLE IF NOT EXISTS job_checkpoints(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,32 +129,15 @@ def load_history(user_id):
 # =========================
 # Jobs
 # =========================
-def create_job(
-    user_id,
-    message,
-    job_type="ai_task",
-    source="line",
-    parent_job_id=None,
-    max_retries=3,
-):
+def create_job(user_id, message, job_type="ai_task", max_retries=3):
     """夜間/非同期実行用のJobをpending状態で登録する。"""
     with get_conn() as conn:
         cursor = conn.execute(
             """
-            INSERT INTO jobs(
-                user_id, job_type, message, status,
-                max_retries, source, parent_job_id
-            )
-            VALUES (?, ?, ?, 'pending', ?, ?, ?)
+            INSERT INTO jobs(user_id, job_type, message, status, max_retries)
+            VALUES (?, ?, ?, 'pending', ?)
             """,
-            (
-                user_id,
-                job_type,
-                message,
-                max_retries,
-                source,
-                parent_job_id,
-            ),
+            (user_id, job_type, message, max_retries),
         )
         return cursor.lastrowid
 
@@ -189,8 +147,7 @@ def get_job(job_id):
         row = conn.execute(
             """
             SELECT id, user_id, job_type, message, status, retry_count,
-                   max_retries, last_error, result, source, parent_job_id,
-                   claimed_at, created_at, updated_at
+                   max_retries, last_error, result, created_at, updated_at
             FROM jobs WHERE id=?
             """,
             (job_id,),
@@ -199,50 +156,13 @@ def get_job(job_id):
         return None
     keys = (
         "id", "user_id", "job_type", "message", "status", "retry_count",
-        "max_retries", "last_error", "result", "source", "parent_job_id",
-        "claimed_at", "created_at", "updated_at",
+        "max_retries", "last_error", "result", "created_at", "updated_at"
     )
     return dict(zip(keys, row))
 
 
-def requeue_stale_jobs(stale_seconds=STALE_JOB_SECONDS):
-    """Stale running jobs are logged as stalled then made runnable again."""
-    with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT id FROM jobs
-            WHERE status='running'
-              AND claimed_at IS NOT NULL
-              AND (julianday('now') - julianday(claimed_at)) * 86400 > ?
-            ORDER BY id
-            """,
-            (stale_seconds,),
-        ).fetchall()
-        job_ids = [row[0] for row in rows]
-        for job_id in job_ids:
-            conn.execute(
-                """
-                UPDATE jobs
-                SET status='pending', claimed_at=NULL,
-                    last_error='worker lease expired; job requeued',
-                    updated_at=CURRENT_TIMESTAMP
-                WHERE id=? AND status='running'
-                """,
-                (job_id,),
-            )
-    for job_id in job_ids:
-        save_checkpoint(
-            job_id,
-            "worker_recovery",
-            "stalled",
-            "worker lease expired; requeued",
-        )
-    return job_ids
-
-
 def claim_pending_job():
-    """最古のpending Jobを排他的に1件だけrunningへ移す。"""
-    requeue_stale_jobs()
+    """最古のpending Jobを1件だけrunningへ移す。SQLite向けの最小claim実装。"""
     with get_conn() as conn:
         row = conn.execute(
             "SELECT id FROM jobs WHERE status='pending' ORDER BY id LIMIT 1"
@@ -253,8 +173,7 @@ def claim_pending_job():
         cursor = conn.execute(
             """
             UPDATE jobs
-            SET status='running', claimed_at=CURRENT_TIMESTAMP,
-                updated_at=CURRENT_TIMESTAMP
+            SET status='running', updated_at=CURRENT_TIMESTAMP
             WHERE id=? AND status='pending'
             """,
             (job_id,),
@@ -264,16 +183,8 @@ def claim_pending_job():
     return get_job(job_id)
 
 
-def update_job(
-    job_id,
-    status=None,
-    result=None,
-    last_error=None,
-    retry_count=None,
-    claimed_at=None,
-    clear_claimed_at=False,
-):
-    """Job状態を部分更新する。"""
+def update_job(job_id, status=None, result=None, last_error=None, retry_count=None):
+    """Job状態を部分更新する。指定された値だけを更新する。"""
     fields = []
     values = []
     if status is not None:
@@ -288,11 +199,6 @@ def update_job(
     if retry_count is not None:
         fields.append("retry_count=?")
         values.append(retry_count)
-    if claimed_at is not None:
-        fields.append("claimed_at=?")
-        values.append(claimed_at)
-    elif clear_claimed_at:
-        fields.append("claimed_at=NULL")
     if not fields:
         return False
     fields.append("updated_at=CURRENT_TIMESTAMP")
