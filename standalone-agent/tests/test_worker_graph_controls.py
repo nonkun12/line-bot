@@ -41,7 +41,7 @@ def test_worker_graph_resumes_one_node_per_invoke(monkeypatch):
 
     worker_graph = graph_module.build_graph(
         checkpointer=InMemorySaver(),
-        interrupt_after=("supervisor", "fallback_agent", "finalizer"),
+        interrupt_after=["supervisor", "fallback_agent", "finalizer"],
     )
 
     config = {"configurable": {"thread_id": "job-123"}}
