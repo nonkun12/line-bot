@@ -50,12 +50,13 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_approvals_user_id
         ON approvals(user_id)
         """)
-
         conn.execute("""
         CREATE TABLE IF NOT EXISTS jobs(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL,
             job_type TEXT NOT NULL DEFAULT 'ai_task',
+            source TEXT NOT NULL DEFAULT 'line',
+            parent_job_id INTEGER,
             message TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending',
             retry_count INTEGER NOT NULL DEFAULT 0,
@@ -63,7 +64,8 @@ def init_db():
             last_error TEXT,
             result TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(parent_job_id) REFERENCES jobs(id)
         )
         """)
         conn.execute("""
@@ -73,6 +75,10 @@ def init_db():
         conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_jobs_user_id
         ON jobs(user_id)
+        """)
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_jobs_parent_job_id
+        ON jobs(parent_job_id)
         """)
         conn.execute("""
         CREATE TABLE IF NOT EXISTS job_checkpoints(
@@ -129,15 +135,15 @@ def load_history(user_id):
 # =========================
 # Jobs
 # =========================
-def create_job(user_id, message, job_type="ai_task", max_retries=3):
-    """夜間/非同期実行用のJobをpending状態で登録する。"""
+def create_job(user_id, message, job_type="ai_task", source="line", parent_job_id=None, max_retries=3):
+    """非同期実行用Jobをpending状態で登録する。"""
     with get_conn() as conn:
         cursor = conn.execute(
             """
-            INSERT INTO jobs(user_id, job_type, message, status, max_retries)
-            VALUES (?, ?, ?, 'pending', ?)
+            INSERT INTO jobs(user_id, job_type, source, parent_job_id, message, status, max_retries)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?)
             """,
-            (user_id, job_type, message, max_retries),
+            (user_id, job_type, source, parent_job_id, message, max_retries),
         )
         return cursor.lastrowid
 
@@ -146,8 +152,8 @@ def get_job(job_id):
     with get_conn() as conn:
         row = conn.execute(
             """
-            SELECT id, user_id, job_type, message, status, retry_count,
-                   max_retries, last_error, result, created_at, updated_at
+            SELECT id, user_id, job_type, source, parent_job_id, message, status,
+                   retry_count, max_retries, last_error, result, created_at, updated_at
             FROM jobs WHERE id=?
             """,
             (job_id,),
@@ -155,8 +161,8 @@ def get_job(job_id):
     if row is None:
         return None
     keys = (
-        "id", "user_id", "job_type", "message", "status", "retry_count",
-        "max_retries", "last_error", "result", "created_at", "updated_at"
+        "id", "user_id", "job_type", "source", "parent_job_id", "message", "status",
+        "retry_count", "max_retries", "last_error", "result", "created_at", "updated_at"
     )
     return dict(zip(keys, row))
 
