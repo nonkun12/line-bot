@@ -39,6 +39,12 @@ GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 # generate_reply()で処理する。
 N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "")
 
+# ai-app-builderの同期生成API(任意設定)。
+# URLが空の場合は既存のLINE/n8n経路を変更しない。
+AI_APP_BUILDER_URL = os.environ.get("AI_APP_BUILDER_URL", "")
+AI_APP_BUILDER_SHARED_SECRET = os.environ.get("AI_APP_BUILDER_SHARED_SECRET", "")
+AI_APP_BUILDER_TIMEOUT_SECONDS = float(os.environ.get("AI_APP_BUILDER_TIMEOUT_SECONDS", "185"))
+
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 # timeoutを明示的に指定し、Groq側が詰まってもgunicorn workerごと

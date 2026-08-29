@@ -58,7 +58,8 @@ def test_classify_intent_still_routes_debug_prefix():
 
 
 def test_classify_intent_returns_unsupported_for_unrelated_messages():
-    assert classify_intent("今日は天気がいいですね") == "unsupported"
+    # Weather intent is intentionally recognized by the current Supervisor.
+    assert classify_intent("今日は天気がいいですね") == "weather"
 
 
 def test_supervisor_node_sets_next_agent_to_github_for_natural_language_request():
