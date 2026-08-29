@@ -21,6 +21,7 @@ from db import get_conn
 STEP_ORDER = [
     "line_in",         # LINE -> line-bot (Webhook受信)
     "line_bot",        # line-bot自体の処理(受信〜n8nへの委譲判断)
+    "ai_app_builder",  # 明示的なアプリ作成依頼 -> ai-app-builder
     "n8n_webhook",     # n8n Webhookへの送信
     "n8n_workflow",    # n8n内のワークフロー実行(直接観測不可・推定)
     "internal_ask",    # /internal/ask
@@ -32,6 +33,7 @@ STEP_ORDER = [
 STEP_LABELS = {
     "line_in": "LINE",
     "line_bot": "line-bot",
+    "ai_app_builder": "ai-app-builder",
     "n8n_webhook": "n8n Webhook",
     "n8n_workflow": "My workflow",
     "internal_ask": "/internal/ask",
