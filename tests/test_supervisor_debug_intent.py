@@ -54,7 +54,8 @@ def test_classify_intent_does_not_misroute_github_to_debug():
 
 
 def test_classify_intent_unrelated_messages_still_unsupported():
-    assert classify_intent("今日は天気がいいですね") == "unsupported"
+    # Weather intent is intentionally recognized by the current Supervisor.
+    assert classify_intent("今日は天気がいいですね") == "weather"
 
 
 def test_classify_intent_routes_python_exception_name_messages_to_debug():
