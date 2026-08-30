@@ -52,10 +52,14 @@ def _push_line_reply(user_id: str, text: str) -> None:
     _line_push(user_id, text)
 
 
-def _delegate_to_ai_app_builder(user_id: str, message: str) -> bool:
-    """Send an explicit app-building request to ai-app-builder and push its result to LINE."""
+def _call_ai_app_builder(user_id: str, message: str) -> tuple[bool, str | None]:
+    """Call ai-app-builder and return (handled, reply_text) without LINE push.
+
+    ``handled`` is False only when AI_APP_BUILDER_URL is unset, allowing callers
+    to fall back to the existing AI path.
+    """
     if not AI_APP_BUILDER_URL:
-        return False
+        return False, None
 
     start = time.time()
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
@@ -80,8 +84,7 @@ def _delegate_to_ai_app_builder(user_id: str, message: str) -> bool:
         )
 
         if not ok:
-            _push_line_reply(user_id, f"アプリ作成サービスでエラーが発生しました。(HTTP {response.status_code})")
-            return True
+            return True, f"アプリ作成サービスでエラーが発生しました。(HTTP {response.status_code})"
 
         data = response.json()
         if not isinstance(data, dict):
@@ -96,8 +99,7 @@ def _delegate_to_ai_app_builder(user_id: str, message: str) -> bool:
         else:
             summary = f"アプリ作成に失敗しました。\n{summary}"
 
-        _push_line_reply(user_id, summary)
-        return True
+        return True, summary
 
     except Exception as exc:
         elapsed_ms = int((time.time() - start) * 1000)
@@ -106,10 +108,17 @@ def _delegate_to_ai_app_builder(user_id: str, message: str) -> bool:
             False,
             response_time_ms=elapsed_ms,
             error=str(exc),
-            error_location="_delegate_to_ai_app_builder",
+            error_location="_call_ai_app_builder",
         )
-        _push_line_reply(user_id, f"アプリ作成サービスへの接続に失敗しました。\n{type(exc).__name__}: {exc}")
-        return True
+        return True, f"アプリ作成サービスへの接続に失敗しました。\n{type(exc).__name__}: {exc}"
+
+
+def _delegate_to_ai_app_builder(user_id: str, message: str) -> bool:
+    """Send an explicit app-building request to ai-app-builder and push its result to LINE."""
+    handled, reply_text = _call_ai_app_builder(user_id, message)
+    if handled:
+        _push_line_reply(user_id, reply_text or "")
+    return handled
 
 
 def _delegate_to_n8n(user_id, message, webhook_url, timeout=5):
