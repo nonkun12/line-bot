@@ -1,5 +1,7 @@
 from flask import jsonify, request
 
+from n8n_delegate import is_ai_app_builder_request, _call_ai_app_builder
+
 try:
     from e2e_status import StepTimer
 except Exception:  # 監視層が使えなくても既存動作に影響させない
@@ -37,6 +39,16 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
                 "ok": False,
                 "error": "user_id and message are required",
             }), 400
+
+        # Explicit app-building requests use the existing App Builder classifier
+        # and delegation code. The result is returned to n8n as `reply`; LINE
+        # delivery remains the responsibility of the existing /internal/push node.
+        if is_ai_app_builder_request(message):
+            handled, reply_text = _call_ai_app_builder(user_id, message)
+            if handled:
+                print(f"[LOG] /internal/ask: routed to ai-app-builder user_id={user_id!r}")
+                return jsonify({"ok": True, "reply": reply_text or ""})
+            # AI_APP_BUILDER_URL未設定時のみ、既存のgenerate_reply_funcへフォールバックする。
 
         # AI/MCP呼び出しはgenerate_reply_func内部で行われるため、
         # /internal/ask と AI/MCP の2ステップとして記録する
