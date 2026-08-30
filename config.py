@@ -1,4 +1,5 @@
 import os
+import certifi
 from dotenv import load_dotenv
 from linebot.v3.messaging import Configuration
 from linebot.v3.webhook import WebhookHandler
@@ -18,13 +19,13 @@ GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 MCP_SERVER_URL = os.environ["MCP_SERVER_URL"]
 
 # MCPサーバー側のrequireApiKeyと照合される固定キー。
-# my-mcp-server側の環境変数 MCP_API_KEY と同じ値をここに設定する。
+# my-mcp-server側の環境変数 MCP_API_KEY と同じ値に設定する。
 MCP_API_KEY = os.environ["MCP_API_KEY"]
 
 # MCPサーバー(スケジューラー)がリマインダー送信を依頼してくる際に
 # このLINE Bot側の /internal/push エンドポイントを叩く。
 # その時に付けてくるヘッダー "x-internal-key" と照合する値。
-# my-mcp-server側の環境変数 INTERNAL_PUSH_KEY と同じ値をここに設定する。
+# my-mcp-server側の環境変数 INTERNAL_PUSH_KEY と同じ値に設定する。
 INTERNAL_PUSH_KEY = os.environ["INTERNAL_PUSH_KEY"]
 
 # AI秘書レポートで「昨日の実際のコミット」を取得する対象リポジトリ。
@@ -45,7 +46,13 @@ AI_APP_BUILDER_URL = os.environ.get("AI_APP_BUILDER_URL", "")
 AI_APP_BUILDER_SHARED_SECRET = os.environ.get("AI_APP_BUILDER_SHARED_SECRET", "")
 AI_APP_BUILDER_TIMEOUT_SECONDS = float(os.environ.get("AI_APP_BUILDER_TIMEOUT_SECONDS", "185"))
 
+# macOSのPython/OpenSSL環境ではシステムCAの探索先が空になる場合がある。
+# LINE SDK v3の生成HTTPクライアントがPython/OpenSSLのCA探索を使うため、
+# SSL_CERT_FILEでcertifiのCA bundleを明示する。verify=Falseは使用しない。
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
+
 handler = WebhookHandler(CHANNEL_SECRET)
 # timeoutを明示的に指定し、Groq側が詰まってもgunicorn workerごと
 # ハングしないようにする(Renderがクラッシュと誤認して再起動する原因になっていた)
