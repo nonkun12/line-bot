@@ -1,0 +1,1 @@
+CA configuration is validated through the runtime SSL_CERT_FILE setting.
