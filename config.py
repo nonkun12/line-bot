@@ -47,10 +47,11 @@ AI_APP_BUILDER_SHARED_SECRET = os.environ.get("AI_APP_BUILDER_SHARED_SECRET", ""
 AI_APP_BUILDER_TIMEOUT_SECONDS = float(os.environ.get("AI_APP_BUILDER_TIMEOUT_SECONDS", "185"))
 
 # macOSのPython/OpenSSL環境ではシステムCAの探索先が空になる場合がある。
-# LINE SDK v3は生成されたurllib3クライアントを使用するため、
-# certifi CA bundleを明示してTLS検証を維持する。
+# LINE SDK v3の生成HTTPクライアントがPython/OpenSSLのCA探索を使うため、
+# SSL_CERT_FILEでcertifiのCA bundleを明示する。verify=Falseは使用しない。
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
-configuration.ssl_ca_cert = certifi.where()
 
 handler = WebhookHandler(CHANNEL_SECRET)
 # timeoutを明示的に指定し、Groq側が詰まってもgunicorn workerごと
