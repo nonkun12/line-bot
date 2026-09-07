@@ -28,84 +28,48 @@ def _extract_search_keyword(message: str) -> str:
 def _normalize_natural_search_message(message: str) -> str:
     if "私のメモ" in message:
         return ""
-
-    exact_phrases = [
-        "LINE Botのメモを探して",
-        "メモを探して",
-    ]
+    exact_phrases = ["LINE Botのメモを探して", "メモを探して"]
     if message in exact_phrases:
         return ""
-
     suffixes = [
-        "LINE Botのメモを探して",
-        "メモを探して",
-        "メモを見せて",
-        "メモを検索して",
-        "を検索して",
-        "を探して",
-        "を見せて",
+        "LINE Botのメモを探して", "メモを探して", "メモを見せて", "メモを検索して",
+        "を検索して", "を探して", "を見せて",
     ]
-
     for suffix in suffixes:
         if message.endswith(suffix) and message != suffix:
             return message[: -len(suffix)].strip()
-
     return (
-        message
-        .replace("LINE Botのメモを探して", "")
-        .replace("メモを探して", "")
-        .replace("メモを見せて", "")
-        .replace("メモ", "")
-        .replace("を見せて", "")
-        .replace("を検索して", "")
-        .replace("検索", "")
-        .replace("探して", "")
-        .replace("見せて", "")
-        .strip()
+        message.replace("LINE Botのメモを探して", "")
+        .replace("メモを探して", "").replace("メモを見せて", "")
+        .replace("メモを検索して", "").replace("メモ", "")
+        .replace("を見せて", "").replace("を検索して", "")
+        .replace("検索", "").replace("探して", "").replace("見せて", "").strip()
     )
 
 
 def _classify_note_category(body: str) -> str:
     lower_body = body.lower()
-
     if any(k in lower_body for k in ["python", "program", "プログラム", "ai", "コード"]):
         return "技術"
-
     if any(k in body for k in ["勉強", "英語", "資格", "学習"]):
         return "学習"
-
     if any(k in body for k in ["予定", "予約", "会議", "行く"]):
         return "予定"
-
     if any(k in body for k in ["買う", "購入", "買い物"]):
         return "生活"
-
     return "一般"
 
 
 def _should_auto_save(message: str) -> bool:
     if not ("予定" in message or "したい" in message or "忘れないように" in message):
         return False
-
     if len(message) <= 5:
         return False
-
-    for phrase in [
-        "ある？",
-        "ありますか",
-        "あるか",
-        "あった？",
-        "あったか",
-        "確認",
-        "教えて",
-        "覚えて",
-    ]:
+    for phrase in ["ある？", "ありますか", "あるか", "あった？", "あったか", "確認", "教えて", "覚えて"]:
         if phrase in message:
             return False
-
     if _LOOKUP_QUESTION_RE.search(message):
         return False
-
     return True
 
 
@@ -128,45 +92,32 @@ def handle_natural_note_search(message: str, user_id: str, call_mcp_tool: CallMc
 def handle_save_note(message: str, user_id: str, call_mcp_tool: CallMcpTool) -> Any:
     body = re.sub(r"^メモして\s*[:：]?\s*", "", message)
     category = _classify_note_category(body)
-    return call_mcp_tool(
-        "save_note",
-        {"user_id": user_id, "title": "LINEメモ", "body": body, "category": category},
-    )
+    return call_mcp_tool("save_note", {"user_id": user_id, "title": "LINEメモ", "body": body, "category": category})
 
 
 def handle_auto_save_note(message: str, user_id: str, call_mcp_tool: CallMcpTool) -> Optional[Any]:
     if not _should_auto_save(message):
         return None
-    return call_mcp_tool(
-        "save_note",
-        {"user_id": user_id, "title": "自動メモ", "body": message, "category": "一般"},
-    )
+    return call_mcp_tool("save_note", {"user_id": user_id, "title": "自動メモ", "body": message, "category": "一般"})
 
 
 def handle_delete_note(message: str, user_id: str, call_mcp_tool: CallMcpTool) -> Optional[Any]:
     """Delete a note by natural language or explicit note ID."""
-    id_match = re.match(
-        r"^ID\s*(\d+)\s*(?:を)?(?:消して|消す|削除して|削除する|削除)$",
-        message,
-        re.IGNORECASE,
-    )
+    message = unicodedata.normalize("NFKC", (message or "").strip())
+    id_match = re.match(r"^ID\s*(\d+)\s*(?:を)?(?:消して|消す|削除して|削除する|削除)$", message, re.IGNORECASE)
     if id_match:
-        note_id = id_match.group(1)
-        return call_mcp_tool("delete_note", {"user_id": user_id, "id": note_id})
+        return call_mcp_tool("delete_note", {"user_id": user_id, "id": id_match.group(1)})
 
     natural_match = re.search(r"(\d+)番.*メモ.*削除", message)
     if natural_match:
-        note_id = natural_match.group(1)
-        return call_mcp_tool("delete_note", {"user_id": user_id, "id": note_id})
+        return call_mcp_tool("delete_note", {"user_id": user_id, "id": natural_match.group(1)})
 
     if message.startswith("メモ削除"):
-        note_id = message.replace("メモ削除", "").strip()
-        note_id = unicodedata.normalize("NFKC", note_id)
+        note_id = unicodedata.normalize("NFKC", message.replace("メモ削除", "").strip())
         if not note_id:
             return "削除するメモIDを指定してください。\n例: メモ削除25"
         print("DELETE DEBUG user_id=", user_id, "note_id=", note_id)
         return call_mcp_tool("delete_note", {"user_id": user_id, "id": note_id})
-
     return None
 
 
@@ -191,34 +142,27 @@ def _pop_pending_note_action(user_id: str) -> Optional[str]:
 
 def handle_note_message(message: str, user_id: str, call_mcp_tool: CallMcpTool) -> Optional[Any]:
     """Handle note-related messages through the shared Notes handler layer."""
+    message = unicodedata.normalize("NFKC", (message or "").strip())
     if message == "メモ一覧":
         return handle_list_notes(user_id, call_mcp_tool)
-
     if message.startswith("メモ検索"):
         return handle_search_notes(message, user_id, call_mcp_tool)
-
     if message.startswith("メモして"):
         return handle_save_note(message, user_id, call_mcp_tool)
-
     if _is_delete_all_notes_message(message):
         _set_pending_note_action(user_id, "delete_all_notes")
         return "全メモを削除しますか？「はい」と送ってください"
-
     if message == "はい":
         action = _pop_pending_note_action(user_id)
         if action == "delete_all_notes":
             return call_mcp_tool("delete_all_notes", {"user_id": user_id})
         return None
-
     delete_result = handle_delete_note(message, user_id, call_mcp_tool)
     if delete_result is not None:
         return delete_result
-
     if "メモ" in message and any(keyword in message for keyword in ["探して", "検索", "見せて", "私のメモ"]):
         return handle_natural_note_search(message, user_id, call_mcp_tool)
-
     auto_save_result = handle_auto_save_note(message, user_id, call_mcp_tool)
     if auto_save_result is not None:
         return auto_save_result
-
     return None
