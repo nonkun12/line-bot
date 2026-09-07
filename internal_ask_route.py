@@ -1,4 +1,9 @@
 from flask import jsonify, request
+import hashlib
+import hmac
+import os
+import time
+from urllib.parse import urlencode
 
 from n8n_delegate import is_ai_app_builder_request, _call_ai_app_builder
 
@@ -22,6 +27,20 @@ except Exception:  # 監視層が使えなくても既存動作に影響させ�
             pass
 
 
+def _make_dashboard_url(user_id: str) -> str:
+    """n8n経由のLINE入力でも認証済みダッシュボードURLを生成する。"""
+    timestamp = int(time.time())
+    secret = os.environ.get("DASHBOARD_LINK_SECRET") or os.environ.get("DASHBOARD_PASSWORD") or ""
+    payload = f"{user_id}:{timestamp}"
+    token = hmac.new(
+        secret.encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    query = urlencode({"user_id": user_id, "ts": timestamp, "token": token})
+    return f"https://line-bot-yvea.onrender.com/dashboard?{query}"
+
+
 def register_internal_ask_route(app, internal_push_key, generate_reply_func):
     """Register /internal/ask without changing the existing LINE webhook."""
 
@@ -41,11 +60,12 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
             }), 400
 
         # n8n経由でも「ダッシュボード」を専用コマンドとして処理する。
-        # 現在のLINE webhookはn8nへ直接向いているため、app.pyの
+        # 現在のLINE入力はn8nから /internal/ask に入るため、app.pyの
         # LINEイベント側の専用処理だけではこの経路に届かない。
         if str(message).strip() == "ダッシュボード":
-            dashboard_url = "https://line-bot-yvea.onrender.com/dashboard"
+            dashboard_url = _make_dashboard_url(str(user_id))
             print(f"[LOG] /internal/ask: dashboard command user_id={user_id!r}")
+            print("[LOG] /internal/ask: dashboard route ENABLED")
             return jsonify({
                 "ok": True,
                 "reply": f"ダッシュボードはこちらです。\n{dashboard_url}",
