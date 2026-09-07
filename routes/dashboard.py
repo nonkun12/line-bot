@@ -83,11 +83,13 @@ def get_notes():
     user_id = resolve_user_id(raw_user_id)
 
     try:
-        raw_notes = call_mcp_tool("search_notes", {"user_id": user_id, "keyword": ""})
+        # list_notes はユーザーIDだけで全メモをJSON配列として返す。
+        # search_notes は文字列検索結果を返すため、一覧取得には使用しない。
+        raw_notes = call_mcp_tool("list_notes", {"user_id": user_id})
         notes = parse_mcp_json_list(raw_notes)
         return jsonify({"ok": True, "notes": notes, "user_id": user_id})
     except Exception as e:
-        print("[DASHBOARD] Failed to search notes via MCP:", e)
+        print("[DASHBOARD] Failed to list notes via MCP:", e)
         return jsonify({"ok": False, "error": str(e)}), 500
 
 @dashboard_bp.route("/api/dashboard/notes", methods=["POST"])
