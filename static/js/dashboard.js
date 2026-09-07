@@ -25,6 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- State ---
     let allNotes = [];
     const userId = getTargetUserId();
+    const dashboardParams = new URLSearchParams(window.location.search);
+    const dashboardTs = dashboardParams.get('ts') || '';
+    const dashboardToken = dashboardParams.get('token') || '';
 
     // Initialize UI displaying user_id
     if (userIdDisplay && userId) {
@@ -36,6 +39,19 @@ document.addEventListener('DOMContentLoaded', () => {
     function getTargetUserId() {
         const meta = document.querySelector('meta[name="user-id"]');
         return meta ? meta.getAttribute('content') : '';
+    }
+
+    function dashboardApiUrl(path) {
+        const params = new URLSearchParams();
+        if (userId) params.set('user_id', userId);
+        if (dashboardTs) params.set('ts', dashboardTs);
+        if (dashboardToken) params.set('token', dashboardToken);
+        const query = params.toString();
+        return query ? `${path}?${query}` : path;
+    }
+
+    function dashboardApiDeleteUrl(path) {
+        return dashboardApiUrl(path);
     }
 
     function classifyCategoryClass(category) {
@@ -131,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
         loadingState.classList.remove('hidden');
         refreshBtn.disabled = true;
 
-        const url = `/api/dashboard/notes?user_id=${encodeURIComponent(userId)}`;
+        const url = dashboardApiUrl('/api/dashboard/notes');
 
         try {
             const response = await fetch(url);
@@ -163,7 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
         hideModalError();
         submitNoteBtn.disabled = true;
 
-        const url = `/api/dashboard/notes?user_id=${encodeURIComponent(userId)}`;
+        const url = dashboardApiUrl('/api/dashboard/notes');
         const payload = {
             title: title,
             body: body,
@@ -207,7 +223,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!confirmDelete) return;
 
         hideGlobalError();
-        const url = `/api/dashboard/notes/${encodeURIComponent(noteId)}?user_id=${encodeURIComponent(userId)}`;
+        const url = dashboardApiDeleteUrl(`/api/dashboard/notes/${encodeURIComponent(noteId)}`);
 
         try {
             const response = await fetch(url, {
