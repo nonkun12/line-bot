@@ -20,9 +20,6 @@ _AUTO_SAVE_NEGATIVE_PHRASES = [
     "覚えて",
 ]
 
-# 「明日15時の予定は？」「さっきの予定は？」のように、既存メモの検索・確認を
-# 意図する疑問文を自動保存対象から除外するための判定。
-# agents/normal/node.py の _LOOKUP_QUESTION_RE と同じ考え方を用いる。
 _LOOKUP_QUESTION_RE = re.compile(
     r"(?:は|って|ある|あります|残ってる|残っています|教えて|確認して|見せて)[？?]?$"
 )
@@ -33,6 +30,10 @@ def is_note_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
 
     if not text:
         return False
+
+    # 明示的なID削除はメモ削除として扱う。
+    if re.match(r"^ID\s*\d+\s*(?:を)?(?:消して|消す|削除して|削除する|削除)$", text, re.IGNORECASE):
+        return True
 
     if text == "はい" and user_id is not None:
         return get_pending_note_action(user_id) is not None
@@ -76,6 +77,7 @@ def is_note_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
         and len(text) > 5
         and not any(neg in text for neg in _AUTO_SAVE_NEGATIVE_PHRASES)
         and not _LOOKUP_QUESTION_RE.search(text)
+        and not re.search(r"\d{1,2}月\d{1,2}日.*(?:予定|用事|予約).*(?:消して|消す|削除)", text)
     ):
         return True
 
