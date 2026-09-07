@@ -4,82 +4,17 @@ from typing import Optional
 
 from agents.notes.handlers import get_pending_note_action
 
-_DELETE_ALL_NOTES_PATTERN = re.compile(
-    r"メモ.*(全部|全て|すべて).*(消して|消す|削除|消していい)"
-    r"|(全部|全て|すべて).*メモ.*(消して|消す|削除|消していい)"
-    r"|^メモ(を)?消して$"
-)
-
-_AUTO_SAVE_NEGATIVE_PHRASES = [
-    "ある？",
-    "ありますか",
-    "あるか",
-    "あった？",
-    "あったか",
-    "確認",
-    "教えて",
-    "覚えて",
-]
-
-_LOOKUP_QUESTION_RE = re.compile(
-    r"(?:は|って|ある|あります|残ってる|残っています|教えて|確認して|見せて)[？?]?$"
-)
-
 
 def is_note_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
     text = unicodedata.normalize("NFKC", (raw_message or "").strip())
-
     if not text:
         return False
-
-    # 明示的なID削除はメモ削除として扱う。全角数字にも対応。
     if re.match(r"^ID\s*\d+\s*(?:を)?(?:消して|消す|削除して|削除する|削除)$", text, re.IGNORECASE):
         return True
-
-    if text == "はい" and user_id is not None:
-        return get_pending_note_action(user_id) is not None
-
-    if text == "メモ一覧":
-        return True
-
-    if text.startswith("メモ検索"):
-        return True
-
-    if text.startswith("メモして"):
-        return True
-
-    if text.startswith("メモ削除"):
-        return True
-
-    if text in [
-        "メモ削除全部",
-        "メモ全て削除",
-        "メモを全部削除",
-        "メモ全部消して",
-        "メモ全部削除",
-        "全メモ削除",
-        "メモを全削除",
-    ]:
-        return True
-
-    if _DELETE_ALL_NOTES_PATTERN.search(text):
-        return True
-
-    if "メモ" in text and any(
-        word in text for word in ["探して", "検索", "見せて", "私のメモ"]
-    ):
-        return True
-
     if re.search(r"\d+番.*メモ.*削除", text):
         return True
-
-    if (
-        ("予定" in text or "したい" in text or "忘れないように" in text)
-        and len(text) > 5
-        and not any(neg in text for neg in _AUTO_SAVE_NEGATIVE_PHRASES)
-        and not _LOOKUP_QUESTION_RE.search(text)
-        and not re.search(r"\d{1,2}月\d{1,2}日.*(?:予定|用事|予約).*(?:消して|消す|削除)", text)
-    ):
+    if text.startswith("メモ"):
         return True
-
+    if get_pending_note_action(user_id or ""):
+        return True
     return False
