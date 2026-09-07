@@ -79,6 +79,10 @@ app.register_blueprint(dashboard_bp)
 from routes.e2e_dashboard import e2e_bp
 app.register_blueprint(e2e_bp)
 
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"ok": True}), 200
+
 # テスト互換用: 既存の app.client 参照を維持する
 client = _ai_client_client
 
