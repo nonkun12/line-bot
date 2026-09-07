@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from typing import Optional
 
 from agents.notes.handlers import get_pending_note_action
@@ -26,12 +27,12 @@ _LOOKUP_QUESTION_RE = re.compile(
 
 
 def is_note_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
-    text = (raw_message or "").strip()
+    text = unicodedata.normalize("NFKC", (raw_message or "").strip())
 
     if not text:
         return False
 
-    # 明示的なID削除はメモ削除として扱う。
+    # 明示的なID削除はメモ削除として扱う。全角数字にも対応。
     if re.match(r"^ID\s*\d+\s*(?:を)?(?:消して|消す|削除して|削除する|削除)$", text, re.IGNORECASE):
         return True
 
