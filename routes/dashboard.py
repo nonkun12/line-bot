@@ -219,14 +219,16 @@ def system_status():
         result["oracle"] = {"status": "error", "error": str(e)}
 
     # E2E history is independent from the dashboard's direct health checks.
-    # Do not report AI/MCP as unknown when the live MCP calls below succeed.
     try:
         e2e = get_e2e_status()
         result["e2e"] = e2e
         step_map = {s["key"]: s for s in e2e.get("steps", [])}
+        oracle_n8n = result.get("oracle", {}).get("data", {}).get("docker", {}).get("n8n", {})
+        oracle_n8n_status = str(oracle_n8n.get("status", "")).lower()
+        n8n_live = bool(oracle_n8n) and oracle_n8n_status in {"running", "up", "restarting"}
         result["services"] = {
             "line_bot": "online",
-            "n8n": "online" if step_map.get("n8n_webhook", {}).get("state") == "ok" else "unknown",
+            "n8n": "online" if n8n_live or step_map.get("n8n_webhook", {}).get("state") == "ok" else "unknown",
             "ai_mcp": "unknown",
         }
     except Exception as e:
@@ -246,8 +248,6 @@ def system_status():
     except Exception as e:
         result["reminders"] = {"status": "error", "error": str(e)}
 
-    # The dashboard itself has just completed live MCP health checks.
-    # That is stronger evidence than an old E2E record for the AI/MCP card.
     if result.get("notes", {}).get("status") == "ok" and result.get("reminders", {}).get("status") == "ok":
         result["services"]["ai_mcp"] = "online"
 
