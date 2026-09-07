@@ -6,6 +6,8 @@ import time
 from urllib.parse import urlencode
 
 from n8n_delegate import is_ai_app_builder_request, _call_ai_app_builder
+from config import configuration
+from linebot.v3.messaging import ApiClient, MessagingApi, PushMessageRequest, TextMessage
 
 try:
     from e2e_status import StepTimer
@@ -42,7 +44,7 @@ def _make_dashboard_url(user_id: str) -> str:
 
 
 def register_internal_ask_route(app, internal_push_key, generate_reply_func):
-    """Register /internal/ask without changing the existing LINE webhook."""
+    """Register /internal/ask and /internal/push for n8n."""
 
     @app.route("/internal/ask", methods=["POST"])
     def internal_ask():
@@ -60,8 +62,6 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
             }), 400
 
         # n8n経由でも「ダッシュボード」を専用コマンドとして処理する。
-        # 現在のLINE入力はn8nから /internal/ask に入るため、app.pyの
-        # LINEイベント側の専用処理だけではこの経路に届かない。
         if str(message).strip() == "ダッシュボード":
             dashboard_url = _make_dashboard_url(str(user_id))
             print(f"[LOG] /internal/ask: dashboard command user_id={user_id!r}")
@@ -71,20 +71,12 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
                 "reply": f"ダッシュボードはこちらです。\n{dashboard_url}",
             })
 
-        # Explicit app-building requests use the existing App Builder classifier
-        # and delegation code. The result is returned to n8n as `reply`; LINE
-        # delivery remains the responsibility of the existing /internal/push node.
         if is_ai_app_builder_request(message):
             handled, reply_text = _call_ai_app_builder(user_id, message)
             if handled:
                 print(f"[LOG] /internal/ask: routed to ai-app-builder user_id={user_id!r}")
                 return jsonify({"ok": True, "reply": reply_text or ""})
-            # AI_APP_BUILDER_URL未設定時のみ、既存のgenerate_reply_funcへフォールバックする。
 
-        # AI/MCP呼び出しはgenerate_reply_func内部で行われるため、
-        # /internal/ask と AI/MCP の2ステップとして記録する
-        # (現状はほぼ同じ成否になるが、将来AI/MCP内部で個別計装しても
-        # この2重記録とは独立して追加できるようにしている)
         with StepTimer("internal_ask") as ask_timer, StepTimer("ai_mcp") as ai_timer:
             try:
                 reply = generate_reply_func(user_id, message)
@@ -102,5 +94,37 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
 
         print(f"[LOG] /internal/ask success: user_id={user_id!r}")
         return jsonify({"ok": True, "reply": str(reply or "")})
+
+    @app.route("/internal/push", methods=["POST"])
+    def internal_push():
+        provided_key = request.headers.get("x-internal-key")
+        if provided_key != internal_push_key:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+        data = request.get_json(silent=True) or {}
+        user_id = data.get("user_id")
+        message = data.get("message")
+        if not user_id or message is None:
+            return jsonify({
+                "ok": False,
+                "error": "user_id and message are required",
+            }), 400
+
+        try:
+            with ApiClient(configuration) as api:
+                MessagingApi(api).push_message(
+                    PushMessageRequest(
+                        to=str(user_id),
+                        messages=[TextMessage(text=str(message))],
+                    )
+                )
+            print(f"[LOG] /internal/push success: user_id={user_id!r}")
+            return jsonify({"ok": True})
+        except Exception as exc:
+            print("INTERNAL PUSH ERROR:", exc)
+            return jsonify({
+                "ok": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }), 500
 
     return internal_ask
