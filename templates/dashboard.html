@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="user-id" content="{{ user_id }}">
     <title>LINE AI Secretary - Dashboard</title>
-    <!-- Google Fonts Inter & Outfit -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
@@ -13,7 +12,6 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- Sidebar or Header -->
         <header class="header">
             <div class="logo-area">
                 <span class="logo-icon">🤖</span>
@@ -27,6 +25,42 @@
         </header>
 
         <main class="main-content">
+            <section class="section-card system-section">
+                <div class="section-header">
+                    <div class="title-group">
+                        <span class="section-icon">🖥️</span>
+                        <h2 class="section-title">システム状態</h2>
+                    </div>
+                    <span class="status-note">Oracle SSH確認値</span>
+                </div>
+                <div class="system-grid">
+                    <div class="system-card">
+                        <div class="system-card-title">☁️ Oracle VM</div>
+                        <div class="system-status"><span class="status-dot online"></span>Running</div>
+                        <div class="system-details">1 OCPU / 16 GB RAM</div>
+                        <div class="system-details">ディスク 14 GB / 30 GB (47%)</div>
+                    </div>
+                    <div class="system-card">
+                        <div class="system-card-title">🐳 Docker / n8n</div>
+                        <div class="system-status"><span class="status-dot online"></span>Running</div>
+                        <div class="system-details">n8n-2.26.8-backup</div>
+                        <div class="system-details">Port 5678</div>
+                    </div>
+                    <div class="system-card">
+                        <div class="system-card-title">⚡ CPU</div>
+                        <div class="system-status">3.1% 使用</div>
+                        <div class="system-details">96.9% idle</div>
+                        <div class="system-details">Load 0.01 / 0.01 / 0.00</div>
+                    </div>
+                    <div class="system-card">
+                        <div class="system-card-title">🧠 Memory</div>
+                        <div class="system-status">1.7 GB 使用</div>
+                        <div class="system-details">13 GB available</div>
+                        <div class="system-details">Swap 0 MB 使用</div>
+                    </div>
+                </div>
+            </section>
+
             <section class="section-card">
                 <div class="section-header">
                     <div class="title-group">
@@ -38,96 +72,41 @@
                             <span class="search-icon">🔍</span>
                             <input type="text" id="searchInput" placeholder="メモを検索..." autocomplete="off">
                         </div>
-                        <button id="newNoteBtn" class="btn btn-success">
-                            <span class="btn-icon">➕</span>
-                            <span class="btn-text">新規メモ</span>
-                        </button>
-                        <button id="refreshBtn" class="btn btn-primary">
-                            <span class="btn-icon">🔄</span>
-                            <span class="btn-text">再読み込み</span>
-                        </button>
+                        <button id="newNoteBtn" class="btn btn-success"><span class="btn-icon">➕</span><span class="btn-text">新規メモ</span></button>
+                        <button id="refreshBtn" class="btn btn-primary"><span class="btn-icon">🔄</span><span class="btn-text">再読み込み</span></button>
                     </div>
                 </div>
 
-                <!-- Alert Message Area -->
                 <div id="errorAlert" class="alert alert-danger hidden">
                     <span class="alert-icon">⚠️</span>
                     <span class="alert-message" id="errorMessage"></span>
                 </div>
 
-                <!-- Notes Container -->
                 <div class="notes-table-container">
                     <table class="notes-table">
                         <thead>
-                            <tr>
-                                <th class="col-id">ID</th>
-                                <th class="col-category">カテゴリ</th>
-                                <th class="col-title">タイトル</th>
-                                <th class="col-body">内容</th>
-                                <th class="col-actions">操作</th>
-                            </tr>
+                            <tr><th class="col-id">ID</th><th class="col-category">カテゴリ</th><th class="col-title">タイトル</th><th class="col-body">内容</th><th class="col-actions">操作</th></tr>
                         </thead>
-                        <tbody id="notesTableBody">
-                            <!-- JS dynamically populates this -->
-                        </tbody>
+                        <tbody id="notesTableBody"></tbody>
                     </table>
-
-                    <!-- Loading state -->
-                    <div id="loadingState" class="loading-state">
-                        <div class="spinner"></div>
-                        <p>メモデータを取得中...</p>
-                    </div>
-
-                    <!-- Empty state -->
-                    <div id="emptyState" class="empty-state hidden">
-                        <span class="empty-icon">📂</span>
-                        <p class="empty-title">メモが見つかりません</p>
-                        <p class="empty-desc">新しくメモを追加するか、検索ワードを変更してください。</p>
-                    </div>
+                    <div id="loadingState" class="loading-state"><div class="spinner"></div><p>メモデータを取得中...</p></div>
+                    <div id="emptyState" class="empty-state hidden"><span class="empty-icon">📂</span><p class="empty-title">メモが見つかりません</p><p class="empty-desc">新しくメモを追加するか、検索ワードを変更してください。</p></div>
                 </div>
             </section>
         </main>
 
-        <footer class="footer">
-            <p>&copy; 2026 LINE AI Secretary. Powered by LangGraph & MCP.</p>
-        </footer>
+        <footer class="footer"><p>&copy; 2026 LINE AI Secretary. Powered by LangGraph & MCP.</p></footer>
     </div>
 
-    <!-- Modal for Creating New Note -->
     <div id="newNoteModal" class="modal hidden">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3>新規メモ作成</h3>
-                <button id="closeModalBtn" class="close-btn">&times;</button>
-            </div>
+            <div class="modal-header"><h3>新規メモ作成</h3><button id="closeModalBtn" class="close-btn">&times;</button></div>
             <form id="newNoteForm">
-                <div class="form-group">
-                    <label for="noteTitle">タイトル</label>
-                    <input type="text" id="noteTitle" required placeholder="例: 会議の予定" autocomplete="off">
-                </div>
-                <div class="form-group">
-                    <label for="noteCategory">カテゴリ</label>
-                    <select id="noteCategory">
-                        <option value="一般">一般</option>
-                        <option value="予定">予定</option>
-                        <option value="技術">技術</option>
-                        <option value="学習">学習</option>
-                        <option value="生活">生活</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="noteBody">内容</label>
-                    <textarea id="noteBody" required placeholder="メモ内容を入力してください..." rows="4"></textarea>
-                </div>
-                <!-- Modal Error Alert -->
-                <div id="modalErrorAlert" class="alert alert-danger hidden">
-                    <span class="alert-icon">⚠️</span>
-                    <span class="alert-message" id="modalErrorMessage"></span>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" id="cancelModalBtn" class="btn btn-secondary">キャンセル</button>
-                    <button type="submit" id="submitNoteBtn" class="btn btn-primary">作成</button>
-                </div>
+                <div class="form-group"><label for="noteTitle">タイトル</label><input type="text" id="noteTitle" required placeholder="例: 会議の予定" autocomplete="off"></div>
+                <div class="form-group"><label for="noteCategory">カテゴリ</label><select id="noteCategory"><option value="一般">一般</option><option value="予定">予定</option><option value="技術">技術</option><option value="学習">学習</option><option value="生活">生活</option></select></div>
+                <div class="form-group"><label for="noteBody">内容</label><textarea id="noteBody" required placeholder="メモ内容を入力してください..." rows="4"></textarea></div>
+                <div id="modalErrorAlert" class="alert alert-danger hidden"><span class="alert-icon">⚠️</span><span class="alert-message" id="modalErrorMessage"></span></div>
+                <div class="modal-footer"><button type="button" id="cancelModalBtn" class="btn btn-secondary">キャンセル</button><button type="submit" id="submitNoteBtn" class="btn btn-primary">作成</button></div>
             </form>
         </div>
     </div>
