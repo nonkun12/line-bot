@@ -378,7 +378,6 @@ def generate_reply(user_id, message):
         result = _invoke_graph(user_id, message)
     except Exception as e:
         print("===== GRAPH INVOCATION ERROR =====")
-        print(type(e).__name__, str(e))
         import traceback
         traceback.print_exc()
         return f"Agent起動エラー: {type(e).__name__}: {e}"
@@ -443,20 +442,19 @@ def _process_and_reply(event, user_id, text):
     with user_lock:
         print(f"[LOG] USER LOCK ACQUIRED: {user_id}")
 
+        # ダッシュボード表示
+        if text.strip() == "ダッシュボード":
+            dashboard_url = "https://line-bot-yvea.onrender.com/dashboard"
+            _line_reply(
+                event.reply_token,
+                f"ダッシュボードはこちらです。\n{dashboard_url}"
+            )
+            return
+
         # N8N_WEBHOOK_URLが設定されている場合はn8nに処理を委譲する。
         # 返信(reply_message/push_message)はn8n workflow側が既存の
         # /internal/ask, /internal/push を呼び出して行う想定のため、
         # ここではn8nへの送信のみを行いreturnする。
-    if text.strip() == "ダッシュボード":
-        dashboard_url = "https://line-bot-yvea.onrender.com/dashboard"
-        _line_reply(
-            event.reply_token,
-            f"ダッシュボードはこちらです。\n{dashboard_url}"
-        )
-        return
-        
-        
-        
         if N8N_WEBHOOK_URL:
             print(f"[LOG] DELEGATING TO N8N: user_id={user_id}")
             _delegate_to_n8n(user_id, text, N8N_WEBHOOK_URL)
