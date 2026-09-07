@@ -40,6 +40,17 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
                 "error": "user_id and message are required",
             }), 400
 
+        # n8n経由でも「ダッシュボード」を専用コマンドとして処理する。
+        # 現在のLINE webhookはn8nへ直接向いているため、app.pyの
+        # LINEイベント側の専用処理だけではこの経路に届かない。
+        if str(message).strip() == "ダッシュボード":
+            dashboard_url = "https://line-bot-yvea.onrender.com/dashboard"
+            print(f"[LOG] /internal/ask: dashboard command user_id={user_id!r}")
+            return jsonify({
+                "ok": True,
+                "reply": f"ダッシュボードはこちらです。\n{dashboard_url}",
+            })
+
         # Explicit app-building requests use the existing App Builder classifier
         # and delegation code. The result is returned to n8n as `reply`; LINE
         # delivery remains the responsibility of the existing /internal/push node.
@@ -53,7 +64,7 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         # AI/MCP呼び出しはgenerate_reply_func内部で行われるため、
         # /internal/ask と AI/MCP の2ステップとして記録する
         # (現状はほぼ同じ成否になるが、将来AI/MCP内部で個別計装しても
-        #  この2重記録とは独立して追加できるようにしている)
+        # この2重記録とは独立して追加できるようにしている)
         with StepTimer("internal_ask") as ask_timer, StepTimer("ai_mcp") as ai_timer:
             try:
                 reply = generate_reply_func(user_id, message)
