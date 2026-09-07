@@ -3,6 +3,7 @@ import certifi
 from dotenv import load_dotenv
 from linebot.v3.messaging import Configuration
 from linebot.v3.webhook import WebhookHandler
+from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from groq import Groq
 
 load_dotenv()
@@ -14,48 +15,72 @@ CHANNEL_ACCESS_TOKEN = os.environ["CHANNEL_ACCESS_TOKEN"]
 CHANNEL_SECRET = os.environ["CHANNEL_SECRET"]
 GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 
-# MCPサーバー(Render上のmy-mcp-server)のURL。
-# 例: https://my-mcp-server.onrender.com/mcp
 MCP_SERVER_URL = os.environ["MCP_SERVER_URL"]
-
-# MCPサーバー側のrequireApiKeyと照合される固定キー。
-# my-mcp-server側の環境変数 MCP_API_KEY と同じ値に設定する。
 MCP_API_KEY = os.environ["MCP_API_KEY"]
-
-# MCPサーバー(スケジューラー)がリマインダー送信を依頼してくる際に
-# このLINE Bot側の /internal/push エンドポイントを叩く。
-# その時に付けてくるヘッダー "x-internal-key" と照合する値。
-# my-mcp-server側の環境変数 INTERNAL_PUSH_KEY と同じ値に設定する。
 INTERNAL_PUSH_KEY = os.environ["INTERNAL_PUSH_KEY"]
 
-# AI秘書レポートで「昨日の実際のコミット」を取得する対象リポジトリ。
-# GITHUB_TOKENは必須ではない(公開リポジトリなら未認証でも取得可)が、
-# レート制限回避のためread-onlyのPATを設定することを推奨。
 AI_REPORT_GITHUB_REPO = os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-
-# n8n WebhookのURL(任意設定)。
-# 設定されている場合、LINEからのメッセージ処理をn8nに委譲する
-# (_process_and_reply内で分岐)。未設定の場合は従来通りローカルの
-# generate_reply()で処理する。
 N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "")
 
-# ai-app-builderの同期生成API(任意設定)。
-# URLが空の場合は既存のLINE/n8n経路を変更しない。
 AI_APP_BUILDER_URL = os.environ.get("AI_APP_BUILDER_URL", "")
 AI_APP_BUILDER_SHARED_SECRET = os.environ.get("AI_APP_BUILDER_SHARED_SECRET", "")
 AI_APP_BUILDER_TIMEOUT_SECONDS = float(os.environ.get("AI_APP_BUILDER_TIMEOUT_SECONDS", "185"))
 
-# macOSのPython/OpenSSL環境ではシステムCAの探索先が空になる場合がある。
-# LINE SDK v3の生成HTTPクライアントがPython/OpenSSLのCA探索を使うため、
-# SSL_CERT_FILEでcertifiのCA bundleを明示する。verify=Falseは使用しない。
 os.environ.setdefault("SSL_CERT_FILE", certifi.where())
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
-
 handler = WebhookHandler(CHANNEL_SECRET)
-# timeoutを明示的に指定し、Groq側が詰まってもgunicorn workerごと
-# ハングしないようにする(Renderがクラッシュと誤認して再起動する原因になっていた)
 client = Groq(api_key=GROQ_API_KEY, timeout=15.0, max_retries=1)
-
 MODEL = "openai/gpt-oss-20b"
+
+
+# app.py 側の MessageEvent ハンドラーが誤って欠落しても、LINE webhook を
+# 受信できるように、ここでハンドラーを登録する。
+# 実際の処理は app.py の _process_and_reply に委譲する。
+@handler.add(MessageEvent, message=TextMessageContent)
+def handle_message_event(event):
+    print("[LOG] handle MessageEvent called")
+    try:
+        user_id = event.source.user_id
+        text = event.message.text
+        message_id = event.message.id
+
+        from app import (
+            _process_and_reply,
+            _processed_lock,
+            _processed_message_ids,
+            _MAX_TRACKED_IDS,
+        )
+        from db import is_processed_event, create_processed_event
+        from e2e_status import record_step
+
+        with _processed_lock:
+            if message_id in _processed_message_ids:
+                print("DUPLICATE MESSAGE IGNORED (memory):", message_id)
+                return
+
+            if is_processed_event(message_id):
+                print("DUPLICATE MESSAGE IGNORED (db):", message_id)
+                return
+
+            created = create_processed_event(message_id, user_id=user_id, source="line")
+            if not created:
+                print("DUPLICATE MESSAGE IGNORED (create_failed):", message_id)
+                return
+
+            record_step("line_in", True)
+            _processed_message_ids[message_id] = True
+            if len(_processed_message_ids) > _MAX_TRACKED_IDS:
+                _processed_message_ids.popitem(last=False)
+
+        threading = __import__("threading")
+        threading.Thread(
+            target=_process_and_reply,
+            args=(event, user_id, text),
+            daemon=True,
+        ).start()
+    except Exception:
+        import traceback
+        print("===== HANDLE ERROR =====")
+        traceback.print_exc()
