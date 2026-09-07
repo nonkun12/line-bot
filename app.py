@@ -15,6 +15,9 @@ import httpx
 import logging
 logging.basicConfig(level=logging.DEBUG)
 import re
+import os
+import time
+from urllib.parse import urlencode
 from collections import OrderedDict
 from datetime import datetime, timezone, timedelta
 
@@ -444,7 +447,14 @@ def _process_and_reply(event, user_id, text):
 
         # ダッシュボード表示
         if text.strip() == "ダッシュボード":
-            dashboard_url = "https://line-bot-yvea.onrender.com/dashboard"
+            ts = int(time.time())
+            secret = os.environ.get("DASHBOARD_LINK_SECRET") or os.environ.get("DASHBOARD_PASSWORD") or ""
+            payload = f"{user_id}:{ts}"
+            token = __import__("hmac").new(
+                secret.encode(), payload.encode(), __import__("hashlib").sha256
+            ).hexdigest()
+            query = urlencode({"user_id": user_id, "ts": ts, "token": token})
+            dashboard_url = f"https://line-bot-yvea.onrender.com/dashboard?{query}"
             _line_reply(
                 event.reply_token,
                 f"ダッシュボードはこちらです。\n{dashboard_url}"
@@ -727,7 +737,7 @@ def internal_push():
 
     # user_id / message が None・欠落・空文字の場合はここで400を返す。
     # (len()などの呼び出しより前に検証することで、TypeErrorに起因する
-    #  意図しない500応答を防ぐ)
+    # 意図しない500応答を防ぐ)
     if not user_id or not message:
         print("[LOG] /internal/push: user_id or message missing/empty")
         return jsonify({"ok": False, "error": "user_id and message are required"}), 400
