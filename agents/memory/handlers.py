@@ -169,8 +169,18 @@ def handle_get_all_memory(
     """
     Memory query
     """
+    query_keywords = [
+        "名前",
+        "何を覚えて",
+        "何を覚えてる",
+        "何を覚えている",
+        "覚えてる？",
+        "覚えている？",
+        "覚えてるの？",
+        "覚えているの？",
+    ]
 
-    if "名前" not in message:
+    if not any(keyword in message for keyword in query_keywords):
         return None
 
     memories = call_mcp_tool(
@@ -186,15 +196,28 @@ def handle_get_all_memory(
         else:
             data = memories
 
+        if not data:
+            return "まだ記憶している情報はありません。"
+
+        dates = re.findall(r"\d+月\d+日|\d+月|\d+日", message)
+
         for item in data:
-            if item.get("key") == "name":
-                return f"あなたの名前は {item.get('value')} です。"
+            value = str(item.get("value", ""))
+            if value and any(date in value for date in dates):
+                return f"はい、覚えています。{value}"
 
-    except Exception:
-        pass
+        lines = []
+        for item in data:
+            key = item.get("key", "")
+            value = item.get("value", "")
+            if value:
+                lines.append(f"- {key}: {value}")
 
-    return "名前はまだ記憶されていません。"
+        return "覚えている情報は以下です。\n" + "\n".join(lines)
 
+    except Exception as e:
+        print("MEMORY GET ALL ERROR:", e)
+        return "記憶の取得に失敗しました。"
 
 def handle_delete_all_memory(
     message,
