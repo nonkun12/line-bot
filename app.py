@@ -79,19 +79,9 @@ app.register_blueprint(dashboard_bp)
 from routes.e2e_dashboard import e2e_bp
 app.register_blueprint(e2e_bp)
 
-
-
 # テスト互換用: 既存の app.client 参照を維持する
 client = _ai_client_client
 
-# =========================================================
-# LINE送信共通層: 5000文字制限対策
-# =========================================================
-# LINE Messaging APIは1メッセージ最大5000文字までしか受け付けない
-# (超過するとmessages[0].textでHTTP 400になる)。
-# GitHub Agentの長文ファイル取得結果に限らず、Sheets/Notes/Memory/
-# Debug/Fix等どのAgentが返した文章でも同様にエラーになり得るため、
-# reply_message() / push_message() を呼ぶ直前の共通層でここに集約して対応する。
 LINE_MAX_MESSAGE_LENGTH = 5000
 LINE_MAX_MESSAGES_PER_SEND = 5
 LINE_MAX_TOTAL_LENGTH = LINE_MAX_MESSAGE_LENGTH * LINE_MAX_MESSAGES_PER_SEND
@@ -202,7 +192,6 @@ def normalize_memory_key(key, original_message):
 def ensure_jst_offset(remind_at):
     return _ensure_jst_offset_impl(remind_at)
 
-
 MCP_TOOLS_SCHEMA = _MCP_TOOLS_SCHEMA
 
 
@@ -212,7 +201,6 @@ def clean_memory_value(key, value):
 
 def dispatch_tool_call(user_id, name, arguments, original_message=""):
     return _dispatch_tool_call_impl(user_id, name, arguments, original_message=original_message)
-
 
 _pending_delete_confirmation = {}
 _pending_confirm_lock = threading.Lock()
@@ -228,10 +216,6 @@ def generate_reply(user_id, message):
     print("=== GENERATE_REPLY ===", repr(message))
     print("MESSAGE DEBUG:", repr(message), type(message))
 
-    # n8n -> /internal/ask -> generate_reply() 経路でも、
-    # 「ダッシュボード」はAIへ渡さず専用コマンドとして即時処理する。
-    # LINE webhook側の処理だけではn8n経由の入力を捕捉できないため、
-    # generate_reply() を最終防衛線としてここで明示的に分岐する。
     if str(message).strip() == "ダッシュボード":
         ts = int(time.time())
         secret = os.environ.get("DASHBOARD_LINK_SECRET") or os.environ.get("DASHBOARD_PASSWORD") or ""
@@ -270,6 +254,11 @@ def generate_reply(user_id, message):
     print("===== AFTER GRAPH.INVOKE =====")
     print(result)
     return _extract_graph_reply(result)
+
+
+# n8n → /internal/ask を実際にFlaskへ登録する
+# これが無かったため、先ほどの専用ルートが実行されていなかった。
+register_internal_ask_route(app, INTERNAL_PUSH_KEY, generate_reply)
 
 
 @app.route("/callback", methods=["POST"])
