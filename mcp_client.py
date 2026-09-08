@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 import httpx
 
@@ -100,6 +101,32 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
     return "\n".join(texts) if texts else ""
 
 
+def _parse_reminder_text_lines(raw):
+    """MCPの旧プレーンテキスト形式のreminder一覧を構造化する。"""
+    items = []
+    for line in str(raw or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        match = re.match(
+            r"id\s*[=:]\s*(\d+)\s*:\s*(.+?)\s+に「(.*?)」\s*(?:\(毎日繰り返し\))?$",
+            line,
+            re.IGNORECASE,
+        )
+        if not match:
+            continue
+
+        reminder_id, remind_at, message = match.groups()
+        items.append({
+            "id": int(reminder_id),
+            "remind_at": remind_at.strip(),
+            "message": message,
+            "repeat": "daily" if "(毎日繰り返し)" in line else "none",
+        })
+    return items
+
+
 def parse_mcp_json_list(raw):
     print(f"[LOG] _parse_mcp_json_list called")
 
@@ -125,6 +152,9 @@ def parse_mcp_json_list(raw):
                     parsed = json.loads(text)
                     return parsed if isinstance(parsed, list) else []
                 except Exception:
+                    reminder_items = _parse_reminder_text_lines(text)
+                    if reminder_items:
+                        return reminder_items
                     return []
 
         return data if isinstance(data, list) else []
@@ -133,4 +163,7 @@ def parse_mcp_json_list(raw):
         print("parse error:", e)
         # list_reminders など、MCPがJSONではなく
         # 改行区切りのテキストを返すツールにも対応する。
+        reminder_items = _parse_reminder_text_lines(raw)
+        if reminder_items:
+            return reminder_items
         return [line.strip() for line in str(raw).splitlines() if line.strip()]
