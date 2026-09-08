@@ -1,12 +1,5 @@
 """
 Normal Agent LangGraph Node
-
-GitHub / Debug / Memory / Notes のいずれの意図にも該当しない
-通常メッセージに対して応答を生成するノード。
-
-通常は既存Groqルートを使用する。NORMAL_AGENT_PROVIDER=gemini の場合だけ
-n8n上の検証済みGemini 2.5 Flash Agentを同期呼び出しし、失敗時は既存Groqへ
-フォールバックする。
 """
 
 import json
@@ -19,24 +12,16 @@ from graph.state import AgentState
 from agents.normal.handlers import handle_normal_message
 from gemini_n8n_client import GeminiN8nError, call_gemini_via_n8n
 
-
 _LOOKUP_QUESTION_RE = re.compile(
     r"(?:予定|メモ|用事|スケジュール).*(?:は|って|ある|あります|残ってる|残っています|教えて|確認して|見せて)[？?]?$"
 )
-
 _REMINDER_LOOKUP_RE = re.compile(
     r"^(?:今)?(?:予定|用事|スケジュール)(?:が|は)?(?:ある|あります|残ってる|残っています)(?:の|か)?[？?]?$"
 )
-
-
-_WORK_STATUS_MESSAGES = {
-    "作業確認",
-    "作業状況確認",
-    "作業状況を確認",
-    "進捗確認",
-    "進捗を確認",
-}
-
+_CANCEL_REMINDER_RE = re.compile(
+    r"(?:リマインダー|予定|スケジュール).*(?:キャンセル|取り消|取消|消して|削除)"
+)
+_WORK_STATUS_MESSAGES = {"作業確認", "作業状況確認", "作業状況を確認", "進捗確認", "進捗を確認"}
 
 def _call_mcp_tool(state: AgentState):
     call_mcp_tool = state.get("call_mcp_tool")
@@ -44,39 +29,25 @@ def _call_mcp_tool(state: AgentState):
         return call_mcp_tool
     return mcp_client.call_mcp_tool
 
-
 def _is_reminder_lookup_question(message: str) -> bool:
-    """予定の有無を尋ねる質問かを決定的に判定する。"""
-    text = (message or "").strip()
-    return bool(_REMINDER_LOOKUP_RE.fullmatch(text))
+    return bool(_REMINDER_LOOKUP_RE.fullmatch((message or "").strip()))
 
+def _is_reminder_cancel_request(message: str) -> bool:
+    text = (message or "").strip()
+    return bool(_CANCEL_REMINDER_RE.search(text))
 
 def _is_note_lookup_question(message: str) -> bool:
-    """保存ではなく、既存メモを確認する質問かを決定的に判定する。"""
     text = (message or "").strip()
     if not text or text.startswith("メモ：") or text.startswith("メモ:"):
         return False
     return bool(_LOOKUP_QUESTION_RE.search(text))
 
-
 def _extract_note_lookup_keyword(message: str) -> str:
-    """予定確認などの質問から、search_notes 用の検索語を取り出す。"""
-    text = (message or "").strip()
-    text = re.sub(r"[？?]+$", "", text).strip()
-
+    text = re.sub(r"[？?]+$", "", (message or "").strip()).strip()
     generic_queries = [
-        "さっきのメモは",
-        "さっきのメモって",
-        "さっきの予定は",
-        "さっきの予定って",
-        "メモを教えて",
-        "メモを確認して",
-        "メモを見せて",
-        "予定を教えて",
-        "予定を確認して",
-        "予定を見せて",
-        "明日の予定は",
-        "今日の予定は",
+        "さっきのメモは", "さっきのメモって", "さっきの予定は", "さっきの予定って",
+        "メモを教えて", "メモを確認して", "メモを見せて", "予定を教えて",
+        "予定を確認して", "予定を見せて", "明日の予定は", "今日の予定は",
     ]
     if text in generic_queries:
         if text.startswith("明日の"):
@@ -84,26 +55,19 @@ def _extract_note_lookup_keyword(message: str) -> str:
         if text.startswith("今日の"):
             return "今日"
         return ""
-
     text = re.sub(
         r"(?:の)?(?:予定|用事|スケジュール)(?:は|って|ある|あります|残ってる|残っています|教えて|確認して|見せて)?$",
-        "",
-        text,
+        "", text,
     )
-
     return text.strip()
 
-
 def _format_note_lookup_result(result):
-    """search_notes の結果をLINE向けの簡潔な日本語へ整形する。"""
     if result is None:
         return "メモは見つかりませんでした。"
-
     try:
         data = json.loads(result) if isinstance(result, str) else result
     except Exception:
         data = result
-
     if isinstance(data, list):
         if not data:
             return "メモは見つかりませんでした。"
@@ -116,54 +80,34 @@ def _format_note_lookup_result(result):
             else:
                 lines.append(f"- {item}")
         return "保存されているメモは次の通りです。\n" + "\n".join(lines)
-
     if isinstance(data, dict):
         title = data.get("title") or "メモ"
         body = data.get("body") or data.get("content") or ""
-        if body:
-            return f"保存されているメモがあります。\n- {title}: {body}"
-        return f"保存されているメモがあります。\n- {title}"
-
+        return f"保存されているメモがあります。\n- {title}: {body}" if body else f"保存されているメモがあります。\n- {title}"
     text = str(data).strip()
     return text if text else "メモは見つかりませんでした。"
 
-
 def _normal_provider() -> str:
-    """Return the explicitly configured normal-agent provider.
-
-    Safe default is Groq so existing production behavior remains unchanged.
-    """
     provider = os.getenv("NORMAL_AGENT_PROVIDER", "groq").strip().lower()
     return provider if provider in {"groq", "gemini"} else "groq"
 
-
 def _gemini_request_id(state: AgentState) -> str:
     request_id = state.get("request_id")
-    if request_id:
-        return str(request_id)
-    return uuid.uuid4().hex
-
+    return str(request_id) if request_id else uuid.uuid4().hex
 
 def _run_normal_generation(state: AgentState, raw_message: str, user_id: str, call_mcp_tool):
-    """Run Gemini when explicitly enabled, otherwise use the existing Groq path."""
     provider = _normal_provider()
-
     if provider != "gemini":
         return handle_normal_message(raw_message, user_id, call_mcp_tool), "groq"
-
     try:
         data = call_gemini_via_n8n(
-            message=raw_message,
-            user_id=user_id,
-            request_id=_gemini_request_id(state),
-            timeout=10.0,
+            message=raw_message, user_id=user_id,
+            request_id=_gemini_request_id(state), timeout=10.0,
         )
         return data["reply"].strip(), "gemini"
     except GeminiN8nError as exc:
-        # Never allow the optional Gemini path to make LINE silent.
         print("[GEMINI FALLBACK] n8n Gemini failed:", exc)
         return handle_normal_message(raw_message, user_id, call_mcp_tool), "groq_fallback"
-
 
 def normal_agent_node(state: AgentState) -> AgentState:
     user_id = state.get("user_id", "")
@@ -173,24 +117,42 @@ def normal_agent_node(state: AgentState) -> AgentState:
     if raw_message.strip() in _WORK_STATUS_MESSAGES:
         print("[WORK STATUS] routing to existing AI secretary report:", raw_message)
         try:
-            # app.py loads the LangGraph at request time, so importing the already
-            # initialized report function here avoids changing the graph structure
-            # or duplicating the existing fact-collection/report implementation.
             from app import generate_ai_secretary_report
-
             result_text = generate_ai_secretary_report(user_id)
             provider = "ai_secretary_report"
         except Exception as e:
             print("[WORK STATUS] AI secretary report error:", e)
             result_text = "作業確認の取得中にエラーが発生しました。もう一度お試しください。"
             provider = "ai_secretary_report_error"
+    elif _is_reminder_cancel_request(raw_message):
+        print("[REMINDER CANCEL GUARD] cancelling latest matching reminder:", raw_message)
+        try:
+            reminders = call_mcp_tool("list_reminders", {"user_id": user_id})
+            try:
+                data = json.loads(reminders) if isinstance(reminders, str) else reminders
+            except Exception:
+                data = []
+            if isinstance(data, dict):
+                data = data.get("reminders") or data.get("items") or []
+            candidates = data if isinstance(data, list) else []
+            if not candidates:
+                result_text = "キャンセルできるリマインダーがありません。"
+            else:
+                target = candidates[-1]
+                target_id = target.get("id") if isinstance(target, dict) else None
+                if not target_id:
+                    result_text = "キャンセルするリマインダーを特定できませんでした。"
+                else:
+                    result_text = call_mcp_tool("cancel_reminder", {"user_id": user_id, "id": int(target_id)})
+            provider = "mcp"
+        except Exception as e:
+            print("[REMINDER CANCEL GUARD] error:", e)
+            result_text = "リマインダーのキャンセル中にエラーが発生しました。もう一度お試しください。"
+            provider = "mcp_error"
     elif _is_reminder_lookup_question(raw_message):
         print("[REMINDER LOOKUP GUARD] routing question to list_reminders:", raw_message)
         try:
-            result_text = call_mcp_tool(
-                "list_reminders",
-                {"user_id": user_id},
-            )
+            result_text = call_mcp_tool("list_reminders", {"user_id": user_id})
             if result_text is None or not str(result_text).strip():
                 result_text = "予定はありません。"
         except Exception as e:
@@ -200,33 +162,15 @@ def normal_agent_node(state: AgentState) -> AgentState:
     elif _is_note_lookup_question(raw_message):
         print("[NOTE LOOKUP GUARD] routing question to search_notes:", raw_message)
         try:
-            result_text = call_mcp_tool(
-                "search_notes",
-                {
-                    "user_id": user_id,
-                    "keyword": _extract_note_lookup_keyword(raw_message),
-                },
-            )
+            result_text = call_mcp_tool("search_notes", {"user_id": user_id, "keyword": _extract_note_lookup_keyword(raw_message)})
             result_text = _format_note_lookup_result(result_text)
         except Exception as e:
             print("[NOTE LOOKUP GUARD] search_notes error:", e)
             result_text = "メモの検索中にエラーが発生しました。もう一度お試しください。"
         provider = "mcp"
     else:
-        result_text, provider = _run_normal_generation(
-            state,
-            raw_message,
-            user_id,
-            call_mcp_tool,
-        )
+        result_text, provider = _run_normal_generation(state, raw_message, user_id, call_mcp_tool)
 
     agent_results = dict(state.get("agent_results", {}))
-    agent_results["normal"] = {
-        "text": result_text,
-        "provider": provider,
-    }
-
-    return {
-        **state,
-        "agent_results": agent_results,
-    }
+    agent_results["normal"] = {"text": result_text, "provider": provider}
+    return {**state, "agent_results": agent_results}
