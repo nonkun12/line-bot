@@ -7,7 +7,12 @@ import json
 import job_approvals
 import job_store
 from job_lease import recover_stale_jobs
-from job_orchestrator import decide_executor_failure, decide_test_failure
+from job_orchestrator import (
+    decide_executor_failure,
+    decide_test_failure,
+    job_time_exceeded,
+    test_failure_has_no_progress,
+)
 
 
 APPROVAL_NODES = {"commit_agent": "commit", "deploy_agent": "deploy"}
@@ -51,6 +56,11 @@ def _request_and_wait(job: dict, next_node: str, values: dict) -> dict:
 
 
 def execute_one_step(job: dict, graph=None) -> dict:
+    if job_time_exceeded(job):
+        return {"status": "failed", "thread_id": _thread_id(job["id"]),
+                "step_name": "worker", "error": "job total time limit exceeded",
+                "summary": "job total time limit exceeded"}
+
     graph = graph or _get_worker_graph()
     thread_id = _thread_id(job["id"])
     config = {"configurable": {"thread_id": thread_id}}
@@ -108,6 +118,13 @@ def _handle_executor_failure(job: dict, exc: Exception):
 
 
 def _handle_test_failure(job: dict, result: dict):
+    if test_failure_has_no_progress(job.get("result"), result.get("summary")):
+        job_store.update_job(job["id"], status="failed", result=result.get("summary", ""),
+                             last_error="automated test failed; no progress detected",
+                             clear_claimed_at=True)
+        job_store.save_checkpoint(job["id"], "test_agent", "no_progress",
+                                  result.get("summary", ""))
+        return job_store.get_job(job["id"])
     return _apply_retry_decision(job, decide_test_failure(job), result, checkpoint_prefix="test")
 
 
