@@ -40,7 +40,8 @@ class AgentState(TypedDict, total=False):
     # Phase1: approval status (pending / expired / none)
     pending_status: Optional[str]
 
-    # Overnight Worker publication/deployment results.
+    # Overnight Worker publication, merge, and deployment results.
     commit_result: Optional[dict[str, Any]]
     publish_result: Optional[dict[str, Any]]
+    merge_result: Optional[dict[str, Any]]
     deploy_result: Optional[dict[str, Any]]
