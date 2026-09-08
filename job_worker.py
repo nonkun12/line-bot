@@ -85,7 +85,8 @@ def _checkpoint_summary(values: dict) -> str:
                "error": values.get("error"), "development_error": values.get("development_error"),
                "workdir_restore_error": values.get("workdir_restore_error"),
                "test_result": values.get("test_result"), "publish_result": values.get("publish_result"),
-               "merge_result": values.get("merge_result"), "deploy_result": values.get("deploy_result"),
+               "review_result": values.get("review_result"), "merge_result": values.get("merge_result"),
+               "deploy_result": values.get("deploy_result"),
                "final_reply": values.get("final_reply")}
     return json.dumps(payload, ensure_ascii=False, default=str)
 
@@ -166,6 +167,17 @@ def execute_one_step(job: dict, graph=None) -> dict:
         if publish_result.get("published") is False:
             return {"status": "publish_failed", "thread_id": thread_id, "step_name": current_node,
                     "error": publish_result.get("error") or "publish failed",
+                    "summary": _checkpoint_summary(values)}
+    if current_node == "review_agent":
+        review_result = values.get("review_result") or {}
+        if review_result.get("status") == "pending":
+            return {"status": "step_completed", "thread_id": thread_id,
+                    "step_name": current_node, "next_step": next_node,
+                    "summary": _checkpoint_summary(values)}
+        if review_result.get("status") == "failed":
+            return {"status": "failed", "thread_id": thread_id,
+                    "step_name": current_node,
+                    "error": review_result.get("reason") or "review failed",
                     "summary": _checkpoint_summary(values)}
     if current_node == "merge_agent":
         merge_result = values.get("merge_result") or {}
