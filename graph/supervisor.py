@@ -30,7 +30,7 @@ _INTENT_TO_AGENT = {
     "note": "notes",
     "memory": "memory",
     "github": "github",
-"sheets": "sheets",
+    "sheets": "sheets",
     "weather": "weather",
     # "unsupported" (=GitHub/Debug/Memory/Notesのいずれにも該当しない通常
     # メッセージ) は、旧 generate_reply() 末尾にあった通常のGroq応答へ
@@ -43,7 +43,7 @@ _INTENT_TO_AGENT = {
 def classify_intent(raw_message: str) -> str:
     """
     メッセージ内容からintentを判定する。
-    Phase1ではdebugプレフィックスとNotes系コマンドを対応させる。
+    明示的なメモ保存・検索依頼は、時間表現など他の意図よりNotesを優先する。
     """
     text = (raw_message or "").strip()
 
@@ -52,6 +52,13 @@ def classify_intent(raw_message: str) -> str:
 
     if text.startswith(_DEBUG_PREFIX):
         return "debug"
+
+    # 「メモに、明日の10時にテストすると保存して」のように、
+    # メモ依頼の本文に日時が含まれていてもNotesを最優先する。
+    # これを他のAgent判定より先に置き、set_reminderへの誤ルーティングを防止する。
+    if is_note_intent(text):
+        print("SUPERVISOR: note intent (priority)")
+        return "note"
 
     if is_github_intent(text):
         print("SUPERVISOR: github intent")
@@ -64,9 +71,6 @@ def classify_intent(raw_message: str) -> str:
     if is_sheets_intent(text):
         print("SUPERVISOR: sheets intent")
         return "sheets"
-
-    if is_note_intent(text):
-        return "note"
 
     if is_memory_intent(text):
         return "memory"
