@@ -22,11 +22,15 @@ def claim_pending_job(worker_id=None, lease_seconds=None):
     return db.claim_pending_job(**kwargs)
 
 
+def renew_job_lease(job_id, worker_id, lease_seconds=None):
+    if lease_seconds is None:
+        return db.renew_job_lease(job_id, worker_id)
+    return db.renew_job_lease(job_id, worker_id, lease_seconds=lease_seconds)
+
+
 def update_job(job_id, status=None, result=None, last_error=None,
                retry_count=None, claimed_at=None, clear_claimed_at=False,
                worker_id=None, lease_until=None, clear_lease=False):
-    # claimed_at/clear_claimed_at are kept for backward compatibility with the
-    # earlier wrapper API; the authoritative lease is worker_id/lease_until.
     return db.update_job(job_id, status=status, result=result,
                          last_error=last_error, retry_count=retry_count,
                          worker_id=worker_id, lease_until=lease_until,
