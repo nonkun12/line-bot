@@ -67,3 +67,14 @@ def test_review_fails_when_required_workflow_fails(monkeypatch):
 
     assert result["review_result"]["status"] == "failed"
     assert result["agent_results"]["review"]["failed"] == ["Overnight Worker Test"]
+
+
+def test_review_fails_on_missing_github_token(monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+    result = review_node(state())
+
+    assert result["review_result"] == {
+        "status": "failed",
+        "reason": "GITHUB_TOKEN is not configured",
+    }
