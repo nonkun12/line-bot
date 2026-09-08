@@ -132,7 +132,12 @@ def index():
 def get_notes():
     user_id = resolve_user_id(request.args.get("user_id"))
     try:
-        notes = parse_mcp_json_list(call_mcp_tool("list_notes", {"user_id": user_id}))
+        # Keep the dashboard list operation on the same MCP contract used by
+        # the Notes Agent: empty keyword means "all notes".
+        notes = parse_mcp_json_list(call_mcp_tool("search_notes", {
+            "user_id": user_id,
+            "keyword": "",
+        }))
         return jsonify({"ok": True, "notes": notes, "user_id": user_id})
     except Exception as e:
         print("[DASHBOARD] Failed to list notes via MCP:", e)
@@ -218,7 +223,6 @@ def system_status():
     except Exception as e:
         result["oracle"] = {"status": "error", "error": str(e)}
 
-    # E2E history is independent from the dashboard's direct health checks.
     try:
         e2e = get_e2e_status()
         result["e2e"] = e2e
@@ -237,7 +241,7 @@ def system_status():
 
     user_id = resolve_user_id(request.args.get("user_id"))
     try:
-        notes = parse_mcp_json_list(call_mcp_tool("list_notes", {"user_id": user_id}))
+        notes = parse_mcp_json_list(call_mcp_tool("search_notes", {"user_id": user_id, "keyword": ""}))
         result["notes"] = {"status": "ok", "count": len(notes), "latest": notes[:5]}
     except Exception as e:
         result["notes"] = {"status": "error", "error": str(e)}
