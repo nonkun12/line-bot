@@ -1,4 +1,4 @@
-from standalone_agent.graph.graph import route_from_debug, route_from_test
+from standalone_agent_graph import route_from_debug, route_from_test
 
 
 def test_failed_test_routes_back_to_debug():
