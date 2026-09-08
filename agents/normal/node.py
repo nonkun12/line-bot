@@ -23,24 +23,28 @@ _CANCEL_REMINDER_RE = re.compile(
 )
 _WORK_STATUS_MESSAGES = {"作業確認", "作業状況確認", "作業状況を確認", "進捗確認", "進捗を確認"}
 
+
 def _call_mcp_tool(state: AgentState):
     call_mcp_tool = state.get("call_mcp_tool")
     if callable(call_mcp_tool):
         return call_mcp_tool
     return mcp_client.call_mcp_tool
 
+
 def _is_reminder_lookup_question(message: str) -> bool:
     return bool(_REMINDER_LOOKUP_RE.fullmatch((message or "").strip()))
 
+
 def _is_reminder_cancel_request(message: str) -> bool:
-    text = (message or "").strip()
-    return bool(_CANCEL_REMINDER_RE.search(text))
+    return bool(_CANCEL_REMINDER_RE.search((message or "").strip()))
+
 
 def _is_note_lookup_question(message: str) -> bool:
     text = (message or "").strip()
     if not text or text.startswith("メモ：") or text.startswith("メモ:"):
         return False
     return bool(_LOOKUP_QUESTION_RE.search(text))
+
 
 def _extract_note_lookup_keyword(message: str) -> str:
     text = re.sub(r"[？?]+$", "", (message or "").strip()).strip()
@@ -60,6 +64,7 @@ def _extract_note_lookup_keyword(message: str) -> str:
         "", text,
     )
     return text.strip()
+
 
 def _format_note_lookup_result(result):
     if result is None:
@@ -87,13 +92,16 @@ def _format_note_lookup_result(result):
     text = str(data).strip()
     return text if text else "メモは見つかりませんでした。"
 
+
 def _normal_provider() -> str:
     provider = os.getenv("NORMAL_AGENT_PROVIDER", "groq").strip().lower()
     return provider if provider in {"groq", "gemini"} else "groq"
 
+
 def _gemini_request_id(state: AgentState) -> str:
     request_id = state.get("request_id")
     return str(request_id) if request_id else uuid.uuid4().hex
+
 
 def _run_normal_generation(state: AgentState, raw_message: str, user_id: str, call_mcp_tool):
     provider = _normal_provider()
@@ -108,6 +116,29 @@ def _run_normal_generation(state: AgentState, raw_message: str, user_id: str, ca
     except GeminiN8nError as exc:
         print("[GEMINI FALLBACK] n8n Gemini failed:", exc)
         return handle_normal_message(raw_message, user_id, call_mcp_tool), "groq_fallback"
+
+
+def _find_latest_reminder_id(reminders):
+    """MCPのJSON/テキストどちらの一覧からでも最後のreminder idを取得する。"""
+    if isinstance(reminders, list):
+        ids = [item.get("id") for item in reminders if isinstance(item, dict) and item.get("id")]
+        if ids:
+            return ids[-1]
+        return None
+
+    text = str(reminders or "")
+    # 現在のMCPは `id=449: ...` のような表示テキストを返す場合がある。
+    ids = re.findall(r"(?:^|[\n\r])\s*id\s*[=:]\s*(\d+)", text, re.IGNORECASE)
+    if ids:
+        return int(ids[-1])
+
+    # JSON文字列として返ってきた場合にも対応。
+    try:
+        data = json.loads(text)
+        return _find_latest_reminder_id(data)
+    except Exception:
+        return None
+
 
 def normal_agent_node(state: AgentState) -> AgentState:
     user_id = state.get("user_id", "")
@@ -125,25 +156,18 @@ def normal_agent_node(state: AgentState) -> AgentState:
             result_text = "作業確認の取得中にエラーが発生しました。もう一度お試しください。"
             provider = "ai_secretary_report_error"
     elif _is_reminder_cancel_request(raw_message):
-        print("[REMINDER CANCEL GUARD] cancelling latest matching reminder:", raw_message)
+        print("[REMINDER CANCEL GUARD] cancelling latest reminder:", raw_message)
         try:
             reminders = call_mcp_tool("list_reminders", {"user_id": user_id})
-            try:
-                data = json.loads(reminders) if isinstance(reminders, str) else reminders
-            except Exception:
-                data = []
-            if isinstance(data, dict):
-                data = data.get("reminders") or data.get("items") or []
-            candidates = data if isinstance(data, list) else []
-            if not candidates:
+            target_id = _find_latest_reminder_id(reminders)
+            if not target_id:
                 result_text = "キャンセルできるリマインダーがありません。"
             else:
-                target = candidates[-1]
-                target_id = target.get("id") if isinstance(target, dict) else None
-                if not target_id:
-                    result_text = "キャンセルするリマインダーを特定できませんでした。"
-                else:
-                    result_text = call_mcp_tool("cancel_reminder", {"user_id": user_id, "id": int(target_id)})
+                print("[REMINDER CANCEL GUARD] target id:", target_id)
+                result_text = call_mcp_tool(
+                    "cancel_reminder",
+                    {"user_id": user_id, "id": int(target_id)},
+                )
             provider = "mcp"
         except Exception as e:
             print("[REMINDER CANCEL GUARD] error:", e)
