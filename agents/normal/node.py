@@ -24,6 +24,10 @@ _LOOKUP_QUESTION_RE = re.compile(
     r"(?:予定|メモ|用事|スケジュール).*(?:は|って|ある|あります|残ってる|残っています|教えて|確認して|見せて)[？?]?$"
 )
 
+_REMINDER_LOOKUP_RE = re.compile(
+    r"^(?:今)?(?:予定|用事|スケジュール)(?:が|は)?(?:ある|あります|残ってる|残っています)(?:の|か)?[？?]?$"
+)
+
 
 _WORK_STATUS_MESSAGES = {
     "作業確認",
@@ -39,6 +43,12 @@ def _call_mcp_tool(state: AgentState):
     if callable(call_mcp_tool):
         return call_mcp_tool
     return mcp_client.call_mcp_tool
+
+
+def _is_reminder_lookup_question(message: str) -> bool:
+    """予定の有無を尋ねる質問かを決定的に判定する。"""
+    text = (message or "").strip()
+    return bool(_REMINDER_LOOKUP_RE.fullmatch(text))
 
 
 def _is_note_lookup_question(message: str) -> bool:
@@ -174,6 +184,19 @@ def normal_agent_node(state: AgentState) -> AgentState:
             print("[WORK STATUS] AI secretary report error:", e)
             result_text = "作業確認の取得中にエラーが発生しました。もう一度お試しください。"
             provider = "ai_secretary_report_error"
+    elif _is_reminder_lookup_question(raw_message):
+        print("[REMINDER LOOKUP GUARD] routing question to list_reminders:", raw_message)
+        try:
+            result_text = call_mcp_tool(
+                "list_reminders",
+                {"user_id": user_id},
+            )
+            if result_text is None or not str(result_text).strip():
+                result_text = "予定はありません。"
+        except Exception as e:
+            print("[REMINDER LOOKUP GUARD] list_reminders error:", e)
+            result_text = "予定の確認中にエラーが発生しました。もう一度お試しください。"
+        provider = "mcp"
     elif _is_note_lookup_question(raw_message):
         print("[NOTE LOOKUP GUARD] routing question to search_notes:", raw_message)
         try:
