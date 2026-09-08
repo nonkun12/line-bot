@@ -128,6 +128,14 @@ def _handle_test_failure(job: dict, result: dict):
     return _apply_retry_decision(job, decide_test_failure(job), result, checkpoint_prefix="test")
 
 
+def _fail_for_time_limit(job: dict):
+    summary = "job total time limit exceeded"
+    job_store.update_job(job["id"], status="failed", result=summary,
+                         last_error=summary, clear_claimed_at=True)
+    job_store.save_checkpoint(job["id"], "worker", "time_limit_exceeded", summary)
+    return job_store.get_job(job["id"])
+
+
 def run_once(executor=None):
     recover_stale_jobs()
     job = job_store.claim_pending_job()
@@ -136,6 +144,8 @@ def run_once(executor=None):
     job_id = job["id"]
     job_store.save_checkpoint(job_id, "worker", "started")
     try:
+        if job_time_exceeded(job):
+            return _fail_for_time_limit(job)
         result = executor(job) if executor is not None else execute_one_step(job)
         status = result.get("status")
         if status == "graph_done":
