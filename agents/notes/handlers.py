@@ -96,8 +96,10 @@ def handle_natural_note_search(message: str, user_id: str, call_mcp_tool: CallMc
 
 
 def handle_save_note(message: str, user_id: str, call_mcp_tool: CallMcpTool) -> Any:
-    body = re.sub(r"^(?:メモして|メモに)\s*[:：]?\s*", "", message)
-    body = re.sub(r"\s*保存して\s*$", "", body).strip()
+    # 「メモに、内容を保存して」のような自然文では、接頭辞直後の
+    # 読点・カンマも保存対象から除去する。
+    body = re.sub(r"^(?:メモして|メモに)\s*[:：、,]?\s*", "", message)
+    body = re.sub(r"\s*保存して\s*[。！!]?\s*$", "", body).strip()
     category = _classify_note_category(body)
     return call_mcp_tool("save_note", {"user_id": user_id, "title": "LINEメモ", "body": body, "category": category})
 
