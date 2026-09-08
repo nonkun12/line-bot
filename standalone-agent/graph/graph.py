@@ -1,10 +1,4 @@
-"""
-LangGraph Phase1 graph definition.
-
-Worker mode is opt-in: the existing module-level ``graph`` keeps its current
-behavior, while ``build_worker_graph()`` enables persistent checkpoints and
-node-boundary interrupts for one-step-at-a-time execution.
-"""
+"""LangGraph worker graph with a bounded Test -> Debug -> Fix cycle."""
 
 import os
 import sqlite3
@@ -55,9 +49,6 @@ def fallback_node(state: AgentState) -> AgentState:
 
 def finalize_node(state: AgentState) -> AgentState:
     results = state.get("agent_results", {})
-    print("===== FINALIZER =====")
-    print("agent_results =", results)
-
     if not results:
         reply = "対応できません"
     elif "fallback" in results:
@@ -85,11 +76,15 @@ def finalize_node(state: AgentState) -> AgentState:
             if value:
                 lines.append(f"【{label}】\n{value}")
         reply = "\n\n".join(line for line in lines if line)
-
     return {**state, "final_reply": reply}
 
 
 def route_from_debug(state: AgentState) -> str:
+    # Test failure is a first-class Debug trigger for overnight development.
+    test_result = state.get("test_result") or {}
+    if test_result.get("passed") is False and not test_result.get("skipped"):
+        return "fix_agent"
+
     try:
         has_traceback = state["agent_results"]["debug"]["structured"]["error_info"]["has_traceback"]
     except (KeyError, TypeError):
@@ -97,33 +92,26 @@ def route_from_debug(state: AgentState) -> str:
     return "fix_agent" if has_traceback is True else "finalizer"
 
 
-WORKER_STEP_NODES = [
-    "supervisor",
-    "debug_agent",
-    "notes_agent",
-    "memory_agent",
-    "normal_agent",
-    "work_status_agent",
-    "fix_agent",
-    "patch_generate_agent",
-    "patch_agent",
-    "test_agent",
-    "github_agent",
-    "sheets_agent",
-    "weather_agent",
-    "fallback_agent",
-]
+def route_from_test(state: AgentState) -> str:
+    """Cycle failed tests back to Debug; only passing/skipped tests may commit."""
+    test_result = state.get("test_result") or {}
+    if test_result.get("passed") is False and not test_result.get("skipped"):
+        return "debug_agent"
+    return "commit_agent"
 
+
+WORKER_STEP_NODES = [
+    "supervisor", "debug_agent", "notes_agent", "memory_agent", "normal_agent",
+    "work_status_agent", "fix_agent", "patch_generate_agent", "patch_agent",
+    "test_agent", "github_agent", "sheets_agent", "weather_agent", "fallback_agent",
+]
 WORKER_APPROVAL_NODES = ["commit_agent", "deploy_agent"]
 
 
 def _build_checkpointer():
     path = os.environ.get(
         "LANGGRAPH_CHECKPOINT_DB",
-        os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            "langgraph-checkpoints.sqlite3",
-        ),
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "langgraph-checkpoints.sqlite3"),
     )
     conn = sqlite3.connect(path, check_same_thread=False)
     return SqliteSaver(conn)
@@ -131,7 +119,6 @@ def _build_checkpointer():
 
 def build_graph(*, checkpointer=None, interrupt_after=None, interrupt_before=None):
     builder = StateGraph(AgentState)
-
     builder.add_node("supervisor", supervisor_node)
     builder.add_node("debug_agent", debug_agent_node)
     builder.add_node("notes_agent", notes_agent_node)
@@ -151,35 +138,22 @@ def build_graph(*, checkpointer=None, interrupt_after=None, interrupt_before=Non
     builder.add_node("finalizer", finalize_node)
 
     builder.add_edge(START, "supervisor")
-    builder.add_conditional_edges(
-        "supervisor",
-        route_from_supervisor,
-        {
-            "debug_agent": "debug_agent",
-            "notes_agent": "notes_agent",
-            "memory_agent": "memory_agent",
-            "github_agent": "github_agent",
-            "sheets_agent": "sheets_agent",
-            "normal_agent": "normal_agent",
-            "weather_agent": "weather_agent",
-            "work_status_agent": "work_status_agent",
-            "fallback_agent": "fallback_agent",
-        },
-    )
-    builder.add_conditional_edges(
-        "debug_agent",
-        route_from_debug,
-        {"fix_agent": "fix_agent", "finalizer": "finalizer"},
-    )
-    for node in (
-        "notes_agent", "memory_agent", "normal_agent", "github_agent",
-        "sheets_agent", "weather_agent", "work_status_agent", "fallback_agent",
-    ):
+    builder.add_conditional_edges("supervisor", route_from_supervisor, {
+        "debug_agent": "debug_agent", "notes_agent": "notes_agent", "memory_agent": "memory_agent",
+        "github_agent": "github_agent", "sheets_agent": "sheets_agent", "normal_agent": "normal_agent",
+        "weather_agent": "weather_agent", "work_status_agent": "work_status_agent", "fallback_agent": "fallback_agent",
+    })
+    builder.add_conditional_edges("debug_agent", route_from_debug, {
+        "fix_agent": "fix_agent", "finalizer": "finalizer",
+    })
+    for node in ("notes_agent", "memory_agent", "normal_agent", "github_agent", "sheets_agent", "weather_agent", "work_status_agent", "fallback_agent"):
         builder.add_edge(node, "finalizer")
     builder.add_edge("fix_agent", "patch_generate_agent")
     builder.add_edge("patch_generate_agent", "patch_agent")
     builder.add_edge("patch_agent", "test_agent")
-    builder.add_edge("test_agent", "commit_agent")
+    builder.add_conditional_edges("test_agent", route_from_test, {
+        "debug_agent": "debug_agent", "commit_agent": "commit_agent",
+    })
     builder.add_edge("commit_agent", "deploy_agent")
     builder.add_edge("deploy_agent", "finalizer")
     builder.add_edge("finalizer", END)
@@ -195,7 +169,6 @@ def build_graph(*, checkpointer=None, interrupt_after=None, interrupt_before=Non
 
 
 def build_worker_graph():
-    """Return the persisted, interrupt-driven graph used by the Job Worker."""
     return build_graph(
         checkpointer=_build_checkpointer(),
         interrupt_after=WORKER_STEP_NODES,
