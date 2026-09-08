@@ -129,6 +129,8 @@ def parse_mcp_json_list(raw):
 
         return data if isinstance(data, list) else []
 
-    except Exception as e:
+    except json.JSONDecodeError as e:
         print("parse error:", e)
-        return []
+        # list_reminders など、MCPがJSONではなく
+        # 改行区切りのテキストを返すツールにも対応する。
+        return [line.strip() for line in str(raw).splitlines() if line.strip()]
