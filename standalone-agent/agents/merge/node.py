@@ -45,6 +45,8 @@ def get_pr_state(pr_number: int) -> dict[str, Any]:
         "mergeable": data.get("mergeable"),
         "url": data.get("html_url"),
         "head_sha": data.get("head", {}).get("sha"),
+        "head_branch": data.get("head", {}).get("ref"),
+        "base_branch": data.get("base", {}).get("ref"),
         "merge_commit_sha": data.get("merge_commit_sha"),
     }
 
@@ -53,6 +55,8 @@ def merge_approved_pr(state: dict[str, Any]) -> dict[str, Any]:
     publish_result = state.get("publish_result") or {}
     pr = publish_result.get("pr") or {}
     pr_number = pr.get("number")
+    expected_commit = (state.get("commit_result") or {}).get("hash")
+    expected_branch = publish_result.get("branch") or (state.get("commit_result") or {}).get("branch")
     if not pr_number:
         return {"merged": False, "error": "pull request number is missing"}
 
@@ -62,6 +66,25 @@ def merge_approved_pr(state: dict[str, Any]) -> dict[str, Any]:
     if current.get("state") != "open":
         return {"merged": False, "error": "GitHub PR is not open", "pr": current}
 
+    if expected_branch and current.get("head_branch") != expected_branch:
+        return {
+            "merged": False,
+            "error": "GitHub PR head branch does not match the Job branch",
+            "pr": current,
+        }
+    if expected_commit and current.get("head_sha") != expected_commit:
+        return {
+            "merged": False,
+            "error": "GitHub PR head commit does not match the approved Job commit",
+            "pr": current,
+        }
+    if current.get("base_branch") != "main":
+        return {
+            "merged": False,
+            "error": "GitHub PR base branch is not main",
+            "pr": current,
+        }
+
     response = requests.put(
         f"{GITHUB_API}/repos/{_repo()}/pulls/{int(pr_number)}/merge",
         headers={**_headers(), "Content-Type": "application/json"},
@@ -70,15 +93,27 @@ def merge_approved_pr(state: dict[str, Any]) -> dict[str, Any]:
     )
     if response.status_code not in {200, 201}:
         detail = response.text[:500]
-        return {"merged": False, "error": f"GitHub PR merge failed: HTTP {response.status_code}: {detail}", "pr": current}
+        return {
+            "merged": False,
+            "error": f"GitHub PR merge failed: HTTP {response.status_code}: {detail}",
+            "pr": current,
+        }
 
     payload = response.json()
     if not payload.get("merged"):
-        return {"merged": False, "error": payload.get("message") or "GitHub did not merge the PR", "pr": current}
+        return {
+            "merged": False,
+            "error": payload.get("message") or "GitHub did not merge the PR",
+            "pr": current,
+        }
 
     verified = get_pr_state(int(pr_number))
     if not verified.get("merged"):
-        return {"merged": False, "error": "GitHub merge response was not confirmed by follow-up read", "pr": verified}
+        return {
+            "merged": False,
+            "error": "GitHub merge response was not confirmed by follow-up read",
+            "pr": verified,
+        }
 
     return {"merged": True, "already_merged": False, "pr": verified}
 
