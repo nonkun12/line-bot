@@ -8,8 +8,6 @@ LangGraph Phase1: Supervisorノード。
 やらないこと:
 - Agentの実行
 - LINE返信生成
-
-Phase1では debug のみ Debug Agentへ振り分ける。
 """
 
 from graph.state import AgentState
@@ -40,19 +38,12 @@ _INTENT_TO_AGENT = {
     "sheets": "sheets",
     "weather": "weather",
     "work_status": "work_status",
-    # "unsupported" (=GitHub/Debug/Memory/Notesのいずれにも該当しない通常
-    # メッセージ) は、旧 generate_reply() 末尾にあった通常のGroq応答へ
-    # 振り分ける。以前はここが "fallback" 固定になっており、
-    # 通常のAI応答ルートが存在していなかった(未移植の原因)。
     "unsupported": "normal",
 }
 
 
 def classify_intent(raw_message: str) -> str:
-    """
-    メッセージ内容からintentを判定する。
-    Phase1ではdebugプレフィックスとNotes系コマンドを対応させる。
-    """
+    """メッセージ内容からintentを判定する。"""
     text = (raw_message or "").strip()
 
     print("===== SUPERVISOR =====")
@@ -69,7 +60,6 @@ def classify_intent(raw_message: str) -> str:
         print("SUPERVISOR: github intent")
         return "github"
 
-
     if is_sheets_intent(text):
         print("SUPERVISOR: sheets intent")
         return "sheets"
@@ -80,33 +70,25 @@ def classify_intent(raw_message: str) -> str:
     if is_memory_intent(text):
         return "memory"
 
-    # 「debug」プレフィックスなしの自然文(例: 「app.pyのエラーを確認して」)
-    # からのDebug Agentルーティング。既存Agent(GitHub/Sheets/Notes/Memory)
-    # の判定より後に置くことで、既存の誤ルーティング防止を優先する。
     if is_debug_intent(text):
         print("SUPERVISOR: natural language debug intent")
         return "debug"
+
+    if is_weather_intent(text):
+        print("SUPERVISOR: weather intent")
+        return "weather"
 
     print("SUPERVISOR: unsupported")
     return "unsupported"
 
 
 def supervisor_node(state: AgentState) -> AgentState:
-    """
-    Supervisorノード本体。
-
-    intent判定とnext_agent決定のみ行う。
-    """
     raw_message = state.get("raw_message", "")
 
     intent = classify_intent(raw_message)
-    next_agent = _INTENT_TO_AGENT.get(
-        intent,
-        "fallback"
-    )
+    next_agent = _INTENT_TO_AGENT.get(intent, "fallback")
 
     user_id = state.get("user_id")
-
     pending_status = (
         get_pending_status(user_id).value
         if user_id is not None
