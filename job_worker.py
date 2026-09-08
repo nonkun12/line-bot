@@ -1,4 +1,4 @@
-"""One-step asynchronous Job worker with job-scoped approval gates."""
+"""One-step asynchronous Job worker with bounded development retries."""
 
 from __future__ import annotations
 
@@ -44,6 +44,7 @@ def _checkpoint_summary(values: dict) -> str:
         "intent": values.get("intent"),
         "next_agent": values.get("next_agent"),
         "error": values.get("error"),
+        "test_result": values.get("test_result"),
         "final_reply": values.get("final_reply"),
     }
     return json.dumps(payload, ensure_ascii=False, default=str)
@@ -78,8 +79,6 @@ def execute_one_step(job: dict, graph=None) -> dict:
         current_node = "supervisor"
         input_state = _initial_state(job)
 
-    # interrupt_before leaves dangerous nodes in snapshot.next. Never invoke
-    # one unless this exact Job+operation has an approved one-use record.
     if current_node in APPROVAL_NODES:
         operation = APPROVAL_NODES[current_node]
         approval_status = job_approvals.status(job["id"], operation)
@@ -104,6 +103,19 @@ def execute_one_step(job: dict, graph=None) -> dict:
     next_node = next_nodes[0]
     if next_node in APPROVAL_NODES:
         return _request_and_wait(job, next_node, values)
+
+    # The graph itself performs Test -> Debug. The persistent Job owns the
+    # retry budget so the cycle cannot become infinite.
+    if current_node == "test_agent" and next_node == "debug_agent":
+        test_result = values.get("test_result") or {}
+        return {
+            "status": "test_failed",
+            "thread_id": thread_id,
+            "step_name": "test_agent",
+            "next_step": next_node,
+            "test_result": test_result,
+            "summary": _checkpoint_summary(values),
+        }
 
     return {
         "status": "step_completed",
@@ -137,6 +149,29 @@ def _handle_executor_failure(job: dict, exc: Exception):
     return job_store.get_job(job["id"])
 
 
+def _handle_test_failure(job: dict, result: dict):
+    retry_count = int(job.get("retry_count") or 0) + 1
+    summary = result.get("summary", "test failed")
+    if retry_count <= int(job.get("max_retries") or 0):
+        job_store.update_job(
+            job["id"], status="pending", result=summary,
+            last_error="automated test failed",
+            retry_count=retry_count, clear_claimed_at=True,
+        )
+        status = "pending"
+        checkpoint_status = "test_failed_retry_scheduled"
+    else:
+        job_store.update_job(
+            job["id"], status="failed", result=summary,
+            last_error="automated test failed: retry limit reached",
+            retry_count=retry_count, clear_claimed_at=True,
+        )
+        status = "failed"
+        checkpoint_status = "test_failed_retry_exhausted"
+    job_store.save_checkpoint(job["id"], "test_agent", checkpoint_status, summary)
+    return job_store.get_job(job["id"])
+
+
 def run_once(executor=None):
     """Claim one Job, advance one logical step, and exit."""
     recover_stale_jobs()
@@ -162,6 +197,8 @@ def run_once(executor=None):
                 last_error=None, clear_claimed_at=True,
             )
             checkpoint_status = "waiting_approval"
+        elif status == "test_failed":
+            return _handle_test_failure(job, result)
         elif status == "step_completed":
             job_store.update_job(
                 job_id, status="pending", result=result.get("summary", ""),
