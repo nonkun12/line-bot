@@ -6,6 +6,8 @@ import json
 import os
 import re
 import uuid
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import mcp_client
 from graph.state import AgentState
@@ -127,17 +129,89 @@ def _find_latest_reminder_id(reminders):
         return None
 
     text = str(reminders or "")
-    # 現在のMCPは `id=449: ...` のような表示テキストを返す場合がある。
     ids = re.findall(r"(?:^|[\n\r])\s*id\s*[=:]\s*(\d+)", text, re.IGNORECASE)
     if ids:
         return int(ids[-1])
 
-    # JSON文字列として返ってきた場合にも対応。
     try:
         data = json.loads(text)
         return _find_latest_reminder_id(data)
     except Exception:
         return None
+
+
+def _extract_cancel_target(message: str):
+    """キャンセル依頼から指定日時を抽出する。現在は明日/今日の時刻指定を優先対応。"""
+    text = (message or "").strip()
+    day_offset = None
+    if "明日" in text:
+        day_offset = 1
+    elif "今日" in text:
+        day_offset = 0
+    if day_offset is None:
+        return None
+
+    match = re.search(r"(?:今日|明日)の?\s*(\d{1,2})時(?:\s*(\d{1,2})分)?", text)
+    if not match:
+        match = re.search(r"(?:今日|明日)\s*(\d{1,2})時(?:\s*(\d{1,2})分)?", text)
+    if not match:
+        return None
+
+    hour = int(match.group(1))
+    minute = int(match.group(2) or 0)
+    if hour > 23 or minute > 59:
+        return None
+
+    now = datetime.now(ZoneInfo("Asia/Tokyo"))
+    target = (now + timedelta(days=day_offset)).replace(
+        hour=hour, minute=minute, second=0, microsecond=0
+    )
+    return target
+
+
+def _find_reminder_id_by_datetime(reminders, target):
+    """一覧から指定日時(JST)に一致するリマインダーidを取得する。"""
+    if target is None:
+        return None
+
+    if isinstance(reminders, str):
+        try:
+            parsed = json.loads(reminders)
+            if isinstance(parsed, list):
+                reminders = parsed
+        except Exception:
+            pass
+
+    if isinstance(reminders, list):
+        for item in reminders:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            raw = item.get("remind_at")
+            if not raw:
+                continue
+            try:
+                dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=ZoneInfo("Asia/Tokyo"))
+                dt = dt.astimezone(ZoneInfo("Asia/Tokyo"))
+                if dt.replace(second=0, microsecond=0) == target:
+                    return int(item["id"])
+            except (ValueError, TypeError):
+                continue
+        return None
+
+    for line in str(reminders or "").splitlines():
+        id_match = re.search(r"\bid\s*[=:]\s*(\d+)", line, re.IGNORECASE)
+        date_match = re.search(
+            r"(\d{4})/(\d{1,2})/(\d{1,2})\s+(\d{1,2}):(\d{2})(?::\d{2})?",
+            line,
+        )
+        if not id_match or not date_match:
+            continue
+        y, mo, d, h, mi = map(int, date_match.groups())
+        if (y, mo, d, h, mi) == (target.year, target.month, target.day, target.hour, target.minute):
+            return int(id_match.group(1))
+    return None
 
 
 def normal_agent_node(state: AgentState) -> AgentState:
@@ -156,18 +230,23 @@ def normal_agent_node(state: AgentState) -> AgentState:
             result_text = "作業確認の取得中にエラーが発生しました。もう一度お試しください。"
             provider = "ai_secretary_report_error"
     elif _is_reminder_cancel_request(raw_message):
-        print("[REMINDER CANCEL GUARD] cancelling latest reminder:", raw_message)
+        target_time = _extract_cancel_target(raw_message)
+        print("[REMINDER CANCEL GUARD] cancellation request:", raw_message, "target:", target_time)
         try:
             reminders = call_mcp_tool("list_reminders", {"user_id": user_id})
-            target_id = _find_latest_reminder_id(reminders)
-            if not target_id:
-                result_text = "キャンセルできるリマインダーがありません。"
+            target_id = _find_reminder_id_by_datetime(reminders, target_time)
+            if target_time is not None and not target_id:
+                result_text = "指定した日時のリマインダーが見つかりませんでした。"
             else:
-                print("[REMINDER CANCEL GUARD] target id:", target_id)
-                result_text = call_mcp_tool(
-                    "cancel_reminder",
-                    {"user_id": user_id, "id": int(target_id)},
-                )
+                target_id = target_id or _find_latest_reminder_id(reminders)
+                if not target_id:
+                    result_text = "キャンセルできるリマインダーがありません。"
+                else:
+                    print("[REMINDER CANCEL GUARD] target id:", target_id)
+                    result_text = call_mcp_tool(
+                        "cancel_reminder",
+                        {"user_id": user_id, "id": int(target_id)},
+                    )
             provider = "mcp"
         except Exception as e:
             print("[REMINDER CANCEL GUARD] error:", e)
