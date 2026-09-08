@@ -6,6 +6,7 @@ python-dotenv
 pytest
 httpx
 langgraph==1.2.10
+langgraph-checkpoint-sqlite
 langchain-groq
 fastapi
 uvicorn[standard]
