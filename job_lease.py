@@ -1,4 +1,4 @@
-"""Small lease/recovery helpers for the SQLite-backed Job worker."""
+"""Lease/recovery helpers for the asynchronous Job worker."""
 
 from __future__ import annotations
 
@@ -11,14 +11,25 @@ DEFAULT_STALE_SECONDS = int(os.environ.get("JOB_STALE_SECONDS", "1800"))
 
 
 def recover_stale_jobs(stale_seconds: int = DEFAULT_STALE_SECONDS) -> list[int]:
-    """Move old running Jobs back to pending using updated_at as the lease clock."""
+    """Requeue running Jobs whose explicit lease has expired.
+
+    Legacy Jobs without lease_until still fall back to updated_at so existing
+    rows can be recovered safely after this schema migration.
+    """
+    stale_seconds = max(1, int(stale_seconds))
+    db.init_db()
     with db.get_conn() as conn:
         rows = conn.execute(
             """
             SELECT id
             FROM jobs
             WHERE status='running'
-              AND (julianday('now') - julianday(updated_at)) * 86400 > ?
+              AND (
+                    (lease_until IS NOT NULL AND julianday(lease_until) <= julianday('now'))
+                    OR
+                    (lease_until IS NULL
+                     AND (julianday('now') - julianday(updated_at)) * 86400 > ?)
+                  )
             ORDER BY id
             """,
             (stale_seconds,),
@@ -29,6 +40,8 @@ def recover_stale_jobs(stale_seconds: int = DEFAULT_STALE_SECONDS) -> list[int]:
                 """
                 UPDATE jobs
                 SET status='pending',
+                    worker_id=NULL,
+                    lease_until=NULL,
                     last_error='worker lease expired; job requeued',
                     updated_at=CURRENT_TIMESTAMP
                 WHERE id=? AND status='running'
