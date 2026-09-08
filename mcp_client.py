@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import uuid
 import httpx
@@ -6,11 +7,14 @@ import httpx
 from config import MCP_SERVER_URL, MCP_API_KEY
 
 
-def call_mcp_tool(tool_name, arguments, timeout=3.0):
+def call_mcp_tool(tool_name, arguments, timeout=None):
     """
     my-mcp-server の /mcp エンドポイントへ JSON-RPC で tools/call を送る。
     StreamableHTTPServerTransport はレスポンスを
     application/json または text/event-stream のどちらでも返し得るため両方に対応する。
+
+    MCP_TIMEOUT_SEC が設定されていればそれを使用し、未設定時は10秒。
+    Render Free等のcold startで3秒を超えるケースを考慮する。
     """
     print(f"[LOG] call_mcp_tool called: tool_name={tool_name}")
 
@@ -34,9 +38,16 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
         "Connection": "close"
     }
 
+    request_timeout = timeout
+    if request_timeout is None:
+        try:
+            request_timeout = float(os.getenv("MCP_TIMEOUT_SEC", "10"))
+        except ValueError:
+            request_timeout = 10.0
+
     import time
     print("BEFORE MCP REQUEST")
-    print("TIMEOUT:", timeout)
+    print("TIMEOUT:", request_timeout)
     print("POST START TIME:", time.time())
     try:
         print("REQUEST START")
@@ -46,7 +57,7 @@ def call_mcp_tool(tool_name, arguments, timeout=3.0):
             MCP_SERVER_URL,
             json=payload,
             headers=headers,
-            timeout=httpx.Timeout(timeout, connect=10.0),
+            timeout=httpx.Timeout(request_timeout, connect=10.0),
             follow_redirects=False,
         )
         print("MCP AFTER REQUESTS POST")
