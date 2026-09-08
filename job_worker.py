@@ -49,10 +49,12 @@ def _checkpoint_summary(values: dict) -> str:
 
 def _request_and_wait(job: dict, next_node: str, values: dict) -> dict:
     operation = APPROVAL_NODES[next_node]
+    existing = job_approvals.get(job["id"], operation)
     approval = job_approvals.request(job["id"], job["user_id"], operation)
     return {"status": "waiting_approval", "thread_id": _thread_id(job["id"]),
             "step_name": next_node, "next_step": next_node, "operation": operation,
-            "approval_id": approval["id"], "summary": _checkpoint_summary(values)}
+            "approval_id": approval["id"], "approval_created": existing is None,
+            "summary": _checkpoint_summary(values)}
 
 
 def execute_one_step(job: dict, graph=None) -> dict:
