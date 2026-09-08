@@ -110,7 +110,10 @@ def test_debug_without_actionable_error_finishes():
 
 def test_merge_and_deploy_routes_require_success():
     assert graph_module.route_from_commit({"commit_result": {"committed": True}}) == "publish_agent"
-    assert graph_module.route_from_publish({"publish_result": {"published": True}}) == "merge_agent"
+    assert graph_module.route_from_publish({"publish_result": {"published": True}}) == "review_agent"
+    assert graph_module.route_from_review({"review_result": {"status": "pending"}}) == "review_agent"
+    assert graph_module.route_from_review({"review_result": {"status": "passed"}}) == "merge_agent"
+    assert graph_module.route_from_review({"review_result": {"status": "failed"}}) == "finalizer"
     assert graph_module.route_from_merge({"merge_result": {"merged": True}}) == "deploy_agent"
     assert graph_module.route_from_merge({"merge_result": {"merged": False}}) == "finalizer"
 
@@ -129,7 +132,9 @@ def test_development_graph_has_bounded_repair_and_release_path():
         ("patch_agent", "test_agent"),
         ("test_agent", "commit_agent"),
         ("commit_agent", "publish_agent"),
-        ("publish_agent", "merge_agent"),
+        ("publish_agent", "review_agent"),
+        ("review_agent", "review_agent"),
+        ("review_agent", "merge_agent"),
         ("merge_agent", "deploy_agent"),
         ("deploy_agent", "finalizer"),
     }
