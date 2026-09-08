@@ -24,11 +24,11 @@ def patch_apply_node(state: AgentState) -> AgentState:
 
     fix_result = results.get("fix", {}) or {}
     patch_text = fix_result.get("patch", "")
-    workdir = os.environ.get("REPO_WORKDIR", os.getcwd())
+    workdir = state.get("workdir") or os.environ.get("REPO_WORKDIR") or os.getcwd()
     patch_result = apply_patch(patch_text, workdir)
     patch_result["skipped"] = False
     results["patch"] = patch_result
-    return {**state, "agent_results": results, "patch_result": patch_result}
+    return {**state, "agent_results": results, "patch_result": patch_result, "workdir": workdir}
 
 
 def patch_generate_node(state: AgentState) -> AgentState:
