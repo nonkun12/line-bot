@@ -83,7 +83,6 @@ app.register_blueprint(e2e_bp)
 def health():
     return jsonify({"ok": True}), 200
 
-# テスト互換用: 既存の app.client 参照を維持する
 client = _ai_client_client
 
 LINE_MAX_MESSAGE_LENGTH = 5000
@@ -214,6 +213,11 @@ _DELETE_ALL_MEMORY_PATTERN = re.compile(
 )
 
 
+def generate_ai_secretary_report(user_id):
+    """Compatibility wrapper used by existing report triggers/tests."""
+    return generate_secretary_report(user_id)
+
+
 def generate_reply(user_id, message):
     print("===== APP VERSION CHECK =====")
     print("GITHUB ROUTE ENABLED")
@@ -260,9 +264,7 @@ def generate_reply(user_id, message):
     return _extract_graph_reply(result)
 
 
-# n8n → /internal/ask を実際にFlaskへ登録する
-# これが無かったため、先ほどの専用ルートが実行されていなかった。
-register_internal_ask_route(app, INTERNAL_PUSH_KEY, generate_reply)
+register_internal_ask_route(app, INTERNAL_PUSH_KEY, generate_reply, push_func=_line_push)
 
 
 @app.route("/callback", methods=["POST"])
@@ -312,4 +314,8 @@ def _process_and_reply(event, user_id, text):
             _delegate_to_n8n(user_id, text, N8N_WEBHOOK_URL)
             return
         reply = generate_reply(user_id, text)
-        _line_reply(event.reply_token, reply)
+        try:
+            _line_reply(event.reply_token, reply)
+        except Exception as exc:
+            print("LINE REPLY ERROR; FALLING BACK TO PUSH:", exc)
+            _line_push(user_id, reply)
