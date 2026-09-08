@@ -8,6 +8,7 @@ validation and repair.
 from __future__ import annotations
 
 import os
+import posixpath
 import subprocess
 
 from langchain_groq import ChatGroq
@@ -18,6 +19,9 @@ from graph.state import AgentState
 MODEL = os.environ.get("DEVELOPMENT_AGENT_MODEL", "llama-3.3-70b-versatile")
 TIMEOUT = float(os.environ.get("DEVELOPMENT_AGENT_TIMEOUT", "30"))
 MAX_CONTEXT = int(os.environ.get("DEVELOPMENT_AGENT_CONTEXT", "30000"))
+
+_PROTECTED_EXACT = {".env", ".env.local", ".env.production", "chat.db", "secrets.json"}
+_PROTECTED_SUFFIXES = (".pem", ".key", ".p12", ".sqlite", ".sqlite3")
 
 _SYSTEM_PROMPT = """
 あなたは安全なソフトウェア開発Agentです。
@@ -36,6 +40,19 @@ _SYSTEM_PROMPT = """
 
 def _workdir() -> str:
     return os.environ.get("REPO_WORKDIR", os.getcwd())
+
+
+def _ensure_clean_worktree(workdir: str) -> None:
+    result = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=workdir, capture_output=True, text=True, timeout=10,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "git status failed")
+    if result.stdout.strip():
+        raise RuntimeError(
+            "development workspace is not clean; refusing to mix changes from another job"
+        )
 
 
 def _repo_context(workdir: str) -> str:
@@ -67,6 +84,30 @@ def _repo_context(workdir: str) -> str:
     return "".join(chunks)
 
 
+def _patch_paths(patch: str) -> set[str]:
+    paths: set[str] = set()
+    for line in patch.splitlines():
+        if line.startswith("+++ b/"):
+            paths.add(line[6:].strip().split("\t", 1)[0])
+        elif line.startswith("--- a/"):
+            paths.add(line[6:].strip().split("\t", 1)[0])
+    return {posixpath.normpath(path) for path in paths if path and path != "/dev/null"}
+
+
+def _validate_patch_paths(patch: str) -> None:
+    unsafe = []
+    for path in _patch_paths(patch):
+        name = posixpath.basename(path)
+        if path == ".git" or path.startswith(".git/") or name in _PROTECTED_EXACT:
+            unsafe.append(path)
+            continue
+        if name.endswith(_PROTECTED_SUFFIXES):
+            unsafe.append(path)
+            continue
+    if unsafe:
+        raise RuntimeError(f"generated patch targets protected files: {', '.join(sorted(unsafe))}")
+
+
 def _generate_patch(message: str, context: str) -> str:
     llm = ChatGroq(model=MODEL, temperature=0, api_key=GROQ_API_KEY, timeout=TIMEOUT)
     result = llm.invoke([
@@ -90,10 +131,12 @@ def development_agent_node(state: AgentState) -> AgentState:
     results = dict(state.get("agent_results", {}))
 
     try:
+        _ensure_clean_worktree(workdir)
         context = _repo_context(workdir)
         patch = _generate_patch(message, context)
         if not patch.startswith("diff --git "):
             raise RuntimeError("Development Agent did not return a unified diff")
+        _validate_patch_paths(patch)
 
         check = subprocess.run(
             ["git", "apply", "--check", "-"], cwd=workdir,
