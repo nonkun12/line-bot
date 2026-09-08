@@ -74,10 +74,20 @@ def execute_one_step(job: dict, graph=None) -> dict:
 
     if current_node in APPROVAL_NODES:
         operation = APPROVAL_NODES[current_node]
-        if job_approvals.status(job["id"], operation) != "approved":
+        approval_status = job_approvals.status(job["id"], operation)
+        if approval_status == "approved":
+            if not job_approvals.consume(job["id"], operation):
+                return _request_and_wait(job, current_node, snapshot.values or {})
+        elif approval_status in {"pending", "none"}:
             return _request_and_wait(job, current_node, snapshot.values or {})
-        if not job_approvals.consume(job["id"], operation):
-            return _request_and_wait(job, current_node, snapshot.values or {})
+        else:
+            return {
+                "status": "failed",
+                "thread_id": thread_id,
+                "step_name": current_node,
+                "error": f"{operation} approval {approval_status}",
+                "summary": f"{operation} approval {approval_status}",
+            }
 
     graph.invoke(input_state, config)
     snapshot = graph.get_state(config)
@@ -91,7 +101,7 @@ def execute_one_step(job: dict, graph=None) -> dict:
     if next_node in APPROVAL_NODES:
         return _request_and_wait(job, next_node, values)
     if current_node == "development_agent" and values.get("development_error"):
-        return {"status": "failed", "thread_id": thread_id, "step_name": current_node,
+        return {"status": "executor_failed", "thread_id": thread_id, "step_name": current_node,
                 "error": values["development_error"], "summary": _checkpoint_summary(values)}
     if current_node == "test_agent" and next_node == "debug_agent":
         return {"status": "test_failed", "thread_id": thread_id, "step_name": "test_agent",
@@ -156,6 +166,8 @@ def run_once(executor=None):
             checkpoint_status = "waiting_approval"
         elif status == "test_failed":
             return _handle_test_failure(job, result)
+        elif status == "executor_failed":
+            return _handle_executor_failure(job, RuntimeError(result.get("error") or result.get("summary") or "worker execution failed"))
         elif status == "step_completed":
             job_store.update_job(job_id, status="pending", result=result.get("summary", ""), last_error=None, clear_claimed_at=True)
             checkpoint_status = "completed"
