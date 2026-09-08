@@ -166,6 +166,16 @@ def run_once(executor=None):
         elif status == "waiting_approval":
             job_store.update_job(job_id, status="waiting_approval", result=result.get("summary", ""), last_error=None, clear_claimed_at=True)
             checkpoint_status = "waiting_approval"
+            job = job_store.get_job(job_id)
+            job["_worker_result"] = {
+                "status": status,
+                "operation": result.get("operation"),
+                "approval_id": result.get("approval_id"),
+                "approval_created": bool(result.get("approval_created")),
+                "step_name": result.get("step_name"),
+            }
+            job_store.save_checkpoint(job_id, result.get("step_name", "worker"), checkpoint_status, result.get("summary"))
+            return job
         elif status == "test_failed":
             return _handle_test_failure(job, result)
         elif status == "executor_failed":
