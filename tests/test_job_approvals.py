@@ -45,7 +45,7 @@ def test_worker_denied_approval_is_terminal(tmp_path, monkeypatch):
 
     class Snapshot:
         values = {"request_id": f"job-{job_id}"}
-        next = ("commit_agent",)
+        next = ("merge_agent",)
 
     class Graph:
         def get_state(self, _config):
