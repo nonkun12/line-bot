@@ -16,7 +16,7 @@ from job_orchestrator import (
     job_time_exceeded,
     test_failure_has_no_progress,
 )
-from job_workspace import workspace_for_job
+from job_workspace import restore_workspace_for_job, workspace_for_job
 
 
 APPROVAL_NODES = {"merge_agent": "commit", "deploy_agent": "deploy"}
@@ -37,7 +37,7 @@ def _thread_id(job_id: int) -> str:
     return f"job-{job_id}"
 
 
-def _initial_state(job: dict) -> dict:
+def _initial_state(job: dict, *, branch: str | None = None) -> dict:
     state = {
         "job_id": job["id"],
         "user_id": job["user_id"], "raw_message": job["message"],
@@ -45,8 +45,37 @@ def _initial_state(job: dict) -> dict:
         "agent_results": {},
     }
     if job.get("job_type") == "development":
-        state["workdir"] = workspace_for_job(job["id"])
+        state["workdir"] = workspace_for_job(job["id"], branch=branch)
     return state
+
+
+def _resume_workdir(values: dict, job: dict) -> dict:
+    """Restore a missing Job worktree from its published Job branch."""
+    if job.get("job_type") != "development":
+        return values
+    current = values.get("workdir")
+    if current and os.path.isdir(current):
+        return values
+
+    publish_result = values.get("publish_result") or {}
+    commit_result = values.get("commit_result") or {}
+    branch = (
+        (publish_result.get("branch"))
+        or ((publish_result.get("pr") or {}).get("head_branch"))
+        or (commit_result.get("branch"))
+    )
+    if not branch:
+        return values
+
+    try:
+        restored = restore_workspace_for_job(job["id"], branch)
+    except Exception as exc:
+        values = dict(values)
+        values["workdir_restore_error"] = str(exc)
+        return values
+    restored_values = dict(values)
+    restored_values["workdir"] = restored
+    return restored_values
 
 
 def _checkpoint_summary(values: dict) -> str:
@@ -54,6 +83,7 @@ def _checkpoint_summary(values: dict) -> str:
                "job_id": values.get("job_id"), "workdir": values.get("workdir"),
                "intent": values.get("intent"), "next_agent": values.get("next_agent"),
                "error": values.get("error"), "development_error": values.get("development_error"),
+               "workdir_restore_error": values.get("workdir_restore_error"),
                "test_result": values.get("test_result"), "publish_result": values.get("publish_result"),
                "merge_result": values.get("merge_result"), "deploy_result": values.get("deploy_result"),
                "final_reply": values.get("final_reply")}
@@ -82,7 +112,10 @@ def execute_one_step(job: dict, graph=None) -> dict:
     snapshot = graph.get_state(config)
     if snapshot.values:
         current_node = snapshot.next[0] if snapshot.next else None
+        resumed_values = _resume_workdir(dict(snapshot.values), job)
         input_state = None
+        if resumed_values != dict(snapshot.values):
+            input_state = resumed_values
     else:
         current_node = "development_agent" if job.get("job_type") == "development" else "supervisor"
         input_state = _initial_state(job)
