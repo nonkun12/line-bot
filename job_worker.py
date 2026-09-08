@@ -141,11 +141,18 @@ def execute_one_step(job: dict, graph=None) -> dict:
             "summary": _checkpoint_summary(values)}
 
 
+def _owned_update(job_id, **kwargs):
+    """Update a Job only while this worker still owns its active lease."""
+    return job_store.update_job_owned(job_id, WORKER_ID, **kwargs)
+
+
 def _apply_retry_decision(job, decision, result, *, checkpoint_prefix):
     status = decision.terminal_status
-    job_store.update_job(job["id"], status=status, result=result.get("summary", ""),
-                         last_error=decision.reason, retry_count=decision.retry_count,
-                         clear_claimed_at=True)
+    updated = _owned_update(job["id"], status=status, result=result.get("summary", ""),
+                            last_error=decision.reason, retry_count=decision.retry_count,
+                            clear_lease=True)
+    if not updated:
+        return job_store.get_job(job["id"])
     checkpoint_step = "test_agent" if checkpoint_prefix == "test" else checkpoint_prefix
     job_store.save_checkpoint(job["id"], checkpoint_step,
                               f"{checkpoint_prefix}_{'retry_scheduled' if decision.retry else 'retry_exhausted'}",
@@ -153,34 +160,36 @@ def _apply_retry_decision(job, decision, result, *, checkpoint_prefix):
     return job_store.get_job(job["id"])
 
 
-def _handle_executor_failure(job: dict, exc: Exception):
+def _handle_executor_failure(job, exc: Exception):
     return _apply_retry_decision(job, decide_executor_failure(job), {"summary": str(exc)}, checkpoint_prefix="executor")
 
 
-def _handle_test_failure(job: dict, result: dict):
+def _handle_test_failure(job, result: dict):
     if test_failure_has_no_progress(job.get("result"), result.get("summary")):
-        job_store.update_job(job["id"], status="failed", result=result.get("summary", ""),
-                             last_error="automated test failed; no progress detected",
-                             clear_claimed_at=True)
-        job_store.save_checkpoint(job["id"], "test_agent", "no_progress",
-                                  result.get("summary", ""))
+        updated = _owned_update(job["id"], status="failed", result=result.get("summary", ""),
+                                last_error="automated test failed; no progress detected",
+                                clear_lease=True)
+        if updated:
+            job_store.save_checkpoint(job["id"], "test_agent", "no_progress",
+                                      result.get("summary", ""))
         return job_store.get_job(job["id"])
     return _apply_retry_decision(job, decide_test_failure(job), result, checkpoint_prefix="test")
 
 
-def _handle_deploy_failure(job: dict, result: dict):
+def _handle_deploy_failure(job, result: dict):
     return _apply_retry_decision(job, decide_deploy_failure(job), result, checkpoint_prefix="deploy")
 
 
-def _handle_publish_failure(job: dict, result: dict):
+def _handle_publish_failure(job, result: dict):
     return _apply_retry_decision(job, decide_executor_failure(job), result, checkpoint_prefix="publish")
 
 
-def _fail_for_time_limit(job: dict):
+def _fail_for_time_limit(job):
     summary = "job total time limit exceeded"
-    job_store.update_job(job["id"], status="failed", result=summary,
-                         last_error=summary, clear_claimed_at=True)
-    job_store.save_checkpoint(job["id"], "worker", "time_limit_exceeded", summary)
+    updated = _owned_update(job["id"], status="failed", result=summary,
+                            last_error=summary, clear_lease=True)
+    if updated:
+        job_store.save_checkpoint(job["id"], "worker", "time_limit_exceeded", summary)
     return job_store.get_job(job["id"])
 
 
@@ -194,15 +203,21 @@ def run_once(executor=None):
     try:
         if job_time_exceeded(job):
             return _fail_for_time_limit(job)
-        job_store.renew_job_lease(job_id, WORKER_ID, lease_seconds=JOB_LEASE_SECONDS)
+        if not job_store.renew_job_lease(job_id, WORKER_ID, lease_seconds=JOB_LEASE_SECONDS):
+            return job_store.get_job(job_id)
         result = executor(job) if executor is not None else execute_one_step(job)
-        job_store.renew_job_lease(job_id, WORKER_ID, lease_seconds=JOB_LEASE_SECONDS)
+        if not job_store.renew_job_lease(job_id, WORKER_ID, lease_seconds=JOB_LEASE_SECONDS):
+            job_store.save_checkpoint(job_id, "worker", "lease_lost", "worker lease was lost before result commit")
+            return job_store.get_job(job_id)
         status = result.get("status")
         if status == "graph_done":
-            job_store.update_job(job_id, status="done", result=result.get("summary", ""), last_error=None, clear_claimed_at=True)
-            checkpoint_status = "completed"
+            updated = _owned_update(job_id, status="done", result=result.get("summary", ""), last_error=None, clear_lease=True)
+            checkpoint_status = "completed" if updated else "lease_lost"
         elif status == "waiting_approval":
-            job_store.update_job(job_id, status="waiting_approval", result=result.get("summary", ""), last_error=None, clear_claimed_at=True)
+            updated = _owned_update(job_id, status="waiting_approval", result=result.get("summary", ""),
+                                    last_error=None, clear_lease=True)
+            if not updated:
+                return job_store.get_job(job_id)
             checkpoint_status = "waiting_approval"
             job = job_store.get_job(job_id)
             job["_worker_result"] = {
@@ -223,12 +238,13 @@ def run_once(executor=None):
             return _handle_executor_failure(job, RuntimeError(result.get("error") or result.get("summary") or "worker execution failed"))
         elif status == "step_completed":
             retry_count = 0 if (result.get("step_name") == "test_agent" and result.get("next_step") == "commit_agent") else None
-            job_store.update_job(job_id, status="pending", result=result.get("summary", ""), last_error=None,
-                                 retry_count=retry_count, clear_claimed_at=True)
-            checkpoint_status = "completed"
+            updated = _owned_update(job_id, status="pending", result=result.get("summary", ""), last_error=None,
+                                    retry_count=retry_count, clear_lease=True)
+            checkpoint_status = "completed" if updated else "lease_lost"
         elif status == "failed":
-            job_store.update_job(job_id, status="failed", result=result.get("summary", ""), last_error=result.get("error"), clear_claimed_at=True)
-            checkpoint_status = "failed"
+            updated = _owned_update(job_id, status="failed", result=result.get("summary", ""),
+                                    last_error=result.get("error"), clear_lease=True)
+            checkpoint_status = "failed" if updated else "lease_lost"
         else:
             raise RuntimeError(f"unknown executor status: {status!r}")
         job_store.save_checkpoint(job_id, result.get("step_name", "worker"), checkpoint_status, result.get("summary"))
