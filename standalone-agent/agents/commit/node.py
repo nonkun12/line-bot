@@ -36,9 +36,18 @@ def _ensure_job_branch(workdir: str, job_id) -> str | None:
     current = _run_git(["branch", "--show-current"], cwd=workdir)
     if current.returncode == 0 and current.stdout.strip() == branch_name:
         return branch_name
-    switch = _run_git(["switch", "-C", branch_name], cwd=workdir)
+
+    exists = _run_git(
+        ["show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}"],
+        cwd=workdir,
+    )
+    if exists.returncode == 0:
+        switch = _run_git(["switch", branch_name], cwd=workdir)
+    else:
+        switch = _run_git(["switch", "-c", branch_name], cwd=workdir)
+
     if switch.returncode != 0:
-        raise RuntimeError(switch.stderr.strip() or "failed to create job branch")
+        raise RuntimeError(switch.stderr.strip() or "failed to select job branch")
     return branch_name
 
 
