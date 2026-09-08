@@ -193,8 +193,6 @@ def claim_pending_job(worker_id=None, lease_seconds=DEFAULT_JOB_LEASE_SECONDS):
     lease_seconds = max(1, int(lease_seconds))
     with get_conn() as conn:
         _ensure_job_columns(conn)
-        # ALTER TABLE on a legacy database may have opened a transaction.
-        # Commit that migration before acquiring the immediate write lock.
         conn.commit()
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
@@ -220,6 +218,23 @@ def claim_pending_job(worker_id=None, lease_seconds=DEFAULT_JOB_LEASE_SECONDS):
             return None
         conn.commit()
     return get_job(job_id)
+
+
+def renew_job_lease(job_id, worker_id, lease_seconds=DEFAULT_JOB_LEASE_SECONDS):
+    """Renew a running Job only when this worker still owns its lease."""
+    worker_id = str(worker_id)
+    lease_seconds = max(1, int(lease_seconds))
+    with get_conn() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE jobs
+            SET lease_until=datetime('now', ?),
+                updated_at=CURRENT_TIMESTAMP
+            WHERE id=? AND status='running' AND worker_id=?
+            """,
+            (f"+{lease_seconds} seconds", job_id, worker_id),
+        )
+        return cursor.rowcount == 1
 
 
 def update_job(job_id, status=None, result=None, last_error=None, retry_count=None,
