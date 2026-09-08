@@ -26,21 +26,17 @@ def _extract_search_keyword(message: str) -> str:
 
 
 def _normalize_natural_search_message(message: str) -> str:
-    # 「メモはある？」「私のメモは？」「メモを見せて」などは全件検索。
     if any(phrase in message for phrase in ["私のメモ", "メモはある", "メモある", "メモはあります", "メモあります"]):
         return ""
     exact_phrases = ["LINE Botのメモを探して", "メモを探して", "予定はある？", "予定はある?", "予定がありますか"]
     if message in exact_phrases:
         return "予定" if message.startswith("予定") else ""
-
-    # 予定・予約の確認は、その対象語だけを検索キーワードにする。
     if "予定" in message or "予約" in message:
         keyword = message
         for phrase in ["予定はある？", "予定はある?", "予定はありますか", "予定がある？", "予定がある?", "予定があります", "覚えてる？", "覚えてる?", "覚えていますか", "ありますか？", "ありますか?", "ある？", "ある?"]:
             keyword = keyword.replace(phrase, "")
         keyword = keyword.replace("私の", "").replace("覚えてる", "").replace("覚えています", "").replace("確認して", "").strip()
         return keyword or "予定"
-
     suffixes = [
         "LINE Botのメモを探して", "メモを探して", "メモを見せて", "メモを検索して",
         "を検索して", "を探して", "を見せて",
@@ -100,7 +96,8 @@ def handle_natural_note_search(message: str, user_id: str, call_mcp_tool: CallMc
 
 
 def handle_save_note(message: str, user_id: str, call_mcp_tool: CallMcpTool) -> Any:
-    body = re.sub(r"^メモして\s*[:：]?\s*", "", message)
+    body = re.sub(r"^(?:メモして|メモに)\s*[:：]?\s*", "", message)
+    body = re.sub(r"\s*保存して\s*$", "", body).strip()
     category = _classify_note_category(body)
     return call_mcp_tool("save_note", {"user_id": user_id, "title": "LINEメモ", "body": body, "category": category})
 
@@ -117,11 +114,9 @@ def handle_delete_note(message: str, user_id: str, call_mcp_tool: CallMcpTool) -
     id_match = re.match(r"^ID\s*(\d+)\s*(?:を)?(?:消して|消す|削除して|削除する|削除)$", message, re.IGNORECASE)
     if id_match:
         return call_mcp_tool("delete_note", {"user_id": user_id, "id": id_match.group(1)})
-
     natural_match = re.search(r"(\d+)番.*メモ.*削除", message)
     if natural_match:
         return call_mcp_tool("delete_note", {"user_id": user_id, "id": natural_match.group(1)})
-
     if message.startswith("メモ削除"):
         note_id = unicodedata.normalize("NFKC", message.replace("メモ削除", "").strip())
         if not note_id:
@@ -157,7 +152,7 @@ def handle_note_message(message: str, user_id: str, call_mcp_tool: CallMcpTool) 
         return handle_list_notes(user_id, call_mcp_tool)
     if message.startswith("メモ検索"):
         return handle_search_notes(message, user_id, call_mcp_tool)
-    if message.startswith("メモして"):
+    if message.startswith("メモして") or re.match(r"^メモに\s*.+保存して[。！!？?]?$", message):
         return handle_save_note(message, user_id, call_mcp_tool)
     if _is_delete_all_notes_message(message):
         _set_pending_note_action(user_id, "delete_all_notes")
