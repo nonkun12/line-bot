@@ -28,24 +28,17 @@ def _thread_id(job_id: int) -> str:
 
 def _initial_state(job: dict) -> dict:
     return {
-        "user_id": job["user_id"],
-        "raw_message": job["message"],
-        "job_type": job.get("job_type", "ai_task"),
-        "request_id": _thread_id(job["id"]),
+        "user_id": job["user_id"], "raw_message": job["message"],
+        "job_type": job.get("job_type", "ai_task"), "request_id": _thread_id(job["id"]),
         "agent_results": {},
     }
 
 
 def _checkpoint_summary(values: dict) -> str:
-    payload = {
-        "thread_id": values.get("request_id"),
-        "job_type": values.get("job_type"),
-        "intent": values.get("intent"),
-        "next_agent": values.get("next_agent"),
-        "error": values.get("error"),
-        "test_result": values.get("test_result"),
-        "final_reply": values.get("final_reply"),
-    }
+    payload = {"thread_id": values.get("request_id"), "job_type": values.get("job_type"),
+               "intent": values.get("intent"), "next_agent": values.get("next_agent"),
+               "error": values.get("error"), "development_error": values.get("development_error"),
+               "test_result": values.get("test_result"), "final_reply": values.get("final_reply")}
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
@@ -62,8 +55,7 @@ def execute_one_step(job: dict, graph=None) -> dict:
     thread_id = _thread_id(job["id"])
     config = {"configurable": {"thread_id": thread_id}}
     snapshot = graph.get_state(config)
-    has_previous_state = bool(snapshot.values)
-    if has_previous_state:
+    if snapshot.values:
         current_node = snapshot.next[0] if snapshot.next else None
         input_state = None
     else:
@@ -88,6 +80,9 @@ def execute_one_step(job: dict, graph=None) -> dict:
     next_node = next_nodes[0]
     if next_node in APPROVAL_NODES:
         return _request_and_wait(job, next_node, values)
+    if current_node == "development_agent" and values.get("development_error"):
+        return {"status": "failed", "thread_id": thread_id, "step_name": current_node,
+                "error": values["development_error"], "summary": _checkpoint_summary(values)}
     if current_node == "test_agent" and next_node == "debug_agent":
         return {"status": "test_failed", "thread_id": thread_id, "step_name": "test_agent",
                 "next_step": next_node, "test_result": values.get("test_result") or {},
