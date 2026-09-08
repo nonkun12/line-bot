@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import socket
 
 import job_approvals
 import job_store
@@ -18,6 +20,8 @@ from job_orchestrator import (
 
 APPROVAL_NODES = {"commit_agent": "commit", "deploy_agent": "deploy"}
 _WORKER_GRAPH = None
+WORKER_ID = os.environ.get("JOB_WORKER_ID") or f"{socket.gethostname()}:{os.getpid()}"
+JOB_LEASE_SECONDS = int(os.environ.get("JOB_LEASE_SECONDS", "300"))
 
 
 def _get_worker_graph():
@@ -125,7 +129,7 @@ def execute_one_step(job: dict, graph=None) -> dict:
             "summary": _checkpoint_summary(values)}
 
 
-def _apply_retry_decision(job: dict, decision, result: dict, *, checkpoint_prefix: str):
+def _apply_retry_decision(job, decision, result, *, checkpoint_prefix):
     status = decision.terminal_status
     job_store.update_job(job["id"], status=status, result=result.get("summary", ""),
                          last_error=decision.reason, retry_count=decision.retry_count,
@@ -166,11 +170,11 @@ def _fail_for_time_limit(job: dict):
 
 def run_once(executor=None):
     recover_stale_jobs()
-    job = job_store.claim_pending_job()
+    job = job_store.claim_pending_job(worker_id=WORKER_ID, lease_seconds=JOB_LEASE_SECONDS)
     if job is None:
         return None
     job_id = job["id"]
-    job_store.save_checkpoint(job_id, "worker", "started")
+    job_store.save_checkpoint(job_id, "worker", "started", WORKER_ID)
     try:
         if job_time_exceeded(job):
             return _fail_for_time_limit(job)
