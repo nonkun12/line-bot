@@ -1,4 +1,4 @@
-"""LangGraph worker graph with a bounded Test -> Debug -> Fix cycle."""
+"""LangGraph worker graph with autonomous development and bounded repair cycles."""
 
 import os
 import sqlite3
@@ -9,6 +9,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from graph.state import AgentState
 from graph.supervisor import supervisor_node
 from graph.router import route_from_supervisor
+from agents.development.node import development_agent_node
 from agents.debug.node import debug_agent_node
 from agents.memory.node import memory_agent_node
 from agents.notes.node import notes_agent_node
@@ -26,7 +27,6 @@ notes_agent_node = with_execution_logging(notes_agent_node, "notes", get_default
 memory_agent_node = with_execution_logging(memory_agent_node, "memory", get_default_adapter())
 normal_agent_node = with_execution_logging(normal_agent_node, "normal", get_default_adapter())
 work_status_agent_node = with_execution_logging(work_status_agent_node, "work_status", get_default_adapter())
-
 from agents.fix.node import fix_agent_node
 from agents.patch.node import patch_apply_node, patch_generate_node
 from agents.test.node import test_runner_node
@@ -39,6 +39,7 @@ patch_apply_node = with_execution_logging(patch_apply_node, "patch_apply", get_d
 test_runner_node = with_execution_logging(test_runner_node, "test", get_default_adapter())
 commit_node = with_execution_logging(commit_node, "commit", get_default_adapter())
 deploy_node = with_execution_logging(deploy_node, "deploy", get_default_adapter())
+development_agent_node = with_execution_logging(development_agent_node, "development", get_default_adapter())
 
 
 def fallback_node(state: AgentState) -> AgentState:
@@ -55,17 +56,7 @@ def finalize_node(state: AgentState) -> AgentState:
         reply = results.get("fallback", "対応できません")
     else:
         lines = []
-        for key, label, field in (
-            ("debug", "Debug", "text"),
-            ("notes", "Notes", "text"),
-            ("memory", "Memory", "text"),
-            ("weather", "Weather", "text"),
-            ("work_status", None, "text"),
-            ("normal", None, "text"),
-            ("github", "GitHub", "text"),
-            ("sheets", "Sheets", "text"),
-            ("fix", "Fix", "summary"),
-        ):
+        for key, label, field in (("debug", "Debug", "text"), ("notes", "Notes", "text"), ("memory", "Memory", "text"), ("weather", "Weather", "text"), ("work_status", None, "text"), ("normal", None, "text"), ("github", "GitHub", "text"), ("sheets", "Sheets", "text"), ("fix", "Fix", "summary"), ("development", "Development", "summary")):
             value = results.get(key, {})
             if not value:
                 continue
@@ -80,11 +71,9 @@ def finalize_node(state: AgentState) -> AgentState:
 
 
 def route_from_debug(state: AgentState) -> str:
-    # Test failure is a first-class Debug trigger for overnight development.
     test_result = state.get("test_result") or {}
     if test_result.get("passed") is False and not test_result.get("skipped"):
         return "fix_agent"
-
     try:
         has_traceback = state["agent_results"]["debug"]["structured"]["error_info"]["has_traceback"]
     except (KeyError, TypeError):
@@ -93,26 +82,26 @@ def route_from_debug(state: AgentState) -> str:
 
 
 def route_from_test(state: AgentState) -> str:
-    """Cycle failed tests back to Debug; only passing/skipped tests may commit."""
     test_result = state.get("test_result") or {}
     if test_result.get("passed") is False and not test_result.get("skipped"):
         return "debug_agent"
     return "commit_agent"
 
 
+def route_from_start(state: AgentState) -> str:
+    return "development_agent" if state.get("job_type") == "development" else "supervisor"
+
+
 WORKER_STEP_NODES = [
-    "supervisor", "debug_agent", "notes_agent", "memory_agent", "normal_agent",
-    "work_status_agent", "fix_agent", "patch_generate_agent", "patch_agent",
-    "test_agent", "github_agent", "sheets_agent", "weather_agent", "fallback_agent",
+    "supervisor", "development_agent", "debug_agent", "notes_agent", "memory_agent", "normal_agent",
+    "work_status_agent", "fix_agent", "patch_generate_agent", "patch_agent", "test_agent",
+    "github_agent", "sheets_agent", "weather_agent", "fallback_agent",
 ]
 WORKER_APPROVAL_NODES = ["commit_agent", "deploy_agent"]
 
 
 def _build_checkpointer():
-    path = os.environ.get(
-        "LANGGRAPH_CHECKPOINT_DB",
-        os.path.join(os.path.dirname(os.path.dirname(__file__)), "langgraph-checkpoints.sqlite3"),
-    )
+    path = os.environ.get("LANGGRAPH_CHECKPOINT_DB", os.path.join(os.path.dirname(os.path.dirname(__file__)), "langgraph-checkpoints.sqlite3"))
     conn = sqlite3.connect(path, check_same_thread=False)
     return SqliteSaver(conn)
 
@@ -120,6 +109,7 @@ def _build_checkpointer():
 def build_graph(*, checkpointer=None, interrupt_after=None, interrupt_before=None):
     builder = StateGraph(AgentState)
     builder.add_node("supervisor", supervisor_node)
+    builder.add_node("development_agent", development_agent_node)
     builder.add_node("debug_agent", debug_agent_node)
     builder.add_node("notes_agent", notes_agent_node)
     builder.add_node("memory_agent", memory_agent_node)
@@ -137,23 +127,20 @@ def build_graph(*, checkpointer=None, interrupt_after=None, interrupt_before=Non
     builder.add_node("fallback_agent", fallback_node)
     builder.add_node("finalizer", finalize_node)
 
-    builder.add_edge(START, "supervisor")
+    builder.add_conditional_edges(START, route_from_start, {"development_agent": "development_agent", "supervisor": "supervisor"})
+    builder.add_edge("development_agent", "test_agent")
     builder.add_conditional_edges("supervisor", route_from_supervisor, {
         "debug_agent": "debug_agent", "notes_agent": "notes_agent", "memory_agent": "memory_agent",
         "github_agent": "github_agent", "sheets_agent": "sheets_agent", "normal_agent": "normal_agent",
         "weather_agent": "weather_agent", "work_status_agent": "work_status_agent", "fallback_agent": "fallback_agent",
     })
-    builder.add_conditional_edges("debug_agent", route_from_debug, {
-        "fix_agent": "fix_agent", "finalizer": "finalizer",
-    })
+    builder.add_conditional_edges("debug_agent", route_from_debug, {"fix_agent": "fix_agent", "finalizer": "finalizer"})
     for node in ("notes_agent", "memory_agent", "normal_agent", "github_agent", "sheets_agent", "weather_agent", "work_status_agent", "fallback_agent"):
         builder.add_edge(node, "finalizer")
     builder.add_edge("fix_agent", "patch_generate_agent")
     builder.add_edge("patch_generate_agent", "patch_agent")
     builder.add_edge("patch_agent", "test_agent")
-    builder.add_conditional_edges("test_agent", route_from_test, {
-        "debug_agent": "debug_agent", "commit_agent": "commit_agent",
-    })
+    builder.add_conditional_edges("test_agent", route_from_test, {"debug_agent": "debug_agent", "commit_agent": "commit_agent"})
     builder.add_edge("commit_agent", "deploy_agent")
     builder.add_edge("deploy_agent", "finalizer")
     builder.add_edge("finalizer", END)
@@ -169,11 +156,7 @@ def build_graph(*, checkpointer=None, interrupt_after=None, interrupt_before=Non
 
 
 def build_worker_graph():
-    return build_graph(
-        checkpointer=_build_checkpointer(),
-        interrupt_after=WORKER_STEP_NODES,
-        interrupt_before=WORKER_APPROVAL_NODES,
-    )
+    return build_graph(checkpointer=_build_checkpointer(), interrupt_after=WORKER_STEP_NODES, interrupt_before=WORKER_APPROVAL_NODES)
 
 
 graph = build_graph()
