@@ -2,7 +2,7 @@
 LangGraph Phase1: Supervisorノード。
 
 責務:
-- raw_message から intent を判定する
+- raw_message からintentを判定する
 - next_agent を決定する
 
 やらないこと:
@@ -34,13 +34,12 @@ _INTENT_TO_AGENT = {
     "weather": "weather",
     # "unsupported" (=GitHub/Debug/Memory/Notesのいずれにも該当しない通常
     # メッセージ) は、旧 generate_reply() 末尾にあった通常のGroq応答へ
-    # 振り分ける。以前はここが "fallback" 固定になっており、
-    # 通常のAI応答ルートが存在していなかった(未移植の原因)。
+    # 振り分ける。
     "unsupported": "normal",
 }
 
 
-def classify_intent(raw_message: str) -> str:
+def classify_intent(raw_message: str, user_id: str | None = None) -> str:
     """
     メッセージ内容からintentを判定する。
     明示的なメモ保存・検索依頼は、時間表現など他の意図よりNotesを優先する。
@@ -56,7 +55,8 @@ def classify_intent(raw_message: str) -> str:
     # 「メモに、明日の10時にテストすると保存して」のように、
     # メモ依頼の本文に日時が含まれていてもNotesを最優先する。
     # これを他のAgent判定より先に置き、set_reminderへの誤ルーティングを防止する。
-    if is_note_intent(text):
+    # 「はい」のような保留中の確認も、元のuser_idを渡してNotes側で処理する。
+    if is_note_intent(text, user_id=user_id):
         print("SUPERVISOR: note intent (priority)")
         return "note"
 
@@ -90,17 +90,16 @@ def supervisor_node(state: AgentState) -> AgentState:
     """
     Supervisorノード本体。
 
-    intent判定とnext_agent決定のみ行う。
+    Supervisorでintent判定とnext_agent決定のみ行う。
     """
     raw_message = state.get("raw_message", "")
+    user_id = state.get("user_id")
 
-    intent = classify_intent(raw_message)
+    intent = classify_intent(raw_message, user_id=user_id)
     next_agent = _INTENT_TO_AGENT.get(
         intent,
         "fallback"
     )
-
-    user_id = state.get("user_id")
 
     pending_status = (
         get_pending_status(user_id).value
