@@ -1,0 +1,31 @@
+name: Overnight Worker Test
+
+on:
+  pull_request:
+    paths:
+      - 'development_jobs.py'
+      - 'job_*.py'
+      - 'standalone-agent/**'
+      - 'standalone_agent_graph.py'
+      - 'tests/test_development_jobs.py'
+      - 'requirements.txt'
+  push:
+    branches:
+      - feat/overnight-dev-worker
+
+jobs:
+  worker-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Test development job intake
+        run: pytest -q tests/test_development_jobs.py
+      - name: Import worker components
+        run: python -c "import job_worker; import standalone_agent_graph; print('worker imports OK')"
