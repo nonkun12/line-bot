@@ -8,6 +8,7 @@ import job_approvals
 import job_store
 from job_lease import recover_stale_jobs
 from job_orchestrator import (
+    decide_deploy_failure,
     decide_executor_failure,
     decide_test_failure,
     job_time_exceeded,
@@ -43,7 +44,8 @@ def _checkpoint_summary(values: dict) -> str:
     payload = {"thread_id": values.get("request_id"), "job_type": values.get("job_type"),
                "intent": values.get("intent"), "next_agent": values.get("next_agent"),
                "error": values.get("error"), "development_error": values.get("development_error"),
-               "test_result": values.get("test_result"), "final_reply": values.get("final_reply")}
+               "test_result": values.get("test_result"), "deploy_result": values.get("deploy_result"),
+               "final_reply": values.get("final_reply")}
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
@@ -84,9 +86,7 @@ def execute_one_step(job: dict, graph=None) -> dict:
             return _request_and_wait(job, current_node, snapshot.values or {})
         else:
             return {
-                "status": "failed",
-                "thread_id": thread_id,
-                "step_name": current_node,
+                "status": "failed", "thread_id": thread_id, "step_name": current_node,
                 "error": f"{operation} approval {approval_status}",
                 "summary": f"{operation} approval {approval_status}",
             }
@@ -109,6 +109,17 @@ def execute_one_step(job: dict, graph=None) -> dict:
         return {"status": "test_failed", "thread_id": thread_id, "step_name": "test_agent",
                 "next_step": next_node, "test_result": values.get("test_result") or {},
                 "summary": _checkpoint_summary(values)}
+    if current_node == "deploy_agent":
+        deploy_result = values.get("deploy_result") or {}
+        if deploy_result.get("pending"):
+            return {"status": "step_completed", "thread_id": thread_id,
+                    "step_name": current_node, "next_step": next_node,
+                    "summary": _checkpoint_summary(values)}
+        if deploy_result.get("deployed") is False:
+            return {"status": "deploy_failed", "thread_id": thread_id,
+                    "step_name": current_node, "next_step": next_node,
+                    "deploy_result": deploy_result,
+                    "summary": _checkpoint_summary(values)}
     return {"status": "step_completed", "thread_id": thread_id,
             "step_name": current_node or "unknown", "next_step": next_node,
             "summary": _checkpoint_summary(values)}
@@ -119,7 +130,8 @@ def _apply_retry_decision(job: dict, decision, result: dict, *, checkpoint_prefi
     job_store.update_job(job["id"], status=status, result=result.get("summary", ""),
                          last_error=decision.reason, retry_count=decision.retry_count,
                          clear_claimed_at=True)
-    job_store.save_checkpoint(job["id"], "test_agent" if checkpoint_prefix == "test" else "worker",
+    checkpoint_step = "test_agent" if checkpoint_prefix == "test" else checkpoint_prefix
+    job_store.save_checkpoint(job["id"], checkpoint_step,
                               f"{checkpoint_prefix}_{'retry_scheduled' if decision.retry else 'retry_exhausted'}",
                               result.get("summary", ""))
     return job_store.get_job(job["id"])
@@ -138,6 +150,10 @@ def _handle_test_failure(job: dict, result: dict):
                                   result.get("summary", ""))
         return job_store.get_job(job["id"])
     return _apply_retry_decision(job, decide_test_failure(job), result, checkpoint_prefix="test")
+
+
+def _handle_deploy_failure(job: dict, result: dict):
+    return _apply_retry_decision(job, decide_deploy_failure(job), result, checkpoint_prefix="deploy")
 
 
 def _fail_for_time_limit(job: dict):
@@ -168,8 +184,7 @@ def run_once(executor=None):
             checkpoint_status = "waiting_approval"
             job = job_store.get_job(job_id)
             job["_worker_result"] = {
-                "status": status,
-                "operation": result.get("operation"),
+                "status": status, "operation": result.get("operation"),
                 "approval_id": result.get("approval_id"),
                 "approval_created": bool(result.get("approval_created")),
                 "step_name": result.get("step_name"),
@@ -178,10 +193,14 @@ def run_once(executor=None):
             return job
         elif status == "test_failed":
             return _handle_test_failure(job, result)
+        elif status == "deploy_failed":
+            return _handle_deploy_failure(job, result)
         elif status == "executor_failed":
             return _handle_executor_failure(job, RuntimeError(result.get("error") or result.get("summary") or "worker execution failed"))
         elif status == "step_completed":
-            job_store.update_job(job_id, status="pending", result=result.get("summary", ""), last_error=None, clear_claimed_at=True)
+            retry_count = 0 if (result.get("step_name") == "test_agent" and result.get("next_step") == "commit_agent") else None
+            job_store.update_job(job_id, status="pending", result=result.get("summary", ""), last_error=None,
+                                 retry_count=retry_count, clear_claimed_at=True)
             checkpoint_status = "completed"
         elif status == "failed":
             job_store.update_job(job_id, status="failed", result=result.get("summary", ""), last_error=result.get("error"), clear_claimed_at=True)
