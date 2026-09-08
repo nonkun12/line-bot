@@ -18,6 +18,7 @@ from agents.sheets.node import sheets_agent_node
 from agents.normal.node import normal_agent_node
 from agents.weather.node import weather_agent_node
 from agents.work_status.node import work_status_agent_node
+from agents.publish.node import publish_node
 from dev_notes.wrappers.graph_node_wrapper import with_execution_logging
 from dev_notes.factory import get_default_adapter
 
@@ -38,6 +39,7 @@ patch_generate_node = with_execution_logging(patch_generate_node, "patch_generat
 patch_apply_node = with_execution_logging(patch_apply_node, "patch_apply", get_default_adapter())
 test_runner_node = with_execution_logging(test_runner_node, "test", get_default_adapter())
 commit_node = with_execution_logging(commit_node, "commit", get_default_adapter())
+publish_node = with_execution_logging(publish_node, "publish", get_default_adapter())
 deploy_node = with_execution_logging(deploy_node, "deploy", get_default_adapter())
 development_agent_node = with_execution_logging(development_agent_node, "development", get_default_adapter())
 
@@ -62,7 +64,7 @@ def finalize_node(state: AgentState) -> AgentState:
                 continue
             text = value.get(field, "") if isinstance(value, dict) else str(value)
             lines.append(f"【{label}】\n{text}" if label else text)
-        for key, label in (("patch", "Patch"), ("test", "Test"), ("commit", "Commit"), ("deploy", "Deploy")):
+        for key, label in (("patch", "Patch"), ("test", "Test"), ("commit", "Commit"), ("publish", "Publish"), ("deploy", "Deploy")):
             value = results.get(key, {})
             if value:
                 lines.append(f"【{label}】\n{value}")
@@ -88,6 +90,16 @@ def route_from_test(state: AgentState) -> str:
     return "commit_agent"
 
 
+def route_from_commit(state: AgentState) -> str:
+    commit_result = state.get("commit_result") or {}
+    return "publish_agent" if commit_result.get("committed") else "finalizer"
+
+
+def route_from_publish(state: AgentState) -> str:
+    publish_result = state.get("publish_result") or {}
+    return "deploy_agent" if publish_result.get("published") else "finalizer"
+
+
 def route_from_start(state: AgentState) -> str:
     return "development_agent" if state.get("job_type") == "development" else "supervisor"
 
@@ -95,7 +107,7 @@ def route_from_start(state: AgentState) -> str:
 WORKER_STEP_NODES = [
     "supervisor", "development_agent", "debug_agent", "notes_agent", "memory_agent", "normal_agent",
     "work_status_agent", "fix_agent", "patch_generate_agent", "patch_agent", "test_agent",
-    "github_agent", "sheets_agent", "weather_agent", "fallback_agent",
+    "github_agent", "sheets_agent", "weather_agent", "fallback_agent", "publish_agent",
 ]
 WORKER_APPROVAL_NODES = ["commit_agent", "deploy_agent"]
 
@@ -120,6 +132,7 @@ def build_graph(*, checkpointer=None, interrupt_after=None, interrupt_before=Non
     builder.add_node("patch_agent", patch_apply_node)
     builder.add_node("test_agent", test_runner_node)
     builder.add_node("commit_agent", commit_node)
+    builder.add_node("publish_agent", publish_node)
     builder.add_node("github_agent", github_agent_node)
     builder.add_node("sheets_agent", sheets_agent_node)
     builder.add_node("weather_agent", weather_agent_node)
@@ -141,7 +154,8 @@ def build_graph(*, checkpointer=None, interrupt_after=None, interrupt_before=Non
     builder.add_edge("patch_generate_agent", "patch_agent")
     builder.add_edge("patch_agent", "test_agent")
     builder.add_conditional_edges("test_agent", route_from_test, {"debug_agent": "debug_agent", "commit_agent": "commit_agent"})
-    builder.add_edge("commit_agent", "deploy_agent")
+    builder.add_conditional_edges("commit_agent", route_from_commit, {"publish_agent": "publish_agent", "finalizer": "finalizer"})
+    builder.add_conditional_edges("publish_agent", route_from_publish, {"deploy_agent": "deploy_agent", "finalizer": "finalizer"})
     builder.add_edge("deploy_agent", "finalizer")
     builder.add_edge("finalizer", END)
 
