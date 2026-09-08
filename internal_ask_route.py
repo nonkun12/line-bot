@@ -64,18 +64,16 @@ def _handle_job_approval(user_id: str, message: str):
 
     if decision == "approve":
         changed = job_approvals.approve(job_id, operation, str(user_id))
-        return (
-            f"Job ID: {job_id} の{operation}を承認しました。Workerを再開します。"
-            if changed else
-            f"Job ID: {job_id} の{operation}承認は現在変更できません。"
-        )
+        if changed:
+            job_store.update_job(job_id, status="pending", last_error=None)
+            return f"Job ID: {job_id} の{operation}を承認しました。Workerを再開します。"
+        return f"Job ID: {job_id} の{operation}承認は現在変更できません。"
 
     changed = job_approvals.reject(job_id, operation)
-    return (
-        f"Job ID: {job_id} の{operation}を却下しました。Jobを終了します。"
-        if changed else
-        f"Job ID: {job_id} の{operation}却下は現在変更できません。"
-    )
+    if changed:
+        job_store.update_job(job_id, status="failed", last_error=f"{operation} approval rejected")
+        return f"Job ID: {job_id} の{operation}を却下しました。Jobを終了します。"
+    return f"Job ID: {job_id} の{operation}却下は現在変更できません。"
 
 
 def _notify_new_approval(job: dict, result: dict) -> None:
@@ -99,7 +97,15 @@ def _notify_new_approval(job: dict, result: dict) -> None:
         print("JOB APPROVAL NOTIFICATION ERROR:", exc)
 
 
-def register_internal_ask_route(app, internal_push_key, generate_reply_func):
+def register_internal_ask_route(app, internal_push_key, generate_reply_func, push_func=None):
+    def _push(user_id: str, message: str):
+        if push_func is not None:
+            return push_func(user_id, message)
+        with ApiClient(configuration) as api:
+            return MessagingApi(api).push_message(
+                PushMessageRequest(to=str(user_id), messages=[TextMessage(text=str(message))])
+            )
+
     @app.route("/internal/ask", methods=["POST"])
     def internal_ask():
         provided_key = request.headers.get("x-internal-key")
@@ -119,7 +125,6 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         if approval_reply is not None:
             return jsonify({"ok": True, "reply": approval_reply})
 
-        # 明示的な開発依頼は通常の会話回答に流さずJob化する。
         try:
             from development_jobs import is_development_request, enqueue_development_job
             if is_development_request(str(message)):
@@ -163,6 +168,23 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
             print("JOB WORKER ERROR:", exc)
             return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
 
+    @app.route("/internal/ai-report", methods=["POST"])
+    def internal_ai_report():
+        provided_key = request.headers.get("x-internal-key")
+        if provided_key != internal_push_key:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+        data = request.get_json(silent=True) or {}
+        user_id = data.get("user_id")
+        if not user_id:
+            return jsonify({"ok": False, "error": "user_id is required"}), 400
+        try:
+            reply = generate_reply_func(str(user_id), "Daily AI Repo")
+            _push(str(user_id), str(reply or ""))
+            return jsonify({"ok": True})
+        except Exception as exc:
+            print("INTERNAL AI REPORT ERROR:", exc)
+            return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+
     @app.route("/internal/push", methods=["POST"])
     def internal_push():
         provided_key = request.headers.get("x-internal-key")
@@ -171,11 +193,10 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         data = request.get_json(silent=True) or {}
         user_id = data.get("user_id")
         message = data.get("message")
-        if not user_id or message is None:
+        if not user_id or message is None or str(message) == "":
             return jsonify({"ok": False, "error": "user_id and message are required"}), 400
         try:
-            with ApiClient(configuration) as api:
-                MessagingApi(api).push_message(PushMessageRequest(to=str(user_id), messages=[TextMessage(text=str(message))]))
+            _push(str(user_id), str(message))
             return jsonify({"ok": True})
         except Exception as exc:
             print("INTERNAL PUSH ERROR:", exc)
