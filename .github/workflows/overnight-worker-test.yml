@@ -16,6 +16,13 @@ on:
 jobs:
   worker-test:
     runs-on: ubuntu-latest
+    env:
+      CHANNEL_ACCESS_TOKEN: test-token
+      CHANNEL_SECRET: test-secret
+      GROQ_API_KEY: test-groq-key
+      MCP_SERVER_URL: https://example.invalid/mcp
+      MCP_API_KEY: test-mcp-key
+      INTERNAL_PUSH_KEY: test-internal-key
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
