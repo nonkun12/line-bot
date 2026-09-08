@@ -16,6 +16,7 @@ from typing import Optional
 
 
 DEFAULT_JOB_MAX_SECONDS = int(os.environ.get("JOB_MAX_SECONDS", "21600"))
+DEPLOY_MAX_RETRIES = max(0, int(os.environ.get("DEPLOY_MAX_RETRIES", "1")))
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,14 @@ def decide_executor_failure(job: dict) -> RetryDecision:
     if retry_count <= max_retries:
         return RetryDecision(retry_count, True, "pending", "worker execution failed; retry scheduled")
     return RetryDecision(retry_count, False, "failed", "worker execution failed; retry limit reached")
+
+
+def decide_deploy_failure(job: dict) -> RetryDecision:
+    """Use a small, separate retry budget for real deployment failures."""
+    retry_count = int(job.get("retry_count") or 0) + 1
+    if retry_count <= DEPLOY_MAX_RETRIES:
+        return RetryDecision(retry_count, True, "pending", "deployment failed; one bounded deploy retry scheduled")
+    return RetryDecision(retry_count, False, "failed", "deployment failed; deploy retry limit reached")
 
 
 def _parse_timestamp(value) -> Optional[datetime]:
