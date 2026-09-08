@@ -13,6 +13,10 @@ GIT_COMMAND_TIMEOUT = float(os.environ.get("GIT_COMMAND_TIMEOUT", "30.0"))
 GITHUB_API = "https://api.github.com"
 
 
+def _publish_enabled() -> bool:
+    return os.environ.get("AUTO_PUBLISH_JOB_BRANCH", "false").lower() == "true"
+
+
 def _run_git(args: list[str], cwd: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["git", *args], cwd=cwd, capture_output=True, text=True,
@@ -46,8 +50,6 @@ def _push_branch(workdir: str, branch: str) -> None:
     if remote.returncode != 0 or not remote.stdout.strip():
         raise RuntimeError("git origin remote is not configured")
 
-    # The credential is supplied only for this process; it is never written to
-    # .git/config or the remote URL, avoiding persistent token leakage.
     token = _token()
     if not token:
         raise RuntimeError("GITHUB_TOKEN is not configured")
@@ -114,6 +116,14 @@ def publish_job_branch(state: dict) -> dict:
     branch = commit_result.get("branch") or (f"worker/job-{job_id}" if job_id is not None else None)
     if not commit_result.get("committed"):
         return {"published": False, "skipped": True, "reason": "commit not completed"}
+    if not _publish_enabled():
+        return {
+            "published": False,
+            "skipped": True,
+            "manual_required": True,
+            "reason": "AUTO_PUBLISH_JOB_BRANCH is not enabled",
+            "branch": branch,
+        }
 
     _push_branch(workdir, branch)
     message = commit_result.get("message") or f"Overnight Job {job_id}"
