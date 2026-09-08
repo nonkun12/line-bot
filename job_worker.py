@@ -16,6 +16,7 @@ from job_orchestrator import (
     job_time_exceeded,
     test_failure_has_no_progress,
 )
+from job_workspace import workspace_for_job
 
 
 APPROVAL_NODES = {"commit_agent": "commit", "deploy_agent": "deploy"}
@@ -37,17 +38,21 @@ def _thread_id(job_id: int) -> str:
 
 
 def _initial_state(job: dict) -> dict:
-    return {
+    state = {
         "user_id": job["user_id"], "raw_message": job["message"],
         "job_type": job.get("job_type", "ai_task"), "request_id": _thread_id(job["id"]),
         "agent_results": {},
     }
+    if job.get("job_type") == "development":
+        state["workdir"] = workspace_for_job(job["id"])
+    return state
 
 
 def _checkpoint_summary(values: dict) -> str:
     payload = {"thread_id": values.get("request_id"), "job_type": values.get("job_type"),
-               "intent": values.get("intent"), "next_agent": values.get("next_agent"),
-               "error": values.get("error"), "development_error": values.get("development_error"),
+               "workdir": values.get("workdir"), "intent": values.get("intent"),
+               "next_agent": values.get("next_agent"), "error": values.get("error"),
+               "development_error": values.get("development_error"),
                "test_result": values.get("test_result"), "deploy_result": values.get("deploy_result"),
                "final_reply": values.get("final_reply")}
     return json.dumps(payload, ensure_ascii=False, default=str)
@@ -178,7 +183,9 @@ def run_once(executor=None):
     try:
         if job_time_exceeded(job):
             return _fail_for_time_limit(job)
+        job_store.renew_job_lease(job_id, WORKER_ID, lease_seconds=JOB_LEASE_SECONDS)
         result = executor(job) if executor is not None else execute_one_step(job)
+        job_store.renew_job_lease(job_id, WORKER_ID, lease_seconds=JOB_LEASE_SECONDS)
         status = result.get("status")
         if status == "graph_done":
             job_store.update_job(job_id, status="done", result=result.get("summary", ""), last_error=None, clear_claimed_at=True)
