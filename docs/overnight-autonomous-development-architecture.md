@@ -19,20 +19,21 @@ The persistent Job is the outer state machine. Individual AI Workers are short-l
 7. Stop conditions protect against infinite loops: maximum retry count, no-progress detection, and total Job time limit.
 8. When tests pass, commit the changes in the Job worktree.
 9. If GitHub publishing is explicitly enabled, push the Job branch and create/reuse its PR. Publishing is disabled by default with `AUTO_PUBLISH_JOB_BRANCH=false`.
-10. The `commit` approval gate is presented only after the PR exists. A LINE approval is not treated as a merge by itself: the Worker calls GitHub and confirms the PR is actually merged.
-11. Deploy is allowed only after GitHub reports the PR as merged. `AUTO_DEPLOY=false` remains the safe default, so production deployment requires the separate deploy gate/explicit activation.
-12. After deployment, perform verification. Deployment failures have a much smaller retry budget and should prefer rollback over repeated autonomous production changes.
-13. The Job ends with a durable status and a concise LINE report.
+10. Run the GitHub review gate against the Job commit. The Worker waits until the required Pytest, Overnight Worker Test, and AI Code Review workflows have completed successfully.
+11. The `commit` approval gate is presented only after the PR exists and the required review checks pass. A LINE approval is not treated as a merge by itself: the Worker calls GitHub and confirms the PR is actually merged.
+12. Deploy is allowed only after GitHub reports the PR as merged. `AUTO_DEPLOY=false` remains the safe default, so production deployment requires the separate deploy gate/explicit activation.
+13. After deployment, perform verification. Deployment failures have a much smaller retry budget and should prefer rollback over repeated autonomous production changes.
+14. The Job ends with a durable status and a concise LINE report.
 
 ## GitHub publication and approval model
 
-Job branches are named `worker/job-{job_id}` and are isolated in a dedicated worktree. The Worker uses local Git for the commit and `git push` for publication; the GitHub REST API is used for PR lookup/creation and merge-state verification.
+Job branches are named `worker/job-{job_id}` and are isolated in a dedicated worktree. The Worker uses local Git for the commit and `git push` for publication; the GitHub REST API is used for PR lookup/creation, CI/review status lookup, merge execution, and merge-state verification.
 
 GitHub credentials are supplied to the Worker through environment variables and are never written to the repository remote URL. Set `AUTO_PUBLISH_JOB_BRANCH=true` only after GitHub credentials and repository protections have been verified.
 
-The approval sequence is intentionally:
+The release sequence is intentionally:
 
-`tests passed -> commit -> push/PR -> LINE commit approval -> GitHub merge -> LINE deploy approval -> deploy`
+`tests passed -> commit -> push/PR -> CI/review gate -> LINE commit approval -> GitHub merge -> LINE deploy approval -> deploy`
 
 The `commit` approval is therefore the human gate for the proposed change becoming part of `main`. The authoritative merge state is always GitHub, not the LINE approval record.
 
@@ -92,6 +93,7 @@ Each cycle must record a checkpoint containing at least:
 - cycle number
 - changed files summary
 - test pass/fail summary
+- review status and required workflow results
 - error summary/signature when applicable
 - worker result summary
 
@@ -109,7 +111,7 @@ The Worker runtime itself must not depend on the target Job modifying the same w
 
 ## Existing Agents
 
-The existing Debug Agent is part of the intended system. Its current adapter collects error information, analyzes it, and generates a fix suggestion. Existing Fix, Patch, Test, Commit, and Deploy nodes should be reused where practical rather than duplicated.
+The existing Debug Agent is part of the intended system. Its current adapter collects error information, analyzes it, and generates a fix suggestion. Existing Fix, Patch, Test, Commit, Publish, Review, Merge, and Deploy nodes should be reused where practical rather than duplicated.
 
 ## Safety
 
@@ -118,7 +120,8 @@ Existing gates must remain intact:
 - Patch application must remain explicitly controlled.
 - Commit requires successful tests.
 - GitHub publication is explicitly opt-in through `AUTO_PUBLISH_JOB_BRANCH`.
-- Merge requires the LINE approval gate and a successful GitHub merge confirmation.
+- Review requires the required GitHub workflows to pass.
+- Merge requires the LINE approval gate and a successful GitHub merge confirmation against the expected Job branch/commit.
 - Deploy must remain approval-gated and `AUTO_DEPLOY` must remain false unless intentionally enabled.
 - Production/deployment recovery must have a much lower retry budget than ordinary test/fix cycles.
 
@@ -132,9 +135,10 @@ Do not remove these gates merely to make the overnight loop autonomous.
 4. Add per-Job worktree isolation.
 5. Persist detailed checkpoints, leases, and status reporting.
 6. Add GitHub branch publication and PR lifecycle.
-7. Add merge-state verification and deploy approval.
-8. Add deployment verification and conservative rollback handling.
-9. Move Job persistence to Postgres before true multi-worker scale and increase heartbeat/lease coordination as concurrency grows.
-10. Only then scale to multiple specialized workers/processes.
+7. Add the GitHub CI/review gate before merge approval.
+8. Add merge-state verification and deploy approval.
+9. Add deployment verification and conservative rollback handling.
+10. Move Job persistence to Postgres before true multi-worker scale and increase heartbeat/lease coordination as concurrency grows.
+11. Only then scale to multiple specialized workers/processes.
 
 Existing LINE Notes, Memory, Reminder, and other stable functionality must not be changed unnecessarily.
