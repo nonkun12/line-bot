@@ -96,10 +96,16 @@ def handle_natural_note_search(message: str, user_id: str, call_mcp_tool: CallMc
 
 
 def handle_save_note(message: str, user_id: str, call_mcp_tool: CallMcpTool) -> Any:
-    # 「メモに、内容を保存して」のような自然文では、接頭辞直後の
-    # 読点・カンマも保存対象から除去する。
-    body = re.sub(r"^(?:メモして|メモに)\s*[:：、,]?\s*", "", message)
-    body = re.sub(r"\s*保存して\s*[。！!]?\s*$", "", body).strip()
+    # 「テストをメモして」「明日の10時にテストするとメモして」など、
+    # 文末の「メモして」を取り除いて本文だけを保存する。
+    body = re.sub(r"^\s*メモして\s*", "", message)
+    body = re.sub(r"^\s*(.+?)\s*をメモして[。！!？?]?\s*$", r"\1", body).strip()
+    body = re.sub(r"^\s*(.+?)\s*メモして[。！!？?]?\s*$", r"\1", body).strip()
+    # 「メモに、内容を保存して」のような自然文にも対応。
+    body = re.sub(r"^(?:メモに)\s*[:：、,]?\s*", "", body)
+    body = re.sub(r"\s*保存して\s*[。！!？?]?\s*$", "", body).strip()
+    if not body:
+        return "メモする内容を指定してください。"
     category = _classify_note_category(body)
     return call_mcp_tool("save_note", {"user_id": user_id, "title": "LINEメモ", "body": body, "category": category})
 
@@ -154,7 +160,8 @@ def handle_note_message(message: str, user_id: str, call_mcp_tool: CallMcpTool) 
         return handle_list_notes(user_id, call_mcp_tool)
     if message.startswith("メモ検索"):
         return handle_search_notes(message, user_id, call_mcp_tool)
-    if message.startswith("メモして") or re.match(r"^メモに\s*.+保存して[。！!？?]?$", message):
+    # 明示的な「○○をメモして」もNotes Agentで保存する。
+    if re.match(r"^.+をメモして[。！!？?]?\s*$", message) or message.startswith("メモして") or re.match(r"^メモに\s*.+保存して[。！!？?]?$", message):
         return handle_save_note(message, user_id, call_mcp_tool)
     if _is_delete_all_notes_message(message):
         _set_pending_note_action(user_id, "delete_all_notes")
