@@ -12,4 +12,7 @@ ai_client.py.backup_before_groq_fix
 *.patch
 *.fixed
 
+# Per-job isolated worker worktrees
+.worker-worktrees/
+
 .DS_Store
