@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 import job_orchestrator
 
 
@@ -39,3 +41,27 @@ def test_zero_max_retries_fails_first_failure():
     assert decision.retry is False
     assert decision.retry_count == 1
     assert decision.terminal_status == "failed"
+
+
+def test_job_time_limit_detects_expired_job():
+    now = datetime.now(timezone.utc)
+    job = {"created_at": (now - timedelta(seconds=61)).isoformat()}
+    assert job_orchestrator.job_time_exceeded(job, now=now, max_seconds=60) is True
+
+
+def test_job_time_limit_allows_job_within_budget():
+    now = datetime.now(timezone.utc)
+    job = {"created_at": (now - timedelta(seconds=59)).isoformat()}
+    assert job_orchestrator.job_time_exceeded(job, now=now, max_seconds=60) is False
+
+
+def test_no_progress_detects_same_failure_after_patch_cycle():
+    previous = '{"test_result": {"passed": false, "error": "AssertionError: expected 42, got 41"}}'
+    current = '{"test_result": {"passed": false, "error": "AssertionError: expected 42, got 41"}}'
+    assert job_orchestrator.test_failure_has_no_progress(previous, current) is True
+
+
+def test_no_progress_allows_changed_failure():
+    previous = '{"test_result": {"passed": false, "error": "AssertionError: expected 42, got 41"}}'
+    current = '{"test_result": {"passed": false, "error": "AssertionError: expected 42, got 40"}}'
+    assert job_orchestrator.test_failure_has_no_progress(previous, current) is False
