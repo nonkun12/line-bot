@@ -10,6 +10,12 @@ _LOOKUP_WORDS = [
     "覚えてるか", "覚えているか", "教えて", "確認して", "見せて", "探して", "検索して",
 ]
 
+# 「テストをメモして」「明日の10時にテストするとメモして」のように、
+# 文末の「メモして」が明示されている場合は、リマインダーではなく
+# Notes Agentへ確実にルーティングする。
+_EXPLICIT_SAVE_NOTE_RE = re.compile(r".+(?:を)?メモして[。！!？?]?$")
+_SAVE_NOTE_TO_RE = re.compile(r"^メモに\s*.+保存して[。！!？?]?$")
+
 
 def is_note_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
     text = unicodedata.normalize("NFKC", (raw_message or "").strip())
@@ -18,6 +24,9 @@ def is_note_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
     if re.match(r"^ID\s*\d+\s*(?:を)?(?:消して|消す|削除して|削除する|削除)$", text, re.IGNORECASE):
         return True
     if re.search(r"\d+番.*メモ.*削除", text):
+        return True
+    # 明示的なメモ保存は最優先。これをNormal/Reminder側へ流さない。
+    if _EXPLICIT_SAVE_NOTE_RE.match(text) or _SAVE_NOTE_TO_RE.match(text):
         return True
     if text.startswith("メモ"):
         return True
