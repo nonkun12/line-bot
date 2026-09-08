@@ -43,6 +43,19 @@ def test_zero_max_retries_fails_first_failure():
     assert decision.terminal_status == "failed"
 
 
+def test_deploy_failure_has_strict_single_retry_budget():
+    first = job_orchestrator.decide_deploy_failure({"retry_count": 0})
+    assert first.retry is True
+    assert first.retry_count == 1
+    assert first.terminal_status == "pending"
+
+    second = job_orchestrator.decide_deploy_failure({"retry_count": first.retry_count})
+    assert second.retry is False
+    assert second.retry_count == 2
+    assert second.terminal_status == "failed"
+    assert "deploy retry limit" in second.reason
+
+
 def test_job_time_limit_detects_expired_job():
     now = datetime.now(timezone.utc)
     job = {"created_at": (now - timedelta(seconds=61)).isoformat()}
