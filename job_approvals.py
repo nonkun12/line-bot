@@ -115,7 +115,10 @@ def approve(job_id: int, operation: str, approved_by: str) -> bool:
             """,
             (approved_by, job_id, operation),
         )
-        return cursor.rowcount == 1
+        changed = cursor.rowcount == 1
+    if changed:
+        _resume_job(job_id, operation, target_status="pending")
+    return changed
 
 
 def reject(job_id: int, operation: str) -> bool:
@@ -130,7 +133,11 @@ def reject(job_id: int, operation: str) -> bool:
             """,
             (job_id, operation),
         )
-        return cursor.rowcount == 1
+        changed = cursor.rowcount == 1
+    if changed:
+        _resume_job(job_id, operation, target_status="failed",
+                    last_error=f"{operation} approval rejected")
+    return changed
 
 
 def expire(job_id: int, operation: str) -> bool:
@@ -147,7 +154,29 @@ def expire(job_id: int, operation: str) -> bool:
             """,
             (job_id, operation),
         )
-        return cursor.rowcount == 1
+        changed = cursor.rowcount == 1
+    if changed:
+        _resume_job(job_id, operation, target_status="failed",
+                    last_error=f"{operation} approval expired")
+    return changed
+
+
+def _resume_job(job_id: int, operation: str, *, target_status: str,
+                last_error: Optional[str] = None) -> None:
+    """Move a waiting Job back into the Worker queue or terminate it.
+
+    The Worker stores its LangGraph checkpoint separately, so changing the Job
+    status to pending is enough for the next Worker tick to resume the same
+    thread at the interrupted approval node.
+    """
+    job = db.get_job(job_id)
+    if not job or job.get("status") != "waiting_approval":
+        return
+    db.update_job(
+        job_id,
+        status=target_status,
+        last_error=last_error,
+    )
 
 
 def consume(job_id: int, operation: str) -> bool:
