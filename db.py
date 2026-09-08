@@ -1,6 +1,5 @@
 import os
 import sqlite3
-from datetime import datetime, timezone
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB = os.environ.get("CHAT_DB_PATH", os.path.join(BASE_DIR, "chat.db"))
@@ -194,6 +193,9 @@ def claim_pending_job(worker_id=None, lease_seconds=DEFAULT_JOB_LEASE_SECONDS):
     lease_seconds = max(1, int(lease_seconds))
     with get_conn() as conn:
         _ensure_job_columns(conn)
+        # ALTER TABLE on a legacy database may have opened a transaction.
+        # Commit that migration before acquiring the immediate write lock.
+        conn.commit()
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
             "SELECT id FROM jobs WHERE status='pending' ORDER BY id LIMIT 1"
