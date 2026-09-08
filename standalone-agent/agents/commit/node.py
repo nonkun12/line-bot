@@ -1,11 +1,6 @@
-"""
-Phase4b: Commit Agent
+"""Commit Agent for isolated overnight development workspaces."""
 
-条件:
-- pytest成功時のみcommitする
-- pytest失敗時は何もしない
-- deployはまだ行わない
-"""
+from __future__ import annotations
 
 import os
 import subprocess
@@ -34,6 +29,19 @@ def _run_git(args: list[str], cwd: str) -> subprocess.CompletedProcess:
         )
 
 
+def _ensure_job_branch(workdir: str, job_id) -> str | None:
+    if job_id is None:
+        return None
+    branch_name = f"worker/job-{job_id}"
+    current = _run_git(["branch", "--show-current"], cwd=workdir)
+    if current.returncode == 0 and current.stdout.strip() == branch_name:
+        return branch_name
+    switch = _run_git(["switch", "-C", branch_name], cwd=workdir)
+    if switch.returncode != 0:
+        raise RuntimeError(switch.stderr.strip() or "failed to create job branch")
+    return branch_name
+
+
 def commit_node(state):
     results = dict(state.get("agent_results", {}))
     test_result = state.get("test_result", {})
@@ -44,6 +52,14 @@ def commit_node(state):
         return {**state, "agent_results": results, "commit_result": commit_result}
 
     workdir = state.get("workdir") or os.environ.get("REPO_WORKDIR") or os.getcwd()
+    job_id = state.get("job_id")
+    try:
+        branch = _ensure_job_branch(workdir, job_id)
+    except RuntimeError as exc:
+        commit_result = {"committed": False, "error": str(exc)}
+        results["commit"] = commit_result
+        return {**state, "agent_results": results, "commit_result": commit_result}
+
     add = _run_git(["add", "."], cwd=workdir)
     if add.returncode != 0:
         commit_result = {"committed": False, "error": add.stderr}
@@ -60,6 +76,11 @@ def commit_node(state):
         return {**state, "agent_results": results, "commit_result": commit_result}
 
     log = _run_git(["rev-parse", "HEAD"], cwd=workdir)
-    commit_result = {"committed": True, "hash": log.stdout.strip(), "message": message}
+    commit_result = {
+        "committed": True,
+        "hash": log.stdout.strip(),
+        "message": message,
+        "branch": branch,
+    }
     results["commit"] = commit_result
     return {**state, "agent_results": results, "commit_result": commit_result}
