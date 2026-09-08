@@ -75,6 +75,33 @@ def deploy_node(state):
         results["deploy"] = deploy_result
         return {**state, "agent_results": results, "deploy_result": deploy_result}
 
+    # Legacy/direct deploy calls predate the Job/PR pipeline. Preserve their
+    # behavior unless this state explicitly belongs to an asynchronous Job.
+    is_job_flow = bool(state.get("job_id")) or bool(state.get("publish_result"))
+    if not is_job_flow:
+        if not _auto_deploy_enabled():
+            deploy_result = {
+                "deployed": False,
+                "pending": True,
+                "reason": "waiting for manual approval",
+                "commit_hash": commit_result.get("hash"),
+            }
+            results["deploy"] = deploy_result
+            return {**state, "agent_results": results, "deploy_result": deploy_result}
+
+        trigger_result = trigger_deploy()
+        deploy_result = {
+            "deployed": trigger_result.get("triggered", False),
+            "pending": False,
+            "deploy_id": trigger_result.get("deploy_id"),
+            "status": trigger_result.get("status"),
+            "commit_hash": commit_result.get("hash"),
+        }
+        if not trigger_result.get("triggered"):
+            deploy_result["reason"] = trigger_result.get("error")
+        results["deploy"] = deploy_result
+        return {**state, "agent_results": results, "deploy_result": deploy_result}
+
     try:
         merge_state = check_pr_merged(state)
     except Exception as exc:
