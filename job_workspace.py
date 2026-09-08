@@ -24,6 +24,14 @@ def _worktree_path(job_id: int | str, repo_root: str) -> Path:
     return Path(repo_root) / DEFAULT_WORKTREE_ROOT / f"job-{_safe_job_name(job_id)}"
 
 
+def _fresh_base_ref(repo_root: str) -> str:
+    """Prefer the repository's latest origin/main for a new Job."""
+    fetch = _run_git(["fetch", "origin", "main"], cwd=repo_root)
+    if fetch.returncode == 0:
+        return "origin/main"
+    return "HEAD"
+
+
 def workspace_for_job(
     job_id: int | str,
     repo_root: str | None = None,
@@ -31,9 +39,10 @@ def workspace_for_job(
 ) -> str:
     """Create or reuse a per-Job worktree.
 
-    A fresh Job starts from the current repository HEAD. A resumed Job may pass
-    its remote Job branch so the worktree can be rebuilt after worker restart
-    or ephemeral disk loss without discarding committed progress.
+    A fresh Job starts from the latest ``origin/main`` when that remote is
+    available. A resumed Job may pass its remote Job branch so the worktree can
+    be rebuilt after worker restart or ephemeral disk loss without discarding
+    committed progress.
     """
     repo_root = os.path.abspath(repo_root or os.environ.get("REPO_ROOT") or os.getcwd())
     root = Path(repo_root) / DEFAULT_WORKTREE_ROOT
@@ -43,25 +52,25 @@ def workspace_for_job(
     if path.exists():
         return str(path)
 
-    start_ref = "HEAD"
     if branch:
         remote_ref = f"origin/{branch}"
         fetch = _run_git(["fetch", "origin", branch], cwd=repo_root)
-        if fetch.returncode == 0:
-            start_ref = remote_ref
-        else:
+        start_ref = remote_ref if fetch.returncode == 0 else None
+        if start_ref is None:
             local_ref = _run_git(["show-ref", "--verify", f"refs/heads/{branch}"], cwd=repo_root)
             if local_ref.returncode == 0:
                 start_ref = branch
+        if start_ref is None:
+            raise RuntimeError(f"job branch {branch!r} is not available locally or on origin")
 
-    if branch and start_ref != "HEAD":
         local_branch = _run_git(["show-ref", "--verify", f"refs/heads/{branch}"], cwd=repo_root)
         if local_branch.returncode == 0:
             result = _run_git(["worktree", "add", str(path), branch], cwd=repo_root)
         else:
             result = _run_git(["worktree", "add", "-b", branch, str(path), start_ref], cwd=repo_root)
     else:
-        result = _run_git(["worktree", "add", "--detach", str(path), "HEAD"], cwd=repo_root)
+        start_ref = _fresh_base_ref(repo_root)
+        result = _run_git(["worktree", "add", "--detach", str(path), start_ref], cwd=repo_root)
 
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or "git worktree add failed")
