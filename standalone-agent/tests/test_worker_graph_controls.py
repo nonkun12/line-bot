@@ -63,3 +63,27 @@ def test_worker_graph_resumes_one_node_per_invoke(monkeypatch):
 
     worker_graph.invoke(None, config)
     assert worker_graph.get_state(config).next == ()
+
+
+def test_development_job_starts_at_development_agent():
+    assert graph_module.route_from_start({"job_type": "development"}) == "development_agent"
+    assert graph_module.route_from_start({"job_type": "ai_task"}) == "supervisor"
+
+
+def test_failed_test_routes_back_to_debug():
+    assert graph_module.route_from_test({"test_result": {"passed": False}}) == "debug_agent"
+    assert graph_module.route_from_test({"test_result": {"passed": True}}) == "commit_agent"
+
+
+def test_development_graph_has_bounded_repair_path():
+    worker_graph = graph_module.build_graph(checkpointer=InMemorySaver())
+    graph = worker_graph.get_graph()
+    edges = {(edge.source, edge.target) for edge in graph.edges}
+
+    assert ("development_agent", "test_agent") in edges
+    assert ("test_agent", "debug_agent") in edges
+    assert ("debug_agent", "fix_agent") in edges
+    assert ("fix_agent", "patch_generate_agent") in edges
+    assert ("patch_generate_agent", "patch_agent") in edges
+    assert ("patch_agent", "test_agent") in edges
+    assert ("test_agent", "commit_agent") in edges
