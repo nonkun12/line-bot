@@ -19,7 +19,7 @@ from job_orchestrator import (
 from job_workspace import workspace_for_job
 
 
-APPROVAL_NODES = {"commit_agent": "commit", "deploy_agent": "deploy"}
+APPROVAL_NODES = {"merge_agent": "commit", "deploy_agent": "deploy"}
 _WORKER_GRAPH = None
 WORKER_ID = os.environ.get("JOB_WORKER_ID") or f"{socket.gethostname()}:{os.getpid()}"
 JOB_LEASE_SECONDS = int(os.environ.get("JOB_LEASE_SECONDS", "300"))
@@ -55,7 +55,8 @@ def _checkpoint_summary(values: dict) -> str:
                "intent": values.get("intent"), "next_agent": values.get("next_agent"),
                "error": values.get("error"), "development_error": values.get("development_error"),
                "test_result": values.get("test_result"), "publish_result": values.get("publish_result"),
-               "deploy_result": values.get("deploy_result"), "final_reply": values.get("final_reply")}
+               "merge_result": values.get("merge_result"), "deploy_result": values.get("deploy_result"),
+               "final_reply": values.get("final_reply")}
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
@@ -124,6 +125,12 @@ def execute_one_step(job: dict, graph=None) -> dict:
         if publish_result.get("published") is False:
             return {"status": "publish_failed", "thread_id": thread_id, "step_name": current_node,
                     "error": publish_result.get("error") or "publish failed",
+                    "summary": _checkpoint_summary(values)}
+    if current_node == "merge_agent":
+        merge_result = values.get("merge_result") or {}
+        if merge_result.get("merged") is False:
+            return {"status": "executor_failed", "thread_id": thread_id, "step_name": current_node,
+                    "error": merge_result.get("error") or "merge failed",
                     "summary": _checkpoint_summary(values)}
     if current_node == "deploy_agent":
         deploy_result = values.get("deploy_result") or {}
