@@ -24,15 +24,7 @@ def _run_git(args: list[str], cwd: str) -> subprocess.CompletedProcess:
             timeout=GIT_COMMAND_TIMEOUT,
         )
     except TypeError:
-        # Keep compatibility with existing tests/mocks that predate the timeout
-        # parameter. Real subprocess.run supports timeout, so production keeps
-        # the bounded execution guard.
-        return subprocess.run(
-            command,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-        )
+        return subprocess.run(command, cwd=cwd, capture_output=True, text=True)
     except subprocess.TimeoutExpired as e:
         return subprocess.CompletedProcess(
             args=command,
@@ -47,55 +39,27 @@ def commit_node(state):
     test_result = state.get("test_result", {})
 
     if not test_result.get("passed"):
-        commit_result = {
-            "committed": False,
-            "skipped": True,
-            "reason": "pytest not passed",
-        }
+        commit_result = {"committed": False, "skipped": True, "reason": "pytest not passed"}
         results["commit"] = commit_result
-        return {
-            **state,
-            "agent_results": results,
-            "commit_result": commit_result,
-        }
+        return {**state, "agent_results": results, "commit_result": commit_result}
 
-    workdir = os.environ.get("REPO_WORKDIR", os.getcwd())
-
+    workdir = state.get("workdir") or os.environ.get("REPO_WORKDIR") or os.getcwd()
     add = _run_git(["add", "."], cwd=workdir)
     if add.returncode != 0:
         commit_result = {"committed": False, "error": add.stderr}
         results["commit"] = commit_result
-        return {
-            **state,
-            "agent_results": results,
-            "commit_result": commit_result,
-        }
+        return {**state, "agent_results": results, "commit_result": commit_result}
 
-    message = (
-        state.get("agent_results", {})
-        .get("fix", {})
-        .get("commit_message", "AI Debug Agent automatic fix")
+    message = state.get("agent_results", {}).get("fix", {}).get(
+        "commit_message", "AI Debug Agent automatic fix"
     )
-
     commit = _run_git(["commit", "-m", message], cwd=workdir)
     if commit.returncode != 0:
         commit_result = {"committed": False, "error": commit.stderr}
         results["commit"] = commit_result
-        return {
-            **state,
-            "agent_results": results,
-            "commit_result": commit_result,
-        }
+        return {**state, "agent_results": results, "commit_result": commit_result}
 
     log = _run_git(["rev-parse", "HEAD"], cwd=workdir)
-    commit_result = {
-        "committed": True,
-        "hash": log.stdout.strip(),
-        "message": message,
-    }
+    commit_result = {"committed": True, "hash": log.stdout.strip(), "message": message}
     results["commit"] = commit_result
-    return {
-        **state,
-        "agent_results": results,
-        "commit_result": commit_result,
-    }
+    return {**state, "agent_results": results, "commit_result": commit_result}
