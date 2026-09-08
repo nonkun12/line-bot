@@ -126,14 +126,22 @@ def execute_one_step(job: dict, graph=None) -> dict:
         if approval_status == "approved":
             if not job_approvals.consume(job["id"], operation):
                 return _request_and_wait(job, current_node, snapshot.values or {})
-        elif approval_status in {"pending", "none"}:
+        elif approval_status == "pending":
             return _request_and_wait(job, current_node, snapshot.values or {})
-        else:
+        elif approval_status in {"rejected", "expired"}:
             return {
                 "status": "failed", "thread_id": thread_id, "step_name": current_node,
                 "error": f"{operation} approval {approval_status}",
                 "summary": f"{operation} approval {approval_status}",
             }
+        elif job.get("status") == "failed":
+            return {
+                "status": "failed", "thread_id": thread_id, "step_name": current_node,
+                "error": job.get("last_error") or f"{operation} approval terminated the job",
+                "summary": job.get("last_error") or f"{operation} approval terminated the job",
+            }
+        else:
+            return _request_and_wait(job, current_node, snapshot.values or {})
 
     graph.invoke(input_state, config)
     snapshot = graph.get_state(config)
@@ -176,8 +184,7 @@ def execute_one_step(job: dict, graph=None) -> dict:
                     "step_name": current_node, "next_step": next_node,
                     "deploy_result": deploy_result,
                     "summary": _checkpoint_summary(values)}
-    return {"status": "step_completed", "thread_id": thread_id,
-            "step_name": current_node or "unknown", "next_step": next_node,
+    return {"status": "step_completed", "thread_id": thread_id, "step_name": current_node or "unknown", "next_step": next_node,
             "summary": _checkpoint_summary(values)}
 
 
