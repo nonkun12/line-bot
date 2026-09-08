@@ -13,15 +13,36 @@ The persistent Job is the outer state machine. Individual AI Workers are short-l
 1. LINE request is classified as a development request.
 2. A persistent development Job is created.
 3. The Job Orchestrator claims the Job and executes one bounded stage/cycle.
-4. Development/implementation runs in an isolated worktree.
+4. Development/implementation runs in an isolated per-Job Git worktree.
 5. Tests are executed.
 6. If tests fail: Debug -> Fix -> Patch -> Test is repeated automatically.
 7. Stop conditions protect against infinite loops: maximum retry count, no-progress detection, and total Job time limit.
-8. When tests pass, run review/verification.
-9. Commit is allowed only after required gates succeed.
-10. Deploy remains approval-gated initially; automatic deployment can be enabled explicitly later.
-11. After deployment, perform verification. Deployment failures have a much smaller retry budget and should prefer rollback over repeated autonomous production changes.
-12. The Job ends with a durable status and a concise LINE report.
+8. When tests pass, commit the changes in the Job worktree.
+9. If GitHub publishing is explicitly enabled, push the Job branch and create/reuse its PR. Publishing is disabled by default with `AUTO_PUBLISH_JOB_BRANCH=false`.
+10. The `commit` approval gate is presented only after the PR exists. A LINE approval is not treated as a merge by itself: the Worker calls GitHub and confirms the PR is actually merged.
+11. Deploy is allowed only after GitHub reports the PR as merged. `AUTO_DEPLOY=false` remains the safe default, so production deployment requires the separate deploy gate/explicit activation.
+12. After deployment, perform verification. Deployment failures have a much smaller retry budget and should prefer rollback over repeated autonomous production changes.
+13. The Job ends with a durable status and a concise LINE report.
+
+## GitHub publication and approval model
+
+Job branches are named `worker/job-{job_id}` and are isolated in a dedicated worktree. The Worker uses local Git for the commit and `git push` for publication; the GitHub REST API is used for PR lookup/creation and merge-state verification.
+
+GitHub credentials are supplied to the Worker through environment variables and are never written to the repository remote URL. Set `AUTO_PUBLISH_JOB_BRANCH=true` only after GitHub credentials and repository protections have been verified.
+
+The approval sequence is intentionally:
+
+`tests passed -> commit -> push/PR -> LINE commit approval -> GitHub merge -> LINE deploy approval -> deploy`
+
+The `commit` approval is therefore the human gate for the proposed change becoming part of `main`. The authoritative merge state is always GitHub, not the LINE approval record.
+
+## Worker leases and restart safety
+
+Each running Job has a `worker_id` and lease deadline. Only the current lease owner may finalize or retry a running Job. When a lease expires, the Job is requeued and the stale worker loses the ability to overwrite its state.
+
+A Job's LangGraph checkpoint records progress, but it is not treated as the sole source of truth. When a development worktree disappears after Worker restart, the Worker can rebuild it from the Job branch stored locally or on the Git remote when that branch has already been published.
+
+Uncommitted changes that never reached GitHub cannot be reconstructed after complete ephemeral-disk loss. For that reason, durable remote commits are the strongest restart checkpoint for work that has already been committed.
 
 ## Worker roles
 
@@ -57,12 +78,12 @@ The Job state machine should support explicit terminal states such as:
 
 - pending
 - running
-- pending_review
+- waiting_approval
 - succeeded
 - failed_max_retries
 - failed_no_progress
 - failed_timeout
-- failed_deploy_rollback
+- failed_deploy
 - stopped_by_human
 
 Each cycle must record a checkpoint containing at least:
@@ -95,8 +116,10 @@ The existing Debug Agent is part of the intended system. Its current adapter col
 Existing gates must remain intact:
 
 - Patch application must remain explicitly controlled.
-- Commit must require successful tests.
-- Deploy must remain approval-gated by default.
+- Commit requires successful tests.
+- GitHub publication is explicitly opt-in through `AUTO_PUBLISH_JOB_BRANCH`.
+- Merge requires the LINE approval gate and a successful GitHub merge confirmation.
+- Deploy must remain approval-gated and `AUTO_DEPLOY` must remain false unless intentionally enabled.
 - Production/deployment recovery must have a much lower retry budget than ordinary test/fix cycles.
 
 Do not remove these gates merely to make the overnight loop autonomous.
@@ -107,10 +130,11 @@ Do not remove these gates merely to make the overnight loop autonomous.
 2. Implement the outer Orchestrator state machine.
 3. Implement Test -> Debug -> Fix -> Patch -> Test looping with retry/no-progress/time limits.
 4. Add per-Job worktree isolation.
-5. Persist detailed checkpoints and status reporting.
-6. Add review/approval integration.
-7. Add deployment verification and conservative rollback handling.
-8. Move Job persistence to Postgres and add leases/worker IDs before true multi-worker concurrency.
-9. Only then scale to multiple specialized workers/processes.
+5. Persist detailed checkpoints, leases, and status reporting.
+6. Add GitHub branch publication and PR lifecycle.
+7. Add merge-state verification and deploy approval.
+8. Add deployment verification and conservative rollback handling.
+9. Move Job persistence to Postgres before true multi-worker scale and increase heartbeat/lease coordination as concurrency grows.
+10. Only then scale to multiple specialized workers/processes.
 
 Existing LINE Notes, Memory, Reminder, and other stable functionality must not be changed unnecessarily.
