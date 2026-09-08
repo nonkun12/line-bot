@@ -39,6 +39,7 @@ def _thread_id(job_id: int) -> str:
 
 def _initial_state(job: dict) -> dict:
     state = {
+        "job_id": job["id"],
         "user_id": job["user_id"], "raw_message": job["message"],
         "job_type": job.get("job_type", "ai_task"), "request_id": _thread_id(job["id"]),
         "agent_results": {},
@@ -50,11 +51,11 @@ def _initial_state(job: dict) -> dict:
 
 def _checkpoint_summary(values: dict) -> str:
     payload = {"thread_id": values.get("request_id"), "job_type": values.get("job_type"),
-               "workdir": values.get("workdir"), "intent": values.get("intent"),
-               "next_agent": values.get("next_agent"), "error": values.get("error"),
-               "development_error": values.get("development_error"),
-               "test_result": values.get("test_result"), "deploy_result": values.get("deploy_result"),
-               "final_reply": values.get("final_reply")}
+               "job_id": values.get("job_id"), "workdir": values.get("workdir"),
+               "intent": values.get("intent"), "next_agent": values.get("next_agent"),
+               "error": values.get("error"), "development_error": values.get("development_error"),
+               "test_result": values.get("test_result"), "publish_result": values.get("publish_result"),
+               "deploy_result": values.get("deploy_result"), "final_reply": values.get("final_reply")}
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
@@ -118,6 +119,12 @@ def execute_one_step(job: dict, graph=None) -> dict:
         return {"status": "test_failed", "thread_id": thread_id, "step_name": "test_agent",
                 "next_step": next_node, "test_result": values.get("test_result") or {},
                 "summary": _checkpoint_summary(values)}
+    if current_node == "publish_agent":
+        publish_result = values.get("publish_result") or {}
+        if publish_result.get("published") is False:
+            return {"status": "publish_failed", "thread_id": thread_id, "step_name": current_node,
+                    "error": publish_result.get("error") or "publish failed",
+                    "summary": _checkpoint_summary(values)}
     if current_node == "deploy_agent":
         deploy_result = values.get("deploy_result") or {}
         if deploy_result.get("pending"):
@@ -165,6 +172,10 @@ def _handle_deploy_failure(job: dict, result: dict):
     return _apply_retry_decision(job, decide_deploy_failure(job), result, checkpoint_prefix="deploy")
 
 
+def _handle_publish_failure(job: dict, result: dict):
+    return _apply_retry_decision(job, decide_executor_failure(job), result, checkpoint_prefix="publish")
+
+
 def _fail_for_time_limit(job: dict):
     summary = "job total time limit exceeded"
     job_store.update_job(job["id"], status="failed", result=summary,
@@ -204,6 +215,8 @@ def run_once(executor=None):
             return job
         elif status == "test_failed":
             return _handle_test_failure(job, result)
+        elif status == "publish_failed":
+            return _handle_publish_failure(job, result)
         elif status == "deploy_failed":
             return _handle_deploy_failure(job, result)
         elif status == "executor_failed":
