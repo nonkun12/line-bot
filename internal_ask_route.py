@@ -2,6 +2,7 @@ from flask import jsonify, request
 import hashlib
 import hmac
 import os
+import re
 import time
 from urllib.parse import urlencode
 
@@ -29,6 +30,75 @@ def _make_dashboard_url(user_id: str) -> str:
     return f"https://line-bot-yvea.onrender.com/dashboard?{query}"
 
 
+_JOB_APPROVAL_PATTERN = re.compile(
+    r"(?:job\s*(?:id\s*)?[#:：]?\s*)(\d+).*?"
+    r"(commit|deploy|コミット|デプロイ).*?"
+    r"(承認|許可|却下|拒否)",
+    re.IGNORECASE,
+)
+
+
+def _parse_job_approval_command(message: str):
+    match = _JOB_APPROVAL_PATTERN.search(str(message))
+    if not match:
+        return None
+    job_id = int(match.group(1))
+    operation = "commit" if match.group(2).lower() in {"commit", "コミット"} else "deploy"
+    decision = "approve" if match.group(3) in {"承認", "許可"} else "reject"
+    return job_id, operation, decision
+
+
+def _handle_job_approval(user_id: str, message: str):
+    command = _parse_job_approval_command(message)
+    if command is None:
+        return None
+    job_id, operation, decision = command
+    import job_approvals
+    import job_store
+
+    job = job_store.get_job(job_id)
+    if job is None:
+        return "指定されたJobが見つかりません。"
+    if str(job.get("user_id")) != str(user_id):
+        return "このJobを操作する権限がありません。"
+
+    if decision == "approve":
+        changed = job_approvals.approve(job_id, operation, str(user_id))
+        return (
+            f"Job ID: {job_id} の{operation}を承認しました。Workerを再開します。"
+            if changed else
+            f"Job ID: {job_id} の{operation}承認は現在変更できません。"
+        )
+
+    changed = job_approvals.reject(job_id, operation)
+    return (
+        f"Job ID: {job_id} の{operation}を却下しました。Jobを終了します。"
+        if changed else
+        f"Job ID: {job_id} の{operation}却下は現在変更できません。"
+    )
+
+
+def _notify_new_approval(job: dict, result: dict) -> None:
+    if not result.get("approval_created") or not job:
+        return
+    operation = result.get("operation")
+    if operation not in {"commit", "deploy"}:
+        return
+    try:
+        message = (
+            f"開発Jobが{operation}承認待ちです。\n"
+            f"Job ID: {job['id']}\n"
+            f"LINEで「Job {job['id']} の{operation}を承認」と送ると続行します。\n"
+            f"却下する場合は「Job {job['id']} の{operation}を却下」と送ってください。"
+        )
+        with ApiClient(configuration) as api:
+            MessagingApi(api).push_message(
+                PushMessageRequest(to=str(job["user_id"]), messages=[TextMessage(text=message)])
+            )
+    except Exception as exc:
+        print("JOB APPROVAL NOTIFICATION ERROR:", exc)
+
+
 def register_internal_ask_route(app, internal_push_key, generate_reply_func):
     @app.route("/internal/ask", methods=["POST"])
     def internal_ask():
@@ -44,6 +114,10 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         if str(message).strip() == "ダッシュボード":
             dashboard_url = _make_dashboard_url(str(user_id))
             return jsonify({"ok": True, "reply": f"ダッシュボードはこちらです。\n{dashboard_url}"})
+
+        approval_reply = _handle_job_approval(str(user_id), str(message))
+        if approval_reply is not None:
+            return jsonify({"ok": True, "reply": approval_reply})
 
         # 明示的な開発依頼は通常の会話回答に流さずJob化する。
         try:
@@ -81,6 +155,9 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         try:
             from job_worker import run_once
             result = run_once()
+            if result:
+                approval_info = result.pop("_worker_result", None) if isinstance(result, dict) else None
+                _notify_new_approval(result, approval_info or {})
             return jsonify({"ok": True, "job": result})
         except Exception as exc:
             print("JOB WORKER ERROR:", exc)
