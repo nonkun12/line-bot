@@ -17,7 +17,7 @@ _pending_note_confirmations: dict[str, str] = {}
 _pending_note_confirm_lock = threading.Lock()
 
 _LOOKUP_QUESTION_RE = re.compile(
-    r"(?:は|って|ある|あります|残ってる|残っています|教えて|確認して|見せて)[？?]?$"
+    r"(?:は|って|ある|あります|残ってる|残っています|覚えてる|覚えています|教えて|確認して|見せて|探して|検索して)[？?]?$"
 )
 
 
@@ -26,11 +26,21 @@ def _extract_search_keyword(message: str) -> str:
 
 
 def _normalize_natural_search_message(message: str) -> str:
-    if "私のメモ" in message:
+    # 「メモはある？」「私のメモは？」「メモを見せて」などは全件検索。
+    if any(phrase in message for phrase in ["私のメモ", "メモはある", "メモある", "メモはあります", "メモあります"]):
         return ""
-    exact_phrases = ["LINE Botのメモを探して", "メモを探して"]
+    exact_phrases = ["LINE Botのメモを探して", "メモを探して", "予定はある？", "予定はある?", "予定がありますか"]
     if message in exact_phrases:
-        return ""
+        return "予定" if message.startswith("予定") else ""
+
+    # 予定・予約の確認は、その対象語だけを検索キーワードにする。
+    if "予定" in message or "予約" in message:
+        keyword = message
+        for phrase in ["予定はある？", "予定はある?", "予定はありますか", "予定がある？", "予定がある?", "予定があります", "覚えてる？", "覚えてる?", "覚えていますか", "ありますか？", "ありますか?", "ある？", "ある?"]:
+            keyword = keyword.replace(phrase, "")
+        keyword = keyword.replace("私の", "").replace("覚えてる", "").replace("覚えています", "").replace("確認して", "").strip()
+        return keyword or "予定"
+
     suffixes = [
         "LINE Botのメモを探して", "メモを探して", "メモを見せて", "メモを検索して",
         "を検索して", "を探して", "を見せて",
@@ -160,7 +170,7 @@ def handle_note_message(message: str, user_id: str, call_mcp_tool: CallMcpTool) 
     delete_result = handle_delete_note(message, user_id, call_mcp_tool)
     if delete_result is not None:
         return delete_result
-    if "メモ" in message and any(keyword in message for keyword in ["探して", "検索", "見せて", "私のメモ"]):
+    if ("メモ" in message or "予定" in message or "予約" in message) and any(keyword in message for keyword in ["探して", "検索", "見せて", "私のメモ", "ある", "あります", "残って", "覚えて", "確認"]):
         return handle_natural_note_search(message, user_id, call_mcp_tool)
     auto_save_result = handle_auto_save_note(message, user_id, call_mcp_tool)
     if auto_save_result is not None:
