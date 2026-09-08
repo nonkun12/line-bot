@@ -169,7 +169,7 @@ def delete_note(note_id):
         return jsonify({"ok": True, "result": result, "user_id": user_id})
     except Exception as e:
         print("[DASHBOARD] Failed to delete note via MCP:", e)
-        return jsonify({"ok": True, "result": result, "user_id": user_id})
+        return jsonify({"ok": False, "error": str(e), "user_id": user_id}), 500
 
 
 @dashboard_bp.route("/internal/oracle/status", methods=["POST"])
