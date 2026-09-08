@@ -1,9 +1,7 @@
 import re
 
 import mcp_client
-from mcp_client import parse_mcp_json_list
 from wikipedia_tool import WIKIPEDIA_TOOL_SCHEMA, wikipedia_search
-
 
 
 # Groq(OpenAI互換)のfunction calling形式でMCPツールを公開する。
@@ -14,14 +12,8 @@ from wikipedia_tool import WIKIPEDIA_TOOL_SCHEMA, wikipedia_search
 # =========================
 # set_reminder / save_memory 等でユーザーが「」で明示的に指定した文言は、
 # AIに言い換えさせず、原文からそのまま抜き出して使う。
-# (AIが1回目のツール呼び出し判断時にtemperature=0でも稀に数文字だけ
-#  言い換えてしまう(例: 「文字化けテスト」→「文字化ケトスト」)ことがあるため、
-#  正確性が必要な箇所は原文優先にする)
 def extract_quoted_text(original_message):
     print(f"[LOG] extract_quoted_text called")
-    # 「」(一重)と『』(二重)の両方に対応する。
-    # ユーザーが「私の名前は『のんくん』です」のように、文中の引用は『』、
-    # 全体の括りは「」を使うケース(逆のケースも)があるため、両方拾う。
     matches = re.findall(r"[「『](.+?)[」』]", original_message)
     return matches[-1] if matches else None
 
@@ -29,11 +21,6 @@ def extract_quoted_text(original_message):
 # =========================
 # 名前に関するkeyの統一
 # =========================
-# AIにkey名を自由に選ばせると、「name」「名前」「username」のように
-# 保存時と取得時でkeyがブレて、get_memoryで見つからなくなることがある
-# (「前に覚えた名前を忘れる」症状の主イン)。
-# ユーザーの原文が明らかに名乗り(「〜という名前です」等)を意味している場合は、
-# AIが選んだkeyを無視して "name" に強制的に統一する。
 NAME_INTENT_PATTERN = re.compile(
     r"(名前は|名前を覚え|名前を教え|って呼んで|と呼んで|といいます|って言います)"
 )
@@ -49,13 +36,6 @@ def normalize_memory_key(key, original_message):
 # =========================
 # remind_atのタイムゾーン補正
 # =========================
-# システムプロンプトでモデルに「+09:00付きのISO 8601で出力する」よう指示しているが、
-# Groq/Llama系モデルは稀にタイムゾーン部分を省略して出力することがある
-# (例: "2026-07-12T21:19:00" のようにオフセットなし)。
-# JS(MCPサーバー側)のnew Date()はオフセットなしの文字列をUTCとして解釈するため、
-# 「日本時間のつもりだった時刻」が実際には9時間ズレて登録されてしまう。
-# これを防ぐため、タイムゾーン表記(Z または +HH:MM/-HH:MM)が末尾になければ、
-# ここで明示的に +09:00 を補う。
 TZ_SUFFIX_RE = re.compile(r"(Z|[+-]\d{2}:\d{2})$")
 
 
@@ -63,10 +43,6 @@ def ensure_jst_offset(remind_at):
     print(f"[LOG] ensure_jst_offset called")
     if not remind_at:
         return remind_at
-    # モデルはJSTのつもりで時刻を生成しているが、稀に Z(UTC扱い)や
-    # 誤ったオフセットを付けてしまうことがある(例: 21:19+JSTのつもりが21:19Zになる)。
-    # このBotはJST運用のみを想定しているため、モデルが何を付けてきたかに関わらず、
-    # 末尾のタイムゾーン表記を一旦取り除き、常に +09:00 を明示的に付け直す。
     stripped = TZ_SUFFIX_RE.sub("", remind_at)
     return stripped + "+09:00"
 
@@ -95,14 +71,9 @@ MCP_TOOLS_SCHEMA = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "title": {
-                        "type": "string",
-                        "description": "メモタイトル"
-                    },
-                    "body": {
-                        "type": "string",
-                        "description": "メモ内容"
-                    }
+                    "title": {"type": "string", "description": "メモタイトル"},
+                    "body": {"type": "string", "description": "メモ内容"},
+                    "category": {"type": "string", "description": "メモカテゴリ。省略時は一般"}
                 },
                 "required": ["title", "body"]
             }
@@ -113,11 +84,7 @@ MCP_TOOLS_SCHEMA = [
         "function": {
             "name": "get_all_memory",
             "description": "ユーザーの全ての記憶を取得する",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            "parameters": {"type": "object", "properties": {}, "required": []}
         }
     },
     {
@@ -127,12 +94,7 @@ MCP_TOOLS_SCHEMA = [
             "description": "ユーザーが過去に保存したメモを検索する専用ツール。この用途では必ずこのツールを使うこと。外部検索(brave_search等)は使用しない。",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "keyword": {
-                        "type": "string",
-                        "description": "検索する文字"
-                    }
-                },
+                "properties": {"keyword": {"type": "string", "description": "検索する文字"}},
                 "required": ["keyword"]
             }
         }
@@ -150,19 +112,9 @@ MCP_TOOLS_SCHEMA = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "remind_at": {
-                        "type": "string",
-                        "description": "ISO 8601形式の日時(タイムゾーン付き推奨、例: 2026-07-12T15:00:00+09:00)。repeat='daily'の場合は1回目に送る日時。"
-                    },
-                    "message": {
-                        "type": "string",
-                        "description": "リマインド時に送る内容"
-                    },
-                    "repeat": {
-                        "type": "string",
-                        "enum": ["none", "daily"],
-                        "description": "繰り返しの種類。「毎日」「毎朝」等と言われた場合は'daily'、単発なら'none'(省略可、省略時はnone)。"
-                    }
+                    "remind_at": {"type": "string", "description": "ISO 8601形式の日時(タイムゾーン付き推奨、例: 2026-07-12T15:00:00+09:00)。repeat='daily'の場合は1回目に送る日時。"},
+                    "message": {"type": "string", "description": "リマインド時に送る内容"},
+                    "repeat": {"type": "string", "enum": ["none", "daily"], "description": "繰り返しの種類。「毎日」「毎朝」等と言われた場合は'daily'、単発なら'none'。"}
                 },
                 "required": ["remind_at", "message"]
             }
@@ -177,17 +129,11 @@ MCP_TOOLS_SCHEMA = [
                 "「今何が入ってる?」「予定確認して」「リマインダー一覧」のように、"
                 "ユーザーが登録済みの中身を具体的に確認したい場合にのみ使う。"
                 "「どんなセットがある?」「セットって何?」のように、"
-                "リマインダー機能そのものについて聞いている(まだ何も登録していない・"
-                "雑談として聞いている)場合はこのツールを使わず、通常の会話で答えること。"
+                "リマインダー機能そのものについて聞いている場合はこのツールを使わず、通常の会話で答えること。"
             ),
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "reason": {
-                        "type": "string",
-                        "description": "このツールを呼ぶ理由(任意、省略可。指定されなくてもよい)"
-                    }
-                },
+                "properties": {"reason": {"type": "string", "description": "このツールを呼ぶ理由(任意、省略可)"}},
                 "required": []
             }
         }
@@ -199,17 +145,11 @@ MCP_TOOLS_SCHEMA = [
             "description": (
                 "指定したidのリマインダーをキャンセルする。"
                 "idはlist_remindersで確認したものを使う。"
-                "ユーザーが「さっきのキャンセルして」ように言った場合、"
-                "まずlist_remindersでidを確認してから呼び出すこと。"
+                "自然文の日時指定キャンセルは通常エージェント側で対象idを解決してからこのツールを呼び出す。"
             ),
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "id": {
-                        "type": "integer",
-                        "description": "キャンセルしたいリマインダーのid"
-                    }
-                },
+                "properties": {"id": {"type": "integer", "description": "キャンセルしたいリマインダーのid"}},
                 "required": ["id"]
             }
         }
@@ -217,7 +157,6 @@ MCP_TOOLS_SCHEMA = [
     WIKIPEDIA_TOOL_SCHEMA,
 ]
 
-# 記憶するvalueの整形
 MEMORY_VALUE_EXTRACT_PATTERNS = {
     "favorite_food": re.compile(r"(?:私は)?好きな食べ物は(.+?)(?:です|だ)?[。.!！]*$"),
     "favorite_drink": re.compile(r"(?:私は)?好きな飲み物は(.+?)(?:です|だ)?[。.!！]*$"),
@@ -228,15 +167,11 @@ MEMORY_VALUE_EXTRACT_PATTERNS = {
 def clean_memory_value(key, value):
     print(f"[LOG] clean_memory_value called")
     pattern = MEMORY_VALUE_EXTRACT_PATTERNS.get(key)
-
     if not pattern:
         return value
-
     match = pattern.search(value or "")
-
     if match:
         return match.group(1).strip()
-
     return value
 
 
@@ -244,9 +179,7 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
     print(f"[LOG] dispatch_tool_call called: name={name}")
     """
     LINEのuser_idはGroq(LLM)には見せず、ここでMCPツールの正式パラメータとして注入する。
-    以前はkeyに"{user_id}:"を前置する自前ルールで分離していたが、
-    MCPサーバー側がuser_idを必須パラメータとして受け取るようになったため、
-    そのまま渡すだけでよくなった。
+    MCPサーバー側がuser_idを必須パラメータとして受け取るため、そのまま渡す。
     """
     call_mcp_tool_fn = mcp_client.call_mcp_tool
 
@@ -264,37 +197,27 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
             {
                 "user_id": user_id,
                 "title": arguments.get("title", "無題"),
-                "body": arguments.get("body", "")
+                "body": arguments.get("body", ""),
+                "category": arguments.get("category", "一般") or "一般"
             }
         )
+
     if name == "save_memory":
         print("DEBUG SAVE_MEMORY CALLED")
         print("DEBUG original_message =", repr(original_message))
         print("DEBUG arguments =", arguments)
-        # ユーザーの質問文・確認文・削除依頼の場合は保存をスキップする
-        # 平叙文の記憶保存（例: 好きな飲み物はコーラ）は維持する
         msg_stripped = (original_message or "").strip()
-
-        print("DEBUG SAVE_MEMORY ORIGINAL:", repr(original_message))
-        print("DEBUG SAVE_MEMORY ARGUMENTS:", arguments)
-
         _DELETE_INTENT_WORDS = ("消して", "消す", "削除")
-
         if msg_stripped.endswith(("？", "?")):
-            print("SAVE_MEMORY SKIPPED: message ends with question mark")
             return "ユーザーの質問文であるため、記憶への保存はスキップされました。"
-
         if any(w in msg_stripped for w in _DELETE_INTENT_WORDS):
-            print("SAVE_MEMORY SKIPPED: delete intent:", repr(msg_stripped))
             return "削除依頼のため、記憶への保存はスキップされました。"
 
-        # 「覚えて」「覚えておいて」などの命令文を除去し、arguments["value"]へ戻す
         val = arguments.get("value", "")
         for word in ["記憶してください", "覚えておいて", "記憶して", "覚えて"]:
             val = val.replace(word, "")
         arguments["value"] = val.strip()
 
-        # arguments["key"] が "memory" の場合、内容から適切に分類
         if arguments.get("key") == "memory":
             val_content = arguments.get("value", "")
             if "好きな食べ物" in val_content:
@@ -306,14 +229,10 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
             elif "Python" in val_content:
                 arguments["key"] = "study_plan"
 
-        # set_reminderと同様、AIが生成したvalueは稀に数文字言い換わることがあるため、
-        # ユーザーの原文に「」/『』で明示された文言があれば、そちらを優先して使う。
-        # (例: 「私の名前は『のんくん』です、覚えておいて」)
         quoted = extract_quoted_text(original_message)
         final_value = quoted if quoted else arguments.get("value", "")
         final_key = normalize_memory_key(arguments.get("key", ""), original_message)
         final_value = clean_memory_value(final_key, final_value)
-
         return call_mcp_tool_fn("save_memory", {
             "user_id": user_id,
             "key": final_key,
@@ -322,42 +241,21 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
 
     if name == "get_memory":
         final_key = normalize_memory_key(arguments.get("key", ""), original_message)
-        return call_mcp_tool_fn("get_memory", {
-            "user_id": user_id,
-            "key": final_key
-        })
+        return call_mcp_tool_fn("get_memory", {"user_id": user_id, "key": final_key})
 
     if name == "get_all_memory":
-        return call_mcp_tool_fn("get_all_memory", {
-            "user_id": user_id
-        })
+        return call_mcp_tool_fn("get_all_memory", {"user_id": user_id})
 
     if name == "search_notes":
         keyword = arguments.get("keyword", "")
-
-        # 検索質問の余計な表現を除去
-        for word in [
-            "のメモ",
-            "メモある",
-            "メモありますか",
-            "ありますか",
-            "ある？",
-            "ある?"
-        ]:
+        for word in ["のメモ", "メモある", "メモありますか", "ありますか", "ある？", "ある?"]:
             keyword = keyword.replace(word, "")
-
         keyword = keyword.strip()
-
         print("SEARCH KEYWORD CLEANED:", keyword)
-
-        return call_mcp_tool_fn("search_notes", {
-            "user_id": user_id,
-            "keyword": keyword
-        })
+        return call_mcp_tool_fn("search_notes", {"user_id": user_id, "keyword": keyword})
 
     if name == "set_reminder":
         quoted = extract_quoted_text(original_message)
-
         if quoted:
             final_message = quoted
         else:
@@ -366,10 +264,8 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
                 "",
                 original_message
             ).strip()
-
         if not final_message:
             final_message = arguments.get("message", "")
-
         return call_mcp_tool_fn("set_reminder", {
             "user_id": user_id,
             "remind_at": ensure_jst_offset(arguments.get("remind_at", "")),
@@ -378,46 +274,22 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
         })
 
     if name == "list_reminders":
-        return call_mcp_tool_fn("list_reminders", {
-            "user_id": user_id
-        })
+        return call_mcp_tool_fn("list_reminders", {"user_id": user_id})
 
     if name == "cancel_reminder":
         reminder_id = arguments.get("id")
-
+        # 対象IDの推測はここでは行わない。
+        # 日時指定・「さっきの」等の自然文はnormal_agent_node側で解決し、
+        # この低レベル層は明示されたIDだけをキャンセルする。
         if not reminder_id:
-            reminders = call_mcp_tool_fn(
-                "list_reminders",
-                {
-                    "user_id": user_id
-                }
-            )
-
-            reminder_list = parse_mcp_json_list(reminders)
-
-            if reminder_list:
-                reminder_id = reminder_list[-1].get("id")
-
-        if not reminder_id:
-            return "キャンセルできるリマインダーがありません。"
-
-        return call_mcp_tool_fn(
-            "cancel_reminder",
-            {
-                "user_id": user_id,
-                "id": reminder_id
-            }
-        )
+            return "キャンセル対象のリマインダーIDを特定できませんでした。"
+        return call_mcp_tool_fn("cancel_reminder", {
+            "user_id": user_id,
+            "id": reminder_id
+        })
 
     if name == "delete_memory":
-        final_key = normalize_memory_key(
-            arguments.get("key", ""),
-            original_message
-        )
-
-        return call_mcp_tool_fn("delete_memory", {
-            "user_id": user_id,
-            "key": final_key
-        })
+        final_key = normalize_memory_key(arguments.get("key", ""), original_message)
+        return call_mcp_tool_fn("delete_memory", {"user_id": user_id, "key": final_key})
 
     return f"不明なツールです: {name}"
