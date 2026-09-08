@@ -1,13 +1,23 @@
-import sqlite3
 import os
+import sqlite3
+from datetime import datetime, timezone
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB = os.environ.get("CHAT_DB_PATH", os.path.join(BASE_DIR, "chat.db"))
+DEFAULT_JOB_LEASE_SECONDS = int(os.environ.get("JOB_LEASE_SECONDS", "300"))
 
 
 def get_conn():
     print("[LOG] get_conn called")
     return sqlite3.connect(DB, check_same_thread=False)
+
+
+def _ensure_job_columns(conn):
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+    if "worker_id" not in columns:
+        conn.execute("ALTER TABLE jobs ADD COLUMN worker_id TEXT")
+    if "lease_until" not in columns:
+        conn.execute("ALTER TABLE jobs ADD COLUMN lease_until TIMESTAMP")
 
 
 def init_db():
@@ -65,9 +75,12 @@ def init_db():
             result TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            worker_id TEXT,
+            lease_until TIMESTAMP,
             FOREIGN KEY(parent_job_id) REFERENCES jobs(id)
         )
         """)
+        _ensure_job_columns(conn)
         conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_jobs_status_created_at
         ON jobs(status, created_at)
@@ -79,6 +92,10 @@ def init_db():
         conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_jobs_parent_job_id
         ON jobs(parent_job_id)
+        """)
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_jobs_lease_until
+        ON jobs(status, lease_until)
         """)
         conn.execute("""
         CREATE TABLE IF NOT EXISTS job_checkpoints(
@@ -138,10 +155,11 @@ def load_history(user_id):
 def create_job(user_id, message, job_type="ai_task", source="line", parent_job_id=None, max_retries=3):
     """非同期実行用Jobをpending状態で登録する。"""
     with get_conn() as conn:
+        _ensure_job_columns(conn)
         cursor = conn.execute(
             """
-            INSERT INTO jobs(user_id, job_type, source, parent_job_id, message, status, max_retries)
-            VALUES (?, ?, ?, ?, ?, 'pending', ?)
+            INSERT INTO jobs(user_id, job_type, source, parent_job_id, message, status, max_retries, worker_id, lease_until)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?, NULL, NULL)
             """,
             (user_id, job_type, source, parent_job_id, message, max_retries),
         )
@@ -150,10 +168,12 @@ def create_job(user_id, message, job_type="ai_task", source="line", parent_job_i
 
 def get_job(job_id):
     with get_conn() as conn:
+        _ensure_job_columns(conn)
         row = conn.execute(
             """
             SELECT id, user_id, job_type, source, parent_job_id, message, status,
-                   retry_count, max_retries, last_error, result, created_at, updated_at
+                   retry_count, max_retries, last_error, result, created_at, updated_at,
+                   worker_id, lease_until
             FROM jobs WHERE id=?
             """,
             (job_id,),
@@ -162,35 +182,47 @@ def get_job(job_id):
         return None
     keys = (
         "id", "user_id", "job_type", "source", "parent_job_id", "message", "status",
-        "retry_count", "max_retries", "last_error", "result", "created_at", "updated_at"
+        "retry_count", "max_retries", "last_error", "result", "created_at", "updated_at",
+        "worker_id", "lease_until",
     )
     return dict(zip(keys, row))
 
 
-def claim_pending_job():
-    """最古のpending Jobを1件だけrunningへ移す。SQLite向けの最小claim実装。"""
+def claim_pending_job(worker_id=None, lease_seconds=DEFAULT_JOB_LEASE_SECONDS):
+    """最古のpending Jobを1件だけatomicにclaimし、worker leaseを付与する。"""
+    worker_id = str(worker_id or f"pid:{os.getpid()}")
+    lease_seconds = max(1, int(lease_seconds))
     with get_conn() as conn:
+        _ensure_job_columns(conn)
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
             "SELECT id FROM jobs WHERE status='pending' ORDER BY id LIMIT 1"
         ).fetchone()
         if row is None:
+            conn.rollback()
             return None
         job_id = row[0]
         cursor = conn.execute(
             """
             UPDATE jobs
-            SET status='running', updated_at=CURRENT_TIMESTAMP
+            SET status='running',
+                worker_id=?,
+                lease_until=datetime('now', ?),
+                updated_at=CURRENT_TIMESTAMP
             WHERE id=? AND status='pending'
             """,
-            (job_id,),
+            (worker_id, f"+{lease_seconds} seconds", job_id),
         )
         if cursor.rowcount != 1:
+            conn.rollback()
             return None
+        conn.commit()
     return get_job(job_id)
 
 
-def update_job(job_id, status=None, result=None, last_error=None, retry_count=None):
-    """Job状態を部分更新する。指定された値だけを更新する。"""
+def update_job(job_id, status=None, result=None, last_error=None, retry_count=None,
+               worker_id=None, lease_until=None, clear_lease=False):
+    """Job状態を部分更新する。leaseは必要時だけ維持・変更する。"""
     fields = []
     values = []
     if status is not None:
@@ -205,11 +237,20 @@ def update_job(job_id, status=None, result=None, last_error=None, retry_count=No
     if retry_count is not None:
         fields.append("retry_count=?")
         values.append(retry_count)
+    if worker_id is not None:
+        fields.append("worker_id=?")
+        values.append(worker_id)
+    if lease_until is not None:
+        fields.append("lease_until=?")
+        values.append(lease_until)
+    if clear_lease:
+        fields.extend(["worker_id=NULL", "lease_until=NULL"])
     if not fields:
         return False
     fields.append("updated_at=CURRENT_TIMESTAMP")
     values.append(job_id)
     with get_conn() as conn:
+        _ensure_job_columns(conn)
         cursor = conn.execute(
             f"UPDATE jobs SET {', '.join(fields)} WHERE id=?",
             values,
