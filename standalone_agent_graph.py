@@ -18,4 +18,8 @@ for _prefix in ("agents", "graph"):
         if _module_name == _prefix or _module_name.startswith(f"{_prefix}."):
             sys.modules.pop(_module_name, None)
 
-from graph.graph import build_worker_graph  # noqa: E402,F401
+from graph.graph import (  # noqa: E402,F401
+    build_worker_graph,
+    route_from_debug,
+    route_from_test,
+)
