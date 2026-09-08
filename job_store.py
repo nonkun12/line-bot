@@ -37,6 +37,44 @@ def update_job(job_id, status=None, result=None, last_error=None,
                          clear_lease=clear_lease or clear_claimed_at)
 
 
+def update_job_owned(job_id, worker_id, status=None, result=None, last_error=None,
+                     retry_count=None, clear_lease=False):
+    """部分更新を、現在leaseを所有しているWorkerに限定して行う。
+
+    stale Workerがlease失効後にJob状態を上書きするのを防ぐため、
+    status='running' かつ worker_id一致をUPDATE条件に含める。
+    """
+    fields = []
+    values = []
+    if status is not None:
+        fields.append("status=?")
+        values.append(status)
+    if result is not None:
+        fields.append("result=?")
+        values.append(result)
+    if last_error is not None:
+        fields.append("last_error=?")
+        values.append(last_error)
+    if retry_count is not None:
+        fields.append("retry_count=?")
+        values.append(retry_count)
+    if clear_lease:
+        fields.extend(["worker_id=NULL", "lease_until=NULL"])
+    if not fields:
+        return False
+
+    fields.append("updated_at=CURRENT_TIMESTAMP")
+    values.extend([job_id, str(worker_id)])
+    with db.get_conn() as conn:
+        db._ensure_job_columns(conn)
+        cursor = conn.execute(
+            f"UPDATE jobs SET {', '.join(fields)} "
+            "WHERE id=? AND status='running' AND worker_id=?",
+            values,
+        )
+        return cursor.rowcount > 0
+
+
 def save_checkpoint(job_id, step_name, step_status, output_snapshot=None):
     return db.save_checkpoint(job_id, step_name, step_status, output_snapshot)
 
