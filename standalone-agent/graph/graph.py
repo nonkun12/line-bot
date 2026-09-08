@@ -20,6 +20,7 @@ from agents.weather.node import weather_agent_node
 from agents.work_status.node import work_status_agent_node
 from agents.publish.node import publish_node
 from agents.merge.node import merge_node
+from agents.review.node import review_node
 from dev_notes.wrappers.graph_node_wrapper import with_execution_logging
 from dev_notes.factory import get_default_adapter
 
@@ -41,6 +42,7 @@ patch_apply_node = with_execution_logging(patch_apply_node, "patch_apply", get_d
 test_runner_node = with_execution_logging(test_runner_node, "test", get_default_adapter())
 commit_node = with_execution_logging(commit_node, "commit", get_default_adapter())
 publish_node = with_execution_logging(publish_node, "publish", get_default_adapter())
+review_node = with_execution_logging(review_node, "review", get_default_adapter())
 merge_node = with_execution_logging(merge_node, "merge", get_default_adapter())
 deploy_node = with_execution_logging(deploy_node, "deploy", get_default_adapter())
 development_agent_node = with_execution_logging(development_agent_node, "development", get_default_adapter())
@@ -66,7 +68,7 @@ def finalize_node(state: AgentState) -> AgentState:
                 continue
             text = value.get(field, "") if isinstance(value, dict) else str(value)
             lines.append(f"【{label}】\n{text}" if label else text)
-        for key, label in (("patch", "Patch"), ("test", "Test"), ("commit", "Commit"), ("publish", "Publish"), ("merge", "Merge"), ("deploy", "Deploy")):
+        for key, label in (("patch", "Patch"), ("test", "Test"), ("commit", "Commit"), ("publish", "Publish"), ("review", "Review"), ("merge", "Merge"), ("deploy", "Deploy")):
             value = results.get(key, {})
             if value:
                 lines.append(f"【{label}】\n{value}")
@@ -99,7 +101,12 @@ def route_from_commit(state: AgentState) -> str:
 
 def route_from_publish(state: AgentState) -> str:
     publish_result = state.get("publish_result") or {}
-    return "merge_agent" if publish_result.get("published") else "finalizer"
+    return "review_agent" if publish_result.get("published") else "finalizer"
+
+
+def route_from_review(state: AgentState) -> str:
+    review_result = state.get("review_result") or {}
+    return "merge_agent" if review_result.get("status") == "passed" else "finalizer"
 
 
 def route_from_merge(state: AgentState) -> str:
@@ -114,7 +121,7 @@ def route_from_start(state: AgentState) -> str:
 WORKER_STEP_NODES = [
     "supervisor", "development_agent", "debug_agent", "notes_agent", "memory_agent", "normal_agent",
     "work_status_agent", "fix_agent", "patch_generate_agent", "patch_agent", "test_agent",
-    "github_agent", "sheets_agent", "weather_agent", "fallback_agent", "publish_agent",
+    "github_agent", "sheets_agent", "weather_agent", "fallback_agent", "publish_agent", "review_agent",
 ]
 WORKER_APPROVAL_NODES = ["merge_agent", "deploy_agent"]
 
@@ -140,6 +147,7 @@ def build_graph(*, checkpointer=None, interrupt_after=None, interrupt_before=Non
     builder.add_node("test_agent", test_runner_node)
     builder.add_node("commit_agent", commit_node)
     builder.add_node("publish_agent", publish_node)
+    builder.add_node("review_agent", review_node)
     builder.add_node("merge_agent", merge_node)
     builder.add_node("github_agent", github_agent_node)
     builder.add_node("sheets_agent", sheets_agent_node)
@@ -163,7 +171,8 @@ def build_graph(*, checkpointer=None, interrupt_after=None, interrupt_before=Non
     builder.add_edge("patch_agent", "test_agent")
     builder.add_conditional_edges("test_agent", route_from_test, {"debug_agent": "debug_agent", "commit_agent": "commit_agent"})
     builder.add_conditional_edges("commit_agent", route_from_commit, {"publish_agent": "publish_agent", "finalizer": "finalizer"})
-    builder.add_conditional_edges("publish_agent", route_from_publish, {"merge_agent": "merge_agent", "finalizer": "finalizer"})
+    builder.add_conditional_edges("publish_agent", route_from_publish, {"review_agent": "review_agent", "finalizer": "finalizer"})
+    builder.add_conditional_edges("review_agent", route_from_review, {"merge_agent": "merge_agent", "finalizer": "finalizer"})
     builder.add_conditional_edges("merge_agent", route_from_merge, {"deploy_agent": "deploy_agent", "finalizer": "finalizer"})
     builder.add_edge("deploy_agent", "finalizer")
     builder.add_edge("finalizer", END)
