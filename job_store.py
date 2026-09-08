@@ -1,7 +1,4 @@
-"""Compatibility wrapper for asynchronous Job storage.
-
-Keeps the Worker API compatible with the current main db.py schema.
-"""
+"""Compatibility wrapper for asynchronous Job storage."""
 
 import db
 
@@ -16,15 +13,24 @@ def get_job(job_id):
     return db.get_job(job_id)
 
 
-def claim_pending_job():
-    return db.claim_pending_job()
+def claim_pending_job(worker_id=None, lease_seconds=None):
+    kwargs = {}
+    if worker_id is not None:
+        kwargs["worker_id"] = worker_id
+    if lease_seconds is not None:
+        kwargs["lease_seconds"] = lease_seconds
+    return db.claim_pending_job(**kwargs)
 
 
 def update_job(job_id, status=None, result=None, last_error=None,
-               retry_count=None, claimed_at=None, clear_claimed_at=False):
-    # main's db.py uses updated_at as the lease clock and has no claimed_at column.
+               retry_count=None, claimed_at=None, clear_claimed_at=False,
+               worker_id=None, lease_until=None, clear_lease=False):
+    # claimed_at/clear_claimed_at are kept for backward compatibility with the
+    # earlier wrapper API; the authoritative lease is worker_id/lease_until.
     return db.update_job(job_id, status=status, result=result,
-                         last_error=last_error, retry_count=retry_count)
+                         last_error=last_error, retry_count=retry_count,
+                         worker_id=worker_id, lease_until=lease_until,
+                         clear_lease=clear_lease or clear_claimed_at)
 
 
 def save_checkpoint(job_id, step_name, step_status, output_snapshot=None):
