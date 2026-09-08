@@ -16,6 +16,7 @@ class FakeResponse:
 def test_publish_pushes_branch_and_creates_pr(monkeypatch, tmp_path):
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
     monkeypatch.setenv("GITHUB_REPO", "nonkun12/line-bot")
+    monkeypatch.setenv("AUTO_PUBLISH_JOB_BRANCH", "true")
 
     git_calls = []
 
@@ -78,6 +79,7 @@ def test_publish_pushes_branch_and_creates_pr(monkeypatch, tmp_path):
 def test_publish_reuses_existing_open_pr(monkeypatch, tmp_path):
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
     monkeypatch.setenv("GITHUB_REPO", "nonkun12/line-bot")
+    monkeypatch.setenv("AUTO_PUBLISH_JOB_BRANCH", "true")
 
     monkeypatch.setattr(
         node,
@@ -123,6 +125,17 @@ def test_publish_reuses_existing_open_pr(monkeypatch, tmp_path):
     }
 
 
+def test_publish_is_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("AUTO_PUBLISH_JOB_BRANCH", raising=False)
+    result = node.publish_job_branch({
+        "job_id": 44,
+        "commit_result": {"committed": True, "branch": "worker/job-44", "hash": "abc"},
+    })
+    assert result["published"] is False
+    assert result["manual_required"] is True
+    assert result["branch"] == "worker/job-44"
+
+
 def test_publish_requires_commit_success(monkeypatch):
-    result = node.publish_job_branch({"job_id": 44, "commit_result": {"committed": False}})
+    result = node.publish_job_branch({"job_id": 45, "commit_result": {"committed": False}})
     assert result == {"published": False, "skipped": True, "reason": "commit not completed"}
