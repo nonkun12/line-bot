@@ -100,7 +100,14 @@ def review_node(state: dict[str, Any]) -> dict[str, Any]:
     results = dict(state.get("agent_results", {}))
     try:
         review_result = check_review_status(state)
+    except RuntimeError as exc:
+        # Configuration errors are terminal; polling cannot fix a missing token.
+        review_result = {"status": "failed", "reason": str(exc)}
+    except requests.RequestException as exc:
+        # Transient network failures can be retried by the review polling loop.
+        review_result = {"status": "pending", "reason": f"GitHub review request failed: {exc}"}
     except Exception as exc:
-        review_result = {"status": "pending", "reason": str(exc)}
+        # Unexpected programming/data errors must not create an infinite pending loop.
+        review_result = {"status": "failed", "reason": f"review agent error: {exc}"}
     results["review"] = review_result
     return {**state, "agent_results": results, "review_result": review_result}
