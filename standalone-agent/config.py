@@ -10,23 +10,25 @@ load_dotenv()
 # =========================
 # ENV
 # =========================
-CHANNEL_ACCESS_TOKEN = os.environ["CHANNEL_ACCESS_TOKEN"]
-CHANNEL_SECRET = os.environ["CHANNEL_SECRET"]
-GROQ_API_KEY = os.environ["GROQ_API_KEY"]
+# Keep imports safe in test/CI environments where LINE/Groq secrets are absent.
+# Production startup still requires the corresponding values to be configured.
+CHANNEL_ACCESS_TOKEN = os.environ.get("CHANNEL_ACCESS_TOKEN", "")
+CHANNEL_SECRET = os.environ.get("CHANNEL_SECRET", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # MCPサーバー(Render上のmy-mcp-server)のURL。
 # 例: https://my-mcp-server.onrender.com/mcp
-MCP_SERVER_URL = os.environ["MCP_SERVER_URL"]
+MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "")
 
 # MCPサーバー側のrequireApiKeyと照合される固定キー。
 # my-mcp-server側の環境変数 MCP_API_KEY と同じ値をここに設定する。
-MCP_API_KEY = os.environ["MCP_API_KEY"]
+MCP_API_KEY = os.environ.get("MCP_API_KEY", "")
 
 # MCPサーバー(スケジューラー)がリマインダー送信を依頼してくる際に
 # このLINE Bot側の /internal/push エンドポイントを叩く。
 # その時に付けてくるヘッダー "x-internal-key" と照合する値。
-# my-mcp-server側の環境変数 INTERNAL_PUSH_KEY と同じ値をここに設定する。
-INTERNAL_PUSH_KEY = os.environ["INTERNAL_PUSH_KEY"]
+# my-mcp-server側の環境変数 INTERNAL_PUSH_KEY と同じ値に設定する。
+INTERNAL_PUSH_KEY = os.environ.get("INTERNAL_PUSH_KEY", "")
 
 # AI秘書レポートで「昨日の実際のコミット」を取得する対象リポジトリ。
 # GITHUB_TOKENは必須ではない(公開リポジトリなら未認証でも取得可)が、
