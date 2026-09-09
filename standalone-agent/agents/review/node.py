@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from typing import Any
@@ -44,6 +45,18 @@ def _review_diff(state: dict[str, Any]) -> str:
     workdir = state.get("workdir")
     if not workdir or not os.path.isdir(workdir):
         raise RuntimeError("Job worktree is missing for AI review")
+
+    fetch = subprocess.run(
+        ["git", "fetch", "origin", "main"],
+        cwd=workdir,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    if fetch.returncode != 0:
+        raise RuntimeError(fetch.stderr.strip() or "git fetch origin main failed during AI review")
+
     result = subprocess.run(
         ["git", "diff", "origin/main...HEAD"],
         cwd=workdir,
@@ -108,7 +121,7 @@ PULL REQUEST DIFF:
         content = content.removeprefix("```").removesuffix("```").strip()
         if content.startswith("json"):
             content = content[4:].lstrip()
-    review = __import__("json").loads(content)
+    review = json.loads(content)
     if review.get("verdict") not in {"PASS", "FAIL"}:
         raise RuntimeError("AI review returned an invalid verdict")
     return review
@@ -167,12 +180,10 @@ def check_review_status(state: dict[str, Any]) -> dict[str, Any]:
         return github_result
     try:
         ai_result = _call_ai_review(_review_diff(state))
-    except RuntimeError as exc:
-        return {"status": "failed", "reason": str(exc)}
     except requests.RequestException as exc:
         return {"status": "pending", "reason": f"Groq review request failed: {exc}"}
     except Exception as exc:
-        return {"status": "failed", "reason": f"AI review error: {exc}"}
+        return {"status": "failed", "reason": str(exc)}
 
     if ai_result.get("verdict") != "PASS":
         return {
