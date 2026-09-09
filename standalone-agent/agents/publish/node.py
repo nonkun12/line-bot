@@ -8,6 +8,7 @@ from typing import Any
 
 import requests
 
+from job_lease import require_active_job_lease
 
 GIT_COMMAND_TIMEOUT = float(os.environ.get("GIT_COMMAND_TIMEOUT", "30.0"))
 GITHUB_API = "https://api.github.com"
@@ -125,7 +126,12 @@ def publish_job_branch(state: dict) -> dict:
             "branch": branch,
         }
 
+    # Re-check immediately before the first irreversible external side effect.
+    require_active_job_lease(state)
     _push_branch(workdir, branch)
+    # A push succeeded, but the lease may have expired while GitHub was contacted.
+    # Fail closed before creating/reusing a PR as the next external mutation.
+    require_active_job_lease(state)
     message = commit_result.get("message") or f"Overnight Job {job_id}"
     pr = _create_pr(
         branch,
