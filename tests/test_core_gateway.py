@@ -32,3 +32,8 @@ def test_gateway_rejects_invalid_handler_result():
 
     with pytest.raises(TypeError, match="AIResponse or str"):
         gateway.handle(AIRequest("u1", "hi", channel="line"))
+
+
+def test_gateway_rejects_non_callable_handler():
+    with pytest.raises(TypeError, match="handler must be callable"):
+        AIGateway(object())
