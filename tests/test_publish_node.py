@@ -24,6 +24,7 @@ def test_publish_pushes_branch_and_creates_pr(monkeypatch, tmp_path):
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
     monkeypatch.setenv("GITHUB_REPO", "nonkun12/line-bot")
     monkeypatch.setenv("AUTO_PUBLISH_JOB_BRANCH", "true")
+    monkeypatch.setattr(node, "require_active_job_lease", lambda state: None)
 
     git_calls = []
 
@@ -60,6 +61,7 @@ def test_publish_pushes_branch_and_creates_pr(monkeypatch, tmp_path):
 
     result = node.publish_job_branch({
         "job_id": 42,
+        "worker_id": "worker-a",
         "workdir": str(tmp_path),
         "commit_result": {
             "committed": True,
@@ -87,6 +89,7 @@ def test_publish_reuses_existing_open_pr(monkeypatch, tmp_path):
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
     monkeypatch.setenv("GITHUB_REPO", "nonkun12/line-bot")
     monkeypatch.setenv("AUTO_PUBLISH_JOB_BRANCH", "true")
+    monkeypatch.setattr(node, "require_active_job_lease", lambda state: None)
 
     monkeypatch.setattr(
         node,
@@ -118,6 +121,7 @@ def test_publish_reuses_existing_open_pr(monkeypatch, tmp_path):
 
     result = node.publish_job_branch({
         "job_id": 43,
+        "worker_id": "worker-a",
         "workdir": str(tmp_path),
         "commit_result": {"committed": True, "hash": "def456", "message": "fix"},
     })
