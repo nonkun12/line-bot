@@ -111,6 +111,8 @@ def route_from_review(state: AgentState) -> str:
         return "merge_agent"
     if status == "pending":
         return "review_agent"
+    if status == "failed" and review_result.get("ai_review") and review_result.get("retryable"):
+        return "fix_agent"
     return "finalizer"
 
 
@@ -177,7 +179,7 @@ def build_graph(*, checkpointer=None, interrupt_after=None, interrupt_before=Non
     builder.add_conditional_edges("test_agent", route_from_test, {"debug_agent": "debug_agent", "commit_agent": "commit_agent"})
     builder.add_conditional_edges("commit_agent", route_from_commit, {"publish_agent": "publish_agent", "finalizer": "finalizer"})
     builder.add_conditional_edges("publish_agent", route_from_publish, {"review_agent": "review_agent", "finalizer": "finalizer"})
-    builder.add_conditional_edges("review_agent", route_from_review, {"review_agent": "review_agent", "merge_agent": "merge_agent", "finalizer": "finalizer"})
+    builder.add_conditional_edges("review_agent", route_from_review, {"review_agent": "review_agent", "merge_agent": "merge_agent", "fix_agent": "fix_agent", "finalizer": "finalizer"})
     builder.add_conditional_edges("merge_agent", route_from_merge, {"deploy_agent": "deploy_agent", "finalizer": "finalizer"})
     builder.add_edge("deploy_agent", "finalizer")
     builder.add_edge("finalizer", END)
