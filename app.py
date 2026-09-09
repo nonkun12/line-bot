@@ -264,7 +264,7 @@ def generate_reply(user_id, message):
 
 
 def _core_dynamic_enabled():
-    return os.environ.get("AI_CORE_DYNAMIC_GRAPH", "false").strip().lower() in {
+    return os.environ.get("AI_CORE_DYNAMIC_GRAPH", "true").strip().lower() in {
         "1", "true", "yes", "on"
     }
 
