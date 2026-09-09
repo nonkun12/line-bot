@@ -54,6 +54,18 @@ def test_router_can_execute_explicit_future_agent():
     assert result.text == "handled by travel"
 
 
+def test_router_rejects_explicit_disabled_agent():
+    registry = AgentRegistry(
+        [FakeAgent("travel", "Travel", "旅行", enabled=False)]
+    )
+
+    with pytest.raises(ValueError, match="agent is disabled"):
+        AgentRouter(registry).route_to(
+            "travel",
+            AgentRequest("u1", "旅行を計画"),
+        )
+
+
 def test_registry_priority_wins_when_multiple_agents_match():
     registry = AgentRegistry(
         [
