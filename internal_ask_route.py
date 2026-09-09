@@ -37,6 +37,8 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
             ai_request.message,
         )
     )
+    # Expose the adapter instance for focused integration tests and observability.
+    app.ai_gateway = gateway
 
     @app.route("/internal/ask", methods=["POST"])
     def internal_ask():
@@ -57,7 +59,7 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
                 return jsonify({"ok": True, "reply": reply_text or ""})
         with StepTimer("internal_ask") as ask_timer, StepTimer("ai_mcp") as ai_timer:
             try:
-                ai_response = gateway.handle(
+                ai_response = app.ai_gateway.handle(
                     AIRequest(
                         user_id=str(user_id),
                         message=str(message),
