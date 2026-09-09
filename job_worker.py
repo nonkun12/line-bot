@@ -164,6 +164,10 @@ def execute_one_step(job: dict, graph=None) -> dict:
                 "summary": _checkpoint_summary(values)}
     if current_node == "publish_agent":
         publish_result = values.get("publish_result") or {}
+        if publish_result.get("manual_required"):
+            return {"status": "step_completed", "thread_id": thread_id,
+                    "step_name": current_node, "next_step": next_node,
+                    "summary": _checkpoint_summary(values)}
         if publish_result.get("published") is False:
             return {"status": "publish_failed", "thread_id": thread_id, "step_name": current_node,
                     "error": publish_result.get("error") or "publish failed",
