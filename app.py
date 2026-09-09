@@ -70,6 +70,7 @@ from debug_agent import run_debug_agent
 from internal_ask_route import register_internal_ask_route
 from n8n_delegate import _delegate_to_n8n
 from e2e_status import init_e2e_table, record_step, StepTimer
+from core.channel import handle_channel_request
 
 app = Flask(__name__)
 
@@ -312,7 +313,14 @@ def _process_and_reply(event, user_id, text):
             if delegated:
                 return
             print("[LOG] n8n delegation failed; falling back to local generate_reply")
-        reply = generate_reply(user_id, text)
+        ai_response = handle_channel_request(
+            app.ai_gateway,
+            str(user_id),
+            str(text),
+            "line",
+            metadata={"route": "line_callback"},
+        )
+        reply = ai_response.text
         try:
             _line_reply(event.reply_token, reply)
         except Exception as exc:
