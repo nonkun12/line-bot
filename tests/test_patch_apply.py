@@ -37,7 +37,8 @@ def test_apply_patch_on_temporary_git_repo(tmp_path):
     result = apply_patch(VALID_PATCH, str(tmp_path))
 
     assert result["applied"] is True
-    assert result["branch"].startswith("fix/auto-")
+    # Patch application must preserve the Job worktree's current branch.
+    assert result["branch"] == "master"
     assert result["error"] is None
 
     assert app_file.read_text() == 'print("after")\n'
