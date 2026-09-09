@@ -29,6 +29,8 @@ def _ensure_job_columns(conn):
         conn.execute("ALTER TABLE jobs ADD COLUMN worker_id TEXT")
     if "lease_until" not in columns:
         conn.execute("ALTER TABLE jobs ADD COLUMN lease_until TIMESTAMP")
+    if "next_run_at" not in columns:
+        conn.execute("ALTER TABLE jobs ADD COLUMN next_run_at TIMESTAMP")
 
 
 def init_db():
@@ -76,6 +78,7 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             worker_id TEXT,
             lease_until TIMESTAMP,
+            next_run_at TIMESTAMP,
             FOREIGN KEY(parent_job_id) REFERENCES jobs(id)
         )""")
         _ensure_job_columns(conn)
@@ -83,6 +86,7 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_user_id ON jobs(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_parent_job_id ON jobs(parent_job_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_lease_until ON jobs(status, lease_until)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_next_run_at ON jobs(status, next_run_at)")
         conn.execute("""CREATE TABLE IF NOT EXISTS job_checkpoints(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             job_id INTEGER NOT NULL,
@@ -117,7 +121,7 @@ def create_job(user_id, message, job_type="ai_task", source="line", parent_job_i
     with get_conn() as conn:
         _ensure_job_columns(conn)
         cursor = conn.execute(
-            "INSERT INTO jobs(user_id, job_type, source, parent_job_id, message, status, max_retries, worker_id, lease_until) VALUES (?, ?, ?, ?, ?, 'pending', ?, NULL, NULL)",
+            "INSERT INTO jobs(user_id, job_type, source, parent_job_id, message, status, max_retries, worker_id, lease_until, next_run_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, NULL, NULL, NULL)",
             (user_id, job_type, source, parent_job_id, message, max_retries),
         )
         return cursor.lastrowid
@@ -126,10 +130,10 @@ def create_job(user_id, message, job_type="ai_task", source="line", parent_job_i
 def get_job(job_id):
     with get_conn() as conn:
         _ensure_job_columns(conn)
-        row = conn.execute("SELECT id, user_id, job_type, source, parent_job_id, message, status, retry_count, max_retries, last_error, result, created_at, updated_at, worker_id, lease_until FROM jobs WHERE id=?", (job_id,)).fetchone()
+        row = conn.execute("SELECT id, user_id, job_type, source, parent_job_id, message, status, retry_count, max_retries, last_error, result, created_at, updated_at, worker_id, lease_until, next_run_at FROM jobs WHERE id=?", (job_id,)).fetchone()
     if row is None:
         return None
-    keys = ("id", "user_id", "job_type", "source", "parent_job_id", "message", "status", "retry_count", "max_retries", "last_error", "result", "created_at", "updated_at", "worker_id", "lease_until")
+    keys = ("id", "user_id", "job_type", "source", "parent_job_id", "message", "status", "retry_count", "max_retries", "last_error", "result", "created_at", "updated_at", "worker_id", "lease_until", "next_run_at")
     return dict(zip(keys, row))
 
 
@@ -140,12 +144,12 @@ def claim_pending_job(worker_id=None, lease_seconds=DEFAULT_JOB_LEASE_SECONDS):
         _ensure_job_columns(conn)
         conn.commit()
         conn.execute("BEGIN IMMEDIATE")
-        row = conn.execute("SELECT id FROM jobs WHERE status='pending' ORDER BY id LIMIT 1").fetchone()
+        row = conn.execute("SELECT id FROM jobs WHERE status='pending' AND (next_run_at IS NULL OR julianday(next_run_at) <= julianday('now')) ORDER BY id LIMIT 1").fetchone()
         if row is None:
             conn.rollback()
             return None
         job_id = row[0]
-        cursor = conn.execute("UPDATE jobs SET status='running', worker_id=?, lease_until=datetime('now', ?), updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'", (worker_id, f"+{lease_seconds} seconds", job_id))
+        cursor = conn.execute("UPDATE jobs SET status='running', worker_id=?, lease_until=datetime('now', ?), next_run_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending' AND (next_run_at IS NULL OR julianday(next_run_at) <= julianday('now'))", (worker_id, f"+{lease_seconds} seconds", job_id))
         if cursor.rowcount != 1:
             conn.rollback()
             return None
@@ -161,7 +165,7 @@ def renew_job_lease(job_id, worker_id, lease_seconds=DEFAULT_JOB_LEASE_SECONDS):
         return cursor.rowcount == 1
 
 
-def update_job(job_id, status=None, result=None, last_error=None, retry_count=None, worker_id=None, lease_until=None, clear_lease=False):
+def update_job(job_id, status=None, result=None, last_error=None, retry_count=None, worker_id=None, lease_until=None, next_run_at=None, clear_lease=False):
     fields, values = [], []
     if status is not None:
         fields.append("status=?"); values.append(status)
@@ -175,6 +179,8 @@ def update_job(job_id, status=None, result=None, last_error=None, retry_count=No
         fields.append("worker_id=?"); values.append(worker_id)
     if lease_until is not None:
         fields.append("lease_until=?"); values.append(lease_until)
+    if next_run_at is not None:
+        fields.append("next_run_at=?"); values.append(next_run_at)
     if clear_lease:
         fields.extend(["worker_id=NULL", "lease_until=NULL"])
     if not fields:
