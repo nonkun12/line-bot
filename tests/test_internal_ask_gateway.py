@@ -78,6 +78,5 @@ def test_internal_ask_gateway_error_returns_500(monkeypatch):
     )
 
     assert response.status_code == 500
-    body = response.get_json()
-    assert body["ok"] is False
-    assert "gateway failure" in body["error"]
+    assert response.get_json() == {"ok": False, "error": "internal server error"}
+    assert "gateway failure" not in response.get_data(as_text=True)
