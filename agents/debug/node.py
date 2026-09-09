@@ -77,12 +77,21 @@ def _fetch_render_logs() -> tuple[str | None, str | None]:
 def debug_agent_node(state: AgentState) -> AgentState:
     """
     LangGraph Debug Agentノード
+
+    nightly workerからのCI失敗は、現在のRender本番ログとは独立した事象。
+    nightly-worker識別子を使ってRenderログ取得をスキップし、pytest出力だけを
+    collectorへ渡す。通常のLINE/手動debug経路では従来どおりRenderログを利用する。
     """
 
     message = state.get("raw_message", "")
-
     error_text = _strip_debug_prefix(message)
-    render_logs, log_fetch_error = _fetch_render_logs()
+
+    is_nightly_worker = state.get("user_id") == "nightly-worker"
+    if is_nightly_worker:
+        render_logs = None
+        log_fetch_error = "nightly worker: Renderログ取得をスキップ"
+    else:
+        render_logs, log_fetch_error = _fetch_render_logs()
 
     try:
         collected = collect_error(error_text, log_text=render_logs)
