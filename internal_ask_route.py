@@ -49,8 +49,11 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         data = request.get_json(silent=True) or {}
         user_id = data.get("user_id")
         message = data.get("message")
+        channel = data.get("channel", "http")
         if not user_id or not message:
             return jsonify({"ok": False, "error": "user_id and message are required"}), 400
+        if not isinstance(channel, str) or not channel.strip():
+            return jsonify({"ok": False, "error": "channel must be a non-empty string"}), 400
         if str(message).strip() == "ダッシュボード":
             dashboard_url = _make_dashboard_url(str(user_id))
             return jsonify({"ok": True, "reply": f"ダッシュボードはこちらです。\n{dashboard_url}"})
@@ -64,7 +67,7 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
                     app.ai_gateway,
                     str(user_id),
                     str(message),
-                    "http",
+                    channel.strip(),
                     metadata={"route": "internal_ask"},
                 )
                 reply = ai_response.text
