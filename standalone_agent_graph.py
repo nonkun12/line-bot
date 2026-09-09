@@ -10,7 +10,7 @@ from pathlib import Path
 _STANDALONE_DIR = Path(__file__).resolve().parent / "standalone-agent"
 
 # The standalone worker uses absolute top-level imports such as ``graph.*`` and
-# ``agents.*``.  During the full repository test run the legacy root packages
+# ``agents.*``. During the full repository test run the legacy root packages
 # may already be imported, so force the standalone directory to the front and
 # unload conflicting package modules before importing the worker graph.
 try:
@@ -32,8 +32,17 @@ for _path in list(sys.path_importer_cache):
 _worker_graph_module = importlib.import_module("graph.graph")
 
 # Re-export the worker graph module's public test/worker entry points.
-build_graph = _worker_graph_module.build_graph
-build_worker_graph = _worker_graph_module.build_worker_graph
+def build_graph(*args, **kwargs):
+    """Build the worker graph while preserving bridge-level monkeypatching."""
+    _worker_graph_module.supervisor_node = supervisor_node
+    _worker_graph_module.route_from_supervisor = route_from_supervisor
+    return _worker_graph_module.build_graph(*args, **kwargs)
+
+
+def build_worker_graph(*args, **kwargs):
+    return _worker_graph_module.build_worker_graph(*args, **kwargs)
+
+
 route_from_start = _worker_graph_module.route_from_start
 route_from_test = _worker_graph_module.route_from_test
 route_from_debug = _worker_graph_module.route_from_debug
