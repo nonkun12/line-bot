@@ -32,11 +32,9 @@ def _find_memory_target(message, user_id, call_mcp_tool):
     """削除対象の記憶キーを決定する。日付指定と直前の確認対象を優先する。"""
     text = (message or "").strip()
 
-    # 明示された名前の削除は一覧取得なしで処理できる。
     if "名前" in text:
         return "name"
 
-    # 「それを消して」は直前に確認した記憶を削除する。
     if text in {"それを消して", "それを削除して", "それを忘れて"}:
         with _pending_confirm_lock:
             return _pending_memory_target.get(user_id, "name")
@@ -52,7 +50,6 @@ def _find_memory_target(message, user_id, call_mcp_tool):
             if value and any(date in value for date in dates):
                 return item.get("key") or "memory"
 
-    # 明示的なキーが分からない場合は、従来互換で name を対象にする。
     return "name"
 
 
@@ -151,7 +148,6 @@ def handle_get_all_memory(message, user_id, call_mcp_tool):
         "覚えているの？",
     ]
 
-    # 個別の名前問い合わせは handle_get_name に任せる。
     if message in ["私の名前は？", "名前は？", "私の名前を教えて", "名前を教えて"]:
         return None
     if not any(keyword in message for keyword in query_keywords):
@@ -161,12 +157,23 @@ def handle_get_all_memory(message, user_id, call_mcp_tool):
 
     try:
         data = json.loads(memories) if isinstance(memories, str) else memories
+        if not isinstance(data, list):
+            data = []
         if not data:
             return "まだ記憶している情報はありません。"
 
-        dates = re.findall(r"\d+月\d+日|\d+月|\d+日", message)
+        # 「名前を教えて」は一覧全体を文字列化せず、nameキーだけ返す。
+        if "名前" in message and "教えて" in message:
+            for item in data:
+                if isinstance(item, dict) and item.get("key") == "name":
+                    value = str(item.get("value", "")).strip()
+                    if value:
+                        return f"あなたの名前は {value} です。"
 
+        dates = re.findall(r"\d+月\d+日|\d+月|\d+日", message)
         for item in data:
+            if not isinstance(item, dict):
+                continue
             value = str(item.get("value", ""))
             if value and any(date in value for date in dates):
                 with _pending_confirm_lock:
@@ -175,6 +182,8 @@ def handle_get_all_memory(message, user_id, call_mcp_tool):
 
         lines = []
         for item in data:
+            if not isinstance(item, dict):
+                continue
             key = item.get("key", "")
             value = item.get("value", "")
             if value:
