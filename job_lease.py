@@ -10,6 +10,36 @@ import db
 DEFAULT_STALE_SECONDS = int(os.environ.get("JOB_STALE_SECONDS", "1800"))
 
 
+def has_active_job_lease(job_id: int, worker_id: str) -> bool:
+    """Return True only when the given worker still owns a live Job lease."""
+    if job_id is None or not worker_id:
+        return False
+    db.init_db()
+    with db.get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM jobs
+            WHERE id=?
+              AND status='running'
+              AND worker_id=?
+              AND lease_until IS NOT NULL
+              AND julianday(lease_until) > julianday('now')
+            LIMIT 1
+            """,
+            (int(job_id), worker_id),
+        ).fetchone()
+    return row is not None
+
+
+def require_active_job_lease(state: dict) -> None:
+    """Fail closed for asynchronous Job side effects when lease ownership is lost."""
+    job_id = state.get("job_id")
+    worker_id = state.get("worker_id")
+    if job_id is not None and not has_active_job_lease(job_id, worker_id):
+        raise RuntimeError("worker lease is no longer active; external side effect aborted")
+
+
 def recover_stale_jobs(stale_seconds: int = DEFAULT_STALE_SECONDS) -> list[int]:
     """Requeue running Jobs whose explicit lease has expired.
 
