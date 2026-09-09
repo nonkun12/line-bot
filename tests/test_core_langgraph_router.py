@@ -1,16 +1,13 @@
-from dataclasses import dataclass
-
 from core.agents import AgentRegistry, AgentRequest, AgentResponse
 from core.langgraph_router import route_with_core
 
 
-@dataclass
 class WeatherAgent:
-    name: str = "weather"
-    description: str = "weather"
-    priority: int = 10
-    enabled: bool = True
-    graph_node: str = "weather_agent"
+    name = "weather"
+    description = "weather"
+    priority = 10
+    enabled = True
+    graph_node = "weather_agent"
 
     def can_handle(self, request: AgentRequest) -> bool:
         return request.metadata.get("next_agent") == "weather"
