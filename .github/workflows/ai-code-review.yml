@@ -16,11 +16,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get changed files
-        run: |
-          git fetch origin main
-          git diff origin/main...HEAD > diff.txt
+      - name: Fetch base branch
+        run: git fetch origin main
 
-      - name: Show diff
-        run: |
-          cat diff.txt
+      - name: Run blocking AI review
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: python scripts/ci_ai_review.py
