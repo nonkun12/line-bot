@@ -16,13 +16,16 @@ Router:
 
 from graph.state import AgentState
 
+from core.agents import AgentRegistry
+from core.langgraph_router import route_with_core
+
 
 _ROUTE_TABLE = {
     "debug": "debug_agent",
     "notes": "notes_agent",
     "memory": "memory_agent",
-"github": "github_agent",
-"sheets": "sheets_agent",
+    "github": "github_agent",
+    "sheets": "sheets_agent",
     "weather": "weather_agent",
     "normal": "normal_agent",
     "fallback": "fallback_agent",
@@ -31,21 +34,30 @@ _ROUTE_TABLE = {
 _DEFAULT_ROUTE = "fallback_agent"
 
 
-def route_from_supervisor(state: AgentState) -> str:
+def route_from_supervisor(
+    state: AgentState,
+    registry: AgentRegistry | None = None,
+) -> str:
     """
     LangGraphのadd_conditional_edgesで使用する分岐関数。
 
-    未知のnext_agentの場合は安全側として
-    fallback_agentへ送る。
+    registryが渡された場合はCore Registryを先に評価し、未解決なら
+    既存の固定ルートへフォールバックする。省略時の挙動は従来と同一。
     """
 
-    next_agent = state.get("next_agent")
+    if registry is not None:
+        route = route_with_core(
+            state,
+            registry,
+            legacy_routes=_ROUTE_TABLE,
+            default_route=_DEFAULT_ROUTE,
+        )
+    else:
+        next_agent = state.get("next_agent")
+        route = _ROUTE_TABLE.get(next_agent, _DEFAULT_ROUTE)
 
     print("===== ROUTER =====")
-    print("next_agent =", next_agent)
-    print("route =", _ROUTE_TABLE.get(next_agent, _DEFAULT_ROUTE))
+    print("next_agent =", state.get("next_agent"))
+    print("route =", route)
 
-    return _ROUTE_TABLE.get(
-        next_agent,
-        _DEFAULT_ROUTE
-    )
+    return route
