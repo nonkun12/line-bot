@@ -85,6 +85,7 @@ def health():
 
 # テスト互換用: 既存の app.client 参照を維持する
 client = _ai_client_client
+generate_ai_secretary_report = generate_secretary_report
 
 LINE_MAX_MESSAGE_LENGTH = 5000
 LINE_MAX_MESSAGES_PER_SEND = 5
@@ -260,7 +261,6 @@ def generate_reply(user_id, message):
     return _extract_graph_reply(result)
 
 
-# n8n → /internal/ask を実際にFlaskへ登録する
 register_internal_ask_route(app, INTERNAL_PUSH_KEY, generate_reply)
 
 
@@ -313,4 +313,8 @@ def _process_and_reply(event, user_id, text):
                 return
             print("[LOG] n8n delegation failed; falling back to local generate_reply")
         reply = generate_reply(user_id, text)
-        _line_reply(event.reply_token, reply)
+        try:
+            _line_reply(event.reply_token, reply)
+        except Exception as exc:
+            print("[LOG] LINE reply failed; falling back to push:", exc)
+            _line_push(user_id, reply)

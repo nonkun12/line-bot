@@ -66,13 +66,32 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         data = request.get_json(silent=True) or {}
         user_id = data.get("user_id")
         message = data.get("message")
-        if not user_id or message is None:
+        if not user_id or message is None or not str(message).strip():
             return jsonify({"ok": False, "error": "user_id and message are required"}), 400
         try:
-            with ApiClient(configuration) as api:
-                MessagingApi(api).push_message(PushMessageRequest(to=str(user_id), messages=[TextMessage(text=str(message))]))
+            from app import _line_push
+            _line_push(str(user_id), str(message))
             return jsonify({"ok": True})
         except Exception as exc:
             print("INTERNAL PUSH ERROR:", exc)
             return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+
+    @app.route("/internal/ai-report", methods=["POST"])
+    def internal_ai_report():
+        provided_key = request.headers.get("x-internal-key")
+        if not internal_push_key or not provided_key or not hmac.compare_digest(str(provided_key), str(internal_push_key)):
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+        data = request.get_json(silent=True) or {}
+        user_id = data.get("user_id")
+        if not user_id:
+            return jsonify({"ok": False, "error": "user_id is required"}), 400
+        try:
+            from app import generate_ai_secretary_report, _line_push
+            report = generate_ai_secretary_report(str(user_id))
+            _line_push(str(user_id), str(report or ""))
+            return jsonify({"ok": True})
+        except Exception as exc:
+            print("INTERNAL AI REPORT ERROR:", exc)
+            return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+
     return internal_ask

@@ -8,6 +8,7 @@ on:
   pull_request:
     branches:
       - main
+      - fix/integrated-regression-20260909
 
 
 jobs:
