@@ -95,7 +95,7 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
             return jsonify({"ok": True})
         except Exception as exc:
             print("INTERNAL PUSH ERROR:", exc)
-            return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+            return jsonify({"ok": False, "error": "internal server error"}), 500
 
     @app.route("/internal/ai-report", methods=["POST"])
     def internal_ai_report():
@@ -113,6 +113,6 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
             return jsonify({"ok": True})
         except Exception as exc:
             print("INTERNAL AI REPORT ERROR:", exc)
-            return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+            return jsonify({"ok": False, "error": "internal server error"}), 500
 
     return internal_ask
