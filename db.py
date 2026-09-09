@@ -178,7 +178,7 @@ def create_job(user_id, message, job_type="ai_task", source="line", parent_job_i
             INSERT INTO jobs(user_id, job_type, source, parent_job_id, message, status, max_retries, worker_id, lease_until)
             VALUES (?, ?, ?, ?, ?, 'pending', ?, NULL, NULL)
             """,
-            (user_id, message, job_type, source, parent_job_id, max_retries),
+            (user_id, job_type, source, parent_job_id, message, max_retries),
         )
         return cursor.lastrowid
 
