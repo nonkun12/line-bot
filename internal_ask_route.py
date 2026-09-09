@@ -32,6 +32,7 @@ def _make_dashboard_url(user_id: str) -> str:
 
 
 def register_internal_ask_route(app, internal_push_key, generate_reply_func):
+    # Reuse the shared application gateway when one is already installed.
     if not isinstance(getattr(app, "ai_gateway", None), AIGateway):
         app.ai_gateway = AIGateway(
             lambda ai_request: generate_reply_func(
