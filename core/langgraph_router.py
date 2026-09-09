@@ -11,18 +11,7 @@ from typing import Any, Mapping
 
 from .agents import AgentRegistry
 from .langgraph_adapter import agent_request_from_state
-
-
-LEGACY_GRAPH_NODES: Mapping[str, str] = {
-    "debug": "debug_agent",
-    "notes": "notes_agent",
-    "memory": "memory_agent",
-    "github": "github_agent",
-    "sheets": "sheets_agent",
-    "weather": "weather_agent",
-    "normal": "normal_agent",
-    "fallback": "fallback_agent",
-}
+from graph.core_registry import LEGACY_GRAPH_NODES
 
 
 def route_with_core(
@@ -30,7 +19,7 @@ def route_with_core(
     registry: AgentRegistry,
     *,
     legacy_routes: Mapping[str, str] = LEGACY_GRAPH_NODES,
-    default_route: str = "fallback_agent",
+    default_route: str = LEGACY_GRAPH_NODES["fallback"],
 ) -> str:
     """Resolve an explicitly selected Core agent before generic matching."""
     if not isinstance(registry, AgentRegistry):
