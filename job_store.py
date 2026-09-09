@@ -42,7 +42,7 @@ def update_job_owned(job_id, worker_id, status=None, result=None, last_error=Non
     """部分更新を、現在leaseを所有しているWorkerに限定して行う。
 
     stale Workerがlease失効後にJob状態を上書きするのを防ぐため、
-    status='running' かつ worker_id一致をUPDATE条件に含める。
+    status='running'、worker_id一致、かつlease未失効をUPDATE条件に含める。
     """
     fields = []
     values = []
@@ -69,7 +69,8 @@ def update_job_owned(job_id, worker_id, status=None, result=None, last_error=Non
         db._ensure_job_columns(conn)
         cursor = conn.execute(
             f"UPDATE jobs SET {', '.join(fields)} "
-            "WHERE id=? AND status='running' AND worker_id=?",
+            "WHERE id=? AND status='running' AND worker_id=? "
+            "AND lease_until IS NOT NULL AND julianday(lease_until) > julianday('now')",
             values,
         )
         return cursor.rowcount > 0
