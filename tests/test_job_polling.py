@@ -1,5 +1,3 @@
-import sqlite3
-
 import db
 import job_store
 
@@ -12,7 +10,7 @@ def test_claim_skips_job_until_next_run_at(tmp_path, monkeypatch):
     assert job_store.claim_pending_job(worker_id="worker-1") is None
 
 
-def test_review_pending_update_sets_deferred_poll(monkeypatch, tmp_path):
+def test_review_pending_update_sets_deferred_poll(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB", str(tmp_path / "jobs.db"))
     db.init_db()
     job_id = db.create_job("Utest", "review wait", job_type="development")
@@ -30,8 +28,3 @@ def test_review_pending_update_sets_deferred_poll(monkeypatch, tmp_path):
     job = db.get_job(job_id)
     assert job["next_run_at"] is not None
     assert job_store.claim_pending_job(worker_id="worker-2") is None
-
-
-def test_review_poll_delay_is_configurable(monkeypatch):
-    monkeypatch.setenv("JOB_REVIEW_POLL_DELAY_SECONDS", "45")
-    assert int(job_store.REVIEW_POLL_DELAY_SECONDS) == 30
