@@ -175,6 +175,10 @@ def execute_one_step(job: dict, graph=None) -> dict:
                     "step_name": current_node, "next_step": next_node,
                     "summary": _checkpoint_summary(values)}
         if review_result.get("status") == "failed":
+            if review_result.get("ai_review") and review_result.get("retryable") and next_node == "fix_agent":
+                return {"status": "step_completed", "thread_id": thread_id,
+                        "step_name": current_node, "next_step": next_node,
+                        "summary": _checkpoint_summary(values)}
             return {"status": "failed", "thread_id": thread_id,
                     "step_name": current_node,
                     "error": review_result.get("reason") or "review failed",
@@ -188,14 +192,11 @@ def execute_one_step(job: dict, graph=None) -> dict:
     if current_node == "deploy_agent":
         deploy_result = values.get("deploy_result") or {}
         if deploy_result.get("pending"):
-            return {"status": "step_completed", "thread_id": thread_id,
-                    "step_name": current_node, "next_step": next_node,
+            return {"status": "step_completed", "thread_id": thread_id, "step_name": current_node, "next_step": next_node,
                     "summary": _checkpoint_summary(values)}
         if deploy_result.get("deployed") is False:
-            return {"status": "deploy_failed", "thread_id": thread_id,
-                    "step_name": current_node, "next_step": next_node,
-                    "deploy_result": deploy_result,
-                    "summary": _checkpoint_summary(values)}
+            return {"status": "deploy_failed", "thread_id": thread_id, "step_name": current_node, "next_step": next_node,
+                    "deploy_result": deploy_result, "summary": _checkpoint_summary(values)}
     return {"status": "step_completed", "thread_id": thread_id, "step_name": current_node or "unknown", "next_step": next_node,
             "summary": _checkpoint_summary(values)}
 
