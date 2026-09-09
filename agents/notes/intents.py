@@ -27,8 +27,13 @@ def is_note_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
     if "メモ" in text and any(word in text for word in _LOOKUP_WORDS):
         return True
     # 「明日旅行する予定」のような予定の保存はNotes Agentへ送る。
-    # 「予定ある？」「予定を確認して」などの照会は従来どおり除外する。
-    if "予定" in text and not any(word in text for word in _LOOKUP_WORDS):
+    # 「明日15時の予定は？」など、既存予定の照会は保存対象から除外する。
+    if "予定" in text:
+        if any(word in text for word in _LOOKUP_WORDS) or text.endswith(("は？", "は?", "ですか？", "ですか?")):
+            return False
+        return True
+    # 「明日15時に病院へ電話したい」のような日時付き行動予定も保存対象。
+    if re.search(r"(?:今日|明日|明後日|\d+月\d+日|\d+月|\d+日|\d+時)", text) and "したい" in text:
         return True
     if get_pending_note_action(user_id or ""):
         return True
