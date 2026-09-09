@@ -35,7 +35,17 @@ def resolve_user_id(request_user_id: str | None) -> str | None:
         if user_id and user_id != "test-user":
             return user_id
     owner = os.environ.get("DASHBOARD_OWNER_USER_ID", "").strip()
-    return owner or None
+    if owner:
+        return owner
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT user_id FROM messages WHERE user_id IS NOT NULL AND TRIM(user_id) <> '' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        return str(row[0]).strip() if row and row[0] else None
+    except Exception as e:
+        print("[DASHBOARD] Failed to resolve active user:", e)
+        return None
 
 
 def _dashboard_secret() -> str:
@@ -131,7 +141,7 @@ def get_notes():
     if error:
         return error
     try:
-        notes = parse_mcp_json_list(call_mcp_tool("list_notes", {"user_id": user_id}))
+        notes = parse_mcp_json_list(call_mcp_tool("search_notes", {"user_id": user_id, "keyword": ""}))
         return jsonify({"ok": True, "notes": notes, "user_id": user_id})
     except Exception as e:
         print("[DASHBOARD] Failed to list notes via MCP:", e)
