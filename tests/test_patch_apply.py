@@ -67,9 +67,7 @@ def test_apply_patch_rolls_back_temporary_branch_when_apply_fails(tmp_path, monk
     original_run_git = patch_apply_module._run_git
 
     def fail_apply(args, cwd):
-        if args[:2] == ["apply", "/tmp/never-used"]:
-            return original_run_git(args, cwd)
-        if args and args[0] == "apply":
+        if args and args[0] == "apply" and "--check" not in args:
             return subprocess.CompletedProcess(
                 ["git", *args], returncode=1, stdout="", stderr="simulated apply failure"
             )
