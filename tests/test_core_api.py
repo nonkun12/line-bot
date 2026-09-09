@@ -74,3 +74,20 @@ def test_core_api_ask_rejects_blank_channel(monkeypatch):
 
     assert response.status_code == 400
     assert response.get_json() == {"ok": False, "error": "channel must be a non-empty string"}
+
+
+def test_core_api_ask_hides_internal_exception_details(monkeypatch):
+    def fake_handle(request):
+        raise RuntimeError("secret-internal-detail")
+
+    monkeypatch.setattr(app.app.ai_gateway, "handle", fake_handle)
+
+    response = app.app.test_client().post(
+        "/api/ask",
+        json={"user_id": "u1", "message": "test"},
+        headers=_headers(),
+    )
+
+    assert response.status_code == 500
+    assert response.get_json() == {"ok": False, "error": "internal server error"}
+    assert "secret-internal-detail" not in response.get_data(as_text=True)
