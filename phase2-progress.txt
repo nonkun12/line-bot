@@ -1,1 +1,0 @@
-Phase 2 progress: registry-backed standalone Core graph with real Notes execution coverage.
