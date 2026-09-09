@@ -5,15 +5,35 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 DEFAULT_WORKTREE_ROOT = os.environ.get("JOB_WORKTREE_ROOT", ".worker-worktrees")
+GIT_LOCK_RETRIES = int(os.environ.get("GIT_LOCK_RETRIES", "3"))
+GIT_LOCK_BACKOFF_SECONDS = float(os.environ.get("GIT_LOCK_BACKOFF_SECONDS", "0.5"))
+
+
+def _is_git_lock_error(result: subprocess.CompletedProcess) -> bool:
+    text = f"{result.stdout}\n{result.stderr}".lower()
+    return (
+        "index.lock" in text
+        or "could not lock ref" in text
+        or ("unable to create" in text and ".lock" in text)
+    )
 
 
 def _run_git(args: list[str], cwd: str, timeout: float = 30.0) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout
-    )
+    command = ["git", *args]
+    last_result: subprocess.CompletedProcess | None = None
+    for attempt in range(max(1, GIT_LOCK_RETRIES + 1)):
+        result = subprocess.run(
+            command, cwd=cwd, capture_output=True, text=True, timeout=timeout
+        )
+        last_result = result
+        if result.returncode == 0 or not _is_git_lock_error(result) or attempt >= GIT_LOCK_RETRIES:
+            return result
+        time.sleep(GIT_LOCK_BACKOFF_SECONDS * (2 ** attempt))
+    return last_result or subprocess.CompletedProcess(command, 1, "", "git command failed")
 
 
 def prune_worktrees(repo_root: str | None = None) -> bool:
