@@ -9,6 +9,7 @@ on:
       - 'standalone_agent_graph.py'
       - 'tests/test_development_jobs.py'
       - 'requirements.txt'
+      - 'db.py'
   push:
     branches:
       - feat/overnight-dev-worker
@@ -34,5 +35,22 @@ jobs:
           pip install -r requirements.txt
       - name: Test development job intake
         run: pytest -q tests/test_development_jobs.py
+      - name: Test root Job DB compatibility
+        run: |
+          python - <<'PY'
+          import tempfile
+          import db
+          with tempfile.TemporaryDirectory() as tmp:
+              db.DB = f"{tmp}/jobs.db"
+              db.init_db()
+              job_id = db.create_job("Utest", "smoke", job_type="development")
+              assert job_id
+              job = db.get_job(job_id)
+              assert job["status"] == "pending"
+              claimed = db.claim_pending_job("ci-worker", lease_seconds=60)
+              assert claimed["id"] == job_id
+              assert claimed["status"] == "running"
+          print("root Job DB compatibility OK")
+          PY
       - name: Import worker components
         run: python -c "import job_worker; import standalone_agent_graph; print('worker imports OK')"
