@@ -13,7 +13,7 @@ def test_internal_ask_routes_request_through_ai_gateway(monkeypatch):
         captured["request"] = request
         return AIResponse(text="gateway reply")
 
-    monkeypatch.setattr(app.ai_gateway, "handle", fake_handle)
+    monkeypatch.setattr(app.app.ai_gateway, "handle", fake_handle)
 
     response = app.app.test_client().post(
         "/internal/ask",
@@ -34,7 +34,7 @@ def test_internal_ask_gateway_error_returns_500(monkeypatch):
     def fake_handle(request):
         raise RuntimeError("gateway failure")
 
-    monkeypatch.setattr(app.ai_gateway, "handle", fake_handle)
+    monkeypatch.setattr(app.app.ai_gateway, "handle", fake_handle)
 
     response = app.app.test_client().post(
         "/internal/ask",
