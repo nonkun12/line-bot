@@ -4,11 +4,28 @@ import sqlite3
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB = os.environ.get("CHAT_DB_PATH", os.path.join(BASE_DIR, "chat.db"))
 DEFAULT_JOB_LEASE_SECONDS = int(os.environ.get("JOB_LEASE_SECONDS", "300"))
+SQLITE_TIMEOUT_SECONDS = float(os.environ.get("SQLITE_TIMEOUT_SECONDS", "30.0"))
+SQLITE_BUSY_TIMEOUT_MS = int(os.environ.get("SQLITE_BUSY_TIMEOUT_MS", "30000"))
 
 
 def get_conn():
     print("[LOG] get_conn called")
-    return sqlite3.connect(DB, check_same_thread=False)
+    conn = sqlite3.connect(
+        DB,
+        check_same_thread=False,
+        timeout=SQLITE_TIMEOUT_SECONDS,
+    )
+    conn.execute(f"PRAGMA busy_timeout={max(1, SQLITE_BUSY_TIMEOUT_MS)}")
+    return conn
+
+
+def _enable_wal(conn):
+    """Enable WAL once for the shared SQLite database when possible."""
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+    except sqlite3.DatabaseError as exc:
+        print("[LOG] SQLite WAL setup skipped:", exc)
 
 
 def _ensure_job_columns(conn):
@@ -22,6 +39,7 @@ def _ensure_job_columns(conn):
 def init_db():
     print("[LOG] init_db called")
     with get_conn() as conn:
+        _enable_wal(conn)
         conn.execute("""
         CREATE TABLE IF NOT EXISTS messages(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,7 +178,7 @@ def create_job(user_id, message, job_type="ai_task", source="line", parent_job_i
             INSERT INTO jobs(user_id, job_type, source, parent_job_id, message, status, max_retries, worker_id, lease_until)
             VALUES (?, ?, ?, ?, ?, 'pending', ?, NULL, NULL)
             """,
-            (user_id, job_type, source, parent_job_id, message, max_retries),
+            (user_id, message, job_type, source, parent_job_id, max_retries),
         )
         return cursor.lastrowid
 
