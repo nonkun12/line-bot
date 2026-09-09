@@ -21,10 +21,16 @@ def test_gateway_rejects_invalid_request_fields():
 
     with pytest.raises(ValueError, match="user_id is required"):
         gateway.handle(AIRequest(123, "hi", channel="line"))
+    with pytest.raises(ValueError, match="user_id is required"):
+        gateway.handle(AIRequest("   ", "hi", channel="line"))
     with pytest.raises(ValueError, match="message is required"):
         gateway.handle(AIRequest("u1", "", channel="line"))
+    with pytest.raises(ValueError, match="message is required"):
+        gateway.handle(AIRequest("u1", "   ", channel="line"))
     with pytest.raises(ValueError, match="channel is required"):
         gateway.handle(AIRequest("u1", "hi", channel=""))
+    with pytest.raises(ValueError, match="channel is required"):
+        gateway.handle(AIRequest("u1", "hi", channel="   "))
 
 
 def test_gateway_rejects_invalid_handler_result():
