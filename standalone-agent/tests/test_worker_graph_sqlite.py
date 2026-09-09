@@ -28,9 +28,7 @@ sys.modules["db"] = _ROOT_DB
 assert _ROOT_DB_SPEC.loader is not None
 _ROOT_DB_SPEC.loader.exec_module(_ROOT_DB)
 
-sys.path.insert(0, str(STANDALONE_DIR))
-
-import graph.graph as graph_module
+import standalone_agent_graph as graph_module
 
 
 def test_worker_graph_persists_and_resumes_with_sqlite(tmp_path, monkeypatch):
