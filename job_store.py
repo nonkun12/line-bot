@@ -3,6 +3,9 @@
 import db
 
 
+REVIEW_POLL_DELAY_SECONDS = int(__import__("os").environ.get("JOB_REVIEW_POLL_DELAY_SECONDS", "30"))
+
+
 def create_job(user_id, message, job_type="ai_task", source="line", parent_job_id=None, max_retries=3):
     return db.create_job(user_id=user_id, message=message, job_type=job_type,
                          source=source, parent_job_id=parent_job_id,
@@ -38,13 +41,14 @@ def update_job(job_id, status=None, result=None, last_error=None,
                          clear_lease=clear_lease or clear_claimed_at)
 
 
+def _is_review_pending(result: object) -> bool:
+    text = str(result or "")
+    return '"review_result": {"status": "pending"' in text or "required GitHub review checks" in text
+
+
 def update_job_owned(job_id, worker_id, status=None, result=None, last_error=None,
                      retry_count=None, next_run_at=None, clear_lease=False):
-    """部分更新を、現在leaseを所有しているWorkerに限定して行う。
-
-    stale Workerがlease失効後にJob状態を上書きするのを防ぐため、
-    status='running'、worker_id一致、かつlease未失効をUPDATE条件に含める。
-    """
+    """部分更新を、現在leaseを所有しているWorkerに限定して行う。"""
     fields = []
     values = []
     if status is not None:
@@ -59,9 +63,16 @@ def update_job_owned(job_id, worker_id, status=None, result=None, last_error=Non
     if retry_count is not None:
         fields.append("retry_count=?")
         values.append(retry_count)
+
+    # Review/CI polling must not be immediately reclaimed. Persist the defer
+    # deadline so any n8n/Worker trigger arriving early simply finds no job.
     if next_run_at is not None:
         fields.append("next_run_at=?")
         values.append(next_run_at)
+    elif status == "pending" and _is_review_pending(result):
+        fields.append("next_run_at=datetime('now', ?)")
+        values.append(f"+{max(1, REVIEW_POLL_DELAY_SECONDS)} seconds")
+
     if clear_lease:
         fields.extend(["worker_id=NULL", "lease_until=NULL"])
     if not fields:
