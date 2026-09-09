@@ -22,6 +22,7 @@ def ai_request_from_state(state: Mapping[str, Any], *, channel: str = "line") ->
             "request_id": state.get("request_id"),
             "intent": state.get("intent"),
             "next_agent": state.get("next_agent"),
+            "call_mcp_tool": state.get("call_mcp_tool"),
         },
     )
 
@@ -35,6 +36,7 @@ def agent_request_from_state(state: Mapping[str, Any]) -> AgentRequest:
             "request_id": state.get("request_id"),
             "intent": state.get("intent"),
             "next_agent": state.get("next_agent"),
+            "call_mcp_tool": state.get("call_mcp_tool"),
         },
     )
 
