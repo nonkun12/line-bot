@@ -25,9 +25,11 @@ def is_note_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
         return True
     if text.startswith("メモ"):
         return True
-    # 「予定ある？」「予定確認して」などはリマインダー/予定確認であり、
-    # Notes Agentへ誤ルーティングしない。メモ検索だけをNotesへ振り分ける。
+    # 「予定ある？」「予定確認して」などの確認はNotesへ誤ルーティングしない。
+    # 一方、「明日旅行する予定」のような保存すべき予定文はNoteとして扱う。
     if "メモ" in text and any(word in text for word in _LOOKUP_WORDS):
+        return True
+    if "予定" in text and not any(word in text for word in _LOOKUP_WORDS):
         return True
     if get_pending_note_action(user_id or ""):
         return True
