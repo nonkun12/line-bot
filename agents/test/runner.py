@@ -22,6 +22,18 @@ def _test_env(cwd: str | None) -> tuple[dict[str, str], str | None]:
     return env, scratch_db
 
 
+def _cleanup_test_db(scratch_db: str | None) -> None:
+    if not scratch_db:
+        return
+    for path in (scratch_db, f"{scratch_db}-wal", f"{scratch_db}-shm"):
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
+
+
 def run_tests(
     test_command: str = "pytest",
     cwd: str | None = None,
@@ -54,3 +66,5 @@ def run_tests(
             "timed_out": True,
             "test_db_path": scratch_db,
         }
+    finally:
+        _cleanup_test_db(scratch_db)
