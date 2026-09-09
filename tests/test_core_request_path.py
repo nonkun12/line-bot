@@ -7,9 +7,8 @@ import agents.notes.node as notes_node
 def test_run_core_request_classifies_and_executes_notes(monkeypatch):
     monkeypatch.setattr(
         notes_node,
-        "save_note",
-        lambda user_id, title, body, category: "メモ「テスト」を保存しました。",
-        raising=False,
+        "handle_note_message",
+        lambda message, user_id, call_mcp_tool: "メモ「テスト」を保存しました。",
     )
 
     result = run_core_request("u1", "メモにテストを保存して")
@@ -17,7 +16,8 @@ def test_run_core_request_classifies_and_executes_notes(monkeypatch):
     assert result["intent"] == "note"
     assert result["next_agent"] == "notes"
     assert result["route"] == agent_node_name("notes")
-    assert "保存しました" in result["final_reply"]
+    assert result["final_reply"] == "メモ「テスト」を保存しました。"
+    assert result["agent_results"]["notes"]["text"] == "メモ「テスト」を保存しました。"
 
 
 def test_extract_core_reply_uses_final_reply():
