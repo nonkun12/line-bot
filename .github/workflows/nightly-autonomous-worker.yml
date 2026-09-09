@@ -17,12 +17,17 @@ concurrency:
 jobs:
   autonomous-repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "nightly-autonomous-worker"
+          git config user.email "nightly-worker@users.noreply.github.com"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -34,6 +39,9 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      - name: Record starting commit
+        run: echo "START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Run guarded nightly worker
         env:
           NIGHTLY_AUTOFIX: 'true'
@@ -44,7 +52,7 @@ jobs:
       - name: Push verified repair commit
         if: success()
         run: |
-          if git diff --quiet HEAD^ HEAD 2>/dev/null; then
+          if [ "$(git rev-parse HEAD)" = "$START_SHA" ]; then
             echo 'No new repair commit to push.'
             exit 0
           fi
