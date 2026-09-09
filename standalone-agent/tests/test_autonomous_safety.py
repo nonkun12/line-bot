@@ -16,6 +16,20 @@ def test_protected_paths_reject_secret_and_runtime_files(tmp_path):
     assert result["error"] == "protected path change rejected"
 
 
+def test_protected_paths_reject_traversal(tmp_path):
+    patch = """diff --git a/../job_worker.py b/../job_worker.py
+--- a/../job_worker.py
++++ b/../job_worker.py
+@@ -1 +1 @@
+-OLD
++ATTACK
+"""
+    assert "../job_worker.py" in _protected_paths(patch)
+    result = apply_patch(patch, str(tmp_path))
+    assert result["applied"] is False
+    assert result["error"] == "protected path change rejected"
+
+
 def test_application_files_are_not_blocked_by_default():
     patch = """diff --git a/app.py b/app.py
 --- a/app.py
