@@ -349,7 +349,7 @@ def _process_and_reply(event, user_id, text):
             dashboard_url = f"https://line-bot-yvea.onrender.com/dashboard?{query}"
             _line_reply(event.reply_token, f"ダッシュボードはこちらです。\n{dashboard_url}")
             return
-        if N8N_WEBHOOK_URL:
+        if N8N_WEBHOOK_URL and not _core_dynamic_enabled():
             print(f"[LOG] DELEGATING TO N8N: user_id={user_id}")
             delegated = _delegate_to_n8n(user_id, text, N8N_WEBHOOK_URL)
             if delegated:
