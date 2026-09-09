@@ -4,14 +4,37 @@ Phase4a: Patch適用処理
 安全設計:
 - git apply --check で事前検証してから適用する(検証失敗時は一切書き込まない)
 - 適用は専用の一時ブランチ上で行い、作業中のブランチを直接汚さない
+- 自律Workerでは秘密情報・DB実体・Git管理領域・Worker制御コードへの
+  パッチ適用を拒否する
 """
 
+import fnmatch
 import os
 import subprocess
 import tempfile
 import uuid
 
 GIT_COMMAND_TIMEOUT = float(os.environ.get("GIT_COMMAND_TIMEOUT", "10.0"))
+
+PROTECTED_PATTERNS = (
+    ".env",
+    ".env.*",
+    "*.db",
+    "*.sqlite",
+    "*.sqlite3",
+    ".git",
+    ".git/*",
+    "chat.db",
+    "langgraph-checkpoints.sqlite3",
+    "git_safety.py",
+    "job_worker.py",
+    "job_store.py",
+    "job_lease.py",
+    "job_approvals.py",
+    "standalone-agent/graph/graph.py",
+    "standalone-agent/graph/state.py",
+    "standalone_agent_graph.py",
+)
 
 
 def _run_git(args: list[str], cwd: str) -> subprocess.CompletedProcess:
@@ -30,6 +53,25 @@ def _run_git(args: list[str], cwd: str) -> subprocess.CompletedProcess:
             stdout=e.stdout or "",
             stderr=(e.stderr or "") + f"\n[TIMEOUT] git command timed out after {GIT_COMMAND_TIMEOUT}s",
         )
+
+
+def _extract_patch_paths(patch_text: str) -> set[str]:
+    paths: set[str] = set()
+    for line in patch_text.splitlines():
+        if line.startswith("+++ b/"):
+            paths.add(line[6:].strip())
+        elif line.startswith("--- a/"):
+            paths.add(line[6:].strip())
+    return {path for path in paths if path and path != "/dev/null"}
+
+
+def _protected_paths(patch_text: str) -> list[str]:
+    blocked = []
+    for path in sorted(_extract_patch_paths(patch_text)):
+        normalized = path.replace("\\", "/")
+        if any(fnmatch.fnmatch(normalized, pattern) for pattern in PROTECTED_PATTERNS):
+            blocked.append(path)
+    return blocked
 
 
 def apply_patch(patch_text: str, workdir: str) -> dict:
@@ -56,6 +98,17 @@ def apply_patch(patch_text: str, workdir: str) -> dict:
             "error": "empty patch",
             "stdout": "",
             "stderr": "",
+        }
+
+    blocked = _protected_paths(patch_text)
+    if blocked and os.environ.get("ALLOW_PROTECTED_AUTONOMOUS_CHANGES", "false").lower() != "true":
+        return {
+            "applied": False,
+            "branch": None,
+            "error": "protected path change rejected",
+            "stdout": "",
+            "stderr": "blocked paths: " + ", ".join(blocked),
+            "protected_paths": blocked,
         }
 
     with tempfile.NamedTemporaryFile(
