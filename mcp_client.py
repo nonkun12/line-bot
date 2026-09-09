@@ -147,6 +147,13 @@ def parse_mcp_json_list(raw):
     if isinstance(raw, list):
         return raw
 
+    # list_reminders may return its legacy plain-text format directly.
+    # Parse that before attempting JSON so expected responses do not emit
+    # misleading JSON parse-error logs.
+    reminder_items = _parse_reminder_text_lines(raw)
+    if reminder_items:
+        return reminder_items
+
     try:
         data = json.loads(raw)
 
@@ -159,22 +166,22 @@ def parse_mcp_json_list(raw):
             if content and isinstance(content[0], dict):
                 text = content[0].get("text", "")
 
+                parsed = None
                 try:
                     parsed = json.loads(text)
-                    return parsed if isinstance(parsed, list) else []
-                except Exception:
-                    reminder_items = _parse_reminder_text_lines(text)
-                    if reminder_items:
-                        return reminder_items
-                    return []
+                except json.JSONDecodeError:
+                    parsed = None
+
+                if isinstance(parsed, list):
+                    return parsed
+
+                reminder_items = _parse_reminder_text_lines(text)
+                if reminder_items:
+                    return reminder_items
+                return []
 
         return data if isinstance(data, list) else []
 
     except json.JSONDecodeError as e:
         print("parse error:", e)
-        # list_reminders など、MCPがJSONではなく
-        # 改行区切りのテキストを返すツールにも対応する。
-        reminder_items = _parse_reminder_text_lines(raw)
-        if reminder_items:
-            return reminder_items
         return [line.strip() for line in str(raw).splitlines() if line.strip()]
