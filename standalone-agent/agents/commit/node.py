@@ -13,9 +13,11 @@ GIT_LOCK_BACKOFF_SECONDS = float(os.environ.get("GIT_LOCK_BACKOFF_SECONDS", "0.5
 
 def _is_git_lock_error(result: subprocess.CompletedProcess) -> bool:
     text = f"{result.stdout}\n{result.stderr}".lower()
-    return any(marker in text for marker in (
-        "index.lock", "could not lock ref", "unable to create '.*.lock",
-    ))
+    return (
+        "index.lock" in text
+        or "could not lock ref" in text
+        or ("unable to create" in text and ".lock" in text)
+    )
 
 
 def _run_git(args: list[str], cwd: str) -> subprocess.CompletedProcess:
