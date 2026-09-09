@@ -71,6 +71,7 @@ from internal_ask_route import register_internal_ask_route
 from n8n_delegate import _delegate_to_n8n
 from e2e_status import init_e2e_table, record_step, StepTimer
 from core.channel import handle_channel_request
+from routes.core_api import core_api_bp
 
 app = Flask(__name__)
 
@@ -79,6 +80,7 @@ app.register_blueprint(dashboard_bp)
 
 from routes.e2e_dashboard import e2e_bp
 app.register_blueprint(e2e_bp)
+app.register_blueprint(core_api_bp)
 
 @app.route("/health", methods=["GET"])
 def health():
