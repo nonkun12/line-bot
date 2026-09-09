@@ -44,5 +44,6 @@ class AgentState(TypedDict, total=False):
     commit_result: Optional[dict[str, Any]]
     publish_result: Optional[dict[str, Any]]
     review_result: Optional[dict[str, Any]]
+    review_retry_count: int
     merge_result: Optional[dict[str, Any]]
     deploy_result: Optional[dict[str, Any]]
