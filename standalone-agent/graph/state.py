@@ -37,13 +37,16 @@ class AgentState(TypedDict, total=False):
     # Phase3: Fix Agent results -> generated Patch candidates
     patch_candidates: Optional[list[dict[str, Any]]]
 
+    # AI review feedback / retry accounting for autonomous development.
+    review_result: Optional[dict[str, Any]]
+    review_retry_count: int
+    review_feedback: Optional[dict[str, Any]]
+
     # Phase1: approval status (pending / expired / none)
     pending_status: Optional[str]
 
     # Overnight Worker publication, review, merge, and deployment results.
     commit_result: Optional[dict[str, Any]]
     publish_result: Optional[dict[str, Any]]
-    review_result: Optional[dict[str, Any]]
-    review_retry_count: int
     merge_result: Optional[dict[str, Any]]
     deploy_result: Optional[dict[str, Any]]
