@@ -22,6 +22,7 @@ class AgentState(TypedDict, total=False):
 
     intent: Optional[str]
     next_agent: Optional[str]
+    management_plan: dict[str, Any]
 
     agent_results: dict[str, Any]
 
