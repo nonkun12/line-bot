@@ -27,9 +27,9 @@ sys.modules["db"] = _ROOT_DB
 assert _ROOT_DB_SPEC.loader is not None
 _ROOT_DB_SPEC.loader.exec_module(_ROOT_DB)
 
-sys.path.insert(0, str(STANDALONE_DIR))
-
-import graph.graph as graph_module
+# Use the explicit worker import bridge so the autonomous graph is not
+# accidentally replaced by the legacy repository-root graph package.
+import standalone_agent_graph as graph_module
 
 
 def test_worker_graph_resumes_one_node_per_invoke(monkeypatch):
