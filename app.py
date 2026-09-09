@@ -1,81 +1,28 @@
 from flask import Flask, request, jsonify
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
-from linebot.v3.messaging import (
-    ApiClient,
-    MessagingApi,
-    ReplyMessageRequest,
-    PushMessageRequest,
-    TextMessage
-)
-import unicodedata
-import json
-import random
-import threading
-import httpx
-import logging
+from linebot.v3.messaging import (ApiClient, MessagingApi, ReplyMessageRequest, PushMessageRequest, TextMessage)
+import unicodedata, json, random, threading, httpx, logging, re, os, time
 logging.basicConfig(level=logging.DEBUG)
-import re
-import os
-import time
 from urllib.parse import urlencode
 from collections import OrderedDict
 from datetime import datetime, timezone, timedelta
 
-from config import (
-    CHANNEL_ACCESS_TOKEN,
-    CHANNEL_SECRET,
-    GROQ_API_KEY,
-    INTERNAL_PUSH_KEY,
-    AI_REPORT_GITHUB_REPO,
-    GITHUB_TOKEN,
-    N8N_WEBHOOK_URL,
-    configuration,
-    handler,
-    client,
-    MODEL,
-)
-from db import (
-    init_db,
-    save_message,
-    load_history,
-    create_processed_event,
-    is_processed_event,
-)
-from reminders import (
-    handle_daily_reminder,
-    handle_relative_time_reminder,
-    handle_tomorrow_reminder,
-)
+from config import (CHANNEL_ACCESS_TOKEN, CHANNEL_SECRET, GROQ_API_KEY, INTERNAL_PUSH_KEY, AI_REPORT_GITHUB_REPO, GITHUB_TOKEN, N8N_WEBHOOK_URL, configuration, handler, client, MODEL)
+from db import init_db, save_message, load_history, create_processed_event, is_processed_event
+from reminders import handle_daily_reminder, handle_relative_time_reminder, handle_tomorrow_reminder
 from agents.notes.intents import is_note_intent
 from agents.github.intents import is_github_intent
-from mcp_client import (
-    call_mcp_tool as _call_mcp_tool_impl,
-    parse_mcp_json_list as _parse_mcp_json_list_impl,
-)
-from ai_client import (
-    generate_chat_completion,
-    generate_secretary_report,
-    client as _ai_client_client,
-)
-from bot_tools import (
-    MCP_TOOLS_SCHEMA as _MCP_TOOLS_SCHEMA,
-    extract_quoted_text as _extract_quoted_text_impl,
-    normalize_memory_key as _normalize_memory_key_impl,
-    ensure_jst_offset as _ensure_jst_offset_impl,
-    clean_memory_value as _clean_memory_value_impl,
-    dispatch_tool_call as _dispatch_tool_call_impl,
-)
-
+from mcp_client import call_mcp_tool as _call_mcp_tool_impl, parse_mcp_json_list as _parse_mcp_json_list_impl
+from ai_client import generate_chat_completion, generate_secretary_report, client as _ai_client_client
+from bot_tools import MCP_TOOLS_SCHEMA as _MCP_TOOLS_SCHEMA, extract_quoted_text as _extract_quoted_text_impl, normalize_memory_key as _normalize_memory_key_impl, ensure_jst_offset as _ensure_jst_offset_impl, clean_memory_value as _clean_memory_value_impl, dispatch_tool_call as _dispatch_tool_call_impl
 from debug_agent import run_debug_agent
 from internal_ask_route import register_internal_ask_route
 from n8n_delegate import _delegate_to_n8n
 from e2e_status import init_e2e_table, record_step, StepTimer
 
 app = Flask(__name__)
-
 from routes.dashboard import dashboard_bp
 app.register_blueprint(dashboard_bp)
-
 from routes.e2e_dashboard import e2e_bp
 app.register_blueprint(e2e_bp)
 
@@ -83,14 +30,14 @@ app.register_blueprint(e2e_bp)
 def health():
     return jsonify({"ok": True}), 200
 
-# テスト互換用: 既存の app.client 参照を維持する
 client = _ai_client_client
+# Backward-compatible name used by the internal AI report endpoint/tests.
+generate_ai_secretary_report = generate_secretary_report
 
 LINE_MAX_MESSAGE_LENGTH = 5000
 LINE_MAX_MESSAGES_PER_SEND = 5
 LINE_MAX_TOTAL_LENGTH = LINE_MAX_MESSAGE_LENGTH * LINE_MAX_MESSAGES_PER_SEND
 _LINE_TRUNCATION_NOTICE = "\n\n(※文字数が多いため一部を省略しました)"
-
 
 def split_line_message(text, max_len=LINE_MAX_MESSAGE_LENGTH, max_messages=LINE_MAX_MESSAGES_PER_SEND, max_total=LINE_MAX_TOTAL_LENGTH):
     if not text:
@@ -130,49 +77,33 @@ def split_line_message(text, max_len=LINE_MAX_MESSAGE_LENGTH, max_messages=LINE_
         chunks[-1] = last + notice
     return chunks
 
-
 def _build_line_messages(text):
     return [TextMessage(text=chunk) for chunk in split_line_message(text)]
 
-
 def _line_reply(reply_token, text):
     with ApiClient(configuration) as api:
-        MessagingApi(api).reply_message(
-            ReplyMessageRequest(reply_token=reply_token, messages=_build_line_messages(text))
-        )
-
+        MessagingApi(api).reply_message(ReplyMessageRequest(reply_token=reply_token, messages=_build_line_messages(text)))
 
 def _line_push(user_id, text):
     with ApiClient(configuration) as api:
-        MessagingApi(api).push_message(
-            PushMessageRequest(to=user_id, messages=_build_line_messages(text))
-        )
+        MessagingApi(api).push_message(PushMessageRequest(to=user_id, messages=_build_line_messages(text)))
 
 print("===== APP VERSION CHECK =====")
 print("search_notes enabled")
 init_db()
 init_e2e_table()
 
-
 def call_mcp_tool(tool_name, arguments, timeout=3.0):
     return _call_mcp_tool_impl(tool_name, arguments, timeout=timeout)
-
 
 def _parse_mcp_json_list(raw):
     return _parse_mcp_json_list_impl(raw)
 
 _DIRECT_TEXT_AGENT_KEYS = ("memory", "notes", "normal", "sheets")
 
-
 def _invoke_graph(user_id: str, message: str):
     from graph.graph import graph
-    return graph.invoke({
-        "user_id": user_id,
-        "raw_message": message,
-        "call_mcp_tool": call_mcp_tool,
-        "agent_results": {},
-    })
-
+    return graph.invoke({"user_id": user_id, "raw_message": message, "call_mcp_tool": call_mcp_tool, "agent_results": {}})
 
 def _extract_graph_reply(result):
     if result is None:
@@ -184,103 +115,56 @@ def _extract_graph_reply(result):
             return agent_result["text"]
     return result.get("final_reply", "Agent結果なし")
 
-
 def extract_quoted_text(original_message):
     return _extract_quoted_text_impl(original_message)
 
-
 def normalize_memory_key(key, original_message):
     return _normalize_memory_key_impl(key, original_message)
-
 
 def ensure_jst_offset(remind_at):
     return _ensure_jst_offset_impl(remind_at)
 
 MCP_TOOLS_SCHEMA = _MCP_TOOLS_SCHEMA
 
-
 def clean_memory_value(key, value):
     return _clean_memory_value_impl(key, value)
-
 
 def dispatch_tool_call(user_id, name, arguments, original_message=""):
     return _dispatch_tool_call_impl(user_id, name, arguments, original_message=original_message)
 
-_pending_delete_confirmation = {}
-_pending_confirm_lock = threading.Lock()
-_DELETE_ALL_MEMORY_PATTERN = re.compile(
-    r"記憶.*(全部|全て|すべて).*(消して|消す|削除|消していい)"
-    r"|(全部|全て|すべて).*記憶.*(消して|消す|削除|消していい)"
-)
-
-
 def generate_reply(user_id, message):
-    print("===== APP VERSION CHECK =====")
-    print("GITHUB ROUTE ENABLED")
-    print("=== GENERATE_REPLY ===", repr(message))
-    print("MESSAGE DEBUG:", repr(message), type(message))
-
     if str(message).strip() == "ダッシュボード":
         ts = int(time.time())
         secret = os.environ.get("DASHBOARD_LINK_SECRET") or os.environ.get("DASHBOARD_PASSWORD") or ""
         payload = f"{user_id}:{ts}"
-        token = __import__("hmac").new(
-            secret.encode(), payload.encode(), __import__("hashlib").sha256
-        ).hexdigest()
+        token = __import__("hmac").new(secret.encode(), payload.encode(), __import__("hashlib").sha256).hexdigest()
         query = urlencode({"user_id": user_id, "ts": ts, "token": token})
-        dashboard_url = f"https://line-bot-yvea.onrender.com/dashboard?{query}"
-        print(f"[LOG] generate_reply: dashboard command user_id={user_id!r}")
-        print("[LOG] generate_reply: dashboard route ENABLED")
-        return f"ダッシュボードはこちらです。\n{dashboard_url}"
-
+        return f"ダッシュボードはこちらです。\nhttps://line-bot-yvea.onrender.com/dashboard?{query}"
     if "Daily AI Repo" in message:
-        print("DAILY AI REPORT TRIGGERED")
         return generate_ai_secretary_report(user_id)
-
     if message.startswith("pytest"):
         return "pytestテストメッセージを受信しました。"
-
-    print("DEBUG CONDITION CHECK")
-    print("startswith debug:", message.startswith("debug"))
-    print("has github:", "github" in message.lower())
-    print("has search:", "search" in message.lower())
-    print("has repo:", "repo" in message.lower())
-    print("GITHUB INTENT RESULT:", is_github_intent(message))
-
     try:
         result = _invoke_graph(user_id, message)
     except Exception as e:
-        print("===== GRAPH INVOCATION ERROR =====")
         import traceback
         traceback.print_exc()
         return f"Agent起動エラー: {type(e).__name__}: {e}"
-
-    print("===== AFTER GRAPH.INVOKE =====")
-    print(result)
     return _extract_graph_reply(result)
 
-
-# n8n → /internal/ask を実際にFlaskへ登録する
 register_internal_ask_route(app, INTERNAL_PUSH_KEY, generate_reply)
-
 
 @app.route("/callback", methods=["POST"])
 def callback():
-    print(f"[LOG] /callback endpoint called")
     body = request.get_data(as_text=True)
     signature = request.headers.get("X-Line-Signature")
-    print("===== CALLBACK RECEIVED =====")
-    print("BODY:", body)
-    print("SIGNATURE:", signature)
     try:
         handler.handle(body, signature)
         record_step("line_bot", True)
     except Exception as e:
-        print("===== HANDLER ERROR =====")
-        print(e)
+        print("===== HANDLER ERROR =====", e)
         record_step("line_bot", False, error=str(e), error_location="callback/handler.handle")
     return "OK"
-
 
 _processed_message_ids = OrderedDict()
 _processed_lock = threading.Lock()
@@ -288,29 +172,27 @@ _MAX_TRACKED_IDS = 2000
 _user_processing_locks = {}
 _user_processing_lock = threading.Lock()
 
-
 def _process_and_reply(event, user_id, text):
-    print(f"[LOG] _process_and_reply called: user_id={user_id}")
     with _user_processing_lock:
         if user_id not in _user_processing_locks:
             _user_processing_locks[user_id] = threading.Lock()
     user_lock = _user_processing_locks[user_id]
     with user_lock:
-        print(f"[LOG] USER LOCK ACQUIRED: {user_id}")
         if text.strip() == "ダッシュボード":
             ts = int(time.time())
             secret = os.environ.get("DASHBOARD_LINK_SECRET") or os.environ.get("DASHBOARD_PASSWORD") or ""
             payload = f"{user_id}:{ts}"
             token = __import__("hmac").new(secret.encode(), payload.encode(), __import__("hashlib").sha256).hexdigest()
             query = urlencode({"user_id": user_id, "ts": ts, "token": token})
-            dashboard_url = f"https://line-bot-yvea.onrender.com/dashboard?{query}"
-            _line_reply(event.reply_token, f"ダッシュボードはこちらです。\n{dashboard_url}")
+            _line_reply(event.reply_token, f"ダッシュボードはこちらです。\nhttps://line-bot-yvea.onrender.com/dashboard?{query}")
             return
         if N8N_WEBHOOK_URL:
-            print(f"[LOG] DELEGATING TO N8N: user_id={user_id}")
             delegated = _delegate_to_n8n(user_id, text, N8N_WEBHOOK_URL)
             if delegated:
                 return
-            print("[LOG] n8n delegation failed; falling back to local generate_reply")
         reply = generate_reply(user_id, text)
-        _line_reply(event.reply_token, reply)
+        try:
+            _line_reply(event.reply_token, reply)
+        except Exception as exc:
+            print("[LOG] LINE reply failed; falling back to push:", exc)
+            _line_push(user_id, reply)
