@@ -40,6 +40,7 @@ def _thread_id(job_id: int) -> str:
 def _initial_state(job: dict, *, branch: str | None = None) -> dict:
     state = {
         "job_id": job["id"],
+        "worker_id": WORKER_ID,
         "user_id": job["user_id"], "raw_message": job["message"],
         "job_type": job.get("job_type", "ai_task"), "request_id": _thread_id(job["id"]),
         "agent_results": {},
@@ -80,7 +81,7 @@ def _resume_workdir(values: dict, job: dict) -> dict:
 
 def _checkpoint_summary(values: dict) -> str:
     payload = {"thread_id": values.get("request_id"), "job_type": values.get("job_type"),
-               "job_id": values.get("job_id"), "workdir": values.get("workdir"),
+               "job_id": values.get("job_id"), "worker_id": values.get("worker_id"), "workdir": values.get("workdir"),
                "intent": values.get("intent"), "next_agent": values.get("next_agent"),
                "error": values.get("error"), "development_error": values.get("development_error"),
                "workdir_restore_error": values.get("workdir_restore_error"),
@@ -114,6 +115,7 @@ def execute_one_step(job: dict, graph=None) -> dict:
     if snapshot.values:
         current_node = snapshot.next[0] if snapshot.next else None
         resumed_values = _resume_workdir(dict(snapshot.values), job)
+        resumed_values["worker_id"] = WORKER_ID
         input_state = None
         if resumed_values != dict(snapshot.values):
             input_state = resumed_values
