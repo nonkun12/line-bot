@@ -14,6 +14,7 @@ REQUIRED_WORKFLOWS = ("Pytest", "Overnight Worker Test", "AI Code Review")
 AI_REVIEW_API = "https://api.groq.com/openai/v1/chat/completions"
 AI_REVIEW_MODEL = os.environ.get("AI_REVIEW_MODEL", "openai/gpt-oss-20b")
 AI_REVIEW_MAX_DIFF_CHARS = int(os.environ.get("AI_REVIEW_MAX_DIFF_CHARS", "120000"))
+MAX_AI_REVIEW_RETRIES = int(os.environ.get("MAX_AI_REVIEW_RETRIES", "2"))
 
 
 def _repo() -> str:
@@ -174,10 +175,11 @@ def check_github_review_status(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def check_review_status(state: dict[str, Any]) -> dict[str, Any]:
-    """Combine GitHub CI results with an actual Worker-side AI review."""
+    """Combine GitHub CI results with a real Worker-side AI review."""
     github_result = check_github_review_status(state)
     if github_result.get("status") != "passed":
         return github_result
+
     try:
         ai_result = _call_ai_review(_review_diff(state))
     except requests.RequestException as exc:
@@ -186,8 +188,10 @@ def check_review_status(state: dict[str, Any]) -> dict[str, Any]:
         return {"status": "failed", "reason": str(exc)}
 
     if ai_result.get("verdict") != "PASS":
+        retry_count = int(state.get("review_retry_count") or 0)
         return {
             "status": "failed",
+            "retryable": retry_count < MAX_AI_REVIEW_RETRIES,
             "reason": ai_result.get("summary") or "AI review rejected the Job",
             "ai_review": ai_result,
             "github": github_result,
@@ -203,5 +207,9 @@ def review_node(state: dict[str, Any]) -> dict[str, Any]:
         review_result = {"status": "pending", "reason": f"GitHub review request failed: {exc}"}
     except Exception as exc:
         review_result = {"status": "failed", "reason": f"review agent error: {exc}"}
+
+    next_state = {**state, "agent_results": results, "review_result": review_result}
+    if review_result.get("status") == "failed" and review_result.get("ai_review") and review_result.get("retryable"):
+        next_state["review_retry_count"] = int(state.get("review_retry_count") or 0) + 1
     results["review"] = review_result
-    return {**state, "agent_results": results, "review_result": review_result}
+    return {**next_state, "agent_results": results}
