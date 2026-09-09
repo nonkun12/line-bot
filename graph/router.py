@@ -18,20 +18,11 @@ from graph.state import AgentState
 
 from core.agents import AgentRegistry
 from core.langgraph_router import route_with_core
+from graph.core_registry import LEGACY_GRAPH_NODES
 
 
-_ROUTE_TABLE = {
-    "debug": "debug_agent",
-    "notes": "notes_agent",
-    "memory": "memory_agent",
-    "github": "github_agent",
-    "sheets": "sheets_agent",
-    "weather": "weather_agent",
-    "normal": "normal_agent",
-    "fallback": "fallback_agent",
-}
-
-_DEFAULT_ROUTE = "fallback_agent"
+_ROUTE_TABLE = LEGACY_GRAPH_NODES
+_DEFAULT_ROUTE = LEGACY_GRAPH_NODES["fallback"]
 
 
 def route_from_supervisor(
