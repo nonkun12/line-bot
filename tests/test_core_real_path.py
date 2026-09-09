@@ -18,7 +18,7 @@ def test_internal_ask_runs_real_gateway_graph_and_notes_node(monkeypatch):
 
     response = app.app.test_client().post(
         "/internal/ask",
-        json={"user_id": "u1", "message": "メモにテストと保存して"},
+        json={"user_id": "u1", "message": "メモにテストを保存して"},
         headers=_headers(),
     )
 
@@ -33,7 +33,7 @@ def test_internal_ask_runs_real_gateway_graph_and_notes_node(monkeypatch):
             {
                 "user_id": "u1",
                 "title": "LINEメモ",
-                "body": "テストと",
+                "body": "テスト",
                 "category": "一般",
             },
         )
