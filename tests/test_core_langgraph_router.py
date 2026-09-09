@@ -45,6 +45,21 @@ def test_core_agent_can_provide_custom_graph_node():
     ) == "calendar_agent"
 
 
+def test_disabled_core_agent_does_not_fall_through_to_legacy_route():
+    agent = WeatherAgent()
+    agent.enabled = False
+    registry = AgentRegistry([agent])
+
+    assert route_with_core(
+        {
+            "user_id": "u1",
+            "raw_message": "天気",
+            "next_agent": "weather",
+        },
+        registry,
+    ) == "fallback_agent"
+
+
 def test_legacy_route_is_used_when_core_has_no_match():
     registry = AgentRegistry()
 
