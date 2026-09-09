@@ -261,7 +261,6 @@ def generate_reply(user_id, message):
 
 
 # n8n → /internal/ask を実際にFlaskへ登録する
-# これが無かったため、先ほどの専用ルートが実行されていなかった。
 register_internal_ask_route(app, INTERNAL_PUSH_KEY, generate_reply)
 
 
@@ -309,7 +308,9 @@ def _process_and_reply(event, user_id, text):
             return
         if N8N_WEBHOOK_URL:
             print(f"[LOG] DELEGATING TO N8N: user_id={user_id}")
-            _delegate_to_n8n(user_id, text, N8N_WEBHOOK_URL)
-            return
+            delegated = _delegate_to_n8n(user_id, text, N8N_WEBHOOK_URL)
+            if delegated:
+                return
+            print("[LOG] n8n delegation failed; falling back to local generate_reply")
         reply = generate_reply(user_id, text)
         _line_reply(event.reply_token, reply)
