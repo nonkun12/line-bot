@@ -19,6 +19,7 @@ class CoreGraphState(TypedDict, total=False):
     request_id: str
     intent: str | None
     next_agent: str | None
+    route: str | None
     agent_results: dict[str, Any]
     final_reply: str | None
     error: str | None
@@ -74,7 +75,7 @@ def build_core_graph(
 
     builder = StateGraph(CoreGraphState)
 
-    def core_router(state: CoreGraphState) -> str:
+    def resolve_route(state: CoreGraphState) -> str:
         next_agent = state.get("next_agent")
         if isinstance(next_agent, str) and next_agent.strip():
             try:
@@ -88,6 +89,9 @@ def build_core_graph(
         if agent is not None:
             return agent_node_name(agent.name)
         return "core_fallback"
+
+    def core_router(state: CoreGraphState) -> CoreGraphState:
+        return {**state, "route": resolve_route(state)}
 
     def core_fallback(state: CoreGraphState) -> CoreGraphState:
         return {
@@ -106,7 +110,10 @@ def build_core_graph(
     builder.add_node("core_finalizer", core_finalizer)
 
     builder.add_edge(START, "core_router")
-    builder.add_conditional_edges("core_router", core_router)
+    builder.add_conditional_edges(
+        "core_router",
+        lambda state: state.get("route", "core_fallback"),
+    )
 
     for name in registry.names():
         builder.add_edge(agent_node_name(name), "core_finalizer")
