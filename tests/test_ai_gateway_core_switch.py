@@ -1,4 +1,5 @@
 import app as app_module
+from core.gateway import AIRequest
 
 
 def test_ai_gateway_defaults_to_legacy_path(monkeypatch):
@@ -6,9 +7,7 @@ def test_ai_gateway_defaults_to_legacy_path(monkeypatch):
     monkeypatch.setattr(app_module, "generate_reply", lambda user_id, message: "legacy")
 
     response = app_module.app.ai_gateway.handle(
-        app_module.app.ai_gateway._handler.__globals__["AIRequest"](
-            user_id="u1", message="テスト", channel="line"
-        )
+        AIRequest(user_id="u1", message="テスト", channel="line")
     )
 
     assert response.text == "legacy"
@@ -25,9 +24,7 @@ def test_ai_gateway_uses_core_path_when_enabled(monkeypatch):
     )
 
     response = app_module.app.ai_gateway.handle(
-        app_module.app.ai_gateway._handler.__globals__["AIRequest"](
-            user_id="u1", message="テスト", channel="line"
-        )
+        AIRequest(user_id="u1", message="テスト", channel="line")
     )
 
     assert response.text == "core"
@@ -47,9 +44,7 @@ def test_ai_gateway_keeps_dashboard_command_on_legacy_path(monkeypatch):
     )
 
     response = app_module.app.ai_gateway.handle(
-        app_module.app.ai_gateway._handler.__globals__["AIRequest"](
-            user_id="u1", message="ダッシュボード", channel="line"
-        )
+        AIRequest(user_id="u1", message="ダッシュボード", channel="line")
     )
 
     assert response.text == "dashboard"
