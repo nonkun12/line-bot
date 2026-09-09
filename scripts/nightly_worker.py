@@ -130,7 +130,8 @@ def main() -> int:
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         return 1
 
-    tests = run([sys.executable, "-m", "pytest", "-q"])
+    # Native traceback format is required by the existing Debug Collector.
+    tests = run([sys.executable, "-m", "pytest", "-q", "--tb=native"])
     if tests["returncode"] == 0:
         summary = {
             "started_at": started,
