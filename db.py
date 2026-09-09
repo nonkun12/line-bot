@@ -118,7 +118,7 @@ def create_job(user_id, message, job_type="ai_task", source="line", parent_job_i
         _ensure_job_columns(conn)
         cursor = conn.execute(
             "INSERT INTO jobs(user_id, job_type, source, parent_job_id, message, status, max_retries, worker_id, lease_until) VALUES (?, ?, ?, ?, ?, 'pending', ?, NULL, NULL)",
-            (user_id, job_type, source, parent_job_id, message, max_retries),
+            (user_id, message, job_type, source, parent_job_id, max_retries),
         )
         return cursor.lastrowid
 
@@ -157,7 +157,7 @@ def renew_job_lease(job_id, worker_id, lease_seconds=DEFAULT_JOB_LEASE_SECONDS):
     worker_id = str(worker_id)
     lease_seconds = max(1, int(lease_seconds))
     with get_conn() as conn:
-        cursor = conn.execute("UPDATE jobs SET lease_until=datetime('now', ?), updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running' AND worker_id=?", (f"+{lease_seconds} seconds", job_id, worker_id))
+        cursor = conn.execute("UPDATE jobs SET lease_until=datetime('now', ?), updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running' AND worker_id=? AND lease_until IS NOT NULL AND julianday(lease_until) > julianday('now')", (f"+{lease_seconds} seconds", job_id, worker_id))
         return cursor.rowcount == 1
 
 
