@@ -11,7 +11,6 @@ from e2e_status import get_e2e_status
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
-
 def check_auth(username, password):
     expected_user = os.environ.get("DASHBOARD_USER")
     expected_pass = os.environ.get("DASHBOARD_PASSWORD")
@@ -19,15 +18,8 @@ def check_auth(username, password):
         return False
     return hmac.compare_digest(str(username or ""), str(expected_user)) and hmac.compare_digest(str(password or ""), str(expected_pass))
 
-
 def authenticate():
-    return Response(
-        "Could not verify your access level for that URL.\n"
-        "You have to login with proper credentials",
-        401,
-        {"WWW-Authenticate": 'Basic realm="Login Required"'},
-    )
-
+    return Response("Could not verify your access level for that URL.\nYou have to login with proper credentials", 401, {"WWW-Authenticate": 'Basic realm="Login Required"'})
 
 def resolve_user_id(request_user_id: str | None) -> str | None:
     if request_user_id:
@@ -35,18 +27,23 @@ def resolve_user_id(request_user_id: str | None) -> str | None:
         if user_id and user_id != "test-user":
             return user_id
     owner = os.environ.get("DASHBOARD_OWNER_USER_ID", "").strip()
-    return owner or None
-
+    if owner:
+        return owner
+    try:
+        with get_conn() as conn:
+            row = conn.execute("SELECT user_id FROM messages WHERE user_id IS NOT NULL AND TRIM(user_id) <> '' ORDER BY id DESC LIMIT 1").fetchone()
+        return str(row[0]).strip() if row and row[0] else None
+    except Exception as e:
+        print("[DASHBOARD] Failed to resolve active user:", e)
+        return None
 
 def _dashboard_secret() -> str:
     return os.environ.get("DASHBOARD_LINK_SECRET") or os.environ.get("DASHBOARD_PASSWORD") or ""
-
 
 def _make_dashboard_token(user_id: str, timestamp: int) -> str:
     secret = _dashboard_secret()
     payload = f"{user_id}:{timestamp}"
     return hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
-
 
 def _valid_dashboard_token(user_id: str, timestamp: str, token: str) -> bool:
     try:
@@ -58,7 +55,6 @@ def _valid_dashboard_token(user_id: str, timestamp: str, token: str) -> bool:
     expected = _make_dashboard_token(user_id, ts)
     return bool(expected) and hmac.compare_digest(expected, token or "")
 
-
 def _dashboard_access_allowed() -> bool:
     auth = request.authorization
     if auth and check_auth(auth.username, auth.password):
@@ -68,7 +64,6 @@ def _dashboard_access_allowed() -> bool:
     token = request.args.get("token", "").strip()
     return bool(user_id and _valid_dashboard_token(user_id, timestamp, token))
 
-
 def requires_dashboard_access(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -77,10 +72,8 @@ def requires_dashboard_access(f):
         return f(*args, **kwargs)
     return decorated
 
-
 def _oracle_secret() -> str:
     return os.environ.get("ORACLE_STATUS_SECRET", "")
-
 
 def _verify_oracle_signature(raw_body: bytes, signature: str) -> bool:
     secret = _oracle_secret()
@@ -89,29 +82,19 @@ def _verify_oracle_signature(raw_body: bytes, signature: str) -> bool:
     expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)
 
-
 def _init_oracle_status_table():
     try:
         with get_conn() as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS oracle_status (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    payload TEXT NOT NULL,
-                    received_at REAL NOT NULL
-                )
-            """)
+            conn.execute("CREATE TABLE IF NOT EXISTS oracle_status (id INTEGER PRIMARY KEY CHECK (id = 1), payload TEXT NOT NULL, received_at REAL NOT NULL)")
     except Exception as e:
         print("[DASHBOARD] oracle_status init error:", e)
 
-
 _init_oracle_status_table()
-
 
 def _require_user_id(user_id):
     if not user_id:
         return jsonify({"ok": False, "error": "user_id is required"}), 400
     return None
-
 
 @dashboard_bp.route("/dashboard")
 @requires_dashboard_access
@@ -122,7 +105,6 @@ def index():
         return error
     return render_template("dashboard.html", user_id=resolved)
 
-
 @dashboard_bp.route("/api/dashboard/notes", methods=["GET"])
 @requires_dashboard_access
 def get_notes():
@@ -131,12 +113,11 @@ def get_notes():
     if error:
         return error
     try:
-        notes = parse_mcp_json_list(call_mcp_tool("list_notes", {"user_id": user_id}))
+        notes = parse_mcp_json_list(call_mcp_tool("search_notes", {"user_id": user_id, "keyword": ""}))
         return jsonify({"ok": True, "notes": notes, "user_id": user_id})
     except Exception as e:
         print("[DASHBOARD] Failed to list notes via MCP:", e)
         return jsonify({"ok": False, "error": str(e)}), 500
-
 
 @dashboard_bp.route("/api/dashboard/notes", methods=["POST"])
 @requires_dashboard_access
@@ -159,7 +140,6 @@ def add_note():
         print("[DASHBOARD] Failed to save note via MCP:", e)
         return jsonify({"ok": False, "error": str(e)}), 500
 
-
 @dashboard_bp.route("/api/dashboard/notes/<note_id>", methods=["DELETE"])
 @requires_dashboard_access
 def delete_note(note_id):
@@ -176,7 +156,6 @@ def delete_note(note_id):
         print("[DASHBOARD] Failed to delete note via MCP:", e)
         return jsonify({"ok": False, "error": str(e), "user_id": user_id}), 500
 
-
 @dashboard_bp.route("/internal/oracle/status", methods=["POST"])
 def receive_oracle_status():
     raw = request.get_data()
@@ -189,15 +168,11 @@ def receive_oracle_status():
             raise ValueError("payload must be an object")
         received_at = time.time()
         with get_conn() as conn:
-            conn.execute("""
-                INSERT INTO oracle_status(id, payload, received_at) VALUES(1, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, received_at=excluded.received_at
-            """, (json.dumps(payload, ensure_ascii=False), received_at))
+            conn.execute("INSERT INTO oracle_status(id, payload, received_at) VALUES(1, ?, ?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, received_at=excluded.received_at", (json.dumps(payload, ensure_ascii=False), received_at))
         return jsonify({"ok": True})
     except Exception as e:
         print("[DASHBOARD] Invalid oracle status:", e)
         return jsonify({"ok": False, "error": "invalid payload"}), 400
-
 
 @dashboard_bp.route("/api/dashboard/system", methods=["GET"])
 @requires_dashboard_access
