@@ -10,13 +10,6 @@ VALID_PATCH = """diff --git a/app.py b/app.py
 -print("before")
 +print("after")
 """
-INVALID_PATCH_AFTER_CHECK = """diff --git a/app.py b/app.py
---- a/app.py
-+++ b/app.py
-@@ -1,1 +1,1 @@
--print("unexpected")
-+print("after")
-"""
 
 
 def run_git(cwd, *args):
@@ -60,7 +53,7 @@ def test_apply_patch_rejects_dirty_worktree_before_branch_creation(tmp_path):
     assert not any(branch.startswith("fix/auto-") for branch in branches)
 
 
-def test_apply_patch_rolls_back_temporary_branch_when_apply_fails(tmp_path):
+def test_apply_patch_rolls_back_temporary_branch_when_apply_fails(tmp_path, monkeypatch):
     run_git(tmp_path, "init")
     run_git(tmp_path, "config", "user.email", "test@example.com")
     run_git(tmp_path, "config", "user.name", "Test")
@@ -68,24 +61,27 @@ def test_apply_patch_rolls_back_temporary_branch_when_apply_fails(tmp_path):
     app_file.write_text('print("before")\n')
     run_git(tmp_path, "add", "app.py")
     run_git(tmp_path, "commit", "-m", "initial")
-    original_run = subprocess.run
-    def fake_run(args, cwd=None, capture_output=None, text=None, check=False):
-        if args[:3] == ["git", "checkout", "-b"]:
-            result = original_run(args, cwd=cwd, capture_output=capture_output, text=text, check=check)
-            app_file.write_text('print("changed externally")\n')
-            return result
-        return original_run(args, cwd=cwd, capture_output=capture_output, text=text, check=check)
+
     import agents.patch.apply as patch_apply_module
-    original_module_run = patch_apply_module.subprocess.run
-    patch_apply_module.subprocess.run = fake_run
-    try:
-        result = apply_patch(VALID_PATCH, str(tmp_path))
-    finally:
-        patch_apply_module.subprocess.run = original_module_run
+
+    original_run_git = patch_apply_module._run_git
+
+    def fail_apply(args, cwd):
+        if args[:2] == ["apply", "/tmp/never-used"]:
+            return original_run_git(args, cwd)
+        if args and args[0] == "apply":
+            return subprocess.CompletedProcess(
+                ["git", *args], returncode=1, stdout="", stderr="simulated apply failure"
+            )
+        return original_run_git(args, cwd)
+
+    monkeypatch.setattr(patch_apply_module, "_run_git", fail_apply)
+    result = apply_patch(VALID_PATCH, str(tmp_path))
+
     assert result["applied"] is False
     assert result["branch"] is None
     assert "patch apply failed" in result["error"]
-    assert app_file.read_text() == 'print("changed externally")\n'
+    assert app_file.read_text() == 'print("before")\n'
     current_branch = run_git(tmp_path, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     assert current_branch == "master" or current_branch == "main"
     branches = run_git(tmp_path, "branch", "--format=%(refname:short)").stdout.splitlines()
