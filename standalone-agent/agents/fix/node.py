@@ -1,7 +1,7 @@
 """
 AI Fix Agent Node
 
-Debug Agent結果を受け取り、
+Debug Agent結果またはWorker AI Review結果を受け取り、
 Groqで修正案(Patch候補)を生成する。
 """
 
@@ -25,7 +25,7 @@ FIX_AGENT_TIMEOUT = float(os.environ.get("FIX_AGENT_TIMEOUT", "15.0"))
 _SYSTEM_PROMPT = """
 あなたはAI Fix Agentです。
 
-入力されたエラー情報を解析し、
+入力されたエラー情報またはAIコードレビュー指摘を解析し、
 安全な修正案を作成してください。
 
 必ずJSON形式のみで返してください。
@@ -85,10 +85,32 @@ def _parse_fix_response(raw_content: str) -> dict:
         }
 
 
+def _review_error_info(state: AgentState) -> dict:
+    review = state.get("review_result") or {}
+    ai_review = review.get("ai_review") or {}
+    findings = ai_review.get("findings") or []
+    if not findings:
+        return {}
+
+    primary = next((item for item in findings if item.get("severity") == "blocking"), findings[0])
+    return {
+        "error_type": "AIReviewFinding",
+        "file": primary.get("file"),
+        "line": primary.get("line"),
+        "detail": primary.get("detail"),
+        "summary": ai_review.get("summary"),
+        "findings": findings,
+    }
+
+
 def fix_agent_node(state: AgentState) -> AgentState:
     debug_result = state.get("agent_results", {}).get("debug", {})
     structured = debug_result.get("structured", {})
     error_info = structured.get("error_info", {}) or {}
+    review_error = _review_error_info(state)
+    if review_error:
+        error_info = review_error
+
     file_name = error_info.get("file")
     line_number = error_info.get("line")
     workdir = state.get("workdir") or os.environ.get("REPO_WORKDIR") or os.getcwd()
@@ -99,6 +121,12 @@ def fix_agent_node(state: AgentState) -> AgentState:
         context_path = os.path.join(workdir, file_name)
     if context_path and line_number:
         code_context = get_code_context(context_path, line_number, 50)
+    elif file_name:
+        try:
+            with open(context_path, "r", encoding="utf-8") as handle:
+                code_context = handle.read()[:12000]
+        except OSError:
+            code_context = ""
 
     if error_info.get("error_type") == "KeyError":
         key = error_info.get("key")
@@ -121,11 +149,15 @@ def fix_agent_node(state: AgentState) -> AgentState:
                     },
                 }
 
+    review_text = ""
+    if review_error:
+        review_text = f"\n\nAIレビュー指摘:\n{json.dumps(review_error, ensure_ascii=False)}"
+
     try:
         llm = _build_llm()
         result = llm.invoke([
             ("system", _SYSTEM_PROMPT),
-            ("user", f"エラー情報:\n{error_info}\n\n対象コード:\n{code_context}\n\nこのコードを確認して、実際に適用可能なunified diffを生成してください。"),
+            ("user", f"エラー情報:\n{error_info}\n\n対象コード:\n{code_context}{review_text}\n\nこのコードを確認して、実際に適用可能なunified diffを生成してください。"),
         ])
         fix_result = _parse_fix_response(result.content)
         patch_ok, patch_error = validate_patch(fix_result.get("patch", ""), repo=workdir)
