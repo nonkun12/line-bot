@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import db
@@ -10,6 +11,7 @@ import db
 
 VALID_OPERATIONS = {"commit", "deploy"}
 VALID_STATUSES = {"pending", "approved", "rejected", "expired", "consumed"}
+DEFAULT_APPROVAL_TTL_SECONDS = int(os.environ.get("JOB_APPROVAL_TTL_SECONDS", "86400"))
 
 
 def _validate_operation(operation: str) -> None:
@@ -49,6 +51,9 @@ def ensure_table() -> None:
 def request(job_id: int, user_id: str, operation: str, expires_at: Optional[str] = None) -> dict:
     _validate_operation(operation)
     ensure_table()
+    if expires_at is None:
+        ttl = max(1, DEFAULT_APPROVAL_TTL_SECONDS)
+        expires_at = (datetime.now(timezone.utc) + timedelta(seconds=ttl)).isoformat()
     with db.get_conn() as conn:
         conn.execute(
             """
