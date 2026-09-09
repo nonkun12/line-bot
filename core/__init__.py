@@ -2,7 +2,13 @@
 
 from .agents import Agent, AgentRegistry, AgentRequest, AgentResponse
 from .gateway import AIGateway, AIRequest, AIResponse
-from .review import AICompetitionLoop, ReviewDecision, ReviewFinding, ReviewResult
+from .review import (
+    AICompetitionLoop,
+    ReviewerRegistry,
+    ReviewDecision,
+    ReviewFinding,
+    ReviewResult,
+)
 from .router import AgentRouter, RouteResult
 
 __all__ = [
@@ -16,6 +22,7 @@ __all__ = [
     "AIRequest",
     "AIResponse",
     "AICompetitionLoop",
+    "ReviewerRegistry",
     "ReviewDecision",
     "ReviewFinding",
     "ReviewResult",
