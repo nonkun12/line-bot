@@ -16,6 +16,15 @@ def _run_git(args: list[str], cwd: str, timeout: float = 30.0) -> subprocess.Com
     )
 
 
+def prune_worktrees(repo_root: str | None = None) -> bool:
+    """Prune stale Git worktree metadata before creating/reusing Job worktrees."""
+    repo_root = os.path.abspath(repo_root or os.environ.get("REPO_ROOT") or os.getcwd())
+    result = _run_git(["worktree", "prune"], cwd=repo_root)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "git worktree prune failed")
+    return True
+
+
 def _safe_job_name(job_id: int | str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]", "-", str(job_id))
 
@@ -47,6 +56,7 @@ def workspace_for_job(
     repo_root = os.path.abspath(repo_root or os.environ.get("REPO_ROOT") or os.getcwd())
     root = Path(repo_root) / DEFAULT_WORKTREE_ROOT
     root.mkdir(parents=True, exist_ok=True)
+    prune_worktrees(repo_root)
     path = _worktree_path(job_id, repo_root)
 
     if path.exists():
@@ -92,8 +102,10 @@ def remove_workspace(job_id: int | str, repo_root: str | None = None) -> bool:
     repo_root = os.path.abspath(repo_root or os.environ.get("REPO_ROOT") or os.getcwd())
     path = _worktree_path(job_id, repo_root)
     if not path.exists():
+        prune_worktrees(repo_root)
         return False
     result = _run_git(["worktree", "remove", "--force", str(path)], cwd=repo_root)
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or "git worktree remove failed")
+    prune_worktrees(repo_root)
     return True
