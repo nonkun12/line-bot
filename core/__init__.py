@@ -3,6 +3,7 @@
 from .agents import Agent, AgentRegistry, AgentRequest, AgentResponse
 from .gateway import AIGateway, AIRequest, AIResponse
 from .langgraph_adapter import agent_request_from_state, ai_request_from_state, response_text
+from .orchestration import ExternalWorkflow, WorkflowResult
 from .review import (
     AICompetitionLoop,
     ReviewerRegistry,
@@ -25,6 +26,8 @@ __all__ = [
     "agent_request_from_state",
     "ai_request_from_state",
     "response_text",
+    "ExternalWorkflow",
+    "WorkflowResult",
     "AICompetitionLoop",
     "ReviewerRegistry",
     "ReviewDecision",
