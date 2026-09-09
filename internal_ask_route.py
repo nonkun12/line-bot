@@ -66,11 +66,13 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         data = request.get_json(silent=True) or {}
         user_id = data.get("user_id")
         message = data.get("message")
-        if not user_id or message is None:
+        if not user_id or message is None or not str(message).strip():
             return jsonify({"ok": False, "error": "user_id and message are required"}), 400
         try:
-            with ApiClient(configuration) as api:
-                MessagingApi(api).push_message(PushMessageRequest(to=str(user_id), messages=[TextMessage(text=str(message))]))
+            # app側のLINE送信ヘルパーを遅延importして共有することで、
+            # 5000文字分割・5通制限・テスト用MessagingApi差し替えを統一する。
+            from app import _line_push
+            _line_push(str(user_id), str(message))
             return jsonify({"ok": True})
         except Exception as exc:
             print("INTERNAL PUSH ERROR:", exc)

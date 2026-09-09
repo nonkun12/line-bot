@@ -32,6 +32,10 @@ def _find_memory_target(message, user_id, call_mcp_tool):
     """削除対象の記憶キーを決定する。日付指定と直前の確認対象を優先する。"""
     text = (message or "").strip()
 
+    # 名前削除はキーが明確なので、全記憶取得を行わず直接削除する。
+    if "名前" in text:
+        return "name"
+
     # 「それを消して」は直前に確認した記憶を削除する。
     if text in {"それを消して", "それを削除して", "それを忘れて"}:
         with _pending_confirm_lock:
@@ -47,9 +51,6 @@ def _find_memory_target(message, user_id, call_mcp_tool):
             value = str(item.get("value", ""))
             if value and any(date in value for date in dates):
                 return item.get("key") or "memory"
-
-    if "名前" in text:
-        return "name"
 
     # 明示的なキーが分からない場合は、従来互換で name を対象にする。
     return "name"
@@ -116,7 +117,7 @@ def handle_delete_memory(message, user_id, call_mcp_tool):
 
 def handle_get_name(message, user_id, call_mcp_tool):
     """Get user's name"""
-    if message not in ["私の名前は？", "名前は？", "私の名前を教えて"]:
+    if message not in ["私の名前は？", "名前は？", "私の名前を教えて", "名前を教えて"]:
         return None
 
     name = call_mcp_tool("get_memory", {"user_id": user_id, "key": "name"})
@@ -140,7 +141,6 @@ def handle_get_name(message, user_id, call_mcp_tool):
 def handle_get_all_memory(message, user_id, call_mcp_tool):
     """Memory query"""
     query_keywords = [
-        "名前",
         "何を覚えて",
         "何を覚えてる",
         "何を覚えている",
