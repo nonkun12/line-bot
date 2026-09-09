@@ -17,7 +17,7 @@ def check_auth(username, password):
     expected_pass = os.environ.get("DASHBOARD_PASSWORD")
     if not expected_user or not expected_pass:
         return False
-    return username == expected_user and password == expected_pass
+    return hmac.compare_digest(str(username or ""), str(expected_user)) and hmac.compare_digest(str(password or ""), str(expected_pass))
 
 
 def authenticate():
@@ -29,25 +29,13 @@ def authenticate():
     )
 
 
-def resolve_user_id(request_user_id: str | None) -> str:
+def resolve_user_id(request_user_id: str | None) -> str | None:
     if request_user_id:
-        user_id = request_user_id.strip()
-        if user_id:
-            if user_id == "test-user":
-                return "U19391b0b93be2f4d94284361153919ce"
+        user_id = str(request_user_id).strip()
+        if user_id and user_id != "test-user":
             return user_id
-    try:
-        with get_conn() as conn:
-            row = conn.execute("SELECT user_id FROM messages ORDER BY id DESC LIMIT 1").fetchone()
-            if row and row[0]:
-                user_id = row[0].strip()
-                if user_id:
-                    if user_id == "test-user":
-                        return "U19391b0b93be2f4d94284361153919ce"
-                    return user_id
-    except Exception as e:
-        print("[DASHBOARD] Failed to fetch user_id from db:", e)
-    return "U19391b0b93be2f4d94284361153919ce"
+    owner = os.environ.get("DASHBOARD_OWNER_USER_ID", "").strip()
+    return owner or None
 
 
 def _dashboard_secret() -> str:
@@ -119,11 +107,19 @@ def _init_oracle_status_table():
 _init_oracle_status_table()
 
 
+def _require_user_id(user_id):
+    if not user_id:
+        return jsonify({"ok": False, "error": "user_id is required"}), 400
+    return None
+
+
 @dashboard_bp.route("/dashboard")
 @requires_dashboard_access
 def index():
-    raw_user_id = request.args.get("user_id")
-    resolved = resolve_user_id(raw_user_id)
+    resolved = resolve_user_id(request.args.get("user_id"))
+    error = _require_user_id(resolved)
+    if error:
+        return error
     return render_template("dashboard.html", user_id=resolved)
 
 
@@ -131,6 +127,9 @@ def index():
 @requires_dashboard_access
 def get_notes():
     user_id = resolve_user_id(request.args.get("user_id"))
+    error = _require_user_id(user_id)
+    if error:
+        return error
     try:
         notes = parse_mcp_json_list(call_mcp_tool("list_notes", {"user_id": user_id}))
         return jsonify({"ok": True, "notes": notes, "user_id": user_id})
@@ -144,6 +143,9 @@ def get_notes():
 def add_note():
     data = request.get_json(silent=True) or {}
     user_id = resolve_user_id(data.get("user_id") or request.args.get("user_id"))
+    error = _require_user_id(user_id)
+    if error:
+        return error
     title, body = data.get("title"), data.get("body")
     category = data.get("category", "一般")
     if not title or not str(title).strip():
@@ -164,6 +166,9 @@ def delete_note(note_id):
     if not note_id or not str(note_id).strip():
         return jsonify({"ok": False, "error": "Note ID is required"}), 400
     user_id = resolve_user_id(request.args.get("user_id"))
+    error = _require_user_id(user_id)
+    if error:
+        return error
     try:
         result = call_mcp_tool("delete_note", {"user_id": user_id, "id": str(note_id).strip()})
         return jsonify({"ok": True, "result": result, "user_id": user_id})
@@ -199,26 +204,18 @@ def receive_oracle_status():
 def system_status():
     now = time.time()
     result = {"ok": True, "render": {"status": "online", "timestamp": now}}
-
     try:
         with get_conn() as conn:
             row = conn.execute("SELECT payload, received_at FROM oracle_status WHERE id=1").fetchone()
         if row:
             payload = json.loads(row[0])
             age = max(0, now - float(row[1]))
-            if age <= 90:
-                state = "online"
-            elif age <= 300:
-                state = "stale"
-            else:
-                state = "offline"
+            state = "online" if age <= 90 else ("stale" if age <= 300 else "offline")
             result["oracle"] = {"status": state, "age_sec": round(age), "last_seen": row[1], "data": payload}
         else:
             result["oracle"] = {"status": "offline", "age_sec": None, "data": None}
     except Exception as e:
         result["oracle"] = {"status": "error", "error": str(e)}
-
-    # E2E history is independent from the dashboard's direct health checks.
     try:
         e2e = get_e2e_status()
         result["e2e"] = e2e
@@ -226,29 +223,24 @@ def system_status():
         oracle_n8n = result.get("oracle", {}).get("data", {}).get("docker", {}).get("n8n", {})
         oracle_n8n_status = str(oracle_n8n.get("status", "")).lower()
         n8n_live = bool(oracle_n8n) and oracle_n8n_status in {"running", "up", "restarting"}
-        result["services"] = {
-            "line_bot": "online",
-            "n8n": "online" if n8n_live or step_map.get("n8n_webhook", {}).get("state") == "ok" else "unknown",
-            "ai_mcp": "unknown",
-        }
+        result["services"] = {"line_bot": "online", "n8n": "online" if n8n_live or step_map.get("n8n_webhook", {}).get("state") == "ok" else "unknown", "ai_mcp": "unknown"}
     except Exception as e:
         result["e2e"] = {"error": str(e)}
         result["services"] = {"line_bot": "online", "n8n": "unknown", "ai_mcp": "unknown"}
-
     user_id = resolve_user_id(request.args.get("user_id"))
+    error = _require_user_id(user_id)
+    if error:
+        return error
     try:
         notes = parse_mcp_json_list(call_mcp_tool("list_notes", {"user_id": user_id}))
         result["notes"] = {"status": "ok", "count": len(notes), "latest": notes[:5]}
     except Exception as e:
         result["notes"] = {"status": "error", "error": str(e)}
-
     try:
         reminders = parse_mcp_json_list(call_mcp_tool("list_reminders", {"user_id": user_id}))
         result["reminders"] = {"status": "ok", "count": len(reminders), "latest": reminders[:5]}
     except Exception as e:
         result["reminders"] = {"status": "error", "error": str(e)}
-
     if result.get("notes", {}).get("status") == "ok" and result.get("reminders", {}).get("status") == "ok":
         result["services"]["ai_mcp"] = "online"
-
     return jsonify(result)
