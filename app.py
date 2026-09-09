@@ -228,9 +228,7 @@ def generate_reply(user_id, message):
         ts = int(time.time())
         secret = os.environ.get("DASHBOARD_LINK_SECRET") or os.environ.get("DASHBOARD_PASSWORD") or ""
         payload = f"{user_id}:{ts}"
-        token = __import__("hmac").new(
-            secret.encode(), payload.encode(), __import__("hashlib").sha256
-        ).hexdigest()
+        token = __import__("hmac").new(secret.encode(), payload.encode(), __import__("hashlib").sha256).hexdigest()
         query = urlencode({"user_id": user_id, "ts": ts, "token": token})
         dashboard_url = f"https://line-bot-yvea.onrender.com/dashboard?{query}"
         print(f"[LOG] generate_reply: dashboard command user_id={user_id!r}")
@@ -315,14 +313,18 @@ def _process_and_reply(event, user_id, text):
             if delegated:
                 return
             print("[LOG] n8n delegation failed; falling back to local generate_reply")
-        ai_response = handle_channel_request(
-            app.ai_gateway,
-            str(user_id),
-            str(text),
-            "line",
-            metadata={"route": "line_callback"},
-        )
-        reply = ai_response.text
+        try:
+            ai_response = handle_channel_request(
+                app.ai_gateway,
+                str(user_id),
+                str(text),
+                "line",
+                metadata={"route": "line_callback"},
+            )
+            reply = ai_response.text
+        except Exception as exc:
+            print("[LOG] Core gateway failed; falling back to local reply:", exc)
+            reply = f"Agent起動エラー: {type(exc).__name__}: {exc}"
         try:
             _line_reply(event.reply_token, reply)
         except Exception as exc:
