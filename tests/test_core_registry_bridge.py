@@ -6,9 +6,9 @@ def test_core_registry_contains_all_migrated_legacy_agents():
     registry = build_core_agent_registry()
 
     assert set(registry.names()) == set(LEGACY_AGENT_NODES)
-    for name, graph_node in LEGACY_GRAPH_NODES.items():
+    for name in LEGACY_AGENT_NODES:
         agent = registry.get(name)
-        assert agent.graph_node == graph_node
+        assert agent.graph_node == LEGACY_GRAPH_NODES[name]
         assert agent.route_key == name
 
 
