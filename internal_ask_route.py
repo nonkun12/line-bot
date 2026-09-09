@@ -7,7 +7,8 @@ from urllib.parse import urlencode
 
 from n8n_delegate import is_ai_app_builder_request, _call_ai_app_builder
 from config import configuration
-from core.gateway import AIGateway, AIRequest
+from core.gateway import AIGateway
+from core.channel import handle_channel_request
 from linebot.v3.messaging import ApiClient, MessagingApi, PushMessageRequest, TextMessage
 
 try:
@@ -59,13 +60,12 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
                 return jsonify({"ok": True, "reply": reply_text or ""})
         with StepTimer("internal_ask") as ask_timer, StepTimer("ai_mcp") as ai_timer:
             try:
-                ai_response = app.ai_gateway.handle(
-                    AIRequest(
-                        user_id=str(user_id),
-                        message=str(message),
-                        channel="http",
-                        metadata={"route": "internal_ask"},
-                    )
+                ai_response = handle_channel_request(
+                    app.ai_gateway,
+                    str(user_id),
+                    str(message),
+                    "http",
+                    metadata={"route": "internal_ask"},
                 )
                 reply = ai_response.text
             except Exception as exc:
