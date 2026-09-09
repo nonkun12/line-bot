@@ -1,0 +1,56 @@
+name: Overnight Worker Test
+
+on:
+  pull_request:
+    paths:
+      - 'development_jobs.py'
+      - 'job_*.py'
+      - 'standalone-agent/**'
+      - 'standalone_agent_graph.py'
+      - 'tests/test_development_jobs.py'
+      - 'requirements.txt'
+      - 'db.py'
+  push:
+    branches:
+      - feat/overnight-dev-worker
+
+jobs:
+  worker-test:
+    runs-on: ubuntu-latest
+    env:
+      CHANNEL_ACCESS_TOKEN: test-token
+      CHANNEL_SECRET: test-secret
+      GROQ_API_KEY: test-groq-key
+      MCP_SERVER_URL: https://example.invalid/mcp
+      MCP_API_KEY: test-mcp-key
+      INTERNAL_PUSH_KEY: test-internal-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Test development job intake
+        run: pytest -q tests/test_development_jobs.py
+      - name: Test root Job DB compatibility
+        run: |
+          python - <<'PY'
+          import tempfile
+          import db
+          with tempfile.TemporaryDirectory() as tmp:
+              db.DB = f"{tmp}/jobs.db"
+              db.init_db()
+              job_id = db.create_job("Utest", "smoke", job_type="development")
+              assert job_id
+              job = db.get_job(job_id)
+              assert job["status"] == "pending"
+              claimed = db.claim_pending_job("ci-worker", lease_seconds=60)
+              assert claimed["id"] == job_id
+              assert claimed["status"] == "running"
+          print("root Job DB compatibility OK")
+          PY
+      - name: Import worker components
+        run: python -c "import job_worker; import standalone_agent_graph; print('worker imports OK')"

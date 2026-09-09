@@ -21,8 +21,8 @@ _ROUTE_TABLE = {
     "debug": "debug_agent",
     "notes": "notes_agent",
     "memory": "memory_agent",
-"github": "github_agent",
-"sheets": "sheets_agent",
+    "github": "github_agent",
+    "sheets": "sheets_agent",
     "weather": "weather_agent",
     "normal": "normal_agent",
     "fallback": "fallback_agent",
@@ -49,3 +49,19 @@ def route_from_supervisor(state: AgentState) -> str:
         next_agent,
         _DEFAULT_ROUTE
     )
+
+
+def route_from_review(state: AgentState) -> str:
+    """レビュー結果に応じた安全側の開発フロー分岐。"""
+    review_result = state.get("review_result") or {}
+    status = review_result.get("status")
+
+    if status == "passed":
+        return "merge_agent"
+
+    if status == "failed":
+        ai_review = review_result.get("ai_review") or {}
+        if review_result.get("retryable") and ai_review:
+            return "fix_agent"
+
+    return "finalizer"

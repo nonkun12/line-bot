@@ -16,11 +16,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get changed files
-        run: |
-          git fetch origin main
-          git diff origin/main...HEAD > diff.txt
+      - name: Fetch base branch
+        run: git fetch origin main
 
-      - name: Show diff
+      - name: Validate review diff
         run: |
-          cat diff.txt
+          test -n "$(git diff origin/main...HEAD)"
+          echo "Review diff is available for the Worker AI review gate." >> "$GITHUB_STEP_SUMMARY"
