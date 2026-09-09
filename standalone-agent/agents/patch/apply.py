@@ -2,8 +2,8 @@
 Phase4a: Patch適用処理
 
 安全設計:
-- git apply --check で事前検証してから適用する(検証失敗時は一切書き込まない)
-- 適用は専用の一時ブランチ上で行い、作業中のブランチを直接汚さない
+- git apply --check で事前検証してから適用する
+- Job Worktree の現在ブランチを維持し、別ブランチを勝手に作成しない
 - 自律Workerでは秘密情報・DB実体・Git管理領域・Worker制御コードへの
   パッチ適用を拒否する
 """
@@ -12,7 +12,6 @@ import fnmatch
 import os
 import subprocess
 import tempfile
-import uuid
 
 GIT_COMMAND_TIMEOUT = float(os.environ.get("GIT_COMMAND_TIMEOUT", "10.0"))
 
@@ -41,9 +40,9 @@ def _extract_patch_paths(patch_text: str) -> set[str]:
     paths: set[str] = set()
     for line in patch_text.splitlines():
         if line.startswith("+++ b/"):
-            paths.add(line[6:].strip())
+            paths.add(line[6:].strip().split("\t", 1)[0])
         elif line.startswith("--- a/"):
-            paths.add(line[6:].strip())
+            paths.add(line[6:].strip().split("\t", 1)[0])
     return {path for path in paths if path and path != "/dev/null"}
 
 
@@ -51,7 +50,7 @@ def _unsafe_patch_paths(patch_text: str) -> list[str]:
     unsafe = []
     for path in sorted(_extract_patch_paths(patch_text)):
         normalized = path.replace("\\", "/")
-        normalized_path = os.path.normpath(normalized)
+        normalized_path = os.path.normpath(normalized).replace("\\", "/")
         if (
             normalized.startswith("/")
             or normalized_path in {".", ".."}
@@ -73,10 +72,7 @@ def _protected_paths(patch_text: str) -> list[str]:
 
 def apply_patch(patch_text: str, workdir: str) -> dict:
     if not patch_text or not patch_text.strip():
-        return {
-            "applied": False, "branch": None, "error": "empty patch",
-            "stdout": "", "stderr": "",
-        }
+        return {"applied": False, "branch": None, "error": "empty patch", "stdout": "", "stderr": ""}
 
     blocked = _protected_paths(patch_text)
     if blocked and os.environ.get("ALLOW_PROTECTED_AUTONOMOUS_CHANGES", "false").lower() != "true":
@@ -93,26 +89,14 @@ def apply_patch(patch_text: str, workdir: str) -> dict:
     try:
         check = _run_git(["apply", "--check", patch_path], cwd=workdir)
         if check.returncode != 0:
-            return {
-                "applied": False, "branch": None, "error": "patch check failed",
-                "stdout": check.stdout, "stderr": check.stderr,
-            }
-
-        branch_name = f"fix/auto-{uuid.uuid4().hex[:8]}"
-        checkout = _run_git(["checkout", "-b", branch_name], cwd=workdir)
-        if checkout.returncode != 0:
-            return {
-                "applied": False, "branch": None, "error": "branch creation failed",
-                "stdout": checkout.stdout, "stderr": checkout.stderr,
-            }
+            return {"applied": False, "branch": None, "error": "patch check failed", "stdout": check.stdout, "stderr": check.stderr}
 
         apply_result = _run_git(["apply", patch_path], cwd=workdir)
         if apply_result.returncode != 0:
-            return {
-                "applied": False, "branch": branch_name, "error": "patch apply failed",
-                "stdout": apply_result.stdout, "stderr": apply_result.stderr,
-            }
+            return {"applied": False, "branch": None, "error": "patch apply failed", "stdout": apply_result.stdout, "stderr": apply_result.stderr}
 
+        branch_result = _run_git(["branch", "--show-current"], cwd=workdir)
+        branch_name = branch_result.stdout.strip() if branch_result.returncode == 0 else None
         return {
             "applied": True, "branch": branch_name, "error": None,
             "stdout": apply_result.stdout, "stderr": apply_result.stderr,
