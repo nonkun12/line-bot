@@ -37,6 +37,8 @@ class AgentRouter:
 
     def route_to(self, name: str, request: AgentRequest) -> AgentResponse:
         agent = self._registry.get(name)
+        if not bool(getattr(agent, "enabled", True)):
+            raise ValueError(f"agent is disabled: {name}")
         response = agent.handle(request)
         if isinstance(response, AgentResponse):
             return response
