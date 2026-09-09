@@ -142,7 +142,20 @@ def deploy_node(state):
         return {**state, "agent_results": results, "deploy_result": deploy_result}
 
     # Re-check the Job lease immediately before the irreversible Render trigger.
-    require_active_job_lease(state)
+    try:
+        require_active_job_lease(state)
+    except Exception as exc:
+        deploy_result = {
+            "deployed": False,
+            "pending": False,
+            "reason": str(exc),
+            "merged": True,
+            "pr": merge_state,
+            "commit_hash": commit_result.get("hash"),
+        }
+        results["deploy"] = deploy_result
+        return {**state, "agent_results": results, "deploy_result": deploy_result}
+
     trigger_result = trigger_deploy()
     deploy_result = {
         "deployed": trigger_result.get("triggered", False),
