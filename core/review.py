@@ -19,7 +19,7 @@ class ReviewFinding:
 class ReviewResult:
     reviewer: str
     passed: bool
-    findings: Sequence[ReviewFinding] = field(default_factory=tuple)
+    findings: tuple[ReviewFinding, ...] = field(default_factory=tuple)
     score: float = 0.0
 
 
@@ -27,7 +27,7 @@ class ReviewResult:
 class ReviewDecision:
     passed: bool
     score: float
-    findings: Sequence[ReviewFinding] = field(default_factory=tuple)
+    findings: tuple[ReviewFinding, ...] = field(default_factory=tuple)
 
 
 class AICompetitionLoop:
@@ -42,14 +42,20 @@ class AICompetitionLoop:
         if not self._reviewers:
             raise ValueError("at least one reviewer is required")
 
-        results = [reviewer(artifact) for reviewer in self._reviewers.values()]
-        for result in results:
+        results = []
+        for name, reviewer in self._reviewers.items():
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("reviewer name is required")
+            if not callable(reviewer):
+                raise TypeError("reviewer must be callable")
+            result = reviewer(artifact)
             if not isinstance(result, ReviewResult):
                 raise TypeError("reviewer must return ReviewResult")
+            results.append(result)
 
         findings = tuple(
             finding for result in results for finding in result.findings
         )
-        score = sum(result.score for result in results) / len(results)
+        score = sum(float(result.score) for result in results) / len(results)
         passed = all(result.passed for result in results)
         return ReviewDecision(passed=passed, score=score, findings=findings)
