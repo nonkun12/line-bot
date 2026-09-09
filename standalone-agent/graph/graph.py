@@ -135,7 +135,14 @@ WORKER_APPROVAL_NODES = ["merge_agent", "deploy_agent"]
 
 def _build_checkpointer():
     path = os.environ.get("LANGGRAPH_CHECKPOINT_DB", os.path.join(os.path.dirname(os.path.dirname(__file__)), "langgraph-checkpoints.sqlite3"))
-    conn = sqlite3.connect(path, check_same_thread=False)
+    conn = sqlite3.connect(
+        path,
+        timeout=float(os.environ.get("LANGGRAPH_SQLITE_TIMEOUT_SECONDS", "30.0")),
+        check_same_thread=False,
+    )
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     return SqliteSaver(conn)
 
 
