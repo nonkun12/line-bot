@@ -1,5 +1,6 @@
 import pytest
 
+from agents.notes.node import notes_agent_node
 from core.agents import AgentRequest
 from core.legacy_adapter import LegacyNodeAgent, build_legacy_registry
 
@@ -62,3 +63,39 @@ def test_build_legacy_registry_preserves_graph_node_and_route_key():
     assert registry.resolve(
         AgentRequest(user_id="u1", message="hello", metadata={"next_agent": "demo"})
     ) is agent
+
+
+def test_legacy_node_agent_wraps_real_notes_node():
+    calls = []
+
+    def fake_call_mcp_tool(tool_name, arguments, timeout=3.0):
+        calls.append((tool_name, arguments))
+        assert tool_name == "save_note"
+        return "メモ「テスト」を保存しました。"
+
+    agent = LegacyNodeAgent(
+        name="notes",
+        node=notes_agent_node,
+        graph_node="notes_agent",
+    )
+
+    response = agent.handle(
+        AgentRequest(
+            user_id="u1",
+            message="メモにテストを保存して",
+            metadata={"next_agent": "notes", "call_mcp_tool": fake_call_mcp_tool},
+        )
+    )
+
+    assert response.text == "メモ「テスト」を保存しました。"
+    assert calls == [
+        (
+            "save_note",
+            {
+                "user_id": "u1",
+                "title": "LINEメモ",
+                "body": "テスト",
+                "category": "一般",
+            },
+        )
+    ]
