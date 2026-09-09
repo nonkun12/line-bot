@@ -70,6 +70,8 @@ from debug_agent import run_debug_agent
 from internal_ask_route import register_internal_ask_route
 from n8n_delegate import _delegate_to_n8n
 from e2e_status import init_e2e_table, record_step, StepTimer
+from core.channel import handle_channel_request
+from routes.core_api import core_api_bp
 
 app = Flask(__name__)
 
@@ -78,6 +80,7 @@ app.register_blueprint(dashboard_bp)
 
 from routes.e2e_dashboard import e2e_bp
 app.register_blueprint(e2e_bp)
+app.register_blueprint(core_api_bp)
 
 @app.route("/health", methods=["GET"])
 def health():
@@ -225,9 +228,7 @@ def generate_reply(user_id, message):
         ts = int(time.time())
         secret = os.environ.get("DASHBOARD_LINK_SECRET") or os.environ.get("DASHBOARD_PASSWORD") or ""
         payload = f"{user_id}:{ts}"
-        token = __import__("hmac").new(
-            secret.encode(), payload.encode(), __import__("hashlib").sha256
-        ).hexdigest()
+        token = __import__("hmac").new(secret.encode(), payload.encode(), __import__("hashlib").sha256).hexdigest()
         query = urlencode({"user_id": user_id, "ts": ts, "token": token})
         dashboard_url = f"https://line-bot-yvea.onrender.com/dashboard?{query}"
         print(f"[LOG] generate_reply: dashboard command user_id={user_id!r}")
@@ -261,7 +262,7 @@ def generate_reply(user_id, message):
     return _extract_graph_reply(result)
 
 
-register_internal_ask_route(app, INTERNAL_PUSH_KEY, generate_reply)
+register_internal_ask_route(app, INTERNAL_PUSH_KEY, lambda user_id, message: generate_reply(user_id, message))
 
 
 @app.route("/callback", methods=["POST"])
@@ -312,7 +313,18 @@ def _process_and_reply(event, user_id, text):
             if delegated:
                 return
             print("[LOG] n8n delegation failed; falling back to local generate_reply")
-        reply = generate_reply(user_id, text)
+        try:
+            ai_response = handle_channel_request(
+                app.ai_gateway,
+                str(user_id),
+                str(text),
+                "line",
+                metadata={"route": "line_callback"},
+            )
+            reply = ai_response.text
+        except Exception as exc:
+            print("[LOG] Core gateway failed; falling back to local reply:", exc)
+            reply = f"Agent起動エラー: {type(exc).__name__}: {exc}"
         try:
             _line_reply(event.reply_token, reply)
         except Exception as exc:

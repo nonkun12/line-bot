@@ -7,6 +7,8 @@ from urllib.parse import urlencode
 
 from n8n_delegate import is_ai_app_builder_request, _call_ai_app_builder
 from config import configuration
+from core.gateway import AIGateway
+from core.channel import handle_channel_request
 from linebot.v3.messaging import ApiClient, MessagingApi, PushMessageRequest, TextMessage
 
 try:
@@ -30,6 +32,15 @@ def _make_dashboard_url(user_id: str) -> str:
 
 
 def register_internal_ask_route(app, internal_push_key, generate_reply_func):
+    gateway = AIGateway(
+        lambda ai_request: generate_reply_func(
+            ai_request.user_id,
+            ai_request.message,
+        )
+    )
+    # Expose the adapter instance for focused integration tests and observability.
+    app.ai_gateway = gateway
+
     @app.route("/internal/ask", methods=["POST"])
     def internal_ask():
         provided_key = request.headers.get("x-internal-key")
@@ -38,8 +49,11 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         data = request.get_json(silent=True) or {}
         user_id = data.get("user_id")
         message = data.get("message")
+        channel = data.get("channel", "http")
         if not user_id or not message:
             return jsonify({"ok": False, "error": "user_id and message are required"}), 400
+        if not isinstance(channel, str) or not channel.strip():
+            return jsonify({"ok": False, "error": "channel must be a non-empty string"}), 400
         if str(message).strip() == "ダッシュボード":
             dashboard_url = _make_dashboard_url(str(user_id))
             return jsonify({"ok": True, "reply": f"ダッシュボードはこちらです。\n{dashboard_url}"})
@@ -49,12 +63,19 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
                 return jsonify({"ok": True, "reply": reply_text or ""})
         with StepTimer("internal_ask") as ask_timer, StepTimer("ai_mcp") as ai_timer:
             try:
-                reply = generate_reply_func(user_id, message)
+                ai_response = handle_channel_request(
+                    app.ai_gateway,
+                    str(user_id),
+                    str(message),
+                    channel.strip(),
+                    metadata={"route": "internal_ask"},
+                )
+                reply = ai_response.text
             except Exception as exc:
                 print("INTERNAL ASK ERROR:", exc)
                 ai_timer.fail(error=exc, error_location="generate_reply")
                 ask_timer.fail(http_status=500, error=exc, error_location="internal_ask")
-                return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+                return jsonify({"ok": False, "error": "internal server error"}), 500
             ai_timer.ok(); ask_timer.ok(http_status=200)
         return jsonify({"ok": True, "reply": str(reply or "")})
 
@@ -74,7 +95,7 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
             return jsonify({"ok": True})
         except Exception as exc:
             print("INTERNAL PUSH ERROR:", exc)
-            return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+            return jsonify({"ok": False, "error": "internal server error"}), 500
 
     @app.route("/internal/ai-report", methods=["POST"])
     def internal_ai_report():
@@ -92,6 +113,6 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
             return jsonify({"ok": True})
         except Exception as exc:
             print("INTERNAL AI REPORT ERROR:", exc)
-            return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+            return jsonify({"ok": False, "error": "internal server error"}), 500
 
     return internal_ask
