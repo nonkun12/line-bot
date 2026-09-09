@@ -20,14 +20,15 @@ def is_note_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
         return True
     if re.search(r"\d+番.*メモ.*削除", text):
         return True
-    # 明示的なメモ保存は最優先。判定ロジックはhandlerと共有する。
     if is_explicit_save_note(text):
         return True
     if text.startswith("メモ"):
         return True
-    # 「予定ある？」「予定確認して」などはリマインダー/予定確認であり、
-    # Notes Agentへ誤ルーティングしない。メモ検索だけをNotesへ振り分ける。
     if "メモ" in text and any(word in text for word in _LOOKUP_WORDS):
+        return True
+    # 「明日旅行する予定」のような予定の保存はNotes Agentへ送る。
+    # 「予定ある？」「予定を確認して」などの照会は従来どおり除外する。
+    if "予定" in text and not any(word in text for word in _LOOKUP_WORDS):
         return True
     if get_pending_note_action(user_id or ""):
         return True
