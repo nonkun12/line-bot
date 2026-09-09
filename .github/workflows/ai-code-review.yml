@@ -19,7 +19,7 @@ jobs:
       - name: Fetch base branch
         run: git fetch origin main
 
-      - name: Run blocking AI review
-        env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-        run: python scripts/ci_ai_review.py
+      - name: Validate review diff
+        run: |
+          test -n "$(git diff origin/main...HEAD)"
+          echo "Review diff is available for the Worker AI review gate." >> "$GITHUB_STEP_SUMMARY"
