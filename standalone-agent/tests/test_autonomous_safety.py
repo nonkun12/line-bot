@@ -1,7 +1,5 @@
-import os
-
 from agents.patch.apply import apply_patch, _protected_paths
-from graph.graph import route_from_review
+from graph.router import route_from_review
 
 
 def test_protected_paths_reject_secret_and_runtime_files(tmp_path):
