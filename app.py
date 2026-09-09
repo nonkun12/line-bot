@@ -262,7 +262,7 @@ def generate_reply(user_id, message):
     return _extract_graph_reply(result)
 
 
-register_internal_ask_route(app, INTERNAL_PUSH_KEY, generate_reply)
+register_internal_ask_route(app, INTERNAL_PUSH_KEY, lambda user_id, message: generate_reply(user_id, message))
 
 
 @app.route("/callback", methods=["POST"])
