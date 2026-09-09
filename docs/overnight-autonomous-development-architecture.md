@@ -19,11 +19,12 @@ The persistent Job is the outer state machine. Individual AI Workers are short-l
 7. Stop conditions protect against infinite loops: maximum retry count, no-progress detection, and total Job time limit.
 8. When tests pass, commit the changes in the Job worktree.
 9. If GitHub publishing is explicitly enabled, push the Job branch and create/reuse its PR. Publishing is disabled by default with `AUTO_PUBLISH_JOB_BRANCH=false`.
-10. Run the GitHub review gate against the Job commit. The Worker waits until the required Pytest, Overnight Worker Test, and AI Code Review workflows have completed successfully.
-11. The `commit` approval gate is presented only after the PR exists and the required review checks pass. A LINE approval is not treated as a merge by itself: the Worker calls GitHub and confirms the PR is actually merged.
-12. Deploy is allowed only after GitHub reports the PR as merged. `AUTO_DEPLOY=false` remains the safe default, so production deployment requires the separate deploy gate/explicit activation.
-13. After deployment, perform verification. Deployment failures have a much smaller retry budget and should prefer rollback over repeated autonomous production changes.
-14. The Job ends with a durable status and a concise LINE report.
+10. Run the GitHub CI gate against the Job commit. The Worker waits until the required Pytest, Overnight Worker Test, and AI Code Review workflows have completed successfully. The GitHub AI Code Review workflow itself is intentionally network-independent; it verifies that a reviewable diff exists.
+11. After GitHub CI passes, the Worker-side Review Agent runs an actual Groq-based code review against the current `origin/main...HEAD` diff. The review returns PASS/FAIL plus structured findings. Configuration errors are terminal; transient request failures may be retried.
+12. The `commit` approval gate is presented only after the PR exists and both GitHub CI and the Worker-side AI review pass. A LINE approval is not treated as a merge by itself: the Worker calls GitHub and confirms the PR is actually merged.
+13. Deploy is allowed only after GitHub reports the PR as merged. `AUTO_DEPLOY=false` remains the safe default, so production deployment requires the separate deploy gate/explicit activation.
+14. After deployment, perform verification. Deployment failures have a much smaller retry budget and should prefer rollback over repeated autonomous production changes.
+15. The Job ends with a durable status and a concise LINE report.
 
 ## GitHub publication and approval model
 
@@ -33,9 +34,15 @@ GitHub credentials are supplied to the Worker through environment variables and 
 
 The release sequence is intentionally:
 
-`tests passed -> commit -> push/PR -> CI/review gate -> LINE commit approval -> GitHub merge -> LINE deploy approval -> deploy`
+`tests passed -> commit -> push/PR -> GitHub CI -> Worker AI Review -> LINE commit approval -> GitHub merge -> LINE deploy approval -> deploy`
 
 The `commit` approval is therefore the human gate for the proposed change becoming part of `main`. The authoritative merge state is always GitHub, not the LINE approval record.
+
+## Worker-side AI Review
+
+The Worker-side Review Agent is the substantive semantic code-review gate. It refreshes `origin/main` immediately before calculating the diff so the review reflects the current main branch. It sends only a bounded diff to Groq and expects strict JSON with `PASS` or `FAIL` plus findings.
+
+The GitHub Actions workflow named `AI Code Review` is deliberately lightweight and independent of external model availability. Its role is to guarantee that the PR has a non-empty reviewable diff and to provide a stable CI gate. The actual AI judgment is performed by the Worker where the same production Groq configuration is available.
 
 ## Worker leases and restart safety
 
@@ -94,6 +101,7 @@ Each cycle must record a checkpoint containing at least:
 - changed files summary
 - test pass/fail summary
 - review status and required workflow results
+- AI review verdict/findings when applicable
 - error summary/signature when applicable
 - worker result summary
 
@@ -120,7 +128,8 @@ Existing gates must remain intact:
 - Patch application must remain explicitly controlled.
 - Commit requires successful tests.
 - GitHub publication is explicitly opt-in through `AUTO_PUBLISH_JOB_BRANCH`.
-- Review requires the required GitHub workflows to pass.
+- GitHub CI must pass before merge approval.
+- Worker-side AI Review must return PASS before merge approval.
 - Merge requires the LINE approval gate and a successful GitHub merge confirmation against the expected Job branch/commit.
 - Deploy must remain approval-gated and `AUTO_DEPLOY` must remain false unless intentionally enabled.
 - Production/deployment recovery must have a much lower retry budget than ordinary test/fix cycles.
@@ -136,9 +145,10 @@ Do not remove these gates merely to make the overnight loop autonomous.
 5. Persist detailed checkpoints, leases, and status reporting.
 6. Add GitHub branch publication and PR lifecycle.
 7. Add the GitHub CI/review gate before merge approval.
-8. Add merge-state verification and deploy approval.
-9. Add deployment verification and conservative rollback handling.
-10. Move Job persistence to Postgres before true multi-worker scale and increase heartbeat/lease coordination as concurrency grows.
-11. Only then scale to multiple specialized workers/processes.
+8. Add Worker-side AI semantic review.
+9. Add merge-state verification and deploy approval.
+10. Add deployment verification and conservative rollback handling.
+11. Move Job persistence to Postgres before true multi-worker scale and increase heartbeat/lease coordination as concurrency grows.
+12. Only then scale to multiple specialized workers/processes.
 
 Existing LINE Notes, Memory, Reminder, and other stable functionality must not be changed unnecessarily.
