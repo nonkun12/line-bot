@@ -16,65 +16,24 @@ from render_client import trigger_deploy
 
 
 def _auto_deploy_enabled() -> bool:
-    return os.environ.get(
-        "AUTO_DEPLOY",
-        "false"
-    ).lower() == "true"
+    return os.environ.get("AUTO_DEPLOY", "false").lower() == "true"
 
 
 def deploy_node(state):
+    results = dict(state.get("agent_results", {}))
+    commit_result = state.get("commit_result", {})
 
-    results = dict(
-        state.get("agent_results", {})
-    )
-
-
-    commit_result = state.get(
-        "commit_result",
-        {}
-    )
-
-
-    if not commit_result.get("committed"):
-
-        deploy_result = {
-            "deployed": False,
-            "skipped": True,
-            "reason": "commit not completed",
-        }
-
+    if commit_result.get("committed") is not True:
+        deploy_result = {"deployed": False, "skipped": True, "reason": "commit not completed"}
         results["deploy"] = deploy_result
-
-        return {
-            **state,
-            "agent_results": results,
-            "deploy_result": deploy_result,
-        }
-
+        return {**state, "agent_results": results, "deploy_result": deploy_result}
 
     if not _auto_deploy_enabled():
-
-        deploy_result = {
-            "deployed": False,
-            "pending": True,
-            "reason": "waiting for manual approval",
-            "commit_hash": commit_result.get(
-                "hash"
-            ),
-        }
-
+        deploy_result = {"deployed": False, "pending": True, "reason": "waiting for manual approval", "commit_hash": commit_result.get("hash")}
         results["deploy"] = deploy_result
+        return {**state, "agent_results": results, "deploy_result": deploy_result}
 
-        return {
-            **state,
-            "agent_results": results,
-            "deploy_result": deploy_result,
-        }
-
-
-    # AUTO_DEPLOY=true: 実際にRenderへデプロイをトリガーする
     trigger_result = trigger_deploy()
-
     deploy_result = {
         "deployed": trigger_result.get("triggered", False),
         "pending": False,
@@ -82,16 +41,8 @@ def deploy_node(state):
         "status": trigger_result.get("status"),
         "commit_hash": commit_result.get("hash"),
     }
-
     if not trigger_result.get("triggered"):
         deploy_result["reason"] = trigger_result.get("error")
 
-
     results["deploy"] = deploy_result
-
-
-    return {
-        **state,
-        "agent_results": results,
-        "deploy_result": deploy_result,
-    }
+    return {**state, "agent_results": results, "deploy_result": deploy_result}
