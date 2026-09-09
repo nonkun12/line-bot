@@ -1,13 +1,7 @@
-"""LINE AI Secretary E2E監視ダッシュボード。
-
-既存の /dashboard (メモ管理ダッシュボード) とは別の画面として
-/status に新規実装する。認証は既存のBasic認証(DASHBOARD_USER /
-DASHBOARD_PASSWORD)をそのまま再利用する。
-
-セキュリティ: API Key / Token / Password / Secret / INTERNAL_PUSH_KEY
-その他の認証情報は一切レスポンスに含めない。
-"""
+"""LINE AI Secretary E2E監視ダッシュボード。"""
 from functools import wraps
+import hashlib
+import hmac
 import os
 
 from flask import Blueprint, render_template, request, jsonify, Response
@@ -23,16 +17,11 @@ def check_auth(username, password):
     expected_pass = os.environ.get("DASHBOARD_PASSWORD")
     if not expected_user or not expected_pass:
         return False
-    return username == expected_user and password == expected_pass
+    return hmac.compare_digest(str(username or ""), str(expected_user)) and hmac.compare_digest(str(password or ""), str(expected_pass))
 
 
 def authenticate():
-    return Response(
-        "Could not verify your access level for that URL.\n"
-        "You have to login with proper credentials",
-        401,
-        {"WWW-Authenticate": 'Basic realm="Login Required"'}
-    )
+    return Response("Could not verify your access level for that URL.\nYou have to login with proper credentials", 401, {"WWW-Authenticate": 'Basic realm="Login Required"'})
 
 
 def requires_auth(f):
@@ -61,11 +50,7 @@ def _service_from_step(status_payload, step_key):
             if s["state"] == "ok":
                 return {"status": "ok", "last_update": s.get("last_success_at")}
             if s["state"] in ("error", "stop_timeout"):
-                return {
-                    "status": "error",
-                    "last_update": s.get("last_failure_at"),
-                    "error": s.get("last_error"),
-                }
+                return {"status": "error", "last_update": s.get("last_failure_at"), "error": s.get("last_error")}
             return {"status": "unknown"}
     return {"status": "unknown"}
 
@@ -92,18 +77,13 @@ def api_status():
 def api_services():
     try:
         payload = get_e2e_status()
-
         render_configured = bool(os.environ.get("RENDER_API_KEY"))
-
         services = {
             "line_bot": _service_from_step(payload, "line_bot"),
             "n8n": _service_from_step(payload, "n8n_webhook"),
             "mcp": _service_from_step(payload, "ai_mcp"),
             "ai": _service_from_step(payload, "ai_mcp"),
-            "render": {
-                "status": "unknown" if not render_configured else "ok",
-                "note": "RENDER_API_KEY未設定のため詳細確認は省略" if not render_configured else None,
-            },
+            "render": {"status": "unknown" if not render_configured else "ok", "note": "RENDER_API_KEY未設定のため詳細確認は省略" if not render_configured else None},
             "database": _check_database(),
         }
         return jsonify({"ok": True, "services": services})
@@ -116,11 +96,7 @@ def api_services():
 @requires_auth
 def api_summary():
     try:
-        return jsonify({
-            "ok": True,
-            "last_success": get_last_success(),
-            "last_failure": get_last_failure(),
-        })
+        return jsonify({"ok": True, "last_success": get_last_success(), "last_failure": get_last_failure()})
     except Exception as e:
         print("[E2E DASHBOARD] summary error:", e)
         return jsonify({"ok": False, "error": str(e)}), 500
