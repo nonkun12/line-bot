@@ -31,10 +31,12 @@ class AIGateway:
     def handle(self, request: AIRequest) -> AIResponse:
         if not isinstance(request, AIRequest):
             raise TypeError("request must be an AIRequest")
-        if not request.user_id.strip():
+        if not isinstance(request.user_id, str) or not request.user_id.strip():
             raise ValueError("user_id is required")
-        if not request.message.strip():
+        if not isinstance(request.message, str) or not request.message.strip():
             raise ValueError("message is required")
+        if not isinstance(request.channel, str) or not request.channel.strip():
+            raise ValueError("channel is required")
 
         result = self._handler(request)
         if isinstance(result, AIResponse):
