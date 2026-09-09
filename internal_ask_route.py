@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 
 from n8n_delegate import is_ai_app_builder_request, _call_ai_app_builder
 from config import configuration
+from core.gateway import AIGateway, AIRequest
 from linebot.v3.messaging import ApiClient, MessagingApi, PushMessageRequest, TextMessage
 
 try:
@@ -30,6 +31,8 @@ def _make_dashboard_url(user_id: str) -> str:
 
 
 def register_internal_ask_route(app, internal_push_key, generate_reply_func):
+    gateway = AIGateway(generate_reply_func)
+
     @app.route("/internal/ask", methods=["POST"])
     def internal_ask():
         provided_key = request.headers.get("x-internal-key")
@@ -49,10 +52,19 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
                 return jsonify({"ok": True, "reply": reply_text or ""})
         with StepTimer("internal_ask") as ask_timer, StepTimer("ai_mcp") as ai_timer:
             try:
-                reply = generate_reply_func(user_id, message)
+                channel = str(data.get("channel") or "line")
+                response = gateway.handle(
+                    AIRequest(
+                        user_id=str(user_id),
+                        message=str(message),
+                        channel=channel,
+                        metadata={"transport": "internal_ask"},
+                    )
+                )
+                reply = response.text
             except Exception as exc:
                 print("INTERNAL ASK ERROR:", exc)
-                ai_timer.fail(error=exc, error_location="generate_reply")
+                ai_timer.fail(error=exc, error_location="ai_gateway")
                 ask_timer.fail(http_status=500, error=exc, error_location="internal_ask")
                 return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
             ai_timer.ok(); ask_timer.ok(http_status=200)
