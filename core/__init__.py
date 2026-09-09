@@ -2,6 +2,7 @@
 
 from .agents import Agent, AgentRegistry, AgentRequest, AgentResponse
 from .gateway import AIGateway, AIRequest, AIResponse
+from .channel import handle_channel_request
 from .langgraph_adapter import agent_request_from_state, ai_request_from_state, response_text
 from .langgraph_runtime import CoreGraphState, agent_node_name, build_core_graph
 from .legacy_adapter import LegacyNodeAgent, build_legacy_registry
@@ -25,6 +26,7 @@ __all__ = [
     "AIGateway",
     "AIRequest",
     "AIResponse",
+    "handle_channel_request",
     "CoreGraphState",
     "agent_node_name",
     "build_core_graph",
