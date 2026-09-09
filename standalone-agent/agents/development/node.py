@@ -17,7 +17,11 @@ from graph.state import AgentState
 MODEL = os.environ.get("DEVELOPMENT_AGENT_MODEL", "llama-3.3-70b-versatile")
 TIMEOUT = float(os.environ.get("DEVELOPMENT_AGENT_TIMEOUT", "30"))
 MAX_CONTEXT = int(os.environ.get("DEVELOPMENT_AGENT_CONTEXT", "30000"))
-_PROTECTED_EXACT = {".env", ".env.local", ".env.production", "chat.db", "secrets.json"}
+_PROTECTED_EXACT = {
+    ".env", ".env.local", ".env.production", "chat.db", "secrets.json",
+    "git_safety.py", "job_worker.py", "job_store.py", "job_lease.py", "job_approvals.py",
+    "standalone_agent_graph.py", "standalone-agent/graph/graph.py", "standalone-agent/graph/state.py",
+}
 _PROTECTED_SUFFIXES = (".pem", ".key", ".p12", ".sqlite", ".sqlite3")
 _SYSTEM_PROMPT = """
 あなたは安全なソフトウェア開発Agentです。
@@ -29,7 +33,7 @@ _SYSTEM_PROMPT = """
 - 不要なリファクタリングをしない。
 - テスト可能な最小実装を優先する。
 - 既存の秘密情報、認証情報、環境変数の値を生成・変更しない。
-- chat.db、.env、認証トークンなどの秘密・データファイルは変更対象にしない。
+- Workerの承認・lease・job制御、LangGraph routing、秘密・DBファイルは変更対象にしない。
 """
 
 
@@ -85,7 +89,7 @@ def _validate_patch_paths(patch: str) -> None:
     unsafe = []
     for path in _patch_paths(patch):
         name = posixpath.basename(path)
-        if path == ".git" or path.startswith(".git/") or name in _PROTECTED_EXACT or name.endswith(_PROTECTED_SUFFIXES):
+        if path == ".git" or path.startswith(".git/") or path in _PROTECTED_EXACT or name in _PROTECTED_EXACT or name.endswith(_PROTECTED_SUFFIXES):
             unsafe.append(path)
     if unsafe:
         raise RuntimeError(f"generated patch targets protected files: {', '.join(sorted(unsafe))}")
