@@ -33,7 +33,7 @@ def _headers() -> dict[str, str]:
 
 def _head_sha(state: dict[str, Any]) -> str | None:
     commit = state.get("commit_result") or {}
-    return commit.get("sha") or state.get("head_sha")
+    return commit.get("sha") or commit.get("hash") or state.get("head_sha")
 
 
 def _review_diff(state: dict[str, Any]) -> str:
@@ -68,6 +68,9 @@ def _call_ai_review(diff: str) -> dict[str, Any]:
 
 
 def check_github_review_status(state: dict[str, Any]) -> dict[str, Any]:
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if not token:
+        return {"status": "failed", "reason": "GITHUB_TOKEN is not configured"}
     head_sha = _head_sha(state)
     if not head_sha:
         return {"status": "failed", "reason": "approved Job commit hash is missing"}
