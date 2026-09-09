@@ -1,4 +1,5 @@
 import db
+import job_lease
 import job_store
 from job_lease import recover_stale_jobs
 
@@ -6,6 +7,8 @@ from job_lease import recover_stale_jobs
 def _use_temp_db(monkeypatch, tmp_path):
     db_path = tmp_path / "jobs.db"
     monkeypatch.setattr(db, "DB", str(db_path))
+    monkeypatch.setattr(job_lease.db, "DB", str(db_path))
+    monkeypatch.setattr(job_store.db, "DB", str(db_path))
     db.init_db()
     return db_path
 
