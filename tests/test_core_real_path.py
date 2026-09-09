@@ -25,15 +25,14 @@ def test_internal_ask_runs_real_gateway_graph_and_notes_node(monkeypatch):
     assert response.status_code == 200
     body = response.get_json()
     assert body["ok"] is True
-    assert "【Notes】" in body["reply"]
-    assert "メモ「テスト」を保存しました。" in body["reply"]
+    assert body["reply"] == "メモ「テスト」を保存しました。"
     assert calls == [
         (
             "save_note",
             {
                 "user_id": "u1",
                 "title": "LINEメモ",
-                "body": "テスト",
+                "body": "テストを",
                 "category": "一般",
             },
         )
