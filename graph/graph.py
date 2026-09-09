@@ -40,6 +40,7 @@ from langgraph.graph import StateGraph, START, END
 from graph.state import AgentState
 from graph.supervisor import supervisor_node
 from graph.router import route_from_supervisor
+from graph.core_registry import build_core_agent_registry
 from agents.debug.node import debug_agent_node
 from agents.memory.node import memory_agent_node
 from agents.notes.node import notes_agent_node
@@ -328,6 +329,11 @@ def route_from_debug(state: AgentState) -> str:
 def build_graph():
 
     builder = StateGraph(AgentState)
+    core_registry = build_core_agent_registry()
+
+    def route_with_core_registry(state: AgentState) -> str:
+        """Use the Core registry first while preserving the legacy graph route map."""
+        return route_from_supervisor(state, core_registry)
 
     builder.add_node(
         "supervisor",
@@ -417,13 +423,13 @@ def build_graph():
 
     builder.add_conditional_edges(
         "supervisor",
-        route_from_supervisor,
+        route_with_core_registry,
         {
             "debug_agent": "debug_agent",
             "notes_agent": "notes_agent",
             "memory_agent": "memory_agent",
             "github_agent": "github_agent",
-        "sheets_agent": "sheets_agent",
+            "sheets_agent": "sheets_agent",
             "normal_agent": "normal_agent",
             "weather_agent": "weather_agent",
             "fallback_agent": "fallback_agent",
