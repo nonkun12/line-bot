@@ -1,9 +1,14 @@
 """Compatibility wrapper for asynchronous Job storage."""
 
+from __future__ import annotations
+
+import json
+import os
+
 import db
 
 
-REVIEW_POLL_DELAY_SECONDS = int(__import__("os").environ.get("JOB_REVIEW_POLL_DELAY_SECONDS", "30"))
+REVIEW_POLL_DELAY_SECONDS = int(os.environ.get("JOB_REVIEW_POLL_DELAY_SECONDS", "30"))
 
 
 def create_job(user_id, message, job_type="ai_task", source="line", parent_job_id=None, max_retries=3):
@@ -31,9 +36,9 @@ def renew_job_lease(job_id, worker_id, lease_seconds=None):
     return db.renew_job_lease(job_id, worker_id, lease_seconds=lease_seconds)
 
 
-def update_job(job_id, status=None, result=None, last_error=None,
-               retry_count=None, claimed_at=None, clear_claimed_at=False,
-               worker_id=None, lease_until=None, next_run_at=None, clear_lease=False):
+def update_job(job_id, status=None, result=None, last_error=None, retry_count=None,
+               claimed_at=None, clear_claimed_at=False, worker_id=None,
+               lease_until=None, next_run_at=None, clear_lease=False):
     return db.update_job(job_id, status=status, result=result,
                          last_error=last_error, retry_count=retry_count,
                          worker_id=worker_id, lease_until=lease_until,
@@ -42,8 +47,15 @@ def update_job(job_id, status=None, result=None, last_error=None,
 
 
 def _is_review_pending(result: object) -> bool:
-    text = str(result or "")
-    return '"review_result": {"status": "pending"' in text or "required GitHub review checks" in text
+    if isinstance(result, dict):
+        review = result.get("review_result")
+        return isinstance(review, dict) and review.get("status") == "pending"
+    try:
+        payload = json.loads(str(result or ""))
+    except (TypeError, ValueError):
+        return False
+    review = payload.get("review_result") if isinstance(payload, dict) else None
+    return isinstance(review, dict) and review.get("status") == "pending"
 
 
 def update_job_owned(job_id, worker_id, status=None, result=None, last_error=None,
@@ -64,8 +76,6 @@ def update_job_owned(job_id, worker_id, status=None, result=None, last_error=Non
         fields.append("retry_count=?")
         values.append(retry_count)
 
-    # Review/CI polling must not be immediately reclaimed. Persist the defer
-    # deadline so any n8n/Worker trigger arriving early simply finds no job.
     if next_run_at is not None:
         fields.append("next_run_at=?")
         values.append(next_run_at)
