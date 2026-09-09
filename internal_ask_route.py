@@ -75,7 +75,7 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
                 print("INTERNAL ASK ERROR:", exc)
                 ai_timer.fail(error=exc, error_location="generate_reply")
                 ask_timer.fail(http_status=500, error=exc, error_location="internal_ask")
-                return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+                return jsonify({"ok": False, "error": "internal server error"}), 500
             ai_timer.ok(); ask_timer.ok(http_status=200)
         return jsonify({"ok": True, "reply": str(reply or "")})
 
