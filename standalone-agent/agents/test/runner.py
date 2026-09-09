@@ -20,7 +20,7 @@ def _test_env(cwd: str | None) -> dict[str, str]:
     if cwd:
         env["ENVIRONMENT"] = "test"
         env["DB_TYPE"] = "sqlite"
-        env.setdefault("CHAT_DB_PATH", os.path.join(cwd, ".worker-test-chat.db"))
+        env["CHAT_DB_PATH"] = os.path.join(cwd, ".worker-test-chat.db")
     return env
 
 
