@@ -7,6 +7,7 @@ from typing import Any
 
 import requests
 
+from job_lease import require_active_job_lease
 from render_client import trigger_deploy
 
 GITHUB_API = "https://api.github.com"
@@ -75,8 +76,6 @@ def deploy_node(state):
         results["deploy"] = deploy_result
         return {**state, "agent_results": results, "deploy_result": deploy_result}
 
-    # Legacy/direct deploy calls predate the Job/PR pipeline. Preserve their
-    # behavior unless this state explicitly belongs to an asynchronous Job.
     is_job_flow = bool(state.get("job_id")) or bool(state.get("publish_result"))
     if not is_job_flow:
         if not _auto_deploy_enabled():
@@ -142,6 +141,8 @@ def deploy_node(state):
         results["deploy"] = deploy_result
         return {**state, "agent_results": results, "deploy_result": deploy_result}
 
+    # Re-check the Job lease immediately before the irreversible Render trigger.
+    require_active_job_lease(state)
     trigger_result = trigger_deploy()
     deploy_result = {
         "deployed": trigger_result.get("triggered", False),
