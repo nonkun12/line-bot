@@ -3,7 +3,7 @@ Phase4a: pytest実行
 
 安全設計:
 - タイムアウトを必ず設定する(LLMが生成したコードが無限ループする事故を防ぐ)
-- 自律開発Jobでは本番DBを使わず、Job専用の一時DBを利用する
+- 自律開発Jobでは本番DBを使わず、呼び出しごとにJob専用の一時DBを利用する
 """
 
 from __future__ import annotations
@@ -11,17 +11,24 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
+import tempfile
+from pathlib import Path
 
 DEFAULT_TIMEOUT_SECONDS = 120
 
 
-def _test_env(cwd: str | None) -> dict[str, str]:
+def _test_env(cwd: str | None) -> tuple[dict[str, str], str | None]:
     env = os.environ.copy()
+    scratch_db = None
     if cwd:
         env["ENVIRONMENT"] = "test"
         env["DB_TYPE"] = "sqlite"
-        env["CHAT_DB_PATH"] = os.path.join(cwd, ".worker-test-chat.db")
-    return env
+        # Use a unique scratch DB for each test invocation so parallel/restarted
+        # Workers cannot share mutable test state.
+        fd, scratch_db = tempfile.mkstemp(prefix="worker-test-", suffix=".db", dir=cwd)
+        os.close(fd)
+        env["CHAT_DB_PATH"] = scratch_db
+    return env, scratch_db
 
 
 def run_tests(
@@ -40,12 +47,12 @@ def run_tests(
             stderr: str
             timed_out: bool
     """
-
+    env, scratch_db = _test_env(cwd)
     try:
         result = subprocess.run(
             shlex.split(test_command),
             cwd=cwd,
-            env=_test_env(cwd),
+            env=env,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -57,6 +64,7 @@ def run_tests(
             "stdout": result.stdout,
             "stderr": result.stderr,
             "timed_out": False,
+            "test_db_path": scratch_db,
         }
 
     except subprocess.TimeoutExpired as e:
@@ -66,4 +74,5 @@ def run_tests(
             "stdout": (e.stdout or ""),
             "stderr": (e.stderr or ""),
             "timed_out": True,
+            "test_db_path": scratch_db,
         }
