@@ -35,21 +35,48 @@ Phase3 (Patch Agent基盤):
 - 既存のpatch_agent(適用ロジック)は無変更。
 """
 
+from __future__ import annotations
+
+import os
+
 from langgraph.graph import StateGraph, START, END
 
 from graph.state import AgentState
 from graph.supervisor import supervisor_node
 from graph.router import route_from_supervisor
 from graph.core_registry import build_core_agent_registry
+from graph.core_migration import run_migrated_agent
 from agents.debug.node import debug_agent_node
 from agents.memory.node import memory_agent_node
-from agents.notes.node import notes_agent_node
+from agents.notes.node import notes_agent_node as _notes_agent_node
 from agents.github.node import github_agent_node
 from agents.sheets.node import sheets_agent_node
 from agents.normal.node import normal_agent_node
 from agents.weather.node import weather_agent_node
 from dev_notes.wrappers.graph_node_wrapper import with_execution_logging
 from dev_notes.factory import get_default_adapter
+
+
+def _core_migration_enabled(agent_name: str) -> bool:
+    """Check the opt-in Core migration allow-list without changing the default path."""
+    configured = os.getenv("AI_CORE_MIGRATED_AGENTS", "")
+    enabled_agents = {
+        item.strip()
+        for item in configured.split(",")
+        if item.strip()
+    }
+    return agent_name in enabled_agents
+
+
+def _notes_agent_with_optional_core_migration(state: AgentState) -> AgentState:
+    """Run Notes through Core only when explicitly enabled; otherwise keep legacy behavior."""
+    if _core_migration_enabled("notes"):
+        return run_migrated_agent(
+            state,
+            build_core_agent_registry(),
+            migrated_agents={"notes"},
+        )
+    return notes_agent_node(state)
 
 
 debug_agent_node = with_execution_logging(
@@ -59,7 +86,7 @@ debug_agent_node = with_execution_logging(
 )
 
 notes_agent_node = with_execution_logging(
-    notes_agent_node,
+    _notes_agent_with_optional_core_migration,
     "notes",
     get_default_adapter(),
 )
@@ -217,7 +244,6 @@ def finalize_node(state: AgentState) -> AgentState:
                     "text",
                     ""
                 )
-            )
 
         normal_result = results.get(
             "normal",
@@ -230,7 +256,6 @@ def finalize_node(state: AgentState) -> AgentState:
                     "text",
                     ""
                 )
-            )
 
         github_result = results.get(
             "github",
@@ -244,7 +269,6 @@ def finalize_node(state: AgentState) -> AgentState:
                     "text",
                     ""
                 )
-            )
 
         fix_result = results.get(
             "fix",
@@ -258,7 +282,6 @@ def finalize_node(state: AgentState) -> AgentState:
                     "summary",
                     ""
                 )
-            )
 
         patch_result = results.get(
             "patch",
