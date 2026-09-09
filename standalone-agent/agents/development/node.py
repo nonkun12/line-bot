@@ -1,8 +1,4 @@
-"""Development Worker node.
-
-Generates a minimal unified diff for a development request and applies it to
-an isolated Job worktree when one is supplied in AgentState.
-"""
+"""Development Worker node with Management AI task assignment."""
 
 from __future__ import annotations
 
@@ -13,6 +9,7 @@ import subprocess
 from langchain_groq import ChatGroq
 from config import GROQ_API_KEY
 from graph.state import AgentState
+from agents.management.node import assign_agent
 
 MODEL = os.environ.get("DEVELOPMENT_AGENT_MODEL", "llama-3.3-70b-versatile")
 TIMEOUT = float(os.environ.get("DEVELOPMENT_AGENT_TIMEOUT", "30"))
@@ -34,6 +31,17 @@ _SYSTEM_PROMPT = """
 - テスト可能な最小実装を優先する。
 - 既存の秘密情報、認証情報、環境変数の値を生成・変更しない。
 - Workerの承認・lease・job制御、LangGraph routing、秘密・DBファイルは変更対象にしない。
+"""
+_REFACTOR_PROMPT = """
+あなたは安全なRefactoring専門Agentです。
+既存仕様と外部動作を維持したまま、コード品質を改善する最小限のunified diffだけを生成してください。
+ルール:
+- 新機能を追加しない。
+- 公開API、入出力、DBスキーマ、認証、承認、lease、Worker制御の意味を変更しない。
+- 挙動を変える可能性がある変更は行わない。
+- 不要な大規模変更を避け、diffを最小化する。
+- 出力はunified diffのみ。説明文・Markdown fenceは禁止。
+- 秘密情報、認証情報、環境変数の値を生成・変更しない。
 """
 
 
@@ -95,9 +103,10 @@ def _validate_patch_paths(patch: str) -> None:
         raise RuntimeError(f"generated patch targets protected files: {', '.join(sorted(unsafe))}")
 
 
-def _generate_patch(message: str, context: str) -> str:
+def _generate_patch(message: str, context: str, role: str = "development_agent") -> str:
+    prompt = _REFACTOR_PROMPT if role == "refactoring_agent" else _SYSTEM_PROMPT
     llm = ChatGroq(model=MODEL, temperature=0, api_key=GROQ_API_KEY, timeout=TIMEOUT)
-    result = llm.invoke([("system", _SYSTEM_PROMPT), ("user", f"開発要求:\n{message}\n\nリポジトリコンテキスト:\n{context}")])
+    result = llm.invoke([("system", prompt), ("user", f"開発要求:\n{message}\n\nリポジトリコンテキスト:\n{context}")])
     patch = (result.content or "").strip()
     if patch.startswith("```"):
         lines = patch.splitlines()
@@ -113,9 +122,15 @@ def development_agent_node(state: AgentState) -> AgentState:
     workdir = _workdir(state)
     message = state.get("raw_message", "") or ""
     results = dict(state.get("agent_results", {}))
+    role = assign_agent(message)
+    management_plan = {
+        "assigned_agent": role,
+        "reason": "refactoring intent detected" if role == "refactoring_agent" else "development task",
+    }
+    results["management"] = {"assigned_agent": role, "summary": f"assigned to {role}"}
     try:
         _ensure_clean_worktree(workdir)
-        patch = _generate_patch(message, _repo_context(workdir))
+        patch = _generate_patch(message, _repo_context(workdir), role)
         if not patch.startswith("diff --git "):
             raise RuntimeError("Development Agent did not return a unified diff")
         _validate_patch_paths(patch)
@@ -125,10 +140,12 @@ def development_agent_node(state: AgentState) -> AgentState:
         applied = subprocess.run(["git", "apply", "-"], cwd=workdir, input=patch, capture_output=True, text=True, timeout=15)
         if applied.returncode != 0:
             raise RuntimeError(f"patch apply failed: {applied.stderr.strip()}")
-        patch_result = {"applied": True, "skipped": False, "source": "development_agent", "patch": patch}
+        patch_result = {"applied": True, "skipped": False, "source": role, "patch": patch}
         results["development"] = {"applied": True, "summary": "development patch applied"}
+        if role == "refactoring_agent":
+            results["refactor"] = {"applied": True, "summary": "behavior-preserving refactor patch applied"}
         results["patch"] = patch_result
-        return {**state, "agent_results": results, "patch_result": patch_result, "workdir": workdir}
+        return {**state, "agent_results": results, "management_plan": management_plan, "patch_result": patch_result, "workdir": workdir}
     except Exception as exc:
         results["development"] = {"applied": False, "error": str(exc)}
-        return {**state, "agent_results": results, "development_error": str(exc), "workdir": workdir}
+        return {**state, "agent_results": results, "management_plan": management_plan, "development_error": str(exc), "workdir": workdir}
