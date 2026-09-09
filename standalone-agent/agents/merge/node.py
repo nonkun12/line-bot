@@ -7,6 +7,8 @@ from typing import Any
 
 import requests
 
+from job_lease import require_active_job_lease
+
 GITHUB_API = "https://api.github.com"
 
 
@@ -85,6 +87,8 @@ def merge_approved_pr(state: dict[str, Any]) -> dict[str, Any]:
             "pr": current,
         }
 
+    # Re-check the Job lease immediately before the irreversible merge mutation.
+    require_active_job_lease(state)
     response = requests.put(
         f"{GITHUB_API}/repos/{_repo()}/pulls/{int(pr_number)}/merge",
         headers={**_headers(), "Content-Type": "application/json"},
