@@ -20,13 +20,13 @@ def test_gateway_preserves_structured_response():
     assert response.metadata["agent"] == "normal"
 
 
-@pytest.mark.parametrize("request", [
+@pytest.mark.parametrize("invalid_request", [
     AIRequest(user_id="", message="hello"),
     AIRequest(user_id="u1", message=""),
 ])
-def test_gateway_rejects_missing_required_fields(request):
+def test_gateway_rejects_missing_required_fields(invalid_request):
     with pytest.raises(ValueError):
-        AIGateway(lambda _: "ok").handle(request)
+        AIGateway(lambda _: "ok").handle(invalid_request)
 
 
 def test_gateway_rejects_invalid_handler_result():
