@@ -23,13 +23,18 @@ LEGACY_AGENT_NODES: Mapping[str, Callable[[Mapping[str, Any]], Mapping[str, Any]
     "weather": weather_agent_node,
 }
 
+# Canonical route-key -> LangGraph-node mapping shared by the migration bridge
+# and the legacy graph router. Debug/fallback are not Core-registered agents yet,
+# but remain part of the graph's legacy route surface.
 LEGACY_GRAPH_NODES: Mapping[str, str] = {
-    "github": "github_agent",
-    "memory": "memory_agent",
+    "debug": "debug_agent",
     "notes": "notes_agent",
-    "normal": "normal_agent",
+    "memory": "memory_agent",
+    "github": "github_agent",
     "sheets": "sheets_agent",
     "weather": "weather_agent",
+    "normal": "normal_agent",
+    "fallback": "fallback_agent",
 }
 
 
