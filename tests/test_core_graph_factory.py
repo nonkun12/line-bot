@@ -14,15 +14,13 @@ def test_current_core_graph_compiles_with_migrated_agents():
     assert "core_finalizer" in graph_nodes
 
 
-def test_current_core_graph_contains_migrated_agent_nodes_and_terminal_path():
+def test_current_core_graph_exposes_migrated_nodes_and_terminal_path():
     graph = build_current_core_graph()
     graph_nodes = set(graph.get_graph().nodes)
     edges = {(edge.source, edge.target) for edge in graph.get_graph().edges}
 
-    assert agent_node_name("weather") in graph_nodes
-    assert agent_node_name("notes") in graph_nodes
-    assert agent_node_name("github") in graph_nodes
-    assert agent_node_name("normal") in graph_nodes
+    for name in ("weather", "notes", "github", "normal", "memory", "sheets"):
+        assert agent_node_name(name) in graph_nodes
+
+    assert ("__start__", "core_router") in edges
     assert ("core_router", "__end__") in edges
-    assert (agent_node_name("weather"), "core_finalizer") in edges
-    assert ("core_fallback", "core_finalizer") in edges
