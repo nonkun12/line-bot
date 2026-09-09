@@ -26,6 +26,8 @@ class AIGateway:
     """Adapter boundary for future LINE, Web, iPhone and voice channels."""
 
     def __init__(self, handler: Callable[[AIRequest], AIResponse | str]):
+        if not callable(handler):
+            raise TypeError("handler must be callable")
         self._handler = handler
 
     def handle(self, request: AIRequest) -> AIResponse:
