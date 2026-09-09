@@ -32,18 +32,12 @@ _INTENT_TO_AGENT = {
     "github": "github",
     "sheets": "sheets",
     "weather": "weather",
-    # "unsupported" (=GitHub/Debug/Memory/Notesのいずれにも該当しない通常
-    # メッセージ) は、旧 generate_reply() 末尾にあった通常のGroq応答へ
-    # 振り分ける。
     "unsupported": "normal",
 }
 
 
 def classify_intent(raw_message: str, user_id: str | None = None) -> str:
-    """
-    メッセージ内容からintentを判定する。
-    明示的なメモ保存・検索依頼は、時間表現など他の意図よりNotesを優先する。
-    """
+    """メッセージ内容からintentを判定する。"""
     text = (raw_message or "").strip()
 
     print("===== SUPERVISOR =====")
@@ -52,9 +46,15 @@ def classify_intent(raw_message: str, user_id: str | None = None) -> str:
     if text.startswith(_DEBUG_PREFIX):
         return "debug"
 
+    # Sheets明示・自然文を先に判定する。
+    # 「シートに記録 明日の予定」のように、Notesの汎用キーワード
+    # （予定・したい・名前等）を含む場合でもSheetsを優先する。
+    if is_sheets_intent(text):
+        print("SUPERVISOR: sheets intent")
+        return "sheets"
+
     # 「メモに、明日の10時にテストすると保存して」のように、
-    # メモ依頼の本文に日時が含まれていてもNotesを最優先する。
-    # これを他のAgent判定より先に置き、set_reminderへの誤ルーティングを防止する。
+    # メモ依頼の本文に日時が含まれていてもNotesへルーティングする。
     # 「はい」のような保留中の確認も、元のuser_idを渡してNotes側で処理する。
     if is_note_intent(text, user_id=user_id):
         print("SUPERVISOR: note intent (priority)")
@@ -68,16 +68,9 @@ def classify_intent(raw_message: str, user_id: str | None = None) -> str:
         print("SUPERVISOR: weather intent")
         return "weather"
 
-    if is_sheets_intent(text):
-        print("SUPERVISOR: sheets intent")
-        return "sheets"
-
     if is_memory_intent(text):
         return "memory"
 
-    # 「debug」プレフィックスなしの自然文(例: 「app.pyのエラーを確認して」)
-    # からのDebug Agentルーティング。既存Agent(GitHub/Sheets/Notes/Memory)
-    # の判定より後に置くことで、既存の誤ルーティング防止を優先する。
     if is_debug_intent(text):
         print("SUPERVISOR: natural language debug intent")
         return "debug"
@@ -96,10 +89,7 @@ def supervisor_node(state: AgentState) -> AgentState:
     user_id = state.get("user_id")
 
     intent = classify_intent(raw_message, user_id=user_id)
-    next_agent = _INTENT_TO_AGENT.get(
-        intent,
-        "fallback"
-    )
+    next_agent = _INTENT_TO_AGENT.get(intent, "fallback")
 
     pending_status = (
         get_pending_status(user_id).value
