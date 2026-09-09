@@ -8,8 +8,6 @@ LangGraph Phase1: Supervisorノード。
 やらないこと:
 - Agentの実行
 - LINE返信生成
-
-Phase1では debug のみ Debug Agentへ振り分ける。
 """
 
 from graph.state import AgentState
@@ -32,18 +30,12 @@ _INTENT_TO_AGENT = {
     "github": "github",
     "sheets": "sheets",
     "weather": "weather",
-    # "unsupported" (=GitHub/Debug/Memory/Notesのいずれにも該当しない通常
-    # メッセージ) は、旧 generate_reply() 末尾にあった通常のGroq応答へ
-    # 振り分ける。
     "unsupported": "normal",
 }
 
 
 def classify_intent(raw_message: str, user_id: str | None = None) -> str:
-    """
-    メッセージ内容からintentを判定する。
-    明示的なメモ保存・検索依頼は、時間表現など他の意図よりNotesを優先する。
-    """
+    """メッセージ内容からintentを判定する。"""
     text = (raw_message or "").strip()
 
     print("===== SUPERVISOR =====")
@@ -52,10 +44,11 @@ def classify_intent(raw_message: str, user_id: str | None = None) -> str:
     if text.startswith(_DEBUG_PREFIX):
         return "debug"
 
-    # 「メモに、明日の10時にテストすると保存して」のように、
-    # メモ依頼の本文に日時が含まれていてもNotesを最優先する。
-    # これを他のAgent判定より先に置き、set_reminderへの誤ルーティングを防止する。
-    # 「はい」のような保留中の確認も、元のuser_idを渡してNotes側で処理する。
+    # Sheets明示依頼を汎用的な「予定」「名前」等のNotes/Memory判定より先に処理する。
+    if is_sheets_intent(text):
+        print("SUPERVISOR: sheets intent")
+        return "sheets"
+
     if is_note_intent(text, user_id=user_id):
         print("SUPERVISOR: note intent (priority)")
         return "note"
@@ -68,16 +61,9 @@ def classify_intent(raw_message: str, user_id: str | None = None) -> str:
         print("SUPERVISOR: weather intent")
         return "weather"
 
-    if is_sheets_intent(text):
-        print("SUPERVISOR: sheets intent")
-        return "sheets"
-
     if is_memory_intent(text):
         return "memory"
 
-    # 「debug」プレフィックスなしの自然文(例: 「app.pyのエラーを確認して」)
-    # からのDebug Agentルーティング。既存Agent(GitHub/Sheets/Notes/Memory)
-    # の判定より後に置くことで、既存の誤ルーティング防止を優先する。
     if is_debug_intent(text):
         print("SUPERVISOR: natural language debug intent")
         return "debug"
@@ -87,19 +73,11 @@ def classify_intent(raw_message: str, user_id: str | None = None) -> str:
 
 
 def supervisor_node(state: AgentState) -> AgentState:
-    """
-    Supervisorノード本体。
-
-    Supervisorでintent判定とnext_agent決定のみ行う。
-    """
     raw_message = state.get("raw_message", "")
     user_id = state.get("user_id")
 
     intent = classify_intent(raw_message, user_id=user_id)
-    next_agent = _INTENT_TO_AGENT.get(
-        intent,
-        "fallback"
-    )
+    next_agent = _INTENT_TO_AGENT.get(intent, "fallback")
 
     pending_status = (
         get_pending_status(user_id).value
