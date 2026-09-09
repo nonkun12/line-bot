@@ -20,6 +20,7 @@ class CoreGraphState(TypedDict, total=False):
     intent: str | None
     next_agent: str | None
     route: str | None
+    call_mcp_tool: Any
     agent_results: dict[str, Any]
     final_reply: str | None
     error: str | None

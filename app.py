@@ -71,6 +71,8 @@ from internal_ask_route import register_internal_ask_route
 from n8n_delegate import _delegate_to_n8n
 from e2e_status import init_e2e_table, record_step, StepTimer
 from core.channel import handle_channel_request
+from core.gateway import AIGateway
+from core.request_path import run_core_request, extract_core_reply
 from routes.core_api import core_api_bp
 
 app = Flask(__name__)
@@ -262,7 +264,47 @@ def generate_reply(user_id, message):
     return _extract_graph_reply(result)
 
 
-register_internal_ask_route(app, INTERNAL_PUSH_KEY, lambda user_id, message: generate_reply(user_id, message))
+def _core_dynamic_enabled():
+    return os.environ.get("AI_CORE_DYNAMIC_GRAPH", "false").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
+
+def _handle_ai_gateway_request(ai_request):
+    message = str(ai_request.message)
+    user_id = str(ai_request.user_id)
+
+    if not _core_dynamic_enabled():
+        return generate_reply(user_id, message)
+
+    # Keep existing non-agent commands unchanged while regular agent traffic
+    # moves through the Supervisor -> registry-backed Core graph.
+    if message.strip() == "ダッシュボード" or "Daily AI Repo" in message or message.startswith("pytest"):
+        return generate_reply(user_id, message)
+
+    result = run_core_request(
+        user_id,
+        message,
+        call_mcp_tool=call_mcp_tool,
+    )
+    return extract_core_reply(result)
+
+
+app.ai_gateway = AIGateway(_handle_ai_gateway_request)
+
+
+def _gateway_reply(user_id, message):
+    response = handle_channel_request(
+        app.ai_gateway,
+        str(user_id),
+        str(message),
+        "internal",
+        metadata={"route": "internal_ask"},
+    )
+    return response.text
+
+
+register_internal_ask_route(app, INTERNAL_PUSH_KEY, _gateway_reply)
 
 
 @app.route("/callback", methods=["POST"])
@@ -307,7 +349,7 @@ def _process_and_reply(event, user_id, text):
             dashboard_url = f"https://line-bot-yvea.onrender.com/dashboard?{query}"
             _line_reply(event.reply_token, f"ダッシュボードはこちらです。\n{dashboard_url}")
             return
-        if N8N_WEBHOOK_URL:
+        if N8N_WEBHOOK_URL and not _core_dynamic_enabled():
             print(f"[LOG] DELEGATING TO N8N: user_id={user_id}")
             delegated = _delegate_to_n8n(user_id, text, N8N_WEBHOOK_URL)
             if delegated:

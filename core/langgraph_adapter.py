@@ -14,28 +14,34 @@ from .gateway import AIRequest
 
 def ai_request_from_state(state: Mapping[str, Any], *, channel: str = "line") -> AIRequest:
     """Translate legacy AgentState-like data into an AIRequest."""
+    metadata = {
+        "request_id": state.get("request_id"),
+        "intent": state.get("intent"),
+        "next_agent": state.get("next_agent"),
+    }
+    if callable(state.get("call_mcp_tool")):
+        metadata["call_mcp_tool"] = state["call_mcp_tool"]
     return AIRequest(
         user_id=state.get("user_id", ""),
         message=state.get("raw_message", ""),
         channel=channel,
-        metadata={
-            "request_id": state.get("request_id"),
-            "intent": state.get("intent"),
-            "next_agent": state.get("next_agent"),
-        },
+        metadata=metadata,
     )
 
 
 def agent_request_from_state(state: Mapping[str, Any]) -> AgentRequest:
     """Translate legacy AgentState-like data into an AgentRequest."""
+    metadata = {
+        "request_id": state.get("request_id"),
+        "intent": state.get("intent"),
+        "next_agent": state.get("next_agent"),
+    }
+    if callable(state.get("call_mcp_tool")):
+        metadata["call_mcp_tool"] = state["call_mcp_tool"]
     return AgentRequest(
         user_id=state.get("user_id", ""),
         message=state.get("raw_message", ""),
-        metadata={
-            "request_id": state.get("request_id"),
-            "intent": state.get("intent"),
-            "next_agent": state.get("next_agent"),
-        },
+        metadata=metadata,
     )
 
 
