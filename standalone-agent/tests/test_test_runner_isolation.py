@@ -10,6 +10,7 @@ def test_worker_test_env_overrides_production_db_path(tmp_path, monkeypatch):
     assert env["DB_TYPE"] == "sqlite"
     assert env["CHAT_DB_PATH"] == scratch_db
     assert scratch_db != "/production/chat.db"
+    assert Path(scratch_db).parent == Path(tmp_path)
     assert Path(scratch_db).exists()
 
 
