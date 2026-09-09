@@ -3,10 +3,19 @@ import job_lease
 import job_store
 
 
-def test_recover_stale_job_clears_worker_lease(tmp_path, monkeypatch):
+def _use_temp_db(monkeypatch, tmp_path):
     db_path = tmp_path / "jobs.sqlite"
+    # Bind every imported DB facade explicitly. This keeps the tests stable
+    # even when the standalone worker import bridge has changed sys.path.
     monkeypatch.setattr(db, "DB", str(db_path))
+    monkeypatch.setattr(job_lease.db, "DB", str(db_path))
+    monkeypatch.setattr(job_store.db, "DB", str(db_path))
     db.init_db()
+    return db_path
+
+
+def test_recover_stale_job_clears_worker_lease(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
 
     job_id = job_store.create_job("U-test", "stale job")
     claimed = job_store.claim_pending_job(worker_id="worker-a", lease_seconds=1)
@@ -34,9 +43,7 @@ def test_recover_stale_job_clears_worker_lease(tmp_path, monkeypatch):
 
 
 def test_active_worker_lease_is_not_recovered(tmp_path, monkeypatch):
-    db_path = tmp_path / "jobs.sqlite"
-    monkeypatch.setattr(db, "DB", str(db_path))
-    db.init_db()
+    _use_temp_db(monkeypatch, tmp_path)
 
     job_id = job_store.create_job("U-test", "active job")
     claimed = job_store.claim_pending_job(worker_id="worker-a", lease_seconds=300)
