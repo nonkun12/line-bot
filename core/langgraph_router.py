@@ -39,15 +39,14 @@ def route_with_core(
     request = agent_request_from_state(state)
     next_agent = state.get("next_agent")
 
-    # Supervisor-selected agents must take precedence over broad can_handle
-    # predicates. A future agent may inherit shared behavior while still
-    # honoring the explicit route selected by the legacy graph.
     if isinstance(next_agent, str) and next_agent.strip():
         try:
             selected = registry.get(next_agent)
         except KeyError:
             selected = None
-        if selected is not None and bool(getattr(selected, "enabled", True)):
+        if selected is not None:
+            if not bool(getattr(selected, "enabled", True)):
+                return default_route
             graph_node = getattr(selected, "graph_node", None)
             if isinstance(graph_node, str) and graph_node.strip():
                 return graph_node
