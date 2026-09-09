@@ -94,7 +94,7 @@ def test_legacy_node_agent_wraps_real_notes_node():
             {
                 "user_id": "u1",
                 "title": "LINEメモ",
-                "body": "テスト",
+                "body": "テストを",
                 "category": "一般",
             },
         )
