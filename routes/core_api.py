@@ -45,5 +45,5 @@ def ask():
             }
         )
     except Exception as exc:
-        print("CORE API ASK ERROR:", exc)
-        return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+        current_app.logger.exception("CORE API ASK ERROR")
+        return jsonify({"ok": False, "error": "internal server error"}), 500
