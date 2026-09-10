@@ -38,6 +38,13 @@ def test_protected_worker_files_are_never_editable():
     assert not worker.is_protected("app.py")
 
 
+def test_test_instruction_requires_no_file_target():
+    assert worker.is_test_instruction("開発接続テスト")
+    assert worker.is_test_instruction("接続テスト")
+    assert worker.is_test_instruction("動作確認")
+    assert not worker.is_test_instruction("app.pyのバグを修正")
+
+
 def test_choose_file_rejects_unknown_path():
     client = FakeClient([json.dumps({"file": "missing.py"})])
     assert worker.choose_file(client, "test", ["app.py"]) is None
