@@ -44,6 +44,7 @@ DEPLOY_SYNC_MARKER = "2026-09-11-line-development-route"
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message_event(event):
     print("[LOG] handle MessageEvent called")
+    user_id = None
     try:
         user_id = event.source.user_id
         text = event.message.text
@@ -55,6 +56,7 @@ def handle_message_event(event):
             _processed_message_ids,
             _MAX_TRACKED_IDS,
             _line_reply,
+            _line_push,
         )
         from line_development import extract_development_instruction, dispatch_development_workflow
         from db import is_processed_event, create_processed_event
@@ -83,13 +85,31 @@ def handle_message_event(event):
         # Normal conversation, GitHub lookup commands, and n8n are untouched.
         dev_instruction = extract_development_instruction(text)
         if dev_instruction is not None:
-            reply = dispatch_development_workflow(
-                dev_instruction,
-                user_id=str(user_id),
-                token=GITHUB_TOKEN,
-                repository=AI_REPORT_GITHUB_REPO,
-            )
-            _line_reply(event.reply_token, reply)
+            try:
+                reply = dispatch_development_workflow(
+                    dev_instruction,
+                    user_id=str(user_id),
+                    token=GITHUB_TOKEN,
+                    repository=AI_REPORT_GITHUB_REPO,
+                )
+            except Exception as exc:
+                import traceback
+                print("===== DEVELOPMENT DISPATCH ERROR =====")
+                traceback.print_exc()
+                reply = f"開発ワークフローの起動処理でエラーが発生しました: {type(exc).__name__}"
+
+            try:
+                _line_reply(event.reply_token, reply)
+            except Exception as exc:
+                # Reply tokens are short-lived. If the direct reply fails, use
+                # push messaging so the user still receives the development result.
+                print("[LOG] development LINE reply failed; falling back to push:", exc)
+                try:
+                    _line_push(str(user_id), reply)
+                except Exception:
+                    print("===== DEVELOPMENT PUSH FALLBACK ERROR =====")
+                    import traceback
+                    traceback.print_exc()
             return
 
         threading = __import__("threading")
@@ -102,3 +122,10 @@ def handle_message_event(event):
         import traceback
         print("===== HANDLE ERROR =====")
         traceback.print_exc()
+        if user_id:
+            try:
+                from app import _line_push
+                _line_push(str(user_id), "LINE処理中にエラーが発生しました。ログを確認して復旧します。")
+            except Exception:
+                print("===== HANDLE ERROR PUSH FAILED =====")
+                traceback.print_exc()
