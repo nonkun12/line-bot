@@ -3,6 +3,7 @@
 Only messages beginning with ``開発:`` or ``dev:`` are accepted. Normal
 conversation and existing GitHub intent routing never enters this path.
 """
+# LINE自動開発
 from __future__ import annotations
 
 import os
