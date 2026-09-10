@@ -129,7 +129,7 @@ def context_for(path: str) -> str:
 
 
 def build_comment_test_plan(instruction: str, chosen: str) -> dict | None:
-    """Build a deterministic one-line comment edit with a small validation anchor."""
+    """Build a deterministic one-line comment edit using a unique small anchor."""
     if chosen != _COMMENT_TEST_PATH or not _COMMENT_REQUEST_PATTERN.search(instruction):
         return None
     if "scripts/line_development.py" not in instruction and "line_development.py" not in instruction:
@@ -145,16 +145,11 @@ def build_comment_test_plan(instruction: str, chosen: str) -> dict | None:
     if f"# {comment_text}" in text:
         return {"no_change": True}
 
-    anchor = "    raise SystemExit(main())"
-    anchor_with_newline = anchor + "\n"
-    if text.count(anchor_with_newline) != 1:
-        if text.count(anchor) != 1:
-            return None
-        old = anchor
-        new = anchor + f"\n# {comment_text}"
-    else:
-        old = anchor_with_newline
-        new = anchor_with_newline + f"# {comment_text}\n"
+    anchor = '_WORKFLOW_FILE = "line-development.yml"\n'
+    if text.count(anchor) != 1:
+        return None
+    old = anchor
+    new = anchor + f"# {comment_text}\n"
     return {"no_change": False, "changes": [{"file": _COMMENT_TEST_PATH, "old": old, "new": new}]}
 
 
