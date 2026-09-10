@@ -3,7 +3,10 @@ name: Nightly Autonomous Worker
 on:
   workflow_dispatch:
   schedule:
+    # 03:30 JST
     - cron: '30 18 * * *'
+    # 12:30 JST — daytime autonomous development pass
+    - cron: '30 3 * * *'
 
 # This workflow intentionally has no push trigger.
 # A repair commit therefore cannot recursively invoke this worker.
@@ -42,7 +45,7 @@ jobs:
       - name: Record starting commit
         run: echo "START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Run guarded nightly worker
+      - name: Run guarded autonomous worker
         env:
           NIGHTLY_AUTOFIX: 'true'
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
