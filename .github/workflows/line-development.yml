@@ -1,0 +1,60 @@
+name: LINE Development
+
+on:
+  workflow_dispatch:
+    inputs:
+      instruction:
+        description: "Explicit development instruction from LINE"
+        required: true
+        type: string
+      user_id:
+        description: "LINE user ID"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: line-development-${{ github.event.inputs.user_id }}
+  cancel-in-progress: false
+
+jobs:
+  develop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run guarded LINE development worker
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
+          DEV_USER_ID: ${{ github.event.inputs.user_id }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: python scripts/line_development_worker.py
+
+      - name: Upload development log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: line-development-log-${{ github.run_id }}
+          path: |
+            *.log
+            pytest*.txt
+          if-no-files-found: ignore
