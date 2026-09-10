@@ -80,7 +80,12 @@ def handle_message_event(event):
         # Normal conversation, GitHub lookup commands, and n8n are untouched.
         dev_instruction = extract_development_instruction(text)
         if dev_instruction is not None:
-            reply = dispatch_development_workflow(dev_instruction, user_id=str(user_id))
+            reply = dispatch_development_workflow(
+                dev_instruction,
+                user_id=str(user_id),
+                token=GITHUB_TOKEN,
+                repository=AI_REPORT_GITHUB_REPO,
+            )
             _line_reply(event.reply_token, reply)
             return
 
