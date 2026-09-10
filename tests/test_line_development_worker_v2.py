@@ -43,9 +43,9 @@ def test_choose_file_rejects_unknown_path():
     assert worker.choose_file(client, "test", ["app.py"]) is None
 
 
-def test_find_explicit_targets_selects_named_safe_file_without_ai():
+def test_extract_explicit_path_selects_named_safe_file_without_ai():
     files = ["README.md", "app.py"]
-    assert worker.find_explicit_targets("README.md の先頭を更新", files) == ["README.md"]
+    assert worker._extract_explicit_path("README.md の先頭を更新", files) == "README.md"
 
 
 def test_choose_file_uses_explicit_safe_target_on_llm_null():
@@ -88,14 +88,14 @@ def test_choose_file_fallback_ignores_filenames_absent_from_repo():
     assert worker.choose_file(client, "missing.pyを直して", ["app.py"]) is None
 
 
-def test_find_explicit_targets_excludes_protected_files():
+def test_extract_explicit_path_excludes_protected_files():
     files = [".github/workflows/line-development.yml", "app.py"]
-    assert worker.find_explicit_targets(".github/workflows/line-development.yml を変更", files) == []
+    assert worker._extract_explicit_path(".github/workflows/line-development.yml を変更", files) is None
 
 
-def test_find_explicit_targets_rejects_multiple_named_files():
+def test_extract_explicit_path_rejects_multiple_named_files():
     files = ["README.md", "app.py"]
-    assert worker.find_explicit_targets("README.md と app.py を変更", files) == ["README.md", "app.py"]
+    assert worker._extract_explicit_path("README.md と app.py を変更", files) is None
 
 
 def test_validate_plan_rejects_change_outside_selected_file():
