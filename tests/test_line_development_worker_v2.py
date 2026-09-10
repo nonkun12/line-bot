@@ -43,6 +43,27 @@ def test_choose_file_rejects_unknown_path():
     assert worker.choose_file(client, "test", ["app.py"]) is None
 
 
+def test_find_explicit_targets_selects_named_safe_file_without_ai():
+    files = ["README.md", "app.py"]
+    assert worker.find_explicit_targets("README.md の先頭を更新", files) == ["README.md"]
+
+
+def test_choose_file_uses_explicit_safe_target_before_ai():
+    client = FakeClient([json.dumps({"file": None})])
+    assert worker.choose_file(client, "README.md の先頭を更新", ["README.md", "app.py"]) == "README.md"
+    assert client.chat.completions.responses == [json.dumps({"file": None})]
+
+
+def test_find_explicit_targets_excludes_protected_files():
+    files = [".github/workflows/line-development.yml", "app.py"]
+    assert worker.find_explicit_targets(".github/workflows/line-development.yml を変更", files) == []
+
+
+def test_find_explicit_targets_rejects_multiple_named_files():
+    files = ["README.md", "app.py"]
+    assert worker.find_explicit_targets("README.md と app.py を変更", files) == ["README.md", "app.py"]
+
+
 def test_validate_plan_rejects_change_outside_selected_file():
     plan = {"no_change": False, "changes": [{"file": "README.md", "old": "a", "new": "b"}]}
     assert worker.validate_plan(plan, "app.py") == (False, "change_outside_selected_file")
