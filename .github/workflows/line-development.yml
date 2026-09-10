@@ -60,7 +60,7 @@ jobs:
           DEVELOPMENT_OUTCOME: ${{ steps.development.outcome }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          python - <<'PY'
+          cat > /tmp/notify_line.py <<'PY'
           import json
           import os
           import urllib.request
@@ -108,6 +108,8 @@ jobs:
                   print(f"LINE notification HTTP {response.status}: {body}")
           except Exception as exc:
               print(f"LINE notification failed but development result is preserved: {type(exc).__name__}: {exc}")
+          PY
+          python /tmp/notify_line.py
 
       - name: Upload development log
         if: always()
