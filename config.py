@@ -34,6 +34,9 @@ handler = WebhookHandler(CHANNEL_SECRET)
 client = Groq(api_key=GROQ_API_KEY, timeout=15.0, max_retries=1)
 MODEL = "openai/gpt-oss-20b"
 
+# Render deployment synchronization marker.
+DEPLOY_SYNC_MARKER = "2026-09-11-line-development-route"
+
 
 # app.py 側の MessageEvent ハンドラーが誤って欠落しても、LINE webhook を
 # 受信できるように、ここでハンドラーを登録する。
