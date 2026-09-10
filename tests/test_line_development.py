@@ -21,19 +21,19 @@ def test_explicit_english_development_command():
 def test_empty_development_command_is_rejected():
     assert extract_development_instruction("開発:") == ""
     assert extract_development_instruction("dev:   ") == ""
+    monkeypatch = None
     assert "空です" in dispatch_development_workflow("", user_id="u1", token="test")
 
 
 def test_unauthorized_user_is_rejected(monkeypatch):
-    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U_ALLOWED")
-    assert "権限がありません" in dispatch_development_workflow(
-        "英語学習機能を追加して", user_id="U_OTHER", token="secret"
-    )
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U999")
+    reply = dispatch_development_workflow("英語学習機能を追加して", user_id="U123", token="secret")
+    assert "権限がありません" in reply
 
 
-def test_authorized_dispatch_uses_workflow_dispatch(monkeypatch):
-    captured = {}
+def test_dispatch_uses_workflow_dispatch(monkeypatch):
     monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    captured = {}
 
     def fake_post(url, **kwargs):
         captured["url"] = url
