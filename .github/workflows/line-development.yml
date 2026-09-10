@@ -47,7 +47,7 @@ jobs:
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-        run: python scripts/line_development_worker.py
+        run: python scripts/line_development_worker_safe.py
 
       - name: Upload development log
         if: always()
