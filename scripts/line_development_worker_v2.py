@@ -42,9 +42,10 @@ _EXPLICIT_PATH_PATTERN = re.compile(
 )
 _COMMENT_REQUEST_PATTERN = re.compile(r"コメント.*(?:1行|一行)|(?:1行|一行).*コメント", re.IGNORECASE | re.DOTALL)
 _TEST_INSTRUCTION_PATTERN = re.compile(
-    r"(?:開発)?(?:接続)?テスト|接続テスト|動作確認|疎通確認|workflow.*test|connection.*test",
+    r"(?:workflow|connection)[\s_-]*test",
     re.IGNORECASE,
 )
+_TEST_INSTRUCTION_EXACT = {"開発接続テスト", "接続テスト", "動作確認", "疎通確認"}
 
 
 def run(cmd: list[str], timeout: int = 900, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -73,8 +74,9 @@ def ask(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOK
 
 
 def is_test_instruction(instruction: str) -> bool:
-    """Return True for explicit connection/workflow test requests that need no file target."""
-    return bool(_TEST_INSTRUCTION_PATTERN.search(instruction))
+    """Return True only for standalone connection/workflow test requests."""
+    normalized = str(instruction or "").strip()
+    return normalized in _TEST_INSTRUCTION_EXACT or bool(_TEST_INSTRUCTION_PATTERN.fullmatch(normalized))
 
 
 def _extract_explicit_path(instruction: str, files: list[str]) -> str | None:
@@ -95,51 +97,43 @@ def _extract_explicit_path(instruction: str, files: list[str]) -> str | None:
 
 
 def choose_file(client: Groq, instruction: str, files: list[str]) -> str | None:
-    system = 'Choose exactly one repository file. Return JSON only: {"file":"path"} or {"file":null}. Never choose security, credential, deployment, workflow, or worker files.'
-    listing = "\n".join(files[:250])
-    raw = ask(client, system, f"Instruction:\n{instruction}\n\nAllowed files:\n{listing}", max_tokens=250)
-
-    path: str | None = None
+    explicit = _extract_explicit_path(instruction, files)
+    if explicit:
+        return explicit
+    prompt = f"Instruction:\n{instruction}\n\nEligible files:\n" + "\n".join(files)
     try:
-        data = json.loads(raw.strip())
-        candidate = data.get("file") if isinstance(data, dict) else None
-        if isinstance(candidate, str) and candidate in files and not is_protected(candidate):
-            path = candidate
-    except json.JSONDecodeError:
-        path = None
+        data = parse_plan(ask(client, "Select exactly one eligible file and return JSON only: {\"file\":\"path\"} or {\"file\":null}", prompt))
+    except Exception:
+        return None
+    chosen = data.get("file")
+    if isinstance(chosen, str) and chosen in files:
+        return chosen
+    return None
 
-    if path:
-        return path
 
-    fallback = _extract_explicit_path(instruction, files)
-    if fallback:
-        print(f"LLM selection unavailable; using explicit path from instruction: {fallback}", flush=True)
-    return fallback
+def parse_plan(text: str) -> dict:
+    clean = text.strip()
+    if clean.startswith("```"):
+        clean = clean.strip("`").strip()
+        if clean.lower().startswith("json"):
+            clean = clean[4:].strip()
+    data = json.loads(clean)
+    if not isinstance(data, dict):
+        raise ValueError("plan must be object")
+    return data
 
 
 def context_for(path: str) -> str:
-    text = (ROOT / path).read_text(encoding="utf-8")
-    return text[:MAX_FILE_CHARS]
-
-
-def parse_plan(raw: str) -> dict:
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL).strip()
-    data = json.loads(raw)
-    if not isinstance(data, dict):
-        raise ValueError("plan must be an object")
-    return data
+    target = ROOT / path
+    return target.read_text(encoding="utf-8")[:MAX_FILE_CHARS]
 
 
 def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
     if plan.get("no_change") is True:
         return True, "no_change"
     changes = plan.get("changes")
-    if not isinstance(changes, list) or not changes:
-        return False, "missing_changes"
-    if len(changes) > 4:
-        return False, "too_many_changes"
+    if not isinstance(changes, list) or len(changes) < 1 or len(changes) > MAX_FILES:
+        return False, "invalid_change_count"
     for change in changes:
         if not isinstance(change, dict):
             return False, "invalid_change"
@@ -258,58 +252,64 @@ def main() -> int:
         applied, detail, touched = apply_plan(plan)
         if not applied:
             restore(touched)
-            print("Plan apply failed:", detail, flush=True)
+            print("Apply failed:", detail, flush=True)
             return 1
         passed, output = run_tests(touched)
+        print(output, flush=True)
         attempts = 0
         while not passed and attempts < MAX_REPAIR_ATTEMPTS:
             attempts += 1
             restore(touched)
-            try:
-                repair = build_plan(client, instruction, chosen, context_for(chosen), output)
-            except (json.JSONDecodeError, ValueError) as exc:
-                print("Repair plan parse failed:", type(exc).__name__, str(exc), flush=True)
-                return 1
-            except Exception as exc:
-                print("Repair plan generation failed:", type(exc).__name__, str(exc), flush=True)
-                traceback.print_exc()
-                return 1
-            ok, detail = validate_plan(repair, chosen)
+            repair_plan = build_plan(client, instruction, chosen, context_for(chosen), output)
+            ok, detail = validate_plan(repair_plan, chosen)
             if not ok or detail == "no_change":
-                print("Repair rejected:", detail, flush=True)
-                return 1
-            applied, detail, touched = apply_plan(repair)
+                break
+            applied, detail, touched = apply_plan(repair_plan)
             if not applied:
                 restore(touched)
-                print("Repair apply failed:", detail, flush=True)
-                return 1
+                break
             passed, output = run_tests(touched)
+            print(output, flush=True)
         if not passed:
             restore(touched)
-            print(f"Development failed after {attempts + 1} attempt(s).\n{output}", flush=True)
+            print("Guarded tests failed after repair attempts.", flush=True)
+            return 1
+
+        branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
+        run(["git", "config", "user.name", "github-actions[bot]"])
+        run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"])
+        add = run(["git", "add", "--", *touched])
+        if add.returncode != 0:
+            restore(touched)
+            print(add.stderr[-2000:], flush=True)
             return 1
         status = run(["git", "status", "--short"])
-        if not status.stdout.strip():
-            print("Tests passed but no files changed.", flush=True)
-            return 0
-        branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
-        if run(["git", "checkout", "-b", branch]).returncode != 0:
+        if status.returncode != 0 or not status.stdout.strip():
+            restore(touched)
+            print("No changes to commit.", flush=True)
             return 1
-        run(["git", "config", "user.name", "line-development-worker"])
-        run(["git", "config", "user.email", "line-development-worker@users.noreply.github.com"])
-        run(["git", "add", "--", *touched])
-        if run(["git", "commit", "-m", "feat: implement LINE development request"]).returncode != 0:
+        commit = run(["git", "commit", "-m", "feat: LINE development request"])
+        if commit.returncode != 0:
+            restore(touched)
+            print(commit.stderr[-2000:], flush=True)
             return 1
-        if run(["git", "push", "--set-upstream", "origin", branch]).returncode != 0:
+        checkout = run(["git", "checkout", "-B", branch])
+        if checkout.returncode != 0:
+            print(checkout.stderr[-2000:], flush=True)
+            return 1
+        push = run(["git", "push", "--set-upstream", "origin", branch])
+        if push.returncode != 0:
+            print(push.stderr[-2000:], flush=True)
             return 1
         pr_body = f"## LINE development request\n\n{instruction}\n\nUser: `{user_id}`\n\nGuarded tests: PASS\nRepair attempts: {attempts}\n"
         pr = run(["gh", "pr", "create", "--base", "main", "--head", branch, "--title", "feat: LINE development request", "--body", pr_body])
-        print(pr.stdout[-4000:], flush=True)
-        if pr.stderr:
-            print(pr.stderr[-4000:], flush=True)
-        return 0 if pr.returncode == 0 else 1
+        if pr.returncode != 0:
+            print(pr.stderr[-2000:], flush=True)
+            return 1
+        print(pr.stdout.strip(), flush=True)
+        return 0
     except Exception as exc:
-        print("Worker fatal error:", type(exc).__name__, str(exc), flush=True)
+        print("Unexpected worker error:", type(exc).__name__, str(exc), flush=True)
         traceback.print_exc()
         return 1
 
