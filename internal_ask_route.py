@@ -5,6 +5,8 @@ import os
 import time
 from urllib.parse import urlencode
 
+import httpx
+
 from n8n_delegate import is_ai_app_builder_request, _call_ai_app_builder
 from config import configuration
 from linebot.v3.messaging import ApiClient, MessagingApi, PushMessageRequest, TextMessage
@@ -75,4 +77,50 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         except Exception as exc:
             print("INTERNAL PUSH ERROR:", exc)
             return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+
+    @app.route("/internal/create-pr", methods=["POST"])
+    def internal_create_pr():
+        provided_key = request.headers.get("x-internal-key")
+        if not internal_push_key or not provided_key or not hmac.compare_digest(str(provided_key), str(internal_push_key)):
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+        data = request.get_json(silent=True) or {}
+        head = str(data.get("head") or "").strip()
+        title = str(data.get("title") or "feat: LINE development request").strip()
+        body = str(data.get("body") or "").strip()
+        repository = str(data.get("repository") or os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")).strip()
+        token = os.environ.get("GITHUB_TOKEN", "").strip()
+        if not head:
+            return jsonify({"ok": False, "error": "head is required"}), 400
+        if not token:
+            return jsonify({"ok": False, "error": "GITHUB_TOKEN is not configured"}), 500
+
+        url = f"https://api.github.com/repos/{repository}/pulls"
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        payload = {"title": title, "head": head, "base": "main", "body": body}
+        try:
+            response = httpx.post(url, json=payload, headers=headers, timeout=15.0)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": f"GitHub request failed: {type(exc).__name__}"}), 502
+
+        if response.status_code in (200, 201):
+            result = response.json()
+            return jsonify({"ok": True, "number": result.get("number"), "url": result.get("html_url")}), 201
+        if response.status_code == 422:
+            try:
+                errors = response.json()
+            except Exception:
+                errors = {}
+            existing_url = None
+            for item in errors.get("errors", []) if isinstance(errors, dict) else []:
+                if isinstance(item, dict) and item.get("message"):
+                    existing_url = item["message"]
+                    break
+            return jsonify({"ok": False, "error": "GitHub rejected PR creation", "details": existing_url}), 422
+        return jsonify({"ok": False, "error": f"GitHub HTTP {response.status_code}", "details": response.text[-1000:]}), 502
+
     return internal_ask
