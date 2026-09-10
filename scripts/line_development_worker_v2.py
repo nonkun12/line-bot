@@ -1,7 +1,7 @@
 """Guarded LINE development worker v2.
 
 AI proposes structured search/replace operations instead of raw unified diffs.
-Python validates the operations, applies them, runs guarded tests, and opens a PR.
+Python validates the operations, applies guarded tests, and opens a PR.
 Security-sensitive files are never editable by this worker.
 """
 from __future__ import annotations
@@ -37,6 +37,10 @@ PROTECTED_PREFIXES = (".github/", "secrets/", ".git/")
 _EXPLICIT_PATH_PATTERN = re.compile(
     r"[\w][\w\-./]*\.(?:py|md|json|txt)", re.IGNORECASE
 )
+_TEST_INSTRUCTION_PATTERN = re.compile(
+    r"(?:開発)?(?:接続)?テスト|接続テスト|動作確認|疎通確認|workflow.*test|connection.*test",
+    re.IGNORECASE,
+)
 
 
 def run(cmd: list[str], timeout: int = 900, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -62,6 +66,11 @@ def ask(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOK
         max_tokens=max_tokens,
     )
     return response.choices[0].message.content or ""
+
+
+def is_test_instruction(instruction: str) -> bool:
+    """Return True for explicit connection/workflow test requests that need no file target."""
+    return bool(_TEST_INSTRUCTION_PATTERN.search(instruction))
 
 
 def _extract_explicit_path(instruction: str, files: list[str]) -> str | None:
@@ -102,9 +111,6 @@ def choose_file(client: Groq, instruction: str, files: list[str]) -> str | None:
     if path:
         return path
 
-    # The LLM returned null, an invalid path, or malformed JSON. Fall back
-    # to a deterministic match against the instruction text itself, still
-    # constrained to the pre-filtered safe file list.
     fallback = _extract_explicit_path(instruction, files)
     if fallback:
         print(f"LLM selection unavailable; using explicit path from instruction: {fallback}", flush=True)
@@ -212,6 +218,16 @@ def main() -> int:
         print("No development instruction supplied.")
         return 2
     client = Groq(api_key=os.environ["GROQ_API_KEY"])
+
+    # Connection/workflow tests are intentionally no-change operations.
+    # They verify the complete GitHub Actions worker path without requiring
+    # the AI to invent a target source file for a test-only instruction.
+    if is_test_instruction(instruction):
+        print("Test-only instruction detected; no file target required.", flush=True)
+        passed, output = run_tests()
+        print(output, flush=True)
+        return 0 if passed else 1
+
     files = repo_files()
     chosen = choose_file(client, instruction, files)
     if not chosen:
