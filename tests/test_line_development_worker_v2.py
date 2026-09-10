@@ -42,7 +42,16 @@ def test_test_instruction_requires_no_file_target():
     assert worker.is_test_instruction("開発接続テスト")
     assert worker.is_test_instruction("接続テスト")
     assert worker.is_test_instruction("動作確認")
+    assert worker.is_test_instruction("疎通確認")
+    assert worker.is_test_instruction("workflow-test")
+    assert worker.is_test_instruction("connection test")
     assert not worker.is_test_instruction("app.pyのバグを修正")
+    assert not worker.is_test_instruction(
+        "scripts/line_development.py に「LINE自動開発テスト」のコメントを1行追加して"
+    )
+    assert not worker.is_test_instruction(
+        "README.md に「自動開発テスト」を1行追加して"
+    )
 
 
 def test_choose_file_rejects_unknown_path():
