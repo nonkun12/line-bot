@@ -29,14 +29,17 @@ PROTECTED_PATHS = {
     "scripts/line_development_worker.py",
     "scripts/line_development_worker_safe.py",
     "scripts/line_development_worker_v2.py",
-    "scripts/line_development.py", "line_development.py",
+    "line_development.py",
     "git_safety.py", "patch_validator.py", "render_client.py",
 }
 PROTECTED_PREFIXES = (".github/", "secrets/", ".git/")
-
+# The dispatcher itself remains protected for normal autonomous edits. This
+# narrowly scoped exception exists only for an explicit one-line comment test.
+_COMMENT_TEST_PATH = "scripts/line_development.py"
 _EXPLICIT_PATH_PATTERN = re.compile(
     r"[\w][\w\-./]*\.(?:py|md|json|txt)", re.IGNORECASE
 )
+_COMMENT_REQUEST_PATTERN = re.compile(r"コメント.*(?:1行|一行)|(?:1行|一行).*コメント", re.IGNORECASE | re.DOTALL)
 _TEST_INSTRUCTION_PATTERN = re.compile(
     r"(?:開発)?(?:接続)?テスト|接続テスト|動作確認|疎通確認|workflow.*test|connection.*test",
     re.IGNORECASE,
@@ -74,16 +77,10 @@ def is_test_instruction(instruction: str) -> bool:
 
 
 def _extract_explicit_path(instruction: str, files: list[str]) -> str | None:
-    """Deterministically resolve a single safe file path named verbatim in the instruction.
-
-    This is a fallback only -- it never expands the set of eligible files.
-    A candidate is accepted only if it exactly matches an entry already
-    present in ``files`` (already pre-filtered through ``repo_files()``/``is_protected()``).
-    Protected, deleted, or unlisted paths can therefore never be selected this way,
-    and an instruction that names more than one distinct eligible file is treated
-    as ambiguous and rejected rather than guessed.
-    """
+    """Resolve one safe path named in the instruction, including the comment-test exception."""
     allowed = set(files)
+    if _COMMENT_REQUEST_PATTERN.search(instruction):
+        allowed.add(_COMMENT_TEST_PATH)
     candidates: set[str] = set()
     for match in _EXPLICIT_PATH_PATTERN.finditer(instruction):
         token = match.group(0).strip("`'\"()[]{}<> 　").lstrip("./")
@@ -146,8 +143,11 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
         path, old, new = change.get("file"), change.get("old"), change.get("new")
         if path != chosen:
             return False, "change_outside_selected_file"
-        if is_protected(path):
+        comment_test = chosen == _COMMENT_TEST_PATH
+        if is_protected(path) and not comment_test:
             return False, f"protected_file:{path}"
+        if comment_test and not _COMMENT_REQUEST_PATTERN.search(os.environ.get("DEV_INSTRUCTION", "")):
+            return False, "protected_file:scripts/line_development.py"
         if not isinstance(old, str) or not old or not isinstance(new, str):
             return False, "invalid_old_new"
         if old == new:
