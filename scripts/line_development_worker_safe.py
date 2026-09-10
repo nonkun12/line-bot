@@ -20,8 +20,10 @@ def choose_files(client, instruction: str, files: list[str]) -> list[str]:
         print(f"AI file selection failed; using safe fallback: {type(exc).__name__}: {exc}")
         chosen = []
 
+    # Groq's current on-demand TPM limit is 8000. Keep the final patch context
+    # intentionally small so a single development request stays below that limit.
     if chosen:
-        return chosen[:worker.MAX_FILES]
+        return chosen[:2]
 
     text = instruction.lower()
     tokens = [t for t in re.split(r"[^a-z0-9_ぁ-んァ-ヶ一-龯]+", text) if len(t) >= 2]
@@ -48,7 +50,7 @@ def choose_files(client, instruction: str, files: list[str]) -> list[str]:
             ranked.append((score, path))
 
     ranked.sort(key=lambda item: (-item[0], item[1]))
-    fallback = [path for _, path in ranked[:worker.MAX_FILES]]
+    fallback = [path for _, path in ranked[:2]]
 
     # For ordinary LINE development requests, app.py is the safest useful target.
     if not fallback and "app.py" in files:
