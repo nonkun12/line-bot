@@ -35,7 +35,8 @@ PROTECTED_PATHS = {
 PROTECTED_PREFIXES = (".github/", "secrets/", ".git/")
 # The dispatcher itself remains protected for normal autonomous edits. This
 # narrowly scoped exception exists only for an explicit one-line comment test.
-_COMMENT_TEST_PATH = "scripts/line_development.py"
+_COMMENT_TEST_PATH = "line_development.py"
+_COMMENT_TEST_PATH_ALIASES = {"scripts/line_development.py", "./scripts/line_development.py"}
 _EXPLICIT_PATH_PATTERN = re.compile(
     r"[\w][\w\-./]*\.(?:py|md|json|txt)", re.IGNORECASE
 )
@@ -84,6 +85,8 @@ def _extract_explicit_path(instruction: str, files: list[str]) -> str | None:
     candidates: set[str] = set()
     for match in _EXPLICIT_PATH_PATTERN.finditer(instruction):
         token = match.group(0).strip("`'\"()[]{}<> 　").lstrip("./")
+        if token in _COMMENT_TEST_PATH_ALIASES:
+            token = _COMMENT_TEST_PATH
         if token in allowed:
             candidates.add(token)
     if len(candidates) == 1:
@@ -147,7 +150,7 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
         if is_protected(path) and not comment_test:
             return False, f"protected_file:{path}"
         if comment_test and not _COMMENT_REQUEST_PATTERN.search(os.environ.get("DEV_INSTRUCTION", "")):
-            return False, "protected_file:scripts/line_development.py"
+            return False, "protected_file:line_development.py"
         if not isinstance(old, str) or not old or not isinstance(new, str):
             return False, "invalid_old_new"
         if old == new:
