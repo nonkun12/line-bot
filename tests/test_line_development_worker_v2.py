@@ -48,10 +48,44 @@ def test_find_explicit_targets_selects_named_safe_file_without_ai():
     assert worker.find_explicit_targets("README.md の先頭を更新", files) == ["README.md"]
 
 
-def test_choose_file_uses_explicit_safe_target_before_ai():
+def test_choose_file_uses_explicit_safe_target_on_llm_null():
     client = FakeClient([json.dumps({"file": None})])
     assert worker.choose_file(client, "README.md の先頭を更新", ["README.md", "app.py"]) == "README.md"
-    assert client.chat.completions.responses == [json.dumps({"file": None})]
+    assert client.chat.completions.responses == []
+
+
+def test_choose_file_falls_back_to_explicit_path_when_llm_returns_null():
+    client = FakeClient([json.dumps({"file": None})])
+    assert worker.choose_file(client, "README.mdの説明を直して", ["README.md", "app.py"]) == "README.md"
+
+
+def test_choose_file_falls_back_to_explicit_path_on_invalid_json():
+    client = FakeClient(["not json at all"])
+    assert worker.choose_file(client, "README.mdを更新して", ["README.md", "app.py"]) == "README.md"
+
+
+def test_choose_file_fallback_ignores_paths_not_in_allowed_list():
+    client = FakeClient([json.dumps({"file": None})])
+    assert worker.choose_file(client, "config.pyを直して", ["app.py"]) is None
+
+
+def test_choose_file_fallback_refuses_ambiguous_multi_file_instructions():
+    client = FakeClient([json.dumps({"file": None})])
+    assert worker.choose_file(
+        client, "app.pyとREADME.mdの両方を更新して", ["app.py", "README.md"]
+    ) is None
+
+
+def test_choose_file_fallback_does_not_override_a_valid_llm_selection():
+    client = FakeClient([json.dumps({"file": "app.py"})])
+    assert worker.choose_file(
+        client, "README.mdも参考にしつつapp.pyを直して", ["app.py", "README.md"]
+    ) == "app.py"
+
+
+def test_choose_file_fallback_ignores_filenames_absent_from_repo():
+    client = FakeClient([json.dumps({"file": None})])
+    assert worker.choose_file(client, "missing.pyを直して", ["app.py"]) is None
 
 
 def test_find_explicit_targets_excludes_protected_files():
