@@ -51,7 +51,9 @@ def handle_message_event(event):
             _processed_lock,
             _processed_message_ids,
             _MAX_TRACKED_IDS,
+            _line_reply,
         )
+        from line_development import extract_development_instruction, dispatch_development_workflow
         from db import is_processed_event, create_processed_event
         from e2e_status import record_step
 
@@ -73,6 +75,14 @@ def handle_message_event(event):
             _processed_message_ids[message_id] = True
             if len(_processed_message_ids) > _MAX_TRACKED_IDS:
                 _processed_message_ids.popitem(last=False)
+
+        # Development commands are an explicit, isolated LINE protocol.
+        # Normal conversation, GitHub lookup commands, and n8n are untouched.
+        dev_instruction = extract_development_instruction(text)
+        if dev_instruction is not None:
+            reply = dispatch_development_workflow(dev_instruction, user_id=str(user_id))
+            _line_reply(event.reply_token, reply)
+            return
 
         threading = __import__("threading")
         threading.Thread(
