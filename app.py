@@ -74,6 +74,7 @@ from core.channel import handle_channel_request
 from core.gateway import AIGateway
 from core.request_path import run_core_request, extract_core_reply
 from routes.core_api import core_api_bp
+from line_development import extract_development_instruction, dispatch_development_workflow
 
 app = Flask(__name__)
 
@@ -272,6 +273,17 @@ def _core_dynamic_enabled():
 def _handle_ai_gateway_request(ai_request):
     message = str(ai_request.message)
     user_id = str(ai_request.user_id)
+
+    # Explicit LINE development commands must bypass the normal Core/Supervisor
+    # conversation router and dispatch the dedicated GitHub Actions workflow.
+    development_instruction = extract_development_instruction(message)
+    if development_instruction is not None:
+        return dispatch_development_workflow(
+            development_instruction,
+            user_id=user_id,
+            token=GITHUB_TOKEN,
+            repository=AI_REPORT_GITHUB_REPO,
+        )
 
     if not _core_dynamic_enabled():
         return generate_reply(user_id, message)
