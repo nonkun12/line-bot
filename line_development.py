@@ -28,6 +28,13 @@ def extract_development_instruction(message: str) -> Optional[str]:
     return instruction[:_MAX_INSTRUCTION_LENGTH]
 
 
+def _is_authorized_user(user_id: str) -> bool:
+    """Require an explicit allowlist; deny by default when it is not configured."""
+    configured = os.environ.get("DEV_ALLOWED_USER_IDS", "")
+    allowed = {item.strip() for item in configured.split(",") if item.strip()}
+    return bool(allowed) and str(user_id) in allowed
+
+
 def dispatch_development_workflow(
     instruction: str,
     *,
@@ -39,6 +46,9 @@ def dispatch_development_workflow(
     instruction = str(instruction or "").strip()
     if not instruction:
         return "開発指示が空です。『開発: ○○を実装して』の形式で指定してください。"
+
+    if not _is_authorized_user(user_id):
+        return "このLINEユーザーには開発ワークフローの実行権限がありません。"
 
     repository = repository or os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
     token = token or os.environ.get("GITHUB_TOKEN", "")
