@@ -13,6 +13,7 @@ import subprocess
 import sys
 import traceback
 from pathlib import Path
+from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from groq import Groq
@@ -238,7 +239,13 @@ def create_pr_via_render(branch: str, instruction: str, user_id: str, attempts: 
             data = json.loads(raw or "{}")
             if response.status == 201 and data.get("ok"):
                 return True, str(data.get("url") or "PR created")
-            return False, raw[-2000:]
+            return False, f"Render PR relay HTTP {response.status}: {raw[-2000:]}"
+    except urllib_error.HTTPError as exc:
+        try:
+            raw = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            raw = ""
+        return False, f"Render PR relay HTTP {exc.code}: {raw[-2000:]}"
     except Exception as exc:
         return False, f"Render PR relay failed: {type(exc).__name__}: {exc}"
 
