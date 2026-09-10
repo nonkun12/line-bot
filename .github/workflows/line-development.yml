@@ -41,13 +41,13 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run guarded LINE development worker
+      - name: Run guarded LINE development worker v2
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-        run: python scripts/line_development_worker_safe.py
+        run: python scripts/line_development_worker_v2.py
 
       - name: Upload development log
         if: always()
