@@ -120,26 +120,6 @@ def _run_normal_generation(state: AgentState, raw_message: str, user_id: str, ca
         return handle_normal_message(raw_message, user_id, call_mcp_tool), "groq_fallback"
 
 
-def _find_latest_reminder_id(reminders):
-    """MCPのJSON/テキストどちらの一覧からでも最後のreminder idを取得する。"""
-    if isinstance(reminders, list):
-        ids = [item.get("id") for item in reminders if isinstance(item, dict) and item.get("id")]
-        if ids:
-            return ids[-1]
-        return None
-
-    text = str(reminders or "")
-    ids = re.findall(r"(?:^|[\n\r])\s*id\s*[=:]\s*(\d+)", text, re.IGNORECASE)
-    if ids:
-        return int(ids[-1])
-
-    try:
-        data = json.loads(text)
-        return _find_latest_reminder_id(data)
-    except Exception:
-        return None
-
-
 def _extract_cancel_target(message: str):
     """キャンセル依頼から指定日時を抽出する。現在は明日/今日の時刻指定を優先対応。"""
     text = (message or "").strip()
@@ -163,17 +143,15 @@ def _extract_cancel_target(message: str):
         return None
 
     now = datetime.now(ZoneInfo("Asia/Tokyo"))
-    target = (now + timedelta(days=day_offset)).replace(
+    return (now + timedelta(days=day_offset)).replace(
         hour=hour, minute=minute, second=0, microsecond=0
     )
-    return target
 
 
 def _find_reminder_id_by_datetime(reminders, target):
     """一覧から指定日時(JST)に一致するリマインダーidを取得する。"""
     if target is None:
         return None
-
     if isinstance(reminders, str):
         try:
             parsed = json.loads(reminders)
@@ -181,7 +159,6 @@ def _find_reminder_id_by_datetime(reminders, target):
                 reminders = parsed
         except Exception:
             pass
-
     if isinstance(reminders, list):
         for item in reminders:
             if not isinstance(item, dict) or not item.get("id"):
@@ -199,13 +176,9 @@ def _find_reminder_id_by_datetime(reminders, target):
             except (ValueError, TypeError):
                 continue
         return None
-
     for line in str(reminders or "").splitlines():
         id_match = re.search(r"\bid\s*[=:]\s*(\d+)", line, re.IGNORECASE)
-        date_match = re.search(
-            r"(\d{4})/(\d{1,2})/(\d{1,2})\s+(\d{1,2}):(\d{2})(?::\d{2})?",
-            line,
-        )
+        date_match = re.search(r"(\d{4})/(\d{1,2})/(\d{1,2})\s+(\d{1,2}):(\d{2})(?::\d{2})?", line)
         if not id_match or not date_match:
             continue
         y, mo, d, h, mi = map(int, date_match.groups())
@@ -220,7 +193,6 @@ def normal_agent_node(state: AgentState) -> AgentState:
     call_mcp_tool = _call_mcp_tool(state)
 
     if raw_message.strip() in _WORK_STATUS_MESSAGES:
-        print("[WORK STATUS] routing to existing AI secretary report:", raw_message)
         try:
             from app import generate_ai_secretary_report
             result_text = generate_ai_secretary_report(user_id)
@@ -233,14 +205,13 @@ def normal_agent_node(state: AgentState) -> AgentState:
         target_time = _extract_cancel_target(raw_message)
         print("[REMINDER CANCEL GUARD] cancellation request:", raw_message, "target:", target_time)
         try:
-            reminders = call_mcp_tool("list_reminders", {"user_id": user_id})
-            target_id = _find_reminder_id_by_datetime(reminders, target_time)
-            if target_time is not None and not target_id:
-                result_text = "指定した日時のリマインダーが見つかりませんでした。"
+            if target_time is None:
+                result_text = "削除する予定の日時を指定してください。例：『明日の10時の予定を削除して』"
             else:
-                target_id = target_id or _find_latest_reminder_id(reminders)
+                reminders = call_mcp_tool("list_reminders", {"user_id": user_id})
+                target_id = _find_reminder_id_by_datetime(reminders, target_time)
                 if not target_id:
-                    result_text = "キャンセルできるリマインダーがありません。"
+                    result_text = "指定した日時のリマインダーが見つかりませんでした。"
                 else:
                     print("[REMINDER CANCEL GUARD] target id:", target_id)
                     result_text = call_mcp_tool(
@@ -253,7 +224,6 @@ def normal_agent_node(state: AgentState) -> AgentState:
             result_text = "リマインダーのキャンセル中にエラーが発生しました。もう一度お試しください。"
             provider = "mcp_error"
     elif _is_reminder_lookup_question(raw_message):
-        print("[REMINDER LOOKUP GUARD] routing question to list_reminders:", raw_message)
         try:
             result_text = call_mcp_tool("list_reminders", {"user_id": user_id})
             if result_text is None or not str(result_text).strip():
@@ -263,7 +233,6 @@ def normal_agent_node(state: AgentState) -> AgentState:
             result_text = "予定の確認中にエラーが発生しました。もう一度お試しください。"
         provider = "mcp"
     elif _is_note_lookup_question(raw_message):
-        print("[NOTE LOOKUP GUARD] routing question to search_notes:", raw_message)
         try:
             result_text = call_mcp_tool("search_notes", {"user_id": user_id, "keyword": _extract_note_lookup_keyword(raw_message)})
             result_text = _format_note_lookup_result(result_text)
