@@ -1,4 +1,5 @@
 # LINE AI Secretary
+## 自動開発テスト
 
 LINE Bot + MCP (Model Context Protocol) + LangGraph を組み合わせたマルチエージェント型 AI 秘書システム。
 LINE から自然言語でメッセージを送信することで、システム背後で連携する各種エージェントが動作し、スプレッドシートの操作、GitHub の参照、メモの作成、記憶の管理、自動デバッグおよびデプロイなどを実行します。
