@@ -7,6 +7,7 @@ At most one repair attempt is allowed after the first test failure.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -71,6 +72,8 @@ def choose_files(client: Groq, instruction: str, files: list[str]) -> list[str]:
     allowed = set(files)
     for line in raw.splitlines():
         path = line.strip().strip('`')
+        path = re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", path)
+        path = path.strip().strip('`').strip()
         if path in allowed and path not in chosen:
             chosen.append(path)
         if len(chosen) >= MAX_FILES:
