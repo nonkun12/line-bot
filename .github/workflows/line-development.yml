@@ -48,13 +48,8 @@ jobs:
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-          GH_TOKEN: ${{ secrets.DEV_PR_TOKEN }}
-        run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo "DEV_PR_TOKEN is not configured."
-            exit 1
-          fi
-          python scripts/line_development_worker_v2.py
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/line_development_worker_v2.py
 
       - name: Notify LINE of development result
         if: always()
