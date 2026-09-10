@@ -13,6 +13,7 @@ import subprocess
 import sys
 import traceback
 from pathlib import Path
+from urllib import request as urllib_request
 
 from groq import Groq
 
@@ -33,18 +34,11 @@ PROTECTED_PATHS = {
     "git_safety.py", "patch_validator.py", "render_client.py",
 }
 PROTECTED_PREFIXES = (".github/", "secrets/", ".git/")
-# The dispatcher itself remains protected for normal autonomous edits. This
-# narrowly scoped exception exists only for an explicit one-line comment test.
 _COMMENT_TEST_PATH = "line_development.py"
 _COMMENT_TEST_PATH_ALIASES = {"scripts/line_development.py", "./scripts/line_development.py"}
-_EXPLICIT_PATH_PATTERN = re.compile(
-    r"[\w][\w\-./]*\.(?:py|md|json|txt)", re.IGNORECASE
-)
+_EXPLICIT_PATH_PATTERN = re.compile(r"[\w][\w\-./]*\.(?:py|md|json|txt)", re.IGNORECASE)
 _COMMENT_REQUEST_PATTERN = re.compile(r"コメント.*(?:1行|一行)|(?:1行|一行).*コメント", re.IGNORECASE | re.DOTALL)
-_TEST_INSTRUCTION_PATTERN = re.compile(
-    r"(?:workflow|connection)[\s_-]*test",
-    re.IGNORECASE,
-)
+_TEST_INSTRUCTION_PATTERN = re.compile(r"(?:workflow|connection)[\s_-]*test", re.IGNORECASE)
 _TEST_INSTRUCTION_EXACT = {"開発接続テスト", "接続テスト", "動作確認", "疎通確認"}
 
 
@@ -74,13 +68,11 @@ def ask(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOK
 
 
 def is_test_instruction(instruction: str) -> bool:
-    """Return True only for standalone connection/workflow test requests."""
     normalized = str(instruction or "").strip()
     return normalized in _TEST_INSTRUCTION_EXACT or bool(_TEST_INSTRUCTION_PATTERN.fullmatch(normalized))
 
 
 def _extract_explicit_path(instruction: str, files: list[str]) -> str | None:
-    """Resolve one safe path named in the instruction, including the comment-test exception."""
     allowed = set(files)
     if _COMMENT_REQUEST_PATTERN.search(instruction):
         allowed.add(_COMMENT_TEST_PATH)
@@ -129,7 +121,6 @@ def context_for(path: str) -> str:
 
 
 def build_comment_test_plan(instruction: str, chosen: str) -> dict | None:
-    """Build a deterministic one-line comment edit using a unique small anchor."""
     if chosen != _COMMENT_TEST_PATH or not _COMMENT_REQUEST_PATTERN.search(instruction):
         return None
     if "scripts/line_development.py" not in instruction and "line_development.py" not in instruction:
@@ -144,13 +135,10 @@ def build_comment_test_plan(instruction: str, chosen: str) -> dict | None:
     text = target.read_text(encoding="utf-8")
     if f"# {comment_text}" in text:
         return {"no_change": True}
-
     anchor = '_WORKFLOW_FILE = "line-development.yml"\n'
     if text.count(anchor) != 1:
         return None
-    old = anchor
-    new = anchor + f"# {comment_text}\n"
-    return {"no_change": False, "changes": [{"file": _COMMENT_TEST_PATH, "old": old, "new": new}]}
+    return {"no_change": False, "changes": [{"file": _COMMENT_TEST_PATH, "old": anchor, "new": anchor + f"# {comment_text}\n"}]}
 
 
 def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
@@ -195,7 +183,6 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
 
 
 def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
-    """Run guarded worker tests and syntax checks for the touched Python file(s)."""
     outputs: list[str] = []
     for path in touched or []:
         if not path.endswith(".py"):
@@ -208,11 +195,7 @@ def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
             outputs.append(compile_result.stderr)
         if compile_result.returncode != 0:
             return False, "\n".join(outputs)[-8000:]
-
-    tests = run(
-        [sys.executable, "-m", "pytest", "-q", "tests/test_line_development_worker_v2.py", "--tb=native"],
-        timeout=900,
-    )
+    tests = run([sys.executable, "-m", "pytest", "-q", "tests/test_line_development_worker_v2.py", "--tb=native"], timeout=900)
     outputs.extend([tests.stdout, tests.stderr])
     return tests.returncode == 0, "\n".join(outputs)[-8000:]
 
@@ -233,6 +216,33 @@ Rules: one file only; old must be an exact substring of supplied context; minima
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
 
 
+def create_pr_via_render(branch: str, instruction: str, user_id: str, attempts: int) -> tuple[bool, str]:
+    key = os.environ.get("INTERNAL_PUSH_KEY", "").strip()
+    if not key:
+        return False, "INTERNAL_PUSH_KEY is not configured"
+    payload = json.dumps({
+        "head": branch,
+        "title": "feat: LINE development request",
+        "body": f"## LINE development request\n\n{instruction}\n\nUser: `{user_id}`\n\nGuarded tests: PASS\nRepair attempts: {attempts}\n",
+        "repository": os.environ.get("GITHUB_REPOSITORY", "nonkun12/line-bot"),
+    }).encode("utf-8")
+    req = urllib_request.Request(
+        "https://line-bot-yvea.onrender.com/internal/create-pr",
+        data=payload,
+        headers={"Content-Type": "application/json", "x-internal-key": key},
+        method="POST",
+    )
+    try:
+        with urllib_request.urlopen(req, timeout=20) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+            data = json.loads(raw or "{}")
+            if response.status == 201 and data.get("ok"):
+                return True, str(data.get("url") or "PR created")
+            return False, raw[-2000:]
+    except Exception as exc:
+        return False, f"Render PR relay failed: {type(exc).__name__}: {exc}"
+
+
 def main() -> int:
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[:MAX_INSTRUCTION_LENGTH]
     user_id = os.environ.get("DEV_USER_ID", "")
@@ -240,10 +250,6 @@ def main() -> int:
         print("No development instruction supplied.")
         return 2
     client = Groq(api_key=os.environ["GROQ_API_KEY"])
-
-    # Connection/workflow tests are intentionally no-change operations.
-    # They verify the complete GitHub Actions worker path without requiring
-    # the AI to invent a target source file for a test-only instruction.
     if is_test_instruction(instruction):
         print("Test-only instruction detected; no file target required.", flush=True)
         passed, output = run_tests()
@@ -327,12 +333,12 @@ def main() -> int:
         if push.returncode != 0:
             print(push.stderr[-2000:], flush=True)
             return 1
-        pr_body = f"## LINE development request\n\n{instruction}\n\nUser: `{user_id}`\n\nGuarded tests: PASS\nRepair attempts: {attempts}\n"
-        pr = run(["gh", "pr", "create", "--base", "main", "--head", branch, "--title", "feat: LINE development request", "--body", pr_body])
-        if pr.returncode != 0:
-            print(pr.stderr[-2000:], flush=True)
+
+        created, detail = create_pr_via_render(branch, instruction, user_id, attempts)
+        if not created:
+            print(f"PR creation failed: {detail}", flush=True)
             return 1
-        print(pr.stdout.strip(), flush=True)
+        print(detail, flush=True)
         return 0
     except Exception as exc:
         print("Unexpected worker error:", type(exc).__name__, str(exc), flush=True)
