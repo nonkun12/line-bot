@@ -89,11 +89,11 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         title = str(data.get("title") or "feat: LINE development request").strip()
         body = str(data.get("body") or "").strip()
         repository = str(data.get("repository") or os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")).strip()
-        token = os.environ.get("GITHUB_TOKEN", "").strip()
+        token = os.environ.get("GH_PR_TOKEN", "").strip()
         if not head:
             return jsonify({"ok": False, "error": "head is required"}), 400
         if not token:
-            return jsonify({"ok": False, "error": "GITHUB_TOKEN is not configured"}), 500
+            return jsonify({"ok": False, "error": "GH_PR_TOKEN is not configured"}), 500
 
         url = f"https://api.github.com/repos/{repository}/pulls"
         headers = {
