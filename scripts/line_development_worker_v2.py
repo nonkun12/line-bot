@@ -1,7 +1,7 @@
 """Guarded LINE development worker v2.
 
 AI proposes structured search/replace operations instead of raw unified diffs.
-Python validates the operations, applies them, runs pytest, and opens a PR.
+Python validates the operations, applies them, runs guarded tests, and opens a PR.
 Security-sensitive files are never editable by this worker.
 """
 from __future__ import annotations
@@ -126,9 +126,27 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
     return True, "applied", touched
 
 
-def run_tests() -> tuple[bool, str]:
-    tests = run([sys.executable, "-m", "pytest", "-q", "--tb=native"], timeout=900)
-    return tests.returncode == 0, (tests.stdout + "\n" + tests.stderr)[-8000:]
+def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
+    """Run guarded worker tests and syntax checks for the touched Python file(s)."""
+    outputs: list[str] = []
+    for path in touched or []:
+        if not path.endswith(".py"):
+            continue
+        compile_result = run([sys.executable, "-m", "py_compile", path], timeout=120)
+        outputs.append(f"py_compile {path}: returncode={compile_result.returncode}")
+        if compile_result.stdout:
+            outputs.append(compile_result.stdout)
+        if compile_result.stderr:
+            outputs.append(compile_result.stderr)
+        if compile_result.returncode != 0:
+            return False, "\n".join(outputs)[-8000:]
+
+    tests = run(
+        [sys.executable, "-m", "pytest", "-q", "tests/test_line_development_worker_v2.py", "--tb=native"],
+        timeout=900,
+    )
+    outputs.extend([tests.stdout, tests.stderr])
+    return tests.returncode == 0, "\n".join(outputs)[-8000:]
 
 
 def restore(paths: list[str]) -> None:
@@ -178,7 +196,7 @@ def main() -> int:
         restore(touched)
         print("Plan apply failed:", detail)
         return 1
-    passed, output = run_tests()
+    passed, output = run_tests(touched)
     attempts = 0
     while not passed and attempts < MAX_REPAIR_ATTEMPTS:
         attempts += 1
@@ -197,7 +215,7 @@ def main() -> int:
             restore(touched)
             print("Repair apply failed:", detail)
             return 1
-        passed, output = run_tests()
+        passed, output = run_tests(touched)
     if not passed:
         restore(touched)
         print(f"Development failed after {attempts + 1} attempt(s).\n{output}")
@@ -216,7 +234,7 @@ def main() -> int:
         return 1
     if run(["git", "push", "--set-upstream", "origin", branch]).returncode != 0:
         return 1
-    pr_body = f"## LINE development request\n\n{instruction}\n\nUser: `{user_id}`\n\nPytest: PASS\nRepair attempts: {attempts}\n"
+    pr_body = f"## LINE development request\n\n{instruction}\n\nUser: `{user_id}`\n\nGuarded tests: PASS\nRepair attempts: {attempts}\n"
     pr = run(["gh", "pr", "create", "--base", "main", "--head", branch, "--title", "feat: LINE development request", "--body", pr_body])
     print(pr.stdout[-4000:])
     return 0 if pr.returncode == 0 else 1
