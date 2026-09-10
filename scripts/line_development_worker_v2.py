@@ -34,6 +34,10 @@ PROTECTED_PATHS = {
 }
 PROTECTED_PREFIXES = (".github/", "secrets/", ".git/")
 
+_EXPLICIT_PATH_PATTERN = re.compile(
+    r"[\w][\w\-./]*\.(?:py|md|json|txt)", re.IGNORECASE
+)
+
 
 def run(cmd: list[str], timeout: int = 900, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, cwd=ROOT, text=True, input=input_text, capture_output=True, timeout=timeout)
@@ -60,37 +64,51 @@ def ask(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOK
     return response.choices[0].message.content or ""
 
 
-def find_explicit_targets(instruction: str, files: list[str]) -> list[str]:
-    """Return explicitly named, safe repository files in the instruction."""
-    normalized = instruction.replace("\\", "/")
-    matches: list[str] = []
-    for path in sorted(files, key=len, reverse=True):
-        if is_protected(path):
-            continue
-        pattern = rf"(?<![A-Za-z0-9_./-]){re.escape(path)}(?![A-Za-z0-9_./-])"
-        if re.search(pattern, normalized):
-            matches.append(path)
-    return matches
+def _extract_explicit_path(instruction: str, files: list[str]) -> str | None:
+    """Deterministically resolve a single safe file path named verbatim in the instruction.
+
+    This is a fallback only -- it never expands the set of eligible files.
+    A candidate is accepted only if it exactly matches an entry already
+    present in ``files`` (already pre-filtered through ``repo_files()``/``is_protected()``).
+    Protected, deleted, or unlisted paths can therefore never be selected this way,
+    and an instruction that names more than one distinct eligible file is treated
+    as ambiguous and rejected rather than guessed.
+    """
+    allowed = set(files)
+    candidates: set[str] = set()
+    for match in _EXPLICIT_PATH_PATTERN.finditer(instruction):
+        token = match.group(0).strip("`'\"()[]{}<> 　").lstrip("./")
+        if token in allowed:
+            candidates.add(token)
+    if len(candidates) == 1:
+        return next(iter(candidates))
+    return None
 
 
 def choose_file(client: Groq, instruction: str, files: list[str]) -> str | None:
-    # Deterministic path selection wins whenever the user explicitly names one
-    # safe repository file. This prevents an LLM "null" from blocking a valid request.
-    explicit = find_explicit_targets(instruction, files)
-    if len(explicit) == 1:
-        return explicit[0]
-    if len(explicit) > 1:
-        return None
-
     system = 'Choose exactly one repository file. Return JSON only: {"file":"path"} or {"file":null}. Never choose security, credential, deployment, workflow, or worker files.'
     listing = "\n".join(files[:250])
     raw = ask(client, system, f"Instruction:\n{instruction}\n\nAllowed files:\n{listing}", max_tokens=250)
+
+    path: str | None = None
     try:
         data = json.loads(raw.strip())
+        candidate = data.get("file") if isinstance(data, dict) else None
+        if isinstance(candidate, str) and candidate in files and not is_protected(candidate):
+            path = candidate
     except json.JSONDecodeError:
-        return None
-    path = data.get("file") if isinstance(data, dict) else None
-    return path if isinstance(path, str) and path in files and not is_protected(path) else None
+        path = None
+
+    if path:
+        return path
+
+    # The LLM returned null, an invalid path, or malformed JSON. Fall back
+    # to a deterministic match against the instruction text itself, still
+    # constrained to the pre-filtered safe file list.
+    fallback = _extract_explicit_path(instruction, files)
+    if fallback:
+        print(f"LLM selection unavailable; using explicit path from instruction: {fallback}", flush=True)
+    return fallback
 
 
 def context_for(path: str) -> str:
