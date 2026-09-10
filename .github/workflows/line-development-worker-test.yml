@@ -1,0 +1,36 @@
+name: LINE Development Worker Test
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/line_development_worker_v2.py"
+      - "tests/test_line_development_worker_v2.py"
+      - ".github/workflows/line-development-worker-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  worker-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install worker dependency
+        run: python -m pip install --upgrade pip groq pytest
+
+      - name: Compile worker
+        run: python -m py_compile scripts/line_development_worker_v2.py
+
+      - name: Run guarded worker tests
+        run: pytest -q tests/test_line_development_worker_v2.py --tb=native
