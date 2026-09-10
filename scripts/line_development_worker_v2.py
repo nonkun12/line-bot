@@ -128,6 +128,29 @@ def context_for(path: str) -> str:
     return target.read_text(encoding="utf-8")[:MAX_FILE_CHARS]
 
 
+def build_comment_test_plan(instruction: str, chosen: str) -> dict | None:
+    """Build a deterministic one-line comment edit for the protected dispatcher test."""
+    if chosen != _COMMENT_TEST_PATH or not _COMMENT_REQUEST_PATTERN.search(instruction):
+        return None
+    if "scripts/line_development.py" not in instruction and "line_development.py" not in instruction:
+        return None
+    match = re.search(r"[「『\"']([^」』\"']+)[」』\"']", instruction)
+    comment_text = (match.group(1) if match else "LINE自動開発テスト").strip()
+    comment_text = re.sub(r"[\r\n]+", " ", comment_text)
+    comment_text = comment_text[:120].strip()
+    if not comment_text:
+        return None
+    target = ROOT / _COMMENT_TEST_PATH
+    text = target.read_text(encoding="utf-8")
+    if f"# {comment_text}" in text:
+        return {"no_change": True}
+    old = text
+    if not old.endswith("\n"):
+        old += "\n"
+    new = old + f"# {comment_text}\n"
+    return {"no_change": False, "changes": [{"file": _COMMENT_TEST_PATH, "old": old, "new": new}]}
+
+
 def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
     if plan.get("no_change") is True:
         return True, "no_change"
@@ -233,7 +256,8 @@ def main() -> int:
     print("Selected safe target:", chosen, flush=True)
     try:
         try:
-            plan = build_plan(client, instruction, chosen, context_for(chosen))
+            comment_test_plan = build_comment_test_plan(instruction, chosen)
+            plan = comment_test_plan if comment_test_plan is not None else build_plan(client, instruction, chosen, context_for(chosen))
         except (json.JSONDecodeError, ValueError) as exc:
             print("Plan parse failed:", type(exc).__name__, str(exc), flush=True)
             return 1
