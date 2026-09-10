@@ -24,8 +24,16 @@ def test_empty_development_command_is_rejected():
     assert "空です" in dispatch_development_workflow("", user_id="u1", token="test")
 
 
-def test_dispatch_uses_workflow_dispatch(monkeypatch):
+def test_unauthorized_user_is_rejected(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U_ALLOWED")
+    assert "権限がありません" in dispatch_development_workflow(
+        "英語学習機能を追加して", user_id="U_OTHER", token="secret"
+    )
+
+
+def test_authorized_dispatch_uses_workflow_dispatch(monkeypatch):
     captured = {}
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
 
     def fake_post(url, **kwargs):
         captured["url"] = url
