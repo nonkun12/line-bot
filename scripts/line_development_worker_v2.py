@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import sys
+import traceback
 from pathlib import Path
 
 from groq import Groq
@@ -177,67 +178,82 @@ def main() -> int:
     if not chosen:
         print("No safe target file selected.")
         return 1
-    print("Selected safe target:", chosen)
+    print("Selected safe target:", chosen, flush=True)
     try:
-        plan = build_plan(client, instruction, chosen, context_for(chosen))
-    except (json.JSONDecodeError, ValueError) as exc:
-        print("Plan parse failed:", type(exc).__name__)
-        return 1
-    ok, detail = validate_plan(plan, chosen)
-    if not ok:
-        print("Rejected plan:", detail)
-        return 1
-    if detail == "no_change":
-        passed, output = run_tests()
-        print(output)
-        return 0 if passed else 1
-    applied, detail, touched = apply_plan(plan)
-    if not applied:
-        restore(touched)
-        print("Plan apply failed:", detail)
-        return 1
-    passed, output = run_tests(touched)
-    attempts = 0
-    while not passed and attempts < MAX_REPAIR_ATTEMPTS:
-        attempts += 1
-        restore(touched)
         try:
-            repair = build_plan(client, instruction, chosen, context_for(chosen), output)
+            plan = build_plan(client, instruction, chosen, context_for(chosen))
         except (json.JSONDecodeError, ValueError) as exc:
-            print("Repair plan parse failed:", type(exc).__name__)
+            print("Plan parse failed:", type(exc).__name__, str(exc), flush=True)
             return 1
-        ok, detail = validate_plan(repair, chosen)
-        if not ok or detail == "no_change":
-            print("Repair rejected:", detail)
+        except Exception as exc:
+            print("Plan generation failed:", type(exc).__name__, str(exc), flush=True)
+            traceback.print_exc()
             return 1
-        applied, detail, touched = apply_plan(repair)
+        ok, detail = validate_plan(plan, chosen)
+        if not ok:
+            print("Rejected plan:", detail, flush=True)
+            return 1
+        if detail == "no_change":
+            passed, output = run_tests()
+            print(output, flush=True)
+            return 0 if passed else 1
+        applied, detail, touched = apply_plan(plan)
         if not applied:
             restore(touched)
-            print("Repair apply failed:", detail)
+            print("Plan apply failed:", detail, flush=True)
             return 1
         passed, output = run_tests(touched)
-    if not passed:
-        restore(touched)
-        print(f"Development failed after {attempts + 1} attempt(s).\n{output}")
+        attempts = 0
+        while not passed and attempts < MAX_REPAIR_ATTEMPTS:
+            attempts += 1
+            restore(touched)
+            try:
+                repair = build_plan(client, instruction, chosen, context_for(chosen), output)
+            except (json.JSONDecodeError, ValueError) as exc:
+                print("Repair plan parse failed:", type(exc).__name__, str(exc), flush=True)
+                return 1
+            except Exception as exc:
+                print("Repair plan generation failed:", type(exc).__name__, str(exc), flush=True)
+                traceback.print_exc()
+                return 1
+            ok, detail = validate_plan(repair, chosen)
+            if not ok or detail == "no_change":
+                print("Repair rejected:", detail, flush=True)
+                return 1
+            applied, detail, touched = apply_plan(repair)
+            if not applied:
+                restore(touched)
+                print("Repair apply failed:", detail, flush=True)
+                return 1
+            passed, output = run_tests(touched)
+        if not passed:
+            restore(touched)
+            print(f"Development failed after {attempts + 1} attempt(s).\n{output}", flush=True)
+            return 1
+        status = run(["git", "status", "--short"])
+        if not status.stdout.strip():
+            print("Tests passed but no files changed.", flush=True)
+            return 0
+        branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
+        if run(["git", "checkout", "-b", branch]).returncode != 0:
+            return 1
+        run(["git", "config", "user.name", "line-development-worker"])
+        run(["git", "config", "user.email", "line-development-worker@users.noreply.github.com"])
+        run(["git", "add", "--", *touched])
+        if run(["git", "commit", "-m", "feat: implement LINE development request"]).returncode != 0:
+            return 1
+        if run(["git", "push", "--set-upstream", "origin", branch]).returncode != 0:
+            return 1
+        pr_body = f"## LINE development request\n\n{instruction}\n\nUser: `{user_id}`\n\nGuarded tests: PASS\nRepair attempts: {attempts}\n"
+        pr = run(["gh", "pr", "create", "--base", "main", "--head", branch, "--title", "feat: LINE development request", "--body", pr_body])
+        print(pr.stdout[-4000:], flush=True)
+        if pr.stderr:
+            print(pr.stderr[-4000:], flush=True)
+        return 0 if pr.returncode == 0 else 1
+    except Exception as exc:
+        print("Worker fatal error:", type(exc).__name__, str(exc), flush=True)
+        traceback.print_exc()
         return 1
-    status = run(["git", "status", "--short"])
-    if not status.stdout.strip():
-        print("Tests passed but no files changed.")
-        return 0
-    branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
-    if run(["git", "checkout", "-b", branch]).returncode != 0:
-        return 1
-    run(["git", "config", "user.name", "line-development-worker"])
-    run(["git", "config", "user.email", "line-development-worker@users.noreply.github.com"])
-    run(["git", "add", "--", *touched])
-    if run(["git", "commit", "-m", "feat: implement LINE development request"]).returncode != 0:
-        return 1
-    if run(["git", "push", "--set-upstream", "origin", branch]).returncode != 0:
-        return 1
-    pr_body = f"## LINE development request\n\n{instruction}\n\nUser: `{user_id}`\n\nGuarded tests: PASS\nRepair attempts: {attempts}\n"
-    pr = run(["gh", "pr", "create", "--base", "main", "--head", branch, "--title", "feat: LINE development request", "--body", pr_body])
-    print(pr.stdout[-4000:])
-    return 0 if pr.returncode == 0 else 1
 
 
 if __name__ == "__main__":
