@@ -64,8 +64,8 @@ def test_extract_explicit_path_selects_named_safe_file_without_ai():
     assert worker._extract_explicit_path("README.md の先頭を更新", files) == "README.md"
 
 
-def test_choose_file_uses_explicit_safe_target_on_llm_null():
-    client = FakeClient([json.dumps({"file": None})])
+def test_choose_file_uses_explicit_safe_target_without_ai():
+    client = FakeClient([])
     assert worker.choose_file(client, "README.md の先頭を更新", ["README.md", "app.py"]) == "README.md"
     assert client.chat.completions.responses == []
 
