@@ -19,7 +19,6 @@ MAX_FILE_CHARS = 7000
 MAX_PATCH_CHARS = 16000
 MODEL = os.environ.get("DEV_AI_MODEL", "openai/gpt-oss-20b")
 
-# Development automation must not mutate these classes of files from LINE.
 FORBIDDEN_PREFIXES = (
     ".github/",
     ".env",
@@ -129,6 +128,14 @@ def apply_and_test(patch: str) -> tuple[bool, str]:
     return tests.returncode == 0, output
 
 
+def run_tests_only() -> int:
+    tests = run([sys.executable, "-m", "pytest", "-q", "--tb=native"], timeout=900)
+    output = (tests.stdout + "\n" + tests.stderr).strip()
+    print("No code change was produced; verifying the repository with pytest.")
+    print(output[-8000:])
+    return tests.returncode
+
+
 def main() -> int:
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()
     user_id = os.environ.get("DEV_USER_ID", "")
@@ -148,9 +155,14 @@ def main() -> int:
 Return ONLY a unified git diff. Do not include markdown fences or explanations.
 Rules: modify only the supplied files; do not add dependencies; do not touch credentials,
 configuration, deployment workflows, .github, tests may be added only if one supplied test
-file is selected; keep the change minimal; preserve existing behavior outside the request."""
+file is selected; keep the change minimal; preserve existing behavior outside the request.
+If the instruction requires no code or documentation change, return exactly: NO_CHANGE"""
     prompt = f"Instruction from LINE user:\n{instruction}\n\nCurrent repository context:\n{context}"
-    patch = extract_diff(ask(client, system, prompt))
+    raw_patch = ask(client, system, prompt, max_tokens=2200).strip()
+    if raw_patch == "NO_CHANGE" or not extract_diff(raw_patch):
+        return run_tests_only()
+
+    patch = extract_diff(raw_patch)
     ok, detail = validate_diff(patch)
     if not ok:
         print(f"Rejected patch: {detail}")
@@ -159,14 +171,12 @@ file is selected; keep the change minimal; preserve existing behavior outside th
     passed, test_output = apply_and_test(patch)
     attempts = 1
     if not passed:
-        # One repair attempt only. No second repair branch exists.
         repair_prompt = f"""Original instruction:\n{instruction}\n\nPrevious patch:\n{patch}\n\nPytest failure:\n{test_output}\n\nCurrent relevant files after the patch:\n{load_context(chosen)}\n\nReturn ONLY a corrected unified diff. Fix only the failure while preserving the requested change."""
-        repair_patch = extract_diff(ask(client, system, repair_prompt))
+        repair_patch = extract_diff(ask(client, system, repair_prompt, max_tokens=2200))
         ok2, detail2 = validate_diff(repair_patch)
         if not ok2:
             print(f"Repair rejected: {detail2}")
             return 1
-        # Restore the pre-repair state before applying the replacement patch.
         run(["git", "checkout", "--", *chosen])
         passed, test_output = apply_and_test(repair_patch)
         patch = repair_patch
@@ -190,7 +200,7 @@ file is selected; keep the change minimal; preserve existing behavior outside th
     run(["git", "config", "user.name", "line-development-worker"])
     run(["git", "config", "user.email", "line-development-worker@users.noreply.github.com"])
     run(["git", "add", "--", *chosen])
-    commit = run(["git", "commit", "-m", f"feat: implement LINE development request"])
+    commit = run(["git", "commit", "-m", "feat: implement LINE development request"])
     if commit.returncode != 0:
         print(commit.stderr[-2000:])
         return 1
@@ -199,7 +209,6 @@ file is selected; keep the change minimal; preserve existing behavior outside th
         print(push.stderr[-2000:])
         return 1
 
-    # gh is preinstalled on GitHub-hosted runners. The checkout token provides auth.
     pr_body = (
         "## LINE development request\n\n"
         f"{instruction}\n\n"
