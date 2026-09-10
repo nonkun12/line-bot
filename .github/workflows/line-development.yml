@@ -45,6 +45,7 @@ jobs:
         id: development
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
