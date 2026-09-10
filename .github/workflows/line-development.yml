@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_PAT }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -48,7 +48,7 @@ jobs:
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: python scripts/line_development_worker_v2.py
 
       - name: Notify LINE of development result
