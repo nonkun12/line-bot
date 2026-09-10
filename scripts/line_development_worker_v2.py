@@ -60,7 +60,28 @@ def ask(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOK
     return response.choices[0].message.content or ""
 
 
+def find_explicit_targets(instruction: str, files: list[str]) -> list[str]:
+    """Return explicitly named, safe repository files in the instruction."""
+    normalized = instruction.replace("\\", "/")
+    matches: list[str] = []
+    for path in sorted(files, key=len, reverse=True):
+        if is_protected(path):
+            continue
+        pattern = rf"(?<![A-Za-z0-9_./-]){re.escape(path)}(?![A-Za-z0-9_./-])"
+        if re.search(pattern, normalized):
+            matches.append(path)
+    return matches
+
+
 def choose_file(client: Groq, instruction: str, files: list[str]) -> str | None:
+    # Deterministic path selection wins whenever the user explicitly names one
+    # safe repository file. This prevents an LLM "null" from blocking a valid request.
+    explicit = find_explicit_targets(instruction, files)
+    if len(explicit) == 1:
+        return explicit[0]
+    if len(explicit) > 1:
+        return None
+
     system = 'Choose exactly one repository file. Return JSON only: {"file":"path"} or {"file":null}. Never choose security, credential, deployment, workflow, or worker files.'
     listing = "\n".join(files[:250])
     raw = ask(client, system, f"Instruction:\n{instruction}\n\nAllowed files:\n{listing}", max_tokens=250)
