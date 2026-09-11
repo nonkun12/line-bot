@@ -84,7 +84,9 @@ class StocksAgent:
         if not isinstance(price, (int, float)):
             raise ValueError("quote price unavailable")
         change = price - previous if isinstance(previous, (int, float)) else None
+        change = round(change, 10) if change is not None else None
         change_pct = (change / previous * 100) if change is not None and previous else None
+        change_pct = round(change_pct, 10) if change_pct is not None else None
         currency = str(meta.get("currency") or "")
         market_time = meta.get("regularMarketTime")
         market_state = str(meta.get("marketState") or "").upper() or None
