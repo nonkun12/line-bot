@@ -136,11 +136,8 @@ def test_handle_delete_all_memory_confirmation_calls_delete_all_memory():
 
 
 def test_handle_get_all_memory_returns_name_from_memory_list():
-    memories_json = json.dumps([
-        {"key": "memory", "value": "some note"},
-        {"key": "name", "value": "太郎"},
-    ])
-    call_mcp_tool = MagicMock(return_value=memories_json)
+    name_json = json.dumps({"value": "太郎"})
+    call_mcp_tool = MagicMock(return_value=name_json)
 
     result = handle_memory_message(
         "名前を教えて",
@@ -150,8 +147,9 @@ def test_handle_get_all_memory_returns_name_from_memory_list():
 
     assert result == "あなたの名前は 太郎 です。"
     call_mcp_tool.assert_called_once_with(
-        "get_all_memory",
+        "get_memory",
         {
             "user_id": "user123",
+            "key": "name",
         },
     )
