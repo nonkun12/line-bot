@@ -1,4 +1,5 @@
 import json
+import subprocess
 
 import scripts.line_development_worker_v2 as worker
 
@@ -144,3 +145,22 @@ def test_apply_plan_changes_one_exact_anchor(tmp_path, monkeypatch):
     assert ok and detail == "applied"
     assert touched == ["app.py"]
     assert "REPLACED" in target.read_text(encoding="utf-8")
+
+
+def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_run(cmd, timeout=900, input_text=None):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.setattr(worker, "run", fake_run)
+
+    passed, output = worker.run_tests([])
+
+    assert passed
+    assert any(cmd[:4] == [worker.sys.executable, "-m", "pytest", "-q"] for cmd in calls)
+    pytest_call = next(cmd for cmd in calls if cmd[2:] == ["pytest", "-q", "--tb=native"])
+    assert pytest_call == [worker.sys.executable, "-m", "pytest", "-q", "--tb=native"]
+    assert "full pytest:" in output
