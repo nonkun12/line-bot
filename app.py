@@ -255,11 +255,11 @@ def generate_reply(user_id, message):
 
     try:
         result = _invoke_graph(user_id, message)
-    except Exception as e:
+    except Exception:
         print("===== GRAPH INVOCATION ERROR =====")
         import traceback
         traceback.print_exc()
-        return f"Agent起動エラー: {type(e).__name__}: {e}"
+        return "AIサービスで一時的な問題が発生しました。少し時間を置いてもう一度お試しください。"
 
     print("===== AFTER GRAPH.INVOKE =====")
     print(result)
@@ -276,8 +276,6 @@ def _handle_ai_gateway_request(ai_request):
     message = str(ai_request.message)
     user_id = str(ai_request.user_id)
 
-    # Explicit LINE development commands must bypass the normal Core/Supervisor
-    # conversation router and dispatch the dedicated GitHub Actions workflow.
     development_instruction = extract_development_instruction(message)
     if development_instruction is not None:
         return dispatch_development_workflow(
@@ -296,6 +294,8 @@ def _handle_ai_gateway_request(ai_request):
     result = run_core_request(
         user_id,
         message,
+        channel=ai_request.channel,
+        metadata=ai_request.metadata,
         call_mcp_tool=call_mcp_tool,
     )
     return extract_core_reply(result)
@@ -320,7 +320,7 @@ register_internal_ask_route(app, INTERNAL_PUSH_KEY, _gateway_reply)
 
 @app.route("/callback", methods=["POST"])
 def callback():
-    print(f"[LOG] /callback endpoint called")
+    print("[LOG] /callback endpoint called")
     body = request.get_data(as_text=True)
     signature = request.headers.get("X-Line-Signature")
     print("===== CALLBACK RECEIVED =====")
@@ -329,11 +329,12 @@ def callback():
     try:
         handler.handle(body, signature)
         record_step("line_bot", True)
-    except Exception as e:
+        return "OK", 200
+    except Exception as exc:
         print("===== HANDLER ERROR =====")
-        print(e)
-        record_step("line_bot", False, error=str(e), error_location="callback/handler.handle")
-    return "OK"
+        print(exc)
+        record_step("line_bot", False, error=str(exc), error_location="callback/handler.handle")
+        return jsonify({"ok": False, "error": "internal server error"}), 500
 
 
 _processed_message_ids = OrderedDict()
@@ -370,8 +371,8 @@ def _process_and_reply(event, user_id, text):
             )
             reply = ai_response.text
         except Exception as exc:
-            print("[LOG] Core gateway failed; falling back to local reply:", exc)
-            reply = f"Agent起動エラー: {type(exc).__name__}: {exc}"
+            print("[LOG] Core gateway failed; returning safe reply:", exc)
+            reply = "AIサービスで一時的な問題が発生しました。少し時間を置いてもう一度お試しください。"
         try:
             _line_reply(event.reply_token, reply)
         except Exception as exc:
