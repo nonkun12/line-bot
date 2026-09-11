@@ -336,8 +336,8 @@ def callback():
     body = request.get_data(as_text=True)
     signature = request.headers.get("X-Line-Signature")
     print("===== CALLBACK RECEIVED =====")
-    print("BODY:", body)
-    print("SIGNATURE:", signature)
+    print("BODY LENGTH:", len(body))
+    print("SIGNATURE PRESENT:", bool(signature))
     try:
         handler.handle(body, signature)
         return "OK", 200
