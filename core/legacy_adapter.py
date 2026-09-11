@@ -41,6 +41,7 @@ class LegacyNodeAgent:
         state: dict[str, Any] = {
             "user_id": request.user_id,
             "raw_message": request.message,
+            "channel": request.channel,
             **dict(request.metadata),
             **dict(self.extra_state),
         }
