@@ -88,6 +88,21 @@ def capture_messaging_api(monkeypatch):
     yield _CapturingMessagingApi.calls
 
 
+@pytest.fixture
+def capture_internal_push_api(monkeypatch):
+    calls = []
+
+    class _RouteMessagingApi:
+        def __init__(self, api_client):
+            pass
+
+        def push_message(self, request):
+            calls.append(("push", request))
+
+    monkeypatch.setattr("internal_ask_route.MessagingApi", _RouteMessagingApi)
+    return calls
+
+
 def _mock_core_reply(monkeypatch, text):
     monkeypatch.setattr(
         app,
@@ -142,7 +157,7 @@ def test_process_and_reply_falls_back_to_push_on_reply_failure(monkeypatch):
     assert "".join(m.text for m in request.messages) == long_reply
 
 
-def test_internal_push_splits_long_message(monkeypatch, capture_messaging_api):
+def test_internal_push_splits_long_message(monkeypatch, capture_internal_push_api):
     monkeypatch.setattr(app, "save_message", lambda *args, **kwargs: None)
     long_message = "p" * 13000
     client = app.app.test_client()
@@ -152,14 +167,14 @@ def test_internal_push_splits_long_message(monkeypatch, capture_messaging_api):
         headers={"x-internal-key": app.INTERNAL_PUSH_KEY},
     )
     assert response.status_code == 200
-    assert len(capture_messaging_api) == 1
-    kind, request = capture_messaging_api[0]
+    assert len(capture_internal_push_api) == 1
+    kind, request = capture_internal_push_api[0]
     assert kind == "push"
     assert len(request.messages) == 3
     assert "".join(m.text for m in request.messages) == long_message
 
 
-def test_internal_push_over_25000_chars_truncates(monkeypatch, capture_messaging_api):
+def test_internal_push_over_25000_chars_truncates(monkeypatch, capture_internal_push_api):
     monkeypatch.setattr(app, "save_message", lambda *args, **kwargs: None)
     client = app.app.test_client()
     response = client.post(
@@ -168,6 +183,6 @@ def test_internal_push_over_25000_chars_truncates(monkeypatch, capture_messaging
         headers={"x-internal-key": app.INTERNAL_PUSH_KEY},
     )
     assert response.status_code == 200
-    request = capture_messaging_api[0][1]
+    request = capture_internal_push_api[0][1]
     assert len(request.messages) == 5
     assert "省略" in request.messages[-1].text
