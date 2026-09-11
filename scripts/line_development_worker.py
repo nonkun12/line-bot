@@ -3,6 +3,11 @@
 The worker uses Groq to propose a small unified diff, validates it, runs pytest,
 and creates a PR instead of pushing arbitrary development changes to main.
 At most one repair attempt is allowed after the first test failure.
+
+NIGHTLY_MODE=true changes only the final delivery step: after the same guarded
+file selection, patch validation, pytest and one repair attempt, the verified
+change remains on the current branch so the scheduled Nightly workflow can
+push it to main. The safety limits are otherwise unchanged.
 """
 from __future__ import annotations
 
@@ -142,6 +147,7 @@ def run_tests_only() -> int:
 def main() -> int:
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()
     user_id = os.environ.get("DEV_USER_ID", "")
+    nightly_mode = os.environ.get("NIGHTLY_MODE", "false").strip().lower() == "true"
     if not instruction:
         print("No development instruction supplied.")
         return 2
@@ -195,17 +201,23 @@ If the instruction requires no code or documentation change, return exactly: NO_
         print("Tests passed but no files changed.")
         return 0
 
+    run(["git", "config", "user.name", "line-development-worker"])
+    run(["git", "config", "user.email", "line-development-worker@users.noreply.github.com"])
+    run(["git", "add", "--", *chosen])
+    commit = run(["git", "commit", "-m", "feat: nightly autonomous development task"])
+    if commit.returncode != 0:
+        print(commit.stderr[-2000:])
+        return 1
+
+    if nightly_mode:
+        print(f"Nightly development complete on current branch. Repair attempts: {attempts}")
+        print(test_output[-4000:])
+        return 0
+
     branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
     branch_check = run(["git", "checkout", "-b", branch])
     if branch_check.returncode != 0:
         print(branch_check.stderr[-2000:])
-        return 1
-    run(["git", "config", "user.name", "line-development-worker"])
-    run(["git", "config", "user.email", "line-development-worker@users.noreply.github.com"])
-    run(["git", "add", "--", *chosen])
-    commit = run(["git", "commit", "-m", "feat: implement LINE development request"])
-    if commit.returncode != 0:
-        print(commit.stderr[-2000:])
         return 1
     push = run(["git", "push", "--set-upstream", "origin", branch])
     if push.returncode != 0:
