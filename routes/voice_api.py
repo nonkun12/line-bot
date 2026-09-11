@@ -10,7 +10,7 @@ from __future__ import annotations
 import hmac
 import os
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from core.channel import handle_channel_request
 
@@ -41,7 +41,7 @@ def voice_api():
 
     try:
         response = handle_channel_request(
-            __import__("app").app.ai_gateway,
+            current_app.ai_gateway,
             user_id,
             message,
             "voice",
