@@ -24,6 +24,8 @@ except Exception:
 def _make_dashboard_url(user_id: str) -> str:
     timestamp = int(time.time())
     secret = os.environ.get("DASHBOARD_LINK_SECRET") or os.environ.get("DASHBOARD_PASSWORD") or ""
+    if not secret:
+        return ""
     payload = f"{user_id}:{timestamp}"
     token = hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
     query = urlencode({"user_id": user_id, "ts": timestamp, "token": token})
@@ -37,21 +39,23 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         if not internal_push_key or not provided_key or not hmac.compare_digest(str(provided_key), str(internal_push_key)):
             return jsonify({"ok": False, "error": "unauthorized"}), 401
         data = request.get_json(silent=True) or {}
-        user_id = data.get("user_id")
-        message = data.get("message")
+        user_id = str(data.get("user_id", "")).strip()
+        message = str(data.get("message", "")).strip()
         if not user_id or not message:
             return jsonify({"ok": False, "error": "user_id and message are required"}), 400
-        if str(message).strip() == "ダッシュボード":
-            dashboard_url = _make_dashboard_url(str(user_id))
+        if message == "ダッシュボード":
+            dashboard_url = _make_dashboard_url(user_id)
+            if not dashboard_url:
+                return jsonify({"ok": False, "error": "dashboard link is not configured"}), 503
             return jsonify({"ok": True, "reply": f"ダッシュボードはこちらです。\n{dashboard_url}"})
         with StepTimer("internal_ask") as ask_timer, StepTimer("ai_mcp") as ai_timer:
             try:
                 reply = generate_reply_func(user_id, message)
-            except Exception as exc:
-                print("INTERNAL ASK ERROR:", exc)
-                ai_timer.fail(error=exc, error_location="generate_reply")
-                ask_timer.fail(http_status=500, error=exc, error_location="internal_ask")
-                return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+            except Exception:
+                print("INTERNAL ASK ERROR", flush=True)
+                ai_timer.fail(error="internal server error", error_location="generate_reply")
+                ask_timer.fail(http_status=500, error="internal server error", error_location="internal_ask")
+                return jsonify({"ok": False, "error": "internal server error"}), 500
             ai_timer.ok(); ask_timer.ok(http_status=200)
         return jsonify({"ok": True, "reply": str(reply or "")})
 
@@ -61,25 +65,24 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         if not internal_push_key or not provided_key or not hmac.compare_digest(str(provided_key), str(internal_push_key)):
             return jsonify({"ok": False, "error": "unauthorized"}), 401
         data = request.get_json(silent=True) or {}
-        user_id = data.get("user_id")
-        message = data.get("message")
-        if not user_id or message is None:
+        user_id = str(data.get("user_id", "")).strip()
+        message = str(data.get("message", "")).strip()
+        if not user_id or not message:
             return jsonify({"ok": False, "error": "user_id and message are required"}), 400
         try:
-            # Use the same LINE-safe message construction path as normal replies.
             from app import _build_line_messages
 
             with ApiClient(configuration) as api:
                 MessagingApi(api).push_message(
                     PushMessageRequest(
-                        to=str(user_id),
-                        messages=_build_line_messages(str(message)),
+                        to=user_id,
+                        messages=_build_line_messages(message),
                     )
                 )
             return jsonify({"ok": True})
-        except Exception as exc:
-            print("INTERNAL PUSH ERROR:", exc)
-            return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+        except Exception:
+            print("INTERNAL PUSH ERROR", flush=True)
+            return jsonify({"ok": False, "error": "internal server error"}), 500
 
     @app.route("/internal/create-pr", methods=["POST"])
     def internal_create_pr():
@@ -108,22 +111,15 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         try:
             response = httpx.post(url, json=payload, headers=headers, timeout=15.0)
         except Exception as exc:
-            return jsonify({"ok": False, "error": f"GitHub request failed: {type(exc).__name__}"}), 502
+            print(f"GitHub PR request failed: {type(exc).__name__}", flush=True)
+            return jsonify({"ok": False, "error": "GitHub request failed"}), 502
 
         if response.status_code in (200, 201):
             result = response.json()
             return jsonify({"ok": True, "number": result.get("number"), "url": result.get("html_url")}), 201
         if response.status_code == 422:
-            try:
-                errors = response.json()
-            except Exception:
-                errors = {}
-            existing_url = None
-            for item in errors.get("errors", []) if isinstance(errors, dict) else []:
-                if isinstance(item, dict) and item.get("message"):
-                    existing_url = item["message"]
-                    break
-            return jsonify({"ok": False, "error": "GitHub rejected PR creation", "details": existing_url}), 422
-        return jsonify({"ok": False, "error": f"GitHub HTTP {response.status_code}", "details": response.text[-1000:]}), 502
+            return jsonify({"ok": False, "error": "GitHub rejected PR creation"}), 422
+        print(f"GitHub PR HTTP {response.status_code}", flush=True)
+        return jsonify({"ok": False, "error": "GitHub request failed"}), 502
 
     return internal_ask
