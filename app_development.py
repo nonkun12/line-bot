@@ -7,7 +7,6 @@ import re
 import httpx
 
 _APP_PREFIX = re.compile(r"^(?:アプリ開発|app|app-dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
-_APP_REQUEST = re.compile(r"(?:アプリ|webアプリ|ウェブアプリ).{0,20}(?:作って|つくって|作成|作れ|開発して|開発)", re.IGNORECASE | re.DOTALL)
 _MAX_REQUIREMENT_LENGTH = 3000
 _WORKFLOW_FILE = "app-development.yml"
 
@@ -15,12 +14,10 @@ _WORKFLOW_FILE = "app-development.yml"
 def extract_app_development_request(message: str) -> str | None:
     text = str(message or "").strip()
     match = _APP_PREFIX.match(text)
-    if match:
-        requirement = match.group(1).strip()
-        return requirement[:_MAX_REQUIREMENT_LENGTH] if requirement else ""
-    if _APP_REQUEST.search(text):
-        return text[:_MAX_REQUIREMENT_LENGTH]
-    return None
+    if not match:
+        return None
+    requirement = match.group(1).strip()
+    return requirement[:_MAX_REQUIREMENT_LENGTH] if requirement else ""
 
 
 def _is_authorized_user(user_id: str) -> bool:
