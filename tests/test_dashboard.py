@@ -26,6 +26,7 @@ def test_dashboard_page_status_code_and_content(auth_headers):
     assert b"LINE AI Secretary" in response.data
     assert b"dashboard.js" in response.data
     assert b"dashboard.css" in response.data
+    assert b"AI Control Tower" in response.data
 
 
 def test_dashboard_notes_api_success(auth_headers):
@@ -40,6 +41,20 @@ def test_dashboard_notes_api_success(auth_headers):
     assert data["notes"][0]["title"] == "テストノート"
     assert data["user_id"] == TEST_USER_ID
     mock_call.assert_called_once_with("list_notes", {"user_id": TEST_USER_ID})
+
+
+def test_dashboard_system_exposes_four_feature_readiness(auth_headers):
+    client = app.test_client()
+    with patch("routes.dashboard.call_mcp_tool", return_value="[]"):
+        response = client.get("/api/dashboard/system", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["ok"] is True
+    features = data["features"]
+    assert features["english_learning"]["status"] == "planned"
+    assert features["stocks"]["status"] == "planned"
+    assert features["ai_news"]["status"] == "planned"
+    assert features["voice"]["status"] == "online"
 
 
 def test_dashboard_notes_api_user_id_resolution_from_db(auth_headers, monkeypatch):
