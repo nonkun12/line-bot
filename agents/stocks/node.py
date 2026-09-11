@@ -11,6 +11,11 @@ from agents.stocks.intents import is_stock_intent
 
 
 _TICKER_RE = re.compile(r"(?:銘柄|ticker|コード)\s*[:：]?\s*([A-Za-z]{1,6}[.]?[A-Za-z]{0,3}|\d{4})", re.IGNORECASE)
+_NATURAL_TICKER_RE = re.compile(
+    r"(?<![A-Za-z0-9])([A-Za-z]{3,6}(?:\.[A-Za-z]{1,3})?|\d{4})"
+    r"(?=\s*(?:の)?\s*(?:株価|株|price))",
+    re.IGNORECASE,
+)
 _DEFAULT_TIMEOUT_SEC = 8
 
 
@@ -73,11 +78,13 @@ class StocksAgent:
     def handle(self, request: AgentRequest) -> AgentResponse:
         match = _TICKER_RE.search(request.message)
         if not match:
+            match = _NATURAL_TICKER_RE.search(request.message)
+        if not match:
             return AgentResponse(
                 text=(
                     "📈 株価Agentを起動しました。\n\n"
                     "銘柄コードまたはTickerを含めて送ってください。"
-                    "例: 「銘柄 7203」「ticker AAPL」\n"
+                    "例: 「銘柄 7203」「ticker AAPL」「AAPLの株価」\n"
                     "実データ取得に対応しています。"
                 ),
                 metadata={"feature": self.name, "status": "online", "ticker": None},
