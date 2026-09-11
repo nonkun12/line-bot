@@ -1,5 +1,6 @@
-"""Channel-neutral voice intent agent scaffold."""
+"""Channel-neutral voice agent MVP."""
 from __future__ import annotations
+
 from core.agents import AgentRequest, AgentResponse
 
 
@@ -15,6 +16,30 @@ class VoiceAgent:
         return any(keyword.lower() in text for keyword in self._KEYWORDS)
 
     def handle(self, request: AgentRequest) -> AgentResponse:
-        return AgentResponse(text="Voice Agentを起動しました。音声入出力は共通Core経由で利用できます。", metadata={"feature": self.name, "status": "scaffold"})
+        channel = request.channel or "unknown"
+        if request.message.strip():
+            text = (
+                "🎙️ Voice Agentです。\n"
+                "音声入力は共通Coreで受け付け、通常のAI応答経路へ渡せます。\n"
+                f"現在の入力チャネル: {channel}"
+            )
+        else:
+            text = "🎙️ Voice Agentです。音声入力を受け付けます。"
+        return AgentResponse(
+            text=text,
+            metadata={"feature": self.name, "status": "online", "channel": channel},
+        )
+
 
 agent = VoiceAgent()
+
+
+def voice_agent_node(state: dict) -> dict:
+    request = AgentRequest(
+        user_id=str(state.get("user_id", "")),
+        message=str(state.get("raw_message", "")),
+        channel=str(state.get("channel", "unknown")),
+        metadata=state.get("metadata", {}),
+    )
+    response = agent.handle(request)
+    return {"final_reply": response.text, "agent_results": {agent.name: response.text}}
