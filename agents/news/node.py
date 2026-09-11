@@ -6,10 +6,13 @@ import re
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from datetime import timezone
 from email.utils import parsedate_to_datetime
+from zoneinfo import ZoneInfo
 
 from core.agents import AgentRequest, AgentResponse
+
+
+_JST = ZoneInfo("Asia/Tokyo")
 
 
 class AINewsAgent:
@@ -65,7 +68,7 @@ class AINewsAgent:
             try:
                 parsed = (
                     parsedate_to_datetime(published)
-                    .astimezone(timezone.utc)
+                    .astimezone(_JST)
                     .strftime("%m/%d %H:%M")
                     if published
                     else ""
