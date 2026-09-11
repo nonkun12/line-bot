@@ -1,13 +1,17 @@
-"""Stock-query agent with a safe no-provider fallback."""
+"""Stock-query agent with a real market-data retrieval MVP and safe fallback."""
 from __future__ import annotations
 
+import json
 import re
+import urllib.parse
+import urllib.request
 
 from core.agents import AgentRequest, AgentResponse
 from agents.stocks.intents import is_stock_intent
 
 
-_TICKER_RE = re.compile(r"(?:銘柄|ticker|コード)\s*[:：]?\s*([A-Za-z]{1,6}[.]?[A-Za-z]{0,3}|\d{4})")
+_TICKER_RE = re.compile(r"(?:銘柄|ticker|コード)\s*[:：]?\s*([A-Za-z]{1,6}[.]?[A-Za-z]{0,3}|\d{4})", re.IGNORECASE)
+_DEFAULT_TIMEOUT_SEC = 8
 
 
 class StocksAgent:
@@ -19,26 +23,99 @@ class StocksAgent:
     def can_handle(self, request: AgentRequest) -> bool:
         return is_stock_intent(request.message)
 
+    @staticmethod
+    def normalize_ticker(raw_ticker: str) -> str:
+        ticker = raw_ticker.strip().upper()
+        if ticker.isdigit() and len(ticker) == 4:
+            return f"{ticker}.T"
+        return ticker
+
+    @staticmethod
+    def _display_ticker(ticker: str) -> str:
+        return ticker[:-2] if ticker.endswith(".T") else ticker
+
+    @classmethod
+    def _fetch_quote(cls, ticker: str) -> dict[str, object]:
+        encoded = urllib.parse.quote(ticker, safe=".")
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range=1d&interval=1m"
+        request = urllib.request.Request(url, headers={"User-Agent": "LINE-AI-Secretary/1.0"})
+        with urllib.request.urlopen(request, timeout=_DEFAULT_TIMEOUT_SEC) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        result = payload.get("chart", {}).get("result")
+        if not isinstance(result, list) or not result or not isinstance(result[0], dict):
+            raise ValueError("quote result unavailable")
+        data = result[0]
+        meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+        price = meta.get("regularMarketPrice")
+        previous = meta.get("previousClose")
+        if not isinstance(price, (int, float)):
+            indicators = data.get("indicators", {})
+            closes = indicators.get("quote", [{}])[0].get("close", []) if isinstance(indicators, dict) else []
+            numeric_closes = [v for v in closes if isinstance(v, (int, float))]
+            price = numeric_closes[-1] if numeric_closes else None
+        if not isinstance(price, (int, float)):
+            raise ValueError("quote price unavailable")
+        change = price - previous if isinstance(previous, (int, float)) else None
+        change_pct = (change / previous * 100) if change is not None and previous else None
+        currency = str(meta.get("currency") or "")
+        market_time = meta.get("regularMarketTime")
+        return {
+            "ticker": cls._display_ticker(ticker),
+            "price": float(price),
+            "previous_close": float(previous) if isinstance(previous, (int, float)) else None,
+            "change": float(change) if change is not None else None,
+            "change_pct": float(change_pct) if change_pct is not None else None,
+            "currency": currency,
+            "market_time": market_time,
+        }
+
     def handle(self, request: AgentRequest) -> AgentResponse:
         match = _TICKER_RE.search(request.message)
-        ticker = match.group(1).upper() if match else None
-        if ticker:
-            text = (
-                f"📈 株価リクエストを受け付けました: {ticker}\n\n"
-                "現在この環境には市場データプロバイダが未接続のため、"
-                "価格を推測して表示することはしません。\n"
-                "次の段階でリアルタイム市場データ取得を接続します。"
+        if not match:
+            return AgentResponse(
+                text=(
+                    "📈 株価Agentを起動しました。\n\n"
+                    "銘柄コードまたはTickerを含めて送ってください。"
+                    "例: 「銘柄 7203」「ticker AAPL」\n"
+                    "実データ取得に対応しています。"
+                ),
+                metadata={"feature": self.name, "status": "online", "ticker": None},
             )
-        else:
-            text = (
-                "📈 株価Agentを起動しました。\n\n"
-                "銘柄コードまたはTickerを含めて送ってください。"
-                "例: 「銘柄 7203」「ticker AAPL」\n"
-                "市場データ接続前なので、架空の株価は表示しません。"
+
+        requested = match.group(1)
+        ticker = self.normalize_ticker(requested)
+        try:
+            quote = self._fetch_quote(ticker)
+        except Exception:
+            return AgentResponse(
+                text=(
+                    f"📈 {self._display_ticker(ticker)} の株価を取得できませんでした。\n"
+                    "市場データ源が一時的に利用できない可能性があります。\n"
+                    "価格を推測して表示することはしません。"
+                ),
+                metadata={"feature": self.name, "status": "degraded", "ticker": self._display_ticker(ticker)},
             )
+
+        currency = quote["currency"] or ""
+        unit = f" {currency}" if currency else ""
+        change = quote["change"]
+        change_pct = quote["change_pct"]
+        change_text = ""
+        if isinstance(change, (int, float)):
+            sign = "+" if change >= 0 else ""
+            change_text = f"\n前日比: {sign}{change:.2f}{unit}"
+            if isinstance(change_pct, (int, float)):
+                change_text += f" ({sign}{change_pct:.2f}%)"
+
         return AgentResponse(
-            text=text,
-            metadata={"feature": self.name, "status": "planned", "ticker": ticker},
+            text=(
+                f"📈 {quote['ticker']}\n"
+                f"現在値: {quote['price']:.2f}{unit}"
+                f"{change_text}\n"
+                "市場データ: Yahoo Finance"
+            ),
+            metadata={"feature": self.name, "status": "online", **quote},
         )
 
 
