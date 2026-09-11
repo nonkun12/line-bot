@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  autonomous-repair:
+  autonomous-development:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -30,9 +30,7 @@ jobs:
       NIGHTLY_AUTOFIX: 'true'
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
-      NIGHTLY_MODE: 'true'
-      DEV_INSTRUCTION: 'AIスピーカーの朝の秘書機能の土台を1段階実装してください。既存のVoice APIを壊さず、朝の音声応答に必要な最小限のレスポンス契約（例: response_mode や speech-ready を示すメタデータ等）を既存の設計に沿って追加し、既存機能を維持してください。対象は最小限とし、pytestで検証してください。外部APIや新しい依存関係は追加しないでください。'
-      DEV_USER_ID: nightly-worker
+      DEV_INSTRUCTION: 'コントロールタワーAIの完成度を1段階上げてください。既存のAIGateway、AgentRegistry、Supervisor、Routerの責務分離を維持し、ユーザー要求をより安定して適切なAgentへ振り分けるための最小限の改善を実装してください。特に優先順位、未解決要求の安全なfallback、channel-independentなrequest metadataの活用を検討してください。既存のLINE/Voice機能を壊さず、新規依存関係や外部APIを追加しないでください。変更は最小限、テスト可能にしてください。'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,10 +55,10 @@ jobs:
       - name: Record starting commit
         run: echo "START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Run one guarded speaker development task
-        run: python scripts/line_development_worker.py
+      - name: Run one guarded control tower development task
+        run: python scripts/nightly_task_worker.py
 
-      - name: Run guarded autonomous worker
+      - name: Run guarded autonomous self-healing check
         run: python scripts/nightly_worker.py
 
       - name: Push verified nightly commits
