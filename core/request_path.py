@@ -8,7 +8,7 @@ from typing import Any
 from core.langgraph_runtime import CoreGraphState
 from graph.core_graph import build_current_core_graph
 from graph.supervisor import supervisor_node
-from e2e_status import StepTimer
+from e2e_status import StepTimer, record_step
 
 
 def run_core_request(
@@ -29,6 +29,11 @@ def run_core_request(
     }
     if call_mcp_tool is not None:
         initial["call_mcp_tool"] = call_mcp_tool  # type: ignore[typeddict-item]
+
+    # LINE input is recorded at the actual channel-to-Core handoff, before any
+    # Core/Agent work begins. Non-LINE channels do not affect the LINE E2E path.
+    if channel == "line":
+        record_step("line_in", True, http_status=200, error_location="core/request_path.line_input")
 
     with StepTimer("core") as core_timer:
         try:
