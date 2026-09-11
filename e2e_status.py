@@ -9,12 +9,7 @@ from datetime import datetime, timezone
 
 from db import get_conn
 
-STEP_ORDER = [
-    "line_in",
-    "core",
-    "agent",
-    "line_out",
-]
+STEP_ORDER = ["line_in", "core", "agent", "line_out"]
 
 STEP_LABELS = {
     "line_in": "LINE",
@@ -39,10 +34,7 @@ AUXILIARY_STEP_LABELS = {
     "internal_push": "/internal/push",
 }
 
-LEGACY_ALIASES = {
-    "line_bot": "line_out",
-}
-
+LEGACY_ALIASES = {"line_bot": "line_out"}
 ALL_STEP_KEYS = set(STEP_ORDER) | set(AUXILIARY_STEP_ORDER) | set(LEGACY_ALIASES)
 STEP_TIMEOUT_SEC = 90
 
@@ -101,30 +93,21 @@ def init_e2e_table():
                 )
                 """
             )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_e2e_log_created_at ON e2e_log(created_at)"
-            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_e2e_log_created_at ON e2e_log(created_at)")
     except Exception as e:
         print("[E2E] init_e2e_table error:", type(e).__name__)
 
 
 def _safe_error(error):
-    """Return a non-sensitive error category for observability storage."""
+    """Return a stable, non-sensitive category for observability storage."""
     if error is None:
         return None
     if isinstance(error, str):
-        return error
+        return "error"
     return type(error).__name__
 
 
-def record_step(
-    step_key,
-    success,
-    http_status=None,
-    response_time_ms=None,
-    error=None,
-    error_location=None,
-):
+def record_step(step_key, success, http_status=None, response_time_ms=None, error=None, error_location=None):
     """Record one step. Monitoring failures never break application traffic."""
     if step_key not in ALL_STEP_KEYS:
         print("[E2E] unknown step_key")
@@ -137,10 +120,7 @@ def record_step(
 
     try:
         with get_conn() as conn:
-            row = conn.execute(
-                "SELECT step_key FROM e2e_steps WHERE step_key=?", (step_key,)
-            ).fetchone()
-
+            row = conn.execute("SELECT step_key FROM e2e_steps WHERE step_key=?", (step_key,)).fetchone()
             if row is None:
                 conn.execute(
                     """
@@ -150,17 +130,8 @@ def record_step(
                         last_error, last_error_location, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (
-                        step_key,
-                        status,
-                        now if success else None,
-                        now if not success else None,
-                        http_status,
-                        response_time_ms,
-                        safe_error,
-                        error_location,
-                        now,
-                    ),
+                    (step_key, status, now if success else None, now if not success else None,
+                     http_status, response_time_ms, safe_error, error_location, now),
                 )
             elif success:
                 conn.execute(
@@ -181,16 +152,7 @@ def record_step(
                         last_error_location=?, updated_at=?
                     WHERE step_key=?
                     """,
-                    (
-                        status,
-                        now,
-                        http_status,
-                        response_time_ms,
-                        safe_error,
-                        error_location,
-                        now,
-                        step_key,
-                    ),
+                    (status, now, http_status, response_time_ms, safe_error, error_location, now, step_key),
                 )
 
             conn.execute(
@@ -200,14 +162,7 @@ def record_step(
                     error, error_location
                 ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    step_key,
-                    status,
-                    http_status,
-                    response_time_ms,
-                    safe_error,
-                    error_location,
-                ),
+                (step_key, status, http_status, response_time_ms, safe_error, error_location),
             )
     except Exception as e:
         print("[E2E] record_step error:", type(e).__name__)
@@ -232,12 +187,7 @@ class StepTimer:
         if self._done:
             return
         self._done = True
-        record_step(
-            self.step_key,
-            True,
-            http_status=http_status,
-            response_time_ms=self._elapsed_ms(),
-        )
+        record_step(self.step_key, True, http_status=http_status, response_time_ms=self._elapsed_ms())
 
     def fail(self, http_status=None, error=None, error_location=None):
         if self._done:
@@ -350,9 +300,9 @@ def get_e2e_status():
     steps = _get_all_steps()
     line_in = steps.get("line_in")
     cycle_start = _parse_ts(line_in.get("updated_at")) if line_in else None
-
     primary_steps = _evaluate_path(STEP_ORDER, steps, cycle_start)
     primary_errors = {"error", "stop_timeout"}
+
     if cycle_start is None:
         overall = "unknown"
     elif any(step["state"] in primary_errors for step in primary_steps):
@@ -363,16 +313,16 @@ def get_e2e_status():
         overall = "unknown"
 
     auxiliary_steps = [
-        _step_payload(key, "ok" if steps.get(key, {}).get("status") == "ok" else "error" if steps.get(key, {}).get("status") == "error" else "unknown", steps.get(key))
+        _step_payload(
+            key,
+            "ok" if steps.get(key, {}).get("status") == "ok" else
+            "error" if steps.get(key, {}).get("status") == "error" else "unknown",
+            steps.get(key),
+        )
         for key in AUXILIARY_STEP_ORDER
     ]
 
-    return {
-        "overall": overall,
-        "cycle_start": _iso(cycle_start),
-        "steps": primary_steps,
-        "auxiliary": auxiliary_steps,
-    }
+    return {"overall": overall, "cycle_start": _iso(cycle_start), "steps": primary_steps, "auxiliary": auxiliary_steps}
 
 
 def get_last_success():
