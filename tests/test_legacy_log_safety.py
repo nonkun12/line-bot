@@ -11,7 +11,7 @@ def test_legacy_generate_reply_does_not_log_raw_message_or_result():
     assert 'print("MESSAGE DEBUG:", repr(message), type(message))' not in source
     assert "traceback.print_exc()" not in source
     assert "print(result)" not in source
-    assert 'print("===== GENERATE_REPLY: received ===")' in source
+    assert 'print("=== GENERATE_REPLY: received ===")' in source
     assert 'print("===== AFTER GRAPH.INVOKE: completed =====")' in source
 
 
