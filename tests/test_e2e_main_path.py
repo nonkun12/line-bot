@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 import e2e_status
+import core.request_path as request_path
 
 
 def _row(status="ok", updated_at="2026-09-12T00:00:00+00:00"):
@@ -68,3 +69,45 @@ def test_primary_error_stops_without_using_n8n(monkeypatch):
     assert payload["steps"][1]["key"] == "core"
     assert payload["steps"][1]["state"] == "error"
     assert payload["steps"][2]["state"] == "not_reached"
+
+
+def test_core_then_agent_are_recorded_in_order(monkeypatch):
+    events = []
+
+    class FakeTimer:
+        def __init__(self, step_key):
+            self.step_key = step_key
+
+        def __enter__(self):
+            events.append(("enter", self.step_key))
+            return self
+
+        def ok(self, http_status=None):
+            events.append(("ok", self.step_key))
+
+        def fail(self, http_status=None, error=None, error_location=None):
+            events.append(("fail", self.step_key))
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+    def fake_supervisor(initial):
+        events.append(("supervisor", initial["raw_message"]))
+        return initial
+
+    class FakeGraph:
+        def invoke(self, state):
+            events.append(("agent_invoke", state["raw_message"]))
+            return {"final_reply": "test reply"}
+
+    monkeypatch.setattr(request_path, "StepTimer", FakeTimer)
+    monkeypatch.setattr(request_path, "supervisor_node", fake_supervisor)
+    monkeypatch.setattr(request_path, "build_current_core_graph", lambda: FakeGraph())
+
+    result = request_path.run_core_request("u1", "テスト", channel="line")
+
+    assert result["final_reply"] == "test reply"
+    assert [name for name, _ in events if name in {"supervisor", "agent_invoke"}] == [
+        "supervisor", "agent_invoke"
+    ]
+    assert events.index(("ok", "agent")) < events.index(("ok", "core"))
