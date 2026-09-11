@@ -47,10 +47,11 @@ def voice_api():
             "voice",
             metadata={"route": "voice_api", "input": "speech_to_text"},
         )
-    except Exception as exc:
+    except Exception:
+        current_app.logger.exception("VOICE API ERROR")
         return jsonify({
             "ok": False,
-            "error": f"{type(exc).__name__}: {exc}",
+            "error": "internal server error",
         }), 500
 
     return jsonify({
