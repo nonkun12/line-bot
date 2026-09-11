@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from core.agents import AgentRequest, AgentResponse
+from core.voice import build_speech_result
 
 
 class VoiceAgent:
@@ -25,10 +26,18 @@ class VoiceAgent:
             )
         else:
             text = "🎙️ Voice Agentです。音声入力を受け付けます。"
-        return AgentResponse(
-            text=text,
-            metadata={"feature": self.name, "status": "online", "channel": channel},
-        )
+
+        speech = build_speech_result(text)
+        metadata = {
+            "feature": self.name,
+            "status": "online",
+            "channel": channel,
+            "speech_provider": speech.provider,
+            "speech_available": speech.available,
+        }
+        if speech.mime_type:
+            metadata["speech_mime_type"] = speech.mime_type
+        return AgentResponse(text=text, metadata=metadata)
 
 
 agent = VoiceAgent()
