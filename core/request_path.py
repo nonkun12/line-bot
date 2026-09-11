@@ -15,6 +15,7 @@ def run_core_request(
     message: str,
     *,
     channel: str = "unknown",
+    metadata: Mapping[str, Any] | None = None,
     call_mcp_tool=None,
 ) -> dict[str, Any]:
     """Classify with the existing Supervisor, then execute the selected agent via Core."""
@@ -22,6 +23,7 @@ def run_core_request(
         "user_id": user_id,
         "raw_message": message,
         "channel": channel,
+        "metadata": dict(metadata or {}),
         "agent_results": {},
     }
     if call_mcp_tool is not None:
