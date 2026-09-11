@@ -120,6 +120,19 @@ def _internal_error(logger, message, *, with_user_id=False, user_id=None):
     return jsonify(payload), 500
 
 
+def _get_oracle_n8n_status(oracle_data):
+    """Safely extract n8n status from an optional Oracle status payload."""
+    if not isinstance(oracle_data, dict):
+        return ""
+    docker = oracle_data.get("docker")
+    if not isinstance(docker, dict):
+        return ""
+    n8n = docker.get("n8n")
+    if not isinstance(n8n, dict):
+        return ""
+    return str(n8n.get("status", "")).lower()
+
+
 @dashboard_bp.route("/dashboard")
 @requires_dashboard_access
 def index():
@@ -225,9 +238,8 @@ def system_status():
         e2e = get_e2e_status()
         result["e2e"] = e2e
         step_map = {s["key"]: s for s in e2e.get("steps", [])}
-        oracle_n8n = result.get("oracle", {}).get("data", {}).get("docker", {}).get("n8n", {})
-        oracle_n8n_status = str(oracle_n8n.get("status", "")).lower()
-        n8n_live = bool(oracle_n8n) and oracle_n8n_status in {"running", "up", "restarting"}
+        oracle_n8n_status = _get_oracle_n8n_status(result.get("oracle", {}).get("data"))
+        n8n_live = oracle_n8n_status in {"running", "up", "restarting"}
         result["services"] = {"line_bot": "online", "n8n": "online" if n8n_live or step_map.get("n8n_webhook", {}).get("state") == "ok" else "unknown", "ai_mcp": "unknown"}
     except Exception:
         current_app.logger.exception("DASHBOARD SYSTEM E2E ERROR")
