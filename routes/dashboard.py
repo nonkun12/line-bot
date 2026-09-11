@@ -256,4 +256,13 @@ def system_status():
         result["reminders"] = {"status": "error", "error": "internal server error"}
     if result.get("notes", {}).get("status") == "ok" and result.get("reminders", {}).get("status") == "ok":
         result["services"]["ai_mcp"] = "online"
+
+    # Feature readiness is intentionally declarative until the corresponding
+    # agents/services are implemented. This avoids presenting placeholders as live data.
+    result["features"] = {
+        "english_learning": {"status": "planned", "label": "英語学習"},
+        "stocks": {"status": "planned", "label": "株価"},
+        "ai_news": {"status": "planned", "label": "AI NEWS"},
+        "voice": {"status": "online", "label": "AIスピーカー / Voice", "detail": "voice API available"},
+    }
     return jsonify(result)
