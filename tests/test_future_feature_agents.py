@@ -7,8 +7,8 @@ from core.agents import AgentRequest
 from graph.supervisor import classify_intent
 
 
-def req(text):
-    return AgentRequest(user_id="u", message=text)
+def req(text, channel="unknown"):
+    return AgentRequest(user_id="u", message=text, channel=channel)
 
 
 def test_four_feature_agents_are_registered_contracts():
@@ -115,3 +115,10 @@ def test_stocks_agent_degrades_without_fake_price(monkeypatch):
     response = stocks_agent.handle(req("ticker AAPL"))
     assert response.metadata["status"] == "degraded"
     assert "推測して表示することはしません" in response.text
+
+
+def test_voice_agent_is_online_and_preserves_channel():
+    response = voice_agent.handle(req("AIスピーカーで話して", channel="voice"))
+    assert response.metadata["status"] == "online"
+    assert response.metadata["channel"] == "voice"
+    assert "共通Core" in response.text
