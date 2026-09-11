@@ -12,36 +12,37 @@ from .agents import AgentRequest, AgentResponse
 from .gateway import AIRequest
 
 
-def ai_request_from_state(state: Mapping[str, Any], *, channel: str = "line") -> AIRequest:
-    """Translate legacy AgentState-like data into an AIRequest."""
-    metadata = {
-        "request_id": state.get("request_id"),
-        "intent": state.get("intent"),
-        "next_agent": state.get("next_agent"),
-    }
+def _build_metadata(state: Mapping[str, Any]) -> dict[str, Any]:
+    """Preserve shared metadata while refreshing canonical routing fields."""
+    metadata = dict(state.get("metadata", {}) or {})
+    metadata.update(
+        {
+            "request_id": state.get("request_id"),
+            "intent": state.get("intent"),
+            "next_agent": state.get("next_agent"),
+        }
+    )
     if callable(state.get("call_mcp_tool")):
         metadata["call_mcp_tool"] = state["call_mcp_tool"]
+    return metadata
+
+
+def ai_request_from_state(state: Mapping[str, Any], *, channel: str = "line") -> AIRequest:
+    """Translate legacy AgentState-like data into an AIRequest."""
     return AIRequest(
         user_id=state.get("user_id", ""),
         message=state.get("raw_message", ""),
         channel=channel,
-        metadata=metadata,
+        metadata=_build_metadata(state),
     )
 
 
 def agent_request_from_state(state: Mapping[str, Any]) -> AgentRequest:
     """Translate legacy AgentState-like data into an AgentRequest."""
-    metadata = {
-        "request_id": state.get("request_id"),
-        "intent": state.get("intent"),
-        "next_agent": state.get("next_agent"),
-    }
-    if callable(state.get("call_mcp_tool")):
-        metadata["call_mcp_tool"] = state["call_mcp_tool"]
     return AgentRequest(
         user_id=state.get("user_id", ""),
         message=state.get("raw_message", ""),
-        metadata=metadata,
+        metadata=_build_metadata(state),
     )
 
 
