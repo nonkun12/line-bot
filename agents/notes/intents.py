@@ -20,17 +20,25 @@ def is_note_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
         return True
     if re.search(r"\d+番.*メモ.*削除", text):
         return True
-    # 明示的なメモ保存は最優先。判定ロジックはhandlerと共有する。
     if is_explicit_save_note(text):
         return True
     if text.startswith("メモ"):
         return True
-    # 自然文の予定保存（例: 「明日旅行する予定」）をNotes Agentへ振り分ける。
+
+    # 予定・将来行動の自然文は、質問でなければ保存意図として扱う。
     if "予定" in text:
         has_lookup = any(word in text for word in _LOOKUP_WORDS) or text.endswith("？") or text.endswith("?")
         if not has_lookup:
             return True
-    # 「メモ検索」「メモを探して」など、メモを対象にした照会だけをNotesへ振り分ける。
+
+    # 「明日電話したい」のような明示的な将来行動も自然メモとして扱う。
+    future_markers = ("明日", "あした", "来週", "今度")
+    action_markers = ("したい", "する", "行く", "行きたい", "電話")
+    if any(marker in text for marker in future_markers):
+        has_lookup = any(word in text for word in _LOOKUP_WORDS) or text.endswith("？") or text.endswith("?")
+        if not has_lookup and any(marker in text for marker in action_markers):
+            return True
+
     if "メモ" in text and any(word in text for word in _LOOKUP_WORDS):
         return True
     if get_pending_note_action(user_id or ""):
