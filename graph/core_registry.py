@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from agents.app_development.node import app_development_agent_node
+from agents.debug.node import debug_agent_node
 from agents.github.node import github_agent_node
 from agents.memory.node import memory_agent_node
 from agents.notes.node import notes_agent_node
@@ -17,6 +18,7 @@ from core.legacy_adapter import build_legacy_registry
 
 LEGACY_AGENT_NODES: Mapping[str, Callable[[Mapping[str, Any]], Mapping[str, Any]]] = {
     "app_development": app_development_agent_node,
+    "debug": debug_agent_node,
     "github": github_agent_node,
     "memory": memory_agent_node,
     "notes": notes_agent_node,
@@ -26,8 +28,8 @@ LEGACY_AGENT_NODES: Mapping[str, Callable[[Mapping[str, Any]], Mapping[str, Any]
 }
 
 # Canonical route-key -> LangGraph-node mapping shared by the migration bridge
-# and the legacy graph router. Debug/fallback are not Core-registered agents yet,
-# but remain part of the graph's legacy route surface.
+# and the legacy graph router. The fallback route remains outside the registry
+# because Core owns the final unsupported-message response.
 LEGACY_GRAPH_NODES: Mapping[str, str] = {
     "debug": "debug_agent",
     "app_development": "app_development_agent",
@@ -46,5 +48,8 @@ def build_core_agent_registry():
     return build_legacy_registry(
         LEGACY_AGENT_NODES,
         graph_nodes=LEGACY_GRAPH_NODES,
-        priorities={"app_development": 100},
+        priorities={
+            "app_development": 100,
+            "debug": 90,
+        },
     )
