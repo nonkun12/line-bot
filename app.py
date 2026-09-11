@@ -144,17 +144,29 @@ def _build_line_messages(text):
 
 
 def _line_reply(reply_token, text):
-    with ApiClient(configuration) as api:
-        MessagingApi(api).reply_message(
-            ReplyMessageRequest(reply_token=reply_token, messages=_build_line_messages(text))
-        )
+    with StepTimer("line_out") as timer:
+        try:
+            with ApiClient(configuration) as api:
+                MessagingApi(api).reply_message(
+                    ReplyMessageRequest(reply_token=reply_token, messages=_build_line_messages(text))
+                )
+        except Exception as exc:
+            timer.fail(error=exc, error_location="app._line_reply")
+            raise
+        timer.ok(http_status=200)
 
 
 def _line_push(user_id, text):
-    with ApiClient(configuration) as api:
-        MessagingApi(api).push_message(
-            PushMessageRequest(to=user_id, messages=_build_line_messages(text))
-        )
+    with StepTimer("line_out") as timer:
+        try:
+            with ApiClient(configuration) as api:
+                MessagingApi(api).push_message(
+                    PushMessageRequest(to=user_id, messages=_build_line_messages(text))
+                )
+        except Exception as exc:
+            timer.fail(error=exc, error_location="app._line_push")
+            raise
+        timer.ok(http_status=200)
 
 print("===== APP VERSION CHECK =====")
 print("search_notes enabled")
@@ -328,12 +340,16 @@ def callback():
     print("SIGNATURE:", signature)
     try:
         handler.handle(body, signature)
-        record_step("line_bot", True)
         return "OK", 200
     except Exception as exc:
         print("===== HANDLER ERROR =====")
         print(exc)
-        record_step("line_bot", False, error=str(exc), error_location="callback/handler.handle")
+        record_step(
+            "line_in",
+            False,
+            error=str(exc),
+            error_location="callback/handler.handle",
+        )
         return jsonify({"ok": False, "error": "internal server error"}), 500
 
 
