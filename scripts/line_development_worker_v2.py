@@ -196,7 +196,8 @@ def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
             outputs.append(compile_result.stderr)
         if compile_result.returncode != 0:
             return False, "\n".join(outputs)[-8000:]
-    tests = run([sys.executable, "-m", "pytest", "-q", "tests/test_line_development_worker_v2.py", "--tb=native"], timeout=900)
+    tests = run([sys.executable, "-m", "pytest", "-q", "--tb=native"], timeout=900)
+    outputs.append("full pytest:")
     outputs.extend([tests.stdout, tests.stderr])
     return tests.returncode == 0, "\n".join(outputs)[-8000:]
 
