@@ -74,6 +74,7 @@ from core.channel import handle_channel_request
 from core.gateway import AIGateway
 from core.request_path import run_core_request, extract_core_reply
 from routes.core_api import core_api_bp
+from routes.voice_api import voice_api_bp
 from line_development import extract_development_instruction, dispatch_development_workflow
 
 app = Flask(__name__)
@@ -84,6 +85,7 @@ app.register_blueprint(dashboard_bp)
 from routes.e2e_dashboard import e2e_bp
 app.register_blueprint(e2e_bp)
 app.register_blueprint(core_api_bp)
+app.register_blueprint(voice_api_bp)
 
 @app.route("/health", methods=["GET"])
 def health():
