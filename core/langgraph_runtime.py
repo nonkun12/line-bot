@@ -17,6 +17,7 @@ class CoreGraphState(TypedDict, total=False):
     user_id: str
     raw_message: str
     channel: str
+    metadata: dict[str, Any]
     request_id: str
     intent: str | None
     next_agent: str | None
