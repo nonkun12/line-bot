@@ -14,12 +14,14 @@ def run_core_request(
     user_id: str,
     message: str,
     *,
+    channel: str = "unknown",
     call_mcp_tool=None,
 ) -> dict[str, Any]:
     """Classify with the existing Supervisor, then execute the selected agent via Core."""
     initial: CoreGraphState = {
         "user_id": user_id,
         "raw_message": message,
+        "channel": channel,
         "agent_results": {},
     }
     if call_mcp_tool is not None:
