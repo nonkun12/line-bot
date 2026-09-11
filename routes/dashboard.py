@@ -4,7 +4,7 @@ import hmac
 import json
 import os
 import time
-from flask import Blueprint, render_template, request, jsonify, Response
+from flask import Blueprint, current_app, render_template, request, jsonify, Response
 from db import get_conn
 from mcp_client import call_mcp_tool, parse_mcp_json_list
 from e2e_status import get_e2e_status
@@ -203,8 +203,8 @@ def receive_oracle_status():
                 ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, received_at=excluded.received_at
             """, (json.dumps(payload, ensure_ascii=False), received_at))
         return jsonify({"ok": True})
-    except Exception as e:
-        print("[DASHBOARD] Invalid oracle status:", e)
+    except Exception:
+        current_app.logger.exception("DASHBOARD INVALID ORACLE STATUS")
         return jsonify({"ok": False, "error": "invalid payload"}), 400
 
 
