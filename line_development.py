@@ -1,7 +1,8 @@
 """Explicit LINE -> GitHub Actions development command dispatcher.
 
-Only messages beginning with ``開発:`` or ``dev:`` are accepted. Normal
-conversation and existing GitHub intent routing never enters this path.
+Only messages beginning with ``開発:`` or ``dev:`` are accepted for the
+normal development worker. ``アプリ開発:`` is routed to the dedicated
+autonomous app-development workflow so the two safety models remain separate.
 """
 from __future__ import annotations
 
@@ -13,13 +14,20 @@ import httpx
 
 
 _DEV_PREFIX = re.compile(r"^(?:開発|dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
+_APP_DEV_PREFIX = re.compile(r"^(?:アプリ開発|app-dev|app)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
+_APP_DEV_MARKER = "__APP_DEVELOPMENT__:"
 _MAX_INSTRUCTION_LENGTH = 2000
 _WORKFLOW_FILE = "line-development.yml"
 
 
 def extract_development_instruction(message: str) -> Optional[str]:
     """Return the explicit development instruction, or None for normal text."""
-    match = _DEV_PREFIX.match(str(message or ""))
+    text = str(message or "").strip()
+    app_match = _APP_DEV_PREFIX.match(text)
+    if app_match:
+        requirement = app_match.group(1).strip()
+        return _APP_DEV_MARKER + requirement[:_MAX_INSTRUCTION_LENGTH]
+    match = _DEV_PREFIX.match(text)
     if not match:
         return None
     instruction = match.group(1).strip()
@@ -42,8 +50,13 @@ def dispatch_development_workflow(
     token: str | None = None,
     repository: str | None = None,
 ) -> str:
-    """Dispatch the dedicated GitHub Actions development workflow."""
+    """Dispatch the appropriate dedicated GitHub Actions development workflow."""
     instruction = str(instruction or "").strip()
+    if instruction.startswith(_APP_DEV_MARKER):
+        from app_development import dispatch_app_development_workflow
+        requirement = instruction[len(_APP_DEV_MARKER):].strip()
+        return dispatch_app_development_workflow(requirement, user_id=user_id, token=token)
+
     if not instruction:
         return "開発指示が空です。『開発: ○○を実装して』の形式で指定してください。"
 
