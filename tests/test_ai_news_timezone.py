@@ -37,3 +37,26 @@ def test_news_pubdate_is_rendered_in_japan_time(monkeypatch) -> None:
 
     assert len(items) == 1
     assert items[0]["published"] == "09/12 05:00"
+
+
+def test_news_duplicate_links_are_removed_and_limit_is_applied(monkeypatch) -> None:
+    payload = b"""<?xml version='1.0' encoding='UTF-8'?>
+    <rss><channel>
+      <item><title>One</title><link>https://example.com/a</link></item>
+      <item><title>One duplicate</title><link>https://example.com/a</link></item>
+      <item><title>Two</title><link>https://example.com/b</link></item>
+      <item><title>Three</title><link>https://example.com/c</link></item>
+    </channel></rss>"""
+
+    monkeypatch.setattr(
+        "agents.news.node.urllib.request.urlopen",
+        lambda request, timeout: _FakeResponse(payload),
+    )
+
+    items = AINewsAgent._fetch("artificial intelligence")
+
+    assert [item["link"] for item in items] == [
+        "https://example.com/a",
+        "https://example.com/b",
+        "https://example.com/c",
+    ]

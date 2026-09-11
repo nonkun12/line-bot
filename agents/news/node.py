@@ -58,13 +58,15 @@ class AINewsAgent:
             root = ET.fromstring(response.read())
 
         items: list[dict[str, str]] = []
-        for item in root.findall("./channel/item")[: cls._MAX_ITEMS]:
+        seen: set[str] = set()
+        for item in root.findall("./channel/item"):
             title = cls._clean_text(item.findtext("title", ""))
             link = item.findtext("link", "")
             published = item.findtext("pubDate", "")
-            source = item.findtext("source", "")
-            if not title or not link:
+            source = cls._clean_text(item.findtext("source", ""))
+            if not title or not link or link in seen:
                 continue
+            seen.add(link)
             try:
                 parsed = (
                     parsedate_to_datetime(published)
@@ -76,6 +78,8 @@ class AINewsAgent:
             except (TypeError, ValueError, OverflowError):
                 parsed = published
             items.append({"title": title, "link": link, "published": parsed, "source": source})
+            if len(items) >= cls._MAX_ITEMS:
+                break
         return items
 
     def handle(self, request: AgentRequest) -> AgentResponse:
