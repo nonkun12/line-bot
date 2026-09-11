@@ -19,13 +19,13 @@ from agents.github.intents import is_github_intent
 from agents.sheets.intents import is_sheets_intent
 from agents.debug.intents import is_debug_intent
 from agents.weather.intents import is_weather_intent
+from agents.english.intents import is_english_learning_intent
 
 _DEBUG_PREFIX = "debug"
 
 
 def _is_english_learning(text: str) -> bool:
-    lowered = text.lower()
-    return any(k in lowered for k in ("英語", "英会話", "英単語", "英文", "english", "vocabulary", "speaking", "grammar"))
+    return is_english_learning_intent(text)
 
 
 def _is_stock_request(text: str) -> bool:
