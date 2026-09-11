@@ -85,31 +85,33 @@ def handle_message_event(event):
         # Normal conversation, GitHub lookup commands, and n8n are untouched.
         dev_instruction = extract_development_instruction(text)
         if dev_instruction is not None:
-            try:
-                reply = dispatch_development_workflow(
-                    dev_instruction,
-                    user_id=str(user_id),
-                    token=GITHUB_TOKEN,
-                    repository=AI_REPORT_GITHUB_REPO,
-                )
-            except Exception as exc:
-                import traceback
-                print("===== DEVELOPMENT DISPATCH ERROR =====")
-                traceback.print_exc()
-                reply = f"開発ワークフローの起動処理でエラーが発生しました: {type(exc).__name__}"
+            def _run_development_async():
+                try:
+                    reply = dispatch_development_workflow(
+                        dev_instruction,
+                        user_id=str(user_id),
+                        token=GITHUB_TOKEN,
+                        repository=AI_REPORT_GITHUB_REPO,
+                    )
+                except Exception as exc:
+                    import traceback
+                    print("===== DEVELOPMENT DISPATCH ERROR =====")
+                    traceback.print_exc()
+                    reply = f"開発ワークフローの起動処理でエラーが発生しました: {type(exc).__name__}"
 
-            try:
-                _line_reply(event.reply_token, reply)
-            except Exception as exc:
-                # Reply tokens are short-lived. If the direct reply fails, use
-                # push messaging so the user still receives the development result.
-                print("[LOG] development LINE reply failed; falling back to push:", exc)
                 try:
                     _line_push(str(user_id), reply)
                 except Exception:
-                    print("===== DEVELOPMENT PUSH FALLBACK ERROR =====")
+                    print("===== DEVELOPMENT PUSH ERROR =====")
                     import traceback
                     traceback.print_exc()
+
+            threading = __import__("threading")
+            threading.Thread(
+                target=_run_development_async,
+                daemon=True,
+                name="line-development-dispatch",
+            ).start()
             return
 
         threading = __import__("threading")
@@ -120,7 +122,6 @@ def handle_message_event(event):
         ).start()
     except Exception:
         import traceback
-        print("===== HANDLE ERROR =====")
         traceback.print_exc()
         if user_id:
             try:
