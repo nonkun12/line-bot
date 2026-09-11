@@ -8,6 +8,7 @@ from typing import Any, Mapping, Protocol, Sequence
 class AgentRequest:
     user_id: str
     message: str
+    channel: str = "unknown"
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
