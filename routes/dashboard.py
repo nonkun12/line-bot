@@ -21,12 +21,7 @@ def check_auth(username, password):
 
 
 def authenticate():
-    return Response(
-        "Could not verify your access level for that URL.\n"
-        "You have to login with proper credentials",
-        401,
-        {"WWW-Authenticate": 'Basic realm="Login Required"'},
-    )
+    return Response("Could not verify your access level for that URL.\nYou have to login with proper credentials", 401, {"WWW-Authenticate": 'Basic realm="Login Required"'})
 
 
 def resolve_user_id(request_user_id: str | None) -> str | None:
@@ -257,10 +252,8 @@ def system_status():
     if result.get("notes", {}).get("status") == "ok" and result.get("reminders", {}).get("status") == "ok":
         result["services"]["ai_mcp"] = "online"
 
-    # Feature readiness is intentionally declarative until the corresponding
-    # agents/services are implemented. This avoids presenting placeholders as live data.
     result["features"] = {
-        "english_learning": {"status": "planned", "label": "英語学習"},
+        "english_learning": {"status": "online", "label": "英語学習", "detail": "MVP: lesson / vocabulary / grammar / conversation / quiz / review"},
         "stocks": {"status": "planned", "label": "株価"},
         "ai_news": {"status": "planned", "label": "AI NEWS"},
         "voice": {"status": "online", "label": "AIスピーカー / Voice", "detail": "voice API available"},
