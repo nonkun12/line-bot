@@ -7,6 +7,7 @@ from routes.voice_api import voice_api_bp
 def make_app():
     app = Flask(__name__)
     app.register_blueprint(voice_api_bp)
+    app.ai_gateway = object()
     return app
 
 
@@ -37,18 +38,9 @@ def test_voice_api_rejects_missing_fields(monkeypatch):
 def test_voice_api_uses_shared_gateway(monkeypatch):
     monkeypatch.setenv("INTERNAL_PUSH_KEY", "secret")
     captured = {}
-
-    class FakeGateway:
-        pass
-
-    fake_gateway = FakeGateway()
+    fake_gateway = object()
 
     import routes.voice_api as voice_api
-
-    class FakeApp:
-        ai_gateway = fake_gateway
-
-    monkeypatch.setattr(voice_api, "__import__", lambda name: FakeApp() if name == "app" else __import__(name))
 
     def fake_handle(gateway, user_id, message, channel, *, metadata=None):
         captured.update(
@@ -61,9 +53,10 @@ def test_voice_api_uses_shared_gateway(monkeypatch):
         return AIResponse(text="了解しました", metadata={"source": "test"})
 
     monkeypatch.setattr(voice_api, "handle_channel_request", fake_handle)
-    client = make_app().test_client()
+    app = make_app()
+    app.ai_gateway = fake_gateway
 
-    response = client.post(
+    response = app.test_client().post(
         "/api/voice",
         json={"user_id": "U1", "message": "今日の予定を教えて"},
         headers={"X-Internal-Key": "secret"},
