@@ -266,7 +266,7 @@ def system_status():
 
     result["features"] = {
         "english_learning": {"status": "online", "label": "英語学習", "detail": "MVP: lesson / vocabulary / grammar / conversation / quiz / review"},
-        "stocks": {"status": "planned", "label": "株価"},
+        "stocks": {"status": "online", "label": "株価", "detail": "MVP: Yahoo Finance quote retrieval"},
         "ai_news": {"status": "online", "label": "AI NEWS", "detail": "MVP: Google News RSS headline retrieval"},
         "voice": {"status": "online", "label": "AIスピーカー / Voice", "detail": "voice API available"},
     }
