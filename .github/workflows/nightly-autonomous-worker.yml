@@ -7,7 +7,7 @@ on:
     - cron: '0 18 * * *'
 
 # This workflow intentionally has no push trigger.
-# A repair commit therefore cannot recursively invoke this worker.
+# A repair/development commit therefore cannot recursively invoke this worker.
 permissions:
   contents: write
 
@@ -30,6 +30,9 @@ jobs:
       NIGHTLY_AUTOFIX: 'true'
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
+      NIGHTLY_MODE: 'true'
+      DEV_INSTRUCTION: 'AIスピーカーの朝の秘書機能の土台を1段階実装してください。既存のVoice APIを壊さず、朝の音声応答に必要な最小限のレスポンス契約（例: response_mode や speech-ready を示すメタデータ等）を既存の設計に沿って追加し、既存機能を維持してください。対象は最小限とし、pytestで検証してください。外部APIや新しい依存関係は追加しないでください。'
+      DEV_USER_ID: nightly-worker
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,14 +57,17 @@ jobs:
       - name: Record starting commit
         run: echo "START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
+      - name: Run one guarded speaker development task
+        run: python scripts/line_development_worker.py
+
       - name: Run guarded autonomous worker
         run: python scripts/nightly_worker.py
 
-      - name: Push verified repair commit
+      - name: Push verified nightly commits
         if: success()
         run: |
           if [ "$(git rev-parse HEAD)" = "$START_SHA" ]; then
-            echo 'No new repair commit to push.'
+            echo 'No new nightly commit to push.'
             exit 0
           fi
           git push origin HEAD:main
