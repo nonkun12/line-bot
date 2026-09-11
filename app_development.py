@@ -23,10 +23,18 @@ def extract_app_development_request(message: str) -> str | None:
     return None
 
 
+def _is_authorized_user(user_id: str) -> bool:
+    configured = os.environ.get("DEV_ALLOWED_USER_IDS", "")
+    allowed = {item.strip() for item in configured.split(",") if item.strip()}
+    return bool(allowed) and str(user_id) in allowed
+
+
 def dispatch_app_development_workflow(requirement: str, *, user_id: str, token: str | None = None) -> str:
     requirement = str(requirement or "").strip()
     if not requirement:
         return "アプリ開発の要件が空です。『アプリ開発: ○○を作って』の形式で指定してください。"
+    if not _is_authorized_user(user_id):
+        return "このLINEユーザーにはアプリ開発ワークフローの実行権限がありません。"
     token = token or os.environ.get("GITHUB_TOKEN", "")
     if not token:
         return "アプリ開発を起動できません。GITHUB_TOKENが設定されていません。"
