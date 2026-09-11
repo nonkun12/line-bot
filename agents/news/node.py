@@ -7,8 +7,12 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
+from zoneinfo import ZoneInfo
 
 from core.agents import AgentRequest, AgentResponse
+
+
+_JST = ZoneInfo("Asia/Tokyo")
 
 
 class AINewsAgent:
@@ -62,8 +66,14 @@ class AINewsAgent:
             if not title or not link:
                 continue
             try:
-                parsed = parsedate_to_datetime(published).astimezone().strftime("%m/%d %H:%M") if published else ""
-            except (TypeError, ValueError):
+                parsed = (
+                    parsedate_to_datetime(published)
+                    .astimezone(_JST)
+                    .strftime("%m/%d %H:%M")
+                    if published
+                    else ""
+                )
+            except (TypeError, ValueError, OverflowError):
                 parsed = published
             items.append({"title": title, "link": link, "published": parsed, "source": source})
         return items
