@@ -67,7 +67,10 @@ class AgentRegistry:
             if bool(getattr(agent, "enabled", True)) and agent.can_handle(request)
         ]
         return tuple(
-            sorted(matches, key=lambda agent: getattr(agent, "priority", 0), reverse=True)
+            sorted(
+                matches,
+                key=lambda agent: (-getattr(agent, "priority", 0), getattr(agent, "name", "")),
+            )
         )
 
     def resolve(self, request: AgentRequest) -> Agent | None:
