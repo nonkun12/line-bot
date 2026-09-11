@@ -1,13 +1,15 @@
-"""Stock-query agent with a real market-data retrieval MVP and safe fallback."""
+"""Stock-query agent with real market-data retrieval and safe fallback."""
 from __future__ import annotations
 
 import json
 import re
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
-from core.agents import AgentRequest, AgentResponse
 from agents.stocks.intents import is_stock_intent
+from core.agents import AgentRequest, AgentResponse
 
 
 _TICKER_RE = re.compile(r"(?:銘柄|ticker|コード)\s*[:：]?\s*([A-Za-z]{1,6}[.]?[A-Za-z]{0,3}|\d{4})", re.IGNORECASE)
@@ -17,6 +19,15 @@ _NATURAL_TICKER_RE = re.compile(
     re.IGNORECASE,
 )
 _DEFAULT_TIMEOUT_SEC = 8
+_JST = ZoneInfo("Asia/Tokyo")
+
+
+_MARKET_STATE_LABELS = {
+    "REGULAR": "取引時間中",
+    "PRE": "取引前",
+    "POST": "取引後",
+    "CLOSED": "休場中",
+}
 
 
 class StocksAgent:
@@ -39,6 +50,16 @@ class StocksAgent:
     def _display_ticker(ticker: str) -> str:
         return ticker[:-2] if ticker.endswith(".T") else ticker
 
+    @staticmethod
+    def _format_market_time(value: object) -> str | None:
+        if not isinstance(value, (int, float)):
+            return None
+        try:
+            dt = datetime.fromtimestamp(value, tz=timezone.utc).astimezone(_JST)
+        except (OverflowError, OSError, ValueError):
+            return None
+        return dt.strftime("%Y-%m-%d %H:%M JST")
+
     @classmethod
     def _fetch_quote(cls, ticker: str) -> dict[str, object]:
         encoded = urllib.parse.quote(ticker, safe=".")
@@ -56,15 +77,19 @@ class StocksAgent:
         previous = meta.get("previousClose")
         if not isinstance(price, (int, float)):
             indicators = data.get("indicators", {})
-            closes = indicators.get("quote", [{}])[0].get("close", []) if isinstance(indicators, dict) else []
+            quotes = indicators.get("quote", []) if isinstance(indicators, dict) else []
+            closes = quotes[0].get("close", []) if quotes and isinstance(quotes[0], dict) else []
             numeric_closes = [v for v in closes if isinstance(v, (int, float))]
             price = numeric_closes[-1] if numeric_closes else None
         if not isinstance(price, (int, float)):
             raise ValueError("quote price unavailable")
         change = price - previous if isinstance(previous, (int, float)) else None
+        change = round(change, 10) if change is not None else None
         change_pct = (change / previous * 100) if change is not None and previous else None
+        change_pct = round(change_pct, 10) if change_pct is not None else None
         currency = str(meta.get("currency") or "")
         market_time = meta.get("regularMarketTime")
+        market_state = str(meta.get("marketState") or "").upper() or None
         return {
             "ticker": cls._display_ticker(ticker),
             "price": float(price),
@@ -73,6 +98,8 @@ class StocksAgent:
             "change_pct": float(change_pct) if change_pct is not None else None,
             "currency": currency,
             "market_time": market_time,
+            "market_time_jst": cls._format_market_time(market_time),
+            "market_state": market_state,
         }
 
     def handle(self, request: AgentRequest) -> AgentResponse:
@@ -115,11 +142,16 @@ class StocksAgent:
             if isinstance(change_pct, (int, float)):
                 change_text += f" ({sign}{change_pct:.2f}%)"
 
+        market_state = quote.get("market_state")
+        state_label = _MARKET_STATE_LABELS.get(str(market_state), "")
+        state_text = f"\n市場状態: {state_label}" if state_label else ""
+        time_text = f"\n基準時刻: {quote['market_time_jst']}" if quote.get("market_time_jst") else ""
+
         return AgentResponse(
             text=(
                 f"📈 {quote['ticker']}\n"
                 f"現在値: {quote['price']:.2f}{unit}"
-                f"{change_text}\n"
+                f"{change_text}{state_text}{time_text}\n"
                 "市場データ: Yahoo Finance"
             ),
             metadata={"feature": self.name, "status": "online", **quote},
