@@ -47,7 +47,6 @@ def classify_intent(raw_message: str, user_id: str | None = None) -> str:
     """メッセージ内容からintentを判定する。"""
     text = (raw_message or "").strip()
     print("===== SUPERVISOR =====")
-    print("RAW:", text)
 
     if text.startswith(_DEBUG_PREFIX):
         return "debug"
