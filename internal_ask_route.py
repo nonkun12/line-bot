@@ -66,8 +66,16 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         if not user_id or message is None:
             return jsonify({"ok": False, "error": "user_id and message are required"}), 400
         try:
+            # Use the same LINE-safe message construction path as normal replies.
+            from app import _build_line_messages
+
             with ApiClient(configuration) as api:
-                MessagingApi(api).push_message(PushMessageRequest(to=str(user_id), messages=[TextMessage(text=str(message))]))
+                MessagingApi(api).push_message(
+                    PushMessageRequest(
+                        to=str(user_id),
+                        messages=_build_line_messages(str(message)),
+                    )
+                )
             return jsonify({"ok": True})
         except Exception as exc:
             print("INTERNAL PUSH ERROR:", exc)
