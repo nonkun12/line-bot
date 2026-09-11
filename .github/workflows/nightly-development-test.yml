@@ -2,23 +2,44 @@ name: Nightly Development Test
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
   schedule:
+    # 03:00 JST every day.
     - cron: '0 18 * * *'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  smoke-test:
+  nightly-development:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
+      CHANNEL_SECRET: ${{ secrets.CHANNEL_SECRET }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      MCP_SERVER_URL: ${{ secrets.MCP_SERVER_URL }}
+      MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
+      INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NIGHTLY_AUTOFIX: 'true'
+      AUTO_APPLY_PATCH: 'false'
+      AUTO_DEPLOY: 'false'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
       - name: Run safe smoke test
         run: python scripts/nightly_development_test.py
+
+      - name: Run nightly autonomous development worker
+        run: python scripts/nightly_worker.py
