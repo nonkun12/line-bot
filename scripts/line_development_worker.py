@@ -201,10 +201,17 @@ If the instruction requires no code or documentation change, return exactly: NO_
         print("Tests passed but no files changed.")
         return 0
 
+    if not nightly_mode:
+        branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
+        branch_check = run(["git", "checkout", "-b", branch])
+        if branch_check.returncode != 0:
+            print(branch_check.stderr[-2000:])
+            return 1
+
     run(["git", "config", "user.name", "line-development-worker"])
     run(["git", "config", "user.email", "line-development-worker@users.noreply.github.com"])
     run(["git", "add", "--", *chosen])
-    commit = run(["git", "commit", "-m", "feat: nightly autonomous development task"])
+    commit = run(["git", "commit", "-m", "feat: nightly autonomous development task"] if nightly_mode else ["git", "commit", "-m", "feat: implement LINE development request"])
     if commit.returncode != 0:
         print(commit.stderr[-2000:])
         return 1
@@ -214,11 +221,6 @@ If the instruction requires no code or documentation change, return exactly: NO_
         print(test_output[-4000:])
         return 0
 
-    branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
-    branch_check = run(["git", "checkout", "-b", branch])
-    if branch_check.returncode != 0:
-        print(branch_check.stderr[-2000:])
-        return 1
     push = run(["git", "push", "--set-upstream", "origin", branch])
     if push.returncode != 0:
         print(push.stderr[-2000:])
