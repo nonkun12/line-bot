@@ -105,7 +105,16 @@ def init_e2e_table():
                 "CREATE INDEX IF NOT EXISTS idx_e2e_log_created_at ON e2e_log(created_at)"
             )
     except Exception as e:
-        print("[E2E] init_e2e_table error:", e)
+        print("[E2E] init_e2e_table error:", type(e).__name__)
+
+
+def _safe_error(error):
+    """Return a non-sensitive error category for observability storage."""
+    if error is None:
+        return None
+    if isinstance(error, str):
+        return "error"
+    return type(error).__name__
 
 
 def record_step(
@@ -118,12 +127,13 @@ def record_step(
 ):
     """Record one step. Monitoring failures never break application traffic."""
     if step_key not in ALL_STEP_KEYS:
-        print(f"[E2E] unknown step_key: {step_key}")
+        print("[E2E] unknown step_key")
         return
 
     step_key = _canonical_step_key(step_key)
     status = "ok" if success else "error"
     now = _now()
+    safe_error = _safe_error(error)
 
     try:
         with get_conn() as conn:
@@ -147,7 +157,7 @@ def record_step(
                         now if not success else None,
                         http_status,
                         response_time_ms,
-                        error,
+                        safe_error,
                         error_location,
                         now,
                     ),
@@ -176,7 +186,7 @@ def record_step(
                         now,
                         http_status,
                         response_time_ms,
-                        str(error) if error is not None else None,
+                        safe_error,
                         error_location,
                         now,
                         step_key,
@@ -195,12 +205,12 @@ def record_step(
                     status,
                     http_status,
                     response_time_ms,
-                    str(error) if error is not None else None,
+                    safe_error,
                     error_location,
                 ),
             )
     except Exception as e:
-        print("[E2E] record_step error:", e)
+        print("[E2E] record_step error:", type(e).__name__)
 
 
 class StepTimer:
@@ -260,7 +270,7 @@ def _get_all_steps():
                 """
             ).fetchall()
     except Exception as e:
-        print("[E2E] _get_all_steps error:", e)
+        print("[E2E] _get_all_steps error:", type(e).__name__)
         return {}
 
     return {
@@ -302,6 +312,7 @@ def _step_payload(step_key, state, row=None):
         "last_response_time_ms": row.get("last_response_time_ms"),
         "last_error": row.get("last_error"),
         "last_error_location": row.get("last_error_location"),
+        "updated_at": _iso(row.get("updated_at")),
     }
 
 
@@ -405,7 +416,7 @@ def get_error_log(limit=30):
                 (limit,),
             ).fetchall()
     except Exception as e:
-        print("[E2E] get_error_log error:", e)
+        print("[E2E] get_error_log error:", type(e).__name__)
         return []
 
     return [
