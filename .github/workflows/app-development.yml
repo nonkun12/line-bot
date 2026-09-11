@@ -1,0 +1,116 @@
+name: AI App Development
+
+on:
+  workflow_dispatch:
+    inputs:
+      requirement:
+        description: "App requirement from LINE"
+        required: true
+        type: string
+      user_id:
+        description: "LINE user ID"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ai-app-development-${{ github.event.inputs.user_id }}
+  cancel-in-progress: false
+
+jobs:
+  develop-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run autonomous app development worker
+        id: app_development
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
+          APP_REQUIREMENT: ${{ github.event.inputs.requirement }}
+          APP_USER_ID: ${{ github.event.inputs.user_id }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DEV_AI_MODEL: openai/gpt-oss-20b
+        run: python scripts/app_development_worker.py
+
+      - name: Notify LINE of app development result
+        if: always()
+        env:
+          INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
+          APP_USER_ID: ${{ github.event.inputs.user_id }}
+          APP_REQUIREMENT: ${{ github.event.inputs.requirement }}
+          APP_OUTCOME: ${{ steps.app_development.outcome }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          key = os.environ.get("INTERNAL_PUSH_KEY", "")
+          user_id = os.environ.get("APP_USER_ID", "")
+          requirement = os.environ.get("APP_REQUIREMENT", "")
+          outcome = os.environ.get("APP_OUTCOME", "unknown")
+          run_url = os.environ.get("RUN_URL", "")
+
+          if not key or not user_id:
+              print("LINE notification skipped: required environment missing")
+              raise SystemExit(0)
+
+          if outcome == "success":
+              message = (
+                  "✅ AIアプリ開発が完了しました。\n"
+                  f"要件: {requirement}\n"
+                  "アプリ生成・テスト・PR作成まで完了しました。\n"
+                  f"実行結果: {run_url}"
+              )
+          else:
+              message = (
+                  "❌ AIアプリ開発が失敗しました。\n"
+                  f"要件: {requirement}\n"
+                  f"失敗地点: GitHub Actions（{outcome}）\n"
+                  f"詳細: {run_url}"
+              )
+
+          payload = json.dumps({"user_id": user_id, "message": message}).encode("utf-8")
+          request = urllib.request.Request(
+              "https://line-bot-yvea.onrender.com/internal/push",
+              data=payload,
+              headers={"Content-Type": "application/json", "x-internal-key": key},
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=15) as response:
+                  print(f"LINE notification HTTP {response.status}: {response.read().decode('utf-8', errors='replace')}")
+          except Exception as exc:
+              print(f"LINE notification failed: {type(exc).__name__}: {exc}")
+
+      - name: Upload app development log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-development-log-${{ github.run_id }}
+          path: |
+            *.log
+            pytest*.txt
+          if-no-files-found: ignore
