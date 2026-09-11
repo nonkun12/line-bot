@@ -3,9 +3,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const qs = new URLSearchParams(location.search);
   const authQuery = () => { const p = new URLSearchParams(); if (userId) p.set('user_id', userId); if (qs.get('ts')) p.set('ts', qs.get('ts')); if (qs.get('token')) p.set('token', qs.get('token')); return p.toString() ? '?' + p.toString() : ''; };
   const api = path => path + authQuery();
-  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#039;');
   const cls = s => s === 'online' || s === 'ok' ? 'online' : s === 'stale' ? 'stale' : s === 'offline' || s === 'error' ? 'offline' : 'unknown';
-  const label = s => ({online:'🟢 正常',ok:'🟢 正常',stale:'🟡 遅延',offline:'🔴 オフライン',error:'🔴 エラー',unknown:'⚪ 未確認'})[s] || '⚪ 未確認';
+  const label = s => ({online:'🟢 正常',ok:'🟢 正常',stale:'🟡 遅延',offline:'🔴 オフライン',error:'🔴 エラー',planned:'🔵 開発予定',unknown:'⚪ 未確認'})[s] || '⚪ 未確認';
   const setStatus = (id, s) => { const el=document.getElementById(id); if(el) el.innerHTML=`<span class="status-dot ${cls(s)}"></span>${label(s)}`; };
 
   async function fetchSystem() {
@@ -18,6 +18,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if(o.data){ const m=o.data.memory||{}, disk=o.data.disk||{}; const gb=x=>(Number(x||0)/1073741824).toFixed(1); document.getElementById('oracleDetails').textContent=`Memory ${gb(m.used_bytes)} / ${gb(m.total_bytes)} GB ・ Disk ${disk.used_percent ?? '--'}%`; document.getElementById('oracleN8n').textContent=`Uptime ${o.data.uptime_sec != null ? Math.floor(o.data.uptime_sec/3600)+'h' : '--'} ・ Load ${(o.data.load||[]).join(' / ') || '--'}`; const n=o.data.docker?.n8n; document.getElementById('n8nContainer').textContent=n ? `${n.name} ・ ${n.status}` : 'n8nコンテナ未確認'; setStatus('n8nStatus', d.services?.n8n || (n ? 'online' : 'unknown')); } else { document.getElementById('oracleDetails').textContent='Oracleエージェント未接続'; document.getElementById('oracleN8n').textContent='初回データ待ち'; document.getElementById('n8nContainer').textContent='Oracleエージェント未接続のため確認不可'; setStatus('n8nStatus', d.services?.n8n || 'unknown'); }
       setStatus('dbStatus', d.notes?.status === 'ok' ? 'online' : 'error'); document.getElementById('dbStatus').textContent=`Database: ${d.notes?.status === 'ok' ? 'online' : 'error'}`;
       setStatus('aiStatus', d.services?.ai_mcp || 'unknown'); document.getElementById('aiDetails').textContent='LangGraph / MCP';
+      const features=d.features||{};
+      const featureOrder=[['english_learning','英語学習','学習・進捗・復習'],['stocks','株価','監視銘柄・価格・変動'],['ai_news','AI NEWS','取得・要約・配信'],['voice','AIスピーカー / Voice','音声入力・音声出力']];
+      const featureGrid=document.getElementById('featureGrid');
+      featureGrid.innerHTML=featureOrder.map(([key,title,baseDetail])=>{const f=features[key]||{}, status=f.status||'unknown'; return `<div class="system-card"><div class="system-card-title">${key==='english_learning'?'🇬🇧 ':key==='stocks'?'📈 ':key==='ai_news'?'📰 ':'🎙️ '}${esc(title)}</div><div class="system-status">${label(status)}</div><div class="system-details">${esc(f.detail||baseDetail)}</div></div>`;}).join('');
       const steps=d.e2e?.steps||[]; const flow=document.getElementById('e2eFlow'); flow.innerHTML=steps.map(s=>`<div class="system-card"><div class="system-card-title">${esc(s.label)}</div><div class="system-status">${label(s.state)}</div><div class="system-details">${s.last_http_status ? 'HTTP '+esc(s.last_http_status) : ''}</div></div>`).join('');
       const e2eOk=steps.filter(s=>s.state==='ok').length;
       document.getElementById('e2eSummary').textContent=steps.length && steps.some(s=>s.state!=='unknown' && s.state!=='not_reached') ? `E2E: ${e2eOk}/${steps.length} OK` : 'E2E: 待機中';
