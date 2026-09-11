@@ -237,8 +237,8 @@ _DELETE_ALL_MEMORY_PATTERN = re.compile(
 def generate_reply(user_id, message):
     print("===== APP VERSION CHECK =====")
     print("GITHUB ROUTE ENABLED")
-    print("=== GENERATE_REPLY ===", repr(message))
-    print("MESSAGE DEBUG:", repr(message), type(message))
+    print("=== GENERATE_REPLY: received ===")
+    print("MESSAGE DEBUG: received")
 
     if str(message).strip() == "ダッシュボード":
         ts = int(time.time())
@@ -247,7 +247,7 @@ def generate_reply(user_id, message):
         token = __import__("hmac").new(secret.encode(), payload.encode(), __import__("hashlib").sha256).hexdigest()
         query = urlencode({"user_id": user_id, "ts": ts, "token": token})
         dashboard_url = f"https://line-bot-yvea.onrender.com/dashboard?{query}"
-        print(f"[LOG] generate_reply: dashboard command user_id={user_id!r}")
+        print("[LOG] generate_reply: dashboard command")
         print("[LOG] generate_reply: dashboard route ENABLED")
         return f"ダッシュボードはこちらです。\n{dashboard_url}"
 
@@ -269,12 +269,10 @@ def generate_reply(user_id, message):
         result = _invoke_graph(user_id, message)
     except Exception:
         print("===== GRAPH INVOCATION ERROR =====")
-        import traceback
-        traceback.print_exc()
+        print("graph invocation failed")
         return "AIサービスで一時的な問題が発生しました。少し時間を置いてもう一度お試しください。"
 
-    print("===== AFTER GRAPH.INVOKE =====")
-    print(result)
+    print("===== AFTER GRAPH.INVOKE: completed =====")
     return _extract_graph_reply(result)
 
 
@@ -343,11 +341,11 @@ def callback():
         return "OK", 200
     except Exception as exc:
         print("===== HANDLER ERROR =====")
-        print(exc)
+        print("handler failed")
         record_step(
             "line_in",
             False,
-            error=str(exc),
+            error="handler_failed",
             error_location="callback/handler.handle",
         )
         return jsonify({"ok": False, "error": "internal server error"}), 500
@@ -361,13 +359,13 @@ _user_processing_lock = threading.Lock()
 
 
 def _process_and_reply(event, user_id, text):
-    print(f"[LOG] _process_and_reply called: user_id={user_id}")
+    print("[LOG] _process_and_reply called")
     with _user_processing_lock:
         if user_id not in _user_processing_locks:
             _user_processing_locks[user_id] = threading.Lock()
     user_lock = _user_processing_locks[user_id]
     with user_lock:
-        print(f"[LOG] USER LOCK ACQUIRED: {user_id}")
+        print("[LOG] USER LOCK ACQUIRED")
         if text.strip() == "ダッシュボード":
             ts = int(time.time())
             secret = os.environ.get("DASHBOARD_LINK_SECRET") or os.environ.get("DASHBOARD_PASSWORD") or ""
@@ -387,10 +385,10 @@ def _process_and_reply(event, user_id, text):
             )
             reply = ai_response.text
         except Exception as exc:
-            print("[LOG] Core gateway failed; returning safe reply:", exc)
+            print("[LOG] Core gateway failed; returning safe reply")
             reply = "AIサービスで一時的な問題が発生しました。少し時間を置いてもう一度お試しください。"
         try:
             _line_reply(event.reply_token, reply)
         except Exception as exc:
-            print("[LOG] LINE reply failed; falling back to push:", exc)
+            print("[LOG] LINE reply failed; falling back to push")
             _line_push(user_id, reply)
