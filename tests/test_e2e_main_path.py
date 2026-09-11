@@ -1,5 +1,3 @@
-from datetime import datetime, timezone
-
 import e2e_status
 import core.request_path as request_path
 
