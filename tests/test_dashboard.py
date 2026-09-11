@@ -5,6 +5,7 @@ import pytest
 
 from app import app
 from db import init_db, save_message
+from routes.dashboard import _get_oracle_n8n_status
 
 TEST_USER_ID = "U19391b0b93be2f4d94284361153919ce"
 
@@ -51,10 +52,19 @@ def test_dashboard_system_exposes_four_feature_readiness(auth_headers):
     data = response.get_json()
     assert data["ok"] is True
     features = data["features"]
-    assert features["english_learning"]["status"] == "planned"
+    assert features["english_learning"]["status"] == "online"
+    assert "MVP" in features["english_learning"]["detail"]
     assert features["stocks"]["status"] == "planned"
     assert features["ai_news"]["status"] == "planned"
     assert features["voice"]["status"] == "online"
+
+
+def test_dashboard_oracle_n8n_status_handles_missing_payload():
+    assert _get_oracle_n8n_status(None) == ""
+    assert _get_oracle_n8n_status({}) == ""
+    assert _get_oracle_n8n_status({"docker": None}) == ""
+    assert _get_oracle_n8n_status({"docker": {"n8n": None}}) == ""
+    assert _get_oracle_n8n_status({"docker": {"n8n": {"status": "RUNNING"}}}) == "running"
 
 
 def test_dashboard_notes_api_user_id_resolution_from_db(auth_headers, monkeypatch):
