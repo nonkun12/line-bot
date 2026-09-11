@@ -41,7 +41,7 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
             try:
                 reply = generate_reply_func(user_id, message)
             except Exception:
-                print("INTERNAL ASK ERROR")
+                app.logger.exception("INTERNAL ASK ERROR")
                 ai_timer.fail(error="internal server error", error_location="generate_reply")
                 ask_timer.fail(http_status=500, error="internal server error", error_location="internal_ask")
                 return jsonify({"ok": False, "error": "internal server error"}), 500
@@ -69,7 +69,7 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
                 )
             return jsonify({"ok": True})
         except Exception:
-            print("INTERNAL PUSH ERROR")
+            app.logger.exception("INTERNAL PUSH ERROR")
             return jsonify({"ok": False, "error": "internal server error"}), 500
 
     @app.route("/internal/create-pr", methods=["POST"])
@@ -88,6 +88,8 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
             return jsonify({"ok": False, "error": "head is required"}), 400
         if not token:
             return jsonify({"ok": False, "error": "GH_PR_TOKEN is not configured"}), 500
+        if not repository or repository.count("/") != 1 or any(part.strip() == "" for part in repository.split("/")):
+            return jsonify({"ok": False, "error": "invalid repository"}), 400
 
         url = f"https://api.github.com/repos/{repository}/pulls"
         headers = {
@@ -99,13 +101,19 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         try:
             response = httpx.post(url, json=payload, headers=headers, timeout=15.0)
         except Exception:
+            app.logger.exception("INTERNAL CREATE PR REQUEST ERROR")
             return jsonify({"ok": False, "error": "GitHub request failed"}), 502
 
         if response.status_code in (200, 201):
-            result = response.json()
+            try:
+                result = response.json()
+            except Exception:
+                app.logger.exception("INTERNAL CREATE PR INVALID JSON")
+                return jsonify({"ok": False, "error": "invalid GitHub response"}), 502
             return jsonify({"ok": True, "number": result.get("number"), "url": result.get("html_url")}), 201
         if response.status_code == 422:
             return jsonify({"ok": False, "error": "GitHub rejected PR creation"}), 422
+        app.logger.warning("GitHub PR creation failed: status=%s", response.status_code)
         return jsonify({"ok": False, "error": "GitHub request failed"}), 502
 
     return internal_ask
