@@ -9,12 +9,11 @@ from datetime import datetime, timezone
 
 from db import get_conn
 
-# Primary path shown by the E2E dashboard.
 STEP_ORDER = [
-    "line_in",   # LINE webhook received
-    "core",      # channel-independent AI Core / Gateway
-    "agent",     # selected Agent execution
-    "line_out",  # LINE reply/push sent
+    "line_in",
+    "core",
+    "agent",
+    "line_out",
 ]
 
 STEP_LABELS = {
@@ -24,8 +23,6 @@ STEP_LABELS = {
     "line_out": "LINE",
 }
 
-# Auxiliary/legacy route. These steps are recorded for diagnostics only and
-# must not make the primary E2E route depend on n8n.
 AUXILIARY_STEP_ORDER = [
     "n8n_webhook",
     "n8n_workflow",
@@ -42,9 +39,6 @@ AUXILIARY_STEP_LABELS = {
     "internal_push": "/internal/push",
 }
 
-# Compatibility aliases for existing instrumentation. They are deliberately
-# mapped outside the primary route so old n8n traffic cannot become the main
-# E2E path again.
 LEGACY_ALIASES = {
     "line_bot": "line_in",
 }
@@ -127,6 +121,7 @@ def record_step(
         print(f"[E2E] unknown step_key: {step_key}")
         return
 
+    legacy_line_bot = step_key == "line_bot"
     step_key = _canonical_step_key(step_key)
     status = "ok" if success else "error"
     now = _now()
@@ -207,6 +202,21 @@ def record_step(
             )
     except Exception as e:
         print("[E2E] record_step error:", e)
+        return
+
+    # The existing /callback handler records legacy "line_bot" only after the
+    # LINE event handler completes. A successful completion means the handler
+    # reached its LINE reply/push send path, so mirror that success to line_out.
+    # A failed callback is intentionally not mirrored: signature/parse/handler
+    # failures do not prove that a LINE response was sent.
+    if legacy_line_bot and success:
+        record_step(
+            "line_out",
+            True,
+            http_status=http_status,
+            response_time_ms=response_time_ms,
+            error_location="callback/handler.handle/completed",
+        )
 
 
 class StepTimer:
