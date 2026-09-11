@@ -117,6 +117,14 @@ def _require_user_id(user_id):
     return None
 
 
+def _internal_error(logger, message, *, with_user_id=False, user_id=None):
+    logger.exception(message)
+    payload = {"ok": False, "error": "internal server error"}
+    if with_user_id and user_id:
+        payload["user_id"] = user_id
+    return jsonify(payload), 500
+
+
 @dashboard_bp.route("/dashboard")
 @requires_dashboard_access
 def index():
@@ -137,9 +145,8 @@ def get_notes():
     try:
         notes = parse_mcp_json_list(call_mcp_tool("list_notes", {"user_id": user_id}))
         return jsonify({"ok": True, "notes": notes, "user_id": user_id})
-    except Exception as e:
-        print("[DASHBOARD] Failed to list notes via MCP:", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+    except Exception:
+        return _internal_error(current_app.logger, "DASHBOARD LIST NOTES ERROR", with_user_id=True, user_id=user_id)
 
 
 @dashboard_bp.route("/api/dashboard/notes", methods=["POST"])
@@ -159,9 +166,8 @@ def add_note():
     try:
         result = call_mcp_tool("save_note", {"user_id": user_id, "title": str(title).strip(), "body": str(body).strip(), "category": str(category).strip() if category else "一般"})
         return jsonify({"ok": True, "result": result, "user_id": user_id})
-    except Exception as e:
-        print("[DASHBOARD] Failed to save note via MCP:", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
+    except Exception:
+        return _internal_error(current_app.logger, "DASHBOARD SAVE NOTE ERROR", with_user_id=True, user_id=user_id)
 
 
 @dashboard_bp.route("/api/dashboard/notes/<note_id>", methods=["DELETE"])
@@ -176,9 +182,8 @@ def delete_note(note_id):
     try:
         result = call_mcp_tool("delete_note", {"user_id": user_id, "id": str(note_id).strip()})
         return jsonify({"ok": True, "result": result, "user_id": user_id})
-    except Exception as e:
-        print("[DASHBOARD] Failed to delete note via MCP:", e)
-        return jsonify({"ok": False, "error": str(e), "user_id": user_id}), 500
+    except Exception:
+        return _internal_error(current_app.logger, "DASHBOARD DELETE NOTE ERROR", with_user_id=True, user_id=user_id)
 
 
 @dashboard_bp.route("/internal/oracle/status", methods=["POST"])
@@ -218,8 +223,9 @@ def system_status():
             result["oracle"] = {"status": state, "age_sec": round(age), "last_seen": row[1], "data": payload}
         else:
             result["oracle"] = {"status": "offline", "age_sec": None, "data": None}
-    except Exception as e:
-        result["oracle"] = {"status": "error", "error": str(e)}
+    except Exception:
+        current_app.logger.exception("DASHBOARD SYSTEM ORACLE ERROR")
+        result["oracle"] = {"status": "error"}
     try:
         e2e = get_e2e_status()
         result["e2e"] = e2e
@@ -228,8 +234,9 @@ def system_status():
         oracle_n8n_status = str(oracle_n8n.get("status", "")).lower()
         n8n_live = bool(oracle_n8n) and oracle_n8n_status in {"running", "up", "restarting"}
         result["services"] = {"line_bot": "online", "n8n": "online" if n8n_live or step_map.get("n8n_webhook", {}).get("state") == "ok" else "unknown", "ai_mcp": "unknown"}
-    except Exception as e:
-        result["e2e"] = {"error": str(e)}
+    except Exception:
+        current_app.logger.exception("DASHBOARD SYSTEM E2E ERROR")
+        result["e2e"] = {"error": "internal server error"}
         result["services"] = {"line_bot": "online", "n8n": "unknown", "ai_mcp": "unknown"}
     user_id = resolve_user_id(request.args.get("user_id"))
     error = _require_user_id(user_id)
@@ -238,13 +245,15 @@ def system_status():
     try:
         notes = parse_mcp_json_list(call_mcp_tool("list_notes", {"user_id": user_id}))
         result["notes"] = {"status": "ok", "count": len(notes), "latest": notes[:5]}
-    except Exception as e:
-        result["notes"] = {"status": "error", "error": str(e)}
+    except Exception:
+        current_app.logger.exception("DASHBOARD SYSTEM NOTES ERROR")
+        result["notes"] = {"status": "error", "error": "internal server error"}
     try:
         reminders = parse_mcp_json_list(call_mcp_tool("list_reminders", {"user_id": user_id}))
         result["reminders"] = {"status": "ok", "count": len(reminders), "latest": reminders[:5]}
-    except Exception as e:
-        result["reminders"] = {"status": "error", "error": str(e)}
+    except Exception:
+        current_app.logger.exception("DASHBOARD SYSTEM REMINDERS ERROR")
+        result["reminders"] = {"status": "error", "error": "internal server error"}
     if result.get("notes", {}).get("status") == "ok" and result.get("reminders", {}).get("status") == "ok":
         result["services"]["ai_mcp"] = "online"
     return jsonify(result)
