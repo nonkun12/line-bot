@@ -7,7 +7,6 @@ from urllib.parse import urlencode
 
 import httpx
 
-from n8n_delegate import is_ai_app_builder_request, _call_ai_app_builder
 from config import configuration
 from linebot.v3.messaging import ApiClient, MessagingApi, PushMessageRequest, TextMessage
 
@@ -45,10 +44,6 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         if str(message).strip() == "ダッシュボード":
             dashboard_url = _make_dashboard_url(str(user_id))
             return jsonify({"ok": True, "reply": f"ダッシュボードはこちらです。\n{dashboard_url}"})
-        if is_ai_app_builder_request(message):
-            handled, reply_text = _call_ai_app_builder(user_id, message)
-            if handled:
-                return jsonify({"ok": True, "reply": reply_text or ""})
         with StepTimer("internal_ask") as ask_timer, StepTimer("ai_mcp") as ai_timer:
             try:
                 reply = generate_reply_func(user_id, message)
