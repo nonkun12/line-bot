@@ -54,7 +54,8 @@ def test_dashboard_system_exposes_four_feature_readiness(auth_headers):
     features = data["features"]
     assert features["english_learning"]["status"] == "online"
     assert "MVP" in features["english_learning"]["detail"]
-    assert features["stocks"]["status"] == "planned"
+    assert features["stocks"]["status"] == "online"
+    assert "Yahoo Finance" in features["stocks"]["detail"]
     assert features["ai_news"]["status"] == "online"
     assert "RSS" in features["ai_news"]["detail"]
     assert features["voice"]["status"] == "online"
