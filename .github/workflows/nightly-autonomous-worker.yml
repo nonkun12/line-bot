@@ -52,20 +52,32 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Record starting commit
-        run: echo "START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Record task starting commit
+        run: echo "TASK_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Run one guarded control tower development task
         run: python scripts/nightly_task_worker.py
 
+      - name: Push successful development task
+        if: success()
+        run: |
+          if [ "$(git rev-parse HEAD)" = "$TASK_START_SHA" ]; then
+            echo 'No new development commit to push.'
+            exit 0
+          fi
+          git push origin HEAD:main
+
+      - name: Record self-healing starting commit
+        run: echo "HEAL_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Run guarded autonomous self-healing check
         run: python scripts/nightly_worker.py
 
-      - name: Push verified nightly commits
+      - name: Push successful self-healing commit
         if: success()
         run: |
-          if [ "$(git rev-parse HEAD)" = "$START_SHA" ]; then
-            echo 'No new nightly commit to push.'
+          if [ "$(git rev-parse HEAD)" = "$HEAL_START_SHA" ]; then
+            echo 'No new self-healing commit to push.'
             exit 0
           fi
           git push origin HEAD:main
