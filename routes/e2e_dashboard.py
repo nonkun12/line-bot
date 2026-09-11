@@ -79,7 +79,7 @@ def api_services():
         payload = get_e2e_status()
         render_configured = bool(os.environ.get("RENDER_API_KEY"))
         services = {
-            "line_bot": _service_from_step(payload, "line_bot"),
+            "line_bot": _service_from_step(payload, "line_in"),
             "n8n": _service_from_step(payload, "n8n_webhook"),
             "mcp": _service_from_step(payload, "ai_mcp"),
             "ai": _service_from_step(payload, "ai_mcp"),
