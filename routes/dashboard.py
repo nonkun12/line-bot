@@ -44,11 +44,15 @@ def _dashboard_secret() -> str:
 
 def _make_dashboard_token(user_id: str, timestamp: int) -> str:
     secret = _dashboard_secret()
+    if not secret:
+        return ""
     payload = f"{user_id}:{timestamp}"
     return hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
 
 
 def _valid_dashboard_token(user_id: str, timestamp: str, token: str) -> bool:
+    if not _dashboard_secret():
+        return False
     try:
         ts = int(timestamp)
     except (TypeError, ValueError):
