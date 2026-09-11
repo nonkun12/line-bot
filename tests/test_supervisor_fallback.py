@@ -1,6 +1,21 @@
+from core import AgentRegistry, AgentResponse, build_core_graph
 from graph.supervisor import classify_intent, supervisor_node
-from core import AgentRegistry, build_core_graph
-from agents.normal.node import agent as normal_agent
+
+
+class NormalFallbackAgent:
+    name = "normal"
+    description = "Deterministic test-only normal fallback agent."
+    priority = 0
+    enabled = True
+
+    def can_handle(self, request) -> bool:
+        return True
+
+    def handle(self, request) -> AgentResponse:
+        return AgentResponse(text="テスト用normal fallback")
+
+
+normal_agent = NormalFallbackAgent()
 
 
 def test_unsupported_intent_maps_to_normal_agent_and_core_fallback_is_not_used() -> None:
@@ -36,4 +51,5 @@ def test_dynamic_core_graph_routes_unknown_request_to_normal_when_registered() -
 
     assert result["route"] != "core_fallback"
     assert "normal" in result["agent_results"]
-    assert result["final_reply"]
+    assert result["final_reply"] == "テスト用normal fallback"
+    assert result["error"] is None
