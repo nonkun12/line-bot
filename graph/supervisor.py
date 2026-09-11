@@ -12,6 +12,7 @@ LangGraph Phase1: Supervisorノード。
 Phase1では debug のみ Debug Agentへ振り分ける。
 """
 
+from app_development import extract_app_development_request
 from graph.state import AgentState
 from pending_approvals import PendingStatus, get_pending_status
 from agents.notes.intents import is_note_intent
@@ -27,6 +28,7 @@ _DEBUG_PREFIX = "debug"
 
 _INTENT_TO_AGENT = {
     "debug": "debug",
+    "app_development": "app_development",
     "note": "notes",
     "memory": "memory",
     "github": "github",
@@ -45,6 +47,12 @@ def classify_intent(raw_message: str, user_id: str | None = None) -> str:
 
     if text.startswith(_DEBUG_PREFIX):
         return "debug"
+
+    # 明示的なアプリ開発依頼はCore Agentとして最優先で扱う。
+    # 実行時の認可はapp_development.py側で行う。
+    if extract_app_development_request(text) is not None:
+        print("SUPERVISOR: app development intent")
+        return "app_development"
 
     # Sheets明示・自然文を先に判定する。
     # 「シートに記録 明日の予定」のように、Notesの汎用キーワード
