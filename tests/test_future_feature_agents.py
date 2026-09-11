@@ -81,3 +81,37 @@ def test_ai_news_agent_degrades_without_fake_data(monkeypatch):
     assert response.metadata["status"] == "degraded"
     assert response.metadata["count"] == 0
     assert "取得できませんでした" in response.text
+
+
+def test_stocks_agent_normalizes_japan_ticker():
+    assert stocks_agent.normalize_ticker("7203") == "7203.T"
+    assert stocks_agent.normalize_ticker("aapl") == "AAPL"
+
+
+def test_stocks_agent_formats_retrieved_quote(monkeypatch):
+    monkeypatch.setattr(
+        stocks_agent,
+        "_fetch_quote",
+        lambda ticker: {
+            "ticker": "AAPL",
+            "price": 100.0,
+            "previous_close": 98.0,
+            "change": 2.0,
+            "change_pct": 2.0408,
+            "currency": "USD",
+            "market_time": 0,
+        },
+    )
+    response = stocks_agent.handle(req("ticker AAPL"))
+    assert response.metadata["status"] == "online"
+    assert response.metadata["ticker"] == "AAPL"
+    assert "現在値: 100.00 USD" in response.text
+    assert "前日比: +2.00 USD" in response.text
+    assert "Yahoo Finance" in response.text
+
+
+def test_stocks_agent_degrades_without_fake_price(monkeypatch):
+    monkeypatch.setattr(stocks_agent, "_fetch_quote", lambda ticker: (_ for _ in ()).throw(TimeoutError("unavailable")))
+    response = stocks_agent.handle(req("ticker AAPL"))
+    assert response.metadata["status"] == "degraded"
+    assert "推測して表示することはしません" in response.text
