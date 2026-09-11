@@ -98,6 +98,9 @@ def validate_files(files: object, slug: str) -> tuple[bool, str, list[dict]]:
             return False, f"empty content: {path}", []
         if len(content) > MAX_FILE_CHARS:
             return False, f"file too large: {path}", []
+        target = ROOT / path
+        if target.exists() and target.is_file():
+            return False, f"existing file overwrite refused: {path}", []
         seen.add(path)
         total += len(content)
         clean.append({"path": path, "content": content})
@@ -109,8 +112,8 @@ def validate_files(files: object, slug: str) -> tuple[bool, str, list[dict]]:
 def build_prompt(requirement: str, slug: str, repair_output: str = "") -> tuple[str, str]:
     system = """You are an application code generator. Return JSON only.
 Schema: {\"files\":[{\"path\":\"apps/<slug>/relative/path\",\"content\":\"full UTF-8 file content\"}],\"summary\":\"short summary\"}
-Hard rules: generate a small Python web application using only dependencies already present in requirements.txt when possible; paths MUST stay under apps/<slug>/; never generate .env, credentials, CI/workflow, deployment config, or arbitrary shell scripts; do not use subprocess/os.system; include pytest tests; keep the first implementation small and runnable.
-For repair requests, preserve working behavior and fix only the reported failure.
+Hard rules: generate a small Python web application using only dependencies already present in requirements.txt when possible; paths MUST stay under apps/<slug>/; never generate .env, credentials, CI/workflow, deployment config, or arbitrary shell scripts; do not use subprocess/os.system; include pytest tests; keep the first implementation small and runnable; only create new files, never assume an existing generated-app file should be overwritten.
+For repair requests, preserve working behavior and fix only the reported failure while staying within the same app directory.
 """
     user = f"Requirement:\n{requirement}\n\nApp slug: {slug}\n"
     if repair_output:
@@ -123,11 +126,12 @@ def write_files(files: list[dict], slug: str) -> list[str]:
     root = ROOT / "apps" / slug
     root.mkdir(parents=True, exist_ok=True)
     for item in files:
-        path = item["path"]
-        target = ROOT / path
+        target = ROOT / item["path"]
+        if target.exists():
+            raise RuntimeError(f"refusing to overwrite existing path: {item['path']}")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(item["content"], encoding="utf-8")
-        touched.append(path)
+        touched.append(item["path"])
     return touched
 
 
@@ -197,13 +201,16 @@ def main() -> int:
         print("No app requirement supplied")
         return 2
     client = Groq(api_key=os.environ["GROQ_API_KEY"])
-    slug = slugify(requirement.split()[0] if requirement else "generated-app")
+    base_slug = slugify(requirement.split()[0] if requirement else "generated-app")
+    slug = f"{base_slug}-{run_id[-8:]}" if run_id != "manual" else base_slug
     branch = f"app-dev/{run_id}-{slug}"
     touched: list[str] = []
     last_output = ""
     summary = ""
+    attempts_used = 0
 
     for attempt in range(MAX_REPAIR_ATTEMPTS + 1):
+        attempts_used = attempt
         system, user = build_prompt(requirement, slug, last_output)
         try:
             plan = parse_json(ask(client, system, user))
@@ -217,7 +224,12 @@ def main() -> int:
             cleanup(touched)
             return 1
         cleanup(touched)
-        touched = write_files(files, slug)
+        try:
+            touched = write_files(files, slug)
+        except Exception as exc:
+            print(f"Write failed: {type(exc).__name__}: {exc}")
+            cleanup(touched)
+            return 1
         summary = str(plan.get("summary") or "AI generated application")[:2000]
         passed, output = run_tests(slug)
         print(output, flush=True)
@@ -256,7 +268,7 @@ def main() -> int:
     if push.returncode != 0:
         print(push.stderr[-4000:])
         return 1
-    created, detail = create_pr(branch, requirement, summary, max(0, MAX_REPAIR_ATTEMPTS))
+    created, detail = create_pr(branch, requirement, summary, attempts_used)
     if not created:
         print(detail)
         return 1
