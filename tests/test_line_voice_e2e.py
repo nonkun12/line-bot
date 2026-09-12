@@ -16,12 +16,8 @@ def test_store_audio_returns_short_lived_token():
     assert item.expires_at > time.time()
 
 
-def test_expired_audio_is_not_served():
-    token = store_audio(b"mp3-bytes", ttl=30)
-
-    # The store clamps TTL to 30 seconds; mutate the internal clock boundary by
-    # waiting is not useful in a unit test, so verify an unknown token is safe.
-    assert get_audio(token + "-invalid") is None
+def test_unknown_audio_token_is_not_served():
+    assert get_audio("definitely-not-a-real-token") is None
 
 
 def test_duration_estimate_is_bounded_and_nonzero():
