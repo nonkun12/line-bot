@@ -77,7 +77,19 @@ def dispatch_development_workflow(
         return f"開発ワークフローの起動に失敗しました: {type(exc).__name__}"
 
     if response.status_code not in (200, 201, 202, 204):
-        return f"開発ワークフローの起動に失敗しました (GitHub HTTP {response.status_code})。"
+        detail = ""
+        try:
+            data = response.json()
+            if isinstance(data, dict):
+                message = str(data.get("message") or "").strip()
+                documentation_url = str(data.get("documentation_url") or "").strip()
+                if message:
+                    detail = f": {message}"
+                if documentation_url:
+                    detail += f" ({documentation_url})"
+        except Exception:
+            pass
+        return f"開発ワークフローの起動に失敗しました (GitHub HTTP {response.status_code}){detail}。"
 
     return (
         "🚀 開発指示を受け付けました。\n"
