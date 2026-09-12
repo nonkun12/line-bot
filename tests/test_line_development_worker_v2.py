@@ -1,5 +1,7 @@
 import json
+import os
 import subprocess
+import sys
 
 import scripts.line_development_worker_v2 as worker
 
@@ -120,6 +122,14 @@ def test_validate_plan_rejects_change_outside_selected_file():
     assert worker.validate_plan(plan, "app.py") == (False, "change_outside_selected_file")
 
 
+def test_validate_plan_rejects_protected_selected_file():
+    plan = {"no_change": False, "changes": [{"file": "line_development.py", "old": "a", "new": "b"}]}
+    assert worker.validate_plan(plan, "line_development.py") == (
+        False,
+        "protected_file:line_development.py",
+    )
+
+
 def test_validate_plan_accepts_no_change():
     assert worker.validate_plan({"no_change": True}, "app.py") == (True, "no_change")
 
@@ -164,3 +174,19 @@ def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
     pytest_call = next(cmd for cmd in calls if cmd[2:] == ["pytest", "-q", "--tb=native"])
     assert pytest_call == [worker.sys.executable, "-m", "pytest", "-q", "--tb=native"]
     assert "full pytest:" in output
+
+
+def test_worker_entrypoint_is_executable():
+    env = os.environ.copy()
+    env.pop("DEV_INSTRUCTION", None)
+    env.pop("GROQ_API_KEY", None)
+    proc = subprocess.run(
+        [sys.executable, "scripts/line_development_worker_v2.py"],
+        cwd=worker.ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    assert proc.returncode == 2
+    assert "No development instruction supplied." in proc.stdout
