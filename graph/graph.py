@@ -35,13 +35,15 @@ def _agent_node(agent):
             user_id=str(state.get("user_id", "")),
             message=str(state.get("raw_message", "")),
             channel=str(state.get("channel", "unknown")),
-            metadata=state.get("metadata", {}),
+            metadata=dict(state.get("metadata", {})),
         )
         response = agent.handle(request)
+        results = dict(state.get("agent_results", {}))
+        results[agent.name] = response.text
         return {
             **state,
             "final_reply": response.text,
-            "agent_results": {agent.name: response.text},
+            "agent_results": results,
         }
 
     return node
@@ -76,7 +78,7 @@ def finalize_node(state: AgentState) -> AgentState:
     results = state.get("agent_results", {})
 
     print("===== FINALIZER =====")
-    print("agent_results =", results)
+    print("agent_result_keys =", tuple(results.keys()))
 
     if not results:
         reply = "対応できません"
