@@ -41,7 +41,7 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run guarded LINE development worker v2
+      - name: Run bounded multi-agent LINE development runtime
         id: development
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -49,7 +49,7 @@ jobs:
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GH_TOKEN: ${{ github.token }}
-        run: python scripts/line_development_worker_v2.py
+        run: python -m core.line_development_runtime
 
       - name: Create or reuse GitHub PR
         id: create_pr
@@ -81,7 +81,9 @@ ${DEV_INSTRUCTION}
 
 User: \`${DEV_USER_ID}\`
 
-Guarded tests: PASS
+Multi-agent runtime: Manager → Implementer → Tester → Reviewer → Repairer(if needed) → Integrator
+
+Guarded tests and integration gate: PASS
 Created directly by GitHub Actions." \
             >/tmp/pr_url.txt
           cat /tmp/pr_url.txt
@@ -113,7 +115,7 @@ Created directly by GitHub Actions." \
               message = (
                   "✅ 自動開発が完了しました。\n"
                   f"指示: {instruction}\n"
-                  "テスト・開発処理が完了し、GitHub PRを作成しました。\n"
+                  "Manager → Implementer → Tester → Reviewer → Integrator を実行し、GitHub PRを作成しました。\n"
                   f"実行結果: {run_url}"
               )
           else:
