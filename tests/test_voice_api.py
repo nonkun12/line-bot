@@ -1,3 +1,5 @@
+from io import BytesIO
+
 from flask import Flask
 
 from core.gateway import AIResponse
@@ -73,3 +75,85 @@ def test_voice_api_uses_shared_gateway(monkeypatch):
     assert captured["message"] == "今日の予定を教えて"
     assert captured["channel"] == "voice"
     assert captured["metadata"]["input"] == "speech_to_text"
+
+
+def test_voice_transcribe_requires_file(monkeypatch):
+    monkeypatch.setenv("INTERNAL_PUSH_KEY", "secret")
+    response = make_app().test_client().post(
+        "/api/voice/transcribe",
+        headers={"X-Internal-Key": "secret"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "file is required"
+
+
+def test_voice_transcribe_uses_openai_adapter(monkeypatch):
+    monkeypatch.setenv("INTERNAL_PUSH_KEY", "secret")
+    captured = {}
+
+    import routes.voice_api as voice_api
+
+    def fake_transcribe(audio, filename, content_type):
+        captured.update(audio=audio, filename=filename, content_type=content_type)
+        return "今日の予定を教えて"
+
+    monkeypatch.setattr(voice_api, "openai_transcribe_audio", fake_transcribe)
+    response = make_app().test_client().post(
+        "/api/voice/transcribe",
+        data={"file": (BytesIO(b"audio-bytes"), "speech.webm")},
+        headers={"X-Internal-Key": "secret"},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "ok": True,
+        "text": "今日の予定を教えて",
+        "provider": "openai",
+    }
+    assert captured["audio"] == b"audio-bytes"
+    assert captured["filename"] == "speech.webm"
+
+
+def test_voice_speak_requires_internal_key(monkeypatch):
+    monkeypatch.setenv("INTERNAL_PUSH_KEY", "secret")
+    response = make_app().test_client().post(
+        "/api/voice/speak",
+        json={"text": "こんにちは"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_voice_speak_returns_audio(monkeypatch):
+    monkeypatch.setenv("INTERNAL_PUSH_KEY", "secret")
+
+    import routes.voice_api as voice_api
+
+    monkeypatch.setattr(
+        voice_api,
+        "openai_tts_audio",
+        lambda text: (b"fake-mp3", "audio/mpeg"),
+    )
+    response = make_app().test_client().post(
+        "/api/voice/speak",
+        json={"text": "こんにちは"},
+        headers={"X-Internal-Key": "secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.mimetype == "audio/mpeg"
+    assert response.data == b"fake-mp3"
+
+
+def test_voice_speak_rejects_empty_text(monkeypatch):
+    monkeypatch.setenv("INTERNAL_PUSH_KEY", "secret")
+    response = make_app().test_client().post(
+        "/api/voice/speak",
+        json={},
+        headers={"X-Internal-Key": "secret"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "text is required"
