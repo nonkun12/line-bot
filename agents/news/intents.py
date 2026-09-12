@@ -4,7 +4,9 @@ from __future__ import annotations
 import re
 
 
-_AI_NEWS_ENGLISH_RE = re.compile(r"\bai\s+news\b", re.IGNORECASE)
+_AI_NEWS_ENGLISH_RE = re.compile(
+    r"(?<![A-Za-z0-9_])ai\s+news(?![A-Za-z0-9_])", re.IGNORECASE
+)
 
 
 def is_ai_news_intent(text: str) -> bool:
