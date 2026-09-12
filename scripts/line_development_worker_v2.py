@@ -65,7 +65,7 @@ def ask(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOK
         temperature=0.0,
         max_tokens=max_tokens,
         response_format={"type": "json_object"},
-        reasoning_format="hidden",
+        include_reasoning=False,
     )
     return response.choices[0].message.content or ""
 
