@@ -57,14 +57,9 @@ def dispatch_development_workflow(
     if not token:
         return "開発ワークフローを起動できません。GITHUB_TOKENが設定されていません。"
 
-    url = f"https://api.github.com/repos/{repository}/actions/workflows/{_WORKFLOW_FILE}/dispatches"
-    payload = {
-        "ref": "main",
-        "inputs": {
-            "instruction": instruction,
-            "user_id": str(user_id),
-        },
-    }
+    base_url = f"https://api.github.com/repos/{repository}"
+    workflow_url = f"{base_url}/actions/workflows/{_WORKFLOW_FILE}"
+    dispatch_url = f"{workflow_url}/dispatches"
     headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": f"Bearer {token}",
@@ -72,7 +67,35 @@ def dispatch_development_workflow(
     }
 
     try:
-        response = httpx.post(url, json=payload, headers=headers, timeout=10.0)
+        workflow_response = httpx.get(workflow_url, headers=headers, timeout=10.0)
+    except Exception as exc:
+        return f"GitHub接続に失敗しました: {type(exc).__name__}"
+
+    if workflow_response.status_code != 200:
+        detail = ""
+        try:
+            data = workflow_response.json()
+            if isinstance(data, dict):
+                message = str(data.get("message") or "").strip()
+                if message:
+                    detail = f": {message}"
+        except Exception:
+            pass
+        return (
+            f"GitHub認証/Workflow確認に失敗しました (HTTP {workflow_response.status_code})"
+            f"{detail}。GITHUB_TOKENのリポジトリ権限を確認してください。"
+        )
+
+    payload = {
+        "ref": "main",
+        "inputs": {
+            "instruction": instruction,
+            "user_id": str(user_id),
+        },
+    }
+
+    try:
+        response = httpx.post(dispatch_url, json=payload, headers=headers, timeout=10.0)
     except Exception as exc:
         return f"開発ワークフローの起動に失敗しました: {type(exc).__name__}"
 
