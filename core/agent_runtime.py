@@ -23,6 +23,14 @@ class RepairPlanner(Protocol):
         ...
 
 
+class RuntimeExecutionError(RuntimeError):
+    """Normalize executor failures while retaining the responsible task id."""
+
+    def __init__(self, task_id: str, cause: Exception) -> None:
+        super().__init__(f"{type(cause).__name__}: {cause}")
+        self.task_id = task_id
+
+
 @dataclass(frozen=True)
 class RuntimeTaskResult:
     task: AgentTask
@@ -87,6 +95,12 @@ class MultiAgentRuntime:
                 )
             try:
                 results = self._run_batch(batch.tasks)
+            except RuntimeExecutionError as exc:
+                return RuntimeReport(
+                    tuple(completed),
+                    exc.task_id,
+                    str(exc),
+                )
             except Exception as exc:
                 task_id = batch.tasks[0].task_id if batch.tasks else None
                 return RuntimeReport(
@@ -213,12 +227,21 @@ class MultiAgentRuntime:
             }
             results: list[tuple[AgentTask, AgentResult]] = []
             for task in tasks:
-                result = futures[task.task_id].result()
+                try:
+                    result = futures[task.task_id].result()
+                except Exception as exc:
+                    raise RuntimeExecutionError(task.task_id, exc) from exc
                 if not isinstance(result, AgentResult):
-                    raise TypeError("executor must return AgentResult")
+                    raise RuntimeExecutionError(
+                        task.task_id,
+                        TypeError("executor must return AgentResult"),
+                    )
                 if result.task_id != task.task_id:
-                    raise ValueError(
-                        f"executor returned task_id {result.task_id!r} for {task.task_id!r}"
+                    raise RuntimeExecutionError(
+                        task.task_id,
+                        ValueError(
+                            f"executor returned task_id {result.task_id!r} for {task.task_id!r}"
+                        ),
                     )
                 results.append((task, result))
             return results
