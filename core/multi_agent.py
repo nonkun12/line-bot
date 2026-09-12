@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterable, Protocol, Sequence
+from typing import Iterable, Protocol
 
 
 class AgentRole(str, Enum):
@@ -82,11 +82,16 @@ def plan_batches(tasks: Iterable[AgentTask]) -> tuple[TaskBatch, ...]:
     A task may join the current batch only when all of its dependencies were
     placed in earlier batches and it has no resource conflict with another task
     already in that batch. Tasks with the same priority are ordered by task id.
-    Cyclic or missing dependencies raise ValueError instead of silently
-    producing an unsafe schedule.
+    Cyclic, duplicate, or missing dependencies raise ValueError instead of
+    silently producing an unsafe schedule.
     """
 
-    pending = {task.task_id: task for task in tasks}
+    pending: dict[str, AgentTask] = {}
+    for task in tasks:
+        if task.task_id in pending:
+            raise ValueError(f"duplicate task_id: {task.task_id}")
+        pending[task.task_id] = task
+
     if len(pending) == 0:
         return ()
 
