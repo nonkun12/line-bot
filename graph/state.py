@@ -10,6 +10,8 @@ class AgentState(TypedDict, total=False):
 
     user_id: str
     raw_message: str
+    channel: str
+    metadata: dict[str, Any]
     request_id: str
     call_mcp_tool: Callable[..., Any]
 
