@@ -10,8 +10,6 @@ LangGraph Phase1: Supervisorノード。
 - LINE返信生成
 """
 
-import re
-
 from app_development import extract_app_development_request
 from graph.state import AgentState
 from pending_approvals import PendingStatus, get_pending_status
@@ -22,10 +20,11 @@ from agents.sheets.intents import is_sheets_intent
 from agents.debug.intents import is_debug_intent
 from agents.weather.intents import is_weather_intent
 from agents.english.intents import is_english_learning_intent
+from agents.stocks.intents import is_stock_intent
+from agents.news.intents import is_ai_news_intent
+from agents.voice.intents import is_voice_intent
 
 _DEBUG_PREFIX = "debug"
-_STOCK_ENGLISH_RE = re.compile(r"\b(?:ticker|stock|stocks|share\s+price|stock\s+price)\b", re.IGNORECASE)
-_VOICE_ENGLISH_RE = re.compile(r"\b(?:voice|voice\s+assistant|speaker)\b", re.IGNORECASE)
 
 
 def _is_english_learning(text: str) -> bool:
@@ -33,20 +32,15 @@ def _is_english_learning(text: str) -> bool:
 
 
 def _is_stock_request(text: str) -> bool:
-    lowered = text.lower()
-    return any(k in lowered for k in ("株", "株価", "銘柄")) or bool(_STOCK_ENGLISH_RE.search(text))
+    return is_stock_intent(text)
 
 
 def _is_ai_news_request(text: str) -> bool:
-    lowered = text.lower()
-    return any(k in lowered for k in ("ai news", "aiニュース", "ai ニュース", "人工知能ニュース"))
+    return is_ai_news_intent(text)
 
 
 def _is_voice_request(text: str) -> bool:
-    lowered = text.lower()
-    return any(k in lowered for k in ("音声", "ボイス", "aiスピーカー", "しゃべって")) or bool(
-        _VOICE_ENGLISH_RE.search(text)
-    )
+    return is_voice_intent(text)
 
 
 def classify_intent(raw_message: str, user_id: str | None = None) -> str:
