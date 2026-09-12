@@ -28,3 +28,9 @@ def test_supervisor_uses_feature_boundaries():
     assert classify_intent("invoiceを確認して") == "unsupported"
     assert classify_intent("AI newsを教えて") == "ai_news"
     assert classify_intent("voice assistantで話して") == "voice"
+
+
+def test_ai_news_boundary_handles_japanese_suffixes():
+    assert is_ai_news_intent("AI newsを見せて")
+    assert is_ai_news_intent("AI newsで最新情報")
+    assert not is_ai_news_intent("AI newsletterを見せて")
