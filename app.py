@@ -76,6 +76,7 @@ from core.request_path import run_core_request, extract_core_reply
 from routes.core_api import core_api_bp
 from routes.voice_api import voice_api_bp
 from line_development import extract_development_instruction, dispatch_development_workflow
+from slack_command import register_slack_command
 
 app = Flask(__name__)
 
@@ -326,6 +327,7 @@ def _gateway_reply(user_id, message):
 
 
 register_internal_ask_route(app, INTERNAL_PUSH_KEY, _gateway_reply)
+register_slack_command(app)
 
 
 @app.route("/callback", methods=["POST"])
@@ -339,7 +341,7 @@ def callback():
     try:
         handler.handle(body, signature)
         return "OK", 200
-    except Exception as exc:
+    except Exception:
         print("===== HANDLER ERROR =====")
         print("handler failed")
         record_step(
@@ -384,11 +386,11 @@ def _process_and_reply(event, user_id, text):
                 metadata={"route": "line_callback"},
             )
             reply = ai_response.text
-        except Exception as exc:
+        except Exception:
             print("[LOG] Core gateway failed; returning safe reply")
             reply = "AIサービスで一時的な問題が発生しました。少し時間を置いてもう一度お試しください。"
         try:
             _line_reply(event.reply_token, reply)
-        except Exception as exc:
+        except Exception:
             print("[LOG] LINE reply failed; falling back to push")
             _line_push(user_id, reply)
