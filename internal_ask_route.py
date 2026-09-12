@@ -7,8 +7,8 @@ from urllib.parse import urlencode
 
 import httpx
 
-from config import CHANNEL_ACCESS_TOKEN, configuration
-from linebot.v3.messaging import ApiClient, MessagingApi
+from config import configuration
+from linebot.v3.messaging import ApiClient, MessagingApi, PushMessageRequest
 from e2e_status import StepTimer
 
 
@@ -22,17 +22,16 @@ def _make_dashboard_url(user_id: str) -> str:
 
 
 def _line_push_direct(user_id: str, message: str) -> None:
-    response = httpx.post(
-        "https://api.line.me/v2/bot/message/push",
-        json={"to": user_id, "messages": [{"type": "text", "text": message}]},
-        headers={
-            "Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}",
-            "Content-Type": "application/json",
-        },
-        timeout=15.0,
-    )
-    if response.status_code not in (200, 201, 202):
-        raise RuntimeError(f"LINE push failed: HTTP {response.status_code}")
+    """Push through the same SDK path used by the main LINE application."""
+    from app import _build_line_messages
+
+    with ApiClient(configuration) as api:
+        MessagingApi(api).push_message(
+            PushMessageRequest(
+                to=user_id,
+                messages=_build_line_messages(message),
+            )
+        )
 
 
 def register_internal_ask_route(app, internal_push_key, generate_reply_func):
@@ -75,9 +74,12 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         try:
             _line_push_direct(user_id.strip(), message.strip())
             return jsonify({"ok": True})
-        except Exception:
+        except Exception as exc:
             app.logger.exception("INTERNAL PUSH ERROR")
-            return jsonify({"ok": False, "error": "internal server error"}), 500
+            error = "internal server error"
+            if "401" in str(exc):
+                error = "line channel access token rejected"
+            return jsonify({"ok": False, "error": error}), 502
 
     @app.route("/internal/create-pr", methods=["POST"])
     def internal_create_pr():
