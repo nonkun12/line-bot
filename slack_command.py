@@ -7,6 +7,8 @@ import os
 import time
 from urllib.parse import parse_qs
 
+from flask import request
+
 from line_development import dispatch_development_workflow
 
 _MAX_BODY_AGE = 300
@@ -49,20 +51,18 @@ def register_slack_command(app):
         if not _is_authorized_slack_user(user_id):
             return {"response_type": "ephemeral", "text": "このSlackユーザーには開発権限がありません。"}, 403
         if not text:
-            return {"response_type": "ephemeral", "text": "使い方: /dev 開発: ○○を実装して"}, 400
+            return {"response_type": "ephemeral", "text": "使い方: /dev ○○を実装して"}, 400
 
-        instruction = text if text.startswith(("開発:", "dev:")) else f"開発: {text}"
-        instruction = instruction.split(":", 1)[1].strip()
+        instruction = text
+        if instruction.startswith(("開発:", "dev:")):
+            instruction = instruction.split(":", 1)[1].strip()
         reply = dispatch_development_workflow(
             instruction,
-            user_id=f"slack:{user_id}",
+            user_id=user_id,
             token=os.environ.get("GITHUB_TOKEN", ""),
             repository=os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"),
+            authorized=True,
         )
         return {"response_type": "ephemeral", "text": reply}, 200
 
     return slack_command
-
-
-# Imported lazily in the function body above to avoid altering the main import surface.
-from flask import request
