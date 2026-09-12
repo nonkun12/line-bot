@@ -13,6 +13,9 @@ from graph.supervisor import classify_intent, supervisor_node
         # Mixed requests follow the current intent-priority order in classify_intent.
         ("株価 7203 と AI NEWS を教えて", "ai_news", "ai_news"),
         ("英語を勉強したい、株価 7203 も見たい", "stocks", "stocks"),
+        # English keywords must not match unrelated words such as "invoice" or "Stockholm".
+        ("invoiceの意味を教えて", "unsupported", "normal"),
+        ("Stockholmについて教えて", "unsupported", "normal"),
     ],
 )
 def test_supervisor_mixed_and_single_feature_routing(
