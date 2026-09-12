@@ -7,8 +7,8 @@ from urllib.parse import urlencode
 
 import httpx
 
-from config import configuration
-from linebot.v3.messaging import ApiClient, MessagingApi, PushMessageRequest
+from config import CHANNEL_ACCESS_TOKEN, configuration
+from linebot.v3.messaging import ApiClient, MessagingApi
 from e2e_status import StepTimer
 
 
@@ -19,6 +19,20 @@ def _make_dashboard_url(user_id: str) -> str:
     token = hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
     query = urlencode({"user_id": user_id, "ts": timestamp, "token": token})
     return f"https://line-bot-yvea.onrender.com/dashboard?{query}"
+
+
+def _line_push_direct(user_id: str, message: str) -> None:
+    response = httpx.post(
+        "https://api.line.me/v2/bot/message/push",
+        json={"to": user_id, "messages": [{"type": "text", "text": message}]},
+        headers={
+            "Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}",
+            "Content-Type": "application/json",
+        },
+        timeout=15.0,
+    )
+    if response.status_code not in (200, 201, 202):
+        raise RuntimeError(f"LINE push failed: HTTP {response.status_code}")
 
 
 def register_internal_ask_route(app, internal_push_key, generate_reply_func):
@@ -59,14 +73,7 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         if not isinstance(user_id, str) or not user_id.strip() or not isinstance(message, str) or not message.strip():
             return jsonify({"ok": False, "error": "user_id and message are required"}), 400
         try:
-            from app import _build_line_messages
-            with ApiClient(configuration) as api:
-                MessagingApi(api).push_message(
-                    PushMessageRequest(
-                        to=user_id.strip(),
-                        messages=_build_line_messages(message.strip()),
-                    )
-                )
+            _line_push_direct(user_id.strip(), message.strip())
             return jsonify({"ok": True})
         except Exception:
             app.logger.exception("INTERNAL PUSH ERROR")
@@ -83,11 +90,11 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         title = str(data.get("title") or "feat: LINE development request").strip()
         body = str(data.get("body") or "").strip()
         repository = str(data.get("repository") or os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")).strip()
-        token = os.environ.get("GH_PR_TOKEN", "").strip()
+        token = (os.environ.get("GH_PR_TOKEN") or os.environ.get("GITHUB_TOKEN") or "").strip()
         if not head:
             return jsonify({"ok": False, "error": "head is required"}), 400
         if not token:
-            return jsonify({"ok": False, "error": "GH_PR_TOKEN is not configured"}), 500
+            return jsonify({"ok": False, "error": "GITHUB_TOKEN/ GH_PR_TOKEN is not configured"}), 500
         if not repository or repository.count("/") != 1 or any(part.strip() == "" for part in repository.split("/")):
             return jsonify({"ok": False, "error": "invalid repository"}), 400
 
