@@ -136,9 +136,10 @@ def build_comment_test_plan(instruction: str, chosen: str) -> dict | None:
     text = target.read_text(encoding="utf-8")
     if f"# {comment_text}" in text:
         return {"no_change": True}
-    anchor = '_WORKFLOW_FILE = "line-development.yml"\n'
-    if text.count(anchor) != 1:
+    match_anchor = re.search(r"^_WORKFLOW_FILE\s*=\s*\"[^\"\n]+\"\n", text, re.MULTILINE)
+    if not match_anchor:
         return None
+    anchor = match_anchor.group(0)
     return {"no_change": False, "changes": [{"file": _COMMENT_TEST_PATH, "old": anchor, "new": anchor + f"# {comment_text}\n"}]}
 
 
