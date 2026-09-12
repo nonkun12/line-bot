@@ -70,3 +70,27 @@ def test_dispatch_uses_workflow_dispatch(monkeypatch):
     }
     assert captured["headers"]["Authorization"] == "Bearer secret"
     assert "受け付けました" in reply
+
+
+def test_worker_parse_plan_accepts_plain_json():
+    from scripts.line_development_worker_v2 import parse_plan
+
+    assert parse_plan('{"file": "tests/test_line_development.py"}') == {
+        "file": "tests/test_line_development.py"
+    }
+
+
+def test_worker_parse_plan_accepts_fenced_json():
+    from scripts.line_development_worker_v2 import parse_plan
+
+    assert parse_plan(
+        '```json\n{"file": "tests/test_line_development.py"}\n```'
+    ) == {"file": "tests/test_line_development.py"}
+
+
+def test_worker_parse_plan_accepts_json_with_explanation():
+    from scripts.line_development_worker_v2 import parse_plan
+
+    assert parse_plan(
+        'Here is the plan:\n{"file": "tests/test_line_development.py"}\n'
+    ) == {"file": "tests/test_line_development.py"}

@@ -126,12 +126,41 @@ def choose_file(client: Groq, instruction: str, files: list[str]) -> str | None:
 
 
 def parse_plan(text: str) -> dict:
-    clean = text.strip()
-    if clean.startswith("```"):
-        clean = clean.strip("`").strip()
-        if clean.lower().startswith("json"):
-            clean = clean[4:].strip()
-    data = json.loads(clean)
+    clean = str(text or "").strip()
+
+    # Prefer the complete response when it is already valid JSON.
+    try:
+        data = json.loads(clean)
+    except json.JSONDecodeError as original_error:
+        data = None
+
+        # Handle markdown fenced JSON.
+        fenced = re.search(
+            r"```(?:json)?\s*(\{.*?\})\s*```",
+            clean,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if fenced:
+            try:
+                data = json.loads(fenced.group(1))
+            except json.JSONDecodeError:
+                data = None
+
+        # Handle a JSON object surrounded by explanatory text.
+        if data is None:
+            decoder = json.JSONDecoder()
+            for match in re.finditer(r"\{", clean):
+                try:
+                    candidate, _ = decoder.raw_decode(clean[match.start():])
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(candidate, dict):
+                    data = candidate
+                    break
+
+        if data is None:
+            raise original_error
+
     if not isinstance(data, dict):
         raise ValueError("plan must be object")
     return data
