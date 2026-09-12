@@ -1,9 +1,17 @@
 import os
 import certifi
 from dotenv import load_dotenv
-from linebot.v3.messaging import Configuration
+from linebot.v3.messaging import (
+    ApiClient,
+    AudioMessage,
+    MessagingApi,
+    MessagingApiBlob,
+    PushMessageRequest,
+    ReplyMessageRequest,
+    TextMessage,
+)
 from linebot.v3.webhook import WebhookHandler
-from linebot.v3.webhooks import MessageEvent, TextMessageContent
+from linebot.v3.webhooks import AudioMessageContent, MessageEvent, TextMessageContent
 from groq import Groq
 
 load_dotenv()
@@ -22,6 +30,7 @@ INTERNAL_PUSH_KEY = os.environ["INTERNAL_PUSH_KEY"]
 AI_REPORT_GITHUB_REPO = os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "")
+VOICE_PUBLIC_BASE_URL = os.environ.get("VOICE_PUBLIC_BASE_URL", "https://line-bot-yvea.onrender.com").rstrip("/")
 
 AI_APP_BUILDER_URL = os.environ.get("AI_APP_BUILDER_URL", "")
 AI_APP_BUILDER_SHARED_SECRET = os.environ.get("AI_APP_BUILDER_SHARED_SECRET", "")
@@ -35,7 +44,7 @@ client = Groq(api_key=GROQ_API_KEY, timeout=15.0, max_retries=1)
 MODEL = "openai/gpt-oss-20b"
 
 # Render deployment synchronization marker.
-DEPLOY_SYNC_MARKER = "2026-09-11-line-development-route"
+DEPLOY_SYNC_MARKER = "2026-09-12-line-voice-e2e"
 
 
 # app.py 側の MessageEvent ハンドラーが誤って欠落しても、LINE webhook を
@@ -55,7 +64,6 @@ def handle_message_event(event):
             _processed_lock,
             _processed_message_ids,
             _MAX_TRACKED_IDS,
-            _line_reply,
             _line_push,
         )
         from line_development import extract_development_instruction, dispatch_development_workflow
@@ -130,3 +138,120 @@ def handle_message_event(event):
             except Exception:
                 print("===== HANDLE ERROR PUSH FAILED =====")
                 traceback.print_exc()
+
+
+@handler.add(MessageEvent, message=AudioMessageContent)
+def handle_audio_message_event(event):
+    """Receive LINE audio, run STT -> Core -> TTS, and return an audio message."""
+    print("[LOG] handle AudioMessageEvent called")
+    user_id = getattr(event.source, "user_id", None)
+    message_id = getattr(event.message, "id", None)
+    if not message_id:
+        return
+
+    from app import _line_push, _processed_lock, _processed_message_ids, _MAX_TRACKED_IDS
+    from db import is_processed_event, create_processed_event
+    from e2e_status import record_step
+
+    with _processed_lock:
+        if message_id in _processed_message_ids or is_processed_event(message_id):
+            print("DUPLICATE AUDIO MESSAGE IGNORED:", message_id)
+            return
+        if not create_processed_event(message_id, user_id=user_id, source="line_audio"):
+            print("DUPLICATE AUDIO MESSAGE IGNORED (create_failed):", message_id)
+            return
+        record_step("line_in", True)
+        _processed_message_ids[message_id] = True
+        if len(_processed_message_ids) > _MAX_TRACKED_IDS:
+            _processed_message_ids.popitem(last=False)
+
+    import threading
+    threading.Thread(
+        target=_process_audio_message,
+        args=(event, str(user_id or ""), str(message_id), VOICE_PUBLIC_BASE_URL),
+        daemon=True,
+        name="line-voice-e2e",
+    ).start()
+
+
+def _process_audio_message(event, user_id: str, message_id: str, public_base_url: str) -> None:
+    """Heavy voice work runs outside the webhook request thread."""
+    from app import app, _line_push
+    from core.line_voice import estimate_audio_duration_ms, store_audio
+    from core.voice import openai_transcribe_audio, openai_tts_audio
+    from core.channel import handle_channel_request
+
+    try:
+        # LINE's audio content endpoint is a separate blob API in SDK v3.
+        with ApiClient(configuration) as api_client:
+            blob_api = MessagingApiBlob(api_client)
+            audio = blob_api.get_message_content(message_id=message_id)
+
+        transcript = openai_transcribe_audio(
+            audio,
+            "line-voice.m4a",
+            "audio/m4a",
+        ).strip()
+        if not transcript:
+            raise ValueError("voice transcription returned empty text")
+
+        ai_response = handle_channel_request(
+            app.ai_gateway,
+            user_id,
+            transcript,
+            "voice",
+            metadata={
+                "route": "line_callback_audio",
+                "input": "line_audio",
+                "message_id": message_id,
+            },
+        )
+        reply_text = str(ai_response.text or "").strip()
+        if not reply_text:
+            raise ValueError("voice Core returned empty reply")
+
+        tts_audio, mime_type = openai_tts_audio(reply_text)
+        token = store_audio(tts_audio, mime_type=mime_type)
+        audio_url = f"{public_base_url}/api/voice/audio/{token}"
+        duration_ms = estimate_audio_duration_ms(reply_text)
+
+        with ApiClient(configuration) as api_client:
+            line_api = MessagingApi(api_client)
+            try:
+                line_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[
+                            AudioMessage(
+                                original_content_url=audio_url,
+                                duration=duration_ms,
+                            )
+                        ],
+                    )
+                )
+                return
+            except Exception:
+                # The reply token can expire while STT/TTS is running; use push as
+                # the recovery path so a successful voice generation is not lost.
+                if not user_id:
+                    raise
+                line_api.push_message(
+                    PushMessageRequest(
+                        to=user_id,
+                        messages=[
+                            AudioMessage(
+                                original_content_url=audio_url,
+                                duration=duration_ms,
+                            )
+                        ],
+                    )
+                )
+    except Exception:
+        app.logger.exception("LINE AUDIO PIPELINE ERROR")
+        if user_id:
+            try:
+                _line_push(user_id, "音声処理でエラーが発生しました。もう一度音声を送ってください。")
+            except Exception:
+                app.logger.exception("LINE AUDIO FALLBACK PUSH ERROR")
+        else:
+            record_step("line_out", False, error="voice_pipeline_failed", error_location="config._process_audio_message")
