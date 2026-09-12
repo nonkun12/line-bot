@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from linebot.v3.messaging import (
     ApiClient,
     AudioMessage,
+    Configuration,
     MessagingApi,
     MessagingApiBlob,
     PushMessageRequest,
@@ -180,6 +181,7 @@ def _process_audio_message(event, user_id: str, message_id: str, public_base_url
     from core.line_voice import estimate_audio_duration_ms, store_audio
     from core.voice import openai_transcribe_audio, openai_tts_audio
     from core.channel import handle_channel_request
+    from e2e_status import record_step
 
     try:
         # LINE's audio content endpoint is a separate blob API in SDK v3.
@@ -229,6 +231,7 @@ def _process_audio_message(event, user_id: str, message_id: str, public_base_url
                         ],
                     )
                 )
+                record_step("line_out", True)
                 return
             except Exception:
                 # The reply token can expire while STT/TTS is running; use push as
@@ -246,6 +249,7 @@ def _process_audio_message(event, user_id: str, message_id: str, public_base_url
                         ],
                     )
                 )
+                record_step("line_out", True)
     except Exception:
         app.logger.exception("LINE AUDIO PIPELINE ERROR")
         if user_id:
