@@ -76,8 +76,6 @@ def is_test_instruction(instruction: str) -> bool:
 
 def _extract_explicit_path(instruction: str, files: list[str]) -> str | None:
     allowed = set(files)
-    if _COMMENT_REQUEST_PATTERN.search(instruction):
-        allowed.add(_COMMENT_TEST_PATH)
     candidates: set[str] = set()
     for match in _EXPLICIT_PATH_PATTERN.finditer(instruction):
         token = match.group(0).strip("`'\"()[]{}<> 　").lstrip("./")
@@ -128,26 +126,16 @@ def choose_file(client: Groq, instruction: str, files: list[str]) -> str | None:
 
 def parse_plan(text: str) -> dict:
     clean = str(text or "").strip()
-
-    # Prefer the complete response when it is already valid JSON.
     try:
         data = json.loads(clean)
     except json.JSONDecodeError as original_error:
         data = None
-
-        # Handle markdown fenced JSON.
-        fenced = re.search(
-            r"```(?:json)?\s*(\{.*?\})\s*```",
-            clean,
-            re.IGNORECASE | re.DOTALL,
-        )
+        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean, re.IGNORECASE | re.DOTALL)
         if fenced:
             try:
                 data = json.loads(fenced.group(1))
             except json.JSONDecodeError:
                 data = None
-
-        # Handle a JSON object surrounded by explanatory text.
         if data is None:
             decoder = json.JSONDecoder()
             for match in re.finditer(r"\{", clean):
@@ -158,10 +146,8 @@ def parse_plan(text: str) -> dict:
                 if isinstance(candidate, dict):
                     data = candidate
                     break
-
         if data is None:
             raise original_error
-
     if not isinstance(data, dict):
         raise ValueError("plan must be object")
     return data
@@ -173,14 +159,21 @@ def context_for(path: str) -> str:
 
 
 def build_comment_test_plan(instruction: str, chosen: str) -> dict | None:
+    """Build the legacy self-test edit only when explicitly enabled.
+
+    This path is intentionally disabled by default because ``line_development.py``
+    is a protected control-plane file. It exists only for a deliberate local/CI
+    self-test with ``ALLOW_SELF_TEST_COMMENT=1``.
+    """
+    if os.environ.get("ALLOW_SELF_TEST_COMMENT") != "1":
+        return None
     if chosen != _COMMENT_TEST_PATH or not _COMMENT_REQUEST_PATTERN.search(instruction):
         return None
     if "scripts/line_development.py" not in instruction and "line_development.py" not in instruction:
         return None
     match = re.search(r"[「『\"']([^」』\"']+)[」』\"']", instruction)
     comment_text = (match.group(1) if match else "LINE自動開発テスト").strip()
-    comment_text = re.sub(r"[\r\n]+", " ", comment_text)
-    comment_text = comment_text[:120].strip()
+    comment_text = re.sub(r"[\r\n]+", " ", comment_text)[:120].strip()
     if not comment_text:
         return None
     target = ROOT / _COMMENT_TEST_PATH
@@ -206,11 +199,8 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
         path, old, new = change.get("file"), change.get("old"), change.get("new")
         if path != chosen:
             return False, "change_outside_selected_file"
-        comment_test = chosen == _COMMENT_TEST_PATH
-        if is_protected(path) and not comment_test:
+        if is_protected(path):
             return False, f"protected_file:{path}"
-        if comment_test and not _COMMENT_REQUEST_PATTERN.search(os.environ.get("DEV_INSTRUCTION", "")):
-            return False, "protected_file:line_development.py"
         if not isinstance(old, str) or not old or not isinstance(new, str):
             return False, "invalid_old_new"
         if old == new:
@@ -257,117 +247,3 @@ def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
 def restore(paths: list[str]) -> None:
     if paths:
         run(["git", "checkout", "--", *paths])
-
-
-def build_plan(client: Groq, instruction: str, chosen: str, context: str, test_output: str | None = None) -> dict:
-    system = '''You edit ONE repository file. Return JSON only.
-Real change: {"no_change":false,"changes":[{"file":"exact path","old":"exact existing text","new":"replacement text"}]}
-No safe/needed change: {"no_change":true}
-Rules: one file only; old must be an exact substring of supplied context; minimal change; never modify security, credentials, deployment, workflow, or worker logic. Do not invent text that is not visible in context.'''
-    prompt = f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}\n\nCurrent context:\n{context}"
-    if test_output:
-        prompt += f"\n\nPytest failure:\n{test_output[-3000:]}"
-    return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
-
-
-def main() -> int:
-    instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[:MAX_INSTRUCTION_LENGTH]
-    user_id = os.environ.get("DEV_USER_ID", "")
-    if not instruction:
-        print("No development instruction supplied.")
-        return 2
-    client = Groq(api_key=os.environ["GROQ_API_KEY"])
-    if is_test_instruction(instruction):
-        print("Test-only instruction detected; no file target required.", flush=True)
-        passed, output = run_tests()
-        print(output, flush=True)
-        return 0 if passed else 1
-
-    files = repo_files()
-    chosen = choose_file(client, instruction, files)
-    if not chosen:
-        print("No safe target file selected.")
-        return 1
-    print("Selected safe target:", chosen, flush=True)
-    try:
-        try:
-            comment_test_plan = build_comment_test_plan(instruction, chosen)
-            plan = comment_test_plan if comment_test_plan is not None else build_plan(client, instruction, chosen, context_for(chosen))
-        except (json.JSONDecodeError, ValueError) as exc:
-            print("Plan parse failed:", type(exc).__name__, str(exc), flush=True)
-            return 1
-        except Exception as exc:
-            print("Plan generation failed:", type(exc).__name__, str(exc), flush=True)
-            traceback.print_exc()
-            return 1
-        ok, detail = validate_plan(plan, chosen)
-        if not ok:
-            print("Rejected plan:", detail, flush=True)
-            return 1
-        if detail == "no_change":
-            passed, output = run_tests()
-            print(output, flush=True)
-            return 0 if passed else 1
-        applied, detail, touched = apply_plan(plan)
-        if not applied:
-            restore(touched)
-            print("Apply failed:", detail, flush=True)
-            return 1
-        passed, output = run_tests(touched)
-        print(output, flush=True)
-        attempts = 0
-        while not passed and attempts < MAX_REPAIR_ATTEMPTS:
-            attempts += 1
-            restore(touched)
-            repair_plan = build_plan(client, instruction, chosen, context_for(chosen), output)
-            ok, detail = validate_plan(repair_plan, chosen)
-            if not ok or detail == "no_change":
-                break
-            applied, detail, touched = apply_plan(repair_plan)
-            if not applied:
-                restore(touched)
-                break
-            passed, output = run_tests(touched)
-            print(output, flush=True)
-        if not passed:
-            restore(touched)
-            print("Guarded tests failed after repair attempts.", flush=True)
-            return 1
-
-        branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
-        run(["git", "config", "user.name", "github-actions[bot]"])
-        run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"])
-        add = run(["git", "add", "--", *touched])
-        if add.returncode != 0:
-            restore(touched)
-            print(add.stderr[-2000:], flush=True)
-            return 1
-        status = run(["git", "status", "--short"])
-        if status.returncode != 0 or not status.stdout.strip():
-            restore(touched)
-            print("No changes to commit.", flush=True)
-            return 1
-        commit = run(["git", "commit", "-m", "feat: LINE development request"])
-        if commit.returncode != 0:
-            restore(touched)
-            print(commit.stderr[-2000:], flush=True)
-            return 1
-        checkout = run(["git", "checkout", "-B", branch])
-        if checkout.returncode != 0:
-            print(checkout.stderr[-2000:], flush=True)
-            return 1
-        push = run(["git", "push", "--set-upstream", "origin", branch])
-        if push.returncode != 0:
-            print(push.stderr[-2000:], flush=True)
-            return 1
-
-        print(f"Development branch pushed: {branch}", flush=True)
-        return 0
-    except Exception as exc:
-        print("Unexpected worker error:", type(exc).__name__, str(exc), flush=True)
-        traceback.print_exc()
-        return 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
