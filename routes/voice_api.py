@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import hmac
 import os
-
-from flask import Blueprint, current_app, jsonify, request, send_file
 from io import BytesIO
 
+from flask import Blueprint, current_app, jsonify, request, send_file
+
 from core.channel import handle_channel_request
+from core.line_voice import get_audio
 from core.voice import openai_transcribe_audio, openai_tts_audio
 
 
@@ -114,3 +115,21 @@ def voice_speak():
         download_name="speech.mp3",
         max_age=0,
     )
+
+
+@voice_api_bp.route("/api/voice/audio/<token>", methods=["GET"])
+def voice_audio(token: str):
+    """Serve a short-lived TTS object to LINE's audio-message fetcher."""
+    item = get_audio(token)
+    if item is None:
+        return jsonify({"ok": False, "error": "audio not found"}), 404
+
+    response = send_file(
+        BytesIO(item.data),
+        mimetype=item.mime_type,
+        as_attachment=False,
+        download_name="line-voice.mp3",
+        max_age=0,
+    )
+    response.headers["Cache-Control"] = "no-store, private"
+    return response
