@@ -1,9 +1,4 @@
-"""Explicit LINE -> GitHub Actions development command dispatcher.
-
-Only messages beginning with ``開発:`` or ``dev:`` are accepted for the
-normal development worker. App-development requests are owned by the Core
-Supervisor/Agent path and are intentionally not handled here.
-"""
+"""Explicit LINE/Slack -> GitHub Actions development command dispatcher."""
 from __future__ import annotations
 
 import os
@@ -43,14 +38,15 @@ def dispatch_development_workflow(
     user_id: str,
     token: str | None = None,
     repository: str | None = None,
+    authorized: bool = False,
 ) -> str:
     """Dispatch the dedicated GitHub Actions development workflow."""
     instruction = str(instruction or "").strip()
     if not instruction:
         return "開発指示が空です。『開発: ○○を実装して』の形式で指定してください。"
 
-    if not _is_authorized_user(user_id):
-        return "このLINEユーザーには開発ワークフローの実行権限がありません。"
+    if not authorized and not _is_authorized_user(user_id):
+        return "このユーザーには開発ワークフローの実行権限がありません。"
 
     repository = repository or os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
     token = token or os.environ.get("GITHUB_TOKEN", "")
