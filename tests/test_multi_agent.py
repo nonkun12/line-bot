@@ -80,6 +80,20 @@ def test_cycles_fail_closed():
         raise AssertionError("cycle must fail closed")
 
 
+def test_duplicate_task_ids_fail_closed():
+    tasks = [
+        task("same", resources={"core/a.py"}),
+        task("same", resources={"core/b.py"}),
+    ]
+
+    try:
+        plan_batches(tasks)
+    except ValueError as exc:
+        assert "duplicate task_id" in str(exc)
+    else:
+        raise AssertionError("duplicate task ids must fail closed")
+
+
 def test_default_team_has_all_six_roles():
     assert default_development_team() == (
         AgentRole.MANAGER,
