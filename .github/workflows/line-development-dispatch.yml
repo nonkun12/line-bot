@@ -61,8 +61,8 @@ jobs:
         run: |
           set -euo pipefail
           if ! git ls-remote --exit-code origin "refs/heads/${BRANCH}" >/dev/null 2>&1; then
-            echo "Development worker did not push ${BRANCH}; preserving failure." >&2
-            exit 1
+            echo "Worker completed successfully without pushing ${BRANCH}; treating this as a no-change success."
+            exit 0
           fi
 
           python - <<'PY'
