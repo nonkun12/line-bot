@@ -42,12 +42,15 @@ LEGACY_GRAPH_NODES: Mapping[str, str] = {
     "weather": "weather_agent",
     "normal": "normal_agent",
     "english_learning": "english_learning_agent",
+    "stocks": "stocks_agent",
+    "ai_news": "ai_news_agent",
+    "voice": "voice_agent",
     "fallback": "fallback_agent",
 }
 
 
 def build_core_agent_registry() -> AgentRegistry:
-    """Return the shared Core registry, including the four future feature agents."""
+    """Return the shared Core registry, including the future feature agents."""
     registry = build_legacy_registry(
         LEGACY_AGENT_NODES,
         graph_nodes=LEGACY_GRAPH_NODES,
