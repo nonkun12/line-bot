@@ -40,7 +40,7 @@ def test_legacy_router_keeps_existing_english_learning_node() -> None:
     assert route_from_supervisor(state, registry) == "english_learning_agent"
 
 
-def test_feature_agents_have_graph_node_registrations() -> None:
+def test_feature_agents_have_expected_registry_names_and_graph_nodes() -> None:
     expected = {
         "english_learning": "english_learning_agent",
         "stocks": "stocks_agent",
@@ -50,5 +50,8 @@ def test_feature_agents_have_graph_node_registrations() -> None:
 
     assert {name: LEGACY_GRAPH_NODES[name] for name in expected} == expected
     registry = build_core_agent_registry()
-    for name, node in expected.items():
-        assert registry.get(name).graph_node == node
+    assert {name: registry.get(name).name for name in expected} == expected
+
+    # Legacy adapters expose graph_node; migrated feature agents are native
+    # Agent implementations and intentionally do not need that legacy field.
+    assert registry.get("english_learning").graph_node == expected["english_learning"]
