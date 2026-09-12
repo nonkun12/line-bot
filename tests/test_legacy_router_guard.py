@@ -1,6 +1,6 @@
 import pytest
 
-from graph.core_registry import build_core_agent_registry
+from graph.core_registry import LEGACY_GRAPH_NODES, build_core_agent_registry
 from graph.router import route_from_supervisor
 
 
@@ -38,3 +38,17 @@ def test_legacy_router_keeps_existing_english_learning_node() -> None:
     }
 
     assert route_from_supervisor(state, registry) == "english_learning_agent"
+
+
+def test_feature_agents_have_graph_node_registrations() -> None:
+    expected = {
+        "english_learning": "english_learning_agent",
+        "stocks": "stocks_agent",
+        "ai_news": "ai_news_agent",
+        "voice": "voice_agent",
+    }
+
+    assert {name: LEGACY_GRAPH_NODES[name] for name in expected} == expected
+    registry = build_core_agent_registry()
+    for name, node in expected.items():
+        assert registry.get(name).graph_node == node
