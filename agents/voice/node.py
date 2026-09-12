@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from core.agents import AgentRequest, AgentResponse
 from core.voice import build_speech_result
+from agents.voice.intents import is_voice_intent
 
 
 class VoiceAgent:
@@ -10,11 +11,9 @@ class VoiceAgent:
     description = "Voice input/output and AI speaker requests."
     priority = 85
     enabled = True
-    _KEYWORDS = ("音声", "ボイス", "AIスピーカー", "voice", "speaker", "しゃべって")
 
     def can_handle(self, request: AgentRequest) -> bool:
-        text = request.message.lower()
-        return any(keyword.lower() in text for keyword in self._KEYWORDS)
+        return is_voice_intent(request.message)
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         channel = request.channel or "unknown"
