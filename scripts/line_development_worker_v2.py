@@ -218,39 +218,6 @@ Rules: one file only; old must be an exact substring of supplied context; minima
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
 
 
-def create_pr_via_render(branch: str, instruction: str, user_id: str, attempts: int) -> tuple[bool, str]:
-    key = os.environ.get("INTERNAL_PUSH_KEY", "").strip()
-    if not key:
-        return False, "INTERNAL_PUSH_KEY is not configured"
-    payload = json.dumps({
-        "head": branch,
-        "title": "feat: LINE development request",
-        "body": f"## LINE development request\n\n{instruction}\n\nUser: `{user_id}`\n\nGuarded tests: PASS\nRepair attempts: {attempts}\n",
-        "repository": os.environ.get("GITHUB_REPOSITORY", "nonkun12/line-bot"),
-    }).encode("utf-8")
-    req = urllib_request.Request(
-        "https://line-bot-yvea.onrender.com/internal/create-pr",
-        data=payload,
-        headers={"Content-Type": "application/json", "x-internal-key": key},
-        method="POST",
-    )
-    try:
-        with urllib_request.urlopen(req, timeout=20) as response:
-            raw = response.read().decode("utf-8", errors="replace")
-            data = json.loads(raw or "{}")
-            if response.status == 201 and data.get("ok"):
-                return True, str(data.get("url") or "PR created")
-            return False, f"Render PR relay HTTP {response.status}: {raw[-2000:]}"
-    except urllib_error.HTTPError as exc:
-        try:
-            raw = exc.read().decode("utf-8", errors="replace")
-        except Exception:
-            raw = ""
-        return False, f"Render PR relay HTTP {exc.code}: {raw[-2000:]}"
-    except Exception as exc:
-        return False, f"Render PR relay failed: {type(exc).__name__}: {exc}"
-
-
 def main() -> int:
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[:MAX_INSTRUCTION_LENGTH]
     user_id = os.environ.get("DEV_USER_ID", "")
@@ -342,11 +309,7 @@ def main() -> int:
             print(push.stderr[-2000:], flush=True)
             return 1
 
-        created, detail = create_pr_via_render(branch, instruction, user_id, attempts)
-        if not created:
-            print(f"PR creation failed: {detail}", flush=True)
-            return 1
-        print(detail, flush=True)
+        print(f"Development branch pushed: {branch}", flush=True)
         return 0
     except Exception as exc:
         print("Unexpected worker error:", type(exc).__name__, str(exc), flush=True)
