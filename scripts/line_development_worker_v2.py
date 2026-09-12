@@ -64,7 +64,6 @@ def ask(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOK
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.0,
         max_tokens=max_tokens,
-        response_format={"type": "json_object"},
         include_reasoning=False,
     )
     return response.choices[0].message.content or ""
