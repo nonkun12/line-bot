@@ -89,10 +89,31 @@ def _extract_explicit_path(instruction: str, files: list[str]) -> str | None:
     return None
 
 
+_E2E_TEST_KEYWORDS = (
+    "E2E",
+    "e2e",
+    "疎通テスト",
+    "接続テスト",
+    "開発テスト",
+    "自動開発テスト",
+)
+
+_E2E_TEST_TARGETS = (
+    "tests/test_line_development.py",
+    "tests/test_app_development_dispatch.py",
+)
+
+
 def choose_file(client: Groq, instruction: str, files: list[str]) -> str | None:
     explicit = _extract_explicit_path(instruction, files)
     if explicit:
         return explicit
+
+    if any(keyword in instruction for keyword in _E2E_TEST_KEYWORDS):
+        for candidate in _E2E_TEST_TARGETS:
+            if candidate in files:
+                return candidate
+
     prompt = f"Instruction:\n{instruction}\n\nEligible files:\n" + "\n".join(files)
     try:
         data = parse_plan(ask(client, "Select exactly one eligible file and return JSON only: {\"file\":\"path\"} or {\"file\":null}", prompt))
