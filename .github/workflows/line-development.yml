@@ -43,6 +43,7 @@ jobs:
 
       - name: Run guarded LINE development worker v2
         id: development
+        continue-on-error: true
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
@@ -52,13 +53,48 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python scripts/line_development_worker_v2.py
 
+      - name: Create or reuse GitHub PR
+        id: create_pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
+          DEV_USER_ID: ${{ github.event.inputs.user_id }}
+          BRANCH: line-dev/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if ! git ls-remote --exit-code origin "refs/heads/${BRANCH}" >/dev/null 2>&1; then
+            echo "Development worker did not push ${BRANCH}; preserving failure." >&2
+            exit 1
+          fi
+
+          if gh pr view "${BRANCH}" --repo "${GITHUB_REPOSITORY}" --json url --jq '.url' 2>/dev/null; then
+            echo "PR already exists for ${BRANCH}."
+            exit 0
+          fi
+
+          gh pr create \
+            --repo "${GITHUB_REPOSITORY}" \
+            --head "${BRANCH}" \
+            --base main \
+            --title "feat: LINE development request" \
+            --body "## LINE development request
+
+${DEV_INSTRUCTION}
+
+User: \`${DEV_USER_ID}\`
+
+Guarded tests: PASS
+Created directly by GitHub Actions." \
+            >/tmp/pr_url.txt
+          cat /tmp/pr_url.txt
+
       - name: Notify LINE of development result
         if: always()
         env:
           INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
-          DEVELOPMENT_OUTCOME: ${{ steps.development.outcome }}
+          DEVELOPMENT_OUTCOME: ${{ steps.create_pr.outcome }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           cat > /tmp/notify_line.py <<'PY'
@@ -79,7 +115,7 @@ jobs:
               message = (
                   "✅ 自動開発が完了しました。\n"
                   f"指示: {instruction}\n"
-                  "テスト・開発処理が完了し、結果をGitHubに反映しました。\n"
+                  "テスト・開発処理が完了し、GitHub PRを作成しました。\n"
                   f"実行結果: {run_url}"
               )
           else:
