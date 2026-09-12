@@ -5,6 +5,13 @@ class FakeResponse:
     status_code = 204
 
 
+class FakeWorkflowResponse:
+    status_code = 200
+
+    def json(self):
+        return {"id": 123, "name": "LINE Development Dispatch", "state": "active"}
+
+
 def test_normal_message_is_not_development():
     assert extract_development_instruction("明日の予定を教えて") is None
     assert extract_development_instruction("github repo") is None
@@ -35,12 +42,18 @@ def test_dispatch_uses_workflow_dispatch(monkeypatch):
     monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     captured = {}
 
+    def fake_get(url, **kwargs):
+        captured["workflow_url"] = url
+        captured["workflow_headers"] = kwargs["headers"]
+        return FakeWorkflowResponse()
+
     def fake_post(url, **kwargs):
         captured["url"] = url
         captured["json"] = kwargs["json"]
         captured["headers"] = kwargs["headers"]
         return FakeResponse()
 
+    monkeypatch.setattr("line_development.httpx.get", fake_get)
     monkeypatch.setattr("line_development.httpx.post", fake_post)
     reply = dispatch_development_workflow(
         "英語学習機能を追加して",
@@ -49,7 +62,8 @@ def test_dispatch_uses_workflow_dispatch(monkeypatch):
         repository="nonkun12/line-bot",
     )
 
-    assert "/actions/workflows/line-development.yml/dispatches" in captured["url"]
+    assert "/actions/workflows/line-development-dispatch.yml" in captured["workflow_url"]
+    assert captured["url"].endswith("/actions/workflows/line-development-dispatch.yml/dispatches")
     assert captured["json"] == {
         "ref": "main",
         "inputs": {"instruction": "英語学習機能を追加して", "user_id": "U123"},
