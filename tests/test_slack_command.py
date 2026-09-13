@@ -46,6 +46,16 @@ def test_slack_command_dispatches_verified_authorized_user(monkeypatch):
 
     captured = {}
 
+    class ImmediateThread:
+        def __init__(self, target, args, **kwargs):
+            self.target = target
+            self.args = args
+
+        def start(self):
+            self.target(*self.args)
+
+    monkeypatch.setattr(slack_command.threading, "Thread", ImmediateThread)
+
     def fake_dispatch(instruction, *, user_id, token, repository, authorized):
         captured.update(
             instruction=instruction,
@@ -66,7 +76,7 @@ def test_slack_command_dispatches_verified_authorized_user(monkeypatch):
     )
 
     assert response.status_code == 200
-    assert response.get_json()["text"] == "accepted"
+    assert response.get_json()["text"].startswith("🚀 開発指示を受け付けました")
     assert captured == {
         "instruction": "開発: pytestを実行",
         "user_id": "U123",

@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
+import threading
 import time
 from urllib.parse import parse_qs
 
@@ -35,6 +36,19 @@ def _verify_signature(body: bytes, timestamp: str, signature: str, signing_secre
     return bool(signature) and hmac.compare_digest(expected, signature)
 
 
+def _dispatch_in_background(instruction: str, user_id: str) -> None:
+    """Start GitHub dispatch without making Slack wait for the API round-trip."""
+    reply = dispatch_development_workflow(
+        instruction,
+        user_id=user_id,
+        token=os.environ.get("GITHUB_TOKEN", ""),
+        repository=os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"),
+        authorized=True,
+    )
+    if reply and not reply.startswith("🚀"):
+        print(f"[slack /dev] background dispatch result: {reply}", flush=True)
+
+
 def register_slack_command(app):
     @app.route("/slack/command", methods=["POST"])
     def slack_command():
@@ -55,16 +69,17 @@ def register_slack_command(app):
         if not text:
             return {"response_type": "ephemeral", "text": "使い方: /dev ○○を実装して"}, 400
 
-        instruction = text
-
-        reply = dispatch_development_workflow(
-            instruction,
-            user_id=user_id,
-            token=os.environ.get("GITHUB_TOKEN", ""),
-            repository=os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"),
-            authorized=True,
+        thread = threading.Thread(
+            target=_dispatch_in_background,
+            args=(text, user_id),
+            name="slack-dev-dispatch",
+            daemon=True,
         )
-        response_text = reply if reply else "開発指示を処理しました。"
-        return {"response_type": "ephemeral", "text": response_text}, 200
+        thread.start()
+
+        return {
+            "response_type": "ephemeral",
+            "text": "🚀 開発指示を受け付けました。GitHub Actionsで開発・テストを開始します。",
+        }, 200
 
     return slack_command
