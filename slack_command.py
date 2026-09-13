@@ -56,8 +56,6 @@ def register_slack_command(app):
             return {"response_type": "ephemeral", "text": "使い方: /dev ○○を実装して"}, 400
 
         instruction = text
-        if instruction.startswith(("開発:", "dev:")):
-            instruction = instruction.split(":", 1)[1].strip()
 
         reply = dispatch_development_workflow(
             instruction,
