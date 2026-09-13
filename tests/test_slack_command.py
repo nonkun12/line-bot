@@ -54,19 +54,9 @@ def test_slack_command_dispatches_verified_authorized_user(monkeypatch):
             repository=repository,
             authorized=authorized,
         )
+        return "accepted"
 
-    monkeypatch.setattr(slack_command, "_dispatch_in_background", fake_dispatch)
-
-    class FakeThread:
-        def __init__(self, *, target, args, name, daemon):
-            self.target = target
-            self.args = args
-
-        def start(self):
-            self.target(*self.args)
-
-    monkeypatch.setattr(slack_command.threading, "Thread", FakeThread)
-
+    monkeypatch.setattr(slack_command, "dispatch_development_workflow", fake_dispatch)
     body = b"user_id=U123&text=%E9%96%8B%E7%99%BA%3A+pytest%E3%82%92%E5%AE%9F%E8%A1%8C"
     client = app.test_client()
     response = client.post(
@@ -76,7 +66,7 @@ def test_slack_command_dispatches_verified_authorized_user(monkeypatch):
     )
 
     assert response.status_code == 200
-    assert response.get_json()["text"] == "🚀 開発指示を受け付けました。GitHub Actionsで開発・テストを開始します。"
+    assert response.get_json()["text"] == "accepted"
     assert captured == {
         "instruction": "開発: pytestを実行",
         "user_id": "U123",
