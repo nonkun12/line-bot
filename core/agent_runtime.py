@@ -1,8 +1,8 @@
 """Bounded execution runtime for the multi-agent development team.
 
 The runtime is provider-neutral: model calls, GitHub, LINE, Slack, and n8n stay
-outside this module. It executes a bounded development loop and fails closed.
-Real file-changing executors can be attached later without changing orchestration.
+outside this module. It executes bounded development and quality loops and fails
+closed on unsafe results.
 """
 from __future__ import annotations
 
@@ -90,8 +90,141 @@ class MultiAgentRuntime:
                 completed.append(RuntimeTaskResult(task, result))
         return RuntimeReport(tuple(completed), rounds=1)
 
+    def run_quality(self, tasks: Sequence[AgentTask]) -> RuntimeReport:
+        """Run Implementer -> TEST -> conditional Debug -> Refactor -> TEST -> Review -> Integrator.
+
+        Debugger and Refactorer are real, distinct roles. They are invoked only
+        when a quality gate fails, and every successful repair/refactor is gated
+        by a mandatory retest. All retries are bounded by ``max_rounds``.
+        """
+        required = {AgentRole.IMPLEMENTER, AgentRole.TESTER, AgentRole.REVIEWER, AgentRole.INTEGRATOR}
+        present = {task.role for task in tasks}
+        missing = required - present
+        if missing:
+            names = ", ".join(sorted(role.value for role in missing))
+            return RuntimeReport((), error=f"required development role missing: {names}")
+
+        templates = {task.role: task for task in tasks}
+        completed: list[RuntimeTaskResult] = []
+        rounds = 0
+        quality_attempts = 0
+
+        prefix_roles = (AgentRole.MANAGER, AgentRole.IMPLEMENTER, AgentRole.TESTER)
+        prefix = tuple(task for role in prefix_roles if (task := templates.get(role)) is not None)
+        prefix_report = self.run(prefix)
+        completed.extend(prefix_report.completed)
+        rounds = 1
+        if not prefix_report.success:
+            failed = self._find_failed_task(prefix, prefix_report.failed_task_id)
+            return RuntimeReport(tuple(completed), prefix_report.failed_task_id, prefix_report.error, rounds, quality_attempts)
+
+        tester = next(item for item in reversed(completed) if item.task.role is AgentRole.TESTER)
+        current_gate = tester
+        while not current_gate.result.success:
+            if AgentRole.DEBUGGER not in self._executors or AgentRole.REFACTORER not in self._executors:
+                return RuntimeReport(tuple(completed), current_gate.task.task_id, "quality gate failed and Debugger/Refactorer executors are required", rounds, quality_attempts)
+            if quality_attempts >= self._max_rounds - 1:
+                return RuntimeReport(tuple(completed), current_gate.task.task_id, current_gate.result.summary or "quality gate failed", rounds, quality_attempts)
+            quality_attempts += 1
+            rounds = max(rounds, quality_attempts + 1)
+            debug_task = AgentTask(
+                task_id=f"debug:{quality_attempts}:{current_gate.task.task_id}",
+                role=AgentRole.DEBUGGER,
+                instruction=f"Analyze and fix the failure from {current_gate.task.task_id}: {current_gate.result.summary[-2000:]}",
+                resources=current_gate.task.resources,
+            )
+            debug_report = self._run_quality_step(debug_task)
+            completed.extend(debug_report.completed)
+            if not debug_report.success:
+                return RuntimeReport(tuple(completed), debug_report.failed_task_id, debug_report.error, rounds, quality_attempts)
+
+            refactor_task = AgentTask(
+                task_id=f"refactor:{quality_attempts}:{debug_task.task_id}",
+                role=AgentRole.REFACTORER,
+                instruction=f"Refactor the validated fix from {debug_task.task_id} without changing required behavior.",
+                resources=current_gate.task.resources,
+                depends_on=(debug_task.task_id,),
+            )
+            refactor_report = self._run_quality_step(refactor_task, completed)
+            completed.extend(refactor_report.completed)
+            if not refactor_report.success:
+                return RuntimeReport(tuple(completed), refactor_report.failed_task_id, refactor_report.error, rounds, quality_attempts)
+
+            retest_task = AgentTask(
+                task_id=f"test:{quality_attempts}:retest",
+                role=AgentRole.TESTER,
+                instruction=f"Mandatory retest after {refactor_task.task_id}.",
+                resources=current_gate.task.resources,
+            )
+            retest_report = self._run_quality_step(retest_task, completed)
+            completed.extend(retest_report.completed)
+            if not retest_report.success:
+                return RuntimeReport(tuple(completed), retest_report.failed_task_id, retest_report.error, rounds, quality_attempts)
+            current_gate = retest_report.completed[-1]
+
+        reviewer_template = templates[AgentRole.REVIEWER]
+        reviewer_task = AgentTask(
+            task_id=reviewer_template.task_id,
+            role=reviewer_template.role,
+            instruction=reviewer_template.instruction,
+            resources=reviewer_template.resources,
+            depends_on=(),
+        )
+        reviewer_report = self._run_quality_step(reviewer_task, completed)
+        completed.extend(reviewer_report.completed)
+        if not reviewer_report.success:
+            reviewer_gate = reviewer_report.completed[-1] if reviewer_report.completed else RuntimeTaskResult(reviewer_task, AgentResult(reviewer_task.task_id, False, reviewer_report.error or "review failed"))
+            current_gate = RuntimeTaskResult(
+                AgentTask(task_id=reviewer_task.task_id, role=AgentRole.TESTER, instruction="Quality retest after reviewer feedback.", resources=reviewer_task.resources),
+                AgentResult(reviewer_task.task_id, False, reviewer_gate.result.summary),
+            )
+            while not current_gate.result.success:
+                if AgentRole.DEBUGGER not in self._executors or AgentRole.REFACTORER not in self._executors:
+                    return RuntimeReport(tuple(completed), reviewer_task.task_id, "review gate failed and Debugger/Refactorer executors are required", rounds, quality_attempts)
+                if quality_attempts >= self._max_rounds - 1:
+                    return RuntimeReport(tuple(completed), reviewer_task.task_id, reviewer_gate.result.summary or "review gate failed", rounds, quality_attempts)
+                quality_attempts += 1
+                debug_task = AgentTask(f"debug:{quality_attempts}:review", AgentRole.DEBUGGER, f"Fix reviewer failure: {reviewer_gate.result.summary[-2000:]}", reviewer_task.resources)
+                debug_report = self._run_quality_step(debug_task)
+                completed.extend(debug_report.completed)
+                if not debug_report.success:
+                    return RuntimeReport(tuple(completed), debug_report.failed_task_id, debug_report.error, rounds, quality_attempts)
+                refactor_task = AgentTask(f"refactor:{quality_attempts}:review", AgentRole.REFACTORER, f"Refactor the reviewer fix from {debug_task.task_id} without changing behavior.", reviewer_task.resources)
+                refactor_report = self._run_quality_step(refactor_task, completed)
+                completed.extend(refactor_report.completed)
+                if not refactor_report.success:
+                    return RuntimeReport(tuple(completed), refactor_report.failed_task_id, refactor_report.error, rounds, quality_attempts)
+                retest_task = AgentTask(f"test:{quality_attempts}:review-retest", AgentRole.TESTER, "Mandatory retest after reviewer fix and refactor.", reviewer_task.resources)
+                retest_report = self._run_quality_step(retest_task, completed)
+                completed.extend(retest_report.completed)
+                if not retest_report.success:
+                    return RuntimeReport(tuple(completed), retest_report.failed_task_id, retest_report.error, rounds, quality_attempts)
+                rereview_task = AgentTask(f"review:{quality_attempts}:rereview", AgentRole.REVIEWER, "Re-review after successful debug, refactor, and retest.", reviewer_task.resources)
+                rereview_report = self._run_quality_step(rereview_task, completed)
+                completed.extend(rereview_report.completed)
+                if not rereview_report.success:
+                    reviewer_gate = rereview_report.completed[-1] if rereview_report.completed else RuntimeTaskResult(rereview_task, AgentResult(rereview_task.task_id, False, rereview_report.error or "review failed"))
+                    continue
+                current_gate = RuntimeTaskResult(retest_task, AgentResult(retest_task.task_id, True, "retest passed"))
+                break
+
+        integrator_template = templates[AgentRole.INTEGRATOR]
+        integrator_task = AgentTask(integrator_template.task_id, AgentRole.INTEGRATOR, integrator_template.instruction, integrator_template.resources)
+        integrator_report = self._run_quality_step(integrator_task, completed)
+        completed.extend(integrator_report.completed)
+        if not integrator_report.success:
+            return RuntimeReport(tuple(completed), integrator_report.failed_task_id, integrator_report.error, rounds, quality_attempts)
+        return RuntimeReport(tuple(completed), rounds=rounds, repair_attempts=quality_attempts, integration_ready=True)
+
+    def _run_quality_step(self, task: AgentTask, completed: Sequence[RuntimeTaskResult] = ()) -> RuntimeReport:
+        missing = task.role not in self._executors
+        if missing:
+            return RuntimeReport(tuple(completed), task.task_id, f"missing executor for role: {task.role.value}")
+        report = self.run((task,))
+        return report
+
     def run_development(self, tasks: Sequence[AgentTask], *, repair_planner: RepairPlanner | None = None) -> RuntimeReport:
-        """Run Implementer -> Tester -> Reviewer -> Integrator with bounded repair loops."""
+        """Run Implementer -> Tester -> Reviewer -> Integrator with legacy bounded repair loops."""
         required_roles = {AgentRole.IMPLEMENTER, AgentRole.TESTER, AgentRole.REVIEWER, AgentRole.INTEGRATOR}
         present_roles = {task.role for task in tasks}
         missing_roles = required_roles - present_roles
