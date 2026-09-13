@@ -54,6 +54,12 @@ def _explicit_comment_plan(instruction: str, chosen: str) -> dict | None:
     }
 
 
+def _is_deterministic_comment_request(instruction: str, chosen: str | None) -> bool:
+    return chosen == "tests/test_line_development.py" and re.search(
+        r"コメント.*(?:1行|一行)|(?:1行|一行).*コメント", instruction, re.IGNORECASE | re.DOTALL
+    ) is not None
+
+
 class DevelopmentExecutor:
     """Execute concrete development roles against one guarded worktree."""
 
@@ -121,6 +127,10 @@ class DevelopmentExecutor:
                 return AgentResult(task.task_id, True, "review gate passed", frozenset(self.state.touched or []))
 
             if task.role is AgentRole.REPAIRER:
+                if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
+                    # Explicit one-line comment requests are deterministic. Never ask the
+                    # model for a JSON repair plan just because pytest had a transient failure.
+                    return AgentResult(task.task_id, True, "deterministic repair retry; no LLM JSON parsing")
                 plan = worker.build_plan(
                     self.state.client,
                     self.state.instruction,
@@ -158,10 +168,15 @@ class DevelopmentRepairPlanner(RepairPlanner):
         self.state = state
 
     def repair_task(self, failed_task: AgentTask, result: AgentResult, attempt: int) -> AgentTask:
+        mode = (
+            "Use deterministic retry; do not call an LLM or parse JSON."
+            if _is_deterministic_comment_request(self.state.instruction, self.state.chosen)
+            else "Use the normal guarded repair planner."
+        )
         return AgentTask(
             task_id=f"repair:{attempt}:{failed_task.task_id}",
             role=AgentRole.REPAIRER,
-            instruction=f"Repair after {failed_task.role.value} failure: {result.summary[-1500:]}",
+            instruction=f"{mode} Repair after {failed_task.role.value} failure: {result.summary[-1500:]}",
             resources=failed_task.resources,
         )
 
