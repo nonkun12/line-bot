@@ -23,6 +23,18 @@ _WEATHER_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Avoid making the availability of a third-party geocoder a hard dependency
+# for the common Japanese locations users ask about.
+_KNOWN_LOCATIONS: dict[str, tuple[str, float, float]] = {
+    "東京": ("東京", 35.6762, 139.6503),
+    "東京都": ("東京都", 35.6762, 139.6503),
+    "京都": ("京都", 35.0116, 135.7681),
+    "京都市": ("京都市", 35.0116, 135.7681),
+    "沖縄": ("沖縄", 26.2124, 127.6809),
+    "那覇": ("那覇", 26.2124, 127.6809),
+    "那覇市": ("那覇市", 26.2124, 127.6809),
+}
+
 
 def _weather_code_text(code: int) -> str:
     codes = {
@@ -53,7 +65,11 @@ def _extract_weather_location(message: str) -> str | None:
 
 
 def _geocode_location(location: str) -> tuple[str, float, float]:
-    """Resolve a user-supplied place name to coordinates via Open-Meteo."""
+    """Resolve a place name to coordinates, preferring deterministic local mappings."""
+    known = _KNOWN_LOCATIONS.get(location)
+    if known is not None:
+        return known
+
     response = requests.get(
         "https://geocoding-api.open-meteo.com/v1/search",
         params={
