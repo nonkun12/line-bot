@@ -15,7 +15,9 @@ _MAX_BODY_AGE = 300
 
 
 def _is_authorized_slack_user(user_id: str) -> bool:
-    configured = os.environ.get("SLACK_DEV_ALLOWED_USER_IDS", "")
+    configured = os.environ.get("SLACK_DEV_ALLOWED_USER_IDS", "").strip()
+    if not configured:
+        configured = os.environ.get("DEV_ALLOWED_USER_IDS", "")
     allowed = {item.strip() for item in configured.split(",") if item.strip()}
     return bool(allowed) and str(user_id) in allowed
 
