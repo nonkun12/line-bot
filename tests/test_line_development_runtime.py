@@ -2,7 +2,12 @@ from core import line_development_runtime as runtime
 from scripts import line_development_worker_v2 as worker
 
 
-def test_explicit_comment_plan_is_deterministic():
+def test_explicit_comment_plan_is_deterministic(tmp_path, monkeypatch):
+    target = tmp_path / "tests" / "test_line_development.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("from line_development import extract_development_instruction\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
     plan = runtime._explicit_comment_plan(
         'tests/test_line_development.py に「LINE自動開発E2E」というコメントを1行追加して、pytestを実行してください',
         'tests/test_line_development.py',
