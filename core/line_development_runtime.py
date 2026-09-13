@@ -134,11 +134,6 @@ class DevelopmentRepairPlanner(RepairPlanner):
 def execute(instruction: str) -> int:
     """Run one real guarded development request through all runtime roles."""
     client = worker.Groq(api_key=os.environ["GROQ_API_KEY"])
-    if worker.is_test_instruction(instruction):
-        passed, output = worker.run_tests()
-        print(output, flush=True)
-        return 0 if passed else 1
-
     state = DevelopmentState(client=client, instruction=instruction)
     executor = DevelopmentExecutor(state)
     tasks = (
