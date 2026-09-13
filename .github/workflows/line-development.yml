@@ -41,7 +41,7 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run guarded LINE development worker v2
+      - name: Run bounded multi-agent LINE development runtime
         id: development
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -49,7 +49,7 @@ jobs:
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GH_TOKEN: ${{ github.token }}
-        run: python scripts/line_development_worker_v2.py
+        run: python -m core.line_development_runtime
 
       - name: Create or reuse GitHub PR
         id: create_pr
@@ -81,7 +81,9 @@ ${DEV_INSTRUCTION}
 
 User: \`${DEV_USER_ID}\`
 
-Guarded tests: PASS
+Multi-agent runtime: Manager → Implementer → Tester → Reviewer → Repairer(if needed) → Integrator
+
+Guarded tests and integration gate: PASS
 Created directly by GitHub Actions." \
             >/tmp/pr_url.txt
           cat /tmp/pr_url.txt
@@ -113,7 +115,7 @@ Created directly by GitHub Actions." \
               message = (
                   "✅ 自動開発が完了しました。\n"
                   f"指示: {instruction}\n"
-                  "テスト・開発処理が完了し、GitHub PRを作成しました。\n"
+                  "Manager → Implementer → Tester → Reviewer → Integrator を実行し、GitHub PRを作成しました。\n"
                   f"実行結果: {run_url}"
               )
           else:
@@ -145,6 +147,56 @@ Created directly by GitHub Actions." \
               print(f"LINE notification failed but development result is preserved: {type(exc).__name__}: {exc}")
           PY
           python /tmp/notify_line.py
+
+      - name: Notify Slack of development result
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
+          DEVELOPMENT_OUTCOME: ${{ steps.create_pr.outcome }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "${SLACK_WEBHOOK_URL}" ]; then
+            echo "SLACK_WEBHOOK_URL is not configured; skipping Slack notification."
+            exit 0
+          fi
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          outcome = os.environ.get("DEVELOPMENT_OUTCOME", "unknown")
+          instruction = os.environ.get("DEV_INSTRUCTION", "")
+          run_url = os.environ.get("RUN_URL", "")
+          if outcome == "success":
+              text = (
+                  "✅ LINE/Slack 自動開発が完了しました。\n"
+                  f"指示: {instruction}\n"
+                  "Manager → Implementer → Tester → Reviewer → Integrator を実行し、GitHub PRを作成しました。\n"
+                  f"実行結果: {run_url}"
+              )
+          else:
+              text = (
+                  "❌ LINE/Slack 自動開発が失敗しました。\n"
+                  f"指示: {instruction}\n"
+                  f"失敗地点: GitHub Actions（{outcome}）\n"
+                  f"詳細: {run_url}"
+              )
+
+          payload = json.dumps({"text": text}).encode("utf-8")
+          request = urllib.request.Request(
+              os.environ["SLACK_WEBHOOK_URL"],
+              data=payload,
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=15) as response:
+                  body = response.read().decode("utf-8", errors="replace")
+                  print(f"Slack notification HTTP {response.status}: {body}")
+          except Exception as exc:
+              print(f"Slack notification failed but development result is preserved: {type(exc).__name__}: {exc}")
+          PY
 
       - name: Upload development log
         if: always()

@@ -76,8 +76,6 @@ def is_test_instruction(instruction: str) -> bool:
 
 def _extract_explicit_path(instruction: str, files: list[str]) -> str | None:
     allowed = set(files)
-    if _COMMENT_REQUEST_PATTERN.search(instruction):
-        allowed.add(_COMMENT_TEST_PATH)
     candidates: set[str] = set()
     for match in _EXPLICIT_PATH_PATTERN.finditer(instruction):
         token = match.group(0).strip("`'\"()[]{}<> 　").lstrip("./")
@@ -128,26 +126,16 @@ def choose_file(client: Groq, instruction: str, files: list[str]) -> str | None:
 
 def parse_plan(text: str) -> dict:
     clean = str(text or "").strip()
-
-    # Prefer the complete response when it is already valid JSON.
     try:
         data = json.loads(clean)
     except json.JSONDecodeError as original_error:
         data = None
-
-        # Handle markdown fenced JSON.
-        fenced = re.search(
-            r"```(?:json)?\s*(\{.*?\})\s*```",
-            clean,
-            re.IGNORECASE | re.DOTALL,
-        )
+        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean, re.IGNORECASE | re.DOTALL)
         if fenced:
             try:
                 data = json.loads(fenced.group(1))
             except json.JSONDecodeError:
                 data = None
-
-        # Handle a JSON object surrounded by explanatory text.
         if data is None:
             decoder = json.JSONDecoder()
             for match in re.finditer(r"\{", clean):
@@ -158,10 +146,8 @@ def parse_plan(text: str) -> dict:
                 if isinstance(candidate, dict):
                     data = candidate
                     break
-
         if data is None:
             raise original_error
-
     if not isinstance(data, dict):
         raise ValueError("plan must be object")
     return data
@@ -173,14 +159,16 @@ def context_for(path: str) -> str:
 
 
 def build_comment_test_plan(instruction: str, chosen: str) -> dict | None:
+    """Build the legacy self-test edit only when explicitly enabled."""
+    if os.environ.get("ALLOW_SELF_TEST_COMMENT") != "1":
+        return None
     if chosen != _COMMENT_TEST_PATH or not _COMMENT_REQUEST_PATTERN.search(instruction):
         return None
     if "scripts/line_development.py" not in instruction and "line_development.py" not in instruction:
         return None
     match = re.search(r"[「『\"']([^」』\"']+)[」』\"']", instruction)
     comment_text = (match.group(1) if match else "LINE自動開発テスト").strip()
-    comment_text = re.sub(r"[\r\n]+", " ", comment_text)
-    comment_text = comment_text[:120].strip()
+    comment_text = re.sub(r"[\r\n]+", " ", comment_text)[:120].strip()
     if not comment_text:
         return None
     target = ROOT / _COMMENT_TEST_PATH
@@ -206,11 +194,8 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
         path, old, new = change.get("file"), change.get("old"), change.get("new")
         if path != chosen:
             return False, "change_outside_selected_file"
-        comment_test = chosen == _COMMENT_TEST_PATH
-        if is_protected(path) and not comment_test:
+        if is_protected(path):
             return False, f"protected_file:{path}"
-        if comment_test and not _COMMENT_REQUEST_PATTERN.search(os.environ.get("DEV_INSTRUCTION", "")):
-            return False, "protected_file:line_development.py"
         if not isinstance(old, str) or not old or not isinstance(new, str):
             return False, "invalid_old_new"
         if old == new:
@@ -272,7 +257,6 @@ Rules: one file only; old must be an exact substring of supplied context; minima
 
 def main() -> int:
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[:MAX_INSTRUCTION_LENGTH]
-    user_id = os.environ.get("DEV_USER_ID", "")
     if not instruction:
         print("No development instruction supplied.")
         return 2
