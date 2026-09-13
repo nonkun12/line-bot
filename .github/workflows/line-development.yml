@@ -190,9 +190,12 @@ Created directly by GitHub Actions." \
               headers={"Content-Type": "application/json"},
               method="POST",
           )
-          with urllib.request.urlopen(request, timeout=15) as response:
-              body = response.read().decode("utf-8", errors="replace")
-              print(f"Slack notification HTTP {response.status}: {body}")
+          try:
+              with urllib.request.urlopen(request, timeout=15) as response:
+                  body = response.read().decode("utf-8", errors="replace")
+                  print(f"Slack notification HTTP {response.status}: {body}")
+          except Exception as exc:
+              print(f"Slack notification failed but development result is preserved: {type(exc).__name__}: {exc}")
           PY
 
       - name: Upload development log
