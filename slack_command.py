@@ -65,7 +65,17 @@ def _slack_api(method: str, payload: dict) -> bool:
 
 
 def _post_message(channel_id: str, text: str) -> bool:
-    return _slack_api("chat.postMessage", {"channel": channel_id, "text": text})
+    """Post to the source channel when a bot token exists, otherwise use the existing webhook."""
+    if _slack_api("chat.postMessage", {"channel": channel_id, "text": text}):
+        return True
+    webhook = os.environ.get("SLACK_WEBHOOK_URL", "").strip()
+    if not webhook:
+        return False
+    try:
+        response = httpx.post(webhook, json={"text": text}, timeout=8.0)
+        return response.is_success
+    except Exception:
+        return False
 
 
 def _dispatch_instruction(instruction: str, user_id: str) -> str:
@@ -115,14 +125,9 @@ def register_slack_command(app):
         if not _verify_event_request(body):
             return {"ok": False, "error": "invalid_signature"}, 401
 
-        try:
-            payload = request.get_json(silent=True) or {}
-        except Exception:
-            return {"ok": False, "error": "invalid_json"}, 400
-
+        payload = request.get_json(silent=True) or {}
         if payload.get("type") == "url_verification":
             return {"challenge": payload.get("challenge", "")}, 200
-
         if payload.get("type") != "event_callback":
             return {"ok": True}, 200
 
