@@ -17,6 +17,14 @@ class SpecialistRegistration:
     capabilities: tuple[str, ...] = ()
     metadata: Mapping[str, object] | None = None
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.specialist, Specialist):
+            raise TypeError("specialist must be a Specialist")
+        if not callable(self.handler):
+            raise TypeError("handler must be callable")
+        if any(not capability.strip() for capability in self.capabilities):
+            raise ValueError("capabilities must not contain blank values")
+
 
 class SpecialistRegistry:
     """Own the specialist-to-handler mapping without selecting providers."""
