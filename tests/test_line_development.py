@@ -9,7 +9,7 @@ class FakeWorkflowResponse:
     status_code = 200
 
     def json(self):
-        return {"id": 123, "name": "LINE Development Dispatch", "state": "active"}
+        return {"id": 123, "name": "LINE Development", "state": "active"}
 
 
 def test_normal_message_is_not_development():
@@ -28,7 +28,6 @@ def test_explicit_english_development_command():
 def test_empty_development_command_is_rejected():
     assert extract_development_instruction("開発:") == ""
     assert extract_development_instruction("dev:   ") == ""
-    monkeypatch = None
     assert "空です" in dispatch_development_workflow("", user_id="u1", token="test")
 
 
@@ -38,7 +37,7 @@ def test_unauthorized_user_is_rejected(monkeypatch):
     assert "権限がありません" in reply
 
 
-def test_dispatch_uses_workflow_dispatch(monkeypatch):
+def test_dispatch_uses_shared_runtime_workflow(monkeypatch):
     monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     captured = {}
 
@@ -62,8 +61,8 @@ def test_dispatch_uses_workflow_dispatch(monkeypatch):
         repository="nonkun12/line-bot",
     )
 
-    assert "/actions/workflows/line-development-dispatch.yml" in captured["workflow_url"]
-    assert captured["url"].endswith("/actions/workflows/line-development-dispatch.yml/dispatches")
+    assert "/actions/workflows/line-development.yml" in captured["workflow_url"]
+    assert captured["url"].endswith("/actions/workflows/line-development.yml/dispatches")
     assert captured["json"] == {
         "ref": "main",
         "inputs": {"instruction": "英語学習機能を追加して", "user_id": "U123"},
