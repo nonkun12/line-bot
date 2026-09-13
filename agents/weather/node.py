@@ -6,7 +6,22 @@ Uses Open-Meteo without an API key.
 
 from __future__ import annotations
 
+import re
+
 import requests
+
+
+_WEATHER_LOCATION_RE = re.compile(
+    r"(?P<location>[\w々ー一-龯ぁ-んァ-ヶ]+?)(?:の)?"
+    r"(?:現在の)?(?:天気|天候|気温|温度|降水確率|雨|雪|晴れ|曇り|weather|temperature|forecast)",
+    re.IGNORECASE,
+)
+
+_WEATHER_PREFIX_RE = re.compile(
+    r"(?:天気|天候|気温|温度|weather|temperature|forecast)\s*(?:は|の)?\s*"
+    r"(?P<location>[\w々ー一-龯ぁ-んァ-ヶ]+)",
+    re.IGNORECASE,
+)
 
 
 def _weather_code_text(code: int) -> str:
@@ -18,6 +33,47 @@ def _weather_code_text(code: int) -> str:
         95: "雷雨", 96: "雷雨", 99: "強い雷雨",
     }
     return codes.get(code, f"天気コード {code}")
+
+
+def _extract_weather_location(message: str) -> str | None:
+    """Extract a location from common Japanese/English weather questions."""
+    text = (message or "").strip()
+    if not text:
+        return None
+
+    match = _WEATHER_LOCATION_RE.search(text)
+    if match:
+        return match.group("location").strip("？?。！!、 ") or None
+
+    match = _WEATHER_PREFIX_RE.search(text)
+    if match:
+        return match.group("location").strip("？?。！!、 ") or None
+
+    return None
+
+
+def _geocode_location(location: str) -> tuple[str, float, float]:
+    """Resolve a user-supplied place name to coordinates via Open-Meteo."""
+    response = requests.get(
+        "https://geocoding-api.open-meteo.com/v1/search",
+        params={
+            "name": location,
+            "count": 1,
+            "language": "ja",
+            "format": "json",
+        },
+        timeout=10,
+    )
+    response.raise_for_status()
+    results = response.json().get("results") or []
+    if not results:
+        raise ValueError(f"場所が見つかりません: {location}")
+    result = results[0]
+    return (
+        str(result.get("name") or location),
+        float(result["latitude"]),
+        float(result["longitude"]),
+    )
 
 
 def _get_weather(latitude: float, longitude: float) -> dict:
@@ -36,9 +92,15 @@ def _get_weather(latitude: float, longitude: float) -> dict:
 
 
 def weather_agent_node(state):
-    """Fetch current Tokyo weather and return it to the finalizer."""
+    """Fetch current weather for the location named in the user's message."""
     try:
-        data = _get_weather(35.6762, 139.6503)
+        message = str(state.get("raw_message", ""))
+        location = _extract_weather_location(message)
+        if not location:
+            raise ValueError("天気を調べる地域を特定できませんでした")
+
+        resolved_name, latitude, longitude = _geocode_location(location)
+        data = _get_weather(latitude, longitude)
         current = data.get("current", {})
         temperature = current.get("temperature_2m")
         unit = current.get("temperature_2m_unit", "°C")
@@ -49,12 +111,13 @@ def weather_agent_node(state):
 
         result = {
             "text": (
-                "東京の現在の天気です。\n"
+                f"{resolved_name}の現在の天気です。\n"
                 f"天気: {_weather_code_text(int(code))}\n"
                 f"気温: {temperature}{unit}"
             ),
             "success": True,
             "provider": "open-meteo",
+            "location": resolved_name,
         }
     except Exception as exc:
         print("[WEATHER ERROR]", exc)
