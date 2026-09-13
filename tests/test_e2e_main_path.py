@@ -1,3 +1,5 @@
+import pytest
+
 import e2e_status
 import core.request_path as request_path
 
@@ -89,8 +91,7 @@ def test_core_then_agent_are_recorded_in_order(monkeypatch):
         def __exit__(self, exc_type, exc_val, exc_tb):
             return False
 
-    def fake_record_step(step_key, success, **kwargs):
-        events.append(("record", step_key))
+    monkeypatch.setattr(request_path, "StepTimer", FakeTimer)
 
     def fake_supervisor(initial):
         events.append(("supervisor", initial["raw_message"]))
@@ -101,8 +102,6 @@ def test_core_then_agent_are_recorded_in_order(monkeypatch):
             events.append(("agent_invoke", state["raw_message"]))
             return {"final_reply": "test reply"}
 
-    monkeypatch.setattr(request_path, "StepTimer", FakeTimer)
-    monkeypatch.setattr(request_path, "record_step", fake_record_step)
     monkeypatch.setattr(request_path, "supervisor_node", fake_supervisor)
     monkeypatch.setattr(request_path, "build_current_core_graph", lambda: FakeGraph())
 
@@ -110,11 +109,44 @@ def test_core_then_agent_are_recorded_in_order(monkeypatch):
 
     assert result["final_reply"] == "test reply"
     names = [name for name, _ in events]
-    assert events.index(("record", "line_in")) < events.index(("supervisor", "テスト"))
+    assert "record" not in names
     assert [name for name, _ in events if name in {"supervisor", "agent_invoke"}] == [
         "supervisor", "agent_invoke"
     ]
     assert events.index(("ok", "agent")) < events.index(("ok", "core"))
+
+
+def test_core_path_never_records_line_input(monkeypatch):
+    events = []
+
+    class FakeTimer:
+        def __init__(self, step_key):
+            self.step_key = step_key
+
+        def __enter__(self):
+            return self
+
+        def ok(self, http_status=None):
+            pass
+
+        def fail(self, http_status=None, error=None, error_location=None):
+            pass
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+    monkeypatch.setattr(request_path, "StepTimer", FakeTimer)
+    monkeypatch.setattr(request_path, "supervisor_node", lambda initial: initial)
+
+    class FakeGraph:
+        def invoke(self, state):
+            return {"final_reply": "test reply"}
+
+    monkeypatch.setattr(request_path, "build_current_core_graph", lambda: FakeGraph())
+
+    request_path.run_core_request("u1", "テスト", channel="line")
+
+    assert "line_in" not in events
 
 
 def test_non_line_channel_does_not_record_line_input(monkeypatch):
@@ -137,7 +169,6 @@ def test_non_line_channel_does_not_record_line_input(monkeypatch):
             return False
 
     monkeypatch.setattr(request_path, "StepTimer", FakeTimer)
-    monkeypatch.setattr(request_path, "record_step", lambda step_key, success, **kwargs: events.append(step_key))
     monkeypatch.setattr(request_path, "supervisor_node", lambda initial: initial)
 
     class FakeGraph:
@@ -149,3 +180,78 @@ def test_non_line_channel_does_not_record_line_input(monkeypatch):
     request_path.run_core_request("u1", "テスト", channel="voice")
 
     assert "line_in" not in events
+
+
+def test_supervisor_failure_does_not_enter_agent(monkeypatch):
+    events = []
+
+    class FakeTimer:
+        def __init__(self, step_key):
+            self.step_key = step_key
+
+        def __enter__(self):
+            return self
+
+        def ok(self, http_status=None):
+            events.append(("ok", self.step_key))
+
+        def fail(self, **kwargs):
+            events.append(("fail", self.step_key, kwargs.get("error_location")))
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+    monkeypatch.setattr(request_path, "StepTimer", FakeTimer)
+
+    def boom(_initial):
+        raise RuntimeError("supervisor failed")
+
+    monkeypatch.setattr(request_path, "supervisor_node", boom)
+
+    with pytest.raises(RuntimeError):
+        request_path.run_core_request("u1", "テスト", channel="line")
+
+    assert events == [("fail", "core", "core/request_path.supervisor")]
+
+
+def test_agent_failure_fails_agent_and_core(monkeypatch):
+    events = []
+
+    class FakeTimer:
+        def __init__(self, step_key):
+            self.step_key = step_key
+
+        def __enter__(self):
+            return self
+
+        def ok(self, http_status=None):
+            events.append(("ok", self.step_key))
+
+        def fail(self, **kwargs):
+            events.append(("fail", self.step_key, kwargs.get("error_location")))
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+    monkeypatch.setattr(request_path, "StepTimer", FakeTimer)
+    monkeypatch.setattr(request_path, "supervisor_node", lambda initial: initial)
+
+    class FailingGraph:
+        def invoke(self, _state):
+            raise ValueError("agent failed")
+
+    monkeypatch.setattr(request_path, "build_current_core_graph", lambda: FailingGraph())
+
+    with pytest.raises(ValueError):
+        request_path.run_core_request("u1", "テスト", channel="line")
+
+    assert events == [
+        ("fail", "agent", "core/request_path.agent"),
+        ("fail", "core", "core/request_path.agent"),
+    ]
+
+
+def test_extract_core_reply_falls_back_for_non_string():
+    assert request_path.extract_core_reply({"final_reply": None}) == "Agent結果なし"
+    assert request_path.extract_core_reply({"final_reply": 123}) == "Agent結果なし"
+    assert request_path.extract_core_reply({}) == "Agent結果なし"
