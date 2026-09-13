@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 import time
 
 from flask import Flask
@@ -74,3 +75,70 @@ def test_slack_command_dispatches_verified_authorized_user(monkeypatch):
         "repository": "nonkun12/line-bot",
         "authorized": True,
     }
+
+
+def test_extract_development_instruction_only_matches_explicit_prefix():
+    assert slack_command._extract_development_instruction("開発: テスト") == "テスト"
+    assert slack_command._extract_development_instruction("dev: pytest") == "pytest"
+    assert slack_command._extract_development_instruction("こんにちは") is None
+
+
+def test_slack_events_returns_challenge(monkeypatch):
+    app = Flask(__name__)
+    slack_command.register_slack_command(app)
+    monkeypatch.setenv("SLACK_SIGNING_SECRET", "test-secret")
+    payload = {"type": "url_verification", "challenge": "abc123"}
+    body = json.dumps(payload, separators=(",", ":")).encode()
+    response = app.test_client().post(
+        "/slack/events",
+        data=body,
+        content_type="application/json",
+        headers=_signed_headers(body, "test-secret"),
+    )
+    assert response.status_code == 200
+    assert response.get_json()["challenge"] == "abc123"
+
+
+def test_slack_events_dispatches_authorized_development_message(monkeypatch):
+    app = Flask(__name__)
+    slack_command.register_slack_command(app)
+    monkeypatch.setenv("SLACK_SIGNING_SECRET", "test-secret")
+    monkeypatch.setenv("SLACK_DEV_ALLOWED_USER_IDS", "U123")
+
+    calls = []
+
+    def fake_post_message(channel_id, text):
+        calls.append((channel_id, text))
+        return True
+
+    def fake_dispatch(instruction, *, user_id, token, repository, authorized):
+        calls.append(("dispatch", instruction, user_id, authorized))
+        return "accepted"
+
+    monkeypatch.setattr(slack_command, "_post_message", fake_post_message)
+    monkeypatch.setattr(slack_command, "dispatch_development_workflow", fake_dispatch)
+
+    payload = {
+        "type": "event_callback",
+        "event": {
+            "type": "message",
+            "user": "U123",
+            "channel": "C123",
+            "text": "開発: pytestを実行",
+        },
+    }
+    body = json.dumps(payload, separators=(",", ":")).encode()
+    response = app.test_client().post(
+        "/slack/events",
+        data=body,
+        content_type="application/json",
+        headers=_signed_headers(body, "test-secret"),
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"ok": True}
+    assert calls == [
+        ("C123", "🚀 開発指示を受け付けました。GitHub Actionsで開発・テストを開始します。"),
+        ("dispatch", "pytestを実行", "U123", True),
+        ("C123", "accepted"),
+    ]
