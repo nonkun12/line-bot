@@ -10,8 +10,10 @@ class AgentRole(str, Enum):
     MANAGER = "manager"
     IMPLEMENTER = "implementer"
     TESTER = "tester"
+    DEBUGGER = "debugger"
+    REFACTORER = "refactorer"
     REVIEWER = "reviewer"
-    REPAIRER = "repairer"
+    REPAIRER = "repairer"  # legacy compatibility; new quality flow uses DEBUGGER/REFACTORER
     INTEGRATOR = "integrator"
 
 
@@ -96,6 +98,8 @@ def default_development_team() -> tuple[AgentRole, ...]:
         AgentRole.MANAGER,
         AgentRole.IMPLEMENTER,
         AgentRole.TESTER,
+        AgentRole.DEBUGGER,
+        AgentRole.REFACTORER,
         AgentRole.REVIEWER,
         AgentRole.REPAIRER,
         AgentRole.INTEGRATOR,
