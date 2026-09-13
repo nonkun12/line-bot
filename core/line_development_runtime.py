@@ -27,6 +27,20 @@ class DevelopmentState:
     baseline_status: str = ""
 
 
+def _fallback_safe_target(files: list[str]) -> str | None:
+    """Return a deterministic, test-focused target when model selection fails."""
+    preferred = (
+        "tests/test_management_router.py",
+        "tests/test_agent_runtime.py",
+        "tests/test_line_development_runtime.py",
+    )
+    available = set(files)
+    for path in preferred:
+        if path in available and not worker.is_protected(path):
+            return path
+    return None
+
+
 def _explicit_comment_plan(instruction: str, chosen: str) -> dict | None:
     """Build deterministic plans for explicit one-line comment E2E requests."""
     if chosen != "tests/test_line_development.py":
@@ -89,6 +103,8 @@ class DevelopmentExecutor:
             if task.role is AgentRole.MANAGER:
                 files = worker.repo_files()
                 chosen = worker.choose_file(self.state.client, self.state.instruction, files)
+                if not chosen:
+                    chosen = _fallback_safe_target(files)
                 if not chosen:
                     return AgentResult(task.task_id, False, "manager could not select a safe target")
                 self.state.chosen = chosen
