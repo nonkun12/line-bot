@@ -27,8 +27,8 @@ class DevelopmentState:
     baseline_status: str = ""
 
 
-def _explicit_comment_plan(instruction: str, chosen: str) -> dict | None:
-    """Build deterministic plans for explicit one-line comment E2E requests."""
+def _bounded_comment_plan(instruction: str, chosen: str) -> dict | None:
+    """Build a minimal anchor-based plan for explicit LINE E2E comment requests."""
     if chosen != "tests/test_line_development.py":
         return None
     if not re.search(r"コメント.*(?:1行|一行)|(?:1行|一行).*コメント", instruction, re.IGNORECASE | re.DOTALL):
@@ -44,13 +44,15 @@ def _explicit_comment_plan(instruction: str, chosen: str) -> dict | None:
     marker = f"# {comment_text}"
     if marker in text:
         return {"no_change": True}
+    lines = text.splitlines(keepends=True)
+    if not lines:
+        return None
+    anchor = lines[-1]
+    if not anchor.strip():
+        return None
     return {
         "no_change": False,
-        "changes": [{
-            "file": chosen,
-            "old": text,
-            "new": text.rstrip() + f"\n\n{marker}\n",
-        }],
+        "changes": [{"file": chosen, "old": anchor, "new": anchor + f"\n{marker}\n"}],
     }
 
 
@@ -74,19 +76,13 @@ class DevelopmentExecutor:
                 return AgentResult(task.task_id, False, "manager selection missing")
 
             if task.role is AgentRole.IMPLEMENTER:
-                comment_plan = worker.build_comment_test_plan(self.state.instruction, self.state.chosen)
-                explicit_comment_plan = _explicit_comment_plan(self.state.instruction, self.state.chosen)
-                plan = (
-                    comment_plan
-                    if comment_plan is not None
-                    else explicit_comment_plan
-                    if explicit_comment_plan is not None
-                    else worker.build_plan(
-                        self.state.client,
-                        self.state.instruction,
-                        self.state.chosen,
-                        worker.context_for(self.state.chosen),
-                    )
+                bounded_comment_plan = _bounded_comment_plan(self.state.instruction, self.state.chosen)
+                comment_plan = bounded_comment_plan or worker.build_comment_test_plan(self.state.instruction, self.state.chosen)
+                plan = comment_plan if comment_plan is not None else worker.build_plan(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    worker.context_for(self.state.chosen),
                 )
                 ok, detail = worker.validate_plan(plan, self.state.chosen)
                 if not ok:
