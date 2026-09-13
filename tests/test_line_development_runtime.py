@@ -55,3 +55,17 @@ def test_validate_plan_rejects_oversized_change():
         False,
         "change_too_large",
     )
+
+
+def test_fallback_safe_target_prefers_management_router_test():
+    files = [
+        "tests/test_line_development_runtime.py",
+        "tests/test_management_router.py",
+        "core/management_router.py",
+    ]
+
+    assert runtime._fallback_safe_target(files) == "tests/test_management_router.py"
+
+
+def test_fallback_safe_target_returns_none_without_preferred_targets():
+    assert runtime._fallback_safe_target(["core/example.py"]) is None
