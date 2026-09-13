@@ -44,12 +44,30 @@ def _explicit_comment_plan(instruction: str, chosen: str) -> dict | None:
     marker = f"# {comment_text}"
     if marker in text:
         return {"no_change": True}
+    match_anchor = re.search(r"^(_WORKFLOW_FILE\s*=\s*\"[^\"\n]+\"\n)", text, re.MULTILINE)
+    if match_anchor:
+        anchor = match_anchor.group(1)
+        return {
+            "no_change": False,
+            "changes": [{
+                "file": chosen,
+                "old": anchor,
+                "new": anchor + marker + "\n",
+            }],
+        }
+    line_end = text.find("\n")
+    if line_end < 0:
+        return {
+            "no_change": False,
+            "changes": [{"file": chosen, "old": text, "new": text + f"\n{marker}\n"}],
+        }
+    anchor = text[: line_end + 1]
     return {
         "no_change": False,
         "changes": [{
             "file": chosen,
-            "old": text,
-            "new": text.rstrip() + f"\n\n{marker}\n",
+            "old": anchor,
+            "new": anchor + marker + "\n",
         }],
     }
 
@@ -80,13 +98,15 @@ class DevelopmentExecutor:
                 return AgentResult(task.task_id, False, "manager selection missing")
 
             if task.role is AgentRole.IMPLEMENTER:
-                comment_plan = worker.build_comment_test_plan(self.state.instruction, self.state.chosen)
                 explicit_comment_plan = _explicit_comment_plan(self.state.instruction, self.state.chosen)
+                comment_plan = None if explicit_comment_plan is not None else worker.build_comment_test_plan(
+                    self.state.instruction, self.state.chosen
+                )
                 plan = (
-                    comment_plan
-                    if comment_plan is not None
-                    else explicit_comment_plan
+                    explicit_comment_plan
                     if explicit_comment_plan is not None
+                    else comment_plan
+                    if comment_plan is not None
                     else worker.build_plan(
                         self.state.client,
                         self.state.instruction,
@@ -128,8 +148,6 @@ class DevelopmentExecutor:
 
             if task.role is AgentRole.REPAIRER:
                 if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
-                    # Explicit one-line comment requests are deterministic. Never ask the
-                    # model for a JSON repair plan just because pytest had a transient failure.
                     return AgentResult(task.task_id, True, "deterministic repair retry; no LLM JSON parsing")
                 plan = worker.build_plan(
                     self.state.client,
