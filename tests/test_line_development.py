@@ -37,14 +37,9 @@ def test_unauthorized_user_is_rejected(monkeypatch):
     assert "権限がありません" in reply
 
 
-def test_dispatch_uses_shared_runtime_workflow(monkeypatch):
+def test_dispatch_uses_guarded_development_workflow(monkeypatch):
     monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     captured = {}
-
-    def fake_get(url, **kwargs):
-        captured["workflow_url"] = url
-        captured["workflow_headers"] = kwargs["headers"]
-        return FakeWorkflowResponse()
 
     def fake_post(url, **kwargs):
         captured["url"] = url
@@ -52,7 +47,6 @@ def test_dispatch_uses_shared_runtime_workflow(monkeypatch):
         captured["headers"] = kwargs["headers"]
         return FakeResponse()
 
-    monkeypatch.setattr("line_development.httpx.get", fake_get)
     monkeypatch.setattr("line_development.httpx.post", fake_post)
     reply = dispatch_development_workflow(
         "英語学習機能を追加して",
@@ -61,8 +55,8 @@ def test_dispatch_uses_shared_runtime_workflow(monkeypatch):
         repository="nonkun12/line-bot",
     )
 
-    assert "/actions/workflows/line-development.yml" in captured["workflow_url"]
-    assert captured["url"].endswith("/actions/workflows/line-development.yml/dispatches")
+    assert "/actions/workflows/line-development-dispatch.yml" in captured["url"]
+    assert captured["url"].endswith("/actions/workflows/line-development-dispatch.yml/dispatches")
     assert captured["json"] == {
         "ref": "main",
         "inputs": {"instruction": "英語学習機能を追加して", "user_id": "U123"},
