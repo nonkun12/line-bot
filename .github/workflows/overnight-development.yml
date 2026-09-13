@@ -36,6 +36,9 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      - name: Preflight guarded runtime tests
+        run: python -m pytest -q tests/test_agent_runtime.py tests/test_line_development_runtime.py
+
       - name: Run common guarded development runtime
         id: development
         env:
