@@ -10,7 +10,7 @@ import httpx
 
 _DEV_PREFIX = re.compile(r"^(?:開発|dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
 _MAX_INSTRUCTION_LENGTH = 2000
-_WORKFLOW_FILE = "line-development-dispatch.yml"
+_WORKFLOW_FILE = "line-development.yml"
 
 
 def extract_development_instruction(message: str) -> Optional[str]:
@@ -40,7 +40,7 @@ def dispatch_development_workflow(
     repository: str | None = None,
     authorized: bool = False,
 ) -> str:
-    """Dispatch the dedicated GitHub Actions development workflow."""
+    """Dispatch the shared GitHub Actions development workflow."""
     instruction = str(instruction or "").strip()
     if not instruction:
         return "開発指示が空です。『開発: ○○を実装して』の形式で指定してください。"
@@ -114,5 +114,5 @@ def dispatch_development_workflow(
         "🚀 開発指示を受け付けました。\n"
         f"指示: {instruction}\n"
         "GitHub Actionsで開発・テストを開始しました。\n"
-        "通常のLINE会話とは分離して実行します。"
+        "LINEとSlackの両方から同じ開発Runtimeを実行します。"
     )
