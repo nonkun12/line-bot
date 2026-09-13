@@ -7,6 +7,7 @@ the runtime itself.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 
 from .agent_runtime import MultiAgentRuntime, RepairPlanner
@@ -24,6 +25,35 @@ class DevelopmentState:
     test_output: str = ""
     tests_passed: bool = False
     baseline_status: str = ""
+
+
+def _bounded_comment_plan(instruction: str, chosen: str) -> dict | None:
+    """Build a minimal anchor-based plan for explicit LINE E2E comment requests."""
+    if chosen != "tests/test_line_development.py":
+        return None
+    if not re.search(r"コメント.*(?:1行|一行)|(?:1行|一行).*コメント", instruction, re.IGNORECASE | re.DOTALL):
+        return None
+    match = re.search(r"[「『\"']([^」』\"']+)[」』\"']", instruction)
+    if not match:
+        return None
+    comment_text = re.sub(r"[\r\n]+", " ", match.group(1)).strip()[:120]
+    if not comment_text:
+        return None
+    target = worker.ROOT / chosen
+    text = target.read_text(encoding="utf-8")
+    marker = f"# {comment_text}"
+    if marker in text:
+        return {"no_change": True}
+    lines = text.splitlines(keepends=True)
+    if not lines:
+        return None
+    anchor = lines[-1]
+    if not anchor.strip():
+        return None
+    return {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": anchor, "new": anchor + f"\n{marker}\n"}],
+    }
 
 
 class DevelopmentExecutor:
@@ -46,7 +76,8 @@ class DevelopmentExecutor:
                 return AgentResult(task.task_id, False, "manager selection missing")
 
             if task.role is AgentRole.IMPLEMENTER:
-                comment_plan = worker.build_comment_test_plan(self.state.instruction, self.state.chosen)
+                bounded_comment_plan = _bounded_comment_plan(self.state.instruction, self.state.chosen)
+                comment_plan = bounded_comment_plan or worker.build_comment_test_plan(self.state.instruction, self.state.chosen)
                 plan = comment_plan if comment_plan is not None else worker.build_plan(
                     self.state.client,
                     self.state.instruction,
