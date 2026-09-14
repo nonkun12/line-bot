@@ -91,7 +91,7 @@ ${DEV_INSTRUCTION}
 
 User: \`${DEV_USER_ID}\`
 
-Multi-agent runtime: Manager → Implementer → Tester → Reviewer → Repairer(if needed) → Integrator
+Multi-agent runtime: Manager → Implementer → Tester → (Debugger → Refactorer → Retest) → Reviewer → Integrator
 
 Guarded tests and integration gate: PASS
 Created directly by GitHub Actions." \
@@ -136,7 +136,7 @@ Created directly by GitHub Actions." \
               message = (
                   "✅ 自動開発が完了しました。\n"
                   f"指示: {instruction}\n"
-                  "Manager → Implementer → Tester → Reviewer → Integrator を実行し、GitHub PRを作成しました。\n"
+                  "Manager → Implementer → Tester → (Debugger → Refactorer → Retest) → Reviewer → Integrator を実行し、GitHub PRを作成しました。\n"
                   f"実行結果: {run_url}"
               )
           else:
@@ -210,7 +210,7 @@ Created directly by GitHub Actions." \
               text = (
                   "✅ LINE/Slack 自動開発が完了しました。\n"
                   f"指示: {instruction}\n"
-                  "Manager → Implementer → Tester → Reviewer → Integrator を実行し、GitHub PRを作成しました。\n"
+                  "Manager → Implementer → Tester → (Debugger → Refactorer → Retest) → Reviewer → Integrator を実行し、GitHub PRを作成しました。\n"
                   f"実行結果: {run_url}"
               )
           else:

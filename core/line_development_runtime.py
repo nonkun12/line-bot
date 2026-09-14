@@ -10,8 +10,9 @@ import os
 import re
 from dataclasses import dataclass
 
-from .agent_runtime import MultiAgentRuntime, RepairPlanner
+from .agent_runtime import RepairPlanner
 from .multi_agent import AgentResult, AgentRole, AgentTask
+from .quality_runtime import QualityRuntime
 from scripts import line_development_worker_v2 as worker
 
 
@@ -154,6 +155,56 @@ class DevelopmentExecutor:
                 self.state.test_output = output
                 return AgentResult(task.task_id, passed, output[-4000:], frozenset(self.state.touched or []))
 
+            if task.role is AgentRole.DEBUGGER:
+                if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
+                    return AgentResult(task.task_id, True, "deterministic debug retry; no LLM JSON parsing")
+                # Restore the known-good baseline first. The repair plan must be
+                # generated against the same file state where its anchors apply.
+                worker.restore(self.state.touched or [])
+                failure_context = task.instruction
+                if self.state.test_output:
+                    failure_context = f"{failure_context}\nPrevious test output:\n{self.state.test_output[-4000:]}"
+                plan = worker.build_plan(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    worker.context_for(self.state.chosen),
+                    failure_context,
+                )
+                ok, detail = worker.validate_plan(plan, self.state.chosen)
+                if not ok or detail == "no_change":
+                    return AgentResult(task.task_id, False, f"debug plan rejected: {detail}")
+                applied, detail, touched = worker.apply_plan(plan)
+                if not applied:
+                    worker.restore(touched)
+                    return AgentResult(task.task_id, False, f"debug apply failed: {detail}")
+                self.state.plan = plan
+                self.state.touched = touched
+                return AgentResult(task.task_id, True, "debug fix applied", frozenset(touched))
+
+            if task.role is AgentRole.REFACTORER:
+                if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
+                    return AgentResult(task.task_id, True, "no refactor needed for deterministic comment change")
+                plan = worker.build_plan(
+                    self.state.client,
+                    f"Refactor the current implementation for clarity, maintainability, and duplication reduction. Preserve behavior and satisfy the original request. Original request: {self.state.instruction}",
+                    self.state.chosen,
+                    worker.context_for(self.state.chosen),
+                    self.state.test_output,
+                )
+                ok, detail = worker.validate_plan(plan, self.state.chosen)
+                if not ok:
+                    return AgentResult(task.task_id, False, f"refactor plan rejected: {detail}")
+                if detail == "no_change":
+                    return AgentResult(task.task_id, True, "no refactor change required")
+                applied, detail, touched = worker.apply_plan(plan)
+                if not applied:
+                    worker.restore(touched)
+                    return AgentResult(task.task_id, False, f"refactor apply failed: {detail}")
+                self.state.plan = plan
+                self.state.touched = touched
+                return AgentResult(task.task_id, True, "refactor applied", frozenset(touched))
+
             if task.role is AgentRole.REVIEWER:
                 status = worker.run(["git", "diff", "--check"])
                 if status.returncode != 0:
@@ -219,7 +270,7 @@ class DevelopmentRepairPlanner(RepairPlanner):
 
 
 def execute(instruction: str) -> int:
-    """Run one real guarded development request through all runtime roles."""
+    """Run one real guarded development request through the quality pipeline."""
     client = worker.Groq(api_key=os.environ["GROQ_API_KEY"])
     state = DevelopmentState(client=client, instruction=instruction)
     executor = DevelopmentExecutor(state)
@@ -230,19 +281,25 @@ def execute(instruction: str) -> int:
         AgentTask("reviewer", AgentRole.REVIEWER, "Review the resulting diff and gate the change.", resources=frozenset({"working-tree"}), depends_on=("tester",)),
         AgentTask("integrator", AgentRole.INTEGRATOR, "Run the final integration gate.", resources=frozenset({"working-tree"}), depends_on=("reviewer",)),
     )
-    runtime = MultiAgentRuntime(
+    runtime = QualityRuntime(
         {
             AgentRole.MANAGER: executor,
             AgentRole.IMPLEMENTER: executor,
             AgentRole.TESTER: executor,
+            AgentRole.DEBUGGER: executor,
+            AgentRole.REFACTORER: executor,
             AgentRole.REVIEWER: executor,
             AgentRole.REPAIRER: executor,
             AgentRole.INTEGRATOR: executor,
         },
-        max_workers=1,
         max_rounds=3,
     )
-    report = runtime.run_development(tasks, repair_planner=DevelopmentRepairPlanner(state))
+    try:
+        report = runtime.run(tasks)
+    except Exception as exc:
+        worker.restore(state.touched or [])
+        print(f"Multi-agent development failed closed: {type(exc).__name__}: {exc}", flush=True)
+        return 1
     for item in report.completed:
         print(f"[{item.task.role.value}] {item.task.task_id}: {item.result.summary[-1500:]}", flush=True)
     if not report.success or not report.integration_ready:
