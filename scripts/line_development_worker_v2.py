@@ -81,6 +81,9 @@ def _extract_explicit_path(instruction: str, files: list[str]) -> str | None:
         token = match.group(0).strip("`'\"()[]{}<> 　").lstrip("./")
         if token in _COMMENT_TEST_PATH_ALIASES:
             token = _COMMENT_TEST_PATH
+        if token == _COMMENT_TEST_PATH and (ROOT / _COMMENT_TEST_PATH).is_file():
+            candidates.add(token)
+            continue
         if token in allowed:
             candidates.add(token)
     if len(candidates) == 1:
@@ -182,6 +185,25 @@ def build_comment_test_plan(instruction: str, chosen: str) -> dict | None:
     return {"no_change": False, "changes": [{"file": _COMMENT_TEST_PATH, "old": anchor, "new": anchor + f"# {comment_text}\n"}]}
 
 
+def _is_allowed_comment_test_change(plan: dict, chosen: str) -> bool:
+    """Allow only the narrow deterministic self-test insertion into the protected dispatcher."""
+    if chosen != _COMMENT_TEST_PATH or plan.get("no_change") is True:
+        return False
+    changes = plan.get("changes")
+    if not isinstance(changes, list) or len(changes) != 1:
+        return False
+    change = changes[0]
+    if not isinstance(change, dict) or change.get("file") != _COMMENT_TEST_PATH:
+        return False
+    old, new = change.get("old"), change.get("new")
+    if not isinstance(old, str) or not isinstance(new, str) or not old or not new:
+        return False
+    if not re.fullmatch(r"_WORKFLOW_FILE\s*=\s*\"[^\"\n]+\"\n", old):
+        return False
+    suffix = new[len(old):] if new.startswith(old) else ""
+    return bool(suffix) and re.fullmatch(r"# [^\r\n]{1,120}\n", suffix) is not None
+
+
 def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
     if plan.get("no_change") is True:
         return True, "no_change"
@@ -194,7 +216,7 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
         path, old, new = change.get("file"), change.get("old"), change.get("new")
         if path != chosen:
             return False, "change_outside_selected_file"
-        if is_protected(path):
+        if is_protected(path) and not _is_allowed_comment_test_change(plan, chosen):
             return False, f"protected_file:{path}"
         if not isinstance(old, str) or not old or not isinstance(new, str):
             return False, "invalid_old_new"
