@@ -45,6 +45,7 @@ def test_dispatch_uses_guarded_development_workflow(monkeypatch):
         captured["url"] = url
         captured["json"] = kwargs["json"]
         captured["headers"] = kwargs["headers"]
+        captured["timeout"] = kwargs["timeout"]
         return FakeResponse()
 
     monkeypatch.setattr("line_development.httpx.post", fake_post)
@@ -62,7 +63,63 @@ def test_dispatch_uses_guarded_development_workflow(monkeypatch):
         "inputs": {"instruction": "英語学習機能を追加して", "user_id": "U123"},
     }
     assert captured["headers"]["Authorization"] == "Bearer secret"
+    assert captured["timeout"] == 10.0
     assert "受け付けました" in reply
+
+
+def test_dispatch_retries_transient_github_failure(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    calls = []
+
+    class RetryResponse:
+        status_code = 503
+        text = "temporarily unavailable"
+        headers = {}
+
+    def fake_post(url, **kwargs):
+        calls.append(kwargs)
+        if len(calls) < 3:
+            return RetryResponse()
+        return FakeResponse()
+
+    monkeypatch.setattr("line_development.httpx.post", fake_post)
+    monkeypatch.setattr("line_development.time.sleep", lambda _: None)
+
+    reply = dispatch_development_workflow(
+        "本線E2Eテストを実行して",
+        user_id="U123",
+        token="secret",
+        repository="nonkun12/line-bot",
+    )
+
+    assert len(calls) == 3
+    assert "受け付けました" in reply
+
+
+def test_dispatch_reports_auth_failure_without_retry(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    calls = []
+
+    class AuthResponse:
+        status_code = 401
+        text = '{"message":"Bad credentials"}'
+        headers = {}
+
+    def fake_post(url, **kwargs):
+        calls.append(1)
+        return AuthResponse()
+
+    monkeypatch.setattr("line_development.httpx.post", fake_post)
+    reply = dispatch_development_workflow(
+        "本線E2Eテストを実行して",
+        user_id="U123",
+        token="secret",
+        repository="nonkun12/line-bot",
+    )
+
+    assert calls == [1]
+    assert "HTTP 401" in reply
+    assert "Token/権限" in reply
 
 
 def test_worker_parse_plan_accepts_plain_json():

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from typing import Optional
 
 import httpx
@@ -11,6 +12,9 @@ import httpx
 _DEV_PREFIX = re.compile(r"^(?:開発|dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
 _MAX_INSTRUCTION_LENGTH = 2000
 _WORKFLOW_FILE = "line-development-dispatch.yml"
+_DISPATCH_TIMEOUT_SECONDS = 10.0
+_DISPATCH_ATTEMPTS = 3
+_RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 # LINE自動開発E2E本線確認
 # LINE自動開発E2E最終確認
 # LINE自動開発E2E再テスト
@@ -44,7 +48,12 @@ def dispatch_development_workflow(
     repository: str | None = None,
     authorized: bool = False,
 ) -> str:
-    """Dispatch the shared GitHub Actions development workflow."""
+    """Dispatch the shared GitHub Actions development workflow.
+
+    GitHub's dispatch endpoint is asynchronous and returns HTTP 204 on success.
+    The LINE request path must tolerate transient network/API latency without
+    turning a slow but accepted dispatch into a false failure.
+    """
     instruction = str(instruction or "").strip()
     if not instruction:
         return "開発指示が空です。『開発: ○○を実装して』の形式で指定してください。"
@@ -74,10 +83,43 @@ def dispatch_development_workflow(
         },
     }
 
-    try:
-        response = httpx.post(dispatch_url, json=payload, headers=headers, timeout=2.5)
-    except Exception as exc:
-        return f"開発ワークフローの起動に失敗しました: {type(exc).__name__}"
-    if response.status_code == 204:
-        return "🚀 開発指示を受け付けました。GitHub Actionsで開発・テストを開始しました。\n通常のLINE会話とは分離して実行します。"
-    return f"開発ワークフローの起動に失敗しました: HTTP {response.status_code}"
+    last_error: str | None = None
+    for attempt in range(1, _DISPATCH_ATTEMPTS + 1):
+        try:
+            response = httpx.post(
+                dispatch_url,
+                json=payload,
+                headers=headers,
+                timeout=_DISPATCH_TIMEOUT_SECONDS,
+            )
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            last_error = type(exc).__name__
+            if attempt < _DISPATCH_ATTEMPTS:
+                time.sleep(0.5 * attempt)
+                continue
+            return f"開発ワークフローの起動に失敗しました: {last_error}"
+        except Exception as exc:
+            return f"開発ワークフローの起動に失敗しました: {type(exc).__name__}"
+
+        if response.status_code == 204:
+            return "🚀 開発指示を受け付けました。GitHub Actionsで開発・テストを開始しました。\n通常のLINE会話とは分離して実行します。"
+
+        if response.status_code in _RETRYABLE_STATUS_CODES and attempt < _DISPATCH_ATTEMPTS:
+            retry_after = response.headers.get("Retry-After", "")
+            try:
+                delay = min(float(retry_after), 3.0) if retry_after else 0.5 * attempt
+            except ValueError:
+                delay = 0.5 * attempt
+            time.sleep(max(delay, 0.1))
+            continue
+
+        detail = response.text.strip().replace("\n", " ")
+        if len(detail) > 300:
+            detail = detail[:300]
+        if response.status_code in {401, 403}:
+            return f"開発ワークフローの起動に失敗しました: HTTP {response.status_code}（GitHub Token/権限を確認してください）"
+        if detail:
+            return f"開発ワークフローの起動に失敗しました: HTTP {response.status_code}（{detail}）"
+        return f"開発ワークフローの起動に失敗しました: HTTP {response.status_code}"
+
+    return f"開発ワークフローの起動に失敗しました: {last_error or 'unknown error'}"
