@@ -19,6 +19,19 @@ def test_prefecture_names_use_deterministic_nationwide_fallbacks():
     assert _geocode_location("沖縄県") == ("沖縄県", 26.2124, 127.6809)
 
 
+def test_bare_prefecture_names_use_the_same_deterministic_fallbacks():
+    assert _geocode_location("長野") == ("長野県", 36.6513, 138.1810)
+    assert _geocode_location("静岡") == ("静岡県", 34.9756, 138.3828)
+    assert _geocode_location("大阪") == ("大阪府", 34.6863, 135.5197)
+    assert _geocode_location("東京") == ("東京都", 35.6762, 139.6503)
+
+
+def test_bare_prefecture_fallback_does_not_call_geocoder():
+    with patch("agents.weather.node.requests.get") as get:
+        _geocode_location("長野")
+        get.assert_not_called()
+
+
 def test_prefecture_fallback_does_not_call_geocoder():
     with patch("agents.weather.node.requests.get") as get:
         _geocode_location("大阪府")
