@@ -168,7 +168,7 @@ class QualityRuntime:
                 AgentTask(
                     f"review:{review_attempts}:rereview",
                     AgentRole.REVIEWER,
-                    f"Re-review after {repaired.task.task.task_id}.",
+                    f"Re-review after {repaired.task.task_id}.",
                     reviewer.task.resources,
                 )
             )
