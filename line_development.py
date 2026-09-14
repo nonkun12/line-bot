@@ -10,7 +10,7 @@ import httpx
 
 _DEV_PREFIX = re.compile(r"^(?:開発|dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
 _MAX_INSTRUCTION_LENGTH = 2000
-_WORKFLOW_FILE = "line-development.yml"
+_WORKFLOW_FILE = "line-development-dispatch.yml"
 # LINE自動開発E2E本線確認
 # LINE自動開発E2E最終確認
 # LINE自動開発E2E再テスト
@@ -78,22 +78,6 @@ def dispatch_development_workflow(
         response = httpx.post(dispatch_url, json=payload, headers=headers, timeout=2.5)
     except Exception as exc:
         return f"開発ワークフローの起動に失敗しました: {type(exc).__name__}"
-
-    if response.status_code not in (200, 201, 202, 204):
-        detail = ""
-        try:
-            data = response.json()
-            if isinstance(data, dict):
-                message = str(data.get("message") or "").strip()
-                if message:
-                    detail = f": {message}"
-        except Exception:
-            pass
-        return f"開発ワークフローの起動に失敗しました (GitHub HTTP {response.status_code}){detail}。"
-
-    return (
-        "🚀 開発指示を受け付けました。\n"
-        f"指示: {instruction}\n"
-        "GitHub Actionsで開発・テストを開始しました。\n"
-        "LINEとSlackの両方から同じ開発Runtimeを実行します。"
-    )
+    if response.status_code == 204:
+        return "🚀 開発指示を受け付けました。GitHub Actionsで開発・テストを開始しました。\n通常のLINE会話とは分離して実行します。"
+    return f"開発ワークフローの起動に失敗しました: HTTP {response.status_code}"
