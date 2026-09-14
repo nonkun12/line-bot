@@ -127,3 +127,47 @@ def test_failed_review_runs_debug_refactor_retest_and_rereview():
         AgentRole.REVIEWER,
         AgentRole.INTEGRATOR,
     ]
+
+
+def test_failed_review_debugger_failure_fails_closed():
+    executor = FakeExecutor([True, True, True, False, False])
+    runtime = QualityRuntime({role: executor for role in AgentRole}, max_rounds=3)
+
+    report = runtime.run(base_tasks())
+
+    assert not report.success
+    assert report.failed_task_id.startswith("debug:")
+    roles = [call.role for call in executor.calls]
+    assert roles.count(AgentRole.DEBUGGER) == 1
+    assert AgentRole.REFACTORER not in roles
+
+
+def test_failed_review_retest_failure_is_reported_and_bounded():
+    executor = FakeExecutor([True, True, True, False, True, True, False])
+    runtime = QualityRuntime({role: executor for role in AgentRole}, max_rounds=3)
+
+    report = runtime.run(base_tasks())
+
+    assert not report.success
+    assert report.failed_task_id.startswith("test:")
+    roles = [call.role for call in executor.calls]
+    assert roles.count(AgentRole.REVIEWER) == 1
+    assert roles.count(AgentRole.DEBUGGER) == 1
+    assert roles.count(AgentRole.REFACTORER) == 1
+    assert roles.count(AgentRole.TESTER) == 2
+
+
+def test_repeated_review_failures_stop_at_max_rounds():
+    executor = FakeExecutor([True, True, True, False, True, True, True, False, True, True, False])
+    runtime = QualityRuntime({role: executor for role in AgentRole}, max_rounds=3)
+
+    report = runtime.run(base_tasks())
+
+    assert not report.success
+    assert report.failed_task_id.startswith("review:")
+    roles = [call.role for call in executor.calls]
+    assert roles.count(AgentRole.REVIEWER) == 3
+    assert roles.count(AgentRole.DEBUGGER) == 2
+    assert roles.count(AgentRole.REFACTORER) == 2
+    assert roles.count(AgentRole.TESTER) == 3
+    assert report.repair_attempts == 2
