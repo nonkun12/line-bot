@@ -76,21 +76,6 @@ _PREFECTURE_FALLBACKS: dict[str, tuple[str, float, float]] = {
     "沖縄県": ("沖縄県", 26.2124, 127.6809),
 }
 
-_LOCATION_ALIASES = {
-    "東京": "東京都",
-    "静岡": "静岡県",
-    "愛知": "愛知県",
-    "大阪": "大阪府",
-    "京都": "京都府",
-    "兵庫": "兵庫県",
-    "沖縄": "沖縄県",
-    "福岡": "福岡県",
-    "神奈川": "神奈川県",
-    "千葉": "千葉県",
-    "埼玉": "埼玉県",
-    "北海道": "北海道",
-}
-
 
 def _weather_code_text(code: int) -> str:
     codes = {
@@ -128,11 +113,11 @@ def _normalize_location(location: str) -> str:
 
 
 def _geocoding_candidates(location: str) -> list[dict]:
-    """Query Open-Meteo with Japan filtering and a couple of robust fallbacks."""
+    """Resolve a Japanese place using JP-filtered Open-Meteo results and retries."""
     queries = [location]
-    if location.endswith("県") or location.endswith("府") or location.endswith("都") or location.endswith("道"):
+    if location.endswith(("県", "府", "都", "道")):
         queries.append(location[:-1])
-    elif not location.endswith("市"):
+    elif not location.endswith(("市", "区", "町", "村")):
         queries.append(f"{location}市")
     queries.append(f"{location}, Japan")
 
@@ -152,48 +137,52 @@ def _geocoding_candidates(location: str) -> list[dict]:
                     timeout=10,
                 )
                 response.raise_for_status()
-                return response.json().get("results") or []
+                results = response.json().get("results") or []
+                if results:
+                    return results
             except (requests.RequestException, ValueError) as exc:
                 last_error = exc
                 if attempt == 0:
                     time.sleep(0.15)
+
     if last_error:
         raise last_error
     return []
 
 
 def _geocode_location(location: str) -> tuple[str, float, float]:
-    """Resolve a Japanese place nationwide, avoiding non-JP or weak matches."""
+    """Resolve a Japanese place nationwide, preferring exact JP matches."""
     normalized = _normalize_location(location)
-    alias = _LOCATION_ALIASES.get(normalized, normalized)
-    known = _PREFECTURE_FALLBACKS.get(alias)
+    known = _PREFECTURE_FALLBACKS.get(normalized)
     if known is not None:
         return known
 
     candidates = _geocoding_candidates(normalized)
-    if not candidates and alias != normalized:
-        candidates = _geocoding_candidates(alias)
     if not candidates:
         raise ValueError(f"場所が見つかりません: {location}")
 
-    target = _normalize_location(location)
+    target = normalized
     target_base = re.sub(r"(?:都|道|府|県|市|区|町|村)$", "", target)
+
+    jp_candidates = [
+        result
+        for result in candidates
+        if str(result.get("country_code") or "").upper() == "JP"
+    ]
+    if not jp_candidates:
+        raise ValueError(f"日本国内の場所が見つかりません: {location}")
 
     def score(result: dict) -> tuple[int, int, int]:
         name = _normalize_location(str(result.get("name") or ""))
-        country = str(result.get("country_code") or "").upper()
         admin1 = _normalize_location(str(result.get("admin1") or ""))
         feature = str(result.get("feature_code") or "")
-        exact = int(name == target or name == alias)
-        base_match = int(target_base and (name == target_base or name.startswith(target_base)))
+        exact = int(name == target)
+        base_match = int(bool(target_base) and (name == target_base or name.startswith(target_base)))
+        admin_match = int(bool(admin1) and (admin1 == target or admin1.startswith(target_base)))
         place_bonus = int(feature.startswith("PPL"))
-        jp_bonus = int(country == "JP")
-        admin_bonus = int(admin1 and admin1 in {target, alias, f"{target_base}県", f"{target_base}府", f"{target_base}都"})
-        return (jp_bonus + exact * 4 + admin_bonus * 2 + base_match + place_bonus, exact + admin_bonus, -int(result.get("population") or 0) // 100000)
+        population = int(result.get("population") or 0)
+        return (exact * 8 + admin_match * 3 + base_match + place_bonus, exact + admin_match, population // 100000)
 
-    jp_candidates = [r for r in candidates if str(r.get("country_code") or "").upper() == "JP"]
-    if not jp_candidates:
-        raise ValueError(f"日本国内の場所が見つかりません: {location}")
     result = max(jp_candidates, key=score)
     return (
         str(result.get("name") or location),
@@ -203,18 +192,28 @@ def _geocode_location(location: str) -> tuple[str, float, float]:
 
 
 def _get_weather(latitude: float, longitude: float) -> dict:
-    response = requests.get(
-        "https://api.open-meteo.com/v1/forecast",
-        params={
-            "latitude": latitude,
-            "longitude": longitude,
-            "current": "temperature_2m,weather_code",
-            "timezone": "Asia/Tokyo",
-        },
-        timeout=20,
-    )
-    response.raise_for_status()
-    return response.json()
+    """Fetch current weather, retrying transient provider failures."""
+    last_error: Exception | None = None
+    for attempt in range(2):
+        try:
+            response = requests.get(
+                "https://api.open-meteo.com/v1/forecast",
+                params={
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "current": "temperature_2m,weather_code",
+                    "timezone": "Asia/Tokyo",
+                },
+                timeout=20,
+            )
+            response.raise_for_status()
+            return response.json()
+        except (requests.RequestException, ValueError) as exc:
+            last_error = exc
+            if attempt == 0:
+                time.sleep(0.15)
+    assert last_error is not None
+    raise last_error
 
 
 def weather_agent_node(state):
