@@ -11,6 +11,7 @@ import httpx
 _DEV_PREFIX = re.compile(r"^(?:開発|dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
 _MAX_INSTRUCTION_LENGTH = 2000
 _WORKFLOW_FILE = "line-development-dispatch.yml"
+# LINE自動開発E2E本線確認
 # LINE自動開発E2E最終確認
 # LINE自動開発E2E再テスト
 # LINE自動開発テスト
