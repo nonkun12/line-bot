@@ -80,21 +80,25 @@ jobs:
             exit 0
           fi
 
+          cat <<EOF > /tmp/pr_body.md
+          ## LINE development request
+
+          ${DEV_INSTRUCTION}
+
+          User: \`${DEV_USER_ID}\`
+
+          Multi-agent runtime: Manager → Implementer → Tester → Reviewer → Repairer(if needed) → Integrator
+
+          Guarded tests and integration gate: PASS
+          Created directly by GitHub Actions.
+          EOF
+
           gh pr create \
             --repo "${GITHUB_REPOSITORY}" \
             --head "${BRANCH}" \
             --base main \
             --title "feat: LINE development request" \
-            --body "## LINE development request
-
-${DEV_INSTRUCTION}
-
-User: \`${DEV_USER_ID}\`
-
-Multi-agent runtime: Manager → Implementer → Tester → Reviewer → Repairer(if needed) → Integrator
-
-Guarded tests and integration gate: PASS
-Created directly by GitHub Actions." \
+            --body-file /tmp/pr_body.md \
             >/tmp/pr_url.txt
           cat /tmp/pr_url.txt
 
