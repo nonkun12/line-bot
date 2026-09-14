@@ -4,7 +4,10 @@ from __future__ import annotations
 import re
 
 
-_ENGLISH_VOICE_RE = re.compile(r"\b(?:voice|voice\s+assistant|speaker)\b", re.IGNORECASE)
+_ENGLISH_VOICE_RE = re.compile(
+    r"(?<![A-Za-z])(?:voice|voice\s+assistant|speaker)(?![A-Za-z])",
+    re.IGNORECASE,
+)
 
 
 def is_voice_intent(text: str) -> bool:
