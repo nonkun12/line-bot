@@ -60,50 +60,43 @@ jobs:
             python -m core.line_development_runtime
           fi
 
-      - name: Create or reuse GitHub PR through Render
+      - name: Create or reuse GitHub PR
         id: create_pr
         if: ${{ steps.development.outputs.test_only != 'true' }}
         env:
-          INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
+          GH_TOKEN: ${{ github.token }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           BRANCH: line-dev/${{ github.run_id }}
         run: |
           set -euo pipefail
           if ! git ls-remote --exit-code origin "refs/heads/${BRANCH}" >/dev/null 2>&1; then
-            echo "Runtime completed without pushing ${BRANCH}; treating this as a no-change success."
+            echo "Development worker did not push ${BRANCH}; preserving failure." >&2
+            exit 1
+          fi
+
+          if gh pr view "${BRANCH}" --repo "${GITHUB_REPOSITORY}" --json url --jq '.url' 2>/dev/null; then
+            echo "PR already exists for ${BRANCH}."
             exit 0
           fi
 
-          python - <<'PY'
-          import json, os, urllib.request
-          key = os.environ.get("INTERNAL_PUSH_KEY", "")
-          if not key:
-              raise SystemExit("INTERNAL_PUSH_KEY is not configured")
-          payload = json.dumps({
-              "head": os.environ["BRANCH"],
-              "title": "feat: LINE development request",
-              "body": (
-                  "## LINE development request\n\n"
-                  + os.environ["DEV_INSTRUCTION"]
-                  + "\n\nUser: `" + os.environ["DEV_USER_ID"]
-                  + "`\n\nMulti-agent runtime: Manager → Implementer → Tester → Reviewer → Repairer(if needed) → Integrator.\n\nGuarded tests and integration gate: PASS."
-              ),
-              "repository": os.environ.get("GITHUB_REPOSITORY", "nonkun12/line-bot"),
-          }).encode("utf-8")
-          request = urllib.request.Request(
-              "https://line-bot-yvea.onrender.com/internal/create-pr",
-              data=payload,
-              headers={"Content-Type": "application/json", "x-internal-key": key},
-              method="POST",
-          )
-          with urllib.request.urlopen(request, timeout=20) as response:
-              result = response.read().decode("utf-8", errors="replace")
-              print(f"Render create-pr HTTP {response.status}: {result}")
-              data = json.loads(result)
-              if not data.get("ok"):
-                  raise SystemExit(f"PR creation failed: {data}")
-          PY
+          gh pr create \
+            --repo "${GITHUB_REPOSITORY}" \
+            --head "${BRANCH}" \
+            --base main \
+            --title "feat: LINE development request" \
+            --body "## LINE development request
+
+${DEV_INSTRUCTION}
+
+User: \`${DEV_USER_ID}\`
+
+Multi-agent runtime: Manager → Implementer → Tester → Reviewer → Repairer(if needed) → Integrator
+
+Guarded tests and integration gate: PASS
+Created directly by GitHub Actions." \
+            >/tmp/pr_url.txt
+          cat /tmp/pr_url.txt
 
       - name: Notify Slack of development result
         if: always()
