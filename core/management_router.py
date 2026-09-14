@@ -16,21 +16,27 @@ def route(request: ManagementRequest) -> ManagementDecision:
     """Choose one specialist without invoking a model.
 
     The deterministic layer is intentionally conservative: first matching
-    specialist wins, otherwise the request stays with General. Later model
-    routing can wrap this contract without changing callers.
+    specialist wins, otherwise the request stays with General. Request
+    metadata and channel are preserved in the decision so downstream agents
+    remain channel-independent.
     """
     message = request.message.strip().casefold()
+    routing_metadata = {
+        "routing": "deterministic",
+        "channel": request.channel,
+        "request_metadata": dict(request.metadata),
+    }
     for specialist, keywords in _KEYWORDS:
         if any(keyword.casefold() in message for keyword in keywords):
             return ManagementDecision(
                 specialist=specialist,
                 reason=f"matched {specialist.value} keyword",
                 confidence=0.95,
-                metadata={"routing": "deterministic"},
+                metadata=routing_metadata,
             )
     return ManagementDecision(
         specialist=Specialist.GENERAL,
         reason="no specialist keyword matched",
         confidence=0.60,
-        metadata={"routing": "deterministic"},
+        metadata=routing_metadata,
     )
