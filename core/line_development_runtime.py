@@ -2,7 +2,7 @@
 
 This module connects the existing guarded file-editing primitives to the
 provider-neutral runtime. It deliberately keeps GitHub/LINE transport outside
-the runtime itself.
+this runtime itself.
 """
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def _fallback_safe_target(files: list[str]) -> str | None:
 
 def _explicit_comment_plan(instruction: str, chosen: str) -> dict | None:
     """Build deterministic plans for explicit one-line comment E2E requests."""
-    if chosen != "tests/test_line_development.py":
+    if chosen != "line_development.py":
         return None
     if not re.search(r"コメント.*(?:1行|一行)|(?:1行|一行).*コメント", instruction, re.IGNORECASE | re.DOTALL):
         return None
@@ -57,12 +57,13 @@ def _explicit_comment_plan(instruction: str, chosen: str) -> dict | None:
     text = target.read_text(encoding="utf-8")
     marker = f"# {comment_text}"
     if marker in text:
-        return {"no_change": True}
+        return {"no_change": True, "source": "deterministic_self_test"}
     match_anchor = re.search(r"^(_WORKFLOW_FILE\s*=\s*\"[^\"\n]+\"\n)", text, re.MULTILINE)
     if match_anchor:
         anchor = match_anchor.group(1)
         return {
             "no_change": False,
+            "source": "deterministic_self_test",
             "changes": [{
                 "file": chosen,
                 "old": anchor,
@@ -73,11 +74,13 @@ def _explicit_comment_plan(instruction: str, chosen: str) -> dict | None:
     if line_end < 0:
         return {
             "no_change": False,
+            "source": "deterministic_self_test",
             "changes": [{"file": chosen, "old": text, "new": text + f"\n{marker}\n"}],
         }
     anchor = text[: line_end + 1]
     return {
         "no_change": False,
+        "source": "deterministic_self_test",
         "changes": [{
             "file": chosen,
             "old": anchor,
@@ -87,7 +90,7 @@ def _explicit_comment_plan(instruction: str, chosen: str) -> dict | None:
 
 
 def _is_deterministic_comment_request(instruction: str, chosen: str | None) -> bool:
-    return chosen == "tests/test_line_development.py" and re.search(
+    return chosen == "line_development.py" and re.search(
         r"コメント.*(?:1行|一行)|(?:1行|一行).*コメント", instruction, re.IGNORECASE | re.DOTALL
     ) is not None
 

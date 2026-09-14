@@ -3,40 +3,39 @@ from scripts import line_development_worker_v2 as worker
 
 
 def test_explicit_comment_plan_is_deterministic(tmp_path, monkeypatch):
-    target = tmp_path / "tests" / "test_line_development.py"
-    target.parent.mkdir(parents=True)
-    target.write_text("from line_development import extract_development_instruction\n", encoding="utf-8")
+    target = tmp_path / "line_development.py"
+    target.write_text("_WORKFLOW_FILE = \".github/workflows/line-development.yml\"\n", encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
 
     plan = runtime._explicit_comment_plan(
-        'tests/test_line_development.py に「LINE自動開発E2E」というコメントを1行追加して、pytestを実行してください',
-        'tests/test_line_development.py',
+        'line_development.py に「LINE自動開発E2E」というコメントを1行追加して、pytestを実行してください',
+        'line_development.py',
     )
     assert plan is not None
     assert plan["no_change"] is False
+    assert plan["source"] == "deterministic_self_test"
     change = plan["changes"][0]
-    assert change["file"] == "tests/test_line_development.py"
+    assert change["file"] == "line_development.py"
     assert len(change["old"]) <= 1200
     assert len(change["new"]) <= 1800
     assert change["new"].endswith("# LINE自動開発E2E\n")
-    assert worker.validate_plan(plan, "tests/test_line_development.py") == (
+    assert worker.validate_plan(plan, "line_development.py") == (
         True,
-        "tests/test_line_development.py",
+        "line_development.py",
     )
 
 
 def test_explicit_comment_plan_is_idempotent(tmp_path, monkeypatch):
-    target = tmp_path / "tests" / "test_line_development.py"
-    target.parent.mkdir(parents=True)
-    target.write_text("from example import value\n# LINE自動開発E2E\n", encoding="utf-8")
+    target = tmp_path / "line_development.py"
+    target.write_text("_WORKFLOW_FILE = \".github/workflows/line-development.yml\"\n# LINE自動開発E2E\n", encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
 
     plan = runtime._explicit_comment_plan(
-        'tests/test_line_development.py に「LINE自動開発E2E」というコメントを1行追加して',
-        "tests/test_line_development.py",
+        'line_development.py に「LINE自動開発E2E」というコメントを1行追加して',
+        "line_development.py",
     )
 
-    assert plan == {"no_change": True}
+    assert plan == {"no_change": True, "source": "deterministic_self_test"}
 
 
 def test_validate_plan_rejects_oversized_change():
