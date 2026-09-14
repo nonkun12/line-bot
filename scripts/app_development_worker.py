@@ -47,14 +47,40 @@ def ask(client: Groq, system: str, user: str, max_tokens: int = 12000) -> str:
 
 
 def parse_json(text: str) -> dict:
-    clean = text.strip()
+    clean = (text or "").strip()
+    if not clean:
+        raise ValueError("AI response is empty")
+
     if clean.startswith("```"):
-        clean = clean.strip("`").strip()
-        if clean.lower().startswith("json"):
-            clean = clean[4:].strip()
-    data = json.loads(clean)
+        lines = clean.splitlines()
+        if lines and lines[0].strip().lower() in {"```", "```json"}:
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        clean = "\n".join(lines).strip()
+        if not clean:
+            raise ValueError("AI response is empty after removing code fence")
+
+    decoder = json.JSONDecoder()
+    try:
+        data, _ = decoder.raw_decode(clean)
+    except json.JSONDecodeError:
+        data = None
+
+    if data is None:
+        for index, char in enumerate(clean):
+            if char != "{":
+                continue
+            try:
+                candidate, _ = decoder.raw_decode(clean[index:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(candidate, dict):
+                data = candidate
+                break
+
     if not isinstance(data, dict):
-        raise ValueError("expected JSON object")
+        raise ValueError("AI response does not contain a JSON object")
     return data
 
 
@@ -212,12 +238,18 @@ def main() -> int:
     for attempt in range(MAX_REPAIR_ATTEMPTS + 1):
         attempts_used = attempt
         system, user = build_prompt(requirement, slug, last_output)
+        raw_plan = ""
         try:
-            plan = parse_json(ask(client, system, user))
+            raw_plan = ask(client, system, user)
+            plan = parse_json(raw_plan)
         except Exception as exc:
             print(f"AI plan parse failed: {type(exc).__name__}: {exc}")
-            cleanup(touched)
-            return 1
+            print(f"AI plan raw response: {raw_plan[:500]}")
+            last_output = f"AI plan parse failed: {type(exc).__name__}: {exc}\nRaw response:\n{raw_plan[:500]}"
+            if attempt >= MAX_REPAIR_ATTEMPTS:
+                cleanup(touched)
+                return 1
+            continue
         valid, detail, files = validate_files(plan.get("files"), slug)
         if not valid:
             print(f"Rejected app plan: {detail}")
