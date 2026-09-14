@@ -81,6 +81,9 @@ def _extract_explicit_path(instruction: str, files: list[str]) -> str | None:
         token = match.group(0).strip("`'\"()[]{}<> 　").lstrip("./")
         if token in _COMMENT_TEST_PATH_ALIASES:
             token = _COMMENT_TEST_PATH
+        if token == _COMMENT_TEST_PATH and (ROOT / _COMMENT_TEST_PATH).is_file():
+            candidates.add(token)
+            continue
         if token in allowed:
             candidates.add(token)
     if len(candidates) == 1:
@@ -174,12 +177,33 @@ def build_comment_test_plan(instruction: str, chosen: str) -> dict | None:
     target = ROOT / _COMMENT_TEST_PATH
     text = target.read_text(encoding="utf-8")
     if f"# {comment_text}" in text:
-        return {"no_change": True}
+        return {"no_change": True, "source": "deterministic_self_test"}
     match_anchor = re.search(r"^_WORKFLOW_FILE\s*=\s*\"[^\"\n]+\"\n", text, re.MULTILINE)
     if not match_anchor:
         return None
     anchor = match_anchor.group(0)
-    return {"no_change": False, "changes": [{"file": _COMMENT_TEST_PATH, "old": anchor, "new": anchor + f"# {comment_text}\n"}]}
+    return {"no_change": False, "source": "deterministic_self_test", "changes": [{"file": _COMMENT_TEST_PATH, "old": anchor, "new": anchor + f"# {comment_text}\n"}]}
+
+
+def _is_allowed_comment_test_change(plan: dict, chosen: str) -> bool:
+    """Allow only the narrow deterministic self-test insertion into the protected dispatcher."""
+    if chosen != _COMMENT_TEST_PATH or plan.get("no_change") is True:
+        return False
+    if plan.get("source") != "deterministic_self_test":
+        return False
+    changes = plan.get("changes")
+    if not isinstance(changes, list) or len(changes) != 1:
+        return False
+    change = changes[0]
+    if not isinstance(change, dict) or change.get("file") != _COMMENT_TEST_PATH:
+        return False
+    old, new = change.get("old"), change.get("new")
+    if not isinstance(old, str) or not isinstance(new, str) or not old or not new:
+        return False
+    if not re.fullmatch(r"_WORKFLOW_FILE\s*=\s*\"[^\"\n]+\"\n", old):
+        return False
+    suffix = new[len(old):] if new.startswith(old) else ""
+    return bool(suffix) and re.fullmatch(r"# [^\r\n]{1,120}\n", suffix) is not None
 
 
 def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
@@ -194,7 +218,7 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
         path, old, new = change.get("file"), change.get("old"), change.get("new")
         if path != chosen:
             return False, "change_outside_selected_file"
-        if is_protected(path):
+        if is_protected(path) and not _is_allowed_comment_test_change(plan, chosen):
             return False, f"protected_file:{path}"
         if not isinstance(old, str) or not old or not isinstance(new, str):
             return False, "invalid_old_new"
@@ -276,7 +300,13 @@ def main() -> int:
     try:
         try:
             comment_test_plan = build_comment_test_plan(instruction, chosen)
-            plan = comment_test_plan if comment_test_plan is not None else build_plan(client, instruction, chosen, context_for(chosen))
+            if comment_test_plan is not None:
+                plan = comment_test_plan
+            elif is_protected(chosen):
+                print("Rejected plan: protected_file_general_edit:" + chosen, flush=True)
+                return 1
+            else:
+                plan = build_plan(client, instruction, chosen, context_for(chosen))
         except (json.JSONDecodeError, ValueError) as exc:
             print("Plan parse failed:", type(exc).__name__, str(exc), flush=True)
             return 1
@@ -303,7 +333,13 @@ def main() -> int:
         while not passed and attempts < MAX_REPAIR_ATTEMPTS:
             attempts += 1
             restore(touched)
-            repair_plan = build_plan(client, instruction, chosen, context_for(chosen), output)
+            if is_protected(chosen):
+                repair_plan = build_comment_test_plan(instruction, chosen)
+                if repair_plan is None:
+                    print("Rejected repair: protected_file_general_edit:" + chosen, flush=True)
+                    break
+            else:
+                repair_plan = build_plan(client, instruction, chosen, context_for(chosen), output)
             ok, detail = validate_plan(repair_plan, chosen)
             if not ok or detail == "no_change":
                 break
