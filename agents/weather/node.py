@@ -154,6 +154,13 @@ def _geocode_location(location: str) -> tuple[str, float, float]:
     """Resolve a Japanese place nationwide, preferring exact JP matches."""
     normalized = _normalize_location(location)
     known = _PREFECTURE_FALLBACKS.get(normalized)
+    if known is None and normalized not in _PREFECTURE_FALLBACKS:
+        # Users commonly omit 都/道/府/県 (東京、大阪、長野など). Resolve those
+        # forms deterministically instead of depending on geocoder behavior.
+        for suffix in ("県", "府", "都", "道"):
+            known = _PREFECTURE_FALLBACKS.get(f"{normalized}{suffix}")
+            if known is not None:
+                break
     if known is not None:
         return known
 
