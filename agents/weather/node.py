@@ -1,7 +1,8 @@
 """
 Weather Agent LangGraph node.
 
-Uses Open-Meteo without an API key.
+Uses Open-Meteo without an API key, with wttr.in as a fallback when
+Open-Meteo rate-limits the Render shared egress IP.
 """
 
 from __future__ import annotations
@@ -86,6 +87,34 @@ def _weather_code_text(code: int) -> str:
         95: "雷雨", 96: "雷雨", 99: "強い雷雨",
     }
     return codes.get(code, f"天気コード {code}")
+
+
+def _wttr_condition_text(value: str) -> str:
+    normalized = (value or "").strip().lower()
+    mapping = {
+        "clear": "快晴",
+        "sunny": "晴れ",
+        "partly cloudy": "晴れ時々曇り",
+        "cloudy": "曇り",
+        "overcast": "曇り",
+        "mist": "霧",
+        "fog": "霧",
+        "light drizzle": "弱い霧雨",
+        "patchy light drizzle": "弱い霧雨",
+        "light rain": "弱い雨",
+        "patchy light rain": "弱い雨",
+        "moderate rain": "雨",
+        "heavy rain": "強い雨",
+        "light sleet": "みぞれ",
+        "light snow": "弱い雪",
+        "moderate snow": "雪",
+        "heavy snow": "強い雪",
+        "thundery outbreaks possible": "雷雨の可能性",
+        "light rain shower": "にわか雨",
+        "moderate or heavy rain shower": "強いにわか雨",
+        "torrential rain shower": "激しいにわか雨",
+    }
+    return mapping.get(normalized, value.strip() or "天気不明")
 
 
 def _extract_weather_location(message: str) -> str | None:
@@ -198,8 +227,36 @@ def _geocode_location(location: str) -> tuple[str, float, float]:
     )
 
 
+def _get_weather_from_wttr(latitude: float, longitude: float) -> dict:
+    """Fallback current-weather provider used when Open-Meteo rate-limits us."""
+    response = requests.get(
+        f"https://wttr.in/{latitude:.4f},{longitude:.4f}",
+        params={"format": "j1", "lang": "ja"},
+        headers={"User-Agent": "LINE-AI-Secretary/1.0"},
+        timeout=15,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if isinstance(payload, dict) and isinstance(payload.get("data"), dict):
+        payload = payload["data"]
+    current_items = payload.get("current_condition") if isinstance(payload, dict) else None
+    if not current_items:
+        raise ValueError("wttr.in returned incomplete weather data")
+    current = current_items[0]
+    description_items = current.get("weatherDesc") or []
+    description = description_items[0].get("value", "") if description_items else ""
+    return {
+        "current": {
+            "temperature_2m": float(current["temp_C"]),
+            "temperature_2m_unit": "°C",
+            "weather_code_text": _wttr_condition_text(description),
+        },
+        "provider": "wttr.in",
+    }
+
+
 def _get_weather(latitude: float, longitude: float) -> dict:
-    """Fetch current weather, retrying transient provider failures."""
+    """Fetch current weather, falling back to wttr.in on Open-Meteo rate limiting."""
     last_error: Exception | None = None
     for attempt in range(2):
         try:
@@ -213,6 +270,9 @@ def _get_weather(latitude: float, longitude: float) -> dict:
                 },
                 timeout=20,
             )
+            if response.status_code == 429:
+                print("[WEATHER] Open-Meteo rate limited; using wttr.in fallback")
+                return _get_weather_from_wttr(latitude, longitude)
             response.raise_for_status()
             return response.json()
         except (requests.RequestException, ValueError) as exc:
@@ -238,17 +298,24 @@ def weather_agent_node(state):
         unit = current.get("temperature_2m_unit", "°C")
         code = current.get("weather_code")
 
-        if temperature is None or code is None:
-            raise RuntimeError("Open-Meteo returned incomplete weather data")
+        if temperature is None:
+            raise RuntimeError("Weather provider returned incomplete temperature data")
+
+        if isinstance(data.get("provider"), str) and data["provider"] == "wttr.in":
+            weather_text = str(current.get("weather_code_text") or "天気不明")
+        else:
+            if code is None:
+                raise RuntimeError("Open-Meteo returned incomplete weather data")
+            weather_text = _weather_code_text(int(code))
 
         result = {
             "text": (
                 f"{resolved_name}の現在の天気です。\n"
-                f"天気: {_weather_code_text(int(code))}\n"
+                f"天気: {weather_text}\n"
                 f"気温: {temperature}{unit}"
             ),
             "success": True,
-            "provider": "open-meteo",
+            "provider": str(data.get("provider") or "open-meteo"),
             "location": resolved_name,
         }
     except Exception as exc:

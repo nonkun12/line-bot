@@ -41,29 +41,15 @@ def test_prefecture_fallback_does_not_call_geocoder():
 def test_city_resolution_uses_japan_filtered_geocoder():
     response = {
         "results": [
-            {
-                "name": "浜松",
-                "latitude": 34.7108,
-                "longitude": 137.7261,
-                "country_code": "JP",
-                "admin1": "静岡県",
-                "feature_code": "PPL",
-                "population": 788000,
-            },
-            {
-                "name": "浜松",
-                "latitude": 40.0,
-                "longitude": 140.0,
-                "country_code": "XX",
-                "feature_code": "PPL",
-                "population": 9999999,
-            },
+            {"name": "浜松", "latitude": 34.7108, "longitude": 137.7261,
+             "country_code": "JP", "admin1": "静岡県", "feature_code": "PPL", "population": 788000},
+            {"name": "浜松", "latitude": 40.0, "longitude": 140.0,
+             "country_code": "XX", "feature_code": "PPL", "population": 9999999},
         ]
     }
     with patch("agents.weather.node.requests.get") as get:
         get.return_value.raise_for_status.return_value = None
         get.return_value.json.return_value = response
-
         result = _geocode_location("浜松市")
 
     assert result == ("浜松", 34.7108, 137.7261)
@@ -74,21 +60,13 @@ def test_city_resolution_uses_japan_filtered_geocoder():
 
 def test_city_resolution_retries_after_empty_result():
     first = {"results": []}
-    second = {
-        "results": [{
-            "name": "静岡市",
-            "latitude": 34.9756,
-            "longitude": 138.3828,
-            "country_code": "JP",
-            "admin1": "静岡県",
-            "feature_code": "PPL",
-            "population": 693000,
-        }]
-    }
+    second = {"results": [{
+        "name": "静岡市", "latitude": 34.9756, "longitude": 138.3828,
+        "country_code": "JP", "admin1": "静岡県", "feature_code": "PPL", "population": 693000,
+    }]}
     with patch("agents.weather.node.requests.get") as get:
         get.return_value.raise_for_status.return_value = None
         get.return_value.json.side_effect = [first, second]
-
         result = _geocode_location("静岡市")
 
     assert result == ("静岡市", 34.9756, 138.3828)
@@ -96,31 +74,41 @@ def test_city_resolution_retries_after_empty_result():
 
 
 def test_weather_agent_returns_success_for_shizuoka():
-    geocode_payload = {
-        "results": [{
-            "name": "静岡市",
-            "latitude": 34.9756,
-            "longitude": 138.3828,
-            "country_code": "JP",
-            "admin1": "静岡県",
-            "feature_code": "PPL",
-            "population": 693000,
-        }]
-    }
-    weather_payload = {
-        "current": {
-            "temperature_2m": 25.1,
-            "temperature_2m_unit": "°C",
-            "weather_code": 1,
-        }
-    }
+    geocode_payload = {"results": [{
+        "name": "静岡市", "latitude": 34.9756, "longitude": 138.3828,
+        "country_code": "JP", "admin1": "静岡県", "feature_code": "PPL", "population": 693000,
+    }]}
+    weather_payload = {"current": {
+        "temperature_2m": 25.1, "temperature_2m_unit": "°C", "weather_code": 1,
+    }}
     with patch("agents.weather.node.requests.get") as get:
         get.return_value.raise_for_status.return_value = None
         get.return_value.json.side_effect = [geocode_payload, weather_payload]
-
         result = weather_agent_node({"raw_message": "静岡市の天気は？", "agent_results": {}})
 
     assert result["agent_results"]["weather"]["success"] is True
     assert result["agent_results"]["weather"]["location"] == "静岡市"
     assert "気温: 25.1°C" in result["agent_results"]["weather"]["text"]
+    assert get.call_count == 2
+
+
+def test_weather_rate_limit_uses_secondary_provider():
+    rate_limited = type("Response", (), {
+        "status_code": 429,
+        "raise_for_status": lambda self: None,
+    })()
+    fallback = type("Response", (), {
+        "status_code": 200,
+        "raise_for_status": lambda self: None,
+        "json": lambda self: {"current_condition": [{
+            "temp_C": "24", "weatherDesc": [{"value": "Partly cloudy"}],
+        }]},
+    })()
+    with patch("agents.weather.node.requests.get", side_effect=[rate_limited, fallback]) as get:
+        result = weather_agent_node({"raw_message": "長野の天気は？", "agent_results": {}})
+
+    weather = result["agent_results"]["weather"]
+    assert weather["success"] is True
+    assert weather["provider"] == "wttr.in"
+    assert "気温: 24.0°C" in weather["text"]
     assert get.call_count == 2
