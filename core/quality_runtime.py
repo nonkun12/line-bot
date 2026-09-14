@@ -47,9 +47,9 @@ class QualityRuntime:
         refactor = AgentTask(
             f"refactor:{attempt}:{failed.task.task_id}",
             AgentRole.REFACTORER,
-            f"Refactor the validated fix from {debug.task_id} without changing required behavior.",
+            f"Refactor the validated fix from {debug.task.task_id} without changing required behavior.",
             failed.task.resources,
-            depends_on=(debug.task_id,),
+            depends_on=(debug.task.task_id,),
         )
         refactor_result = self._execute(refactor)
         completed.append(refactor_result)
@@ -59,7 +59,7 @@ class QualityRuntime:
         retest = AgentTask(
             f"test:{attempt}:retest:{failed.task.task_id}",
             AgentRole.TESTER,
-            f"Mandatory retest after {refactor.task_id}.",
+            f"Mandatory retest after {refactor.task.task_id}.",
             failed.task.resources,
         )
         retest_result = self._execute(retest)
@@ -121,7 +121,7 @@ class QualityRuntime:
             rereview = self._execute(AgentTask(
                 f"review:{attempts}:rereview",
                 AgentRole.REVIEWER,
-                f"Re-review after {repaired.task_id}.",
+                f"Re-review after {repaired.task.task_id}.",
                 reviewer.task.resources,
             ))
             completed.append(rereview)
