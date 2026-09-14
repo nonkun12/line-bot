@@ -143,13 +143,20 @@ def test_failed_review_debugger_failure_fails_closed():
 
 
 def test_repeated_review_failures_stop_at_max_rounds():
-    executor = FakeExecutor([True, True, True, False, True, True, True, False, True, True, False])
+    executor = FakeExecutor([
+        True, True, True,
+        False,
+        True, True, True,
+        False,
+        True, True, True,
+        False,
+    ])
     runtime = QualityRuntime({role: executor for role in AgentRole}, max_rounds=3)
 
     report = runtime.run(base_tasks())
 
     assert not report.success
-    assert report.failed_task_id.startswith("review:")
+    assert report.failed_task_id == "review:2:rereview"
     roles = [call.role for call in executor.calls]
     assert roles.count(AgentRole.REVIEWER) == 3
     assert roles.count(AgentRole.DEBUGGER) == 2
@@ -162,10 +169,10 @@ def test_test_and_review_have_independent_repair_budgets():
     executor = FakeExecutor([
         True, True, False,
         True, True, True,
-        False,  # initial review
+        False,
         True, True, True,
-        True,  # rereview
-        True,  # integrator
+        True,
+        True,
     ])
     runtime = QualityRuntime({role: executor for role in AgentRole}, max_rounds=2)
 
