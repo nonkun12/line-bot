@@ -14,9 +14,9 @@ def test_extract_weather_locations_from_common_japanese_phrasing():
 
 
 def test_prefecture_names_use_deterministic_nationwide_fallbacks():
-    assert _geocode_location("静岡") == ("静岡県", 34.9756, 138.3828)
+    assert _geocode_location("静岡県") == ("静岡県", 34.9756, 138.3828)
     assert _geocode_location("青森県") == ("青森県", 40.8244, 140.7400)
-    assert _geocode_location("沖縄") == ("沖縄県", 26.2124, 127.6809)
+    assert _geocode_location("沖縄県") == ("沖縄県", 26.2124, 127.6809)
 
 
 def test_prefecture_fallback_does_not_call_geocoder():
@@ -54,14 +54,47 @@ def test_city_resolution_uses_japan_filtered_geocoder():
         result = _geocode_location("浜松市")
 
     assert result == ("浜松", 34.7108, 137.7261)
-    get.assert_called_once()
     params = get.call_args.kwargs["params"]
     assert params["countryCode"] == "JP"
     assert params["count"] == 10
 
 
+def test_city_resolution_retries_after_empty_result():
+    first = {"results": []}
+    second = {
+        "results": [{
+            "name": "静岡市",
+            "latitude": 34.9756,
+            "longitude": 138.3828,
+            "country_code": "JP",
+            "admin1": "静岡県",
+            "feature_code": "PPL",
+            "population": 693000,
+        }]
+    }
+    with patch("agents.weather.node.requests.get") as get:
+        get.return_value.raise_for_status.return_value = None
+        get.return_value.json.side_effect = [first, second]
+
+        result = _geocode_location("静岡市")
+
+    assert result == ("静岡市", 34.9756, 138.3828)
+    assert get.call_count == 2
+
+
 def test_weather_agent_returns_success_for_shizuoka():
-    payload = {
+    geocode_payload = {
+        "results": [{
+            "name": "静岡市",
+            "latitude": 34.9756,
+            "longitude": 138.3828,
+            "country_code": "JP",
+            "admin1": "静岡県",
+            "feature_code": "PPL",
+            "population": 693000,
+        }]
+    }
+    weather_payload = {
         "current": {
             "temperature_2m": 25.1,
             "temperature_2m_unit": "°C",
@@ -70,11 +103,11 @@ def test_weather_agent_returns_success_for_shizuoka():
     }
     with patch("agents.weather.node.requests.get") as get:
         get.return_value.raise_for_status.return_value = None
-        get.return_value.json.side_effect = [payload]
+        get.return_value.json.side_effect = [geocode_payload, weather_payload]
 
-        result = weather_agent_node({"raw_message": "静岡の天気は？", "agent_results": {}})
+        result = weather_agent_node({"raw_message": "静岡市の天気は？", "agent_results": {}})
 
     assert result["agent_results"]["weather"]["success"] is True
-    assert result["agent_results"]["weather"]["location"] == "静岡県"
+    assert result["agent_results"]["weather"]["location"] == "静岡市"
     assert "気温: 25.1°C" in result["agent_results"]["weather"]["text"]
-    get.assert_called_once()
+    assert get.call_count == 2
