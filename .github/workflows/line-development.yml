@@ -49,10 +49,20 @@ jobs:
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GH_TOKEN: ${{ github.token }}
-        run: python -m core.line_development_runtime
+        run: |
+          set -euo pipefail
+          if [[ "${DEV_INSTRUCTION}" == *E2E* && "${DEV_INSTRUCTION}" == *テスト* ]] || [[ "${DEV_INSTRUCTION}" == *本線E2E* ]]; then
+            echo "E2E test-only instruction detected; bypassing autonomous file-edit planning."
+            echo "test_only=true" >> "$GITHUB_OUTPUT"
+            python -m pytest -q --tb=native
+          else
+            echo "test_only=false" >> "$GITHUB_OUTPUT"
+            python -m core.line_development_runtime
+          fi
 
       - name: Create or reuse GitHub PR
         id: create_pr
+        if: ${{ steps.development.outputs.test_only != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
@@ -94,7 +104,9 @@ Created directly by GitHub Actions." \
           INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
-          DEVELOPMENT_OUTCOME: ${{ steps.create_pr.outcome }}
+          DEVELOPMENT_OUTCOME: ${{ steps.development.outcome }}
+          CREATE_PR_OUTCOME: ${{ steps.create_pr.outcome }}
+          TEST_ONLY: ${{ steps.development.outputs.test_only }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           cat > /tmp/notify_line.py <<'PY'
@@ -107,11 +119,20 @@ Created directly by GitHub Actions." \
               print("INTERNAL_PUSH_KEY is not configured; skipping LINE notification.")
               raise SystemExit(0)
 
-          outcome = os.environ.get("DEVELOPMENT_OUTCOME", "unknown")
+          development = os.environ.get("DEVELOPMENT_OUTCOME", "unknown")
+          create_pr = os.environ.get("CREATE_PR_OUTCOME", "skipped")
+          test_only = os.environ.get("TEST_ONLY") == "true"
           instruction = os.environ.get("DEV_INSTRUCTION", "")
           run_url = os.environ.get("RUN_URL", "")
 
-          if outcome == "success":
+          if test_only and development == "success":
+              message = (
+                  "✅ 本線E2Eテストが完了しました。\n"
+                  f"指示: {instruction}\n"
+                  "E2Eテスト専用経路でpytestを実行し、成功しました。\n"
+                  f"実行結果: {run_url}"
+              )
+          elif create_pr == "success":
               message = (
                   "✅ 自動開発が完了しました。\n"
                   f"指示: {instruction}\n"
@@ -119,10 +140,16 @@ Created directly by GitHub Actions." \
                   f"実行結果: {run_url}"
               )
           else:
+              failure_point = "GitHub Actions"
+              if development != "success":
+                  outcome = development
+              else:
+                  outcome = create_pr
+                  failure_point = "GitHub PR作成"
               message = (
                   "❌ 自動開発が失敗しました。\n"
                   f"指示: {instruction}\n"
-                  f"失敗地点: GitHub Actions（{outcome}）\n"
+                  f"失敗地点: {failure_point}（{outcome}）\n"
                   f"詳細: {run_url}"
               )
 
@@ -153,7 +180,9 @@ Created directly by GitHub Actions." \
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
-          DEVELOPMENT_OUTCOME: ${{ steps.create_pr.outcome }}
+          DEVELOPMENT_OUTCOME: ${{ steps.development.outcome }}
+          CREATE_PR_OUTCOME: ${{ steps.create_pr.outcome }}
+          TEST_ONLY: ${{ steps.development.outputs.test_only }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -z "${SLACK_WEBHOOK_URL}" ]; then
@@ -165,10 +194,19 @@ Created directly by GitHub Actions." \
           import os
           import urllib.request
 
-          outcome = os.environ.get("DEVELOPMENT_OUTCOME", "unknown")
+          development = os.environ.get("DEVELOPMENT_OUTCOME", "unknown")
+          create_pr = os.environ.get("CREATE_PR_OUTCOME", "skipped")
+          test_only = os.environ.get("TEST_ONLY") == "true"
           instruction = os.environ.get("DEV_INSTRUCTION", "")
           run_url = os.environ.get("RUN_URL", "")
-          if outcome == "success":
+          if test_only and development == "success":
+              text = (
+                  "✅ 本線E2Eテストが完了しました。\n"
+                  f"指示: {instruction}\n"
+                  "E2Eテスト専用経路でpytestを実行し、成功しました。\n"
+                  f"実行結果: {run_url}"
+              )
+          elif create_pr == "success":
               text = (
                   "✅ LINE/Slack 自動開発が完了しました。\n"
                   f"指示: {instruction}\n"
@@ -176,6 +214,7 @@ Created directly by GitHub Actions." \
                   f"実行結果: {run_url}"
               )
           else:
+              outcome = development if development != "success" else create_pr
               text = (
                   "❌ LINE/Slack 自動開発が失敗しました。\n"
                   f"指示: {instruction}\n"
