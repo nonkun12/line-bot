@@ -55,8 +55,8 @@ def test_dispatch_uses_guarded_development_workflow(monkeypatch):
         repository="nonkun12/line-bot",
     )
 
-    assert "/actions/workflows/line-development.yml" in captured["url"]
-    assert captured["url"].endswith("/actions/workflows/line-development.yml/dispatches")
+    assert "/actions/workflows/line-development-dispatch.yml" in captured["url"]
+    assert captured["url"].endswith("/actions/workflows/line-development-dispatch.yml/dispatches")
     assert captured["json"] == {
         "ref": "main",
         "inputs": {"instruction": "英語学習機能を追加して", "user_id": "U123"},
