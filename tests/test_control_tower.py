@@ -1,0 +1,51 @@
+from __future__ import annotations
+
+from core.agent_runtime import RuntimeReport
+from core.control_tower import ControlTower, _report_evidence
+from core.creator_critic_runtime import build_creator_critic_loop
+
+
+def test_control_tower_failure_generates_and_evaluates_bounded_proposal() -> None:
+    calls: list[str] = []
+
+    def fake_model(prompt: str) -> str:
+        calls.append(prompt)
+        return "Minimal test-backed improvement proposal."
+
+    tower = ControlTower(creator_critic=build_creator_critic_loop(model_call=fake_model, max_iterations=1))
+    decision = tower.observe(
+        RuntimeReport((), failed_task_id="tester-1", error="pytest failed", rounds=1),
+        objective="reduce autonomous test failures",
+    )
+
+    assert decision.proposal is not None
+    assert decision.proposal.task is not None
+    assert len(decision.duel) == 1
+    assert decision.duel[0].evaluation.passed is False
+    assert decision.approved_for_pipeline is False
+    assert len(calls) == 2
+
+
+def test_control_tower_does_not_run_creator_critic_without_proposal() -> None:
+    called = False
+
+    def fake_model(_prompt: str) -> str:
+        nonlocal called
+        called = True
+        return "should not run"
+
+    tower = ControlTower(creator_critic=build_creator_critic_loop(model_call=fake_model, max_iterations=1))
+    decision = tower.observe(RuntimeReport((), rounds=1, integration_ready=True))
+
+    assert decision.proposal is None
+    assert decision.duel == ()
+    assert called is False
+
+
+def test_report_evidence_fails_closed_and_accepts_explicit_measurements() -> None:
+    failed = RuntimeReport((), failed_task_id="t1", error="boom", rounds=1)
+    evidence = _report_evidence(failed, {"accuracy": 0.9})
+
+    assert evidence["safety"] == 0.0
+    assert evidence["accuracy"] == 0.9
+    assert evidence["integration_ready"] is False
