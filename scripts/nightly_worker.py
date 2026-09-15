@@ -66,6 +66,15 @@ def invoke_one_shot_repair(pytest_output: str) -> dict:
 import json
 import os
 import sys
+from pathlib import Path
+
+# `python scripts/nightly_worker.py` sets sys.path[0] to `scripts`, so the
+# repository root is not guaranteed to be importable. Make the package root
+# explicit before importing the application graph.
+repo_root = Path(os.environ.get("REPO_WORKDIR", os.getcwd())).resolve()
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
 from graph.graph import graph
 
 pytest_output = sys.stdin.read()
