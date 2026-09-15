@@ -50,7 +50,21 @@ jobs:
           APP_USER_ID: ${{ github.event.inputs.user_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           DEV_AI_MODEL: openai/gpt-oss-20b
-        run: python scripts/universal_app_builder.py
+        run: |
+          set +e
+          for attempt in 1 2 3; do
+            python scripts/universal_app_builder.py 2>&1 | tee ai-app-builder-${attempt}.log
+            status=${PIPESTATUS[0]}
+            if [ "$status" -eq 0 ]; then
+              exit 0
+            fi
+            if grep -q "AI planning failed: ValueError: AI response is empty" "ai-app-builder-${attempt}.log" && [ "$attempt" -lt 3 ]; then
+              echo "Initial AI planning returned an empty response; retrying (attempt $((attempt + 1))/3)."
+              continue
+            fi
+            exit "$status"
+          done
+          exit 1
 
       - name: Notify LINE of app development result
         if: always()
