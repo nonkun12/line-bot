@@ -47,7 +47,7 @@ jobs:
           DEV_USER_ID: autonomous
           GITHUB_RUN_ID: ${{ github.run_id }}
           GH_TOKEN: ${{ github.token }}
-        run: python -m core.line_development_runtime
+        run: python scripts/run_guarded_runtime.py
 
       - name: Create GitHub PR
         id: create_pr
