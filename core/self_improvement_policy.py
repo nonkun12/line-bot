@@ -25,9 +25,6 @@ class SelfImprovementAssessment:
     protected_paths: tuple[str, ...]
 
 
-# Changes to these areas can alter the system's ability to authenticate, audit,
-# constrain, or safely execute future changes, so they require a separate
-# approval path rather than ordinary autonomous self-improvement.
 HIGH_RISK_PREFIXES = (
     ".github/workflows/",
     "security/",
@@ -80,7 +77,11 @@ def assess_self_improvement(paths: list[str] | tuple[str, ...]) -> SelfImproveme
 
 
 def _normalize(path: str) -> str:
-    return PurePosixPath(str(path).strip().lstrip("./")).as_posix()
+    """Normalize separators and a leading ./ without stripping filename dots."""
+    value = str(path).strip().replace("\\", "/")
+    while value.startswith("./"):
+        value = value[2:]
+    return PurePosixPath(value).as_posix()
 
 
 def _is_high_risk(path: str) -> bool:
