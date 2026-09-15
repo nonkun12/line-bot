@@ -45,6 +45,18 @@ class ResolvedTarget:
 class TaskClassifier:
     """Classify explicit work requests without silently selecting a project."""
 
+    _SECRETARY_DEV_HINTS = (
+        "line_development.py",
+        "line-development",
+        "line_development_worker",
+        "core/",
+        ".github/",
+        "pytest",
+        "line-bot",
+        "自分自身",
+        "自己改良",
+    )
+
     def classify(self, message: str) -> TaskClassification:
         text = str(message or "").strip()
         if not text:
@@ -59,7 +71,9 @@ class TaskClassifier:
             return TaskClassification(TaskMode.AGENT_MANAGEMENT, "high", reason="explicit agent lifecycle request")
 
         if text.startswith("開発:") or lowered.startswith("dev:"):
-            return TaskClassification(TaskMode.NEW_SOFTWARE, "high", reason="explicit development prefix")
+            if self._matches_any(text, self._SECRETARY_DEV_HINTS):
+                return TaskClassification(TaskMode.SELF_IMPROVEMENT, "high", "line-bot", "nonkun12/line-bot", "development request targets the Secretary")
+            return TaskClassification(TaskMode.NEW_SOFTWARE, "high", reason="explicit development prefix for independent software")
 
         if self._matches_any(text, ("ソフトを作って", "アプリを作って", "システムを作って", "サービスを作って", "新規ソフト", "新規アプリ")):
             return TaskClassification(TaskMode.NEW_SOFTWARE, "medium", reason="new software language")
@@ -67,8 +81,6 @@ class TaskClassifier:
         if self._matches_any(text, ("調べてレポート", "レポートして", "分析して", "調査して", "データ分析", "資料を作って", "文書を作って")):
             return TaskClassification(TaskMode.NON_SOFTWARE, "high", reason="explicit non-software work")
 
-        # Existing-project maintenance patterns. The project name may occur
-        # before or after the maintenance verb, e.g. "ai-todo-appを改良して".
         target_patterns = (
             r"([A-Za-z0-9_.-]+)\s*を?\s*(?:改良|改善|修正|保守|メンテナンス)",
             r"(?:改良|改善|修正|保守|メンテナンス)\s*[:：]?\s*([A-Za-z0-9_.-]+)",
@@ -101,13 +113,9 @@ class ProjectResolver:
         self.registry = registry or ProjectRegistry()
 
     def resolve(self, classification: TaskClassification) -> ResolvedTarget:
-        if classification.mode == TaskMode.SELF_IMPROVEMENT:
-            project = self.registry.get(classification.project_name or "line-bot")
-            return self._project_target(classification, project, required=True)
-
-        if classification.mode == TaskMode.EXISTING_SOFTWARE:
-            candidate = classification.project_name or ""
-            project = self.registry.get(candidate) or self.registry.resolve_repository(candidate)
+        if classification.mode in {TaskMode.SELF_IMPROVEMENT, TaskMode.EXISTING_SOFTWARE}:
+            project_name = classification.project_name or "line-bot"
+            project = self.registry.get(project_name) or self.registry.resolve_repository(classification.project_repository or "")
             if project is None:
                 return ResolvedTarget(classification, None, None, True, False, "unknown project; refusing repository guess")
             return self._project_target(classification, project, required=True)
