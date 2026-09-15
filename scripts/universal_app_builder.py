@@ -1,8 +1,8 @@
 """Build a new application in its own GitHub repository.
 
 This worker never writes generated source into the AI Secretary repository.
-The model proposes files; the worker validates paths, creates the target repo,
-checks out its own workspace, runs tests, pushes a branch, and opens a PR.
+The model proposes files; the worker validates paths, creates or reuses the
+ target repo, checks out its own workspace, runs tests, pushes a branch, and opens a PR.
 """
 from __future__ import annotations
 
@@ -169,9 +169,33 @@ def ask(client: Groq, requirement: str, repair: str = "") -> dict:
     return parse_json(response.choices[0].message.content or "")
 
 
+def get_existing_repository(token: str, owner: str, name: str) -> str | None:
+    req = urlrequest.Request(
+        f"https://api.github.com/repos/{owner}/{name}",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        method="GET",
+    )
+    try:
+        with urlrequest.urlopen(req, timeout=30) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+            result = json.loads(raw) if raw else {}
+            return f"{result.get('owner', {}).get('login', owner)}/{result['name']}"
+    except HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raw = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"GitHub API HTTP {exc.code}: {raw[:1000]}") from exc
+
+
 def create_repository(token: str, owner: str, name: str, description: str) -> str:
-    # Create an empty repository so the generated README and source files are
-    # the first commit and never collide with GitHub's auto-initialized README.
+    existing = get_existing_repository(token, owner, name)
+    if existing:
+        print(f"Reusing existing independent repository: https://github.com/{existing}", flush=True)
+        return existing
     result = github_api(
         "/user/repos",
         token,
@@ -198,6 +222,21 @@ def clone_repo(repo: str, token: str, workspace: Path, workdir: Path) -> None:
     )
     if result.returncode != 0:
         raise RuntimeError(f"git clone failed: {result.stderr[-2000:]}")
+
+
+def ensure_main_branch(workspace: Path) -> None:
+    head = run(["git", "rev-parse", "--verify", "HEAD"], workspace, timeout=60)
+    if head.returncode == 0:
+        return
+    created = run(["git", "switch", "-c", "main"], workspace, timeout=60)
+    if created.returncode != 0:
+        raise RuntimeError(f"failed to initialize main branch: {created.stderr[-4000:]}")
+    initialized = run(["git", "commit", "--allow-empty", "-m", "chore: initialize application repository"], workspace, timeout=60)
+    if initialized.returncode != 0:
+        raise RuntimeError(f"failed to initialize repository history: {initialized.stderr[-4000:]}")
+    pushed = run(["git", "push", "--set-upstream", "origin", "main"], workspace, timeout=180)
+    if pushed.returncode != 0:
+        raise RuntimeError(f"failed to initialize remote main branch: {pushed.stderr[-4000:]}")
 
 
 def write_files(workspace: Path, files: list[dict[str, str]], *, replace_existing: bool = False) -> list[str]:
@@ -261,8 +300,6 @@ def main() -> int:
         print(f"AI planning failed: {type(exc).__name__}: {exc}")
         return 1
 
-    # For known product families, prefer the deterministic repository name over
-    # model-proposed names so retries create the same intended project.
     fallback_slug = slugify(requirement)
     model_slug = normalize_repo_name(current_plan.get("project_slug") or "")
     requested_slug = fallback_slug if fallback_slug != "ai-generated-app" else (model_slug or fallback_slug)
@@ -281,6 +318,7 @@ def main() -> int:
         workspace = Path(temp_dir) / "repo"
         try:
             clone_repo(repo, token, workspace, Path(temp_dir))
+            ensure_main_branch(workspace)
             last_failure = ""
             for attempt in range(MAX_REPAIR_ATTEMPTS + 1):
                 if attempt:
@@ -305,6 +343,10 @@ def main() -> int:
                 if passed:
                     summary = str(current_plan.get("summary") or description)[:2000]
                     branch = f"ai-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}-{requested_slug}"
+                    checkout = run(["git", "switch", "-c", branch], workspace, timeout=60)
+                    if checkout.returncode != 0:
+                        print(checkout.stderr[-4000:])
+                        return 1
                     for key, value in {
                         "user.name": "github-actions[bot]",
                         "user.email": "41898282+github-actions[bot]@users.noreply.github.com",
@@ -320,10 +362,6 @@ def main() -> int:
                     commit = run(["git", "commit", "-m", "feat: generate application with AI"], workspace, timeout=60)
                     if commit.returncode != 0:
                         print(commit.stderr[-4000:])
-                        return 1
-                    checkout = run(["git", "switch", "-c", branch], workspace, timeout=60)
-                    if checkout.returncode != 0:
-                        print(checkout.stderr[-4000:])
                         return 1
                     push = run(["git", "push", "--set-upstream", "origin", branch], workspace, timeout=180)
                     if push.returncode != 0:
