@@ -14,6 +14,12 @@ def test_classifier_covers_core_work_modes():
     assert classifier.classify("ai-todo-appを改良して").project_name == "ai-todo-app"
 
 
+def test_classifier_accepts_slash_qualified_repository_target():
+    result = TaskClassifier().classify("nonkun12/my-mcp-serverを改善して")
+    assert result.mode == TaskMode.EXISTING_SOFTWARE
+    assert result.project_name == "nonkun12/my-mcp-server"
+
+
 def test_existing_project_resolution_fails_closed():
     registry = ProjectRegistry([
         DEFAULT_PROJECT,
