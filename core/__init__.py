@@ -19,6 +19,7 @@ from .review import (
 )
 from .router import AgentRouter, RouteResult
 from .self_improvement_policy import SelfImprovementAssessment, SelfImprovementDecision, assess_self_improvement
+from .structured_output import ParseAttempt, ParseResult, parse_json_object, parse_with_retries, require_fields
 from .task_routing import ProjectResolver, ResolvedTarget, TaskClassification, TaskClassifier, TaskMode
 
 __all__ = [
@@ -44,6 +45,11 @@ __all__ = [
     "SelfImprovementDecision",
     "SelfImprovementAssessment",
     "assess_self_improvement",
+    "ParseAttempt",
+    "ParseResult",
+    "parse_json_object",
+    "parse_with_retries",
+    "require_fields",
     "AgentRouter",
     "RouteResult",
     "AIGateway",
