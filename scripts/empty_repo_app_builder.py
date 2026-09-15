@@ -114,7 +114,11 @@ def main() -> int:
                     print(f"Rejected model plan: {detail}")
                     return 1
                 clear_generated_files(workspace, generated_paths)
-                written = write_files(workspace, files, replace_existing=False)
+                # Existing files in the independent app repository may be
+                # artifacts from a previous failed generation or an earlier
+                # generated version. Rewrite only the model-selected files on
+                # this isolated development branch; main is never written here.
+                written = write_files(workspace, files, replace_existing=True)
                 generated_paths = set(written)
                 passed, output = run_tests(workspace)
                 print(output, flush=True)
