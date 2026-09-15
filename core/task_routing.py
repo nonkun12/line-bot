@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 import re
-from typing import Any
 
 from .project_registry import ProjectRecord, ProjectRegistry
 
@@ -59,7 +58,7 @@ class TaskClassifier:
         if self._matches_any(text, ("新しいagent", "新規agent", "agentを作", "agentを追加", "エージェントを作", "エージェントを追加")):
             return TaskClassification(TaskMode.AGENT_MANAGEMENT, "high", reason="explicit agent lifecycle request")
 
-        if text.startswith("開発:") or text.lower().startswith("dev:"):
+        if text.startswith("開発:") or lowered.startswith("dev:"):
             return TaskClassification(TaskMode.NEW_SOFTWARE, "high", reason="explicit development prefix")
 
         if self._matches_any(text, ("ソフトを作って", "アプリを作って", "システムを作って", "サービスを作って", "新規ソフト", "新規アプリ")):
@@ -68,11 +67,21 @@ class TaskClassifier:
         if self._matches_any(text, ("調べてレポート", "レポートして", "分析して", "調査して", "データ分析", "資料を作って", "文書を作って")):
             return TaskClassification(TaskMode.NON_SOFTWARE, "high", reason="explicit non-software work")
 
-        # Existing-project maintenance must name a known project/repository.
-        explicit = re.search(r"(?:改良|改善|修正|保守|メンテナンス)\s*[:：]?\s*([A-Za-z0-9_.-]+)", text)
-        if explicit:
-            project_name = explicit.group(1)
-            return TaskClassification(TaskMode.EXISTING_SOFTWARE, "medium", project_name=project_name, reason="explicit project maintenance form")
+        # Existing-project maintenance patterns. The project name may occur
+        # before or after the maintenance verb, e.g. "ai-todo-appを改良して".
+        target_patterns = (
+            r"([A-Za-z0-9_.-]+)\s*を?\s*(?:改良|改善|修正|保守|メンテナンス)",
+            r"(?:改良|改善|修正|保守|メンテナンス)\s*[:：]?\s*([A-Za-z0-9_.-]+)",
+        )
+        for pattern in target_patterns:
+            match = re.search(pattern, text)
+            if match:
+                return TaskClassification(
+                    TaskMode.EXISTING_SOFTWARE,
+                    "high",
+                    project_name=match.group(1),
+                    reason="explicit project maintenance form",
+                )
 
         if self._matches_any(lowered, ("bug", "error", "exception")) and self._matches_any(text, ("直して", "修正して", "調べて")):
             return TaskClassification(TaskMode.EXISTING_SOFTWARE, "low", reason="maintenance wording without target")
@@ -81,7 +90,8 @@ class TaskClassifier:
 
     @staticmethod
     def _matches_any(text: str, phrases: tuple[str, ...]) -> bool:
-        return any(phrase.lower() in text.lower() for phrase in phrases)
+        lowered = text.lower()
+        return any(phrase.lower() in lowered for phrase in phrases)
 
 
 class ProjectResolver:
