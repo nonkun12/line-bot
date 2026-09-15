@@ -13,8 +13,7 @@ on:
         type: string
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: ai-app-development-${{ github.event.inputs.user_id }}
@@ -25,10 +24,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Checkout
+      - name: Checkout Secretary repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           token: ${{ github.token }}
 
       - name: Set up Python
@@ -39,19 +38,19 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install groq pytest
 
-      - name: Run autonomous app development worker
+      - name: Run independent-repository app builder
         id: app_development
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
+          APP_GITHUB_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
+          APP_GITHUB_OWNER: nonkun12
           APP_REQUIREMENT: ${{ github.event.inputs.requirement }}
           APP_USER_ID: ${{ github.event.inputs.user_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
           DEV_AI_MODEL: openai/gpt-oss-20b
-        run: python scripts/app_development_worker.py
+        run: python scripts/universal_app_builder.py
 
       - name: Notify LINE of app development result
         if: always()
@@ -81,7 +80,7 @@ jobs:
               message = (
                   "✅ AIアプリ開発が完了しました。\n"
                   f"要件: {requirement}\n"
-                  "アプリ生成・テスト・PR作成まで完了しました。\n"
+                  "独立GitHubリポジトリ作成・実装・テスト・PR作成まで完了しました。\n"
                   f"実行結果: {run_url}"
               )
           else:
@@ -101,9 +100,9 @@ jobs:
           )
           try:
               with urllib.request.urlopen(request, timeout=15) as response:
-                  print(f"LINE notification HTTP {response.status}: {response.read().decode('utf-8', errors='replace')}")
+                  print(f"LINE notification HTTP {response.status}")
           except Exception as exc:
-              print(f"LINE notification failed: {type(exc).__name__}: {exc}")
+              print(f"LINE notification failed: {type(exc).__name__}")
 
       - name: Upload app development log
         if: always()

@@ -37,7 +37,7 @@ def test_unauthorized_user_is_rejected(monkeypatch):
     assert "権限がありません" in reply
 
 
-def test_dispatch_uses_guarded_development_workflow(monkeypatch):
+def test_dispatch_uses_guarded_secretary_development_workflow(monkeypatch):
     monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     captured = {}
 
@@ -50,7 +50,7 @@ def test_dispatch_uses_guarded_development_workflow(monkeypatch):
 
     monkeypatch.setattr("line_development.httpx.post", fake_post)
     reply = dispatch_development_workflow(
-        "英語学習機能を追加して",
+        "line_development.py にコメントを追加して",
         user_id="U123",
         token="secret",
         repository="nonkun12/line-bot",
@@ -60,7 +60,7 @@ def test_dispatch_uses_guarded_development_workflow(monkeypatch):
     assert captured["url"].endswith("/actions/workflows/line-development-dispatch.yml/dispatches")
     assert captured["json"] == {
         "ref": "main",
-        "inputs": {"instruction": "英語学習機能を追加して", "user_id": "U123"},
+        "inputs": {"instruction": "line_development.py にコメントを追加して", "user_id": "U123"},
     }
     assert captured["headers"]["Authorization"] == "Bearer secret"
     assert captured["timeout"] == 10.0
@@ -86,7 +86,7 @@ def test_dispatch_retries_transient_github_failure(monkeypatch):
     monkeypatch.setattr("line_development.time.sleep", lambda _: None)
 
     reply = dispatch_development_workflow(
-        "本線E2Eテストを実行して",
+        "line_development.py の本線E2Eテストを確認して",
         user_id="U123",
         token="secret",
         repository="nonkun12/line-bot",
@@ -111,7 +111,7 @@ def test_dispatch_reports_auth_failure_without_retry(monkeypatch):
 
     monkeypatch.setattr("line_development.httpx.post", fake_post)
     reply = dispatch_development_workflow(
-        "本線E2Eテストを実行して",
+        "line_development.py の本線E2Eテストを確認して",
         user_id="U123",
         token="secret",
         repository="nonkun12/line-bot",
@@ -144,3 +144,48 @@ def test_worker_parse_plan_accepts_json_with_explanation():
     assert parse_plan(
         'Here is the plan:\n{"file": "tests/test_line_development.py"}\n'
     ) == {"file": "tests/test_line_development.py"}
+
+
+def test_generic_development_request_routes_to_independent_app_builder(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    captured = {}
+
+    def fake_dispatch(requirement, *, user_id, token=None):
+        captured["requirement"] = requirement
+        captured["user_id"] = user_id
+        captured["token"] = token
+        return "APP_BUILDER_STARTED"
+
+    monkeypatch.setattr("line_development.dispatch_app_development_workflow", fake_dispatch)
+    reply = dispatch_development_workflow(
+        "TODO管理Webアプリを作って",
+        user_id="U123",
+        token="secret",
+    )
+
+    assert reply == "APP_BUILDER_STARTED"
+    assert captured == {
+        "requirement": "TODO管理Webアプリを作って",
+        "user_id": "U123",
+        "token": "secret",
+    }
+
+
+def test_secretary_development_request_stays_on_line_bot(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        return FakeResponse()
+
+    monkeypatch.setattr("line_development.httpx.post", fake_post)
+    reply = dispatch_development_workflow(
+        "line_development.py にコメントを追加して",
+        user_id="U123",
+        token="secret",
+        repository="nonkun12/line-bot",
+    )
+
+    assert "/actions/workflows/line-development-dispatch.yml" in captured["url"]
+    assert "受け付けました" in reply

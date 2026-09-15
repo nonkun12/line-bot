@@ -1,4 +1,4 @@
-"""Explicit LINE/Slack -> GitHub Actions development command dispatcher."""
+"""Explicit LINE/Slack -> governed development command dispatcher."""
 from __future__ import annotations
 
 import os
@@ -8,6 +8,8 @@ from typing import Optional
 
 import httpx
 
+from app_development import dispatch_app_development_workflow
+from core.task_routing import TaskClassifier, TaskMode
 
 _DEV_PREFIX = re.compile(r"^(?:開発|dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
 _MAX_INSTRUCTION_LENGTH = 2000
@@ -48,12 +50,7 @@ def dispatch_development_workflow(
     repository: str | None = None,
     authorized: bool = False,
 ) -> str:
-    """Dispatch the shared GitHub Actions development workflow.
-
-    GitHub's dispatch endpoint is asynchronous and returns HTTP 204 on success.
-    The LINE request path must tolerate transient network/API latency without
-    turning a slow but accepted dispatch into a false failure.
-    """
+    """Dispatch governed Secretary development or independent app creation."""
     instruction = str(instruction or "").strip()
     if not instruction:
         return "開発指示が空です。『開発: ○○を実装して』の形式で指定してください。"
@@ -61,11 +58,19 @@ def dispatch_development_workflow(
     if not authorized and not _is_authorized_user(user_id):
         return "このユーザーには開発ワークフローの実行権限がありません。"
 
-    repository = repository or os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
     token = token or os.environ.get("GITHUB_TOKEN", "")
     if not token:
         return "開発ワークフローを起動できません。GITHUB_TOKENが設定されていません。"
 
+    classification = TaskClassifier().classify(f"開発: {instruction}")
+    if classification.mode == TaskMode.NEW_SOFTWARE:
+        return dispatch_app_development_workflow(
+            instruction,
+            user_id=user_id,
+            token=token,
+        )
+
+    repository = repository or os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
     dispatch_url = (
         f"https://api.github.com/repos/{repository}"
         f"/actions/workflows/{_WORKFLOW_FILE}/dispatches"
