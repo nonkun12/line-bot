@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -56,16 +56,34 @@ class ProjectRegistry:
 
     def __init__(self, records: list[ProjectRecord] | None = None) -> None:
         source = records if records is not None else [DEFAULT_PROJECT]
-        self._records: dict[str, ProjectRecord] = {record.name: record for record in source}
-        self._by_repository: dict[str, ProjectRecord] = {
-            record.repository: record for record in source
-        }
+        self._records: dict[str, ProjectRecord] = {}
+        self._by_repository: dict[str, ProjectRecord] = {}
+        for record in source:
+            self._register_record(record)
+
+    def _register_record(self, record: ProjectRecord) -> None:
+        if not isinstance(record, ProjectRecord):
+            raise TypeError("project registry entries must be ProjectRecord instances")
+        name = record.name.strip()
+        repository = record.repository.strip()
+        if not name:
+            raise ValueError("project name is required")
+        if not repository:
+            raise ValueError(f"project repository is required: {name}")
+        if name in self._records:
+            raise ValueError(f"duplicate project name: {name}")
+        if repository in self._by_repository:
+            raise ValueError(f"duplicate project repository: {repository}")
+        self._records[name] = record
+        self._by_repository[repository] = record
 
     @classmethod
     def from_path(cls, path: str | Path) -> "ProjectRegistry":
         target = Path(path)
         if not target.exists():
-            return cls()
+            raise FileNotFoundError(f"project registry not found: {target}")
+        if not target.is_file():
+            raise ValueError(f"project registry path is not a file: {target}")
         raw = json.loads(target.read_text(encoding="utf-8"))
         if not isinstance(raw, list):
             raise ValueError("project registry must be a JSON list")
@@ -73,20 +91,22 @@ class ProjectRegistry:
         for item in raw:
             if not isinstance(item, dict):
                 raise ValueError("project registry entries must be objects")
+            if "name" not in item or "repository" not in item:
+                raise ValueError("project registry entries require name and repository")
             supported = item.get("supported_agents", ())
             if not isinstance(supported, (list, tuple)):
                 raise ValueError("supported_agents must be a list")
             records.append(
                 ProjectRecord(
-                    name=str(item["name"]),
-                    repository=str(item["repository"]),
+                    name=str(item["name"]).strip(),
+                    repository=str(item["repository"]).strip(),
                     project_type=str(item.get("project_type", "software")),
                     runtime_target=str(item.get("runtime_target", "")),
                     owner_scope=str(item.get("owner_scope", "")),
                     active_branch=str(item.get("active_branch", "main")),
                     status=str(item.get("status", "active")),
                     last_successful_commit=str(item.get("last_successful_commit", "")),
-                    supported_agents=tuple(str(value) for value in supported),
+                    supported_agents=tuple(str(value).strip() for value in supported if str(value).strip()),
                 )
             )
         return cls(records)
@@ -116,3 +136,6 @@ class ProjectRegistry:
         if record is None:
             raise KeyError(f"unknown repository: {repository}")
         return record
+
+
+__all__ = ["ProjectRecord", "DEFAULT_PROJECT", "ProjectRegistry"]
