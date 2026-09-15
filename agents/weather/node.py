@@ -25,8 +25,10 @@ _WEATHER_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Deterministic fallback for prefecture-level requests. City/town requests are
-# resolved through the Japan-filtered geocoder below.
+# Deterministic fallback for prefecture-level requests and common city names.
+# City/town requests not listed here are resolved through the Japan-filtered
+# geocoder below. Keep prefecture and city entries separate so that "京都"
+# resolves to Kyoto City rather than the Kyoto Prefecture representative point.
 _PREFECTURE_FALLBACKS: dict[str, tuple[str, float, float]] = {
     "北海道": ("北海道", 43.0646, 141.3468),
     "青森県": ("青森県", 40.8244, 140.7400),
@@ -75,6 +77,10 @@ _PREFECTURE_FALLBACKS: dict[str, tuple[str, float, float]] = {
     "宮崎県": ("宮崎県", 31.9111, 131.4239),
     "鹿児島県": ("鹿児島県", 31.5602, 130.5581),
     "沖縄県": ("沖縄県", 26.2124, 127.6809),
+}
+
+_CITY_FALLBACKS: dict[str, tuple[str, float, float]] = {
+    "京都": ("京都", 35.0116, 135.7681),
 }
 
 
@@ -182,6 +188,10 @@ def _geocoding_candidates(location: str) -> list[dict]:
 def _geocode_location(location: str) -> tuple[str, float, float]:
     """Resolve a Japanese place nationwide, preferring exact JP matches."""
     normalized = _normalize_location(location)
+    known = _CITY_FALLBACKS.get(normalized)
+    if known is not None:
+        return known
+
     known = _PREFECTURE_FALLBACKS.get(normalized)
     if known is None and normalized not in _PREFECTURE_FALLBACKS:
         # Users commonly omit 都/道/府/県 (東京、大阪、長野など). Resolve those
