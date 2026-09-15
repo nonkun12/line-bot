@@ -24,26 +24,28 @@ def test_commit_node_skips_when_test_result_missing():
 
 def test_commit_node_commits_only_safe_patch_targets(monkeypatch):
     calls = []
+    diff_calls = 0
 
     def fake_run(args, cwd=None, capture_output=None, text=None):
+        nonlocal diff_calls
         calls.append(args)
 
         class _Result:
             returncode = 0
-            stdout = "\n".join(
-                [
-                    "work/fix-management",
-                    "",
-                    "agents/fix/node.py",
-                    "",
-                    "agents/fix/node.py",
-                    "deadbeef1234",
-                    "agents/fix/node.py",
-                ]
-            )
+            stdout = ""
             stderr = ""
 
-        return _Result()
+        result = _Result()
+        if args[1] == "branch":
+            result.stdout = "work/fix-management\n"
+        elif args[1] == "diff":
+            diff_calls += 1
+            result.stdout = "" if diff_calls == 1 else "agents/fix/node.py\n"
+        elif args[1] == "rev-parse":
+            result.stdout = "deadbeef1234\n"
+        elif args[1] == "diff-tree":
+            result.stdout = "agents/fix/node.py\n"
+        return result
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     state = {
@@ -67,14 +69,27 @@ def test_commit_node_commits_only_safe_patch_targets(monkeypatch):
 
 
 def test_commit_node_uses_default_message_when_fix_result_missing(monkeypatch):
+    diff_calls = 0
+
     def fake_run(args, cwd=None, capture_output=None, text=None):
+        nonlocal diff_calls
+
         class _Result:
             returncode = 0
-            stdout = "\n".join(
-                ["work/test", "", "agents/fix/node.py", "", "agents/fix/node.py", "cafebabe\n", "agents/fix/node.py"]
-            )
+            stdout = ""
             stderr = ""
-        return _Result()
+
+        result = _Result()
+        if args[1] == "branch":
+            result.stdout = "work/test\n"
+        elif args[1] == "diff":
+            diff_calls += 1
+            result.stdout = "" if diff_calls == 1 else "agents/fix/node.py\n"
+        elif args[1] == "rev-parse":
+            result.stdout = "cafebabe\n"
+        elif args[1] == "diff-tree":
+            result.stdout = "agents/fix/node.py\n"
+        return result
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     result = commit_node({**SAFE_CANDIDATE, "agent_results": {}, "test_result": {"passed": True}})
@@ -119,12 +134,22 @@ def test_commit_node_refuses_direct_commit_on_main(monkeypatch):
 
 
 def test_commit_node_refuses_preexisting_staged_changes(monkeypatch):
+    calls = []
+
     def fake_run(args, cwd=None, capture_output=None, text=None):
+        calls.append(args)
+
         class _Result:
             returncode = 0
+            stdout = ""
             stderr = ""
-            stdout = "work/test\nother.py\n"
-        return _Result()
+
+        result = _Result()
+        if args[1] == "branch":
+            result.stdout = "work/test\n"
+        elif args[1] == "diff":
+            result.stdout = "other.py\n"
+        return result
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     result = commit_node({**SAFE_CANDIDATE, "test_result": {"passed": True}})
@@ -132,19 +157,24 @@ def test_commit_node_refuses_preexisting_staged_changes(monkeypatch):
     assert commit_result["committed"] is False
     assert commit_result["skipped"] is True
     assert commit_result["reason"] == "pre-existing staged changes detected"
-    assert commit_result["staged_paths"] == ["other.py", "work/test"]
+    assert commit_result["staged_paths"] == ["other.py"]
+    assert not any(call[:2] == ["git", "add"] for call in calls)
 
 
 def test_commit_node_reports_error_when_git_add_fails(monkeypatch):
-    calls = []
-
     def fake_run(args, cwd=None, capture_output=None, text=None):
-        calls.append(args)
         class _Result:
-            returncode = 1 if args[1] == "add" else 0
-            stdout = "work/test\n"
-            stderr = "fatal: not a git repository" if args[1] == "add" else ""
-        return _Result()
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        result = _Result()
+        if args[1] == "branch":
+            result.stdout = "work/test\n"
+        elif args[1] == "add":
+            result.returncode = 1
+            result.stderr = "fatal: not a git repository"
+        return result
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     result = commit_node({**SAFE_CANDIDATE, "test_result": {"passed": True}})
@@ -155,18 +185,24 @@ def test_commit_node_reports_error_when_git_add_fails(monkeypatch):
 
 
 def test_commit_node_reports_error_when_git_commit_fails(monkeypatch):
+    diff_calls = 0
+
     def fake_run(args, cwd=None, capture_output=None, text=None):
+        nonlocal diff_calls
+
         class _Result:
-            pass
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
         result = _Result()
-        result.returncode = 0
-        result.stdout = "work/test\n"
-        result.stderr = ""
-        if args[1] == "diff":
-            result.stdout = ""
+        if args[1] == "branch":
+            result.stdout = "work/test\n"
+        elif args[1] == "diff":
+            diff_calls += 1
+            result.stdout = "" if diff_calls == 1 else "agents/fix/node.py\n"
         elif args[1] == "commit":
             result.returncode = 1
-            result.stdout = ""
             result.stderr = "nothing to commit"
         return result
 
