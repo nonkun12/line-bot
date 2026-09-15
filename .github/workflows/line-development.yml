@@ -57,7 +57,7 @@ jobs:
             python -m pytest -q --tb=native
           else
             echo "test_only=false" >> "$GITHUB_OUTPUT"
-            python -m core.line_development_runtime
+            python scripts/run_guarded_runtime.py
           fi
 
       - name: Create or reuse GitHub PR
