@@ -1,3 +1,5 @@
+import pytest
+
 from core.project_registry import DEFAULT_PROJECT, ProjectRecord, ProjectRegistry
 
 
@@ -33,3 +35,29 @@ def test_registry_round_trips_json(tmp_path):
     record = ProjectRegistry.from_path(path).require("todo-app")
     assert record.repository == "nonkun12/todo-app"
     assert record.supported_agents == ("implementer", "tester")
+
+
+def test_explicit_missing_registry_path_fails_closed(tmp_path):
+    with pytest.raises(FileNotFoundError, match="project registry not found"):
+        ProjectRegistry.from_path(tmp_path / "missing.json")
+
+
+def test_registry_rejects_duplicate_name_or_repository():
+    with pytest.raises(ValueError, match="duplicate project name"):
+        ProjectRegistry([
+            ProjectRecord(name="sample", repository="nonkun12/sample"),
+            ProjectRecord(name="sample", repository="nonkun12/sample-2"),
+        ])
+
+    with pytest.raises(ValueError, match="duplicate project repository"):
+        ProjectRegistry([
+            ProjectRecord(name="sample", repository="nonkun12/sample"),
+            ProjectRecord(name="sample-2", repository="nonkun12/sample"),
+        ])
+
+
+def test_registry_rejects_incomplete_json_entry(tmp_path):
+    path = tmp_path / "projects.json"
+    path.write_text('[{"name":"broken"}]', encoding="utf-8")
+    with pytest.raises(ValueError, match="require name and repository"):
+        ProjectRegistry.from_path(path)
