@@ -65,35 +65,17 @@ def _explicit_comment_plan(instruction: str, chosen: str) -> dict | None:
         return {
             "no_change": False,
             "source": "deterministic_self_test",
-            "changes": [{
-                "file": chosen,
-                "old": anchor,
-                "new": anchor + marker + "\n",
-            }],
+            "changes": [{"file": chosen, "old": anchor, "new": anchor + marker + "\n"}],
         }
     line_end = text.find("\n")
     if line_end < 0:
-        return {
-            "no_change": False,
-            "source": "deterministic_self_test",
-            "changes": [{"file": chosen, "old": text, "new": text + f"\n{marker}\n"}],
-        }
+        return {"no_change": False, "source": "deterministic_self_test", "changes": [{"file": chosen, "old": text, "new": text + f"\n{marker}\n"}]}
     anchor = text[: line_end + 1]
-    return {
-        "no_change": False,
-        "source": "deterministic_self_test",
-        "changes": [{
-            "file": chosen,
-            "old": anchor,
-            "new": anchor + marker + "\n",
-        }],
-    }
+    return {"no_change": False, "source": "deterministic_self_test", "changes": [{"file": chosen, "old": anchor, "new": anchor + marker + "\n"}]}
 
 
 def _is_deterministic_comment_request(instruction: str, chosen: str | None) -> bool:
-    return chosen == "line_development.py" and re.search(
-        r"コメント.*(?:1行|一行)|(?:1行|一行).*コメント", instruction, re.IGNORECASE | re.DOTALL
-    ) is not None
+    return chosen == "line_development.py" and re.search(r"コメント.*(?:1行|一行)|(?:1行|一行).*コメント", instruction, re.IGNORECASE | re.DOTALL) is not None
 
 
 class DevelopmentExecutor:
@@ -113,64 +95,36 @@ class DevelopmentExecutor:
                     return AgentResult(task.task_id, False, "manager could not select a safe target")
                 self.state.chosen = chosen
                 return AgentResult(task.task_id, True, f"selected {chosen}", frozenset({chosen}))
-
             if self.state.chosen is None:
                 return AgentResult(task.task_id, False, "manager selection missing")
-
             if task.role is AgentRole.IMPLEMENTER:
                 explicit_comment_plan = _explicit_comment_plan(self.state.instruction, self.state.chosen)
-                comment_plan = None if explicit_comment_plan is not None else worker.build_comment_test_plan(
-                    self.state.instruction, self.state.chosen
-                )
-                plan = (
-                    explicit_comment_plan
-                    if explicit_comment_plan is not None
-                    else comment_plan
-                    if comment_plan is not None
-                    else worker.build_plan(
-                        self.state.client,
-                        self.state.instruction,
-                        self.state.chosen,
-                        worker.context_for(self.state.chosen),
-                    )
-                )
+                comment_plan = None if explicit_comment_plan is not None else worker.build_comment_test_plan(self.state.instruction, self.state.chosen)
+                plan = explicit_comment_plan if explicit_comment_plan is not None else comment_plan if comment_plan is not None else worker.build_plan(self.state.client, self.state.instruction, self.state.chosen, worker.context_for(self.state.chosen))
                 ok, detail = worker.validate_plan(plan, self.state.chosen)
                 if not ok:
                     return AgentResult(task.task_id, False, f"implementation plan rejected: {detail}")
                 if detail == "no_change":
-                    self.state.plan = plan
-                    self.state.touched = []
+                    self.state.plan = plan; self.state.touched = []
                     return AgentResult(task.task_id, True, "no safe change required")
                 applied, detail, touched = worker.apply_plan(plan)
                 if not applied:
                     worker.restore(touched)
                     return AgentResult(task.task_id, False, f"apply failed: {detail}")
-                self.state.plan = plan
-                self.state.touched = touched
+                self.state.plan = plan; self.state.touched = touched
                 return AgentResult(task.task_id, True, "guarded change applied", frozenset(touched))
-
             if task.role is AgentRole.TESTER:
                 passed, output = worker.run_tests(self.state.touched or [])
-                self.state.tests_passed = passed
-                self.state.test_output = output
+                self.state.tests_passed = passed; self.state.test_output = output
                 return AgentResult(task.task_id, passed, output[-4000:], frozenset(self.state.touched or []))
-
             if task.role is AgentRole.DEBUGGER:
                 if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
                     return AgentResult(task.task_id, True, "deterministic debug retry; no LLM JSON parsing")
-                # Restore the known-good baseline first. The repair plan must be
-                # generated against the same file state where its anchors apply.
                 worker.restore(self.state.touched or [])
                 failure_context = task.instruction
                 if self.state.test_output:
                     failure_context = f"{failure_context}\nPrevious test output:\n{self.state.test_output[-4000:]}"
-                plan = worker.build_plan(
-                    self.state.client,
-                    self.state.instruction,
-                    self.state.chosen,
-                    worker.context_for(self.state.chosen),
-                    failure_context,
-                )
+                plan = worker.build_plan(self.state.client, self.state.instruction, self.state.chosen, worker.context_for(self.state.chosen), failure_context)
                 ok, detail = worker.validate_plan(plan, self.state.chosen)
                 if not ok or detail == "no_change":
                     return AgentResult(task.task_id, False, f"debug plan rejected: {detail}")
@@ -178,20 +132,12 @@ class DevelopmentExecutor:
                 if not applied:
                     worker.restore(touched)
                     return AgentResult(task.task_id, False, f"debug apply failed: {detail}")
-                self.state.plan = plan
-                self.state.touched = touched
+                self.state.plan = plan; self.state.touched = touched
                 return AgentResult(task.task_id, True, "debug fix applied", frozenset(touched))
-
             if task.role is AgentRole.REFACTORER:
                 if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
                     return AgentResult(task.task_id, True, "no refactor needed for deterministic comment change")
-                plan = worker.build_plan(
-                    self.state.client,
-                    f"Refactor the current implementation for clarity, maintainability, and duplication reduction. Preserve behavior and satisfy the original request. Original request: {self.state.instruction}",
-                    self.state.chosen,
-                    worker.context_for(self.state.chosen),
-                    self.state.test_output,
-                )
+                plan = worker.build_plan(self.state.client, f"Refactor the current implementation for clarity, maintainability, and duplication reduction. Preserve behavior and satisfy the original request. Original request: {self.state.instruction}", self.state.chosen, worker.context_for(self.state.chosen), self.state.test_output)
                 ok, detail = worker.validate_plan(plan, self.state.chosen)
                 if not ok:
                     return AgentResult(task.task_id, False, f"refactor plan rejected: {detail}")
@@ -201,10 +147,8 @@ class DevelopmentExecutor:
                 if not applied:
                     worker.restore(touched)
                     return AgentResult(task.task_id, False, f"refactor apply failed: {detail}")
-                self.state.plan = plan
-                self.state.touched = touched
+                self.state.plan = plan; self.state.touched = touched
                 return AgentResult(task.task_id, True, "refactor applied", frozenset(touched))
-
             if task.role is AgentRole.REVIEWER:
                 status = worker.run(["git", "diff", "--check"])
                 if status.returncode != 0:
@@ -215,17 +159,10 @@ class DevelopmentExecutor:
                 if not diff.stdout.strip() and self.state.touched:
                     return AgentResult(task.task_id, False, "reviewer found no resulting diff")
                 return AgentResult(task.task_id, True, "review gate passed", frozenset(self.state.touched or []))
-
             if task.role is AgentRole.REPAIRER:
                 if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
                     return AgentResult(task.task_id, True, "deterministic repair retry; no LLM JSON parsing")
-                plan = worker.build_plan(
-                    self.state.client,
-                    self.state.instruction,
-                    self.state.chosen,
-                    worker.context_for(self.state.chosen),
-                    self.state.test_output,
-                )
+                plan = worker.build_plan(self.state.client, self.state.instruction, self.state.chosen, worker.context_for(self.state.chosen), self.state.test_output)
                 ok, detail = worker.validate_plan(plan, self.state.chosen)
                 if not ok or detail == "no_change":
                     return AgentResult(task.task_id, False, f"repair plan rejected: {detail}")
@@ -234,10 +171,8 @@ class DevelopmentExecutor:
                 if not applied:
                     worker.restore(touched)
                     return AgentResult(task.task_id, False, f"repair apply failed: {detail}")
-                self.state.plan = plan
-                self.state.touched = touched
+                self.state.plan = plan; self.state.touched = touched
                 return AgentResult(task.task_id, True, "repair applied", frozenset(touched))
-
             if task.role is AgentRole.INTEGRATOR:
                 status = worker.run(["git", "status", "--short"])
                 if status.returncode != 0:
@@ -245,7 +180,6 @@ class DevelopmentExecutor:
                 if self.state.touched and not status.stdout.strip():
                     return AgentResult(task.task_id, False, "integration gate found no working-tree change")
                 return AgentResult(task.task_id, True, "integration gate passed", frozenset(self.state.touched or []))
-
             return AgentResult(task.task_id, False, f"unsupported role: {task.role.value}")
         except Exception as exc:
             return AgentResult(task.task_id, False, f"{type(exc).__name__}: {exc}")
@@ -254,19 +188,9 @@ class DevelopmentExecutor:
 class DevelopmentRepairPlanner(RepairPlanner):
     def __init__(self, state: DevelopmentState) -> None:
         self.state = state
-
     def repair_task(self, failed_task: AgentTask, result: AgentResult, attempt: int) -> AgentTask:
-        mode = (
-            "Use deterministic retry; do not call an LLM or parse JSON."
-            if _is_deterministic_comment_request(self.state.instruction, self.state.chosen)
-            else "Use the normal guarded repair planner."
-        )
-        return AgentTask(
-            task_id=f"repair:{attempt}:{failed_task.task_id}",
-            role=AgentRole.REPAIRER,
-            instruction=f"{mode} Repair after {failed_task.role.value} failure: {result.summary[-1500:]}",
-            resources=failed_task.resources,
-        )
+        mode = "Use deterministic retry; do not call an LLM or parse JSON." if _is_deterministic_comment_request(self.state.instruction, self.state.chosen) else "Use the normal guarded repair planner."
+        return AgentTask(task_id=f"repair:{attempt}:{failed_task.task_id}", role=AgentRole.REPAIRER, instruction=f"{mode} Repair after {failed_task.role.value} failure: {result.summary[-1500:]}", resources=failed_task.resources)
 
 
 def execute(instruction: str) -> int:
@@ -281,19 +205,7 @@ def execute(instruction: str) -> int:
         AgentTask("reviewer", AgentRole.REVIEWER, "Review the resulting diff and gate the change.", resources=frozenset({"working-tree"}), depends_on=("tester",)),
         AgentTask("integrator", AgentRole.INTEGRATOR, "Run the final integration gate.", resources=frozenset({"working-tree"}), depends_on=("reviewer",)),
     )
-    runtime = QualityRuntime(
-        {
-            AgentRole.MANAGER: executor,
-            AgentRole.IMPLEMENTER: executor,
-            AgentRole.TESTER: executor,
-            AgentRole.DEBUGGER: executor,
-            AgentRole.REFACTORER: executor,
-            AgentRole.REVIEWER: executor,
-            AgentRole.REPAIRER: executor,
-            AgentRole.INTEGRATOR: executor,
-        },
-        max_rounds=3,
-    )
+    runtime = QualityRuntime({AgentRole.MANAGER: executor, AgentRole.IMPLEMENTER: executor, AgentRole.TESTER: executor, AgentRole.DEBUGGER: executor, AgentRole.REFACTORER: executor, AgentRole.REVIEWER: executor, AgentRole.REPAIRER: executor, AgentRole.INTEGRATOR: executor}, max_rounds=3)
     try:
         report = runtime.run(tasks)
     except Exception as exc:
@@ -306,38 +218,27 @@ def execute(instruction: str) -> int:
         worker.restore(state.touched or [])
         print(f"Multi-agent development failed: {report.error or report.failed_task_id}", flush=True)
         return 1
-
     touched = state.touched or []
     if not touched:
         print("Multi-agent development produced no file change.", flush=True)
         return 1
-
     branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
-    worker.run(["git", "config", "user.name", "github-actions[bot]"])
-    worker.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"])
+    identity = ["-c", "user.name=github-actions[bot]", "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com"]
     add = worker.run(["git", "add", "--", *touched])
     if add.returncode != 0:
-        worker.restore(touched)
-        print(add.stderr[-2000:], flush=True)
-        return 1
+        worker.restore(touched); print(add.stderr[-2000:], flush=True); return 1
     status = worker.run(["git", "status", "--short"])
     if status.returncode != 0 or not status.stdout.strip():
-        worker.restore(touched)
-        print("No changes to commit.", flush=True)
-        return 1
-    commit = worker.run(["git", "commit", "-m", "feat: LINE development request"])
+        worker.restore(touched); print("No changes to commit.", flush=True); return 1
+    commit = worker.run(["git", *identity, "commit", "-m", "feat: LINE development request"])
     if commit.returncode != 0:
-        worker.restore(touched)
-        print(commit.stderr[-2000:], flush=True)
-        return 1
+        worker.restore(touched); print(commit.stderr[-2000:], flush=True); return 1
     checkout = worker.run(["git", "checkout", "-B", branch])
     if checkout.returncode != 0:
-        print(checkout.stderr[-2000:], flush=True)
-        return 1
+        print(checkout.stderr[-2000:], flush=True); return 1
     push = worker.run(["git", "push", "--set-upstream", "origin", branch])
     if push.returncode != 0:
-        print(push.stderr[-2000:], flush=True)
-        return 1
+        print(push.stderr[-2000:], flush=True); return 1
     print(f"Development branch pushed: {branch}", flush=True)
     return 0
 
