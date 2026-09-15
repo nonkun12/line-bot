@@ -1,6 +1,7 @@
 """Run the bounded development runtime with a guarded JSON-only LLM adapter."""
 from __future__ import annotations
 
+import json
 import os
 
 from groq import Groq
@@ -10,7 +11,8 @@ from scripts import line_development_worker_v2 as worker
 
 
 def guarded_ask(client: Groq, system: str, user: str, max_tokens: int = worker.MAX_RESPONSE_TOKENS) -> str:
-    """Request JSON-mode output and retry one empty/non-usable provider response."""
+    """Request a JSON object and retry once for empty or invalid provider output."""
+    last_error = "unknown JSON failure"
     for attempt in range(2):
         retry_system = system
         if attempt:
@@ -27,9 +29,18 @@ def guarded_ask(client: Groq, system: str, user: str, max_tokens: int = worker.M
             response_format={"type": "json_object"},
         )
         content = response.choices[0].message.content or ""
-        if content.strip():
+        if not content.strip():
+            last_error = "empty response"
+            continue
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as exc:
+            last_error = f"invalid JSON: {exc}"
+            continue
+        if isinstance(parsed, dict):
             return content
-    raise ValueError("AI response is empty after bounded JSON retry")
+        last_error = "JSON response is not an object"
+    raise ValueError(f"AI response is unusable after bounded JSON retry: {last_error}")
 
 
 def main() -> int:
