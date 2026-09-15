@@ -170,6 +170,8 @@ def ask(client: Groq, requirement: str, repair: str = "") -> dict:
 
 
 def create_repository(token: str, owner: str, name: str, description: str) -> str:
+    # Create an empty repository so the generated README and source files are
+    # the first commit and never collide with GitHub's auto-initialized README.
     result = github_api(
         "/user/repos",
         token,
@@ -181,7 +183,7 @@ def create_repository(token: str, owner: str, name: str, description: str) -> st
             "has_issues": True,
             "has_projects": False,
             "has_wiki": False,
-            "auto_init": True,
+            "auto_init": False,
         },
     )
     returned_owner = result.get("owner", {}).get("login", owner)
@@ -259,7 +261,11 @@ def main() -> int:
         print(f"AI planning failed: {type(exc).__name__}: {exc}")
         return 1
 
-    requested_slug = normalize_repo_name(current_plan.get("project_slug") or slugify(requirement))
+    # For known product families, prefer the deterministic repository name over
+    # model-proposed names so retries create the same intended project.
+    fallback_slug = slugify(requirement)
+    model_slug = normalize_repo_name(current_plan.get("project_slug") or "")
+    requested_slug = fallback_slug if fallback_slug != "ai-generated-app" else (model_slug or fallback_slug)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,69}", requested_slug):
         print("Unsafe project slug returned by model")
         return 1
