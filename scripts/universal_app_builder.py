@@ -64,20 +64,15 @@ def parse_json(text: str) -> dict:
             return value
     except json.JSONDecodeError:
         pass
-    match = re.search(r"\{", clean)
-    while match:
+    for index, char in enumerate(clean):
+        if char != "{":
+            continue
         try:
-            value, _ = decoder.raw_decode(clean[match.start():])
-            if isinstance(value, dict):
-                return value
+            value, _ = decoder.raw_decode(clean[index:])
         except json.JSONDecodeError:
-            pass
-        next_start = clean.find("{", match.start() + 1)
-        if next_start < 0:
-            break
-        match = re.search(r"\{", clean[next_start:])
-        if match:
-            match = re.match(r"\{", clean[next_start:])
+            continue
+        if isinstance(value, dict):
+            return value
     raise ValueError("AI response does not contain a JSON object")
 
 
@@ -151,16 +146,15 @@ def validate_files(files: object) -> tuple[bool, str, list[dict[str, str]]]:
 def ask(client: Groq, requirement: str, repair: str = "") -> dict:
     system = (
         "You generate a small production-quality Python web application. Return JSON only. "
-        "Schema: {\\\"project_slug\\\":\\\"safe-repository-name\\\","
-        "\\\"summary\\\":\\\"short summary\\\","
-        "\\\"files\\\":[{\\\"path\\\":\\\"relative/file.py\\\",\\\"content\\\":\\\"full file content\\\"}]}. "
-        "Use only simple standard-library/Python web dependencies where possible. Include tests and README. "
+        "Schema: {\"project_slug\":\"safe-repository-name\",\"summary\":\"short summary\","
+        "\"files\":[{\"path\":\"relative/file.py\",\"content\":\"full file content\"}]}. "
+        "Use standard-library or minimal Python dependencies. Include pytest tests and a README. "
         "Never emit secrets, credentials, CI workflows, deployment config, shell scripts, subprocess, or os.system. "
         "All paths must be relative and use only .py, .md, .html, .css, .js, .json, or .txt."
     )
     user = f"Requirement:\n{requirement}\n"
     if repair:
-        user += f"\nFix the previous test failure while keeping the same project design:\n{repair[-8000:]}\n"
+        user += f"\nFix the previous test failure. Return the COMPLETE corrected file set:\n{repair[-8000:]}\n"
     response = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -171,6 +165,7 @@ def ask(client: Groq, requirement: str, repair: str = "") -> dict:
 
 
 def create_repository(token: str, owner: str, name: str, description: str) -> str:
+    # GitHub's /user/repos creates a repository for the authenticated user.
     result = github_api(
         "/user/repos",
         token,
@@ -189,19 +184,33 @@ def create_repository(token: str, owner: str, name: str, description: str) -> st
     return f"{returned_owner}/{result['name']}"
 
 
-def clone_repo(repo: str, token: str, workspace: Path) -> None:
-    result = run(["git", "clone", f"https://x-access-token:{token}@github.com/{repo}.git", str(workspace)], Path("."), timeout=180)
+def clone_repo(repo: str, token: str, workspace: Path, workdir: Path) -> None:
+    result = run(
+        ["git", "clone", f"https://x-access-token:{token}@github.com/{repo}.git", str(workspace)],
+        workdir,
+        timeout=180,
+    )
     if result.returncode != 0:
         raise RuntimeError(f"git clone failed: {result.stderr[-2000:]}")
 
 
-def write_files(workspace: Path, files: list[dict[str, str]]) -> None:
+def write_files(workspace: Path, files: list[dict[str, str]], *, replace_existing: bool = False) -> list[str]:
+    written: list[str] = []
     for item in files:
         target = workspace / item["path"]
         target.parent.mkdir(parents=True, exist_ok=True)
-        if target.exists():
+        if target.exists() and not replace_existing:
             raise RuntimeError(f"refusing to overwrite repository file: {item['path']}")
         target.write_text(item["content"], encoding="utf-8")
+        written.append(item["path"])
+    return written
+
+
+def clear_generated_files(workspace: Path, paths: set[str]) -> None:
+    for path in sorted(paths, reverse=True):
+        target = workspace / path
+        if target.is_file():
+            target.unlink()
 
 
 def run_tests(workspace: Path) -> tuple[bool, str]:
@@ -239,74 +248,89 @@ def main() -> int:
     if not token:
         print("APP_GITHUB_TOKEN is not configured; refusing to create a repository")
         return 2
-    client = Groq(api_key=os.environ["GROQ_API_KEY"])
-    first_plan = ask(client, requirement)
-    requested_slug = normalize_repo_name(first_plan.get("project_slug") or slugify(requirement))
+    try:
+        client = Groq(api_key=os.environ["GROQ_API_KEY"])
+        current_plan = ask(client, requirement)
+    except Exception as exc:
+        print(f"AI planning failed: {type(exc).__name__}: {exc}")
+        return 1
+
+    requested_slug = normalize_repo_name(current_plan.get("project_slug") or slugify(requirement))
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,69}", requested_slug):
         print("Unsafe project slug returned by model")
         return 1
-    description = str(first_plan.get("summary") or requirement)[:250]
+    description = str(current_plan.get("summary") or requirement)[:250]
     try:
         repo = create_repository(token, owner, requested_slug, description)
     except Exception as exc:
         print(f"Repository creation failed: {type(exc).__name__}: {exc}")
         return 1
 
+    generated_paths: set[str] = set()
     with tempfile.TemporaryDirectory(prefix="ai-app-") as temp_dir:
         workspace = Path(temp_dir) / "repo"
-        clone_repo(repo, token, workspace)
-        last_failure = ""
-        current_plan = first_plan
-        used_repairs = 0
-        for attempt in range(MAX_REPAIR_ATTEMPTS + 1):
-            if attempt:
-                current_plan = ask(client, requirement, last_failure)
-                used_repairs = attempt
-            valid, detail, files = validate_files(current_plan.get("files"))
-            if not valid:
-                print(f"Rejected model plan: {detail}")
-                return 1
-            try:
-                write_files(workspace, files)
-            except Exception as exc:
-                print(f"Write failed: {type(exc).__name__}: {exc}")
-                return 1
-            passed, output = run_tests(workspace)
-            print(output, flush=True)
-            if passed:
-                summary = str(current_plan.get("summary") or description)[:2000]
-                branch = f"ai-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}-{requested_slug}"
-                run(["git", "config", "user.name", "github-actions[bot]"], workspace, timeout=60)
-                run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], workspace, timeout=60)
-                add = run(["git", "add", "--", *[item["path"] for item in files]], workspace, timeout=60)
-                if add.returncode != 0:
-                    print(add.stderr[-4000:])
+        try:
+            clone_repo(repo, token, workspace, Path(temp_dir))
+            last_failure = ""
+            for attempt in range(MAX_REPAIR_ATTEMPTS + 1):
+                if attempt:
+                    try:
+                        current_plan = ask(client, requirement, last_failure)
+                    except Exception as exc:
+                        print(f"AI repair planning failed: {type(exc).__name__}: {exc}")
+                        return 1
+                valid, detail, files = validate_files(current_plan.get("files"))
+                if not valid:
+                    print(f"Rejected model plan: {detail}")
                     return 1
-                commit = run(["git", "commit", "-m", "feat: generate application with AI"], workspace, timeout=60)
-                if commit.returncode != 0:
-                    print(commit.stderr[-4000:])
+                clear_generated_files(workspace, generated_paths)
+                try:
+                    written = write_files(workspace, files, replace_existing=False)
+                except Exception as exc:
+                    print(f"Write failed: {type(exc).__name__}: {exc}")
                     return 1
-                checkout = run(["git", "switch", "-c", branch], workspace, timeout=60)
-                if checkout.returncode != 0:
-                    print(checkout.stderr[-4000:])
+                generated_paths = set(written)
+                passed, output = run_tests(workspace)
+                print(output, flush=True)
+                if passed:
+                    summary = str(current_plan.get("summary") or description)[:2000]
+                    branch = f"ai-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}-{requested_slug}"
+                    for key, value in {
+                        "user.name": "github-actions[bot]",
+                        "user.email": "41898282+github-actions[bot]@users.noreply.github.com",
+                    }.items():
+                        configured = run(["git", "config", key, value], workspace, timeout=60)
+                        if configured.returncode != 0:
+                            print(configured.stderr[-4000:])
+                            return 1
+                    add = run(["git", "add", "--", *sorted(generated_paths)], workspace, timeout=60)
+                    if add.returncode != 0:
+                        print(add.stderr[-4000:])
+                        return 1
+                    commit = run(["git", "commit", "-m", "feat: generate application with AI"], workspace, timeout=60)
+                    if commit.returncode != 0:
+                        print(commit.stderr[-4000:])
+                        return 1
+                    checkout = run(["git", "switch", "-c", branch], workspace, timeout=60)
+                    if checkout.returncode != 0:
+                        print(checkout.stderr[-4000:])
+                        return 1
+                    push = run(["git", "push", "--set-upstream", "origin", branch], workspace, timeout=180)
+                    if push.returncode != 0:
+                        print(push.stderr[-4000:])
+                        return 1
+                    pr_url = create_pull_request(repo, token, branch, requirement, summary)
+                    print(f"Independent repository: https://github.com/{repo}")
+                    print(f"Pull request: {pr_url}")
+                    print(f"Repair attempts: {attempt}")
+                    return 0
+                last_failure = output
+                if attempt >= MAX_REPAIR_ATTEMPTS:
+                    print("App tests failed after bounded repair attempts")
                     return 1
-                push = run(["git", "push", "--set-upstream", "origin", branch], workspace, timeout=180)
-                if push.returncode != 0:
-                    print(push.stderr[-4000:])
-                    return 1
-                pr_url = create_pull_request(repo, token, branch, requirement, summary)
-                print(f"Independent repository: https://github.com/{repo}")
-                print(f"Pull request: {pr_url}")
-                print(f"Repair attempts: {used_repairs}")
-                return 0
-            last_failure = output
-            for path in files:
-                target = workspace / path["path"]
-                if target.exists():
-                    target.unlink()
-            if attempt >= MAX_REPAIR_ATTEMPTS:
-                print("App tests failed after bounded repair attempts")
-                return 1
+        except Exception as exc:
+            print(f"App build failed: {type(exc).__name__}: {exc}")
+            return 1
     return 1
 
 
