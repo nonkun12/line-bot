@@ -2,6 +2,7 @@
 
 from .agents import Agent, AgentRegistry, AgentRequest, AgentResponse
 from .agent_specs import AgentLifecycle, AgentSpec, AgentSpecRegistry
+from .creator_critic import CriticAgent, CriticEvaluation, CreatorAgent, CreatorCriticLoop, DuelResult, ImprovementCandidate
 from .execution_pipeline import DefaultPlanner, ExecutionResult, Manager, WorkPlan, WorkRequest
 from .gateway import AIGateway, AIRequest, AIResponse
 from .channel import handle_channel_request
@@ -30,6 +31,12 @@ __all__ = [
     "AgentLifecycle",
     "AgentSpec",
     "AgentSpecRegistry",
+    "CreatorAgent",
+    "CriticAgent",
+    "CreatorCriticLoop",
+    "ImprovementCandidate",
+    "CriticEvaluation",
+    "DuelResult",
     "Manager",
     "WorkRequest",
     "WorkPlan",
