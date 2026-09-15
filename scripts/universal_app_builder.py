@@ -170,22 +170,43 @@ def ask(client: Groq, requirement: str, repair: str = "") -> dict:
 
 
 def create_repository(token: str, owner: str, name: str, description: str) -> str:
-    # Create an empty repository so the generated README and source files are
-    # the first commit and never collide with GitHub's auto-initialized README.
-    result = github_api(
-        "/user/repos",
-        token,
-        method="POST",
-        payload={
-            "name": name,
-            "description": description[:250],
-            "private": True,
-            "has_issues": True,
-            "has_projects": False,
-            "has_wiki": False,
-            "auto_init": False,
-        },
-    )
+    # Reuse an existing repository so repeated LINE requests and workflow
+    # retries are idempotent instead of failing on GitHub's duplicate-name 422.
+    try:
+        existing = github_api(f"/repos/{owner}/{name}", token)
+    except RuntimeError as exc:
+        if "GitHub API HTTP 404:" not in str(exc):
+            raise
+        existing = None
+    if existing:
+        returned_owner = existing.get("owner", {}).get("login", owner)
+        return f"{returned_owner}/{existing['name']}"
+
+    try:
+        result = github_api(
+            "/user/repos",
+            token,
+            method="POST",
+            payload={
+                "name": name,
+                "description": description[:250],
+                "private": True,
+                "has_issues": True,
+                "has_projects": False,
+                "has_wiki": False,
+                "auto_init": False,
+            },
+        )
+    except RuntimeError as exc:
+        # A concurrent run may create the same repository between the GET and
+        # POST. Re-read once and reuse it instead of producing a false failure.
+        message = str(exc)
+        if "GitHub API HTTP 422:" not in message or "already exists on this account" not in message:
+            raise
+        existing = github_api(f"/repos/{owner}/{name}", token)
+        returned_owner = existing.get("owner", {}).get("login", owner)
+        return f"{returned_owner}/{existing['name']}"
+
     returned_owner = result.get("owner", {}).get("login", owner)
     return f"{returned_owner}/{result['name']}"
 
