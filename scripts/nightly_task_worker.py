@@ -20,6 +20,14 @@ MAX_PATCH_CHARS = 18000
 MODEL = os.environ.get("DEV_AI_MODEL", "openai/gpt-oss-20b")
 FORBIDDEN_PREFIXES = (".github/", ".env", "config.py", "secrets/")
 ALLOWED_SUFFIXES = (".py", ".md", ".json", ".txt")
+# Deterministic targets for the built-in nightly control-tower task.  The LLM
+# remains the primary selector, but an empty/malformed response must not make
+# the scheduled worker fail before doing any useful work.
+NIGHTLY_CONTROL_TOWER_TARGETS = (
+    "core/management_router.py",
+    "tests/test_management_router.py",
+    "core/management_contract.py",
+)
 
 
 def run(cmd: list[str], *, input_text: str | None = None, timeout: int = 900) -> subprocess.CompletedProcess[str]:
@@ -58,6 +66,13 @@ def choose_files(client: Groq, instruction: str, files: list[str]) -> list[str]:
             chosen.append(path)
         if len(chosen) >= MAX_FILES:
             break
+
+    # This workflow has a fixed, narrowly scoped control-tower instruction.
+    # If the model returns prose, markdown, or an empty response, select only
+    # from the same allowlisted control-tower files instead of failing closed
+    # before implementation.  No arbitrary repository file is selected.
+    if not chosen and "コントロールタワーAI" in instruction:
+        chosen = [path for path in NIGHTLY_CONTROL_TOWER_TARGETS if path in allowed][:MAX_FILES]
     return chosen
 
 
