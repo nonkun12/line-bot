@@ -81,6 +81,7 @@ _PREFECTURE_FALLBACKS: dict[str, tuple[str, float, float]] = {
 
 _CITY_FALLBACKS: dict[str, tuple[str, float, float]] = {
     "京都": ("京都", 35.0116, 135.7681),
+    "沖縄": ("沖縄", 26.2124, 127.6809),
 }
 
 
