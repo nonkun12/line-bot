@@ -8,9 +8,12 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Mapping, Protocol, Sequence
+from typing import Mapping, Protocol, Sequence, TYPE_CHECKING
 
 from .multi_agent import AgentResult, AgentRole, AgentTask, plan_batches
+
+if TYPE_CHECKING:
+    from .self_improvement import SelfImprovementEngine
 
 
 class RuntimeExecutor(Protocol):
@@ -54,7 +57,14 @@ class RuntimeReport:
 class MultiAgentRuntime:
     """Execute a plan with bounded, currently serialized worktree access."""
 
-    def __init__(self, executors: Mapping[AgentRole, RuntimeExecutor], *, max_workers: int = 1, max_rounds: int = 3) -> None:
+    def __init__(
+        self,
+        executors: Mapping[AgentRole, RuntimeExecutor],
+        *,
+        max_workers: int = 1,
+        max_rounds: int = 3,
+        feedback_engine: SelfImprovementEngine | None = None,
+    ) -> None:
         if max_workers < 1:
             raise ValueError("max_workers must be >= 1")
         if max_workers > 1:
@@ -64,6 +74,13 @@ class MultiAgentRuntime:
         self._executors = dict(executors)
         self._max_workers = max_workers
         self._max_rounds = max_rounds
+        self._feedback_engine = feedback_engine
+
+    def _finalize_development(self, report: RuntimeReport) -> RuntimeReport:
+        """Observe one completed development run without enabling code mutation."""
+        if self._feedback_engine is not None:
+            self._feedback_engine.observe(report)
+        return report
 
     def run(self, tasks: Sequence[AgentTask]) -> RuntimeReport:
         """Execute one static plan and fail closed on any unsafe result."""
@@ -97,7 +114,7 @@ class MultiAgentRuntime:
         missing_roles = required_roles - present_roles
         if missing_roles:
             missing = ", ".join(sorted(role.value for role in missing_roles))
-            return RuntimeReport((), error=f"required development role missing: {missing}")
+            return self._finalize_development(RuntimeReport((), error=f"required development role missing: {missing}"))
 
         integrator_template = next(task for task in tasks if task.role is AgentRole.INTEGRATOR)
         completed: list[RuntimeTaskResult] = []
@@ -110,35 +127,35 @@ class MultiAgentRuntime:
             if not report.success:
                 failed = self._find_failed_task(current, report.failed_task_id)
                 if failed is None:
-                    return RuntimeReport(tuple(completed), report.failed_task_id, report.error, round_number, repair_attempts)
+                    return self._finalize_development(RuntimeReport(tuple(completed), report.failed_task_id, report.error, round_number, repair_attempts))
                 failed_result = self._failed_result(failed, report.error)
                 if failed.role not in (AgentRole.TESTER, AgentRole.REVIEWER):
-                    return RuntimeReport(tuple(completed), failed.task_id, report.error, round_number, repair_attempts)
+                    return self._finalize_development(RuntimeReport(tuple(completed), failed.task_id, report.error, round_number, repair_attempts))
                 if repair_planner is None or repair_attempts >= self._max_rounds - 1:
-                    return RuntimeReport(tuple(completed), failed.task_id, report.error or "gate failed", round_number, repair_attempts)
+                    return self._finalize_development(RuntimeReport(tuple(completed), failed.task_id, report.error or "gate failed", round_number, repair_attempts))
                 repair_attempts += 1
                 try:
                     repair_task = repair_planner.repair_task(failed, failed_result, repair_attempts)
                 except Exception as exc:
-                    return RuntimeReport(tuple(completed), failed.task_id, f"repair planner failed: {type(exc).__name__}: {exc}", round_number, repair_attempts)
+                    return self._finalize_development(RuntimeReport(tuple(completed), failed.task_id, f"repair planner failed: {type(exc).__name__}: {exc}", round_number, repair_attempts))
                 if repair_task.role is not AgentRole.REPAIRER:
-                    return RuntimeReport(tuple(completed), repair_task.task_id, "repair planner returned non-repairer task", round_number, repair_attempts)
+                    return self._finalize_development(RuntimeReport(tuple(completed), repair_task.task_id, "repair planner returned non-repairer task", round_number, repair_attempts))
                 repair_report = self.run((repair_task,))
                 completed.extend(repair_report.completed)
                 if not repair_report.success:
-                    return RuntimeReport(tuple(completed), repair_report.failed_task_id, repair_report.error, round_number, repair_attempts)
+                    return self._finalize_development(RuntimeReport(tuple(completed), repair_report.failed_task_id, repair_report.error, round_number, repair_attempts))
                 current = self._follow_up_tasks(failed, repair_task, integrator_template, round_number)
                 continue
 
             reviewer = self._latest_role_result(completed, AgentRole.REVIEWER)
             integrator = self._latest_role_result(completed, AgentRole.INTEGRATOR)
             if reviewer is None:
-                return RuntimeReport(tuple(completed), error="reviewer gate missing", rounds=round_number, repair_attempts=repair_attempts)
+                return self._finalize_development(RuntimeReport(tuple(completed), error="reviewer gate missing", rounds=round_number, repair_attempts=repair_attempts))
             if integrator is None:
-                return RuntimeReport(tuple(completed), error="integrator gate missing", rounds=round_number, repair_attempts=repair_attempts)
-            return RuntimeReport(tuple(completed), rounds=round_number, repair_attempts=repair_attempts, integration_ready=True)
+                return self._finalize_development(RuntimeReport(tuple(completed), error="integrator gate missing", rounds=round_number, repair_attempts=repair_attempts))
+            return self._finalize_development(RuntimeReport(tuple(completed), rounds=round_number, repair_attempts=repair_attempts, integration_ready=True))
 
-        return RuntimeReport(tuple(completed), error="development round limit reached", rounds=self._max_rounds, repair_attempts=repair_attempts)
+        return self._finalize_development(RuntimeReport(tuple(completed), error="development round limit reached", rounds=self._max_rounds, repair_attempts=repair_attempts))
 
     def _run_batch(self, tasks: Sequence[AgentTask]) -> list[tuple[AgentTask, AgentResult]]:
         workers = min(self._max_workers, len(tasks))

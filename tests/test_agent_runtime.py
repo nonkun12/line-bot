@@ -6,6 +6,7 @@ import pytest
 
 from core.agent_runtime import MultiAgentRuntime
 from core.multi_agent import AgentResult, AgentRole, AgentTask
+from core.self_improvement import SelfImprovementEngine
 
 
 @dataclass
@@ -119,6 +120,40 @@ def test_development_loop_retests_reviews_and_runs_integrator_after_test_failure
     assert any(call.startswith("test:retest1") for call in calls)
     assert any(call.startswith("test:review1") for call in calls)
     assert any(call.startswith("integrate:gate1") for call in calls)
+
+
+def test_runtime_development_emits_final_report_to_feedback_engine() -> None:
+    engine = SelfImprovementEngine()
+    runtime = MultiAgentRuntime({
+        AgentRole.IMPLEMENTER: Executor({}),
+        AgentRole.TESTER: Executor({}),
+        AgentRole.REVIEWER: Executor({}),
+        AgentRole.REPAIRER: Executor({}),
+        AgentRole.INTEGRATOR: Executor({}),
+    }, feedback_engine=engine)
+
+    report = runtime.run_development(development_tasks())
+
+    assert report.success
+    assert report.integration_ready
+    assert [signal.kind for signal in engine.signals] == ["success"]
+
+
+def test_runtime_failure_emits_debug_signal_to_feedback_engine() -> None:
+    engine = SelfImprovementEngine()
+    runtime = MultiAgentRuntime({
+        AgentRole.IMPLEMENTER: Executor({}),
+        AgentRole.TESTER: Executor({"test": AgentResult("test", False, "pytest failed")}),
+        AgentRole.REVIEWER: Executor({}),
+        AgentRole.REPAIRER: Executor({}),
+        AgentRole.INTEGRATOR: Executor({}),
+    }, feedback_engine=engine)
+
+    report = runtime.run_development(development_tasks())
+
+    assert not report.success
+    assert engine.signals[-1].kind == "failure"
+    assert engine.propose() is not None
 
 
 def test_development_loop_requires_reviewer_and_integrator_tasks() -> None:
