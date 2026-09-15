@@ -1,12 +1,15 @@
 """Channel-independent AI Core package."""
 
 from .agents import Agent, AgentRegistry, AgentRequest, AgentResponse
+from .agent_specs import AgentLifecycle, AgentSpec, AgentSpecRegistry
+from .execution_pipeline import DefaultPlanner, ExecutionResult, Manager, WorkPlan, WorkRequest
 from .gateway import AIGateway, AIRequest, AIResponse
 from .channel import handle_channel_request
 from .langgraph_adapter import agent_request_from_state, ai_request_from_state, response_text
 from .langgraph_runtime import CoreGraphState, agent_node_name, build_core_graph
 from .legacy_adapter import LegacyNodeAgent, build_legacy_registry
 from .orchestration import ExternalWorkflow, WorkflowResult
+from .project_registry import ProjectRecord, ProjectRegistry
 from .review import (
     AICompetitionLoop,
     ReviewerRegistry,
@@ -15,12 +18,32 @@ from .review import (
     ReviewResult,
 )
 from .router import AgentRouter, RouteResult
+from .self_improvement_policy import SelfImprovementAssessment, SelfImprovementDecision, assess_self_improvement
+from .task_routing import ProjectResolver, ResolvedTarget, TaskClassification, TaskClassifier, TaskMode
 
 __all__ = [
     "Agent",
     "AgentRegistry",
     "AgentRequest",
     "AgentResponse",
+    "AgentLifecycle",
+    "AgentSpec",
+    "AgentSpecRegistry",
+    "Manager",
+    "WorkRequest",
+    "WorkPlan",
+    "ExecutionResult",
+    "DefaultPlanner",
+    "TaskMode",
+    "TaskClassification",
+    "ResolvedTarget",
+    "TaskClassifier",
+    "ProjectResolver",
+    "ProjectRecord",
+    "ProjectRegistry",
+    "SelfImprovementDecision",
+    "SelfImprovementAssessment",
+    "assess_self_improvement",
     "AgentRouter",
     "RouteResult",
     "AIGateway",
