@@ -102,7 +102,12 @@ def normalize_repo_name(value: str) -> str:
 def safe_relative_path(path: object) -> bool:
     if not isinstance(path, str) or not path.strip():
         return False
-    normalized = path.replace("\\", "/").lstrip("./")
+    normalized = path.replace("\\", "/").strip()
+    if normalized.startswith("/"):
+        return False
+    parts = normalized.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        return False
     pure = PurePosixPath(normalized)
     if pure.is_absolute() or ".." in pure.parts:
         return False
@@ -128,7 +133,7 @@ def validate_files(files: object) -> tuple[bool, str, list[dict[str, str]]]:
         content = item.get("content")
         if not safe_relative_path(path):
             return False, f"unsafe path: {path}", []
-        normalized = str(path).replace("\\", "/").lstrip("./")
+        normalized = str(path).replace("\\", "/").strip()
         if normalized in seen:
             return False, f"duplicate path: {normalized}", []
         if not isinstance(content, str) or not content:
@@ -165,7 +170,6 @@ def ask(client: Groq, requirement: str, repair: str = "") -> dict:
 
 
 def create_repository(token: str, owner: str, name: str, description: str) -> str:
-    # GitHub's /user/repos creates a repository for the authenticated user.
     result = github_api(
         "/user/repos",
         token,
