@@ -82,8 +82,8 @@ class TaskClassifier:
             return TaskClassification(TaskMode.NON_SOFTWARE, "high", reason="explicit non-software work")
 
         target_patterns = (
-            r"([A-Za-z0-9_.-]+)\s*を?\s*(?:改良|改善|修正|保守|メンテナンス)",
-            r"(?:改良|改善|修正|保守|メンテナンス)\s*[:：]?\s*([A-Za-z0-9_.-]+)",
+            r"([A-Za-z0-9_.\-/]+)\s*を?\s*(?:改良|改善|修正|保守|メンテナンス)",
+            r"(?:改良|改善|修正|保守|メンテナンス)\s*[:：]?\s*([A-Za-z0-9_.\-/]+)",
         )
         for pattern in target_patterns:
             match = re.search(pattern, text)
