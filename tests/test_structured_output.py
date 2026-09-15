@@ -8,6 +8,10 @@ def test_parse_json_object_accepts_raw_and_fenced_json():
     assert parse_json_object('```json\n{"file":"app.py"}\n```') == {"file": "app.py"}
 
 
+def test_parse_json_object_extracts_embedded_object():
+    assert parse_json_object('Here is the plan: {"file":"app.py"} done.') == {"file": "app.py"}
+
+
 def test_parse_json_object_rejects_empty_output():
     with pytest.raises(ValueError, match="empty model output"):
         parse_json_object("  ")
