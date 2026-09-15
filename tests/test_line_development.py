@@ -144,3 +144,48 @@ def test_worker_parse_plan_accepts_json_with_explanation():
     assert parse_plan(
         'Here is the plan:\n{"file": "tests/test_line_development.py"}\n'
     ) == {"file": "tests/test_line_development.py"}
+
+
+def test_generic_development_request_routes_to_independent_app_builder(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    captured = {}
+
+    def fake_dispatch(requirement, *, user_id, token=None):
+        captured["requirement"] = requirement
+        captured["user_id"] = user_id
+        captured["token"] = token
+        return "APP_BUILDER_STARTED"
+
+    monkeypatch.setattr("line_development.dispatch_app_development_workflow", fake_dispatch)
+    reply = dispatch_development_workflow(
+        "TODO管理Webアプリを作って",
+        user_id="U123",
+        token="secret",
+    )
+
+    assert reply == "APP_BUILDER_STARTED"
+    assert captured == {
+        "requirement": "TODO管理Webアプリを作って",
+        "user_id": "U123",
+        "token": "secret",
+    }
+
+
+def test_secretary_development_request_stays_on_line_bot(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        return FakeResponse()
+
+    monkeypatch.setattr("line_development.httpx.post", fake_post)
+    reply = dispatch_development_workflow(
+        "line_development.py にコメントを追加して",
+        user_id="U123",
+        token="secret",
+        repository="nonkun12/line-bot",
+    )
+
+    assert "/actions/workflows/line-development-dispatch.yml" in captured["url"]
+    assert "受け付けました" in reply
