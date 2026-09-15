@@ -49,7 +49,7 @@ def parse_json_object(text: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             continue
         if isinstance(candidate, dict):
-            candidates.append(("embedded_object", clean[match.start():match.start() + len(json.dumps(candidate, ensure_ascii=False))]))
+            candidates.append(("embedded_object", json.dumps(candidate, ensure_ascii=False)))
             break
 
     errors: list[str] = []
