@@ -8,7 +8,7 @@ from pathlib import Path
 
 from groq import Groq
 
-from scripts.universal_app_builder import (
+from universal_app_builder import (
     MAX_REPAIR_ATTEMPTS,
     MAX_REQUIREMENT_LENGTH,
     clear_generated_files,
