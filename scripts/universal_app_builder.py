@@ -148,9 +148,31 @@ def validate_files(files: object) -> tuple[bool, str, list[dict[str, str]]]:
     return True, "ok", cleaned
 
 
+def validate_runtime_compatibility(files: list[dict[str, str]]) -> tuple[bool, str]:
+    """Reject known framework APIs that are removed from the runtime we install.
+
+    The app builder intentionally validates before running tests so the bounded
+    repair loop can ask the model for a corrected complete file set.
+    """
+    for item in files:
+        if not item["path"].endswith(".py"):
+            continue
+        content = item["content"]
+        if "before_first_request" in content:
+            return (
+                False,
+                "Flask runtime compatibility error: before_first_request is removed in Flask 3.x. "
+                "Initialize application state explicitly at startup or inside an application context, "
+                "without using @app.before_first_request. Return the COMPLETE corrected file set as JSON.",
+            )
+    return True, "ok"
+
+
 def ask(client: Groq, requirement: str, repair: str = "") -> dict:
     system = (
-        "You generate a small production-quality Python web application. Return JSON only. "
+        "You generate a small production-quality Python web application. Return valid JSON only. "
+        "Use Flask 3.x-compatible APIs. Never use the removed @app.before_first_request decorator. "
+        "Initialize persistent state explicitly at startup or through an application context. "
         "Schema: {\"project_slug\":\"safe-repository-name\",\"summary\":\"short summary\","
         "\"files\":[{\"path\":\"relative/file.py\",\"content\":\"full file content\"}]}. "
         "Use standard-library or minimal Python dependencies. Include pytest tests and a README. "
@@ -159,19 +181,21 @@ def ask(client: Groq, requirement: str, repair: str = "") -> dict:
     )
     user = f"Requirement:\n{requirement}\n"
     if repair:
-        user += f"\nFix the previous test failure. Return the COMPLETE corrected file set:\n{repair[-8000:]}\n"
+        user += (
+            "\nPrevious validation/test failure. Fix it and return the COMPLETE corrected file set as JSON.\n"
+            f"Failure details:\n{repair[-8000:]}\n"
+        )
     response = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.0,
         max_tokens=16000,
+        response_format={"type": "json_object"},
     )
     return parse_json(response.choices[0].message.content or "")
 
 
 def create_repository(token: str, owner: str, name: str, description: str) -> str:
-    # Reuse an existing repository so repeated LINE requests and workflow
-    # retries are idempotent instead of failing on GitHub's duplicate-name 422.
     try:
         existing = github_api(f"/repos/{owner}/{name}", token)
     except RuntimeError as exc:
@@ -198,8 +222,6 @@ def create_repository(token: str, owner: str, name: str, description: str) -> st
             },
         )
     except RuntimeError as exc:
-        # A concurrent run may create the same repository between the GET and
-        # POST. Re-read once and reuse it instead of producing a false failure.
         message = str(exc)
         if "GitHub API HTTP 422:" not in message or "already exists on this account" not in message:
             raise
@@ -282,8 +304,6 @@ def main() -> int:
         print(f"AI planning failed: {type(exc).__name__}: {exc}")
         return 1
 
-    # For known product families, prefer the deterministic repository name over
-    # model-proposed names so retries create the same intended project.
     fallback_slug = slugify(requirement)
     model_slug = normalize_repo_name(current_plan.get("project_slug") or "")
     requested_slug = fallback_slug if fallback_slug != "ai-generated-app" else (model_slug or fallback_slug)
@@ -314,6 +334,14 @@ def main() -> int:
                 if not valid:
                     print(f"Rejected model plan: {detail}")
                     return 1
+                compatible, compatibility_detail = validate_runtime_compatibility(files)
+                if not compatible:
+                    print(compatibility_detail)
+                    last_failure = compatibility_detail
+                    if attempt >= MAX_REPAIR_ATTEMPTS:
+                        print("App generation failed after bounded compatibility repairs")
+                        return 1
+                    continue
                 clear_generated_files(workspace, generated_paths)
                 try:
                     written = write_files(workspace, files, replace_existing=False)
