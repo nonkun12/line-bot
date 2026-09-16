@@ -30,8 +30,8 @@ def spec(name="developer", lifecycle=AgentLifecycle.ENABLED):
     )
 
 
-def version(name="developer", number="1.0.0"):
-    return AgentVersion(name, number, lifecycle=AgentLifecycle.ENABLED)
+def version(name="developer", number="1.0.0", lifecycle=AgentLifecycle.ENABLED):
+    return AgentVersion(name, number, lifecycle=lifecycle)
 
 
 def test_register_and_get_keeps_three_registries_consistent():
@@ -56,8 +56,9 @@ def test_rejects_mismatched_component_names_before_mutation():
 def test_rejects_non_enabled_runtime_registration_before_mutation():
     governance = AgentGovernance()
     reviewed = spec(lifecycle=AgentLifecycle.REVIEWED)
+    reviewed_version = version(lifecycle=AgentLifecycle.REVIEWED)
     with pytest.raises(ValueError, match="only enabled"):
-        governance.register(FakeAgent(), reviewed, version())
+        governance.register(FakeAgent(), reviewed, reviewed_version)
     assert governance.names() == ()
 
 
