@@ -48,3 +48,5 @@ jobs:
           name: pytest-log
           path: pytest_output.log
           retention-days: 7
+
+# PR CI trigger repair: keep this workflow explicitly synchronized with PR changes.
