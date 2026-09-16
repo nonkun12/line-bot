@@ -23,7 +23,23 @@ def test_control_tower_failure_generates_and_evaluates_bounded_proposal() -> Non
     assert len(decision.duel) == 1
     assert decision.duel[0].evaluation.passed is False
     assert decision.approved_for_pipeline is False
+    assert decision.approved_task is None
     assert len(calls) == 2
+
+
+def test_control_tower_approved_task_is_exposed_only_after_pass() -> None:
+    def fake_model(_prompt: str) -> str:
+        return "Minimal test-backed improvement proposal."
+
+    tower = ControlTower(creator_critic=build_creator_critic_loop(model_call=fake_model, max_iterations=1))
+    decision = tower.observe(
+        RuntimeReport((), failed_task_id="tester-1", error="pytest failed", rounds=1),
+        objective="repair the test failure",
+        evidence={"accuracy": 1.0, "stability": 1.0, "efficiency": 1.0, "safety": 1.0},
+    )
+
+    assert decision.approved_for_pipeline is True
+    assert decision.approved_task == decision.proposal.task
 
 
 def test_control_tower_does_not_run_creator_critic_without_proposal() -> None:

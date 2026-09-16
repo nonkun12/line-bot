@@ -11,6 +11,7 @@ from typing import Mapping
 
 from .agent_runtime import RuntimeReport
 from .creator_critic import DuelResult, CreatorCriticLoop
+from .multi_agent import AgentTask
 from .self_improvement import ImprovementProposal, ImprovementSignal, SelfImprovementEngine
 
 
@@ -25,6 +26,13 @@ class ControlTowerDecision:
     @property
     def approved_for_pipeline(self) -> bool:
         return bool(self.duel and self.duel[-1].evaluation.passed)
+
+    @property
+    def approved_task(self) -> AgentTask | None:
+        """Return the proposal task only after an explicit Creator/Critic pass."""
+        if not self.approved_for_pipeline or self.proposal is None:
+            return None
+        return self.proposal.task
 
 
 class ControlTower:
