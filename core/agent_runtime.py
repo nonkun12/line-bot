@@ -13,6 +13,7 @@ from typing import Mapping, Protocol, Sequence, TYPE_CHECKING
 from .multi_agent import AgentResult, AgentRole, AgentTask, plan_batches
 
 if TYPE_CHECKING:
+    from .control_tower import ControlTower
     from .self_improvement import SelfImprovementEngine
 
 
@@ -64,6 +65,7 @@ class MultiAgentRuntime:
         max_workers: int = 1,
         max_rounds: int = 3,
         feedback_engine: SelfImprovementEngine | None = None,
+        control_tower: ControlTower | None = None,
     ) -> None:
         if max_workers < 1:
             raise ValueError("max_workers must be >= 1")
@@ -75,10 +77,15 @@ class MultiAgentRuntime:
         self._max_workers = max_workers
         self._max_rounds = max_rounds
         self._feedback_engine = feedback_engine
+        self._control_tower = control_tower
+        if feedback_engine is not None and control_tower is not None and control_tower.feedback_engine is not feedback_engine:
+            raise ValueError("feedback_engine and control_tower must share the same feedback engine")
 
     def _finalize_development(self, report: RuntimeReport) -> RuntimeReport:
-        """Observe one completed development run without enabling code mutation."""
-        if self._feedback_engine is not None:
+        """Observe one completed development run through the management layer."""
+        if self._control_tower is not None:
+            self._control_tower.observe(report)
+        elif self._feedback_engine is not None:
             self._feedback_engine.observe(report)
         return report
 
