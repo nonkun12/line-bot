@@ -255,3 +255,65 @@ def test_max_rounds_cannot_be_unbounded() -> None:
 def test_parallel_workers_are_rejected_until_worktree_isolation() -> None:
     with pytest.raises(ValueError, match="isolated git worktrees"):
         MultiAgentRuntime({}, max_workers=2)
+
+
+def test_control_tower_receives_final_success_report() -> None:
+    class Tower:
+        def __init__(self) -> None:
+            self.reports = []
+
+        def observe(self, report: object) -> object:
+            self.reports.append(report)
+            return object()
+
+    tower = Tower()
+    runtime = MultiAgentRuntime({
+        AgentRole.IMPLEMENTER: Executor({}),
+        AgentRole.TESTER: Executor({}),
+        AgentRole.REVIEWER: Executor({}),
+        AgentRole.REPAIRER: Executor({}),
+        AgentRole.INTEGRATOR: Executor({}),
+    }, control_tower=tower)
+
+    report = runtime.run_development(development_tasks())
+
+    assert report.success and report.integration_ready
+    assert tower.reports == [report]
+
+
+def test_control_tower_is_the_single_observer_when_both_are_supplied() -> None:
+    engine = SelfImprovementEngine()
+
+    class Tower:
+        def __init__(self) -> None:
+            self.feedback_engine = engine
+            self.reports = []
+
+        def observe(self, report: object) -> object:
+            self.reports.append(report)
+            return object()
+
+    tower = Tower()
+    runtime = MultiAgentRuntime({
+        AgentRole.IMPLEMENTER: Executor({}),
+        AgentRole.TESTER: Executor({}),
+        AgentRole.REVIEWER: Executor({}),
+        AgentRole.REPAIRER: Executor({}),
+        AgentRole.INTEGRATOR: Executor({}),
+    }, feedback_engine=engine, control_tower=tower)
+
+    report = runtime.run_development(development_tasks())
+
+    assert report.success
+    assert tower.reports == [report]
+    assert [signal.kind for signal in engine.signals] == ["success"]
+
+
+def test_control_tower_and_different_feedback_engine_are_rejected() -> None:
+    engine = SelfImprovementEngine()
+
+    class Tower:
+        feedback_engine = SelfImprovementEngine()
+
+    with pytest.raises(ValueError, match="share the same feedback engine"):
+        MultiAgentRuntime({}, feedback_engine=engine, control_tower=Tower())
