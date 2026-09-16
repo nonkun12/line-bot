@@ -35,9 +35,7 @@ class AgentGovernance:
         self.specs = specs or AgentSpecRegistry()
         self.versions = versions or AgentVersionRegistry()
 
-    def register(
-        self, agent: Agent, spec: AgentSpec, version: AgentVersion
-    ) -> AgentGovernanceRecord:
+    def register(self, agent: Agent, spec: AgentSpec, version: AgentVersion) -> AgentGovernanceRecord:
         name = getattr(agent, "name", "")
         if not isinstance(name, str) or not name.strip():
             raise ValueError("agent name is required")
@@ -49,16 +47,23 @@ class AgentGovernance:
             raise ValueError("spec and version lifecycles must match")
         if spec.lifecycle != AgentLifecycle.ENABLED:
             raise ValueError("only enabled agents may be registered for runtime use")
-        if version.validate():
-            raise ValueError("invalid agent version: " + "; ".join(version.validate()))
+        errors = version.validate()
+        if errors:
+            raise ValueError("invalid agent version: " + "; ".join(errors))
+        if name in self.agents.names():
+            raise ValueError(f"agent already registered: {name}")
+        if self.specs.get(name) is not None:
+            raise ValueError(f"agent spec already registered: {name}")
+        if self.versions.current(name) is not None:
+            raise ValueError(f"active version already registered: {name}")
+        if any(item.version == version.version for item in self.versions.history(name)):
+            raise ValueError(f"version already registered: {name}@{version.version}")
+
+        # Expected validation failures are checked before mutation so a
+        # normal registration error cannot leave the registries divergent.
         self.agents.register(agent)
-        try:
-            self.specs.register(spec)
-            self.versions.register(version)
-        except Exception:
-            # Registries are intentionally in-memory; callers should treat a
-            # failed composite registration as requiring a fresh facade.
-            raise
+        self.specs.register(spec)
+        self.versions.register(version)
         return AgentGovernanceRecord(name, agent, spec, version)
 
     def get(self, name: str) -> AgentGovernanceRecord | None:
@@ -76,11 +81,7 @@ class AgentGovernance:
         return AgentGovernanceRecord(normalized, agent, spec, version)
 
     def names(self) -> tuple[str, ...]:
-        return tuple(
-            name
-            for name in self.agents.names()
-            if self.get(name) is not None
-        )
+        return tuple(name for name in self.agents.names() if self.get(name) is not None)
 
 
 __all__ = ["AgentGovernance", "AgentGovernanceRecord"]
