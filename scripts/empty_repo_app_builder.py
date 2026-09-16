@@ -25,6 +25,19 @@ from universal_app_builder import (
 )
 
 
+def configure_git_identity(workspace: Path) -> None:
+    """Configure an explicit non-secret commit identity for the generated repo."""
+    config_name = run(["git", "config", "user.name", "github-actions[bot]"], workspace, timeout=60)
+    config_email = run(
+        ["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"],
+        workspace,
+        timeout=60,
+    )
+    if config_name.returncode != 0 or config_email.returncode != 0:
+        detail = (config_name.stderr + "\n" + config_email.stderr).strip()
+        raise RuntimeError(f"cannot configure git identity: {detail[-2000:]}")
+
+
 def ensure_main_base(workspace: Path) -> None:
     """Guarantee that the target repository has a PR base branch named main."""
     has_head = run(["git", "rev-parse", "--verify", "HEAD"], workspace, timeout=60)
@@ -42,20 +55,13 @@ def ensure_main_base(workspace: Path) -> None:
     switch = run(["git", "switch", "-c", "main"], workspace, timeout=60)
     if switch.returncode != 0:
         raise RuntimeError(f"cannot initialize main branch: {switch.stderr[-2000:]}")
-    config_name = run(["git", "config", "user.name", "github-actions[bot]"], workspace, timeout=60)
-    config_email = run(
-        ["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"],
-        workspace,
-        timeout=60,
-    )
-    if config_name.returncode != 0 or config_email.returncode != 0:
-        raise RuntimeError("cannot configure git identity")
+    configure_git_identity(workspace)
     empty_commit = run(["git", "commit", "--allow-empty", "-m", "chore: initialize application repository"], workspace, timeout=60)
     if empty_commit.returncode != 0:
         raise RuntimeError(f"cannot create main base commit: {empty_commit.stderr[-2000:]}")
     push = run(["git", "push", "--set-upstream", "origin", "main"], workspace, timeout=180)
     if push.returncode != 0:
-        raise RuntimeError(f"cannot push main base branch: {push.stderr[-2000:]}")
+        raise RuntimeError(f"cannot push main branch: {push.stderr[-2000:]}")
 
 
 def main() -> int:
@@ -95,6 +101,7 @@ def main() -> int:
         workspace = Path(temp_dir) / "repo"
         try:
             clone_repo(repo, token, workspace, Path(temp_dir))
+            configure_git_identity(workspace)
             ensure_main_base(workspace)
             branch = f"ai-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}-{requested_slug}"
             checkout = run(["git", "switch", "-c", branch, "origin/main"], workspace, timeout=60)
