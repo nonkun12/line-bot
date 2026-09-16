@@ -18,7 +18,7 @@ class FakeAgent:
         raise NotImplementedError
 
 
-def spec(name="developer"):
+def spec(name="developer", lifecycle=AgentLifecycle.ENABLED):
     return AgentSpec.create(
         name=name,
         purpose="test",
@@ -26,7 +26,7 @@ def spec(name="developer"):
         output_contract="response",
         safety_constraints=("read-only test",),
         tests=("tests/test_agent_governance.py",),
-        lifecycle=AgentLifecycle.ENABLED,
+        lifecycle=lifecycle,
     )
 
 
@@ -55,17 +55,9 @@ def test_rejects_mismatched_component_names_before_mutation():
 
 def test_rejects_non_enabled_runtime_registration_before_mutation():
     governance = AgentGovernance()
-    disabled = spec().transition(AgentLifecycle.DISABLED) if False else AgentSpec.create(
-        name="developer",
-        purpose="test",
-        input_contract="request",
-        output_contract="response",
-        safety_constraints=("read-only test",),
-        tests=("tests/test_agent_governance.py",),
-        lifecycle=AgentLifecycle.REVIEWED,
-    )
+    reviewed = spec(lifecycle=AgentLifecycle.REVIEWED)
     with pytest.raises(ValueError, match="only enabled"):
-        governance.register(FakeAgent(), disabled, version())
+        governance.register(FakeAgent(), reviewed, version())
     assert governance.names() == ()
 
 
