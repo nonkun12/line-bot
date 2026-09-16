@@ -1,5 +1,10 @@
-"""Public English-learning agent exports."""
+"""Public English-learning agent exports.
 
-from .node import EnglishLearningAgent, agent, english_learning_agent_node
+The package-level ``agent`` keeps the historical ``english`` contract.
+The richer follow-up implementation remains available from ``agents.english.node``.
+"""
 
-__all__ = ["EnglishLearningAgent", "agent", "english_learning_agent_node"]
+from agents.english_agent import EnglishLearningAgent, agent, build_english_responder
+from .node import english_learning_agent_node
+
+__all__ = ["EnglishLearningAgent", "agent", "build_english_responder", "english_learning_agent_node"]
