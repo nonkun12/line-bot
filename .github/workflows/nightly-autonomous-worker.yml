@@ -54,19 +54,23 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Record task starting commit
-        run: echo "TASK_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Record autonomous starting commit
+        run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Run one guarded control tower development task
         run: python scripts/nightly_task_worker.py
 
-      - name: Publish autonomous development branch and PR
+      - name: Run guarded autonomous self-healing check
+        if: success()
+        run: python scripts/nightly_worker.py
+
+      - name: Publish final autonomous branch and PR
         if: success()
         env:
           NIGHTLY_BRANCH: nightly/autonomous-${{ github.run_id }}
         run: |
-          if [ "$(git rev-parse HEAD)" = "$TASK_START_SHA" ]; then
-            echo 'No new development commit to publish.'
+          if [ "$(git rev-parse HEAD)" = "$AUTONOMOUS_START_SHA" ]; then
+            echo 'No autonomous changes to publish.'
             exit 0
           fi
           git push origin "HEAD:refs/heads/${NIGHTLY_BRANCH}"
@@ -75,23 +79,6 @@ jobs:
             --head "${NIGHTLY_BRANCH}" \
             --title "chore: nightly autonomous development ${{ github.run_id }}" \
             --body "Nightly autonomous development result. Review and CI are required before merge. This workflow does not merge automatically."
-
-      - name: Record self-healing starting commit
-        run: echo "HEAL_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-
-      - name: Run guarded autonomous self-healing check
-        run: python scripts/nightly_worker.py
-
-      - name: Update autonomous PR with self-healing result
-        if: success()
-        env:
-          NIGHTLY_BRANCH: nightly/autonomous-${{ github.run_id }}
-        run: |
-          if [ "$(git rev-parse HEAD)" = "$HEAL_START_SHA" ]; then
-            echo 'No new self-healing commit to publish.'
-            exit 0
-          fi
-          git push origin "HEAD:refs/heads/${NIGHTLY_BRANCH}"
 
       - name: Upload worker summary
         if: always()
