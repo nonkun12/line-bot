@@ -8,13 +8,14 @@ from core.self_improvement import SelfImprovementEngine
 
 
 class Executor:
-    def __init__(self, role: AgentRole) -> None:
+    def __init__(self, role: AgentRole, *, success: bool = True) -> None:
         self.role = role
+        self.success = success
         self.calls: list[str] = []
 
     def execute(self, task: AgentTask) -> AgentResult:
         self.calls.append(task.task_id)
-        return AgentResult(task.task_id, True, f"{self.role.value} completed")
+        return AgentResult(task.task_id, self.success, f"{self.role.value} completed")
 
 
 def make_task(task_id: str, role: AgentRole, *, depends_on=()) -> AgentTask:
@@ -56,7 +57,7 @@ def test_parallel_execution_requires_explicit_isolation() -> None:
 
 
 def test_coordinator_observes_control_tower_but_does_not_execute_approval() -> None:
-    manager = Executor(AgentRole.MANAGER)
+    manager = Executor(AgentRole.MANAGER, success=False)
     tower = ControlTower(
         feedback_engine=SelfImprovementEngine(),
         creator_critic=CreatorCriticLoop(
@@ -80,7 +81,8 @@ def test_coordinator_observes_control_tower_but_does_not_execute_approval() -> N
         },
     )
 
-    assert result.report.success
+    assert not result.report.success
+    assert not result.report.integration_ready
     assert result.decision is not None
     assert manager.calls == ["manager"]
     assert result.decision.approved_task is not None
