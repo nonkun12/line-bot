@@ -6,6 +6,7 @@ from .agent_versioning import AgentVersion, AgentVersionRegistry
 from .agent_maintenance import AgentMaintenance, MaintenanceFinding, MaintenanceSeverity
 from .agent_governance import AgentGovernance, AgentGovernanceRecord
 from .agent_handoff import AgentHandoff, HandoffStatus
+from .agent_handoff_coordinator import AgentHandoffCoordinator, HandoffDecision
 from .creator_critic import CriticAgent, CriticEvaluation, CreatorAgent, CreatorCriticLoop, DuelResult, ImprovementCandidate
 from .execution_pipeline import DefaultPlanner, ExecutionResult, Manager, WorkPlan, WorkRequest
 from .gateway import AIGateway, AIRequest, AIResponse
@@ -32,7 +33,7 @@ __all__ = [
     "AgentLifecycle", "AgentSpec", "AgentSpecRegistry",
     "AgentVersion", "AgentVersionRegistry", "AgentMaintenance",
     "MaintenanceFinding", "MaintenanceSeverity", "AgentGovernance", "AgentGovernanceRecord",
-    "AgentHandoff", "HandoffStatus",
+    "AgentHandoff", "HandoffStatus", "AgentHandoffCoordinator", "HandoffDecision",
     "CreatorAgent", "CriticAgent", "CreatorCriticLoop", "ImprovementCandidate",
     "CriticEvaluation", "DuelResult", "Manager", "WorkRequest", "WorkPlan",
     "ExecutionResult", "DefaultPlanner", "TaskMode", "TaskClassification",
