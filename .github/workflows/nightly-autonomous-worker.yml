@@ -7,9 +7,10 @@ on:
     - cron: '0 18 * * *'
 
 # This workflow intentionally has no push trigger.
-# A repair/development commit therefore cannot recursively invoke this worker.
+# Autonomous changes are pushed to a dedicated branch and reviewed via PR.
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: nightly-autonomous-worker
@@ -31,6 +32,7 @@ jobs:
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
       DEV_INSTRUCTION: 'コントロールタワーAIの完成度を1段階上げてください。既存のAIGateway、AgentRegistry、Supervisor、Routerの責務分離を維持し、ユーザー要求をより安定して適切なAgentへ振り分けるための最小限の改善を実装してください。特に優先順位、未解決要求の安全なfallback、channel-independentなrequest metadataの活用を検討してください。既存のLINE/Voice機能を壊さず、新規依存関係や外部APIを追加しないでください。変更は最小限、テスト可能にしてください。'
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,35 +54,31 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Record task starting commit
-        run: echo "TASK_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Record autonomous starting commit
+        run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Run one guarded control tower development task
         run: python scripts/nightly_task_worker.py
 
-      - name: Push successful development task
-        if: success()
-        run: |
-          if [ "$(git rev-parse HEAD)" = "$TASK_START_SHA" ]; then
-            echo 'No new development commit to push.'
-            exit 0
-          fi
-          git push origin HEAD:main
-
-      - name: Record self-healing starting commit
-        run: echo "HEAL_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-
       - name: Run guarded autonomous self-healing check
+        if: success()
         run: python scripts/nightly_worker.py
 
-      - name: Push successful self-healing commit
+      - name: Publish final autonomous branch and PR
         if: success()
+        env:
+          NIGHTLY_BRANCH: nightly/autonomous-${{ github.run_id }}
         run: |
-          if [ "$(git rev-parse HEAD)" = "$HEAL_START_SHA" ]; then
-            echo 'No new self-healing commit to push.'
+          if [ "$(git rev-parse HEAD)" = "$AUTONOMOUS_START_SHA" ]; then
+            echo 'No autonomous changes to publish.'
             exit 0
           fi
-          git push origin HEAD:main
+          git push origin "HEAD:refs/heads/${NIGHTLY_BRANCH}"
+          gh pr create \
+            --base main \
+            --head "${NIGHTLY_BRANCH}" \
+            --title "chore: nightly autonomous development ${{ github.run_id }}" \
+            --body "Nightly autonomous development result. Review and CI are required before merge. This workflow does not merge automatically."
 
       - name: Upload worker summary
         if: always()
