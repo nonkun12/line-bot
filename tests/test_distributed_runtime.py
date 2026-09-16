@@ -84,7 +84,6 @@ def test_coordinator_observes_control_tower_but_does_not_execute_approval() -> N
     assert not result.report.success
     assert not result.report.integration_ready
     assert result.decision is not None
-    assert manager.calls == ["manager"]
-    assert result.decision.approved_task is not None
-    assert result.decision.approved_task.role is AgentRole.DEBUGGER
+    assert result.decision.proposal is None
+    assert result.decision.approved_task is None
     assert manager.calls == ["manager"]
