@@ -13,7 +13,7 @@ from typing import Mapping, Protocol, Sequence, TYPE_CHECKING
 from .multi_agent import AgentResult, AgentRole, AgentTask, plan_batches
 
 if TYPE_CHECKING:
-    from .control_tower import ControlTower
+    from .control_tower import ControlTower, ControlTowerDecision
     from .self_improvement import SelfImprovementEngine
 
 
@@ -78,16 +78,44 @@ class MultiAgentRuntime:
         self._max_rounds = max_rounds
         self._feedback_engine = feedback_engine
         self._control_tower = control_tower
+        self._last_control_tower_decision: ControlTowerDecision | None = None
         if feedback_engine is not None and control_tower is not None and control_tower.feedback_engine is not feedback_engine:
             raise ValueError("feedback_engine and control_tower must share the same feedback engine")
+
+    @property
+    def last_control_tower_decision(self) -> ControlTowerDecision | None:
+        """Expose the latest management decision without applying it automatically."""
+        return self._last_control_tower_decision
 
     def _finalize_development(self, report: RuntimeReport) -> RuntimeReport:
         """Observe one completed development run through the management layer."""
         if self._control_tower is not None:
-            self._control_tower.observe(report)
+            self._last_control_tower_decision = self._control_tower.observe(report)
         elif self._feedback_engine is not None:
             self._feedback_engine.observe(report)
         return report
+
+    def run_self_improvement_cycle(
+        self,
+        report: RuntimeReport,
+        *,
+        objective: str | None = None,
+        evidence: Mapping[str, object] | None = None,
+    ) -> ControlTowerDecision | None:
+        """Run one bounded Creator/Critic management cycle for a runtime report.
+
+        This is intentionally separate from repository mutation: an approved
+        task is exposed to the existing development pipeline, while this method
+        never executes model output or changes files by itself.
+        """
+        if self._control_tower is None:
+            return None
+        self._last_control_tower_decision = self._control_tower.observe(
+            report,
+            objective=objective,
+            evidence=evidence,
+        )
+        return self._last_control_tower_decision
 
     def run(self, tasks: Sequence[AgentTask]) -> RuntimeReport:
         """Execute one static plan and fail closed on any unsafe result."""

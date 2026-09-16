@@ -4,8 +4,10 @@ from dataclasses import dataclass
 
 import pytest
 
-from core.agent_runtime import MultiAgentRuntime
+from core.agent_runtime import MultiAgentRuntime, RuntimeReport
+from core.creator_critic import CriticAgent, CreatorAgent, CreatorCriticLoop
 from core.multi_agent import AgentResult, AgentRole, AgentTask
+from core.control_tower import ControlTower
 from core.self_improvement import SelfImprovementEngine
 
 
@@ -154,6 +156,31 @@ def test_runtime_failure_emits_debug_signal_to_feedback_engine() -> None:
     assert not report.success
     assert engine.signals[-1].kind == "failure"
     assert engine.propose() is not None
+
+
+def test_runtime_self_improvement_cycle_exposes_reviewed_decision_without_mutation() -> None:
+    model = lambda prompt: "minimal test-backed improvement"
+    critic = lambda prompt: "evidence supports the bounded proposal"
+    tower = ControlTower(
+        feedback_engine=SelfImprovementEngine(),
+        creator_critic=CreatorCriticLoop(CreatorAgent(model), CriticAgent(critic)),
+    )
+    runtime = development_runtime()
+    runtime._control_tower = tower
+
+    report = RuntimeReport((), failed_task_id="test", error="pytest failed", rounds=1)
+    decision = runtime.run_self_improvement_cycle(
+        report,
+        objective="reduce repeated autonomous test failures",
+        evidence={"accuracy": 0.9, "stability": 0.9, "efficiency": 0.8, "safety": 1.0},
+    )
+
+    assert decision is runtime.last_control_tower_decision
+    assert decision is not None
+    assert decision.proposal is not None
+    assert decision.approved_for_pipeline
+    assert decision.approved_task is not None
+    assert decision.approved_task.role is AgentRole.DEBUGGER
 
 
 def test_development_loop_requires_reviewer_and_integrator_tasks() -> None:
@@ -306,8 +333,6 @@ def test_control_tower_is_the_single_observer_when_both_are_supplied() -> None:
 
     assert report.success
     assert tower.reports == [report]
-    # The Control Tower is the sole observer; a custom test double does not
-    # implicitly delegate to the feedback engine.
     assert engine.signals == ()
 
 
