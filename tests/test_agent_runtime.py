@@ -308,7 +308,7 @@ def test_control_tower_is_the_single_observer_when_both_are_supplied() -> None:
     assert tower.reports == [report]
     # The Control Tower is the sole observer; a custom test double does not
     # implicitly delegate to the feedback engine.
-    assert engine.signals == []
+    assert engine.signals == ()
 
 
 def test_control_tower_and_different_feedback_engine_are_rejected() -> None:
