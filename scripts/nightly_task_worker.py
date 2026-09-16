@@ -13,6 +13,8 @@ from pathlib import Path
 
 from groq import Groq
 
+from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
+
 ROOT = Path(__file__).resolve().parents[1]
 MAX_FILES = 4
 MAX_FILE_CHARS = 9000
@@ -20,9 +22,6 @@ MAX_PATCH_CHARS = 18000
 MODEL = os.environ.get("DEV_AI_MODEL", "openai/gpt-oss-20b")
 FORBIDDEN_PREFIXES = (".github/", ".env", "config.py", "secrets/")
 ALLOWED_SUFFIXES = (".py", ".md", ".json", ".txt")
-# Deterministic targets for the built-in nightly control-tower task.  The LLM
-# remains the primary selector, but an empty/malformed response must not make
-# the scheduled worker fail before doing any useful work.
 NIGHTLY_CONTROL_TOWER_TARGETS = (
     "core/management_router.py",
     "tests/test_management_router.py",
@@ -67,10 +66,6 @@ def choose_files(client: Groq, instruction: str, files: list[str]) -> list[str]:
         if len(chosen) >= MAX_FILES:
             break
 
-    # This workflow has a fixed, narrowly scoped control-tower instruction.
-    # If the model returns prose, markdown, or an empty response, select only
-    # from the same allowlisted control-tower files instead of failing closed
-    # before implementation.  No arbitrary repository file is selected.
     if not chosen and "コントロールタワーAI" in instruction:
         chosen = [path for path in NIGHTLY_CONTROL_TOWER_TARGETS if path in allowed][:MAX_FILES]
     return chosen
@@ -115,6 +110,13 @@ def apply_and_test(patch: str) -> tuple[bool, str]:
     return tests.returncode == 0, (tests.stdout + "\n" + tests.stderr)[-10000:]
 
 
+def enforce_self_improvement_policy(paths: list[str]) -> tuple[bool, str]:
+    assessment = assess_self_improvement(paths)
+    if assessment.decision is not SelfImprovementDecision.AUTONOMOUS_REVIEW:
+        return False, "; ".join(assessment.reasons)
+    return True, "policy=autonomous_review"
+
+
 def main() -> int:
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()
     if not instruction:
@@ -124,6 +126,11 @@ def main() -> int:
     chosen = choose_files(client, instruction, files)
     if not chosen:
         print("No safe target files selected.")
+        return 1
+
+    policy_ok, policy_detail = enforce_self_improvement_policy(chosen)
+    if not policy_ok:
+        print(f"Self-improvement policy rejected target: {policy_detail}")
         return 1
 
     system = """You are a senior software engineer implementing one narrowly scoped improvement to an existing AI assistant control tower.
@@ -175,7 +182,7 @@ Original task:\n{instruction}\n\nPatch:\n{patch}\n\nPytest failure:\n{output}\n\
     if commit.returncode != 0:
         print(commit.stderr[-2000:])
         return 1
-    print(f"Nightly control-tower task completed. files={detail} repair_attempts={attempts}")
+    print(f"Nightly control-tower task completed. files={detail} repair_attempts={attempts} {policy_detail}")
     return 0
 
 
