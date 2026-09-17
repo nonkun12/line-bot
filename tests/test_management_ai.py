@@ -265,3 +265,41 @@ def test_agent_message_bus_bounds_message_size_and_route() -> None:
                 safety_constraints=("result-only",),
             )
         )
+
+def test_model_management_planner_accepts_explicit_next_round_signal() -> None:
+    prompts: list[str] = []
+
+    def model(prompt: str) -> str:
+        prompts.append(prompt)
+        return (
+            '{"objective":"follow up","parallel_safe":false,'
+            '"continue_after_round":true,"tasks":['
+            '{"task_id":"followup","role":"news",'
+            '"instruction":"Review the prior evidence and identify one next step.",'
+            '"resources":["news"],"depends_on":[],"priority":1}]}'
+        )
+
+    planner = ModelManagementPlanner(model_call=model)
+    plan = planner.plan(
+        ManagementRequest("u1", "ニュースを調べて"),
+        ManagementDecision(Specialist.NEWS, "matched news", 0.95),
+        feedback=("research: success=True; summary=initial evidence",),
+    )
+
+    assert plan.continue_after_round
+    assert "initial evidence" in prompts[0]
+
+
+def test_model_management_planner_defaults_to_stop_without_next_round_signal() -> None:
+    planner = ModelManagementPlanner(
+        model_call=lambda prompt: (
+            '{"objective":"done","parallel_safe":false,"tasks":['
+            '{"task_id":"done","role":"news","instruction":"Summarize the result.",'
+            '"resources":["news"],"depends_on":[],"priority":1}]}'
+        )
+    )
+    plan = planner.plan(
+        ManagementRequest("u1", "ニュースを調べて"),
+        ManagementDecision(Specialist.NEWS, "matched news", 0.95),
+    )
+    assert not plan.continue_after_round
