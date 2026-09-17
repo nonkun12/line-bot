@@ -68,3 +68,17 @@ def test_complete_requires_accepted_handoff():
     assert completed.accepted is True
     assert completed.handoff is not None
     assert completed.handoff.status is HandoffStatus.COMPLETED
+
+
+def test_submit_accepts_creator_to_critic_and_critic_to_debug() -> None:
+    coordinator = AgentHandoffCoordinator()
+    creator = coordinator.submit(
+        make_handoff(source_agent="creator", target_agent="critic")
+    )
+    assert creator.accepted is True
+
+    critic = coordinator.submit(
+        make_handoff(source_agent="critic", target_agent="debug")
+    )
+    assert critic.accepted is True
+
