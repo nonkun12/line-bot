@@ -1,4 +1,4 @@
-name: Nightly Autonomous Worker
+name: Daily Self-Improvement Loop
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: nightly-autonomous-worker
+  group: daily-self-improvement-loop
   cancel-in-progress: false
 
 jobs:
@@ -31,7 +31,7 @@ jobs:
       NIGHTLY_AUTOFIX: 'true'
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
-      DEV_INSTRUCTION: 'コントロールタワーAIの完成度を1段階上げてください。既存のAIGateway、AgentRegistry、Supervisor、Routerの責務分離を維持し、ユーザー要求をより安定して適切なAgentへ振り分けるための最小限の改善を実装してください。特に優先順位、未解決要求の安全なfallback、channel-independentなrequest metadataの活用を検討してください。既存のLINE/Voice機能を壊さず、新規依存関係や外部APIを追加しないでください。変更は最小限、テスト可能にしてください。'
+      DEV_INSTRUCTION: '毎日の自己改善ループを実行してください。現在のコード、既存テスト、直近の実行結果から改善余地を1件だけ特定し、原因または根拠を確認したうえで、最小限のテスト可能な改善を実装してください。既存機能を壊さず、秘密情報、認証、デプロイ設定、GitHub Actions、自己改善ポリシー自体は変更しないでください。新規依存関係や外部APIは追加せず、pytestを通過させてください。問題が見つからない場合は無理に変更せず、安全に終了してください。'
 
     steps:
       - name: Checkout
@@ -57,7 +57,7 @@ jobs:
       - name: Record autonomous starting commit
         run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Run one guarded control tower development task
+      - name: Run one bounded daily self-improvement task
         run: python scripts/nightly_task_worker.py
 
       - name: Run guarded autonomous self-healing check
@@ -77,8 +77,8 @@ jobs:
           gh pr create \
             --base main \
             --head "${NIGHTLY_BRANCH}" \
-            --title "chore: nightly autonomous development ${{ github.run_id }}" \
-            --body "Nightly autonomous development result. Review and CI are required before merge. This workflow does not merge automatically."
+            --title "chore: daily self-improvement ${{ github.run_id }}" \
+            --body "Daily self-improvement result. Review and CI are required before merge. This workflow does not merge or deploy automatically."
 
       - name: Upload worker summary
         if: always()
