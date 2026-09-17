@@ -52,6 +52,27 @@ class StockAnalysis:
     volume_ratio_20: float | None
 
 
+@dataclass(frozen=True)
+class StockComparison:
+    """Deterministic side-by-side comparison of analyzed symbols."""
+
+    analyses: tuple[StockAnalysis, ...]
+
+    def by_return_20d(self) -> tuple[StockAnalysis, ...]:
+        return tuple(sorted(
+            (item for item in self.analyses if item.return_20d_pct is not None),
+            key=lambda item: (-item.return_20d_pct, item.ticker),
+        ))
+
+
+def compare_analyses(analyses: Iterable[StockAnalysis]) -> StockComparison:
+    """Normalize comparison ordering without declaring a preferred investment."""
+    unique: dict[str, StockAnalysis] = {}
+    for analysis in analyses:
+        unique[analysis.ticker] = analysis
+    return StockComparison(tuple(unique[key] for key in sorted(unique)))
+
+
 class StockQuoteProvider(Protocol):
     """Minimal injectable provider used by stock agents."""
 
