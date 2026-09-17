@@ -3,7 +3,14 @@ from __future__ import annotations
 import pytest
 
 from core.agent_communication import AgentMessage, AgentMessageBus
-from core.management_ai import ManagementAI, ManagementPlan, ManagementPlanner, ManagementPlanningError, ModelManagementPlanner
+from core.management_ai import (
+    ManagementAI,
+    ManagementCycleRun,
+    ManagementPlan,
+    ManagementPlanner,
+    ManagementPlanningError,
+    ModelManagementPlanner,
+)
 from core.management_contract import ManagementDecision, ManagementRequest, Specialist
 from core.multi_agent import AgentResult, AgentRole, AgentTask
 
@@ -86,7 +93,12 @@ class Executor:
 
 
 class StaticPlanner(ManagementPlanner):
-    def plan(self, request: ManagementRequest, decision: ManagementDecision) -> ManagementPlan:
+    def plan(
+        self,
+        request: ManagementRequest,
+        decision: ManagementDecision,
+        feedback=(),
+    ) -> ManagementPlan:
         tasks = (
             AgentTask(
                 "voice",
@@ -135,3 +147,99 @@ def test_management_ai_dispatches_independent_specialists_and_collects_results()
 def test_parallel_management_requires_explicit_isolation() -> None:
     with pytest.raises(ValueError, match="isolated=True"):
         ManagementAI({}, planner=StaticPlanner(), max_workers=2)
+
+class LoopPlanner(ManagementPlanner):
+    def __init__(self) -> None:
+        self.feedback: list[tuple[str, ...]] = []
+
+    def plan(
+        self,
+        request: ManagementRequest,
+        decision: ManagementDecision,
+        feedback=(),
+    ) -> ManagementPlan:
+        self.feedback.append(tuple(feedback))
+        if len(self.feedback) == 1:
+            tasks = (
+                AgentTask(
+                    "research",
+                    AgentRole.NEWS,
+                    "Collect initial evidence.",
+                    resources=frozenset({"news"}),
+                ),
+            )
+            return ManagementPlan(
+                objective="closed loop",
+                decision=decision,
+                tasks=tasks,
+                continue_after_round=True,
+            )
+        tasks = (
+            AgentTask(
+                "followup",
+                AgentRole.STOCKS,
+                "Summarize the next bounded step using the observations.",
+                resources=frozenset({"stocks"}),
+            ),
+        )
+        return ManagementPlan(
+            objective="closed loop",
+            decision=decision,
+            tasks=tasks,
+            continue_after_round=False,
+        )
+
+
+def test_management_ai_closed_loop_feeds_results_back_to_manager() -> None:
+    news = Executor(AgentRole.NEWS)
+    stocks = Executor(AgentRole.STOCKS)
+    planner = LoopPlanner()
+    manager = ManagementAI(
+        {AgentRole.NEWS: news, AgentRole.STOCKS: stocks},
+        planner=planner,
+    )
+
+    cycle = manager.run_closed_loop(
+        ManagementRequest("u1", "ニュースと株価を調べて"),
+        max_rounds=2,
+    )
+
+    assert isinstance(cycle, ManagementCycleRun)
+    assert cycle.success
+    assert len(cycle.rounds) == 2
+    assert planner.feedback[0] == ()
+    assert planner.feedback[1]
+    assert "research" in planner.feedback[1][0]
+    assert news.calls == ["research"]
+    assert stocks.calls == ["followup"]
+    assert cycle.stopped_reason == "manager stopped the cycle"
+
+
+def test_management_ai_closed_loop_is_bounded() -> None:
+    class AlwaysContinue(LoopPlanner):
+        def plan(self, request, decision, feedback=()):
+            self.feedback.append(tuple(feedback))
+            return ManagementPlan(
+                objective="bounded",
+                decision=decision,
+                tasks=(
+                    AgentTask(
+                        "task",
+                        AgentRole.NEWS,
+                        "Collect bounded evidence.",
+                        resources=frozenset({"news"}),
+                    ),
+                ),
+                continue_after_round=True,
+            )
+
+    planner = AlwaysContinue()
+    manager = ManagementAI({AgentRole.NEWS: Executor(AgentRole.NEWS)}, planner=planner)
+
+    cycle = manager.run_closed_loop(
+        ManagementRequest("u1", "調べて"),
+        max_rounds=2,
+    )
+
+    assert len(cycle.rounds) == 2
+    assert cycle.stopped_reason == "bounded round limit reached"
