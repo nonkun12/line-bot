@@ -87,7 +87,7 @@ class RegistrySpecialistExecutor(AgentExecutor):
         }
         if self._communication_gateway is not None:
             metadata["specialist_communication"] = SpecialistCommunicationContext(
-                gateway=self._communication_gateway,
+                _gateway=self._communication_gateway,
                 sender=task.role,
                 correlation_id=f"{self._request.user_id}:{task.task_id}",
                 task_id=task.task_id,
