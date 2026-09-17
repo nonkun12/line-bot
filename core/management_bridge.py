@@ -14,7 +14,6 @@ from agents.news.intents import is_ai_news_intent
 from agents.stocks.intents import is_stock_intent
 from agents.voice.intents import is_voice_intent
 from core.agents import AgentRequest
-from core.distributed_scheduler import DistributedExecutionError
 from core.management_ai import (
     ManagementAI,
     ManagementPlan,
@@ -24,6 +23,7 @@ from core.management_ai import (
 )
 from core.management_contract import ManagementDecision, ManagementRequest
 from core.multi_agent import AgentRole
+from core.specialist_communication import SpecialistCommunicationGateway
 from core.specialist_executor import build_registry_executors
 from graph.core_registry import build_core_agent_registry
 
@@ -126,7 +126,12 @@ def run_management_request(
         metadata=request.metadata,
     )
     registry = build_core_agent_registry()
-    executors = build_registry_executors(registry, request)
+    communication_gateway = SpecialistCommunicationGateway()
+    executors = build_registry_executors(
+        registry,
+        request,
+        communication_gateway=communication_gateway,
+    )
     if not executors:
         return None
 
