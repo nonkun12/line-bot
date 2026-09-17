@@ -8,6 +8,8 @@ from typing import Iterable, Protocol
 
 class AgentRole(str, Enum):
     MANAGER = "manager"
+    CREATOR = "creator"
+    CRITIC = "critic"
     IMPLEMENTER = "implementer"
     TESTER = "tester"
     DEBUGGER = "debugger"
