@@ -1,4 +1,4 @@
-"""Deterministic first-pass routing for the management AI layer."""
+""""Deterministic first-pass routing for the management AI layer."""
 from __future__ import annotations
 
 from .management_contract import ManagementDecision, ManagementRequest, Specialist
@@ -6,6 +6,7 @@ from .management_contract import ManagementDecision, ManagementRequest, Speciali
 
 _KEYWORDS: tuple[tuple[Specialist, tuple[str, ...]], ...] = (
     (Specialist.VOICE, ("音声", "喋って", "話して", "speaker", "voice")),
+    (Specialist.JOBS, ("求職", "転職", "就職", "求人", "仕事探し", "応募", "履歴書", "職務経歴書", "志望動機", "面接", "career", "resume", "cv", "job")),
     (Specialist.ENGLISH, ("英語", "english", "英会話", "英文")),
     (Specialist.NEWS, ("ニュース", "news", "最新情報", "速報")),
     (Specialist.STOCKS, ("株", "株価", "stocks", "stock", "銘柄", "証券")),
