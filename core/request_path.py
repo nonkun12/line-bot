@@ -15,9 +15,19 @@ from agents.stocks.intents import is_stock_intent
 from e2e_status import StepTimer
 
 
-def _is_combined_news_stock_request(message: str) -> bool:
-    """Detect requests that explicitly require both NEWS and stock results."""
-    return is_ai_news_intent(message) and is_stock_intent(message)
+# Explicit, bounded orchestration rules. Keep this list small and deterministic;
+# single-intent requests continue through the normal Supervisor/Core graph.
+_MULTI_SPECIALIST_RULES: tuple[tuple[tuple[str, ...], Any], ...] = (
+    (("ai_news", "stocks"), lambda message: is_ai_news_intent(message) and is_stock_intent(message)),
+)
+
+
+def _resolve_multi_specialist_plan(message: str) -> tuple[str, ...] | None:
+    """Return a deterministic multi-agent plan when multiple intents are explicit."""
+    for specialists, matches in _MULTI_SPECIALIST_RULES:
+        if matches(message):
+            return specialists
+    return None
 
 
 def _run_multi_specialist_request(
@@ -28,20 +38,9 @@ def _run_multi_specialist_request(
     metadata: Mapping[str, Any],
     specialists: Sequence[str],
 ) -> dict[str, Any]:
-    """Execute a bounded set of specialists and preserve every result.
-
-    The normal Core graph intentionally selects one agent for single-intent
-    requests. Multi-specialist requests use this explicit orchestration seam so
-    each specialist remains independently inspectable before final formatting.
-    """
+    """Execute a bounded specialist plan and preserve every result."""
     registry = build_core_agent_registry()
-    request = AgentRequest(
-        user_id=user_id,
-        message=message,
-        channel=channel,
-        metadata=dict(metadata),
-    )
-
+    request = AgentRequest(user_id=user_id, message=message, channel=channel, metadata=dict(metadata))
     results: dict[str, dict[str, Any]] = {}
     texts: list[str] = []
 
@@ -51,12 +50,8 @@ def _run_multi_specialist_request(
             raise RuntimeError(f"required specialist disabled: {agent_name}")
         if not agent.can_handle(request):
             raise RuntimeError(f"required specialist rejected request: {agent_name}")
-
         response = agent.handle(request)
-        results[agent_name] = {
-            "text": response.text,
-            "metadata": dict(response.metadata),
-        }
+        results[agent_name] = {"text": response.text, "metadata": dict(response.metadata)}
         texts.append(response.text)
 
     return {
@@ -82,12 +77,10 @@ def run_core_request(
     metadata: Mapping[str, Any] | None = None,
     call_mcp_tool=None,
 ) -> dict[str, Any]:
-    """Classify with the existing Supervisor, then execute the selected agent via Core."""
+    """Classify with Supervisor, then execute one or a bounded specialist plan via Core."""
     request_metadata = dict(metadata or {})
-
-    # Preserve both specialist outputs instead of letting Supervisor's
-    # first-match routing discard the second intent.
-    if _is_combined_news_stock_request(message):
+    specialists = _resolve_multi_specialist_plan(message)
+    if specialists is not None:
         with StepTimer("core") as core_timer:
             try:
                 result = _run_multi_specialist_request(
@@ -95,7 +88,7 @@ def run_core_request(
                     message,
                     channel=channel,
                     metadata=request_metadata,
-                    specialists=("ai_news", "stocks"),
+                    specialists=specialists,
                 )
             except Exception as exc:
                 core_timer.fail(error=exc, error_location="core/request_path.multi_specialist")
@@ -113,9 +106,6 @@ def run_core_request(
     if call_mcp_tool is not None:
         initial["call_mcp_tool"] = call_mcp_tool  # type: ignore[typeddict-item]
 
-    # LINE input ownership belongs to the actual webhook boundary in config.py.
-    # Core/Agent execution must not record line_in again, otherwise one request
-    # produces two input events and can move the E2E cycle timestamp forward.
     with StepTimer("core") as core_timer:
         try:
             classified = supervisor_node(initial)  # type: ignore[arg-type]
@@ -142,3 +132,4 @@ def extract_core_reply(result: Mapping[str, Any]) -> str:
     if isinstance(value, str):
         return value
     return "Agent結果なし"
+"
