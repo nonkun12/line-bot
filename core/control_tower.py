@@ -22,6 +22,7 @@ class ControlTowerDecision:
     signals: tuple[ImprovementSignal, ...]
     proposal: ImprovementProposal | None
     duel: tuple[DuelResult, ...] = ()
+    evaluation_error: str | None = None
 
     @property
     def approved_for_pipeline(self) -> bool:
@@ -84,7 +85,15 @@ class ControlTower:
             measured["candidate_evaluated"] = True
             return measured
 
-        duel = self.creator_critic.run(target, evidence_provider)
+        try:
+            duel = self.creator_critic.run(target, evidence_provider)
+        except Exception as exc:
+            # Candidate evaluation is an advisory gate; provider failures never approve work.
+            return ControlTowerDecision(
+                signals,
+                proposal,
+                evaluation_error=f"{type(exc).__name__}: {exc}",
+            )
         return ControlTowerDecision(signals, proposal, duel)
 
 
