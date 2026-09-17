@@ -40,6 +40,37 @@ class AgentMessage:
         return tuple(errors)
 
 
+class AgentMessageCoordinator:
+    """Validate which agents may exchange coordination messages."""
+
+    MANAGEMENT = "management"
+    SPECIALISTS = frozenset({"general", "voice", "english", "news", "stocks", "jobs"})
+
+    @classmethod
+    def validate_route(cls, sender: str, recipient: str) -> tuple[str, ...]:
+        source = sender.strip().lower()
+        target = recipient.strip().lower()
+        errors: list[str] = []
+        if not source or not target:
+            return ("sender and recipient are required",)
+        if source == target:
+            return ("sender and recipient must differ",)
+        allowed_sources = {cls.MANAGEMENT, *cls.SPECIALISTS}
+        if source not in allowed_sources:
+            errors.append("sender is not an approved coordination agent")
+        if target not in allowed_sources:
+            errors.append("recipient is not an approved coordination agent")
+        if source != cls.MANAGEMENT and target != cls.MANAGEMENT and source in cls.SPECIALISTS and target in cls.SPECIALISTS:
+            return tuple(errors)
+        if source == cls.MANAGEMENT and target in cls.SPECIALISTS:
+            return tuple(errors)
+        if source in cls.SPECIALISTS and target == cls.MANAGEMENT:
+            return tuple(errors)
+        if not errors:
+            errors.append("agent route is not approved")
+        return tuple(errors)
+
+
 class AgentMessageBus:
     """Bounded in-memory mailbox for future agent-to-agent communication."""
 
@@ -48,11 +79,14 @@ class AgentMessageBus:
             raise ValueError("max_messages must be >= 1")
         self._max_messages = max_messages
         self._queues: dict[str, deque[AgentMessage]] = {}
+        self._coordinator = AgentMessageCoordinator()
 
     def send(self, message: AgentMessage) -> AgentMessage:
-        errors = message.validate()
+        errors = (*message.validate(), *self._coordinator.validate_route(message.sender, message.recipient))
+        if len(message.content) > 4000:
+            errors = (*errors, "content exceeds 4000 characters")
         if errors:
-            raise ValueError("; ".join(errors))
+            raise ValueError("; ".join(dict.fromkeys(errors)))
         queue = self._queues.setdefault(message.recipient.strip(), deque())
         queue.append(message)
         while len(queue) > self._max_messages:
@@ -85,4 +119,4 @@ class AgentMessageBus:
         return tuple(list(queue)[:limit])
 
 
-__all__ = ["AgentMessage", "AgentMessageBus"]
+__all__ = ["AgentMessage", "AgentMessageBus", "AgentMessageCoordinator"]
