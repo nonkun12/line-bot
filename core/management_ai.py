@@ -261,16 +261,18 @@ class ManagementAI:
         workers = self._max_workers if plan.parallel_safe else 1
         distributed = DistributedTaskScheduler(self._executors, max_workers=workers).run(plan.tasks)
         batches = plan_batches(plan.tasks)
+        task_roles = {task.task_id: task.role.value for task in plan.tasks}
         for result in distributed.results:
             self._message_bus.send(
                 AgentMessage(
                     message_id=f"{result.task_id}:result",
-                    sender=result.task_id,
+                    sender=task_roles[result.task_id],
                     recipient="management",
                     message_type="task_result",
                     content=result.summary[:4000],
                     correlation_id=request.user_id,
                     context={
+                        "task_id": result.task_id,
                         "success": result.success,
                         "changed_resources": sorted(result.changed_resources),
                     },
