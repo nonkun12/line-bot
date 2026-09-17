@@ -25,8 +25,8 @@ The intended progression is:
 
 1. Management AI -> specialist A/B/C task assignment.
 2. Specialists execute independently and return results.
-3. Management AI compares results and issues the next bounded round.
-4. Specialist A -> specialist B messages become possible through the message bus.
+3. Management AI compares results and, only when the plan explicitly requests continuation, issues the next bounded round with result observations as feedback.
+4. Specialist A -> specialist B messages are available through the bounded coordinator; only management and registered specialist routes are allowed.
 5. Direct collaboration remains constrained by explicit routes, safety constraints, and resource ownership.
 6. Repository-changing agents remain behind isolated worktrees and the existing review/integration gates.
 
