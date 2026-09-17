@@ -84,45 +84,19 @@ class DistributedSelfImprovementLoop:
         debugger_id = "self-improvement:debugger"
         reviewer_id = "self-improvement:reviewer"
 
-        tasks = (
-            AgentTask(
-                manager_id,
-                AgentRole.MANAGER,
-                (
-                    f"Prioritize one bounded improvement objective for: {target}. "
-                    f"Failed task: {failed_task}. Runtime error: {failure}. "
-                    "Return only a concise analysis summary and investigation priorities."
-                ),
-                resources=frozenset({"self-improvement:management"}),
+        manager_task = AgentTask(
+            manager_id,
+            AgentRole.MANAGER,
+            (
+                f"Prioritize one bounded improvement objective for: {target}. "
+                f"Failed task: {failed_task}. Runtime error: {failure}. "
+                "Return only a concise analysis summary and investigation priorities."
             ),
-            AgentTask(
-                debugger_id,
-                AgentRole.DEBUGGER,
-                (
-                    f"Analyze the root cause of failed task {failed_task}. "
-                    f"Runtime error: {failure}. Identify one reproducible cause and "
-                    "the smallest test-backed corrective direction. Do not modify files."
-                ),
-                resources=frozenset({f"runtime:{failed_task}"}),
-                depends_on=(manager_id,),
-                priority=10,
-            ),
-            AgentTask(
-                reviewer_id,
-                AgentRole.REVIEWER,
-                (
-                    f"Review the proposed investigation for objective {target}. "
-                    "Check safety, scope, testability, and whether the next step "
-                    "could accidentally grant mutation/tool capabilities. "
-                    "Return a concise independent review."
-                ),
-                resources=frozenset({"self-improvement:safety"}),
-                depends_on=(manager_id, debugger_id),
-            ),
+            resources=frozenset({"self-improvement:management"}),
         )
 
         try:
-            scheduled = self._scheduler.run(tasks)
+            manager_run = self._scheduler.run((manager_task,))
         except Exception as exc:
             return DistributedSelfImprovementResult(
                 (),
@@ -134,9 +108,103 @@ class DistributedSelfImprovementLoop:
                 },
                 None,
             )
+        manager_results = tuple(manager_run.results)
+        if not manager_run.success:
+            return DistributedSelfImprovementResult(
+                manager_results,
+                False,
+                {
+                    "analysis_success": False,
+                    "analysis_agent_count": len(manager_results),
+                    "analysis:manager:success": False,
+                    "analysis:manager:summary": manager_results[-1].summary[:2000] if manager_results else "",
+                    **dict(evidence or {}),
+                },
+                None,
+            )
 
-        analysis_results = tuple(scheduled.results)
-        analysis_success = scheduled.success
+        manager_summary = manager_results[-1].summary[:2000]
+        debugger_task = AgentTask(
+            debugger_id,
+            AgentRole.DEBUGGER,
+            (
+                f"Analyze the root cause of failed task {failed_task}. "
+                f"Runtime error: {failure}. "
+                f"Manager analysis: {manager_summary}. "
+                "Identify one reproducible cause and the smallest test-backed "
+                "corrective direction. Do not modify files."
+            ),
+            resources=frozenset({f"runtime:{failed_task}"}),
+            depends_on=(manager_task.task_id,),
+            priority=10,
+        )
+        try:
+            debugger_run = self._scheduler.run((debugger_task,))
+        except Exception as exc:
+            return DistributedSelfImprovementResult(
+                manager_results,
+                False,
+                {
+                    "analysis_success": False,
+                    "analysis_agent_count": len(manager_results),
+                    "analysis_error": f"{type(exc).__name__}: {exc}",
+                    "analysis:manager:summary": manager_summary,
+                    **dict(evidence or {}),
+                },
+                None,
+            )
+        debugger_results = tuple(debugger_run.results)
+        analysis_results = manager_results + debugger_results
+        if not debugger_run.success:
+            return DistributedSelfImprovementResult(
+                analysis_results,
+                False,
+                {
+                    "analysis_success": False,
+                    "analysis_agent_count": len(analysis_results),
+                    "analysis:manager:summary": manager_summary,
+                    "analysis:debugger:success": False,
+                    "analysis:debugger:summary": debugger_results[-1].summary[:2000] if debugger_results else "",
+                    **dict(evidence or {}),
+                },
+                None,
+            )
+
+        debugger_summary = debugger_results[-1].summary[:2000]
+        reviewer_task = AgentTask(
+            reviewer_id,
+            AgentRole.REVIEWER,
+            (
+                f"Review the investigation for objective {target}. "
+                f"Manager analysis: {manager_summary}. "
+                f"Debugger analysis: {debugger_summary}. "
+                "Check safety, scope, testability, and whether the next step "
+                "could accidentally grant mutation/tool capabilities. "
+                "Return a concise independent review."
+            ),
+            resources=frozenset({"self-improvement:safety"}),
+            depends_on=(manager_task.task_id, debugger_task.task_id),
+        )
+        try:
+            reviewer_run = self._scheduler.run((reviewer_task,))
+        except Exception as exc:
+            return DistributedSelfImprovementResult(
+                analysis_results,
+                False,
+                {
+                    "analysis_success": False,
+                    "analysis_agent_count": len(analysis_results),
+                    "analysis_error": f"{type(exc).__name__}: {exc}",
+                    "analysis:manager:summary": manager_summary,
+                    "analysis:debugger:summary": debugger_summary,
+                    **dict(evidence or {}),
+                },
+                None,
+            )
+        reviewer_results = tuple(reviewer_run.results)
+        analysis_results = analysis_results + reviewer_results
+        analysis_success = reviewer_run.success
+
         analysis_evidence: dict[str, object] = {
             "analysis_success": analysis_success,
             "analysis_agent_count": len(analysis_results),
