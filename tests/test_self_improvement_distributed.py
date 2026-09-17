@@ -20,6 +20,13 @@ def test_distributed_self_improvement_runs_manager_debugger_reviewer_then_contro
     loop = DistributedSelfImprovementLoop(
         executor=DistributedAIExecutor(model_call=fake_model),
         control_tower=tower,
+        candidate_evidence_provider=lambda candidate: {
+            "accuracy": 1.0,
+            "stability": 1.0,
+            "efficiency": 1.0,
+            "safety": 1.0,
+            "candidate_test": f"evaluated:{candidate.candidate_id}",
+        },
     )
 
     result = loop.run(
