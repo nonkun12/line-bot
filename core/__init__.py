@@ -3,6 +3,7 @@
 from .agents import Agent, AgentRegistry, AgentRequest, AgentResponse
 from .agent_specs import AgentLifecycle, AgentSpec, AgentSpecRegistry
 from .agent_versioning import AgentVersion, AgentVersionRegistry
+from .advisory_ai import DEFAULT_ADVISORY_MODEL, generate_advisory_text
 from .agent_maintenance import AgentMaintenance, MaintenanceFinding, MaintenanceSeverity
 from .agent_governance import AgentGovernance, AgentGovernanceRecord
 from .agent_handoff import AgentHandoff, HandoffStatus
@@ -33,6 +34,7 @@ __all__ = [
     "Agent", "AgentRegistry", "AgentRequest", "AgentResponse",
     "AgentLifecycle", "AgentSpec", "AgentSpecRegistry",
     "AgentVersion", "AgentVersionRegistry", "AgentMaintenance",
+    "DEFAULT_ADVISORY_MODEL", "generate_advisory_text",
     "MaintenanceFinding", "MaintenanceSeverity", "AgentGovernance", "AgentGovernanceRecord",
     "AgentHandoff", "HandoffStatus", "AgentHandoffCoordinator", "HandoffDecision",
     "CreatorAgent", "CriticAgent", "CreatorCriticLoop", "ImprovementCandidate",
