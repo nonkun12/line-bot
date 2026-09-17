@@ -270,6 +270,11 @@ def system_status():
             "label": "統合AI / Management",
             "detail": "タスク分解・専門AIへの配分・結果回収・有界再指示",
         },
+        "general": {
+            "status": "online",
+            "label": "General AI",
+            "detail": "汎用会話・フォールバック",
+        },
         "english_learning": {
             "status": "online",
             "label": "英語学習AI",
