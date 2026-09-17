@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from core.agents import AgentRequest
-from core.management_contract import ManagementDecision, ManagementRequest, Specialist
+from core.management_contract import ManagementDecision, ManagementRequest
 from core.management_ai import ManagementPlan, ManagementPlanner
 from core.multi_agent import AgentResult, AgentRole, AgentTask
 from core.management_bridge import (
@@ -60,7 +60,7 @@ def test_run_management_request_collects_specialist_results(monkeypatch) -> None
     )
     monkeypatch.setattr(
         "core.management_bridge.build_registry_executors",
-        lambda registry, request: {
+        lambda registry, request, **kwargs: {
             AgentRole.NEWS: FakeExecutor(AgentRole.NEWS),
             AgentRole.STOCKS: FakeExecutor(AgentRole.STOCKS),
         },
@@ -84,7 +84,6 @@ def test_run_management_request_returns_none_for_ineligible_request() -> None:
     ) is None
 
 
-
 def test_run_management_request_falls_back_when_management_execution_fails(monkeypatch) -> None:
     monkeypatch.setattr(
         "core.management_bridge.build_core_agent_registry",
@@ -92,7 +91,7 @@ def test_run_management_request_falls_back_when_management_execution_fails(monke
     )
     monkeypatch.setattr(
         "core.management_bridge.build_registry_executors",
-        lambda registry, request: {
+        lambda registry, request, **kwargs: {
             AgentRole.NEWS: FakeExecutor(AgentRole.NEWS),
             AgentRole.STOCKS: FakeExecutor(AgentRole.STOCKS),
         },
@@ -107,7 +106,6 @@ def test_run_management_request_falls_back_when_management_execution_fails(monke
         "AIニュースと株価を調べて",
         planner=BrokenPlanner(),
     ) is None
-
 
 
 def test_ai_gateway_uses_management_bridge_for_multi_specialist_request(monkeypatch) -> None:
