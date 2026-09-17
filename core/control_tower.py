@@ -7,10 +7,10 @@ the real-model Creator/Critic pair. It never applies model output directly.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Callable, Mapping
 
 from .agent_runtime import RuntimeReport
-from .creator_critic import DuelResult, CreatorCriticLoop
+from .creator_critic import DuelResult, CreatorCriticLoop, ImprovementCandidate
 from .multi_agent import AgentTask
 from .self_improvement import ImprovementProposal, ImprovementSignal, SelfImprovementEngine
 
@@ -52,6 +52,7 @@ class ControlTower:
         *,
         objective: str | None = None,
         evidence: Mapping[str, object] | None = None,
+        candidate_evidence_provider: Callable[[ImprovementCandidate], Mapping[str, object]] | None = None,
     ) -> ControlTowerDecision:
         """Observe one report and optionally evaluate a generated improvement.
 
@@ -67,9 +68,20 @@ class ControlTower:
         if not target:
             return ControlTowerDecision(signals, proposal)
 
-        measured = _report_evidence(report, evidence)
+        if candidate_evidence_provider is None:
+            # Never treat the original runtime report as fresh evidence for a new candidate.
+            return ControlTowerDecision(signals, proposal)
 
-        def evidence_provider(_candidate: object) -> Mapping[str, object]:
+        baseline = _report_evidence(report, evidence)
+
+        def evidence_provider(candidate: ImprovementCandidate) -> Mapping[str, object]:
+            fresh = candidate_evidence_provider(candidate)
+            if not isinstance(fresh, Mapping):
+                raise TypeError("candidate evidence provider must return a mapping")
+            measured = dict(baseline)
+            measured.update(dict(fresh))
+            measured["candidate_id"] = candidate.candidate_id
+            measured["candidate_evaluated"] = True
             return measured
 
         duel = self.creator_critic.run(target, evidence_provider)
