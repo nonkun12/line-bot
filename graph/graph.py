@@ -22,6 +22,7 @@ from agents.english.node import english_learning_agent_node
 from agents.stocks.node import agent as stocks_agent
 from agents.news.node import agent as ai_news_agent
 from agents.voice.node import agent as voice_agent
+from agents.jobs.node import agent as job_seeking_agent
 from dev_notes.wrappers.graph_node_wrapper import with_execution_logging
 from dev_notes.factory import get_default_adapter
 
@@ -96,6 +97,7 @@ def finalize_node(state: AgentState) -> AgentState:
             ("stocks", "Stocks"),
             ("ai_news", "AI NEWS"),
             ("voice", "Voice"),
+            ("job_seeking", "求職AI"),
             ("app_development", "App Development"),
             ("github", "GitHub"),
         ):
@@ -105,7 +107,11 @@ def finalize_node(state: AgentState) -> AgentState:
                     text = result.get("text") or result.get("summary") or str(result)
                 else:
                     text = str(result)
-                lines.append(f"【{label}】\n{text}" if label != "Voice" and label != "English" and label != "Stocks" and label != "AI NEWS" else text)
+                lines.append(
+                    f"【{label}】\n{text}"
+                    if label not in {"Voice", "English", "Stocks", "AI NEWS", "求職AI"}
+                    else text
+                )
 
         for key, label in (
             ("fix", "Fix"),
@@ -116,7 +122,10 @@ def finalize_node(state: AgentState) -> AgentState:
         ):
             result = results.get(key)
             if result:
-                lines.append(f"【{label}】\n{result if not isinstance(result, dict) else result.get('summary', result.get('text', str(result)))}")
+                lines.append(
+                    f"【{label}】\n"
+                    f"{result if not isinstance(result, dict) else result.get('summary', result.get('text', str(result)))}"
+                )
 
         reply = "\n\n".join(lines) if lines else "対応できません"
 
@@ -151,6 +160,7 @@ def build_graph():
     builder.add_node("stocks_agent", _agent_node(stocks_agent))
     builder.add_node("ai_news_agent", _agent_node(ai_news_agent))
     builder.add_node("voice_agent", _agent_node(voice_agent))
+    builder.add_node("jobs_agent", _agent_node(job_seeking_agent))
 
     builder.add_node("fix_agent", fix_agent_node)
     builder.add_node("patch_generate_agent", patch_generate_node)
@@ -178,11 +188,16 @@ def build_graph():
             "stocks_agent": "stocks_agent",
             "ai_news_agent": "ai_news_agent",
             "voice_agent": "voice_agent",
+            "jobs_agent": "jobs_agent",
             "fallback_agent": "fallback_agent",
         },
     )
 
-    builder.add_conditional_edges("debug_agent", route_from_debug, {"fix_agent": "fix_agent", "finalizer": "finalizer"})
+    builder.add_conditional_edges(
+        "debug_agent",
+        route_from_debug,
+        {"fix_agent": "fix_agent", "finalizer": "finalizer"},
+    )
 
     for node in (
         "app_development_agent",
@@ -196,6 +211,7 @@ def build_graph():
         "stocks_agent",
         "ai_news_agent",
         "voice_agent",
+        "jobs_agent",
     ):
         builder.add_edge(node, "finalizer")
 
