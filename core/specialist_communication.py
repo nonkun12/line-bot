@@ -8,6 +8,7 @@ trigger execution by themselves.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from .agent_communication import AgentMessage, AgentMessageBus, AgentMessageCoordinator
@@ -148,4 +149,41 @@ class SpecialistCommunicationGateway:
         return value
 
 
-__all__ = ["SpecialistCommunicationError", "SpecialistCommunicationGateway"]
+@dataclass(frozen=True)
+class SpecialistCommunicationContext:
+    """Task-scoped façade exposed to one specialist without exposing the bus."""
+
+    gateway: SpecialistCommunicationGateway
+    sender: AgentRole
+    correlation_id: str
+    task_id: str
+
+    def send(
+        self,
+        *,
+        recipient: AgentRole | str,
+        message_id: str,
+        message_type: str,
+        content: str,
+        context: Mapping[str, Any] | None = None,
+    ) -> AgentMessage:
+        return self.gateway.send(
+            sender=self.sender,
+            recipient=recipient,
+            message_id=message_id,
+            message_type=message_type,
+            content=content,
+            correlation_id=self.correlation_id,
+            task_id=self.task_id,
+            context=context,
+        )
+
+    def receive(self, *, limit: int = 20) -> tuple[AgentMessage, ...]:
+        return self.gateway.receive(self.sender, limit=limit)
+
+
+__all__ = [
+    "SpecialistCommunicationContext",
+    "SpecialistCommunicationError",
+    "SpecialistCommunicationGateway",
+]
