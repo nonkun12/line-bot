@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from agents.stocks.intents import is_stock_intent
 from core.agents import AgentRequest, AgentResponse
-from core.stocks import StockHistoryPoint, analyze_history
+from core.stocks import StockHistoryPoint, analyze_history, compare_analyses
 
 
 _TICKER_RE = re.compile(
@@ -22,6 +22,7 @@ _NATURAL_TICKER_RE = re.compile(
     r"(?=\s*(?:の)?\s*(?:株価|株|price))",
     re.IGNORECASE,
 )
+_COMPARE_RE = re.compile(r"(比較|compare)\s+(.+)", re.IGNORECASE)
 _ANALYSIS_TICKER_RE = re.compile(
     r"(?<![A-Za-z0-9])([A-Za-z]{2,6}(?:\.[A-Za-z]{1,3})?|\d{4})"
     r"\s*(?:の|を)?\s*(?:分析|テクニカル|指標|チャート|analy(?:ze|sis)|technical)",
@@ -156,6 +157,21 @@ class StocksAgent:
         return currency, points
 
     @classmethod
+    def _comparison_reply(cls, comparison) -> str:
+        lines = ["📊 株価AI・複数銘柄比較"]
+        for analysis in comparison.analyses:
+            ret = f"{analysis.return_20d_pct:+.2f}%" if analysis.return_20d_pct is not None else "データ不足"
+            rsi = f"{analysis.rsi_14:.1f}" if analysis.rsi_14 is not None else "-"
+            vol = f"{analysis.volatility_20_annualized_pct:.1f}%" if analysis.volatility_20_annualized_pct is not None else "-"
+            lines.append(
+                f"{cls._display_ticker(analysis.ticker)}: 20日リターン {ret} / RSI14 {rsi} / 年率ボラ {vol}"
+            )
+        lines.append("")
+        lines.append("※同じ観測指標を横並びにした記述的比較です。投資判断や将来リターンを示すものではありません。")
+        lines.append("市場データ: Yahoo Finance")
+        return "\n".join(lines)
+
+    @classmethod
     def _analysis_reply(cls, analysis, currency: str) -> str:
         unit = f" {currency}" if currency else ""
         lines = [
@@ -188,6 +204,39 @@ class StocksAgent:
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         original = request.message.strip()
+
+        compare_match = _COMPARE_RE.search(original)
+        if compare_match:
+            raw_symbols = re.findall(
+                r"(?<![A-Za-z0-9])(?:\d{4}|[A-Za-z]{2,6}(?:\.[A-Za-z]{1,3})?)(?![A-Za-z0-9])",
+                compare_match.group(2),
+            )
+            tickers = tuple(dict.fromkeys(self.normalize_ticker(value) for value in raw_symbols))[:5]
+            if len(tickers) < 2:
+                return AgentResponse(
+                    text="📊 複数銘柄比較には2〜5銘柄を指定してください。例: 「比較 AAPL MSFT GOOGL」",
+                    metadata={"feature": self.name, "status": "online", "mode": "compare", "tickers": tickers},
+                )
+            analyses = []
+            for ticker in tickers:
+                try:
+                    _currency, history = self._fetch_history(ticker)
+                    analysis = analyze_history(ticker, history)
+                except Exception:
+                    analysis = None
+                if analysis is not None:
+                    analyses.append(analysis)
+            if len(analyses) < 2:
+                return AgentResponse(
+                    text="📊 比較に必要な履歴データを2銘柄以上取得できませんでした。価格を推測して比較することはしません。",
+                    metadata={"feature": self.name, "status": "degraded", "mode": "compare", "tickers": tickers},
+                )
+            comparison = compare_analyses(analyses)
+            return AgentResponse(
+                text=self._comparison_reply(comparison),
+                metadata={"feature": self.name, "status": "online", "mode": "compare", "tickers": tickers},
+            )
+
         wants_analysis = bool(_ANALYSIS_TICKER_RE.search(original) or any(
             token in original.casefold()
             for token in ("テクニカル", "チャート", "分析して", "technical analysis")
