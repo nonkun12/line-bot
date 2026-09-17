@@ -192,10 +192,11 @@ def test_runtime_can_explicitly_run_distributed_self_improvement_cycle() -> None
         prompts.append(prompt)
         return "bounded analysis"
 
-    runtime = MultiAgentRuntime({}, control_tower=ControlTower())
+    tower = ControlTower()
+    runtime = MultiAgentRuntime({}, control_tower=tower)
     loop = DistributedSelfImprovementLoop(
         executor=DistributedAIExecutor(model_call=fake_model),
-        control_tower=runtime._control_tower,
+        control_tower=tower,
     )
 
     result = runtime.run_distributed_self_improvement_cycle(
