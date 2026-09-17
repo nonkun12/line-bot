@@ -138,7 +138,14 @@ class CriticAgent:
             + 0.15 * metrics["efficiency"]
             + 0.25 * metrics["safety"]
         )
-        passed = metrics["safety"] >= 0.8 and metrics["accuracy"] >= 0.6 and metrics["stability"] >= 0.6
+        # A candidate must have fresh, candidate-specific execution evidence.
+        candidate_evaluated = observed.get("candidate_evaluated") is True
+        passed = (
+            candidate_evaluated
+            and metrics["safety"] >= 0.8
+            and metrics["accuracy"] >= 0.6
+            and metrics["stability"] >= 0.6
+        )
         return CriticEvaluation(
             candidate_id=candidate.candidate_id,
             passed=passed,

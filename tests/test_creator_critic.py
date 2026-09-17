@@ -18,13 +18,45 @@ def test_critic_uses_external_evidence_and_fails_closed_on_missing_metrics():
 
     critic = CriticAgent(model)
     candidate = ImprovementCandidate("c1", "objective", "proposal")
-    result = critic.evaluate(candidate, {"accuracy": 0.9, "stability": 0.8, "efficiency": 0.5, "safety": 1.0})
+    result = critic.evaluate(candidate, {"accuracy": 0.9, "stability": 0.8, "efficiency": 0.5, "safety": 1.0, "candidate_evaluated": True})
     assert result.passed is True
     assert result.score == 0.84
     assert "0.9" in seen["prompt"]
 
     missing = critic.evaluate(candidate, {})
     assert missing.passed is False
+    assert missing.score == 0.0
+
+
+def test_critic_requires_candidate_specific_evidence_even_with_high_metrics():
+    critic = CriticAgent(lambda prompt: "looks good")
+    candidate = ImprovementCandidate("c2", "objective", "proposal")
+    result = critic.evaluate(
+        candidate,
+        {"accuracy": 1.0, "stability": 1.0, "efficiency": 1.0, "safety": 1.0},
+    )
+    assert result.score == 1.0
+    assert result.passed is False
+
+
+def test_duel_uses_fresh_evidence_for_each_candidate():
+    seen = []
+
+    creator = CreatorAgent(lambda prompt: "candidate")
+    critic = CriticAgent(lambda prompt: "evaluation")
+    loop = CreatorCriticLoop(creator, critic, max_iterations=3)
+
+    def evidence_provider(candidate):
+        seen.append(candidate.candidate_id)
+        if len(seen) == 1:
+            return {"accuracy": 0.0, "stability": 0.0, "efficiency": 0.5, "safety": 1.0, "candidate_evaluated": True}
+        return {"accuracy": 1.0, "stability": 1.0, "efficiency": 1.0, "safety": 1.0, "candidate_evaluated": True}
+
+    results = loop.run("improve reliability", evidence_provider)
+
+    assert seen == ["creator-1", "creator-2"]
+    assert len(results) == 2
+    assert results[-1].evaluation.passed is True
     assert missing.score == 0.0
 
 

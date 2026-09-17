@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Mapping
 
-from ai_client import generate_chat_completion
+from .advisory_ai import generate_advisory_text
 
 from .multi_agent import AgentExecutor, AgentResult, AgentRole, AgentTask
 
@@ -47,26 +47,18 @@ class AgentPromptPolicy:
 
 
 def groq_model_call(prompt: str) -> str:
-    """Call the existing application AI boundary and return assistant text only."""
-    response = generate_chat_completion(
+    """Call the restricted advisory boundary and return assistant text only."""
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError("prompt is required")
+    return generate_advisory_text(
         messages=[
-            {
-                "role": "system",
-                "content": AgentPromptPolicy().system_prompt,
-            },
+            {"role": "system", "content": AgentPromptPolicy().system_prompt},
             {"role": "user", "content": prompt},
         ],
         temperature=0.2,
         max_tokens=1200,
     )
-    choices = getattr(response, "choices", None) or []
-    if not choices:
-        raise DistributedModelExecutionError("AI provider returned no choices")
-    message = getattr(choices[0], "message", None)
-    text = getattr(message, "content", None)
-    if not isinstance(text, str) or not text.strip():
-        raise DistributedModelExecutionError("AI provider returned empty content")
-    return text.strip()
+
 
 
 class DistributedAIExecutor(AgentExecutor):
