@@ -44,7 +44,7 @@ def test_dashboard_notes_api_success(auth_headers):
     mock_call.assert_called_once_with("list_notes", {"user_id": TEST_USER_ID})
 
 
-def test_dashboard_system_exposes_four_feature_readiness(auth_headers):
+def test_dashboard_system_exposes_distributed_ai_readiness(auth_headers):
     client = app.test_client()
     with patch("routes.dashboard.call_mcp_tool", return_value="[]"):
         response = client.get("/api/dashboard/system", headers=auth_headers)
@@ -52,6 +52,8 @@ def test_dashboard_system_exposes_four_feature_readiness(auth_headers):
     data = response.get_json()
     assert data["ok"] is True
     features = data["features"]
+    assert features["management_ai"]["status"] == "online"
+    assert features["general"]["status"] == "online"
     assert features["english_learning"]["status"] == "online"
     assert "MVP" in features["english_learning"]["detail"]
     assert features["stocks"]["status"] == "online"
@@ -59,6 +61,9 @@ def test_dashboard_system_exposes_four_feature_readiness(auth_headers):
     assert features["ai_news"]["status"] == "online"
     assert "RSS" in features["ai_news"]["detail"]
     assert features["voice"]["status"] == "online"
+    assert features["jobs"]["status"] == "planned"
+    assert data["distributed_ai"]["message_bus"] == "enabled"
+    assert len(data["distributed_ai"]["specialists"]) == 6
 
 
 def test_dashboard_oracle_n8n_status_handles_missing_payload():
