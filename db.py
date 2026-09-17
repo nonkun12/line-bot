@@ -81,7 +81,6 @@ def init_db():
         ON jobs(parent_job_id)
         """)
         conn.execute("""
-        conn.execute("""
         CREATE TABLE IF NOT EXISTS stock_watchlist(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL,
@@ -95,6 +94,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_stock_watchlist_user_id
         ON stock_watchlist(user_id)
         """)
+        conn.execute("""
         CREATE TABLE IF NOT EXISTS job_checkpoints(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             job_id INTEGER NOT NULL,
