@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterable
+from typing import Iterable, Protocol
 
 
 class JobApplicationStage(str, Enum):
@@ -37,6 +37,13 @@ class JobPosting:
     skills: tuple[str, ...] = ()
     url: str = ""
     source: str = ""
+
+
+class JobSearchProvider(Protocol):
+    """External job-source contract; implementations supply real postings."""
+
+    def search(self, criteria: JobSearchCriteria, limit: int = 20) -> Iterable[JobPosting]:
+        ...
 
 
 @dataclass(frozen=True)
@@ -115,3 +122,18 @@ def score_job(posting: JobPosting, criteria: JobSearchCriteria) -> JobScore:
 
 def rank_jobs(postings: Iterable[JobPosting], criteria: JobSearchCriteria) -> tuple[JobScore, ...]:
     return tuple(sorted((score_job(p, criteria) for p in postings), key=lambda item: (-item.total, item.job_id)))
+
+
+def search_and_rank_jobs(
+    provider: JobSearchProvider,
+    criteria: JobSearchCriteria,
+    limit: int = 20,
+) -> tuple[JobScore, ...]:
+    """Search a trusted provider and rank only returned postings; fail closed on provider errors."""
+    if limit < 1:
+        raise ValueError("limit must be positive")
+    try:
+        postings = provider.search(criteria, limit=limit)
+        return rank_jobs(tuple(postings)[:limit], criteria)
+    except Exception:
+        return ()
