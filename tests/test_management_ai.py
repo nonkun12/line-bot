@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.agent_communication import AgentMessage, AgentMessageBus
+from core.agent_communication import AgentMessage, AgentMessageBus, AgentMessageCoordinator
 from core.management_ai import (
     ManagementAI,
     ManagementCycleRun,
@@ -243,3 +243,25 @@ def test_management_ai_closed_loop_is_bounded() -> None:
 
     assert len(cycle.rounds) == 2
     assert cycle.stopped_reason == "bounded round limit reached"
+
+def test_agent_message_coordinator_allows_specialist_collaboration_but_blocks_control_agents() -> None:
+    assert AgentMessageCoordinator.validate_route("stocks", "news") == ()
+    assert AgentMessageCoordinator.validate_route("management", "stocks") == ()
+    assert AgentMessageCoordinator.validate_route("stocks", "management") == ()
+    assert AgentMessageCoordinator.validate_route("integrator", "stocks")
+    assert AgentMessageCoordinator.validate_route("stocks", "stocks")
+
+
+def test_agent_message_bus_bounds_message_size_and_route() -> None:
+    bus = AgentMessageBus()
+    with pytest.raises(ValueError, match="content exceeds"):
+        bus.send(
+            AgentMessage(
+                message_id="big",
+                sender="stocks",
+                recipient="news",
+                message_type="task",
+                content="x" * 4001,
+                safety_constraints=("result-only",),
+            )
+        )
