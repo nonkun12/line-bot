@@ -15,6 +15,7 @@ from .multi_agent import AgentResult, AgentRole, AgentTask, plan_batches
 if TYPE_CHECKING:
     from .control_tower import ControlTower, ControlTowerDecision
     from .self_improvement import SelfImprovementEngine
+    from .self_improvement_distributed import DistributedSelfImprovementLoop, DistributedSelfImprovementResult
 
 
 class RuntimeExecutor(Protocol):
@@ -116,6 +117,32 @@ class MultiAgentRuntime:
             evidence=evidence,
         )
         return self._last_control_tower_decision
+
+    def run_distributed_self_improvement_cycle(
+        self,
+        report: RuntimeReport,
+        *,
+        objective: str | None = None,
+        evidence: Mapping[str, object] | None = None,
+        loop: DistributedSelfImprovementLoop | None = None,
+    ) -> DistributedSelfImprovementResult:
+        """Run the read-only distributed self-improvement analysis stage explicitly.
+
+        This method never mutates the repository. If no loop is supplied, it
+        constructs the real-model distributed loop with the current Control Tower.
+        """
+        from .self_improvement_distributed import DistributedSelfImprovementLoop
+
+        active_loop = loop or DistributedSelfImprovementLoop(
+            control_tower=self._control_tower,
+        )
+        result = active_loop.run(
+            report,
+            objective=objective,
+            evidence=evidence,
+        )
+        self._last_control_tower_decision = result.decision
+        return result
 
     def run(self, tasks: Sequence[AgentTask]) -> RuntimeReport:
         """Execute one static plan and fail closed on any unsafe result."""
