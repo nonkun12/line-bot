@@ -12,6 +12,8 @@ def test_daily_self_improvement_workflow_is_scheduled_and_review_first():
     assert "NIGHTLY_AUTOFIX: 'true'" in text
     assert "AUTO_DEPLOY: 'false'" in text
     assert "daily self-improvement" in text
+    assert "id: self_improvement" in text
+    assert "steps.self_improvement.outcome" in text
     assert "gh pr create" in text
     assert "merge" in text.lower()
     assert "deploy" in text.lower()
