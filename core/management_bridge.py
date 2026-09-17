@@ -78,15 +78,20 @@ class _CandidateRestrictedPlanner(ManagementPlanner):
         feedback: Sequence[str] = (),
     ) -> ManagementPlan:
         plan = self._planner.plan(request, decision, feedback)
-        unexpected = [
-            task.role.value
-            for task in plan.tasks
-            if task.role not in self._allowed_roles
-        ]
+        planned_roles = {task.role for task in plan.tasks}
+        unexpected = sorted(
+            {task.role.value for task in plan.tasks if task.role not in self._allowed_roles}
+        )
+        missing = sorted(role.value for role in self._allowed_roles if role not in planned_roles)
         if unexpected:
             raise ManagementPlanningError(
                 "management plan requested an undetected specialist role: "
-                + ", ".join(sorted(set(unexpected)))
+                + ", ".join(unexpected)
+            )
+        if missing:
+            raise ManagementPlanningError(
+                "management plan omitted detected specialist role: "
+                + ", ".join(missing)
             )
         return plan
 
