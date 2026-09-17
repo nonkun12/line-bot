@@ -101,13 +101,13 @@ class StaticPlanner(ManagementPlanner):
     ) -> ManagementPlan:
         tasks = (
             AgentTask(
-                "voice",
+                "voice-task",
                 AgentRole.VOICE,
                 "Prepare a voice response.",
                 resources=frozenset({"voice"}),
             ),
             AgentTask(
-                "news",
+                "news-task",
                 AgentRole.NEWS,
                 "Collect news summaries.",
                 resources=frozenset({"news"}),
@@ -136,12 +136,13 @@ def test_management_ai_dispatches_independent_specialists_and_collects_results()
     assert result.success
     assert result.plan.parallel_safe
     assert result.distributed.success
-    assert set(voice.calls) == {"voice"}
-    assert set(news.calls) == {"news"}
+    assert set(voice.calls) == {"voice-task"}
+    assert set(news.calls) == {"news-task"}
 
     messages = manager.message_bus.receive("management")
     assert {m.message_type for m in messages} == {"task_result"}
     assert {m.sender for m in messages} == {"voice", "news"}
+    assert {m.context["task_id"] for m in messages} == {"voice-task", "news-task"}
 
 
 def test_parallel_management_requires_explicit_isolation() -> None:
