@@ -18,9 +18,11 @@ _NATURAL_TICKER_RE = re.compile(
     r"(?=\s*(?:の)?\s*(?:株価|株|price))",
     re.IGNORECASE,
 )
+_COMPANY_TICKERS = (
+    (re.compile(r"(?:トヨタ(?:自動車)?|toyota)", re.IGNORECASE), "7203.T", "トヨタ"),
+)
 _DEFAULT_TIMEOUT_SEC = 8
 _JST = ZoneInfo("Asia/Tokyo")
-
 
 _MARKET_STATE_LABELS = {
     "REGULAR": "取引時間中",
@@ -50,6 +52,17 @@ class StocksAgent:
     def _display_ticker(ticker: str) -> str:
         return ticker[:-2] if ticker.endswith(".T") else ticker
 
+    @classmethod
+    def _resolve_ticker(cls, message: str) -> tuple[str, str] | None:
+        match = _TICKER_RE.search(message) or _NATURAL_TICKER_RE.search(message)
+        if match:
+            ticker = cls.normalize_ticker(match.group(1))
+            return ticker, cls._display_ticker(ticker)
+        for pattern, ticker, label in _COMPANY_TICKERS:
+            if pattern.search(message):
+                return ticker, label
+        return None
+
     @staticmethod
     def _format_market_time(value: object) -> str | None:
         if not isinstance(value, (int, float)):
@@ -67,7 +80,6 @@ class StocksAgent:
         request = urllib.request.Request(url, headers={"User-Agent": "LINE-AI-Secretary/1.0"})
         with urllib.request.urlopen(request, timeout=_DEFAULT_TIMEOUT_SEC) as response:
             payload = json.loads(response.read().decode("utf-8"))
-
         result = payload.get("chart", {}).get("result")
         if not isinstance(result, list) or not result or not isinstance(result[0], dict):
             raise ValueError("quote result unavailable")
@@ -103,30 +115,27 @@ class StocksAgent:
         }
 
     def handle(self, request: AgentRequest) -> AgentResponse:
-        match = _TICKER_RE.search(request.message)
-        if not match:
-            match = _NATURAL_TICKER_RE.search(request.message)
-        if not match:
+        resolved = self._resolve_ticker(request.message)
+        if not resolved:
             return AgentResponse(
                 text=(
                     "📈 株価Agentを起動しました。\n\n"
                     "銘柄コードまたはTickerを含めて送ってください。"
-                    "例: 「銘柄 7203」「ticker AAPL」「AAPLの株価」\n"
+                    "例: 「トヨタの株価」「銘柄 7203」「ticker AAPL」\n"
                     "実データ取得に対応しています。"
                 ),
                 metadata={"feature": self.name, "status": "online", "ticker": None},
             )
 
-        requested = match.group(1)
-        ticker = self.normalize_ticker(requested)
+        ticker, display_name = resolved
         try:
             quote = self._fetch_quote(ticker)
         except Exception:
             return AgentResponse(
                 text=(
-                    f"📈 {self._display_ticker(ticker)} の株価を取得できませんでした。\n"
+                    f"📈 {display_name}（{self._display_ticker(ticker)}）の株価を取得できませんでした。\n"
                     "市場データ源が一時的に利用できない可能性があります。\n"
-                    "価格を推測して表示することはしません。"
+                    "価格を推測して表示することはしません."
                 ),
                 metadata={"feature": self.name, "status": "degraded", "ticker": self._display_ticker(ticker)},
             )
@@ -141,7 +150,6 @@ class StocksAgent:
             change_text = f"\n前日比: {sign}{change:.2f}{unit}"
             if isinstance(change_pct, (int, float)):
                 change_text += f" ({sign}{change_pct:.2f}%)"
-
         market_state = quote.get("market_state")
         state_label = _MARKET_STATE_LABELS.get(str(market_state), "")
         state_text = f"\n市場状態: {state_label}" if state_label else ""
@@ -149,12 +157,12 @@ class StocksAgent:
 
         return AgentResponse(
             text=(
-                f"📈 {quote['ticker']}\n"
+                f"📈 {display_name}（{quote['ticker']}）\n"
                 f"現在値: {quote['price']:.2f}{unit}"
                 f"{change_text}{state_text}{time_text}\n"
                 "市場データ: Yahoo Finance"
             ),
-            metadata={"feature": self.name, "status": "online", **quote},
+            metadata={"feature": self.name, "status": "online", "company": display_name, **quote},
         )
 
 
