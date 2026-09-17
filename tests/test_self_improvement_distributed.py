@@ -45,6 +45,10 @@ def test_distributed_self_improvement_runs_manager_debugger_reviewer_then_contro
     assert len(prompts) == 4
     assert any("Role: debugger" in prompt for prompt in prompts)
     assert any("Role: reviewer" in prompt for prompt in prompts)
+    debugger_prompt = next(prompt for prompt in prompts if "Role: debugger" in prompt)
+    reviewer_prompt = next(prompt for prompt in prompts if "Role: reviewer" in prompt)
+    assert "Manager analysis: bounded analysis" in debugger_prompt
+    assert "Debugger analysis: bounded analysis" in reviewer_prompt
     assert result.evidence["analysis_success"] is True
 
 
