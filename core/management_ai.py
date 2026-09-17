@@ -75,6 +75,22 @@ class ManagementRun:
         return self.distributed.success
 
 
+@dataclass(frozen=True)
+class ManagementCycleRun:
+    rounds: tuple[ManagementRun, ...]
+    stopped_reason: str
+
+    @property
+    def final_run(self) -> ManagementRun:
+        if not self.rounds:
+            raise ValueError("management cycle has no rounds")
+        return self.rounds[-1]
+
+    @property
+    def success(self) -> bool:
+        return all(run.success for run in self.rounds)
+
+
 class ManagementPlanner(Protocol):
     def plan(self, request: ManagementRequest, decision: ManagementDecision) -> ManagementPlan:
         ...
