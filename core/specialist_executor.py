@@ -1,7 +1,7 @@
 """Adapter from existing Core agents to the distributed AgentExecutor contract.
 
 The adapter preserves the existing AgentRegistry and channel-neutral AgentRequest
-while allowing the new management layer to delegate bounded specialist tasks.
+while allowing the management layer to delegate bounded specialist tasks.
 """
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import Mapping
 
 from .agents import Agent, AgentRegistry, AgentRequest
 from .multi_agent import AgentExecutor, AgentResult, AgentRole, AgentTask
+from .specialist_communication import SpecialistCommunicationContext, SpecialistCommunicationGateway
 
 
 ROLE_TO_AGENT_NAME: Mapping[AgentRole, str] = {
@@ -27,6 +28,7 @@ class SpecialistExecutorFactory:
     """Build request-bound distributed executors from the existing registry."""
 
     registry: AgentRegistry
+    communication_gateway: SpecialistCommunicationGateway | None = None
 
     def build(self, request: AgentRequest) -> dict[AgentRole, AgentExecutor]:
         if not isinstance(request, AgentRequest):
@@ -37,16 +39,27 @@ class SpecialistExecutorFactory:
                 agent = self.registry.get(name)
             except KeyError:
                 continue
-            executors[role] = RegistrySpecialistExecutor(agent, request)
+            executors[role] = RegistrySpecialistExecutor(
+                agent,
+                request,
+                communication_gateway=self.communication_gateway,
+            )
         return executors
 
 
 class RegistrySpecialistExecutor(AgentExecutor):
     """Execute one task through an existing channel-neutral Core Agent."""
 
-    def __init__(self, agent: Agent, request: AgentRequest) -> None:
+    def __init__(
+        self,
+        agent: Agent,
+        request: AgentRequest,
+        *,
+        communication_gateway: SpecialistCommunicationGateway | None = None,
+    ) -> None:
         self._agent = agent
         self._request = request
+        self._communication_gateway = communication_gateway
 
     @property
     def agent_name(self) -> str:
@@ -65,18 +78,28 @@ class RegistrySpecialistExecutor(AgentExecutor):
                 success=False,
                 summary=f"executor is not assigned to role: {task.role.value}",
             )
+
+        metadata = {
+            **dict(self._request.metadata),
+            "management_task_id": task.task_id,
+            "management_role": task.role.value,
+            "declared_resources": sorted(task.resources),
+        }
+        if self._communication_gateway is not None:
+            metadata["specialist_communication"] = SpecialistCommunicationContext(
+                gateway=self._communication_gateway,
+                sender=task.role,
+                correlation_id=f"{self._request.user_id}:{task.task_id}",
+                task_id=task.task_id,
+            )
+
         try:
             response = self._agent.handle(
                 AgentRequest(
                     user_id=self._request.user_id,
                     message=task.instruction,
                     channel=self._request.channel,
-                    metadata={
-                        **dict(self._request.metadata),
-                        "management_task_id": task.task_id,
-                        "management_role": task.role.value,
-                        "declared_resources": sorted(task.resources),
-                    },
+                    metadata=metadata,
                 )
             )
         except Exception as exc:
@@ -101,8 +124,13 @@ class RegistrySpecialistExecutor(AgentExecutor):
 def build_registry_executors(
     registry: AgentRegistry,
     request: AgentRequest,
+    *,
+    communication_gateway: SpecialistCommunicationGateway | None = None,
 ) -> dict[AgentRole, AgentExecutor]:
-    return SpecialistExecutorFactory(registry).build(request)
+    return SpecialistExecutorFactory(
+        registry,
+        communication_gateway=communication_gateway,
+    ).build(request)
 
 
 __all__ = [
