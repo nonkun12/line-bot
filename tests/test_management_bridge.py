@@ -82,3 +82,28 @@ def test_run_management_request_returns_none_for_ineligible_request() -> None:
         "英語を練習したい",
         planner=StaticPlanner(),
     ) is None
+
+
+
+def test_run_management_request_falls_back_when_management_execution_fails(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "core.management_bridge.build_core_agent_registry",
+        lambda: object(),
+    )
+    monkeypatch.setattr(
+        "core.management_bridge.build_registry_executors",
+        lambda registry, request: {
+            AgentRole.NEWS: FakeExecutor(AgentRole.NEWS),
+            AgentRole.STOCKS: FakeExecutor(AgentRole.STOCKS),
+        },
+    )
+
+    class BrokenPlanner(StaticPlanner):
+        def plan(self, request, decision, feedback=()):
+            raise RuntimeError("temporary planner outage")
+
+    assert run_management_request(
+        "u1",
+        "AIニュースと株価を調べて",
+        planner=BrokenPlanner(),
+    ) is None
