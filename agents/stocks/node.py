@@ -175,6 +175,12 @@ class StocksAgent:
             lines.append(f"20日年率換算ボラティリティ: {analysis.volatility_20_annualized_pct:.2f}%")
         if analysis.high_20 is not None and analysis.low_20 is not None:
             lines.append(f"20日高値/安値: {analysis.high_20:.2f}{unit} / {analysis.low_20:.2f}{unit}")
+        if analysis.latest_volume is not None:
+            lines.append(f"直近出来高: {analysis.latest_volume:,}")
+        if analysis.average_volume_20 is not None:
+            lines.append(f"20日平均出来高: {analysis.average_volume_20:,.0f}")
+        if analysis.volume_ratio_20 is not None:
+            lines.append(f"出来高比率（直近/20日平均）: {analysis.volume_ratio_20:.2f}x")
         lines.append("")
         lines.append("※観測済み市場データから算出した記述的指標です。将来の値動きを保証する予測ではありません。")
         lines.append("市場データ: Yahoo Finance")
