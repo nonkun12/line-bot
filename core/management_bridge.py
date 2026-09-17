@@ -143,7 +143,7 @@ def run_management_request(
 
     try:
         run = manager.run(management_request)
-    except (ManagementPlanningError, DistributedExecutionError) as exc:
+    except Exception as exc:
         print(f"[MANAGEMENT AI] fallback to legacy route: {type(exc).__name__}: {exc}")
         return None
 
