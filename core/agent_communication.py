@@ -47,13 +47,24 @@ class AgentMessageCoordinator:
     SPECIALISTS = frozenset({"general", "voice", "english", "news", "stocks", "jobs"})
 
     @classmethod
+    def _role_key(cls, agent_name: str) -> str:
+        value = agent_name.strip().lower()
+        if value in {cls.MANAGEMENT, *cls.SPECIALISTS}:
+            return value
+        if "-" in value:
+            prefix, suffix = value.split("-", 1)
+            if suffix and prefix in cls.SPECIALISTS:
+                return prefix
+        return value
+
+    @classmethod
     def validate_route(cls, sender: str, recipient: str) -> tuple[str, ...]:
-        source = sender.strip().lower()
-        target = recipient.strip().lower()
+        source = cls._role_key(sender)
+        target = cls._role_key(recipient)
         errors: list[str] = []
         if not source or not target:
             return ("sender and recipient are required",)
-        if source == target:
+        if sender.strip().lower() == recipient.strip().lower():
             return ("sender and recipient must differ",)
         allowed_sources = {cls.MANAGEMENT, *cls.SPECIALISTS}
         if source not in allowed_sources:
