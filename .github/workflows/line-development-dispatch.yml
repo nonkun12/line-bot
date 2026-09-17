@@ -51,8 +51,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [[ "${DEV_INSTRUCTION}" == *E2E* && "${DEV_INSTRUCTION}" == *テスト* ]] || [[ "${DEV_INSTRUCTION}" == *本線E2E* ]]; then
-            echo "E2E test-only instruction detected; bypassing autonomous file-edit planning."
+          # Only an explicitly test-only request may bypass the autonomous runtime.
+          # Implementation requests remain on the development path even when they
+          # mention E2E, tests, or pytest as acceptance criteria.
+          if [[ "${DEV_INSTRUCTION}" =~ ^[[:space:]]*(本線E2Eテストを実行|E2Eテストを実行|pytestを実行|pytestのみを実行) ]]; then
+            echo "Explicit test-only instruction detected; running pytest without autonomous file-edit planning."
             echo "test_only=true" >> "$GITHUB_OUTPUT"
             python -m pytest -q --tb=native
           else
