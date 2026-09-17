@@ -9,6 +9,8 @@ from core.creator_critic import CriticAgent, CreatorAgent, CreatorCriticLoop
 from core.multi_agent import AgentResult, AgentRole, AgentTask
 from core.control_tower import ControlTower
 from core.self_improvement import SelfImprovementEngine
+from core.distributed_executor import DistributedAIExecutor
+from core.self_improvement_distributed import DistributedSelfImprovementLoop
 
 
 @dataclass
@@ -181,6 +183,35 @@ def test_runtime_self_improvement_cycle_exposes_reviewed_decision_without_mutati
     assert decision.approved_for_pipeline
     assert decision.approved_task is not None
     assert decision.approved_task.role is AgentRole.DEBUGGER
+
+
+def test_runtime_can_explicitly_run_distributed_self_improvement_cycle() -> None:
+    prompts: list[str] = []
+
+    def fake_model(prompt: str) -> str:
+        prompts.append(prompt)
+        return "bounded analysis"
+
+    tower = ControlTower()
+    runtime = MultiAgentRuntime({}, control_tower=tower)
+    loop = DistributedSelfImprovementLoop(
+        executor=DistributedAIExecutor(model_call=fake_model),
+        control_tower=tower,
+    )
+
+    result = runtime.run_distributed_self_improvement_cycle(
+        RuntimeReport((), failed_task_id="tester-1", error="pytest failed", rounds=1),
+        objective="reduce recurring test failures",
+        loop=loop,
+    )
+
+    assert result.analysis_success
+    assert result.decision is not None
+    assert runtime.last_control_tower_decision is result.decision
+    assert result.decision.proposal is not None
+    assert result.decision.approved_task is None
+    assert len(result.analysis_results) == 3
+    assert len(prompts) == 4
 
 
 def test_development_loop_requires_reviewer_and_integrator_tasks() -> None:
