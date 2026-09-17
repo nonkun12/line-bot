@@ -265,9 +265,48 @@ def system_status():
         result["services"]["ai_mcp"] = "online"
 
     result["features"] = {
-        "english_learning": {"status": "online", "label": "英語学習", "detail": "MVP: lesson / vocabulary / grammar / conversation / quiz / review"},
-        "stocks": {"status": "online", "label": "株価", "detail": "MVP: Yahoo Finance quote retrieval"},
-        "ai_news": {"status": "online", "label": "AI NEWS", "detail": "MVP: Google News RSS headline retrieval"},
-        "voice": {"status": "online", "label": "AIスピーカー / Voice", "detail": "voice API available"},
+        "management_ai": {
+            "status": "online",
+            "label": "統合AI / Management",
+            "detail": "タスク分解・専門AIへの配分・結果回収・有界再指示",
+        },
+        "english_learning": {
+            "status": "online",
+            "label": "英語学習AI",
+            "detail": "lesson / vocabulary / grammar / conversation / quiz / review",
+        },
+        "stocks": {
+            "status": "online",
+            "label": "株価AI",
+            "detail": "Yahoo Finance + テクニカル分析・比較・監視銘柄",
+        },
+        "ai_news": {
+            "status": "online",
+            "label": "AI NEWS",
+            "detail": "Google News RSS headline retrieval",
+        },
+        "voice": {
+            "status": "online",
+            "label": "AIスピーカー / Voice",
+            "detail": "voice API available",
+        },
+        "jobs": {
+            "status": "planned",
+            "label": "求職AI",
+            "detail": "求人検索・応募準備の基盤。実運用接続は保留中",
+        },
+    }
+    result["distributed_ai"] = {
+        "status": "online",
+        "architecture": "management -> specialists -> result collection -> bounded re-planning",
+        "message_bus": "enabled",
+        "specialists": [
+            {"key": "general", "label": "General AI", "status": "online", "role": "汎用・フォールバック"},
+            {"key": "voice", "label": "Voice AI", "status": "online", "role": "音声"},
+            {"key": "english", "label": "English AI", "status": "online", "role": "英語学習"},
+            {"key": "news", "label": "News AI", "status": "online", "role": "ニュース"},
+            {"key": "stocks", "label": "Stock AI", "status": "online", "role": "株価・分析"},
+            {"key": "jobs", "label": "Job AI", "status": "planned", "role": "求職・応募支援"},
+        ],
     }
     return jsonify(result)
