@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from core.agents import AgentRegistry, AgentRequest, AgentResponse
 from core.multi_agent import AgentRole, AgentTask
+from core.specialist_communication import SpecialistCommunicationGateway
 from core.specialist_executor import (
     ROLE_TO_AGENT_NAME,
     RegistrySpecialistExecutor,
@@ -72,6 +73,41 @@ def test_registry_specialist_executor_preserves_request_context_and_bounds_resul
     assert agent.requests[0].channel == "slack"
     assert agent.requests[0].metadata["management_task_id"] == "stock-1"
     assert agent.requests[0].metadata["declared_resources"] == ["aapl"]
+    assert "specialist_communication" not in agent.requests[0].metadata
+
+
+def test_registry_specialist_executor_injects_task_scoped_communication() -> None:
+    agent = FakeAgent("stocks")
+    gateway = SpecialistCommunicationGateway()
+    request = AgentRequest("u1", "original", channel="slack")
+    executor = RegistrySpecialistExecutor(
+        agent,
+        request,
+        communication_gateway=gateway,
+    )
+
+    result = executor.execute(
+        AgentTask(
+            "stock-2",
+            AgentRole.STOCKS,
+            "Analyze shared market context.",
+        )
+    )
+
+    assert result.success
+    context = agent.requests[0].metadata["specialist_communication"]
+    sent = context.send(
+        recipient=AgentRole.NEWS,
+        message_id="stock-news-1",
+        message_type="request",
+        content="共有市場情報を確認してください。",
+    )
+    received = gateway.receive(AgentRole.NEWS)
+
+    assert sent.sender == "stocks"
+    assert sent.correlation_id == "u1:stock-2"
+    assert sent.context["task_id"] == "stock-2"
+    assert received[0].sender == "stocks"
 
 
 def test_factory_skips_specialists_not_registered_yet() -> None:
