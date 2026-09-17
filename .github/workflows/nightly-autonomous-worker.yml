@@ -58,6 +58,7 @@ jobs:
         run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Run one bounded daily self-improvement task
+        id: self_improvement
         run: python scripts/nightly_task_worker.py
 
       - name: Run read-only final verification
