@@ -7,11 +7,12 @@ or treats model output as execution evidence.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Callable, Mapping
 
 from .agent_runtime import RuntimeReport
 from .control_tower import ControlTower, ControlTowerDecision
 from .distributed_executor import DistributedAIExecutor
+from .creator_critic import ImprovementCandidate
 from .distributed_scheduler import DistributedTaskScheduler
 from .multi_agent import AgentResult, AgentRole, AgentTask
 
@@ -36,6 +37,7 @@ class DistributedSelfImprovementLoop:
         control_tower: ControlTower | None = None,
         max_workers: int = 1,
         isolated: bool = False,
+        candidate_evidence_provider: Callable[[ImprovementCandidate], Mapping[str, object]] | None = None,
     ) -> None:
         if max_workers < 1:
             raise ValueError("max_workers must be >= 1")
@@ -57,6 +59,7 @@ class DistributedSelfImprovementLoop:
             max_workers=max_workers,
         )
         self._control_tower = control_tower
+        self._candidate_evidence_provider = candidate_evidence_provider
 
     @property
     def max_workers(self) -> int:
@@ -220,6 +223,7 @@ class DistributedSelfImprovementLoop:
                 report,
                 objective=target,
                 evidence=analysis_evidence,
+                candidate_evidence_provider=self._candidate_evidence_provider,
             )
 
         return DistributedSelfImprovementResult(
