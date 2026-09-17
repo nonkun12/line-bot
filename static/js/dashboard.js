@@ -19,9 +19,31 @@ document.addEventListener('DOMContentLoaded', () => {
       setStatus('dbStatus', d.notes?.status === 'ok' ? 'online' : 'error'); document.getElementById('dbStatus').textContent=`Database: ${d.notes?.status === 'ok' ? 'online' : 'error'}`;
       setStatus('aiStatus', d.services?.ai_mcp || 'unknown'); document.getElementById('aiDetails').textContent='LangGraph / MCP';
       const features=d.features||{};
-      const featureOrder=[['english_learning','英語学習','学習・進捗・復習'],['stocks','株価','監視銘柄・価格・変動'],['ai_news','AI NEWS','取得・要約・配信'],['voice','AIスピーカー / Voice','音声入力・音声出力']];
+      const featureOrder=[
+        ['management_ai','統合AI / Management','タスク分解・配分・結果回収'],
+        ['general','General AI','汎用・フォールバック'],
+        ['english_learning','英語学習AI','学習・進捗・復習'],
+        ['stocks','株価AI','株価・テクニカル分析・監視'],
+        ['ai_news','AI NEWS','取得・要約・配信'],
+        ['voice','AIスピーカー / Voice','音声入力・音声出力'],
+        ['jobs','求職AI','求人検索・応募支援'],
+      ];
+      const icons={management_ai:'🧠',general:'🧩',english_learning:'🇬🇧',stocks:'📈',ai_news:'📰',voice:'🎙️',jobs:'💼'};
       const featureGrid=document.getElementById('featureGrid');
-      featureGrid.innerHTML=featureOrder.map(([key,title,baseDetail])=>{const f=features[key]||{}, status=f.status||'unknown'; return `<div class="system-card"><div class="system-card-title">${key==='english_learning'?'🇬🇧 ':key==='stocks'?'📈 ':key==='ai_news'?'📰 ':'🎙️ '}${esc(title)}</div><div class="system-status">${label(status)}</div><div class="system-details">${esc(f.detail||baseDetail)}</div></div>`;}).join('');
+      featureGrid.innerHTML=featureOrder.map(([key,title,baseDetail])=>{
+        const f=features[key]||{}, status=f.status||'unknown';
+        return `<div class="system-card"><div class="system-card-title">${icons[key]||'🤖'} ${esc(title)}</div><div class="system-status">${label(status)}</div><div class="system-details">${esc(f.detail||baseDetail)}</div></div>`;
+      }).join('');
+      const distributed=d.distributed_ai||{};
+      const specialists=distributed.specialists||[];
+      const onlineCount=specialists.filter(x=>x.status==='online').length;
+      const plannedCount=specialists.filter(x=>x.status==='planned').length;
+      const summary=document.getElementById('distributedAiSummary');
+      if(summary) summary.textContent=`分散AI ${onlineCount}稼働 ・ ${plannedCount}開発中`;
+      const messageSummary=document.getElementById('agentMessageSummary');
+      if(messageSummary) messageSummary.textContent=distributed.message_bus
+        ? `メッセージバス: 有効 ・ ${esc(distributed.architecture||'統合AI → 分散AI → 結果回収 → 再指示')}`
+        : 'メッセージバス: 未接続';
       const steps=d.e2e?.steps||[]; const flow=document.getElementById('e2eFlow'); flow.innerHTML=steps.map(s=>`<div class="system-card"><div class="system-card-title">${esc(s.label)}</div><div class="system-status">${label(s.state)}</div><div class="system-details">${s.last_http_status ? 'HTTP '+esc(s.last_http_status) : ''}</div></div>`).join('');
       const e2eOk=steps.filter(s=>s.state==='ok').length;
       document.getElementById('e2eSummary').textContent=steps.length && steps.some(s=>s.state!=='unknown' && s.state!=='not_reached') ? `E2E: ${e2eOk}/${steps.length} OK` : 'E2E: 待機中';
