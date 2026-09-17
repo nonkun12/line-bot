@@ -160,7 +160,9 @@ def run_management_request(
         label = _ROLE_LABELS.get(task.role, task.role.value)
         parts.append(f"【{label}】\n{result.summary.strip()}")
 
-    return "\\n\\n".join(parts) if parts else None
+    return "
+
+".join(parts) if parts else None
 
 
 __all__ = [
