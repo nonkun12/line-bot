@@ -15,6 +15,12 @@ class AgentRole(str, Enum):
     REVIEWER = "reviewer"
     REPAIRER = "repairer"  # legacy compatibility; new quality flow uses DEBUGGER/REFACTORER
     INTEGRATOR = "integrator"
+    GENERAL = "general"
+    VOICE = "voice"
+    ENGLISH = "english"
+    NEWS = "news"
+    STOCKS = "stocks"
+    JOBS = "jobs"
 
 
 @dataclass(frozen=True)
