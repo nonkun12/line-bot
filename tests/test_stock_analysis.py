@@ -30,7 +30,7 @@ def test_analyze_history_produces_core_descriptive_indicators():
     assert result.low_20 == 140.0
     assert result.latest_volume == 1059
     assert result.average_volume_20 == 1049.5
-    assert result.volume_ratio_20 == 1059 / 1049.5
+    assert result.volume_ratio_20 == 1.0095
 
 
 def test_analyze_history_fails_closed_on_empty_history():
