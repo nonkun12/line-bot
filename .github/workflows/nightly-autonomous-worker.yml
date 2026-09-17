@@ -60,14 +60,17 @@ jobs:
       - name: Run one bounded daily self-improvement task
         run: python scripts/nightly_task_worker.py
 
-      - name: Run guarded autonomous self-healing check
+      - name: Run read-only final verification
+        id: verification
         if: success()
+        env:
+          NIGHTLY_AUTOFIX: 'false'
         run: python scripts/nightly_worker.py
 
       - name: Publish final autonomous branch and PR
-        if: success()
+        if: ${{ steps.self_improvement.outcome == 'success' && steps.verification.outcome == 'success' }}
         env:
-          NIGHTLY_BRANCH: nightly/autonomous-${{ github.run_id }}
+          NIGHTLY_BRANCH: nightly/self-improvement-${{ github.run_id }}
         run: |
           if [ "$(git rev-parse HEAD)" = "$AUTONOMOUS_START_SHA" ]; then
             echo 'No autonomous changes to publish.'
