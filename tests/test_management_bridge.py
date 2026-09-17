@@ -107,3 +107,52 @@ def test_run_management_request_falls_back_when_management_execution_fails(monke
         "AIニュースと株価を調べて",
         planner=BrokenPlanner(),
     ) is None
+
+
+
+def test_ai_gateway_uses_management_bridge_for_multi_specialist_request(monkeypatch) -> None:
+    import app as app_module
+    from core.gateway import AIRequest
+
+    calls = []
+
+    monkeypatch.setattr(
+        app_module,
+        "run_management_request",
+        lambda user_id, message, **kwargs: calls.append((user_id, message, kwargs)) or "管理AI統合結果",
+    )
+    monkeypatch.setattr(
+        app_module,
+        "run_core_request",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("legacy core route should not run")),
+    )
+
+    response = app_module._handle_ai_gateway_request(
+        AIRequest("u1", "AIニュースと株価を調べて", channel="slack")
+    )
+
+    assert response == "管理AI統合結果"
+    assert calls and calls[0][0:2] == ("u1", "AIニュースと株価を調べて")
+
+
+def test_ai_gateway_falls_back_to_core_when_management_returns_none(monkeypatch) -> None:
+    import app as app_module
+    from core.gateway import AIRequest
+
+    monkeypatch.setattr(app_module, "run_management_request", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        app_module,
+        "run_core_request",
+        lambda *args, **kwargs: {"final_reply": "従来Core結果"},
+    )
+    monkeypatch.setattr(
+        app_module,
+        "extract_core_reply",
+        lambda result: result["final_reply"],
+    )
+
+    response = app_module._handle_ai_gateway_request(
+        AIRequest("u1", "AIニュースと株価を調べて", channel="slack")
+    )
+
+    assert response == "従来Core結果"
