@@ -47,6 +47,9 @@ class StockAnalysis:
     volatility_20_annualized_pct: float | None
     high_20: float | None
     low_20: float | None
+    latest_volume: int | None
+    average_volume_20: float | None
+    volume_ratio_20: float | None
 
 
 class StockQuoteProvider(Protocol):
@@ -148,4 +151,21 @@ def analyze_history(
         volatility_20_annualized_pct=_annualized_volatility_pct(closes),
         high_20=round(max(recent), 4),
         low_20=round(min(recent), 4),
+        latest_volume=points[-1].volume,
+        average_volume_20=(
+            round(sum(point.volume for point in points[-20:] if point.volume is not None) /
+                  sum(1 for point in points[-20:] if point.volume is not None), 2)
+            if any(point.volume is not None for point in points[-20:])
+            else None
+        ),
+        volume_ratio_20=(
+            round(
+                points[-1].volume /
+                (sum(point.volume for point in points[-20:] if point.volume is not None) /
+                 sum(1 for point in points[-20:] if point.volume is not None)),
+                4,
+            )
+            if points[-1].volume is not None and any(point.volume is not None for point in points[-20:])
+            else None
+        ),
     )
