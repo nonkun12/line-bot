@@ -18,5 +18,5 @@ def test_management_decision_confidence_range() -> None:
 
 def test_default_boundaries_are_explicit() -> None:
     names = tuple(item.specialist for item in default_specialist_boundaries())
-    assert names == (Specialist.GENERAL, Specialist.VOICE, Specialist.ENGLISH, Specialist.NEWS, Specialist.STOCKS)
+    assert names == (Specialist.GENERAL, Specialist.VOICE, Specialist.ENGLISH, Specialist.NEWS, Specialist.STOCKS, Specialist.JOBS)
     assert default_specialist_boundaries()[1].allowed_channels == ("voice",)
