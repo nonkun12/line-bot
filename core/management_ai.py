@@ -54,6 +54,7 @@ class ManagementPlan:
     decision: ManagementDecision
     tasks: tuple[AgentTask, ...]
     parallel_safe: bool = False
+    continue_after_round: bool = False
 
     def __post_init__(self) -> None:
         if not self.objective.strip():
@@ -92,7 +93,12 @@ class ManagementCycleRun:
 
 
 class ManagementPlanner(Protocol):
-    def plan(self, request: ManagementRequest, decision: ManagementDecision) -> ManagementPlan:
+    def plan(
+        self,
+        request: ManagementRequest,
+        decision: ManagementDecision,
+        feedback: Sequence[str] = (),
+    ) -> ManagementPlan:
         ...
 
 
