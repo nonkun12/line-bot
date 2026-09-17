@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from core.agents import AgentRequest
@@ -20,20 +20,19 @@ def _is_combined_news_stock_request(message: str) -> bool:
     return is_ai_news_intent(message) and is_stock_intent(message)
 
 
-def _run_combined_news_stock_request(
+def _run_multi_specialist_request(
     user_id: str,
     message: str,
     *,
     channel: str,
     metadata: Mapping[str, Any],
+    specialists: Sequence[str],
 ) -> dict[str, Any]:
-    """Run both specialist agents and preserve both outputs for final formatting.
+    """Execute a bounded set of specialists and preserve every result.
 
-    The normal Core graph selects a single next_agent. That is correct for
-    single-intent requests, but it silently drops the second specialist when a
-    user asks for AI NEWS plus a stock quote in one LINE message. This bounded
-    path makes the multi-specialist requirement explicit and keeps each agent's
-    result independently inspectable.
+    The normal Core graph intentionally selects one agent for single-intent
+    requests. Multi-specialist requests use this explicit orchestration seam so
+    each specialist remains independently inspectable before final formatting.
     """
     registry = build_core_agent_registry()
     request = AgentRequest(
@@ -46,7 +45,7 @@ def _run_combined_news_stock_request(
     results: dict[str, dict[str, Any]] = {}
     texts: list[str] = []
 
-    for agent_name in ("ai_news", "stocks"):
+    for agent_name in specialists:
         agent = registry.get(agent_name)
         if not bool(getattr(agent, "enabled", True)):
             raise RuntimeError(f"required specialist disabled: {agent_name}")
@@ -60,7 +59,6 @@ def _run_combined_news_stock_request(
         }
         texts.append(response.text)
 
-    final_reply = "\n\n".join(texts)
     return {
         "user_id": user_id,
         "raw_message": message,
@@ -68,11 +66,11 @@ def _run_combined_news_stock_request(
         "metadata": dict(metadata),
         "intent": "multi_specialist",
         "next_agent": "management",
-        "route": "management:ai_news+stocks",
+        "route": "management:" + "+".join(specialists),
         "agent_results": results,
-        "final_reply": final_reply,
+        "final_reply": "\n\n".join(texts),
         "error": None,
-        "specialists": ["ai_news", "stocks"],
+        "specialists": list(specialists),
     }
 
 
@@ -87,17 +85,17 @@ def run_core_request(
     """Classify with the existing Supervisor, then execute the selected agent via Core."""
     request_metadata = dict(metadata or {})
 
-    # A combined request must not be reduced to the first matching intent.
-    # This is the regression fix for "AI NEWS + stock" where the stock result
-    # previously disappeared from the final LINE response.
+    # Preserve both specialist outputs instead of letting Supervisor's
+    # first-match routing discard the second intent.
     if _is_combined_news_stock_request(message):
         with StepTimer("core") as core_timer:
             try:
-                result = _run_combined_news_stock_request(
+                result = _run_multi_specialist_request(
                     user_id,
                     message,
                     channel=channel,
                     metadata=request_metadata,
+                    specialists=("ai_news", "stocks"),
                 )
             except Exception as exc:
                 core_timer.fail(error=exc, error_location="core/request_path.multi_specialist")
