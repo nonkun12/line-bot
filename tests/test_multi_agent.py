@@ -50,3 +50,19 @@ def test_dependencies_force_later_batch() -> None:
 def test_invalid_schedules_fail_closed(tasks: list[AgentTask], message: str) -> None:
     with pytest.raises(ValueError, match=message):
         plan_batches(tasks)
+
+def test_creator_and_critic_are_first_class_schedulable_roles() -> None:
+    creator = AgentTask("creator", AgentRole.CREATOR, "propose", frozenset({"src/a.py"}))
+    critic = AgentTask(
+        "critic",
+        AgentRole.CRITIC,
+        "evaluate",
+        frozenset({"src/a.py"}),
+        depends_on=("creator",),
+    )
+    batches = plan_batches([creator, critic])
+    assert [[item.role for item in batch.tasks] for batch in batches] == [
+        [AgentRole.CREATOR],
+        [AgentRole.CRITIC],
+    ]
+
