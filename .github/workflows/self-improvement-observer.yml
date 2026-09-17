@@ -1,0 +1,98 @@
+name: Self-Improvement Observer
+
+on:
+  workflow_dispatch:
+    inputs:
+      objective:
+        description: "Self-improvement objective"
+        required: true
+        type: string
+      failed_task_id:
+        description: "Failed runtime task ID (optional)"
+        required: false
+        default: ""
+        type: string
+      error:
+        description: "Runtime error summary (optional)"
+        required: false
+        default: ""
+        type: string
+      rounds:
+        description: "Completed runtime rounds"
+        required: true
+        default: "1"
+        type: string
+      repair_attempts:
+        description: "Repair attempts"
+        required: true
+        default: "0"
+        type: string
+      integration_ready:
+        description: "Whether the runtime reached the integration gate"
+        required: true
+        default: "false"
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run read-only self-improvement observer
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OBJECTIVE: ${{ inputs.objective }}
+          FAILED_TASK_ID: ${{ inputs.failed_task_id }}
+          RUNTIME_ERROR: ${{ inputs.error }}
+          ROUNDS: ${{ inputs.rounds }}
+          REPAIR_ATTEMPTS: ${{ inputs.repair_attempts }}
+          INTEGRATION_READY: ${{ inputs.integration_ready }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          payload = {
+              "objective": os.environ["OBJECTIVE"],
+              "failed_task_id": os.environ["FAILED_TASK_ID"],
+              "error": os.environ["RUNTIME_ERROR"],
+              "rounds": os.environ["ROUNDS"],
+              "repair_attempts": os.environ["REPAIR_ATTEMPTS"],
+              "integration_ready": os.environ["INTEGRATION_READY"].lower() == "true",
+          }
+          env = os.environ.copy()
+          env["SELF_IMPROVEMENT_REPORT_JSON"] = json.dumps(payload, ensure_ascii=False)
+          subprocess.run(
+              ["python", "scripts/run_self_improvement_observer.py"],
+              check=True,
+              env=env,
+          )
+          PY
+
+      - name: Upload observer result
+        uses: actions/upload-artifact@v4
+        with:
+          name: self-improvement-observer-${{ github.run_id }}
+          path: self-improvement-observer.json
+          if-no-files-found: error
