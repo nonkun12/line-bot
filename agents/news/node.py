@@ -32,10 +32,14 @@ class AINewsAgent:
 
     @classmethod
     def _query(cls, message: str) -> str:
-        normalized = re.sub(r"\s+", " ", message.strip())
+        normalized = re.sub(r"\\s+", " ", message.strip())
         for keyword in cls._KEYWORDS:
             normalized = re.sub(re.escape(keyword), "", normalized, flags=re.IGNORECASE)
-        normalized = re.sub(r"(教えて|見せて|ください|お願い|最新|ニュース|を|が)+$", "", normalized).strip()
+        # Remove stock-specific wording when AI NEWS is requested together with a stock quote.
+        normalized = re.sub(r"(?:銘柄|ticker|コード)\\s*[:：]?\\s*[A-Za-z]{1,6}[.]?[A-Za-z]{0,3}|(?:銘柄|ticker|コード)\\s*[:：]?\\s*\\d{4}", "", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"(?:株価|株|price)", "", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"(?:教えて|見せて|ください|お願い|最新|ニュース|を|が)+$", "", normalized).strip()
+        normalized = re.sub(r"^[\\sと、,・&]+|[\\sと、,・&]+$", "", normalized).strip()
         return normalized or "artificial intelligence"
 
     @classmethod
@@ -102,10 +106,10 @@ class AINewsAgent:
         for index, item in enumerate(items, 1):
             suffix = f" / {item['source']}" if item["source"] else ""
             date = f" / {item['published']}" if item["published"] else ""
-            lines.append(f"{index}. {item['title']}{suffix}{date}\n{item['link']}")
+            lines.append(f"{index}. {item['title']}{suffix}{date}\\n{item['link']}")
 
         return AgentResponse(
-            text="\n".join(lines),
+            text="\\n".join(lines),
             metadata={"feature": self.name, "status": "online", "query": query, "count": len(items)},
         )
 
@@ -122,3 +126,4 @@ def ai_news_agent_node(state: dict) -> dict:
     )
     response = agent.handle(request)
     return {"final_reply": response.text, "agent_results": {agent.name: response.text}}
+"
