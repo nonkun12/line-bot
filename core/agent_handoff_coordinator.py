@@ -22,6 +22,9 @@ class AgentHandoffCoordinator:
         "developer": frozenset({"debug", "test"}),
         "debug": frozenset({"developer", "test"}),
         "test": frozenset({"developer", "debug"}),
+        # Self-improvement review path: proposal -> independent critique -> gated work.
+        "creator": frozenset({"critic"}),
+        "critic": frozenset({"developer", "debug", "test"}),
     }
 
     def submit(self, handoff: AgentHandoff) -> HandoffDecision:
