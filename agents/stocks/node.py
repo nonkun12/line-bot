@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from agents.stocks.intents import is_stock_intent
 from core.agents import AgentRequest, AgentResponse
 from core.stocks import StockHistoryPoint, analyze_history, compare_analyses
+import stock_watchlist
 
 
 _TICKER_RE = re.compile(
@@ -204,6 +205,67 @@ class StocksAgent:
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         original = request.message.strip()
+
+        watch_add = re.search(
+            r"(?:ウォッチ(?:リスト)?\s*(?:に)?\s*(?:追加|登録)|watch\s*add)\s+(.+)$",
+            original,
+            re.IGNORECASE,
+        )
+        if watch_add:
+            ticker_match = re.search(
+                r"(?<![A-Za-z0-9])(?:\d{4}|[A-Za-z]{2,6}(?:\.[A-Za-z]{1,3})?)(?![A-Za-z0-9])",
+                watch_add.group(1),
+            )
+            if not ticker_match:
+                return AgentResponse(
+                    text="📋 ウォッチ追加にはTickerまたは4桁銘柄コードを指定してください。",
+                    metadata={"feature": self.name, "status": "online", "mode": "watch_add"},
+                )
+            ticker = self.normalize_ticker(ticker_match.group(0))
+            label = watch_add.group(1).replace(ticker_match.group(0), "").strip(" ：:()")
+            added = stock_watchlist.add(request.user_id, ticker, label)
+            return AgentResponse(
+                text=f"📌 {self._display_ticker(ticker)}をウォッチリストに{'追加しました' if added else '登録済みです'}。",
+                metadata={"feature": self.name, "status": "online", "mode": "watch_add", "ticker": self._display_ticker(ticker)},
+            )
+
+        if re.search(r"^(?:ウォッチ(?:リスト)?\s*(?:一覧|確認)|watch\s*list)$", original, re.IGNORECASE):
+            items = stock_watchlist.list_all(request.user_id)
+            if not items:
+                return AgentResponse(
+                    text="📋 ウォッチリストは空です。例: 「ウォッチ追加 7203」",
+                    metadata={"feature": self.name, "status": "online", "mode": "watch_list", "count": 0},
+                )
+            lines = ["📋 株価ウォッチリスト"]
+            for item in items:
+                label = f" ({item['label']})" if item.get("label") else ""
+                lines.append(f"- {self._display_ticker(item['ticker'])}{label}")
+            return AgentResponse(
+                text="\n".join(lines),
+                metadata={"feature": self.name, "status": "online", "mode": "watch_list", "count": len(items)},
+            )
+
+        watch_remove = re.search(
+            r"(?:ウォッチ(?:リスト)?\s*(?:から)?\s*(?:削除|解除)|watch\s*remove)\s+(.+)$",
+            original,
+            re.IGNORECASE,
+        )
+        if watch_remove:
+            ticker_match = re.search(
+                r"(?<![A-Za-z0-9])(?:\d{4}|[A-Za-z]{2,6}(?:\.[A-Za-z]{1,3})?)(?![A-Za-z0-9])",
+                watch_remove.group(1),
+            )
+            if not ticker_match:
+                return AgentResponse(
+                    text="📋 ウォッチ削除にはTickerまたは4桁銘柄コードを指定してください。",
+                    metadata={"feature": self.name, "status": "online", "mode": "watch_remove"},
+                )
+            ticker = self.normalize_ticker(ticker_match.group(0))
+            removed = stock_watchlist.remove(request.user_id, ticker)
+            return AgentResponse(
+                text=f"📌 {self._display_ticker(ticker)}をウォッチリストから{'削除しました' if removed else '見つけられませんでした'}。",
+                metadata={"feature": self.name, "status": "online", "mode": "watch_remove", "ticker": self._display_ticker(ticker)},
+            )
 
         compare_match = _COMPARE_RE.search(original)
         if compare_match:
