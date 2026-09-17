@@ -14,14 +14,6 @@ from .agent_communication import AgentMessage, AgentMessageBus, AgentMessageCoor
 from .multi_agent import AgentRole
 
 
-_SPECIALIST_ROLE_KEYS = {
-    AgentRole.GENERAL: "general",
-    AgentRole.VOICE: "voice",
-    AgentRole.ENGLISH: "english",
-    AgentRole.NEWS: "news",
-    AgentRole.STOCKS: "stocks",
-    AgentRole.JOBS: "jobs",
-}
 _ALLOWED_MESSAGE_TYPES = frozenset({"request", "response", "observation"})
 _BLOCKED_CONTENT_TERMS = (
     "grant permission",
@@ -35,6 +27,10 @@ _BLOCKED_CONTENT_TERMS = (
     "git push",
     "git commit",
     "deploy",
+    "権限を付与",
+    "権限を追加",
+    "権限をエスカレート",
+    "資格情報",
 )
 
 
