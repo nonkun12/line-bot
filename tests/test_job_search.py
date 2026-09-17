@@ -27,3 +27,27 @@ def test_rank_jobs_is_deterministic():
     )
     scores = rank_jobs(postings, criteria)
     assert [item.job_id for item in scores] == ["a", "b"]
+
+
+class Provider:
+    def search(self, criteria, limit=20):
+        return [
+            JobPosting("j2", "Other", "B", location="東京"),
+            JobPosting("j1", "Python Engineer", "A", location="東京"),
+        ]
+
+
+def test_search_and_rank_jobs_uses_provider_results_and_stays_deterministic():
+    from core.job_search import search_and_rank_jobs
+
+    result = search_and_rank_jobs(Provider(), JobSearchCriteria(keywords=("Python",)), limit=2)
+    assert [item.job_id for item in result] == ["j1", "j2"]
+
+
+def test_search_and_rank_jobs_fails_closed_on_provider_error():
+    class BrokenProvider:
+        def search(self, criteria, limit=20):
+            raise RuntimeError("unavailable")
+
+    from core.job_search import search_and_rank_jobs
+    assert search_and_rank_jobs(BrokenProvider(), JobSearchCriteria()) == ()
