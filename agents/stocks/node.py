@@ -10,15 +10,25 @@ from zoneinfo import ZoneInfo
 
 from agents.stocks.intents import is_stock_intent
 from core.agents import AgentRequest, AgentResponse
+from core.stocks import StockHistoryPoint, analyze_history
 
 
-_TICKER_RE = re.compile(r"(?:銘柄|ticker|コード)\s*[:：]?\s*([A-Za-z]{1,6}[.]?[A-Za-z]{0,3}|\d{4})", re.IGNORECASE)
+_TICKER_RE = re.compile(
+    r"(?:銘柄|ticker|コード)\s*[:：]?\s*([A-Za-z]{1,6}[.]?[A-Za-z]{0,3}|\d{4})",
+    re.IGNORECASE,
+)
 _NATURAL_TICKER_RE = re.compile(
     r"(?<![A-Za-z0-9])([A-Za-z]{3,6}(?:\.[A-Za-z]{1,3})?|\d{4})"
     r"(?=\s*(?:の)?\s*(?:株価|株|price))",
     re.IGNORECASE,
 )
+_ANALYSIS_TICKER_RE = re.compile(
+    r"(?<![A-Za-z0-9])([A-Za-z]{2,6}(?:\.[A-Za-z]{1,3})?|\d{4})"
+    r"\s*(?:の|を)?\s*(?:分析|テクニカル|指標|チャート|analy(?:ze|sis)|technical)\b",
+    re.IGNORECASE,
+)
 _DEFAULT_TIMEOUT_SEC = 8
+_HISTORY_TIMEOUT_SEC = 10
 _JST = ZoneInfo("Asia/Tokyo")
 
 
@@ -32,7 +42,7 @@ _MARKET_STATE_LABELS = {
 
 class StocksAgent:
     name = "stocks"
-    description = "Stock price, ticker, watchlist, and market requests."
+    description = "Stock price, ticker, technical analysis, watchlist, and market requests."
     priority = 80
     enabled = True
 
@@ -102,23 +112,119 @@ class StocksAgent:
             "market_state": market_state,
         }
 
+    @classmethod
+    def _fetch_history(cls, ticker: str) -> tuple[str, list[StockHistoryPoint]]:
+        encoded = urllib.parse.quote(ticker, safe=".")
+        url = (
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}"
+            "?range=6mo&interval=1d&events=history"
+        )
+        request = urllib.request.Request(url, headers={"User-Agent": "LINE-AI-Secretary/1.0"})
+        with urllib.request.urlopen(request, timeout=_HISTORY_TIMEOUT_SEC) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        result = payload.get("chart", {}).get("result")
+        if not isinstance(result, list) or not result or not isinstance(result[0], dict):
+            raise ValueError("history result unavailable")
+        data = result[0]
+        meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+        timestamps = data.get("timestamp")
+        indicators = data.get("indicators")
+        quotes = indicators.get("quote", []) if isinstance(indicators, dict) else []
+        quote = quotes[0] if quotes and isinstance(quotes[0], dict) else {}
+        closes = quote.get("close", [])
+        volumes = quote.get("volume", [])
+        if not isinstance(timestamps, list) or not isinstance(closes, list):
+            raise ValueError("history series unavailable")
+
+        points: list[StockHistoryPoint] = []
+        for index, timestamp in enumerate(timestamps):
+            close = closes[index] if index < len(closes) else None
+            if not isinstance(timestamp, (int, float)) or not isinstance(close, (int, float)) or close <= 0:
+                continue
+            volume = volumes[index] if isinstance(volumes, list) and index < len(volumes) else None
+            points.append(
+                StockHistoryPoint(
+                    observed_at=datetime.fromtimestamp(timestamp, tz=timezone.utc),
+                    close=float(close),
+                    volume=int(volume) if isinstance(volume, (int, float)) else None,
+                )
+            )
+        if not points:
+            raise ValueError("history has no valid points")
+        currency = str(meta.get("currency") or "")
+        return currency, points
+
+    @classmethod
+    def _analysis_reply(cls, analysis, currency: str) -> str:
+        unit = f" {currency}" if currency else ""
+        lines = [
+            f"📊 {cls._display_ticker(analysis.ticker)} テクニカル分析",
+            f"基準値: {analysis.latest_close:.2f}{unit}",
+            f"観測日数: {analysis.data_points}日",
+        ]
+        if analysis.return_20d_pct is not None:
+            lines.append(f"20営業日リターン: {analysis.return_20d_pct:+.2f}%")
+        if analysis.sma_20 is not None:
+            lines.append(f"SMA20: {analysis.sma_20:.2f}{unit}")
+        if analysis.sma_50 is not None:
+            lines.append(f"SMA50: {analysis.sma_50:.2f}{unit}")
+        if analysis.rsi_14 is not None:
+            lines.append(f"RSI14: {analysis.rsi_14:.2f}")
+        if analysis.volatility_20_annualized_pct is not None:
+            lines.append(f"20日年率換算ボラティリティ: {analysis.volatility_20_annualized_pct:.2f}%")
+        if analysis.high_20 is not None and analysis.low_20 is not None:
+            lines.append(f"20日高値/安値: {analysis.high_20:.2f}{unit} / {analysis.low_20:.2f}{unit}")
+        lines.append("")
+        lines.append("※観測済み市場データから算出した記述的指標です。将来の値動きを保証する予測ではありません。")
+        lines.append("市場データ: Yahoo Finance")
+        return "\n".join(lines)
+
     def handle(self, request: AgentRequest) -> AgentResponse:
-        match = _TICKER_RE.search(request.message)
+        original = request.message.strip()
+        wants_analysis = bool(_ANALYSIS_TICKER_RE.search(original) or any(
+            token in original.casefold()
+            for token in ("テクニカル", "チャート", "分析して", "technical analysis")
+        ))
+
+        match = _TICKER_RE.search(original)
         if not match:
-            match = _NATURAL_TICKER_RE.search(request.message)
+            match = _NATURAL_TICKER_RE.search(original)
+        if not match and wants_analysis:
+            match = _ANALYSIS_TICKER_RE.search(original)
         if not match:
+            mode_text = "分析" if wants_analysis else "株価取得"
             return AgentResponse(
                 text=(
-                    "📈 株価Agentを起動しました。\n\n"
+                    f"📈 株価AIの{mode_text}モードです。\n\n"
                     "銘柄コードまたはTickerを含めて送ってください。"
-                    "例: 「銘柄 7203」「ticker AAPL」「AAPLの株価」\n"
-                    "実データ取得に対応しています。"
+                    "例: 「銘柄 7203」「ticker AAPL」「AAPLの株価」「7203の分析」"
                 ),
-                metadata={"feature": self.name, "status": "online", "ticker": None},
+                metadata={"feature": self.name, "status": "online", "ticker": None, "mode": "analysis" if wants_analysis else "quote"},
             )
 
         requested = match.group(1)
         ticker = self.normalize_ticker(requested)
+
+        if wants_analysis:
+            try:
+                currency, history = self._fetch_history(ticker)
+                analysis = analyze_history(ticker, history)
+                if analysis is None:
+                    raise ValueError("analysis unavailable")
+            except Exception:
+                return AgentResponse(
+                    text=(
+                        f"📊 {self._display_ticker(ticker)} のテクニカル分析を取得できませんでした。\n"
+                        "履歴データ源が一時的に利用できない可能性があります。"
+                    ),
+                    metadata={"feature": self.name, "status": "degraded", "ticker": self._display_ticker(ticker), "mode": "analysis"},
+                )
+            return AgentResponse(
+                text=self._analysis_reply(analysis, currency),
+                metadata={"feature": self.name, "status": "online", "mode": "analysis", **analysis.__dict__},
+            )
+
         try:
             quote = self._fetch_quote(ticker)
         except Exception:
@@ -128,7 +234,7 @@ class StocksAgent:
                     "市場データ源が一時的に利用できない可能性があります。\n"
                     "価格を推測して表示することはしません。"
                 ),
-                metadata={"feature": self.name, "status": "degraded", "ticker": self._display_ticker(ticker)},
+                metadata={"feature": self.name, "status": "degraded", "ticker": self._display_ticker(ticker), "mode": "quote"},
             )
 
         currency = quote["currency"] or ""
@@ -154,7 +260,7 @@ class StocksAgent:
                 f"{change_text}{state_text}{time_text}\n"
                 "市場データ: Yahoo Finance"
             ),
-            metadata={"feature": self.name, "status": "online", **quote},
+            metadata={"feature": self.name, "status": "online", "mode": "quote", **quote},
         )
 
 
