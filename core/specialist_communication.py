@@ -57,10 +57,6 @@ class SpecialistCommunicationGateway:
         self._max_content_chars = max_content_chars
         self._max_hops = max_hops
 
-    @property
-    def message_bus(self) -> AgentMessageBus:
-        return self._bus
-
     def send(
         self,
         *,
@@ -153,7 +149,7 @@ class SpecialistCommunicationGateway:
 class SpecialistCommunicationContext:
     """Task-scoped façade exposed to one specialist without exposing the bus."""
 
-    gateway: SpecialistCommunicationGateway
+    _gateway: SpecialistCommunicationGateway
     sender: AgentRole
     correlation_id: str
     task_id: str
@@ -167,7 +163,7 @@ class SpecialistCommunicationContext:
         content: str,
         context: Mapping[str, Any] | None = None,
     ) -> AgentMessage:
-        return self.gateway.send(
+        return self._gateway.send(
             sender=self.sender,
             recipient=recipient,
             message_id=message_id,
@@ -179,7 +175,7 @@ class SpecialistCommunicationContext:
         )
 
     def receive(self, *, limit: int = 20) -> tuple[AgentMessage, ...]:
-        return self.gateway.receive(self.sender, limit=limit)
+        return self._gateway.receive(self.sender, limit=limit)
 
 
 __all__ = [
