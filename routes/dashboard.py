@@ -278,7 +278,7 @@ def system_status():
         "english_learning": {
             "status": "online",
             "label": "英語学習AI",
-            "detail": "lesson / vocabulary / grammar / conversation / quiz / review",
+            "detail": "MVP: lesson / vocabulary / grammar / conversation / quiz / review",
         },
         "stocks": {
             "status": "online",
