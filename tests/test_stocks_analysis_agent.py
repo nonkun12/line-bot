@@ -52,3 +52,36 @@ def test_agent_supports_multi_stock_comparison(monkeypatch):
     assert response.metadata["tickers"] == ("AAPL", "MSFT")
     assert "AAPL:" in response.text
     assert "MSFT:" in response.text
+
+
+def test_agent_watchlist_commands(monkeypatch):
+    class Watchlist:
+        def __init__(self):
+            self.items = []
+        def add(self, user_id, ticker, label=""):
+            if ticker in self.items:
+                return False
+            self.items.append(ticker)
+            return True
+        def remove(self, user_id, ticker):
+            if ticker not in self.items:
+                return False
+            self.items.remove(ticker)
+            return True
+        def list_all(self, user_id):
+            return [{"ticker": item, "label": ""} for item in self.items]
+
+    watchlist = Watchlist()
+    monkeypatch.setattr("agents.stocks.node.stock_watchlist", watchlist)
+
+    agent = StocksAgent()
+    add = agent.handle(AgentRequest("u", "ウォッチ追加 7203"))
+    assert add.metadata["mode"] == "watch_add"
+    assert "7203をウォッチリストに追加しました" in add.text
+
+    listing = agent.handle(AgentRequest("u", "ウォッチ一覧"))
+    assert listing.metadata["mode"] == "watch_list"
+    assert "7203" in listing.text
+
+    remove = agent.handle(AgentRequest("u", "ウォッチ削除 7203"))
+    assert remove.metadata["mode"] == "watch_remove"
