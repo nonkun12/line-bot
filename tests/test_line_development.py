@@ -25,6 +25,17 @@ def test_explicit_english_development_command():
     assert extract_development_instruction("dev: add a health check test") == "add a health check test"
 
 
+def test_slash_dev_command_is_development():
+    assert extract_development_instruction("/dev 分散AIの土台を実装してください") == "分散AIの土台を実装してください"
+
+
+def test_slash_dev_implementation_with_e2e_words_stays_development():
+    instruction = extract_development_instruction(
+        "/dev 分散AIの土台を実装し、E2Eテストまで追加してください"
+    )
+    assert instruction == "分散AIの土台を実装し、E2Eテストまで追加してください"
+
+
 def test_empty_development_command_is_rejected():
     assert extract_development_instruction("開発:") == ""
     assert extract_development_instruction("dev:   ") == ""
