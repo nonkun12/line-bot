@@ -11,6 +11,7 @@ from typing import Callable
 
 from groq import Groq
 
+from .advisory_ai import generate_advisory_text
 from .creator_critic import CriticAgent, CreatorAgent, CreatorCriticLoop, ModelCall
 
 DEFAULT_MODEL = "openai/gpt-oss-20b"
@@ -22,32 +23,16 @@ def groq_model_call(
     client: Groq | None = None,
     model: str | None = None,
 ) -> str:
-    """Call the configured Groq model and return only the assistant text."""
+    """Call the restricted advisory boundary and return only assistant text."""
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError("prompt is required")
-
-    api_key = os.environ.get("GROQ_API_KEY", "").strip()
-    if client is None and not api_key:
-        raise RuntimeError("GROQ_API_KEY is required for Creator/Critic real-model execution")
-
-    active_client = client or Groq(api_key=api_key, timeout=15.0, max_retries=1)
-    active_model = (model or os.environ.get("CREATOR_CRITIC_MODEL") or DEFAULT_MODEL).strip()
-    if not active_model:
-        raise ValueError("model is required")
-
-    response = active_client.chat.completions.create(
-        model=active_model,
+    return generate_advisory_text(
         messages=[{"role": "user", "content": prompt}],
         temperature=0.2,
+        max_tokens=1200,
+        client=client,
+        model=model or os.environ.get("CREATOR_CRITIC_MODEL") or DEFAULT_MODEL,
     )
-    choices = getattr(response, "choices", None) or []
-    if not choices:
-        raise RuntimeError("Groq returned no choices")
-    message = getattr(choices[0], "message", None)
-    text = getattr(message, "content", None)
-    if not isinstance(text, str) or not text.strip():
-        raise RuntimeError("Groq returned empty content")
-    return text.strip()
 
 
 def build_creator_critic_loop(
