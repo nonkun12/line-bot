@@ -24,6 +24,7 @@ from .review import (
     ReviewResult,
 )
 from .router import AgentRouter, RouteResult
+from .self_improvement_distributed import DistributedSelfImprovementLoop, DistributedSelfImprovementResult
 from .self_improvement_policy import SelfImprovementAssessment, SelfImprovementDecision, assess_self_improvement
 from .structured_output import ParseAttempt, ParseResult, parse_json_object, parse_with_retries, require_fields
 from .task_routing import ProjectResolver, ResolvedTarget, TaskClassification, TaskClassifier, TaskMode
@@ -39,7 +40,8 @@ __all__ = [
     "ExecutionResult", "DefaultPlanner", "TaskMode", "TaskClassification",
     "ResolvedTarget", "TaskClassifier", "ProjectResolver", "ProjectRecord",
     "ProjectRegistry", "SelfImprovementDecision", "SelfImprovementAssessment",
-    "assess_self_improvement", "ParseAttempt", "ParseResult", "parse_json_object",
+    "assess_self_improvement", "DistributedSelfImprovementLoop", "DistributedSelfImprovementResult",
+    "ParseAttempt", "ParseResult", "parse_json_object",
     "parse_with_retries", "require_fields", "AgentRouter", "RouteResult",
     "AIGateway", "AIRequest", "AIResponse", "handle_channel_request",
     "CoreGraphState", "agent_node_name", "build_core_graph", "LegacyNodeAgent",
