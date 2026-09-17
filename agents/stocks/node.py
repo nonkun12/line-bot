@@ -24,7 +24,7 @@ _NATURAL_TICKER_RE = re.compile(
 )
 _ANALYSIS_TICKER_RE = re.compile(
     r"(?<![A-Za-z0-9])([A-Za-z]{2,6}(?:\.[A-Za-z]{1,3})?|\d{4})"
-    r"\s*(?:の|を)?\s*(?:分析|テクニカル|指標|チャート|analy(?:ze|sis)|technical)\b",
+    r"\s*(?:の|を)?\s*(?:分析|テクニカル|指標|チャート|analy(?:ze|sis)|technical)",
     re.IGNORECASE,
 )
 _DEFAULT_TIMEOUT_SEC = 8
