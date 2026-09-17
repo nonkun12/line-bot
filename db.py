@@ -81,6 +81,20 @@ def init_db():
         ON jobs(parent_job_id)
         """)
         conn.execute("""
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS stock_watchlist(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            label TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, ticker)
+        )
+        """)
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_stock_watchlist_user_id
+        ON stock_watchlist(user_id)
+        """)
         CREATE TABLE IF NOT EXISTS job_checkpoints(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             job_id INTEGER NOT NULL,
@@ -357,3 +371,37 @@ def list_processed_events(limit=100):
     except Exception as e:
         print("DB LIST_PROCESSED_EVENTS ERROR:", e)
         return []
+
+
+# =========================
+# Stock Watchlist
+# =========================
+def add_stock_watch(user_id, ticker, label=""):
+    with get_conn() as conn:
+        cursor = conn.execute(
+            """INSERT OR IGNORE INTO stock_watchlist(user_id, ticker, label)
+               VALUES (?, ?, ?)""",
+            (user_id, ticker, label),
+        )
+        return cursor.rowcount > 0
+
+
+def remove_stock_watch(user_id, ticker):
+    with get_conn() as conn:
+        cursor = conn.execute(
+            "DELETE FROM stock_watchlist WHERE user_id=? AND ticker=?",
+            (user_id, ticker),
+        )
+        return cursor.rowcount > 0
+
+
+def list_stock_watches(user_id):
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT ticker, label, created_at
+               FROM stock_watchlist
+               WHERE user_id=?
+               ORDER BY id""",
+            (user_id,),
+        ).fetchall()
+    return [{"ticker": row[0], "label": row[1], "created_at": row[2]} for row in rows]
