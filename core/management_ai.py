@@ -256,8 +256,8 @@ class ManagementAI:
     def plan(self, request: ManagementRequest, feedback: Sequence[str] = ()) -> ManagementPlan:
         return self._planner.plan(request, route(request), feedback)
 
-    def run(self, request: ManagementRequest) -> ManagementRun:
-        plan = self.plan(request)
+    def run(self, request: ManagementRequest, feedback: Sequence[str] = ()) -> ManagementRun:
+        plan = self.plan(request, feedback)
         workers = self._max_workers if plan.parallel_safe else 1
         distributed = DistributedTaskScheduler(self._executors, max_workers=workers).run(plan.tasks)
         batches = plan_batches(plan.tasks)
