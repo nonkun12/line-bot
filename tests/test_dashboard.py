@@ -27,7 +27,9 @@ def test_dashboard_page_status_code_and_content(auth_headers):
     assert b"LINE AI Secretary" in response.data
     assert b"dashboard.js" in response.data
     assert b"dashboard.css" in response.data
-    assert b"AI Control Tower" in response.data
+    assert b"分散AI Control Tower" in response.data
+    assert b"distributedAiSummary" in response.data
+    assert b"agentMessageSummary" in response.data
 
 
 def test_dashboard_notes_api_success(auth_headers):
