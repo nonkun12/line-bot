@@ -65,6 +65,29 @@ def test_control_tower_does_not_approve_from_static_runtime_evidence() -> None:
     assert decision.approved_task is None
 
 
+
+def test_control_tower_fails_closed_when_candidate_evidence_provider_errors() -> None:
+    def fake_model(_prompt: str) -> str:
+        return "proposal"
+
+    def failing_evidence(_candidate) -> dict[str, object]:
+        raise RuntimeError("sandbox unavailable")
+
+    tower = ControlTower(
+        creator_critic=build_creator_critic_loop(model_call=fake_model, max_iterations=1)
+    )
+    decision = tower.observe(
+        RuntimeReport((), failed_task_id="tester-1", error="pytest failed", rounds=1),
+        objective="repair the test failure",
+        candidate_evidence_provider=failing_evidence,
+    )
+
+    assert decision.approved_for_pipeline is False
+    assert decision.approved_task is None
+    assert decision.evaluation_error is not None
+    assert "sandbox unavailable" in decision.evaluation_error
+
+
 def test_control_tower_does_not_run_creator_critic_without_proposal() -> None:
     called = False
 
