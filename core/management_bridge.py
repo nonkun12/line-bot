@@ -64,10 +64,15 @@ def specialist_roles_for_message(message: str) -> frozenset[AgentRole]:
         roles.add(AgentRole.ENGLISH)
     if is_ai_news_intent(text):
         roles.add(AgentRole.NEWS)
-    if is_stock_intent(text):
-        roles.add(AgentRole.STOCKS)
-    if is_market_intent(text):
+    market_intent = is_market_intent(text)
+    if market_intent:
         roles.add(AgentRole.MARKET)
+    broad_market_only = any(
+        term in text.casefold()
+        for term in ("世界株価", "世界の株価", "世界の市場")
+    )
+    if is_stock_intent(text) and not broad_market_only:
+        roles.add(AgentRole.STOCKS)
     if is_voice_intent(text):
         roles.add(AgentRole.VOICE)
     if is_job_seeking_intent(text):
