@@ -1,8 +1,8 @@
-"""Incremental request path from the shared Supervisor into the Core graph."""
+""""Incremental request path from the shared Supervisor into the Core graph."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -18,7 +18,7 @@ from e2e_status import StepTimer
 
 # Explicit, bounded orchestration rules. Keep this list small and deterministic;
 # single-intent requests continue through the normal Supervisor/Core graph.
-_MULTI_SPECIALIST_RULES: tuple[tuple[tuple[str, ...], Any], ...] = (
+_MULTI_SPECIALIST_RULES: tuple[tuple[tuple[str, ...], Callable[[str], bool]], ...] = (
     (("ai_news", "stocks"), lambda message: is_ai_news_intent(message) and is_stock_intent(message)),
 )
 _MAX_SPECIALIST_WORKERS = 4
@@ -60,14 +60,33 @@ def _run_multi_specialist_request(
 
     def execute(item: tuple[str, Any]) -> tuple[str, dict[str, Any]]:
         agent_name, agent = item
-        response = agent.handle(request)
-        return agent_name, {"text": response.text, "metadata": dict(response.metadata)}
+        try:
+            response = agent.handle(request)
+            return agent_name, {
+                "text": response.text,
+                "metadata": dict(response.metadata),
+                "status": "ok",
+            }
+        except Exception as exc:
+            return agent_name, {
+                "text": "",
+                "metadata": {"feature": agent_name, "status": "error", "error": str(exc)},
+                "status": "error",
+            }
 
     with ThreadPoolExecutor(max_workers=min(len(agents), _MAX_SPECIALIST_WORKERS)) as executor:
         completed = list(executor.map(execute, agents))
 
     results = dict(completed)
-    texts = [results[name]["text"] for name in plan]
+    successful_texts = [results[name]["text"] for name in plan if results[name]["status"] == "ok" and results[name]["text"]]
+    failures = [name for name in plan if results[name]["status"] == "error"]
+    if not successful_texts:
+        raise RuntimeError("all multi-specialists failed: " + ", ".join(failures))
+
+    final_reply = "\n\n".join(successful_texts)
+    if failures:
+        final_reply += "\n\n一部のAgentを実行できませんでした: " + ", ".join(failures)
+
     return {
         "user_id": user_id,
         "raw_message": message,
@@ -77,11 +96,12 @@ def _run_multi_specialist_request(
         "next_agent": "management",
         "route": "management:" + "+".join(plan),
         "agent_results": results,
-        "final_reply": "\n\n".join(texts),
+        "final_reply": final_reply,
         "error": None,
         "specialists": list(plan),
         "parallel": True,
         "max_workers": min(len(agents), _MAX_SPECIALIST_WORKERS),
+        "failed_specialists": failures,
     }
 
 
