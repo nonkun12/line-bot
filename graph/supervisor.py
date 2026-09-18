@@ -23,6 +23,7 @@ from agents.english.intents import is_english_learning_intent
 from agents.stocks.intents import is_stock_intent
 from agents.news.intents import is_ai_news_intent
 from agents.voice.intents import is_voice_intent
+from agents.jobs.intents import is_job_seeking_intent
 
 _DEBUG_PREFIX = "debug"
 
@@ -43,6 +44,10 @@ def _is_voice_request(text: str) -> bool:
     return is_voice_intent(text)
 
 
+def _is_job_request(text: str) -> bool:
+    return is_job_seeking_intent(text)
+
+
 def classify_intent(raw_message: str, user_id: str | None = None) -> str:
     """メッセージ内容からintentを判定する。"""
     text = (raw_message or "").strip()
@@ -57,6 +62,8 @@ def classify_intent(raw_message: str, user_id: str | None = None) -> str:
         return "ai_news"
     if _is_stock_request(text):
         return "stocks"
+    if _is_job_request(text):
+        return "jobs"
     if _is_english_learning(text):
         return "english_learning"
     if _is_voice_request(text):
@@ -84,7 +91,8 @@ def supervisor_node(state: AgentState) -> AgentState:
         "debug": "debug", "app_development": "app_development", "note": "notes",
         "memory": "memory", "github": "github", "sheets": "sheets", "weather": "weather",
         "english_learning": "english_learning", "stocks": "stocks", "ai_news": "ai_news",
-        "voice": "voice", "unsupported": "normal",
+        "voice": "voice", "jobs": "job_seeking", "unsupported": "normal",
     }.get(intent, "fallback")
     pending_status = get_pending_status(user_id).value if user_id is not None else PendingStatus.NONE.value
     return {**state, "intent": intent, "next_agent": next_agent, "pending_status": pending_status}
+"
