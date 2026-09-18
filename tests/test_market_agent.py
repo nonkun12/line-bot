@@ -84,4 +84,4 @@ def test_market_agent_fails_closed_on_data_error(monkeypatch) -> None:
     )
 
     assert response.metadata["status"] == "degraded"
-    assert "推測して表示しません" in response.text
+    assert "推測して表示することはしません" in response.text
