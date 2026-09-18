@@ -65,8 +65,12 @@ def test_dashboard_system_exposes_distributed_ai_readiness(auth_headers):
     assert features["voice"]["status"] == "online"
     assert features["jobs"]["status"] == "online"
     assert "外部求人サイト連携は未接続" in features["jobs"]["detail"]
+    assert features["music"]["status"] == "online"
+    assert "音源生成" in features["music"]["detail"]
+    assert features["video"]["status"] == "online"
+    assert "動画生成" in features["video"]["detail"]
     assert data["distributed_ai"]["message_bus"] == "enabled"
-    assert len(data["distributed_ai"]["specialists"]) == 6
+    assert len(data["distributed_ai"]["specialists"]) == 8
 
 
 def test_dashboard_oracle_n8n_status_handles_missing_payload():
