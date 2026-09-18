@@ -19,6 +19,8 @@ ROLE_TO_AGENT_NAME: Mapping[AgentRole, str] = {
     AgentRole.NEWS: "ai_news",
     AgentRole.STOCKS: "stocks",
     AgentRole.JOBS: "job_seeking",
+    AgentRole.MUSIC: "music",
+    AgentRole.VIDEO: "video",
 }
 
 
