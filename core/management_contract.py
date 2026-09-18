@@ -12,6 +12,7 @@ class Specialist(str, Enum):
     ENGLISH = "english"
     NEWS = "news"
     STOCKS = "stocks"
+    MARKET = "market"
     JOBS = "jobs"
     MUSIC = "music"
     VIDEO = "video"
