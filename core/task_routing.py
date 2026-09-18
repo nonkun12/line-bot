@@ -52,6 +52,7 @@ class TaskClassifier:
         "core/",
         ".github/",
         "pytest",
+        "e2e",
         "line-bot",
         "自分自身",
         "自己改良",
