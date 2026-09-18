@@ -95,4 +95,3 @@ def supervisor_node(state: AgentState) -> AgentState:
     }.get(intent, "fallback")
     pending_status = get_pending_status(user_id).value if user_id is not None else PendingStatus.NONE.value
     return {**state, "intent": intent, "next_agent": next_agent, "pending_status": pending_status}
-"

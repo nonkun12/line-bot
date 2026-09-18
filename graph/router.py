@@ -43,9 +43,17 @@ def route_from_supervisor(
             legacy_routes=_ROUTE_TABLE,
             default_route=_DEFAULT_ROUTE,
         )
-        # The legacy graph has only a fixed set of named nodes. Future/Core-only
-        # agents may resolve successfully in the shared registry, but must not
-        # be returned as nonexistent legacy graph nodes.
+        # Core-only agents may not expose graph_node metadata. When Supervisor
+        # uses an alias/route key that already exists in the legacy route table,
+        # preserve that explicit mapping instead of synthesizing a mismatched
+        # "<agent>_agent" node name.
+        next_agent = state.get("next_agent")
+        if (
+            route not in _ROUTE_TABLE.values()
+            and isinstance(next_agent, str)
+            and next_agent in _ROUTE_TABLE
+        ):
+            route = _ROUTE_TABLE[next_agent]
         if route not in _ROUTE_TABLE.values():
             route = _DEFAULT_ROUTE
     else:

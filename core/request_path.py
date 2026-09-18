@@ -1,4 +1,4 @@
-""""Incremental request path from the shared Supervisor into the Core graph."""
+"""Incremental request path from the shared Supervisor into the Core graph."""
 
 from __future__ import annotations
 
