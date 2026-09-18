@@ -300,6 +300,16 @@ def system_status():
             "label": "求職AI",
             "detail": "求人検索・応募準備・面接支援。実求人サイト連携は未接続",
         },
+        "music": {
+            "status": "online",
+            "label": "音楽AI",
+            "detail": "選曲・作曲/作詞補助・プレイリスト設計。音源生成・再生は未接続",
+        },
+        "video": {
+            "status": "online",
+            "label": "映像AI",
+            "detail": "動画企画・台本・絵コンテ・編集設計。動画生成・書き出しは未接続",
+        },
     }
     result["distributed_ai"] = {
         "status": "online",
@@ -312,6 +322,8 @@ def system_status():
             {"key": "news", "label": "News AI", "status": "online", "role": "ニュース"},
             {"key": "stocks", "label": "Stock AI", "status": "online", "role": "株価・分析"},
             {"key": "jobs", "label": "Job AI", "status": "online", "role": "求職・応募支援（外部求人サイト連携は未接続）"},
+            {"key": "music", "label": "Music AI", "status": "online", "role": "音楽企画・作曲/作詞補助・選曲"},
+            {"key": "video", "label": "Video AI", "status": "online", "role": "映像企画・台本・絵コンテ・編集設計"},
         ],
     }
     return jsonify(result)
