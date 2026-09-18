@@ -296,9 +296,9 @@ def system_status():
             "detail": "voice API available",
         },
         "jobs": {
-            "status": "planned",
+            "status": "online",
             "label": "求職AI",
-            "detail": "求人検索・応募準備の基盤。実運用接続は保留中",
+            "detail": "求人検索・応募準備・面接支援。実求人サイト連携は未接続",
         },
     }
     result["distributed_ai"] = {
@@ -311,7 +311,7 @@ def system_status():
             {"key": "english", "label": "English AI", "status": "online", "role": "英語学習"},
             {"key": "news", "label": "News AI", "status": "online", "role": "ニュース"},
             {"key": "stocks", "label": "Stock AI", "status": "online", "role": "株価・分析"},
-            {"key": "jobs", "label": "Job AI", "status": "planned", "role": "求職・応募支援"},
+            {"key": "jobs", "label": "Job AI", "status": "online", "role": "求職・応募支援（外部求人サイト連携は未接続）"},
         ],
     }
     return jsonify(result)
