@@ -9,6 +9,8 @@ _KEYWORDS: tuple[tuple[Specialist, tuple[str, ...]], ...] = (
     (Specialist.ENGLISH, ("英語", "english", "英会話", "英文")),
     (Specialist.NEWS, ("ニュース", "news", "最新情報", "速報")),
     (Specialist.STOCKS, ("株", "株価", "stocks", "stock", "銘柄", "証券")),
+    (Specialist.MUSIC, ("音楽", "music", "作曲", "作詞", "playlist", "プレイリスト", "BGM", "楽曲")),
+    (Specialist.VIDEO, ("動画", "映像", "video", "movie", "絵コンテ", "動画制作", "ショート動画")),
 )
 
 
