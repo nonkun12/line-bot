@@ -64,7 +64,7 @@ def test_dashboard_system_exposes_distributed_ai_readiness(auth_headers):
     assert "RSS" in features["ai_news"]["detail"]
     assert features["voice"]["status"] == "online"
     assert features["jobs"]["status"] == "online"
-    assert "外部求人サイト連携は未接続" in features["jobs"]["detail"]
+    assert "実求人サイト連携は未接続" in features["jobs"]["detail"]
     assert features["music"]["status"] == "online"
     assert "音源生成" in features["music"]["detail"]
     assert features["video"]["status"] == "online"
