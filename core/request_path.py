@@ -19,8 +19,42 @@ from e2e_status import StepTimer
 # Explicit, bounded orchestration rules. Keep this list small and deterministic;
 # single-intent requests continue through the normal Supervisor/Core graph.
 _MULTI_SPECIALIST_RULES: tuple[tuple[tuple[str, ...], Callable[[str], bool]], ...] = (
-    (("ai_news", "stocks"), lambda message: is_ai_news_intent(message) and is_stock_intent(message)),
+    # Keep explicit combinations ordered from most specific to least specific.
+    (
+        ("ai_news", "stocks", "weather"),
+        lambda message: is_ai_news_intent(message) and is_stock_intent(message) and _is_weather_intent(message),
+    ),
+    (
+        ("ai_news", "stocks"),
+        lambda message: is_ai_news_intent(message) and is_stock_intent(message),
+    ),
+    (
+        ("ai_news", "weather"),
+        lambda message: is_ai_news_intent(message) and _is_weather_intent(message),
+    ),
+    (
+        ("stocks", "weather"),
+        lambda message: is_stock_intent(message) and _is_weather_intent(message),
+    ),
 )
+
+_WEATHER_INTENT_TERMS = (
+    "天気",
+    "天候",
+    "気温",
+    "温度",
+    "降水確率",
+    "雨",
+    "雪",
+    "weather",
+    "temperature",
+    "forecast",
+)
+
+
+def _is_weather_intent(message: str) -> bool:
+    normalized = (message or "").strip().lower()
+    return any(term.lower() in normalized for term in _WEATHER_INTENT_TERMS)
 _MAX_SPECIALIST_WORKERS = 4
 
 
