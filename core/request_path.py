@@ -202,4 +202,3 @@ def extract_core_reply(result: Mapping[str, Any]) -> str:
     if isinstance(value, str):
         return value
     return "Agent結果なし"
-"
