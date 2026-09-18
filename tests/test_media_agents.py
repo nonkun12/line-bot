@@ -17,7 +17,7 @@ def test_music_agent_handles_music_requests() -> None:
 def test_music_agent_playlist_mode_is_explicit_about_unconnected_playback() -> None:
     response = MusicAgent().handle(AgentRequest("u1", "プレイリストを作って"))
     assert response.metadata["mode"] == "playlist"
-    assert "再生連携はまだ接続していません" in response.text
+    assert "音源再生・配信連携はまだ接続していません" in response.text
 
 
 def test_video_agent_handles_video_requests() -> None:
