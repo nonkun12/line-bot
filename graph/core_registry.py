@@ -47,6 +47,7 @@ LEGACY_GRAPH_NODES: Mapping[str, str] = {
     "normal": "normal_agent",
     "english_learning": "english_learning_agent",
     "stocks": "stocks_agent",
+    "global_market": "global_market_agent",
     "ai_news": "ai_news_agent",
     "voice": "voice_agent",
     "job_seeking": "jobs_agent",
