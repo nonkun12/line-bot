@@ -7,6 +7,8 @@ def test_routes_specialist_requests_deterministically() -> None:
     assert route(ManagementRequest("u", "英語を勉強したい")).specialist is Specialist.ENGLISH
     assert route(ManagementRequest("u", "最新ニュースを教えて")).specialist is Specialist.NEWS
     assert route(ManagementRequest("u", "音声で話して")).specialist is Specialist.VOICE
+    assert route(ManagementRequest("u", "音楽を選曲して")).specialist is Specialist.MUSIC
+    assert route(ManagementRequest("u", "動画の台本を作って")).specialist is Specialist.VIDEO
 
 
 def test_falls_back_to_general() -> None:
