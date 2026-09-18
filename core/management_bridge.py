@@ -66,6 +66,8 @@ def specialist_roles_for_message(message: str) -> frozenset[AgentRole]:
         roles.add(AgentRole.NEWS)
     if is_stock_intent(text):
         roles.add(AgentRole.STOCKS)
+    if is_market_intent(text):
+        roles.add(AgentRole.MARKET)
     if is_voice_intent(text):
         roles.add(AgentRole.VOICE)
     if is_job_seeking_intent(text):
