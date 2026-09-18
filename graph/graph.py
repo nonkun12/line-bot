@@ -157,6 +157,7 @@ def build_graph():
     builder.add_node("weather_agent", weather_agent_node)
     builder.add_node("english_learning_agent", english_learning_agent_node)
     builder.add_node("stocks_agent", _agent_node(stocks_agent))
+    builder.add_node("global_market_agent", _agent_node(global_market_agent))
     builder.add_node("ai_news_agent", _agent_node(ai_news_agent))
     builder.add_node("voice_agent", _agent_node(voice_agent))
     builder.add_node("jobs_agent", _agent_node(job_seeking_agent))
