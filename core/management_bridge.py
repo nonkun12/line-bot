@@ -37,6 +37,7 @@ SUPPORTED_MULTI_SPECIALISTS = frozenset(
         AgentRole.ENGLISH,
         AgentRole.NEWS,
         AgentRole.STOCKS,
+        AgentRole.MARKET,
         AgentRole.VOICE,
         AgentRole.JOBS,
         AgentRole.MUSIC,
