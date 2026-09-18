@@ -27,6 +27,7 @@ PLANNABLE_ROLES = frozenset(
         AgentRole.ENGLISH,
         AgentRole.NEWS,
         AgentRole.STOCKS,
+        AgentRole.MARKET,
         AgentRole.JOBS,
         AgentRole.MUSIC,
         AgentRole.VIDEO,
