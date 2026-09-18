@@ -182,6 +182,8 @@ def parse_mcp_json_list(raw):
 
         return data if isinstance(data, list) else []
 
-    except json.JSONDecodeError as e:
-        print("parse error:", e)
-        return [line.strip() for line in str(raw).splitlines() if line.strip()]
+    except json.JSONDecodeError:
+        # MCP tools may legitimately return human-readable text (for example
+        # "予定されているリマインダーはありません"). Do not treat that as
+        # a JSON parsing failure or surface a noisy error in Render logs.
+        return []
