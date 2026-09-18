@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: ai-app-development-${{ github.event.inputs.user_id }}
@@ -40,8 +41,29 @@ jobs:
           python -m pip install --upgrade pip
           pip install groq pytest Flask
 
+      - name: Forward legacy E2E requests to LINE Development Dispatch
+        id: forward_e2e
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_REQUIREMENT: ${{ github.event.inputs.requirement }}
+          APP_USER_ID: ${{ github.event.inputs.user_id }}
+        run: |
+          set -euo pipefail
+          if [[ "${APP_REQUIREMENT}" == *E2E* && "${APP_REQUIREMENT}" == *テスト* ]] || [[ "${APP_REQUIREMENT}" == *本線E2E* ]]; then
+            echo "Legacy E2E request detected; forwarding to LINE Development Dispatch."
+            gh workflow run line-development-dispatch.yml \\
+              --repo "${GITHUB_REPOSITORY}" \\
+              --ref main \\
+              -f instruction="${APP_REQUIREMENT}" \\
+              -f user_id="${APP_USER_ID}"
+            echo "forwarded=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "forwarded=false" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Run independent-repository app builder
         id: app_development
+        if: ${{ steps.forward_e2e.outputs.forwarded != 'true' }}
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           APP_GITHUB_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
@@ -72,6 +94,7 @@ jobs:
           INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
           APP_USER_ID: ${{ github.event.inputs.user_id }}
           APP_REQUIREMENT: ${{ github.event.inputs.requirement }}
+          FORWARDED_E2E: ${{ steps.forward_e2e.outputs.forwarded }}
           APP_OUTCOME: ${{ steps.app_development.outcome }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -90,7 +113,14 @@ jobs:
               print("LINE notification skipped: required environment missing")
               raise SystemExit(0)
 
-          if outcome == "success":
+          if os.environ.get("FORWARDED_E2E") == "true":
+              message = (
+                  "✅ 本線E2Eテストを本線開発ワークフローへ転送しました。\n"
+                  f"指示: {requirement}\n"
+                  "GitHub Actionsで本線E2Eを継続実行しています。\n"
+                  f"実行結果: {run_url}"
+              )
+          elif outcome == "success":
               message = (
                   "✅ AIアプリ開発が完了しました。\n"
                   f"要件: {requirement}\n"
