@@ -1,4 +1,4 @@
-"""Build the Core registry from the existing and newly migrated agent nodes."""
+""""Build the Core registry from the existing and newly migrated agent nodes."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from agents.english.node import english_learning_agent_node
 from agents.stocks.node import agent as stocks_agent
 from agents.news.node import agent as ai_news_agent
 from agents.voice.node import agent as voice_agent
+from agents.jobs.node import agent as job_seeking_agent
 from core.legacy_adapter import build_legacy_registry
 from core.agents import AgentRegistry
 
@@ -45,6 +46,7 @@ LEGACY_GRAPH_NODES: Mapping[str, str] = {
     "stocks": "stocks_agent",
     "ai_news": "ai_news_agent",
     "voice": "voice_agent",
+    "job_seeking": "jobs_agent",
     "fallback": "fallback_agent",
 }
 
@@ -59,4 +61,6 @@ def build_core_agent_registry() -> AgentRegistry:
     registry.register(stocks_agent)
     registry.register(ai_news_agent)
     registry.register(voice_agent)
+    registry.register(job_seeking_agent)
     return registry
+"
