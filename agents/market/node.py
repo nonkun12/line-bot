@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -16,6 +17,14 @@ _JST = ZoneInfo("Asia/Tokyo")
 
 _INSTRUMENTS = {
     "dow": {"ticker": "^DJI", "label": "NYダウ", "kind": "index"},
+    "sp500": {"ticker": "^GSPC", "label": "S&P500", "kind": "index"},
+    "nasdaq": {"ticker": "^IXIC", "label": "NASDAQ総合", "kind": "index"},
+    "nikkei": {"ticker": "^N225", "label": "日経225", "kind": "index"},
+    "dax": {"ticker": "^GDAXI", "label": "DAX", "kind": "index"},
+    "ftse": {"ticker": "^FTSE", "label": "FTSE100", "kind": "index"},
+    "hang_seng": {"ticker": "^HSI", "label": "香港ハンセン", "kind": "index"},
+    "shanghai": {"ticker": "000001.SS", "label": "上海総合", "kind": "index"},
+    "kospi": {"ticker": "^KS11", "label": "KOSPI", "kind": "index"},
     "usd_jpy": {"ticker": "JPY=X", "label": "USD/JPY", "kind": "fx"},
     "eur_usd": {"ticker": "EURUSD=X", "label": "EUR/USD", "kind": "fx"},
     "gbp_usd": {"ticker": "GBPUSD=X", "label": "GBP/USD", "kind": "fx"},
@@ -30,7 +39,7 @@ _INSTRUMENTS = {
 
 class MarketAgent:
     name = "global_market"
-    description = "NY Dow, major global currency pairs, and market summary."
+    description = "Global market indices and major FX pairs."
     priority = 82
     enabled = True
 
@@ -112,13 +121,15 @@ class MarketAgent:
 
     @classmethod
     def _fetch_all(cls, keys: tuple[str, ...]) -> dict[str, dict[str, object]]:
-        return {key: cls._fetch_quote(_INSTRUMENTS[key]["ticker"]) for key in keys}
+        with ThreadPoolExecutor(max_workers=min(6, len(keys))) as executor:
+            futures = {key: executor.submit(cls._fetch_quote, _INSTRUMENTS[key]["ticker"]) for key in keys}
+            return {key: futures[key].result() for key in keys}
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         mode = self._mode(request.message)
         keys = ("usd_jpy", "eur_usd", "gbp_usd", "aud_usd", "eur_jpy", "gbp_jpy", "usd_chf", "usd_cad", "usd_cny")
         if mode == "summary":
-            keys = ("dow",) + keys
+            keys = ("dow", "sp500", "nasdaq", "nikkei", "dax", "ftse", "hang_seng", "shanghai", "kospi") + keys
 
         try:
             quotes = self._fetch_all(keys)
