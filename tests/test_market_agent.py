@@ -9,6 +9,9 @@ def test_market_intent_detects_dow_and_fx() -> None:
     assert is_market_intent("NYダウを教えて")
     assert is_market_intent("ドル円の為替")
     assert is_market_intent("what is the forex rate?")
+    assert is_market_intent("S&P500を教えて")
+    assert is_market_intent("日経225を教えて")
+    assert is_market_intent("DAXを教えて")
 
 
 def test_market_agent_summary_includes_dow_and_major_fx(monkeypatch) -> None:
@@ -24,6 +27,14 @@ def test_market_agent_summary_includes_dow_and_major_fx(monkeypatch) -> None:
             "CHF=X": 0.8123,
             "CAD=X": 1.3789,
             "USDCNY=X": 7.1234,
+            "^GSPC": 5100.0,
+            "^IXIC": 18000.0,
+            "^N225": 40000.0,
+            "^GDAXI": 20000.0,
+            "^FTSE": 8200.0,
+            "^HSI": 20000.0,
+            "000001.SS": 3300.0,
+            "^KS11": 2700.0,
         }
         return {
             "price": prices[ticker],
@@ -47,6 +58,11 @@ def test_market_agent_summary_includes_dow_and_major_fx(monkeypatch) -> None:
     assert "USD/JPY: 150.123" in response.text
     assert "EUR/USD: 1.1234" in response.text
     assert "USD/CNY: 7.1234" in response.text
+    assert "S&P500" in response.text
+    assert "NASDAQ総合" in response.text
+    assert "日経225" in response.text
+    assert "DAX" in response.text
+    assert "FTSE100" in response.text
 
 
 def test_market_agent_fx_mode_omits_dow(monkeypatch) -> None:
