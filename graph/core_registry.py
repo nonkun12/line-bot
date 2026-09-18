@@ -1,4 +1,4 @@
-""""Build the Core registry from the existing and newly migrated agent nodes."""
+"""Build the Core registry from the existing and newly migrated agent nodes."""
 
 from __future__ import annotations
 
@@ -63,4 +63,3 @@ def build_core_agent_registry() -> AgentRegistry:
     registry.register(voice_agent)
     registry.register(job_seeking_agent)
     return registry
-"
