@@ -11,6 +11,12 @@ from core.management_bridge import (
 )
 
 
+def test_management_bridge_keeps_broad_world_market_request_on_market_ai() -> None:
+    roles = specialist_roles_for_message("世界の株価と為替を教えて")
+    assert roles == frozenset({AgentRole.MARKET})
+    assert not should_route_to_management_ai("世界の株価と為替を教えて")
+
+
 def test_management_bridge_detects_market_and_stocks_specialists() -> None:
     roles = specialist_roles_for_message("NYダウと株価を調べて")
     assert roles == frozenset({AgentRole.MARKET, AgentRole.STOCKS})
