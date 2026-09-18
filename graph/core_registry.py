@@ -15,6 +15,7 @@ from agents.sheets.node import sheets_agent_node
 from agents.weather.node import weather_agent_node
 from agents.english.node import english_learning_agent_node
 from agents.stocks.node import agent as stocks_agent
+from agents.market.node import agent as global_market_agent
 from agents.news.node import agent as ai_news_agent
 from agents.voice.node import agent as voice_agent
 from agents.jobs.node import agent as job_seeking_agent
