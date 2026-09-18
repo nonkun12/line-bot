@@ -65,6 +65,7 @@ def build_core_agent_registry() -> AgentRegistry:
         priorities={"app_development": 100, "debug": 90},
     )
     registry.register(stocks_agent)
+    registry.register(global_market_agent)
     registry.register(ai_news_agent)
     registry.register(voice_agent)
     registry.register(job_seeking_agent)
