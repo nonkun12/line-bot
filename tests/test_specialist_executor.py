@@ -33,7 +33,7 @@ def test_factory_maps_existing_registry_agents_to_specialist_roles() -> None:
         FakeAgent("english_learning"),
         FakeAgent("ai_news"),
         FakeAgent("stocks"),
-        FakeAgent("jobs"),
+        FakeAgent("job_seeking"),
     ]
     registry = AgentRegistry(agents)
     request = AgentRequest("u1", "original", channel="slack", metadata={"source": "test"})
@@ -85,4 +85,11 @@ def test_factory_skips_specialists_not_registered_yet() -> None:
 def test_role_mapping_is_explicit() -> None:
     assert ROLE_TO_AGENT_NAME[AgentRole.NEWS] == "ai_news"
     assert ROLE_TO_AGENT_NAME[AgentRole.STOCKS] == "stocks"
-    assert ROLE_TO_AGENT_NAME[AgentRole.JOBS] == "jobs"
+    assert ROLE_TO_AGENT_NAME[AgentRole.JOBS] == "job_seeking"
+
+def test_factory_maps_job_role_to_existing_job_seeking_agent() -> None:
+    registry = AgentRegistry([FakeAgent("job_seeking")])
+    executors = SpecialistExecutorFactory(registry).build(
+        AgentRequest("u1", "求人を探して")
+    )
+    assert set(executors) == {AgentRole.JOBS}
