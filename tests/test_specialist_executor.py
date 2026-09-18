@@ -86,3 +86,10 @@ def test_role_mapping_is_explicit() -> None:
     assert ROLE_TO_AGENT_NAME[AgentRole.NEWS] == "ai_news"
     assert ROLE_TO_AGENT_NAME[AgentRole.STOCKS] == "stocks"
     assert ROLE_TO_AGENT_NAME[AgentRole.JOBS] == "jobs"
+
+def test_factory_maps_job_role_to_existing_job_seeking_agent() -> None:
+    registry = AgentRegistry([FakeAgent("job_seeking")])
+    executors = SpecialistExecutorFactory(registry).build(
+        AgentRequest("u1", "求人を探して")
+    )
+    assert set(executors) == {AgentRole.JOBS}
