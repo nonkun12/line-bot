@@ -49,6 +49,7 @@ _ROLE_LABELS = {
     AgentRole.ENGLISH: "English",
     AgentRole.NEWS: "AI NEWS",
     AgentRole.STOCKS: "Stocks",
+    AgentRole.MARKET: "Market AI",
     AgentRole.VOICE: "Voice",
     AgentRole.JOBS: "Jobs",
     AgentRole.MUSIC: "Music",
