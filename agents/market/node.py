@@ -146,7 +146,7 @@ class MarketAgent:
             if key == "dow":
                 continue
             item = _INSTRUMENTS[key]
-            lines.append(cls._render_quote(item["label"], quotes[key]))
+            lines.append(self._render_quote(item["label"], quotes[key]))
         latest = next(
             (quotes[key].get("market_time_jst") for key in keys if quotes[key].get("market_time_jst")),
             None,
