@@ -17,6 +17,12 @@ def test_management_bridge_detects_multiple_specialists() -> None:
     assert should_route_to_management_ai("AIニュースと株価を調べて")
 
 
+def test_management_bridge_detects_jobs_and_news_specialists() -> None:
+    roles = specialist_roles_for_message("求人とAIニュースを調べて")
+    assert roles == frozenset({AgentRole.JOBS, AgentRole.NEWS})
+    assert should_route_to_management_ai("求人とAIニュースを調べて")
+
+
 def test_management_bridge_detects_music_and_video_specialists() -> None:
     roles = specialist_roles_for_message("音楽のBGMと動画の絵コンテを作って")
     assert roles == frozenset({AgentRole.MUSIC, AgentRole.VIDEO})

@@ -13,6 +13,7 @@ from agents.english.intents import is_english_learning_intent
 from agents.news.intents import is_ai_news_intent
 from agents.stocks.intents import is_stock_intent
 from agents.voice.intents import is_voice_intent
+from agents.jobs.intents import is_job_seeking_intent
 from agents.music.intents import is_music_intent
 from agents.video.intents import is_video_intent
 from core.agents import AgentRequest
@@ -36,6 +37,7 @@ SUPPORTED_MULTI_SPECIALISTS = frozenset(
         AgentRole.NEWS,
         AgentRole.STOCKS,
         AgentRole.VOICE,
+        AgentRole.JOBS,
         AgentRole.MUSIC,
         AgentRole.VIDEO,
     }
@@ -46,6 +48,7 @@ _ROLE_LABELS = {
     AgentRole.NEWS: "AI NEWS",
     AgentRole.STOCKS: "Stocks",
     AgentRole.VOICE: "Voice",
+    AgentRole.JOBS: "Jobs",
     AgentRole.MUSIC: "Music",
     AgentRole.VIDEO: "Video",
 }
@@ -62,6 +65,8 @@ def specialist_roles_for_message(message: str) -> frozenset[AgentRole]:
         roles.add(AgentRole.STOCKS)
     if is_voice_intent(text):
         roles.add(AgentRole.VOICE)
+    if is_job_seeking_intent(text):
+        roles.add(AgentRole.JOBS)
     if is_music_intent(text):
         roles.add(AgentRole.MUSIC)
     if is_video_intent(text):
@@ -168,10 +173,9 @@ def run_management_request(
         if task is None or not result.summary.strip():
             continue
         label = _ROLE_LABELS.get(task.role, task.role.value)
-        parts.append(f"【{label}】\n{result.summary.strip()}")
+        parts.append("【" + label + "】\n" + result.summary.strip())
 
     return "\n\n".join(parts) if parts else None
-
 
 __all__ = [
     "SUPPORTED_MULTI_SPECIALISTS",
