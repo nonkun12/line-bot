@@ -34,6 +34,8 @@ def test_factory_maps_existing_registry_agents_to_specialist_roles() -> None:
         FakeAgent("ai_news"),
         FakeAgent("stocks"),
         FakeAgent("job_seeking"),
+        FakeAgent("music"),
+        FakeAgent("video"),
     ]
     registry = AgentRegistry(agents)
     request = AgentRequest("u1", "original", channel="slack", metadata={"source": "test"})
