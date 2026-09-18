@@ -101,3 +101,42 @@ def test_market_agent_fails_closed_on_data_error(monkeypatch) -> None:
 
     assert response.metadata["status"] == "degraded"
     assert "推測して表示することはしません" in response.text
+
+
+def test_market_quote_keys_target_specific_instruments() -> None:
+    from agents.market.intents import market_quote_keys
+
+    assert market_quote_keys("S&P500と日経225") == ("sp500", "nikkei")
+    assert market_quote_keys("ドル円だけ教えて") == ("usd_jpy",)
+    assert set(market_quote_keys("主要な為替")) == {
+        "usd_jpy", "eur_usd", "gbp_usd", "aud_usd", "eur_jpy",
+        "gbp_jpy", "usd_chf", "usd_cad", "usd_cny",
+    }
+
+
+def test_market_agent_fetches_only_requested_quotes(monkeypatch) -> None:
+    seen: list[str] = []
+
+    def fake_quote(cls, ticker: str):
+        seen.append(ticker)
+        return {
+            "price": 100.0,
+            "previous_close": 99.0,
+            "change": 1.0,
+            "change_pct": 1.01,
+            "currency": "USD",
+            "market_time_jst": "2026-09-18 20:00 JST",
+            "market_state": "REGULAR",
+        }
+
+    monkeypatch.setattr(MarketAgent, "_fetch_quote", classmethod(fake_quote))
+    response = MarketAgent().handle(
+        AgentRequest(user_id="u1", message="S&P500だけ", channel="slack")
+    )
+
+    assert seen == ["^GSPC"]
+    assert response.metadata["mode"] == "quotes"
+    assert response.metadata["requested_instruments"] == ["sp500"]
+    assert "S&P500: 100.000" in response.text
+    assert "日経225" not in response.text
+    assert "USD/JPY" not in response.text

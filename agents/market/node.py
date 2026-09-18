@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from agents.market.intents import is_market_intent
+from agents.market.intents import is_market_intent, market_quote_keys
 from core.agents import AgentRequest, AgentResponse
 
 
@@ -126,10 +126,14 @@ class MarketAgent:
             return {key: futures[key].result() for key in keys}
 
     def handle(self, request: AgentRequest) -> AgentResponse:
-        mode = self._mode(request.message)
-        keys = ("usd_jpy", "eur_usd", "gbp_usd", "aud_usd", "eur_jpy", "gbp_jpy", "usd_chf", "usd_cad", "usd_cny")
-        if mode == "summary":
-            keys = ("dow", "sp500", "nasdaq", "nikkei", "dax", "ftse", "hang_seng", "shanghai", "kospi") + keys
+        requested_keys = market_quote_keys(request.message)
+        mode = "fx" if requested_keys and all(_INSTRUMENTS[key]["kind"] == "fx" for key in requested_keys) else "quotes"
+        keys = requested_keys
+        if not keys:
+            mode = self._mode(request.message)
+            keys = ("usd_jpy", "eur_usd", "gbp_usd", "aud_usd", "eur_jpy", "gbp_jpy", "usd_chf", "usd_cad", "usd_cny")
+            if mode == "summary":
+                keys = ("dow", "sp500", "nasdaq", "nikkei", "dax", "ftse", "hang_seng", "shanghai", "kospi") + keys
 
         try:
             quotes = self._fetch_all(keys)
@@ -172,6 +176,7 @@ class MarketAgent:
                 "feature": self.name,
                 "status": "online",
                 "mode": mode,
+                "requested_instruments": [key for key in requested_keys],
                 "instruments": [item["ticker"] for item in (_INSTRUMENTS[key] for key in keys)],
                 "quotes": quotes,
             },
