@@ -11,3 +11,22 @@ def test_future_agent_intents_route_to_dedicated_agents():
 
 def test_unsupported_message_falls_back_safely():
     assert classify_intent("これは登録されていない依頼です") == "unsupported"
+
+
+
+def test_job_seeking_traverses_main_langgraph():
+    from graph.graph import build_graph
+
+    graph = build_graph()
+    result = graph.invoke({
+        "user_id": "test-user",
+        "raw_message": "求人を探したい",
+        "channel": "test",
+        "metadata": {},
+        "agent_results": {},
+    })
+
+    assert result["intent"] == "jobs"
+    assert result["next_agent"] == "job_seeking"
+    assert "job_seeking" in result["agent_results"]
+    assert result["final_reply"]
