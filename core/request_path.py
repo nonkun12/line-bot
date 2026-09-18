@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from core.agents import AgentRequest
@@ -20,6 +21,7 @@ from e2e_status import StepTimer
 _MULTI_SPECIALIST_RULES: tuple[tuple[tuple[str, ...], Any], ...] = (
     (("ai_news", "stocks"), lambda message: is_ai_news_intent(message) and is_stock_intent(message)),
 )
+_MAX_SPECIALIST_WORKERS = 4
 
 
 def _resolve_multi_specialist_plan(message: str) -> tuple[str, ...] | None:
@@ -38,22 +40,34 @@ def _run_multi_specialist_request(
     metadata: Mapping[str, Any],
     specialists: Sequence[str],
 ) -> dict[str, Any]:
-    """Execute a bounded specialist plan and preserve every result."""
+    """Execute bounded specialists concurrently and preserve each result."""
     registry = build_core_agent_registry()
     request = AgentRequest(user_id=user_id, message=message, channel=channel, metadata=dict(metadata))
-    results: dict[str, dict[str, Any]] = {}
-    texts: list[str] = []
+    plan = tuple(specialists)
+    if not plan:
+        raise RuntimeError("multi-specialist plan is empty")
+    if len(plan) > _MAX_SPECIALIST_WORKERS:
+        raise RuntimeError("multi-specialist plan exceeds worker limit")
 
-    for agent_name in specialists:
+    agents = []
+    for agent_name in plan:
         agent = registry.get(agent_name)
         if not bool(getattr(agent, "enabled", True)):
             raise RuntimeError(f"required specialist disabled: {agent_name}")
         if not agent.can_handle(request):
             raise RuntimeError(f"required specialist rejected request: {agent_name}")
-        response = agent.handle(request)
-        results[agent_name] = {"text": response.text, "metadata": dict(response.metadata)}
-        texts.append(response.text)
+        agents.append((agent_name, agent))
 
+    def execute(item: tuple[str, Any]) -> tuple[str, dict[str, Any]]:
+        agent_name, agent = item
+        response = agent.handle(request)
+        return agent_name, {"text": response.text, "metadata": dict(response.metadata)}
+
+    with ThreadPoolExecutor(max_workers=min(len(agents), _MAX_SPECIALIST_WORKERS)) as executor:
+        completed = list(executor.map(execute, agents))
+
+    results = dict(completed)
+    texts = [results[name]["text"] for name in plan]
     return {
         "user_id": user_id,
         "raw_message": message,
@@ -61,11 +75,13 @@ def _run_multi_specialist_request(
         "metadata": dict(metadata),
         "intent": "multi_specialist",
         "next_agent": "management",
-        "route": "management:" + "+".join(specialists),
+        "route": "management:" + "+".join(plan),
         "agent_results": results,
         "final_reply": "\n\n".join(texts),
         "error": None,
-        "specialists": list(specialists),
+        "specialists": list(plan),
+        "parallel": True,
+        "max_workers": min(len(agents), _MAX_SPECIALIST_WORKERS),
     }
 
 
