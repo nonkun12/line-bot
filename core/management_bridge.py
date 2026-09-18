@@ -173,7 +173,7 @@ def run_management_request(
         if task is None or not result.summary.strip():
             continue
         label = _ROLE_LABELS.get(task.role, task.role.value)
-        parts.append(f"【{label}】\\n{result.summary.strip()}")
+        parts.append("【" + label + "】\\n" + result.summary.strip())
 
     return "\\n\\n".join(parts) if parts else None
 
