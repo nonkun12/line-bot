@@ -269,5 +269,6 @@ def system_status():
         "stocks": {"status": "online", "label": "株価", "detail": "MVP: Yahoo Finance quote retrieval"},
         "ai_news": {"status": "online", "label": "AI NEWS", "detail": "MVP: Google News RSS headline retrieval"},
         "voice": {"status": "online", "label": "AIスピーカー / Voice", "detail": "voice API available"},
+        "job_seeking": {"status": "online", "label": "求職AI", "detail": "求人検索・履歴書・職務経歴書・応募・面接対策"},
     }
     return jsonify(result)
