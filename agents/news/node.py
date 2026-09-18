@@ -1,4 +1,4 @@
-""""AI news agent with a dependency-free RSS retrieval MVP."""
+"""AI news agent with a dependency-free RSS retrieval MVP."""
 from __future__ import annotations
 
 import html
@@ -126,4 +126,3 @@ def ai_news_agent_node(state: dict) -> dict:
     )
     response = agent.handle(request)
     return {"final_reply": response.text, "agent_results": {agent.name: response.text}}
-"
