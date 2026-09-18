@@ -188,6 +188,7 @@ def build_graph():
             "weather_agent": "weather_agent",
             "english_learning_agent": "english_learning_agent",
             "stocks_agent": "stocks_agent",
+            "global_market_agent": "global_market_agent",
             "ai_news_agent": "ai_news_agent",
             "voice_agent": "voice_agent",
             "jobs_agent": "jobs_agent",
