@@ -27,8 +27,10 @@ document.addEventListener('DOMContentLoaded', () => {
         ['ai_news','AI NEWS','取得・要約・配信'],
         ['voice','AIスピーカー / Voice','音声入力・音声出力'],
         ['jobs','求職AI','求人検索・応募支援'],
+        ['music','音楽AI','選曲・作曲/作詞補助・プレイリスト'],
+        ['video','映像AI','企画・台本・絵コンテ・編集'],
       ];
-      const icons={management_ai:'🧠',general:'🧩',english_learning:'🇬🇧',stocks:'📈',ai_news:'📰',voice:'🎙️',jobs:'💼'};
+      const icons={management_ai:'🧠',general:'🧩',english_learning:'🇬🇧',stocks:'📈',ai_news:'📰',voice:'🎙️',jobs:'💼',music:'🎵',video:'🎬'};
       const featureGrid=document.getElementById('featureGrid');
       featureGrid.innerHTML=featureOrder.map(([key,title,baseDetail])=>{
         const f=features[key]||{}, status=f.status||'unknown';

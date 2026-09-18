@@ -34,6 +34,8 @@ def test_factory_maps_existing_registry_agents_to_specialist_roles() -> None:
         FakeAgent("ai_news"),
         FakeAgent("stocks"),
         FakeAgent("job_seeking"),
+        FakeAgent("music"),
+        FakeAgent("video"),
     ]
     registry = AgentRegistry(agents)
     request = AgentRequest("u1", "original", channel="slack", metadata={"source": "test"})
@@ -47,6 +49,8 @@ def test_factory_maps_existing_registry_agents_to_specialist_roles() -> None:
         AgentRole.NEWS,
         AgentRole.STOCKS,
         AgentRole.JOBS,
+        AgentRole.MUSIC,
+        AgentRole.VIDEO,
     }
 
 
@@ -86,6 +90,14 @@ def test_role_mapping_is_explicit() -> None:
     assert ROLE_TO_AGENT_NAME[AgentRole.NEWS] == "ai_news"
     assert ROLE_TO_AGENT_NAME[AgentRole.STOCKS] == "stocks"
     assert ROLE_TO_AGENT_NAME[AgentRole.JOBS] == "job_seeking"
+    assert ROLE_TO_AGENT_NAME[AgentRole.MUSIC] == "music"
+    assert ROLE_TO_AGENT_NAME[AgentRole.VIDEO] == "video"
+
+def test_factory_maps_media_roles_to_media_agents() -> None:
+    registry = AgentRegistry([FakeAgent("music"), FakeAgent("video")])
+    executors = SpecialistExecutorFactory(registry).build(AgentRequest("u1", "音楽と動画"))
+    assert set(executors) == {AgentRole.MUSIC, AgentRole.VIDEO}
+
 
 def test_factory_maps_job_role_to_existing_job_seeking_agent() -> None:
     registry = AgentRegistry([FakeAgent("job_seeking")])
