@@ -326,6 +326,7 @@ def system_status():
             {"key": "english", "label": "English AI", "status": "online", "role": "英語学習"},
             {"key": "news", "label": "News AI", "status": "online", "role": "ニュース"},
             {"key": "stocks", "label": "Stock AI", "status": "online", "role": "株価・分析"},
+            {"key": "global_market", "label": "Market AI", "status": "online", "role": "NYダウ・主要為替"},
             {"key": "jobs", "label": "Job AI", "status": "online", "role": "求職・応募支援（外部求人サイト連携は未接続）"},
             {"key": "music", "label": "Music AI", "status": "online", "role": "音楽企画・作曲/作詞補助・選曲"},
             {"key": "video", "label": "Video AI", "status": "online", "role": "映像企画・台本・絵コンテ・編集設計"},
