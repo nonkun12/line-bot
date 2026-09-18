@@ -72,6 +72,8 @@ def test_dashboard_system_exposes_distributed_ai_readiness(auth_headers):
     assert data["distributed_ai"]["message_bus"] == "enabled"
     assert features["global_market"]["status"] == "online"
     assert "NYダウ" in features["global_market"]["detail"]
+    assert "S&P500" in features["global_market"]["detail"]
+    assert "主要為替" in features["global_market"]["detail"]
     assert len(data["distributed_ai"]["specialists"]) == 9
 
 
