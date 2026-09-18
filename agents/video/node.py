@@ -2,11 +2,7 @@
 from __future__ import annotations
 
 from core.agents import AgentRequest, AgentResponse
-
-_VIDEO_KEYWORDS = (
-    "動画", "映像", "video", "movie", "ショート動画", "youtube",
-    "ユーチューブ", "編集", "絵コンテ", "台本", "動画制作",
-)
+from agents.video.intents import is_video_intent
 
 
 class VideoAgent:
@@ -16,8 +12,7 @@ class VideoAgent:
     enabled = True
 
     def can_handle(self, request: AgentRequest) -> bool:
-        text = request.message.casefold()
-        return any(keyword.casefold() in text for keyword in _VIDEO_KEYWORDS)
+        return is_video_intent(request.message)
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         text = request.message.casefold()
