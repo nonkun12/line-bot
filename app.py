@@ -73,6 +73,7 @@ from e2e_status import init_e2e_table, record_step, StepTimer
 from core.channel import handle_channel_request
 from core.gateway import AIGateway
 from core.request_path import run_core_request, extract_core_reply
+from core.management_bridge import should_route_to_management_ai, run_management_request
 from routes.core_api import core_api_bp
 from routes.voice_api import voice_api_bp
 from line_development import extract_development_instruction, dispatch_development_workflow
@@ -301,6 +302,16 @@ def _handle_ai_gateway_request(ai_request):
 
     if message.strip() == "ダッシュボード" or "Daily AI Repo" in message or message.startswith("pytest"):
         return generate_reply(user_id, message)
+
+    if should_route_to_management_ai(message):
+        management_reply = run_management_request(
+            user_id,
+            message,
+            channel=ai_request.channel,
+            metadata=ai_request.metadata,
+        )
+        if management_reply:
+            return management_reply
 
     result = run_core_request(
         user_id,
