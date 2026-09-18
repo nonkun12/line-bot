@@ -20,6 +20,7 @@ from agents.normal.node import normal_agent_node
 from agents.weather.node import weather_agent_node
 from agents.english.node import english_learning_agent_node
 from agents.stocks.node import agent as stocks_agent
+from agents.market.node import agent as global_market_agent
 from agents.news.node import agent as ai_news_agent
 from agents.voice.node import agent as voice_agent
 from agents.jobs.node import agent as job_seeking_agent
@@ -97,6 +98,7 @@ def finalize_node(state: AgentState) -> AgentState:
             ("weather", "Weather"),
             ("english_learning", "English"),
             ("stocks", "Stocks"),
+            ("global_market", "Market AI"),
             ("ai_news", "AI NEWS"),
             ("voice", "Voice"),
             ("app_development", "App Development"),
@@ -155,6 +157,7 @@ def build_graph():
     builder.add_node("weather_agent", weather_agent_node)
     builder.add_node("english_learning_agent", english_learning_agent_node)
     builder.add_node("stocks_agent", _agent_node(stocks_agent))
+    builder.add_node("global_market_agent", _agent_node(global_market_agent))
     builder.add_node("ai_news_agent", _agent_node(ai_news_agent))
     builder.add_node("voice_agent", _agent_node(voice_agent))
     builder.add_node("jobs_agent", _agent_node(job_seeking_agent))
@@ -185,6 +188,7 @@ def build_graph():
             "weather_agent": "weather_agent",
             "english_learning_agent": "english_learning_agent",
             "stocks_agent": "stocks_agent",
+            "global_market_agent": "global_market_agent",
             "ai_news_agent": "ai_news_agent",
             "voice_agent": "voice_agent",
             "jobs_agent": "jobs_agent",
@@ -206,6 +210,7 @@ def build_graph():
         "weather_agent",
         "english_learning_agent",
         "stocks_agent",
+        "global_market_agent",
         "ai_news_agent",
         "voice_agent",
         "jobs_agent",

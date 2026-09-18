@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+from agents.market.intents import is_market_intent
+from agents.market.node import MarketAgent
+from core.agents import AgentRequest
+
+
+def test_market_intent_detects_dow_and_fx() -> None:
+    assert is_market_intent("NYダウを教えて")
+    assert is_market_intent("ドル円の為替")
+    assert is_market_intent("what is the forex rate?")
+
+
+def test_market_agent_summary_includes_dow_and_major_fx(monkeypatch) -> None:
+    def fake_quote(cls, ticker: str):
+        prices = {
+            "^DJI": 42000.0,
+            "JPY=X": 150.123,
+            "EURUSD=X": 1.1234,
+            "GBPUSD=X": 1.3344,
+            "AUDUSD=X": 0.6677,
+            "EURJPY=X": 168.234,
+            "GBPJPY=X": 200.345,
+            "CHF=X": 0.8123,
+            "CAD=X": 1.3789,
+            "USDCNY=X": 7.1234,
+        }
+        return {
+            "price": prices[ticker],
+            "previous_close": prices[ticker] - 1,
+            "change": 1.0,
+            "change_pct": 0.1,
+            "currency": "USD",
+            "market_time_jst": "2026-09-18 20:00 JST",
+            "market_state": "REGULAR",
+        }
+
+    monkeypatch.setattr(MarketAgent, "_fetch_quote", classmethod(fake_quote))
+
+    response = MarketAgent().handle(
+        AgentRequest(user_id="u1", message="NYダウと主要な為替を教えて", channel="slack")
+    )
+
+    assert response.metadata["status"] == "online"
+    assert response.metadata["mode"] == "summary"
+    assert "NYダウ: 42000.00" in response.text
+    assert "USD/JPY: 150.123" in response.text
+    assert "EUR/USD: 1.1234" in response.text
+    assert "USD/CNY: 7.1234" in response.text
+
+
+def test_market_agent_fx_mode_omits_dow(monkeypatch) -> None:
+    def fake_quote(cls, ticker: str):
+        assert ticker != "^DJI"
+        return {
+            "price": 150.0,
+            "previous_close": 149.0,
+            "change": 1.0,
+            "change_pct": 0.67,
+            "currency": "JPY",
+            "market_time_jst": "2026-09-18 20:00 JST",
+            "market_state": "REGULAR",
+        }
+
+    monkeypatch.setattr(MarketAgent, "_fetch_quote", classmethod(fake_quote))
+
+    response = MarketAgent().handle(
+        AgentRequest(user_id="u1", message="ドル円の為替", channel="slack")
+    )
+
+    assert response.metadata["mode"] == "fx"
+    assert "NYダウ" not in response.text
+    assert "USD/JPY: 150.000" in response.text
+
+
+def test_market_agent_fails_closed_on_data_error(monkeypatch) -> None:
+    def broken_quote(cls, ticker: str):
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(MarketAgent, "_fetch_quote", classmethod(broken_quote))
+
+    response = MarketAgent().handle(
+        AgentRequest(user_id="u1", message="NYダウ", channel="slack")
+    )
+
+    assert response.metadata["status"] == "degraded"
+    assert "推測して表示することはしません" in response.text

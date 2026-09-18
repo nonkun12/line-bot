@@ -24,6 +24,7 @@ def test_default_boundaries_are_explicit() -> None:
         Specialist.ENGLISH,
         Specialist.NEWS,
         Specialist.STOCKS,
+        Specialist.MARKET,
         Specialist.JOBS,
         Specialist.MUSIC,
         Specialist.VIDEO,

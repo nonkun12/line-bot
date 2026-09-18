@@ -15,6 +15,7 @@ from agents.sheets.node import sheets_agent_node
 from agents.weather.node import weather_agent_node
 from agents.english.node import english_learning_agent_node
 from agents.stocks.node import agent as stocks_agent
+from agents.market.node import agent as global_market_agent
 from agents.news.node import agent as ai_news_agent
 from agents.voice.node import agent as voice_agent
 from agents.jobs.node import agent as job_seeking_agent
@@ -46,6 +47,7 @@ LEGACY_GRAPH_NODES: Mapping[str, str] = {
     "normal": "normal_agent",
     "english_learning": "english_learning_agent",
     "stocks": "stocks_agent",
+    "global_market": "global_market_agent",
     "ai_news": "ai_news_agent",
     "voice": "voice_agent",
     "job_seeking": "jobs_agent",
@@ -63,6 +65,7 @@ def build_core_agent_registry() -> AgentRegistry:
         priorities={"app_development": 100, "debug": 90},
     )
     registry.register(stocks_agent)
+    registry.register(global_market_agent)
     registry.register(ai_news_agent)
     registry.register(voice_agent)
     registry.register(job_seeking_agent)

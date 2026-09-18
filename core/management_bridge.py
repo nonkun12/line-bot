@@ -12,6 +12,7 @@ from typing import Sequence
 from agents.english.intents import is_english_learning_intent
 from agents.news.intents import is_ai_news_intent
 from agents.stocks.intents import is_stock_intent
+from agents.market.intents import is_market_intent
 from agents.voice.intents import is_voice_intent
 from agents.jobs.intents import is_job_seeking_intent
 from agents.music.intents import is_music_intent
@@ -36,6 +37,7 @@ SUPPORTED_MULTI_SPECIALISTS = frozenset(
         AgentRole.ENGLISH,
         AgentRole.NEWS,
         AgentRole.STOCKS,
+        AgentRole.MARKET,
         AgentRole.VOICE,
         AgentRole.JOBS,
         AgentRole.MUSIC,
@@ -47,6 +49,7 @@ _ROLE_LABELS = {
     AgentRole.ENGLISH: "English",
     AgentRole.NEWS: "AI NEWS",
     AgentRole.STOCKS: "Stocks",
+    AgentRole.MARKET: "Market AI",
     AgentRole.VOICE: "Voice",
     AgentRole.JOBS: "Jobs",
     AgentRole.MUSIC: "Music",
@@ -61,7 +64,14 @@ def specialist_roles_for_message(message: str) -> frozenset[AgentRole]:
         roles.add(AgentRole.ENGLISH)
     if is_ai_news_intent(text):
         roles.add(AgentRole.NEWS)
-    if is_stock_intent(text):
+    market_intent = is_market_intent(text)
+    if market_intent:
+        roles.add(AgentRole.MARKET)
+    broad_market_only = any(
+        term in text.casefold()
+        for term in ("世界株価", "世界の株価", "世界の市場")
+    )
+    if is_stock_intent(text) and not broad_market_only:
         roles.add(AgentRole.STOCKS)
     if is_voice_intent(text):
         roles.add(AgentRole.VOICE)

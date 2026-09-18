@@ -285,6 +285,11 @@ def system_status():
             "label": "株価AI",
             "detail": "Yahoo Finance + テクニカル分析・比較・監視銘柄",
         },
+        "global_market": {
+            "status": "online",
+            "label": "世界市場AI",
+            "detail": "NYダウ + 主要為替（USD/JPY・EUR/USD・GBP/USD・AUD/USD・EUR/JPY・GBP/JPY・USD/CHF・USD/CAD・USD/CNY）",
+        },
         "ai_news": {
             "status": "online",
             "label": "AI NEWS",
@@ -321,6 +326,7 @@ def system_status():
             {"key": "english", "label": "English AI", "status": "online", "role": "英語学習"},
             {"key": "news", "label": "News AI", "status": "online", "role": "ニュース"},
             {"key": "stocks", "label": "Stock AI", "status": "online", "role": "株価・分析"},
+            {"key": "global_market", "label": "Market AI", "status": "online", "role": "NYダウ・主要為替"},
             {"key": "jobs", "label": "Job AI", "status": "online", "role": "求職・応募支援（外部求人サイト連携は未接続）"},
             {"key": "music", "label": "Music AI", "status": "online", "role": "音楽企画・作曲/作詞補助・選曲"},
             {"key": "video", "label": "Video AI", "status": "online", "role": "映像企画・台本・絵コンテ・編集設計"},

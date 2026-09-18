@@ -70,7 +70,9 @@ def test_dashboard_system_exposes_distributed_ai_readiness(auth_headers):
     assert features["video"]["status"] == "online"
     assert "動画生成" in features["video"]["detail"]
     assert data["distributed_ai"]["message_bus"] == "enabled"
-    assert len(data["distributed_ai"]["specialists"]) == 8
+    assert features["global_market"]["status"] == "online"
+    assert "NYダウ" in features["global_market"]["detail"]
+    assert len(data["distributed_ai"]["specialists"]) == 9
 
 
 def test_dashboard_oracle_n8n_status_handles_missing_payload():

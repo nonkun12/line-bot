@@ -24,13 +24,14 @@ document.addEventListener('DOMContentLoaded', () => {
         ['general','General AI','汎用・フォールバック'],
         ['english_learning','英語学習AI','学習・進捗・復習'],
         ['stocks','株価AI','株価・テクニカル分析・監視'],
+        ['global_market','世界市場AI','NYダウ・主要為替'],
         ['ai_news','AI NEWS','取得・要約・配信'],
         ['voice','AIスピーカー / Voice','音声入力・音声出力'],
         ['jobs','求職AI','求人検索・応募支援'],
         ['music','音楽AI','選曲・作曲/作詞補助・プレイリスト'],
         ['video','映像AI','企画・台本・絵コンテ・編集'],
       ];
-      const icons={management_ai:'🧠',general:'🧩',english_learning:'🇬🇧',stocks:'📈',ai_news:'📰',voice:'🎙️',jobs:'💼',music:'🎵',video:'🎬'};
+      const icons={management_ai:'🧠',general:'🧩',english_learning:'🇬🇧',stocks:'📈',global_market:'🌎',ai_news:'📰',voice:'🎙️',jobs:'💼',music:'🎵',video:'🎬'};
       const featureGrid=document.getElementById('featureGrid');
       featureGrid.innerHTML=featureOrder.map(([key,title,baseDetail])=>{
         const f=features[key]||{}, status=f.status||'unknown';

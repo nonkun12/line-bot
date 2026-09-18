@@ -12,6 +12,7 @@ class Specialist(str, Enum):
     ENGLISH = "english"
     NEWS = "news"
     STOCKS = "stocks"
+    MARKET = "market"
     JOBS = "jobs"
     MUSIC = "music"
     VIDEO = "video"
@@ -60,6 +61,7 @@ def default_specialist_boundaries() -> tuple[SpecialistBoundary, ...]:
         SpecialistBoundary(Specialist.ENGLISH, ("english_learning",)),
         SpecialistBoundary(Specialist.NEWS, ("news_retrieval",)),
         SpecialistBoundary(Specialist.STOCKS, ("stock_quotes",)),
+        SpecialistBoundary(Specialist.MARKET, ("global_market", "fx", "market_summary")),
         SpecialistBoundary(
             Specialist.JOBS,
             ("job_search", "resume", "career_history", "application", "interview"),
