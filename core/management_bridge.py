@@ -12,6 +12,7 @@ from typing import Sequence
 from agents.english.intents import is_english_learning_intent
 from agents.news.intents import is_ai_news_intent
 from agents.stocks.intents import is_stock_intent
+from agents.market.intents import is_market_intent
 from agents.voice.intents import is_voice_intent
 from agents.jobs.intents import is_job_seeking_intent
 from agents.music.intents import is_music_intent
