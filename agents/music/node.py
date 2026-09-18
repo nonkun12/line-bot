@@ -1,14 +1,8 @@
 """Music specialist agent foundation."""
 from __future__ import annotations
 
-import re
-
 from core.agents import AgentRequest, AgentResponse
-
-_MUSIC_KEYWORDS = (
-    "音楽", "music", "曲", "歌", "作曲", "作詞", "bgm", "プレイリスト",
-    "playlist", "メロディ", "楽曲",
-)
+from agents.music.intents import is_music_intent
 
 
 class MusicAgent:
@@ -18,8 +12,7 @@ class MusicAgent:
     enabled = True
 
     def can_handle(self, request: AgentRequest) -> bool:
-        text = request.message.casefold()
-        return any(keyword.casefold() in text for keyword in _MUSIC_KEYWORDS)
+        return is_music_intent(request.message)
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         text = request.message.casefold()
