@@ -137,7 +137,7 @@ class ModelManagementPlanner:
             "\"instruction\":\"...\",\"resources\":[\"market-data\"],"
             "\"depends_on\":[],\"priority\":1}"
             "]}\n"
-            "Allowed roles: general, voice, english, news, stocks, jobs, music, video.\n"
+            "Allowed roles: general, voice, english, news, stocks, market, jobs, music, video.\n"
             f"Primary route: {decision.specialist.value}\n"
             f"User request: {request.message.strip()}\n"
             "Round feedback:\n"
