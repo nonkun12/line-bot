@@ -285,6 +285,11 @@ def system_status():
             "label": "株価AI",
             "detail": "Yahoo Finance + テクニカル分析・比較・監視銘柄",
         },
+        "global_market": {
+            "status": "online",
+            "label": "世界市場AI",
+            "detail": "NYダウ + 主要為替（USD/JPY・EUR/USD・GBP/USD・AUD/USD・EUR/JPY・GBP/JPY・USD/CHF・USD/CAD・USD/CNY）",
+        },
         "ai_news": {
             "status": "online",
             "label": "AI NEWS",
