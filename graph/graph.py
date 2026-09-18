@@ -101,6 +101,9 @@ def finalize_node(state: AgentState) -> AgentState:
             ("voice", "Voice"),
             ("app_development", "App Development"),
             ("github", "GitHub"),
+            ("job_seeking", "Jobs"),
+            ("music", "Music"),
+            ("video", "Video"),
         ):
             result = results.get(key)
             if result:
