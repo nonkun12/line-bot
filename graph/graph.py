@@ -98,6 +98,7 @@ def finalize_node(state: AgentState) -> AgentState:
             ("weather", "Weather"),
             ("english_learning", "English"),
             ("stocks", "Stocks"),
+            ("global_market", "Market AI"),
             ("ai_news", "AI NEWS"),
             ("voice", "Voice"),
             ("app_development", "App Development"),
