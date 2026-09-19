@@ -442,6 +442,23 @@ def run_core_request(
 ) -> dict[str, Any]:
     """Classify with Supervisor, then execute one or a bounded specialist plan via Core."""
     request_metadata = dict(metadata or {})
+    specialists = _resolve_multi_specialist_plan(message)
+    if specialists is not None:
+        with StepTimer("core") as core_timer:
+            try:
+                result = _run_multi_specialist_request(
+                    user_id,
+                    message,
+                    channel=channel,
+                    metadata=request_metadata,
+                    specialists=specialists,
+                )
+            except Exception as exc:
+                core_timer.fail(error=exc, error_location="core/request_path.multi_specialist")
+                raise
+            core_timer.ok()
+            return result
+
     if is_ai_news_intent(message):
         with StepTimer("core") as core_timer:
             try:
@@ -530,23 +547,6 @@ def run_core_request(
                 result = _run_distributed_voice_request(user_id, message, channel=channel, metadata=request_metadata)
             except Exception as exc:
                 core_timer.fail(error=exc, error_location="core/request_path.distributed_voice")
-                raise
-            core_timer.ok()
-            return result
-
-    specialists = _resolve_multi_specialist_plan(message)
-    if specialists is not None:
-        with StepTimer("core") as core_timer:
-            try:
-                result = _run_multi_specialist_request(
-                    user_id,
-                    message,
-                    channel=channel,
-                    metadata=request_metadata,
-                    specialists=specialists,
-                )
-            except Exception as exc:
-                core_timer.fail(error=exc, error_location="core/request_path.multi_specialist")
                 raise
             core_timer.ok()
             return result
