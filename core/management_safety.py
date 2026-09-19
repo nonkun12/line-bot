@@ -43,6 +43,8 @@ class ManagementPlan:
     tainted: bool = False
     delegation_depth: int = 0
     retries: int = 0
+    expected_changed_paths: tuple[str, ...] = ()
+    expected_diff_hash: str | None = None
 
     def canonical_payload(self) -> dict[str, object]:
         return {
@@ -301,7 +303,7 @@ def _normalize(path: str) -> str:
 
 def _normalize_scope(scope: str) -> str:
     value = str(scope).strip().replace("\\", "/")
-    return value.rstrip("/") or "/"
+    return value.rstrip("/") + "/" if value.rstrip("/") else "/"
 
 
 def _sha256_json(value: Mapping[str, object]) -> str:
