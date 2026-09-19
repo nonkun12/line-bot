@@ -304,3 +304,28 @@ def test_model_management_planner_defaults_to_stop_without_next_round_signal() -
         ManagementDecision(Specialist.NEWS, "matched news", 0.95),
     )
     assert not plan.continue_after_round
+
+
+def test_agent_message_bus_is_safe_for_concurrent_sends() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    bus = AgentMessageBus(max_messages=200)
+    messages = tuple(
+        AgentMessage(
+            message_id=f"m{i}",
+            sender="stocks",
+            recipient="news",
+            message_type="task_result",
+            content=f"result-{i}",
+            safety_constraints=("result-only",),
+        )
+        for i in range(100)
+    )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        sent = tuple(pool.map(bus.send, messages))
+
+    received = bus.receive("news", limit=200)
+    assert sent == messages
+    assert len(received) == 100
+    assert {message.message_id for message in received} == {message.message_id for message in messages}
