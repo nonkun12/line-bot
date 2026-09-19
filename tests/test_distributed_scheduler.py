@@ -118,3 +118,26 @@ def test_scheduler_rejects_empty_task_plan() -> None:
     scheduler = DistributedTaskScheduler({}, max_workers=1)
     with pytest.raises(DistributedExecutionError, match="at least one task is required"):
         scheduler.run(())
+
+
+def test_scheduler_rejects_oversized_specialist_result_payloads() -> None:
+    class BadSummary:
+        def execute(self, task: AgentTask) -> AgentResult:
+            return AgentResult(task.task_id, True, "x" * 4001)
+
+    scheduler = DistributedTaskScheduler({AgentRole.TESTER: BadSummary()})
+    with pytest.raises(DistributedExecutionError, match="summary exceeds"):
+        scheduler.run((task("test", AgentRole.TESTER),))
+
+    class BadResources:
+        def execute(self, task: AgentTask) -> AgentResult:
+            return AgentResult(
+                task.task_id,
+                True,
+                "done",
+                frozenset(f"r{i}" for i in range(9)),
+            )
+
+    scheduler = DistributedTaskScheduler({AgentRole.TESTER: BadResources()})
+    with pytest.raises(DistributedExecutionError, match="changed_resources"):
+        scheduler.run((task("test", AgentRole.TESTER),))
