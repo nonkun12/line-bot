@@ -94,3 +94,21 @@ def test_scheduler_fails_closed_on_invalid_executor_result() -> None:
 def test_scheduler_rejects_invalid_worker_bound() -> None:
     with pytest.raises(ValueError, match="max_workers"):
         DistributedTaskScheduler({}, max_workers=0)
+
+
+def test_scheduler_fails_closed_on_invalid_agent_result_fields() -> None:
+    class BadSuccess:
+        def execute(self, task: AgentTask) -> AgentResult:
+            return AgentResult(task.task_id, "yes", "done")  # type: ignore[arg-type]
+
+    scheduler = DistributedTaskScheduler({AgentRole.TESTER: BadSuccess()})
+    with pytest.raises(DistributedExecutionError, match="success must be bool"):
+        scheduler.run((task("test", AgentRole.TESTER),))
+
+    class BadResources:
+        def execute(self, task: AgentTask) -> AgentResult:
+            return AgentResult(task.task_id, True, "done", {"unsafe"})  # type: ignore[arg-type]
+
+    scheduler = DistributedTaskScheduler({AgentRole.TESTER: BadResources()})
+    with pytest.raises(DistributedExecutionError, match="changed_resources must be frozenset"):
+        scheduler.run((task("test", AgentRole.TESTER),))
