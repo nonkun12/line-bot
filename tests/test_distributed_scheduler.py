@@ -142,3 +142,13 @@ def test_scheduler_rejects_oversized_agent_result_payloads() -> None:
     scheduler = DistributedTaskScheduler({AgentRole.TESTER: BadResources()})
     with pytest.raises(DistributedExecutionError, match="frozenset"):
         scheduler.run((task("test", AgentRole.TESTER),))
+
+
+def test_scheduler_rejects_result_resources_outside_task_declaration() -> None:
+    class BadResources:
+        def execute(self, task: AgentTask) -> AgentResult:
+            return AgentResult(task.task_id, True, "done", frozenset({"undeclared"}))
+
+    scheduler = DistributedTaskScheduler({AgentRole.TESTER: BadResources()})
+    with pytest.raises(DistributedExecutionError, match="outside declared task resources"):
+        scheduler.run((task("test", AgentRole.TESTER, resources=("declared",)),))
