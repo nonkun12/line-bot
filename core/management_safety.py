@@ -204,10 +204,25 @@ def evaluate_management_gate(request: ManagementGateInput) -> ManagementGateResu
     if plan.retries < 0 or plan.retries > MAX_RETRIES:
         reasons.append("retry count exceeds hard limit")
 
+    normalized_scope = tuple(_normalize(path) for path in plan.scope_paths)
+    normalized_expected = tuple(_normalize(path) for path in plan.expected_changed_paths)
     normalized_changed = tuple(_normalize(path) for path in request.changed_paths)
     protected = tuple(path for path in normalized_changed if _is_protected(path))
+    protected_scope = tuple(path for path in normalized_scope if _is_protected(path))
     if protected:
         human_review_reasons.append("changed path touches the protected control plane: " + ", ".join(protected))
+    if protected_scope:
+        human_review_reasons.append("plan scope touches the protected control plane: " + ", ".join(protected_scope))
+
+    out_of_scope = tuple(
+        path for path in normalized_changed if not _path_allowed(path, normalized_scope)
+    )
+    if out_of_scope:
+        reasons.append("changed path is outside the approved scope: " + ", ".join(out_of_scope))
+    if normalized_expected and set(normalized_changed) != set(normalized_expected):
+        reasons.append("actual changed paths do not match the planned changed paths")
+    if plan.expected_diff_hash is not None and request.diff_hash != plan.expected_diff_hash:
+        reasons.append("actual diff hash does not match the planned diff hash")
 
     if request.changed_files < 0 or request.changed_lines < 0:
         reasons.append("negative diff statistics are invalid")
@@ -268,6 +283,13 @@ def evaluate_management_gate(request: ManagementGateInput) -> ManagementGateResu
 
 def _is_protected(path: str) -> bool:
     return path in PROTECTED_FILES or any(path.startswith(prefix) for prefix in PROTECTED_PREFIXES)
+
+
+def _path_allowed(path: str, scopes: tuple[str, ...]) -> bool:
+    return any(
+        path == scope.rstrip("/") or path.startswith(scope.rstrip("/") + "/")
+        for scope in scopes
+    )
 
 
 def _normalize(path: str) -> str:
