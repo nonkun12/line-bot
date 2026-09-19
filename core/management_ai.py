@@ -298,10 +298,7 @@ class ManagementAI:
         for round_number in range(1, max_rounds + 1):
             current = self.run(request, feedback)
             rounds.append(current)
-            feedback = tuple(
-                f"{result.task_id}: success={result.success}; summary={result.summary[:1800]}"
-                for result in current.distributed.results
-            )
+            feedback = tuple(_compare_round_results(current.distributed.results))
             if not current.success:
                 return ManagementCycleRun(tuple(rounds), "round failed; fail closed")
             if not current.plan.continue_after_round:
@@ -309,6 +306,25 @@ class ManagementAI:
             if round_number == max_rounds:
                 return ManagementCycleRun(tuple(rounds), "bounded round limit reached")
         return ManagementCycleRun(tuple(rounds), "bounded round limit reached")
+
+
+def _compare_round_results(results: Sequence[AgentResult]) -> tuple[str, ...]:
+    """Convert a completed round into bounded, neutral observations for the next plan."""
+    if not results:
+        return ("round produced no specialist results",)
+    successes = sum(result.success for result in results)
+    failures = len(results) - successes
+    observations = [
+        f"round comparison: total={len(results)}; success={successes}; failed={failures}",
+    ]
+    for result in results:
+        resources = ", ".join(sorted(result.changed_resources)) or "none"
+        status = "success" if result.success else "failed"
+        observations.append(
+            f"task={result.task_id}; status={status}; changed_resources={resources}; "
+            f"summary={result.summary[:1600]}"
+        )
+    return tuple(observations)
 
 
 def groq_management_call(prompt: str) -> str:
