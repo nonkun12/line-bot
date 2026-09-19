@@ -69,3 +69,11 @@ def default_specialist_boundaries() -> tuple[SpecialistBoundary, ...]:
         SpecialistBoundary(Specialist.MUSIC, ("music_planning", "composition", "playlist")),
         SpecialistBoundary(Specialist.VIDEO, ("video_planning", "script", "storyboard", "editing")),
     )
+
+
+_SPECIALIST_BOUNDARIES = default_specialist_boundaries()
+
+
+def specialist_boundary(specialist: Specialist) -> SpecialistBoundary:
+    """Return the immutable capability boundary for one specialist."""
+    return next(item for item in _SPECIALIST_BOUNDARIES if item.specialist is specialist)
