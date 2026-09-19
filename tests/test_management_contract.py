@@ -1,6 +1,12 @@
 import pytest
 
-from core.management_contract import ManagementDecision, ManagementRequest, Specialist, default_specialist_boundaries
+from core.management_contract import (
+    ManagementDecision,
+    ManagementRequest,
+    Specialist,
+    default_specialist_boundaries,
+    specialist_boundary,
+)
 
 
 def test_management_request_validation() -> None:
@@ -30,3 +36,10 @@ def test_default_boundaries_are_explicit() -> None:
         Specialist.VIDEO,
     )
     assert default_specialist_boundaries()[1].allowed_channels == ("voice",)
+
+
+def test_specialist_boundary_exposes_capabilities_without_mutation() -> None:
+    assert specialist_boundary(Specialist.ENGLISH).capabilities == ("english_learning",)
+    assert specialist_boundary(Specialist.NEWS).capabilities == ("news_retrieval",)
+    assert specialist_boundary(Specialist.STOCKS).capabilities == ("stock_quotes",)
+    assert specialist_boundary(Specialist.VOICE).allowed_channels == ("voice",)
