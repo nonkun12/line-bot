@@ -17,6 +17,10 @@ def classify_english_mode(text: str) -> str:
         return "grammar"
     if any(k in lowered for k in ("会話", "英会話", "conversation", "speaking")):
         return "conversation"
+    if any(k in lowered for k in ("面接", "英語面接", "interview")):
+        return "interview"
+    if any(k in lowered for k in ("仕事", "ビジネス", "business", "meeting")):
+        return "business"
     if any(k in lowered for k in ("復習", "review", "復習して")):
         return "review"
     return "lesson"
@@ -42,6 +46,13 @@ def is_english_learning_intent(text: str) -> bool:
             "単語",
             "文法",
             "会話",
+            "面接",
+            "英語面接",
+            "interview",
+            "仕事",
+            "ビジネス",
+            "business",
+            "meeting",
             "復習",
             "review",
         )
