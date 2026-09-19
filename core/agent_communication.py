@@ -44,7 +44,19 @@ class AgentMessageCoordinator:
     """Validate which agents may exchange coordination messages."""
 
     MANAGEMENT = "management"
-    SPECIALISTS = frozenset(\n        {\n            "general",\n            "voice",\n            "english",\n            "news",\n            "stocks",\n            "market",\n            "jobs",\n            "music",\n            "video",\n        }\n    )
+    SPECIALISTS = frozenset(
+        {
+            "general",
+            "voice",
+            "english",
+            "news",
+            "stocks",
+            "market",
+            "jobs",
+            "music",
+            "video",
+        }
+    )
 
     @classmethod
     def _role_key(cls, agent_name: str) -> str:
@@ -66,12 +78,12 @@ class AgentMessageCoordinator:
             return ("sender and recipient are required",)
         if sender.strip().lower() == recipient.strip().lower():
             return ("sender and recipient must differ",)
-        allowed_sources = {cls.MANAGEMENT, *cls.SPECIALISTS}
-        if source not in allowed_sources:
+        allowed = {cls.MANAGEMENT, *cls.SPECIALISTS}
+        if source not in allowed:
             errors.append("sender is not an approved coordination agent")
-        if target not in allowed_sources:
+        if target not in allowed:
             errors.append("recipient is not an approved coordination agent")
-        if source != cls.MANAGEMENT and target != cls.MANAGEMENT and source in cls.SPECIALISTS and target in cls.SPECIALISTS:
+        if source in cls.SPECIALISTS and target in cls.SPECIALISTS:
             return tuple(errors)
         if source == cls.MANAGEMENT and target in cls.SPECIALISTS:
             return tuple(errors)
@@ -79,6 +91,20 @@ class AgentMessageCoordinator:
             return tuple(errors)
         if not errors:
             errors.append("agent route is not approved")
+        return tuple(errors)
+
+    @classmethod
+    def validate_message(cls, message: AgentMessage) -> tuple[str, ...]:
+        errors = list(cls.validate_route(message.sender, message.recipient))
+        source = cls._role_key(message.sender)
+        target = cls._role_key(message.recipient)
+        if source in cls.SPECIALISTS and target in cls.SPECIALISTS:
+            if message.message_type != "task_result":
+                errors.append("specialist-to-specialist messages must be task_result")
+            if "result-only" not in message.safety_constraints:
+                errors.append("specialist-to-specialist messages require result-only")
+            if "no-permission-grant" not in message.safety_constraints:
+                errors.append("specialist-to-specialist messages require no-permission-grant")
         return tuple(errors)
 
 
@@ -93,7 +119,10 @@ class AgentMessageBus:
         self._coordinator = AgentMessageCoordinator()
 
     def send(self, message: AgentMessage) -> AgentMessage:
-        errors = (*message.validate(), *self._coordinator.validate_route(message.sender, message.recipient))
+        errors = (
+            *message.validate(),
+            *self._coordinator.validate_message(message),
+        )
         if len(message.content) > 4000:
             errors = (*errors, "content exceeds 4000 characters")
         if errors:
