@@ -313,14 +313,20 @@ def test_agent_message_rejects_oversized_envelope_fields() -> None:
         recipient="management",
         message_type="task_result",
         content="ok",
-        safety_constraints=("result-only",),
     )
 
     with pytest.raises(ValueError, match="message_id exceeds"):
-        bus.send(AgentMessage(message_id="x" * 201, **base))
+        bus.send(AgentMessage(message_id="x" * 201, safety_constraints=("result-only",), **base))
 
     with pytest.raises(ValueError, match="correlation_id exceeds"):
-        bus.send(AgentMessage(message_id="m", correlation_id="x" * 201, **base))
+        bus.send(
+            AgentMessage(
+                message_id="m",
+                correlation_id="x" * 201,
+                safety_constraints=("result-only",),
+                **base,
+            )
+        )
 
     with pytest.raises(ValueError, match="too many safety constraints"):
         bus.send(
@@ -336,6 +342,7 @@ def test_agent_message_rejects_oversized_envelope_fields() -> None:
             AgentMessage(
                 message_id="m",
                 context={"x": "y" * 1001},
+                safety_constraints=("result-only",),
                 **base,
             )
         )
