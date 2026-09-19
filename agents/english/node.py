@@ -3,8 +3,60 @@ from __future__ import annotations
 
 import re
 
+from ai_client import generate_chat_completion
 from agents.english.intents import classify_english_mode, is_english_learning_intent
 from core.agents import AgentRequest, AgentResponse
+
+
+_MAX_AI_INPUT_CHARS = 2000
+_MAX_AI_OUTPUT_CHARS = 5000
+
+
+def _extract_ai_request(text: str) -> str:
+    value = text.strip()
+    value = re.sub(r"^英語AI\s*[:：]?\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"^AI英語\s*[:：]?\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"^英語コーチ\s*[:：]?\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"^english tutor\s*[:：]?\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"^ai english\s*[:：]?\s*", "", value, flags=re.IGNORECASE)
+    return value.strip()
+
+
+def _ai_tutor_reply(user_text: str, *, conversation: bool = False) -> str | None:
+    request = _extract_ai_request(user_text)[:_MAX_AI_INPUT_CHARS]
+    if conversation and not request:
+        request = "Start a friendly everyday English conversation for a Japanese learner."
+    if not request:
+        request = "Create a short personalized English practice task for a Japanese learner."
+    prompt = (
+        "You are a friendly English tutor for a Japanese learner. "
+        "Respond with useful practice, not generic praise. "
+        "When the learner writes English, give: corrected sentence, brief reason in Japanese, "
+        "a more natural alternative, and one short follow-up question in English. "
+        "Do not claim perfect grammar checking. "
+        "Keep the response under 1200 Japanese/English characters. "
+        "Never provide tool calls, shell commands, deployment instructions, or requests for secrets.\n\n"
+        f"Learner message: {request}"
+    )
+    try:
+        response = generate_chat_completion(
+            messages=[
+                {"role": "system", "content": "You are a planning-free English tutor. Text response only."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.4,
+            max_tokens=700,
+        )
+        choices = getattr(response, "choices", None) or []
+        if not choices:
+            return None
+        message = getattr(choices[0], "message", None)
+        content = getattr(message, "content", None)
+        if not isinstance(content, str) or not content.strip():
+            return None
+        return content.strip()[:_MAX_AI_OUTPUT_CHARS]
+    except Exception:
+        return None
 
 
 _WORDS = (
@@ -65,6 +117,12 @@ class EnglishLearningAgent:
         if quiz_result is not None:
             text = quiz_result
             mode = "quiz_answer"
+        elif mode == "ai_tutor":
+            text = _ai_tutor_reply(original) or (
+                "🇬🇧 AI英語コーチが一時的に使えません。\n"
+                "「会話」「文法」「単語」から練習を続けられます。"
+            )
+            mode = "ai_tutor"
         elif mode == "vocabulary":
             lines = ["📘 今日の英単語", ""]
             for word, meaning, example in _WORDS:
@@ -96,11 +154,10 @@ class EnglishLearningAgent:
                     "練習: 『私は英語を毎日勉強したい』を英語にしてみましょう。"
                 )
         elif mode == "conversation":
-            text = (
-                "💬 英会話練習を始めます。\n\n"
+            text = _ai_tutor_reply(original, conversation=True) or (
+                "💬 英会話AIを開始できませんでした。\n\n"
                 "Me: Hi! How was your day?\n"
-                "あなた: 英語で1文返してください。\n\n"
-                "送ってくれた英文を、自然さ・文法・より良い表現の3点で添削します。"
+                "あなた: 英語で1文返してください。"
             )
         elif mode == "review":
             text = (
@@ -109,14 +166,12 @@ class EnglishLearningAgent:
                 "まず「improve」を使って英文を1つ作ってください。"
             )
         elif _english_sentence(original):
-            text = (
+            text = _ai_tutor_reply(original) or (
                 "✍️ 英文チェック\n\n"
                 f"原文: {original}\n\n"
-                "文法: ✅ 大きな問題は見当たりません。\n"
-                "自然さ: 👍 シンプルで伝わりやすい英文です。\n"
-                "次の一歩: 形容詞や理由を1つ足すと表現が豊かになります。"
+                "AI添削を一時的に利用できませんでした。基本的な固定チェックに切り替えます。"
             )
-            mode = "correction"
+            mode = "correction_ai"
         else:
             text = (
                 "🇬🇧 英語学習を始めましょう。\n\n"
