@@ -226,4 +226,4 @@ def test_four_explicit_domains_dispatch_in_parallel(monkeypatch):
     assert result["agent_results"]["video"]["status"] == "ok"
     assert result["agent_results"]["jobs"]["status"] == "ok"
     assert result["agent_results"]["market"]["status"] == "ok"
-    assert result["final_reply"] == "音楽OK\\n\\n動画OK\\n\\n求人OK\\n\\n市場OK"
+    assert result["final_reply"] == "音楽OK\n\n動画OK\n\n求人OK\n\n市場OK"
