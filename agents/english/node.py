@@ -3,8 +3,77 @@ from __future__ import annotations
 
 import re
 
+from ai_client import generate_chat_completion
 from agents.english.intents import classify_english_mode, is_english_learning_intent
 from core.agents import AgentRequest, AgentResponse
+
+
+_MAX_AI_INPUT_CHARS = 2000
+_MAX_AI_OUTPUT_CHARS = 5000
+
+
+def _extract_ai_request(text: str) -> str:
+    value = text.strip()
+    value = re.sub(r"^英語AI\s*[:：]?\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"^AI英語\s*[:：]?\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"^英語コーチ\s*[:：]?\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"^english tutor\s*[:：]?\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"^ai english\s*[:：]?\s*", "", value, flags=re.IGNORECASE)
+    return value.strip()
+
+
+def _ai_tutor_reply(user_text: str, *, mode: str = "tutor") -> str | None:
+    request = _extract_ai_request(user_text)[:_MAX_AI_INPUT_CHARS]
+    if mode == "conversation":
+        instruction = (
+            "Run a natural everyday English conversation. Reply primarily in English, "
+            "ask one follow-up question, and add a very short Japanese correction only "
+            "when the learner makes a useful correction opportunity."
+        )
+        if not request:
+            request = "Start a friendly everyday English conversation for a Japanese learner."
+    elif mode == "correction":
+        instruction = (
+            "Act as a precise English editor. Give the corrected sentence first, "
+            "then one brief Japanese grammar/naturalness reason, one natural alternative, "
+            "and one short practice prompt."
+        )
+        if not request:
+            request = "Create a short English correction exercise for a Japanese learner."
+    else:
+        instruction = (
+            "Act as a friendly personal English coach. Adapt difficulty to the learner's "
+            "message and provide a useful next exercise instead of generic encouragement."
+        )
+        if not request:
+            request = "Create a short personalized English practice task for a Japanese learner."
+    prompt = (
+        "You are a friendly English tutor for a Japanese learner. "
+        "Never claim perfect grammar checking. Keep the response under 1200 characters. "
+        "Never provide tool calls, shell commands, deployment instructions, or requests for secrets.\n\n"
+        f"Task mode: {mode}\n"
+        f"Instruction: {instruction}\n"
+        f"Learner message: {request}"
+    )
+    try:
+        response = generate_chat_completion(
+            messages=[
+                {"role": "system", "content": "You are a text-only English tutor."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.4,
+            max_tokens=700,
+        )
+        choices = getattr(response, "choices", None) or []
+        if not choices:
+            return None
+        message = getattr(choices[0], "message", None)
+        content = getattr(message, "content", None)
+        if not isinstance(content, str) or not content.strip():
+            return None
+        return content.strip()[:_MAX_AI_OUTPUT_CHARS]
+    except Exception:
+        return None
 
 
 _WORDS = (
@@ -65,6 +134,12 @@ class EnglishLearningAgent:
         if quiz_result is not None:
             text = quiz_result
             mode = "quiz_answer"
+        elif mode == "ai_tutor":
+            text = _ai_tutor_reply(original, mode="tutor") or (
+                "🇬🇧 AI英語コーチが一時的に使えません。\n"
+                "「会話」「文法」「単語」から練習を続けられます。"
+            )
+            mode = "ai_tutor"
         elif mode == "vocabulary":
             lines = ["📘 今日の英単語", ""]
             for word, meaning, example in _WORDS:
@@ -96,12 +171,16 @@ class EnglishLearningAgent:
                     "練習: 『私は英語を毎日勉強したい』を英語にしてみましょう。"
                 )
         elif mode == "conversation":
-            text = (
-                "💬 英会話練習を始めます。\n\n"
-                "Me: Hi! How was your day?\n"
-                "あなた: 英語で1文返してください。\n\n"
-                "送ってくれた英文を、自然さ・文法・より良い表現の3点で添削します。"
-            )
+            ai_text = _ai_tutor_reply(original, mode="conversation")
+            if ai_text:
+                text = ai_text
+            else:
+                text = (
+                    "💬 英会話練習を始めます。\n\n"
+                    "Me: Hi! How was your day?\n"
+                    "あなた: 英語で1文返してください。\n\n"
+                    "送ってくれた英文を、自然さ・文法・より良い表現の3点で添削します。"
+                )
         elif mode == "review":
             text = (
                 "🔁 英語復習モードです。\n\n"
@@ -109,14 +188,19 @@ class EnglishLearningAgent:
                 "まず「improve」を使って英文を1つ作ってください。"
             )
         elif _english_sentence(original):
-            text = (
-                "✍️ 英文チェック\n\n"
-                f"原文: {original}\n\n"
-                "文法: ✅ 大きな問題は見当たりません。\n"
-                "自然さ: 👍 シンプルで伝わりやすい英文です。\n"
-                "次の一歩: 形容詞や理由を1つ足すと表現が豊かになります。"
-            )
-            mode = "correction"
+            ai_text = _ai_tutor_reply(original, mode="correction")
+            if ai_text:
+                text = ai_text
+                mode = "correction_ai"
+            else:
+                text = (
+                    "✍️ 英文チェック\n\n"
+                    f"原文: {original}\n\n"
+                    "文法: ✅ 大きな問題は見当たりません。\n"
+                    "自然さ: 👍 シンプルで伝わりやすい英文です。\n"
+                    "次の一歩: 形容詞や理由を1つ足すと表現が豊かになります。"
+                )
+                mode = "correction"
         else:
             text = (
                 "🇬🇧 英語学習を始めましょう。\n\n"

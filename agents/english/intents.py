@@ -7,6 +7,8 @@ import re
 def classify_english_mode(text: str) -> str:
     """Classify a learning request into a deterministic mode."""
     lowered = (text or "").strip().lower()
+    if any(k in lowered for k in ("英語ai", "ai英語", "英語コーチ", "english tutor", "ai english")):
+        return "ai_tutor"
     if re.fullmatch(r"(?:answer\s*)?[abc](?:[.\)\s]+)?", lowered):
         return "quiz_answer"
     if any(k in lowered for k in ("クイズ", "quiz", "問題")):
@@ -30,6 +32,11 @@ def is_english_learning_intent(text: str) -> bool:
         k in lowered
         for k in (
             "英語",
+            "英語ai",
+            "ai英語",
+            "英語コーチ",
+            "english tutor",
+            "ai english",
             "英会話",
             "英単語",
             "英文",
