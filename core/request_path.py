@@ -108,9 +108,11 @@ def _run_multi_specialist_request(
     if len(plan) > _MAX_SPECIALIST_WORKERS:
         raise RuntimeError("multi-specialist plan exceeds worker limit")
 
+    registry_names = {"jobs": "job_seeking", "market": "global_market"}
     agents = []
     for agent_name in plan:
-        agent = registry.get(agent_name)
+        registry_name = registry_names.get(agent_name, agent_name)
+        agent = registry.get(registry_name)
         if not bool(getattr(agent, "enabled", True)):
             raise RuntimeError(f"required specialist disabled: {agent_name}")
         if not agent.can_handle(request):
