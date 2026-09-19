@@ -154,3 +154,28 @@ def test_plan_hash_changes_when_scope_changes() -> None:
     plan = build_plan()
     changed = replace(plan, scope_paths=("tests/test_other.py",))
     assert changed.plan_hash() != plan.plan_hash()
+
+
+def test_changed_path_outside_scope_is_denied() -> None:
+    plan = build_plan(scope_paths=("tests/",))
+    request = build_request(plan, changed_paths=("src/app.py",))
+    result = evaluate_management_gate(request)
+    assert result.decision is GateDecision.DENY
+    assert "outside the approved scope" in result.reasons[0]
+
+
+def test_planned_changed_paths_and_diff_hash_are_bound_when_supplied() -> None:
+    plan = build_plan(
+        expected_changed_paths=("tests/test_example.py",),
+        expected_diff_hash="planned-diff",
+    )
+    request = build_request(plan, diff_hash="actual-diff")
+    result = evaluate_management_gate(request)
+    assert result.decision is GateDecision.DENY
+    assert "actual diff hash" in result.reasons[-1]
+
+
+def test_protected_scope_needs_human_before_execution() -> None:
+    plan = build_plan(scope_paths=("core/control_tower.py",))
+    result = evaluate_management_gate(build_request(plan))
+    assert result.decision is GateDecision.NEEDS_HUMAN
