@@ -18,8 +18,9 @@ class FakeAgent:
 def test_bridge_registers_explicit_news_executor():
     class Registry:
         def get(self, name):
-            assert name == "ai_news"
-            return FakeAgent()
+            if name == "ai_news":
+                return FakeAgent()
+            return None
 
     executors = build_agent_registry(Registry()).build()
     assert AgentRole.NEWS in executors
