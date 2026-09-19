@@ -7,6 +7,19 @@ from core.multi_agent import AgentRole
 from core import request_path
 
 
+class FakeMusicAgent:
+    name = "music"
+    description = "fake"
+    priority = 1
+    enabled = True
+
+    def can_handle(self, request):
+        return True
+
+    def handle(self, request):
+        return AgentResponse(text="分散AI経由の音楽結果", metadata={"source": "fake-music"})
+
+
 class FakeAgent:
     name = "ai_news"
     description = "fake"
@@ -69,3 +82,20 @@ def test_distributed_news_request_fails_closed_when_news_executor_missing(monkey
 class FakeRegistryWithoutNews:
     def get(self, name):
         return None
+
+
+class FakeRegistryWithMusic(FakeRegistry):
+    def get(self, name):
+        if name == "music":
+            return FakeMusicAgent()
+        return super().get(name)
+
+
+def test_distributed_music_request_uses_music_executor(monkeypatch):
+    monkeypatch.setattr(request_path, "build_core_agent_registry", lambda: FakeRegistryWithMusic())
+    result = request_path.run_core_request("user-1", "音楽をテスト", channel="line")
+    assert result["intent"] == "distributed_music"
+    assert result["route"] == "distributed:music"
+    assert result["specialists"] == ["music"]
+    assert result["agent_results"]["music"]["status"] == "ok"
+    assert result["final_reply"] == "分散AI経由の音楽結果"
