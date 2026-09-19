@@ -54,6 +54,11 @@ class DistributedTaskScheduler:
 
     def run(self, tasks: Sequence[AgentTask]) -> DistributedRun:
         """Plan and execute all tasks, failing closed on the first bad result."""
+        if not tasks:
+            raise DistributedExecutionError(
+                "<empty>",
+                ValueError("at least one task is required"),
+            )
         batches = plan_batches(tasks)
         completed: list[AgentResult] = []
         for batch in batches:
