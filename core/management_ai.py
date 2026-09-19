@@ -13,6 +13,7 @@ from ai_client import generate_chat_completion
 
 from .agent_communication import AgentMessage, AgentMessageBus
 from .distributed_scheduler import DistributedRun, DistributedTaskScheduler
+from .specialist_gate import approved_executors, assert_all_approved
 from .management_contract import ManagementDecision, ManagementRequest
 from .management_router import route
 from .multi_agent import AgentRole, AgentTask, TaskBatch, plan_batches
@@ -247,7 +248,8 @@ class ManagementAI:
     ) -> None:
         if max_workers > 1 and not isolated:
             raise ValueError("parallel management execution requires isolated=True")
-        self._executors = dict(executors)
+        # Unapproved / unknown roles never get an executor (fail-closed).
+        self._executors = approved_executors(executors)
         self._planner = planner or ModelManagementPlanner()
         self._message_bus = message_bus or AgentMessageBus()
         self._max_workers = max_workers
@@ -261,6 +263,9 @@ class ManagementAI:
 
     def run(self, request: ManagementRequest, feedback: Sequence[str] = ()) -> ManagementRun:
         plan = self.plan(request, feedback)
+        # All-or-nothing: every planned role is checked BEFORE any task runs, so
+        # a denied role can never cause partial execution of earlier batches.
+        assert_all_approved(task.role for task in plan.tasks)
         workers = self._max_workers if plan.parallel_safe else 1
         distributed = DistributedTaskScheduler(self._executors, max_workers=workers).run(plan.tasks)
         batches = plan_batches(plan.tasks)
