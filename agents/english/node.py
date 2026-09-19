@@ -22,26 +22,43 @@ def _extract_ai_request(text: str) -> str:
     return value.strip()
 
 
-def _ai_tutor_reply(user_text: str, *, conversation: bool = False) -> str | None:
+def _ai_tutor_reply(user_text: str, *, mode: str = "tutor") -> str | None:
     request = _extract_ai_request(user_text)[:_MAX_AI_INPUT_CHARS]
-    if conversation and not request:
-        request = "Start a friendly everyday English conversation for a Japanese learner."
-    if not request:
-        request = "Create a short personalized English practice task for a Japanese learner."
+    if mode == "conversation":
+        instruction = (
+            "Run a natural everyday English conversation. Reply primarily in English, "
+            "ask one follow-up question, and add a very short Japanese correction only "
+            "when the learner makes a useful correction opportunity."
+        )
+        if not request:
+            request = "Start a friendly everyday English conversation for a Japanese learner."
+    elif mode == "correction":
+        instruction = (
+            "Act as a precise English editor. Give the corrected sentence first, "
+            "then one brief Japanese grammar/naturalness reason, one natural alternative, "
+            "and one short practice prompt."
+        )
+        if not request:
+            request = "Create a short English correction exercise for a Japanese learner."
+    else:
+        instruction = (
+            "Act as a friendly personal English coach. Adapt difficulty to the learner's "
+            "message and provide a useful next exercise instead of generic encouragement."
+        )
+        if not request:
+            request = "Create a short personalized English practice task for a Japanese learner."
     prompt = (
         "You are a friendly English tutor for a Japanese learner. "
-        "Respond with useful practice, not generic praise. "
-        "When the learner writes English, give: corrected sentence, brief reason in Japanese, "
-        "a more natural alternative, and one short follow-up question in English. "
-        "Do not claim perfect grammar checking. "
-        "Keep the response under 1200 Japanese/English characters. "
+        "Never claim perfect grammar checking. Keep the response under 1200 characters. "
         "Never provide tool calls, shell commands, deployment instructions, or requests for secrets.\n\n"
+        f"Task mode: {mode}\n"
+        f"Instruction: {instruction}\n"
         f"Learner message: {request}"
     )
     try:
         response = generate_chat_completion(
             messages=[
-                {"role": "system", "content": "You are a planning-free English tutor. Text response only."},
+                {"role": "system", "content": "You are a text-only English tutor."},
                 {"role": "user", "content": prompt},
             ],
             temperature=0.4,
@@ -55,8 +72,6 @@ def _ai_tutor_reply(user_text: str, *, conversation: bool = False) -> str | None
         if not isinstance(content, str) or not content.strip():
             return None
         return content.strip()[:_MAX_AI_OUTPUT_CHARS]
-    except Exception:
-        return None
 
 
 _WORDS = (
@@ -118,7 +133,7 @@ class EnglishLearningAgent:
             text = quiz_result
             mode = "quiz_answer"
         elif mode == "ai_tutor":
-            text = _ai_tutor_reply(original) or (
+            text = _ai_tutor_reply(original, mode="tutor") or (
                 "🇬🇧 AI英語コーチが一時的に使えません。\n"
                 "「会話」「文法」「単語」から練習を続けられます。"
             )
@@ -154,7 +169,7 @@ class EnglishLearningAgent:
                     "練習: 『私は英語を毎日勉強したい』を英語にしてみましょう。"
                 )
         elif mode == "conversation":
-            ai_text = _ai_tutor_reply(original, conversation=True)
+            ai_text = _ai_tutor_reply(original, mode="conversation")
             if ai_text:
                 text = ai_text
             else:
@@ -171,7 +186,7 @@ class EnglishLearningAgent:
                 "まず「improve」を使って英文を1つ作ってください。"
             )
         elif _english_sentence(original):
-            ai_text = _ai_tutor_reply(original)
+            ai_text = _ai_tutor_reply(original, mode="correction")
             if ai_text:
                 text = ai_text
                 mode = "correction_ai"
