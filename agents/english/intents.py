@@ -46,6 +46,13 @@ def is_english_learning_intent(text: str) -> bool:
             "単語",
             "文法",
             "会話",
+            "面接",
+            "英語面接",
+            "interview",
+            "仕事",
+            "ビジネス",
+            "business",
+            "meeting",
             "復習",
             "review",
         )
