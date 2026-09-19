@@ -24,7 +24,7 @@ def test_analyzer_groups_recurring_failure_details():
 
 def test_analyzer_is_bounded_and_deterministic():
     signals = tuple(
-        ImprovementSignal("failure", str(i), f"failure-{i}")
+        ImprovementSignal("failure", str(i), f"failure-{chr(97 + i)}")
         for i in range(10)
     )
 
@@ -32,9 +32,9 @@ def test_analyzer_is_bounded_and_deterministic():
 
     assert len(analysis.recurring_patterns) == 3
     assert [pattern.key for pattern in analysis.recurring_patterns] == [
-        "failure-0",
-        "failure-1",
-        "failure-2",
+        "failure-a",
+        "failure-b",
+        "failure-c",
     ]
 
 
