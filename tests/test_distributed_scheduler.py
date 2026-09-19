@@ -94,3 +94,51 @@ def test_scheduler_fails_closed_on_invalid_executor_result() -> None:
 def test_scheduler_rejects_invalid_worker_bound() -> None:
     with pytest.raises(ValueError, match="max_workers"):
         DistributedTaskScheduler({}, max_workers=0)
+
+
+def test_scheduler_rejects_empty_task_plan() -> None:
+    scheduler = DistributedTaskScheduler({}, max_workers=1)
+
+    with pytest.raises(DistributedExecutionError, match="at least one task is required"):
+        scheduler.run(())
+
+
+def test_scheduler_rejects_invalid_agent_result_fields() -> None:
+    class BadSuccess:
+        def execute(self, task: AgentTask):
+            return AgentResult(task.task_id, "yes", "done")  # type: ignore[arg-type]
+
+    scheduler = DistributedTaskScheduler({AgentRole.TESTER: BadSuccess()})
+    with pytest.raises(DistributedExecutionError, match="success must be bool"):
+        scheduler.run((task("test", AgentRole.TESTER),))
+
+    class BadResources:
+        def execute(self, task: AgentTask):
+            return AgentResult(task.task_id, True, "done", {"unsafe"})  # type: ignore[arg-type]
+
+    scheduler = DistributedTaskScheduler({AgentRole.TESTER: BadResources()})
+    with pytest.raises(DistributedExecutionError, match="frozenset"):
+        scheduler.run((task("test", AgentRole.TESTER),))
+
+
+def test_scheduler_rejects_oversized_agent_result_payloads() -> None:
+    class BadSummary:
+        def execute(self, task: AgentTask):
+            return AgentResult(task.task_id, True, "x" * 4001)
+
+    scheduler = DistributedTaskScheduler({AgentRole.TESTER: BadSummary()})
+    with pytest.raises(DistributedExecutionError, match="summary exceeds"):
+        scheduler.run((task("test", AgentRole.TESTER),))
+
+    class BadResources:
+        def execute(self, task: AgentTask):
+            return AgentResult(
+                task.task_id,
+                True,
+                "done",
+                frozenset(f"r{i}" for i in range(9)),
+            )
+
+    scheduler = DistributedTaskScheduler({AgentRole.TESTER: BadResources()})
+    with pytest.raises(DistributedExecutionError, match="frozenset"):
+        scheduler.run((task("test", AgentRole.TESTER),))
