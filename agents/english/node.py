@@ -47,6 +47,24 @@ def _grade_quiz(text: str) -> str | None:
     )
 
 
+def _correct_common_grammar(text: str) -> str | None:
+    """Apply a small deterministic rule set without pretending to be a full grammar engine."""
+    corrected = text.strip()
+    rules = (
+        (re.compile(r"\bI\s+has\b", re.IGNORECASE), "I have"),
+        (re.compile(r"\bI\s+(?:is|are)\b", re.IGNORECASE), "I am"),
+        (re.compile(r"\b(?:you|we|they)\s+has\b", re.IGNORECASE), "you have"),
+        (re.compile(r"\b(?:he|she|it)\s+have\b", re.IGNORECASE), "he has"),
+        (re.compile(r"\bI\s+want\s+(?!to\b)([a-zA-Z]+)\b", re.IGNORECASE), r"I want to \1"),
+        (re.compile(r"\bI\s+am\s+go\b", re.IGNORECASE), "I am going"),
+    )
+    for pattern, replacement in rules:
+        updated = pattern.sub(replacement, corrected)
+        if updated != corrected:
+            return updated
+    return None
+
+
 class EnglishLearningAgent:
     name = "english_learning"
     description = "English lessons, vocabulary, grammar, conversation, quizzes, review, and follow-up practice."
@@ -100,7 +118,21 @@ class EnglishLearningAgent:
                 "💬 英会話練習を始めます。\n\n"
                 "Me: Hi! How was your day?\n"
                 "あなた: 英語で1文返してください。\n\n"
-                "送ってくれた英文を、自然さ・文法・より良い表現の3点で添削します。"
+                "送ってくれた英文を、文法・自然さ・より良い表現の3点で添削します。"
+            )
+        elif mode == "interview":
+            text = (
+                "🎤 英語面接トレーニングを始めます。\n\n"
+                "面接官: Tell me about yourself.\n"
+                "あなた: 英語で30〜60秒程度の回答を書いてください。\n\n"
+                "回答を送ると、文法・自然さ・面接で使いやすい表現の観点でフィードバックします。"
+            )
+        elif mode == "business":
+            text = (
+                "💼 ビジネス英語トレーニングを始めます。\n\n"
+                "場面: 海外の同僚とのミーティング\n"
+                "まず「予定を確認したい」と英語で1文伝えてみてください。\n\n"
+                "送ってくれた英文を、自然さとビジネス向け表現の観点で添削します。"
             )
         elif mode == "review":
             text = (
@@ -109,13 +141,22 @@ class EnglishLearningAgent:
                 "まず「improve」を使って英文を1つ作ってください。"
             )
         elif _english_sentence(original):
-            text = (
-                "✍️ 英文チェック\n\n"
-                f"原文: {original}\n\n"
-                "文法: ✅ 大きな問題は見当たりません。\n"
-                "自然さ: 👍 シンプルで伝わりやすい英文です。\n"
-                "次の一歩: 形容詞や理由を1つ足すと表現が豊かになります。"
-            )
+            corrected = _correct_common_grammar(original)
+            if corrected is not None:
+                text = (
+                    "✍️ 英文チェック\n\n"
+                    f"原文: {original}\n"
+                    f"修正案: {corrected}\n\n"
+                    "ポイント: 基本的な語順・主語に合わせた動詞の形を確認しましょう。\n"
+                    "もっと詳しく練習するなら「文法」と送ってください。"
+                )
+            else:
+                text = (
+                    "✍️ 英文チェック\n\n"
+                    f"原文: {original}\n\n"
+                    "自動チェックでは明確な基本ルール違反を検出できませんでした。\n"
+                    "文脈に応じた自然さまで詳しく確認するには、モデル連携後の高度添削を利用できます。"
+                )
             mode = "correction"
         else:
             text = (
