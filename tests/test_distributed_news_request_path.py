@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from core.agents import AgentResponse
 from core.multi_agent import AgentRole
 from core import request_path
@@ -60,14 +62,10 @@ def test_distributed_news_request_fails_closed_when_news_executor_missing(monkey
         lambda: FakeRegistryWithoutNews(),
     )
 
-    try:
+    with pytest.raises(RuntimeError, match="missing executor for role: news"):
         request_path.run_core_request("user-1", "AI NEWSをテスト", channel="line")
-    except KeyError as exc:
-        assert "unknown agent: ai_news" in str(exc)
-    else:
-        raise AssertionError("missing AI NEWS executor must fail closed")
 
 
 class FakeRegistryWithoutNews:
     def get(self, name):
-        raise KeyError(f"unknown agent: {name}")
+        return None
