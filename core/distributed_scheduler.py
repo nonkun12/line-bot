@@ -13,6 +13,11 @@ from typing import Mapping, Sequence
 from .multi_agent import AgentResult, AgentRole, AgentTask, TaskBatch, plan_batches
 
 
+_MAX_RESULT_SUMMARY_CHARS = 4000
+_MAX_CHANGED_RESOURCES = 8
+_MAX_RESOURCE_NAME_CHARS = 200
+
+
 class DistributedExecutionError(RuntimeError):
     """A task executor failed or returned an invalid result."""
 
@@ -54,6 +59,11 @@ class DistributedTaskScheduler:
 
     def run(self, tasks: Sequence[AgentTask]) -> DistributedRun:
         """Plan and execute all tasks, failing closed on the first bad result."""
+        if not tasks:
+            raise DistributedExecutionError(
+                "<empty>",
+                ValueError("at least one task is required"),
+            )
         batches = plan_batches(tasks)
         completed: list[AgentResult] = []
         for batch in batches:
@@ -87,6 +97,31 @@ class DistributedTaskScheduler:
                     raise DistributedExecutionError(
                         task.task_id,
                         TypeError("executor must return AgentResult"),
+                    )
+                if not isinstance(result.success, bool):
+                    raise DistributedExecutionError(
+                        task.task_id,
+                        TypeError("AgentResult.success must be bool"),
+                    )
+                if not isinstance(result.summary, str):
+                    raise DistributedExecutionError(
+                        task.task_id,
+                        TypeError("AgentResult.summary must be str"),
+                    )
+                if len(result.summary) > _MAX_RESULT_SUMMARY_CHARS:
+                    raise DistributedExecutionError(
+                        task.task_id,
+                        ValueError("AgentResult.summary exceeds 4000 characters"),
+                    )
+                if not isinstance(result.changed_resources, frozenset) or len(result.changed_resources) > _MAX_CHANGED_RESOURCES or any(
+                    not isinstance(resource, str)
+                    or not resource.strip()
+                    or len(resource) > _MAX_RESOURCE_NAME_CHARS
+                    for resource in result.changed_resources
+                ):
+                    raise DistributedExecutionError(
+                        task.task_id,
+                        TypeError("AgentResult.changed_resources must be frozenset[str]"),
                     )
                 if result.task_id != task.task_id:
                     raise DistributedExecutionError(
