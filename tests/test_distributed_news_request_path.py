@@ -230,6 +230,28 @@ def test_four_explicit_domains_dispatch_in_parallel(monkeypatch):
     assert result["final_reply"] == "音楽OK\n\n動画OK\n\n求人OK\n\n市場OK"
 
 
+
+
+@pytest.mark.parametrize(
+    ("message", "specialist", "capability"),
+    [("AI NEWSをテスト", "news", "news_retrieval")],
+)
+def test_single_specialist_dispatch_fails_closed_without_management_capability(
+    monkeypatch, message, specialist, capability
+):
+    from core.management_contract import SpecialistBoundary
+
+    monkeypatch.setattr(
+        request_path,
+        "specialist_boundary",
+        lambda _specialist: SpecialistBoundary(specialist=_specialist, capabilities=()),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=f"specialist capability not approved: {specialist}:{capability}",
+    ):
+        request_path.run_core_request("user-1", message, channel="line")
 def test_management_capability_gate_covers_all_dispatched_specialists():
     expected = {
         "news": "news_retrieval",
