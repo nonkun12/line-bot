@@ -253,6 +253,21 @@ def test_agent_message_coordinator_allows_specialist_collaboration_but_blocks_co
     assert AgentMessageCoordinator.validate_route("stocks", "stocks")
 
 
+def test_agent_message_bus_requires_safe_result_for_specialist_collaboration() -> None:
+    bus = AgentMessageBus()
+    with pytest.raises(ValueError, match="must be task_result"):
+        bus.send(
+            AgentMessage(
+                message_id="stocks-1:task",
+                sender="stocks",
+                recipient="news",
+                message_type="task",
+                content="execute this",
+                safety_constraints=("result-only", "no-permission-grant"),
+            )
+        )
+
+
 def test_agent_message_bus_bounds_message_size_and_route() -> None:
     bus = AgentMessageBus()
     with pytest.raises(ValueError, match="content exceeds"):
