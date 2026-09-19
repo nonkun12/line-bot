@@ -121,7 +121,7 @@ class ModelManagementPlanner:
         decision: ManagementDecision,
         feedback: Sequence[str] = (),
     ) -> ManagementPlan:
-        feedback_text = "\n".join(f"- {item[:1800]}" for item in feedback[-6:]) or "- none"
+        feedback_text = _format_feedback_for_prompt(feedback)
         prompt = (
             "You are the MANAGEMENT AI at the top of a distributed specialist system.\n"
             "Break the user request into small specialist tasks. Prefer parallel work "
@@ -306,6 +306,17 @@ class ManagementAI:
             if round_number == max_rounds:
                 return ManagementCycleRun(tuple(rounds), "bounded round limit reached")
         return ManagementCycleRun(tuple(rounds), "bounded round limit reached")
+
+
+def _format_feedback_for_prompt(feedback: Sequence[str]) -> str:
+    """Render round feedback as bounded data, never as planner instructions."""
+    if not feedback:
+        return "- none"
+    items = []
+    for item in feedback[-6:]:
+        normalized = " ".join(str(item).replace("\\x00", "").split())
+        items.append(f"- OBSERVATION: {normalized[:1800]}")
+    return "\n".join(items)
 
 
 def _compare_round_results(results: Sequence[AgentResult]) -> tuple[str, ...]:
