@@ -88,6 +88,24 @@ class DistributedTaskScheduler:
                         task.task_id,
                         TypeError("executor must return AgentResult"),
                     )
+                if not isinstance(result.success, bool):
+                    raise DistributedExecutionError(
+                        task.task_id,
+                        TypeError("AgentResult.success must be bool"),
+                    )
+                if not isinstance(result.summary, str):
+                    raise DistributedExecutionError(
+                        task.task_id,
+                        TypeError("AgentResult.summary must be str"),
+                    )
+                if not isinstance(result.changed_resources, frozenset) or any(
+                    not isinstance(resource, str) or not resource.strip()
+                    for resource in result.changed_resources
+                ):
+                    raise DistributedExecutionError(
+                        task.task_id,
+                        TypeError("AgentResult.changed_resources must be frozenset[str]"),
+                    )
                 if result.task_id != task.task_id:
                     raise DistributedExecutionError(
                         task.task_id,
