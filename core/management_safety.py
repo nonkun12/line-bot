@@ -52,6 +52,10 @@ class ManagementPlan:
             "origin": self.origin,
             "intent": self.intent,
             "scope_paths": sorted(_normalize(path) for path in self.scope_paths),
+            "expected_changed_paths": sorted(
+                _normalize(path) for path in self.expected_changed_paths
+            ),
+            "expected_diff_hash": self.expected_diff_hash,
             "max_files": self.max_files,
             "max_changes": self.max_changes,
             "rollback_plan": self.rollback_plan.strip(),
