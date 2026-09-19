@@ -18,6 +18,7 @@ from agents.voice.intents import is_voice_intent
 from agents.music.intents import is_music_intent
 from agents.video.intents import is_video_intent
 from agents.jobs.intents import is_job_seeking_intent
+from agents.market.intents import is_market_intent
 from e2e_status import StepTimer
 from core.distributed_agent_bridge import build_agent_registry
 from core.distributed_coordinator import DistributedAgentCoordinator
@@ -67,10 +68,26 @@ _MAX_SPECIALIST_WORKERS = 4
 
 
 def _resolve_multi_specialist_plan(message: str) -> tuple[str, ...] | None:
-    """Return a deterministic multi-agent plan when multiple intents are explicit."""
+    """Return a deterministic bounded plan when multiple domain intents are explicit."""
     for specialists, matches in _MULTI_SPECIALIST_RULES:
         if matches(message):
             return specialists
+
+    domain_intents: tuple[tuple[str, Callable[[str], bool]], ...] = (
+        ("news", is_ai_news_intent),
+        ("stocks", is_stock_intent),
+        ("english", is_english_learning_intent),
+        ("voice", is_voice_intent),
+        ("music", is_music_intent),
+        ("video", is_video_intent),
+        ("jobs", is_job_seeking_intent),
+        ("market", is_market_intent),
+    )
+    matched = tuple(name for name, matcher in domain_intents if matcher(message))
+    if len(matched) >= 2:
+        if len(matched) > _MAX_SPECIALIST_WORKERS:
+            raise RuntimeError("multi-specialist plan exceeds worker limit")
+        return matched
     return None
 
 
@@ -91,9 +108,11 @@ def _run_multi_specialist_request(
     if len(plan) > _MAX_SPECIALIST_WORKERS:
         raise RuntimeError("multi-specialist plan exceeds worker limit")
 
+    registry_names = {"jobs": "job_seeking", "market": "global_market"}
     agents = []
     for agent_name in plan:
-        agent = registry.get(agent_name)
+        registry_name = registry_names.get(agent_name, agent_name)
+        agent = registry.get(registry_name)
         if not bool(getattr(agent, "enabled", True)):
             raise RuntimeError(f"required specialist disabled: {agent_name}")
         if not agent.can_handle(request):
@@ -388,6 +407,33 @@ def _run_distributed_jobs_request(
     }
 
 
+
+def _run_distributed_market_request(
+    user_id: str, message: str, *, channel: str, metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Route explicit market requests through the distributed runtime."""
+    registry = build_core_agent_registry()
+    executors = build_agent_registry(registry).build()
+    report = DistributedAgentCoordinator(executors, max_rounds=1).dispatch(
+        f"market:{channel}:{user_id}".strip(), message
+    )
+    if not report.success:
+        raise RuntimeError(report.runtime.error or "distributed market execution failed")
+    completed = report.runtime.completed
+    if not completed or completed[0].result.task_id != report.contract.task.task_id:
+        raise RuntimeError("distributed market result contract mismatch")
+    result = completed[0].result
+    return {
+        "user_id": user_id, "raw_message": message, "channel": channel,
+        "metadata": dict(metadata), "intent": "distributed_market",
+        "next_agent": "market", "route": "distributed:market",
+        "agent_results": {"market": {"text": result.summary,
+            "metadata": {"role": AgentRole.MARKET.value, "distributed": True}, "status": "ok"}},
+        "final_reply": result.summary, "error": None, "specialists": ["market"],
+        "parallel": False, "max_workers": 1, "failed_specialists": [],
+    }
+
+
 def run_core_request(
     user_id: str,
     message: str,
@@ -398,6 +444,23 @@ def run_core_request(
 ) -> dict[str, Any]:
     """Classify with Supervisor, then execute one or a bounded specialist plan via Core."""
     request_metadata = dict(metadata or {})
+    specialists = _resolve_multi_specialist_plan(message)
+    if specialists is not None:
+        with StepTimer("core") as core_timer:
+            try:
+                result = _run_multi_specialist_request(
+                    user_id,
+                    message,
+                    channel=channel,
+                    metadata=request_metadata,
+                    specialists=specialists,
+                )
+            except Exception as exc:
+                core_timer.fail(error=exc, error_location="core/request_path.multi_specialist")
+                raise
+            core_timer.ok()
+            return result
+
     if is_ai_news_intent(message):
         with StepTimer("core") as core_timer:
             try:
@@ -434,6 +497,16 @@ def run_core_request(
                 result = _run_distributed_english_request(user_id, message, channel=channel, metadata=request_metadata)
             except Exception as exc:
                 core_timer.fail(error=exc, error_location="core/request_path.distributed_english")
+                raise
+            core_timer.ok()
+            return result
+
+    if is_market_intent(message):
+        with StepTimer("core") as core_timer:
+            try:
+                result = _run_distributed_market_request(user_id, message, channel=channel, metadata=request_metadata)
+            except Exception as exc:
+                core_timer.fail(error=exc, error_location="core/request_path.distributed_market")
                 raise
             core_timer.ok()
             return result
@@ -476,23 +549,6 @@ def run_core_request(
                 result = _run_distributed_voice_request(user_id, message, channel=channel, metadata=request_metadata)
             except Exception as exc:
                 core_timer.fail(error=exc, error_location="core/request_path.distributed_voice")
-                raise
-            core_timer.ok()
-            return result
-
-    specialists = _resolve_multi_specialist_plan(message)
-    if specialists is not None:
-        with StepTimer("core") as core_timer:
-            try:
-                result = _run_multi_specialist_request(
-                    user_id,
-                    message,
-                    channel=channel,
-                    metadata=request_metadata,
-                    specialists=specialists,
-                )
-            except Exception as exc:
-                core_timer.fail(error=exc, error_location="core/request_path.multi_specialist")
                 raise
             core_timer.ok()
             return result
