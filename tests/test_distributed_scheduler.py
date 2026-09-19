@@ -94,3 +94,36 @@ def test_scheduler_fails_closed_on_invalid_executor_result() -> None:
 def test_scheduler_rejects_invalid_worker_bound() -> None:
     with pytest.raises(ValueError, match="max_workers"):
         DistributedTaskScheduler({}, max_workers=0)
+
+
+def test_agent_task_rejects_oversized_or_invalid_fields() -> None:
+    with pytest.raises(ValueError, match="task_id exceeds"):
+        AgentTask("x" * 201, AgentRole.TESTER, "test")
+
+    with pytest.raises(ValueError, match="instruction exceeds"):
+        AgentTask("test", AgentRole.TESTER, "x" * 4001)
+
+    with pytest.raises(ValueError, match="too many resources"):
+        AgentTask(
+            "test",
+            AgentRole.TESTER,
+            "test",
+            resources=frozenset(f"r{i}" for i in range(9)),
+        )
+
+    with pytest.raises(ValueError, match="too many dependencies"):
+        AgentTask(
+            "test",
+            AgentRole.TESTER,
+            "test",
+            depends_on=tuple(f"d{i}" for i in range(9)),
+        )
+
+    with pytest.raises(ValueError, match="role must be an AgentRole"):
+        AgentTask("test", "tester", "test")  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="priority must be an integer"):
+        AgentTask("test", AgentRole.TESTER, "test", priority=True)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="between -10 and 10"):
+        AgentTask("test", AgentRole.TESTER, "test", priority=11)
