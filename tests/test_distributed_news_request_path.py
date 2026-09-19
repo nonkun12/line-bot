@@ -7,6 +7,19 @@ from core.multi_agent import AgentRole
 from core import request_path
 
 
+class FakeMusicAgent:
+    name = "music"
+    description = "fake"
+    priority = 1
+    enabled = True
+
+    def can_handle(self, request):
+        return True
+
+    def handle(self, request):
+        return AgentResponse(text="分散AI経由の音楽結果", metadata={"source": "fake-music"})
+
+
 class FakeAgent:
     name = "ai_news"
     description = "fake"
@@ -69,3 +82,95 @@ def test_distributed_news_request_fails_closed_when_news_executor_missing(monkey
 class FakeRegistryWithoutNews:
     def get(self, name):
         return None
+
+
+class FakeRegistryWithMusic(FakeRegistry):
+    def get(self, name):
+        if name == "music":
+            return FakeMusicAgent()
+        return super().get(name)
+
+
+def test_distributed_music_request_uses_music_executor(monkeypatch):
+    monkeypatch.setattr(request_path, "build_core_agent_registry", lambda: FakeRegistryWithMusic())
+    result = request_path.run_core_request("user-1", "音楽をテスト", channel="line")
+    assert result["intent"] == "distributed_music"
+    assert result["route"] == "distributed:music"
+    assert result["specialists"] == ["music"]
+    assert result["agent_results"]["music"]["status"] == "ok"
+    assert result["final_reply"] == "分散AI経由の音楽結果"
+
+
+class FakeVideoAgent:
+    name = "video"
+    description = "fake"
+    priority = 1
+    enabled = True
+    def can_handle(self, request): return True
+    def handle(self, request): return AgentResponse(text="分散AI経由の動画結果", metadata={"source": "fake-video"})
+
+
+def test_distributed_video_request_uses_video_executor(monkeypatch):
+    original = FakeRegistry.get
+    def get(self, name):
+        if name == "video":
+            return FakeVideoAgent()
+        return original(self, name)
+    monkeypatch.setattr(FakeRegistry, "get", get)
+    monkeypatch.setattr(request_path, "build_core_agent_registry", lambda: FakeRegistry())
+    result = request_path.run_core_request("user-1", "動画をテスト", channel="line")
+    assert result["intent"] == "distributed_video"
+    assert result["route"] == "distributed:video"
+    assert result["specialists"] == ["video"]
+    assert result["agent_results"]["video"]["status"] == "ok"
+    assert result["final_reply"] == "分散AI経由の動画結果"
+
+
+class FakeJobsAgent:
+    name = "job_seeking"
+    description = "fake"
+    priority = 1
+    enabled = True
+    def can_handle(self, request): return True
+    def handle(self, request): return AgentResponse(text="分散AI経由の求人結果", metadata={"source": "fake-jobs"})
+
+
+def test_distributed_jobs_request_uses_jobs_executor(monkeypatch):
+    original = FakeRegistry.get
+    def get(self, name):
+        if name == "job_seeking":
+            return FakeJobsAgent()
+        return original(self, name)
+    monkeypatch.setattr(FakeRegistry, "get", get)
+    monkeypatch.setattr(request_path, "build_core_agent_registry", lambda: FakeRegistry())
+    result = request_path.run_core_request("user-1", "求人をテスト", channel="line")
+    assert result["intent"] == "distributed_jobs"
+    assert result["route"] == "distributed:jobs"
+    assert result["specialists"] == ["jobs"]
+    assert result["agent_results"]["jobs"]["status"] == "ok"
+    assert result["final_reply"] == "分散AI経由の求人結果"
+
+
+class FakeMarketAgent:
+    name = "global_market"
+    description = "fake"
+    priority = 1
+    enabled = True
+    def can_handle(self, request): return True
+    def handle(self, request): return AgentResponse(text="分散AI経由の市場結果", metadata={"source": "fake-market"})
+
+
+def test_distributed_market_request_uses_market_executor(monkeypatch):
+    original = FakeRegistry.get
+    def get(self, name):
+        if name == "global_market":
+            return FakeMarketAgent()
+        return original(self, name)
+    monkeypatch.setattr(FakeRegistry, "get", get)
+    monkeypatch.setattr(request_path, "build_core_agent_registry", lambda: FakeRegistry())
+    result = request_path.run_core_request("user-1", "世界市場をテスト", channel="line")
+    assert result["intent"] == "distributed_market"
+    assert result["route"] == "distributed:market"
+    assert result["specialists"] == ["market"]
+    assert result["agent_results"]["market"]["status"] == "ok"
+    assert result["final_reply"] == "分散AI経由の市場結果"
