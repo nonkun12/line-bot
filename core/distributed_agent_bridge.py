@@ -26,6 +26,8 @@ def build_agent_registry(agent_registry) -> DistributedExecutorRegistry:
     registry = DistributedExecutorRegistry()
     for role, agent_name in _AGENT_NAMES.items():
         agent = agent_registry.get(agent_name)
+        if agent is None:
+            continue
         registry.register(role, HandlerExecutor(_build_handler(agent)))
     return registry
 
