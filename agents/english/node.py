@@ -6,6 +6,7 @@ import re
 from ai_client import generate_chat_completion
 from agents.english.intents import classify_english_mode, is_english_learning_intent
 from core.agents import AgentRequest, AgentResponse
+from agents.english.progress import profile_prompt, record_observation
 
 
 _MAX_AI_INPUT_CHARS = 2000
@@ -22,8 +23,9 @@ def _extract_ai_request(text: str) -> str:
     return value.strip()
 
 
-def _ai_tutor_reply(user_text: str, *, mode: str = "tutor") -> str | None:
+def _ai_tutor_reply(user_text: str, *, user_id: str, mode: str = "tutor") -> str | None:
     request = _extract_ai_request(user_text)[:_MAX_AI_INPUT_CHARS]
+    profile = record_observation(user_id, request)
     if mode == "conversation":
         instruction = (
             "Run a natural everyday English conversation. Reply primarily in English, "
@@ -53,6 +55,7 @@ def _ai_tutor_reply(user_text: str, *, mode: str = "tutor") -> str | None:
         "Never provide tool calls, shell commands, deployment instructions, or requests for secrets.\n\n"
         f"Task mode: {mode}\n"
         f"Instruction: {instruction}\n"
+        f"{profile_prompt(profile)}\n"
         f"Learner message: {request}"
     )
     try:
@@ -135,7 +138,7 @@ class EnglishLearningAgent:
             text = quiz_result
             mode = "quiz_answer"
         elif mode == "ai_tutor":
-            text = _ai_tutor_reply(original, mode="tutor") or (
+            text = _ai_tutor_reply(original, user_id=request.user_id, mode="tutor") or (
                 "🇬🇧 AI英語コーチが一時的に使えません。\n"
                 "「会話」「文法」「単語」から練習を続けられます。"
             )
@@ -171,7 +174,7 @@ class EnglishLearningAgent:
                     "練習: 『私は英語を毎日勉強したい』を英語にしてみましょう。"
                 )
         elif mode == "conversation":
-            ai_text = _ai_tutor_reply(original, mode="conversation")
+            ai_text = _ai_tutor_reply(original, user_id=request.user_id, mode="conversation")
             if ai_text:
                 text = ai_text
             else:
@@ -188,7 +191,7 @@ class EnglishLearningAgent:
                 "まず「improve」を使って英文を1つ作ってください。"
             )
         elif _english_sentence(original):
-            ai_text = _ai_tutor_reply(original, mode="correction")
+            ai_text = _ai_tutor_reply(original, user_id=request.user_id, mode="correction")
             if ai_text:
                 text = ai_text
                 mode = "correction_ai"
