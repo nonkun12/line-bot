@@ -68,10 +68,26 @@ _MAX_SPECIALIST_WORKERS = 4
 
 
 def _resolve_multi_specialist_plan(message: str) -> tuple[str, ...] | None:
-    """Return a deterministic multi-agent plan when multiple intents are explicit."""
+    """Return a deterministic bounded plan when multiple domain intents are explicit."""
     for specialists, matches in _MULTI_SPECIALIST_RULES:
         if matches(message):
             return specialists
+
+    domain_intents: tuple[tuple[str, Callable[[str], bool]], ...] = (
+        ("news", is_ai_news_intent),
+        ("stocks", is_stock_intent),
+        ("english", is_english_learning_intent),
+        ("voice", is_voice_intent),
+        ("music", is_music_intent),
+        ("video", is_video_intent),
+        ("jobs", is_job_seeking_intent),
+        ("market", is_market_intent),
+    )
+    matched = tuple(name for name, matcher in domain_intents if matcher(message))
+    if len(matched) >= 2:
+        if len(matched) > _MAX_SPECIALIST_WORKERS:
+            raise RuntimeError("multi-specialist plan exceeds worker limit")
+        return matched
     return None
 
 
