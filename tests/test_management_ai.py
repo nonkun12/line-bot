@@ -304,3 +304,38 @@ def test_model_management_planner_defaults_to_stop_without_next_round_signal() -
         ManagementDecision(Specialist.NEWS, "matched news", 0.95),
     )
     assert not plan.continue_after_round
+
+
+def test_agent_message_rejects_oversized_envelope_fields() -> None:
+    bus = AgentMessageBus()
+    base = dict(
+        sender="news",
+        recipient="management",
+        message_type="task_result",
+        content="ok",
+        safety_constraints=("result-only",),
+    )
+
+    with pytest.raises(ValueError, match="message_id exceeds"):
+        bus.send(AgentMessage(message_id="x" * 201, **base))
+
+    with pytest.raises(ValueError, match="correlation_id exceeds"):
+        bus.send(AgentMessage(message_id="m", correlation_id="x" * 201, **base))
+
+    with pytest.raises(ValueError, match="too many safety constraints"):
+        bus.send(
+            AgentMessage(
+                message_id="m",
+                safety_constraints=tuple("x" for _ in range(9)),
+                **base,
+            )
+        )
+
+    with pytest.raises(ValueError, match="context entries exceed"):
+        bus.send(
+            AgentMessage(
+                message_id="m",
+                context={"x": "y" * 1001},
+                **base,
+            )
+        )
