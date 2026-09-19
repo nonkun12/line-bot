@@ -112,3 +112,9 @@ def test_scheduler_fails_closed_on_invalid_agent_result_fields() -> None:
     scheduler = DistributedTaskScheduler({AgentRole.TESTER: BadResources()})
     with pytest.raises(DistributedExecutionError, match="changed_resources must be frozenset"):
         scheduler.run((task("test", AgentRole.TESTER),))
+
+
+def test_scheduler_rejects_empty_task_plan() -> None:
+    scheduler = DistributedTaskScheduler({}, max_workers=1)
+    with pytest.raises(DistributedExecutionError, match="at least one task is required"):
+        scheduler.run(())
