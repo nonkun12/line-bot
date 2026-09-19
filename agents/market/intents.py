@@ -43,6 +43,7 @@ def is_market_intent(text: str) -> bool:
         "ドルカナダ",
         "ドル人民元",
         "通貨",
+        "市場",
     )
     if any(term.casefold() in value for term in japanese_terms):
         return True
