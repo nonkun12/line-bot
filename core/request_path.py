@@ -202,8 +202,8 @@ def _run_distributed_news_request(
     channel: str,
     metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """
-    _validate_specialist_capability("news")Route explicit AI NEWS requests through the distributed runtime."""
+    """Route explicit AI NEWS requests through the distributed runtime."""
+    _validate_specialist_capability("news")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
@@ -247,8 +247,8 @@ def _run_distributed_stocks_request(
     channel: str,
     metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """
-    _validate_specialist_capability("stocks")Route explicit stock requests through the distributed runtime."""
+    """Route explicit stock requests through the distributed runtime."""
+    _validate_specialist_capability("stocks")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
@@ -291,8 +291,8 @@ def _run_distributed_english_request(
     channel: str,
     metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """
-    _validate_specialist_capability("english")Route explicit English-learning requests through the distributed runtime."""
+    """Route explicit English-learning requests through the distributed runtime."""
+    _validate_specialist_capability("english")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
@@ -321,8 +321,8 @@ def _run_distributed_voice_request(
     channel: str,
     metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """
-    _validate_specialist_capability("voice")Route explicit voice/speaker requests through the distributed runtime."""
+    """Route explicit voice/speaker requests through the distributed runtime."""
+    _validate_specialist_capability("voice")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
@@ -351,8 +351,8 @@ def _run_distributed_music_request(
     channel: str,
     metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """
-    _validate_specialist_capability("music")Route explicit music requests through the distributed runtime."""
+    """Route explicit music requests through the distributed runtime."""
+    _validate_specialist_capability("music")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
@@ -391,8 +391,8 @@ def _run_distributed_music_request(
 def _run_distributed_video_request(
     user_id: str, message: str, *, channel: str, metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """
-    _validate_specialist_capability("video")Route explicit video requests through the distributed runtime."""
+    """Route explicit video requests through the distributed runtime."""
+    _validate_specialist_capability("video")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     report = DistributedAgentCoordinator(executors, max_rounds=1).dispatch(
@@ -419,8 +419,8 @@ def _run_distributed_video_request(
 def _run_distributed_jobs_request(
     user_id: str, message: str, *, channel: str, metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """
-    _validate_specialist_capability("jobs")Route explicit job-seeking requests through the distributed runtime."""
+    """Route explicit job-seeking requests through the distributed runtime."""
+    _validate_specialist_capability("jobs")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     report = DistributedAgentCoordinator(executors, max_rounds=1).dispatch(
@@ -447,8 +447,8 @@ def _run_distributed_jobs_request(
 def _run_distributed_market_request(
     user_id: str, message: str, *, channel: str, metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """
-    _validate_specialist_capability("market")Route explicit market requests through the distributed runtime."""
+    """Route explicit market requests through the distributed runtime."""
+    _validate_specialist_capability("market")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     report = DistributedAgentCoordinator(executors, max_rounds=1).dispatch(
