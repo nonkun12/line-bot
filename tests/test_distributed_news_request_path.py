@@ -4,6 +4,7 @@ import pytest
 
 from core.agents import AgentResponse
 from core.multi_agent import AgentRole
+from core.management_contract import Specialist, specialist_boundary
 from core import request_path
 
 
@@ -227,3 +228,19 @@ def test_four_explicit_domains_dispatch_in_parallel(monkeypatch):
     assert result["agent_results"]["jobs"]["status"] == "ok"
     assert result["agent_results"]["market"]["status"] == "ok"
     assert result["final_reply"] == "音楽OK\n\n動画OK\n\n求人OK\n\n市場OK"
+
+
+def test_management_capability_gate_covers_all_dispatched_specialists():
+    expected = {
+        "news": "news_retrieval",
+        "stocks": "stock_quotes",
+        "english": "english_learning",
+        "voice": "text_to_speech",
+        "music": "music_planning",
+        "video": "video_planning",
+        "jobs": "job_search",
+        "market": "market_summary",
+    }
+    for specialist, capability in expected.items():
+        boundary = specialist_boundary(Specialist(specialist))
+        assert capability in boundary.capabilities
