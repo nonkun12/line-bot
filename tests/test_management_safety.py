@@ -87,7 +87,8 @@ def test_integrity_failures_are_denied(field: str, value: object) -> None:
 
 
 def test_protected_control_plane_needs_human() -> None:
-    request = build_request(changed_paths=("core/control_tower.py",))
+    plan = build_plan(scope_paths=("core/control_tower.py",))
+    request = build_request(plan, changed_paths=("core/control_tower.py",))
     result = evaluate_management_gate(request)
     assert result.decision is GateDecision.NEEDS_HUMAN
 
@@ -177,5 +178,7 @@ def test_planned_changed_paths_and_diff_hash_are_bound_when_supplied() -> None:
 
 def test_protected_scope_needs_human_before_execution() -> None:
     plan = build_plan(scope_paths=("core/control_tower.py",))
-    result = evaluate_management_gate(build_request(plan))
+    result = evaluate_management_gate(
+        build_request(plan, changed_paths=("core/control_tower.py",))
+    )
     assert result.decision is GateDecision.NEEDS_HUMAN
