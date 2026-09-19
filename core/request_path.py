@@ -15,6 +15,7 @@ from agents.news.intents import is_ai_news_intent
 from agents.stocks.intents import is_stock_intent
 from agents.english.intents import is_english_learning_intent
 from agents.voice.intents import is_voice_intent
+from agents.music.intents import is_music_intent
 from e2e_status import StepTimer
 from core.distributed_agent_bridge import build_agent_registry
 from core.distributed_coordinator import DistributedAgentCoordinator
@@ -288,6 +289,49 @@ def _run_distributed_voice_request(
         "parallel": False, "max_workers": 1, "failed_specialists": [],
     }
 
+
+def _run_distributed_music_request(
+    user_id: str,
+    message: str,
+    *,
+    channel: str,
+    metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Route explicit music requests through the distributed runtime."""
+    registry = build_core_agent_registry()
+    executors = build_agent_registry(registry).build()
+    coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
+    request_id = f"music:{channel}:{user_id}".strip()
+    report = coordinator.dispatch(request_id, message)
+    if not report.success:
+        raise RuntimeError(report.runtime.error or "distributed music execution failed")
+    completed = report.runtime.completed
+    if not completed or completed[0].result.task_id != report.contract.task.task_id:
+        raise RuntimeError("distributed music result contract mismatch")
+    result = completed[0].result
+    return {
+        "user_id": user_id,
+        "raw_message": message,
+        "channel": channel,
+        "metadata": dict(metadata),
+        "intent": "distributed_music",
+        "next_agent": "music",
+        "route": "distributed:music",
+        "agent_results": {
+            "music": {
+                "text": result.summary,
+                "metadata": {"role": AgentRole.MUSIC.value, "distributed": True},
+                "status": "ok",
+            }
+        },
+        "final_reply": result.summary,
+        "error": None,
+        "specialists": ["music"],
+        "parallel": False,
+        "max_workers": 1,
+        "failed_specialists": [],
+    }
+
 def run_core_request(
     user_id: str,
     message: str,
@@ -334,6 +378,18 @@ def run_core_request(
                 result = _run_distributed_english_request(user_id, message, channel=channel, metadata=request_metadata)
             except Exception as exc:
                 core_timer.fail(error=exc, error_location="core/request_path.distributed_english")
+                raise
+            core_timer.ok()
+            return result
+
+    if is_music_intent(message):
+        with StepTimer("core") as core_timer:
+            try:
+                result = _run_distributed_music_request(
+                    user_id, message, channel=channel, metadata=request_metadata
+                )
+            except Exception as exc:
+                core_timer.fail(error=exc, error_location="core/request_path.distributed_music")
                 raise
             core_timer.ok()
             return result
