@@ -99,3 +99,28 @@ def test_distributed_music_request_uses_music_executor(monkeypatch):
     assert result["specialists"] == ["music"]
     assert result["agent_results"]["music"]["status"] == "ok"
     assert result["final_reply"] == "分散AI経由の音楽結果"
+
+
+class FakeVideoAgent:
+    name = "video"
+    description = "fake"
+    priority = 1
+    enabled = True
+    def can_handle(self, request): return True
+    def handle(self, request): return AgentResponse(text="分散AI経由の動画結果", metadata={"source": "fake-video"})
+
+
+def test_distributed_video_request_uses_video_executor(monkeypatch):
+    original = FakeRegistry.get
+    def get(self, name):
+        if name == "video":
+            return FakeVideoAgent()
+        return original(self, name)
+    monkeypatch.setattr(FakeRegistry, "get", get)
+    monkeypatch.setattr(request_path, "build_core_agent_registry", lambda: FakeRegistry())
+    result = request_path.run_core_request("user-1", "動画をテスト", channel="line")
+    assert result["intent"] == "distributed_video"
+    assert result["route"] == "distributed:video"
+    assert result["specialists"] == ["video"]
+    assert result["agent_results"]["video"]["status"] == "ok"
+    assert result["final_reply"] == "分散AI経由の動画結果"
