@@ -23,7 +23,13 @@ from e2e_status import StepTimer
 from core.distributed_agent_bridge import build_agent_registry
 from core.distributed_coordinator import DistributedAgentCoordinator
 from core.multi_agent import AgentRole
-from core.management_contract import Specialist, specialist_boundary
+from core.specialist_gate import (
+    DOMAIN_AGENT_NAMES,
+    SpecialistGateError,
+    assert_all_approved,
+    assert_specialist_approved,
+    resolve_specialist,
+)
 
 
 # Explicit, bounded orchestration rules. Keep this list small and deterministic;
@@ -67,31 +73,9 @@ def _is_weather_intent(message: str) -> bool:
     return any(term.lower() in normalized for term in _WEATHER_INTENT_TERMS)
 _MAX_SPECIALIST_WORKERS = 4
 
-_SPECIALIST_CAPABILITIES: dict[str, str] = {
-    "news": "news_retrieval",
-    "stocks": "stock_quotes",
-    "english": "english_learning",
-    "voice": "text_to_speech",
-    "music": "music_planning",
-    "video": "video_planning",
-    "jobs": "job_search",
-    "market": "market_summary",
-}
-
-
 def _validate_specialist_capability(specialist: str) -> None:
-    try:
-        typed = Specialist(specialist)
-    except ValueError as exc:
-        raise RuntimeError(f"unknown specialist: {specialist}") from exc
-    required = _SPECIALIST_CAPABILITIES.get(specialist)
-    if required is None:
-        raise RuntimeError(f"missing capability mapping: {specialist}")
-    boundary = specialist_boundary(typed)
-    if required not in boundary.capabilities:
-        raise RuntimeError(
-            f"specialist capability not approved: {specialist}:{required}"
-        )
+    """Back-compat wrapper; the only policy lives in core.specialist_gate."""
+    assert_specialist_approved(specialist)
 
 
 def _resolve_multi_specialist_plan(message: str) -> tuple[str, ...] | None:
@@ -127,21 +111,31 @@ def _run_multi_specialist_request(
     specialists: Sequence[str],
 ) -> dict[str, Any]:
     """Execute bounded specialists concurrently and preserve each result."""
-    registry = build_core_agent_registry()
-    for specialist in specialists:
-        _validate_specialist_capability(specialist)
-    request = AgentRequest(user_id=user_id, message=message, channel=channel, metadata=dict(metadata))
-    plan = tuple(specialists)
-    if not plan:
+    # Validate the whole plan first (unknown names, duplicates, size, and every
+    # capability). Nothing is looked up or executed until all of it passes.
+    if not specialists:
         raise RuntimeError("multi-specialist plan is empty")
-    if len(plan) > _MAX_SPECIALIST_WORKERS:
+    resolved = tuple(resolve_specialist(name) for name in specialists)
+    if len(set(resolved)) != len(resolved):
+        raise SpecialistGateError("duplicate specialist in multi-specialist plan")
+    if len(resolved) > _MAX_SPECIALIST_WORKERS:
         raise RuntimeError("multi-specialist plan exceeds worker limit")
+    assert_all_approved(resolved)
+    plan = tuple(item.value for item in resolved)
 
-    registry_names = {"jobs": "job_seeking", "market": "global_market"}
+    registry = build_core_agent_registry()
+    request = AgentRequest(user_id=user_id, message=message, channel=channel, metadata=dict(metadata))
+
     agents = []
-    for agent_name in plan:
-        registry_name = registry_names.get(agent_name, agent_name)
-        agent = registry.get(registry_name)
+    for specialist in resolved:
+        agent_name = specialist.value
+        registry_name = DOMAIN_AGENT_NAMES[specialist]
+        try:
+            agent = registry.get(registry_name)
+        except KeyError:
+            agent = None
+        if agent is None:
+            raise RuntimeError(f"required specialist not registered: {agent_name}")
         if not bool(getattr(agent, "enabled", True)):
             raise RuntimeError(f"required specialist disabled: {agent_name}")
         if not agent.can_handle(request):
@@ -151,6 +145,7 @@ def _run_multi_specialist_request(
     def execute(item: tuple[str, Any]) -> tuple[str, dict[str, Any]]:
         agent_name, agent = item
         try:
+            assert_specialist_approved(agent_name)  # last-mile, immediately before handle()
             response = agent.handle(request)
             return agent_name, {
                 "text": response.text,
@@ -203,12 +198,11 @@ def _run_distributed_news_request(
     metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Route explicit AI NEWS requests through the distributed runtime."""
-    _validate_specialist_capability("news")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
     request_id = f"news:{channel}:{user_id}".strip()
-    report = coordinator.dispatch(request_id, message)
+    report = coordinator.dispatch(request_id, message, expected_role=AgentRole.NEWS)
     if not report.success:
         raise RuntimeError(report.runtime.error or "distributed AI NEWS execution failed")
     completed = report.runtime.completed
@@ -248,12 +242,11 @@ def _run_distributed_stocks_request(
     metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Route explicit stock requests through the distributed runtime."""
-    _validate_specialist_capability("stocks")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
     request_id = f"stocks:{channel}:{user_id}".strip()
-    report = coordinator.dispatch(request_id, message)
+    report = coordinator.dispatch(request_id, message, expected_role=AgentRole.STOCKS)
     if not report.success:
         raise RuntimeError(report.runtime.error or "distributed stock execution failed")
     completed = report.runtime.completed
@@ -292,12 +285,11 @@ def _run_distributed_english_request(
     metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Route explicit English-learning requests through the distributed runtime."""
-    _validate_specialist_capability("english")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
     request_id = f"english:{channel}:{user_id}".strip()
-    report = coordinator.dispatch(request_id, message)
+    report = coordinator.dispatch(request_id, message, expected_role=AgentRole.ENGLISH)
     if not report.success:
         raise RuntimeError(report.runtime.error or "distributed English execution failed")
     completed = report.runtime.completed
@@ -322,12 +314,11 @@ def _run_distributed_voice_request(
     metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Route explicit voice/speaker requests through the distributed runtime."""
-    _validate_specialist_capability("voice")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
     request_id = f"voice:{channel}:{user_id}".strip()
-    report = coordinator.dispatch(request_id, message)
+    report = coordinator.dispatch(request_id, message, expected_role=AgentRole.VOICE)
     if not report.success:
         raise RuntimeError(report.runtime.error or "distributed voice execution failed")
     completed = report.runtime.completed
@@ -352,12 +343,11 @@ def _run_distributed_music_request(
     metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Route explicit music requests through the distributed runtime."""
-    _validate_specialist_capability("music")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
     request_id = f"music:{channel}:{user_id}".strip()
-    report = coordinator.dispatch(request_id, message)
+    report = coordinator.dispatch(request_id, message, expected_role=AgentRole.MUSIC)
     if not report.success:
         raise RuntimeError(report.runtime.error or "distributed music execution failed")
     completed = report.runtime.completed
@@ -392,11 +382,11 @@ def _run_distributed_video_request(
     user_id: str, message: str, *, channel: str, metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Route explicit video requests through the distributed runtime."""
-    _validate_specialist_capability("video")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     report = DistributedAgentCoordinator(executors, max_rounds=1).dispatch(
-        f"video:{channel}:{user_id}".strip(), message
+        f"video:{channel}:{user_id}".strip(), message,
+        expected_role=AgentRole.VIDEO,
     )
     if not report.success:
         raise RuntimeError(report.runtime.error or "distributed video execution failed")
@@ -420,11 +410,11 @@ def _run_distributed_jobs_request(
     user_id: str, message: str, *, channel: str, metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Route explicit job-seeking requests through the distributed runtime."""
-    _validate_specialist_capability("jobs")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     report = DistributedAgentCoordinator(executors, max_rounds=1).dispatch(
-        f"jobs:{channel}:{user_id}".strip(), message
+        f"jobs:{channel}:{user_id}".strip(), message,
+        expected_role=AgentRole.JOBS,
     )
     if not report.success:
         raise RuntimeError(report.runtime.error or "distributed jobs execution failed")
@@ -448,11 +438,11 @@ def _run_distributed_market_request(
     user_id: str, message: str, *, channel: str, metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Route explicit market requests through the distributed runtime."""
-    _validate_specialist_capability("market")
     registry = build_core_agent_registry()
     executors = build_agent_registry(registry).build()
     report = DistributedAgentCoordinator(executors, max_rounds=1).dispatch(
-        f"market:{channel}:{user_id}".strip(), message
+        f"market:{channel}:{user_id}".strip(), message,
+        expected_role=AgentRole.MARKET,
     )
     if not report.success:
         raise RuntimeError(report.runtime.error or "distributed market execution failed")

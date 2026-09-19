@@ -7,6 +7,7 @@ from .agents import Agent, AgentRequest
 from .distributed_domain_executor import HandlerExecutor
 from .distributed_executor_registry import DistributedExecutorRegistry
 from .multi_agent import AgentRole, AgentTask
+from .specialist_gate import assert_specialist_approved
 
 
 _AGENT_NAMES: Mapping[AgentRole, str] = {
@@ -31,12 +32,19 @@ def build_agent_registry(agent_registry) -> DistributedExecutorRegistry:
             continue
         if agent is None:
             continue
-        registry.register(role, HandlerExecutor(_build_handler(agent)))
+        registry.register(role, HandlerExecutor(_build_handler(role, agent)))
     return registry
 
 
-def _build_handler(agent: Agent):
+def _build_handler(role: AgentRole, agent: Agent):
     def handle(task: AgentTask) -> str:
+        # Last-mile choke point: the role that is about to execute must be the
+        # role this executor was registered for, and it must be approved.
+        if task.role is not role:
+            raise RuntimeError(
+                f"task role {task.role.value} does not match executor role {role.value}"
+            )
+        assert_specialist_approved(task.role)
         request = AgentRequest(
             user_id=task.task_id,
             message=task.instruction,

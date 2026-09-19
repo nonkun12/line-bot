@@ -9,6 +9,7 @@ from typing_extensions import TypedDict
 
 from .agents import Agent, AgentRegistry, AgentResponse
 from .langgraph_adapter import agent_request_from_state
+from .specialist_gate import assert_agent_approved
 
 
 class CoreGraphState(TypedDict, total=False):
@@ -47,6 +48,10 @@ def _normalize_response(result: AgentResponse | str) -> AgentResponse:
 def _make_agent_node(name: str, agent: Agent):
     def node(state: CoreGraphState) -> CoreGraphState:
         request = agent_request_from_state(state)
+        # Choke point for the Core graph: domain specialists must be approved
+        # by the Management capability gate right before they execute.
+        assert_agent_approved(name)
+        assert_agent_approved(getattr(agent, "name", name))
         response = _normalize_response(agent.handle(request))
         results = dict(state.get("agent_results", {}))
         results[name] = {

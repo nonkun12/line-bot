@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 from .agents import AgentRegistry, AgentRequest, AgentResponse
+from .specialist_gate import assert_agent_approved
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,7 @@ class AgentRouter:
         agent = self._registry.resolve(request)
         if agent is None:
             return RouteResult(agent=None)
+        assert_agent_approved(agent.name)
         response = agent.handle(request)
         if not isinstance(response, AgentResponse):
             if isinstance(response, str):
@@ -39,6 +41,8 @@ class AgentRouter:
         agent = self._registry.get(name)
         if not bool(getattr(agent, "enabled", True)):
             raise ValueError(f"agent is disabled: {name}")
+        assert_agent_approved(name)
+        assert_agent_approved(getattr(agent, "name", name))
         response = agent.handle(request)
         if isinstance(response, AgentResponse):
             return response

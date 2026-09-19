@@ -29,6 +29,7 @@ from core.management_ai import (
 from core.management_contract import ManagementDecision, ManagementRequest
 from core.multi_agent import AgentRole
 from core.specialist_executor import build_registry_executors
+from core.specialist_gate import SpecialistGateError, assert_all_approved
 from graph.core_registry import build_core_agent_registry
 
 
@@ -138,6 +139,11 @@ def run_management_request(
     if len(allowed_roles) < 2:
         return None
 
+    # Capability gate BEFORE any registry/planner (model) call. A denial is a
+    # policy decision, not a transient failure: it is raised, never turned into
+    # ``None``, so the caller cannot silently fall back to another route.
+    assert_all_approved(allowed_roles)
+
     request = AgentRequest(
         user_id=str(user_id),
         message=str(message),
@@ -168,6 +174,8 @@ def run_management_request(
 
     try:
         run = manager.run(management_request)
+    except SpecialistGateError:
+        raise  # fail-closed: never fall back to the legacy route on a gate denial
     except Exception as exc:
         print(f"[MANAGEMENT AI] fallback to legacy route: {type(exc).__name__}: {exc}")
         return None

@@ -10,6 +10,11 @@ from typing import Mapping
 
 from .agents import Agent, AgentRegistry, AgentRequest
 from .multi_agent import AgentExecutor, AgentResult, AgentRole, AgentTask
+from .specialist_gate import (
+    SpecialistGateError,
+    assert_specialist_approved,
+    is_specialist_approved,
+)
 
 
 ROLE_TO_AGENT_NAME: Mapping[AgentRole, str] = {
@@ -36,6 +41,8 @@ class SpecialistExecutorFactory:
             raise TypeError("request must be an AgentRequest")
         executors: dict[AgentRole, AgentExecutor] = {}
         for role, name in ROLE_TO_AGENT_NAME.items():
+            if not is_specialist_approved(role):
+                continue  # unapproved specialists never get an executor
             try:
                 agent = self.registry.get(name)
             except KeyError:
@@ -68,6 +75,10 @@ class RegistrySpecialistExecutor(AgentExecutor):
                 success=False,
                 summary=f"executor is not assigned to role: {task.role.value}",
             )
+        try:
+            assert_specialist_approved(task.role)
+        except SpecialistGateError as exc:
+            return AgentResult(task_id=task.task_id, success=False, summary=str(exc))
         try:
             response = self._agent.handle(
                 AgentRequest(
