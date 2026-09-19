@@ -30,6 +30,7 @@ def is_market_intent(text: str) -> bool:
         "hang seng",
         "上海総合",
         "kospi",
+        "市場",
         "世界株価",
         "世界の株価",
         "為替",

@@ -149,3 +149,81 @@ def test_distributed_jobs_request_uses_jobs_executor(monkeypatch):
     assert result["specialists"] == ["jobs"]
     assert result["agent_results"]["jobs"]["status"] == "ok"
     assert result["final_reply"] == "分散AI経由の求人結果"
+
+
+class FakeMarketAgent:
+    name = "global_market"
+    description = "fake"
+    priority = 1
+    enabled = True
+    def can_handle(self, request): return True
+    def handle(self, request): return AgentResponse(text="分散AI経由の市場結果", metadata={"source": "fake-market"})
+
+
+def test_distributed_market_request_uses_market_executor(monkeypatch):
+    original = FakeRegistry.get
+    def get(self, name):
+        if name == "global_market":
+            return FakeMarketAgent()
+        return original(self, name)
+    monkeypatch.setattr(FakeRegistry, "get", get)
+    monkeypatch.setattr(request_path, "build_core_agent_registry", lambda: FakeRegistry())
+    result = request_path.run_core_request("user-1", "世界市場をテスト", channel="line")
+    assert result["intent"] == "distributed_market"
+    assert result["route"] == "distributed:market"
+    assert result["specialists"] == ["market"]
+    assert result["agent_results"]["market"]["status"] == "ok"
+    assert result["final_reply"] == "分散AI経由の市場結果"
+
+
+class FakeDomainAgent:
+    def __init__(self, name, text):
+        self.name = name
+        self.description = "fake"
+        self.priority = 1
+        self.enabled = True
+        self._text = text
+
+    def can_handle(self, request):
+        return True
+
+    def handle(self, request):
+        return AgentResponse(text=self._text, metadata={"source": self.name})
+
+
+class FakeFourDomainRegistry:
+    def __init__(self):
+        self._agents = {
+            "music": FakeDomainAgent("music", "音楽OK"),
+            "video": FakeDomainAgent("video", "動画OK"),
+            "job_seeking": FakeDomainAgent("job_seeking", "求人OK"),
+            "global_market": FakeDomainAgent("global_market", "市場OK"),
+        }
+
+    def get(self, name):
+        return self._agents.get(name)
+
+
+def test_four_explicit_domains_dispatch_in_parallel(monkeypatch):
+    monkeypatch.setattr(
+        request_path,
+        "build_core_agent_registry",
+        lambda: FakeFourDomainRegistry(),
+    )
+
+    result = request_path.run_core_request(
+        "user-1",
+        "分散AIテスト：音楽をテストして 動画をテストして 求人を調べて 市場を調べて",
+        channel="line",
+    )
+
+    assert result["intent"] == "multi_specialist"
+    assert result["specialists"] == ["music", "video", "jobs", "market"]
+    assert result["parallel"] is True
+    assert result["max_workers"] == 4
+    assert result["failed_specialists"] == []
+    assert result["agent_results"]["music"]["status"] == "ok"
+    assert result["agent_results"]["video"]["status"] == "ok"
+    assert result["agent_results"]["jobs"]["status"] == "ok"
+    assert result["agent_results"]["market"]["status"] == "ok"
+    assert result["final_reply"] == "音楽OK\n\n動画OK\n\n求人OK\n\n市場OK"
