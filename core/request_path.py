@@ -23,6 +23,7 @@ from e2e_status import StepTimer
 from core.distributed_agent_bridge import build_agent_registry
 from core.distributed_coordinator import DistributedAgentCoordinator
 from core.multi_agent import AgentRole
+from core.management_contract import Specialist, specialist_boundary
 
 
 # Explicit, bounded orchestration rules. Keep this list small and deterministic;
@@ -66,6 +67,32 @@ def _is_weather_intent(message: str) -> bool:
     return any(term.lower() in normalized for term in _WEATHER_INTENT_TERMS)
 _MAX_SPECIALIST_WORKERS = 4
 
+_SPECIALIST_CAPABILITIES: dict[str, str] = {
+    "news": "news_retrieval",
+    "stocks": "stock_quotes",
+    "english": "english_learning",
+    "voice": "text_to_speech",
+    "music": "music_planning",
+    "video": "video_planning",
+    "jobs": "job_search",
+    "market": "market_summary",
+}
+
+
+def _validate_specialist_capability(specialist: str) -> None:
+    try:
+        typed = Specialist(specialist)
+    except ValueError as exc:
+        raise RuntimeError(f"unknown specialist: {specialist}") from exc
+    required = _SPECIALIST_CAPABILITIES.get(specialist)
+    if required is None:
+        raise RuntimeError(f"missing capability mapping: {specialist}")
+    boundary = specialist_boundary(typed)
+    if required not in boundary.capabilities:
+        raise RuntimeError(
+            f"specialist capability not approved: {specialist}:{required}"
+        )
+
 
 def _resolve_multi_specialist_plan(message: str) -> tuple[str, ...] | None:
     """Return a deterministic bounded plan when multiple domain intents are explicit."""
@@ -101,6 +128,8 @@ def _run_multi_specialist_request(
 ) -> dict[str, Any]:
     """Execute bounded specialists concurrently and preserve each result."""
     registry = build_core_agent_registry()
+    for specialist in specialists:
+        _validate_specialist_capability(specialist)
     request = AgentRequest(user_id=user_id, message=message, channel=channel, metadata=dict(metadata))
     plan = tuple(specialists)
     if not plan:
