@@ -221,10 +221,16 @@ class ModelManagementPlanner:
         except Exception as exc:
             raise ManagementPlanningError(f"invalid task graph: {exc}") from exc
 
-        parallel_safe = bool(payload.get("parallel_safe", False))
+        raw_parallel_safe = payload.get("parallel_safe", False)
+        if not isinstance(raw_parallel_safe, bool):
+            raise ManagementPlanningError("parallel_safe must be a boolean")
+        parallel_safe = raw_parallel_safe
         if not any(len(batch.tasks) > 1 for batch in batches):
             parallel_safe = False
-        continue_after_round = bool(payload.get("continue_after_round", False))
+        raw_continue_after_round = payload.get("continue_after_round", False)
+        if not isinstance(raw_continue_after_round, bool):
+            raise ManagementPlanningError("continue_after_round must be a boolean")
+        continue_after_round = raw_continue_after_round
         return ManagementPlan(
             objective.strip(),
             decision,
