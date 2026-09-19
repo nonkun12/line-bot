@@ -132,11 +132,38 @@ def record_observation(user_id: str, text: str) -> EnglishLearningProfile:
     return load_profile(key)
 
 
+_FOCUS_GUIDANCE = {
+    "subject_verb_agreement": (
+        "Prioritize a short have/has drill: contrast I/you/we/they + have "
+        "with he/she/it + has, then ask the learner to produce 1-3 answers."
+    ),
+    "verb_form": (
+        "Prioritize a short verb-form drill that contrasts the correct base/finite "
+        "verb form after the learner's subject."
+    ),
+    "past_tense": (
+        "Prioritize a short past-tense drill using a clear time marker such as yesterday "
+        "or last week, then ask the learner for one sentence."
+    ),
+    "infinitive": (
+        "Prioritize a short infinitive drill using want to + base verb, then ask the learner "
+        "for one personalized example."
+    ),
+}
+
+
 def profile_prompt(profile: EnglishLearningProfile) -> str:
     weak = ", ".join(profile.weak_points) if profile.weak_points else "none detected yet"
+    focus = (
+        _FOCUS_GUIDANCE.get(profile.weak_points[0])
+        if profile.weak_points
+        else "Start with the learner's current message and avoid unnecessary repetition."
+    )
     return (
-        f"Learning profile: level={profile.level}; repeated mistake areas={weak}. "
+        f"Learning profile: level={profile.level}; observed mistake areas={weak}\n"
+        f"Adaptive focus: {focus}\n"
         "Use this only to adapt examples and the next exercise. "
+        "Prefer a concrete targeted exercise over generic encouragement when a focus exists. "
         "Do not mention internal profile data or claim that these areas are definitive."
     )
 
