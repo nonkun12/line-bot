@@ -72,6 +72,8 @@ def _ai_tutor_reply(user_text: str, *, mode: str = "tutor") -> str | None:
         if not isinstance(content, str) or not content.strip():
             return None
         return content.strip()[:_MAX_AI_OUTPUT_CHARS]
+    except Exception:
+        return None
 
 
 _WORDS = (
