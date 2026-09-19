@@ -185,6 +185,49 @@ def _run_distributed_news_request(
     }
 
 
+
+def _run_distributed_stocks_request(
+    user_id: str,
+    message: str,
+    *,
+    channel: str,
+    metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Route explicit stock requests through the distributed runtime."""
+    registry = build_core_agent_registry()
+    executors = build_agent_registry(registry).build()
+    coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
+    request_id = f"stocks:{channel}:{user_id}".strip()
+    report = coordinator.dispatch(request_id, message)
+    if not report.success:
+        raise RuntimeError(report.runtime.error or "distributed stock execution failed")
+    completed = report.runtime.completed
+    if not completed or completed[0].result.task_id != report.contract.task.task_id:
+        raise RuntimeError("distributed stock result contract mismatch")
+    result = completed[0].result
+    return {
+        "user_id": user_id,
+        "raw_message": message,
+        "channel": channel,
+        "metadata": dict(metadata),
+        "intent": "distributed_stocks",
+        "next_agent": "stocks",
+        "route": "distributed:stocks",
+        "agent_results": {
+            "stocks": {
+                "text": result.summary,
+                "metadata": {"role": AgentRole.STOCKS.value, "distributed": True},
+                "status": "ok",
+            }
+        },
+        "final_reply": result.summary,
+        "error": None,
+        "specialists": ["stocks"],
+        "parallel": False,
+        "max_workers": 1,
+        "failed_specialists": [],
+    }
+
 def run_core_request(
     user_id: str,
     message: str,
@@ -206,6 +249,21 @@ def run_core_request(
                 )
             except Exception as exc:
                 core_timer.fail(error=exc, error_location="core/request_path.distributed_news")
+                raise
+            core_timer.ok()
+            return result
+
+    if is_stock_intent(message):
+        with StepTimer("core") as core_timer:
+            try:
+                result = _run_distributed_stocks_request(
+                    user_id,
+                    message,
+                    channel=channel,
+                    metadata=request_metadata,
+                )
+            except Exception as exc:
+                core_timer.fail(error=exc, error_location="core/request_path.distributed_stocks")
                 raise
             core_timer.ok()
             return result
