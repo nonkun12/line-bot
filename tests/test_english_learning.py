@@ -79,3 +79,61 @@ def test_ai_tutor_falls_back_when_model_fails(monkeypatch) -> None:
 
     assert response.metadata["mode"] == "ai_tutor"
     assert "一時的に使えません" in response.text
+
+
+def test_learning_profile_remembers_repeated_mistakes(monkeypatch, tmp_path) -> None:
+    from agents.english import progress
+
+    class Message:
+        content = "Nice work!"
+
+    class Choice:
+        message = Message()
+
+    class Response:
+        choices = [Choice()]
+
+    monkeypatch.setattr(progress, "DB_PATH", str(tmp_path / "english.db"))
+    monkeypatch.setattr(
+        "agents.english.node.generate_chat_completion",
+        lambda **kwargs: Response(),
+    )
+
+    agent = EnglishLearningAgent()
+    agent.handle(_request("英語AI: I has a pen."))
+    agent.handle(_request("英語AI: He have a bike."))
+
+    profile = progress.load_profile("test-user")
+    assert profile.turns == 2
+    assert profile.level == "beginner"
+    assert "subject_verb_agreement" in profile.weak_points
+
+
+def test_ai_tutor_prompt_uses_profile_context(monkeypatch, tmp_path) -> None:
+    from agents.english import progress
+
+    class Message:
+        content = "Keep practicing."
+
+    class Choice:
+        message = Message()
+
+    class Response:
+        choices = [Choice()]
+
+    captured = {}
+
+    def fake_completion(**kwargs):
+        captured.update(kwargs)
+        return Response()
+
+    monkeypatch.setattr(progress, "DB_PATH", str(tmp_path / "english.db"))
+    monkeypatch.setattr("agents.english.node.generate_chat_completion", fake_completion)
+
+    agent = EnglishLearningAgent()
+    agent.handle(_request("英語AI: I has a pen."))
+    agent.handle(_request("英語AI: Let's practice."))
+
+    prompt = captured["messages"][1]["content"]
+    assert "level=beginner" in prompt
+    assert "subject_verb_agreement" in prompt
