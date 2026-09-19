@@ -124,3 +124,28 @@ def test_distributed_video_request_uses_video_executor(monkeypatch):
     assert result["specialists"] == ["video"]
     assert result["agent_results"]["video"]["status"] == "ok"
     assert result["final_reply"] == "分散AI経由の動画結果"
+
+
+class FakeJobsAgent:
+    name = "job_seeking"
+    description = "fake"
+    priority = 1
+    enabled = True
+    def can_handle(self, request): return True
+    def handle(self, request): return AgentResponse(text="分散AI経由の求人結果", metadata={"source": "fake-jobs"})
+
+
+def test_distributed_jobs_request_uses_jobs_executor(monkeypatch):
+    original = FakeRegistry.get
+    def get(self, name):
+        if name == "job_seeking":
+            return FakeJobsAgent()
+        return original(self, name)
+    monkeypatch.setattr(FakeRegistry, "get", get)
+    monkeypatch.setattr(request_path, "build_core_agent_registry", lambda: FakeRegistry())
+    result = request_path.run_core_request("user-1", "求人をテスト", channel="line")
+    assert result["intent"] == "distributed_jobs"
+    assert result["route"] == "distributed:jobs"
+    assert result["specialists"] == ["jobs"]
+    assert result["agent_results"]["jobs"]["status"] == "ok"
+    assert result["final_reply"] == "分散AI経由の求人結果"
