@@ -210,7 +210,8 @@ def test_management_ai_closed_loop_feeds_results_back_to_manager() -> None:
     assert len(cycle.rounds) == 2
     assert planner.feedback[0] == ()
     assert planner.feedback[1]
-    assert "research" in planner.feedback[1][0]
+    assert "round comparison: total=1; success=1; failed=0" in planner.feedback[1][0]
+    assert "research" in planner.feedback[1][1]
     assert news.calls == ["research"]
     assert stocks.calls == ["followup"]
     assert cycle.stopped_reason == "manager stopped the cycle"
