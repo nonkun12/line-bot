@@ -44,7 +44,7 @@ class AgentMessageCoordinator:
     """Validate which agents may exchange coordination messages."""
 
     MANAGEMENT = "management"
-    SPECIALISTS = frozenset({"general", "voice", "english", "news", "stocks", "jobs"})
+    SPECIALISTS = frozenset(\n        {\n            "general",\n            "voice",\n            "english",\n            "news",\n            "stocks",\n            "market",\n            "jobs",\n            "music",\n            "video",\n        }\n    )
 
     @classmethod
     def _role_key(cls, agent_name: str) -> str:
