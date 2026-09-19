@@ -49,7 +49,7 @@ def _build_handler(role: AgentRole, agent: Agent):
             user_id=task.task_id,
             message=task.instruction,
             channel="distributed",
-            metadata={"distributed_role": task.role.value},
+            metadata={"distributed_role": task.role.value, "next_agent": agent.name},
         )
         if not agent.can_handle(request):
             raise RuntimeError(f"agent rejected distributed request: {agent.name}")
