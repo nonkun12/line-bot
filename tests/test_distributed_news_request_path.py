@@ -231,18 +231,28 @@ def test_four_explicit_domains_dispatch_in_parallel(monkeypatch):
 
 
 
-
 @pytest.mark.parametrize(
     ("message", "specialist", "capability"),
-    [("AI NEWSをテスト", "news", "news_retrieval")],
+    [
+        ("AI NEWSをテスト", "news", "news_retrieval"),
+        ("株価をテスト", "stocks", "stock_quotes"),
+        ("英語をテスト", "english", "english_learning"),
+        ("音声をテスト", "voice", "text_to_speech"),
+        ("音楽をテスト", "music", "music_planning"),
+        ("動画をテスト", "video", "video_planning"),
+        ("求人をテスト", "jobs", "job_search"),
+        ("世界市場をテスト", "market", "market_summary"),
+    ],
 )
 def test_single_specialist_dispatch_fails_closed_without_management_capability(
     monkeypatch, message, specialist, capability
 ):
+    from core import specialist_gate
     from core.management_contract import SpecialistBoundary
 
+    # The gate lives in core.specialist_gate (single source of truth).
     monkeypatch.setattr(
-        request_path,
+        specialist_gate,
         "specialist_boundary",
         lambda _specialist: SpecialistBoundary(specialist=_specialist, capabilities=()),
     )
@@ -252,6 +262,8 @@ def test_single_specialist_dispatch_fails_closed_without_management_capability(
         match=f"specialist capability not approved: {specialist}:{capability}",
     ):
         request_path.run_core_request("user-1", message, channel="line")
+
+
 def test_management_capability_gate_covers_all_dispatched_specialists():
     expected = {
         "news": "news_retrieval",
