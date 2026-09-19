@@ -25,7 +25,10 @@ def build_agent_registry(agent_registry) -> DistributedExecutorRegistry:
     """Adapt explicitly registered Core agents without creating providers."""
     registry = DistributedExecutorRegistry()
     for role, agent_name in _AGENT_NAMES.items():
-        agent = agent_registry.get(agent_name)
+        try:
+            agent = agent_registry.get(agent_name)
+        except KeyError:
+            continue
         if agent is None:
             continue
         registry.register(role, HandlerExecutor(_build_handler(agent)))
