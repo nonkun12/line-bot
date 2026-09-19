@@ -77,6 +77,7 @@ _BROAD_SUMMARY_TERMS = (
     "世界の株価",
     "世界市場",
     "世界の市場",
+    "市場",
     "global market",
     "global markets",
     "world market",
