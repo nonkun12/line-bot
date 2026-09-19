@@ -137,3 +137,5 @@ def test_ai_tutor_prompt_uses_profile_context(monkeypatch, tmp_path) -> None:
     prompt = captured["messages"][1]["content"]
     assert "level=beginner" in prompt
     assert "subject_verb_agreement" in prompt
+    assert "have/has drill" in prompt
+    assert "he/she/it + has" in prompt
