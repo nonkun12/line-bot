@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+from threading import RLock
 from typing import Any, Mapping
 
 
@@ -91,6 +92,7 @@ class AgentMessageBus:
         self._max_messages = max_messages
         self._queues: dict[str, deque[AgentMessage]] = {}
         self._coordinator = AgentMessageCoordinator()
+        self._lock = RLock()
 
     def send(self, message: AgentMessage) -> AgentMessage:
         errors = (*message.validate(), *self._coordinator.validate_route(message.sender, message.recipient))
@@ -98,10 +100,11 @@ class AgentMessageBus:
             errors = (*errors, "content exceeds 4000 characters")
         if errors:
             raise ValueError("; ".join(dict.fromkeys(errors)))
-        queue = self._queues.setdefault(message.recipient.strip(), deque())
-        queue.append(message)
-        while len(queue) > self._max_messages:
-            queue.popleft()
+        with self._lock:
+            queue = self._queues.setdefault(message.recipient.strip(), deque())
+            queue.append(message)
+            while len(queue) > self._max_messages:
+                queue.popleft()
         return message
 
     def receive(self, recipient: str, *, limit: int = 20) -> tuple[AgentMessage, ...]:
@@ -110,13 +113,14 @@ class AgentMessageBus:
             raise ValueError("recipient is required")
         if limit < 1:
             raise ValueError("limit must be >= 1")
-        queue = self._queues.get(recipient)
-        if not queue:
-            return ()
-        messages: list[AgentMessage] = []
-        for _ in range(min(limit, len(queue))):
-            messages.append(queue.popleft())
-        return tuple(messages)
+        with self._lock:
+            queue = self._queues.get(recipient)
+            if not queue:
+                return ()
+            messages: list[AgentMessage] = []
+            for _ in range(min(limit, len(queue))):
+                messages.append(queue.popleft())
+            return tuple(messages)
 
     def peek(self, recipient: str, *, limit: int = 20) -> tuple[AgentMessage, ...]:
         recipient = recipient.strip()
@@ -124,10 +128,11 @@ class AgentMessageBus:
             raise ValueError("recipient is required")
         if limit < 1:
             raise ValueError("limit must be >= 1")
-        queue = self._queues.get(recipient)
-        if not queue:
-            return ()
-        return tuple(list(queue)[:limit])
+        with self._lock:
+            queue = self._queues.get(recipient)
+            if not queue:
+                return ()
+            return tuple(list(queue)[:limit])
 
 
 __all__ = ["AgentMessage", "AgentMessageBus", "AgentMessageCoordinator"]
