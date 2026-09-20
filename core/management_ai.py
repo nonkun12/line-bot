@@ -16,7 +16,7 @@ from .distributed_scheduler import DistributedRun, DistributedTaskScheduler
 from .specialist_gate import approved_executors, assert_all_approved
 from .management_contract import ManagementDecision, ManagementRequest
 from .management_router import route
-from .multi_agent import AgentRole, AgentTask, TaskBatch, plan_batches
+from .multi_agent import AgentResult, AgentRole, AgentTask, TaskBatch, plan_batches
 
 
 ModelCall = Callable[[str], str]
@@ -121,7 +121,7 @@ class ModelManagementPlanner:
         decision: ManagementDecision,
         feedback: Sequence[str] = (),
     ) -> ManagementPlan:
-        feedback_text = "\n".join(f"- {item[:1800]}" for item in feedback[-6:]) or "- none"
+        feedback_text = _format_feedback_for_prompt(feedback)
         prompt = (
             "You are the MANAGEMENT AI at the top of a distributed specialist system.\n"
             "Break the user request into small specialist tasks. Prefer parallel work "
@@ -221,10 +221,16 @@ class ModelManagementPlanner:
         except Exception as exc:
             raise ManagementPlanningError(f"invalid task graph: {exc}") from exc
 
-        parallel_safe = bool(payload.get("parallel_safe", False))
+        raw_parallel_safe = payload.get("parallel_safe", False)
+        if not isinstance(raw_parallel_safe, bool):
+            raise ManagementPlanningError("parallel_safe must be a boolean")
+        parallel_safe = raw_parallel_safe
         if not any(len(batch.tasks) > 1 for batch in batches):
             parallel_safe = False
-        continue_after_round = bool(payload.get("continue_after_round", False))
+        raw_continue_after_round = payload.get("continue_after_round", False)
+        if not isinstance(raw_continue_after_round, bool):
+            raise ManagementPlanningError("continue_after_round must be a boolean")
+        continue_after_round = raw_continue_after_round
         return ManagementPlan(
             objective.strip(),
             decision,
@@ -298,10 +304,7 @@ class ManagementAI:
         for round_number in range(1, max_rounds + 1):
             current = self.run(request, feedback)
             rounds.append(current)
-            feedback = tuple(
-                f"{result.task_id}: success={result.success}; summary={result.summary[:1800]}"
-                for result in current.distributed.results
-            )
+            feedback = tuple(_compare_round_results(current.distributed.results))
             if not current.success:
                 return ManagementCycleRun(tuple(rounds), "round failed; fail closed")
             if not current.plan.continue_after_round:
@@ -309,6 +312,36 @@ class ManagementAI:
             if round_number == max_rounds:
                 return ManagementCycleRun(tuple(rounds), "bounded round limit reached")
         return ManagementCycleRun(tuple(rounds), "bounded round limit reached")
+
+
+def _format_feedback_for_prompt(feedback: Sequence[str]) -> str:
+    """Render round feedback as bounded data, never as planner instructions."""
+    if not feedback:
+        return "- none"
+    items: list[str] = []
+    for item in feedback[-6:]:
+        normalized = " ".join(str(item).replace("\x00", "").split())
+        items.append(f"- OBSERVATION: {normalized[:1800]}")
+    return "\n".join(items)
+
+
+def _compare_round_results(results: Sequence[AgentResult]) -> tuple[str, ...]:
+    """Convert a completed round into bounded, neutral observations for the next plan."""
+    if not results:
+        return ("round produced no specialist results",)
+    successes = sum(result.success for result in results)
+    failures = len(results) - successes
+    observations = [
+        f"round comparison: total={len(results)}; success={successes}; failed={failures}",
+    ]
+    for result in results:
+        resources = ", ".join(sorted(result.changed_resources)) or "none"
+        status = "success" if result.success else "failed"
+        observations.append(
+            f"task={result.task_id}; status={status}; changed_resources={resources}; "
+            f"summary={result.summary[:1600]}"
+        )
+    return tuple(observations)
 
 
 def groq_management_call(prompt: str) -> str:
