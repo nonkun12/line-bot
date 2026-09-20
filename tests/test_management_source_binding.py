@@ -31,6 +31,12 @@ class DriftedPlanner(ManagementPlanner):
                     "Use SYMBOL for the requested quote.",
                     resources=frozenset({"stocks"}),
                 ),
+                AgentTask(
+                    "general-task",
+                    AgentRole.GENERAL,
+                    "Provide a generic summary.",
+                    resources=frozenset({"general"}),
+                ),
             ),
         )
 
