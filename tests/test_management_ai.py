@@ -5,6 +5,7 @@ import pytest
 from core.agent_communication import AgentMessage, AgentMessageBus, AgentMessageCoordinator
 from core.management_ai import (
     ManagementAI,
+    ManagementObservation,
     ManagementCycleRun,
     ManagementPlan,
     ManagementPlanner,
@@ -304,3 +305,35 @@ def test_model_management_planner_defaults_to_stop_without_next_round_signal() -
         ManagementDecision(Specialist.NEWS, "matched news", 0.95),
     )
     assert not plan.continue_after_round
+
+
+def test_management_run_exposes_bounded_observations() -> None:
+    manager = ManagementAI(
+        {AgentRole.NEWS: Executor(AgentRole.NEWS)},
+        planner=LoopPlanner(),
+    )
+    run = manager.run(ManagementRequest("u1", "ニュースを調べて"))
+    assert run.observations
+    observation = run.observations[0]
+    assert isinstance(observation, ManagementObservation)
+    assert observation.role is AgentRole.NEWS
+    assert observation.summary
+    assert len(observation.summary) <= 1800
+
+
+def test_management_observation_rejects_oversized_or_mutable_fields() -> None:
+    with pytest.raises(ValueError, match="summary exceeds"):
+        ManagementObservation(
+            "t1",
+            AgentRole.NEWS,
+            True,
+            "x" * 1801,
+        )
+    with pytest.raises(ValueError, match="changed_resources must be a tuple"):
+        ManagementObservation(
+            "t1",
+            AgentRole.NEWS,
+            True,
+            "ok",
+            ["news"],  # type: ignore[arg-type]
+        )
