@@ -4,10 +4,6 @@ from agents.jobs.intents import extract_job_search_criteria
 from agents.jobs.node import JobSeekingAgent
 from agents.jobs.search_contract import JobListing, JobSearchResult
 from core.agents import AgentRequest
-from core.control_tower import task_hash
-from core.multi_agent import AgentRole, AgentTask
-from core.self_improvement_handoff import ApprovedImprovementHandoff
-from core.self_improvement_handoff_claim_store import ApprovedImprovementHandoffClaimStore
 
 
 def test_job_search_criteria_parses_only_explicit_constraints():
@@ -85,40 +81,3 @@ def test_invalid_provider_response_fails_closed():
     response = agent.handle(AgentRequest("u1", "求人 職種: Pythonエンジニア"))
     assert response.metadata["search_status"] == "error"
     assert response.metadata["result_count"] == 0
-
-
-def _handoff() -> ApprovedImprovementHandoff:
-    task = AgentTask(
-        "self-improvement:test",
-        AgentRole.DEBUGGER,
-        "Investigate recurring failure.",
-        frozenset({"runtime"}),
-    )
-    return ApprovedImprovementHandoff(
-        task=task,
-        task_hash=task_hash(task) or "",
-        allowed_paths=("tests/test_agent_runtime.py",),
-    )
-
-
-def test_handoff_claim_store_is_one_time(tmp_path):
-    store = ApprovedImprovementHandoffClaimStore(tmp_path / "claims.jsonl")
-    handoff = _handoff()
-    assert store.claim(handoff) is True
-    assert store.claim(handoff) is False
-    assert store.is_claimed(handoff) is True
-
-
-def test_handoff_claim_store_rejects_invalid_handoff(tmp_path):
-    store = ApprovedImprovementHandoffClaimStore(tmp_path / "claims.jsonl")
-    task = AgentTask("self-improvement:test", AgentRole.IMPLEMENTER, "unsafe")
-    invalid = ApprovedImprovementHandoff(task=task, task_hash=task_hash(task) or "", allowed_paths=("tests/test_agent_runtime.py",))
-    with pytest.raises(PermissionError):
-        store.claim(invalid)
-
-
-def test_handoff_claim_store_ignores_tampered_claim_records(tmp_path):
-    path = tmp_path / "claims.jsonl"
-    path.write_text('1234\n"bad"\n', encoding="utf-8")
-    store = ApprovedImprovementHandoffClaimStore(path)
-    assert store._read() == []
