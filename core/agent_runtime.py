@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Mapping, Protocol, Sequence, TYPE_CHECKING
 
 from .multi_agent import AgentResult, AgentRole, AgentTask, plan_batches
@@ -15,10 +16,28 @@ from .multi_agent import AgentResult, AgentRole, AgentTask, plan_batches
 if TYPE_CHECKING:
     from .control_tower import ControlTower, ControlTowerDecision
     from .self_improvement import SelfImprovementEngine
+    from .self_improvement_cycle import SelfImprovementCycleResult
 
 
 class RuntimeExecutor(Protocol):
     def execute(self, task: AgentTask) -> AgentResult:
+        ...
+
+
+class ExecutionSafetyGate(Protocol):
+    """Verify the actual worktree change immediately after an executor runs.
+
+    Implementations must inspect the live repository state (diff/SHA/changed
+    paths and tests as appropriate) rather than trusting task instructions or
+    the executor's declared resources.
+    """
+
+    def verify(
+        self,
+        task: AgentTask,
+        result: AgentResult,
+        allowed_paths: tuple[str, ...],
+    ) -> bool:
         ...
 
 
@@ -66,6 +85,8 @@ class MultiAgentRuntime:
         max_rounds: int = 3,
         feedback_engine: SelfImprovementEngine | None = None,
         control_tower: ControlTower | None = None,
+        self_improvement_history_path: str | Path | None = None,
+        self_improvement_target_paths: tuple[str, ...] = (),
     ) -> None:
         if max_workers < 1:
             raise ValueError("max_workers must be >= 1")
@@ -78,21 +99,72 @@ class MultiAgentRuntime:
         self._max_rounds = max_rounds
         self._feedback_engine = feedback_engine
         self._control_tower = control_tower
+        self._self_improvement_history_path = (
+            Path(self_improvement_history_path) if self_improvement_history_path is not None else None
+        )
+        self._self_improvement_target_paths = tuple(self_improvement_target_paths)
+        self._execution_safety_gate: ExecutionSafetyGate | None = None
         self._last_control_tower_decision: ControlTowerDecision | None = None
+        self._last_self_improvement_cycle: SelfImprovementCycleResult | None = None
+        self._last_self_improvement_cycle_error: str | None = None
         if feedback_engine is not None and control_tower is not None and control_tower.feedback_engine is not feedback_engine:
             raise ValueError("feedback_engine and control_tower must share the same feedback engine")
+
+    def set_execution_safety_gate(self, gate: ExecutionSafetyGate) -> None:
+        """Install the post-execution worktree verification gate."""
+        if gate is None:
+            raise ValueError("execution safety gate is required")
+        self._execution_safety_gate = gate
 
     @property
     def last_control_tower_decision(self) -> ControlTowerDecision | None:
         """Expose the latest management decision without applying it automatically."""
         return self._last_control_tower_decision
 
+    @property
+    def last_self_improvement_cycle(self) -> SelfImprovementCycleResult | None:
+        """Expose the latest persisted improvement cycle without applying proposals."""
+        return self._last_self_improvement_cycle
+
+    @property
+    def last_self_improvement_cycle_error(self) -> str | None:
+        """Expose a bounded persistence/analysis error without failing development."""
+        return self._last_self_improvement_cycle_error
+
     def _finalize_development(self, report: RuntimeReport) -> RuntimeReport:
         """Observe one completed development run through the management layer."""
-        if self._control_tower is not None:
+        self._last_control_tower_decision = None
+        self._last_self_improvement_cycle = None
+        self._last_self_improvement_cycle_error = None
+
+        if self._self_improvement_history_path is not None:
+            # The durable cycle is the single proposal path. Generated
+            # proposals are evaluated by the same ControlTower gate rather
+            # than creating a parallel management path.
+            try:
+                from .self_improvement_cycle import run_self_improvement_cycle
+
+                self._last_self_improvement_cycle = run_self_improvement_cycle(
+                    report,
+                    self._self_improvement_history_path,
+                    target_paths=self._self_improvement_target_paths,
+                    control_tower=self._control_tower,
+                )
+                if self._last_self_improvement_cycle.control_tower_decisions:
+                    self._last_control_tower_decision = (
+                        self._last_self_improvement_cycle.control_tower_decisions[-1]
+                    )
+                elif self._control_tower is None and self._feedback_engine is not None:
+                    self._feedback_engine.observe(report)
+            except Exception as exc:
+                self._last_self_improvement_cycle_error = f"{type(exc).__name__}: {exc}"
+                return report
+
+        elif self._control_tower is not None:
             self._last_control_tower_decision = self._control_tower.observe(report)
         elif self._feedback_engine is not None:
             self._feedback_engine.observe(report)
+
         return report
 
     def run_self_improvement_cycle(
@@ -206,6 +278,18 @@ class MultiAgentRuntime:
                     raise RuntimeExecutionError(task.task_id, TypeError("executor must return AgentResult"))
                 if result.task_id != task.task_id:
                     raise RuntimeExecutionError(task.task_id, ValueError(f"executor returned task_id {result.task_id!r} for {task.task_id!r}"))
+                if self._execution_safety_gate is not None:
+                    try:
+                        verified = self._execution_safety_gate.verify(
+                            task, result, self._self_improvement_target_paths
+                        )
+                    except Exception as exc:
+                        raise RuntimeExecutionError(task.task_id, exc) from exc
+                    if not verified:
+                        raise RuntimeExecutionError(
+                            task.task_id,
+                            RuntimeError("execution safety gate rejected actual worktree state"),
+                        )
                 results.append((task, result))
             return results
 
