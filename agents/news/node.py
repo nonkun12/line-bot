@@ -55,6 +55,10 @@ class AINewsAgent:
         value = html.unescape(value or "")
         return re.sub(r"<[^>]+>", "", value).strip()
 
+    @staticmethod
+    def _now() -> datetime:
+        return datetime.now(_JST)
+
     @classmethod
     def _fetch(cls, query: str) -> list[dict[str, str]]:
         request = urllib.request.Request(
@@ -64,7 +68,7 @@ class AINewsAgent:
         with urllib.request.urlopen(request, timeout=cls._TIMEOUT_SEC) as response:
             root = ET.fromstring(response.read())
 
-        cutoff = datetime.now(_JST) - timedelta(days=cls._LOOKBACK_DAYS)
+        cutoff = cls._now() - timedelta(days=cls._LOOKBACK_DAYS)
         items: list[dict[str, str]] = []
         seen: set[str] = set()
         for item in root.findall("./channel/item"):
