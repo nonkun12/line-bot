@@ -69,11 +69,45 @@ class ManagementPlan:
             raise ValueError("management plan cannot contain more than 6 tasks")
 
 
+
+
+@dataclass(frozen=True)
+class ManagementObservation:
+    """Bounded, immutable projection of one specialist result."""
+
+    task_id: str
+    role: AgentRole
+    success: bool
+    summary: str
+    changed_resources: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.task_id, str) or not self.task_id.strip():
+            raise ValueError("observation task_id is required")
+        if not isinstance(self.role, AgentRole):
+            raise ValueError("observation role must be an AgentRole")
+        if not isinstance(self.success, bool):
+            raise ValueError("observation success must be bool")
+        if not isinstance(self.summary, str) or not self.summary.strip():
+            raise ValueError("observation summary is required")
+        if len(self.summary) > 1800:
+            raise ValueError("observation summary exceeds 1800 characters")
+        if not isinstance(self.changed_resources, tuple):
+            raise ValueError("observation changed_resources must be a tuple")
+        if len(self.changed_resources) > 8 or any(
+            not isinstance(resource, str)
+            or not resource.strip()
+            or len(resource) > 200
+            for resource in self.changed_resources
+        ):
+            raise ValueError("observation changed_resources exceeds bounds")
+
 @dataclass(frozen=True)
 class ManagementRun:
     plan: ManagementPlan
     batches: tuple[TaskBatch, ...]
     distributed: DistributedRun
+    observations: tuple[ManagementObservation, ...] = ()
 
     @property
     def success(self) -> bool:
@@ -269,25 +303,35 @@ class ManagementAI:
         workers = self._max_workers if plan.parallel_safe else 1
         distributed = DistributedTaskScheduler(self._executors, max_workers=workers).run(plan.tasks)
         batches = plan_batches(plan.tasks)
-        task_roles = {task.task_id: task.role.value for task in plan.tasks}
-        for result in distributed.results:
+        task_map = {task.task_id: task for task in plan.tasks}
+        observations = tuple(
+            ManagementObservation(
+                task_id=result.task_id,
+                role=task_map[result.task_id].role,
+                success=result.success,
+                summary=(result.summary.strip() or "(no summary)")[:1800],
+                changed_resources=tuple(sorted(result.changed_resources)),
+            )
+            for result in distributed.results
+        )
+        for observation in observations:
             self._message_bus.send(
                 AgentMessage(
-                    message_id=f"{result.task_id}:result",
-                    sender=task_roles[result.task_id],
+                    message_id=f"{observation.task_id}:result",
+                    sender=observation.role.value,
                     recipient="management",
                     message_type="task_result",
-                    content=result.summary[:4000],
+                    content=observation.summary[:4000],
                     correlation_id=request.user_id,
                     context={
-                        "task_id": result.task_id,
-                        "success": result.success,
-                        "changed_resources": sorted(result.changed_resources),
+                        "task_id": observation.task_id,
+                        "success": observation.success,
+                        "changed_resources": list(observation.changed_resources),
                     },
                     safety_constraints=("result-only", "no-permission-grant"),
                 )
             )
-        return ManagementRun(plan, batches, distributed)
+        return ManagementRun(plan, batches, distributed, observations)
 
     def run_closed_loop(self, request: ManagementRequest, *, max_rounds: int = 3) -> ManagementCycleRun:
         """Run bounded management rounds and feed specialist results back to the manager."""
@@ -299,8 +343,12 @@ class ManagementAI:
             current = self.run(request, feedback)
             rounds.append(current)
             feedback = tuple(
-                f"{result.task_id}: success={result.success}; summary={result.summary[:1800]}"
-                for result in current.distributed.results
+                "OBSERVATION "
+                f"task_id={observation.task_id}; "
+                f"role={observation.role.value}; "
+                f"success={observation.success}; "
+                f"summary={observation.summary}"
+                for observation in current.observations
             )
             if not current.success:
                 return ManagementCycleRun(tuple(rounds), "round failed; fail closed")
@@ -360,6 +408,7 @@ __all__ = [
     "ManagementCycleRun",
     "ManagementPlanningError",
     "ManagementRun",
+    "ManagementObservation",
     "ModelManagementPlanner",
     "groq_management_call",
 ]
