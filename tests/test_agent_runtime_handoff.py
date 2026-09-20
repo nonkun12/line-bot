@@ -58,3 +58,46 @@ def test_unapproved_self_improvement_decision_produces_no_handoff():
     assert decision is not None
     assert decision.approved_for_pipeline is False
     assert runtime.last_self_improvement_handoffs == ()
+
+def test_runtime_persists_approved_handoff_when_store_is_configured(tmp_path):
+    model = lambda prompt: "bounded proposal"
+    critic = lambda prompt: "evidence supports the bounded proposal"
+    tower = ControlTower(
+        feedback_engine=SelfImprovementEngine(),
+        creator_critic=CreatorCriticLoop(CreatorAgent(model), CriticAgent(critic)),
+    )
+    runtime = MultiAgentRuntime(
+        {},
+        control_tower=tower,
+        self_improvement_target_paths=("tests/test_agent_runtime.py",),
+        self_improvement_handoff_path=tmp_path / "handoffs.jsonl",
+    )
+
+    report = RuntimeReport((), failed_task_id="test", error="pytest failed", rounds=1)
+    decision = runtime.run_self_improvement_cycle(
+        report,
+        objective="reduce repeated autonomous test failures",
+        evidence={"accuracy": 0.9, "stability": 0.9, "efficiency": 0.8, "safety": 1.0},
+    )
+
+    assert decision is not None
+    assert decision.approved_for_pipeline
+    assert len(runtime.last_self_improvement_handoffs) == 1
+    assert runtime.persisted_self_improvement_handoffs == runtime.last_self_improvement_handoffs
+
+
+def test_runtime_does_not_persist_unapproved_handoff(tmp_path):
+    tower = ControlTower(feedback_engine=SelfImprovementEngine())
+    runtime = MultiAgentRuntime(
+        {},
+        control_tower=tower,
+        self_improvement_target_paths=("tests/test_agent_runtime.py",),
+        self_improvement_handoff_path=tmp_path / "handoffs.jsonl",
+    )
+
+    report = RuntimeReport((), failed_task_id="test", error="pytest failed", rounds=1)
+    runtime.run_self_improvement_cycle(report)
+
+    assert runtime.last_self_improvement_handoffs == ()
+    assert runtime.persisted_self_improvement_handoffs == ()
+
