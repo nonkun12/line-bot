@@ -49,6 +49,7 @@ class ManagementRequest:
         if len(self.channel) > _MAX_CHANNEL_CHARS:
             raise ValueError("channel exceeds maximum length")
         _validate_metadata(self.metadata)
+        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
 
 @dataclass(frozen=True)
