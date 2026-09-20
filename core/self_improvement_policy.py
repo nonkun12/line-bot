@@ -12,6 +12,8 @@ from enum import Enum
 from pathlib import PurePosixPath
 import posixpath
 
+from .protected_paths import HIGH_RISK_FILES, HIGH_RISK_PREFIXES, is_protected
+
 
 class SelfImprovementDecision(str, Enum):
     AUTONOMOUS_REVIEW = "autonomous_review"
@@ -101,7 +103,7 @@ def _normalize(path: str) -> str:
 
 
 def _is_high_risk(path: str) -> bool:
-    return path in HIGH_RISK_FILES or any(path.startswith(prefix) for prefix in HIGH_RISK_PREFIXES)
+    return is_protected(path)
 
 
 __all__ = [
