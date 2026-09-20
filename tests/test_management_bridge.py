@@ -206,6 +206,3 @@ def test_run_management_request_does_not_retry_failed_execution(monkeypatch) -> 
     )
 
     assert reply == "管理AIの実行で問題が発生したため、同じ専門AIを再実行せずに処理を停止しました。"
-
-
-def test_run_management_request_does_not_fail_after_empty_specialist_result(
