@@ -40,3 +40,5 @@ def test_traversal_and_absolute_paths_fail_closed():
     assert "../core/self_improvement_policy.py" in result.protected_paths
     assert "../.github/workflows/line-development-dispatch.yml" in result.protected_paths
     assert "/tmp/unsafe.py" in result.protected_paths
+
+# Rebased safety-gate CI validation.
