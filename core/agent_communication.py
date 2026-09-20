@@ -44,7 +44,19 @@ class AgentMessageCoordinator:
     """Validate which agents may exchange coordination messages."""
 
     MANAGEMENT = "management"
-    SPECIALISTS = frozenset({"general", "voice", "english", "news", "stocks", "jobs"})
+    SPECIALISTS = frozenset(
+        {
+            "general",
+            "voice",
+            "english",
+            "news",
+            "stocks",
+            "market",
+            "jobs",
+            "music",
+            "video",
+        }
+    )
 
     @classmethod
     def _role_key(cls, agent_name: str) -> str:
@@ -58,7 +70,14 @@ class AgentMessageCoordinator:
         return value
 
     @classmethod
-    def validate_route(cls, sender: str, recipient: str) -> tuple[str, ...]:
+    def validate_route(
+        cls,
+        sender: str,
+        recipient: str,
+        *,
+        message_type: str | None = None,
+        safety_constraints: tuple[str, ...] = (),
+    ) -> tuple[str, ...]:
         source = cls._role_key(sender)
         target = cls._role_key(recipient)
         errors: list[str] = []
@@ -71,7 +90,20 @@ class AgentMessageCoordinator:
             errors.append("sender is not an approved coordination agent")
         if target not in allowed_sources:
             errors.append("recipient is not an approved coordination agent")
-        if source != cls.MANAGEMENT and target != cls.MANAGEMENT and source in cls.SPECIALISTS and target in cls.SPECIALISTS:
+        if (
+            source != cls.MANAGEMENT
+            and target != cls.MANAGEMENT
+            and source in cls.SPECIALISTS
+            and target in cls.SPECIALISTS
+        ):
+            if message_type != "task_result":
+                errors.append("specialist-to-specialist messages must be task_result")
+            if "result-only" not in safety_constraints:
+                errors.append("specialist-to-specialist messages require result-only")
+            if "no-permission-grant" not in safety_constraints:
+                errors.append(
+                    "specialist-to-specialist messages require no-permission-grant"
+                )
             return tuple(errors)
         if source == cls.MANAGEMENT and target in cls.SPECIALISTS:
             return tuple(errors)
@@ -93,7 +125,15 @@ class AgentMessageBus:
         self._coordinator = AgentMessageCoordinator()
 
     def send(self, message: AgentMessage) -> AgentMessage:
-        errors = (*message.validate(), *self._coordinator.validate_route(message.sender, message.recipient))
+        errors = (
+            *message.validate(),
+            *self._coordinator.validate_route(
+                message.sender,
+                message.recipient,
+                message_type=message.message_type,
+                safety_constraints=message.safety_constraints,
+            ),
+        )
         if len(message.content) > 4000:
             errors = (*errors, "content exceeds 4000 characters")
         if errors:
@@ -104,7 +144,12 @@ class AgentMessageBus:
             queue.popleft()
         return message
 
-    def receive(self, recipient: str, *, limit: int = 20) -> tuple[AgentMessage, ...]:
+    def receive(
+        self,
+        recipient: str,
+        *,
+        limit: int = 20,
+    ) -> tuple[AgentMessage, ...]:
         recipient = recipient.strip()
         if not recipient:
             raise ValueError("recipient is required")
@@ -118,7 +163,12 @@ class AgentMessageBus:
             messages.append(queue.popleft())
         return tuple(messages)
 
-    def peek(self, recipient: str, *, limit: int = 20) -> tuple[AgentMessage, ...]:
+    def peek(
+        self,
+        recipient: str,
+        *,
+        limit: int = 20,
+    ) -> tuple[AgentMessage, ...]:
         recipient = recipient.strip()
         if not recipient:
             raise ValueError("recipient is required")
