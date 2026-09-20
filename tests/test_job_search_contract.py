@@ -58,3 +58,24 @@ def test_job_search_provider_results_are_source_backed():
     assert "Python Engineer" in response.text
     assert "https://example.com/jobs/1" in response.text
     assert response.metadata["result_count"] == 1
+
+
+def test_job_listing_rejects_untrusted_shape():
+    from agents.jobs.search_contract import JobListing
+    import pytest
+
+    with pytest.raises(ValueError):
+        JobListing("", "Example", "Tokyo", "https://example.com/1", "example")
+    with pytest.raises(ValueError):
+        JobListing("Job", "Example", "Tokyo", "javascript:alert(1)", "example")
+
+
+def test_invalid_provider_response_fails_closed():
+    class Provider:
+        def search(self, criteria):
+            return object()
+
+    agent = JobSeekingAgent(Provider())
+    response = agent.handle(AgentRequest("u1", "求人 職種: Pythonエンジニア"))
+    assert response.metadata["search_status"] == "error"
+    assert response.metadata["result_count"] == 0
