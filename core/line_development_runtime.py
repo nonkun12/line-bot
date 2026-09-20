@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 
 from .agent_runtime import RepairPlanner
+from .execution_safety import GitWorktreeSafetyGate
 from .multi_agent import AgentResult, AgentRole, AgentTask
 from .quality_runtime import QualityRuntime
 from scripts import line_development_worker_v2 as worker
@@ -205,13 +206,50 @@ def execute(instruction: str) -> int:
         AgentTask("reviewer", AgentRole.REVIEWER, "Review the resulting diff and gate the change.", resources=frozenset({"working-tree"}), depends_on=("tester",)),
         AgentTask("integrator", AgentRole.INTEGRATOR, "Run the final integration gate.", resources=frozenset({"working-tree"}), depends_on=("reviewer",)),
     )
-    runtime = QualityRuntime({AgentRole.MANAGER: executor, AgentRole.IMPLEMENTER: executor, AgentRole.TESTER: executor, AgentRole.DEBUGGER: executor, AgentRole.REFACTORER: executor, AgentRole.REVIEWER: executor, AgentRole.REPAIRER: executor, AgentRole.INTEGRATOR: executor}, max_rounds=3)
+    # Manager is read-only target selection. Establish a clean baseline immediately
+    # before any file-changing role so pre-existing dirty state cannot be mistaken
+    # for autonomous work.
+    manager_result = executor.execute(tasks[0])
+    if not manager_result.success:
+        print(f"Manager selection failed: {manager_result.summary}", flush=True)
+        return 1
+    if state.chosen is None:
+        print("Manager produced no target.", flush=True)
+        return 1
+    baseline = worker.run(["git", "status", "--porcelain=v1", "--untracked-files=all"])
+    if baseline.returncode != 0:
+        print(f"Baseline status failed: {baseline.stderr[-2000:]}", flush=True)
+        return 1
+    state.baseline_status = baseline.stdout
+    if baseline.stdout.strip():
+        print("Worktree is not clean before autonomous execution; refusing to proceed.", flush=True)
+        return 1
+    head = worker.run(["git", "rev-parse", "HEAD"])
+    if head.returncode != 0 or not head.stdout.strip():
+        print(f"Baseline SHA capture failed: {head.stderr[-2000:]}", flush=True)
+        return 1
+    safety_gate = GitWorktreeSafetyGate(worker.ROOT, head.stdout.strip(), (state.chosen,))
+    runtime = QualityRuntime(
+        {
+            AgentRole.IMPLEMENTER: executor,
+            AgentRole.TESTER: executor,
+            AgentRole.DEBUGGER: executor,
+            AgentRole.REFACTORER: executor,
+            AgentRole.REVIEWER: executor,
+            AgentRole.REPAIRER: executor,
+            AgentRole.INTEGRATOR: executor,
+        },
+        max_rounds=3,
+        execution_safety_gate=safety_gate,
+        allowed_paths=(state.chosen,),
+    )
     try:
-        report = runtime.run(tasks)
+        report = runtime.run(tasks[1:])
     except Exception as exc:
         worker.restore(state.touched or [])
         print(f"Multi-agent development failed closed: {type(exc).__name__}: {exc}", flush=True)
         return 1
+    print(f"[manager] {tasks[0].task_id}: {manager_result.summary[-1500:]}", flush=True)
     for item in report.completed:
         print(f"[{item.task.role.value}] {item.task.task_id}: {item.result.summary[-1500:]}", flush=True)
     if not report.success or not report.integration_ready:
