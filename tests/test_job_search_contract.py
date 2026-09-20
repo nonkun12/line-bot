@@ -1,7 +1,13 @@
+import pytest
+
 from agents.jobs.intents import extract_job_search_criteria
 from agents.jobs.node import JobSeekingAgent
 from agents.jobs.search_contract import JobListing, JobSearchResult
 from core.agents import AgentRequest
+from core.control_tower import task_hash
+from core.multi_agent import AgentRole, AgentTask
+from core.self_improvement_handoff import ApprovedImprovementHandoff
+from core.self_improvement_handoff_claim_store import ApprovedImprovementHandoffClaimStore
 
 
 def test_job_search_criteria_parses_only_explicit_constraints():
@@ -64,9 +70,6 @@ def test_job_search_provider_results_are_source_backed():
 
 
 def test_job_listing_rejects_untrusted_shape():
-    from agents.jobs.search_contract import JobListing
-    import pytest
-
     with pytest.raises(ValueError):
         JobListing("", "Example", "Tokyo", "https://example.com/1", "example")
     with pytest.raises(ValueError):
@@ -82,6 +85,7 @@ def test_invalid_provider_response_fails_closed():
     response = agent.handle(AgentRequest("u1", "求人 職種: Pythonエンジニア"))
     assert response.metadata["search_status"] == "error"
     assert response.metadata["result_count"] == 0
+
 
 def _handoff() -> ApprovedImprovementHandoff:
     task = AgentTask(
@@ -109,7 +113,6 @@ def test_handoff_claim_store_rejects_invalid_handoff(tmp_path):
     store = ApprovedImprovementHandoffClaimStore(tmp_path / "claims.jsonl")
     task = AgentTask("self-improvement:test", AgentRole.IMPLEMENTER, "unsafe")
     invalid = ApprovedImprovementHandoff(task=task, task_hash=task_hash(task) or "", allowed_paths=("tests/test_agent_runtime.py",))
-    import pytest
     with pytest.raises(PermissionError):
         store.claim(invalid)
 
