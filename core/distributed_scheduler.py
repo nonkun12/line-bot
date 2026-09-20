@@ -76,7 +76,8 @@ class DistributedTaskScheduler:
         return DistributedRun(batches, tuple(completed))
 
     @staticmethod
-    def _validate_result(result: AgentResult, expected_task_id: str) -> None:
+    def _validate_result(result: AgentResult, task: AgentTask) -> None:
+        expected_task_id = task.task_id
         if not isinstance(result.success, bool):
             raise DistributedExecutionError(
                 expected_task_id,
@@ -107,6 +108,14 @@ class DistributedTaskScheduler:
                 expected_task_id,
                 TypeError("AgentResult.changed_resources must be frozenset[str]"),
             )
+        if not result.changed_resources.issubset(task.resources):
+            unexpected = sorted(result.changed_resources - task.resources)
+            raise DistributedExecutionError(
+                expected_task_id,
+                ValueError(
+                    f"changed_resources outside declared task resources: {unexpected[0]}"
+                ),
+            )
 
     def _run_batch(self, batch: TaskBatch) -> list[AgentResult]:
         workers = min(self._max_workers, len(batch.tasks))
@@ -126,7 +135,7 @@ class DistributedTaskScheduler:
                         task.task_id,
                         TypeError("executor must return AgentResult"),
                     )
-                self._validate_result(result, task.task_id)
+                self._validate_result(result, task)
                 if result.task_id != task.task_id:
                     raise DistributedExecutionError(
                         task.task_id,
