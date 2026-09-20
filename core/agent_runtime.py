@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from .self_improvement import SelfImprovementEngine
     from .self_improvement_cycle import SelfImprovementCycleResult
     from .self_improvement_handoff import ApprovedImprovementHandoff
+    from .self_improvement_handoff_store import ApprovedImprovementHandoffStore
 
 
 class RuntimeExecutor(Protocol):
@@ -88,6 +89,7 @@ class MultiAgentRuntime:
         control_tower: ControlTower | None = None,
         self_improvement_history_path: str | Path | None = None,
         self_improvement_target_paths: tuple[str, ...] = (),
+        self_improvement_handoff_path: str | Path | None = None,
     ) -> None:
         if max_workers < 1:
             raise ValueError("max_workers must be >= 1")
@@ -104,6 +106,11 @@ class MultiAgentRuntime:
             Path(self_improvement_history_path) if self_improvement_history_path is not None else None
         )
         self._self_improvement_target_paths = tuple(self_improvement_target_paths)
+        self._self_improvement_handoff_store: ApprovedImprovementHandoffStore | None = None
+        if self_improvement_handoff_path is not None:
+            from .self_improvement_handoff_store import ApprovedImprovementHandoffStore
+
+            self._self_improvement_handoff_store = ApprovedImprovementHandoffStore(self_improvement_handoff_path)
         self._execution_safety_gate: ExecutionSafetyGate | None = None
         self._last_control_tower_decision: ControlTowerDecision | None = None
         self._last_self_improvement_cycle: SelfImprovementCycleResult | None = None
@@ -137,6 +144,13 @@ class MultiAgentRuntime:
     def last_self_improvement_handoffs(self) -> tuple[ApprovedImprovementHandoff, ...]:
         """Expose approved, immutable self-improvement handoffs without executing them."""
         return self._last_self_improvement_handoffs
+
+    @property
+    def persisted_self_improvement_handoffs(self) -> tuple[ApprovedImprovementHandoff, ...]:
+        """Load persisted handoffs through the same validation boundary."""
+        if self._self_improvement_handoff_store is None:
+            return ()
+        return self._self_improvement_handoff_store.load()
 
     def _finalize_development(self, report: RuntimeReport) -> RuntimeReport:
         """Observe one completed development run through the management layer."""
@@ -213,13 +227,14 @@ class MultiAgentRuntime:
         handoffs: list[ApprovedImprovementHandoff] = []
         for decision in decisions:
             try:
-                handoffs.append(
-                    build_approved_improvement_handoff(
-                        decision,
-                        self._self_improvement_target_paths,
-                    )
+                handoff = build_approved_improvement_handoff(
+                    decision,
+                    self._self_improvement_target_paths,
                 )
-            except (PermissionError, TypeError, ValueError):
+                if self._self_improvement_handoff_store is not None:
+                    self._self_improvement_handoff_store.append(handoff)
+                handoffs.append(handoff)
+            except (OSError, PermissionError, TypeError, ValueError):
                 continue
         return tuple(handoffs)
 
