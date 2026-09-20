@@ -63,12 +63,17 @@ class AgentMessage:
             (self.sender, "sender", _MAX_AGENT_NAME_CHARS),
             (self.recipient, "recipient", _MAX_AGENT_NAME_CHARS),
             (self.message_type, "message_type", _MAX_MESSAGE_TYPE_CHARS),
-            (self.correlation_id, "correlation_id", _MAX_CORRELATION_ID_CHARS),
         ):
             if not isinstance(value, str) or not value.strip():
                 errors.append(f"{name} is required")
             elif len(value) > limit:
                 errors.append(f"{name} exceeds {limit} characters")
+        if not isinstance(self.correlation_id, str):
+            errors.append("correlation_id must be a string")
+        elif len(self.correlation_id) > _MAX_CORRELATION_ID_CHARS:
+            errors.append(
+                f"correlation_id exceeds {_MAX_CORRELATION_ID_CHARS} characters"
+            )
         if not isinstance(self.content, str) or not self.content.strip():
             errors.append("content is required")
         elif len(self.content) > _MAX_CONTENT_CHARS:
