@@ -277,7 +277,7 @@ class ManagementAI:
                     sender=task_roles[result.task_id],
                     recipient="management",
                     message_type="task_result",
-                    content=result.summary[:4000],
+                    content=(result.summary.strip() or "(no content)")[:4000],
                     correlation_id=request.user_id,
                     context={
                         "task_id": result.task_id,
