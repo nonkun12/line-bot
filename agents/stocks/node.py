@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import re
-from html.parser import HTMLParser
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -77,152 +76,42 @@ class StocksAgent:
     @classmethod
     def _fetch_quote(cls, ticker: str) -> dict[str, object]:
         encoded = urllib.parse.quote(ticker, safe=".")
-        urls = (
-            f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range=5d&interval=1d",
-            f"https://query2.finance.yahoo.com/v8/finance/chart/{encoded}?range=5d&interval=1d",
-        )
-        last_error: Exception | None = None
-
-        for url in urls:
-            try:
-                request = urllib.request.Request(
-                    url,
-                    headers={"User-Agent": "LINE-AI-Secretary/1.0"},
-                )
-                with urllib.request.urlopen(request, timeout=_DEFAULT_TIMEOUT_SEC) as response:
-                    payload = json.loads(response.read().decode("utf-8"))
-            except (OSError, ValueError, json.JSONDecodeError) as exc:
-                last_error = exc
-                continue
-
-            try:
-                if not isinstance(payload, dict):
-                    raise ValueError("quote payload unavailable")
-
-                result = payload.get("chart", {}).get("result")
-                if not isinstance(result, list) or not result or not isinstance(result[0], dict):
-                    raise ValueError("quote result unavailable")
-
-                data = result[0]
-                meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
-                price = meta.get("regularMarketPrice")
-                previous = meta.get("previousClose")
-                if not isinstance(price, (int, float)):
-                    indicators = data.get("indicators", {})
-                    quotes = indicators.get("quote", []) if isinstance(indicators, dict) else []
-                    closes = quotes[0].get("close", []) if quotes and isinstance(quotes[0], dict) else []
-                    numeric_closes = [v for v in closes if isinstance(v, (int, float))]
-                    price = numeric_closes[-1] if numeric_closes else None
-                if not isinstance(price, (int, float)):
-                    raise ValueError("quote price unavailable")
-
-                change = price - previous if isinstance(previous, (int, float)) else None
-                change = round(change, 10) if change is not None else None
-                change_pct = (change / previous * 100) if change is not None and previous else None
-                change_pct = round(change_pct, 10) if change_pct is not None else None
-                currency = str(meta.get("currency") or "")
-                market_time = meta.get("regularMarketTime")
-                market_state = str(meta.get("marketState") or "").upper() or None
-                return {
-                    "ticker": cls._display_ticker(ticker),
-                    "price": float(price),
-                    "previous_close": float(previous) if isinstance(previous, (int, float)) else None,
-                    "change": float(change) if change is not None else None,
-                    "change_pct": float(change_pct) if change_pct is not None else None,
-                    "currency": currency,
-                    "market_time": market_time,
-                    "market_time_jst": cls._format_market_time(market_time),
-                    "market_state": market_state,
-                }
-            except (TypeError, ValueError, KeyError, IndexError) as exc:
-                last_error = exc
-                continue
-
-        if ticker.endswith(".T"):
-            try:
-                return cls._fetch_yahoo_japan_quote(ticker)
-            except (OSError, UnicodeError, ValueError) as exc:
-                last_error = exc
-
-        raise RuntimeError("Yahoo Finance quote retrieval failed") from last_error
-
-
-    @staticmethod
-    def _extract_visible_text(html: str) -> list[str]:
-        class _Parser(HTMLParser):
-            def __init__(self) -> None:
-                super().__init__(convert_charrefs=True)
-                self.parts = []
-                self.skip = 0
-
-            def handle_starttag(self, tag, attrs) -> None:
-                if tag.lower() in {"script", "style", "noscript"}:
-                    self.skip += 1
-
-            def handle_endtag(self, tag) -> None:
-                if tag.lower() in {"script", "style", "noscript"} and self.skip:
-                    self.skip -= 1
-
-            def handle_data(self, data: str) -> None:
-                if not self.skip:
-                    value = " ".join(data.split())
-                    if value:
-                        self.parts.append(value)
-
-        parser = _Parser()
-        parser.feed(html)
-        parser.close()
-        return parser.parts
-
-    @classmethod
-    def _fetch_yahoo_japan_quote(cls, ticker: str) -> dict[str, object]:
-        if not ticker.endswith(".T"):
-            raise ValueError("Yahoo Finance Japan fallback supports TSE tickers only")
-
-        encoded = urllib.parse.quote(ticker, safe=".")
-        url = f"https://finance.yahoo.co.jp/quote/{encoded}"
-        request = urllib.request.Request(
-            url,
-            headers={"User-Agent": "LINE-AI-Secretary/1.0"},
-        )
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range=1d&interval=1m"
+        request = urllib.request.Request(url, headers={"User-Agent": "LINE-AI-Secretary/1.0"})
         with urllib.request.urlopen(request, timeout=_DEFAULT_TIMEOUT_SEC) as response:
-            html = response.read().decode("utf-8", errors="replace")
-
-        tokens = cls._extract_visible_text(html)
-        try:
-            idx = tokens.index("前日比")
-        except ValueError as exc:
-            raise ValueError("Yahoo Finance Japan quote marker unavailable") from exc
-
-        if idx == 0:
-            raise ValueError("Yahoo Finance Japan quote price unavailable")
-
-        price_text = tokens[idx - 1].replace(",", "")
-        if not price_text.replace(".", "", 1).isdigit():
-            raise ValueError("Yahoo Finance Japan quote price unavailable")
-
-        change = None
-        change_pct = None
-        if idx + 1 < len(tokens):
-            value = tokens[idx + 1].replace(",", "")
-            parts = value.rstrip(")").split("(")
-            if len(parts) == 2 and parts[0].replace("-", "", 1).replace(".", "", 1).isdigit():
-                pct_text = parts[1].rstrip("%")
-                if pct_text.replace("-", "", 1).replace(".", "", 1).isdigit():
-                    change = float(parts[0])
-                    change_pct = float(pct_text)
-
-        price = float(price_text)
+            payload = json.loads(response.read().decode("utf-8"))
+        result = payload.get("chart", {}).get("result")
+        if not isinstance(result, list) or not result or not isinstance(result[0], dict):
+            raise ValueError("quote result unavailable")
+        data = result[0]
+        meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+        price = meta.get("regularMarketPrice")
+        previous = meta.get("previousClose")
+        if not isinstance(price, (int, float)):
+            indicators = data.get("indicators", {})
+            quotes = indicators.get("quote", []) if isinstance(indicators, dict) else []
+            closes = quotes[0].get("close", []) if quotes and isinstance(quotes[0], dict) else []
+            numeric_closes = [v for v in closes if isinstance(v, (int, float))]
+            price = numeric_closes[-1] if numeric_closes else None
+        if not isinstance(price, (int, float)):
+            raise ValueError("quote price unavailable")
+        change = price - previous if isinstance(previous, (int, float)) else None
+        change = round(change, 10) if change is not None else None
+        change_pct = (change / previous * 100) if change is not None and previous else None
+        change_pct = round(change_pct, 10) if change_pct is not None else None
+        currency = str(meta.get("currency") or "")
+        market_time = meta.get("regularMarketTime")
+        market_state = str(meta.get("marketState") or "").upper() or None
         return {
             "ticker": cls._display_ticker(ticker),
-            "price": price,
-            "previous_close": price - change if change is not None else None,
-            "change": change,
-            "change_pct": change_pct,
-            "currency": "JPY",
-            "market_time": None,
-            "market_time_jst": None,
-            "market_state": None,
+            "price": float(price),
+            "previous_close": float(previous) if isinstance(previous, (int, float)) else None,
+            "change": float(change) if change is not None else None,
+            "change_pct": float(change_pct) if change_pct is not None else None,
+            "currency": currency,
+            "market_time": market_time,
+            "market_time_jst": cls._format_market_time(market_time),
+            "market_state": market_state,
         }
 
     def handle(self, request: AgentRequest) -> AgentResponse:

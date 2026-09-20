@@ -7,10 +7,7 @@ single-agent path.
 """
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Sequence
-
-from agents.stocks.node import StocksAgent
 
 from agents.english.intents import is_english_learning_intent
 from agents.news.intents import is_ai_news_intent
@@ -97,39 +94,6 @@ def should_route_to_management_ai(message: str) -> bool:
     return len(specialist_roles_for_message(message)) >= 2
 
 
-def _source_bound_instruction(role: AgentRole, message: str) -> str | None:
-    """Return a deterministic read/query instruction bound to the user source.
-
-    Management-AI model prose is not trusted to invent search queries or ticker
-    symbols. For external-data specialists, the bridge derives a minimal
-    canonical instruction locally.
-    """
-    if role is AgentRole.NEWS:
-        return "AI NEWS"
-
-    if role is AgentRole.STOCKS:
-        resolved = StocksAgent._resolve_ticker(str(message or ""))
-        if resolved is None:
-            return None
-        ticker, _display_name = resolved
-        return f"ticker {ticker}"
-
-    return None
-
-
-def _bind_source_instructions(plan: ManagementPlan, message: str) -> ManagementPlan:
-    """Replace model-generated data-source instructions with source-bound ones."""
-    tasks = tuple(
-        replace(task, instruction=bound)
-        if (bound := _source_bound_instruction(task.role, message)) is not None
-        else task
-        for task in plan.tasks
-    )
-    if tasks == plan.tasks:
-        return plan
-    return replace(plan, tasks=tasks)
-
-
 class _CandidateRestrictedPlanner(ManagementPlanner):
     """Keep model planning inside the domains detected from the user request."""
 
@@ -151,33 +115,22 @@ class _CandidateRestrictedPlanner(ManagementPlanner):
             raise ManagementPlanningError(
                 "management planner failed"
             ) from exc
-        unexpected_tasks = tuple(
-            task for task in plan.tasks if task.role not in self._allowed_roles
+        planned_roles = {task.role for task in plan.tasks}
+        unexpected = sorted(
+            {task.role.value for task in plan.tasks if task.role not in self._allowed_roles}
         )
-        unexpected_task_ids = {task.task_id for task in unexpected_tasks}
-        filtered_tasks = tuple(
-            task for task in plan.tasks if task.role in self._allowed_roles
-        )
-        if unexpected_task_ids and any(
-            dependency in unexpected_task_ids
-            for task in filtered_tasks
-            for dependency in task.depends_on
-        ):
+        missing = sorted(role.value for role in self._allowed_roles if role not in planned_roles)
+        if unexpected:
             raise ManagementPlanningError(
-                "management plan has an approved task depending on a rejected specialist task"
+                "management plan requested an undetected specialist role: "
+                + ", ".join(unexpected)
             )
-        planned_roles = {task.role for task in filtered_tasks}
-        missing = sorted(
-            role.value for role in self._allowed_roles if role not in planned_roles
-        )
         if missing:
             raise ManagementPlanningError(
                 "management plan omitted detected specialist role: "
                 + ", ".join(missing)
             )
-        if unexpected_tasks:
-            plan = replace(plan, tasks=filtered_tasks)
-        return _bind_source_instructions(plan, request.message)
+        return plan
 
 
 def run_management_request(

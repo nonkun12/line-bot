@@ -6,7 +6,6 @@ import re
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 
@@ -26,8 +25,6 @@ class AINewsAgent:
     _RSS_BASE = "https://news.google.com/rss/search"
     _TIMEOUT_SEC = 8
     _MAX_ITEMS = 5
-    _MAX_SUMMARY_CHARS = 220
-    _LOOKBACK_DAYS = 7
 
     def can_handle(self, request: AgentRequest) -> bool:
         text = request.message.lower()
@@ -55,10 +52,6 @@ class AINewsAgent:
         value = html.unescape(value or "")
         return re.sub(r"<[^>]+>", "", value).strip()
 
-    @staticmethod
-    def _now() -> datetime:
-        return datetime.now(_JST)
-
     @classmethod
     def _fetch(cls, query: str) -> list[dict[str, str]]:
         request = urllib.request.Request(
@@ -68,7 +61,6 @@ class AINewsAgent:
         with urllib.request.urlopen(request, timeout=cls._TIMEOUT_SEC) as response:
             root = ET.fromstring(response.read())
 
-        cutoff = cls._now() - timedelta(days=cls._LOOKBACK_DAYS)
         items: list[dict[str, str]] = []
         seen: set[str] = set()
         for item in root.findall("./channel/item"):
@@ -76,26 +68,20 @@ class AINewsAgent:
             link = item.findtext("link", "")
             published = item.findtext("pubDate", "")
             source = cls._clean_text(item.findtext("source", ""))
-            summary = cls._clean_text(item.findtext("description", ""))
             if not title or not link or link in seen:
                 continue
-            try:
-                published_dt = parsedate_to_datetime(published).astimezone(_JST)
-            except (TypeError, ValueError, OverflowError):
-                continue
-            if published_dt < cutoff:
-                continue
             seen.add(link)
-            summary = " ".join(summary.split())[: cls._MAX_SUMMARY_CHARS]
-            items.append(
-                {
-                    "title": title,
-                    "link": link,
-                    "published": published_dt.strftime("%Y-%m-%d %H:%M JST"),
-                    "source": source,
-                    "summary": summary,
-                }
-            )
+            try:
+                parsed = (
+                    parsedate_to_datetime(published)
+                    .astimezone(_JST)
+                    .strftime("%m/%d %H:%M")
+                    if published
+                    else ""
+                )
+            except (TypeError, ValueError, OverflowError):
+                parsed = published
+            items.append({"title": title, "link": link, "published": parsed, "source": source})
             if len(items) >= cls._MAX_ITEMS:
                 break
         return items
@@ -120,11 +106,7 @@ class AINewsAgent:
         for index, item in enumerate(items, 1):
             suffix = f" / {item['source']}" if item["source"] else ""
             date = f" / {item['published']}" if item["published"] else ""
-            summary = f"\n要約: {item['summary']}" if item.get("summary") else ""
-            lines.append(
-                f"{index}. {item['title']}{suffix}{date}{summary}\n{item['link']}"
-            )
-
+            lines.append(f"{index}. {item['title']}{suffix}{date}\n{item['link']}")
 
         return AgentResponse(
             text="\n".join(lines),

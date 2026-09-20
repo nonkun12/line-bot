@@ -46,6 +46,36 @@ class ControlTower:
         self.feedback_engine = feedback_engine or SelfImprovementEngine()
         self.creator_critic = creator_critic
 
+    def evaluate_proposal(
+        self,
+        report: RuntimeReport,
+        proposal: ImprovementProposal,
+        *,
+        objective: str | None = None,
+        evidence: Mapping[str, object] | None = None,
+    ) -> ControlTowerDecision:
+        """Evaluate an already-generated proposal without granting execution rights.
+
+        The proposal remains inert until the Creator/Critic gate passes. If no
+        reviewer is configured, evaluation fails closed and no task is exposed.
+        """
+        if not isinstance(proposal, ImprovementProposal):
+            raise TypeError("proposal must be an ImprovementProposal")
+        if self.creator_critic is None:
+            return ControlTowerDecision((), proposal)
+
+        target = (objective or proposal.title).strip()
+        if not target:
+            return ControlTowerDecision((), proposal)
+
+        measured = _report_evidence(report, evidence)
+
+        def evidence_provider(_candidate: object) -> Mapping[str, object]:
+            return measured
+
+        duel = self.creator_critic.run(target, evidence_provider)
+        return ControlTowerDecision((), proposal, duel)
+
     def observe(
         self,
         report: RuntimeReport,
