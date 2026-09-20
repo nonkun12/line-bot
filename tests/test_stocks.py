@@ -43,6 +43,52 @@ def test_market_metadata_is_extracted_from_yahoo_payload(monkeypatch):
     assert quote["market_time_jst"] == "2026-01-01 09:00 JST"
 
 
+def test_yahoo_quote_retries_after_valid_error_payload(monkeypatch):
+    class FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return self.payload
+
+    calls = []
+
+    def fake_urlopen(request, timeout):
+        calls.append(request.full_url)
+        if len(calls) == 1:
+            return FakeResponse(
+                b'{"chart":{"result":null,"error":{"code":"Not Found","description":"not found"}}}'
+            )
+        return FakeResponse(
+            b'''{
+                "chart": {
+                    "result": [{
+                        "meta": {
+                            "regularMarketPrice": 3025.0,
+                            "previousClose": 3034.0,
+                            "currency": "JPY",
+                            "regularMarketTime": 1768795200,
+                            "marketState": "CLOSED"
+                        }
+                    }]
+                }
+            }'''
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    quote = StocksAgent._fetch_quote("7203.T")
+
+    assert quote["price"] == 3025.0
+    assert len(calls) == 2
+    assert "query1.finance.yahoo.com" in calls[0]
+    assert "query2.finance.yahoo.com" in calls[1]
+
 def test_yahoo_quote_retries_second_endpoint(monkeypatch):
     class FakeResponse:
         def __enter__(self):
