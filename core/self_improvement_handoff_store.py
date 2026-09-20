@@ -87,24 +87,46 @@ class ApprovedImprovementHandoffStore:
     def _decode(record: dict[str, object]) -> ApprovedImprovementHandoff:
         if record.get("schema_version") != _SCHEMA_VERSION:
             raise ValueError("unsupported handoff schema")
-        role = AgentRole(str(record["role"]))
+        raw_task_id = record["task_id"]
+        raw_role = record["role"]
+        raw_instruction = record["instruction"]
+        raw_resources = record.get("resources", [])
+        raw_dependencies = record.get("depends_on", [])
+        raw_priority = record.get("priority", 0)
+        raw_hash = record["task_hash"]
+        if (
+            not isinstance(raw_task_id, str)
+            or not isinstance(raw_role, str)
+            or not isinstance(raw_instruction, str)
+            or not isinstance(raw_resources, list)
+            or not isinstance(raw_dependencies, list)
+            or not isinstance(raw_priority, int)
+            or isinstance(raw_priority, bool)
+            or not isinstance(raw_hash, str)
+        ):
+            raise ValueError("handoff record has malformed task fields")
+        if any(not isinstance(value, str) for value in raw_resources + raw_dependencies):
+            raise ValueError("handoff resources or dependencies are malformed")
+        role = AgentRole(raw_role)
         task = AgentTask(
-            task_id=str(record["task_id"]),
+            task_id=raw_task_id,
             role=role,
-            instruction=str(record["instruction"]),
-            resources=frozenset(str(value) for value in record.get("resources", [])),
-            depends_on=tuple(str(value) for value in record.get("depends_on", [])),
-            priority=int(record.get("priority", 0)),
+            instruction=raw_instruction,
+            resources=frozenset(raw_resources),
+            depends_on=tuple(raw_dependencies),
+            priority=raw_priority,
         )
         raw_paths = record["allowed_paths"]
         if not isinstance(raw_paths, list) or not raw_paths:
             raise ValueError("allowed_paths are required")
-        paths = tuple(str(path).strip() for path in raw_paths)
+        if any(not isinstance(path, str) for path in raw_paths):
+            raise ValueError("allowed_paths are malformed")
+        paths = tuple(path.strip() for path in raw_paths)
         if any(not path for path in paths) or len(set(paths)) != len(paths):
             raise ValueError("allowed_paths are malformed")
         return ApprovedImprovementHandoff(
             task=task,
-            task_hash=str(record["task_hash"]),
+            task_hash=raw_hash,
             allowed_paths=tuple(sorted(paths)),
         )
 
