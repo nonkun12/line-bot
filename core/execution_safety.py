@@ -31,7 +31,7 @@ class GitWorktreeSafetyGate:
         if configured and supplied != configured:
             return False
         allowed = configured or supplied
-        if not allowed:
+        if not allowed or not _safe_manifest(allowed):
             return False
 
         try:
@@ -45,8 +45,9 @@ class GitWorktreeSafetyGate:
             return False
 
         if not changed:
-            return False
-        return all(_within_scope(path, allowed) for path in changed)
+            # A successful no-op is safe: there is no worktree mutation to authorize.
+            return not getattr(result, "changed_resources", ())
+        return all(_within_scope(path, allowed) and _safe_worktree_path(root, path) for path in changed)
 
 
 def _git(
@@ -86,11 +87,33 @@ def _canonical_paths(paths: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def _canonical_path(path: str) -> str:
-    value = str(path).strip().replace("\\\\", "/")
+    value = str(path).strip().replace("\\", "/")
     while value.startswith("./"):
         value = value[2:]
     value = PurePosixPath(value).as_posix()
     return value
+
+
+def _safe_manifest(paths: tuple[str, ...]) -> bool:
+    return all(
+        path
+        and not path.startswith("/")
+        and path != ".."
+        and not path.startswith("../")
+        for path in paths
+    )
+
+
+def _safe_worktree_path(root: Path, path: str) -> bool:
+    candidate = root / Path(path)
+    try:
+        root_resolved = root.resolve()
+        if candidate.is_symlink():
+            return False
+        candidate.resolve().relative_to(root_resolved)
+        return True
+    except (OSError, RuntimeError, ValueError):
+        return False
 
 
 def _within_scope(path: str, allowed: tuple[str, ...]) -> bool:

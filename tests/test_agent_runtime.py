@@ -392,3 +392,39 @@ def test_execution_safety_gate_fails_closed_on_rejected_worktree():
     assert report.success is False
     assert report.failed_task_id == "impl"
     assert "safety gate rejected" in (report.error or "")
+
+
+def test_control_tower_approval_is_bound_to_exact_task():
+    model = lambda prompt: "bounded proposal"
+    critic = lambda prompt: "evidence supports the proposal"
+    tower = ControlTower(
+        feedback_engine=SelfImprovementEngine(),
+        creator_critic=CreatorCriticLoop(CreatorAgent(model), CriticAgent(critic)),
+    )
+    report = RuntimeReport((), failed_task_id="test", error="pytest failed", rounds=1)
+    proposal = tower.feedback_engine.propose()
+    tower.feedback_engine.observe(report)
+    proposal = tower.feedback_engine.propose()
+    assert proposal is not None
+
+    decision = tower.evaluate_proposal(report, proposal, evidence={
+        "accuracy": 0.9,
+        "stability": 0.9,
+        "efficiency": 0.8,
+        "safety": 1.0,
+    })
+    assert decision.approved_for_pipeline
+    approved = decision.approved_task
+    assert approved is not None
+
+    tampered = AgentTask(
+        task_id=approved.task_id,
+        role=approved.role,
+        instruction=approved.instruction + " with widened scope",
+        resources=approved.resources,
+        depends_on=approved.depends_on,
+        priority=approved.priority,
+    )
+    assert decision.approved_task_matches(approved)
+    assert not decision.approved_task_matches(tampered)
+    assert decision.approved_task is approved

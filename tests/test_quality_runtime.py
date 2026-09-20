@@ -198,3 +198,26 @@ def test_max_rounds_one_disables_repair_retries_explicitly():
         AgentRole.IMPLEMENTER,
         AgentRole.TESTER,
     ]
+
+
+def test_execution_safety_gate_is_enforced_after_manager():
+    calls = []
+
+    class Gate:
+        def verify(self, task, result, allowed_paths):
+            calls.append(task.role)
+            return False
+
+    executor = FakeExecutor()
+    runtime = QualityRuntime(
+        {role: executor for role in AgentRole},
+        max_rounds=1,
+        execution_safety_gate=Gate(),
+        allowed_paths=("src/a.py",),
+    )
+
+    report = runtime.run(base_tasks())
+
+    assert not report.success
+    assert report.failed_task_id == "implementer"
+    assert calls == [AgentRole.IMPLEMENTER]
