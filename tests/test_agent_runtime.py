@@ -365,3 +365,30 @@ def test_control_tower_and_different_feedback_engine_are_rejected() -> None:
 
     with pytest.raises(ValueError, match="share the same feedback engine"):
         MultiAgentRuntime({}, feedback_engine=engine, control_tower=Tower())
+
+
+def test_execution_safety_gate_fails_closed_on_rejected_worktree():
+    from core.agent_runtime import MultiAgentRuntime, RuntimeExecutionError
+
+    class Executor:
+        def execute(self, task):
+            from core.multi_agent import AgentResult
+            return AgentResult(task_id=task.task_id, success=True)
+
+    class Gate:
+        def verify(self, task, result, allowed_paths):
+            return False
+
+    runtime = MultiAgentRuntime({AgentRole.IMPLEMENTER: Executor()})
+    runtime.set_execution_safety_gate(Gate())
+    report = runtime.run((
+        AgentTask(
+            task_id="impl",
+            role=AgentRole.IMPLEMENTER,
+            instruction="implement",
+            resources=frozenset({"runtime"}),
+        ),
+    ))
+    assert report.success is False
+    assert report.failed_task_id == "impl"
+    assert "safety gate rejected" in (report.error or "")
