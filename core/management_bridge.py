@@ -105,7 +105,7 @@ def _source_bound_instruction(role: AgentRole, message: str) -> str | None:
     canonical instruction locally.
     """
     if role is AgentRole.NEWS:
-        return "AI NEWS artificial intelligence latest 7 days"
+        return "AI NEWS"
 
     if role is AgentRole.STOCKS:
         resolved = StocksAgent._resolve_ticker(str(message or ""))
