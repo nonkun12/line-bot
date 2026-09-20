@@ -124,5 +124,5 @@ def test_cycle_routes_proposals_through_control_tower(tmp_path):
     assert result.proposals
     assert len(result.control_tower_decisions) == len(result.proposals)
     assert all(decision.proposal is not None for decision in result.control_tower_decisions)
-    assert all(decision.approved_for_pipeline is True for decision in result.control_tower_decisions)
-    assert result.approved_proposals == result.proposals
+    assert all(decision.approved_for_pipeline is False for decision in result.control_tower_decisions)
+    assert result.approved_proposals == ()
