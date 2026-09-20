@@ -23,7 +23,7 @@ def test_message_bus_requires_safety_and_round_trips() -> None:
         recipient="management",
         message_type="task_result",
         content="analysis complete",
-        safety_constraints=("result-only",),
+        safety_constraints=("result-only", "no-permission-grant"),
     )
     bus.send(message)
     assert bus.peek("management") == (message,)
