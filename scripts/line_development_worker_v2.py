@@ -18,7 +18,13 @@ from urllib import request as urllib_request
 
 from groq import Groq
 
-ROOT = Path(__file__).resolve().parents[1]
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
+
+ROOT = _ROOT
 MODEL = os.environ.get("DEV_AI_MODEL", "openai/gpt-oss-20b")
 MAX_FILES = 1
 MAX_FILE_CHARS = 4500
@@ -51,11 +57,25 @@ def is_protected(path: str) -> bool:
     return path in PROTECTED_PATHS or any(path.startswith(prefix) for prefix in PROTECTED_PREFIXES)
 
 
+def _shared_policy_decision(path: str) -> SelfImprovementDecision:
+    return assess_self_improvement((path,)).decision
+
+
+def _is_shared_policy_autonomous(path: str) -> bool:
+    return _shared_policy_decision(path) is SelfImprovementDecision.AUTONOMOUS_REVIEW
+
+
 def repo_files() -> list[str]:
     proc = run(["git", "ls-files"])
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr[-2000:])
-    return [p for p in proc.stdout.splitlines() if p.endswith(ALLOWED_SUFFIXES) and not is_protected(p)]
+    return [
+        p
+        for p in proc.stdout.splitlines()
+        if p.endswith(ALLOWED_SUFFIXES)
+        and not is_protected(p)
+        and _is_shared_policy_autonomous(p)
+    ]
 
 
 def ask(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOKENS) -> str:
@@ -84,7 +104,7 @@ def _extract_explicit_path(instruction: str, files: list[str]) -> str | None:
         if token == _COMMENT_TEST_PATH and (ROOT / _COMMENT_TEST_PATH).is_file():
             candidates.add(token)
             continue
-        if token in allowed:
+        if token in allowed and _is_shared_policy_autonomous(token):
             candidates.add(token)
     if len(candidates) == 1:
         return next(iter(candidates))
@@ -122,7 +142,7 @@ def choose_file(client: Groq, instruction: str, files: list[str]) -> str | None:
     except Exception:
         return None
     chosen = data.get("file")
-    if isinstance(chosen, str) and chosen in files:
+    if isinstance(chosen, str) and chosen in files and _is_shared_policy_autonomous(chosen):
         return chosen
     return None
 
@@ -220,6 +240,11 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
             return False, "change_outside_selected_file"
         if is_protected(path) and not _is_allowed_comment_test_change(plan, chosen):
             return False, f"protected_file:{path}"
+        if (
+            not _is_shared_policy_autonomous(path)
+            and not _is_allowed_comment_test_change(plan, chosen)
+        ):
+            return False, f"self_improvement_policy:{_shared_policy_decision(path).value}"
         if not isinstance(old, str) or not old or not isinstance(new, str):
             return False, "invalid_old_new"
         if old == new:
