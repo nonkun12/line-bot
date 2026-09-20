@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from .agents import Agent, AgentRequest
+from .distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG
 from .distributed_domain_executor import HandlerExecutor
 from .distributed_executor_registry import DistributedExecutorRegistry
 from .multi_agent import AgentRole, AgentTask
@@ -11,14 +12,9 @@ from .specialist_gate import assert_specialist_approved
 
 
 _AGENT_NAMES: Mapping[AgentRole, str] = {
-    AgentRole.VOICE: "voice",
-    AgentRole.ENGLISH: "english_learning",
-    AgentRole.NEWS: "ai_news",
-    AgentRole.STOCKS: "stocks",
-    AgentRole.MARKET: "global_market",
-    AgentRole.JOBS: "job_seeking",
-    AgentRole.MUSIC: "music",
-    AgentRole.VIDEO: "video",
+    descriptor.role: descriptor.agent_name
+    for descriptor in DISTRIBUTED_AGENT_CATALOG
+    if descriptor.role is not AgentRole.GENERAL
 }
 
 
