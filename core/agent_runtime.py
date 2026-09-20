@@ -132,7 +132,6 @@ class MultiAgentRuntime:
         self._execution_safety_gate = gate
 
     @property
-    @property
     def last_control_tower_decision(self) -> ControlTowerDecision | None:
         """Expose the latest management decision without applying it automatically."""
         return self._last_control_tower_decision
