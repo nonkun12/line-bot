@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping
+
+if TYPE_CHECKING:
+    from .control_tower import ControlTower, ControlTowerDecision
 
 from .agent_runtime import RuntimeReport
 from .self_improvement import ImprovementProposal, ImprovementSignal, SelfImprovementEngine
@@ -25,6 +28,8 @@ class SelfImprovementCycleResult:
     all_signals: tuple[ImprovementSignal, ...]
     analysis: ImprovementAnalysis
     proposals: tuple[ImprovementProposal, ...]
+    approved_proposals: tuple[ImprovementProposal, ...]
+    control_tower_decisions: tuple["ControlTowerDecision", ...]
 
 
 def run_self_improvement_cycle(
@@ -32,6 +37,7 @@ def run_self_improvement_cycle(
     history_path: str | Path,
     *,
     target_paths: tuple[str, ...] = (),
+    control_tower: "ControlTower | None" = None,
     max_history: int = 200,
     min_occurrences: int = 2,
     max_patterns: int = 5,
@@ -61,11 +67,26 @@ def run_self_improvement_cycle(
         target_paths=target_paths,
         max_proposals=max_proposals,
     )
+
+    # A generated proposal is inert. When a ControlTower is supplied, every
+    # proposal must pass its Creator/Critic gate before it is exposed as
+    # approved for downstream execution.
+    decisions: list["ControlTowerDecision"] = []
+    approved: list[ImprovementProposal] = []
+    if control_tower is not None:
+        for proposal in proposals:
+            decision = control_tower.evaluate_proposal(report, proposal)
+            decisions.append(decision)
+            if decision.approved_for_pipeline:
+                approved.append(proposal)
+
     return SelfImprovementCycleResult(
         new_signals=new_signals,
         all_signals=all_signals,
         analysis=analysis,
         proposals=proposals,
+        approved_proposals=tuple(approved),
+        control_tower_decisions=tuple(decisions),
     )
 
 
