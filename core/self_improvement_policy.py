@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import PurePosixPath
+import posixpath
 
 
 class SelfImprovementDecision(str, Enum):
@@ -47,6 +48,15 @@ HIGH_RISK_FILES = frozenset(
 def assess_self_improvement(paths: list[str] | tuple[str, ...]) -> SelfImprovementAssessment:
     """Assess proposed self-improvement paths before implementation starts."""
     normalized = tuple(_normalize(path) for path in paths if str(path).strip())
+    # Absolute paths and traversal above repository root are not a valid
+    # autonomous target manifest. Fail closed instead of interpreting them as
+    # ordinary relative repository paths.
+    if any(path.startswith("/") or path == ".." or path.startswith("../") for path in normalized):
+        return SelfImprovementAssessment(
+            decision=SelfImprovementDecision.EXPLICIT_APPROVAL,
+            reasons=("target manifest contains an absolute or escaping path",),
+            protected_paths=tuple(path for path in normalized if path.startswith("/") or path == ".." or path.startswith("../")),
+        )
     protected = tuple(path for path in normalized if _is_high_risk(path))
 
     if protected:
@@ -81,6 +91,12 @@ def _normalize(path: str) -> str:
     value = str(path).strip().replace("\\", "/")
     while value.startswith("./"):
         value = value[2:]
+    # Canonicalize traversal before any protected-path comparison.  A path
+    # such as ../core/self_improvement_policy.py must never become an
+    # unprotected autonomous target merely because it contains .. segments.
+    value = posixpath.normpath(value)
+    if value == ".":
+        return ""
     return PurePosixPath(value).as_posix()
 
 
