@@ -76,10 +76,26 @@ class StocksAgent:
     @classmethod
     def _fetch_quote(cls, ticker: str) -> dict[str, object]:
         encoded = urllib.parse.quote(ticker, safe=".")
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range=1d&interval=1m"
-        request = urllib.request.Request(url, headers={"User-Agent": "LINE-AI-Secretary/1.0"})
-        with urllib.request.urlopen(request, timeout=_DEFAULT_TIMEOUT_SEC) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        urls = (
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range=5d&interval=1d",
+            f"https://query2.finance.yahoo.com/v8/finance/chart/{encoded}?range=5d&interval=1d",
+        )
+        payload = None
+        last_error: Exception | None = None
+        for url in urls:
+            try:
+                request = urllib.request.Request(
+                    url,
+                    headers={"User-Agent": "LINE-AI-Secretary/1.0"},
+                )
+                with urllib.request.urlopen(request, timeout=_DEFAULT_TIMEOUT_SEC) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                break
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                last_error = exc
+        if payload is None:
+            raise RuntimeError("Yahoo Finance quote retrieval failed") from last_error
+
         result = payload.get("chart", {}).get("result")
         if not isinstance(result, list) or not result or not isinstance(result[0], dict):
             raise ValueError("quote result unavailable")
