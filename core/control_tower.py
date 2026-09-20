@@ -7,6 +7,8 @@ the real-model Creator/Critic pair. It never applies model output directly.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 from typing import Mapping
 
 from .agent_runtime import RuntimeReport
@@ -22,6 +24,7 @@ class ControlTowerDecision:
     signals: tuple[ImprovementSignal, ...]
     proposal: ImprovementProposal | None
     duel: tuple[DuelResult, ...] = ()
+    approved_task_hash: str | None = None
 
     @property
     def approved_for_pipeline(self) -> bool:
@@ -30,9 +33,16 @@ class ControlTowerDecision:
     @property
     def approved_task(self) -> AgentTask | None:
         """Return the proposal task only after an explicit Creator/Critic pass."""
-        if not self.approved_for_pipeline or self.proposal is None:
+        if not self.approved_for_pipeline or self.proposal is None or self.approved_task_hash is None:
             return None
-        return self.proposal.task
+        task = self.proposal.task
+        if task is None or _task_hash(task) != self.approved_task_hash:
+            return None
+        return task
+
+    def approved_task_matches(self, task: AgentTask | None) -> bool:
+        """Verify that the exact task approved by the Creator/Critic is being used."""
+        return task is not None and self.approved_for_pipeline and self.approved_task_hash == _task_hash(task)
 
 
 class ControlTower:
@@ -73,8 +83,12 @@ class ControlTower:
         def evidence_provider(_candidate: object) -> Mapping[str, object]:
             return measured
 
+        task_hash = _task_hash(proposal.task)
+        if task_hash is None:
+            return ControlTowerDecision((), proposal)
+        measured["approved_task_hash"] = task_hash
         duel = self.creator_critic.run(target, evidence_provider)
-        return ControlTowerDecision((), proposal, duel)
+        return ControlTowerDecision((), proposal, duel, task_hash)
 
     def observe(
         self,
@@ -102,8 +116,27 @@ class ControlTower:
         def evidence_provider(_candidate: object) -> Mapping[str, object]:
             return measured
 
+        task_hash = _task_hash(proposal.task)
+        if task_hash is None:
+            return ControlTowerDecision(signals, proposal)
+        measured["approved_task_hash"] = task_hash
         duel = self.creator_critic.run(target, evidence_provider)
-        return ControlTowerDecision(signals, proposal, duel)
+        return ControlTowerDecision(signals, proposal, duel, task_hash)
+
+
+def _task_hash(task: AgentTask | None) -> str | None:
+    if task is None:
+        return None
+    payload = {
+        "task_id": task.task_id,
+        "role": task.role.value,
+        "instruction": task.instruction,
+        "resources": sorted(task.resources),
+        "depends_on": list(task.depends_on),
+        "priority": task.priority,
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _report_evidence(
