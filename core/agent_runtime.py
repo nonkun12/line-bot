@@ -183,7 +183,7 @@ class MultiAgentRuntime:
         missing_roles = required_roles - present_roles
         if missing_roles:
             missing = ", ".join(sorted(role.value for role in missing_roles))
-            return self._finalize_development(RuntimeReport((), error=f"required development role missing: {missing}))
+            return self._finalize_development(RuntimeReport((), error=f"required development role missing: {missing}"))
 
         integrator_template = next(task for task in tasks if task.role is AgentRole.INTEGRATOR)
         completed: list[RuntimeTaskResult] = []
