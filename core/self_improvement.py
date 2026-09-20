@@ -93,7 +93,9 @@ class SelfImprovementEngine:
                 f"development required {report.repair_attempts} repair attempt(s)",
             ))
         if report.failed_task_id and report.error:
-            new.append(ImprovementSignal("failure", report.failed_task_id, report.error))
+            detail = str(report.error).replace("\x00", "").strip()[:_MAX_SIGNAL_DETAIL_CHARS]
+            if detail:
+                new.append(ImprovementSignal("failure", report.failed_task_id, detail))
         for signal in new:
             self._signals.append(signal)
         if len(self._signals) > self.max_signals:
