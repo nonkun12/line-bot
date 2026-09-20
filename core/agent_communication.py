@@ -43,11 +43,21 @@ class AgentMessage:
     )
 
     def __post_init__(self) -> None:
+        raw_constraints = self.safety_constraints
+        if isinstance(raw_constraints, str):
+            normalized_constraints: object = raw_constraints
+        else:
+            try:
+                normalized_constraints = frozenset(raw_constraints)
+            except TypeError:
+                normalized_constraints = raw_constraints
+        object.__setattr__(self, "safety_constraints", normalized_constraints)
+
         errors = self.validate()
         if errors:
             raise ValueError("; ".join(dict.fromkeys(errors)))
 
-        constraints = frozenset(self.safety_constraints)
+        constraints = frozenset(normalized_constraints)  # type: ignore[arg-type]
         normalized_context = dict(self.context)
         if "changed_resources" in normalized_context:
             normalized_context["changed_resources"] = tuple(
