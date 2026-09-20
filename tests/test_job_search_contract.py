@@ -20,9 +20,12 @@ def test_job_search_criteria_does_not_guess_unlabelled_values():
     criteria = extract_job_search_criteria("東京でPython、年収600万円の求人")
     assert criteria.occupation is None
     assert criteria.location is None
-    assert criteria.salary_min_yen == 6_000_000
+    assert criteria.salary_min_yen is None
     assert criteria.remote is None
     assert criteria.skills == ()
+
+    lower_bound = extract_job_search_criteria("求人 年収600万円以上")
+    assert lower_bound.salary_min_yen == 6_000_000
 
 
 def test_default_job_search_never_fabricates_listings():
