@@ -461,7 +461,7 @@ def test_message_bus_canonicalizes_recipient_keys() -> None:
 def test_message_bus_rejects_unknown_recipient_and_route_is_not_fail_open() -> None:
     bus = AgentMessageBus()
     stocks = bus.endpoint("stocks")
-    with pytest.raises(ValueError, match="approved coordination endpoint"):
+    with pytest.raises(ValueError, match="approved coordination agent"):
         stocks.send(
             "unknown",
             message_id="m1",
