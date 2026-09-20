@@ -1,20 +1,20 @@
-# Nightly Autonomous Worker
+# Daily Self-Improvement Worker
 
 ## Current phase
 
-The nightly worker is deliberately conservative. It runs the existing smoke test and the full pytest suite and reports the result. It does not modify source, commit, or deploy.
+The daily worker uses the existing guarded autonomous path. It makes at most one bounded improvement attempt, runs pytest, and publishes changes only through a reviewable PR.
 
-## Target phase
+## Daily loop
 
-1. Select a bounded development task from an explicit task queue.
-2. Ask the implementation agent to work only on allowed files.
-3. Run pytest.
-4. On failure, invoke Debug/Fix/Patch agents.
-5. Re-run tests with a bounded retry count.
-6. Produce a reviewable diff.
-7. Commit only validated target files.
-8. Deploy only through an explicit deployment workflow.
-9. Run E2E verification.
-10. Publish a morning report.
+1. Inspect the current repository state and existing test results.
+2. Select one safe and testable improvement outside protected control-plane files.
+3. Generate and validate one minimal patch, then run pytest.
+4. Allow at most one bounded repair attempt.
+5. Run a final read-only verification with autonomous autofix disabled.
+6. Publish a dedicated branch and PR only when verification succeeds.
 
-No autonomous production deployment should be enabled until each stage has its own tests and rollback/stop conditions.
+
+
+If no safe improvement is identified, stop without forcing a change.
+
+Automatic merge and production deployment remain disabled. Persisted runtime signals and the distributed Manager -> Debugger -> Reviewer observer are the next integration step.
