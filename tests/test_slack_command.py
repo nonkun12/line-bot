@@ -84,3 +84,53 @@ def test_slack_command_dispatches_verified_authorized_user(monkeypatch):
         "repository": "nonkun12/line-bot",
         "authorized": True,
     }
+
+
+def test_slack_ai_command_uses_shared_gateway_and_posts_result(monkeypatch):
+    app = Flask(__name__)
+    app.ai_gateway = type(
+        "Gateway",
+        (),
+        {
+            "handle": lambda self, request: type("Response", (), {"text": f"Slack reply: {request.message}"})()
+        },
+    )()
+    slack_command.register_slack_command(app)
+    monkeypatch.setenv("SLACK_SIGNING_SECRET", "test-secret")
+    monkeypatch.setenv("SLACK_AI_ALLOWED_USER_IDS", "U123")
+
+    posted = {}
+
+    def fake_post(response_url, text):
+        posted.update(response_url=response_url, text=text)
+
+    class ImmediateThread:
+        def __init__(self, target, args, **kwargs):
+            self.target = target
+            self.args = args
+
+        def start(self):
+            self.target(*self.args)
+
+    monkeypatch.setattr(slack_command, "threading", type("Threading", (), {"Thread": ImmediateThread}))
+    monkeypatch.setattr(slack_command, "_post_slack_response", fake_post)
+
+    body = (
+        b"user_id=U123&command=%2Fai&text=AI+NEWS%E3%81%A8%E3%83%88%E3%83%A8%E3%82%BF%E3%81%AE%E6%A0%AA%E4%BE%A1"
+        b"&response_url=https%3A%2F%2Fhooks.slack.com%2Fcommands%2Ftest"
+    )
+    response = app.test_client().post(
+        "/slack/command",
+        data=body,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            **_signed_headers(body, "test-secret"),
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["text"].startswith("🔎 AI検索を受け付けました")
+    assert posted == {
+        "response_url": "https://hooks.slack.com/commands/test",
+        "text": "Slack reply: AI NEWSとトヨタの株価",
+    }

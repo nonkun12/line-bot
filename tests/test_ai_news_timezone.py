@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from agents.news.node import AINewsAgent
 
 
@@ -32,20 +35,25 @@ def test_news_pubdate_is_rendered_in_japan_time(monkeypatch) -> None:
         "agents.news.node.urllib.request.urlopen",
         lambda request, timeout: _FakeResponse(payload),
     )
+    monkeypatch.setattr(
+        AINewsAgent,
+        "_now",
+        staticmethod(lambda: datetime(2026, 9, 15, 12, tzinfo=ZoneInfo("Asia/Tokyo"))),
+    )
 
     items = AINewsAgent._fetch("artificial intelligence")
 
     assert len(items) == 1
-    assert items[0]["published"] == "09/12 05:00"
+    assert items[0]["published"] == "2026-09-12 05:00 JST"
 
 
 def test_news_duplicate_links_are_removed_and_limit_is_applied(monkeypatch) -> None:
     payload = b"""<?xml version='1.0' encoding='UTF-8'?>
     <rss><channel>
-      <item><title>One</title><link>https://example.com/a</link></item>
-      <item><title>One duplicate</title><link>https://example.com/a</link></item>
-      <item><title>Two</title><link>https://example.com/b</link></item>
-      <item><title>Three</title><link>https://example.com/c</link></item>
+      <item><title>One</title><link>https://example.com/a</link><pubDate>Fri, 18 Sep 2026 01:00:00 +0000</pubDate></item>
+      <item><title>One duplicate</title><link>https://example.com/a</link><pubDate>Fri, 18 Sep 2026 01:01:00 +0000</pubDate></item>
+      <item><title>Two</title><link>https://example.com/b</link><pubDate>Fri, 18 Sep 2026 02:00:00 +0000</pubDate></item>
+      <item><title>Three</title><link>https://example.com/c</link><pubDate>Fri, 18 Sep 2026 03:00:00 +0000</pubDate></item>
     </channel></rss>"""
 
     monkeypatch.setattr(
