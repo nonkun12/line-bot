@@ -32,15 +32,7 @@ MAX_RESPONSE_TOKENS = 1800
 MAX_INSTRUCTION_LENGTH = 2000
 MAX_REPAIR_ATTEMPTS = 1
 ALLOWED_SUFFIXES = (".py", ".md", ".json", ".txt")
-PROTECTED_PATHS = {
-    ".github", ".env", "config.py",
-    "scripts/line_development_worker.py",
-    "scripts/line_development_worker_safe.py",
-    "scripts/line_development_worker_v2.py",
-    "line_development.py",
-    "git_safety.py", "patch_validator.py", "render_client.py",
-}
-PROTECTED_PREFIXES = (".github/", "secrets/", ".git/")
+from core.protected_paths import is_protected
 _COMMENT_TEST_PATH = "line_development.py"
 _COMMENT_TEST_PATH_ALIASES = {"scripts/line_development.py", "./scripts/line_development.py"}
 _EXPLICIT_PATH_PATTERN = re.compile(r"[\w][\w\-./]*\.(?:py|md|json|txt)", re.IGNORECASE)
@@ -54,7 +46,7 @@ def run(cmd: list[str], timeout: int = 900, input_text: str | None = None) -> su
 
 
 def is_protected(path: str) -> bool:
-    return path in PROTECTED_PATHS or any(path.startswith(prefix) for prefix in PROTECTED_PREFIXES)
+    return is_protected(path)
 
 
 def _shared_policy_decision(path: str) -> SelfImprovementDecision:
