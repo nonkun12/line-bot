@@ -43,3 +43,55 @@ def test_specialist_boundary_exposes_capabilities_without_mutation() -> None:
     assert specialist_boundary(Specialist.NEWS).capabilities == ("news_retrieval",)
     assert specialist_boundary(Specialist.STOCKS).capabilities == ("stock_quotes",)
     assert specialist_boundary(Specialist.VOICE).allowed_channels == ("voice",)
+
+
+def test_management_request_contract_is_bounded() -> None:
+    with pytest.raises(ValueError, match="user_id exceeds"):
+        ManagementRequest("u" * 201, "hello")
+    with pytest.raises(ValueError, match="message exceeds"):
+        ManagementRequest("u1", "x" * 4001)
+    with pytest.raises(ValueError, match="channel exceeds"):
+        ManagementRequest("u1", "hello", channel="x" * 101)
+    with pytest.raises(ValueError, match="metadata contains too many"):
+        ManagementRequest("u1", "hello", metadata={str(i): i for i in range(17)})
+    with pytest.raises(ValueError, match="metadata key exceeds"):
+        ManagementRequest("u1", "hello", metadata={"x" * 101: "v"})
+    with pytest.raises(ValueError, match="metadata value exceeds"):
+        ManagementRequest("u1", "hello", metadata={"x": "v" * 1001})
+
+
+def test_management_decision_contract_is_bounded() -> None:
+    with pytest.raises(ValueError, match="reason exceeds"):
+        ManagementDecision(Specialist.NEWS, "x" * 501)
+    with pytest.raises(ValueError, match="confidence must be numeric"):
+        ManagementDecision(Specialist.NEWS, "ok", True)
+    with pytest.raises(ValueError, match="metadata value exceeds"):
+        ManagementDecision(
+            Specialist.NEWS,
+            "ok",
+            metadata={"evidence": "x" * 1001},
+        )
+
+
+def test_management_metadata_is_snapshot_and_immutable() -> None:
+    metadata = {"source": "slack"}
+    request = ManagementRequest("u1", "hello", metadata=metadata)
+    metadata["source"] = "tampered"
+
+    assert request.metadata["source"] == "slack"
+    with pytest.raises(TypeError):
+        request.metadata["source"] = "tampered"  # type: ignore[index]
+
+
+def test_management_decision_metadata_is_snapshot_and_immutable() -> None:
+    metadata = {"source": "router"}
+    decision = ManagementDecision(
+        Specialist.NEWS,
+        "matched news",
+        metadata=metadata,
+    )
+    metadata["source"] = "tampered"
+
+    assert decision.metadata["source"] == "router"
+    with pytest.raises(TypeError):
+        decision.metadata["source"] = "tampered"  # type: ignore[index]
