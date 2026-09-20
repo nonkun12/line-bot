@@ -11,6 +11,7 @@ from urllib.parse import parse_qs
 import httpx
 from flask import request
 
+from core.gateway import AIRequest
 from line_development import dispatch_development_workflow
 
 _MAX_BODY_AGE = 300
@@ -92,12 +93,12 @@ def _handle_ai_in_background(app, message: str, user_id: str, response_url: str)
     """Run the same channel-neutral AI Gateway used by LINE and post the final reply."""
     try:
         response = app.ai_gateway.handle(
-            type("AIRequestCompat", (), {
-                "user_id": str(user_id),
-                "message": str(message),
-                "channel": "slack",
-                "metadata": {"route": "slack_ai"},
-            })()
+            AIRequest(
+                user_id=str(user_id),
+                message=str(message),
+                channel="slack",
+                metadata={"route": "slack_ai"},
+            )
         )
         text = getattr(response, "text", "") or "AIからの応答がありませんでした。"
     except Exception as exc:
