@@ -150,31 +150,7 @@ class ManagementGateResult:
         return self.decision is GateDecision.ALLOW
 
 
-PROTECTED_PREFIXES = (
-    ".github/",
-    ".git/",
-    "security/",
-    "secrets/",
-)
-PROTECTED_FILES = frozenset(
-    {
-        ".env",
-        ".env.local",
-        ".env.production",
-        "CODEOWNERS",
-        "config.py",
-        "pyproject.toml",
-        "poetry.lock",
-        "uv.lock",
-        "requirements.txt",
-        "requirements-dev.txt",
-        "core/management_safety.py",
-        "core/control_tower.py",
-        "core/self_improvement_policy.py",
-        "core/agent_runtime.py",
-        "scripts/line_development_worker_v2.py",
-    }
-)
+from .protected_paths import PROTECTED_FILES, PROTECTED_PREFIXES, is_protected
 
 
 def evaluate_management_gate(request: ManagementGateInput) -> ManagementGateResult:
@@ -288,7 +264,7 @@ def evaluate_management_gate(request: ManagementGateInput) -> ManagementGateResu
 
 
 def _is_protected(path: str) -> bool:
-    return path in PROTECTED_FILES or any(path.startswith(prefix) for prefix in PROTECTED_PREFIXES)
+    return is_protected(path)
 
 
 def _path_allowed(path: str, scopes: tuple[str, ...]) -> bool:
