@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from agents.news.node import AINewsAgent
 
 
@@ -31,6 +34,11 @@ def test_news_pubdate_is_rendered_in_japan_time(monkeypatch) -> None:
     monkeypatch.setattr(
         "agents.news.node.urllib.request.urlopen",
         lambda request, timeout: _FakeResponse(payload),
+    )
+    monkeypatch.setattr(
+        AINewsAgent,
+        "_now",
+        staticmethod(lambda: datetime(2026, 9, 15, 12, tzinfo=ZoneInfo("Asia/Tokyo"))),
     )
 
     items = AINewsAgent._fetch("artificial intelligence")
