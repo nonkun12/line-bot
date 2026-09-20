@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from core.agent_communication import AgentMessage, AgentMessageBus, AgentMessageCoordinator
+from core.agent_communication import (
+    AgentMessage,
+    AgentMessageBus,
+    AgentMessageCoordinator,
+)
 from core.management_ai import (
     ManagementAI,
     ManagementCycleRun,
@@ -25,23 +29,29 @@ def test_message_bus_requires_safety_and_round_trips() -> None:
         content="analysis complete",
         safety_constraints=("result-only", "no-permission-grant"),
     )
-    bus.send(message)
-    assert bus.peek("management") == (message,)
-    assert bus.receive("management") == (message,)
-    assert bus.receive("management") == ()
+    management = bus.mailbox("management")
+    news = bus.endpoint("stocks")
+    news.send(
+        "management",
+        message_id=message.message_id,
+        message_type=message.message_type,
+        content=message.content,
+        safety_constraints=message.safety_constraints,
+    )
+    assert management.peek() == (message,)
+    assert management.receive() == (message,)
+    assert management.receive() == ()
 
 
 def test_message_bus_rejects_unconstrained_message() -> None:
     bus = AgentMessageBus()
+    endpoint = bus.endpoint("stocks")
     with pytest.raises(ValueError, match="safety constraint"):
-        bus.send(
-            AgentMessage(
-                message_id="m1",
-                sender="a",
-                recipient="b",
-                message_type="task",
-                content="hello",
-            )
+        endpoint.send(
+            "news",
+            message_id="m1",
+            message_type="task",
+            content="hello",
         )
 
 
@@ -139,7 +149,7 @@ def test_management_ai_dispatches_independent_specialists_and_collects_results()
     assert set(voice.calls) == {"voice-task"}
     assert set(news.calls) == {"news-task"}
 
-    messages = manager.message_bus.receive("management")
+    messages = manager.message_bus.receive()
     assert {m.message_type for m in messages} == {"task_result"}
     assert {m.sender for m in messages} == {"voice", "news"}
     assert {m.context["task_id"] for m in messages} == {"voice-task", "news-task"}
@@ -248,24 +258,48 @@ def test_management_ai_closed_loop_is_bounded() -> None:
 
 
 def test_agent_message_coordinator_allows_specialist_collaboration_but_blocks_control_agents() -> None:
-    assert AgentMessageCoordinator.validate_route("stocks", "news") == ()
-    assert AgentMessageCoordinator.validate_route("management", "stocks") == ()
-    assert AgentMessageCoordinator.validate_route("stocks", "management") == ()
-    assert AgentMessageCoordinator.validate_route("integrator", "stocks")
+    constraints = frozenset({"result-only", "no-permission-grant"})
+    assert AgentMessageCoordinator.validate_route(
+        "stocks",
+        "news",
+        message_type="task_result",
+        safety_constraints=constraints,
+    ) == ()
+    assert AgentMessageCoordinator.validate_route(
+        "management",
+        "stocks",
+        message_type="task",
+        safety_constraints=constraints,
+    )
+    assert AgentMessageCoordinator.validate_route(
+        "stocks",
+        "management",
+        message_type="task_result",
+        safety_constraints=constraints,
+    ) == ()
+    assert AgentMessageCoordinator.validate_route(
+        "integrator",
+        "stocks",
+        message_type="task_result",
+        safety_constraints=constraints,
+    )
+    assert AgentMessageCoordinator.validate_route(
+        "stocks",
+        "stocks",
+        message_type="task_result",
+        safety_constraints=constraints,
+    )
 
 
 def test_agent_message_bus_bounds_message_size_and_route() -> None:
-    bus = AgentMessageBus()
+    endpoint = AgentMessageBus().endpoint("stocks")
     with pytest.raises(ValueError, match="content exceeds"):
-        bus.send(
-            AgentMessage(
-                message_id="big",
-                sender="stocks",
-                recipient="news",
-                message_type="task",
-                content="x" * 4001,
-                safety_constraints=("result-only",),
-            )
+        endpoint.send(
+            "news",
+            message_id="big",
+            message_type="task_result",
+            content="x" * 4001,
+            safety_constraints=("result-only", "no-permission-grant"),
         )
 
 
@@ -380,28 +414,132 @@ def test_agent_message_coordinator_restricts_specialist_to_management_messages()
 def test_agent_message_bus_rejects_unsafe_specialist_to_management_message() -> None:
     bus = AgentMessageBus()
     with pytest.raises(ValueError, match="specialist-to-management"):
-        bus.send(
-            AgentMessage(
-                message_id="news-control",
-                sender="news",
-                recipient="management",
-                message_type="task",
-                content="do this",
-                safety_constraints=("result-only", "no-permission-grant"),
-            )
+        bus.endpoint("news").send(
+            "management",
+            message_id="news-control",
+            message_type="task",
+            content="do this",
+            safety_constraints=("result-only", "no-permission-grant"),
         )
 
 
 def test_agent_message_bus_rejects_unsafe_specialist_to_specialist_message() -> None:
     bus = AgentMessageBus()
     with pytest.raises(ValueError, match="specialist-to-specialist"):
-        bus.send(
-            AgentMessage(
-                message_id="news-1",
-                sender="news",
-                recipient="stocks",
-                message_type="task",
-                content="do this",
-                safety_constraints=("result-only", "no-permission-grant"),
-            )
+        bus.endpoint("news").send(
+            "stocks",
+            message_id="news-1",
+            message_type="task",
+            content="do this",
+            safety_constraints=("result-only", "no-permission-grant"),
+        )
+
+
+def test_management_to_specialist_is_closed_by_default() -> None:
+    constraints = frozenset({"result-only", "no-permission-grant"})
+    assert AgentMessageCoordinator.validate_route(
+        "management",
+        "stocks",
+        message_type="task",
+        safety_constraints=constraints,
+    )
+
+
+def test_message_bus_canonicalizes_recipient_keys() -> None:
+    bus = AgentMessageBus()
+    stocks = bus.endpoint("stocks")
+    stocks.send(
+        " MANAGEMENT ",
+        message_id="m1",
+        message_type="task_result",
+        content="ok",
+        safety_constraints=("result-only", "no-permission-grant"),
+    )
+    assert bus.mailbox("management").receive()[-1].message_id == "m1"
+
+
+def test_message_bus_rejects_unknown_recipient_and_route_is_not_fail_open() -> None:
+    bus = AgentMessageBus()
+    stocks = bus.endpoint("stocks")
+    with pytest.raises(ValueError, match="approved coordination endpoint"):
+        stocks.send(
+            "unknown",
+            message_id="m1",
+            message_type="task_result",
+            content="ok",
+            safety_constraints=("result-only", "no-permission-grant"),
+        )
+    with pytest.raises(ValueError):
+        AgentMessageCoordinator.validate_route(
+            "stocks",
+            "news",
+            message_type="task_result",
+            safety_constraints=frozenset(),
+        )
+
+
+def test_safety_constraints_reject_string_input() -> None:
+    with pytest.raises(ValueError, match="must not be a string"):
+        AgentMessage(
+            message_id="m1",
+            sender="stocks",
+            recipient="news",
+            message_type="task_result",
+            content="ok",
+            safety_constraints="result-only",  # type: ignore[arg-type]
+        )
+
+
+def test_message_context_is_allowlisted_and_immutable() -> None:
+    context = {
+        "task_id": "t1",
+        "success": True,
+        "changed_resources": ["stocks"],
+    }
+    message = AgentMessage(
+        message_id="m1",
+        sender="stocks",
+        recipient="management",
+        message_type="task_result",
+        content="ok",
+        context=context,
+        safety_constraints=("result-only", "no-permission-grant"),
+    )
+    context["success"] = False
+    context["changed_resources"].append("shell")
+    assert message.context["success"] is True
+    assert message.context["changed_resources"] == ["stocks"]
+    with pytest.raises(TypeError):
+        message.context["success"] = False  # type: ignore[index]
+
+    with pytest.raises(ValueError, match="context key is not allowed"):
+        AgentMessage(
+            message_id="m2",
+            sender="stocks",
+            recipient="management",
+            message_type="task_result",
+            content="ok",
+            context={"grant": "shell"},
+            safety_constraints=("result-only", "no-permission-grant"),
+        )
+
+
+def test_management_ai_exposes_read_only_mailbox() -> None:
+    manager = ManagementAI(
+        {"news": Executor(AgentRole.NEWS)} if False else {},
+        planner=StaticPlanner(),
+    )
+    mailbox = manager.message_bus
+    assert not hasattr(mailbox, "send")
+
+
+def test_agent_message_bus_rejects_self_send() -> None:
+    endpoint = AgentMessageBus().endpoint("stocks")
+    with pytest.raises(ValueError, match="sender and recipient must differ"):
+        endpoint.send(
+            "stocks",
+            message_id="self",
+            message_type="task_result",
+            content="ok",
+            safety_constraints=("result-only", "no-permission-grant"),
         )
