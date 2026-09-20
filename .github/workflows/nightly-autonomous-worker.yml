@@ -57,28 +57,27 @@ jobs:
       - name: Record autonomous starting commit
         run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Run one guarded control tower development task
-        run: python scripts/nightly_task_worker.py
-
-      - name: Run guarded autonomous self-healing check
-        if: success()
-        run: python scripts/nightly_worker.py
-
-      - name: Publish final autonomous branch and PR
+      - name: Run common guarded development runtime
         if: success()
         env:
-          NIGHTLY_BRANCH: nightly/autonomous-${{ github.run_id }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          DEV_INSTRUCTION: ${{ env.DEV_INSTRUCTION }}
+          DEV_USER_ID: autonomous
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/run_guarded_runtime.py
+
+      - name: Create PR from guarded development branch
+        if: success()
+        env:
+          NIGHTLY_BRANCH: line-dev/${{ github.run_id }}
         run: |
-          if [ "$(git rev-parse HEAD)" = "$AUTONOMOUS_START_SHA" ]; then
-            echo 'No autonomous changes to publish.'
-            exit 0
-          fi
-          git push origin "HEAD:refs/heads/${NIGHTLY_BRANCH}"
+          git ls-remote --exit-code origin "refs/heads/${NIGHTLY_BRANCH}" >/dev/null
           gh pr create \
             --base main \
             --head "${NIGHTLY_BRANCH}" \
             --title "chore: nightly autonomous development ${{ github.run_id }}" \
-            --body "Nightly autonomous development result. Review and CI are required before merge. This workflow does not merge automatically."
+            --body "Nightly autonomous development executed through the common guarded runtime. Review and CI are required before merge. This workflow does not merge automatically."
 
       - name: Upload worker summary
         if: always()
