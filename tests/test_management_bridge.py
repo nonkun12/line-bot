@@ -214,9 +214,4 @@ def test_run_management_request_does_not_fail_after_empty_specialist_result(
         planner=StaticPlanner(),
     )
 
-    assert reply == "【AI NEWS】
-
-(no content)
-
-【Stocks】
-stocks result"
+    assert reply == "【AI NEWS】\n(no content)\n\n【Stocks】\nstocks result"
