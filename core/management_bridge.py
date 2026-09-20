@@ -188,10 +188,11 @@ def run_management_request(
     parts: list[str] = []
     for result in run.distributed.results:
         task = task_map.get(result.task_id)
-        if task is None or not result.summary.strip():
+        if task is None:
             continue
         label = _ROLE_LABELS.get(task.role, task.role.value)
-        parts.append("【" + label + "】\n" + result.summary.strip())
+        summary = result.summary.strip() or "(no content)"
+        parts.append("【" + label + "】\n" + summary)
 
     return "\n\n".join(parts) if parts else None
 
