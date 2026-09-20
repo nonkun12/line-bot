@@ -530,7 +530,7 @@ def test_management_ai_exposes_read_only_mailbox() -> None:
     )
     mailbox = manager.message_bus
     assert not hasattr(mailbox, "send")
-    assert not hasattr(mailbox, "_token")
+    assert not hasattr(mailbox, "_bus")
 
 
 def test_agent_message_bus_rejects_self_send() -> None:
@@ -543,3 +543,39 @@ def test_agent_message_bus_rejects_self_send() -> None:
             content="ok",
             safety_constraints=("result-only", "no-permission-grant"),
         )
+
+
+def test_endpoint_instances_are_bounded_and_reused() -> None:
+    bus = AgentMessageBus()
+    first = bus.endpoint("stocks")
+    second = bus.endpoint("stocks")
+    assert first is second
+    assert len(bus._endpoints) == 1
+
+
+def test_mailbox_view_cannot_reach_bus() -> None:
+    bus = AgentMessageBus()
+    mailbox = bus.mailbox("management")
+    assert not hasattr(mailbox, "_bus")
+    assert not hasattr(mailbox, "send")
+
+
+def test_message_bus_is_thread_safe_for_concurrent_sends() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    bus = AgentMessageBus(max_messages=200)
+    endpoint = bus.endpoint("stocks")
+
+    def send(i: int) -> None:
+        endpoint.send(
+            "management",
+            message_id=f"concurrent-{i}",
+            message_type="task_result",
+            content="ok",
+            safety_constraints=("result-only", "no-permission-grant"),
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(send, range(200)))
+
+    assert len(bus.mailbox("management").peek(limit=201)) == 200
