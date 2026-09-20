@@ -11,7 +11,7 @@ from typing import Callable, Mapping, Protocol, Sequence
 
 from ai_client import generate_chat_completion
 
-from .agent_communication import AgentMessage, AgentMessageBus
+from .agent_communication import AgentMessageBus
 from .distributed_scheduler import DistributedRun, DistributedTaskScheduler
 from .specialist_gate import approved_executors, assert_all_approved
 from .management_contract import ManagementDecision, ManagementRequest
@@ -255,8 +255,9 @@ class ManagementAI:
         self._max_workers = max_workers
 
     @property
-    def message_bus(self) -> AgentMessageBus:
-        return self._message_bus
+    def message_bus(self):
+        """Expose only the management mailbox read path."""
+        return self._message_bus.mailbox("management")
 
     def plan(self, request: ManagementRequest, feedback: Sequence[str] = ()) -> ManagementPlan:
         return self._planner.plan(request, route(request), feedback)
@@ -271,21 +272,18 @@ class ManagementAI:
         batches = plan_batches(plan.tasks)
         task_roles = {task.task_id: task.role.value for task in plan.tasks}
         for result in distributed.results:
-            self._message_bus.send(
-                AgentMessage(
-                    message_id=f"{result.task_id}:result",
-                    sender=task_roles[result.task_id],
-                    recipient="management",
-                    message_type="task_result",
-                    content=result.summary[:4000],
-                    correlation_id=request.user_id,
-                    context={
-                        "task_id": result.task_id,
-                        "success": result.success,
-                        "changed_resources": sorted(result.changed_resources),
-                    },
-                    safety_constraints=("result-only", "no-permission-grant"),
-                )
+            self._message_bus.endpoint(task_roles[result.task_id]).send(
+                "management",
+                message_id=f"{result.task_id}:result",
+                message_type="task_result",
+                content=result.summary[:4000],
+                correlation_id=request.user_id,
+                context={
+                    "task_id": result.task_id,
+                    "success": result.success,
+                    "changed_resources": sorted(result.changed_resources),
+                },
+                safety_constraints=("result-only", "no-permission-grant"),
             )
         return ManagementRun(plan, batches, distributed)
 
