@@ -96,14 +96,19 @@ class AgentMessageCoordinator:
             and source in cls.SPECIALISTS
             and target in cls.SPECIALISTS
         ):
-            if message_type != "task_result":
-                errors.append("specialist-to-specialist messages must be task_result")
-            if "result-only" not in safety_constraints:
-                errors.append("specialist-to-specialist messages require result-only")
-            if "no-permission-grant" not in safety_constraints:
-                errors.append(
-                    "specialist-to-specialist messages require no-permission-grant"
-                )
+            if message_type is not None:
+                if message_type != "task_result":
+                    errors.append(
+                        "specialist-to-specialist messages must be task_result"
+                    )
+                if "result-only" not in safety_constraints:
+                    errors.append(
+                        "specialist-to-specialist messages require result-only"
+                    )
+                if "no-permission-grant" not in safety_constraints:
+                    errors.append(
+                        "specialist-to-specialist messages require no-permission-grant"
+                    )
             return tuple(errors)
         if source == cls.MANAGEMENT and target in cls.SPECIALISTS:
             return tuple(errors)
