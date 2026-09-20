@@ -7,8 +7,9 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+from threading import RLock
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 
 _MAX_MESSAGE_ID_CHARS = 200
@@ -245,10 +246,17 @@ class AgentMessageCoordinator:
 class AgentMessageEndpoint:
     """Identity-bound endpoint issued only by an AgentMessageBus."""
 
-    def __init__(self, bus: "AgentMessageBus", identity: str, token: object) -> None:
-        self._bus = bus
+    def __init__(
+        self,
+        identity: str,
+        send_fn: Callable[..., AgentMessage],
+        receive_fn: Callable[..., tuple[AgentMessage, ...]],
+        peek_fn: Callable[..., tuple[AgentMessage, ...]],
+    ) -> None:
         self._identity = identity
-        self._token = token
+        self._send_fn = send_fn
+        self._receive_fn = receive_fn
+        self._peek_fn = peek_fn
 
     @property
     def identity(self) -> str:
@@ -266,10 +274,9 @@ class AgentMessageEndpoint:
         context: Mapping[str, Any] | None = None,
         safety_constraints: frozenset[str] | tuple[str, ...] = (),
     ) -> AgentMessage:
-        message = AgentMessage(
+        return self._send_fn(
+            recipient,
             message_id=message_id,
-            sender=self._identity,
-            recipient=recipient,
             message_type=message_type,
             content=content,
             correlation_id=correlation_id,
@@ -277,31 +284,36 @@ class AgentMessageEndpoint:
             context=context or {},
             safety_constraints=safety_constraints,
         )
-        return self._bus._send(self._token, message)
 
     def receive(self, *, limit: int = 20) -> tuple[AgentMessage, ...]:
-        return self._bus._receive(self._identity, limit=limit)
+        return self._receive_fn(self._identity, limit=limit)
 
     def peek(self, *, limit: int = 20) -> tuple[AgentMessage, ...]:
-        return self._bus._peek(self._identity, limit=limit)
+        return self._peek_fn(self._identity, limit=limit)
 
 
 class AgentMailboxView:
-    """Read-only mailbox view; it cannot send messages."""
+    """Read-only mailbox view; it cannot send messages or expose the bus."""
 
-    def __init__(self, bus: "AgentMessageBus", identity: str) -> None:
-        self._bus = bus
+    def __init__(
+        self,
+        identity: str,
+        receive_fn: Callable[..., tuple[AgentMessage, ...]],
+        peek_fn: Callable[..., tuple[AgentMessage, ...]],
+    ) -> None:
         self._identity = identity
+        self._receive_fn = receive_fn
+        self._peek_fn = peek_fn
 
     @property
     def identity(self) -> str:
         return self._identity
 
     def receive(self, *, limit: int = 20) -> tuple[AgentMessage, ...]:
-        return self._bus._receive(self._identity, limit=limit)
+        return self._receive_fn(self._identity, limit=limit)
 
     def peek(self, *, limit: int = 20) -> tuple[AgentMessage, ...]:
-        return self._bus._peek(self._identity, limit=limit)
+        return self._peek_fn(self._identity, limit=limit)
 
 
 class AgentMessageBus:
@@ -313,25 +325,57 @@ class AgentMessageBus:
         self._max_messages = min(max_messages, _MAX_MESSAGES_PER_MAILBOX)
         self._queues: dict[str, deque[AgentMessage]] = {}
         self._coordinator = AgentMessageCoordinator()
-        self._endpoint_tokens: dict[object, str] = {}
+        self._endpoints: dict[str, AgentMessageEndpoint] = {}
+        self._lock = RLock()
 
     def endpoint(self, identity: str) -> AgentMessageEndpoint:
         canonical = self._coordinator.canonical_agent(identity)
-        token = object()
-        self._endpoint_tokens[token] = canonical
-        return AgentMessageEndpoint(self, canonical, token)
+        with self._lock:
+            endpoint = self._endpoints.get(canonical)
+            if endpoint is not None:
+                return endpoint
+            endpoint = AgentMessageEndpoint(
+                canonical,
+                lambda recipient, **kwargs: self._send_from_identity(
+                    canonical, recipient, **kwargs
+                ),
+                self._receive,
+                self._peek,
+            )
+            self._endpoints[canonical] = endpoint
+            return endpoint
 
     def mailbox(self, identity: str) -> AgentMailboxView:
         canonical = self._coordinator.canonical_agent(identity)
-        return AgentMailboxView(self, canonical)
+        return AgentMailboxView(canonical, self._receive, self._peek)
 
-    def _send(self, token: object, message: AgentMessage) -> AgentMessage:
-        identity = self._endpoint_tokens.get(token)
-        if identity is None:
-            raise ValueError("unrecognized message endpoint")
-        if message.sender != identity:
-            raise ValueError("endpoint identity does not match message sender")
+    def _send_from_identity(
+        self,
+        identity: str,
+        recipient: str,
+        *,
+        message_id: str,
+        message_type: str,
+        content: str,
+        correlation_id: str = "",
+        reply_to: str | None = None,
+        context: Mapping[str, Any] | None = None,
+        safety_constraints: frozenset[str] | tuple[str, ...] = (),
+    ) -> AgentMessage:
+        message = AgentMessage(
+            message_id=message_id,
+            sender=identity,
+            recipient=recipient,
+            message_type=message_type,
+            content=content,
+            correlation_id=correlation_id,
+            reply_to=reply_to,
+            context=context or {},
+            safety_constraints=safety_constraints,
+        )
+        return self._send(message)
 
+    def _send(self, message: AgentMessage) -> AgentMessage:
         errors = (
             *message.validate(),
             *self._coordinator.validate_route(
@@ -345,32 +389,35 @@ class AgentMessageBus:
             raise ValueError("; ".join(dict.fromkeys(errors)))
 
         recipient = self._coordinator.canonical_agent(message.recipient)
-        queue = self._queues.setdefault(recipient, deque())
-        queue.append(message)
-        while len(queue) > self._max_messages:
-            queue.popleft()
+        with self._lock:
+            queue = self._queues.setdefault(recipient, deque())
+            queue.append(message)
+            while len(queue) > self._max_messages:
+                queue.popleft()
         return message
 
     def _receive(self, recipient: str, *, limit: int = 20) -> tuple[AgentMessage, ...]:
         recipient = self._coordinator.canonical_agent(recipient)
         if limit < 1:
             raise ValueError("limit must be >= 1")
-        queue = self._queues.get(recipient)
-        if not queue:
-            return ()
-        messages: list[AgentMessage] = []
-        for _ in range(min(limit, len(queue))):
-            messages.append(queue.popleft())
-        return tuple(messages)
+        with self._lock:
+            queue = self._queues.get(recipient)
+            if not queue:
+                return ()
+            messages: list[AgentMessage] = []
+            for _ in range(min(limit, len(queue))):
+                messages.append(queue.popleft())
+            return tuple(messages)
 
     def _peek(self, recipient: str, *, limit: int = 20) -> tuple[AgentMessage, ...]:
         recipient = self._coordinator.canonical_agent(recipient)
         if limit < 1:
             raise ValueError("limit must be >= 1")
-        queue = self._queues.get(recipient)
-        if not queue:
-            return ()
-        return tuple(list(queue)[:limit])
+        with self._lock:
+            queue = self._queues.get(recipient)
+            if not queue:
+                return ()
+            return tuple(list(queue)[:limit])
 
 
 __all__ = [
