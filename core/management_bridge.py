@@ -107,7 +107,14 @@ class _CandidateRestrictedPlanner(ManagementPlanner):
         decision: ManagementDecision,
         feedback: Sequence[str] = (),
     ) -> ManagementPlan:
-        plan = self._planner.plan(request, decision, feedback)
+        try:
+            plan = self._planner.plan(request, decision, feedback)
+        except ManagementPlanningError:
+            raise
+        except Exception as exc:
+            raise ManagementPlanningError(
+                "management planner failed"
+            ) from exc
         planned_roles = {task.role for task in plan.tasks}
         unexpected = sorted(
             {task.role.value for task in plan.tasks if task.role not in self._allowed_roles}
