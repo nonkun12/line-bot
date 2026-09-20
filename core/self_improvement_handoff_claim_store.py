@@ -10,6 +10,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+
+import fcntl
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -41,20 +43,36 @@ class ApprovedImprovementHandoffClaimStore:
         return hashlib.sha256(encoded).hexdigest()
 
     def claim(self, handoff: ApprovedImprovementHandoff) -> bool:
-        """Atomically record a claim; return False when already claimed."""
+        """Record a claim once per retained fingerprint, with a process lock."""
         # Reuse the original untrusted-input boundary before a claim is recorded.
         ApprovedImprovementHandoffStore._validate_handoff(handoff)
         fingerprint = self.fingerprint(handoff)
-        records = self._read()
-        if fingerprint in records:
-            return False
-        records.append(fingerprint)
-        self._atomic_write(records[-self.max_records :])
-        return True
+        with self._lock():
+            records = self._read()
+            if fingerprint in records:
+                return False
+            records.append(fingerprint)
+            self._atomic_write(records[-self.max_records :])
+            return True
 
     def is_claimed(self, handoff: ApprovedImprovementHandoff) -> bool:
         ApprovedImprovementHandoffStore._validate_handoff(handoff)
-        return self.fingerprint(handoff) in set(self._read())
+        with self._lock():
+            return self.fingerprint(handoff) in set(self._read())
+
+    def _lock(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(self.path.with_name(f".{self.path.name}.lock"), "a+", encoding="utf-8")
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        class _Locked:
+            def __enter__(self_nonlocal):
+                return handle
+            def __exit__(self_nonlocal, exc_type, exc, tb):
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                finally:
+                    handle.close()
+        return _Locked()
 
     def _read(self) -> list[str]:
         if not self.path.exists():
