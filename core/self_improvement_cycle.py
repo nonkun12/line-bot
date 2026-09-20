@@ -77,7 +77,7 @@ def run_self_improvement_cycle(
         for proposal in proposals:
             decision = control_tower.evaluate_proposal(report, proposal)
             decisions.append(decision)
-            if decision.approved_for_pipeline:
+            if decision.approved_for_pipeline and decision.approved_task_matches(proposal.task):
                 approved.append(proposal)
 
     return SelfImprovementCycleResult(

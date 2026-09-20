@@ -46,3 +46,30 @@ def test_gate_rejects_when_baseline_is_not_ancestor(tmp_path):
     result = type("R", (), {"success": True})()
     gate = GitWorktreeSafetyGate(root, baseline, ("allowed.txt",))
     assert gate.verify(None, result, ("allowed.txt",)) is False
+
+
+def test_gate_rejects_unsafe_manifest_paths(tmp_path):
+    root, baseline = _repo(tmp_path)
+    (root / "allowed.txt").write_text("changed\n")
+    result = type("R", (), {"success": True, "changed_resources": frozenset({"allowed.txt"})})()
+    gate = GitWorktreeSafetyGate(root, baseline, ("../allowed.txt",))
+    assert gate.verify(None, result, ("../allowed.txt",)) is False
+
+
+def test_gate_rejects_symlink_escape(tmp_path):
+    root, baseline = _repo(tmp_path)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside\n")
+    link = root / "allowed.txt"
+    link.unlink()
+    link.symlink_to(outside)
+    result = type("R", (), {"success": True, "changed_resources": frozenset({"allowed.txt"})})()
+    gate = GitWorktreeSafetyGate(root, baseline, ("allowed.txt",))
+    assert gate.verify(None, result, ("allowed.txt",)) is False
+
+
+def test_gate_allows_verified_noop(tmp_path):
+    root, baseline = _repo(tmp_path)
+    result = type("R", (), {"success": True, "changed_resources": frozenset()})()
+    gate = GitWorktreeSafetyGate(root, baseline, ("allowed.txt",))
+    assert gate.verify(None, result, ("allowed.txt",)) is True
