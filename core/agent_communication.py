@@ -111,8 +111,27 @@ class AgentMessageCoordinator:
                     )
             return tuple(errors)
         if source == cls.MANAGEMENT and target in cls.SPECIALISTS:
+            if message_type is not None and message_type == "task_result":
+                if "no-permission-grant" not in safety_constraints:
+                    errors.append(
+                        "management-to-specialist result messages require "
+                        "no-permission-grant"
+                    )
             return tuple(errors)
         if source in cls.SPECIALISTS and target == cls.MANAGEMENT:
+            if message_type is not None:
+                if message_type != "task_result":
+                    errors.append(
+                        "specialist-to-management messages must be task_result"
+                    )
+                if "result-only" not in safety_constraints:
+                    errors.append(
+                        "specialist-to-management messages require result-only"
+                    )
+                if "no-permission-grant" not in safety_constraints:
+                    errors.append(
+                        "specialist-to-management messages require no-permission-grant"
+                    )
             return tuple(errors)
         if not errors:
             errors.append("agent route is not approved")
