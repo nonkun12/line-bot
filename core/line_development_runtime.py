@@ -43,6 +43,15 @@ def _fallback_safe_target(files: list[str]) -> str | None:
     return None
 
 
+def _rollback_to_clean_baseline(baseline_sha: str) -> bool:
+    """Restore the previously verified clean baseline and remove untracked files."""
+    reset = worker.run(["git", "reset", "--hard", baseline_sha])
+    if reset.returncode != 0:
+        return False
+    clean = worker.run(["git", "clean", "-fd"])
+    return clean.returncode == 0
+
+
 def _explicit_comment_plan(instruction: str, chosen: str) -> dict | None:
     """Build deterministic plans for explicit one-line comment E2E requests."""
     if chosen != "line_development.py":
@@ -228,7 +237,8 @@ def execute(instruction: str) -> int:
     if head.returncode != 0 or not head.stdout.strip():
         print(f"Baseline SHA capture failed: {head.stderr[-2000:]}", flush=True)
         return 1
-    safety_gate = GitWorktreeSafetyGate(worker.ROOT, head.stdout.strip(), (state.chosen,))
+    baseline_sha = head.stdout.strip()
+    safety_gate = GitWorktreeSafetyGate(worker.ROOT, baseline_sha, (state.chosen,))
     runtime = QualityRuntime(
         {
             AgentRole.IMPLEMENTER: executor,
@@ -246,18 +256,19 @@ def execute(instruction: str) -> int:
     try:
         report = runtime.run(tasks[1:])
     except Exception as exc:
-        worker.restore(state.touched or [])
+        _rollback_to_clean_baseline(baseline_sha)
         print(f"Multi-agent development failed closed: {type(exc).__name__}: {exc}", flush=True)
         return 1
     print(f"[manager] {tasks[0].task_id}: {manager_result.summary[-1500:]}", flush=True)
     for item in report.completed:
         print(f"[{item.task.role.value}] {item.task.task_id}: {item.result.summary[-1500:]}", flush=True)
     if not report.success or not report.integration_ready:
-        worker.restore(state.touched or [])
+        _rollback_to_clean_baseline(baseline_sha)
         print(f"Multi-agent development failed: {report.error or report.failed_task_id}", flush=True)
         return 1
     touched = state.touched or []
     if not touched:
+        _rollback_to_clean_baseline(baseline_sha)
         print("Multi-agent development produced no file change.", flush=True)
         return 1
     branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
