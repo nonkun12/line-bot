@@ -47,7 +47,12 @@ class AgentMessage:
             raise ValueError("; ".join(dict.fromkeys(errors)))
 
         constraints = frozenset(self.safety_constraints)
-        context = MappingProxyType(dict(self.context))
+        normalized_context = dict(self.context)
+        if "changed_resources" in normalized_context:
+            normalized_context["changed_resources"] = tuple(
+                normalized_context["changed_resources"]
+            )
+        context = MappingProxyType(normalized_context)
         object.__setattr__(self, "safety_constraints", constraints)
         object.__setattr__(self, "context", context)
 
