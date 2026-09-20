@@ -9,8 +9,13 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
-from .agent_runtime import RepairPlanner
+from .agent_runtime import RepairPlanner, RuntimeReport
+from .control_tower import ControlTower
+from .creator_critic_runtime import build_creator_critic_loop
+from .self_improvement import SelfImprovementEngine
+from .self_improvement_cycle import SelfImprovementCycleResult, run_self_improvement_cycle
 from .execution_safety import GitWorktreeSafetyGate
 from .multi_agent import AgentResult, AgentRole, AgentTask
 from .quality_runtime import QualityRuntime
@@ -86,6 +91,68 @@ def _explicit_comment_plan(instruction: str, chosen: str) -> dict | None:
 
 def _is_deterministic_comment_request(instruction: str, chosen: str | None) -> bool:
     return chosen == "line_development.py" and re.search(r"コメント.*(?:1行|一行)|(?:1行|一行).*コメント", instruction, re.IGNORECASE | re.DOTALL) is not None
+
+
+def _self_improvement_history_path() -> Path:
+    raw = os.environ.get(
+        "SELF_IMPROVEMENT_HISTORY_PATH",
+        "/tmp/line-bot-self-improvement.jsonl",
+    ).strip()
+    return Path(raw or "/tmp/line-bot-self-improvement.jsonl")
+
+
+def _self_improvement_creator_critic_enabled() -> bool:
+    return os.environ.get(
+        "SELF_IMPROVEMENT_CREATOR_CRITIC",
+        "true",
+    ).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def observe_self_improvement(
+    report: RuntimeReport,
+    target_path: str,
+) -> SelfImprovementCycleResult | None:
+    """Feed one real development report into the bounded improvement loop.
+
+    This is an observation/approval boundary only. Generated proposals and
+    approved handoffs are never executed from this function.
+    """
+    try:
+        feedback_engine = SelfImprovementEngine()
+        creator_critic = (
+            build_creator_critic_loop(max_iterations=1)
+            if _self_improvement_creator_critic_enabled()
+            else None
+        )
+        control_tower = ControlTower(
+            feedback_engine=feedback_engine,
+            creator_critic=creator_critic,
+        )
+        result = run_self_improvement_cycle(
+            report,
+            _self_improvement_history_path(),
+            target_paths=(target_path,),
+            control_tower=control_tower,
+        )
+        approved = len(result.approved_proposals)
+        handoff_note = f", approved_handoffs={approved}" if approved else ""
+        print(
+            "[SELF-IMPROVEMENT] "
+            f"signals={len(result.new_signals)}, "
+            f"patterns={len(result.analysis.recurring_patterns)}, "
+            f"proposals={len(result.proposals)}"
+            f"{handoff_note}",
+            flush=True,
+        )
+        return result
+    except Exception as exc:
+        # Improvement observation must never turn a validated development result
+        # into an unrelated deployment failure.
+        print(
+            f"[SELF-IMPROVEMENT] observation skipped: {type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        return None
 
 
 class DevelopmentExecutor:
@@ -262,6 +329,7 @@ def execute(instruction: str) -> int:
     print(f"[manager] {tasks[0].task_id}: {manager_result.summary[-1500:]}", flush=True)
     for item in report.completed:
         print(f"[{item.task.role.value}] {item.task.task_id}: {item.result.summary[-1500:]}", flush=True)
+    improvement_result = observe_self_improvement(report, state.chosen)
     if not report.success or not report.integration_ready:
         _rollback_to_clean_baseline(baseline_sha)
         print(f"Multi-agent development failed: {report.error or report.failed_task_id}", flush=True)
