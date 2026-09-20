@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from .control_tower import ControlTower, ControlTowerDecision
     from .self_improvement import SelfImprovementEngine
     from .self_improvement_cycle import SelfImprovementCycleResult
+    from .self_improvement_handoff import ApprovedImprovementHandoff
 
 
 class RuntimeExecutor(Protocol):
@@ -107,6 +108,7 @@ class MultiAgentRuntime:
         self._last_control_tower_decision: ControlTowerDecision | None = None
         self._last_self_improvement_cycle: SelfImprovementCycleResult | None = None
         self._last_self_improvement_cycle_error: str | None = None
+        self._last_self_improvement_handoffs: tuple[ApprovedImprovementHandoff, ...] = ()
         if feedback_engine is not None and control_tower is not None and control_tower.feedback_engine is not feedback_engine:
             raise ValueError("feedback_engine and control_tower must share the same feedback engine")
 
@@ -131,11 +133,17 @@ class MultiAgentRuntime:
         """Expose a bounded persistence/analysis error without failing development."""
         return self._last_self_improvement_cycle_error
 
+    @property
+    def last_self_improvement_handoffs(self) -> tuple[ApprovedImprovementHandoff, ...]:
+        """Expose approved, immutable self-improvement handoffs without executing them."""
+        return self._last_self_improvement_handoffs
+
     def _finalize_development(self, report: RuntimeReport) -> RuntimeReport:
         """Observe one completed development run through the management layer."""
         self._last_control_tower_decision = None
         self._last_self_improvement_cycle = None
         self._last_self_improvement_cycle_error = None
+        self._last_self_improvement_handoffs = ()
 
         if self._self_improvement_history_path is not None:
             # The durable cycle is the single proposal path. Generated
@@ -153,6 +161,9 @@ class MultiAgentRuntime:
                 if self._last_self_improvement_cycle.control_tower_decisions:
                     self._last_control_tower_decision = (
                         self._last_self_improvement_cycle.control_tower_decisions[-1]
+                    )
+                    self._last_self_improvement_handoffs = self._build_approved_handoffs(
+                        self._last_self_improvement_cycle.control_tower_decisions
                     )
                 elif self._control_tower is None and self._feedback_engine is not None:
                     self._feedback_engine.observe(report)
@@ -187,7 +198,30 @@ class MultiAgentRuntime:
             objective=objective,
             evidence=evidence,
         )
+        self._last_self_improvement_handoffs = self._build_approved_handoffs((self._last_control_tower_decision,))
         return self._last_control_tower_decision
+
+    def _build_approved_handoffs(
+        self,
+        decisions: Sequence[ControlTowerDecision],
+    ) -> tuple[ApprovedImprovementHandoff, ...]:
+        """Convert approved decisions into immutable downstream handoffs only."""
+        if not self._self_improvement_target_paths:
+            return ()
+        from .self_improvement_handoff import build_approved_improvement_handoff
+
+        handoffs: list[ApprovedImprovementHandoff] = []
+        for decision in decisions:
+            try:
+                handoffs.append(
+                    build_approved_improvement_handoff(
+                        decision,
+                        self._self_improvement_target_paths,
+                    )
+                )
+            except (PermissionError, TypeError, ValueError):
+                continue
+        return tuple(handoffs)
 
     def run(self, tasks: Sequence[AgentTask]) -> RuntimeReport:
         """Execute one static plan and fail closed on any unsafe result."""
