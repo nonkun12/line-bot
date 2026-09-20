@@ -71,3 +71,27 @@ def test_management_decision_contract_is_bounded() -> None:
             "ok",
             metadata={"evidence": "x" * 1001},
         )
+
+
+def test_management_metadata_is_snapshot_and_immutable() -> None:
+    metadata = {"source": "slack"}
+    request = ManagementRequest("u1", "hello", metadata=metadata)
+    metadata["source"] = "tampered"
+
+    assert request.metadata["source"] == "slack"
+    with pytest.raises(TypeError):
+        request.metadata["source"] = "tampered"  # type: ignore[index]
+
+
+def test_management_decision_metadata_is_snapshot_and_immutable() -> None:
+    metadata = {"source": "router"}
+    decision = ManagementDecision(
+        Specialist.NEWS,
+        "matched news",
+        metadata=metadata,
+    )
+    metadata["source"] = "tampered"
+
+    assert decision.metadata["source"] == "router"
+    with pytest.raises(TypeError):
+        decision.metadata["source"] = "tampered"  # type: ignore[index]
