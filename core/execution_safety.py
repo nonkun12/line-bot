@@ -38,8 +38,7 @@ class GitWorktreeSafetyGate:
             head = _git(root, "rev-parse", "HEAD")
             if not head:
                 return False
-            if _git(root, "merge-base", "--is-ancestor", baseline, head, check=False) != "":
-                return False
+            _git(root, "merge-base", "--is-ancestor", baseline, head)
             changed = _changed_paths(root, baseline)
         except (OSError, subprocess.SubprocessError):
             return False
