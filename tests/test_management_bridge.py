@@ -180,3 +180,43 @@ def test_ai_gateway_falls_back_to_core_when_management_returns_none(monkeypatch)
     )
 
     assert response == "従来Core結果"
+
+
+def test_run_management_request_does_not_fail_after_empty_specialist_result(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "core.management_bridge.build_core_agent_registry",
+        lambda: object(),
+    )
+    monkeypatch.setattr(
+        "core.management_bridge.build_registry_executors",
+        lambda registry, request: {
+            AgentRole.NEWS: type(
+                "EmptyNewsExecutor",
+                (),
+                {
+                    "execute": lambda self, task: AgentResult(
+                        task.task_id,
+                        True,
+                        "",
+                    )
+                },
+            )(),
+            AgentRole.STOCKS: FakeExecutor(AgentRole.STOCKS),
+        },
+    )
+
+    reply = run_management_request(
+        "u1",
+        "AIニュースと株価を調べて",
+        channel="slack",
+        planner=StaticPlanner(),
+    )
+
+    assert reply == "【AI NEWS】
+
+(no content)
+
+【Stocks】
+stocks result"
