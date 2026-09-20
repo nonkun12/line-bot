@@ -132,6 +132,7 @@ class MultiAgentRuntime:
         self._execution_safety_gate = gate
 
     @property
+    @property
     def last_control_tower_decision(self) -> ControlTowerDecision | None:
         """Expose the latest management decision without applying it automatically."""
         return self._last_control_tower_decision
@@ -151,7 +152,6 @@ class MultiAgentRuntime:
         """Expose approved, immutable self-improvement handoffs without executing them."""
         return self._last_self_improvement_handoffs
 
-    @property
     def claim_self_improvement_handoff(self, handoff: ApprovedImprovementHandoff) -> bool:
         """Claim one validated handoff without executing or mutating the repository."""
         if self._self_improvement_handoff_claim_store is None:
