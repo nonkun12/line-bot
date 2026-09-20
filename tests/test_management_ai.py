@@ -23,7 +23,7 @@ def test_message_bus_requires_safety_and_round_trips() -> None:
     bus = AgentMessageBus(max_messages=2)
     message = AgentMessage(
         message_id="stocks-1:result",
-        sender="stocks-1",
+        sender="stocks",
         recipient="management",
         message_type="task_result",
         content="analysis complete",
@@ -508,7 +508,7 @@ def test_message_context_is_allowlisted_and_immutable() -> None:
     context["success"] = False
     context["changed_resources"].append("shell")
     assert message.context["success"] is True
-    assert message.context["changed_resources"] == ["stocks"]
+    assert message.context["changed_resources"] == ("stocks",)
     with pytest.raises(TypeError):
         message.context["success"] = False  # type: ignore[index]
 
@@ -531,6 +531,7 @@ def test_management_ai_exposes_read_only_mailbox() -> None:
     )
     mailbox = manager.message_bus
     assert not hasattr(mailbox, "send")
+    assert not hasattr(mailbox, "_token")
 
 
 def test_agent_message_bus_rejects_self_send() -> None:
