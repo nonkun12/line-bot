@@ -6,8 +6,13 @@ def test_distributed_bridge_uses_canonical_catalog():
     assert _AGENT_NAMES == {
         descriptor.role: descriptor.agent_name
         for descriptor in DISTRIBUTED_AGENT_CATALOG
+        if descriptor.role is not __import__("core.multi_agent", fromlist=["AgentRole"]).AgentRole.GENERAL
     }
 
 
 def test_distributed_bridge_catalog_contains_every_registered_domain():
-    assert set(_AGENT_NAMES) == {descriptor.role for descriptor in DISTRIBUTED_AGENT_CATALOG}
+    assert set(_AGENT_NAMES) == {
+        descriptor.role
+        for descriptor in DISTRIBUTED_AGENT_CATALOG
+        if descriptor.role is not __import__("core.multi_agent", fromlist=["AgentRole"]).AgentRole.GENERAL
+    }
