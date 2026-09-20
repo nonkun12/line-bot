@@ -127,3 +127,41 @@ def test_yahoo_quote_retries_second_endpoint(monkeypatch):
     assert len(calls) == 2
     assert "query1.finance.yahoo.com" in calls[0]
     assert "query2.finance.yahoo.com" in calls[1]
+
+def test_yahoo_japan_html_fallback(monkeypatch):
+    html = """<!doctype html>
+<html><body>
+  <h1>トヨタ自動車(株)〖7203.T〗</h1>
+  <div>3,025</div>
+  <div>前日比</div>
+  <div>-9(-0.30%)</div>
+  <div>リアルタイム株価</div>
+</body></html>"""
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return html.encode("utf-8")
+
+    calls = []
+
+    def fake_urlopen(request, timeout):
+        calls.append(request.full_url)
+        if request.full_url.startswith("https://query"):
+            raise OSError("Yahoo chart unavailable")
+        return FakeResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    quote = StocksAgent._fetch_quote("7203.T")
+
+    assert quote["price"] == 3025.0
+    assert quote["change"] == -9.0
+    assert quote["change_pct"] == -0.30
+    assert quote["currency"] == "JPY"
+    assert calls[-1] == "https://finance.yahoo.co.jp/quote/7203.T"
+
