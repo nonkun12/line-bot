@@ -101,7 +101,12 @@ def _remote_mode(text: str) -> str | None:
 
 
 def _skills(text: str) -> tuple[str, ...]:
-    value = _label_value(text, ("必須スキル", "スキル", "経験", "技術"))
+    match = re.search(
+        r"(?:必須スキル|スキル|経験|技術)\s*[:：]?\s*(.*?)(?=\n|(?:勤務地|年収(?:下限|最低)?|希望職種|職種|リモート|在宅)\s*[:：]?|$)",
+        str(text or ""),
+        re.IGNORECASE,
+    )
+    value = match.group(1).strip(" \t,、") if match else ""
     if not value:
         return ()
     parts = [re.sub(r"\s+", " ", part).strip() for part in re.split(r"[,、/／]+", value)]
