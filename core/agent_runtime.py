@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Mapping, Protocol, Sequence, TYPE_CHECKING
 
 from .multi_agent import AgentResult, AgentRole, AgentTask, plan_batches
@@ -15,6 +16,7 @@ from .multi_agent import AgentResult, AgentRole, AgentTask, plan_batches
 if TYPE_CHECKING:
     from .control_tower import ControlTower, ControlTowerDecision
     from .self_improvement import SelfImprovementEngine
+    from .self_improvement_cycle import SelfImprovementCycleResult
 
 
 class RuntimeExecutor(Protocol):
@@ -66,6 +68,8 @@ class MultiAgentRuntime:
         max_rounds: int = 3,
         feedback_engine: SelfImprovementEngine | None = None,
         control_tower: ControlTower | None = None,
+        self_improvement_history_path: str | Path | None = None,
+        self_improvement_target_paths: tuple[str, ...] = (),
     ) -> None:
         if max_workers < 1:
             raise ValueError("max_workers must be >= 1")
@@ -78,7 +82,13 @@ class MultiAgentRuntime:
         self._max_rounds = max_rounds
         self._feedback_engine = feedback_engine
         self._control_tower = control_tower
+        self._self_improvement_history_path = (
+            Path(self_improvement_history_path) if self_improvement_history_path is not None else None
+        )
+        self._self_improvement_target_paths = tuple(self_improvement_target_paths)
         self._last_control_tower_decision: ControlTowerDecision | None = None
+        self._last_self_improvement_cycle: SelfImprovementCycleResult | None = None
+        self._last_self_improvement_cycle_error: str | None = None
         if feedback_engine is not None and control_tower is not None and control_tower.feedback_engine is not feedback_engine:
             raise ValueError("feedback_engine and control_tower must share the same feedback engine")
 
@@ -87,12 +97,36 @@ class MultiAgentRuntime:
         """Expose the latest management decision without applying it automatically."""
         return self._last_control_tower_decision
 
+    @property
+    def last_self_improvement_cycle(self) -> SelfImprovementCycleResult | None:
+        """Expose the latest persisted improvement cycle without applying proposals."""
+        return self._last_self_improvement_cycle
+
+    @property
+    def last_self_improvement_cycle_error(self) -> str | None:
+        """Expose a bounded persistence/analysis error without failing development."""
+        return self._last_self_improvement_cycle_error
+
     def _finalize_development(self, report: RuntimeReport) -> RuntimeReport:
         """Observe one completed development run through the management layer."""
         if self._control_tower is not None:
             self._last_control_tower_decision = self._control_tower.observe(report)
         elif self._feedback_engine is not None:
             self._feedback_engine.observe(report)
+
+        self._last_self_improvement_cycle = None
+        self._last_self_improvement_cycle_error = None
+        if self._self_improvement_history_path is not None:
+            try:
+                from .self_improvement_cycle import run_self_improvement_cycle
+
+                self._last_self_improvement_cycle = run_self_improvement_cycle(
+                    report,
+                    self._self_improvement_history_path,
+                    target_paths=self._self_improvement_target_paths,
+                )
+            except Exception as exc:
+                self._last_self_improvement_cycle_error = f"{type(exc).__name__}: {exc}"
         return report
 
     def run_self_improvement_cycle(

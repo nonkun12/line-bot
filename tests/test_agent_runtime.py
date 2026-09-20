@@ -158,6 +158,27 @@ def test_runtime_failure_emits_debug_signal_to_feedback_engine() -> None:
     assert engine.propose() is not None
 
 
+def test_runtime_persists_self_improvement_cycle_without_executing_proposal(tmp_path) -> None:
+    runtime = MultiAgentRuntime({
+        AgentRole.IMPLEMENTER: Executor({}),
+        AgentRole.TESTER: Executor({"test": AgentResult("test", False, "pytest failed")}),
+        AgentRole.REVIEWER: Executor({}),
+        AgentRole.REPAIRER: Executor({}),
+        AgentRole.INTEGRATOR: Executor({}),
+    }, self_improvement_history_path=tmp_path / "self-improvement.jsonl",
+       self_improvement_target_paths=("tests/test_agent_runtime.py",))
+
+    first = runtime.run_development(development_tasks())
+    second = runtime.run_development(development_tasks())
+
+    assert not first.success
+    assert not second.success
+    assert runtime.last_self_improvement_cycle is not None
+    assert len(runtime.last_self_improvement_cycle.proposals) >= 1
+    assert runtime.last_self_improvement_cycle.proposals[0].task is not None
+    assert runtime.last_self_improvement_cycle_error is None
+
+
 def test_runtime_self_improvement_cycle_exposes_reviewed_decision_without_mutation() -> None:
     model = lambda prompt: "minimal test-backed improvement"
     critic = lambda prompt: "evidence supports the bounded proposal"
