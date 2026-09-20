@@ -18,9 +18,13 @@ from urllib import request as urllib_request
 
 from groq import Groq
 
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = _ROOT
 MODEL = os.environ.get("DEV_AI_MODEL", "openai/gpt-oss-20b")
 MAX_FILES = 1
 MAX_FILE_CHARS = 4500
@@ -234,13 +238,13 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
         path, old, new = change.get("file"), change.get("old"), change.get("new")
         if path != chosen:
             return False, "change_outside_selected_file"
+        if is_protected(path) and not _is_allowed_comment_test_change(plan, chosen):
+            return False, f"protected_file:{path}"
         if (
             not _is_shared_policy_autonomous(path)
             and not _is_allowed_comment_test_change(plan, chosen)
         ):
             return False, f"self_improvement_policy:{_shared_policy_decision(path).value}"
-        if is_protected(path) and not _is_allowed_comment_test_change(plan, chosen):
-            return False, f"protected_file:{path}"
         if not isinstance(old, str) or not old or not isinstance(new, str):
             return False, "invalid_old_new"
         if old == new:
