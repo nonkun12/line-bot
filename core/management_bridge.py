@@ -46,6 +46,10 @@ SUPPORTED_MULTI_SPECIALISTS = frozenset(
     }
 )
 
+_MANAGEMENT_EXECUTION_FAILURE = (
+    "管理AIの実行で問題が発生したため、同じ専門AIを再実行せずに処理を停止しました。"
+)
+
 _ROLE_LABELS = {
     AgentRole.ENGLISH: "English",
     AgentRole.NEWS: "AI NEWS",
@@ -103,7 +107,14 @@ class _CandidateRestrictedPlanner(ManagementPlanner):
         decision: ManagementDecision,
         feedback: Sequence[str] = (),
     ) -> ManagementPlan:
-        plan = self._planner.plan(request, decision, feedback)
+        try:
+            plan = self._planner.plan(request, decision, feedback)
+        except ManagementPlanningError:
+            raise
+        except Exception as exc:
+            raise ManagementPlanningError(
+                "management planner failed"
+            ) from exc
         planned_roles = {task.role for task in plan.tasks}
         unexpected = sorted(
             {task.role.value for task in plan.tasks if task.role not in self._allowed_roles}
@@ -176,22 +187,30 @@ def run_management_request(
         run = manager.run(management_request)
     except SpecialistGateError:
         raise  # fail-closed: never fall back to the legacy route on a gate denial
-    except Exception as exc:
-        print(f"[MANAGEMENT AI] fallback to legacy route: {type(exc).__name__}: {exc}")
+    except ManagementPlanningError as exc:
+        # Planning failed before specialist execution; preserving the legacy route
+        # is safe because no distributed specialist has run yet.
+        print(f"[MANAGEMENT AI] planner failed; fallback to legacy route: {type(exc).__name__}: {exc}")
         return None
+    except DistributedExecutionError as exc:
+        # An executor may already have produced side effects before failing.
+        # Never retry the request through the legacy route.
+        print(f"[MANAGEMENT AI] distributed execution failed; no legacy retry: {type(exc).__name__}: {exc}")
+        return _MANAGEMENT_EXECUTION_FAILURE
+    except Exception as exc:
+        # Treat unexpected Management AI failures conservatively. A retry could
+        # duplicate external effects from a partially executed round.
+        print(f"[MANAGEMENT AI] unexpected execution failure; no legacy retry: {type(exc).__name__}: {exc}")
+        return _MANAGEMENT_EXECUTION_FAILURE
 
     if not run.success:
-        print("[MANAGEMENT AI] distributed round failed; preserving legacy route")
-        return None
+        print("[MANAGEMENT AI] distributed round reported failure; no legacy retry")
+        return _MANAGEMENT_EXECUTION_FAILURE
 
-    task_map = {task.task_id: task for task in run.plan.tasks}
     parts: list[str] = []
-    for result in run.distributed.results:
-        task = task_map.get(result.task_id)
-        if task is None or not result.summary.strip():
-            continue
-        label = _ROLE_LABELS.get(task.role, task.role.value)
-        parts.append("【" + label + "】\n" + result.summary.strip())
+    for observation in run.observations:
+        label = _ROLE_LABELS.get(observation.role, observation.role.value)
+        parts.append("【" + label + "】\n" + observation.summary)
 
     return "\n\n".join(parts) if parts else None
 
