@@ -80,8 +80,8 @@ class StocksAgent:
             f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range=5d&interval=1d",
             f"https://query2.finance.yahoo.com/v8/finance/chart/{encoded}?range=5d&interval=1d",
         )
-        payload = None
         last_error: Exception | None = None
+
         for url in urls:
             try:
                 request = urllib.request.Request(
@@ -90,45 +90,54 @@ class StocksAgent:
                 )
                 with urllib.request.urlopen(request, timeout=_DEFAULT_TIMEOUT_SEC) as response:
                     payload = json.loads(response.read().decode("utf-8"))
-                break
             except (OSError, ValueError, json.JSONDecodeError) as exc:
                 last_error = exc
-        if payload is None:
-            raise RuntimeError("Yahoo Finance quote retrieval failed") from last_error
+                continue
 
-        result = payload.get("chart", {}).get("result")
-        if not isinstance(result, list) or not result or not isinstance(result[0], dict):
-            raise ValueError("quote result unavailable")
-        data = result[0]
-        meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
-        price = meta.get("regularMarketPrice")
-        previous = meta.get("previousClose")
-        if not isinstance(price, (int, float)):
-            indicators = data.get("indicators", {})
-            quotes = indicators.get("quote", []) if isinstance(indicators, dict) else []
-            closes = quotes[0].get("close", []) if quotes and isinstance(quotes[0], dict) else []
-            numeric_closes = [v for v in closes if isinstance(v, (int, float))]
-            price = numeric_closes[-1] if numeric_closes else None
-        if not isinstance(price, (int, float)):
-            raise ValueError("quote price unavailable")
-        change = price - previous if isinstance(previous, (int, float)) else None
-        change = round(change, 10) if change is not None else None
-        change_pct = (change / previous * 100) if change is not None and previous else None
-        change_pct = round(change_pct, 10) if change_pct is not None else None
-        currency = str(meta.get("currency") or "")
-        market_time = meta.get("regularMarketTime")
-        market_state = str(meta.get("marketState") or "").upper() or None
-        return {
-            "ticker": cls._display_ticker(ticker),
-            "price": float(price),
-            "previous_close": float(previous) if isinstance(previous, (int, float)) else None,
-            "change": float(change) if change is not None else None,
-            "change_pct": float(change_pct) if change_pct is not None else None,
-            "currency": currency,
-            "market_time": market_time,
-            "market_time_jst": cls._format_market_time(market_time),
-            "market_state": market_state,
-        }
+            try:
+                if not isinstance(payload, dict):
+                    raise ValueError("quote payload unavailable")
+
+                result = payload.get("chart", {}).get("result")
+                if not isinstance(result, list) or not result or not isinstance(result[0], dict):
+                    raise ValueError("quote result unavailable")
+
+                data = result[0]
+                meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+                price = meta.get("regularMarketPrice")
+                previous = meta.get("previousClose")
+                if not isinstance(price, (int, float)):
+                    indicators = data.get("indicators", {})
+                    quotes = indicators.get("quote", []) if isinstance(indicators, dict) else []
+                    closes = quotes[0].get("close", []) if quotes and isinstance(quotes[0], dict) else []
+                    numeric_closes = [v for v in closes if isinstance(v, (int, float))]
+                    price = numeric_closes[-1] if numeric_closes else None
+                if not isinstance(price, (int, float)):
+                    raise ValueError("quote price unavailable")
+
+                change = price - previous if isinstance(previous, (int, float)) else None
+                change = round(change, 10) if change is not None else None
+                change_pct = (change / previous * 100) if change is not None and previous else None
+                change_pct = round(change_pct, 10) if change_pct is not None else None
+                currency = str(meta.get("currency") or "")
+                market_time = meta.get("regularMarketTime")
+                market_state = str(meta.get("marketState") or "").upper() or None
+                return {
+                    "ticker": cls._display_ticker(ticker),
+                    "price": float(price),
+                    "previous_close": float(previous) if isinstance(previous, (int, float)) else None,
+                    "change": float(change) if change is not None else None,
+                    "change_pct": float(change_pct) if change_pct is not None else None,
+                    "currency": currency,
+                    "market_time": market_time,
+                    "market_time_jst": cls._format_market_time(market_time),
+                    "market_state": market_state,
+                }
+            except (TypeError, ValueError, KeyError, IndexError) as exc:
+                last_error = exc
+                continue
+
+        raise RuntimeError("Yahoo Finance quote retrieval failed") from last_error
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         resolved = self._resolve_ticker(request.message)
