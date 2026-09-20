@@ -7,6 +7,19 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+_MAX_MESSAGE_ID_CHARS = 200
+_MAX_AGENT_NAME_CHARS = 100
+_MAX_MESSAGE_TYPE_CHARS = 100
+_MAX_CONTENT_CHARS = 4000
+_MAX_CORRELATION_ID_CHARS = 200
+_MAX_REPLY_TO_CHARS = 200
+_MAX_CONTEXT_ITEMS = 16
+_MAX_CONTEXT_KEY_CHARS = 100
+_MAX_CONTEXT_VALUE_CHARS = 1000
+_MAX_SAFETY_CONSTRAINTS = 8
+_MAX_SAFETY_CONSTRAINT_CHARS = 100
+
+
 from typing import Any, Mapping
 
 
@@ -35,8 +48,44 @@ class AgentMessage:
                 errors.append(f"{name} is required")
         if self.sender.strip() == self.recipient.strip():
             errors.append("sender and recipient must differ")
+        for value, name, limit in (
+            (self.message_id, "message_id", _MAX_MESSAGE_ID_CHARS),
+            (self.sender, "sender", _MAX_AGENT_NAME_CHARS),
+            (self.recipient, "recipient", _MAX_AGENT_NAME_CHARS),
+            (self.message_type, "message_type", _MAX_MESSAGE_TYPE_CHARS),
+            (self.correlation_id, "correlation_id", _MAX_CORRELATION_ID_CHARS),
+        ):
+            if isinstance(value, str) and len(value) > limit:
+                errors.append(f"{name} exceeds {limit} characters")
+        if self.reply_to is not None and (
+            not isinstance(self.reply_to, str) or len(self.reply_to) > _MAX_REPLY_TO_CHARS
+        ):
+            errors.append(f"reply_to exceeds {_MAX_REPLY_TO_CHARS} characters")
+        if not isinstance(self.content, str):
+            errors.append("content must be a string")
+        elif len(self.content) > _MAX_CONTENT_CHARS:
+            errors.append(f"content exceeds {_MAX_CONTENT_CHARS} characters")
         if not self.safety_constraints:
             errors.append("at least one safety constraint is required")
+        if len(self.safety_constraints) > _MAX_SAFETY_CONSTRAINTS:
+            errors.append(f"too many safety constraints (max {_MAX_SAFETY_CONSTRAINTS})")
+        for constraint in self.safety_constraints:
+            if not isinstance(constraint, str) or not constraint.strip():
+                errors.append("safety constraints must be non-empty strings")
+            elif len(constraint) > _MAX_SAFETY_CONSTRAINT_CHARS:
+                errors.append(
+                    f"safety constraint exceeds {_MAX_SAFETY_CONSTRAINT_CHARS} characters"
+                )
+        if not isinstance(self.context, Mapping) or len(self.context) > _MAX_CONTEXT_ITEMS:
+            errors.append(f"context must contain at most {_MAX_CONTEXT_ITEMS} items")
+        elif any(
+            not isinstance(key, str)
+            or not key.strip()
+            or len(key) > _MAX_CONTEXT_KEY_CHARS
+            or len(str(value)) > _MAX_CONTEXT_VALUE_CHARS
+            for key, value in self.context.items()
+        ):
+            errors.append("context entries exceed bounded envelope")
         return tuple(errors)
 
 
@@ -94,8 +143,6 @@ class AgentMessageBus:
 
     def send(self, message: AgentMessage) -> AgentMessage:
         errors = (*message.validate(), *self._coordinator.validate_route(message.sender, message.recipient))
-        if len(message.content) > 4000:
-            errors = (*errors, "content exceeds 4000 characters")
         if errors:
             raise ValueError("; ".join(dict.fromkeys(errors)))
         queue = self._queues.setdefault(message.recipient.strip(), deque())
