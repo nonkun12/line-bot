@@ -38,7 +38,8 @@ class GitWorktreeSafetyGate:
             head = _git(root, "rev-parse", "HEAD")
             if not head:
                 return False
-            _git(root, "merge-base", "--is-ancestor", baseline, head)
+            if head != baseline:
+                _git(root, "merge-base", "--is-ancestor", baseline, head)
             changed = _changed_paths(root, baseline)
         except (OSError, subprocess.SubprocessError):
             return False
@@ -49,7 +50,12 @@ class GitWorktreeSafetyGate:
         return all(_within_scope(path, allowed) and _safe_worktree_path(root, path) for path in changed)
 
 
-def _git(root: Path, *args: str, check: bool = True) -> str:
+def _git(
+    root: Path,
+    *args: str,
+    check: bool = True,
+    strip_output: bool = True,
+) -> str:
     completed = subprocess.run(
         ("git", "-C", str(root), *args),
         check=check,
@@ -57,12 +63,18 @@ def _git(root: Path, *args: str, check: bool = True) -> str:
         text=True,
         timeout=10,
     )
-    return completed.stdout.strip()
+    return completed.stdout.strip() if strip_output else completed.stdout
 
 
 def _changed_paths(root: Path, baseline: str) -> set[str]:
     tracked = _git(root, "diff", "--name-only", "--diff-filter=ACDMRTUXB", baseline)
-    status = _git(root, "status", "--porcelain=v1", "--untracked-files=all")
+    status = _git(
+        root,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        strip_output=False,
+    )
     paths = {line.strip() for line in tracked.splitlines() if line.strip()}
     for line in status.splitlines():
         if len(line) >= 4:
