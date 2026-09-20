@@ -10,6 +10,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from .protected_paths import is_protected
+
 
 @dataclass(frozen=True)
 class GitWorktreeSafetyGate:
@@ -31,7 +33,7 @@ class GitWorktreeSafetyGate:
         if configured and supplied != configured:
             return False
         allowed = configured or supplied
-        if not allowed or not _safe_manifest(allowed):
+        if not allowed or not _safe_manifest(allowed) or any(is_protected(path) for path in allowed):
             return False
 
         try:
