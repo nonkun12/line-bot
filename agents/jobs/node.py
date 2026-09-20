@@ -8,7 +8,7 @@ from agents.jobs.intents import (
     extract_job_search_criteria,
     is_job_seeking_intent,
 )
-from agents.jobs.search_contract import JobSearchProvider, UnavailableJobSearchProvider
+from agents.jobs.search_contract import JobSearchProvider, JobSearchResult, UnavailableJobSearchProvider
 from core.agents import AgentRequest, AgentResponse
 
 
@@ -42,7 +42,13 @@ class JobSeekingAgent:
 
         if mode == "search":
             criteria = extract_job_search_criteria(request.message)
-            result = self._search_provider.search(criteria)
+            try:
+                result = self._search_provider.search(criteria)
+            except Exception:
+                result = JobSearchResult(status="error", message="求人ソースの検索に失敗しました")
+            if not isinstance(result, JobSearchResult):
+                result = JobSearchResult(status="error", message="求人ソースの応答形式が不正です")
+
             if result.status == "ok" and result.listings:
                 lines = [
                     "💼 求職AIを起動しました。\n\n"
@@ -60,7 +66,7 @@ class JobSeekingAgent:
                     "💼 求職AIを起動しました。\n\n"
                     "求人検索モードです。存在しない求人は生成しません。\n\n"
                     f"{self._criteria_text(criteria)}\n\n"
-                    "実求人ソースが未接続のため、現時点では検索結果を返しません。"
+                    f"{result.message or '検索結果を取得できませんでした。'}"
                 )
             metadata = {
                 "feature": self.name,
@@ -80,7 +86,7 @@ class JobSeekingAgent:
             ),
             "career_history": (
                 "🧾 職務経歴書AIモードです。\n\n"
-                "会社名 / 期間 / 役割 / 担当業務 / 成果 / 使用技術を整理します."
+                "会社名 / 期間 / 役割 / 担当業務 / 成果 / 使用技術を整理します。"
             ),
             "application": (
                 "✉️ 応募書類AIモードです。\n\n"
