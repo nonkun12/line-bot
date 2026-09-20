@@ -77,14 +77,17 @@ def _label_value(text: str, labels: tuple[str, ...]) -> str | None:
 
 def _salary_min_yen(text: str) -> int | None:
     match = re.search(
-        r"年収\s*(?:下限|最低|希望)?\s*[:：]?\s*(\d{2,5}(?:\.\d+)?)\s*(万円|万|千円|円)",
+        r"(?:年収\s*(?:下限|最低)|最低年収|希望年収)\s*[:：]?\s*(\d{2,5}(?:\.\d+)?)\s*(万円|万|千円|円)"
+        r"|年収\s*(\d{2,5}(?:\.\d+)?)\s*(万円|万|千円|円)\s*以上",
         str(text or ""),
         re.IGNORECASE,
     )
     if not match:
         return None
-    value = float(match.group(1))
-    unit = match.group(2).casefold()
+    number = match.group(1) or match.group(3)
+    unit = match.group(2) or match.group(4)
+    value = float(number)
+    unit = unit.casefold()
     multiplier = 10_000 if unit in {"万", "万円"} else 1_000 if unit == "千円" else 1
     return int(value * multiplier)
 
