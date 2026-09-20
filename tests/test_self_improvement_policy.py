@@ -28,3 +28,15 @@ def test_leading_dot_paths_remain_protected():
 def test_empty_self_improvement_scope_is_rejected():
     result = assess_self_improvement([])
     assert result.decision == SelfImprovementDecision.REJECT
+
+
+def test_traversal_and_absolute_paths_fail_closed():
+    result = assess_self_improvement([
+        "../core/self_improvement_policy.py",
+        "../.github/workflows/line-development-dispatch.yml",
+        "/tmp/unsafe.py",
+    ])
+    assert result.decision == SelfImprovementDecision.EXPLICIT_APPROVAL
+    assert "../core/self_improvement_policy.py" in result.protected_paths
+    assert "../.github/workflows/line-development-dispatch.yml" in result.protected_paths
+    assert "/tmp/unsafe.py" in result.protected_paths
