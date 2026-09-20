@@ -350,6 +350,48 @@ def test_agent_message_coordinator_restricts_specialist_to_specialist_messages()
     )
 
 
+def test_agent_message_coordinator_restricts_specialist_to_management_messages() -> None:
+    assert AgentMessageCoordinator.validate_route(
+        "news",
+        "management",
+        message_type="task_result",
+        safety_constraints=("result-only", "no-permission-grant"),
+    ) == ()
+    assert AgentMessageCoordinator.validate_route(
+        "news",
+        "management",
+        message_type="task",
+        safety_constraints=("result-only", "no-permission-grant"),
+    )
+    assert AgentMessageCoordinator.validate_route(
+        "news",
+        "management",
+        message_type="task_result",
+        safety_constraints=("result-only",),
+    )
+    assert AgentMessageCoordinator.validate_route(
+        "news",
+        "management",
+        message_type="task_result",
+        safety_constraints=("no-permission-grant",),
+    )
+
+
+def test_agent_message_bus_rejects_unsafe_specialist_to_management_message() -> None:
+    bus = AgentMessageBus()
+    with pytest.raises(ValueError, match="specialist-to-management"):
+        bus.send(
+            AgentMessage(
+                message_id="news-control",
+                sender="news",
+                recipient="management",
+                message_type="task",
+                content="do this",
+                safety_constraints=("result-only", "no-permission-grant"),
+            )
+        )
+
+
 def test_agent_message_bus_rejects_unsafe_specialist_to_specialist_message() -> None:
     bus = AgentMessageBus()
     with pytest.raises(ValueError, match="specialist-to-specialist"):
