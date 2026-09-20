@@ -13,7 +13,7 @@ from agents.jobs.intents import JobSearchCriteria
 
 @dataclass(frozen=True)
 class JobListing:
-    """One source-backed job listing; the URL and source must be provided by the provider."""
+    """One source-backed job listing; all identifying fields must come from the provider."""
 
     title: str
     company: str
@@ -21,6 +21,25 @@ class JobListing:
     url: str
     source: str
     salary: str | None = None
+
+    def __post_init__(self) -> None:
+        required = (
+            ("title", self.title, 200),
+            ("company", self.company, 200),
+            ("location", self.location, 200),
+            ("url", self.url, 500),
+            ("source", self.source, 120),
+        )
+        for name, value, limit in required:
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} is required")
+            if len(value) > limit:
+                raise ValueError(f"{name} exceeds {limit} characters")
+        if not (self.url.startswith("https://") or self.url.startswith("http://")):
+            raise ValueError("job listing URL must use http or https")
+        if self.salary is not None:
+            if not isinstance(self.salary, str) or len(self.salary) > 120:
+                raise ValueError("salary exceeds 120 characters")
 
 
 @dataclass(frozen=True)
@@ -38,6 +57,8 @@ class JobSearchResult:
             raise ValueError("too many job listings")
         if any(not isinstance(item, JobListing) for item in self.listings):
             raise TypeError("listings must contain JobListing values")
+        if not isinstance(self.message, str) or len(self.message) > 500:
+            raise ValueError("job search message exceeds 500 characters")
 
 
 class JobSearchProvider(Protocol):
