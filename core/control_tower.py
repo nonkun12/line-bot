@@ -36,13 +36,13 @@ class ControlTowerDecision:
         if not self.approved_for_pipeline or self.proposal is None or self.approved_task_hash is None:
             return None
         task = self.proposal.task
-        if task is None or _task_hash(task) != self.approved_task_hash:
+        if task is None or task_hash(task) != self.approved_task_hash:
             return None
         return task
 
     def approved_task_matches(self, task: AgentTask | None) -> bool:
         """Verify that the exact task approved by the Creator/Critic is being used."""
-        return task is not None and self.approved_for_pipeline and self.approved_task_hash == _task_hash(task)
+        return task is not None and self.approved_for_pipeline and self.approved_task_hash == task_hash(task)
 
 
 class ControlTower:
@@ -83,12 +83,12 @@ class ControlTower:
         def evidence_provider(_candidate: object) -> Mapping[str, object]:
             return measured
 
-        task_hash = task_hash_for_task(proposal.task)
-        if task_hash is None:
+        approved_hash = task_hash(proposal.task)
+        if approved_hash is None:
             return ControlTowerDecision((), proposal)
-        measured["approved_task_hash"] = task_hash
+        measured["approved_task_hash"] = approved_hash
         duel = self.creator_critic.run(target, evidence_provider)
-        return ControlTowerDecision((), proposal, duel, task_hash)
+        return ControlTowerDecision((), proposal, duel, approved_hash)
 
     def observe(
         self,
@@ -116,12 +116,12 @@ class ControlTower:
         def evidence_provider(_candidate: object) -> Mapping[str, object]:
             return measured
 
-        task_hash = task_hash_for_task(proposal.task)
-        if task_hash is None:
+        approved_hash = task_hash(proposal.task)
+        if approved_hash is None:
             return ControlTowerDecision(signals, proposal)
-        measured["approved_task_hash"] = task_hash
+        measured["approved_task_hash"] = approved_hash
         duel = self.creator_critic.run(target, evidence_provider)
-        return ControlTowerDecision(signals, proposal, duel, task_hash)
+        return ControlTowerDecision(signals, proposal, duel, approved_hash)
 
 
 def task_hash(task: AgentTask | None) -> str | None:
@@ -140,8 +140,6 @@ def task_hash(task: AgentTask | None) -> str | None:
 
 
 # Backward-compatible internal alias while callers migrate to the public helper.
-task_hash_for_task = task_hash
-_task_hash = task_hash
 
 
 def _report_evidence(
