@@ -55,6 +55,11 @@ class DistributedTaskScheduler:
     def run(self, tasks: Sequence[AgentTask]) -> DistributedRun:
         """Plan and execute all tasks, failing closed on the first bad result."""
         batches = plan_batches(tasks)
+        if not batches:
+            raise DistributedExecutionError(
+                "<empty>",
+                ValueError("at least one task is required"),
+            )
         completed: list[AgentResult] = []
         for batch in batches:
             for task in batch.tasks:
@@ -69,6 +74,39 @@ class DistributedTaskScheduler:
             if failed is not None:
                 return DistributedRun(batches, tuple(completed))
         return DistributedRun(batches, tuple(completed))
+
+    @staticmethod
+    def _validate_result(result: AgentResult, expected_task_id: str) -> None:
+        if not isinstance(result.success, bool):
+            raise DistributedExecutionError(
+                expected_task_id,
+                TypeError("AgentResult.success must be bool"),
+            )
+        if not isinstance(result.summary, str):
+            raise DistributedExecutionError(
+                expected_task_id,
+                TypeError("AgentResult.summary must be str"),
+            )
+        if len(result.summary) > 4000:
+            raise DistributedExecutionError(
+                expected_task_id,
+                ValueError("AgentResult.summary exceeds 4000 characters"),
+            )
+        if not isinstance(result.changed_resources, frozenset):
+            raise DistributedExecutionError(
+                expected_task_id,
+                TypeError("AgentResult.changed_resources must be frozenset[str]"),
+            )
+        if len(result.changed_resources) > 8 or any(
+            not isinstance(resource, str)
+            or not resource.strip()
+            or len(resource) > 200
+            for resource in result.changed_resources
+        ):
+            raise DistributedExecutionError(
+                expected_task_id,
+                TypeError("AgentResult.changed_resources must be frozenset[str]"),
+            )
 
     def _run_batch(self, batch: TaskBatch) -> list[AgentResult]:
         workers = min(self._max_workers, len(batch.tasks))
@@ -88,6 +126,7 @@ class DistributedTaskScheduler:
                         task.task_id,
                         TypeError("executor must return AgentResult"),
                     )
+                self._validate_result(result, task.task_id)
                 if result.task_id != task.task_id:
                     raise DistributedExecutionError(
                         task.task_id,
