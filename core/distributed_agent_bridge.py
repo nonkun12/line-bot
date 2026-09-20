@@ -14,6 +14,7 @@ from .specialist_gate import assert_specialist_approved
 _AGENT_NAMES: Mapping[AgentRole, str] = {
     descriptor.role: descriptor.agent_name
     for descriptor in DISTRIBUTED_AGENT_CATALOG
+    if descriptor.role is not AgentRole.GENERAL
 }
 
 
