@@ -44,7 +44,8 @@ class GitWorktreeSafetyGate:
             return False
 
         if not changed:
-            return False
+            # A successful no-op is safe: there is no worktree mutation to authorize.
+            return not getattr(result, "changed_resources", ())
         return all(_within_scope(path, allowed) and _safe_worktree_path(root, path) for path in changed)
 
 
