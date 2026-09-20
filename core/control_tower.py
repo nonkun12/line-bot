@@ -83,7 +83,7 @@ class ControlTower:
         def evidence_provider(_candidate: object) -> Mapping[str, object]:
             return measured
 
-        task_hash = _task_hash(proposal.task)
+        task_hash = task_hash_for_task(proposal.task)
         if task_hash is None:
             return ControlTowerDecision((), proposal)
         measured["approved_task_hash"] = task_hash
@@ -116,7 +116,7 @@ class ControlTower:
         def evidence_provider(_candidate: object) -> Mapping[str, object]:
             return measured
 
-        task_hash = _task_hash(proposal.task)
+        task_hash = task_hash_for_task(proposal.task)
         if task_hash is None:
             return ControlTowerDecision(signals, proposal)
         measured["approved_task_hash"] = task_hash
@@ -124,7 +124,7 @@ class ControlTower:
         return ControlTowerDecision(signals, proposal, duel, task_hash)
 
 
-def _task_hash(task: AgentTask | None) -> str | None:
+def task_hash(task: AgentTask | None) -> str | None:
     if task is None:
         return None
     payload = {
@@ -137,6 +137,11 @@ def _task_hash(task: AgentTask | None) -> str | None:
     }
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+# Backward-compatible internal alias while callers migrate to the public helper.
+task_hash_for_task = task_hash
+_task_hash = task_hash
 
 
 def _report_evidence(
@@ -162,4 +167,4 @@ def _report_evidence(
     return measured
 
 
-__all__ = ["ControlTower", "ControlTowerDecision"]
+__all__ = ["ControlTower", "ControlTowerDecision", "task_hash"]
