@@ -184,14 +184,10 @@ def run_management_request(
         print("[MANAGEMENT AI] distributed round failed; preserving legacy route")
         return None
 
-    task_map = {task.task_id: task for task in run.plan.tasks}
     parts: list[str] = []
-    for result in run.distributed.results:
-        task = task_map.get(result.task_id)
-        if task is None or not result.summary.strip():
-            continue
-        label = _ROLE_LABELS.get(task.role, task.role.value)
-        parts.append("【" + label + "】\n" + result.summary.strip())
+    for observation in run.observations:
+        label = _ROLE_LABELS.get(observation.role, observation.role.value)
+        parts.append("【" + label + "】\n" + observation.summary)
 
     return "\n\n".join(parts) if parts else None
 
