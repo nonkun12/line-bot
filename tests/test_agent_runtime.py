@@ -428,3 +428,52 @@ def test_control_tower_approval_is_bound_to_exact_task():
     assert decision.approved_task_matches(approved)
     assert not decision.approved_task_matches(tampered)
     assert decision.approved_task is approved
+
+
+
+def test_runtime_claims_approved_handoff_once(tmp_path):
+    from core.agent_runtime import MultiAgentRuntime
+    from core.control_tower import task_hash
+    from core.self_improvement_handoff import ApprovedImprovementHandoff
+
+    task = AgentTask(
+        "self-improvement:claim-test",
+        AgentRole.DEBUGGER,
+        "Investigate recurring failure.",
+        frozenset({"runtime"}),
+    )
+    handoff = ApprovedImprovementHandoff(
+        task=task,
+        task_hash=task_hash(task) or "",
+        allowed_paths=("tests/test_agent_runtime.py",),
+    )
+    runtime = MultiAgentRuntime(
+        {},
+        self_improvement_handoff_claim_path=tmp_path / "claims.jsonl",
+    )
+
+    assert runtime.claim_self_improvement_handoff(handoff) is True
+    assert runtime.claim_self_improvement_handoff(handoff) is False
+    assert runtime.is_self_improvement_handoff_claimed(handoff) is True
+
+
+def test_runtime_claim_requires_explicit_claim_store(tmp_path):
+    from core.agent_runtime import MultiAgentRuntime
+    from core.control_tower import task_hash
+    from core.self_improvement_handoff import ApprovedImprovementHandoff
+
+    task = AgentTask(
+        "self-improvement:no-store",
+        AgentRole.DEBUGGER,
+        "Investigate recurring failure.",
+        frozenset({"runtime"}),
+    )
+    handoff = ApprovedImprovementHandoff(
+        task=task,
+        task_hash=task_hash(task) or "",
+        allowed_paths=("tests/test_agent_runtime.py",),
+    )
+    runtime = MultiAgentRuntime({})
+
+    with pytest.raises(RuntimeError, match="claim store is not configured"):
+        runtime.claim_self_improvement_handoff(handoff)
