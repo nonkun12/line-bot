@@ -109,12 +109,36 @@ class MultiAgentRuntime:
 
     def _finalize_development(self, report: RuntimeReport) -> RuntimeReport:
         """Observe one completed development run through the management layer."""
-        if self._control_tower is not None:
+        self._last_control_tower_decision = None
+        self._last_self_improvement_cycle = None
+        if self._self_improvement_history_path is not None:
+            # When the durable cycle is enabled, it is the single proposal
+            # path. The cycle sends generated proposals through the same
+            # ControlTower gate instead of observing them on a parallel path.
+            try:
+                from .self_improvement_cycle import run_self_improvement_cycle
+
+                self._last_self_improvement_cycle = run_self_improvement_cycle(
+                    report,
+                    self._self_improvement_history_path,
+                    target_paths=self._self_improvement_target_paths,
+                    control_tower=self._control_tower,
+                )
+                if self._last_self_improvement_cycle.control_tower_decisions:
+                    self._last_control_tower_decision = (
+                        self._last_self_improvement_cycle.control_tower_decisions[-1]
+                    )
+                elif self._control_tower is None and self._feedback_engine is not None:
+                    self._feedback_engine.observe(report)
+            except Exception as exc:
+                self._last_self_improvement_cycle_error = f"{type(exc).__name__}: {exc}"
+                return report
+
+        elif self._control_tower is not None:
             self._last_control_tower_decision = self._control_tower.observe(report)
         elif self._feedback_engine is not None:
             self._feedback_engine.observe(report)
 
-        self._last_self_improvement_cycle = None
         self._last_self_improvement_cycle_error = None
         if self._self_improvement_history_path is not None:
             try:
