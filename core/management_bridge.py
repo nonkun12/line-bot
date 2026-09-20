@@ -151,21 +151,32 @@ class _CandidateRestrictedPlanner(ManagementPlanner):
             raise ManagementPlanningError(
                 "management planner failed"
             ) from exc
-        planned_roles = {task.role for task in plan.tasks}
-        unexpected = sorted(
-            {task.role.value for task in plan.tasks if task.role not in self._allowed_roles}
+        unexpected_tasks = tuple(
+            task for task in plan.tasks if task.role not in self._allowed_roles
         )
-        missing = sorted(role.value for role in self._allowed_roles if role not in planned_roles)
-        if unexpected:
+        unexpected_task_ids = {task.task_id for task in unexpected_tasks}
+        filtered_tasks = tuple(
+            task for task in plan.tasks if task.role in self._allowed_roles
+        )
+        if unexpected_task_ids and any(
+            dependency in unexpected_task_ids
+            for task in filtered_tasks
+            for dependency in task.depends_on
+        ):
             raise ManagementPlanningError(
-                "management plan requested an undetected specialist role: "
-                + ", ".join(unexpected)
+                "management plan has an approved task depending on a rejected specialist task"
             )
+        planned_roles = {task.role for task in filtered_tasks}
+        missing = sorted(
+            role.value for role in self._allowed_roles if role not in planned_roles
+        )
         if missing:
             raise ManagementPlanningError(
                 "management plan omitted detected specialist role: "
                 + ", ".join(missing)
             )
+        if unexpected_tasks:
+            plan = replace(plan, tasks=filtered_tasks)
         return _bind_source_instructions(plan, request.message)
 
 
