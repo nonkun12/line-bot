@@ -149,6 +149,7 @@ def test_parallel_management_requires_explicit_isolation() -> None:
     with pytest.raises(ValueError, match="isolated=True"):
         ManagementAI({}, planner=StaticPlanner(), max_workers=2)
 
+
 class LoopPlanner(ManagementPlanner):
     def __init__(self) -> None:
         self.feedback: list[tuple[str, ...]] = []
@@ -245,12 +246,12 @@ def test_management_ai_closed_loop_is_bounded() -> None:
     assert len(cycle.rounds) == 2
     assert cycle.stopped_reason == "bounded round limit reached"
 
+
 def test_agent_message_coordinator_allows_specialist_collaboration_but_blocks_control_agents() -> None:
     assert AgentMessageCoordinator.validate_route("stocks", "news") == ()
     assert AgentMessageCoordinator.validate_route("management", "stocks") == ()
     assert AgentMessageCoordinator.validate_route("stocks", "management") == ()
     assert AgentMessageCoordinator.validate_route("integrator", "stocks")
-    assert AgentMessageCoordinator.validate_route("stocks", "stocks")
 
 
 def test_agent_message_bus_bounds_message_size_and_route() -> None:
@@ -266,6 +267,7 @@ def test_agent_message_bus_bounds_message_size_and_route() -> None:
                 safety_constraints=("result-only",),
             )
         )
+
 
 def test_model_management_planner_accepts_explicit_next_round_signal() -> None:
     prompts: list[str] = []
@@ -304,3 +306,60 @@ def test_model_management_planner_defaults_to_stop_without_next_round_signal() -
         ManagementDecision(Specialist.NEWS, "matched news", 0.95),
     )
     assert not plan.continue_after_round
+
+
+def test_agent_message_coordinator_covers_all_specialists() -> None:
+    expected = {
+        "general",
+        "voice",
+        "english",
+        "news",
+        "stocks",
+        "market",
+        "jobs",
+        "music",
+        "video",
+    }
+    assert AgentMessageCoordinator.SPECIALISTS == frozenset(expected)
+
+
+def test_agent_message_coordinator_restricts_specialist_to_specialist_messages() -> None:
+    assert AgentMessageCoordinator.validate_route(
+        "news",
+        "stocks",
+        message_type="task_result",
+        safety_constraints=("result-only", "no-permission-grant"),
+    ) == ()
+    assert AgentMessageCoordinator.validate_route(
+        "news",
+        "stocks",
+        message_type="task",
+        safety_constraints=("result-only", "no-permission-grant"),
+    )
+    assert AgentMessageCoordinator.validate_route(
+        "news",
+        "stocks",
+        message_type="task_result",
+        safety_constraints=("result-only",),
+    )
+    assert AgentMessageCoordinator.validate_route(
+        "news",
+        "stocks",
+        message_type="task_result",
+        safety_constraints=("no-permission-grant",),
+    )
+
+
+def test_agent_message_bus_rejects_unsafe_specialist_to_specialist_message() -> None:
+    bus = AgentMessageBus()
+    with pytest.raises(ValueError, match="specialist-to-specialist"):
+        bus.send(
+            AgentMessage(
+                message_id="news-1",
+                sender="news",
+                recipient="stocks",
+                message_type="task",
+                content="do this",
+                safety_constraints=("result-only", "no-permission-grant"),
+            )
+        )
