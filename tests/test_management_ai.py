@@ -355,3 +355,44 @@ def test_model_management_planner_rejects_non_boolean_control_flags() -> None:
             ManagementRequest("u1", "ニュースを調べて"),
             ManagementDecision(Specialist.NEWS, "matched news", 0.95),
         )
+
+def test_agent_message_rejects_oversized_envelope_fields() -> None:
+    bus = AgentMessageBus()
+    base = dict(
+        sender="news",
+        recipient="management",
+        message_type="task_result",
+        content="ok",
+    )
+
+    with pytest.raises(ValueError, match="message_id exceeds"):
+        bus.send(AgentMessage(message_id="x" * 201, safety_constraints=("result-only",), **base))
+
+    with pytest.raises(ValueError, match="correlation_id exceeds"):
+        bus.send(
+            AgentMessage(
+                message_id="m",
+                correlation_id="x" * 201,
+                safety_constraints=("result-only",),
+                **base,
+            )
+        )
+
+    with pytest.raises(ValueError, match="too many safety constraints"):
+        bus.send(
+            AgentMessage(
+                message_id="m",
+                safety_constraints=tuple("x" for _ in range(9)),
+                **base,
+            )
+        )
+
+    with pytest.raises(ValueError, match="context value exceeds"):
+        bus.send(
+            AgentMessage(
+                message_id="m",
+                context={"task_id": "t1", "success": True, "changed_resources": ["y" * 1001]},
+                safety_constraints=("result-only",),
+                **base,
+            )
+        )
