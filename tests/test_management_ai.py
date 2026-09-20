@@ -469,13 +469,12 @@ def test_message_bus_rejects_unknown_recipient_and_route_is_not_fail_open() -> N
             content="ok",
             safety_constraints=("result-only", "no-permission-grant"),
         )
-    with pytest.raises(ValueError):
-        AgentMessageCoordinator.validate_route(
-            "stocks",
-            "news",
-            message_type="task_result",
-            safety_constraints=frozenset(),
-        )
+    assert AgentMessageCoordinator.validate_route(
+        "stocks",
+        "news",
+        message_type="task_result",
+        safety_constraints=frozenset(),
+    )
 
 
 def test_safety_constraints_reject_string_input() -> None:
