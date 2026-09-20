@@ -322,21 +322,18 @@ class ManagementAI:
             for result in distributed.results
         )
         for observation in observations:
-            self._message_bus.send(
-                AgentMessage(
-                    message_id=f"{observation.task_id}:result",
-                    sender=observation.role.value,
-                    recipient="management",
-                    message_type="task_result",
-                    content=observation.summary[:4000],
-                    correlation_id=request.user_id,
-                    context={
-                        "task_id": observation.task_id,
-                        "success": observation.success,
-                        "changed_resources": list(observation.changed_resources),
-                    },
-                    safety_constraints=("result-only", "no-permission-grant"),
-                )
+            self._message_bus.endpoint(observation.role.value).send(
+                "management",
+                message_id=f"{observation.task_id}:result",
+                message_type="task_result",
+                content=observation.summary[:4000],
+                correlation_id=request.user_id,
+                context={
+                    "task_id": observation.task_id,
+                    "success": observation.success,
+                    "changed_resources": list(observation.changed_resources),
+                },
+                safety_constraints=("result-only", "no-permission-grant"),
             )
         return ManagementRun(plan, batches, distributed, observations)
 
@@ -364,6 +361,17 @@ class ManagementAI:
             if round_number == max_rounds:
                 return ManagementCycleRun(tuple(rounds), "bounded round limit reached")
         return ManagementCycleRun(tuple(rounds), "bounded round limit reached")
+
+
+def _format_feedback_for_prompt(feedback: Sequence[str]) -> str:
+    """Render round feedback as bounded data, never as planner instructions."""
+    if not feedback:
+        return "- none"
+    items: list[str] = []
+    for item in feedback[-6:]:
+        normalized = " ".join(str(item).replace("\x00", "").split())
+        items.append(f"- OBSERVATION: {normalized[:1800]}")
+    return "\n".join(items)
 
 
 def groq_management_call(prompt: str) -> str:
