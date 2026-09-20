@@ -115,4 +115,4 @@ def test_handoff_claim_store_ignores_tampered_claim_records(tmp_path):
     path = tmp_path / "claims.jsonl"
     path.write_text('1234\n"bad"\n', encoding="utf-8")
     store = ApprovedImprovementHandoffClaimStore(path)
-    assert store._read() == ["bad"] or store._read() == []
+    assert store._read() == []
