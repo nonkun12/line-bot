@@ -8,6 +8,9 @@ from flask import Blueprint, current_app, render_template, request, jsonify, Res
 from db import get_conn
 from mcp_client import call_mcp_tool, parse_mcp_json_list
 from e2e_status import get_e2e_status
+from core.distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG
+from core.specialist_gate import is_specialist_approved
+from graph.core_registry import build_core_agent_registry
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -264,72 +267,44 @@ def system_status():
     if result.get("notes", {}).get("status") == "ok" and result.get("reminders", {}).get("status") == "ok":
         result["services"]["ai_mcp"] = "online"
 
+    registry = build_core_agent_registry()
+    registered_names = set(registry.names())
+
+    def specialist_status(descriptor):
+        return "online" if (
+            descriptor.agent_name in registered_names
+            and is_specialist_approved(descriptor.role)
+        ) else "planned"
+
     result["features"] = {
         "management_ai": {
             "status": "online",
             "label": "統合AI / Management",
             "detail": "タスク分解・専門AIへの配分・結果回収・有界再指示",
         },
-        "general": {
-            "status": "online",
-            "label": "General AI",
-            "detail": "汎用会話・フォールバック",
-        },
-        "english_learning": {
-            "status": "online",
-            "label": "英語学習AI",
-            "detail": "MVP: lesson / vocabulary / grammar / conversation / quiz / review",
-        },
-        "stocks": {
-            "status": "online",
-            "label": "株価AI",
-            "detail": "Yahoo Finance + テクニカル分析・比較・監視銘柄",
-        },
-        "global_market": {
-            "status": "online",
-            "label": "世界市場AI",
-            "detail": "主要株価指数（NYダウ・S&P500・NASDAQ・日経225・DAX・FTSE100・香港ハンセン・上海総合・KOSPI） + 主要為替（USD/JPY・EUR/USD・GBP/USD・AUD/USD・EUR/JPY・GBP/JPY・USD/CHF・USD/CAD・USD/CNY）",
-        },
-        "ai_news": {
-            "status": "online",
-            "label": "AI NEWS",
-            "detail": "Google News RSS headline retrieval",
-        },
-        "voice": {
-            "status": "online",
-            "label": "AIスピーカー / Voice",
-            "detail": "voice API available",
-        },
-        "jobs": {
-            "status": "online",
-            "label": "求職AI",
-            "detail": "求人検索・応募準備・面接支援。実求人サイト連携は未接続",
-        },
-        "music": {
-            "status": "online",
-            "label": "音楽AI",
-            "detail": "選曲・作曲/作詞補助・プレイリスト設計。音源生成・再生は未接続",
-        },
-        "video": {
-            "status": "online",
-            "label": "映像AI",
-            "detail": "動画企画・台本・絵コンテ・編集設計。動画生成・書き出しは未接続",
-        },
     }
+    for descriptor in DISTRIBUTED_AGENT_CATALOG:
+        status = specialist_status(descriptor)
+        result["features"][descriptor.key] = {
+            "status": status,
+            "label": descriptor.label,
+            "detail": descriptor.detail,
+        }
+
+    specialists = [
+        {
+            "key": descriptor.key,
+            "label": descriptor.label,
+            "status": specialist_status(descriptor),
+            "role": descriptor.detail,
+        }
+        for descriptor in DISTRIBUTED_AGENT_CATALOG
+    ]
+    distributed_status = "online" if all(item["status"] == "online" for item in specialists) else "planned"
     result["distributed_ai"] = {
-        "status": "online",
+        "status": distributed_status,
         "architecture": "management -> specialists -> result collection -> bounded re-planning",
         "message_bus": "enabled",
-        "specialists": [
-            {"key": "general", "label": "General AI", "status": "online", "role": "汎用・フォールバック"},
-            {"key": "voice", "label": "Voice AI", "status": "online", "role": "音声"},
-            {"key": "english", "label": "English AI", "status": "online", "role": "英語学習"},
-            {"key": "news", "label": "News AI", "status": "online", "role": "ニュース"},
-            {"key": "stocks", "label": "Stock AI", "status": "online", "role": "株価・分析"},
-            {"key": "global_market", "label": "Market AI", "status": "online", "role": "主要株価指数・主要為替"},
-            {"key": "jobs", "label": "Job AI", "status": "online", "role": "求職・応募支援（外部求人サイト連携は未接続）"},
-            {"key": "music", "label": "Music AI", "status": "online", "role": "音楽企画・作曲/作詞補助・選曲"},
-            {"key": "video", "label": "Video AI", "status": "online", "role": "映像企画・台本・絵コンテ・編集設計"},
-        ],
+        "specialists": specialists,
     }
     return jsonify(result)

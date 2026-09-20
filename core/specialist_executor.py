@@ -10,6 +10,7 @@ from typing import Mapping
 
 from .agents import Agent, AgentRegistry, AgentRequest
 from .multi_agent import AgentExecutor, AgentResult, AgentRole, AgentTask
+from .distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG
 from .specialist_gate import (
     SpecialistGateError,
     assert_specialist_approved,
@@ -18,15 +19,8 @@ from .specialist_gate import (
 
 
 ROLE_TO_AGENT_NAME: Mapping[AgentRole, str] = {
-    AgentRole.GENERAL: "normal",
-    AgentRole.VOICE: "voice",
-    AgentRole.ENGLISH: "english_learning",
-    AgentRole.NEWS: "ai_news",
-    AgentRole.STOCKS: "stocks",
-    AgentRole.MARKET: "global_market",
-    AgentRole.JOBS: "job_seeking",
-    AgentRole.MUSIC: "music",
-    AgentRole.VIDEO: "video",
+    descriptor.role: descriptor.agent_name
+    for descriptor in DISTRIBUTED_AGENT_CATALOG
 }
 
 
