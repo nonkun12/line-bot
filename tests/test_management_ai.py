@@ -387,7 +387,7 @@ def test_agent_message_rejects_oversized_envelope_fields() -> None:
             )
         )
 
-    with pytest.raises(ValueError, match="context value exceeds"):
+    with pytest.raises(ValueError, match="context entries exceed"):
         bus.send(
             AgentMessage(
                 message_id="m",
