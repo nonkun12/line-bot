@@ -155,7 +155,7 @@ class ModelManagementPlanner:
         decision: ManagementDecision,
         feedback: Sequence[str] = (),
     ) -> ManagementPlan:
-        feedback_text = "\n".join(f"- {item[:1800]}" for item in feedback[-6:]) or "- none"
+        feedback_text = _format_feedback_for_prompt(feedback)
         prompt = (
             "You are the MANAGEMENT AI at the top of a distributed specialist system.\n"
             "Break the user request into small specialist tasks. Prefer parallel work "
