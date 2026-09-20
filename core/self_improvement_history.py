@@ -16,15 +16,14 @@ from typing import Iterable
 from .self_improvement import ImprovementSignal
 
 _DEFAULT_MAX_RECORDS = 200
-_MAX_MAX_RECORDS = 200
 
 
 class SelfImprovementHistory:
     """Persist a bounded signal history with fail-closed reads."""
 
     def __init__(self, path: str | Path, *, max_records: int = _DEFAULT_MAX_RECORDS) -> None:
-        if max_records < 1 or max_records > _MAX_MAX_RECORDS:
-            raise ValueError("max_records must be between 1 and 200")
+        if max_records < 1:
+            raise ValueError("max_records must be >= 1")
         self.path = Path(path)
         self.max_records = max_records
 

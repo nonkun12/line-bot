@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+from collections import Counter
 
 from .self_improvement import ImprovementSignal
 

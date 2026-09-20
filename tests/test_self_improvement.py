@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import pytest
-
 from core.agent_runtime import RuntimeReport
-from core.self_improvement import ImprovementProposal, ImprovementSignal, SelfImprovementEngine, summarize_signals
+from core.self_improvement import SelfImprovementEngine, summarize_signals
 
 
 def test_success_report_creates_success_signal() -> None:
@@ -46,24 +44,3 @@ def test_summary_is_compact_and_deterministic() -> None:
     engine = SelfImprovementEngine()
     signals = engine.observe(RuntimeReport((), failed_task_id="t1", error="timeout"))
     assert summarize_signals(signals) == "failure:t1:timeout"
-
-
-def test_signal_and_proposal_contracts_are_bounded_and_snapshot_signals() -> None:
-    signal = ImprovementSignal("failure", "task-1", "timeout")
-    proposal = ImprovementProposal(
-        "Investigate",
-        "Review the repeated timeout.",
-        [signal],
-    )
-    assert proposal.signals == (signal,)
-    assert isinstance(proposal.signals, tuple)
-
-    with pytest.raises(ValueError, match="signal kind exceeds"):
-        ImprovementSignal("x" * 33, None, "detail")
-    with pytest.raises(ValueError, match="signal detail exceeds"):
-        ImprovementSignal("failure", None, "x" * 2001)
-    with pytest.raises(ValueError, match="proposal title exceeds"):
-        ImprovementProposal(
-            "x" * 201,
-            "reason",
-        )

@@ -14,33 +14,11 @@ from .agent_runtime import RuntimeReport
 from .multi_agent import AgentRole, AgentTask
 
 
-_MAX_SIGNAL_KIND_CHARS = 32
-_MAX_SIGNAL_TASK_ID_CHARS = 200
-_MAX_SIGNAL_DETAIL_CHARS = 2000
-_MAX_PROPOSAL_TITLE_CHARS = 200
-_MAX_PROPOSAL_RATIONALE_CHARS = 2000
-_MAX_PROPOSAL_SIGNALS = 8
-_MAX_ENGINE_SIGNALS = 200
-
-
 @dataclass(frozen=True)
 class ImprovementSignal:
     kind: str
     task_id: str | None
     detail: str
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.kind, str) or not self.kind.strip():
-            raise ValueError("signal kind is required")
-        if len(self.kind) > _MAX_SIGNAL_KIND_CHARS:
-            raise ValueError("signal kind exceeds 32 characters")
-        if self.task_id is not None:
-            if not isinstance(self.task_id, str) or len(self.task_id) > _MAX_SIGNAL_TASK_ID_CHARS:
-                raise ValueError("signal task_id exceeds 200 characters")
-        if not isinstance(self.detail, str) or not self.detail.strip():
-            raise ValueError("signal detail is required")
-        if len(self.detail) > _MAX_SIGNAL_DETAIL_CHARS:
-            raise ValueError("signal detail exceeds 2000 characters")
 
 
 @dataclass(frozen=True)
@@ -49,22 +27,6 @@ class ImprovementProposal:
     rationale: str
     signals: tuple[ImprovementSignal, ...] = ()
     task: AgentTask | None = None
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.title, str) or not self.title.strip():
-            raise ValueError("proposal title is required")
-        if len(self.title) > _MAX_PROPOSAL_TITLE_CHARS:
-            raise ValueError("proposal title exceeds 200 characters")
-        if not isinstance(self.rationale, str) or not self.rationale.strip():
-            raise ValueError("proposal rationale is required")
-        if len(self.rationale) > _MAX_PROPOSAL_RATIONALE_CHARS:
-            raise ValueError("proposal rationale exceeds 2000 characters")
-        signals = tuple(self.signals)
-        if len(signals) > _MAX_PROPOSAL_SIGNALS:
-            raise ValueError("too many proposal signals (max 8)")
-        if any(not isinstance(signal, ImprovementSignal) for signal in signals):
-            raise TypeError("proposal signals must be ImprovementSignal")
-        object.__setattr__(self, "signals", signals)
 
 
 @dataclass
@@ -75,8 +37,8 @@ class SelfImprovementEngine:
     _signals: list[ImprovementSignal] = field(default_factory=list, init=False)
 
     def __post_init__(self) -> None:
-        if self.max_signals < 1 or self.max_signals > _MAX_ENGINE_SIGNALS:
-            raise ValueError("max_signals must be between 1 and 200")
+        if self.max_signals < 1:
+            raise ValueError("max_signals must be >= 1")
 
     @property
     def signals(self) -> tuple[ImprovementSignal, ...]:
@@ -93,9 +55,7 @@ class SelfImprovementEngine:
                 f"development required {report.repair_attempts} repair attempt(s)",
             ))
         if report.failed_task_id and report.error:
-            detail = str(report.error).replace("\x00", "").strip()[:_MAX_SIGNAL_DETAIL_CHARS]
-            if detail:
-                new.append(ImprovementSignal("failure", report.failed_task_id, detail))
+            new.append(ImprovementSignal("failure", report.failed_task_id, report.error))
         for signal in new:
             self._signals.append(signal)
         if len(self._signals) > self.max_signals:
