@@ -5,6 +5,14 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterable, Protocol
 
+_MAX_TASK_ID_CHARS = 200
+_MAX_INSTRUCTION_CHARS = 4000
+_MAX_RESOURCES = 8
+_MAX_RESOURCE_NAME_CHARS = 200
+_MAX_DEPENDENCIES = 8
+_MAX_DEPENDENCY_ID_CHARS = 200
+
+
 
 class AgentRole(str, Enum):
     MANAGER = "manager"
@@ -36,14 +44,40 @@ class AgentTask:
     priority: int = 0
 
     def __post_init__(self) -> None:
-        if not self.task_id.strip():
+        if not isinstance(self.task_id, str) or not self.task_id.strip():
             raise ValueError("task_id is required")
-        if not self.instruction.strip():
+        if len(self.task_id) > _MAX_TASK_ID_CHARS:
+            raise ValueError("task_id exceeds 200 characters")
+        if not isinstance(self.role, AgentRole):
+            raise ValueError("role must be an AgentRole")
+        if not isinstance(self.instruction, str) or not self.instruction.strip():
             raise ValueError("instruction is required")
-        if any(not resource.strip() for resource in self.resources):
-            raise ValueError("resources must contain non-empty names")
+        if len(self.instruction) > _MAX_INSTRUCTION_CHARS:
+            raise ValueError("instruction exceeds 4000 characters")
+        if len(self.resources) > _MAX_RESOURCES:
+            raise ValueError("too many resources (max 8)")
+        if any(
+            not isinstance(resource, str)
+            or not resource.strip()
+            or len(resource) > _MAX_RESOURCE_NAME_CHARS
+            for resource in self.resources
+        ):
+            raise ValueError("resource names must be non-empty strings <= 200 characters")
+        if len(self.depends_on) > _MAX_DEPENDENCIES:
+            raise ValueError("too many dependencies (max 8)")
+        if any(
+            not isinstance(dependency, str)
+            or not dependency.strip()
+            or len(dependency) > _MAX_DEPENDENCY_ID_CHARS
+            for dependency in self.depends_on
+        ):
+            raise ValueError("dependency ids must be non-empty strings <= 200 characters")
         if self.task_id in self.depends_on:
             raise ValueError("task cannot depend on itself")
+        if not isinstance(self.priority, int) or isinstance(self.priority, bool):
+            raise ValueError("priority must be an integer")
+        if not -10 <= self.priority <= 10:
+            raise ValueError("priority must be between -10 and 10")
 
 
 @dataclass(frozen=True)
