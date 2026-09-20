@@ -24,6 +24,23 @@ class RuntimeExecutor(Protocol):
         ...
 
 
+class ExecutionSafetyGate(Protocol):
+    """Verify the actual worktree change immediately after an executor runs.
+
+    Implementations must inspect the live repository state (diff/SHA/changed
+    paths and tests as appropriate) rather than trusting task instructions or
+    the executor's declared resources.
+    """
+
+    def verify(
+        self,
+        task: AgentTask,
+        result: AgentResult,
+        allowed_paths: tuple[str, ...],
+    ) -> bool:
+        ...
+
+
 class RepairPlanner(Protocol):
     def repair_task(self, failed_task: AgentTask, result: AgentResult, attempt: int) -> AgentTask:
         ...
@@ -86,11 +103,18 @@ class MultiAgentRuntime:
             Path(self_improvement_history_path) if self_improvement_history_path is not None else None
         )
         self._self_improvement_target_paths = tuple(self_improvement_target_paths)
+        self._execution_safety_gate: ExecutionSafetyGate | None = None
         self._last_control_tower_decision: ControlTowerDecision | None = None
         self._last_self_improvement_cycle: SelfImprovementCycleResult | None = None
         self._last_self_improvement_cycle_error: str | None = None
         if feedback_engine is not None and control_tower is not None and control_tower.feedback_engine is not feedback_engine:
             raise ValueError("feedback_engine and control_tower must share the same feedback engine")
+
+    def set_execution_safety_gate(self, gate: ExecutionSafetyGate) -> None:
+        """Install the post-execution worktree verification gate."""
+        if gate is None:
+            raise ValueError("execution safety gate is required")
+        self._execution_safety_gate = gate
 
     @property
     def last_control_tower_decision(self) -> ControlTowerDecision | None:
@@ -254,6 +278,18 @@ class MultiAgentRuntime:
                     raise RuntimeExecutionError(task.task_id, TypeError("executor must return AgentResult"))
                 if result.task_id != task.task_id:
                     raise RuntimeExecutionError(task.task_id, ValueError(f"executor returned task_id {result.task_id!r} for {task.task_id!r}"))
+                if self._execution_safety_gate is not None:
+                    try:
+                        verified = self._execution_safety_gate.verify(
+                            task, result, self._self_improvement_target_paths
+                        )
+                    except Exception as exc:
+                        raise RuntimeExecutionError(task.task_id, exc) from exc
+                    if not verified:
+                        raise RuntimeExecutionError(
+                            task.task_id,
+                            RuntimeError("execution safety gate rejected actual worktree state"),
+                        )
                 results.append((task, result))
             return results
 
