@@ -16,11 +16,22 @@ class QualityRuntime:
     REVIEW. ``max_rounds=1`` intentionally disables repair retries.
     """
 
-    def __init__(self, executors: Mapping[AgentRole, object], *, max_rounds: int = 3) -> None:
+    def __init__(
+        self,
+        executors: Mapping[AgentRole, object],
+        *,
+        max_rounds: int = 3,
+        execution_safety_gate: object | None = None,
+        allowed_paths: tuple[str, ...] = (),
+    ) -> None:
         if max_rounds < 1 or max_rounds > 3:
             raise ValueError("max_rounds must be between 1 and 3")
+        if execution_safety_gate is not None and not hasattr(execution_safety_gate, "verify"):
+            raise TypeError("execution_safety_gate must provide verify()")
         self._executors = dict(executors)
         self._max_rounds = max_rounds
+        self._execution_safety_gate = execution_safety_gate
+        self._allowed_paths = tuple(allowed_paths)
 
     def _execute(self, task: AgentTask) -> RuntimeTaskResult:
         executor = self._executors.get(task.role)
@@ -37,6 +48,27 @@ class QualityRuntime:
             result = AgentResult(task.task_id, False, "executor must return AgentResult")
         elif result.task_id != task.task_id:
             result = AgentResult(task.task_id, False, f"executor returned task_id {result.task_id!r}")
+        if result.success and self._execution_safety_gate is not None and task.role is not AgentRole.MANAGER:
+            try:
+                verified = self._execution_safety_gate.verify(task, result, self._allowed_paths)
+            except Exception as exc:
+                return RuntimeTaskResult(
+                    task,
+                    AgentResult(
+                        task.task_id,
+                        False,
+                        f"execution safety gate error: {type(exc).__name__}: {exc}",
+                    ),
+                )
+            if not verified:
+                return RuntimeTaskResult(
+                    task,
+                    AgentResult(
+                        task.task_id,
+                        False,
+                        "execution safety gate rejected actual worktree state",
+                    ),
+                )
         return RuntimeTaskResult(task, result)
 
     def _quality_repair(
