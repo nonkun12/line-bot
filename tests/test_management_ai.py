@@ -400,35 +400,32 @@ def test_agent_message_rejects_oversized_envelope_fields() -> None:
 
 
 def test_management_run_exposes_bounded_observations() -> None:
+    manager = ManagementAI(
+        {AgentRole.NEWS: Executor(AgentRole.NEWS)},
+        planner=LoopPlanner(),
+    )
+    run = manager.run(ManagementRequest("u1", "ニュースを調べて"))
+    assert run.observations
+    observation = run.observations[0]
+    assert isinstance(observation, ManagementObservation)
+    assert observation.role is AgentRole.NEWS
+    assert observation.summary
+    assert len(observation.summary) <= 1800
+
 
 def test_management_observation_rejects_oversized_or_mutable_fields() -> None:
-
-def test_agent_message_coordinator_covers_all_specialists() -> None:
-
-def test_agent_message_coordinator_restricts_specialist_to_specialist_messages() -> None:
-
-def test_agent_message_coordinator_restricts_specialist_to_management_messages() -> None:
-
-def test_agent_message_bus_rejects_unsafe_specialist_to_management_message() -> None:
-
-def test_agent_message_bus_rejects_unsafe_specialist_to_specialist_message() -> None:
-
-def test_management_to_specialist_is_closed_by_default() -> None:
-
-def test_message_bus_canonicalizes_recipient_keys() -> None:
-
-def test_message_bus_rejects_unknown_recipient_and_route_is_not_fail_open() -> None:
-
-def test_safety_constraints_reject_string_input() -> None:
-
-def test_message_context_is_allowlisted_and_immutable() -> None:
-
-def test_management_ai_exposes_read_only_mailbox() -> None:
-
-def test_agent_message_bus_rejects_self_send() -> None:
-
-def test_endpoint_instances_are_bounded_and_reused() -> None:
-
-def test_mailbox_view_cannot_reach_bus() -> None:
-
-def test_message_bus_is_thread_safe_for_concurrent_sends() -> None:
+    with pytest.raises(ValueError, match="summary exceeds"):
+        ManagementObservation(
+            "t1",
+            AgentRole.NEWS,
+            True,
+            "x" * 1801,
+        )
+    with pytest.raises(ValueError, match="changed_resources must be a tuple"):
+        ManagementObservation(
+            "t1",
+            AgentRole.NEWS,
+            True,
+            "ok",
+            ["news"],  # type: ignore[arg-type]
+        )
