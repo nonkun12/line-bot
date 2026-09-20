@@ -1,9 +1,8 @@
 from core.agent_runtime import RuntimeReport
-from core.self_improvement import ImprovementSignal
 from core.self_improvement_cycle import run_self_improvement_cycle
 
 
-def test_cycle_persists_signals_and_generates_recurring_proposal(tmp_path):
+def test_cycle_persists_signals_and_generates_recurring_proposals(tmp_path):
     path = tmp_path / "self-improvement.jsonl"
     first = RuntimeReport(
         (),
@@ -39,8 +38,12 @@ def test_cycle_persists_signals_and_generates_recurring_proposal(tmp_path):
     assert two.analysis.failure_count == 2
     assert two.analysis.repair_count == 2
     assert two.analysis.has_recurring_pattern
-    assert len(two.proposals) == 1
-    assert two.proposals[0].task is not None
+    assert len(two.proposals) == 2
+    assert {proposal.title for proposal in two.proposals} == {
+        "Investigate recurring failure: development required <n> repair attempt(s)",
+        "Investigate recurring failure: pytest timeout",
+    }
+    assert all(proposal.task is not None for proposal in two.proposals)
 
 
 def test_cycle_protected_targets_fail_closed(tmp_path):
