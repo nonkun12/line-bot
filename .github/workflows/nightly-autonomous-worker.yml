@@ -82,6 +82,7 @@ jobs:
             echo "AUTONOMOUS_RESULT=no-changes" >> "$GITHUB_ENV"
             exit 0
           fi
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin "HEAD:refs/heads/${AUTONOMOUS_BRANCH}"
           PR_URL="$(gh pr create \
             --base main \
