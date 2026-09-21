@@ -41,10 +41,18 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      - name: Autonomous development kill switch
+        env:
+          AUTONOMOUS_DEV_ENABLED: ${{ vars.AUTONOMOUS_DEV_ENABLED }}
+        run: |
+          set -euo pipefail
+          test "${AUTONOMOUS_DEV_ENABLED}" = "true"
+
       - name: Run bounded multi-agent LINE development runtime
         id: development
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          AUTONOMOUS_DEV_ENABLED: ${{ vars.AUTONOMOUS_DEV_ENABLED }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
