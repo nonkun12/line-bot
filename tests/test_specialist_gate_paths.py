@@ -4,6 +4,12 @@ from __future__ import annotations
 import pytest
 
 from core import request_path
+from core.agent_specs import AgentLifecycle
+from core.distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG
+from core.distributed_agent_versions import DistributedAgentVersion, DistributedAgentVersionRegistry, catalog_digest
+from core.distributed_execution_artifact import ExecutionArtifact, StaticExecutionArtifactProvider
+from core.distributed_execution_context import DistributedExecutionContext
+from core.distributed_execution_gate import ExecutionIdentity
 from core import specialist_gate as gate
 from core.agents import AgentRegistry, AgentRequest, AgentResponse
 from core.langgraph_runtime import build_core_graph
@@ -22,6 +28,35 @@ from core.specialist_gate import SpecialistGateError
 
 # Real Core-registry agent names, keyed by canonical specialist.
 AGENT_NAME = dict(gate.DOMAIN_AGENT_NAMES)
+
+@pytest.fixture(autouse=True)
+def distributed_identity_context(monkeypatch):
+    records = []
+    artifacts = []
+    for descriptor in DISTRIBUTED_AGENT_CATALOG:
+        if descriptor.role is AgentRole.GENERAL:
+            continue
+        digest = catalog_digest(descriptor)
+        sha = "a" * 40
+        records.append(DistributedAgentVersion(
+            agent_key=descriptor.agent_name,
+            version="0.2.0",
+            lifecycle=AgentLifecycle.ENABLED,
+            git_sha=sha,
+            catalog_digest=digest,
+        ))
+        artifacts.append(ExecutionArtifact(
+            identity=ExecutionIdentity(descriptor.agent_name, "0.2.0", sha, digest),
+            artifact_id=f"test-{descriptor.agent_name}",
+        ))
+    monkeypatch.setattr(
+        request_path,
+        "_DISTRIBUTED_EXECUTION_CONTEXT",
+        DistributedExecutionContext(
+            version_registry=DistributedAgentVersionRegistry(records),
+            artifact_provider=StaticExecutionArtifactProvider(tuple(artifacts)),
+        ),
+    )
 
 
 class RecordingAgent:
