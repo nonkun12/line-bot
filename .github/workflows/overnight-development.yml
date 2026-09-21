@@ -42,10 +42,18 @@ jobs:
       - name: Preflight guarded runtime tests
         run: python -m pytest -q tests/test_agent_runtime.py tests/test_line_development_runtime.py
 
+      - name: Autonomous development kill switch
+        env:
+          AUTONOMOUS_DEV_ENABLED: ${{ vars.AUTONOMOUS_DEV_ENABLED }}
+        run: |
+          set -euo pipefail
+          test "${AUTONOMOUS_DEV_ENABLED}" = "true"
+
       - name: Run common guarded development runtime
         id: development
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          AUTONOMOUS_DEV_ENABLED: ${{ vars.AUTONOMOUS_DEV_ENABLED }}
           DEV_INSTRUCTION: "自律開発です。対象ファイルは tests/test_management_router.py に固定します。この1ファイルだけを対象に、既存機能を壊さない安全な小規模改善を1件だけ実装してください。テスト可能な改善を優先し、必ずpytestとレビューゲートを通してください。mainへ直接変更せずPRを作成する前提です。"
           DEV_USER_ID: autonomous
           GITHUB_RUN_ID: ${{ github.run_id }}
