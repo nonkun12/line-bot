@@ -17,7 +17,7 @@ from .distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG, DistributedAge
 
 _VERSION_RE = re.compile(
     r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
-    r"(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+    r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$",
     re.ASCII,
 )
 _SHA_RE = re.compile(r"[0-9a-f]{40}", re.ASCII)
