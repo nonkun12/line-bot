@@ -1,5 +1,5 @@
 from core.agent_specs import AgentLifecycle
-from core.distributed_agent_artifact import ExecutionArtifact, StaticExecutionArtifactProvider
+from core.distributed_execution_artifact import ExecutionArtifact, StaticExecutionArtifactProvider
 from core.distributed_agent_bridge import build_agent_registry
 from core.distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG
 from core.distributed_agent_versions import (
