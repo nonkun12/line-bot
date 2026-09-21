@@ -328,7 +328,12 @@ def test_bridge_handler_is_last_mile_gated(monkeypatch):
 
 def test_bridge_executor_refuses_a_task_for_another_role():
     agent = RecordingAgent("ai_news")
-    executors = build_agent_registry(_BridgeRegistry(agent)).build()
+    version_registry, artifact_provider = _bridge_execution_context()
+    executors = build_agent_registry(
+        _BridgeRegistry(agent),
+        version_registry=version_registry,
+        artifact_provider=artifact_provider,
+    ).build()
     with pytest.raises(RuntimeError, match="does not match executor role"):
         executors[AgentRole.NEWS].execute(AgentTask("t", AgentRole.MARKET, "x"))
     assert agent.calls == 0
