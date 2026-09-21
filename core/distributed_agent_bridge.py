@@ -6,7 +6,7 @@ from collections.abc import Mapping
 
 from .agents import Agent, AgentRequest
 from .distributed_execution_artifact import ExecutionArtifactProvider
-from .distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG
+from .distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG, descriptor_for_role
 from .distributed_agent_versions import DistributedAgentVersionRegistry
 from .distributed_domain_executor import HandlerExecutor
 from .distributed_execution_gate import require_exact_execution_identity
@@ -71,7 +71,10 @@ def _build_handler(
                 f"task role {task.role.value} does not match executor role {role.value}"
             )
 
-        artifact = artifact_provider.get(agent.name)
+        descriptor = descriptor_for_role(role)
+        if descriptor is None:
+            raise RuntimeError(f"no distributed catalog descriptor for role: {role.value}")
+        artifact = artifact_provider.get(descriptor.key)
         require_exact_execution_identity(version_registry, artifact.identity)
         assert_specialist_approved(task.role)
 
