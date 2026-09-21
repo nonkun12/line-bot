@@ -3,7 +3,7 @@
 from .agents import Agent, AgentRegistry, AgentRequest, AgentResponse
 from .agent_specs import AgentLifecycle, AgentSpec, AgentSpecRegistry
 from .agent_versioning import AgentVersion, AgentVersionRegistry
-from .agent_maintenance import AgentMaintenance, MaintenanceFinding, MaintenanceSeverity
+from .distributed_agent_versions import (\n    DistributedAgentVersion,\n    DistributedAgentVersionRegistry,\n    build_default_distributed_agent_version_registry,\n)\nfrom .agent_maintenance import AgentMaintenance, MaintenanceFinding, MaintenanceSeverity
 from .agent_governance import AgentGovernance, AgentGovernanceRecord
 from .agent_handoff import AgentHandoff, HandoffStatus
 from .agent_handoff_coordinator import AgentHandoffCoordinator, HandoffDecision
@@ -31,7 +31,7 @@ from .task_routing import ProjectResolver, ResolvedTarget, TaskClassification, T
 __all__ = [
     "Agent", "AgentRegistry", "AgentRequest", "AgentResponse",
     "AgentLifecycle", "AgentSpec", "AgentSpecRegistry",
-    "AgentVersion", "AgentVersionRegistry", "AgentMaintenance",
+    "AgentVersion", "AgentVersionRegistry", "DistributedAgentVersion",\n    "DistributedAgentVersionRegistry", "build_default_distributed_agent_version_registry",\n    "AgentMaintenance",
     "MaintenanceFinding", "MaintenanceSeverity", "AgentGovernance", "AgentGovernanceRecord",
     "AgentHandoff", "HandoffStatus", "AgentHandoffCoordinator", "HandoffDecision",
     "CreatorAgent", "CriticAgent", "CreatorCriticLoop", "ImprovementCandidate",
