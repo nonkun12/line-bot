@@ -74,6 +74,52 @@ jobs:
         if: success()
         run: python scripts/nightly_worker.py
 
+      - name: Validate autonomous result and Safety Gate
+        if: success()
+        run: |
+          set -euo pipefail
+          PRODUCED_SHA="$(git rev-parse HEAD)"
+          CHANGED_FILES="$(git diff --name-only "$AUTONOMOUS_START_SHA" "$PRODUCED_SHA")"
+          FILE_COUNT="$(printf '%s\n' "$CHANGED_FILES" | sed '/^$/d' | wc -l | tr -d ' ')"
+          if [ "$FILE_COUNT" -gt 4 ]; then
+            echo "Safety Gate blocked: too many changed files ($FILE_COUNT)."
+            echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+            echo "AUTONOMOUS_BLOCKED_FAILED_REASON=too_many_changed_files" >> "$GITHUB_ENV"
+            exit 1
+          fi
+          while IFS= read -r path; do
+            [ -z "$path" ] && continue
+            case "$path" in
+              .github/*|.env*|config.py|secrets/*)
+                echo "Safety Gate blocked forbidden path: $path"
+                echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+                echo "AUTONOMOUS_BLOCKED_FAILED_REASON=forbidden_changed_file:$path" >> "$GITHUB_ENV"
+                exit 1 ;;
+              *.py|*.md|*.json|*.txt) ;;
+              *)
+                echo "Safety Gate blocked unsupported path: $path"
+                echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+                echo "AUTONOMOUS_BLOCKED_FAILED_REASON=unsupported_changed_file:$path" >> "$GITHUB_ENV"
+                exit 1 ;;
+            esac
+          done <<< "$CHANGED_FILES"
+          git diff --check "$AUTONOMOUS_START_SHA" "$PRODUCED_SHA"
+          if [ ! -f nightly_worker_summary.json ]; then
+            echo "Safety Gate blocked: missing worker summary."
+            echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+            echo "AUTONOMOUS_BLOCKED_FAILED_REASON=missing_worker_summary" >> "$GITHUB_ENV"
+            exit 1
+          fi
+          python - <<'PY'
+import json
+from pathlib import Path
+summary = json.loads(Path("nightly_worker_summary.json").read_text(encoding="utf-8"))
+if summary.get("status") != "PASS":
+    raise SystemExit(f"Safety Gate blocked: worker status={summary.get('status')!r}")
+print("Safety Gate: PASS")
+PY
+          echo "AUTONOMOUS_SAFETY_GATE_RESULT=PASS" >> "$GITHUB_ENV"
+
       - name: Publish final autonomous branch and PR
         if: success()
         env:
@@ -99,22 +145,26 @@ jobs:
           set -euo pipefail
           export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           export AUTONOMOUS_PRODUCED_SHA="$(git rev-parse HEAD)"
-          export AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "$AUTONOMOUS_START_SHA" HEAD | paste -sd, -)"
-          if [ "${AUTONOMOUS_RESULT:-}" = "pr-created" ]; then
-            export AUTONOMOUS_TESTS_RESULT="PASS"
-            export AUTONOMOUS_VERIFICATION_RESULT="PASS"
-            export AUTONOMOUS_SAFETY_GATE_RESULT="PASS"
+          export AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "$AUTONOMOUS_START_SHA" "$AUTONOMOUS_PRODUCED_SHA" | paste -sd, -)"
+          if [ -f nightly_worker_summary.json ]; then
+            export AUTONOMOUS_TESTS_RESULT="$(python - <<'PY'
+import json
+from pathlib import Path
+s=json.loads(Path("nightly_worker_summary.json").read_text(encoding="utf-8"))
+print("PASS" if s.get("status")=="PASS" else "FAIL")
+PY
+)"
+          else
+            export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
+          fi
+          export AUTONOMOUS_VERIFICATION_RESULT="NOT_RUN"
+          export AUTONOMOUS_SAFETY_GATE_RESULT="${AUTONOMOUS_SAFETY_GATE_RESULT:-BLOCKED}"
+          if [ "${AUTONOMOUS_RESULT:-}" = "pr-created" ] && [ "${AUTONOMOUS_SAFETY_GATE_RESULT}" = "PASS" ]; then
             export AUTONOMOUS_NEXT_ACTION="review_pr"
           elif [ "${AUTONOMOUS_RESULT:-}" = "no-changes" ]; then
-            export AUTONOMOUS_TESTS_RESULT="PASS"
-            export AUTONOMOUS_VERIFICATION_RESULT="PASS"
-            export AUTONOMOUS_SAFETY_GATE_RESULT="PASS"
             export AUTONOMOUS_NEXT_ACTION="next_scheduled_run"
           else
-            export AUTONOMOUS_TESTS_RESULT="FAIL_OR_BLOCKED"
-            export AUTONOMOUS_VERIFICATION_RESULT="NOT_REACHED"
-            export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
-            export AUTONOMOUS_BLOCKED_FAILED_REASON="workflow_or_autonomous_task_failed"
+            export AUTONOMOUS_BLOCKED_FAILED_REASON="${AUTONOMOUS_BLOCKED_FAILED_REASON:-workflow_or_autonomous_task_failed}"
             export AUTONOMOUS_NEXT_ACTION="review_failure"
           fi
           python - <<'PY'
