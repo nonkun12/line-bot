@@ -160,6 +160,10 @@ Preserve existing behavior. Add tests when an existing test file is among the su
         run(["git", "checkout", "--", *chosen])
         print("AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED")
         return 1
+    github_env = os.environ.get("GITHUB_ENV")
+    if github_env:
+        with open(github_env, "a", encoding="utf-8") as fh:
+            fh.write("AUTONOMOUS_SAFETY_GATE_RESULT=PASS\n")
     print("AUTONOMOUS_SAFETY_GATE_RESULT=PASS")
     if not passed:
         repair_prompt = f"""Fix only the failed implementation while preserving the requested change.
@@ -179,6 +183,10 @@ Original task:\n{instruction}\n\nPatch:\n{patch}\n\nPytest failure:\n{output}\n\
             run(["git", "checkout", "--", *chosen])
             print("AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED")
             return 1
+        github_env = os.environ.get("GITHUB_ENV")
+        if github_env:
+            with open(github_env, "a", encoding="utf-8") as fh:
+                fh.write("AUTONOMOUS_SAFETY_GATE_RESULT=PASS\n")
         print("AUTONOMOUS_SAFETY_GATE_RESULT=PASS")
 
     if not passed:
