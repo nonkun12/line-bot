@@ -5,7 +5,11 @@ import pytest
 
 from core import specialist_gate as gate
 from core.agents import AgentRegistry, AgentRequest, AgentResponse
+from core.distributed_execution_artifact import ExecutionArtifact, StaticExecutionArtifactProvider
 from core.distributed_agent_bridge import _AGENT_NAMES, build_agent_registry
+from core.distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG
+from core.distributed_agent_versions import DistributedAgentVersion, DistributedAgentVersionRegistry, catalog_digest
+from core.distributed_execution_gate import ExecutionIdentity
 from core.distributed_coordinator import DistributedAgentCoordinator
 from core.management_ai import PLANNABLE_ROLES, ManagementAI, ManagementPlan
 from core.management_bridge import SUPPORTED_MULTI_SPECIALISTS
@@ -290,10 +294,32 @@ class _BridgeRegistry:
     def get(self, name):
         return self._agent if name == "ai_news" else None
 
+def _bridge_execution_context():
+    descriptor = next(item for item in DISTRIBUTED_AGENT_CATALOG if item.key == "ai_news")
+    digest = catalog_digest(descriptor)
+    version = DistributedAgentVersion(
+        agent_key="ai_news",
+        version="0.2.0",
+        lifecycle=__import__("core.agent_specs", fromlist=["AgentLifecycle"]).AgentLifecycle.ENABLED,
+        git_sha="a" * 40,
+        catalog_digest=digest,
+    )
+    registry = DistributedAgentVersionRegistry([version])
+    artifact = ExecutionArtifact(
+        identity=ExecutionIdentity("ai_news", "0.2.0", "a" * 40, digest),
+        artifact_id="test-ai-news",
+    )
+    return registry, StaticExecutionArtifactProvider((artifact,))
+
 
 def test_bridge_handler_is_last_mile_gated(monkeypatch):
     agent = RecordingAgent("ai_news")
-    executors = build_agent_registry(_BridgeRegistry(agent)).build()
+    version_registry, artifact_provider = _bridge_execution_context()
+    executors = build_agent_registry(
+        _BridgeRegistry(agent),
+        version_registry=version_registry,
+        artifact_provider=artifact_provider,
+    ).build()
     deny(monkeypatch, Specialist.NEWS)
     with pytest.raises(SpecialistGateError):
         executors[AgentRole.NEWS].execute(AgentTask("t", AgentRole.NEWS, "AI NEWS"))
