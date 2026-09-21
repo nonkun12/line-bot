@@ -26,18 +26,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
-      CHANNEL_SECRET: ${{ secrets.CHANNEL_SECRET }}
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      MCP_SERVER_URL: ${{ secrets.MCP_SERVER_URL }}
-      MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
-      INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
-      GITHUB_TOKEN: ${{ github.token }}
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      LINE_NOTIFY_USER_ID: ${{ secrets.LINE_NOTIFY_USER_ID }}
-      GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
-      GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
-      AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
       NIGHTLY_AUTOFIX: 'true'
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
@@ -68,10 +56,18 @@ jobs:
         run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Run one guarded control tower development task
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: python scripts/nightly_task_worker.py
 
       - name: Run guarded autonomous self-healing check
         if: success()
+        env:
+          CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
+          CHANNEL_SECRET: ${{ secrets.CHANNEL_SECRET }}
+          MCP_SERVER_URL: ${{ secrets.MCP_SERVER_URL }}
+          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
+          INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
         run: python scripts/nightly_worker.py
 
       - name: Validate autonomous result and Safety Gate
@@ -123,6 +119,7 @@ PY
       - name: Publish final autonomous branch and PR
         if: success()
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           AUTONOMOUS_BRANCH: autonomous/loop-${{ github.run_id }}
         run: |
           if [ "$(git rev-parse HEAD)" = "$AUTONOMOUS_START_SHA" ]; then
@@ -141,6 +138,10 @@ PY
 
       - name: Record autonomous development result to Google Sheets
         if: always()
+        env:
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+          AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
         run: |
           set -euo pipefail
           export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -178,6 +179,9 @@ PY
       - name: Notify Slack and LINE
         if: always()
         env:
+          CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          LINE_NOTIFY_USER_ID: ${{ secrets.LINE_NOTIFY_USER_ID }}
           RUN_STATUS: ${{ job.status }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
