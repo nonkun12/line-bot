@@ -29,8 +29,8 @@ NIGHTLY_CONTROL_TOWER_TARGETS = (
 )
 
 
-def run(cmd: list[str], *, input_text: str | None = None, timeout: int = 900) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=ROOT, text=True, input=input_text, capture_output=True, timeout=timeout)
+def run(cmd: list[str], *, input_text: str | None = None, timeout: int = 900, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, cwd=ROOT, text=True, input=input_text, capture_output=True, timeout=timeout, env=env)
 
 
 def ask(client: Groq, system: str, user: str, max_tokens: int = 4000) -> str:
@@ -106,7 +106,9 @@ def apply_and_test(patch: str) -> tuple[bool, str]:
     applied = run(["git", "apply", "-"], input_text=patch)
     if applied.returncode != 0:
         return False, applied.stderr[-5000:]
-    tests = run(["python", "-m", "pytest", "-q", "--tb=native"], timeout=900)
+    test_env = dict(os.environ)
+    test_env.pop("GROQ_API_KEY", None)
+    tests = run(["python", "-m", "pytest", "-q", "--tb=native"], timeout=900, env=test_env)
     return tests.returncode == 0, (tests.stdout + "\n" + tests.stderr)[-10000:]
 
 
