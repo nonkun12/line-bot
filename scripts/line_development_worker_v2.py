@@ -261,12 +261,29 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
     return True, "applied", touched
 
 
+def _test_environment() -> dict[str, str]:
+    """Run untrusted repository code without inheriting workflow credentials."""
+    allowed = {"PATH", "HOME", "LANG", "LC_ALL", "PYTHONPATH", "TMPDIR"}
+    return {key: value for key, value in os.environ.items() if key in allowed}
+
+
+def _run_tests_command(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        cmd,
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+        env=_test_environment(),
+    )
+
+
 def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
     outputs: list[str] = []
     for path in touched or []:
         if not path.endswith(".py"):
             continue
-        compile_result = run([sys.executable, "-m", "py_compile", path], timeout=120)
+        compile_result = _run_tests_command([sys.executable, "-m", "py_compile", path], timeout=120)
         outputs.append(f"py_compile {path}: returncode={compile_result.returncode}")
         if compile_result.stdout:
             outputs.append(compile_result.stdout)
@@ -274,7 +291,7 @@ def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
             outputs.append(compile_result.stderr)
         if compile_result.returncode != 0:
             return False, "\n".join(outputs)[-8000:]
-    tests = run([sys.executable, "-m", "pytest", "-q", "--tb=native"], timeout=900)
+    tests = _run_tests_command([sys.executable, "-m", "pytest", "-q", "--tb=native"], timeout=900)
     outputs.append("full pytest:")
     outputs.extend([tests.stdout, tests.stderr])
     return tests.returncode == 0, "\n".join(outputs)[-8000:]
