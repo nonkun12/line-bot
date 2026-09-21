@@ -49,10 +49,21 @@ class AutonomousRunRecord:
         )]
 
 
+def ensure_headers(client: GoogleSheetsClient) -> None:
+    sheet = LEDGER_RANGE.split("!", 1)[0]
+    header_range = f"{sheet}!A1:Q1"
+    existing = client.read_rows(header_range)
+    if existing and existing[0] == HEADERS:
+        return
+    client.update_row(header_range, HEADERS)
+
+
 def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
-    """Write exactly once for run_id; retries are idempotent."""
-    existing = client.search(LEDGER_RANGE, record.run_id)
-    if any(record.run_id in [str(cell) for cell in row] for row in existing):
+    """Write once per exact run_id; workflow concurrency serializes retries."""
+    ensure_headers(client)
+    sheet = LEDGER_RANGE.split("!", 1)[0]
+    existing = client.search_column(f"{sheet}!A:Q", 1, record.run_id)
+    if existing:
         return False
     client.append_row(LEDGER_RANGE, record.values())
     return True
