@@ -69,19 +69,49 @@ def _git(
 
 
 def _changed_paths(root: Path, baseline: str) -> set[str]:
-    tracked = _git(root, "diff", "--name-only", "--diff-filter=ACDMRTUXB", baseline)
+    # Disable rename detection so a protected source path cannot disappear
+    # from the result merely because git classified the change as a rename.
+    tracked = _git(
+        root,
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "--diff-filter=ACDMRTUXB",
+        baseline,
+    )
     status = _git(
         root,
         "status",
         "--porcelain=v1",
+        "-z",
         "--untracked-files=all",
         strip_output=False,
     )
-    paths = {line.strip() for line in tracked.splitlines() if line.strip()}
-    for line in status.splitlines():
-        if len(line) >= 4:
-            paths.add(line[3:].strip().strip('"'))
+    paths = {path for path in tracked.splitlines() if path.strip()}
+    paths.update(_status_paths(status))
     return {_canonical_path(path) for path in paths if path.strip()}
+
+
+def _status_paths(status: str) -> set[str]:
+    """Extract every changed path from NUL-delimited porcelain v1 output."""
+    paths: set[str] = set()
+    tokens = [token for token in status.split("\0") if token]
+    index = 0
+    while index < len(tokens):
+        entry = tokens[index]
+        if len(entry) < 3:
+            index += 1
+            continue
+        code = entry[:2]
+        paths.add(entry[3:])
+        index += 1
+        # With -z, rename/copy entries contain the original path as the
+        # following NUL-delimited token. Include it too.
+        if "R" in code or "C" in code:
+            if index < len(tokens):
+                paths.add(tokens[index])
+                index += 1
+    return paths
 
 
 def _canonical_paths(paths: tuple[str, ...]) -> tuple[str, ...]:
