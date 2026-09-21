@@ -277,6 +277,11 @@ class DevelopmentRepairPlanner(RepairPlanner):
 
 def execute(instruction: str) -> int:
     """Run one real guarded development request through the quality pipeline."""
+    # Fail closed at the runtime boundary as well as in workflow jobs. This
+    # prevents LINE/Slack/manual callers from bypassing the repository kill switch.
+    if os.environ.get("AUTONOMOUS_DEV_ENABLED", "").strip().lower() != "true":
+        print("Autonomous development kill switch is disabled; refusing execution.", flush=True)
+        return 1
     client = worker.Groq(api_key=os.environ["GROQ_API_KEY"])
     state = DevelopmentState(client=client, instruction=instruction)
     executor = DevelopmentExecutor(state)
