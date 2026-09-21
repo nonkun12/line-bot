@@ -52,7 +52,7 @@ jobs:
           git config user.email "nightly-worker@users.noreply.github.com"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.13'
 
@@ -102,6 +102,7 @@ jobs:
           elif [ "${AUTONOMOUS_RESULT:-}" = "no-changes" ]; then
             MESSAGE="${MESSAGE}\n変更なし"
           fi
+          export MESSAGE
 
           if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
             python - <<'PY'
