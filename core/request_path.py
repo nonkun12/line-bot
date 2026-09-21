@@ -172,7 +172,10 @@ def _run_multi_specialist_request(
             raise RuntimeError(f"required specialist not registered: {agent_name}")
         if not bool(getattr(agent, "enabled", True)):
             raise RuntimeError(f"required specialist disabled: {agent_name}")
-        catalog_descriptor = descriptor_for_role(AgentRole(agent_name))
+        # `agent_name` is a registry identifier (e.g. `ai_news`, `job_seeking`),
+        # not the canonical AgentRole value. Resolve the catalog from the already
+        # validated specialist role so aliases cannot break the execution gate.
+        catalog_descriptor = descriptor_for_role(specialist)
         if catalog_descriptor is None:
             raise RuntimeError(f"no distributed catalog descriptor for specialist: {agent_name}")
         catalog_key = catalog_descriptor.key
