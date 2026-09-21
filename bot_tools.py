@@ -1,5 +1,7 @@
 import re
 
+from core.google_sheets import GoogleSheetsWriteDenied, append_rows
+
 import mcp_client
 from wikipedia_tool import WIKIPEDIA_TOOL_SCHEMA, wikipedia_search
 
@@ -155,6 +157,28 @@ MCP_TOOLS_SCHEMA = [
         }
     },
     WIKIPEDIA_TOOL_SCHEMA,
+    {
+        "type": "function",
+        "function": {
+            "name": "append_google_sheets",
+            "description": (
+                "ユーザーがGoogle Sheets/スプレッドシートへの反映・記録を明示的に依頼した場合だけ使う。"
+                "通常の求人検索、株価取得、ニュース取得では使わない。"
+                "rowsはシートへ追記する2次元配列。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "rows": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {}},
+                        "description": "シートへ追記する行データ"
+                    }
+                },
+                "required": ["rows"]
+            }
+        }
+    },
 ]
 
 MEMORY_VALUE_EXTRACT_PATTERNS = {
@@ -287,6 +311,29 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
             "user_id": user_id,
             "id": reminder_id
         })
+
+    if name == "append_google_sheets":
+        msg = (original_message or "").strip()
+        explicit_write = bool(
+            re.search(r"(Google\\s*Sheets|Googleスプレッドシート|スプレッドシート|Sheets)", msg, re.I)
+            and re.search(r"(反映|記録|追加|書き込|保存)", msg)
+            and not re.search(r"(しない|しません|不要|やめて|禁止)", msg)
+        )
+        if not explicit_write:
+            return "Google Sheetsへの書き込みは、明示的な反映依頼がある場合だけ実行します。"
+        try:
+            updates = append_rows(
+                arguments.get("rows", []),
+                write_requested=True,
+            )
+        except GoogleSheetsWriteDenied:
+            return "Google Sheetsへの書き込みは安全ゲートで拒否されました。"
+        except Exception as exc:
+            print("GOOGLE SHEETS WRITE ERROR:", type(exc).__name__)
+            return "Google Sheetsへの反映に失敗しました。設定と権限を確認してください。"
+        updated_rows = updates.get("updatedRows", 0)
+        updated_cells = updates.get("updatedCells", 0)
+        return f"Google Sheetsへ反映しました。追加行: {updated_rows}, 更新セル: {updated_cells}"
 
     if name == "delete_memory":
         final_key = normalize_memory_key(arguments.get("key", ""), original_message)
