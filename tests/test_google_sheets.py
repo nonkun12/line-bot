@@ -1,0 +1,1 @@
+from core.google_sheets import GoogleSheetsWriteDenied, append_rows\n\n\ndef test_append_rows_requires_explicit_write_request():\n    try:\n        append_rows([["example"]], write_requested=False)\n    except GoogleSheetsWriteDenied:\n        return\n    raise AssertionError("Sheets writes must require an explicit request")\n
