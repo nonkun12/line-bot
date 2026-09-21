@@ -8,6 +8,11 @@ from .distributed_agent_versions import (
     DistributedAgentVersionRegistry,
     build_default_distributed_agent_version_registry,
 )
+from .distributed_execution_artifact import (
+    ExecutionArtifact,
+    ExecutionArtifactProvider,
+    StaticExecutionArtifactProvider,
+)
 from .agent_maintenance import AgentMaintenance, MaintenanceFinding, MaintenanceSeverity
 from .agent_governance import AgentGovernance, AgentGovernanceRecord
 from .agent_handoff import AgentHandoff, HandoffStatus
@@ -38,6 +43,7 @@ __all__ = [
     "AgentLifecycle", "AgentSpec", "AgentSpecRegistry",
     "AgentVersion", "AgentVersionRegistry", "DistributedAgentVersion",
     "DistributedAgentVersionRegistry", "build_default_distributed_agent_version_registry",
+    "ExecutionArtifact", "ExecutionArtifactProvider", "StaticExecutionArtifactProvider",
     "AgentMaintenance",
     "MaintenanceFinding", "MaintenanceSeverity", "AgentGovernance", "AgentGovernanceRecord",
     "AgentHandoff", "HandoffStatus", "AgentHandoffCoordinator", "HandoffDecision",
