@@ -22,3 +22,8 @@ def test_workflow_and_git_paths_are_protected():
 
 def test_normal_application_file_is_not_protected():
     assert not is_protected("core/management_router.py")
+
+
+def test_protected_directory_manifests_and_ancestors_are_rejected():
+    for path in (".github/", ".github", "secrets/", ".git/", "core", "."):
+        assert is_protected(path), path
