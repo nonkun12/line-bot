@@ -21,6 +21,7 @@ from agents.jobs.intents import is_job_seeking_intent
 from agents.market.intents import is_market_intent
 from e2e_status import StepTimer
 from core.distributed_agent_bridge import build_agent_registry
+from core.distributed_agent_catalog import descriptor_for_role
 from core.distributed_execution_context import DistributedExecutionContext
 from core.distributed_execution_gate import require_exact_execution_identity
 from core.distributed_coordinator import DistributedAgentCoordinator
@@ -159,13 +160,14 @@ def _run_multi_specialist_request(
             raise RuntimeError(f"required specialist disabled: {agent_name}")
         if not agent.can_handle(request):
             raise RuntimeError(f"required specialist rejected request: {agent_name}")
-        agents.append((agent_name, agent))
+        catalog_key = descriptor_for_role(specialist).key
+        agents.append((agent_name, registry_name, catalog_key, agent))
 
-    def execute(item: tuple[str, Any]) -> tuple[str, dict[str, Any]]:
-        agent_name, agent = item
+    def execute(item: tuple[str, str, str, Any]) -> tuple[str, dict[str, Any]]:
+        agent_name, registry_name, catalog_key, agent = item
         try:
             context = _require_distributed_execution_context()
-            artifact = context.artifact_provider.get(registry_name)
+            artifact = context.artifact_provider.get(catalog_key)
             require_exact_execution_identity(context.version_registry, artifact.identity)
             assert_specialist_approved(agent_name)  # capability gate remains separate
             response = agent.handle(request)
@@ -270,7 +272,12 @@ def _run_distributed_stocks_request(
 ) -> dict[str, Any]:
     """Route explicit stock requests through the distributed runtime."""
     registry = build_core_agent_registry()
-    executors = build_agent_registry(registry).build()
+    context = _require_distributed_execution_context()
+    executors = build_agent_registry(
+        registry,
+        version_registry=context.version_registry,
+        artifact_provider=context.artifact_provider,
+    ).build()
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
     request_id = f"stocks:{channel}:{user_id}".strip()
     report = coordinator.dispatch(request_id, message, expected_role=AgentRole.STOCKS)
