@@ -77,8 +77,10 @@ jobs:
             echo "Development worker did not push ${BRANCH}; preserving failure." >&2
             exit 1
           fi
-          if gh pr view "${BRANCH}" --repo "${GITHUB_REPOSITORY}" --json url --jq '.url' 2>/dev/null; then
+          existing_pr="$(gh pr view "${BRANCH}" --repo "${GITHUB_REPOSITORY}" --json url --jq '.url' 2>/dev/null || true)"
+          if [ -n "${existing_pr}" ]; then
             echo "PR already exists for ${BRANCH}."
+            echo "pr_url=${existing_pr}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           cat <<EOF > /tmp/pr_body.md
@@ -94,6 +96,8 @@ jobs:
           Created directly by GitHub Actions.
           EOF
           gh pr create --repo "${GITHUB_REPOSITORY}" --head "${BRANCH}" --base main --title "feat: LINE development request" --body-file /tmp/pr_body.md >/tmp/pr_url.txt
+          pr_url="$(cat /tmp/pr_url.txt)"
+          echo "pr_url=${pr_url}" >> "$GITHUB_OUTPUT"
           cat /tmp/pr_url.txt
 
       - name: Notify Slack of development result
@@ -104,6 +108,7 @@ jobs:
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEVELOPMENT_OUTCOME: ${{ steps.development.outcome }}
           TEST_ONLY: ${{ steps.development.outputs.test_only }}
+          PR_URL: ${{ steps.create_pr.outputs.pr_url }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           python - <<'PY'
@@ -114,10 +119,11 @@ jobs:
           instruction = os.environ.get("DEV_INSTRUCTION", "")
           run_url = os.environ.get("RUN_URL", "")
           test_only = os.environ.get("TEST_ONLY") == "true"
+          pr_url = os.environ.get("PR_URL", "").strip()
           if outcome == "success" and test_only:
               text = "✅ *本線E2Eテスト完了*\n" f"指示: {instruction}\n" "E2E専用経路でpytestを実行し成功しました。\n" f"GitHub Actions: {run_url}"
           elif outcome == "success":
-              text = "✅ *AI自動開発 完了*\n" f"指示: {instruction}\n" "Manager → Implementer → Tester → Reviewer → Integrator を実行しました。\n" f"GitHub Actions: {run_url}"
+              text = "✅ *AI自動開発 完了*\n" f"指示: {instruction}\n" "Manager → Implementer → Tester → Reviewer → Integrator を実行しました。\n" + (f"PR: {pr_url}\n" if pr_url else "") + f"GitHub Actions: {run_url}"
           else:
               text = "❌ *AI自動開発 失敗*\n" f"指示: {instruction}\n" f"失敗地点: GitHub Actions（{outcome}）\n" f"詳細: {run_url}"
           request = urllib.request.Request(webhook, data=json.dumps({"text": text}).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
@@ -145,7 +151,7 @@ jobs:
           if outcome == "success" and test_only:
               message = "✅ 本線E2Eテストが完了しました。\n" f"指示: {instruction}\n" "E2E専用経路でpytestを実行し、成功しました。\n" f"実行結果: {run_url}"
           elif outcome == "success":
-              message = "✅ 自動開発が完了しました。\n" f"指示: {instruction}\n" "Manager → Implementer → Tester → Reviewer → Integrator を実行しました。\n" f"実行結果: {run_url}"
+              message = "✅ 自動開発が完了しました。\n" f"指示: {instruction}\n" "Manager → Implementer → Tester → Reviewer → Integrator を実行しました。\n" + (f"PR: {pr_url}\n" if pr_url else "") + f"実行結果: {run_url}"
           else:
               message = "❌ 自動開発が失敗しました。\n" f"指示: {instruction}\n" f"失敗地点: GitHub Actions（{outcome}）\n" f"詳細: {run_url}"
           payload = json.dumps({"user_id": os.environ["DEV_USER_ID"], "message": message}).encode("utf-8")
