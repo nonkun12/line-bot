@@ -7,10 +7,23 @@ class FakeClient:
         self.appended = []
         self.error = error
 
-    def search(self, _range, keyword):
+    def search_column(self, _range, column_index, keyword):
         if self.error:
             raise self.error
-        return [row for row in self.rows if keyword in [str(cell) for cell in row]]
+        return [
+            row for row in self.rows
+            if len(row) > column_index and str(row[column_index]) == str(keyword)
+        ]
+
+    def read_rows(self, _range):
+        if self.error:
+            raise self.error
+        return self.rows
+
+    def update_row(self, _range, values):
+        if self.error:
+            raise self.error
+        self.rows = [values]
 
     def append_row(self, _range, values):
         if self.error:
@@ -46,6 +59,18 @@ def test_record_keeps_failure_fields():
     )
     assert item.tests_result == "FAIL"
     assert item.blocked_failed_reason == "pytest_failed"
+
+
+def test_partial_run_id_does_not_match():
+    client = FakeClient([["date", "12345"]])
+    assert append_once(client, record()) is True
+
+
+def test_headers_are_initialized():
+    client = FakeClient()
+    append_once(client, record())
+    assert client.rows[0][0] == "timestamp"
+    assert client.rows[0][16] == "logging_result"
 
 
 def test_append_once_propagates_api_failure():
