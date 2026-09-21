@@ -69,3 +69,12 @@ def test_missing_configuration_is_rejected(monkeypatch):
         assert "SPREADSHEET_ID" in str(exc)
     else:
         raise AssertionError("missing Sheets configuration must be rejected")
+
+
+def test_record_has_seventeen_columns():
+    assert len(record().values()) == 17
+
+
+def test_ledger_range_covers_all_columns():
+    from agents.sheets import autonomous_ledger
+    assert autonomous_ledger.LEDGER_RANGE.endswith("A:Q")
