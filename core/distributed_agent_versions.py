@@ -16,7 +16,7 @@ from .agent_specs import AgentLifecycle
 from .distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG, DistributedAgentDescriptor
 
 _VERSION_RE = re.compile(
-    r"^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)"
+    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
     r"(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
     re.ASCII,
 )
