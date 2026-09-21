@@ -111,15 +111,27 @@ class GoogleSheetsClient:
 
     def search(self, range_name: str, keyword: str):
         rows = self.read_rows(range_name)
-
         return [
-            row
-            for row in rows
-            if any(
-                keyword in str(cell)
-                for cell in row
-            )
+            row for row in rows
+            if any(str(cell) == str(keyword) for cell in row)
         ]
+
+    def search_column(self, range_name: str, column_index: int, keyword: str):
+        rows = self.read_rows(range_name)
+        return [
+            row for row in rows
+            if len(row) > column_index and str(row[column_index]) == str(keyword)
+        ]
+
+    def update_row(self, range_name: str, values: list):
+        return (
+            self.service.spreadsheets().values().update(
+                spreadsheetId=self.spreadsheet_id,
+                range=range_name,
+                valueInputOption="USER_ENTERED",
+                body={"values": [values]},
+            ).execute()
+        )
 
     def delete_row(self, keyword: str):
         """
