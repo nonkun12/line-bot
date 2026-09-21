@@ -447,6 +447,12 @@ def execute(instruction: str) -> int:
     if checkout.returncode != 0:
         print(checkout.stderr[-2000:], flush=True); return 1
     verified_commit_sha = commit_sha.stdout.strip()
+    # Checkout deliberately uses persist-credentials=false. Authenticate only
+    # after the artifact is frozen and the post-commit safety gate has passed.
+    auth = worker.run(["gh", "auth", "setup-git"])
+    if auth.returncode != 0:
+        print(auth.stderr[-2000:], flush=True)
+        return 1
     push = worker.run(["git", "push", "--set-upstream", "origin", f"{verified_commit_sha}:refs/heads/{branch}"])
     if push.returncode != 0:
         print(push.stderr[-2000:], flush=True); return 1
