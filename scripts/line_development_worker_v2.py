@@ -32,7 +32,7 @@ MAX_RESPONSE_TOKENS = 1800
 MAX_INSTRUCTION_LENGTH = 2000
 MAX_REPAIR_ATTEMPTS = 1
 ALLOWED_SUFFIXES = (".py", ".md", ".json", ".txt")
-from core.protected_paths import is_protected
+from core.protected_paths import is_protected as shared_is_protected
 _COMMENT_TEST_PATH = "line_development.py"
 _COMMENT_TEST_PATH_ALIASES = {"scripts/line_development.py", "./scripts/line_development.py"}
 _EXPLICIT_PATH_PATTERN = re.compile(r"[\w][\w\-./]*\.(?:py|md|json|txt)", re.IGNORECASE)
@@ -46,7 +46,7 @@ def run(cmd: list[str], timeout: int = 900, input_text: str | None = None) -> su
 
 
 def is_protected(path: str) -> bool:
-    return is_protected(path)
+    return shared_is_protected(path)
 
 
 def _shared_policy_decision(path: str) -> SelfImprovementDecision:
