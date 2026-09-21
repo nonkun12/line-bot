@@ -173,7 +173,7 @@ Original task:\n{instruction}\n\nPatch:\n{patch}\n\nPytest failure:\n{output}\n\
         return 1
 
     status = run(["git", "status", "--short"])
-    diff = run(["git", "diff", "--name-status", "--no-renames", start_sha, "HEAD"])
+    diff = run(["git", "diff", "--name-status", "--no-renames", start_sha])
     if diff.returncode != 0:
         print(diff.stderr[-4000:])
         return 1
