@@ -1,19 +1,24 @@
-name: Nightly Autonomous Worker
+name: Autonomous Development Loop
 
 on:
   workflow_dispatch:
   schedule:
-    # 03:00 JST every day (18:00 UTC)
-    - cron: '0 18 * * *'
+    # Japan time: 03:00, 15:00, 21:00 every day.
+    - cron: '0 3 * * *'
+      timezone: 'Asia/Tokyo'
+    - cron: '0 15 * * *'
+      timezone: 'Asia/Tokyo'
+    - cron: '0 21 * * *'
+      timezone: 'Asia/Tokyo'
 
-# This workflow intentionally has no push trigger.
+# Scheduled runs are intentionally on the default branch.
 # Autonomous changes are pushed to a dedicated branch and reviewed via PR.
 permissions:
   contents: write
   pull-requests: write
 
 concurrency:
-  group: nightly-autonomous-worker
+  group: autonomous-development-loop
   cancel-in-progress: false
 
 jobs:
@@ -28,6 +33,8 @@ jobs:
       MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
       INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
       GITHUB_TOKEN: ${{ github.token }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      LINE_NOTIFY_USER_ID: ${{ secrets.LINE_NOTIFY_USER_ID }}
       NIGHTLY_AUTOFIX: 'true'
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
@@ -67,23 +74,82 @@ jobs:
       - name: Publish final autonomous branch and PR
         if: success()
         env:
-          NIGHTLY_BRANCH: nightly/autonomous-${{ github.run_id }}
+          AUTONOMOUS_BRANCH: autonomous/loop-${{ github.run_id }}
         run: |
           if [ "$(git rev-parse HEAD)" = "$AUTONOMOUS_START_SHA" ]; then
             echo 'No autonomous changes to publish.'
+            echo "AUTONOMOUS_RESULT=no-changes" >> "$GITHUB_ENV"
             exit 0
           fi
-          git push origin "HEAD:refs/heads/${NIGHTLY_BRANCH}"
-          gh pr create \
+          git push origin "HEAD:refs/heads/${AUTONOMOUS_BRANCH}"
+          PR_URL="$(gh pr create \
             --base main \
-            --head "${NIGHTLY_BRANCH}" \
-            --title "chore: nightly autonomous development ${{ github.run_id }}" \
-            --body "Nightly autonomous development result. Review and CI are required before merge. This workflow does not merge automatically."
+            --head "${AUTONOMOUS_BRANCH}" \
+            --title "chore: autonomous development loop ${{ github.run_id }}" \
+            --body "Autonomous development result. Review, safety gates, and current-HEAD CI are required before merge. This workflow does not merge automatically.")"
+          echo "AUTONOMOUS_RESULT=pr-created" >> "$GITHUB_ENV"
+          echo "AUTONOMOUS_PR_URL=${PR_URL}" >> "$GITHUB_ENV"
+
+      - name: Notify Slack and LINE
+        if: always()
+        env:
+          RUN_STATUS: ${{ job.status }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          MESSAGE="🤖 自律開発ループ完了\n結果: ${RUN_STATUS}\n実行: ${RUN_URL}"
+          if [ -n "${AUTONOMOUS_PR_URL:-}" ]; then
+            MESSAGE="${MESSAGE}\nPR: ${AUTONOMOUS_PR_URL}"
+          elif [ "${AUTONOMOUS_RESULT:-}" = "no-changes" ]; then
+            MESSAGE="${MESSAGE}\n変更なし"
+          fi
+          export MESSAGE
+
+          if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+            python - <<'PY'
+import json, os, urllib.request
+message = os.environ["MESSAGE"]
+req = urllib.request.Request(
+    os.environ["SLACK_WEBHOOK_URL"],
+    data=json.dumps({"text": message}).encode(),
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(req, timeout=15) as response:
+    if response.status >= 300:
+        raise SystemExit(f"Slack notification failed: HTTP {response.status}")
+PY
+          else
+            echo "SLACK_WEBHOOK_URL is not configured; Slack notification skipped."
+          fi
+
+          if [ -n "${CHANNEL_ACCESS_TOKEN:-}" ] && [ -n "${LINE_NOTIFY_USER_ID:-}" ]; then
+            python - <<'PY'
+import json, os, urllib.request
+payload = {
+    "to": os.environ["LINE_NOTIFY_USER_ID"],
+    "messages": [{"type": "text", "text": os.environ["MESSAGE"]}],
+}
+req = urllib.request.Request(
+    "https://api.line.me/v2/bot/message/push",
+    data=json.dumps(payload).encode(),
+    headers={
+        "Authorization": "Bearer " + os.environ["CHANNEL_ACCESS_TOKEN"],
+        "Content-Type": "application/json",
+    },
+    method="POST",
+)
+with urllib.request.urlopen(req, timeout=15) as response:
+    if response.status >= 300:
+        raise SystemExit(f"LINE notification failed: HTTP {response.status}")
+PY
+          else
+            echo "LINE notification secrets are not configured; LINE notification skipped."
+          fi
 
       - name: Upload worker summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nightly-worker-summary
+          name: autonomous-worker-summary-${{ github.run_id }}
           path: nightly_worker_summary.json
           if-no-files-found: ignore
