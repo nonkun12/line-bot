@@ -21,8 +21,27 @@ from agents.jobs.intents import is_job_seeking_intent
 from agents.market.intents import is_market_intent
 from e2e_status import StepTimer
 from core.distributed_agent_bridge import build_agent_registry
+from core.distributed_execution_context import DistributedExecutionContext
+from core.distributed_execution_gate import require_exact_execution_identity
 from core.distributed_coordinator import DistributedAgentCoordinator
 from core.multi_agent import AgentRole
+
+_DISTRIBUTED_EXECUTION_CONTEXT: DistributedExecutionContext | None = None
+
+
+def configure_distributed_execution_context(context: DistributedExecutionContext) -> None:
+    """Install the explicit immutable identity dependencies for distributed execution."""
+    global _DISTRIBUTED_EXECUTION_CONTEXT
+    _DISTRIBUTED_EXECUTION_CONTEXT = context
+
+
+def _require_distributed_execution_context() -> DistributedExecutionContext:
+    context = _DISTRIBUTED_EXECUTION_CONTEXT
+    if context is None:
+        raise RuntimeError("distributed execution context is not configured")
+    return context
+
+
 from core.specialist_gate import (
     DOMAIN_AGENT_NAMES,
     SpecialistGateError,
@@ -145,7 +164,10 @@ def _run_multi_specialist_request(
     def execute(item: tuple[str, Any]) -> tuple[str, dict[str, Any]]:
         agent_name, agent = item
         try:
-            assert_specialist_approved(agent_name)  # last-mile, immediately before handle()
+            context = _require_distributed_execution_context()
+            artifact = context.artifact_provider.get(registry_name)
+            require_exact_execution_identity(context.version_registry, artifact.identity)
+            assert_specialist_approved(agent_name)  # capability gate remains separate
             response = agent.handle(request)
             return agent_name, {
                 "text": response.text,
@@ -199,7 +221,12 @@ def _run_distributed_news_request(
 ) -> dict[str, Any]:
     """Route explicit AI NEWS requests through the distributed runtime."""
     registry = build_core_agent_registry()
-    executors = build_agent_registry(registry).build()
+    context = _require_distributed_execution_context()
+    executors = build_agent_registry(
+        registry,
+        version_registry=context.version_registry,
+        artifact_provider=context.artifact_provider,
+    ).build()
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
     request_id = f"news:{channel}:{user_id}".strip()
     report = coordinator.dispatch(request_id, message, expected_role=AgentRole.NEWS)
