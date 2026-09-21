@@ -122,6 +122,11 @@ def main() -> int:
     if not instruction:
         return 2
     client = Groq(api_key=os.environ["GROQ_API_KEY"])
+    start_sha_proc = run(["git", "rev-parse", "HEAD"])
+    if start_sha_proc.returncode != 0:
+        print(start_sha_proc.stderr[-2000:])
+        return 1
+    start_sha = start_sha_proc.stdout.strip()
     files = repo_files()
     chosen = choose_files(client, instruction, files)
     if not chosen:
@@ -168,6 +173,36 @@ Original task:\n{instruction}\n\nPatch:\n{patch}\n\nPytest failure:\n{output}\n\
         return 1
 
     status = run(["git", "status", "--short"])
+    diff = run(["git", "diff", "--name-status", "--no-renames", start_sha, "HEAD"])
+    if diff.returncode != 0:
+        print(diff.stderr[-4000:])
+        return 1
+    actual = []
+    unsafe_status = []
+    for line in diff.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 2:
+            unsafe_status.append(line)
+            continue
+        status_code, path = parts
+        actual.append(path)
+        if status_code != "M" or path not in chosen:
+            unsafe_status.append(line)
+    untracked = run(["git", "ls-files", "--others", "--exclude-standard"])
+    if untracked.returncode != 0:
+        print(untracked.stderr[-4000:])
+        return 1
+    untracked_paths = [p for p in untracked.stdout.splitlines() if p.strip()]
+    if untracked_paths:
+        unsafe_status.extend(f"??\t{p}" for p in untracked_paths)
+    if unsafe_status or set(actual) != set(chosen):
+        print("Final safety gate rejected actual repository changes.")
+        print("\n".join(unsafe_status) or f"expected={sorted(chosen)} actual={sorted(actual)}")
+        run(["git", "reset", "--hard", start_sha])
+        for path in untracked_paths:
+            run(["git", "clean", "-fd", "--", path])
+        return 1
+
     if not status.stdout.strip():
         print("Tests passed but no files changed.")
         return 0
