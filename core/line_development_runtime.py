@@ -6,6 +6,7 @@ this runtime itself.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from dataclasses import dataclass
@@ -34,6 +35,7 @@ class DevelopmentState:
     baseline_status: str = ""
     verified_sha: str = ""
     verified_diff: str = ""
+    verified_diff_sha256: str = ""
     verified_test_output: str = ""
 
 
@@ -345,7 +347,7 @@ def execute(instruction: str) -> int:
     # Freeze the exact worktree that passed TEST + REVIEW + Safety Gate.
     # The later commit/PR must contain exactly this verified diff.
     verified_head = worker.run(["git", "rev-parse", "HEAD"])
-    verified_diff = worker.run(["git", "diff", "--binary", baseline_sha, "HEAD"])
+    verified_diff = worker.run(["git", "diff", "--binary", baseline_sha])
     verified_status = worker.run(["git", "status", "--porcelain=v1", "--untracked-files=all"])
     if (
         verified_head.returncode != 0
@@ -358,6 +360,7 @@ def execute(instruction: str) -> int:
         return 1
     state.verified_sha = verified_head.stdout.strip()
     state.verified_diff = verified_diff.stdout
+    state.verified_diff_sha256 = hashlib.sha256(state.verified_diff.encode("utf-8")).hexdigest()
     state.verified_test_output = state.test_output
 
     branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
@@ -368,7 +371,9 @@ def execute(instruction: str) -> int:
     status = worker.run(["git", "status", "--short"])
     if status.returncode != 0 or not status.stdout.strip():
         worker.restore(touched); print("No changes to commit.", flush=True); return 1
-    commit = worker.run(["git", *identity, "commit", "-m", "feat: LINE development request"])
+    # Autonomous commits must not execute repository-controlled hooks. Hooks are
+    # executable code outside the verified diff and would break SHA->diff binding.
+    commit = worker.run(["git", "-c", "core.hooksPath=/dev/null", *identity, "commit", "--no-verify", "-m", "feat: LINE development request"])
     if commit.returncode != 0:
         worker.restore(touched); print(commit.stderr[-2000:], flush=True); return 1
     commit_sha = worker.run(["git", "rev-parse", "HEAD"])
@@ -391,6 +396,60 @@ def execute(instruction: str) -> int:
     push = worker.run(["git", "push", "--set-upstream", "origin", branch])
     if push.returncode != 0:
         print(push.stderr[-2000:], flush=True); return 1
+    commit_sha = worker.run(["git", "rev-parse", "HEAD"])
+    commit_parent = worker.run(["git", "rev-parse", "HEAD^"])
+    commit_count = worker.run(["git", "rev-list", "--count", f"{baseline_sha}..HEAD"])
+    committed_diff = worker.run(["git", "diff", "--binary", baseline_sha, "HEAD"])
+    committed_diff_sha256 = hashlib.sha256(committed_diff.stdout.encode("utf-8")).hexdigest() if committed_diff.returncode == 0 else ""
+    post_commit_status = worker.run(["git", "status", "--porcelain=v1", "--untracked-files=all"])
+    artifact_ok = (
+        commit_sha.returncode == 0
+        and commit_parent.returncode == 0
+        and commit_count.returncode == 0
+        and committed_diff.returncode == 0
+        and post_commit_status.returncode == 0
+        and not post_commit_status.stdout.strip()
+        and commit_parent.stdout.strip() == state.verified_sha
+        and commit_count.stdout.strip() == "1"
+        and committed_diff.stdout == state.verified_diff
+        and committed_diff_sha256 == state.verified_diff_sha256
+        and commit_sha.stdout.strip() != baseline_sha
+    )
+    if not artifact_ok:
+        _rollback_to_clean_baseline(baseline_sha)
+        print("Committed artifact does not match the verified SHA/diff; refusing to publish.", flush=True)
+        return 1
+
+    # Re-run the live safety gate on the committed artifact. The gate therefore
+    # covers the exact commit that will be published, not only its pre-commit tree.
+    post_commit_result = AgentResult(
+        "post-commit-safety-gate",
+        True,
+        f"verified commit {commit_sha.stdout.strip()} diff_sha256={committed_diff_sha256}",
+        frozenset(touched),
+    )
+    try:
+        post_commit_verified = safety_gate.verify(tasks[-1], post_commit_result, (state.chosen,))
+    except Exception as exc:
+        post_commit_verified = False
+        print(f"Post-commit safety gate error: {type(exc).__name__}: {exc}", flush=True)
+    if not post_commit_verified:
+        _rollback_to_clean_baseline(baseline_sha)
+        print("Post-commit safety gate rejected the published artifact.", flush=True)
+        return 1
+
+    checkout = worker.run(["git", "checkout", "-B", branch])
+    if checkout.returncode != 0:
+        print(checkout.stderr[-2000:], flush=True); return 1
+    verified_commit_sha = commit_sha.stdout.strip()
+    push = worker.run(["git", "push", "--set-upstream", "origin", f"{verified_commit_sha}:refs/heads/{branch}"])
+    if push.returncode != 0:
+        print(push.stderr[-2000:], flush=True); return 1
+    remote = worker.run(["git", "ls-remote", "origin", f"refs/heads/{branch}"])
+    remote_sha = remote.stdout.split()[0] if remote.returncode == 0 and remote.stdout.split() else ""
+    if remote.returncode != 0 or remote_sha != verified_commit_sha:
+        print("Remote branch SHA does not match the verified commit; refusing to continue.", flush=True)
+        return 1
     print(f"Development branch pushed: {branch}", flush=True)
     return 0
 
