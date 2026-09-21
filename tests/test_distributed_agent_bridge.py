@@ -7,7 +7,7 @@ from core.distributed_agent_versions import (
     DistributedAgentVersionRegistry,
     catalog_digest,
 )
-from core.distributed_execution_gate import ExecutionIdentity
+from core.distributed_execution_gate import DistributedExecutionGateError, ExecutionIdentity
 from core.multi_agent import AgentRole, AgentTask
 
 
@@ -101,9 +101,11 @@ def test_bridge_rejects_identity_mismatch_before_agent_handle():
         artifact_provider=bad_provider,
     ).build()
 
-    result = executors[AgentRole.NEWS].execute(
-        AgentTask(task_id="req-2", role=AgentRole.NEWS, instruction="AI NEWSをテスト")
-    )
+    import pytest
 
-    assert result.success is False
+    with pytest.raises(DistributedExecutionGateError):
+        executors[AgentRole.NEWS].execute(
+            AgentTask(task_id="req-2", role=AgentRole.NEWS, instruction="AI NEWSをテスト")
+        )
+
     assert calls == []
