@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from .agents import Agent, AgentRequest
-from .distributed_agent_artifact import ExecutionArtifactProvider
+from .distributed_execution_artifact import ExecutionArtifactProvider
 from .distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG
 from .distributed_agent_versions import DistributedAgentVersionRegistry
 from .distributed_domain_executor import HandlerExecutor
