@@ -94,6 +94,11 @@ def handle_message_event(event):
         # Normal conversation, GitHub lookup commands, and n8n are untouched.
         dev_instruction = extract_development_instruction(text)
         if dev_instruction is not None:
+            # Development commands get an immediate LINE acknowledgement so the
+            # webhook stays fast. The actual GitHub Actions dispatch remains async.
+            from app import _line_reply
+            _line_reply(event.reply_token, "🚀 開発指示を受け付けました。GitHub Actionsで開発・テストを開始します。")
+
             def _run_development_async():
                 try:
                     reply = dispatch_development_workflow(
