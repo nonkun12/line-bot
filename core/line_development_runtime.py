@@ -32,6 +32,9 @@ class DevelopmentState:
     test_output: str = ""
     tests_passed: bool = False
     baseline_status: str = ""
+    verified_sha: str = ""
+    verified_diff: str = ""
+    verified_test_output: str = ""
 
 
 def _fallback_safe_target(files: list[str]) -> str | None:
@@ -339,6 +342,24 @@ def execute(instruction: str) -> int:
         _rollback_to_clean_baseline(baseline_sha)
         print("Multi-agent development produced no file change.", flush=True)
         return 1
+    # Freeze the exact worktree that passed TEST + REVIEW + Safety Gate.
+    # The later commit/PR must contain exactly this verified diff.
+    verified_head = worker.run(["git", "rev-parse", "HEAD"])
+    verified_diff = worker.run(["git", "diff", "--binary", baseline_sha, "HEAD"])
+    verified_status = worker.run(["git", "status", "--porcelain=v1", "--untracked-files=all"])
+    if (
+        verified_head.returncode != 0
+        or verified_diff.returncode != 0
+        or verified_status.returncode != 0
+        or verified_status.stdout.strip()
+    ):
+        _rollback_to_clean_baseline(baseline_sha)
+        print("Final verification snapshot failed closed.", flush=True)
+        return 1
+    state.verified_sha = verified_head.stdout.strip()
+    state.verified_diff = verified_diff.stdout
+    state.verified_test_output = state.test_output
+
     branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
     identity = ["-c", "user.name=github-actions[bot]", "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com"]
     add = worker.run(["git", "add", "--", *touched])
@@ -350,6 +371,18 @@ def execute(instruction: str) -> int:
     commit = worker.run(["git", *identity, "commit", "-m", "feat: LINE development request"])
     if commit.returncode != 0:
         worker.restore(touched); print(commit.stderr[-2000:], flush=True); return 1
+    commit_sha = worker.run(["git", "rev-parse", "HEAD"])
+    committed_diff = worker.run(["git", "diff", "--binary", baseline_sha, "HEAD"])
+    if (
+        commit_sha.returncode != 0
+        or committed_diff.returncode != 0
+        or commit_sha.stdout.strip() != state.verified_sha
+        or committed_diff.stdout != state.verified_diff
+    ):
+        _rollback_to_clean_baseline(baseline_sha)
+        print("Committed artifact does not match the verified SHA/diff; refusing to publish.", flush=True)
+        return 1
+
     checkout = worker.run(["git", "checkout", "-B", branch])
     if checkout.returncode != 0:
         print(checkout.stderr[-2000:], flush=True); return 1
