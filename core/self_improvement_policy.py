@@ -40,6 +40,9 @@ HIGH_RISK_FILES = frozenset(
         "line_development.py",
         "scripts/line_development_worker_v2.py",
         "core/line_development_runtime.py",
+        "core/execution_safety.py",
+        "core/agent_runtime.py",
+        "core/management_safety.py",
         "core/self_improvement_policy.py",
     }
 )
