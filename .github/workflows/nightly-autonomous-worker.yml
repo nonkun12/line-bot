@@ -25,21 +25,6 @@ jobs:
   autonomous-development:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
-      CHANNEL_SECRET: ${{ secrets.CHANNEL_SECRET }}
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      MCP_SERVER_URL: ${{ secrets.MCP_SERVER_URL }}
-      MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
-      INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
-      GITHUB_TOKEN: ${{ github.token }}
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      LINE_NOTIFY_USER_ID: ${{ secrets.LINE_NOTIFY_USER_ID }}
-      NIGHTLY_AUTOFIX: 'false'
-      AUTO_APPLY_PATCH: 'false'
-      AUTO_DEPLOY: 'false'
-      DEV_INSTRUCTION: 'コントロールタワーAIの完成度を1段階上げてください。既存のAIGateway、AgentRegistry、Supervisor、Routerの責務分離を維持し、ユーザー要求をより安定して適切なAgentへ振り分けるための最小限の改善を実装してください。特に優先順位、未解決要求の安全なfallback、channel-independentなrequest metadataの活用を検討してください。既存のLINE/Voice機能を壊さず、新規依存関係や外部APIを追加しないでください。変更は最小限、テスト可能にしてください。'
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -66,6 +51,8 @@ jobs:
         run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Run one guarded control tower development task
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: python scripts/nightly_task_worker.py
 
       - name: Run guarded autonomous self-healing check
@@ -75,6 +62,7 @@ jobs:
       - name: Publish final autonomous branch and PR
         if: success()
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           AUTONOMOUS_BRANCH: autonomous/loop-${{ github.run_id }}
         run: |
           if [ "$(git rev-parse HEAD)" = "$AUTONOMOUS_START_SHA" ]; then
@@ -97,6 +85,9 @@ jobs:
         env:
           RUN_STATUS: ${{ job.status }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
+          LINE_NOTIFY_USER_ID: ${{ secrets.LINE_NOTIFY_USER_ID }}
         run: |
           MESSAGE="🤖 自律開発ループ完了\n結果: ${RUN_STATUS}\n実行: ${RUN_URL}"
           if [ -n "${AUTONOMOUS_PR_URL:-}" ]; then
