@@ -39,14 +39,14 @@ def distributed_identity_context(monkeypatch):
         digest = catalog_digest(descriptor)
         sha = "a" * 40
         records.append(DistributedAgentVersion(
-            agent_key=descriptor.agent_name,
+            agent_key=descriptor.key,
             version="0.2.0",
             lifecycle=AgentLifecycle.ENABLED,
             git_sha=sha,
             catalog_digest=digest,
         ))
         artifacts.append(ExecutionArtifact(
-            identity=ExecutionIdentity(descriptor.agent_name, "0.2.0", sha, digest),
+            identity=ExecutionIdentity(descriptor.key, "0.2.0", sha, digest),
             artifact_id=f"test-{descriptor.agent_name}",
         ))
     monkeypatch.setattr(
