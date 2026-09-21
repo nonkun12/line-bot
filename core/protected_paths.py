@@ -25,7 +25,16 @@ def normalize_path(path: str) -> str:
     return PurePosixPath(value).as_posix()
 
 def is_protected(path: str) -> bool:
-    normalized = normalize_path(path)
-    return normalized in PROTECTED_FILES or any(normalized.startswith(p) for p in PROTECTED_PREFIXES)
+    normalized = normalize_path(path).rstrip("/")
+    if not normalized or normalized == ".":
+        return True
+    if normalized in PROTECTED_FILES:
+        return True
+    if any(normalized == prefix.rstrip("/") or normalized.startswith(prefix) for prefix in PROTECTED_PREFIXES):
+        return True
+    # A manifest scope that is an ancestor of a protected file must also be
+    # protected; otherwise a caller could authorize "core" or "." and reach
+    # a protected descendant.
+    return any(protected.startswith(normalized + "/") for protected in PROTECTED_FILES)
 
 __all__ = ["PROTECTED_PREFIXES","PROTECTED_FILES","HIGH_RISK_PREFIXES","HIGH_RISK_FILES","normalize_path","is_protected"]
