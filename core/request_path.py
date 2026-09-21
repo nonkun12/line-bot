@@ -155,6 +155,10 @@ def _run_multi_specialist_request(
 
     registry = build_core_agent_registry()
     request = AgentRequest(user_id=user_id, message=message, channel=channel, metadata=dict(metadata))
+    # Snapshot the execution dependencies once for the whole request. This
+    # prevents a concurrent context reconfiguration from changing the
+    # identity source between validation and dispatch.
+    context = _require_distributed_execution_context()
 
     agents = []
     for specialist in resolved:
@@ -168,8 +172,6 @@ def _run_multi_specialist_request(
             raise RuntimeError(f"required specialist not registered: {agent_name}")
         if not bool(getattr(agent, "enabled", True)):
             raise RuntimeError(f"required specialist disabled: {agent_name}")
-        if not agent.can_handle(request):
-            raise RuntimeError(f"required specialist rejected request: {agent_name}")
         catalog_descriptor = descriptor_for_role(AgentRole(agent_name))
         if catalog_descriptor is None:
             raise RuntimeError(f"no distributed catalog descriptor for specialist: {agent_name}")
@@ -179,10 +181,11 @@ def _run_multi_specialist_request(
     def execute(item: tuple[str, str, str, Any]) -> tuple[str, dict[str, Any]]:
         agent_name, registry_name, catalog_key, agent = item
         try:
-            context = _require_distributed_execution_context()
             artifact = context.artifact_provider.get(catalog_key)
             require_exact_execution_identity(context.version_registry, artifact.identity)
             assert_specialist_approved(agent_name)  # capability gate remains separate
+            if not agent.can_handle(request):
+                raise RuntimeError(f"required specialist rejected request: {agent_name}")
             response = agent.handle(request)
             return agent_name, {
                 "text": response.text,

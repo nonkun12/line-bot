@@ -261,6 +261,44 @@ def test_multi_path_last_mile_gate_blocks_execution_if_boundary_changes(
     assert registry.executed() == []
 
 
+
+
+def test_multi_path_exact_identity_gate_runs_before_agent_can_handle(monkeypatch, registry):
+    """A rejected execution identity must not even invoke can_handle()."""
+    class GuardedAgent(RecordingAgent):
+        def __init__(self, name: str) -> None:
+            super().__init__(name)
+            self.can_handle_calls = 0
+
+        def can_handle(self, request) -> bool:
+            self.can_handle_calls += 1
+            return True
+
+    guarded = GuardedAgent("ai_news")
+    registry.agents["ai_news"] = guarded
+
+    context = request_path._DISTRIBUTED_EXECUTION_CONTEXT
+    descriptor = next(item for item in DISTRIBUTED_AGENT_CATALOG if item.key == "ai_news")
+    bad_identity = ExecutionIdentity(
+        descriptor.key,
+        "9.9.9",
+        "a" * 40,
+        catalog_digest(descriptor),
+    )
+    bad_artifact = ExecutionArtifact(identity=bad_identity, artifact_id="bad")
+    bad_context = DistributedExecutionContext(
+        version_registry=context.version_registry,
+        artifact_provider=StaticExecutionArtifactProvider((bad_artifact,)),
+    )
+    monkeypatch.setattr(request_path, "_DISTRIBUTED_EXECUTION_CONTEXT", bad_context)
+
+    with pytest.raises(RuntimeError, match="all multi-specialists failed"):
+        request_path._run_multi_specialist_request(
+            "u", "m", channel="line", metadata={}, specialists=("news",)
+        )
+    assert guarded.can_handle_calls == 0
+    assert guarded.calls == 0
+
 def test_multi_path_never_exceeds_worker_limit_on_the_happy_path(registry):
     result = request_path._run_multi_specialist_request(
         "u",
