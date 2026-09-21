@@ -2,7 +2,7 @@
 from __future__ import annotations
 from pathlib import PurePosixPath
 
-PROTECTED_PREFIXES = (".github/", ".git/", "security/", "secrets/")
+PROTECTED_PREFIXES = (".github/", ".git/", ".env", "security/", "secrets/")
 PROTECTED_FILES = frozenset({
     ".env", ".env.local", ".env.production", "CODEOWNERS", "config.py",
     "pyproject.toml", "poetry.lock", "uv.lock", "requirements.txt", "requirements-dev.txt",
@@ -11,6 +11,11 @@ PROTECTED_FILES = frozenset({
     "core/specialist_gate.py", "core/self_improvement_handoff.py",
     "core/self_improvement_handoff_store.py", "core/protected_paths.py",
     "core/line_development_runtime.py", "scripts/run_guarded_runtime.py",
+    # Legacy/high-impact autonomous-development control paths are kept blocked
+    # even when the files are absent on the current branch.
+    "line_development.py", "git_safety.py", "patch_validator.py", "render_client.py",
+    "scripts/line_development.py", "scripts/git_safety.py", "scripts/patch_validator.py",
+    "scripts/render_client.py",
     "scripts/line_development_worker.py", "scripts/line_development_worker_safe.py",
     "scripts/line_development_worker_v2.py", "scripts/nightly_task_worker.py",
     "scripts/nightly_worker.py", "slack_command.py", "app.py", "tests/test_execution_safety.py",
