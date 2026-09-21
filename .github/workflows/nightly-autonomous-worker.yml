@@ -106,7 +106,7 @@ jobs:
           if len(diff) > 4:
               raise SystemExit("Too many changed files in publish workspace.")
           for line in diff:
-              parts = line.split("\\t")
+              parts = line.split("\t")
               if len(parts) != 2 or parts[0] != "M":
                   raise SystemExit(f"Unsafe diff status: {line}")
               path = parts[1]
