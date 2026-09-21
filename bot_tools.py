@@ -315,7 +315,7 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
     if name == "append_google_sheets":
         msg = (original_message or "").strip()
         explicit_write = bool(
-            re.search(r"(Google\\s*Sheets|Googleスプレッドシート|スプレッドシート|Sheets)", msg, re.I)
+            re.search(r"(Google\s*Sheets|Googleスプレッドシート|スプレッドシート|Sheets)", msg, re.I)
             and re.search(r"(反映|記録|追加|書き込|保存)", msg)
             and not re.search(r"(しない|しません|不要|やめて|禁止)", msg)
         )
