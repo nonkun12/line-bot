@@ -372,11 +372,13 @@ def execute(instruction: str) -> int:
     if commit.returncode != 0:
         worker.restore(touched); print(commit.stderr[-2000:], flush=True); return 1
     commit_sha = worker.run(["git", "rev-parse", "HEAD"])
+    commit_parent = worker.run(["git", "rev-parse", "HEAD^"])
     committed_diff = worker.run(["git", "diff", "--binary", baseline_sha, "HEAD"])
     if (
         commit_sha.returncode != 0
+        or commit_parent.returncode != 0
         or committed_diff.returncode != 0
-        or commit_sha.stdout.strip() != state.verified_sha
+        or commit_parent.stdout.strip() != state.verified_sha
         or committed_diff.stdout != state.verified_diff
     ):
         _rollback_to_clean_baseline(baseline_sha)
