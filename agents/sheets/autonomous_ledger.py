@@ -1,6 +1,8 @@
 """Append one immutable autonomous-development execution record to Google Sheets.
 
 This module is intentionally separate from user-facing Sheets operations.
+It is the canonical ledger used by the nightly autonomous workflow; the optional
+`core.line_development_runtime` audit hook is a separate, best-effort path.
 """
 from __future__ import annotations
 
