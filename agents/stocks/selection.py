@@ -20,6 +20,9 @@ class TechnicalIndicators:
     macd: float | None
     macd_signal: float | None
     volatility20: float | None
+    bollinger_mid20: float | None
+    bollinger_upper20: float | None
+    bollinger_lower20: float | None
     trend: str
     signal: str
     signal_score: int
@@ -28,7 +31,7 @@ class TechnicalIndicators:
 def analyze_prices(prices: Sequence[float]) -> TechnicalIndicators:
     values = [float(v) for v in prices if _valid_number(v)]
     if not values:
-        return TechnicalIndicators(None, None, None, None, None, None, None, "unknown", "neutral", 0)
+        return TechnicalIndicators(None, None, None, None, None, None, None, None, None, None, "unknown", "neutral", 0)
 
     price = values[-1]
     sma20 = _sma(values, 20)
@@ -37,9 +40,10 @@ def analyze_prices(prices: Sequence[float]) -> TechnicalIndicators:
     ema12 = _ema(values, 12)
     ema26 = _ema(values, 26)
     macd = ema12 - ema26 if ema12 is not None and ema26 is not None else None
-    macd_series = _ema_series(values, 12, 26)
+    macd_series = _macd_series(values, 12, 26)
     macd_signal = _ema(macd_series, 9) if macd_series else None
     volatility20 = _annualized_volatility(values[-21:]) if len(values) >= 3 else None
+    bollinger_mid20, bollinger_upper20, bollinger_lower20 = _bollinger_bands(values, 20, 2.0)
 
     score = 0
     if sma20 is not None:
@@ -53,6 +57,11 @@ def analyze_prices(prices: Sequence[float]) -> TechnicalIndicators:
             score -= 1
     if macd is not None and macd_signal is not None:
         score += 1 if macd > macd_signal else -1
+    if bollinger_upper20 is not None and bollinger_lower20 is not None:
+        if price <= bollinger_lower20:
+            score += 1
+        elif price >= bollinger_upper20:
+            score -= 1
 
     if sma20 is not None and sma50 is not None:
         trend = "bullish" if sma20 > sma50 else "bearish"
@@ -76,6 +85,9 @@ def analyze_prices(prices: Sequence[float]) -> TechnicalIndicators:
         macd=macd,
         macd_signal=macd_signal,
         volatility20=volatility20,
+        bollinger_mid20=bollinger_mid20,
+        bollinger_upper20=bollinger_upper20,
+        bollinger_lower20=bollinger_lower20,
         trend=trend,
         signal=signal,
         signal_score=score,
@@ -111,7 +123,8 @@ def rank_stock_candidates(
             f"MACD={_fmt(indicators.macd)}, "
             f"MACDシグナル={_fmt(indicators.macd_signal)}, "
             f"SMA20={_fmt(indicators.sma20)}, "
-            f"SMA50={_fmt(indicators.sma50)}"
+            f"SMA50={_fmt(indicators.sma50)}, "
+            f"ボリンジャー20={_fmt(indicators.bollinger_mid20)}/上限{_fmt(indicators.bollinger_upper20)}/下限{_fmt(indicators.bollinger_lower20)}"
         )
         results.append(
             StockSelectionResult(
@@ -147,19 +160,35 @@ def _ema(values: Sequence[float], period: int) -> float | None:
     return ema
 
 
-def _ema_series(values: Sequence[float], fast: int, slow: int) -> list[float]:
+def _macd_series(values: Sequence[float], fast: int, slow: int) -> list[float]:
     if len(values) < slow:
         return []
-    fast_mult = 2.0 / (fast + 1)
-    slow_mult = 2.0 / (slow + 1)
+    fast_multiplier = 2.0 / (fast + 1)
+    slow_multiplier = 2.0 / (slow + 1)
     fast_ema = sum(values[:fast]) / fast
+    for value in values[fast:slow]:
+        fast_ema = (value - fast_ema) * fast_multiplier + fast_ema
     slow_ema = sum(values[:slow]) / slow
-    series = [slow_ema]
-    for idx in range(slow, len(values)):
-        fast_ema = (values[idx] - fast_ema) * fast_mult + fast_ema
-        slow_ema = (values[idx] - slow_ema) * slow_mult + slow_ema
+    series = [fast_ema - slow_ema]
+    for value in values[slow:]:
+        fast_ema = (value - fast_ema) * fast_multiplier + fast_ema
+        slow_ema = (value - slow_ema) * slow_multiplier + slow_ema
         series.append(fast_ema - slow_ema)
     return series
+
+
+def _bollinger_bands(
+    values: Sequence[float], period: int, deviations: float
+) -> tuple[float | None, float | None, float | None]:
+    if len(values) < period:
+        return None, None, None
+    window = values[-period:]
+    mean = sum(window) / period
+    variance = sum((value - mean) ** 2 for value in window) / period
+    standard_deviation = sqrt(variance)
+    return mean, mean + deviations * standard_deviation, mean - deviations * standard_deviation
+
+
 
 
 def _rsi(values: Sequence[float], period: int) -> float | None:
