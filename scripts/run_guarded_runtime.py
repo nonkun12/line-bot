@@ -49,8 +49,7 @@ def guarded_ask(client: Groq | None, system: str, user: str, max_tokens: int = w
         retry_system = system
         if attempt:
             retry_system += (
-                "
-IMPORTANT: Return a single valid JSON object only. "
+                "\nIMPORTANT: Return a single valid JSON object only. "
                 "Do not emit prose, markdown, or an empty response."
             )
 
