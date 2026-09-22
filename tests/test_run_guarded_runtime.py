@@ -86,3 +86,21 @@ def test_guarded_ask_falls_back_to_external_ai_after_local_failure(monkeypatch):
     assert len(calls) == 1
     assert calls[0][0] == ("ollama", "run", "qwen2.5-coder:7b")
     assert len(client.completions.calls) == 1
+
+
+def test_guarded_ask_falls_back_after_invalid_local_json(monkeypatch):
+    monkeypatch.setenv("LOCAL_AI_COMMAND", "ollama run qwen2.5-coder:7b")
+    local_calls = []
+
+    def bad_local(command, system, user):
+        local_calls.append(command)
+        return "not json"
+
+    monkeypatch.setattr(local_ai_provider, "ask_local_ai", bad_local)
+    client = _Client(['{"file":"tests/test_management_router.py"}'])
+
+    content = guarded_ask(client, "return JSON", "select a file")
+
+    assert json.loads(content) == {"file": "tests/test_management_router.py"}
+    assert len(local_calls) == 1
+    assert len(client.completions.calls) == 1
