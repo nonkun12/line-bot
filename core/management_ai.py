@@ -14,7 +14,7 @@ from ai_client import generate_chat_completion
 from .agent_communication import AgentMessageBus
 from .distributed_scheduler import DistributedRun, DistributedTaskScheduler
 from .specialist_gate import approved_executors, assert_all_approved
-from .management_contract import ManagementDecision, ManagementRequest
+from .management_contract import ManagementDecision, ManagementRequest, Specialist
 from .management_router import route
 from .multi_agent import AgentRole, AgentTask, TaskBatch, plan_batches
 
