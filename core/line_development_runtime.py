@@ -113,8 +113,11 @@ def _explicit_management_router_test_plan(instruction: str, chosen: str) -> dict
         "    )\n"
     )
     stripped = text.rstrip()
-    anchor = stripped[-600:] if len(stripped) > 600 else stripped
-    if not anchor or not stripped.endswith(anchor):
+    if "\n\ndef " not in stripped:
+        return None
+    _, last_block = stripped.rsplit("\n\ndef ", 1)
+    anchor = "\ndef " + last_block
+    if len(anchor) > 1200:
         return None
     return {
         "no_change": False,
