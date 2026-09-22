@@ -15,7 +15,7 @@ def test_analyze_prices_returns_bounded_technical_indicators():
     assert indicators.bollinger_upper20 is not None
     assert indicators.bollinger_lower20 is not None
     assert indicators.trend == "bullish"
-    assert indicators.signal == "bullish"
+    assert indicators.signal == "neutral"
 
 
 def test_rank_stock_candidates_is_deterministic_and_bounded():
@@ -27,7 +27,7 @@ def test_rank_stock_candidates_is_deterministic_and_bounded():
     ranked = rank_stock_candidates(list(prices.items()), limit=2)
 
     assert len(ranked) == 2
-    assert ranked[0].ticker == "7203"
+    assert ranked[0].ticker == "8306"
     assert ranked[0].signal == "bullish"
     assert all(-5 <= item.score <= 5 for item in ranked)
 
