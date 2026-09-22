@@ -21,9 +21,16 @@ from scripts import line_development_worker_v2 as worker
 MAX_COMPLETION_TOKENS = 4096
 
 
-def guarded_ask(client: Groq, system: str, user: str, max_completion_tokens: int = MAX_COMPLETION_TOKENS) -> str:
+def guarded_ask(
+    client: Groq,
+    system: str,
+    user: str,
+    max_completion_tokens: int = MAX_COMPLETION_TOKENS,
+    max_tokens: int | None = None,
+) -> str:
     """Request a JSON object and retry once for empty or invalid provider output."""
     last_error = "unknown JSON failure"
+    effective_max_completion_tokens = max_tokens if max_tokens is not None else max_completion_tokens
     for attempt in range(2):
         retry_system = system
         if attempt:
@@ -35,7 +42,7 @@ def guarded_ask(client: Groq, system: str, user: str, max_completion_tokens: int
                 {"role": "user", "content": user},
             ],
             temperature=0.0,
-            max_completion_tokens=max_completion_tokens,
+            max_completion_tokens=effective_max_completion_tokens,
             reasoning_effort="low",
             include_reasoning=False,
             response_format={"type": "json_object"},
