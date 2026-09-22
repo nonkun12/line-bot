@@ -77,7 +77,7 @@ def guarded_ask(client: Groq | None, system: str, user: str, max_tokens: int = w
         if isinstance(parsed, dict):
             return content
         last_error = "JSON response is not an object"
-    raise ValueError(f"AI response is unusable after bounded provider retries: {last_error}")
+    raise ValueError(f"AI response is unusable after bounded JSON retry: {last_error}")
 
 
 def main() -> int:
