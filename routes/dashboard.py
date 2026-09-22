@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import time
 from flask import Blueprint, current_app, render_template, request, jsonify, Response
 from db import get_conn
@@ -11,6 +12,8 @@ from e2e_status import get_e2e_status
 from core.distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG
 from core.specialist_gate import is_specialist_approved
 from graph.core_registry import build_core_agent_registry
+from agents.stocks.node import StocksAgent
+from agents.stocks.selection import analyze_prices
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -308,3 +311,96 @@ def system_status():
         "specialists": specialists,
     }
     return jsonify(result)
+
+
+_STOCK_DASHBOARD_TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.-]{0,9}$")
+_STOCK_DASHBOARD_MAX_TICKERS = 6
+
+
+def _normalize_stock_dashboard_tickers(raw):
+    if isinstance(raw, str):
+        values = re.split(r"[\s,、]+", raw)
+    elif isinstance(raw, list):
+        values = raw
+    else:
+        values = []
+    tickers = []
+    for value in values:
+        text = str(value or "").strip().upper()
+        if not text:
+            continue
+        ticker = StocksAgent.normalize_ticker(text)
+        if not _STOCK_DASHBOARD_TICKER_RE.fullmatch(ticker):
+            continue
+        if ticker not in tickers:
+            tickers.append(ticker)
+        if len(tickers) >= _STOCK_DASHBOARD_MAX_TICKERS:
+            break
+    return tickers
+
+
+def _analyze_stock_dashboard_ticker(ticker):
+    quote = StocksAgent._fetch_quote(ticker)
+    history = StocksAgent._fetch_history(ticker)
+    indicators = analyze_prices(history)
+    return {
+        "ticker": StocksAgent._display_ticker(ticker),
+        "symbol": ticker,
+        "price": indicators.price if indicators.price is not None else quote.get("price"),
+        "previous_close": quote.get("previous_close"),
+        "change": quote.get("change"),
+        "change_pct": quote.get("change_pct"),
+        "currency": quote.get("currency"),
+        "market_state": quote.get("market_state"),
+        "market_time_jst": quote.get("market_time_jst"),
+        "signal": StocksAgent._signal_label(indicators),
+        "signal_score": indicators.signal_score,
+        "trend": indicators.trend,
+        "rsi14": indicators.rsi14,
+        "macd": indicators.macd,
+        "macd_signal": indicators.macd_signal,
+        "sma20": indicators.sma20,
+        "sma50": indicators.sma50,
+        "volatility20": indicators.volatility20,
+        "bollinger_mid20": indicators.bollinger_mid20,
+        "bollinger_upper20": indicators.bollinger_upper20,
+        "bollinger_lower20": indicators.bollinger_lower20,
+        "data_source": "Yahoo Finance",
+    }
+
+
+@dashboard_bp.route("/stock-dashboard")
+@requires_dashboard_access
+def stock_dashboard():
+    user_id = resolve_user_id(request.args.get("user_id"))
+    error = _require_user_id(user_id)
+    if error:
+        return error
+    return render_template("stock_dashboard.html", user_id=user_id)
+
+
+@dashboard_bp.route("/api/stock-dashboard/analyze", methods=["POST"])
+@requires_dashboard_access
+def stock_dashboard_analyze():
+    data = request.get_json(silent=True) or {}
+    tickers = _normalize_stock_dashboard_tickers(data.get("tickers"))
+    if not tickers:
+        return jsonify({"ok": False, "error": "ticker is required"}), 400
+
+    results = []
+    errors = []
+    for ticker in tickers:
+        try:
+            results.append(_analyze_stock_dashboard_ticker(ticker))
+        except Exception:
+            current_app.logger.exception("STOCK DASHBOARD ANALYSIS ERROR: %s", ticker)
+            errors.append({"ticker": StocksAgent._display_ticker(ticker), "error": "market data unavailable"})
+
+    results.sort(key=lambda item: (-item["signal_score"], item["ticker"]))
+    return jsonify({
+        "ok": True,
+        "results": results,
+        "errors": errors,
+        "limits": {"max_tickers": _STOCK_DASHBOARD_MAX_TICKERS},
+        "notice": "テクニカル指標による参考情報です。売買注文は実行しません。",
+    })
