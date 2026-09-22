@@ -26,3 +26,11 @@ def test_autonomous_workflow_preserves_fail_tolerant_audit():
     assert "if: always()" in audit
     assert "continue-on-error: true" in audit
     assert "set +e" in audit
+
+
+def test_autonomous_workflow_blocks_existing_branch_but_allows_new_branch():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    guard = text[text.index("- name: Publish final autonomous branch and PR"):text.index("- name: Record autonomous development result to Google Sheets")]
+    assert 'if git ls-remote --exit-code origin "refs/heads/${AUTONOMOUS_BRANCH}" >/dev/null 2>&1; then' in guard
+    assert 'echo "Autonomous branch already exists: ${AUTONOMOUS_BRANCH}"' in guard
+    assert 'exit 1' in guard
