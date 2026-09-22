@@ -108,7 +108,7 @@ def _explicit_management_router_test_plan(instruction: str, chosen: str) -> dict
     addition = (
         "def test_earlier_english_keyword_wins_over_music() -> None:\n"
         "    assert (\n"
-        "        route(ManagementRequest(\\\"u\\\", \\"音楽作曲と英語の学習\\")).specialist\n"
+        "        route(ManagementRequest('u', '音楽作曲と英語の学習')).specialist\n"
         "        is Specialist.ENGLISH\n"
         "    )\n"
     )
