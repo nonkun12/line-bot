@@ -182,14 +182,16 @@ def test_runtime_persists_self_improvement_cycle_without_executing_proposal(tmp_
 def test_runtime_self_improvement_cycle_exposes_reviewed_decision_without_mutation() -> None:
     model = lambda prompt: "minimal test-backed improvement"
     critic = lambda prompt: "evidence supports the bounded proposal"
+    engine = SelfImprovementEngine()
+    engine.observe(RuntimeReport((), failed_task_id="test", error="pytest failed", rounds=1))
     tower = ControlTower(
-        feedback_engine=SelfImprovementEngine(),
+        feedback_engine=engine,
         creator_critic=CreatorCriticLoop(CreatorAgent(model), CriticAgent(critic)),
     )
     runtime = development_runtime()
     runtime._control_tower = tower
 
-    report = RuntimeReport((), failed_task_id="test", error="pytest failed", rounds=1)
+    report = RuntimeReport((), rounds=1, integration_ready=True)
     decision = runtime.run_self_improvement_cycle(
         report,
         objective="reduce repeated autonomous test failures",
@@ -397,13 +399,14 @@ def test_execution_safety_gate_fails_closed_on_rejected_worktree():
 def test_control_tower_approval_is_bound_to_exact_task():
     model = lambda prompt: "bounded proposal"
     critic = lambda prompt: "evidence supports the proposal"
+    engine = SelfImprovementEngine()
+    failed_report = RuntimeReport((), failed_task_id="test", error="pytest failed", rounds=1)
+    engine.observe(failed_report)
     tower = ControlTower(
-        feedback_engine=SelfImprovementEngine(),
+        feedback_engine=engine,
         creator_critic=CreatorCriticLoop(CreatorAgent(model), CriticAgent(critic)),
     )
-    report = RuntimeReport((), failed_task_id="test", error="pytest failed", rounds=1)
-    proposal = tower.feedback_engine.propose()
-    tower.feedback_engine.observe(report)
+    report = RuntimeReport((), rounds=1, integration_ready=True)
     proposal = tower.feedback_engine.propose()
     assert proposal is not None
 
