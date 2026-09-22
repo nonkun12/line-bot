@@ -8,7 +8,6 @@ from typing import Optional
 
 import httpx
 
-from app_development import dispatch_app_development_workflow
 from core.task_routing import TaskClassifier, TaskMode
 
 _DEV_PREFIX = re.compile(r"^(?:開発|dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
@@ -64,10 +63,9 @@ def dispatch_development_workflow(
 
     classification = TaskClassifier().classify(f"開発: {instruction}")
     if classification.mode == TaskMode.NEW_SOFTWARE:
-        return dispatch_app_development_workflow(
-            instruction,
-            user_id=user_id,
-            token=token,
+        return (
+            "新規アプリ作成は通常の開発経路と分離しています。"
+            "『アプリ開発: ○○を作って』と明示してください。"
         )
 
     repository = repository or os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
