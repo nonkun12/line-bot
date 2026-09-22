@@ -17,8 +17,10 @@ class SpyExecutor:
 
 
 def test_approved_self_improvement_task_is_exposed_but_not_executed() -> None:
+    engine = SelfImprovementEngine()
+    engine.observe(RuntimeReport((), failed_task_id="test", error="pytest failed", rounds=1))
     tower = ControlTower(
-        feedback_engine=SelfImprovementEngine(),
+        feedback_engine=engine,
         creator_critic=CreatorCriticLoop(
             CreatorAgent(lambda prompt: "bounded improvement proposal"),
             CriticAgent(lambda prompt: "evidence supports the bounded proposal"),
@@ -27,13 +29,7 @@ def test_approved_self_improvement_task_is_exposed_but_not_executed() -> None:
     spy = SpyExecutor()
     runtime = MultiAgentRuntime({AgentRole.DEBUGGER: spy}, control_tower=tower)
 
-    report = RuntimeReport(
-        (),
-        failed_task_id="test",
-        error="pytest failed",
-        rounds=1,
-        integration_ready=False,
-    )
+    report = RuntimeReport((), rounds=1, integration_ready=True)
     decision = runtime.run_self_improvement_cycle(
         report,
         objective="reduce repeated autonomous test failures",
