@@ -36,6 +36,11 @@ def test_find_scheduled_run_uses_workflow_scoped_schedule_endpoint(monkeypatch):
             ]
         }
 
+    monkeypatch.setattr(
+        "scripts.check_autonomous_loop_watchdog.github_json",
+        fake_github_json,
+    )
+
     slot = datetime(2026, 9, 24, 3, 5, tzinfo=ZoneInfo("Asia/Tokyo"))
     # The expected slot is 2026-09-23 03:05 JST, so the example above is outside it.
     assert find_scheduled_run("nonkun12/line-bot", slot) is None
