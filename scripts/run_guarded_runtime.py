@@ -27,7 +27,7 @@ def guarded_ask(client: Groq, system: str, user: str, max_completion_tokens: int
     for attempt in range(2):
         retry_system = system
         if attempt:
-            retry_system += "\nIMPORTANT: Return one compact valid JSON object only. No prose, markdown, commentary, or empty response. Keep strings minimal and preserve exact existing text."
+            retry_system += "\nIMPORTANT: Return a single valid JSON object only. Keep it compact. No prose, markdown, commentary, or empty response. Keep strings minimal and preserve exact existing text."
         response = client.chat.completions.create(
             model=worker.MODEL,
             messages=[
