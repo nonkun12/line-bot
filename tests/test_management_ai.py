@@ -717,3 +717,28 @@ def test_agent_message_rejects_oversized_loop_id_context() -> None:
             context={"loop_id": "x" * 65},
             safety_constraints=("result-only", "no-permission-grant"),
         )
+
+
+def test_model_management_planner_receives_deterministic_routing_hints() -> None:
+    prompts: list[str] = []
+
+    def model(prompt: str) -> str:
+        prompts.append(prompt)
+        return (
+            '{"objective":"combine","parallel_safe":false,"tasks":['
+            '{"task_id":"english","role":"english","instruction":"Practice English.",'
+            '"resources":["english"],"depends_on":[],"priority":1}]}'
+        )
+
+    planner = ModelManagementPlanner(model_call=model)
+    decision = ManagementDecision(
+        Specialist.ENGLISH,
+        "matched english keyword",
+        0.95,
+        metadata={"matched_specialists": ["english", "music"], "routing_priority": 2},
+    )
+    planner.plan(ManagementRequest("u1", "英語と音楽を勉強したい"), decision)
+
+    assert "Routing candidates (advisory): english, music" in prompts[0]
+    assert "Routing priority (1=highest): 2" in prompts[0]
+    assert "validate every planned role" in prompts[0]

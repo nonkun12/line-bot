@@ -14,7 +14,7 @@ from ai_client import generate_chat_completion
 from .agent_communication import AgentMessageBus
 from .distributed_scheduler import DistributedRun, DistributedTaskScheduler
 from .specialist_gate import approved_executors, assert_all_approved
-from .management_contract import ManagementDecision, ManagementRequest
+from .management_contract import ManagementDecision, ManagementRequest, Specialist
 from .management_router import route
 from .multi_agent import AgentRole, AgentTask, TaskBatch, plan_batches
 
@@ -174,6 +174,10 @@ class ModelManagementPlanner:
             "]}\n"
             "Allowed roles: general, voice, english, news, stocks, market, jobs, music, video.\n"
             f"Primary route: {decision.specialist.value}\n"
+            f"Routing candidates (advisory): {_routing_candidates_for_prompt(decision)}\n"
+            f"Routing priority (1=highest): {_routing_priority_for_prompt(decision)}\n"
+            "Routing hints are deterministic guidance only; validate every planned role "
+            "against the allowed-role and safety gates before execution.\n"
             f"User request: {request.message.strip()}\n"
             "Round feedback:\n"
             f"{feedback_text}\n"
@@ -381,6 +385,26 @@ def _format_feedback_for_prompt(feedback: Sequence[str]) -> str:
         normalized = " ".join(str(item).replace("\x00", "").split())
         items.append(f"- OBSERVATION: {normalized[:1800]}")
     return "\n".join(items)
+
+
+def _routing_candidates_for_prompt(decision: ManagementDecision) -> str:
+    raw = decision.metadata.get("matched_specialists", ())
+    allowed = {specialist.value for specialist in Specialist}
+    if not isinstance(raw, (list, tuple)):
+        return decision.specialist.value
+    candidates = [
+        str(item).strip()
+        for item in raw
+        if str(item).strip() in allowed
+    ]
+    return ", ".join(dict.fromkeys(candidates)) or decision.specialist.value
+
+
+def _routing_priority_for_prompt(decision: ManagementDecision) -> str:
+    value = decision.metadata.get("routing_priority")
+    if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= len(Specialist):
+        return str(value)
+    return "unknown"
 
 
 def groq_management_call(prompt: str) -> str:
