@@ -12,7 +12,15 @@ import re
 import subprocess
 import sys
 import traceback
-\n\ndef _normalize_replacement_whitespace(text: str) -> str:\n    """Remove horizontal trailing whitespace from generated replacement text only."""\n    return re.sub(r"[ \\t]+(?=\\n|$)", "", text)\nfrom pathlib import Path
+
+
+
+def _normalize_replacement_whitespace(text: str) -> str:
+    """Remove horizontal trailing whitespace from generated replacement text only."""
+    return re.sub(r"[ \t]+(?=\n|$)", "", text)
+
+
+from pathlib import Path
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
