@@ -103,13 +103,13 @@ jobs:
         if: always() && steps.development.outputs.test_only != 'true'
         continue-on-error: true
         env:
-          GOOGLE_SHEETS_SPREADSHEET_ID: \${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
-          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: \${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
-          AUTONOMOUS_DEV_LEDGER_RANGE: \${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
-          GITHUB_RUN_ID: \${{ github.run_id }}
-          DEV_INSTRUCTION: \${{ github.event.inputs.instruction }}
-          DEV_USER_ID: \${{ github.event.inputs.user_id }}
-          GH_TOKEN: \${{ github.token }}
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+          AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
+          DEV_USER_ID: ${{ github.event.inputs.user_id }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -118,7 +118,7 @@ jobs:
           export AUTONOMOUS_SOURCE="on-demand"
           export AUTONOMOUS_AGENT="DistributedDevelopmentRuntime"
           export AUTONOMOUS_TASK_ID="on-demand-line-development"
-          if [ "\${{ steps.development.outcome }}" = "success" ]; then
+          if [ "${{ steps.development.outcome }}" = "success" ]; then
             export AUTONOMOUS_TESTS_RESULT="PASS"
             export AUTONOMOUS_SAFETY_GATE_RESULT="PASS"
           else
