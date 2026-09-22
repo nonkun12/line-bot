@@ -67,6 +67,7 @@ def ask_local_ai(command: Sequence[str], system: str, user: str) -> str:
         text=True,
         timeout=timeout,
         check=False,
+        shell=False,
     )
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout or "").strip()
