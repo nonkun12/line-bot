@@ -21,10 +21,14 @@ from scripts import line_development_worker_v2 as worker
 def guarded_ask(client: Groq, system: str, user: str, max_tokens: int = worker.MAX_RESPONSE_TOKENS) -> str:
     """Request a JSON object and retry once for empty or invalid provider output."""
     last_error = "unknown JSON failure"
-    for attempt in range(2):
+    # Provider JSON mode can still occasionally return malformed/truncated content.
+    # Retry with bounded, progressively stricter output instructions.
+    for attempt in range(3):
         retry_system = system
-        if attempt:
-            retry_system += "\nIMPORTANT: Return a single valid JSON object only. Do not emit prose, markdown, or an empty response."
+        if attempt == 1:
+            retry_system += "\nIMPORTANT: Return one compact valid JSON object only. No prose, markdown, comments, or extra keys."
+        elif attempt == 2:
+            retry_system += "\nIMPORTANT: Return the smallest valid JSON object that satisfies the requested schema. No prose or markdown."
         response = client.chat.completions.create(
             model=worker.MODEL,
             messages=[

@@ -3,10 +3,16 @@ name: Autonomous Development Loop
 on:
   workflow_dispatch:
   schedule:
-    # Japan time: 03:00, 15:00, 21:00 every day.
+    # Japan time: 03:00, 09:00, 15:00, 18:00, 21:00 every day.
+    # All scheduled autonomous development runs execute on GitHub Actions,
+    # so the Mac can remain powered off.
     - cron: '0 3 * * *'
       timezone: 'Asia/Tokyo'
+    - cron: '0 9 * * *'
+      timezone: 'Asia/Tokyo'
     - cron: '0 15 * * *'
+      timezone: 'Asia/Tokyo'
+    - cron: '0 18 * * *'
       timezone: 'Asia/Tokyo'
     - cron: '0 21 * * *'
       timezone: 'Asia/Tokyo'
