@@ -146,18 +146,18 @@ jobs:
         if: always()
         continue-on-error: true
         env:
-          GOOGLE_SHEETS_SPREADSHEET_ID: \${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
-          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: \${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
-          AUTONOMOUS_DEV_LEDGER_RANGE: \${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
-          GOOGLE_SHEETS_AUDIT_RANGE: \${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+          AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
+          GOOGLE_SHEETS_AUDIT_RANGE: ${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
         run: |
           set +e
           export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           export AUTONOMOUS_AGENT="DistributedDevelopmentRuntime"
           export AUTONOMOUS_TASK_ID="scheduled-distributed-development"
           export AUTONOMOUS_VERIFICATION_RESULT="NOT_RUN"
-          export AUTONOMOUS_SAFETY_GATE_RESULT="\${AUTONOMOUS_SAFETY_GATE_RESULT:-BLOCKED}"
-          export AUTONOMOUS_START_SHA="\${AUTONOMOUS_START_SHA:-unknown}"
+          export AUTONOMOUS_SAFETY_GATE_RESULT="${AUTONOMOUS_SAFETY_GATE_RESULT:-BLOCKED}"
+          export AUTONOMOUS_START_SHA="${AUTONOMOUS_START_SHA:-unknown}"
           export AUTONOMOUS_PRODUCED_SHA="unknown"
           export AUTONOMOUS_CHANGED_FILES="unknown"
           export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
@@ -166,15 +166,15 @@ jobs:
           if git rev-parse HEAD >/dev/null 2>&1; then
             export AUTONOMOUS_PRODUCED_SHA="$(git rev-parse HEAD)"
           fi
-          if [ "\${AUTONOMOUS_START_SHA}" != "unknown" ] && \
-             git rev-parse "\${AUTONOMOUS_START_SHA}^{commit}" >/dev/null 2>&1 && \
-             git rev-parse "\${AUTONOMOUS_PRODUCED_SHA}^{commit}" >/dev/null 2>&1; then
-            AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "\${AUTONOMOUS_START_SHA}" "\${AUTONOMOUS_PRODUCED_SHA}" 2>/dev/null | paste -sd, -)"
-            export AUTONOMOUS_CHANGED_FILES="\${AUTONOMOUS_CHANGED_FILES:-none}"
+          if [ "${AUTONOMOUS_START_SHA}" != "unknown" ] && \
+             git rev-parse "${AUTONOMOUS_START_SHA}^{commit}" >/dev/null 2>&1 && \
+             git rev-parse "${AUTONOMOUS_PRODUCED_SHA}^{commit}" >/dev/null 2>&1; then
+            AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "${AUTONOMOUS_START_SHA}" "${AUTONOMOUS_PRODUCED_SHA}" 2>/dev/null | paste -sd, -)"
+            export AUTONOMOUS_CHANGED_FILES="${AUTONOMOUS_CHANGED_FILES:-none}"
           fi
 
-          if [ -n "\${AUTONOMOUS_SUMMARY_PATH:-}" ] && [ -f "\${AUTONOMOUS_SUMMARY_PATH}" ]; then
-            AUTONOMOUS_TESTS_RESULT="$(python - "\${AUTONOMOUS_SUMMARY_PATH}" <<'PY'
+          if [ -n "${AUTONOMOUS_SUMMARY_PATH:-}" ] && [ -f "${AUTONOMOUS_SUMMARY_PATH}" ]; then
+            AUTONOMOUS_TESTS_RESULT="$(python - "${AUTONOMOUS_SUMMARY_PATH}" <<'PY'
           import json
           import sys
           from pathlib import Path
@@ -187,7 +187,7 @@ jobs:
           PY
             )"
             export AUTONOMOUS_TESTS_RESULT
-            AUTONOMOUS_RUNTIME_DETAIL="$(python - "\${AUTONOMOUS_SUMMARY_PATH}" <<'PY'
+            AUTONOMOUS_RUNTIME_DETAIL="$(python - "${AUTONOMOUS_SUMMARY_PATH}" <<'PY'
           import json
           import sys
           from pathlib import Path
@@ -199,17 +199,17 @@ jobs:
           PY
             )"
             export AUTONOMOUS_RUNTIME_DETAIL
-            if [ -z "\${AUTONOMOUS_BLOCKED_FAILED_REASON:-}" ] && [ -n "\${AUTONOMOUS_RUNTIME_DETAIL:-}" ]; then
-              export AUTONOMOUS_BLOCKED_FAILED_REASON="runtime:\${AUTONOMOUS_RUNTIME_DETAIL}"
+            if [ -z "${AUTONOMOUS_BLOCKED_FAILED_REASON:-}" ] && [ -n "${AUTONOMOUS_RUNTIME_DETAIL:-}" ]; then
+              export AUTONOMOUS_BLOCKED_FAILED_REASON="runtime:${AUTONOMOUS_RUNTIME_DETAIL}"
             fi
           fi
 
-          if [ "\${AUTONOMOUS_RESULT:-}" = "pr-created" ] && [ "\${AUTONOMOUS_SAFETY_GATE_RESULT}" = "PASS" ]; then
+          if [ "${AUTONOMOUS_RESULT:-}" = "pr-created" ] && [ "${AUTONOMOUS_SAFETY_GATE_RESULT}" = "PASS" ]; then
             export AUTONOMOUS_NEXT_ACTION="review_pr"
-          elif [ "\${AUTONOMOUS_RESULT:-}" = "no-changes" ]; then
+          elif [ "${AUTONOMOUS_RESULT:-}" = "no-changes" ]; then
             export AUTONOMOUS_NEXT_ACTION="next_scheduled_run"
           else
-            export AUTONOMOUS_BLOCKED_FAILED_REASON="\${AUTONOMOUS_BLOCKED_FAILED_REASON:-workflow_or_autonomous_task_failed}"
+            export AUTONOMOUS_BLOCKED_FAILED_REASON="${AUTONOMOUS_BLOCKED_FAILED_REASON:-workflow_or_autonomous_task_failed}"
             export AUTONOMOUS_NEXT_ACTION="review_failure"
           fi
 
