@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -48,7 +49,8 @@ def guarded_ask(client: Groq | None, system: str, user: str, max_tokens: int = w
         retry_system = system
         if attempt:
             retry_system += (
-                "\nIMPORTANT: Return a single valid JSON object only. "
+                "
+IMPORTANT: Return a single valid JSON object only. "
                 "Do not emit prose, markdown, or an empty response."
             )
 
@@ -59,7 +61,7 @@ def guarded_ask(client: Groq | None, system: str, user: str, max_tokens: int = w
                 if client is None:
                     raise RuntimeError("external AI client is unavailable")
                 content = _external_ask(client, retry_system, user, max_tokens)
-        except (RuntimeError, ValueError) as exc:
+        except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as exc:
             last_error = f"{type(exc).__name__}: {exc}"
             if command is not None and client is not None:
                 command = None
