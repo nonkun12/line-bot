@@ -47,14 +47,21 @@ def guarded_ask(
             include_reasoning=False,
             response_format={"type": "json_object"},
         )
-        content = response.choices[0].message.content or ""
+        choice = response.choices[0]
+        content = choice.message.content or ""
+        finish_reason = getattr(choice, "finish_reason", "") or "unknown"
         if not content.strip():
-            last_error = "empty response"
+            last_error = f"empty response (finish_reason={finish_reason})"
+            print(f"[guarded_ask] empty provider output: finish_reason={finish_reason}", flush=True)
             continue
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError as exc:
-            last_error = f"invalid JSON: {exc}"
+            last_error = f"invalid JSON (finish_reason={finish_reason}): {exc}"
+            print(
+                f"[guarded_ask] invalid JSON: finish_reason={finish_reason}; error={exc}",
+                flush=True,
+            )
             continue
         if isinstance(parsed, dict):
             return content
