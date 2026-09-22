@@ -321,18 +321,27 @@ class ManagementAI:
             )
             for result in distributed.results
         )
+        loop_id = request.metadata.get("loop_id")
+        correlation_id = (
+            loop_id.strip()
+            if isinstance(loop_id, str) and loop_id.strip()
+            else request.user_id
+        )
         for observation in observations:
+            context = {
+                "task_id": observation.task_id,
+                "success": observation.success,
+                "changed_resources": list(observation.changed_resources),
+            }
+            if isinstance(loop_id, str) and loop_id.strip():
+                context["loop_id"] = loop_id.strip()
             self._message_bus.endpoint(observation.role.value).send(
                 "management",
                 message_id=f"{observation.task_id}:result",
                 message_type="task_result",
                 content=observation.summary[:4000],
-                correlation_id=request.user_id,
-                context={
-                    "task_id": observation.task_id,
-                    "success": observation.success,
-                    "changed_resources": list(observation.changed_resources),
-                },
+                correlation_id=correlation_id,
+                context=context,
                 safety_constraints=("result-only", "no-permission-grant"),
             )
         return ManagementRun(plan, batches, distributed, observations)
