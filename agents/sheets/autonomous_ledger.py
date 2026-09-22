@@ -9,7 +9,7 @@ import os
 
 from agents.sheets.client import GoogleSheetsClient
 
-LEDGER_RANGE = os.getenv("AUTONOMOUS_DEV_LEDGER_RANGE", "AutonomousDevelopment!A:Q")
+LEDGER_RANGE = (os.getenv("AUTONOMOUS_DEV_LEDGER_RANGE") or os.getenv("GOOGLE_SHEETS_AUDIT_RANGE") or "AutonomousDevelopment!A:Q").strip()
 HEADERS = [
     "timestamp", "run_id", "task_id", "source", "agent", "task_summary",
     "base_sha", "produced_sha", "changed_files", "pr_url", "tests_result",
