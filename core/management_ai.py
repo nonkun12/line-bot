@@ -387,6 +387,26 @@ def _format_feedback_for_prompt(feedback: Sequence[str]) -> str:
     return "\n".join(items)
 
 
+def _routing_candidates_for_prompt(decision: ManagementDecision) -> str:
+    raw = decision.metadata.get("matched_specialists", ())
+    allowed = {specialist.value for specialist in Specialist}
+    if not isinstance(raw, (list, tuple)):
+        return decision.specialist.value
+    candidates = [
+        str(item).strip()
+        for item in raw
+        if str(item).strip() in allowed
+    ]
+    return ", ".join(dict.fromkeys(candidates)) or decision.specialist.value
+
+
+def _routing_priority_for_prompt(decision: ManagementDecision) -> str:
+    value = decision.metadata.get("routing_priority")
+    if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= len(Specialist):
+        return str(value)
+    return "unknown"
+
+
 def groq_management_call(prompt: str) -> str:
     """Use the existing AI boundary for planning only."""
     response = generate_chat_completion(
