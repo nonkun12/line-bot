@@ -18,6 +18,7 @@ def test_market_keyword_routes_to_market():
 def test_stock_keyword_routes_to_stocks():
     decision = route(
         ManagementRequest(
+            user_id="test-user",
             message="トヨタの株価を確認して",
             channel="test",
             metadata={},
@@ -29,6 +30,7 @@ def test_stock_keyword_routes_to_stocks():
 def test_unmatched_request_stays_general():
     decision = route(
         ManagementRequest(
+            user_id="test-user",
             message="今日は開発状況を整理して",
             channel="test",
             metadata={},
@@ -42,6 +44,7 @@ def test_metadata_is_copied_not_reused():
     metadata = {"source": "trial"}
     decision = route(
         ManagementRequest(
+            user_id="test-user",
             message="ニュースを調べて",
             channel="test",
             metadata=metadata,
