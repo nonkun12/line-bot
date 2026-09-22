@@ -70,7 +70,7 @@ def _escape_json_string_controls(content: str) -> str:
             if escaped:
                 out.append(char)
                 escaped = False
-            elif char == "\\": 
+            elif char == "\\":
                 out.append(char)
                 escaped = True
             elif char == '"':
