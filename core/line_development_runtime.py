@@ -17,6 +17,7 @@ from .creator_critic_runtime import build_creator_critic_loop
 from .self_improvement import SelfImprovementEngine
 from .self_improvement_cycle import SelfImprovementCycleResult, run_self_improvement_cycle
 from .execution_safety import GitWorktreeSafetyGate
+from . import local_ai_provider
 from .multi_agent import AgentResult, AgentRole, AgentTask
 from .quality_runtime import QualityRuntime
 from scripts import line_development_worker_v2 as worker
@@ -272,7 +273,11 @@ class DevelopmentRepairPlanner(RepairPlanner):
 
 def execute(instruction: str) -> int:
     """Run one real guarded development request through the quality pipeline."""
-    client = worker.Groq(api_key=os.environ["GROQ_API_KEY"])
+    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+    local_command = local_ai_provider.local_ai_command()
+    if not groq_key and local_command is None:
+        raise RuntimeError("No AI provider configured: set LOCAL_AI_COMMAND or GROQ_API_KEY")
+    client = worker.Groq(api_key=groq_key) if groq_key else None
     state = DevelopmentState(client=client, instruction=instruction)
     executor = DevelopmentExecutor(state)
     tasks = (
