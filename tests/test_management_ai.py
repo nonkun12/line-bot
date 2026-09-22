@@ -650,3 +650,70 @@ def test_management_observation_rejects_oversized_or_mutable_fields() -> None:
         ManagementObservation("t1", AgentRole.NEWS, True, "x" * 1801)
     with pytest.raises(ValueError, match="changed_resources must be a tuple"):
         ManagementObservation("t1", AgentRole.NEWS, True, "ok", ["news"])  # type: ignore[arg-type]
+
+
+
+def test_management_ai_uses_loop_id_for_result_correlation() -> None:
+    manager = ManagementAI(
+        {AgentRole.NEWS: Executor(AgentRole.NEWS)},
+        planner=LoopPlanner(),
+    )
+    manager.run(
+        ManagementRequest(
+            "u1",
+            "ニュースを調べて",
+            metadata={"loop_id": "loop-2026-09-22"},
+        )
+    )
+
+    message = manager.message_bus.receive()[0]
+    assert message.correlation_id == "loop-2026-09-22"
+    assert message.context["loop_id"] == "loop-2026-09-22"
+    assert message.context["task_id"] == "research"
+
+
+def test_management_ai_falls_back_to_user_id_for_invalid_loop_id() -> None:
+    manager = ManagementAI(
+        {AgentRole.NEWS: Executor(AgentRole.NEWS)},
+        planner=LoopPlanner(),
+    )
+    long_loop_id = "x" * 65
+    manager.run(
+        ManagementRequest(
+            "u-fallback",
+            "ニュースを調べて",
+            metadata={"loop_id": long_loop_id},
+        )
+    )
+
+    message = manager.message_bus.receive()[0]
+    assert message.correlation_id == "u-fallback"
+    assert "loop_id" not in message.context
+
+
+
+def test_agent_message_allows_bounded_loop_id_context() -> None:
+    message = AgentMessage(
+        message_id="loop-result",
+        sender="news",
+        recipient="management",
+        message_type="task_result",
+        content="done",
+        correlation_id="loop-1",
+        context={"task_id": "research", "success": True, "changed_resources": [], "loop_id": "loop-1"},
+        safety_constraints=("result-only", "no-permission-grant"),
+    )
+    assert message.context["loop_id"] == "loop-1"
+
+
+def test_agent_message_rejects_oversized_loop_id_context() -> None:
+    with pytest.raises(ValueError, match="loop_id"):
+        AgentMessage(
+            message_id="loop-result-2",
+            sender="news",
+            recipient="management",
+            message_type="task_result",
+            content="done",
+            context={"loop_id": "x" * 65},
+            safety_constraints=("result-only", "no-permission-grant"),
+        )
