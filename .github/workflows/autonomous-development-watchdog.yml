@@ -1,0 +1,115 @@
+name: Autonomous Development Watchdog
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '15 4 * * *'
+      timezone: 'Asia/Tokyo'
+    - cron: '15 16 * * *'
+      timezone: 'Asia/Tokyo'
+    - cron: '15 22 * * *'
+      timezone: 'Asia/Tokyo'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Sheets dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install google-auth google-api-python-client
+
+      - name: Check scheduled run and Sheets audit
+        id: watchdog
+        env:
+          GITHUB_TOKEN: \${{ github.token }}
+          GITHUB_REPOSITORY: \${{ github.repository }}
+          GOOGLE_SHEETS_SPREADSHEET_ID: \${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: \${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+          AUTONOMOUS_DEV_LEDGER_RANGE: \${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
+          GOOGLE_SHEETS_AUDIT_RANGE: \${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
+        run: |
+          set +e
+          python scripts/check_autonomous_loop_watchdog.py | tee watchdog_result.json
+          RC=\${PIPESTATUS[0]}
+          echo "watchdog exit code=\${RC}"
+          {
+            echo 'result<<EOF'
+            cat watchdog_result.json
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+          exit "\${RC}"
+
+      - name: Notify Slack and LINE on watchdog failure
+        if: failure()
+        continue-on-error: true
+        env:
+          CHANNEL_ACCESS_TOKEN: \${{ secrets.CHANNEL_ACCESS_TOKEN }}
+          SLACK_WEBHOOK_URL: \${{ secrets.SLACK_WEBHOOK_URL }}
+          LINE_NOTIFY_USER_ID: \${{ secrets.LINE_NOTIFY_USER_ID }}
+          WATCHDOG_RESULT: \${{ steps.watchdog.outputs.result }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          message = "⚠️ 自律開発Watchdog警告\n" + os.environ.get("WATCHDOG_RESULT", "watchdog failed")
+
+          webhook = os.environ.get("SLACK_WEBHOOK_URL", "").strip()
+          if webhook:
+              request = urllib.request.Request(
+                  webhook,
+                  data=json.dumps({"text": message}).encode("utf-8"),
+                  headers={"Content-Type": "application/json"},
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=15) as response:
+                      print(f"SLACK_NOTIFICATION=HTTP_{response.status}")
+              except Exception as exc:
+                  print(f"SLACK_NOTIFICATION=ERROR_{type(exc).__name__}")
+
+          token = os.environ.get("CHANNEL_ACCESS_TOKEN", "").strip()
+          user_id = os.environ.get("LINE_NOTIFY_USER_ID", "").strip()
+          if token and user_id:
+              payload = {
+                  "to": user_id,
+                  "messages": [{"type": "text", "text": message}],
+              }
+              request = urllib.request.Request(
+                  "https://api.line.me/v2/bot/message/push",
+                  data=json.dumps(payload).encode("utf-8"),
+                  headers={
+                      "Authorization": "Bearer " + token,
+                      "Content-Type": "application/json",
+                  },
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=15) as response:
+                      print(f"LINE_NOTIFICATION=HTTP_{response.status}")
+              except Exception as exc:
+                  print(f"LINE_NOTIFICATION=ERROR_{type(exc).__name__}")
+
+      - name: Upload watchdog result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autonomous-watchdog-\${{ github.run_id }}
+          path: watchdog_result.json
+          if-no-files-found: ignore
