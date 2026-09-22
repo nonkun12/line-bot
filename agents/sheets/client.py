@@ -41,23 +41,6 @@ class GoogleSheetsClient:
 
             credentials_info = json.loads(credentials_json)
 
-            print(
-                "SHEETS DEBUG: spreadsheet_id_length=",
-                len(self.spreadsheet_id),
-            )
-            print(
-                "SHEETS DEBUG: spreadsheet_id_repr=",
-                repr(self.spreadsheet_id),
-            )
-            print(
-                "SHEETS DEBUG: client_email=",
-                credentials_info.get("client_email"),
-            )
-            print(
-                "SHEETS DEBUG: credential_type=",
-                credentials_info.get("type"),
-            )
-
             credentials = Credentials.from_service_account_info(
                 credentials_info,
                 scopes=scopes,
