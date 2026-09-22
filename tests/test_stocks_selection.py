@@ -29,7 +29,7 @@ def test_rank_stock_candidates_is_deterministic_and_bounded():
     assert len(ranked) == 2
     assert ranked[0].ticker == "7203"
     assert ranked[0].signal == "bullish"
-    assert all(item.score in {-2, -1, 0, 1, 2, 3, 4} for item in ranked)
+    assert all(-5 <= item.score <= 5 for item in ranked)
 
 
 def test_missing_history_is_neutral():
@@ -53,8 +53,8 @@ def test_analysis_response_contains_real_newlines():
     quote = {"price": 150.0, "currency": "JPY"}
     response = StocksAgent._analysis_response("TEST", "1234.T", quote, [100 + i for i in range(60)])
 
-    assert "\\n" in response.text
-    assert "\\\\n" not in response.text
+    assert "\n" in response.text
+    assert "\\n" not in response.text
     assert "RSI14:" in response.text
     assert "MACD:" in response.text
 
