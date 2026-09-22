@@ -187,6 +187,21 @@ jobs:
           PY
             )"
             export AUTONOMOUS_TESTS_RESULT
+            AUTONOMOUS_RUNTIME_DETAIL="$(python - "\${AUTONOMOUS_SUMMARY_PATH}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          try:
+              summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+              print(str(summary.get("detail", "")).replace("\n", " ")[:1000])
+          except Exception:
+              print("")
+          PY
+            )"
+            export AUTONOMOUS_RUNTIME_DETAIL
+            if [ -z "\${AUTONOMOUS_BLOCKED_FAILED_REASON:-}" ] && [ -n "\${AUTONOMOUS_RUNTIME_DETAIL:-}" ]; then
+              export AUTONOMOUS_BLOCKED_FAILED_REASON="runtime:\${AUTONOMOUS_RUNTIME_DETAIL}"
+            fi
           fi
 
           if [ "\${AUTONOMOUS_RESULT:-}" = "pr-created" ] && [ "\${AUTONOMOUS_SAFETY_GATE_RESULT}" = "PASS" ]; then
