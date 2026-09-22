@@ -319,7 +319,7 @@ _STOCK_DASHBOARD_MAX_TICKERS = 6
 
 def _normalize_stock_dashboard_tickers(raw):
     if isinstance(raw, str):
-        values = re.split(r"[\\s,、]+", raw)
+        values = re.split(r"[\s,、]+", raw)
     elif isinstance(raw, list):
         values = raw
     else:
