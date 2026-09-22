@@ -112,7 +112,10 @@ def _explicit_management_router_test_plan(instruction: str, chosen: str) -> dict
         "        is Specialist.ENGLISH\n"
         "    )\n"
     )
-    anchor = text.rstrip() + "\n\n"
+    stripped = text.rstrip()
+    anchor = stripped[-600:] if len(stripped) > 600 else stripped
+    if not anchor or not stripped.endswith(anchor):
+        return None
     return {
         "no_change": False,
         "source": "deterministic_explicit_test",
