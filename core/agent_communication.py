@@ -25,7 +25,7 @@ _MAX_SAFETY_CONSTRAINTS = 8
 _MAX_SAFETY_CONSTRAINT_CHARS = 100
 _MAX_MESSAGES_PER_MAILBOX = 200
 
-_ALLOWED_CONTEXT_KEYS = frozenset({"task_id", "success", "changed_resources"})
+_ALLOWED_CONTEXT_KEYS = frozenset({"task_id", "success", "changed_resources", "loop_id"})
 
 
 @dataclass(frozen=True)
@@ -137,7 +137,11 @@ class AgentMessage:
                 if len(str(value)) > _MAX_CONTEXT_VALUE_CHARS:
                     errors.append("context value exceeds bounded envelope")
                     continue
-                if key == "task_id" and (
+                if key == "loop_id" and (
+                    not isinstance(value, str) or not value.strip() or len(value) > 64
+                ):
+                    errors.append("context loop_id must be a non-empty string <= 64 characters")
+                elif key == "task_id" and (
                     not isinstance(value, str) or not value.strip()
                 ):
                     errors.append("context task_id must be a non-empty string")
