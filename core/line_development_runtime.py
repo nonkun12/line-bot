@@ -122,17 +122,16 @@ def _explicit_management_router_test_plan(instruction: str, chosen: str) -> dict
         "        is Specialist.ENGLISH\n"
         "    )\n"
     )
-    stripped = text.rstrip()
-    if "\n\ndef " not in stripped:
+    if not text.endswith("\n") or "\n\ndef " not in text:
         return None
-    _, last_block = stripped.rsplit("\n\ndef ", 1)
+    _, last_block = text.rsplit("\n\ndef ", 1)
     anchor = "\ndef " + last_block
     if len(anchor) > 1200:
         return None
     return {
         "no_change": False,
         "source": "deterministic_explicit_test",
-        "changes": [{"file": chosen, "old": anchor, "new": anchor + "\n\n" + addition}],
+        "changes": [{"file": chosen, "old": anchor, "new": anchor + "\n" + addition}],
     }
 
 
