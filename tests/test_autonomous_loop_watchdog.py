@@ -21,7 +21,7 @@ def test_find_scheduled_run_filters_name_event_and_time(monkeypatch):
         "name": "Autonomous Development Loop",
         "event": "schedule",
         "id": 123,
-        "created_at": "2026-09-23T18:07:00Z",
+        "created_at": "2026-09-22T18:07:00Z",
         "status": "completed",
         "conclusion": "failure",
     }
