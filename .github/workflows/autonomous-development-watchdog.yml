@@ -35,32 +35,32 @@ jobs:
       - name: Check scheduled run and Sheets audit
         id: watchdog
         env:
-          GITHUB_TOKEN: \${{ github.token }}
-          GITHUB_REPOSITORY: \${{ github.repository }}
-          GOOGLE_SHEETS_SPREADSHEET_ID: \${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
-          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: \${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
-          AUTONOMOUS_DEV_LEDGER_RANGE: \${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
-          GOOGLE_SHEETS_AUDIT_RANGE: \${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+          AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
+          GOOGLE_SHEETS_AUDIT_RANGE: ${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
         run: |
           set +e
           python scripts/check_autonomous_loop_watchdog.py | tee watchdog_result.json
-          RC=\${PIPESTATUS[0]}
-          echo "watchdog exit code=\${RC}"
+          RC=${PIPESTATUS[0]}
+          echo "watchdog exit code=${RC}"
           {
             echo 'result<<EOF'
             cat watchdog_result.json
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
-          exit "\${RC}"
+          exit "${RC}"
 
       - name: Notify Slack and LINE on watchdog failure
         if: failure()
         continue-on-error: true
         env:
-          CHANNEL_ACCESS_TOKEN: \${{ secrets.CHANNEL_ACCESS_TOKEN }}
-          SLACK_WEBHOOK_URL: \${{ secrets.SLACK_WEBHOOK_URL }}
-          LINE_NOTIFY_USER_ID: \${{ secrets.LINE_NOTIFY_USER_ID }}
-          WATCHDOG_RESULT: \${{ steps.watchdog.outputs.result }}
+          CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          LINE_NOTIFY_USER_ID: ${{ secrets.LINE_NOTIFY_USER_ID }}
+          WATCHDOG_RESULT: ${{ steps.watchdog.outputs.result }}
         run: |
           python - <<'PY'
           import json
@@ -110,6 +110,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: autonomous-watchdog-\${{ github.run_id }}
+          name: autonomous-watchdog-${{ github.run_id }}
           path: watchdog_result.json
           if-no-files-found: ignore
