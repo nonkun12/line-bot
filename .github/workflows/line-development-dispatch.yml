@@ -115,6 +115,7 @@ jobs:
           export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           export AUTONOMOUS_PRODUCED_SHA="$(git rev-parse HEAD)"
           export AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "$AUTONOMOUS_START_SHA" "$AUTONOMOUS_PRODUCED_SHA" | paste -sd, -)"
+          export AUTONOMOUS_SOURCE="on-demand"
           export AUTONOMOUS_AGENT="DistributedDevelopmentRuntime"
           export AUTONOMOUS_TASK_ID="on-demand-line-development"
           if [ "\${{ steps.development.outcome }}" = "success" ]; then
