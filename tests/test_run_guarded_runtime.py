@@ -89,9 +89,7 @@ def test_guarded_ask_normalizes_python_literal_object(monkeypatch):
 
 def test_guarded_ask_normalizes_raw_control_chars_inside_json_strings(monkeypatch):
     monkeypatch.setenv("LOCAL_AI_COMMAND", "ollama run qwen2.5-coder:7b")
-    raw = '{"file":"tests/test_management_router.py","old":"line1
-line2","new":"line1
-line3"}'
+    raw = '{"file":"tests/test_management_router.py","old":"line1\\nline2","new":"line1\\nline3"}'
 
     def local_response(command, system, user):
         return raw
