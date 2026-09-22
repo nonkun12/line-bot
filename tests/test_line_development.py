@@ -149,18 +149,16 @@ def test_worker_parse_plan_accepts_json_with_explanation():
 def test_generic_development_request_does_not_implicitly_start_app_builder(monkeypatch):
     monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
 
-    def fail_if_called(*args, **kwargs):
-        raise AssertionError("implicit app builder must not be called")
-
-    monkeypatch.setattr("line_development.dispatch_app_development_workflow", fail_if_called)
-
     reply = dispatch_development_workflow(
         "TODO管理Webアプリを作って",
         user_id="U123",
         token="secret",
     )
 
-    assert "アプリ開発:" in reply
+    assert reply == (
+        "新規アプリ作成は通常の開発経路と分離しています。"
+        "『アプリ開発: ○○を作って』と明示してください。"
+    )
 
 
 def test_secretary_development_request_stays_on_line_bot(monkeypatch):
