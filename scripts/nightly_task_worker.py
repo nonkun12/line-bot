@@ -1,18 +1,15 @@
 """Guarded autonomous nightly task worker.
-
-The worker implements exactly one narrowly-scoped development task on main.
-It may edit only a small allowlisted set of source/documentation files, runs
-pytest, allows at most one repair attempt, and commits only after tests pass.
+One narrowly-scoped autonomous task, pytest, one repair attempt, and a live worktree Safety Gate before commit.
 """
 from __future__ import annotations
-
 import os
 import re
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 from groq import Groq
-
+from core.execution_safety import GitWorktreeSafetyGate
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,10 +25,8 @@ NIGHTLY_CONTROL_TOWER_TARGETS = (
     "core/management_contract.py",
 )
 
-
 def run(cmd: list[str], *, input_text: str | None = None, timeout: int = 900) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, cwd=ROOT, text=True, input=input_text, capture_output=True, timeout=timeout)
-
 
 def ask(client: Groq, system: str, user: str, max_tokens: int = 4000) -> str:
     response = client.chat.completions.create(
@@ -42,50 +37,39 @@ def ask(client: Groq, system: str, user: str, max_tokens: int = 4000) -> str:
     )
     return response.choices[0].message.content or ""
 
-
 def repo_files() -> list[str]:
     proc = run(["git", "ls-files"])
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr[-2000:])
     return [p for p in proc.stdout.splitlines() if p.endswith(ALLOWED_SUFFIXES) and not p.startswith(FORBIDDEN_PREFIXES)]
 
-
 def choose_files(client: Groq, instruction: str, files: list[str]) -> list[str]:
     raw = ask(
         client,
-        "Return ONLY newline-separated repository paths. Choose at most 4 files necessary for the task. Never choose .github, config.py, .env, secrets, deployment or credential files.",
+        "Return ONLY newline-separated repository paths. Choose at most 4 files. Never choose .github, config.py, .env, secrets, deployment or credential files.",
         f"Task:\n{instruction}\n\nFiles:\n{chr(10).join(files)}",
         600,
     )
     allowed = set(files)
     chosen: list[str] = []
     for line in raw.splitlines():
-        path = re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line.strip().strip('`')).strip()
+        path = re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line.strip()).strip()
         if path in allowed and path not in chosen:
             chosen.append(path)
         if len(chosen) >= MAX_FILES:
             break
-
     if not chosen and "コントロールタワーAI" in instruction:
         chosen = [path for path in NIGHTLY_CONTROL_TOWER_TARGETS if path in allowed][:MAX_FILES]
     return chosen
 
-
 def context(paths: list[str]) -> str:
     return "\n\n".join(f"===== {p} =====\n{(ROOT / p).read_text(encoding='utf-8')[:MAX_FILE_CHARS]}" for p in paths)
-
 
 def extract_diff(text: str) -> str:
     start = text.find("diff --git ")
     if start >= 0:
         text = text[start:]
-    if "```" in text:
-        parts = text.split("```")
-        candidates = [p for p in parts if "diff --git " in p]
-        if candidates:
-            text = candidates[-1]
     return text.strip()
-
 
 def validate_diff(patch: str) -> tuple[bool, str]:
     if not patch or len(patch) > MAX_PATCH_CHARS or "*** Begin Patch" in patch:
@@ -98,7 +82,6 @@ def validate_diff(patch: str) -> tuple[bool, str]:
             return False, f"forbidden_file:{path}"
     return True, ",".join(sorted(changed))
 
-
 def apply_and_test(patch: str) -> tuple[bool, str]:
     check = run(["git", "apply", "--check", "-"], input_text=patch)
     if check.returncode != 0:
@@ -109,30 +92,31 @@ def apply_and_test(patch: str) -> tuple[bool, str]:
     tests = run(["python", "-m", "pytest", "-q", "--tb=native"], timeout=900)
     return tests.returncode == 0, (tests.stdout + "\n" + tests.stderr)[-10000:]
 
-
 def enforce_self_improvement_policy(paths: list[str]) -> tuple[bool, str]:
     assessment = assess_self_improvement(paths)
     if assessment.decision is not SelfImprovementDecision.AUTONOMOUS_REVIEW:
         return False, "; ".join(assessment.reasons)
     return True, "policy=autonomous_review"
 
-
 def main() -> int:
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()
     if not instruction:
         return 2
+    baseline_proc = run(["git", "rev-parse", "HEAD"])
+    if baseline_proc.returncode != 0 or not baseline_proc.stdout.strip():
+        print("Unable to capture autonomous baseline SHA.")
+        return 1
+    baseline_sha = baseline_proc.stdout.strip()
     client = Groq(api_key=os.environ["GROQ_API_KEY"])
     files = repo_files()
     chosen = choose_files(client, instruction, files)
     if not chosen:
         print("No safe target files selected.")
         return 1
-
     policy_ok, policy_detail = enforce_self_improvement_policy(chosen)
     if not policy_ok:
         print(f"Self-improvement policy rejected target: {policy_detail}")
         return 1
-
     system = """You are a senior software engineer implementing one narrowly scoped improvement to an existing AI assistant control tower.
 Return ONLY a unified git diff. Modify only supplied files. Do not add dependencies, touch credentials/config/deployment/.github, or rewrite unrelated logic.
 Preserve existing behavior. Add tests when an existing test file is among the supplied files. Keep the change minimal and production-safe."""
@@ -140,14 +124,19 @@ Preserve existing behavior. Add tests when an existing test file is among the su
     if not patch:
         print("No patch generated.")
         return 1
-
     ok, detail = validate_diff(patch)
     if not ok:
         print(f"Patch rejected: {detail}")
         return 1
-
     passed, output = apply_and_test(patch)
     attempts = 1
+    safety_gate = GitWorktreeSafetyGate(ROOT, baseline_sha, tuple(chosen))
+    if passed and not safety_gate.verify(None, SimpleNamespace(success=True, changed_resources=tuple(chosen)), tuple(chosen)):
+        run(["git", "checkout", "--", *chosen])
+        print("AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED")
+        return 1
+    if passed:
+        print("AUTONOMOUS_SAFETY_GATE_RESULT=PASS")
     if not passed:
         repair_prompt = f"""Fix only the failed implementation while preserving the requested change.
 Original task:\n{instruction}\n\nPatch:\n{patch}\n\nPytest failure:\n{output}\n\nCurrent files:\n{context(chosen)}\n\nReturn ONLY a corrected unified diff."""
@@ -161,17 +150,24 @@ Original task:\n{instruction}\n\nPatch:\n{patch}\n\nPytest failure:\n{output}\n\
         passed, output = apply_and_test(repair_patch)
         patch = repair_patch
         attempts = 2
-
+        if passed and not safety_gate.verify(None, SimpleNamespace(success=True, changed_resources=tuple(chosen)), tuple(chosen)):
+            run(["git", "checkout", "--", *chosen])
+            print("AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED")
+            return 1
+        print("AUTONOMOUS_SAFETY_GATE_RESULT=PASS")
     if not passed:
         run(["git", "checkout", "--", *chosen])
         print(f"Task failed after {attempts} attempt(s).\n{output}")
         return 1
-
+    if not safety_gate.verify(None, SimpleNamespace(success=True, changed_resources=tuple(chosen)), tuple(chosen)):
+        run(["git", "checkout", "--", *chosen])
+        print("AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED")
+        return 1
+    print("AUTONOMOUS_SAFETY_GATE_RESULT=PASS")
     status = run(["git", "status", "--short"])
     if not status.stdout.strip():
         print("Tests passed but no files changed.")
         return 0
-
     run(["git", "config", "user.name", "nightly-autonomous-worker"])
     run(["git", "config", "user.email", "nightly-worker@users.noreply.github.com"])
     add = run(["git", "add", "--", *chosen])
@@ -184,7 +180,6 @@ Original task:\n{instruction}\n\nPatch:\n{patch}\n\nPytest failure:\n{output}\n\
         return 1
     print(f"Nightly control-tower task completed. files={detail} repair_attempts={attempts} {policy_detail}")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
