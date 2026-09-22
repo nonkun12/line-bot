@@ -18,13 +18,16 @@ from core import line_development_runtime as runtime
 from scripts import line_development_worker_v2 as worker
 
 
-def guarded_ask(client: Groq, system: str, user: str, max_tokens: int = worker.MAX_RESPONSE_TOKENS) -> str:
+MAX_COMPLETION_TOKENS = 4096
+
+
+def guarded_ask(client: Groq, system: str, user: str, max_completion_tokens: int = MAX_COMPLETION_TOKENS) -> str:
     """Request a JSON object and retry once for empty or invalid provider output."""
     last_error = "unknown JSON failure"
     for attempt in range(2):
         retry_system = system
         if attempt:
-            retry_system += "\nIMPORTANT: Return a single valid JSON object only. Do not emit prose, markdown, or an empty response."
+            retry_system += "\nIMPORTANT: Return one compact valid JSON object only. No prose, markdown, commentary, or empty response. Keep strings minimal and preserve exact existing text."
         response = client.chat.completions.create(
             model=worker.MODEL,
             messages=[
@@ -32,7 +35,8 @@ def guarded_ask(client: Groq, system: str, user: str, max_tokens: int = worker.M
                 {"role": "user", "content": user},
             ],
             temperature=0.0,
-            max_tokens=max_tokens,
+            max_completion_tokens=max_completion_tokens,
+            reasoning_effort="low",
             include_reasoning=False,
             response_format={"type": "json_object"},
         )
