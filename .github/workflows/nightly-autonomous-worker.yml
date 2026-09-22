@@ -55,20 +55,14 @@ jobs:
       - name: Record autonomous starting commit
         run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Run one guarded control tower development task
+      - name: Run common guarded distributed development runtime
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-        run: python scripts/nightly_task_worker.py
-
-      - name: Run guarded autonomous self-healing check
-        if: success()
-        env:
-          CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
-          CHANNEL_SECRET: ${{ secrets.CHANNEL_SECRET }}
-          MCP_SERVER_URL: ${{ secrets.MCP_SERVER_URL }}
-          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
-          INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
-        run: python scripts/nightly_worker.py
+          DEV_INSTRUCTION: ${{ env.DEV_INSTRUCTION }}
+          DEV_USER_ID: autonomous
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          AUTONOMOUS_SUMMARY_PATH: ${{ runner.temp }}/autonomous_run_summary.json
+        run: python scripts/run_guarded_runtime.py
 
       - name: Validate autonomous result and Safety Gate
         if: success()
@@ -76,7 +70,7 @@ jobs:
           set -euo pipefail
           PRODUCED_SHA="$(git rev-parse HEAD)"
           TRACKED_CHANGED="$(git diff --name-only "$AUTONOMOUS_START_SHA" "$PRODUCED_SHA")"
-          UNTRACKED_CHANGED="$(git status --porcelain --untracked-files=all | awk 'substr($0,1,2) == "??" {print substr($0,4)}')"
+          UNTRACKED_CHANGED="$(git status --porcelain=v1 --untracked-files=all | sed -n 's/^?? //p')"
           CHANGED_FILES="$(printf '%s\n%s\n' "$TRACKED_CHANGED" "$UNTRACKED_CHANGED" | sed '/^$/d' | sort -u)"
           FILE_COUNT="$(printf '%s\n' "$CHANGED_FILES" | sed '/^$/d' | wc -l | tr -d ' ')"
           if [ "$FILE_COUNT" -gt 4 ]; then
@@ -102,34 +96,35 @@ jobs:
             esac
           done <<< "$CHANGED_FILES"
           git diff --check "$AUTONOMOUS_START_SHA" "$PRODUCED_SHA"
-          if [ ! -f nightly_worker_summary.json ]; then
-            echo "Safety Gate blocked: missing worker summary."
+          SUMMARY_PATH="${AUTONOMOUS_SUMMARY_PATH:-${{ runner.temp }}/autonomous_run_summary.json}"
+          if [ ! -f "$SUMMARY_PATH" ]; then
+            echo "Safety Gate blocked: missing autonomous runtime summary."
             echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
-            echo "AUTONOMOUS_BLOCKED_FAILED_REASON=missing_worker_summary" >> "$GITHUB_ENV"
+            echo "AUTONOMOUS_BLOCKED_FAILED_REASON=missing_runtime_summary" >> "$GITHUB_ENV"
             exit 1
           fi
-          python - <<'PY'
+          python - "$SUMMARY_PATH" <<'PY'
 import json
+import sys
 from pathlib import Path
-summary = json.loads(Path("nightly_worker_summary.json").read_text(encoding="utf-8"))
+summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 if summary.get("status") != "PASS":
-    raise SystemExit(f"Safety Gate blocked: worker status={summary.get('status')!r}")
-print("Safety Gate: PASS")
+    raise SystemExit(f"Safety Gate blocked: runtime status={summary.get('status')!r}")
+print(f"runtime summary: {summary.get('base_sha')} -> {summary.get('produced_sha')}")
 PY
           echo "AUTONOMOUS_SAFETY_GATE_RESULT=PASS" >> "$GITHUB_ENV"
-
       - name: Publish final autonomous branch and PR
         if: success()
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          AUTONOMOUS_BRANCH: autonomous/loop-${{ github.run_id }}
+          AUTONOMOUS_BRANCH: line-dev/${{ github.run_id }}
         run: |
           if [ "$(git rev-parse HEAD)" = "$AUTONOMOUS_START_SHA" ]; then
             echo 'No autonomous changes to publish.'
             echo "AUTONOMOUS_RESULT=no-changes" >> "$GITHUB_ENV"
             exit 0
           fi
-          git push origin "HEAD:refs/heads/${AUTONOMOUS_BRANCH}"
+          git ls-remote --exit-code origin "refs/heads/${AUTONOMOUS_BRANCH}" >/dev/null
           PR_URL="$(gh pr create \
             --base main \
             --head "${AUTONOMOUS_BRANCH}" \
@@ -149,17 +144,20 @@ PY
           export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           export AUTONOMOUS_PRODUCED_SHA="$(git rev-parse HEAD)"
           export AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "$AUTONOMOUS_START_SHA" "$AUTONOMOUS_PRODUCED_SHA" | paste -sd, -)"
-          if [ -f nightly_worker_summary.json ]; then
-            export AUTONOMOUS_TESTS_RESULT="$(python - <<'PY'
+          if [ -n "${AUTONOMOUS_SUMMARY_PATH:-}" ] && [ -f "${AUTONOMOUS_SUMMARY_PATH}" ]; then
+            export AUTONOMOUS_TESTS_RESULT="$(python - "${AUTONOMOUS_SUMMARY_PATH}" <<'PY'
 import json
+import sys
 from pathlib import Path
-s=json.loads(Path("nightly_worker_summary.json").read_text(encoding="utf-8"))
+s=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 print("PASS" if s.get("status")=="PASS" else "FAIL")
 PY
 )"
           else
             export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
           fi
+          export AUTONOMOUS_AGENT="DistributedDevelopmentRuntime"
+          export AUTONOMOUS_TASK_ID="scheduled-distributed-development"
           export AUTONOMOUS_VERIFICATION_RESULT="NOT_RUN"
           export AUTONOMOUS_SAFETY_GATE_RESULT="${AUTONOMOUS_SAFETY_GATE_RESULT:-BLOCKED}"
           if [ "${AUTONOMOUS_RESULT:-}" = "pr-created" ] && [ "${AUTONOMOUS_SAFETY_GATE_RESULT}" = "PASS" ]; then
@@ -260,7 +258,7 @@ PY
         uses: actions/upload-artifact@v4
         with:
           name: autonomous-worker-summary-${{ github.run_id }}
-          path: nightly_worker_summary.json
+          path: ${{ runner.temp }}/autonomous_run_summary.json
           if-no-files-found: ignore
 
 # Integration note: the live worker Safety Gate also re-checks the actual worktree before commit.
