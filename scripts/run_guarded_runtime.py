@@ -38,6 +38,44 @@ def _external_ask(
     return response.choices[0].message.content or ""
 
 
+def _escape_json_string_controls(content: str) -> str:
+    """Escape raw C0 controls occurring inside JSON strings.
+
+    This is a narrow normalization for local-model output. The result still
+    must pass json.loads and must be a JSON object before it is accepted.
+    """
+    out: list[str] = []
+    in_string = False
+    escaped = False
+    for char in content:
+        if in_string:
+            if escaped:
+                out.append(char)
+                escaped = False
+            elif char == "\\": 
+                out.append(char)
+                escaped = True
+            elif char == '"':
+                out.append(char)
+                in_string = False
+            elif ord(char) < 0x20:
+                escapes = {
+                    "\b": "\\b",
+                    "\f": "\\f",
+                    "\n": "\\n",
+                    "\r": "\\r",
+                    "\t": "\\t",
+                }
+                out.append(escapes.get(char, f"\\u{ord(char):04x}"))
+            else:
+                out.append(char)
+        else:
+            out.append(char)
+            if char == '"':
+                in_string = True
+    return "".join(out)
+
+
 def guarded_ask(client: Groq | None, system: str, user: str, max_tokens: int = worker.MAX_RESPONSE_TOKENS) -> str:
     """Request JSON with two bounded attempts and local-to-external fallback."""
     command = local_ai_provider.local_ai_command()
@@ -73,6 +111,15 @@ def guarded_ask(client: Groq | None, system: str, user: str, max_tokens: int = w
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError as exc:
+            normalized = _escape_json_string_controls(content)
+            if normalized != content:
+                try:
+                    normalized_parsed = json.loads(normalized)
+                except json.JSONDecodeError:
+                    pass
+                else:
+                    if isinstance(normalized_parsed, dict):
+                        return normalized
             last_error = f"invalid JSON: {exc}"
             if command is not None and client is not None:
                 command = None
