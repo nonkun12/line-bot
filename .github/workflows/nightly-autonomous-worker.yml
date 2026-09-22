@@ -147,6 +147,7 @@ jobs:
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
           AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
+          GOOGLE_SHEETS_AUDIT_RANGE: ${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
         run: |
           set -euo pipefail
           export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -177,12 +178,22 @@ jobs:
             export AUTONOMOUS_NEXT_ACTION="review_failure"
           fi
           python - <<'PY'
+          import os
           from agents.sheets.autonomous_ledger import record_autonomous_run
 
-          if not record_autonomous_run():
-              print("Autonomous run already recorded; idempotent retry.")
+          try:
+              recorded = record_autonomous_run()
+              result = "ALREADY_RECORDED" if not recorded else "RECORDED"
+          except Exception as exc:
+              result = f"FAILED:{type(exc).__name__}"
+              print(f"Google Sheets logging failed: {exc}", flush=True)
+              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+                  fh.write(f"AUTONOMOUS_LOGGING_RESULT={result}\n")
+              raise
           else:
-              print("Autonomous development result recorded to Google Sheets.")
+              print(f"Google Sheets logging: {result}", flush=True)
+              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+                  fh.write(f"AUTONOMOUS_LOGGING_RESULT={result}\n")
           PY
 
           # Notifications are downstream of the durable Sheets record.
@@ -204,6 +215,7 @@ jobs:
           elif [ "${AUTONOMOUS_RESULT:-}" = "no-changes" ]; then
             MESSAGE="${MESSAGE}\n変更なし"
           fi
+          MESSAGE="${MESSAGE}\nSheets履歴: ${AUTONOMOUS_LOGGING_RESULT:-UNKNOWN}"
           export MESSAGE
 
           python - <<'PY'
