@@ -77,6 +77,9 @@ def test_explicit_management_router_test_plan_is_deterministic(tmp_path, monkeyp
     assert plan is not None
     assert plan["source"] == "deterministic_explicit_test"
     assert plan["no_change"] is False
+    change = plan["changes"][0]
+    assert change["old"].endswith("\n")
+    assert not change["new"].endswith("\n\n")
     ok, detail = worker.validate_plan(plan, "tests/test_management_router.py")
     assert ok
     assert detail == "tests/test_management_router.py"
