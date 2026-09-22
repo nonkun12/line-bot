@@ -30,7 +30,7 @@ from core.management_ai import (
     ModelManagementPlanner,
 )
 from core.management_contract import ManagementDecision, ManagementRequest
-from core.multi_agent import AgentRole
+from core.multi_agent import AgentRole, AgentTask
 from core.specialist_executor import build_registry_executors
 from core.specialist_gate import SpecialistGateError, assert_all_approved
 from graph.core_registry import build_core_agent_registry
@@ -156,26 +156,47 @@ class _CandidateRestrictedPlanner(ManagementPlanner):
         )
         unexpected_task_ids = {task.task_id for task in unexpected_tasks}
         filtered_tasks = tuple(
-            task for task in plan.tasks if task.role in self._allowed_roles
+            task
+            for task in plan.tasks
+            if task.role in self._allowed_roles
+            and not any(dependency in unexpected_task_ids for dependency in task.depends_on)
         )
-        if unexpected_task_ids and any(
-            dependency in unexpected_task_ids
-            for task in filtered_tasks
-            for dependency in task.depends_on
-        ):
-            raise ManagementPlanningError(
-                "management plan has an approved task depending on a rejected specialist task"
-            )
         planned_roles = {task.role for task in filtered_tasks}
-        missing = sorted(
-            role.value for role in self._allowed_roles if role not in planned_roles
+        missing_roles = sorted(
+            (role for role in self._allowed_roles if role not in planned_roles),
+            key=lambda role: role.value,
         )
-        if missing:
-            raise ManagementPlanningError(
-                "management plan omitted detected specialist role: "
-                + ", ".join(missing)
+        if missing_roles:
+            # The model may invent a dependency on an out-of-scope role. Never
+            # execute that graph and never let the model widen the allowed set.
+            # Replace the affected/missing roles with bounded, dependency-free
+            # tasks derived only from the deterministic role set detected from
+            # the user's message.
+            fallback_tasks = list(filtered_tasks)
+            used_ids = {task.task_id for task in fallback_tasks}
+            for role in missing_roles:
+                base_id = f"{role.value}-task"
+                task_id = base_id
+                suffix = 2
+                while task_id in used_ids:
+                    task_id = f"{base_id}-{suffix}"
+                    suffix += 1
+                fallback_tasks.append(
+                    AgentTask(
+                        task_id=task_id,
+                        role=role,
+                        instruction=f"Handle the user's request for the {role.value} specialist.",
+                        resources=frozenset({role.value}),
+                        priority=1,
+                    )
+                )
+                used_ids.add(task_id)
+            plan = replace(
+                plan,
+                tasks=tuple(fallback_tasks),
+                parallel_safe=False,
             )
-        if unexpected_tasks:
+        elif unexpected_tasks:
             plan = replace(plan, tasks=filtered_tasks)
         return _bind_source_instructions(plan, request.message)
 
