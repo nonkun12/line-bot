@@ -107,6 +107,9 @@ def main() -> int:
     try:
         exit_code = runtime.execute(instruction)
         return exit_code
+    except Exception as exc:
+        os.environ["AUTONOMOUS_RUNTIME_ERROR"] = f"{type(exc).__name__}: {exc}"
+        raise
     finally:
         _write_summary("PASS" if exit_code == 0 else "FAIL", exit_code, start_sha, summary_path)
 
