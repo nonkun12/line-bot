@@ -66,7 +66,7 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
         return False
     response = client.append_row(LEDGER_RANGE, record.values())
     updates = response.get("updates", {}) if isinstance(response, dict) else {}
-    if updates.get("updatedRows") not in (None, 1):
+    if updates.get("updatedRows") != 1:
         raise RuntimeError(f"Google Sheets append updatedRows={updates.get('updatedRows')!r}")
     return True
 
