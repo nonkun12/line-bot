@@ -104,14 +104,14 @@ jobs:
             exit 1
           fi
           python - "$SUMMARY_PATH" <<'PY'
-import json
-import sys
-from pathlib import Path
-summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-if summary.get("status") != "PASS":
-    raise SystemExit(f"Safety Gate blocked: runtime status={summary.get('status')!r}")
-print(f"runtime summary: {summary.get('base_sha')} -> {summary.get('produced_sha')}")
-PY
+          import json
+          import sys
+          from pathlib import Path
+          summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if summary.get("status") != "PASS":
+          raise SystemExit(f"Safety Gate blocked: runtime status={summary.get('status')!r}")
+          print(f"runtime summary: {summary.get('base_sha')} -> {summary.get('produced_sha')}")
+          PY
           echo "AUTONOMOUS_SAFETY_GATE_RESULT=PASS" >> "$GITHUB_ENV"
       - name: Publish final autonomous branch and PR
         if: success()
@@ -146,13 +146,13 @@ PY
           export AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "$AUTONOMOUS_START_SHA" "$AUTONOMOUS_PRODUCED_SHA" | paste -sd, -)"
           if [ -n "${AUTONOMOUS_SUMMARY_PATH:-}" ] && [ -f "${AUTONOMOUS_SUMMARY_PATH}" ]; then
             export AUTONOMOUS_TESTS_RESULT="$(python - "${AUTONOMOUS_SUMMARY_PATH}" <<'PY'
-import json
-import sys
-from pathlib import Path
-s=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-print("PASS" if s.get("status")=="PASS" else "FAIL")
-PY
-)"
+          import json
+          import sys
+          from pathlib import Path
+          s=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          print("PASS" if s.get("status")=="PASS" else "FAIL")
+          PY
+          )"
           else
             export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
           fi
@@ -169,15 +169,15 @@ PY
             export AUTONOMOUS_NEXT_ACTION="review_failure"
           fi
           python - <<'PY'
-from agents.sheets.autonomous_ledger import record_autonomous_run
-if not record_autonomous_run():
-    print("Autonomous run already recorded; idempotent retry.")
-else:
-    print("Autonomous development result recorded to Google Sheets.")
-PY
+          from agents.sheets.autonomous_ledger import record_autonomous_run
+          if not record_autonomous_run():
+          print("Autonomous run already recorded; idempotent retry.")
+          else:
+          print("Autonomous development result recorded to Google Sheets.")
+          PY
 
-      # Notifications are downstream of the durable Sheets record.
-      # A notification outage must never erase or block the development result.
+          # Notifications are downstream of the durable Sheets record.
+          # A notification outage must never erase or block the development result.
       - name: Notify Slack and LINE
         if: always()
         continue-on-error: true
@@ -198,60 +198,60 @@ PY
           export MESSAGE
 
           python - <<'PY'
-import json
-import os
-import urllib.error
-import urllib.request
+          import json
+          import os
+          import urllib.error
+          import urllib.request
 
-def send_slack():
-    webhook = os.environ.get("SLACK_WEBHOOK_URL", "").strip()
-    if not webhook:
-        print("SLACK_NOTIFICATION=SKIPPED (webhook not configured)")
-        return
-    request = urllib.request.Request(
-        webhook,
-        data=json.dumps({"text": os.environ["MESSAGE"]}).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=15) as response:
+          def send_slack():
+          webhook = os.environ.get("SLACK_WEBHOOK_URL", "").strip()
+          if not webhook:
+          print("SLACK_NOTIFICATION=SKIPPED (webhook not configured)")
+          return
+          request = urllib.request.Request(
+          webhook,
+          data=json.dumps({"text": os.environ["MESSAGE"]}).encode("utf-8"),
+          headers={"Content-Type": "application/json"},
+          method="POST",
+          )
+          try:
+          with urllib.request.urlopen(request, timeout=15) as response:
             print(f"SLACK_NOTIFICATION=HTTP_{response.status}")
-    except urllib.error.HTTPError as exc:
-        print(f"SLACK_NOTIFICATION=HTTP_{exc.code}")
-    except Exception as exc:
-        print(f"SLACK_NOTIFICATION=ERROR_{type(exc).__name__}")
+          except urllib.error.HTTPError as exc:
+          print(f"SLACK_NOTIFICATION=HTTP_{exc.code}")
+          except Exception as exc:
+          print(f"SLACK_NOTIFICATION=ERROR_{type(exc).__name__}")
 
-def send_line():
-    token = os.environ.get("CHANNEL_ACCESS_TOKEN", "").strip()
-    user_id = os.environ.get("LINE_NOTIFY_USER_ID", "").strip()
-    if not token or not user_id:
-        print("LINE_NOTIFICATION=SKIPPED (credentials not configured)")
-        return
-    payload = {
-        "to": user_id,
-        "messages": [{"type": "text", "text": os.environ["MESSAGE"]}],
-    }
-    request = urllib.request.Request(
-        "https://api.line.me/v2/bot/message/push",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
+          def send_line():
+          token = os.environ.get("CHANNEL_ACCESS_TOKEN", "").strip()
+          user_id = os.environ.get("LINE_NOTIFY_USER_ID", "").strip()
+          if not token or not user_id:
+          print("LINE_NOTIFICATION=SKIPPED (credentials not configured)")
+          return
+          payload = {
+          "to": user_id,
+          "messages": [{"type": "text", "text": os.environ["MESSAGE"]}],
+          }
+          request = urllib.request.Request(
+          "https://api.line.me/v2/bot/message/push",
+          data=json.dumps(payload).encode("utf-8"),
+          headers={
             "Authorization": "Bearer " + token,
             "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=15) as response:
+          },
+          method="POST",
+          )
+          try:
+          with urllib.request.urlopen(request, timeout=15) as response:
             print(f"LINE_NOTIFICATION=HTTP_{response.status}")
-    except urllib.error.HTTPError as exc:
-        print(f"LINE_NOTIFICATION=HTTP_{exc.code}")
-    except Exception as exc:
-        print(f"LINE_NOTIFICATION=ERROR_{type(exc).__name__}")
+          except urllib.error.HTTPError as exc:
+          print(f"LINE_NOTIFICATION=HTTP_{exc.code}")
+          except Exception as exc:
+          print(f"LINE_NOTIFICATION=ERROR_{type(exc).__name__}")
 
-send_slack()
-send_line()
-PY
+          send_slack()
+          send_line()
+          PY
 
       - name: Upload worker summary
         if: always()
