@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from core.agent_runtime import RuntimeReport
 from core.control_tower import ControlTower, _report_evidence
+from core.self_improvement import SelfImprovementEngine
 from core.creator_critic_runtime import build_creator_critic_loop
 
 
