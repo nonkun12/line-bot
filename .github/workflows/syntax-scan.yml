@@ -13,3 +13,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Compile all Python files
         run: python -m compileall -q .
+      - name: Lint GitHub Actions workflows
+        shell: bash
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint
