@@ -33,6 +33,15 @@ def test_guarded_ask_uses_bounded_json_completion_and_low_reasoning():
     assert kwargs["response_format"] == {"type": "json_object"}
 
 
+def test_guarded_ask_accepts_legacy_max_tokens_keyword():
+    completions = FakeCompletions(['{"file":"app.py"}'])
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+
+    guarded_runtime.guarded_ask(client, "json only", "pick a file", max_tokens=900)
+
+    assert completions.calls[0]["max_completion_tokens"] == 900
+
+
 def test_guarded_ask_retries_empty_output_with_compact_json_instruction():
     completions = FakeCompletions(["", '{"file":null}'])
     client = SimpleNamespace(
