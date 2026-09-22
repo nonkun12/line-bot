@@ -57,6 +57,34 @@ def test_validate_plan_rejects_oversized_change():
     )
 
 
+def test_explicit_management_router_test_plan_is_deterministic(tmp_path, monkeypatch):
+    target = tmp_path / "tests" / "test_management_router.py"
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        "from core.management_contract import ManagementRequest, Specialist\n"
+        "from core.management_router import route\n\n"
+        "def test_existing() -> None:\n"
+        "    assert True\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    plan = runtime._explicit_management_router_test_plan(
+        "必ず実変更を1件。tests/test_management_router.py に test_earlier_english_keyword_wins_over_music を追加",
+        "tests/test_management_router.py",
+    )
+
+    assert plan is not None
+    assert plan["source"] == "deterministic_explicit_test"
+    assert plan["no_change"] is False
+    change = plan["changes"][0]
+    assert change["old"].endswith("\n")
+    assert not change["new"].endswith("\n\n")
+    ok, detail = worker.validate_plan(plan, "tests/test_management_router.py")
+    assert ok
+    assert detail == "tests/test_management_router.py"
+
+
 def test_fallback_safe_target_prefers_management_router_test():
     files = [
         "tests/test_line_development_runtime.py",

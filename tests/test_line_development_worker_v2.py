@@ -117,6 +117,17 @@ def test_extract_explicit_path_rejects_multiple_named_files():
     assert worker._extract_explicit_path("README.md と app.py を変更", files) is None
 
 
+def test_build_plan_retries_malformed_change_fields():
+    malformed = json.dumps({"no_change": False, "changes": [{"file": "app.py", "old": ["before"], "new": {"text": "after"}}]})
+    valid = json.dumps({"no_change": False, "changes": [{"file": "app.py", "old": "before", "new": "after"}]})
+    client = FakeClient([malformed, valid])
+
+    plan = worker.build_plan(client, "update app.py", "app.py", "before\nafter")
+
+    assert plan == json.loads(valid)
+    assert len(client.chat.completions.responses) == 0
+
+
 def test_validate_plan_rejects_change_outside_selected_file():
     plan = {"no_change": False, "changes": [{"file": "README.md", "old": "a", "new": "b"}]}
     assert worker.validate_plan(plan, "app.py") == (False, "change_outside_selected_file")
@@ -132,6 +143,24 @@ def test_validate_plan_rejects_protected_selected_file():
 
 def test_validate_plan_accepts_no_change():
     assert worker.validate_plan({"no_change": True}, "app.py") == (True, "no_change")
+
+
+def test_apply_plan_normalizes_replacement_trailing_whitespace(tmp_path, monkeypatch):
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    target = tmp_path / "app.py"
+    target.write_text("before\n", encoding="utf-8")
+    plan = {
+        "no_change": False,
+        "changes": [
+            {"file": "app.py", "old": "before\n", "new": "after  \n"},
+        ],
+    }
+
+    ok, detail, touched = worker.apply_plan(plan)
+
+    assert ok and detail == "applied"
+    assert touched == ["app.py"]
+    assert target.read_text(encoding="utf-8") == "after\n"
 
 
 def test_apply_plan_requires_unique_anchor(tmp_path, monkeypatch):

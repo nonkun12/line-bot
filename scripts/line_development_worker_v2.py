@@ -12,9 +12,17 @@ import re
 import subprocess
 import sys
 import traceback
+
 from pathlib import Path
 from urllib import error as urllib_error
 from urllib import request as urllib_request
+
+
+
+
+def _normalize_replacement_whitespace(text: str) -> str:
+    """Remove horizontal trailing whitespace from generated replacement text only."""
+    return re.sub(r"[ \t]+(?=\n|$)", "", text)
 
 from groq import Groq
 
@@ -264,7 +272,8 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
         count = text.count(change["old"])
         if count != 1:
             return False, f"anchor_count_{change['file']}:{count}", touched
-        target.write_text(text.replace(change["old"], change["new"], 1), encoding="utf-8")
+        replacement = _normalize_replacement_whitespace(change["new"])
+        target.write_text(text.replace(change["old"], replacement, 1), encoding="utf-8")
         touched.append(change["file"])
     return True, "applied", touched
 
@@ -297,11 +306,30 @@ def build_plan(client: Groq, instruction: str, chosen: str, context: str, test_o
     system = '''You edit ONE repository file. Return JSON only.
 Real change: {"no_change":false,"changes":[{"file":"exact path","old":"exact existing text","new":"replacement text"}]}
 No safe/needed change: {"no_change":true}
-Rules: one file only; old must be an exact substring of supplied context; minimal change; never modify security, credentials, deployment, workflow, or worker logic. Do not invent text that is not visible in context.'''
+Rules: one file only; "file", "old", and "new" MUST each be JSON strings; old must be an exact substring of supplied context; new must be a JSON string using escaped \\n for line breaks; minimal change; never modify security, credentials, deployment, workflow, or worker logic. Do not invent text that is not visible in context.'''
     prompt = f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}\n\nCurrent context:\n{context}"
     if test_output:
         prompt += f"\n\nPytest failure:\n{test_output[-3000:]}"
-    return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
+
+    for attempt in range(2):
+        plan = parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
+        if plan.get("no_change") is True:
+            return plan
+        changes = plan.get("changes")
+        if (
+            isinstance(changes, list)
+            and len(changes) == 1
+            and isinstance(changes[0], dict)
+            and all(isinstance(changes[0].get(key), str) for key in ("file", "old", "new"))
+        ):
+            return plan
+        if attempt == 0:
+            prompt += (
+                "\n\nPREVIOUS PLAN REJECTED: file, old, and new must be plain JSON strings. "
+                "Return exactly one changes item and do not use arrays, objects, null, or raw line breaks "
+                "inside those string values. Retry the same requested change."
+            )
+    return plan
 
 
 def main() -> int:
