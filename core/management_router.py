@@ -30,14 +30,25 @@ def route(request: ManagementRequest) -> ManagementDecision:
         "channel": request.channel,
         "request_metadata": dict(request.metadata),
     }
-    for specialist, keywords in _KEYWORDS:
-        if any(keyword.casefold() in message for keyword in keywords):
-            return ManagementDecision(
-                specialist=specialist,
-                reason=f"matched {specialist.value} keyword",
-                confidence=0.95,
-                metadata=routing_metadata,
-            )
+    matches = [
+        specialist
+        for specialist, keywords in _KEYWORDS
+        if any(keyword.casefold() in message for keyword in keywords)
+    ]
+    routing_metadata["matched_specialists"] = [specialist.value for specialist in matches]
+    routing_metadata["routing_priority"] = (
+        [specialist.value for specialist, _ in _KEYWORDS].index(matches[0].value) + 1
+        if matches
+        else None
+    )
+    if matches:
+        specialist = matches[0]
+        return ManagementDecision(
+            specialist=specialist,
+            reason=f"matched {specialist.value} keyword",
+            confidence=0.95,
+            metadata=routing_metadata,
+        )
     return ManagementDecision(
         specialist=Specialist.GENERAL,
         reason="no specialist keyword matched",
