@@ -75,7 +75,9 @@ jobs:
         run: |
           set -euo pipefail
           PRODUCED_SHA="$(git rev-parse HEAD)"
-          CHANGED_FILES="$(git diff --name-only "$AUTONOMOUS_START_SHA" "$PRODUCED_SHA")"
+          TRACKED_CHANGED="$(git diff --name-only "$AUTONOMOUS_START_SHA" "$PRODUCED_SHA")"
+          UNTRACKED_CHANGED="$(git status --porcelain --untracked-files=all | awk 'substr($0,1,2) == "??" {print substr($0,4)}')"
+          CHANGED_FILES="$(printf '%s\n%s\n' "$TRACKED_CHANGED" "$UNTRACKED_CHANGED" | sed '/^$/d' | sort -u)"
           FILE_COUNT="$(printf '%s\n' "$CHANGED_FILES" | sed '/^$/d' | wc -l | tr -d ' ')"
           if [ "$FILE_COUNT" -gt 4 ]; then
             echo "Safety Gate blocked: too many changed files ($FILE_COUNT)."
