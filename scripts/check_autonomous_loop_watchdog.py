@@ -46,7 +46,7 @@ def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
     window_end = slot + timedelta(minutes=120)
     window_start = slot - timedelta(minutes=20)
     for run in data.get("workflow_runs", []):
-        if run.get("name") != "Autonomous Development Loop":
+        if run.get("name") != "Autonomous Development Loop" or run.get("event") != "schedule":
             continue
         created = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00")).astimezone(JST)
         if window_start <= created <= window_end:
