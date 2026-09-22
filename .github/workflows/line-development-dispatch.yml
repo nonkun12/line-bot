@@ -41,6 +41,9 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      - name: Record development starting commit
+        run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Run bounded multi-agent LINE development runtime
         id: development
         env:
@@ -95,6 +98,42 @@ jobs:
           EOF
           gh pr create --repo "${GITHUB_REPOSITORY}" --head "${BRANCH}" --base main --title "feat: LINE development request" --body-file /tmp/pr_body.md >/tmp/pr_url.txt
           cat /tmp/pr_url.txt
+
+      - name: Record on-demand development result to Google Sheets
+        if: always() && steps.development.outputs.test_only != 'true'
+        continue-on-error: true
+        env:
+          GOOGLE_SHEETS_SPREADSHEET_ID: \${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: \${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+          AUTONOMOUS_DEV_LEDGER_RANGE: \${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
+          GITHUB_RUN_ID: \${{ github.run_id }}
+          DEV_INSTRUCTION: \${{ github.event.inputs.instruction }}
+          DEV_USER_ID: \${{ github.event.inputs.user_id }}
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euo pipefail
+          export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export AUTONOMOUS_PRODUCED_SHA="$(git rev-parse HEAD)"
+          export AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "$AUTONOMOUS_START_SHA" "$AUTONOMOUS_PRODUCED_SHA" | paste -sd, -)"
+          export AUTONOMOUS_AGENT="DistributedDevelopmentRuntime"
+          export AUTONOMOUS_TASK_ID="on-demand-line-development"
+          if [ "\${{ steps.development.outcome }}" = "success" ]; then
+            export AUTONOMOUS_TESTS_RESULT="PASS"
+            export AUTONOMOUS_SAFETY_GATE_RESULT="PASS"
+          else
+            export AUTONOMOUS_TESTS_RESULT="FAIL"
+            export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
+            export AUTONOMOUS_BLOCKED_FAILED_REASON="development_runtime_failed"
+          fi
+          export AUTONOMOUS_VERIFICATION_RESULT="NOT_RUN"
+          export AUTONOMOUS_MERGE_RESULT="NOT_AUTO_MERGED"
+          export AUTONOMOUS_NEXT_ACTION="review_pr"
+          export AUTONOMOUS_PR_URL="$(gh pr view "line-dev/\${GITHUB_RUN_ID}" --repo "\${GITHUB_REPOSITORY}" --json url --jq '.url' 2>/dev/null || true)"
+          python - <<'PY'
+from agents.sheets.autonomous_ledger import record_autonomous_run
+record_autonomous_run()
+print("on-demand development result recorded to Google Sheets")
+PY
 
       - name: Notify Slack of development result
         if: always()
