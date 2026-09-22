@@ -10,9 +10,11 @@ import os
 import re
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 from groq import Groq
 
+from core.execution_safety import GitWorktreeSafetyGate
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -121,6 +123,11 @@ def main() -> int:
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()
     if not instruction:
         return 2
+    baseline_proc = run(["git", "rev-parse", "HEAD"])
+    if baseline_proc.returncode != 0 or not baseline_proc.stdout.strip():
+        print("Unable to capture autonomous baseline SHA.")
+        return 1
+    baseline_sha = baseline_proc.stdout.strip()
     client = Groq(api_key=os.environ["GROQ_API_KEY"])
     files = repo_files()
     chosen = choose_files(client, instruction, files)
@@ -148,6 +155,12 @@ Preserve existing behavior. Add tests when an existing test file is among the su
 
     passed, output = apply_and_test(patch)
     attempts = 1
+    safety_gate = GitWorktreeSafetyGate(ROOT, baseline_sha, tuple(chosen))
+    if not safety_gate.verify(None, SimpleNamespace(success=passed, changed_resources=tuple(chosen)), tuple(chosen)):
+        run(["git", "checkout", "--", *chosen])
+        print("AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED")
+        return 1
+    print("AUTONOMOUS_SAFETY_GATE_RESULT=PASS")
     if not passed:
         repair_prompt = f"""Fix only the failed implementation while preserving the requested change.
 Original task:\n{instruction}\n\nPatch:\n{patch}\n\nPytest failure:\n{output}\n\nCurrent files:\n{context(chosen)}\n\nReturn ONLY a corrected unified diff."""
@@ -161,6 +174,11 @@ Original task:\n{instruction}\n\nPatch:\n{patch}\n\nPytest failure:\n{output}\n\
         passed, output = apply_and_test(repair_patch)
         patch = repair_patch
         attempts = 2
+        if not safety_gate.verify(None, SimpleNamespace(success=passed, changed_resources=tuple(chosen)), tuple(chosen)):
+            run(["git", "checkout", "--", *chosen])
+            print("AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED")
+            return 1
+        print("AUTONOMOUS_SAFETY_GATE_RESULT=PASS")
 
     if not passed:
         run(["git", "checkout", "--", *chosen])
