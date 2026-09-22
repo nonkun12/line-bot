@@ -131,10 +131,10 @@ jobs:
           export AUTONOMOUS_NEXT_ACTION="review_pr"
           export AUTONOMOUS_PR_URL="$(gh pr view "line-dev/\${GITHUB_RUN_ID}" --repo "\${GITHUB_REPOSITORY}" --json url --jq '.url' 2>/dev/null || true)"
           python - <<'PY'
-from agents.sheets.autonomous_ledger import record_autonomous_run
-record_autonomous_run()
-print("on-demand development result recorded to Google Sheets")
-PY
+          from agents.sheets.autonomous_ledger import record_autonomous_run
+          record_autonomous_run()
+          print("on-demand development result recorded to Google Sheets")
+          PY
 
       - name: Notify Slack of development result
         if: always()
