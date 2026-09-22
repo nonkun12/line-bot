@@ -290,6 +290,7 @@ class StocksAgent:
             f"SMA20: {indicators.sma20:.2f}" if indicators.sma20 is not None else "SMA20: n/a",
             f"SMA50: {indicators.sma50:.2f}" if indicators.sma50 is not None else "SMA50: n/a",
             f"年率ボラティリティ(20日): {indicators.volatility20:.2f}%" if indicators.volatility20 is not None else "年率ボラティリティ(20日): n/a",
+            f"ボリンジャー20: 中央{indicators.bollinger_mid20:.2f} / 上限{indicators.bollinger_upper20:.2f} / 下限{indicators.bollinger_lower20:.2f}" if indicators.bollinger_mid20 is not None else "ボリンジャー20: n/a",
             f"シグナルスコア: {indicators.signal_score:+d}（複数指標の単純合算）",
             "データ: Yahoo Finance。売買注文や個別の投資判断は行いません。",
         ]
