@@ -12,7 +12,7 @@ import re
 import subprocess
 import sys
 import traceback
-from pathlib import Path
+\n\ndef _normalize_replacement_whitespace(text: str) -> str:\n    """Remove horizontal trailing whitespace from generated replacement text only."""\n    return re.sub(r"[ \\t]+(?=\\n|$)", "", text)\nfrom pathlib import Path
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
@@ -264,7 +264,8 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
         count = text.count(change["old"])
         if count != 1:
             return False, f"anchor_count_{change['file']}:{count}", touched
-        target.write_text(text.replace(change["old"], change["new"], 1), encoding="utf-8")
+        replacement = _normalize_replacement_whitespace(change["new"])
+        target.write_text(text.replace(change["old"], replacement, 1), encoding="utf-8")
         touched.append(change["file"])
     return True, "applied", touched
 
