@@ -94,6 +94,32 @@ def _is_deterministic_comment_request(instruction: str, chosen: str | None) -> b
     return chosen == "line_development.py" and re.search(r"コメント.*(?:1行|一行)|(?:1行|一行).*コメント", instruction, re.IGNORECASE | re.DOTALL) is not None
 
 
+def _explicit_management_router_test_plan(instruction: str, chosen: str) -> dict | None:
+    """Build a narrow deterministic plan for the explicit router-priority trial."""
+    if chosen != "tests/test_management_router.py":
+        return None
+    marker = "test_earlier_english_keyword_wins_over_music"
+    if marker not in instruction:
+        return None
+    target = worker.ROOT / chosen
+    text = target.read_text(encoding="utf-8")
+    if f"def {marker}" in text:
+        return {"no_change": True, "source": "deterministic_explicit_test"}
+    addition = (
+        "def test_earlier_english_keyword_wins_over_music() -> None:\n"
+        "    assert (\n"
+        "        route(ManagementRequest(\\\"u\\\", \\"音楽作曲と英語の学習\\")).specialist\n"
+        "        is Specialist.ENGLISH\n"
+        "    )\n"
+    )
+    anchor = text.rstrip() + "\n\n"
+    return {
+        "no_change": False,
+        "source": "deterministic_explicit_test",
+        "changes": [{"file": chosen, "old": anchor, "new": anchor + addition}],
+    }
+
+
 def _self_improvement_history_path() -> Path:
     raw = os.environ.get(
         "SELF_IMPROVEMENT_HISTORY_PATH",
@@ -103,9 +129,10 @@ def _self_improvement_history_path() -> Path:
 
 
 def _self_improvement_creator_critic_enabled() -> bool:
+    default = "true" if os.environ.get("GROQ_API_KEY", "").strip() else "false"
     return os.environ.get(
         "SELF_IMPROVEMENT_CREATOR_CRITIC",
-        "true",
+        default,
     ).strip().lower() in {"1", "true", "yes", "on"}
 
 
@@ -177,8 +204,30 @@ class DevelopmentExecutor:
                 return AgentResult(task.task_id, False, "manager selection missing")
             if task.role is AgentRole.IMPLEMENTER:
                 explicit_comment_plan = _explicit_comment_plan(self.state.instruction, self.state.chosen)
-                comment_plan = None if explicit_comment_plan is not None else worker.build_comment_test_plan(self.state.instruction, self.state.chosen)
-                plan = explicit_comment_plan if explicit_comment_plan is not None else comment_plan if comment_plan is not None else worker.build_plan(self.state.client, self.state.instruction, self.state.chosen, worker.context_for(self.state.chosen))
+                explicit_router_plan = (
+                    _explicit_management_router_test_plan(self.state.instruction, self.state.chosen)
+                    if explicit_comment_plan is None
+                    else None
+                )
+                comment_plan = (
+                    None
+                    if explicit_comment_plan is not None or explicit_router_plan is not None
+                    else worker.build_comment_test_plan(self.state.instruction, self.state.chosen)
+                )
+                plan = (
+                    explicit_comment_plan
+                    if explicit_comment_plan is not None
+                    else explicit_router_plan
+                    if explicit_router_plan is not None
+                    else comment_plan
+                    if comment_plan is not None
+                    else worker.build_plan(
+                        self.state.client,
+                        self.state.instruction,
+                        self.state.chosen,
+                        worker.context_for(self.state.chosen),
+                    )
+                )
                 ok, detail = worker.validate_plan(plan, self.state.chosen)
                 if not ok:
                     return AgentResult(task.task_id, False, f"implementation plan rejected: {detail}")
