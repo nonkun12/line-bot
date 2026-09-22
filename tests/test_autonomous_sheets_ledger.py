@@ -28,6 +28,7 @@ class FakeClient:
         if self.error:
             raise self.error
         self.appended.append(values)
+        return {"updates": {"updatedRows": 1}}
 
 
 def record():

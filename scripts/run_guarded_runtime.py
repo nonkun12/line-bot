@@ -18,13 +18,23 @@ from core import line_development_runtime as runtime
 from scripts import line_development_worker_v2 as worker
 
 
-def guarded_ask(client: Groq, system: str, user: str, max_tokens: int = worker.MAX_RESPONSE_TOKENS) -> str:
+MAX_COMPLETION_TOKENS = 4096
+
+
+def guarded_ask(
+    client: Groq,
+    system: str,
+    user: str,
+    max_completion_tokens: int = MAX_COMPLETION_TOKENS,
+    max_tokens: int | None = None,
+) -> str:
     """Request a JSON object and retry once for empty or invalid provider output."""
     last_error = "unknown JSON failure"
+    effective_max_completion_tokens = max_tokens if max_tokens is not None else max_completion_tokens
     for attempt in range(2):
         retry_system = system
         if attempt:
-            retry_system += "\nIMPORTANT: Return a single valid JSON object only. Do not emit prose, markdown, or an empty response."
+            retry_system += "\nIMPORTANT: Return a single valid JSON object only. Return a compact valid JSON object only. No prose, markdown, commentary, or empty response. Keep strings minimal and preserve exact existing text."
         response = client.chat.completions.create(
             model=worker.MODEL,
             messages=[
@@ -32,18 +42,26 @@ def guarded_ask(client: Groq, system: str, user: str, max_tokens: int = worker.M
                 {"role": "user", "content": user},
             ],
             temperature=0.0,
-            max_tokens=max_tokens,
+            max_completion_tokens=effective_max_completion_tokens,
+            reasoning_effort="low",
             include_reasoning=False,
             response_format={"type": "json_object"},
         )
-        content = response.choices[0].message.content or ""
+        choice = response.choices[0]
+        content = choice.message.content or ""
+        finish_reason = getattr(choice, "finish_reason", "") or "unknown"
         if not content.strip():
-            last_error = "empty response"
+            last_error = f"empty response (finish_reason={finish_reason})"
+            print(f"[guarded_ask] empty provider output: finish_reason={finish_reason}", flush=True)
             continue
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError as exc:
-            last_error = f"invalid JSON: {exc}"
+            last_error = f"invalid JSON (finish_reason={finish_reason}): {exc}"
+            print(
+                f"[guarded_ask] invalid JSON: finish_reason={finish_reason}; error={exc}",
+                flush=True,
+            )
             continue
         if isinstance(parsed, dict):
             return content
@@ -89,6 +107,9 @@ def main() -> int:
     try:
         exit_code = runtime.execute(instruction)
         return exit_code
+    except Exception as exc:
+        os.environ["AUTONOMOUS_RUNTIME_ERROR"] = f"{type(exc).__name__}: {exc}"
+        raise
     finally:
         _write_summary("PASS" if exit_code == 0 else "FAIL", exit_code, start_sha, summary_path)
 

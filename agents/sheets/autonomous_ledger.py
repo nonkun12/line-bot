@@ -1,6 +1,8 @@
 """Append one immutable autonomous-development execution record to Google Sheets.
 
 This module is intentionally separate from user-facing Sheets operations.
+It is the canonical ledger used by the nightly autonomous workflow; the optional
+`core.line_development_runtime` audit hook is a separate, best-effort path.
 """
 from __future__ import annotations
 
@@ -9,7 +11,7 @@ import os
 
 from agents.sheets.client import GoogleSheetsClient
 
-LEDGER_RANGE = os.getenv("AUTONOMOUS_DEV_LEDGER_RANGE", "AutonomousDevelopment!A:Q")
+LEDGER_RANGE = (os.getenv("AUTONOMOUS_DEV_LEDGER_RANGE") or os.getenv("GOOGLE_SHEETS_AUDIT_RANGE") or "AutonomousDevelopment!A:Q").strip()
 HEADERS = [
     "timestamp", "run_id", "task_id", "source", "agent", "task_summary",
     "base_sha", "produced_sha", "changed_files", "pr_url", "tests_result",
@@ -58,13 +60,20 @@ def ensure_headers(client: GoogleSheetsClient) -> None:
 
 
 def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
-    """Write once per exact run_id; workflow concurrency serializes retries."""
+    """Write once per exact run_id and verify the append response.
+
+    Idempotency assumes the workflow-level concurrency group keeps retries
+    serialized; callers must preserve that invariant when changing the workflow.
+    """
     ensure_headers(client)
     sheet = LEDGER_RANGE.split("!", 1)[0]
     existing = client.search_column(f"{sheet}!A:Q", 1, record.run_id)
     if existing:
         return False
-    client.append_row(LEDGER_RANGE, record.values())
+    response = client.append_row(LEDGER_RANGE, record.values())
+    updates = response.get("updates", {}) if isinstance(response, dict) else {}
+    if updates.get("updatedRows") != 1:
+        raise RuntimeError(f"Google Sheets append updatedRows={updates.get('updatedRows')!r}")
     return True
 
 
@@ -90,5 +99,17 @@ def build_record_from_env() -> AutonomousRunRecord:
 
 
 def record_autonomous_run() -> bool:
-    client = GoogleSheetsClient()
-    return append_once(client, build_record_from_env())
+    """Record the run, retrying transient Google API failures once."""
+    last_error: Exception | None = None
+    record = build_record_from_env()
+    for attempt in range(2):
+        try:
+            return append_once(GoogleSheetsClient(), record)
+        except Exception as exc:
+            last_error = exc
+            if attempt == 0:
+                continue
+    assert last_error is not None
+    raise RuntimeError(
+        f"Google Sheets autonomous ledger write failed after bounded retry: {last_error}"
+    ) from last_error

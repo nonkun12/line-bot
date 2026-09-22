@@ -3,12 +3,13 @@ name: Autonomous Development Loop
 on:
   workflow_dispatch:
   schedule:
-    # Japan time: 03:00, 15:00, 21:00 every day.
-    - cron: '0 3 * * *'
+    # Japan time: 03:05, 15:05, 21:05 every day.
+    # Offset by 5 minutes from the top of the hour to reduce scheduler-load delays.
+    - cron: '5 3 * * *'
       timezone: 'Asia/Tokyo'
-    - cron: '0 15 * * *'
+    - cron: '5 15 * * *'
       timezone: 'Asia/Tokyo'
-    - cron: '0 21 * * *'
+    - cron: '5 21 * * *'
       timezone: 'Asia/Tokyo'
 
 # Scheduled runs are intentionally on the default branch.
@@ -132,7 +133,10 @@ jobs:
             echo "AUTONOMOUS_RESULT=no-changes" >> "$GITHUB_ENV"
             exit 0
           fi
-          git ls-remote --exit-code origin "refs/heads/${AUTONOMOUS_BRANCH}" >/dev/null
+          if git ls-remote --exit-code origin "refs/heads/${AUTONOMOUS_BRANCH}" >/dev/null 2>&1; then
+            echo "Autonomous branch already exists: ${AUTONOMOUS_BRANCH}"
+            exit 1
+          fi
           PR_URL="$(gh pr create \
             --base main \
             --head "${AUTONOMOUS_BRANCH}" \
@@ -143,31 +147,66 @@ jobs:
 
       - name: Record autonomous development result to Google Sheets
         if: always()
+        continue-on-error: true
         env:
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
           AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
+          GOOGLE_SHEETS_AUDIT_RANGE: ${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
         run: |
-          set -euo pipefail
+          set +e
           export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          export AUTONOMOUS_PRODUCED_SHA="$(git rev-parse HEAD)"
-          export AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "$AUTONOMOUS_START_SHA" "$AUTONOMOUS_PRODUCED_SHA" | paste -sd, -)"
-          if [ -n "${AUTONOMOUS_SUMMARY_PATH:-}" ] && [ -f "${AUTONOMOUS_SUMMARY_PATH}" ]; then
-            export AUTONOMOUS_TESTS_RESULT="$(python - "${AUTONOMOUS_SUMMARY_PATH}" <<'PY'
-          import json
-          import sys
-          from pathlib import Path
-          s=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          print("PASS" if s.get("status")=="PASS" else "FAIL")
-          PY
-          )"
-          else
-            export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
-          fi
           export AUTONOMOUS_AGENT="DistributedDevelopmentRuntime"
           export AUTONOMOUS_TASK_ID="scheduled-distributed-development"
           export AUTONOMOUS_VERIFICATION_RESULT="NOT_RUN"
           export AUTONOMOUS_SAFETY_GATE_RESULT="${AUTONOMOUS_SAFETY_GATE_RESULT:-BLOCKED}"
+          export AUTONOMOUS_START_SHA="${AUTONOMOUS_START_SHA:-unknown}"
+          export AUTONOMOUS_PRODUCED_SHA="unknown"
+          export AUTONOMOUS_CHANGED_FILES="unknown"
+          export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
+
+          # Metadata collection is best-effort and must never prevent the audit call.
+          if git rev-parse HEAD >/dev/null 2>&1; then
+            export AUTONOMOUS_PRODUCED_SHA="$(git rev-parse HEAD)"
+          fi
+          if [ "${AUTONOMOUS_START_SHA}" != "unknown" ] && \
+             git rev-parse "${AUTONOMOUS_START_SHA}^{commit}" >/dev/null 2>&1 && \
+             git rev-parse "${AUTONOMOUS_PRODUCED_SHA}^{commit}" >/dev/null 2>&1; then
+            AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "${AUTONOMOUS_START_SHA}" "${AUTONOMOUS_PRODUCED_SHA}" 2>/dev/null | paste -sd, -)"
+            export AUTONOMOUS_CHANGED_FILES="${AUTONOMOUS_CHANGED_FILES:-none}"
+          fi
+
+          if [ -n "${AUTONOMOUS_SUMMARY_PATH:-}" ] && [ -f "${AUTONOMOUS_SUMMARY_PATH}" ]; then
+            AUTONOMOUS_TESTS_RESULT="$(python - "${AUTONOMOUS_SUMMARY_PATH}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          try:
+              summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          except Exception:
+              print("NOT_RUN")
+          else:
+              print("PASS" if summary.get("status") == "PASS" else "FAIL")
+          PY
+            )"
+            export AUTONOMOUS_TESTS_RESULT
+            AUTONOMOUS_RUNTIME_DETAIL="$(python - "${AUTONOMOUS_SUMMARY_PATH}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          try:
+              summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+              print(str(summary.get("detail", "")).replace("\n", " ")[:1000])
+          except Exception:
+              print("")
+          PY
+            )"
+            export AUTONOMOUS_RUNTIME_DETAIL
+            if [ -z "${AUTONOMOUS_BLOCKED_FAILED_REASON:-}" ] && [ -n "${AUTONOMOUS_RUNTIME_DETAIL:-}" ]; then
+              export AUTONOMOUS_BLOCKED_FAILED_REASON="runtime:${AUTONOMOUS_RUNTIME_DETAIL}"
+            fi
+          fi
+
           if [ "${AUTONOMOUS_RESULT:-}" = "pr-created" ] && [ "${AUTONOMOUS_SAFETY_GATE_RESULT}" = "PASS" ]; then
             export AUTONOMOUS_NEXT_ACTION="review_pr"
           elif [ "${AUTONOMOUS_RESULT:-}" = "no-changes" ]; then
@@ -176,17 +215,28 @@ jobs:
             export AUTONOMOUS_BLOCKED_FAILED_REASON="${AUTONOMOUS_BLOCKED_FAILED_REASON:-workflow_or_autonomous_task_failed}"
             export AUTONOMOUS_NEXT_ACTION="review_failure"
           fi
+
           python - <<'PY'
+          import os
           from agents.sheets.autonomous_ledger import record_autonomous_run
 
-          if not record_autonomous_run():
-              print("Autonomous run already recorded; idempotent retry.")
+          try:
+              recorded = record_autonomous_run()
+              result = "ALREADY_RECORDED" if not recorded else "RECORDED"
+          except Exception as exc:
+              result = f"FAILED:{type(exc).__name__}"
+              print(f"Google Sheets logging failed: {exc}", flush=True)
+              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+                  fh.write(f"AUTONOMOUS_LOGGING_RESULT={result}\n")
+              raise
           else:
-              print("Autonomous development result recorded to Google Sheets.")
+              print(f"Google Sheets logging: {result}", flush=True)
+              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+                  fh.write(f"AUTONOMOUS_LOGGING_RESULT={result}\n")
           PY
 
-          # Notifications are downstream of the durable Sheets record.
-          # A notification outage must never erase or block the development result.
+          # Sheets is audit/observability only. Its outage must not change the Safety Gate.
+
       - name: Notify Slack and LINE
         if: always()
         continue-on-error: true
@@ -204,6 +254,7 @@ jobs:
           elif [ "${AUTONOMOUS_RESULT:-}" = "no-changes" ]; then
             MESSAGE="${MESSAGE}\n変更なし"
           fi
+          MESSAGE="${MESSAGE}\nSheets履歴: ${AUTONOMOUS_LOGGING_RESULT:-UNKNOWN}"
           export MESSAGE
 
           python - <<'PY'
