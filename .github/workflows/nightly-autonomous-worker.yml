@@ -133,7 +133,10 @@ jobs:
             echo "AUTONOMOUS_RESULT=no-changes" >> "$GITHUB_ENV"
             exit 0
           fi
-          git ls-remote --exit-code origin "refs/heads/${AUTONOMOUS_BRANCH}" >/dev/null
+          if git ls-remote --exit-code origin "refs/heads/${AUTONOMOUS_BRANCH}" >/dev/null 2>&1; then
+            echo "Autonomous branch already exists: ${AUTONOMOUS_BRANCH}"
+            exit 1
+          fi
           PR_URL="$(gh pr create \
             --base main \
             --head "${AUTONOMOUS_BRANCH}" \
