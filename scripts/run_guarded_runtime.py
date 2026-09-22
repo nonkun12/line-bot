@@ -1,6 +1,7 @@
 """Run the bounded development runtime with a guarded JSON-only AI adapter."""
 from __future__ import annotations
 
+import ast
 import json
 import os
 import subprocess
@@ -36,6 +37,23 @@ def _external_ask(
         response_format={"type": "json_object"},
     )
     return response.choices[0].message.content or ""
+
+
+def _normalize_jsonish_object(content: str) -> str | None:
+    """Normalize one bounded JSON-ish object to canonical JSON.
+
+    Primary parsing remains strict JSON. As a narrow local-model compatibility
+    fallback, Python-literal dict syntax is parsed with ast.literal_eval,
+    which does not execute code. The returned value must still be a dict and
+    is serialized back to canonical JSON before downstream validation.
+    """
+    try:
+        value = ast.literal_eval(content)
+    except (SyntaxError, ValueError, MemoryError, RecursionError):
+        return None
+    if not isinstance(value, dict):
+        return None
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
 def _escape_json_string_controls(content: str) -> str:
@@ -120,6 +138,15 @@ def guarded_ask(client: Groq | None, system: str, user: str, max_tokens: int = w
                 else:
                     if isinstance(normalized_parsed, dict):
                         return normalized
+            jsonish = _normalize_jsonish_object(content)
+            if jsonish is not None:
+                try:
+                    jsonish_parsed = json.loads(jsonish)
+                except json.JSONDecodeError:
+                    pass
+                else:
+                    if isinstance(jsonish_parsed, dict):
+                        return jsonish
             last_error = f"invalid JSON: {exc}"
             if command is not None and client is not None:
                 command = None
