@@ -24,3 +24,8 @@ def test_general_does_not_capture_specialist_request() -> None:
     decision = route(ManagementRequest("u", "Englishで会話したい"))
     assert decision.specialist is Specialist.ENGLISH
     assert decision.confidence == 0.95
+
+
+def test_english_takes_priority_for_music_composition_and_english_learning() -> None:
+    decision = route(ManagementRequest("u", "音楽を作曲しながら英語を学習したい"))
+    assert decision.specialist is Specialist.ENGLISH
