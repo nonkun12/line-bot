@@ -294,7 +294,7 @@ class StocksAgent:
             "データ: Yahoo Finance。売買注文や個別の投資判断は行いません。",
         ]
         return AgentResponse(
-            text="\\n".join(lines),
+            text="\n".join(lines),
             metadata={
                 "feature": cls.name,
                 "status": "online",
