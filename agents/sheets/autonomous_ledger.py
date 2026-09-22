@@ -58,13 +58,16 @@ def ensure_headers(client: GoogleSheetsClient) -> None:
 
 
 def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
-    """Write once per exact run_id; workflow concurrency serializes retries."""
+    """Write once per exact run_id and verify the append response."""
     ensure_headers(client)
     sheet = LEDGER_RANGE.split("!", 1)[0]
     existing = client.search_column(f"{sheet}!A:Q", 1, record.run_id)
     if existing:
         return False
-    client.append_row(LEDGER_RANGE, record.values())
+    response = client.append_row(LEDGER_RANGE, record.values())
+    updates = response.get("updates", {}) if isinstance(response, dict) else {}
+    if updates.get("updatedRows") not in (None, 1):
+        raise RuntimeError(f"Google Sheets append updatedRows={updates.get('updatedRows')!r}")
     return True
 
 
@@ -90,5 +93,17 @@ def build_record_from_env() -> AutonomousRunRecord:
 
 
 def record_autonomous_run() -> bool:
-    client = GoogleSheetsClient()
-    return append_once(client, build_record_from_env())
+    """Record the run, retrying transient Google API failures once."""
+    last_error: Exception | None = None
+    record = build_record_from_env()
+    for attempt in range(2):
+        try:
+            return append_once(GoogleSheetsClient(), record)
+        except Exception as exc:
+            last_error = exc
+            if attempt == 0:
+                continue
+    assert last_error is not None
+    raise RuntimeError(
+        f"Google Sheets autonomous ledger write failed after bounded retry: {last_error}"
+    ) from last_error
