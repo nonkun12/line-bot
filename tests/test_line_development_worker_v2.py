@@ -145,6 +145,24 @@ def test_validate_plan_accepts_no_change():
     assert worker.validate_plan({"no_change": True}, "app.py") == (True, "no_change")
 
 
+def test_apply_plan_normalizes_replacement_trailing_whitespace(tmp_path, monkeypatch):
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    target = tmp_path / "app.py"
+    target.write_text("before\n", encoding="utf-8")
+    plan = {
+        "no_change": False,
+        "changes": [
+            {"file": "app.py", "old": "before\n", "new": "after  \n"},
+        ],
+    }
+
+    ok, detail, touched = worker.apply_plan(plan)
+
+    assert ok and detail == "applied"
+    assert touched == ["app.py"]
+    assert target.read_text(encoding="utf-8") == "after\n"
+
+
 def test_apply_plan_requires_unique_anchor(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     target = tmp_path / "app.py"
