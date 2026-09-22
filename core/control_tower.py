@@ -161,7 +161,10 @@ def _report_evidence(
         "repair_attempts": report.repair_attempts,
     }
     if extra:
-        measured.update(dict(extra))
+        # Explicit evidence may refine business metrics, but cannot override
+        # runtime-derived safety/control facts.
+        protected = {"safety", "runtime_success", "integration_ready", "rounds", "repair_attempts"}
+        measured.update({key: value for key, value in dict(extra).items() if key not in protected})
     return measured
 
 
