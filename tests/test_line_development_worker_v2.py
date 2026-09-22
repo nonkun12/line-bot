@@ -152,7 +152,7 @@ def test_apply_plan_normalizes_replacement_trailing_whitespace(tmp_path, monkeyp
     plan = {
         "no_change": False,
         "changes": [
-            {"file": "app.py", "old": "before\n", "new": "after  \n"},
+            {"file": "app.py", "old": "before\n", "new": "after  \n\n"},
         ],
     }
 
