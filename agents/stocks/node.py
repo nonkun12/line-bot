@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from agents.stocks.intents import is_stock_intent
+from agents.stocks.selection import TechnicalIndicators, analyze_prices
 from core.agents import AgentRequest, AgentResponse
 
 
@@ -225,6 +226,86 @@ class StocksAgent:
             "market_state": None,
         }
 
+    @staticmethod
+    def _is_analysis_request(message: str) -> bool:
+        value = (message or "").casefold()
+        terms = (
+            "銘柄選定", "銘柄選び", "スクリーニング", "売買シグナル", "シグナル",
+            "テクニカル", "テクニカル分析", "rsi", "macd", "sma", "移動平均",
+            "ボリンジャー", "ボラティリティ", "分析して", "分析", "買い", "売り",
+        )
+        return any(term.casefold() in value for term in terms)
+
+    @classmethod
+    def _fetch_history(cls, ticker: str) -> list[float]:
+        encoded = urllib.parse.quote(ticker, safe=".")
+        urls = (
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range=6mo&interval=1d",
+            f"https://query2.finance.yahoo.com/v8/finance/chart/{encoded}?range=6mo&interval=1d",
+        )
+        last_error: Exception | None = None
+        for url in urls:
+            try:
+                request = urllib.request.Request(
+                    url,
+                    headers={"User-Agent": "LINE-AI-Secretary/1.0"},
+                )
+                with urllib.request.urlopen(request, timeout=_DEFAULT_TIMEOUT_SEC) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                result = payload.get("chart", {}).get("result")
+                if not isinstance(result, list) or not result or not isinstance(result[0], dict):
+                    raise ValueError("history result unavailable")
+                quote_data = result[0].get("indicators", {}).get("quote", [])
+                if not isinstance(quote_data, list) or not quote_data or not isinstance(quote_data[0], dict):
+                    raise ValueError("history quote unavailable")
+                closes = quote_data[0].get("close", [])
+                if not isinstance(closes, list):
+                    raise ValueError("history closes unavailable")
+                values = [float(value) for value in closes if isinstance(value, (int, float))]
+                if not values:
+                    raise ValueError("history closes unavailable")
+                return values
+            except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                last_error = exc
+        raise RuntimeError("Yahoo Finance history retrieval failed") from last_error
+
+    @staticmethod
+    def _signal_label(indicators: TechnicalIndicators) -> str:
+        return {"bullish": "BUY", "bearish": "SELL", "neutral": "HOLD"}.get(indicators.signal, "HOLD")
+
+    @classmethod
+    def _analysis_response(cls, display_name: str, ticker: str, quote: dict[str, object], history: list[float]) -> AgentResponse:
+        indicators = analyze_prices(history)
+        price = indicators.price if indicators.price is not None else quote["price"]
+        currency = str(quote.get("currency") or "")
+        unit = f" {currency}" if currency else ""
+        lines = [
+            f"📊 {display_name}（{cls._display_ticker(ticker)}）テクニカル分析",
+            f"現在値: {float(price):.2f}{unit}",
+            f"参考シグナル: {cls._signal_label(indicators)}（計算上のテクニカル判定）",
+            f"トレンド: {indicators.trend}",
+            f"RSI14: {indicators.rsi14:.2f}" if indicators.rsi14 is not None else "RSI14: n/a",
+            f"MACD: {indicators.macd:.4f}" if indicators.macd is not None else "MACD: n/a",
+            f"MACDシグナル: {indicators.macd_signal:.4f}" if indicators.macd_signal is not None else "MACDシグナル: n/a",
+            f"SMA20: {indicators.sma20:.2f}" if indicators.sma20 is not None else "SMA20: n/a",
+            f"SMA50: {indicators.sma50:.2f}" if indicators.sma50 is not None else "SMA50: n/a",
+            f"年率ボラティリティ(20日): {indicators.volatility20:.2f}%" if indicators.volatility20 is not None else "年率ボラティリティ(20日): n/a",
+            f"ボリンジャー20: 中央{indicators.bollinger_mid20:.2f} / 上限{indicators.bollinger_upper20:.2f} / 下限{indicators.bollinger_lower20:.2f}" if indicators.bollinger_mid20 is not None else "ボリンジャー20: n/a",
+            f"シグナルスコア: {indicators.signal_score:+d}（複数指標の単純合算）",
+            "データ: Yahoo Finance。売買注文や個別の投資判断は行いません。",
+        ]
+        return AgentResponse(
+            text="\n".join(lines),
+            metadata={
+                "feature": cls.name,
+                "status": "online",
+                "analysis": True,
+                "ticker": cls._display_ticker(ticker),
+                "technical": indicators.__dict__.copy(),
+                "quote": quote,
+            },
+        )
+
     def handle(self, request: AgentRequest) -> AgentResponse:
         resolved = self._resolve_ticker(request.message)
         if not resolved:
@@ -250,6 +331,20 @@ class StocksAgent:
                 ),
                 metadata={"feature": self.name, "status": "degraded", "ticker": self._display_ticker(ticker)},
             )
+
+        if self._is_analysis_request(request.message):
+            try:
+                history = self._fetch_history(ticker)
+                return self._analysis_response(display_name, ticker, quote, history)
+            except Exception:
+                return AgentResponse(
+                    text=(
+                        f"📊 {display_name}（{self._display_ticker(ticker)}）の現在値は取得できましたが、"
+                        "テクニカル履歴を取得できませんでした。\n"
+                        "不足データを推測せず、売買シグナルは表示しません。"
+                    ),
+                    metadata={"feature": self.name, "status": "degraded", "analysis": True, "ticker": self._display_ticker(ticker), "quote": quote},
+                )
 
         currency = quote["currency"] or ""
         unit = f" {currency}" if currency else ""
