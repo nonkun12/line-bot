@@ -101,7 +101,6 @@ jobs:
 
       - name: Record on-demand development result to Google Sheets
         if: always() && steps.development.outputs.test_only != 'true'
-        continue-on-error: true
         env:
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
@@ -129,7 +128,7 @@ jobs:
           export AUTONOMOUS_VERIFICATION_RESULT="NOT_RUN"
           export AUTONOMOUS_MERGE_RESULT="NOT_AUTO_MERGED"
           export AUTONOMOUS_NEXT_ACTION="review_pr"
-          export AUTONOMOUS_PR_URL="$(gh pr view "line-dev/\${GITHUB_RUN_ID}" --repo "\${GITHUB_REPOSITORY}" --json url --jq '.url' 2>/dev/null || true)"
+          export AUTONOMOUS_PR_URL="$(gh pr view "line-dev/${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --json url --jq '.url' 2>/dev/null || true)"
           python - <<'PY'
           from agents.sheets.autonomous_ledger import record_autonomous_run
           record_autonomous_run()
@@ -149,7 +148,9 @@ jobs:
           python - <<'PY'
           import json, os, urllib.request
           webhook = os.environ.get("SLACK_WEBHOOK_URL", "").strip()
-          if not webhook: raise SystemExit(0)
+          if not webhook:
+              print("SLACK_NOTIFICATION=SKIPPED (SLACK_WEBHOOK_URL is not configured)")
+              raise SystemExit(1)
           outcome = os.environ.get("DEVELOPMENT_OUTCOME", "unknown")
           instruction = os.environ.get("DEV_INSTRUCTION", "")
           run_url = os.environ.get("RUN_URL", "")
@@ -161,7 +162,8 @@ jobs:
           else:
               text = "❌ *AI自動開発 失敗*\n" f"指示: {instruction}\n" f"失敗地点: GitHub Actions（{outcome}）\n" f"詳細: {run_url}"
           request = urllib.request.Request(webhook, data=json.dumps({"text": text}).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
-          with urllib.request.urlopen(request, timeout=20) as response: print(response.status)
+          with urllib.request.urlopen(request, timeout=20) as response:
+              print(f"SLACK_NOTIFICATION=HTTP_{response.status}")
           PY
 
       - name: Notify LINE of development result
