@@ -42,7 +42,7 @@ def analyze_prices(prices: Sequence[float]) -> TechnicalIndicators:
     macd = ema12 - ema26 if ema12 is not None and ema26 is not None else None
     macd_series = _macd_series(values, 12, 26)
     macd_signal = _ema(macd_series, 9) if macd_series else None
-    volatility20 = _annualized_volatility(values[-21:]) if len(values) >= 3 else None
+    volatility20 = _annualized_volatility(values[-21:]) if len(values) >= 21 else None
     bollinger_mid20, bollinger_upper20, bollinger_lower20 = _bollinger_bands(values, 20, 2.0)
 
     score = 0
@@ -214,7 +214,7 @@ def _rsi(values: Sequence[float], period: int) -> float | None:
 
 
 def _annualized_volatility(values: Sequence[float]) -> float | None:
-    if len(values) < 3:
+    if len(values) < 21:
         return None
     returns = [
         (current / previous) - 1.0
