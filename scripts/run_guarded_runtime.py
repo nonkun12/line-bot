@@ -17,8 +17,28 @@ from core import local_ai_provider
 from scripts import line_development_worker_v2 as worker
 
 
+def _external_ask(
+    client: Groq,
+    system: str,
+    user: str,
+    max_tokens: int,
+) -> str:
+    response = client.chat.completions.create(
+        model=worker.MODEL,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=0.0,
+        max_tokens=max_tokens,
+        include_reasoning=False,
+        response_format={"type": "json_object"},
+    )
+    return response.choices[0].message.content or ""
+
+
 def guarded_ask(client: Groq | None, system: str, user: str, max_tokens: int = worker.MAX_RESPONSE_TOKENS) -> str:
-    """Request JSON and retry once; use local AI when explicitly configured."""
+    """Request JSON with two bounded attempts and local-to-external fallback."""
     command = local_ai_provider.local_ai_command()
     if command is None and client is None:
         raise RuntimeError("No AI provider configured: set LOCAL_AI_COMMAND or GROQ_API_KEY")
@@ -32,22 +52,19 @@ def guarded_ask(client: Groq | None, system: str, user: str, max_tokens: int = w
                 "Do not emit prose, markdown, or an empty response."
             )
 
-        if command is not None:
-            content = local_ai_provider.ask_local_ai(command, retry_system, user)
-        else:
-            assert client is not None
-            response = client.chat.completions.create(
-                model=worker.MODEL,
-                messages=[
-                    {"role": "system", "content": retry_system},
-                    {"role": "user", "content": user},
-                ],
-                temperature=0.0,
-                max_tokens=max_tokens,
-                include_reasoning=False,
-                response_format={"type": "json_object"},
-            )
-            content = response.choices[0].message.content or ""
+        try:
+            if command is not None:
+                content = local_ai_provider.ask_local_ai(command, retry_system, user)
+            else:
+                if client is None:
+                    raise RuntimeError("external AI client is unavailable")
+                content = _external_ask(client, retry_system, user, max_tokens)
+        except (RuntimeError, ValueError) as exc:
+            last_error = f"{type(exc).__name__}: {exc}"
+            if command is not None and client is not None:
+                command = None
+                continue
+            continue
 
         if not content.strip():
             last_error = "empty response"
@@ -60,7 +77,7 @@ def guarded_ask(client: Groq | None, system: str, user: str, max_tokens: int = w
         if isinstance(parsed, dict):
             return content
         last_error = "JSON response is not an object"
-    raise ValueError(f"AI response is unusable after bounded JSON retry: {last_error}")
+    raise ValueError(f"AI response is unusable after bounded provider retries: {last_error}")
 
 
 def main() -> int:
