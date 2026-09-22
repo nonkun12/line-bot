@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from app import app
+from core.distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG
 from db import init_db, save_message
 from routes.dashboard import _get_oracle_n8n_status
 
@@ -74,7 +75,10 @@ def test_dashboard_system_exposes_distributed_ai_readiness(auth_headers):
     assert "NYダウ" in features["global_market"]["detail"]
     assert "S&P500" in features["global_market"]["detail"]
     assert "主要為替" in features["global_market"]["detail"]
-    assert len(data["distributed_ai"]["specialists"]) == 9
+    expected_keys = {descriptor.key for descriptor in DISTRIBUTED_AGENT_CATALOG}
+    actual_keys = {item["key"] for item in data["distributed_ai"]["specialists"]}
+    assert actual_keys == expected_keys
+    assert len(actual_keys) == len(DISTRIBUTED_AGENT_CATALOG)
 
 
 def test_dashboard_oracle_n8n_status_handles_missing_payload():
@@ -159,3 +163,12 @@ def test_mcp_error_during_crud(auth_headers):
     assert response.status_code == 500
     assert response.get_json()["ok"] is False
     assert response.get_json()["error"] == "internal server error"
+
+
+def test_distributed_agent_catalog_has_unique_dashboard_keys() -> None:
+    keys = [descriptor.key for descriptor in DISTRIBUTED_AGENT_CATALOG]
+    labels = [descriptor.label for descriptor in DISTRIBUTED_AGENT_CATALOG]
+
+    assert len(keys) == len(set(keys))
+    assert len(labels) == len(set(labels))
+    assert all(descriptor.role.value for descriptor in DISTRIBUTED_AGENT_CATALOG)
