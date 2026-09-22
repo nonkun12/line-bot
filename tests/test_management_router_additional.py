@@ -5,6 +5,7 @@ from core.management_router import route
 def test_market_keyword_routes_to_market():
     decision = route(
         ManagementRequest(
+            user_id="test-user",
             message="ドル円とNYダウを確認して",
             channel="test",
             metadata={"run_id": "router-test-1"},
