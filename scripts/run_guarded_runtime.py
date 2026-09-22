@@ -72,8 +72,9 @@ def _write_summary(status: str, exit_code: int, start_sha: str, summary_path: Pa
     summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     github_env = os.environ.get("GITHUB_ENV")
     if github_env:
+        gate_result = "PASS" if exit_code == 0 else "BLOCKED"
         with open(github_env, "a", encoding="utf-8") as fh:
-            fh.write(f"AUTONOMOUS_SAFETY_GATE_RESULT={"PASS" if exit_code == 0 else "BLOCKED"}\n")
+            fh.write(f"AUTONOMOUS_SAFETY_GATE_RESULT={gate_result}\n")
             fh.write(f"AUTONOMOUS_SUMMARY_PATH={summary_path}\n")
 
 
