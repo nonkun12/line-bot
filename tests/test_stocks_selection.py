@@ -57,6 +57,7 @@ def test_analysis_response_contains_real_newlines():
     assert "\\n" not in response.text
     assert "RSI14:" in response.text
     assert "MACD:" in response.text
+    assert "ボリンジャー20:" in response.text
 
 
 def test_analysis_request_triggers_for_indicators():
