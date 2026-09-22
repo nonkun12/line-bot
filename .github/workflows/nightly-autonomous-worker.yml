@@ -4,11 +4,12 @@ on:
   workflow_dispatch:
   schedule:
     # Japan time: 03:00, 15:00, 21:00 every day.
-    - cron: '0 3 * * *'
+    # Offset by 5 minutes from the top of the hour to reduce scheduler-load delays.
+    - cron: '5 3 * * *'
       timezone: 'Asia/Tokyo'
-    - cron: '0 15 * * *'
+    - cron: '5 15 * * *'
       timezone: 'Asia/Tokyo'
-    - cron: '0 21 * * *'
+    - cron: '5 21 * * *'
       timezone: 'Asia/Tokyo'
 
 # Scheduled runs are intentionally on the default branch.
