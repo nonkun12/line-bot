@@ -117,6 +117,17 @@ def test_extract_explicit_path_rejects_multiple_named_files():
     assert worker._extract_explicit_path("README.md と app.py を変更", files) is None
 
 
+def test_build_plan_retries_malformed_change_fields():
+    malformed = json.dumps({"no_change": False, "changes": [{"file": "app.py", "old": ["before"], "new": {"text": "after"}}]})
+    valid = json.dumps({"no_change": False, "changes": [{"file": "app.py", "old": "before", "new": "after"}]})
+    client = FakeClient([malformed, valid])
+
+    plan = worker.build_plan(client, "update app.py", "app.py", "before\nafter")
+
+    assert plan == json.loads(valid)
+    assert len(client.chat.completions.responses) == 0
+
+
 def test_validate_plan_rejects_change_outside_selected_file():
     plan = {"no_change": False, "changes": [{"file": "README.md", "old": "a", "new": "b"}]}
     assert worker.validate_plan(plan, "app.py") == (False, "change_outside_selected_file")
