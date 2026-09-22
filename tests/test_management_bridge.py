@@ -77,6 +77,67 @@ class FakeExecutor:
         return AgentResult(task.task_id, True, f"{self.role.value} result")
 
 
+class OutOfScopeDependencyPlanner(ManagementPlanner):
+    def plan(self, request, decision, feedback=()):
+        return ManagementPlan(
+            objective="model emitted an out-of-scope dependency",
+            decision=decision,
+            tasks=(
+                AgentTask(
+                    "general-task",
+                    AgentRole.GENERAL,
+                    "General planning context.",
+                    resources=frozenset({"general"}),
+                ),
+                AgentTask(
+                    "english-task",
+                    AgentRole.ENGLISH,
+                    "Teach English.",
+                    resources=frozenset({"english"}),
+                    depends_on=("general-task",),
+                ),
+                AgentTask(
+                    "music-task",
+                    AgentRole.MUSIC,
+                    "Plan music.",
+                    resources=frozenset({"music"}),
+                ),
+            ),
+        )
+
+
+def test_management_bridge_replaces_out_of_scope_dependencies_without_widening_roles(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "core.management_bridge.build_core_agent_registry",
+        lambda: object(),
+    )
+    seen: list[AgentTask] = []
+
+    class RecordingExecutor(FakeExecutor):
+        def execute(self, task: AgentTask) -> AgentResult:
+            seen.append(task)
+            return super().execute(task)
+
+    monkeypatch.setattr(
+        "core.management_bridge.build_registry_executors",
+        lambda registry, request: {
+            AgentRole.ENGLISH: RecordingExecutor(AgentRole.ENGLISH),
+            AgentRole.MUSIC: RecordingExecutor(AgentRole.MUSIC),
+        },
+    )
+
+    reply = run_management_request(
+        "u1",
+        "音楽作曲と英語の学習",
+        planner=OutOfScopeDependencyPlanner(),
+    )
+
+    assert "【English】" in reply
+    assert "【Music】" in reply
+    assert {task.role for task in seen} == {AgentRole.ENGLISH, AgentRole.MUSIC}
+    assert all("general-task" not in task.depends_on for task in seen)
+
+
 def test_run_management_request_collects_specialist_results(monkeypatch) -> None:
     monkeypatch.setattr(
         "core.management_bridge.build_core_agent_registry",
