@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="user-id" content="{{ user_id }}">
+  <title>株式投資ダッシュボード - LINE AI Secretary</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/stock_dashboard.css') }}">
+</head>
+<body>
+<div class="app-container stock-app">
+  <header class="header">
+    <div class="logo-area"><span class="logo-icon">📈</span><h1 class="logo-title">株式投資ダッシュボード</h1><span class="badge">Technical Monitor</span></div>
+    <div class="stock-nav"><a id="backDashboard" class="btn btn-secondary" href="/dashboard">← 管理ダッシュボード</a></div>
+  </header>
+
+  <main class="main-content">
+    <section class="section-card">
+      <div class="section-header">
+        <div class="title-group"><span class="section-icon">🎯</span><div><h2 class="section-title">監視銘柄・テクニカルスクリーニング</h2><p class="section-caption">SMA20/50・RSI14・MACD・ボリンジャー・20日ボラティリティ</p></div></div>
+        <span id="updatedAt" class="status-note">未分析</span>
+      </div>
+      <div class="stock-controls">
+        <label class="field-label" for="tickerInput">銘柄コード / Ticker</label>
+        <div class="stock-input-row">
+          <input id="tickerInput" class="stock-input" type="text" placeholder="例: 7203, 6758, 9984, AAPL" autocomplete="off">
+          <button id="analyzeBtn" class="btn btn-primary">📊分析</button>
+          <button id="loadWatchlistBtn" class="btn btn-secondary">⭐監視銘柄を読込</button>
+        </div>
+        <div class="control-hint">カンマ区切り・最大6銘柄。監視銘柄はこのブラウザにのみ保存します。</div>
+        <div id="errorBox" class="alert alert-danger hidden"><span>⚠️</span><span id="errorText"></span></div>
+      </div>
+    </section>
+
+    <section class="section-card">
+      <div class="section-header"><div class="title-group"><span class="section-icon">🏁</span><h2 class="section-title">スクリーニング結果</h2></div><span id="resultSummary" class="status-note">0銘柄</span></div>
+      <div id="resultGrid" class="stock-grid"><div class="empty-stock"><div class="empty-icon">📊</div><p>銘柄を入力して「分析」を押してください。</p></div></div>
+    </section>
+
+    <section class="section-card">
+      <div class="section-header"><div class="title-group"><span class="section-icon">🧭</span><h2 class="section-title">指標の見方</h2></div></div>
+      <div class="metric-grid">
+        <div class="metric-card"><strong>SMA20 / SMA50</strong><span>短中期の移動平均</span></div>
+        <div class="metric-card"><strong>RSI14</strong><span>相対的な買われ過ぎ・売られ過ぎの目安</span></div>
+        <div class="metric-card"><strong>MACD</strong><span>トレンド・モメンタムの目安</span></div>
+        <div class="metric-card"><strong>Bollinger20</strong><span>価格帯と変動幅の目安</span></div>
+        <div class="metric-card"><strong>Volatility20</strong><span>20営業日の年率換算変動率</span></div>
+        <div class="metric-card"><strong>Score</strong><span>複数指標の単純合算（-5〜+5）</span></div>
+      </div>
+      <p class="stock-disclaimer">表示はYahoo Financeの市場データと計算式に基づく参考情報です。売買注文は実行せず、個別の投資判断を代行しません。</p>
+    </section>
+  </main>
+  <footer class="footer"><p>LINE AI Secretary / Stock Technical Monitor</p></footer>
+</div>
+
+<script>
+(function() {
+  var userQuery = window.location.search;
+  var back = document.getElementById('backDashboard');
+  if (userQuery) back.href = '/dashboard' + userQuery;
+
+  var input = document.getElementById('tickerInput');
+  var analyzeBtn = document.getElementById('analyzeBtn');
+  var loadWatchlistBtn = document.getElementById('loadWatchlistBtn');
+  var resultGrid = document.getElementById('resultGrid');
+  var resultSummary = document.getElementById('resultSummary');
+  var errorBox = document.getElementById('errorBox');
+  var errorText = document.getElementById('errorText');
+  var updatedAt = document.getElementById('updatedAt');
+  var WATCHLIST_KEY = 'line-ai-secretary.stock-watchlist.v1';
+
+  function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+    });
+  }
+  function num(value, digits) {
+    digits = digits == null ? 2 : digits;
+    return typeof value === 'number' && isFinite(value) ? value.toFixed(digits) : '--';
+  }
+  function signed(value, digits) {
+    digits = digits == null ? 2 : digits;
+    if (typeof value !== 'number' || !isFinite(value)) return '--';
+    return (value >= 0 ? '+' : '') + value.toFixed(digits);
+  }
+  function signalClass(signal) {
+    if (signal === 'BUY') return 'signal-buy';
+    if (signal === 'SELL') return 'signal-sell';
+    return 'signal-hold';
+  }
+  function saveWatchlist(tickers) {
+    try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(tickers)); } catch (_) {}
+  }
+  function readWatchlist() {
+    try {
+      var data = JSON.parse(localStorage.getItem(WATCHLIST_KEY) || '[]');
+      return Array.isArray(data) ? data : [];
+    } catch (_) { return []; }
+  }
+  function render(results, errors) {
+    var html = '';
+    (results || []).forEach(function(r, index) {
+      html += '<article class="stock-card">';
+      html += '<div class="stock-card-top"><div><div class="stock-rank">#' + (index + 1) + '</div><h3>' + esc(r.ticker) + '</h3></div>';
+      html += '<div class="signal ' + signalClass(r.signal) + '">' + esc(r.signal) + '</div></div>';
+      html += '<div class="stock-price">' + num(r.price) + ' <span>' + esc(r.currency || '') + '</span></div>';
+      html += '<div class="stock-change">' + signed(r.change) + ' (' + signed(r.change_pct) + '%)</div>';
+      html += '<div class="score-row"><span>Technical Score</span><strong>' + signed(r.signal_score, 0) + '</strong></div>';
+      html += '<div class="trend-row"><span>Trend</span><strong>' + esc(r.trend || '--') + '</strong></div>';
+      html += '<div class="indicator-grid">';
+      [['RSI14', r.rsi14, 2], ['MACD', r.macd, 4], ['MACD Sig', r.macd_signal, 4], ['SMA20', r.sma20, 2], ['SMA50', r.sma50, 2], ['Vol20', r.volatility20, 2]].forEach(function(item) {
+        html += '<div><span>' + item[0] + '</span><strong>' + num(item[1], item[2]) + (item[0] === 'Vol20' && item[1] != null ? '%' : '') + '</strong></div>';
+      });
+      html += '</div>';
+      html += '<div class="bollinger">BB20: ' + num(r.bollinger_lower20) + ' / ' + num(r.bollinger_mid20) + ' / ' + num(r.bollinger_upper20) + '</div>';
+      html += '<div class="asof">' + esc(r.market_time_jst || '市場時刻未取得') + ' ・ ' + esc(r.data_source) + '</div></article>';
+    });
+    (errors || []).forEach(function(e) {
+      html += '<article class="stock-card stock-card-error"><h3>' + esc(e.ticker) + '</h3><p>市場データを取得できませんでした。推測値は表示しません。</p></article>';
+    });
+    if (!html) html = '<div class="empty-stock"><div class="empty-icon">📊</div><p>分析対象がありません。</p></div>';
+    resultGrid.innerHTML = html;
+  }
+
+  async function analyze() {
+    var tickers = input.value.split(/[,、\s]+/).map(function(x) { return x.trim().toUpperCase(); }).filter(Boolean);
+    tickers = Array.from(new Set(tickers)).slice(0, 6);
+    if (!tickers.length) {
+      errorText.textContent = '銘柄コードを1つ以上入力してください。';
+      errorBox.classList.remove('hidden');
+      return;
+    }
+    saveWatchlist(tickers);
+    errorBox.classList.add('hidden');
+    analyzeBtn.disabled = true;
+    analyzeBtn.textContent = '⏳分析中...';
+    try {
+      var response = await fetch('/api/stock-dashboard/analyze' + userQuery, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({tickers: tickers})
+      });
+      var data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || ('HTTP ' + response.status));
+      render(data.results || [], data.errors || []);
+      resultSummary.textContent = (data.results || []).length + '銘柄';
+      updatedAt.textContent = '最終更新 ' + new Date().toLocaleTimeString('ja-JP');
+      if (data.errors && data.errors.length) {
+        errorText.textContent = data.errors.map(function(e) { return e.ticker + ': データ取得失敗'; }).join(' / ');
+        errorBox.classList.remove('hidden');
+      }
+    } catch (error) {
+      errorText.textContent = '分析に失敗しました: ' + error.message;
+      errorBox.classList.remove('hidden');
+    } finally {
+      analyzeBtn.disabled = false;
+      analyzeBtn.textContent = '📊分析';
+    }
+  }
+
+  analyzeBtn.addEventListener('click', analyze);
+  input.addEventListener('keydown', function(event) { if (event.key === 'Enter') analyze(); });
+  loadWatchlistBtn.addEventListener('click', function() {
+    var watchlist = readWatchlist();
+    if (!watchlist.length) {
+      errorText.textContent = '保存済みの監視銘柄はありません。';
+      errorBox.classList.remove('hidden');
+      return;
+    }
+    input.value = watchlist.join(', ');
+    analyze();
+  });
+})();
+</script>
+</body>
+</html>
