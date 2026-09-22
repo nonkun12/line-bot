@@ -69,8 +69,13 @@ def extract_diff(text: str) -> str:
     start = text.find("diff --git ")
     if start >= 0:
         text = text[start:]
+    fence = chr(96) * 3
+    if fence in text:
+        parts = text.split(fence)
+        candidates = [part for part in parts if "diff --git " in part]
+        if candidates:
+            text = candidates[-1]
     return text.strip()
-
 def validate_diff(patch: str) -> tuple[bool, str]:
     if not patch or len(patch) > MAX_PATCH_CHARS or "*** Begin Patch" in patch:
         return False, "empty_oversized_or_wrong_format"
