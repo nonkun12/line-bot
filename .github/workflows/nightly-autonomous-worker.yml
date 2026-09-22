@@ -86,7 +86,7 @@ jobs:
           while IFS= read -r path; do
             [ -z "$path" ] && continue
             case "$path" in
-              .github/*|.env*|config.py|secrets/*)
+              .github/*|.env*|config.py|secrets/*|security/*)
                 echo "Safety Gate blocked forbidden path: $path"
                 echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
                 echo "AUTONOMOUS_BLOCKED_FAILED_REASON=forbidden_changed_file:$path" >> "$GITHUB_ENV"
