@@ -87,14 +87,14 @@ jobs:
             --title "feat: LINE development request" \
             --body "## LINE development request
 
-${DEV_INSTRUCTION}
+          ${DEV_INSTRUCTION}
 
-User: \`${DEV_USER_ID}\`
+          User: \`${DEV_USER_ID}\`
 
-Multi-agent runtime: Manager → Implementer → Tester → (Debugger → Refactorer → Retest) → Reviewer → Integrator
+          Multi-agent runtime: Manager → Implementer → Tester → (Debugger → Refactorer → Retest) → Reviewer → Integrator
 
-Guarded tests and integration gate: PASS
-Created directly by GitHub Actions." \
+          Guarded tests and integration gate: PASS
+          Created directly by GitHub Actions." \
             >/tmp/pr_url.txt
           cat /tmp/pr_url.txt
 
