@@ -62,13 +62,14 @@ def main() -> int:
         problems.append(f"scheduled run missing for {slot.isoformat()}")
     else:
         run_id = str(run["id"])
-        try:
-            client = GoogleSheetsClient()
-            records = client.search_column(LEDGER_RANGE, 1, run_id)
-            if not records:
-                problems.append(f"Sheets audit row missing for run_id={run_id}")
-        except Exception as exc:
-            problems.append(f"Sheets audit check failed: {type(exc).__name__}: {exc}")
+        if run.get("status") not in {"queued", "in_progress"}:
+            try:
+                client = GoogleSheetsClient()
+                records = client.search_column(LEDGER_RANGE, 1, run_id)
+                if not records:
+                    problems.append(f"Sheets audit row missing for run_id={run_id}")
+            except Exception as exc:
+                problems.append(f"Sheets audit check failed: {type(exc).__name__}: {exc}")
 
     result = {
         "ok": not problems,
