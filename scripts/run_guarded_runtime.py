@@ -75,10 +75,15 @@ IMPORTANT: Return a single valid JSON object only. "
             parsed = json.loads(content)
         except json.JSONDecodeError as exc:
             last_error = f"invalid JSON: {exc}"
+            if command is not None and client is not None:
+                command = None
+                continue
             continue
         if isinstance(parsed, dict):
             return content
         last_error = "JSON response is not an object"
+        if command is not None and client is not None:
+            command = None
     raise ValueError(f"AI response is unusable after bounded JSON retry: {last_error}")
 
 
