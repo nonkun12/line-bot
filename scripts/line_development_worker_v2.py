@@ -13,16 +13,16 @@ import subprocess
 import sys
 import traceback
 
+from pathlib import Path
+from urllib import error as urllib_error
+from urllib import request as urllib_request
+
+
 
 
 def _normalize_replacement_whitespace(text: str) -> str:
     """Remove horizontal trailing whitespace from generated replacement text only."""
     return re.sub(r"[ \t]+(?=\n|$)", "", text)
-
-
-from pathlib import Path
-from urllib import error as urllib_error
-from urllib import request as urllib_request
 
 from groq import Groq
 
