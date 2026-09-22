@@ -34,8 +34,7 @@ def test_find_scheduled_run_uses_workflow_scoped_schedule_endpoint(monkeypatch):
                 {"name": "Autonomous Development Loop", "event": "workflow_dispatch", "id": 2, "created_at": "2026-09-23T18:06:00Z"},
                 scheduled,
             ]
-        },
-    )
+        }
 
     slot = datetime(2026, 9, 24, 3, 5, tzinfo=ZoneInfo("Asia/Tokyo"))
     # The expected slot is 2026-09-23 03:05 JST, so the example above is outside it.
