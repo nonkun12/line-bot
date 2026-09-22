@@ -31,9 +31,16 @@ def test_control_tower_approved_task_is_exposed_only_after_pass() -> None:
     def fake_model(_prompt: str) -> str:
         return "Minimal test-backed improvement proposal."
 
-    tower = ControlTower(creator_critic=build_creator_critic_loop(model_call=fake_model, max_iterations=1))
-    decision = tower.observe(
-        RuntimeReport((), failed_task_id="tester-1", error="pytest failed", rounds=1),
+    engine = SelfImprovementEngine()
+    failed = RuntimeReport((), failed_task_id="tester-1", error="pytest failed", rounds=1)
+    engine.observe(failed)
+    tower = ControlTower(
+        feedback_engine=engine,
+        creator_critic=build_creator_critic_loop(model_call=fake_model, max_iterations=1),
+    )
+    decision = tower.evaluate_proposal(
+        RuntimeReport((), rounds=1, integration_ready=True),
+        engine.propose(),
         objective="repair the test failure",
         evidence={"accuracy": 1.0, "stability": 1.0, "efficiency": 1.0, "safety": 1.0},
     )
