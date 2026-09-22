@@ -14,6 +14,7 @@ from pathlib import Path
 from groq import Groq
 
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
+from core.execution_safety import GitWorktreeSafetyGate
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_FILES = 4
@@ -118,6 +119,11 @@ def enforce_self_improvement_policy(paths: list[str]) -> tuple[bool, str]:
 
 
 def main() -> int:
+    baseline_proc = run(["git", "rev-parse", "HEAD"])
+    if baseline_proc.returncode != 0 or not baseline_proc.stdout.strip():
+        print("Unable to capture autonomous baseline SHA.")
+        return 1
+    baseline_sha = baseline_proc.stdout.strip()
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()
     if not instruction:
         return 2
@@ -148,6 +154,17 @@ Preserve existing behavior. Add tests when an existing test file is among the su
 
     passed, output = apply_and_test(patch)
     attempts = 1
+    safety_gate = GitWorktreeSafetyGate(ROOT, baseline_sha, tuple(chosen))
+    gate_result = type("GateResult", (), {"success": passed, "changed_resources": tuple(chosen)})()
+    if not safety_gate.verify(None, gate_result, tuple(chosen)):
+        run(["git", "checkout", "--", *chosen])
+        print("AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED")
+        return 1
+    github_env = os.environ.get("GITHUB_ENV")
+    if github_env:
+        with open(github_env, "a", encoding="utf-8") as fh:
+            fh.write("AUTONOMOUS_SAFETY_GATE_RESULT=PASS\n")
+    print("AUTONOMOUS_SAFETY_GATE_RESULT=PASS")
     if not passed:
         repair_prompt = f"""Fix only the failed implementation while preserving the requested change.
 Original task:\n{instruction}\n\nPatch:\n{patch}\n\nPytest failure:\n{output}\n\nCurrent files:\n{context(chosen)}\n\nReturn ONLY a corrected unified diff."""
@@ -161,6 +178,16 @@ Original task:\n{instruction}\n\nPatch:\n{patch}\n\nPytest failure:\n{output}\n\
         passed, output = apply_and_test(repair_patch)
         patch = repair_patch
         attempts = 2
+        gate_result = type("GateResult", (), {"success": passed, "changed_resources": tuple(chosen)})()
+        if not safety_gate.verify(None, gate_result, tuple(chosen)):
+            run(["git", "checkout", "--", *chosen])
+            print("AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED")
+            return 1
+        github_env = os.environ.get("GITHUB_ENV")
+        if github_env:
+            with open(github_env, "a", encoding="utf-8") as fh:
+                fh.write("AUTONOMOUS_SAFETY_GATE_RESULT=PASS\n")
+        print("AUTONOMOUS_SAFETY_GATE_RESULT=PASS")
 
     if not passed:
         run(["git", "checkout", "--", *chosen])
