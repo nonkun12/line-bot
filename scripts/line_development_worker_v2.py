@@ -21,9 +21,8 @@ from urllib import request as urllib_request
 
 
 def _normalize_replacement_whitespace(text: str) -> str:
-    """Normalize generated replacement whitespace without changing its content."""
-    normalized = re.sub(r"[ \t]+(?=\n|$)", "", text)
-    return normalized.rstrip("\n") + "\n"
+    """Remove horizontal trailing whitespace from generated replacement text only."""
+    return re.sub(r"[ \t]+(?=\n|$)", "", text)
 
 from groq import Groq
 
