@@ -41,10 +41,18 @@ jobs:
       DEV_INSTRUCTION: 'コントロールタワーAIの完成度を1段階上げてください。既存のAIGateway、AgentRegistry、Supervisor、Routerの責務分離を維持し、ユーザー要求をより安定して適切なAgentへ振り分けるための最小限の改善を実装してください。特に優先順位、未解決要求の安全なfallback、channel-independentなrequest metadataの活用を検討してください。既存のLINE/Voice機能を壊さず、新規依存関係や外部APIを追加しないでください。変更は最小限、テスト可能にしてください。'
 
     steps:
+      - name: Autonomous development kill switch
+        env:
+          AUTONOMOUS_DEV_ENABLED: ${{ vars.AUTONOMOUS_DEV_ENABLED }}
+        run: |
+          set -euo pipefail
+          test "${AUTONOMOUS_DEV_ENABLED}" = "true"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Configure git identity
         run: |

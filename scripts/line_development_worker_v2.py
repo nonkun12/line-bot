@@ -32,15 +32,7 @@ MAX_RESPONSE_TOKENS = 1800
 MAX_INSTRUCTION_LENGTH = 2000
 MAX_REPAIR_ATTEMPTS = 1
 ALLOWED_SUFFIXES = (".py", ".md", ".json", ".txt")
-PROTECTED_PATHS = {
-    ".github", ".env", "config.py",
-    "scripts/line_development_worker.py",
-    "scripts/line_development_worker_safe.py",
-    "scripts/line_development_worker_v2.py",
-    "line_development.py",
-    "git_safety.py", "patch_validator.py", "render_client.py",
-}
-PROTECTED_PREFIXES = (".github/", "secrets/", ".git/")
+from core.protected_paths import is_protected as shared_is_protected
 _COMMENT_TEST_PATH = "line_development.py"
 _COMMENT_TEST_PATH_ALIASES = {"scripts/line_development.py", "./scripts/line_development.py"}
 _EXPLICIT_PATH_PATTERN = re.compile(r"[\w][\w\-./]*\.(?:py|md|json|txt)", re.IGNORECASE)
@@ -54,7 +46,7 @@ def run(cmd: list[str], timeout: int = 900, input_text: str | None = None) -> su
 
 
 def is_protected(path: str) -> bool:
-    return path in PROTECTED_PATHS or any(path.startswith(prefix) for prefix in PROTECTED_PREFIXES)
+    return shared_is_protected(path)
 
 
 def _shared_policy_decision(path: str) -> SelfImprovementDecision:
@@ -269,12 +261,29 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
     return True, "applied", touched
 
 
+def _test_environment() -> dict[str, str]:
+    """Run untrusted repository code without inheriting workflow credentials."""
+    allowed = {"PATH", "HOME", "LANG", "LC_ALL", "PYTHONPATH", "TMPDIR"}
+    return {key: value for key, value in os.environ.items() if key in allowed}
+
+
+def _run_tests_command(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        cmd,
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+        env=_test_environment(),
+    )
+
+
 def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
     outputs: list[str] = []
     for path in touched or []:
         if not path.endswith(".py"):
             continue
-        compile_result = run([sys.executable, "-m", "py_compile", path], timeout=120)
+        compile_result = _run_tests_command([sys.executable, "-m", "py_compile", path], timeout=120)
         outputs.append(f"py_compile {path}: returncode={compile_result.returncode}")
         if compile_result.stdout:
             outputs.append(compile_result.stdout)
@@ -282,7 +291,7 @@ def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
             outputs.append(compile_result.stderr)
         if compile_result.returncode != 0:
             return False, "\n".join(outputs)[-8000:]
-    tests = run([sys.executable, "-m", "pytest", "-q", "--tb=native"], timeout=900)
+    tests = _run_tests_command([sys.executable, "-m", "pytest", "-q", "--tb=native"], timeout=900)
     outputs.append("full pytest:")
     outputs.extend([tests.stdout, tests.stderr])
     return tests.returncode == 0, "\n".join(outputs)[-8000:]

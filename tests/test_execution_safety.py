@@ -73,3 +73,35 @@ def test_gate_allows_verified_noop(tmp_path):
     result = type("R", (), {"success": True, "changed_resources": frozenset()})()
     gate = GitWorktreeSafetyGate(root, baseline, ("allowed.txt",))
     assert gate.verify(None, result, ("allowed.txt",)) is True
+
+
+def test_gate_rejects_protected_directory_manifest(tmp_path):
+    root, baseline = _repo(tmp_path)
+    (root / "allowed.txt").write_text("changed\n")
+    result = type("R", (), {"success": True, "changed_resources": frozenset({"allowed.txt"})})()
+    gate = GitWorktreeSafetyGate(root, baseline, (".github/",))
+    assert gate.verify(None, result, (".github/",)) is False
+
+
+def test_gate_rejects_protected_ancestor_manifest(tmp_path):
+    root, baseline = _repo(tmp_path)
+    (root / "allowed.txt").write_text("changed\n")
+    result = type("R", (), {"success": True, "changed_resources": frozenset({"allowed.txt"})})()
+    gate = GitWorktreeSafetyGate(root, baseline, ("core",))
+    assert gate.verify(None, result, ("core",)) is False
+
+
+def test_gate_rejects_rename_of_protected_file(tmp_path):
+    root, baseline = _repo(tmp_path)
+    workflow = root / ".github" / "workflows"
+    workflow.mkdir(parents=True)
+    protected = workflow / "ci.yml"
+    protected.write_text("name: ci\n")
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "add workflow")
+    baseline = _git(root, "rev-parse", "HEAD")
+    target = root / "docs-ci.yml"
+    protected.rename(target)
+    result = type("R", (), {"success": True, "changed_resources": frozenset({"docs-ci.yml"})})()
+    gate = GitWorktreeSafetyGate(root, baseline, ("docs-ci.yml",))
+    assert gate.verify(None, result, ("docs-ci.yml",)) is False

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from groq import Groq
 
+from core.protected_paths import PROTECTED_PREFIXES, is_protected
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,7 +21,7 @@ MAX_FILES = 4
 MAX_FILE_CHARS = 9000
 MAX_PATCH_CHARS = 18000
 MODEL = os.environ.get("DEV_AI_MODEL", "openai/gpt-oss-20b")
-FORBIDDEN_PREFIXES = (".github/", ".env", "config.py", "secrets/")
+FORBIDDEN_PREFIXES = PROTECTED_PREFIXES
 ALLOWED_SUFFIXES = (".py", ".md", ".json", ".txt")
 NIGHTLY_CONTROL_TOWER_TARGETS = (
     "core/management_router.py",
@@ -94,7 +95,7 @@ def validate_diff(patch: str) -> tuple[bool, str]:
     if not changed or len(changed) > MAX_FILES:
         return False, "too_many_or_no_files"
     for path in changed:
-        if path.startswith(FORBIDDEN_PREFIXES) or not path.endswith(ALLOWED_SUFFIXES):
+        if is_protected(path) or not path.endswith(ALLOWED_SUFFIXES):
             return False, f"forbidden_file:{path}"
     return True, ",".join(sorted(changed))
 
