@@ -76,6 +76,7 @@ from core.request_path import run_core_request, extract_core_reply
 from core.management_bridge import should_route_to_management_ai, run_management_request
 from routes.core_api import core_api_bp
 from routes.voice_api import voice_api_bp
+from app_development import extract_app_development_request, dispatch_app_development_workflow
 from line_development import extract_development_instruction, dispatch_development_workflow
 from slack_command import register_slack_command
 
@@ -287,6 +288,14 @@ def _core_dynamic_enabled():
 def _handle_ai_gateway_request(ai_request):
     message = str(ai_request.message)
     user_id = str(ai_request.user_id)
+
+    app_development_requirement = extract_app_development_request(message)
+    if app_development_requirement is not None:
+        return dispatch_app_development_workflow(
+            app_development_requirement,
+            user_id=user_id,
+            token=GITHUB_TOKEN,
+        )
 
     development_instruction = extract_development_instruction(message)
     if development_instruction is not None:
