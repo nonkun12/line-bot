@@ -65,3 +65,23 @@ def test_append_once_rejects_unconfirmed_append():
         assert "updatedRows=0" in str(exc)
     else:
         raise AssertionError("expected RuntimeError")
+
+
+def test_record_autonomous_run_retries_once(monkeypatch):
+    calls = []
+
+    class Factory:
+        def __call__(self):
+            calls.append(len(calls))
+            if len(calls) == 1:
+                raise RuntimeError("temporary Sheets failure")
+            return FakeClient()
+
+    monkeypatch.setattr(ledger, "GoogleSheetsClient", Factory())
+    monkeypatch.setenv("GITHUB_RUN_ID", "789")
+    monkeypatch.setenv("AUTONOMOUS_TIMESTAMP", "2026-09-23T03:00:00Z")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "scheduled-distributed-development")
+    monkeypatch.setenv("DEV_INSTRUCTION", "test")
+
+    assert ledger.record_autonomous_run() is True
+    assert calls == [0, 1]
