@@ -24,3 +24,17 @@ def test_general_does_not_capture_specialist_request() -> None:
     decision = route(ManagementRequest("u", "Englishで会話したい"))
     assert decision.specialist is Specialist.ENGLISH
     assert decision.confidence == 0.95
+
+
+def test_preserves_multi_specialist_candidates_and_priority() -> None:
+    decision = route(ManagementRequest("u", "音楽を作りながら英語も勉強したい"))
+    assert decision.specialist is Specialist.ENGLISH
+    assert decision.metadata["matched_specialists"] == ["english", "music"]
+    assert decision.metadata["routing_priority"] == 2
+
+
+def test_unresolved_request_records_empty_candidates() -> None:
+    decision = route(ManagementRequest("u", "今日は何をしよう？"))
+    assert decision.specialist is Specialist.GENERAL
+    assert decision.metadata["matched_specialists"] == []
+    assert decision.metadata["routing_priority"] is None
