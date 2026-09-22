@@ -176,8 +176,11 @@ else:
     print("Autonomous development result recorded to Google Sheets.")
 PY
 
+      # Notifications are downstream of the durable Sheets record.
+      # A notification outage must never erase or block the development result.
       - name: Notify Slack and LINE
         if: always()
+        continue-on-error: true
         env:
           CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -185,6 +188,7 @@ PY
           RUN_STATUS: ${{ job.status }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          set +e
           MESSAGE="🤖 自律開発ループ完了\n結果: ${RUN_STATUS}\n実行: ${RUN_URL}"
           if [ -n "${AUTONOMOUS_PR_URL:-}" ]; then
             MESSAGE="${MESSAGE}\nPR: ${AUTONOMOUS_PR_URL}"
@@ -193,47 +197,61 @@ PY
           fi
           export MESSAGE
 
-          if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
-            python - <<'PY'
-import json, os, urllib.request
-message = os.environ["MESSAGE"]
-req = urllib.request.Request(
-    os.environ["SLACK_WEBHOOK_URL"],
-    data=json.dumps({"text": message}).encode(),
-    headers={"Content-Type": "application/json"},
-    method="POST",
-)
-with urllib.request.urlopen(req, timeout=15) as response:
-    if response.status >= 300:
-        raise SystemExit(f"Slack notification failed: HTTP {response.status}")
-PY
-          else
-            echo "SLACK_WEBHOOK_URL is not configured; Slack notification skipped."
-          fi
+          python - <<'PY'
+import json
+import os
+import urllib.error
+import urllib.request
 
-          if [ -n "${CHANNEL_ACCESS_TOKEN:-}" ] && [ -n "${LINE_NOTIFY_USER_ID:-}" ]; then
-            python - <<'PY'
-import json, os, urllib.request
-payload = {
-    "to": os.environ["LINE_NOTIFY_USER_ID"],
-    "messages": [{"type": "text", "text": os.environ["MESSAGE"]}],
-}
-req = urllib.request.Request(
-    "https://api.line.me/v2/bot/message/push",
-    data=json.dumps(payload).encode(),
-    headers={
-        "Authorization": "Bearer " + os.environ["CHANNEL_ACCESS_TOKEN"],
-        "Content-Type": "application/json",
-    },
-    method="POST",
-)
-with urllib.request.urlopen(req, timeout=15) as response:
-    if response.status >= 300:
-        raise SystemExit(f"LINE notification failed: HTTP {response.status}")
+def send_slack():
+    webhook = os.environ.get("SLACK_WEBHOOK_URL", "").strip()
+    if not webhook:
+        print("SLACK_NOTIFICATION=SKIPPED (webhook not configured)")
+        return
+    request = urllib.request.Request(
+        webhook,
+        data=json.dumps({"text": os.environ["MESSAGE"]}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            print(f"SLACK_NOTIFICATION=HTTP_{response.status}")
+    except urllib.error.HTTPError as exc:
+        print(f"SLACK_NOTIFICATION=HTTP_{exc.code}")
+    except Exception as exc:
+        print(f"SLACK_NOTIFICATION=ERROR_{type(exc).__name__}")
+
+def send_line():
+    token = os.environ.get("CHANNEL_ACCESS_TOKEN", "").strip()
+    user_id = os.environ.get("LINE_NOTIFY_USER_ID", "").strip()
+    if not token or not user_id:
+        print("LINE_NOTIFICATION=SKIPPED (credentials not configured)")
+        return
+    payload = {
+        "to": user_id,
+        "messages": [{"type": "text", "text": os.environ["MESSAGE"]}],
+    }
+    request = urllib.request.Request(
+        "https://api.line.me/v2/bot/message/push",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            print(f"LINE_NOTIFICATION=HTTP_{response.status}")
+    except urllib.error.HTTPError as exc:
+        print(f"LINE_NOTIFICATION=HTTP_{exc.code}")
+    except Exception as exc:
+        print(f"LINE_NOTIFICATION=ERROR_{type(exc).__name__}")
+
+send_slack()
+send_line()
 PY
-          else
-            echo "LINE notification secrets are not configured; LINE notification skipped."
-          fi
 
       - name: Upload worker summary
         if: always()
