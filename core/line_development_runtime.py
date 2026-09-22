@@ -270,6 +270,22 @@ class DevelopmentRepairPlanner(RepairPlanner):
         return AgentTask(task_id=f"repair:{attempt}:{failed_task.task_id}", role=AgentRole.REPAIRER, instruction=f"{mode} Repair after {failed_task.role.value} failure: {result.summary[-1500:]}", resources=failed_task.resources)
 
 
+def _write_development_audit_to_google_sheets(*, instruction: str, status: str, target_path: str | None, branch: str | None, exit_detail: str, base_sha: str | None, produced_sha: str | None) -> None:
+    """Best-effort append of autonomous-development audit data to Google Sheets."""
+    if os.environ.get("GOOGLE_SHEETS_AUDIT_ENABLED", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return
+    try:
+        from .google_sheets_writer import GoogleSheetsWriter
+        writer = GoogleSheetsWriter.from_environment()
+        if writer is None:
+            print("[GOOGLE-SHEETS] audit skipped: configuration incomplete", flush=True)
+            return
+        writer.append_development_result(instruction=instruction, status=status, target_path=target_path, branch=branch, detail=exit_detail, base_sha=base_sha, produced_sha=produced_sha)
+        print("[GOOGLE-SHEETS] audit appended", flush=True)
+    except Exception as exc:
+        print(f"[GOOGLE-SHEETS] audit write failed (non-blocking): {type(exc).__name__}: {exc}", flush=True)
+
+
 def execute(instruction: str) -> int:
     """Run one real guarded development request through the quality pipeline."""
     client = worker.Groq(api_key=os.environ["GROQ_API_KEY"])
@@ -288,9 +304,11 @@ def execute(instruction: str) -> int:
     manager_result = executor.execute(tasks[0])
     if not manager_result.success:
         print(f"Manager selection failed: {manager_result.summary}", flush=True)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="BLOCKED", target_path=None, branch=None, exit_detail=manager_result.summary, base_sha=None, produced_sha=None)
         return 1
     if state.chosen is None:
         print("Manager produced no target.", flush=True)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="BLOCKED", target_path=None, branch=None, exit_detail="manager produced no target", base_sha=None, produced_sha=None)
         return 1
     baseline = worker.run(["git", "status", "--porcelain=v1", "--untracked-files=all"])
     if baseline.returncode != 0:
@@ -299,6 +317,7 @@ def execute(instruction: str) -> int:
     state.baseline_status = baseline.stdout
     if baseline.stdout.strip():
         print("Worktree is not clean before autonomous execution; refusing to proceed.", flush=True)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="BLOCKED", target_path=state.chosen, branch=None, exit_detail="worktree is not clean", base_sha=None, produced_sha=None)
         return 1
     head = worker.run(["git", "rev-parse", "HEAD"])
     if head.returncode != 0 or not head.stdout.strip():
@@ -324,7 +343,9 @@ def execute(instruction: str) -> int:
         report = runtime.run(tasks[1:])
     except Exception as exc:
         _rollback_to_clean_baseline(baseline_sha)
-        print(f"Multi-agent development failed closed: {type(exc).__name__}: {exc}", flush=True)
+        detail = f"{type(exc).__name__}: {exc}"
+        print(f"Multi-agent development failed closed: {detail}", flush=True)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="FAIL", target_path=state.chosen, branch=None, exit_detail=detail, base_sha=baseline_sha, produced_sha=None)
         return 1
     print(f"[manager] {tasks[0].task_id}: {manager_result.summary[-1500:]}", flush=True)
     for item in report.completed:
@@ -332,12 +353,15 @@ def execute(instruction: str) -> int:
     improvement_result = observe_self_improvement(report, state.chosen)
     if not report.success or not report.integration_ready:
         _rollback_to_clean_baseline(baseline_sha)
-        print(f"Multi-agent development failed: {report.error or report.failed_task_id}", flush=True)
+        detail = report.error or report.failed_task_id or "quality runtime failed"
+        print(f"Multi-agent development failed: {detail}", flush=True)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="FAIL", target_path=state.chosen, branch=None, exit_detail=detail, base_sha=baseline_sha, produced_sha=None)
         return 1
     touched = state.touched or []
     if not touched:
         _rollback_to_clean_baseline(baseline_sha)
         print("Multi-agent development produced no file change.", flush=True)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="BLOCKED", target_path=state.chosen, branch=None, exit_detail="no file change", base_sha=baseline_sha, produced_sha=baseline_sha)
         return 1
     branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
     identity = ["-c", "user.name=github-actions[bot]", "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com"]
@@ -356,6 +380,9 @@ def execute(instruction: str) -> int:
     push = worker.run(["git", "push", "--set-upstream", "origin", branch])
     if push.returncode != 0:
         print(push.stderr[-2000:], flush=True); return 1
+    produced = worker.run(["git", "rev-parse", "HEAD"])
+    produced_sha = produced.stdout.strip() if produced.returncode == 0 else None
+    _write_development_audit_to_google_sheets(instruction=instruction, status="PASS", target_path=state.chosen, branch=branch, exit_detail="development branch pushed", base_sha=baseline_sha, produced_sha=produced_sha)
     print(f"Development branch pushed: {branch}", flush=True)
     return 0
 
