@@ -297,11 +297,30 @@ def build_plan(client: Groq, instruction: str, chosen: str, context: str, test_o
     system = '''You edit ONE repository file. Return JSON only.
 Real change: {"no_change":false,"changes":[{"file":"exact path","old":"exact existing text","new":"replacement text"}]}
 No safe/needed change: {"no_change":true}
-Rules: one file only; old must be an exact substring of supplied context; minimal change; never modify security, credentials, deployment, workflow, or worker logic. Do not invent text that is not visible in context.'''
+Rules: one file only; "file", "old", and "new" MUST each be JSON strings; old must be an exact substring of supplied context; new must be a JSON string using escaped \\n for line breaks; minimal change; never modify security, credentials, deployment, workflow, or worker logic. Do not invent text that is not visible in context.'''
     prompt = f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}\n\nCurrent context:\n{context}"
     if test_output:
         prompt += f"\n\nPytest failure:\n{test_output[-3000:]}"
-    return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
+
+    for attempt in range(2):
+        plan = parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
+        if plan.get("no_change") is True:
+            return plan
+        changes = plan.get("changes")
+        if (
+            isinstance(changes, list)
+            and len(changes) == 1
+            and isinstance(changes[0], dict)
+            and all(isinstance(changes[0].get(key), str) for key in ("file", "old", "new"))
+        ):
+            return plan
+        if attempt == 0:
+            prompt += (
+                "\n\nPREVIOUS PLAN REJECTED: file, old, and new must be plain JSON strings. "
+                "Return exactly one changes item and do not use arrays, objects, null, or raw line breaks "
+                "inside those string values. Retry the same requested change."
+            )
+    return plan
 
 
 def main() -> int:
