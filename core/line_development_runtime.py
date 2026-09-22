@@ -301,7 +301,8 @@ class DevelopmentExecutor:
             if task.role is AgentRole.REVIEWER:
                 status = worker.run(["git", "diff", "--check"])
                 if status.returncode != 0:
-                    return AgentResult(task.task_id, False, f"git diff --check failed: {status.stderr[-3000:]}")
+                    detail = (status.stdout or "") + (status.stderr or "")
+                    return AgentResult(task.task_id, False, f"git diff --check failed: {detail[-3000:]}")
                 diff = worker.run(["git", "diff", "--", *(self.state.touched or [])])
                 if diff.returncode != 0:
                     return AgentResult(task.task_id, False, f"git diff failed: {diff.stderr[-3000:]}")
