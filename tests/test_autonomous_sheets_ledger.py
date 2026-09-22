@@ -23,7 +23,8 @@ class FakeClient:
     def update_row(self, _range, values):
         if self.error:
             raise self.error
-        self.rows = [values]
+        # update A1:Q1 must not erase existing data rows
+        self.rows = [values, *self.rows[1:]] if self.rows else [values]
 
     def append_row(self, _range, values):
         if self.error:
