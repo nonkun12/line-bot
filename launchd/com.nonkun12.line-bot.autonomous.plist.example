@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.nonkun12.line-bot.autonomous</string>
+
+  <key>WorkingDirectory</key>
+  <string>REPLACE_WITH_LOCAL_REPO_PATH</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>python3</string>
+    <string>scripts/run_local_autonomous_loop.py</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DEV_AI_MODEL</key>
+    <string>qwen2.5-coder:7b</string>
+    <key>OLLAMA_BASE_URL</key>
+    <string>http://127.0.0.1:11434</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/line-bot-autonomous.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/line-bot-autonomous.err.log</string>
+</dict>
+</plist>
