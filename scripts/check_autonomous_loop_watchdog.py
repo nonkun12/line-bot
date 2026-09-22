@@ -37,8 +37,11 @@ def expected_slot(now: datetime) -> datetime:
 
 
 def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
+    workflow = "nightly-autonomous-worker.yml"
     data = github_json(
-        "https://api.github.com/repos/" + quote(repo, safe="/") + "/actions/runs?per_page=50"
+        "https://api.github.com/repos/"
+        + quote(repo, safe="/")
+        + f"/actions/workflows/{workflow}/runs?event=schedule&per_page=20"
     )
     window_end = slot + timedelta(minutes=120)
     window_start = slot - timedelta(minutes=20)

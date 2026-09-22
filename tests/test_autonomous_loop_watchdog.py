@@ -16,7 +16,7 @@ def test_expected_slot_selects_afternoon_slot():
     assert expected_slot(now).minute == 5
 
 
-def test_find_scheduled_run_filters_name_event_and_time(monkeypatch):
+def test_find_scheduled_run_uses_workflow_scoped_schedule_endpoint(monkeypatch):
     scheduled = {
         "name": "Autonomous Development Loop",
         "event": "schedule",
@@ -25,20 +25,28 @@ def test_find_scheduled_run_filters_name_event_and_time(monkeypatch):
         "status": "completed",
         "conclusion": "failure",
     }
-    monkeypatch.setattr(
-        "scripts.check_autonomous_loop_watchdog.github_json",
-        lambda _url: {
+    captured = {}
+    def fake_github_json(url):
+        captured["url"] = url
+        return {
             "workflow_runs": [
                 {"name": "other", "event": "schedule", "id": 1, "created_at": "2026-09-23T18:05:00Z"},
                 {"name": "Autonomous Development Loop", "event": "workflow_dispatch", "id": 2, "created_at": "2026-09-23T18:06:00Z"},
                 scheduled,
             ]
-        },
+        }
+
+    monkeypatch.setattr(
+        "scripts.check_autonomous_loop_watchdog.github_json",
+        fake_github_json,
     )
 
     slot = datetime(2026, 9, 24, 3, 5, tzinfo=ZoneInfo("Asia/Tokyo"))
     # The expected slot is 2026-09-23 03:05 JST, so the example above is outside it.
     assert find_scheduled_run("nonkun12/line-bot", slot) is None
+    assert captured["url"].endswith(
+        "/actions/workflows/nightly-autonomous-worker.yml/runs?event=schedule&per_page=20"
+    )
 
     slot = datetime(2026, 9, 24, 3, 5, tzinfo=ZoneInfo("Asia/Tokyo")) - __import__("datetime").timedelta(days=1)
     assert find_scheduled_run("nonkun12/line-bot", slot) == scheduled
