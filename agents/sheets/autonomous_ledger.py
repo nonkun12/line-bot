@@ -58,7 +58,11 @@ def ensure_headers(client: GoogleSheetsClient) -> None:
 
 
 def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
-    """Write once per exact run_id and verify the append response."""
+    """Write once per exact run_id and verify the append response.
+
+    Idempotency assumes the workflow-level concurrency group keeps retries
+    serialized; callers must preserve that invariant when changing the workflow.
+    """
     ensure_headers(client)
     sheet = LEDGER_RANGE.split("!", 1)[0]
     existing = client.search_column(f"{sheet}!A:Q", 1, record.run_id)
