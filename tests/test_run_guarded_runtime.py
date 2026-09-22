@@ -69,6 +69,24 @@ def test_guarded_ask_fails_closed_after_two_bad_responses(monkeypatch):
     assert len(client.completions.calls) == 2
 
 
+def test_guarded_ask_normalizes_raw_control_chars_inside_json_strings(monkeypatch):
+    monkeypatch.setenv("LOCAL_AI_COMMAND", "ollama run qwen2.5-coder:7b")
+    raw = '{"file":"tests/test_management_router.py","old":"line1
+line2","new":"line1
+line3"}'
+
+    def local_response(command, system, user):
+        return raw
+
+    monkeypatch.setattr(local_ai_provider, "ask_local_ai", local_response)
+
+    content = guarded_ask(None, "return JSON", "build a change")
+
+    parsed = json.loads(content)
+    assert parsed["old"] == "line1\nline2"
+    assert parsed["new"] == "line1\nline3"
+
+
 def test_guarded_ask_falls_back_to_external_ai_after_local_failure(monkeypatch):
     monkeypatch.setenv("LOCAL_AI_COMMAND", "ollama run qwen2.5-coder:7b")
     calls = []
