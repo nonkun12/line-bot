@@ -58,7 +58,7 @@ def test_guarded_ask_retries_empty_output_with_compact_json_instruction():
 
 def test_guarded_ask_accepts_large_japanese_plan_payload_without_local_truncation():
     old = "古い実装文字列" * 170
-    new = "新しい実装文字列" * 300
+    new = "新しい実装文字列" * 200
     payload = '{"file":"app.py","changes":[{"file":"app.py","old":' + __import__("json").dumps(old, ensure_ascii=False) + ',"new":' + __import__("json").dumps(new, ensure_ascii=False) + "}]}"
     completions = FakeCompletions([payload])
     client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
@@ -67,5 +67,26 @@ def test_guarded_ask_accepts_large_japanese_plan_payload_without_local_truncatio
 
     assert result == payload
     assert len(old) == 1020
-    assert len(new) == 2100
+    assert len(new) == 1800
     assert completions.calls[0]["max_completion_tokens"] == guarded_runtime.MAX_COMPLETION_TOKENS
+
+
+
+def test_guarded_ask_reports_provider_finish_reason_on_invalid_json(capsys):
+    class Choice:
+        def __init__(self):
+            self.message = SimpleNamespace(content="not json")
+            self.finish_reason = "length"
+
+    completions = SimpleNamespace(
+        calls=[],
+        create=lambda **kwargs: (completions.calls.append(kwargs) or SimpleNamespace(choices=[Choice()]))
+    )
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+
+    try:
+        guarded_runtime.guarded_ask(client, "json only", "build a plan")
+    except ValueError:
+        pass
+    output = capsys.readouterr().out
+    assert "finish_reason=length" in output
