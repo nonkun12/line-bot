@@ -186,6 +186,12 @@ Original task:\n{instruction}\n\nPatch:\n{patch}\n\nPytest failure:\n{output}\n\
         print(f"Task failed after {attempts} attempt(s).\n{output}")
         return 1
 
+    if not safety_gate.verify(None, SimpleNamespace(success=True, changed_resources=tuple(chosen)), tuple(chosen)):
+        run(["git", "checkout", "--", *chosen])
+        print("AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED")
+        return 1
+    print("AUTONOMOUS_SAFETY_GATE_RESULT=PASS")
+
     status = run(["git", "status", "--short"])
     if not status.stdout.strip():
         print("Tests passed but no files changed.")
