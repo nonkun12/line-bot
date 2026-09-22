@@ -2,7 +2,7 @@
 
 The worker implements exactly one narrowly-scoped development task on main.
 It may edit only a small allowlisted set of source/documentation files, runs
-pytest, allows at most one repair attempt, and commits only after tests pass.
+pytest, allows at most one repair attempt, and exports only a reviewed patch after tests pass; publishing is isolated in a separate job.
 """
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ NIGHTLY_CONTROL_TOWER_TARGETS = (
 )
 
 
-def run(cmd: list[str], *, input_text: str | None = None, timeout: int = 900) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=ROOT, text=True, input=input_text, capture_output=True, timeout=timeout)
+def run(cmd: list[str], *, input_text: str | None = None, timeout: int = 900, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, cwd=ROOT, text=True, input=input_text, capture_output=True, timeout=timeout, env=env)
 
 
 def ask(client: Groq, system: str, user: str, max_tokens: int = 4000) -> str:
@@ -106,7 +106,9 @@ def apply_and_test(patch: str) -> tuple[bool, str]:
     applied = run(["git", "apply", "-"], input_text=patch)
     if applied.returncode != 0:
         return False, applied.stderr[-5000:]
-    tests = run(["python", "-m", "pytest", "-q", "--tb=native"], timeout=900)
+    test_env = dict(os.environ)
+    test_env.pop("GROQ_API_KEY", None)
+    tests = run(["python", "-m", "pytest", "-q", "--tb=native"], timeout=900, env=test_env)
     return tests.returncode == 0, (tests.stdout + "\n" + tests.stderr)[-10000:]
 
 
@@ -122,6 +124,11 @@ def main() -> int:
     if not instruction:
         return 2
     client = Groq(api_key=os.environ["GROQ_API_KEY"])
+    start_sha_proc = run(["git", "rev-parse", "HEAD"])
+    if start_sha_proc.returncode != 0:
+        print(start_sha_proc.stderr[-2000:])
+        return 1
+    start_sha = start_sha_proc.stdout.strip()
     files = repo_files()
     chosen = choose_files(client, instruction, files)
     if not chosen:
@@ -168,20 +175,49 @@ Original task:\n{instruction}\n\nPatch:\n{patch}\n\nPytest failure:\n{output}\n\
         return 1
 
     status = run(["git", "status", "--short"])
+    diff = run(["git", "diff", "--name-status", "--no-renames", start_sha])
+    if diff.returncode != 0:
+        print(diff.stderr[-4000:])
+        return 1
+    actual = []
+    unsafe_status = []
+    for line in diff.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 2:
+            unsafe_status.append(line)
+            continue
+        status_code, path = parts
+        actual.append(path)
+        if status_code != "M" or path not in chosen:
+            unsafe_status.append(line)
+    untracked = run(["git", "ls-files", "--others", "--exclude-standard"])
+    if untracked.returncode != 0:
+        print(untracked.stderr[-4000:])
+        return 1
+    untracked_paths = [p for p in untracked.stdout.splitlines() if p.strip()]
+    if untracked_paths:
+        unsafe_status.extend(f"??\t{p}" for p in untracked_paths)
+    if unsafe_status or set(actual) != set(chosen):
+        print("Final safety gate rejected actual repository changes.")
+        print("\n".join(unsafe_status) or f"expected={sorted(chosen)} actual={sorted(actual)}")
+        run(["git", "reset", "--hard", start_sha])
+        for path in untracked_paths:
+            run(["git", "clean", "-fd", "--", path])
+        return 1
+
     if not status.stdout.strip():
         print("Tests passed but no files changed.")
         return 0
 
-    run(["git", "config", "user.name", "nightly-autonomous-worker"])
-    run(["git", "config", "user.email", "nightly-worker@users.noreply.github.com"])
-    add = run(["git", "add", "--", *chosen])
-    if add.returncode != 0:
-        print(add.stderr[-2000:])
+    # The untrusted generation/test job never receives write credentials and
+    # never creates a commit. Export only the exact reviewed diff; a separate
+    # fresh-clone publish job applies and tests this artifact before pushing.
+    patch_out = ROOT / "autonomous.patch"
+    exported = run(["git", "diff", "--binary", "--no-ext-diff", start_sha, "--", *chosen])
+    if exported.returncode != 0 or not exported.stdout.strip():
+        print(exported.stderr[-4000:] or "No reviewed patch to export.")
         return 1
-    commit = run(["git", "commit", "-m", "feat: improve AI control tower"])
-    if commit.returncode != 0:
-        print(commit.stderr[-2000:])
-        return 1
+    patch_out.write_text(exported.stdout, encoding="utf-8")
     print(f"Nightly control-tower task completed. files={detail} repair_attempts={attempts} {policy_detail}")
     return 0
 

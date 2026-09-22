@@ -11,11 +11,10 @@ on:
     - cron: '0 21 * * *'
       timezone: 'Asia/Tokyo'
 
-# Scheduled runs are intentionally on the default branch.
-# Autonomous changes are pushed to a dedicated branch and reviewed via PR.
-permissions:
-  contents: write
-  pull-requests: write
+# Generation/testing and publication are intentionally separated.
+# The untrusted AI/test job has read-only repository permissions; only the
+# fresh-clone publish job receives write permissions.
+permissions: {}
 
 concurrency:
   group: autonomous-development-loop
@@ -25,31 +24,16 @@ jobs:
   autonomous-development:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
-      CHANNEL_SECRET: ${{ secrets.CHANNEL_SECRET }}
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      MCP_SERVER_URL: ${{ secrets.MCP_SERVER_URL }}
-      MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
-      INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
-      GITHUB_TOKEN: ${{ github.token }}
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      LINE_NOTIFY_USER_ID: ${{ secrets.LINE_NOTIFY_USER_ID }}
-      NIGHTLY_AUTOFIX: 'true'
-      AUTO_APPLY_PATCH: 'false'
-      AUTO_DEPLOY: 'false'
-      DEV_INSTRUCTION: 'コントロールタワーAIの完成度を1段階上げてください。既存のAIGateway、AgentRegistry、Supervisor、Routerの責務分離を維持し、ユーザー要求をより安定して適切なAgentへ振り分けるための最小限の改善を実装してください。特に優先順位、未解決要求の安全なfallback、channel-independentなrequest metadataの活用を検討してください。既存のLINE/Voice機能を壊さず、新規依存関係や外部APIを追加しないでください。変更は最小限、テスト可能にしてください。'
-
+    permissions:
+      contents: read
+    outputs:
+      start_sha: ${{ steps.record_start.outputs.start_sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Configure git identity
-        run: |
-          git config user.name "nightly-autonomous-worker"
-          git config user.email "nightly-worker@users.noreply.github.com"
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -62,32 +46,91 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Record autonomous starting commit
-        run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+        id: record_start
+        run: echo "start_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Run one guarded control tower development task
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: python scripts/nightly_task_worker.py
 
-      - name: Run guarded autonomous self-healing check
-        if: success()
-        run: python scripts/nightly_worker.py
+      - name: Verify exported patch
+        run: |
+          test -s autonomous.patch
+          test "$(git status --short --untracked-files=all | grep -v '^?? autonomous.patch$' | wc -l)" -eq 0
+          git apply --check autonomous.patch
 
-      - name: Publish final autonomous branch and PR
-        if: success()
+      - name: Upload autonomous patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: autonomous-patch-${{ github.run_id }}
+          path: autonomous.patch
+          if-no-files-found: error
+
+  publish-autonomous:
+    needs: autonomous-development
+    if: needs.autonomous-development.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout exact reviewed starting commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.autonomous-development.outputs.start_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download autonomous patch
+        uses: actions/download-artifact@v4
+        with:
+          name: autonomous-patch-${{ github.run_id }}
+
+      - name: Apply and deterministically verify patch
+        run: |
+          git apply --check autonomous.patch
+          git apply autonomous.patch
+          python -m pytest -q --tb=native
+          python - <<'PY'
+          import subprocess
+          from pathlib import Path
+
+          diff = subprocess.run(
+              ["git", "diff", "--name-status", "--no-renames"],
+              check=True, text=True, capture_output=True,
+          ).stdout.splitlines()
+          if not diff:
+              raise SystemExit("No tracked changes after patch application.")
+          if len(diff) > 4:
+              raise SystemExit("Too many changed files in publish workspace.")
+          for line in diff:
+              parts = line.split("\t")
+              if len(parts) != 2 or parts[0] != "M":
+                  raise SystemExit(f"Unsafe diff status: {line}")
+              path = parts[1]
+              if path.startswith((".github/", ".env", "config.py", "secrets/")):
+                  raise SystemExit(f"Forbidden path: {path}")
+              if not path.endswith((".py", ".md", ".json", ".txt")):
+                  raise SystemExit(f"Forbidden suffix: {path}")
+          untracked = subprocess.run(
+              ["git", "ls-files", "--others", "--exclude-standard"],
+              check=True, text=True, capture_output=True,
+          ).stdout.splitlines()
+          if untracked:
+              raise SystemExit(f"Unexpected untracked files: {untracked}")
+          PY
+
+      - name: Publish dedicated branch and PR
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           AUTONOMOUS_BRANCH: autonomous/loop-${{ github.run_id }}
         run: |
-          if [ "$(git rev-parse HEAD)" = "$AUTONOMOUS_START_SHA" ]; then
-            echo 'No autonomous changes to publish.'
-            echo "AUTONOMOUS_RESULT=no-changes" >> "$GITHUB_ENV"
-            exit 0
-          fi
-          git push origin "HEAD:refs/heads/${AUTONOMOUS_BRANCH}"
-          PR_URL="$(gh pr create \
-            --base main \
-            --head "${AUTONOMOUS_BRANCH}" \
-            --title "chore: autonomous development loop ${{ github.run_id }}" \
-            --body "Autonomous development result. Review, safety gates, and current-HEAD CI are required before merge. This workflow does not merge automatically.")"
-          echo "AUTONOMOUS_RESULT=pr-created" >> "$GITHUB_ENV"
+          git config user.name "nightly-autonomous-worker"
+          git config user.email "nightly-worker@users.noreply.github.com"
+          git -c core.hooksPath=/dev/null -c credential.helper= push             "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"             "HEAD:refs/heads/${AUTONOMOUS_BRANCH}"
+          PR_URL="$(gh pr create             --base main             --head "${AUTONOMOUS_BRANCH}"             --title "chore: autonomous development loop ${{ github.run_id }}"             --body "Autonomous development result. Generation/testing ran without write credentials. A fresh-clone publish job re-applied and re-tested the exact patch. Review, safety gates, and current-HEAD CI are required before merge. This workflow does not merge automatically.")"
           echo "AUTONOMOUS_PR_URL=${PR_URL}" >> "$GITHUB_ENV"
 
       - name: Notify Slack and LINE
@@ -95,61 +138,53 @@ jobs:
         env:
           RUN_STATUS: ${{ job.status }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
+          LINE_NOTIFY_USER_ID: ${{ secrets.LINE_NOTIFY_USER_ID }}
         run: |
           MESSAGE="🤖 自律開発ループ完了\n結果: ${RUN_STATUS}\n実行: ${RUN_URL}"
           if [ -n "${AUTONOMOUS_PR_URL:-}" ]; then
             MESSAGE="${MESSAGE}\nPR: ${AUTONOMOUS_PR_URL}"
-          elif [ "${AUTONOMOUS_RESULT:-}" = "no-changes" ]; then
-            MESSAGE="${MESSAGE}\n変更なし"
           fi
           export MESSAGE
 
           if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
             python - <<'PY'
-import json, os, urllib.request
-message = os.environ["MESSAGE"]
-req = urllib.request.Request(
-    os.environ["SLACK_WEBHOOK_URL"],
-    data=json.dumps({"text": message}).encode(),
-    headers={"Content-Type": "application/json"},
-    method="POST",
-)
-with urllib.request.urlopen(req, timeout=15) as response:
-    if response.status >= 300:
-        raise SystemExit(f"Slack notification failed: HTTP {response.status}")
-PY
+          import json, os, urllib.request
+          req = urllib.request.Request(
+              os.environ["SLACK_WEBHOOK_URL"],
+              data=json.dumps({"text": os.environ["MESSAGE"]}).encode(),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=15) as response:
+              if response.status >= 300:
+                  raise SystemExit(f"Slack notification failed: HTTP {response.status}")
+          PY
           else
             echo "SLACK_WEBHOOK_URL is not configured; Slack notification skipped."
           fi
 
           if [ -n "${CHANNEL_ACCESS_TOKEN:-}" ] && [ -n "${LINE_NOTIFY_USER_ID:-}" ]; then
             python - <<'PY'
-import json, os, urllib.request
-payload = {
-    "to": os.environ["LINE_NOTIFY_USER_ID"],
-    "messages": [{"type": "text", "text": os.environ["MESSAGE"]}],
-}
-req = urllib.request.Request(
-    "https://api.line.me/v2/bot/message/push",
-    data=json.dumps(payload).encode(),
-    headers={
-        "Authorization": "Bearer " + os.environ["CHANNEL_ACCESS_TOKEN"],
-        "Content-Type": "application/json",
-    },
-    method="POST",
-)
-with urllib.request.urlopen(req, timeout=15) as response:
-    if response.status >= 300:
-        raise SystemExit(f"LINE notification failed: HTTP {response.status}")
-PY
+          import json, os, urllib.request
+          payload = {
+              "to": os.environ["LINE_NOTIFY_USER_ID"],
+              "messages": [{"type": "text", "text": os.environ["MESSAGE"]}],
+          }
+          req = urllib.request.Request(
+              "https://api.line.me/v2/bot/message/push",
+              data=json.dumps(payload).encode(),
+              headers={
+                  "Authorization": "Bearer " + os.environ["CHANNEL_ACCESS_TOKEN"],
+                  "Content-Type": "application/json",
+              },
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=15) as response:
+              if response.status >= 300:
+                  raise SystemExit(f"LINE notification failed: HTTP {response.status}")
+          PY
           else
             echo "LINE notification secrets are not configured; LINE notification skipped."
           fi
-
-      - name: Upload worker summary
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: autonomous-worker-summary-${{ github.run_id }}
-          path: nightly_worker_summary.json
-          if-no-files-found: ignore
