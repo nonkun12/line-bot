@@ -12,15 +12,17 @@ class FakeClient:
             raise self.error
         return [row for row in self.rows if len(row) > column_index and str(row[column_index]) == str(keyword)]
 
-    def read_rows(self, _range):
+    def read_rows(self, range_name):
         if self.error:
             raise self.error
+        if range_name.endswith("A1:Q1"):
+            return [self.rows[0]] if self.rows and len(self.rows[0]) == 17 else []
         return self.rows
 
     def update_row(self, _range, values):
         if self.error:
             raise self.error
-        self.rows = [values] if not self.rows else [values, *self.rows[1:]]
+        self.rows = [values, *self.rows] if self.rows and len(self.rows[0]) != 17 else [values]
 
     def append_row(self, _range, values):
         if self.error:
