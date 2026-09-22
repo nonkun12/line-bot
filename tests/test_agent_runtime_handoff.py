@@ -8,8 +8,10 @@ from core.self_improvement import SelfImprovementEngine
 def test_runtime_exposes_approved_immutable_handoff_without_executing_it():
     model = lambda prompt: "bounded proposal"
     critic = lambda prompt: "evidence supports the bounded proposal"
+    engine = SelfImprovementEngine()
+    engine.observe(RuntimeReport((), failed_task_id="test", error="pytest failed", rounds=1))
     tower = ControlTower(
-        feedback_engine=SelfImprovementEngine(),
+        feedback_engine=engine,
         creator_critic=CreatorCriticLoop(CreatorAgent(model), CriticAgent(critic)),
     )
     runtime = MultiAgentRuntime(
@@ -18,7 +20,7 @@ def test_runtime_exposes_approved_immutable_handoff_without_executing_it():
         self_improvement_target_paths=("tests/test_agent_runtime.py",),
     )
 
-    report = RuntimeReport((), failed_task_id="test", error="pytest failed", rounds=1)
+    report = RuntimeReport((), rounds=1, integration_ready=True)
     decision = runtime.run_self_improvement_cycle(
         report,
         objective="reduce repeated autonomous test failures",
@@ -62,8 +64,10 @@ def test_unapproved_self_improvement_decision_produces_no_handoff():
 def test_runtime_persists_approved_handoff_when_store_is_configured(tmp_path):
     model = lambda prompt: "bounded proposal"
     critic = lambda prompt: "evidence supports the bounded proposal"
+    engine = SelfImprovementEngine()
+    engine.observe(RuntimeReport((), failed_task_id="test", error="pytest failed", rounds=1))
     tower = ControlTower(
-        feedback_engine=SelfImprovementEngine(),
+        feedback_engine=engine,
         creator_critic=CreatorCriticLoop(CreatorAgent(model), CriticAgent(critic)),
     )
     runtime = MultiAgentRuntime(
@@ -73,7 +77,7 @@ def test_runtime_persists_approved_handoff_when_store_is_configured(tmp_path):
         self_improvement_handoff_path=tmp_path / "handoffs.jsonl",
     )
 
-    report = RuntimeReport((), failed_task_id="test", error="pytest failed", rounds=1)
+    report = RuntimeReport((), rounds=1, integration_ready=True)
     decision = runtime.run_self_improvement_cycle(
         report,
         objective="reduce repeated autonomous test failures",
