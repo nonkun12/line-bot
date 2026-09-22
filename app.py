@@ -103,6 +103,15 @@ LINE_MAX_TOTAL_LENGTH = LINE_MAX_MESSAGE_LENGTH * LINE_MAX_MESSAGES_PER_SEND
 _LINE_TRUNCATION_NOTICE = "\n\n(※文字数が多いため一部を省略しました)"
 
 
+def _build_dashboard_url(user_id: str, path: str = "/dashboard") -> str:
+    ts = int(time.time())
+    secret = os.environ.get("DASHBOARD_LINK_SECRET") or os.environ.get("DASHBOARD_PASSWORD") or ""
+    payload = f"{user_id}:{ts}"
+    token = __import__("hmac").new(secret.encode(), payload.encode(), __import__("hashlib").sha256).hexdigest()
+    query = urlencode({"user_id": user_id, "ts": ts, "token": token})
+    return f"https://line-bot-yvea.onrender.com{path}?{query}"
+
+
 def split_line_message(text, max_len=LINE_MAX_MESSAGE_LENGTH, max_messages=LINE_MAX_MESSAGES_PER_SEND, max_total=LINE_MAX_TOTAL_LENGTH):
     if not text:
         return [text or ""]
@@ -243,16 +252,12 @@ def generate_reply(user_id, message):
     print("=== GENERATE_REPLY: received ===")
     print("MESSAGE DEBUG: received")
 
-    if str(message).strip() == "ダッシュボード":
-        ts = int(time.time())
-        secret = os.environ.get("DASHBOARD_LINK_SECRET") or os.environ.get("DASHBOARD_PASSWORD") or ""
-        payload = f"{user_id}:{ts}"
-        token = __import__("hmac").new(secret.encode(), payload.encode(), __import__("hashlib").sha256).hexdigest()
-        query = urlencode({"user_id": user_id, "ts": ts, "token": token})
-        dashboard_url = f"https://line-bot-yvea.onrender.com/dashboard?{query}"
-        print("[LOG] generate_reply: dashboard command")
-        print("[LOG] generate_reply: dashboard route ENABLED")
-        return f"ダッシュボードはこちらです。\n{dashboard_url}"
+    command = str(message).strip()
+    if command in {"ダッシュボード", "株式ダッシュボード"}:
+        path = "/stock-dashboard" if command == "株式ダッシュボード" else "/dashboard"
+        dashboard_url = _build_dashboard_url(user_id, path)
+        print(f"[LOG] generate_reply: dashboard command={command}")
+        return f"{'株式投資ダッシュボード' if command == '株式ダッシュボード' else 'ダッシュボード'}はこちらです。\n{dashboard_url}"
 
     if "Daily AI Repo" in message:
         print("DAILY AI REPORT TRIGGERED")
@@ -309,7 +314,7 @@ def _handle_ai_gateway_request(ai_request):
     if not _core_dynamic_enabled():
         return generate_reply(user_id, message)
 
-    if message.strip() == "ダッシュボード" or "Daily AI Repo" in message or message.startswith("pytest"):
+    if message.strip() in {"ダッシュボード", "株式ダッシュボード"} or "Daily AI Repo" in message or message.startswith("pytest"):
         return generate_reply(user_id, message)
 
     if should_route_to_management_ai(message):
@@ -388,14 +393,12 @@ def _process_and_reply(event, user_id, text):
     user_lock = _user_processing_locks[user_id]
     with user_lock:
         print("[LOG] USER LOCK ACQUIRED")
-        if text.strip() == "ダッシュボード":
-            ts = int(time.time())
-            secret = os.environ.get("DASHBOARD_LINK_SECRET") or os.environ.get("DASHBOARD_PASSWORD") or ""
-            payload = f"{user_id}:{ts}"
-            token = __import__("hmac").new(secret.encode(), payload.encode(), __import__("hashlib").sha256).hexdigest()
-            query = urlencode({"user_id": user_id, "ts": ts, "token": token})
-            dashboard_url = f"https://line-bot-yvea.onrender.com/dashboard?{query}"
-            _line_reply(event.reply_token, f"ダッシュボードはこちらです。\n{dashboard_url}")
+        command = text.strip()
+        if command in {"ダッシュボード", "株式ダッシュボード"}:
+            path = "/stock-dashboard" if command == "株式ダッシュボード" else "/dashboard"
+            dashboard_url = _build_dashboard_url(user_id, path)
+            label = "株式投資ダッシュボード" if command == "株式ダッシュボード" else "ダッシュボード"
+            _line_reply(event.reply_token, f"{label}はこちらです。\n{dashboard_url}")
             return
         try:
             ai_response = handle_channel_request(
