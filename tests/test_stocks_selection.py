@@ -11,6 +11,9 @@ def test_analyze_prices_returns_bounded_technical_indicators():
     assert indicators.macd is not None
     assert indicators.macd_signal is not None
     assert indicators.volatility20 is not None
+    assert indicators.bollinger_mid20 == sum(prices[-20:]) / 20
+    assert indicators.bollinger_upper20 is not None
+    assert indicators.bollinger_lower20 is not None
     assert indicators.trend == "bullish"
     assert indicators.signal == "bullish"
 
