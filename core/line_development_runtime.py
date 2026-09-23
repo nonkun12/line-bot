@@ -15,6 +15,7 @@ from .agent_runtime import RepairPlanner, RuntimeReport
 from .control_tower import ControlTower
 from .creator_critic_runtime import build_creator_critic_loop
 from .self_improvement import SelfImprovementEngine
+from .self_improvement_policy import SelfImprovementDecision, assess_self_improvement
 from .self_improvement_cycle import SelfImprovementCycleResult, run_self_improvement_cycle
 from .execution_safety import GitWorktreeSafetyGate
 from .multi_agent import AgentResult, AgentRole, AgentTask
@@ -310,6 +311,21 @@ def execute(instruction: str) -> int:
         print("Manager produced no target.", flush=True)
         _write_development_audit_to_google_sheets(instruction=instruction, status="BLOCKED", target_path=None, branch=None, exit_detail="manager produced no target", base_sha=None, produced_sha=None)
         return 1
+    if os.environ.get("SELF_IMPROVEMENT_POLICY_ENFORCED", "").strip().lower() in {"1", "true", "yes", "on"}:
+        assessment = assess_self_improvement((state.chosen,))
+        if assessment.decision is not SelfImprovementDecision.AUTONOMOUS_REVIEW:
+            detail = "; ".join(assessment.reasons)
+            print(f"Self-improvement policy blocked autonomous target {state.chosen}: {detail}", flush=True)
+            _write_development_audit_to_google_sheets(
+                instruction=instruction,
+                status="BLOCKED",
+                target_path=state.chosen,
+                branch=None,
+                exit_detail=detail,
+                base_sha=None,
+                produced_sha=None,
+            )
+            return 1
     baseline = worker.run(["git", "status", "--porcelain=v1", "--untracked-files=all"])
     if baseline.returncode != 0:
         print(f"Baseline status failed: {baseline.stderr[-2000:]}", flush=True)
