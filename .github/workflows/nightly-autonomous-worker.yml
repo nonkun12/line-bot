@@ -1,16 +1,7 @@
-name: Autonomous Development Loop
+name: Autonomous Development Loop (legacy manual)
 
 on:
   workflow_dispatch:
-  schedule:
-    # Japan time: 03:05, 15:05, 21:05 every day.
-    # Offset by 5 minutes from the top of the hour to reduce scheduler-load delays.
-    - cron: '5 3 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '5 15 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '5 21 * * *'
-      timezone: 'Asia/Tokyo'
 
 # Scheduled runs are intentionally on the default branch.
 # Autonomous changes are pushed to a dedicated branch and reviewed via PR.
