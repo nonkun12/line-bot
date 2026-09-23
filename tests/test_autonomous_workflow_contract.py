@@ -56,3 +56,15 @@ def test_autonomous_workflow_does_not_hardcode_one_development_target():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "tests/test_management_router.py に固定" not in text
     assert "安全な候補から現在のコードとテストに基づいて改善対象を1ファイルだけ選び" in text
+
+def test_autonomous_workflow_persists_self_improvement_history_between_runs():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "Restore previous self-improvement history" in text
+    assert "uses: actions/download-artifact@v4" in text
+    assert "workflow: overnight-development.yml" in text
+    assert "branch: main" in text
+    assert "SELF_IMPROVEMENT_HISTORY_PATH: ${{ runner.temp }}/self-improvement-state/self-improvement.jsonl" in text
+    assert "Persist self-improvement history" in text
+    assert "uses: actions/upload-artifact@v4" in text
+    assert "name: autonomous-self-improvement-state" in text
+    assert "if: always()" in text
