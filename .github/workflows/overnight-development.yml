@@ -73,6 +73,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           AUTONOMOUS_SUMMARY_PATH: ${{ runner.temp }}/autonomous_run_summary.json
           SELF_IMPROVEMENT_HISTORY_PATH: ${{ runner.temp }}/self-improvement-state/self-improvement.jsonl
+          SELF_IMPROVEMENT_POLICY_ENFORCED: "true"
         run: |
           python scripts/run_guarded_runtime.py
           echo "AUTONOMOUS_SUMMARY_PATH=${RUNNER_TEMP}/autonomous_run_summary.json" >> "$GITHUB_ENV"
