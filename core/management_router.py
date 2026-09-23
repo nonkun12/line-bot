@@ -1,6 +1,8 @@
 """Deterministic first-pass routing for the management AI layer."""
 from __future__ import annotations
 
+import unicodedata
+
 from .management_contract import ManagementDecision, ManagementRequest, Specialist
 
 
@@ -24,7 +26,7 @@ def route(request: ManagementRequest) -> ManagementDecision:
     metadata and channel are preserved in the decision so downstream agents
     remain channel-independent.
     """
-    message = request.message.strip().casefold()
+    message = unicodedata.normalize("NFKC", request.message).strip().casefold()
     routing_metadata = {
         "routing": "deterministic",
         "channel": request.channel,
