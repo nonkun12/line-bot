@@ -42,6 +42,15 @@ jobs:
       - name: Preflight guarded runtime tests
         run: python -m pytest -q tests/test_agent_runtime.py tests/test_line_development_runtime.py
 
+      - name: Restore previous self-improvement history
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: autonomous-self-improvement-state
+          path: ${{ runner.temp }}/self-improvement-state
+          workflow: overnight-development.yml
+          branch: main
+          github-token: ${{ github.token }}
       - name: Record autonomous starting commit
         run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
@@ -54,6 +63,7 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           GH_TOKEN: ${{ github.token }}
           AUTONOMOUS_SUMMARY_PATH: ${{ runner.temp }}/autonomous_run_summary.json
+          SELF_IMPROVEMENT_HISTORY_PATH: ${{ runner.temp }}/self-improvement-state/self-improvement.jsonl
         run: |
           python scripts/run_guarded_runtime.py
           echo "AUTONOMOUS_SUMMARY_PATH=${RUNNER_TEMP}/autonomous_run_summary.json" >> "$GITHUB_ENV"
@@ -144,6 +154,14 @@ jobs:
           echo "AUTONOMOUS_RESULT=pr-created" >> "$GITHUB_ENV"
           echo "AUTONOMOUS_PR_URL=${PR_URL}" >> "$GITHUB_ENV"
 
+      - name: Persist self-improvement history
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autonomous-self-improvement-state
+          path: ${{ runner.temp }}/self-improvement-state/self-improvement.jsonl
+          if-no-files-found: warn
+          retention-days: 7
       - name: Record autonomous development result to Google Sheets
         if: always()
         continue-on-error: true
