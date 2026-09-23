@@ -56,10 +56,33 @@ def test_guarded_ask_retries_empty_response():
     assert len(client.completions.calls) == 2
 
 
-def test_guarded_ask_fails_closed_after_two_bad_responses():
-    client = _Client(["not json", "still not json"])
+def test_guarded_ask_fails_closed_after_three_bad_responses():
+    client = _Client(["not json", "still not json", "also not json"])
 
     with pytest.raises(ValueError, match="unusable after bounded JSON retry"):
         guarded_ask(client, "return JSON", "select a file")
 
+    assert len(client.completions.calls) == 3
+
+
+def test_guarded_ask_rejects_non_object_json():
+    client = _Client(["[1,2,3]", '{"file":"tests/test_management_router.py"}'])
+
+    content = guarded_ask(client, "return JSON", "select a file")
+
+    assert json.loads(content) == {"file": "tests/test_management_router.py"}
     assert len(client.completions.calls) == 2
+
+
+def test_guarded_ask_recovers_on_third_attempt_and_uses_stricter_prompt():
+    client = _Client([
+        "not json",
+        "still not json",
+        '{"file":"tests/test_management_router.py"}',
+    ])
+
+    content = guarded_ask(client, "return JSON", "select a file")
+
+    assert json.loads(content) == {"file": "tests/test_management_router.py"}
+    assert len(client.completions.calls) == 3
+    assert "smallest valid JSON object" in client.completions.calls[2]["messages"][0]["content"]
