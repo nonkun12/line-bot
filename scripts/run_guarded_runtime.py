@@ -30,13 +30,15 @@ def guarded_ask(
     max_completion_tokens: int = MAX_COMPLETION_TOKENS,
     max_tokens: int | None = None,
 ) -> str:
-    """Request a JSON object and retry once for empty or invalid provider output."""
+    """Request a JSON object and retry up to two times for unusable provider output."""
     last_error = "unknown JSON failure"
     effective_max_completion_tokens = max_tokens if max_tokens is not None else max_completion_tokens
-    for attempt in range(2):
+    for attempt in range(3):
         retry_system = system
-        if attempt:
-            retry_system += "\nIMPORTANT: Return a single valid JSON object only. Return a compact valid JSON object only. No prose, markdown, commentary, or empty response. Keep strings minimal and preserve exact existing text."
+        if attempt == 1:
+            retry_system += "\nIMPORTANT: Return a single valid JSON object only. No prose, markdown, comments, or extra keys."
+        elif attempt == 2:
+            retry_system += "\nIMPORTANT: Return the smallest valid JSON object that satisfies the requested schema. No prose or markdown."
         response = client.chat.completions.create(
             model=worker.MODEL,
             messages=[
@@ -96,6 +98,8 @@ def _augment_instruction_with_history(instruction: str, history_path: Path) -> s
     if budget < 32:
         return instruction
     return f"{instruction}\n\n{evidence[:budget]}"
+
+
 def _write_summary(status: str, exit_code: int, start_sha: str, summary_path: Path) -> None:
     produced_sha = _git("rev-parse", "HEAD")
     branch = _git("branch", "--show-current")
