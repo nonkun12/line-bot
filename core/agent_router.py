@@ -30,7 +30,7 @@ _RULES: tuple[tuple[AgentRole, tuple[str, ...]], ...] = (
 )
 
 
-def route_instruction(instruction: str) -> RouteDecision:
+def route_instruction(instruction: str, metadata: dict | None = None) -> RouteDecision:
     """Select one domain role without invoking an external model."""
     if not instruction or not instruction.strip():
         raise ValueError("instruction is required")
