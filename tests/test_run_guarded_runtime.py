@@ -56,10 +56,10 @@ def test_guarded_ask_retries_empty_response():
     assert len(client.completions.calls) == 2
 
 
-def test_guarded_ask_fails_closed_after_two_bad_responses():
-    client = _Client(["not json", "still not json"])
+def test_guarded_ask_retries_twice_then_fails_closed():
+    client = _Client(["not json", "still not json", "also not json"])
 
     with pytest.raises(ValueError, match="unusable after bounded JSON retry"):
         guarded_ask(client, "return JSON", "select a file")
 
-    assert len(client.completions.calls) == 2
+    assert len(client.completions.calls) == 3
