@@ -43,14 +43,22 @@ jobs:
       - name: Preflight guarded runtime tests
         run: python -m pytest -q tests/test_agent_runtime.py tests/test_line_development_runtime.py
 
+      - name: Find previous successful autonomous run
+        id: previous_autonomous_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREVIOUS_RUN_ID="$(gh run list --workflow overnight-development.yml --branch main --status success --limit 1 --json databaseId --jq ' .[0].databaseId // empty')"
+          echo "run_id=${PREVIOUS_RUN_ID}" >> "$GITHUB_OUTPUT"
+
       - name: Restore previous self-improvement history
+        if: steps.previous_autonomous_run.outputs.run_id != ''
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: autonomous-self-improvement-state
           path: ${{ runner.temp }}/self-improvement-state
-          workflow: overnight-development.yml
-          branch: main
+          run-id: ${{ steps.previous_autonomous_run.outputs.run_id }}
           github-token: ${{ github.token }}
       - name: Record autonomous starting commit
         run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
