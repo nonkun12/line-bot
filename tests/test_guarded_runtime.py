@@ -42,7 +42,7 @@ def test_guarded_ask_accepts_legacy_max_tokens_keyword():
     assert completions.calls[0]["max_completion_tokens"] == 900
 
 
-def test_guarded_ask_retries_empty_output_with_compact_json_instruction():
+def test_guarded_ask_retries_empty_output_with_stricter_json_instruction():
     completions = FakeCompletions(["", '{"file":null}'])
     client = SimpleNamespace(
         chat=SimpleNamespace(completions=completions)
@@ -52,14 +52,13 @@ def test_guarded_ask_retries_empty_output_with_compact_json_instruction():
 
     assert result == '{"file":null}'
     assert len(completions.calls) == 2
-    assert "compact valid JSON object only" in completions.calls[1]["messages"][0]["content"]
-
+    assert "single valid JSON object only" in completions.calls[1]["messages"][0]["content"]
 
 
 def test_guarded_ask_accepts_large_japanese_plan_payload_without_local_truncation():
     old = "古い実装文字列" * 170
     new = "新しい実装文字列" * 225
-    payload = '{"file":"app.py","changes":[{"file":"app.py","old":' + __import__("json").dumps(old, ensure_ascii=False) + ',"new":' + __import__("json").dumps(new, ensure_ascii=False) + "}]}"
+    payload = '{"file":"app.py","changes":[{"file":"app.py","old":' + __import__("json").dumps(old, ensure_ascii=False) + ',"new":' + __import__("json").dumps(new, ensure_ascii=False) + "}]} "
     completions = FakeCompletions([payload])
     client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
 
@@ -69,7 +68,6 @@ def test_guarded_ask_accepts_large_japanese_plan_payload_without_local_truncatio
     assert len(old) == 1190
     assert len(new) == 1800
     assert completions.calls[0]["max_completion_tokens"] == guarded_runtime.MAX_COMPLETION_TOKENS
-
 
 
 def test_guarded_ask_reports_provider_finish_reason_on_invalid_json(capsys):
@@ -91,6 +89,7 @@ def test_guarded_ask_reports_provider_finish_reason_on_invalid_json(capsys):
     output = capsys.readouterr().out
     assert "finish_reason=length" in output
 
+
 def test_augment_instruction_with_history_adds_only_recurring_untrusted_evidence(tmp_path):
     from core.self_improvement import ImprovementSignal
     from core.self_improvement_history import SelfImprovementHistory
@@ -108,6 +107,7 @@ def test_augment_instruction_with_history_adds_only_recurring_untrusted_evidence
     assert "pytest timeout" in result
     assert "count=2" in result
     assert len(result) <= guarded_runtime.worker.MAX_INSTRUCTION_LENGTH
+
 
 def test_augment_instruction_with_history_preserves_instruction_when_no_recurring_pattern(tmp_path):
     from core.self_improvement import ImprovementSignal
