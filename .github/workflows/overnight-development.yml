@@ -48,7 +48,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          PREVIOUS_RUN_ID="$(gh run list --workflow overnight-development.yml --branch main --status success --limit 1 --json databaseId --jq ' .[0].databaseId // empty')"
+          PREVIOUS_RUN_ID="$(gh run list --workflow overnight-development.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
           echo "run_id=${PREVIOUS_RUN_ID}" >> "$GITHUB_OUTPUT"
 
       - name: Restore previous self-improvement history
