@@ -172,3 +172,14 @@ def test_distributed_agent_catalog_has_unique_dashboard_keys() -> None:
     assert len(keys) == len(set(keys))
     assert len(labels) == len(set(labels))
     assert all(descriptor.role.value for descriptor in DISTRIBUTED_AGENT_CATALOG)
+
+
+def test_dashboard_catalog_entries_exist_in_core_registry():
+    from graph.core_registry import build_core_agent_registry
+
+    registry = build_core_agent_registry()
+    registered_names = set(registry.names())
+    assert all(
+        descriptor.agent_name in registered_names
+        for descriptor in DISTRIBUTED_AGENT_CATALOG
+    )
