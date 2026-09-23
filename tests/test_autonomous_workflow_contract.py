@@ -56,3 +56,22 @@ def test_autonomous_workflow_does_not_hardcode_one_development_target():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "tests/test_management_router.py に固定" not in text
     assert "安全な候補から現在のコードとテストに基づいて改善対象を1ファイルだけ選び" in text
+
+def test_autonomous_workflow_persists_self_improvement_history_between_runs():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "Find previous successful autonomous run" in text
+    assert "gh run list --workflow overnight-development.yml --branch main --status success --limit 1" in text
+    assert "--json databaseId" in text
+    assert "--jq" in text
+    assert "Restore previous self-improvement history" in text
+    assert "uses: actions/download-artifact@v4" in text
+    assert "run-id:" in text
+    assert "SELF_IMPROVEMENT_HISTORY_PATH:" in text
+    assert "self-improvement-state/self-improvement.jsonl" in text
+    assert "Persist self-improvement history" in text
+    assert "uses: actions/upload-artifact@v4" in text
+    assert "name: autonomous-self-improvement-state" in text
+    assert "if: always()" in text
+    restore = text[text.index("Restore previous self-improvement history"):text.index("Record autonomous starting commit")]
+    assert "workflow: overnight-development.yml" not in restore
+    assert "branch: main" not in restore
