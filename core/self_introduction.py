@@ -3,12 +3,11 @@
 The registry is the source of truth so newly registered agents appear automatically.
 """
 
-from __future__ import annotations
+import re
 
-from core.agents import AgentRequest
 from graph.core_registry import build_core_agent_registry
 
-_TRIGGER_RE = __import__("re").compile(
+_TRIGGER_RE = re.compile(
     r"(各\s*AI|全\s*AI|AI\s*全員|各\s*エージェント|全\s*エージェント).*(自己紹介|紹介して|役割|担当)"
     r"|((自己紹介|紹介して).*(各\s*AI|全\s*AI|AI\s*全員|各\s*エージェント|全\s*エージェント))"
 )
