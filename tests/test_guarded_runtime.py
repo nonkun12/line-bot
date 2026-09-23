@@ -58,7 +58,7 @@ def test_guarded_ask_retries_empty_output_with_stricter_json_instruction():
 def test_guarded_ask_accepts_large_japanese_plan_payload_without_local_truncation():
     old = "古い実装文字列" * 170
     new = "新しい実装文字列" * 225
-    payload = '{"file":"app.py","changes":[{"file":"app.py","old":' + __import__("json").dumps(old, ensure_ascii=False) + ',"new":' + __import__("json").dumps(new, ensure_ascii=False) + "}]} "
+    payload = '{"file":"app.py","changes":[{"file":"app.py","old":' + __import__("json").dumps(old, ensure_ascii=False) + ',"new":' + __import__("json").dumps(new, ensure_ascii=False) + "}]}")
     completions = FakeCompletions([payload])
     client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
 
