@@ -90,3 +90,33 @@ def test_guarded_ask_reports_provider_finish_reason_on_invalid_json(capsys):
         pass
     output = capsys.readouterr().out
     assert "finish_reason=length" in output
+
+def test_augment_instruction_with_history_adds_only_recurring_untrusted_evidence(tmp_path):
+    from core.self_improvement import ImprovementSignal
+    from core.self_improvement_history import SelfImprovementHistory
+
+    history_path = tmp_path / "self-improvement.jsonl"
+    SelfImprovementHistory(history_path).append((
+        ImprovementSignal("failure", "tests", "pytest timeout"),
+        ImprovementSignal("failure", "tests", "pytest timeout"),
+    ))
+
+    result = guarded_runtime._augment_instruction_with_history("make one safe improvement", history_path)
+
+    assert result.startswith("make one safe improvement")
+    assert "UNTRUSTED historical self-improvement evidence" in result
+    assert "pytest timeout" in result
+    assert "count=2" in result
+    assert len(result) <= guarded_runtime.worker.MAX_INSTRUCTION_LENGTH
+
+def test_augment_instruction_with_history_preserves_instruction_when_no_recurring_pattern(tmp_path):
+    from core.self_improvement import ImprovementSignal
+    from core.self_improvement_history import SelfImprovementHistory
+
+    history_path = tmp_path / "self-improvement.jsonl"
+    SelfImprovementHistory(history_path).append((
+        ImprovementSignal("failure", "tests", "single failure"),
+    ))
+
+    instruction = "make one safe improvement"
+    assert guarded_runtime._augment_instruction_with_history(instruction, history_path) == instruction
