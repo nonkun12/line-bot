@@ -90,3 +90,17 @@ def test_guarded_ask_reports_provider_finish_reason_on_invalid_json(capsys):
         pass
     output = capsys.readouterr().out
     assert "finish_reason=length" in output
+
+
+def test_guarded_ask_stops_after_second_invalid_json_response():
+    completions = FakeCompletions(["not json", "still not json", '{"file":"should-not-be-called"}'])
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+
+    try:
+        guarded_runtime.guarded_ask(client, "json only", "pick a file")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("guarded_ask must fail closed after bounded retries")
+
+    assert len(completions.calls) == 2
