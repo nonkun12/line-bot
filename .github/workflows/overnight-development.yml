@@ -1,12 +1,12 @@
-name: Autonomous Development
+name: Autonomous Development Loop
 
 on:
   schedule:
-    - cron: "37 17 * * *" # 02:37 JST
+    - cron: "5 3 * * *"   # 03:05 JST
       timezone: "Asia/Tokyo"
-    - cron: "37 0 * * *"  # 09:37 JST
+    - cron: "5 15 * * *"  # 15:05 JST
       timezone: "Asia/Tokyo"
-    - cron: "37 6 * * *"  # 15:37 JST
+    - cron: "5 21 * * *"  # 21:05 JST
       timezone: "Asia/Tokyo"
   workflow_dispatch:
 
@@ -42,6 +42,9 @@ jobs:
       - name: Preflight guarded runtime tests
         run: python -m pytest -q tests/test_agent_runtime.py tests/test_line_development_runtime.py
 
+      - name: Record autonomous starting commit
+        run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Run common guarded development runtime
         id: development
         env:
@@ -50,7 +53,71 @@ jobs:
           DEV_USER_ID: autonomous
           GITHUB_RUN_ID: ${{ github.run_id }}
           GH_TOKEN: ${{ github.token }}
-        run: python scripts/run_guarded_runtime.py
+          AUTONOMOUS_SUMMARY_PATH: ${{ runner.temp }}/autonomous_run_summary.json
+        run: |
+          python scripts/run_guarded_runtime.py
+          echo "AUTONOMOUS_SUMMARY_PATH=${RUNNER_TEMP}/autonomous_run_summary.json" >> "$GITHUB_ENV"
+
+      - name: Validate autonomous result and Safety Gate
+        if: success()
+        run: |
+          set -euo pipefail
+          PRODUCED_SHA="$(git rev-parse HEAD)"
+          TRACKED_CHANGED="$(git diff --name-only "$AUTONOMOUS_START_SHA" "$PRODUCED_SHA")"
+          UNTRACKED_CHANGED="$(git status --porcelain=v1 --untracked-files=all | sed -n 's/^?? //p')"
+          CHANGED_FILES="$(printf '%s\n%s\n' "$TRACKED_CHANGED" "$UNTRACKED_CHANGED" | sed '/^$/d' | sort -u)"
+          FILE_COUNT="$(printf '%s\n' "$CHANGED_FILES" | sed '/^$/d' | wc -l | tr -d ' ')"
+          if [ "$FILE_COUNT" -gt 4 ]; then
+            echo "Safety Gate blocked: too many changed files ($FILE_COUNT)."
+            echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+            echo "AUTONOMOUS_BLOCKED_FAILED_REASON=too_many_changed_files" >> "$GITHUB_ENV"
+            exit 1
+          fi
+          while IFS= read -r path; do
+            [ -z "$path" ] && continue
+            case "$path" in
+              .github/*|.env*|config.py|secrets/*|security/*)
+                echo "Safety Gate blocked forbidden path: $path"
+                echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+                echo "AUTONOMOUS_BLOCKED_FAILED_REASON=forbidden_changed_file:$path" >> "$GITHUB_ENV"
+                exit 1 ;;
+              *.py|*.md|*.json|*.txt) ;;
+              *)
+                echo "Safety Gate blocked unsupported path: $path"
+                echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+                echo "AUTONOMOUS_BLOCKED_FAILED_REASON=unsupported_changed_file:$path" >> "$GITHUB_ENV"
+                exit 1 ;;
+            esac
+          done <<< "$CHANGED_FILES"
+          if ! git diff --check "$AUTONOMOUS_START_SHA" "$PRODUCED_SHA"; then
+            echo "Safety Gate blocked: whitespace errors detected."
+            echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+            echo "AUTONOMOUS_BLOCKED_FAILED_REASON=git_diff_check_failed" >> "$GITHUB_ENV"
+            exit 1
+          fi
+          SUMMARY_PATH="${AUTONOMOUS_SUMMARY_PATH:-${{ runner.temp }}/autonomous_run_summary.json}"
+          if [ ! -f "$SUMMARY_PATH" ]; then
+            echo "Safety Gate blocked: missing autonomous runtime summary."
+            echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+            echo "AUTONOMOUS_BLOCKED_FAILED_REASON=missing_runtime_summary" >> "$GITHUB_ENV"
+            exit 1
+          fi
+          if ! python - "$SUMMARY_PATH" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if summary.get("status") != "PASS":
+              raise SystemExit(f"Safety Gate blocked: runtime status={summary.get('status')!r}")
+          print(f"runtime summary: {summary.get('base_sha')} -> {summary.get('produced_sha')}")
+          PY
+          then
+            echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+            echo "AUTONOMOUS_BLOCKED_FAILED_REASON=runtime_status_not_passed" >> "$GITHUB_ENV"
+            exit 1
+          fi
+          echo "AUTONOMOUS_SAFETY_GATE_RESULT=PASS" >> "$GITHUB_ENV"
 
       - name: Create GitHub PR
         id: create_pr
@@ -59,18 +126,101 @@ jobs:
           BRANCH: line-dev/${{ github.run_id }}
         run: |
           set -euo pipefail
-          git ls-remote --exit-code origin "refs/heads/${BRANCH}" >/dev/null
-          gh pr create \
+          if [ "$(git rev-parse HEAD)" = "$AUTONOMOUS_START_SHA" ]; then
+            echo "No autonomous changes to publish."
+            echo "AUTONOMOUS_RESULT=no-changes" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if git ls-remote --exit-code origin "refs/heads/${BRANCH}" >/dev/null 2>&1; then
+            echo "Autonomous branch already exists: ${BRANCH}"
+            exit 1
+          fi
+          PR_URL="$(gh pr create \
             --repo "${GITHUB_REPOSITORY}" \
             --head "${BRANCH}" \
             --base main \
-            --title "chore: autonomous development" \
-            --body "Autonomous development executed through the same guarded multi-agent runtime used by LINE /dev. PR is intentionally left for review; no automatic merge."
+            --title "chore: autonomous development loop" \
+            --body "Autonomous development executed through the guarded multi-agent runtime. PR is intentionally left for review; no automatic merge.")"
+          echo "AUTONOMOUS_RESULT=pr-created" >> "$GITHUB_ENV"
+          echo "AUTONOMOUS_PR_URL=${PR_URL}" >> "$GITHUB_ENV"
 
+      - name: Record autonomous development result to Google Sheets
+        if: always()
+        continue-on-error: true
+        env:
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+          AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
+          GOOGLE_SHEETS_AUDIT_RANGE: ${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          DEV_INSTRUCTION: "自律開発です。対象ファイルは tests/test_management_router.py に固定します。この1ファイルだけを対象に、既存機能を壊さない安全な小規模改善を1件だけ実装してください。テスト可能な改善を優先し、必ずpytestとレビューゲートを通してください。mainへ直接変更せずPRを作成する前提です。"
+        run: |
+          set +e
+          export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export AUTONOMOUS_AGENT="DistributedDevelopmentRuntime"
+          export AUTONOMOUS_TASK_ID="scheduled-distributed-development"
+          export AUTONOMOUS_START_SHA="${AUTONOMOUS_START_SHA:-unknown}"
+          export AUTONOMOUS_PRODUCED_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+          export AUTONOMOUS_CHANGED_FILES="unknown"
+          export AUTONOMOUS_PR_URL="${AUTONOMOUS_PR_URL:-}"
+          export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
+          export AUTONOMOUS_VERIFICATION_RESULT="NOT_RUN"
+          export AUTONOMOUS_SAFETY_GATE_RESULT="${AUTONOMOUS_SAFETY_GATE_RESULT:-BLOCKED}"
+          export AUTONOMOUS_MERGE_RESULT="NOT_AUTO_MERGED"
+          export AUTONOMOUS_BLOCKED_FAILED_REASON="${AUTONOMOUS_BLOCKED_FAILED_REASON:-}"
+          export AUTONOMOUS_NEXT_ACTION="review_failure"
+
+          if [ "${AUTONOMOUS_START_SHA}" != "unknown" ] && git rev-parse "${AUTONOMOUS_START_SHA}^{commit}" >/dev/null 2>&1; then
+            AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "${AUTONOMOUS_START_SHA}" "${AUTONOMOUS_PRODUCED_SHA}" 2>/dev/null | paste -sd, -)"
+            export AUTONOMOUS_CHANGED_FILES="${AUTONOMOUS_CHANGED_FILES:-none}"
+          fi
+
+          if [ -n "${AUTONOMOUS_SUMMARY_PATH:-}" ] && [ -f "${AUTONOMOUS_SUMMARY_PATH}" ]; then
+            AUTONOMOUS_TESTS_RESULT="$(python - "${AUTONOMOUS_SUMMARY_PATH}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          try:
+              summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          except Exception:
+              print("NOT_RUN")
+          else:
+              print("PASS" if summary.get("status") == "PASS" else "FAIL")
+          PY
+            )"
+            export AUTONOMOUS_TESTS_RESULT
+            if [ "${AUTONOMOUS_TESTS_RESULT}" != "PASS" ]; then
+              export AUTONOMOUS_BLOCKED_FAILED_REASON="${AUTONOMOUS_BLOCKED_FAILED_REASON:-runtime_not_passed}"
+            fi
+          else
+            export AUTONOMOUS_BLOCKED_FAILED_REASON="${AUTONOMOUS_BLOCKED_FAILED_REASON:-runtime_summary_missing}"
+          fi
+
+          if [ "${AUTONOMOUS_RESULT:-}" = "pr-created" ]; then
+            export AUTONOMOUS_NEXT_ACTION="review_pr"
+          fi
+
+          python - <<'PY'
+          import os
+          from agents.sheets.autonomous_ledger import record_autonomous_run
+
+          try:
+              recorded = record_autonomous_run()
+              result = "ALREADY_RECORDED" if not recorded else "RECORDED"
+          except Exception as exc:
+              result = f"FAILED:{type(exc).__name__}"
+              print(f"Google Sheets logging failed: {exc}", flush=True)
+          else:
+              print(f"Google Sheets logging: {result}", flush=True)
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+              fh.write(f"AUTONOMOUS_LOGGING_RESULT={result}\n")
+          PY
       - name: Notify Slack
         if: always()
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SHEETS_LOGGING_RESULT: ${{ env.AUTONOMOUS_LOGGING_RESULT }}
           OUTCOME: ${{ steps.create_pr.outcome }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -82,7 +232,14 @@ jobs:
           import json, os, urllib.request
           outcome = os.environ.get("OUTCOME", "unknown")
           run_url = os.environ.get("RUN_URL", "")
-          text = ("✅ 自律開発が完了しPRを作成しました。" if outcome == "success" else "❌ 自律開発が失敗しました。") + f"\n{run_url}"
+          result = os.environ.get("AUTONOMOUS_RESULT", "")
+          if outcome != "success":
+              headline = "❌ 自律開発が失敗しました。"
+          elif result == "no-changes":
+              headline = "ℹ️ 自律開発は完了しました（変更なし）。"
+          else:
+              headline = "✅ 自律開発が完了しPRを作成しました。"
+          text = headline + f"\n{run_url}\nSheets履歴: {os.environ.get('SHEETS_LOGGING_RESULT', 'UNKNOWN')}"
           payload = json.dumps({"text": text}).encode("utf-8")
           request = urllib.request.Request(os.environ["SLACK_WEBHOOK_URL"], data=payload, headers={"Content-Type":"application/json"}, method="POST")
           try:
