@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from agents.stocks.node import StocksAgent
 from core.agents import AgentRequest
 from core.management_contract import ManagementDecision, ManagementRequest, Specialist
 from core.management_ai import ManagementPlan, ManagementPlanner
@@ -267,3 +268,27 @@ def test_run_management_request_does_not_retry_failed_execution(monkeypatch) -> 
     )
 
     assert reply == "管理AIの実行で問題が発生したため、同じ専門AIを再実行せずに処理を停止しました。"
+
+
+def test_management_bridge_binds_stock_task_to_user_ticker(monkeypatch) -> None:
+    from core.management_bridge import _bind_source_instructions
+
+    monkeypatch.setattr(
+        StocksAgent,
+        "_resolve_ticker",
+        classmethod(lambda cls, _message: ("7203.T", "トヨタ")),
+    )
+    plan = StaticPlanner().plan(
+        ManagementRequest("u1", "AIニュースとトヨタ株価"),
+        ManagementDecision(Specialist.NEWS, "multi", 0.95),
+    )
+    bound = _bind_source_instructions(plan, "AIニュースとトヨタ株価")
+    instructions = {task.role: task.instruction for task in bound.tasks}
+    assert instructions[AgentRole.NEWS] == "AI NEWS"
+    assert instructions[AgentRole.STOCKS] == "ticker 7203.T"
+
+
+def test_management_bridge_detects_news_and_toyota_stock_as_two_specialists() -> None:
+    roles = specialist_roles_for_message("AI NEWSとトヨタの株価を教えて")
+    assert roles == frozenset({AgentRole.NEWS, AgentRole.STOCKS})
+    assert should_route_to_management_ai("AI NEWSとトヨタの株価を教えて")
