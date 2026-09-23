@@ -74,6 +74,7 @@ from core.channel import handle_channel_request
 from core.gateway import AIGateway
 from core.request_path import run_core_request, extract_core_reply
 from core.management_bridge import should_route_to_management_ai, run_management_request
+from core.self_introduction import handle_self_introduction
 from routes.core_api import core_api_bp
 from routes.voice_api import voice_api_bp
 from app_development import extract_app_development_request, dispatch_app_development_workflow
@@ -301,6 +302,10 @@ def _handle_ai_gateway_request(ai_request):
             user_id=user_id,
             token=GITHUB_TOKEN,
         )
+
+    self_introduction_reply = handle_self_introduction(message)
+    if self_introduction_reply is not None:
+        return self_introduction_reply
 
     development_instruction = extract_development_instruction(message)
     if development_instruction is not None:
