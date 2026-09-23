@@ -50,3 +50,9 @@ def test_autonomous_workflow_has_final_safety_gate_before_pr_creation():
     assert "git diff --check" in gate
     assert "AUTONOMOUS_SAFETY_GATE_RESULT=PASS" in gate
     assert "AUTONOMOUS_SUMMARY_PATH" in gate
+
+
+def test_autonomous_workflow_does_not_hardcode_one_development_target():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "tests/test_management_router.py に固定" not in text
+    assert "安全な候補から現在のコードとテストに基づいて改善対象を1ファイルだけ選び" in text
