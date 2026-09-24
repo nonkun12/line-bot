@@ -14,6 +14,7 @@ from typing import Iterable
 
 MAX_PROMPT_CHARS = 6000
 MAX_OUTPUT_CHARS = 4000
+MAX_TURNS = 3
 TIMEOUT_SECONDS = 120
 TOOLSETS = "web"
 
@@ -68,6 +69,7 @@ def run_hermes_advisor(
     if not hermes_available(binary):
         return None
 
+    bounded_timeout = max(1, min(int(timeout), TIMEOUT_SECONDS))
     completed = subprocess.run(
         [
             binary,
@@ -79,11 +81,15 @@ def run_hermes_advisor(
             "stream-json",
             "--toolsets",
             TOOLSETS,
+            "--max-turns",
+            str(MAX_TURNS),
+            "--source",
+            "tool",
         ],
         input=normalized,
         text=True,
         capture_output=True,
-        timeout=timeout,
+        timeout=bounded_timeout,
         check=False,
         env=_safe_environment(),
     )
@@ -114,6 +120,7 @@ def build_self_improvement_prompt(instruction: str, evidence: Iterable[str]) -> 
 __all__ = [
     "MAX_OUTPUT_CHARS",
     "MAX_PROMPT_CHARS",
+    "MAX_TURNS",
     "TOOLSETS",
     "build_self_improvement_prompt",
     "hermes_available",
