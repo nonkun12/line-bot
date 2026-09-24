@@ -10,6 +10,8 @@ from agents.web.pipeline import (
     build_initial_site_plan,
 )
 from core.agents import AgentRequest
+from core.multi_agent import AgentRole
+from core.management_contract import Specialist, specialist_boundary
 
 
 def test_web_intent_detects_page_creation():
@@ -46,3 +48,21 @@ def test_web_agent_returns_generation_metadata():
     assert response.metadata["feature"] == "web"
     assert response.metadata["page_count"] >= 1
     assert response.metadata["generated_file_count"] >= 3
+
+
+def test_web_agent_is_registered_and_has_explicit_management_boundary():
+    from graph.core_registry import build_core_agent_registry
+
+    registry = build_core_agent_registry()
+    assert registry.get("web").name == "web"
+    assert AgentRole.WEB.value == Specialist.WEB.value == "web"
+    assert "website_generation" in specialist_boundary(Specialist.WEB).capabilities
+
+
+def test_management_bridge_detects_web_and_video_request():
+    from core.management_bridge import specialist_roles_for_message, should_route_to_management_ai
+
+    roles = specialist_roles_for_message("ホームページを作って動画の紹介ページも作って")
+    assert AgentRole.WEB in roles
+    assert AgentRole.VIDEO in roles
+    assert should_route_to_management_ai("ホームページを作って動画の紹介ページも作って")
