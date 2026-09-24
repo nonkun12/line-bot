@@ -43,6 +43,7 @@ REQUIRED_CAPABILITY: Mapping[Specialist, str] = MappingProxyType(
         Specialist.JOBS: "job_search",
         Specialist.MUSIC: "music_planning",
         Specialist.VIDEO: "video_planning",
+        Specialist.WEB: "web_planning",
     }
 )
 
