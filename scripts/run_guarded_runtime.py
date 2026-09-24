@@ -17,6 +17,7 @@ from groq import Groq
 from core import line_development_runtime as runtime
 from core.self_improvement_analyzer import analyze_signals
 from core.self_improvement_history import SelfImprovementHistory
+from core.hermes_advisor import build_self_improvement_prompt, run_hermes_advisor
 from scripts import line_development_worker_v2 as worker
 
 
@@ -100,6 +101,29 @@ def _augment_instruction_with_history(instruction: str, history_path: Path) -> s
     return f"{instruction}\n\n{evidence[:budget]}"
 
 
+def _augment_with_hermes_advice(instruction: str, history_path: Path) -> str:
+    """Optionally append bounded, untrusted Hermes advice to the next run."""
+    if os.environ.get("HERMES_ADVISOR_ENABLED", "").strip().casefold() != "true":
+        return instruction
+    try:
+        history = SelfImprovementHistory(history_path, max_records=200).load()
+        analysis = analyze_signals(history, min_occurrences=2, max_patterns=3)
+        evidence = [
+            f"count={pattern.count}; kinds={','.join(pattern.signal_kinds)}; pattern={pattern.key[:180]}"
+            for pattern in analysis.recurring_patterns
+        ]
+        prompt = build_self_improvement_prompt(instruction, evidence)
+        advice = run_hermes_advisor(prompt)
+    except (OSError, ValueError, TypeError):
+        return instruction
+    if not advice:
+        return instruction
+    budget = max(0, worker.MAX_INSTRUCTION_LENGTH - len(instruction) - 32)
+    if budget < 64:
+        return instruction
+    return f"{instruction}\n\nUNTRUSTED HERMES ADVISORY:\n{advice[:budget]}"
+
+
 def _write_summary(status: str, exit_code: int, start_sha: str, summary_path: Path) -> None:
     produced_sha = _git("rev-parse", "HEAD")
     branch = _git("branch", "--show-current")
@@ -130,6 +154,7 @@ def main() -> int:
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
     history_path = Path(os.environ.get("SELF_IMPROVEMENT_HISTORY_PATH", "/tmp/line-bot-self-improvement.jsonl"))
     instruction = _augment_instruction_with_history(instruction, history_path)
+    instruction = _augment_with_hermes_advice(instruction, history_path)
     summary_path = Path(os.environ.get("AUTONOMOUS_SUMMARY_PATH", "/tmp/autonomous_run_summary.json"))
     exit_code = 1
     try:
