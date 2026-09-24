@@ -46,7 +46,7 @@ jobs:
           HERMES_DISABLE_LAZY_INSTALLS: "true"
         run: |
           set -euo pipefail
-          curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --skip-setup --non-interactive --skip-browser --skip-computer-use --tag v0.21.3
+          curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --skip-setup --non-interactive --skip-browser --skip-computer-use
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           mkdir -p "$HERMES_HOME"
           chmod 700 "$HERMES_HOME"
@@ -66,7 +66,8 @@ jobs:
             provider: custom:groq
           YAML
           chmod 600 "$HERMES_HOME/.env" "$HERMES_HOME/config.yaml"
-          hermes --version
+          HERMES_VERSION="$(hermes --version 2>&1 | head -n 1)"
+          echo "Hermes installed: ${HERMES_VERSION}"
           hermes doctor || true
 
       - name: Install dependencies
