@@ -58,6 +58,7 @@ DOMAIN_AGENT_NAMES: Mapping[Specialist, str] = MappingProxyType(
         Specialist.JOBS: "job_seeking",
         Specialist.MUSIC: "music",
         Specialist.VIDEO: "video",
+        Specialist.WEB: "web",
     }
 )
 
