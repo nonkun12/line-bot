@@ -17,7 +17,7 @@ _PAGE_TEMPLATES = (
     ("services", "サービス"),
     ("contact", "お問い合わせ"),
 )
-_SLUG_PATTERN = re.compile(r"[^a-z0-9-]+")
+_SLUG_PATTERN = re.compile(r"[a-z0-9-]+")
 
 
 @dataclass(frozen=True)
