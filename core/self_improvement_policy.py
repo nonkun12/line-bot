@@ -44,6 +44,7 @@ HIGH_RISK_FILES = frozenset(
         "core/agent_runtime.py",
         "core/management_safety.py",
         "core/self_improvement_policy.py",
+        "core/hermes_advisor.py",
     }
 )
 

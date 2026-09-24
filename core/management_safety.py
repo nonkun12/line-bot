@@ -171,6 +171,7 @@ PROTECTED_FILES = frozenset(
         "core/management_safety.py",
         "core/control_tower.py",
         "core/self_improvement_policy.py",
+        "core/hermes_advisor.py",
         "core/agent_runtime.py",
         "scripts/line_development_worker_v2.py",
     }
