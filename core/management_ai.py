@@ -32,6 +32,7 @@ PLANNABLE_ROLES = frozenset(
         AgentRole.JOBS,
         AgentRole.MUSIC,
         AgentRole.VIDEO,
+        AgentRole.WEB,
     }
 )
 
