@@ -7,6 +7,7 @@ import core.hermes_advisor as advisor
 
 def test_hermes_advisor_is_bounded_and_returns_final_result(monkeypatch):
     monkeypatch.setattr(advisor, "hermes_available", lambda _binary="hermes": True)
+
     class Result:
         returncode = 0
         stderr = ""
@@ -17,9 +18,40 @@ def test_hermes_advisor_is_bounded_and_returns_final_result(monkeypatch):
             ]
         )
 
-    monkeypatch.setattr(advisor.subprocess, "run", lambda *args, **kwargs: Result())
+    captured = {}
+
+    def fake_run(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return Result()
+
+    monkeypatch.setattr(advisor.subprocess, "run", fake_run)
     result = advisor.run_hermes_advisor("analyze recurring test failures")
     assert result == "advisory result"
+    command = captured["args"][0]
+    assert command[command.index("--toolsets") + 1] == "web"
+    assert command[command.index("--max-turns") + 1] == str(advisor.MAX_TURNS)
+    assert command[command.index("--source") + 1] == "tool"
+    assert captured["kwargs"]["timeout"] == advisor.TIMEOUT_SECONDS
+
+
+def test_hermes_advisor_clamps_timeout(monkeypatch):
+    monkeypatch.setattr(advisor, "hermes_available", lambda _binary="hermes": True)
+
+    class Result:
+        returncode = 1
+        stderr = ""
+        stdout = ""
+
+    captured = {}
+
+    def fake_run(*args, **kwargs):
+        captured["kwargs"] = kwargs
+        return Result()
+
+    monkeypatch.setattr(advisor.subprocess, "run", fake_run)
+    assert advisor.run_hermes_advisor("analyze this", timeout=99999) is None
+    assert captured["kwargs"]["timeout"] == advisor.TIMEOUT_SECONDS
 
 
 def test_hermes_advisor_fails_closed_when_unavailable(monkeypatch):
