@@ -252,7 +252,7 @@ def run_management_request(
     )
 
     try:
-        run = manager.run(management_request)
+        cycle = manager.run_closed_loop(management_request, max_rounds=2)
     except SpecialistGateError:
         raise  # fail-closed: never fall back to the legacy route on a gate denial
     except ManagementPlanningError as exc:
@@ -271,12 +271,16 @@ def run_management_request(
         print(f"[MANAGEMENT AI] unexpected execution failure; no legacy retry: {type(exc).__name__}: {exc}")
         return _MANAGEMENT_EXECUTION_FAILURE
 
-    if not run.success:
-        print("[MANAGEMENT AI] distributed round reported failure; no legacy retry")
+    if not cycle.success:
+        print(
+            "[MANAGEMENT AI] distributed loop reported failure; "
+            "no legacy retry: " + cycle.stopped_reason
+        )
         return _MANAGEMENT_EXECUTION_FAILURE
 
     parts: list[str] = []
-    for observation in run.observations:
+    for round_run in cycle.rounds:
+        for observation in round_run.observations:
         label = _ROLE_LABELS.get(observation.role, observation.role.value)
         parts.append("【" + label + "】\n" + observation.summary)
 
