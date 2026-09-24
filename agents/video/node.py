@@ -40,9 +40,9 @@ class VideoAgent:
             f"画角: {plan.aspect_ratio}\n\n"
             + "\n".join(scene_lines)
             + "\n\n"
-            ("実編集・書き出し・配信連携はまだ接続していません。\n" if mode == "editing" else "")
-            "次段階では各シーンの画像生成→動画生成→音声/編集へ接続できます。"
-            "外部生成プロバイダ未設定時は安全に計画段階で停止します。"
+            + ("実編集・書き出し・配信連携はまだ接続していません。\n" if mode == "editing" else "")
+            + "次段階では各シーンの画像生成→動画生成→音声/編集へ接続できます。"
+            + "外部生成プロバイダ未設定時は安全に計画段階で停止します。"
         )
         return AgentResponse(
             text=reply,
