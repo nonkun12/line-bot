@@ -73,4 +73,5 @@ def build_core_agent_registry() -> AgentRegistry:
     registry.register(job_seeking_agent)
     registry.register(music_agent)
     registry.register(video_agent)
+    registry.register(web_agent)
     return registry
