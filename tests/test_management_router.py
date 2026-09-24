@@ -51,3 +51,14 @@ def test_normalizes_full_width_input_and_preserves_channel_metadata() -> None:
     assert decision.specialist is Specialist.ENGLISH
     assert decision.metadata["channel"] == "slack"
     assert decision.metadata["request_metadata"]["source"] == "parallel-dev-test"
+
+
+def test_preserves_metadata_without_channel() -> None:
+    request = ManagementRequest(
+        "u",
+        "Englishで会話したい",
+        metadata={"source": "test-source"},
+    )
+    decision = route(request)
+    assert decision.specialist is Specialist.ENGLISH
+    assert decision.metadata["request_metadata"]["source"] == "test-source"
