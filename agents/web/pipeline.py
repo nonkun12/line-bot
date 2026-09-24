@@ -161,13 +161,13 @@ def _html(plan: WebSitePlan, page: WebPage) -> str:
         '<link rel="stylesheet" href="styles.css">\n'
         "</head>\n<body>\n"
         "<header>\n"
-        f"<nav aria-label="Main">{nav}</nav>\n"
+        f'<nav aria-label="Main">{nav}</nav>\n'
         "</header>\n"
         "<main>\n"
-        f"<p class="eyebrow">{escape(page.purpose)}</p>\n"
+        f'<p class="eyebrow">{escape(page.purpose)}</p>\n'
         f"<h1>{escape(page.title)}</h1>\n"
         f"<p>{body}</p>\n"
-        '<a class="cta" href="{escape(cta_target)}">お問い合わせ</a>\n'
+        f'<a class="cta" href="{escape(cta_target)}">お問い合わせ</a>\n'
         "</main>\n"
         "<footer>\n"
         f"<small>{escape(plan.title)}</small>\n"
@@ -175,7 +175,6 @@ def _html(plan: WebSitePlan, page: WebPage) -> str:
         '<script src="script.js"></script>\n'
         "</body>\n</html>\n"
     )
-
 
 def _css() -> str:
     return """* { box-sizing: border-box; }
