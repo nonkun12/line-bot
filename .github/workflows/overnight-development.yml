@@ -44,7 +44,7 @@ jobs:
           HERMES_OPENROUTER_API_KEY: ${{ secrets.HERMES_OPENROUTER_API_KEY }}
         run: |
           set -euo pipefail
-          curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --skip-setup --tag v0.21.3
+          curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --skip-setup --non-interactive --skip-browser --skip-computer-use --no-skills --branch v0.21.3
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           mkdir -p "$HERMES_HOME"
           chmod 700 "$HERMES_HOME"
@@ -96,6 +96,8 @@ jobs:
           AUTONOMOUS_SUMMARY_PATH: ${{ runner.temp }}/autonomous_run_summary.json
           SELF_IMPROVEMENT_HISTORY_PATH: ${{ runner.temp }}/self-improvement-state/self-improvement.jsonl
           SELF_IMPROVEMENT_POLICY_ENFORCED: "true"
+          HERMES_ADVISOR_ENABLED: ${{ vars.HERMES_ADVISOR_ENABLED }}
+          HERMES_HOME: ${{ runner.temp }}/hermes-home
         run: |
           python scripts/run_guarded_runtime.py
           echo "AUTONOMOUS_SUMMARY_PATH=${RUNNER_TEMP}/autonomous_run_summary.json" >> "$GITHUB_ENV"
