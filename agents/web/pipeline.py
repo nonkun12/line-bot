@@ -151,6 +151,7 @@ def _html(plan: WebSitePlan, page: WebPage) -> str:
         f'<a href="{escape(other.slug)}.html">{escape(other.title)}</a>'
         for other in plan.pages
     )
+    cta_target = "contact.html" if any(other.slug == "contact" for other in plan.pages) else f"{plan.pages[0].slug}.html"
     return (
         "<!doctype html>\n"
         '<html lang="ja">\n<head>\n'
@@ -166,7 +167,7 @@ def _html(plan: WebSitePlan, page: WebPage) -> str:
         f"<p class="eyebrow">{escape(page.purpose)}</p>\n"
         f"<h1>{escape(page.title)}</h1>\n"
         f"<p>{body}</p>\n"
-        '<a class="cta" href="contact.html">お問い合わせ</a>\n'
+        '<a class="cta" href="{escape(cta_target)}">お問い合わせ</a>\n'
         "</main>\n"
         "<footer>\n"
         f"<small>{escape(plan.title)}</small>\n"
