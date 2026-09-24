@@ -382,10 +382,14 @@ def test_run_management_request_closed_loop_never_exceeds_two_rounds(monkeypatch
         "core.management_bridge.build_core_agent_registry",
         lambda: object(),
     )
-    executor = RecordingLoopExecutor(AgentRole.NEWS)
+    news = RecordingLoopExecutor(AgentRole.NEWS)
+    stocks = RecordingLoopExecutor(AgentRole.STOCKS)
     monkeypatch.setattr(
         "core.management_bridge.build_registry_executors",
-        lambda registry, request: {AgentRole.NEWS: executor},
+        lambda registry, request: {
+            AgentRole.NEWS: news,
+            AgentRole.STOCKS: stocks,
+        },
     )
 
     class AlwaysContinuePlanner(ManagementPlanner):
@@ -416,5 +420,6 @@ def test_run_management_request_closed_loop_never_exceeds_two_rounds(monkeypatch
     )
 
     assert planner.calls == 2
-    assert executor.calls == ["round-1", "round-2"]
+    assert news.calls == ["round-1", "round-2"]
+    assert stocks.calls == ["round-1", "stocks-task"]
     assert "round-2" in reply
