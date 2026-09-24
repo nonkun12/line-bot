@@ -37,7 +37,7 @@ def expected_slot(now: datetime) -> datetime:
 
 
 def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
-    workflow = "overnight-development.yml"
+    workflow = "nightly-autonomous-worker.yml"
     data = github_json(
         "https://api.github.com/repos/"
         + quote(repo, safe="/")
