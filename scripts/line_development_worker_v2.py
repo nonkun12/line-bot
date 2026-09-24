@@ -22,7 +22,10 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from core.external_network_safety import assert_no_new_external_capabilities
+from core.external_network_safety import (
+    assert_no_new_destructive_capabilities,
+    assert_no_new_external_capabilities,
+)
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
 
 ROOT = _ROOT
@@ -274,6 +277,7 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
             else:
                 baseline = ""
             assert_no_new_external_capabilities(baseline, proposed, change["file"])
+            assert_no_new_destructive_capabilities(baseline, proposed, change["file"])
         except Exception as exc:
             return False, f"external_capability_safety:{type(exc).__name__}:{exc}", touched
         target.write_text(proposed, encoding="utf-8")
