@@ -1,0 +1,99 @@
+name: Hermes smoke test
+
+on:
+  push:
+    branches:
+      - chore/hermes-smoke-test
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Hermes
+        env:
+          HERMES_HOME: ${{ runner.temp }}/hermes-home
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2             https://hermes-agent.nousresearch.com/install.sh             | bash -s -- --skip-setup --non-interactive --skip-browser --skip-computer-use --no-skills --tag v0.21.3
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          mkdir -p "$HERMES_HOME"
+          chmod 700 "$HERMES_HOME"
+
+      - name: Configure Hermes with existing Groq secret
+        env:
+          HERMES_HOME: ${{ runner.temp }}/hermes-home
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${GROQ_API_KEY}"
+          umask 077
+          printf 'GROQ_API_KEY=%s\n' "${GROQ_API_KEY}" > "${HERMES_HOME}/.env"
+          cat > "${HERMES_HOME}/config.yaml" <<'YAML'
+          providers:
+            groq:
+              api: https://api.groq.com/openai/v1
+              key_env: GROQ_API_KEY
+          model:
+            default: llama-3.3-70b-versatile
+            provider: custom:groq
+          YAML
+          chmod 600 "${HERMES_HOME}/.env" "${HERMES_HOME}/config.yaml"
+
+      - name: Run bounded Hermes smoke test
+        env:
+          HERMES_HOME: ${{ runner.temp }}/hermes-home
+        run: |
+          set -euo pipefail
+          hermes --version
+          python - <<'PY'
+          import json
+          import subprocess
+          
+          result = subprocess.run(
+              [
+                  "hermes", "chat",
+                  "--query-file", "-",
+                  "--oneshot",
+                  "--format", "stream-json",
+                  "--toolsets", "web",
+                  "--max-turns", "3",
+                  "--source", "tool",
+                  "--safe-mode",
+                  "--ignore-user-config",
+              ],
+              input=(
+                  "You are a smoke-test advisor. "
+                  "Reply with exactly one short sentence saying "
+                  "'HERMES_SMOKE_OK' and nothing else."
+              ),
+              text=True,
+              capture_output=True,
+              timeout=120,
+              check=False,
+          )
+          if result.returncode != 0:
+              raise SystemExit(f"Hermes exit code {result.returncode}")
+          found = False
+          for line in result.stdout.splitlines():
+              try:
+                  event = json.loads(line)
+              except json.JSONDecodeError:
+                  continue
+              if event.get("type") == "result" and "HERMES_SMOKE_OK" in str(event.get("text", "")):
+                  found = True
+          if not found:
+              raise SystemExit("Hermes smoke marker not found")
+          print("HERMES_SMOKE_PASS")
+          PY
