@@ -46,6 +46,29 @@ def test_new_process_execution_is_blocked():
         assert_no_new_external_capabilities(base, produced, "agents/example.py")
 
 
+def test_new_process_execution_via_existing_alias_is_blocked():
+    base = "import subprocess as sp\n\ndef run():\n    return 1\n"
+    produced = base + "\nsp.run(['echo', 'unsafe'])\n"
+    new = new_external_capabilities(base, produced)
+    assert "call:subprocess.run" in new
+    with pytest.raises(RuntimeError, match="external capability"):
+        assert_no_new_external_capabilities(base, produced, "agents/example.py")
+
+
+def test_new_imported_function_alias_is_blocked():
+    base = "from subprocess import run as execute\n"
+    produced = base + "\nexecute(['echo', 'unsafe'])\n"
+    new = new_external_capabilities(base, produced)
+    assert "call:subprocess.run" in new
+
+
+def test_new_destructive_alias_is_blocked():
+    base = "import os as operating_system\n"
+    produced = base + "\noperating_system.remove(path)\n"
+    new = safety.new_destructive_capabilities(base, produced)
+    assert "call:os.remove" in new
+
+
 def test_fingerprint_is_deterministic():
     source = "import socket\n"
     assert capability_fingerprint(source) == frozenset({"import:socket"})
