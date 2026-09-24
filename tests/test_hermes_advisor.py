@@ -70,3 +70,11 @@ def test_build_self_improvement_prompt_marks_evidence_untrusted():
     )
     assert "untrusted observations" in prompt
     assert "pytest failed twice" in prompt
+
+
+def test_safe_environment_excludes_provider_secrets(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "secret")
+    monkeypatch.setenv("HERMES_HOME", "/tmp/hermes-home")
+    env = advisor._safe_environment()
+    assert "GROQ_API_KEY" not in env
+    assert env["HERMES_HOME"] == "/tmp/hermes-home"
