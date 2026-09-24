@@ -45,7 +45,7 @@ def test_find_scheduled_run_uses_workflow_scoped_schedule_endpoint(monkeypatch):
     # The expected slot is 2026-09-23 03:05 JST, so the example above is outside it.
     assert find_scheduled_run("nonkun12/line-bot", slot) is None
     assert captured["url"].endswith(
-        "/actions/workflows/overnight-development.yml/runs?event=schedule&per_page=20"
+        "/actions/workflows/nightly-autonomous-worker.yml/runs?event=schedule&per_page=20"
     )
 
     slot = datetime(2026, 9, 24, 3, 5, tzinfo=ZoneInfo("Asia/Tokyo")) - __import__("datetime").timedelta(days=1)
