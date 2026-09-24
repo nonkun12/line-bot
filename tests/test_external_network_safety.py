@@ -48,3 +48,41 @@ def test_new_process_execution_is_blocked():
 def test_fingerprint_is_deterministic():
     source = "import socket\n"
     assert capability_fingerprint(source) == frozenset({"import:socket"})
+
+
+def test_new_file_deletion_is_blocked_by_revision_gate(tmp_path, monkeypatch):
+    # The CLI/revision gate treats any deleted repository file as a destructive change.
+    import core.external_network_safety as safety
+
+    commands = [
+        ("git", "diff", "--name-status", "base", "produced", "--"),
+    ]
+
+    class Result:
+        returncode = 0
+        stderr = ""
+        stdout = "D\timportant.py\n"
+
+    monkeypatch.setattr(safety.subprocess, "run", lambda *args, **kwargs: Result())
+    with pytest.raises(RuntimeError, match="deleted files"):
+        safety.check_revision("base", "produced")
+
+
+def test_new_destructive_filesystem_call_is_blocked():
+    base = "def clean(path):\n    return path\n"
+    produced = "import os\n\ndef clean(path):\n    os.remove(path)\n"
+    with pytest.raises(RuntimeError, match="destructive capability"):
+        safety.assert_no_new_destructive_capabilities(base, produced, "agents/example.py")
+
+
+def test_existing_destructive_call_is_not_flagged_as_new():
+    base = "import os\n\ndef clean(path):\n    os.remove(path)\n"
+    produced = base + "\n# harmless local change\n"
+    assert safety.new_destructive_capabilities(base, produced) == ()
+
+
+def test_new_database_drop_is_blocked():
+    base = "def query(sql):\n    return sql\n"
+    produced = 'def query(sql):\n    return "DROP TABLE users"\n'
+    with pytest.raises(RuntimeError, match="destructive capability"):
+        safety.assert_no_new_destructive_capabilities(base, produced, "agents/example.py")
