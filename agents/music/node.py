@@ -19,6 +19,7 @@ class MusicAgent:
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         text = request.message.casefold()
+        result = None
         if any(k in text for k in ("作曲", "作詞", "メロディ", "楽曲制作")):
             mode = "composition"
             result = self.provider.compose(build_composition_request(request.message))
@@ -46,7 +47,15 @@ class MusicAgent:
 
         return AgentResponse(
             text=reply,
-            metadata={"feature": self.name, "status": "online", "mode": mode, "generation_status": result.status, "provider": result.provider},
+            metadata={
+                "feature": self.name,
+                "status": "online",
+                "mode": mode,
+                **({
+                    "generation_status": result.status,
+                    "provider": result.provider,
+                } if result is not None else {}),
+            },
         )
 
 
