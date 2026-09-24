@@ -173,7 +173,7 @@ class ModelManagementPlanner:
             "\"instruction\":\"...\",\"resources\":[\"market-data\"],"
             "\"depends_on\":[],\"priority\":1}"
             "]}\n"
-            "Allowed roles: general, voice, english, news, stocks, market, jobs, music, video.\n"
+            "Allowed roles: general, voice, english, news, stocks, market, jobs, music, video, web.\n"
             f"Primary route: {decision.specialist.value}\n"
             f"Routing candidates (advisory): {_routing_candidates_for_prompt(decision)}\n"
             f"Routing priority (1=highest): {_routing_priority_for_prompt(decision)}\n"
