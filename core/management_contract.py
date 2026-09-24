@@ -26,6 +26,7 @@ class Specialist(str, Enum):
     JOBS = "jobs"
     MUSIC = "music"
     VIDEO = "video"
+    WEB = "web"
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,7 @@ def default_specialist_boundaries() -> tuple[SpecialistBoundary, ...]:
         ),
         SpecialistBoundary(Specialist.MUSIC, ("music_planning", "composition", "playlist")),
         SpecialistBoundary(Specialist.VIDEO, ("video_planning", "script", "storyboard", "editing")),
+        SpecialistBoundary(Specialist.WEB, ("web_planning", "website_generation", "frontend", "static_site")),
     )
 
 

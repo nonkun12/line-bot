@@ -20,6 +20,7 @@ from agents.voice.intents import is_voice_intent
 from agents.jobs.intents import is_job_seeking_intent
 from agents.music.intents import is_music_intent
 from agents.video.intents import is_video_intent
+from agents.web.intents import is_web_intent
 from core.agents import AgentRequest
 from core.distributed_scheduler import DistributedExecutionError
 from core.management_ai import (
@@ -46,6 +47,7 @@ SUPPORTED_MULTI_SPECIALISTS = frozenset(
         AgentRole.JOBS,
         AgentRole.MUSIC,
         AgentRole.VIDEO,
+        AgentRole.WEB,
     }
 )
 
@@ -62,6 +64,7 @@ _ROLE_LABELS = {
     AgentRole.JOBS: "Jobs",
     AgentRole.MUSIC: "Music",
     AgentRole.VIDEO: "Video",
+    AgentRole.WEB: "Web",
 }
 
 
@@ -89,6 +92,8 @@ def specialist_roles_for_message(message: str) -> frozenset[AgentRole]:
         roles.add(AgentRole.MUSIC)
     if is_video_intent(text):
         roles.add(AgentRole.VIDEO)
+    if is_web_intent(text):
+        roles.add(AgentRole.WEB)
     return frozenset(roles)
 
 

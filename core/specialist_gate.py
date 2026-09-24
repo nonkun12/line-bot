@@ -43,6 +43,7 @@ REQUIRED_CAPABILITY: Mapping[Specialist, str] = MappingProxyType(
         Specialist.JOBS: "job_search",
         Specialist.MUSIC: "music_planning",
         Specialist.VIDEO: "video_planning",
+        Specialist.WEB: "web_planning",
     }
 )
 
@@ -57,6 +58,7 @@ DOMAIN_AGENT_NAMES: Mapping[Specialist, str] = MappingProxyType(
         Specialist.JOBS: "job_seeking",
         Specialist.MUSIC: "music",
         Specialist.VIDEO: "video",
+        Specialist.WEB: "web",
     }
 )
 

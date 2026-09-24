@@ -3,8 +3,8 @@ from core.multi_agent import AgentRole
 from core.specialist_executor import ROLE_TO_AGENT_NAME
 
 
-def test_catalog_contains_all_nine_distributed_agents():
-    assert len(DISTRIBUTED_AGENT_CATALOG) == 9
+def test_catalog_contains_all_ten_distributed_agents():
+    assert len(DISTRIBUTED_AGENT_CATALOG) == 10
     assert {item.role for item in DISTRIBUTED_AGENT_CATALOG} == {
         AgentRole.GENERAL,
         AgentRole.VOICE,
@@ -15,6 +15,7 @@ def test_catalog_contains_all_nine_distributed_agents():
         AgentRole.JOBS,
         AgentRole.MUSIC,
         AgentRole.VIDEO,
+        AgentRole.WEB,
     }
 
 
@@ -30,4 +31,5 @@ def test_catalog_lookup_is_exact_and_fail_safe():
     assert jobs.role is AgentRole.JOBS
     assert descriptor_for_key("unknown") is None
     assert descriptor_for_role(AgentRole.VIDEO) is not None
+    assert descriptor_for_role(AgentRole.WEB) is not None
     assert descriptor_for_role("video") is None

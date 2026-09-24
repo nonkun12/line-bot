@@ -34,6 +34,7 @@ def test_default_boundaries_are_explicit() -> None:
         Specialist.JOBS,
         Specialist.MUSIC,
         Specialist.VIDEO,
+        Specialist.WEB,
     )
     assert default_specialist_boundaries()[1].allowed_channels == ("voice",)
 

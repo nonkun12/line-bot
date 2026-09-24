@@ -21,6 +21,7 @@ from agents.voice.node import agent as voice_agent
 from agents.jobs.node import agent as job_seeking_agent
 from agents.music.node import agent as music_agent
 from agents.video.node import agent as video_agent
+from agents.web.node import agent as web_agent
 from core.legacy_adapter import build_legacy_registry
 from core.agents import AgentRegistry
 
@@ -53,6 +54,7 @@ LEGACY_GRAPH_NODES: Mapping[str, str] = {
     "job_seeking": "jobs_agent",
     "music": "music_agent",
     "video": "video_agent",
+    "web": "web_agent",
     "fallback": "fallback_agent",
 }
 
@@ -71,4 +73,5 @@ def build_core_agent_registry() -> AgentRegistry:
     registry.register(job_seeking_agent)
     registry.register(music_agent)
     registry.register(video_agent)
+    registry.register(web_agent)
     return registry
