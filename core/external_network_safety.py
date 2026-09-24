@@ -81,6 +81,36 @@ DANGEROUS_CALL_PREFIXES = (
 URL_PATTERN = re.compile(r"^https?://[^\\s\"'<>]+$", re.IGNORECASE)
 SAFETY_GUARD_PATH = "core/external_network_safety.py"
 
+DESTRUCTIVE_CALLS = frozenset(
+    {
+        "os.remove",
+        "os.unlink",
+        "os.rmdir",
+        "os.removedirs",
+        "os.rename",
+        "os.replace",
+        "shutil.rmtree",
+        "shutil.move",
+        "pathlib.Path.unlink",
+        "pathlib.Path.rmdir",
+        "pathlib.Path.rename",
+        "pathlib.Path.replace",
+        "signal.kill",
+        "sys.exit",
+    }
+)
+
+DESTRUCTIVE_CALL_PREFIXES = (
+    "shutil.rmtree",
+    "os.remove",
+    "os.unlink",
+    "os.rmdir",
+    "os.removedirs",
+    "signal.",
+)
+
+MAX_DELETED_FILES = 0
+
 
 def _qualified_name(node: ast.AST) -> str:
     if isinstance(node, ast.Name):
