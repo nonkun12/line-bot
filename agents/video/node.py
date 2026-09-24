@@ -20,6 +20,13 @@ class VideoAgent:
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         plan = build_initial_plan(request.message)
+        message = request.message.strip().lower()
+        if "編集" in message:
+            mode = "editing"
+        elif "台本" in message or "シナリオ" in message:
+            mode = "script"
+        else:
+            mode = "production_plan"
 
         scene_lines = [
             f"{scene.scene_id}: {scene.narration} / {scene.duration_seconds}s"
