@@ -33,13 +33,14 @@ class VideoAgent:
             for scene in plan.scenes
         ]
         reply = (
-            "🎬 Video Agentを起動しました.\n\n"
+            "🎬 Video Agent（映像AI）を起動しました.\n\n"
             "文章を映像制作向けのシーン構成へ変換しました。\n"
             f"タイトル: {plan.title}\n"
             f"シーン数: {len(plan.scenes)}\n"
             f"画角: {plan.aspect_ratio}\n\n"
             + "\n".join(scene_lines)
             + "\n\n"
+            ("実編集・書き出し・配信連携はまだ接続していません。\n" if mode == "editing" else "")
             "次段階では各シーンの画像生成→動画生成→音声/編集へ接続できます。"
             "外部生成プロバイダ未設定時は安全に計画段階で停止します。"
         )
