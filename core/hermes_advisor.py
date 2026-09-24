@@ -33,6 +33,7 @@ def _safe_environment() -> dict[str, str]:
         "TERM",
         "SHELL",
         "TMPDIR",
+        "HERMES_HOME",
     }
     return {
         key: value
