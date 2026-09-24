@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+import core.external_network_safety as safety
 from core.external_network_safety import (
     assert_no_new_external_capabilities,
     capability_fingerprint,
@@ -52,8 +53,6 @@ def test_fingerprint_is_deterministic():
 
 def test_new_file_deletion_is_blocked_by_revision_gate(tmp_path, monkeypatch):
     # The CLI/revision gate treats any deleted repository file as a destructive change.
-    import core.external_network_safety as safety
-
     commands = [
         ("git", "diff", "--name-status", "base", "produced", "--"),
     ]
