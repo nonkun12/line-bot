@@ -29,7 +29,7 @@ jobs:
           HERMES_HOME: ${{ runner.temp }}/hermes-home
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --proto '=https' --tlsv1.2             https://hermes-agent.nousresearch.com/install.sh             | bash -s -- --skip-setup --non-interactive --skip-browser --skip-computer-use --no-skills --tag v0.21.3
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2             https://hermes-agent.nousresearch.com/install.sh             | bash -s -- --skip-setup --non-interactive --skip-browser --skip-computer-use --no-skills --commit 9b419a2d3c2657c192008e732149d61170b32c01
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           mkdir -p "$HERMES_HOME"
           chmod 700 "$HERMES_HOME"
