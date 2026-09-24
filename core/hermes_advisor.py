@@ -87,7 +87,7 @@ def run_hermes_advisor(
             "--source",
             "tool",
             "--ignore-user-config",
-            "--ignore-rules",
+            "--safe-mode",
             "--quiet",
         ],
         input=normalized,
