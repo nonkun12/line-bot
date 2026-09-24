@@ -58,6 +58,10 @@ DISTRIBUTED_AGENT_CATALOG: tuple[DistributedAgentDescriptor, ...] = (
         AgentRole.VIDEO, "video", "video", "映像AI", "🎬",
         "動画企画・台本・絵コンテ・編集設計。動画生成・書き出しは未接続", "video_planning",
     ),
+    DistributedAgentDescriptor(
+        AgentRole.WEB, "web", "web", "Web制作AI", "🌐",
+        "Webページ・ホームページ・LPの構成/静的サイト生成", "web_planning",
+    ),
 )
 
 
