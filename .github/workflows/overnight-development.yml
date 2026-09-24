@@ -35,6 +35,28 @@ jobs:
         with:
           python-version: "3.13"
 
+      # Hermes stays opt-in. Installation is isolated to the ephemeral runner and
+      # does not activate the advisor unless the repository variable is explicitly true.
+      - name: Prepare Hermes advisor (opt-in)
+        if: vars.HERMES_ADVISOR_ENABLED == 'true'
+        env:
+          HERMES_HOME: ${{ runner.temp }}/hermes-home
+          HERMES_OPENROUTER_API_KEY: ${{ secrets.HERMES_OPENROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --skip-setup --tag v0.21.3
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          mkdir -p "$HERMES_HOME"
+          chmod 700 "$HERMES_HOME"
+          if [ -z "${HERMES_OPENROUTER_API_KEY:-}" ]; then
+            echo "Hermes advisor is enabled but HERMES_OPENROUTER_API_KEY is missing; leaving advisor unavailable."
+            exit 0
+          fi
+          umask 077
+          printf 'OPENROUTER_API_KEY=%s\n' "$HERMES_OPENROUTER_API_KEY" > "$HERMES_HOME/.env"
+          hermes --version
+          hermes doctor || true
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
