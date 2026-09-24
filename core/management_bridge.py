@@ -281,8 +281,8 @@ def run_management_request(
     parts: list[str] = []
     for round_run in cycle.rounds:
         for observation in round_run.observations:
-        label = _ROLE_LABELS.get(observation.role, observation.role.value)
-        parts.append("【" + label + "】\n" + observation.summary)
+            label = _ROLE_LABELS.get(observation.role, observation.role.value)
+            parts.append("【" + label + "】\n" + observation.summary)
 
     return "\n\n".join(parts) if parts else None
 
