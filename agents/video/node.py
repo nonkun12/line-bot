@@ -48,7 +48,7 @@ class VideoAgent:
             metadata={
                 "feature": self.name,
                 "status": "online",
-                "mode": "production_plan",
+                "mode": mode,
                 "scene_count": len(plan.scenes),
                 "provider_generation": "fail_closed",
             },
