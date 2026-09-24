@@ -1,7 +1,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW = ROOT / ".github" / "workflows" / "overnight-development.yml"
+WORKFLOW = ROOT / ".github" / "workflows" / "nightly-autonomous-worker.yml"
 
 def test_autonomous_workflow_keeps_jst_schedule_slots():
     text = WORKFLOW.read_text(encoding="utf-8")
@@ -37,11 +37,10 @@ def test_autonomous_workflow_blocks_existing_branch_but_allows_new_branch():
     assert 'exit 1' in guard
 
 
-def test_legacy_nightly_workflow_has_no_automatic_schedule():
-    legacy = ROOT / ".github" / "workflows" / "nightly-autonomous-worker.yml"
-    text = legacy.read_text(encoding="utf-8")
+def test_nightly_autonomous_workflow_has_automatic_schedule():
+    text = WORKFLOW.read_text(encoding="utf-8")
     schedule_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
-    assert "schedule:" not in schedule_block
+    assert "schedule:" in schedule_block
 
 
 def test_autonomous_workflow_has_final_safety_gate_before_pr_creation():
@@ -60,7 +59,7 @@ def test_autonomous_workflow_does_not_hardcode_one_development_target():
 def test_autonomous_workflow_persists_self_improvement_history_between_runs():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "Find previous successful autonomous run" in text
-    assert "gh run list --workflow overnight-development.yml --branch main --status success --limit 1" in text
+    assert "gh run list --workflow nightly-autonomous-worker.yml --branch main --status success --limit 1" in text
     assert "--json databaseId" in text
     assert "--jq" in text
     assert "Restore previous self-improvement history" in text
@@ -73,5 +72,5 @@ def test_autonomous_workflow_persists_self_improvement_history_between_runs():
     assert "name: autonomous-self-improvement-state" in text
     assert "if: always()" in text
     restore = text[text.index("Restore previous self-improvement history"):text.index("Record autonomous starting commit")]
-    assert "workflow: overnight-development.yml" not in restore
+    assert "workflow: nightly-autonomous-worker.yml" not in restore
     assert "branch: main" not in restore
