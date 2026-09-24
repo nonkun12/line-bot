@@ -22,6 +22,10 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from core.external_network_safety import (
+    assert_no_new_destructive_capabilities,
+    assert_no_new_external_capabilities,
+)
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
 
 ROOT = _ROOT
@@ -37,6 +41,7 @@ PROTECTED_PATHS = {
     "scripts/line_development_worker.py",
     "scripts/line_development_worker_safe.py",
     "scripts/line_development_worker_v2.py",
+    "core/external_network_safety.py",
     "line_development.py",
     "git_safety.py", "patch_validator.py", "render_client.py",
 }
@@ -264,7 +269,18 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
         count = text.count(change["old"])
         if count != 1:
             return False, f"anchor_count_{change['file']}:{count}", touched
-        target.write_text(text.replace(change["old"], change["new"], 1), encoding="utf-8")
+        proposed = text.replace(change["old"], change["new"], 1)
+        try:
+            baseline_result = run(["git", "show", f"HEAD:{change['file']}"], timeout=30)
+            if baseline_result.returncode == 0:
+                baseline = baseline_result.stdout
+            else:
+                baseline = ""
+            assert_no_new_external_capabilities(baseline, proposed, change["file"])
+            assert_no_new_destructive_capabilities(baseline, proposed, change["file"])
+        except Exception as exc:
+            return False, f"external_capability_safety:{type(exc).__name__}:{exc}", touched
+        target.write_text(proposed, encoding="utf-8")
         touched.append(change["file"])
     return True, "applied", touched
 

@@ -58,6 +58,18 @@ jobs:
           python scripts/run_guarded_runtime.py
           echo "AUTONOMOUS_SUMMARY_PATH=${RUNNER_TEMP}/autonomous_run_summary.json" >> "$GITHUB_ENV"
 
+      - name: External Capability Safety Gate
+        if: success()
+        run: |
+          set -euo pipefail
+          PRODUCED_SHA="$(git rev-parse HEAD)"
+          if ! python -m core.external_network_safety "$AUTONOMOUS_START_SHA" "$PRODUCED_SHA"; then
+            echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+            echo "AUTONOMOUS_BLOCKED_FAILED_REASON=external_capability_safety_gate" >> "$GITHUB_ENV"
+            exit 1
+          fi
+          echo "AUTONOMOUS_EXTERNAL_CAPABILITY_GATE=PASS" >> "$GITHUB_ENV"
+
       - name: Validate autonomous result and Safety Gate
         if: success()
         run: |
