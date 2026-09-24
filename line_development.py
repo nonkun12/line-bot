@@ -10,7 +10,7 @@ import httpx
 
 from core.task_routing import TaskClassifier, TaskMode
 
-_DEV_PREFIX = re.compile(r"^(?:開発|dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
+_DEV_PREFIX = re.compile(r"^(?:/dev|開発|dev)\s*:?\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
 _MAX_INSTRUCTION_LENGTH = 2000
 _WORKFLOW_FILE = "line-development-dispatch.yml"
 _DISPATCH_TIMEOUT_SECONDS = 10.0
