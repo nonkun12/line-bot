@@ -46,6 +46,7 @@ DANGEROUS_CALLS = frozenset(
         "ctypes.CDLL",
         "ctypes.PyDLL",
         "ctypes.WinDLL",
+        "importlib.import_module",
         "os.execv",
         "os.execve",
         "os.execvp",
@@ -78,7 +79,7 @@ DANGEROUS_CALL_PREFIXES = (
     "subprocess.",
 )
 
-URL_PATTERN = re.compile(r"^https?://[^\\s\"'<>]+$", re.IGNORECASE)
+URL_PATTERN = re.compile(r"^https?://[^\\s"'<>]+$", re.IGNORECASE)
 SAFETY_GUARD_PATH = "core/external_network_safety.py"
 
 DESTRUCTIVE_CALLS = frozenset(
@@ -121,9 +122,39 @@ def _qualified_name(node: ast.AST) -> str:
     return ""
 
 
+def _import_bindings(tree: ast.AST) -> dict[str, str]:
+    """Map local import bindings back to their canonical module/function paths."""
+    bindings: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".", 1)[0]
+                bindings[alias.asname or root] = alias.name if alias.asname else root
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if node.level or not module:
+                continue
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                bindings[alias.asname or alias.name] = f"{module}.{alias.name}"
+    return bindings
+
+
+def _canonical_name(name: str, bindings: dict[str, str]) -> str:
+    if not name:
+        return ""
+    root, dot, suffix = name.partition(".")
+    bound = bindings.get(root)
+    if not bound:
+        return name
+    return f"{bound}.{suffix}" if dot else bound
+
+
 def capability_fingerprint(source: str) -> frozenset[str]:
     """Return deterministic capabilities observable from Python syntax."""
     tree = ast.parse(source)
+    bindings = _import_bindings(tree)
     capabilities: set[str] = set()
 
     for node in ast.walk(tree):
@@ -139,7 +170,7 @@ def capability_fingerprint(source: str) -> frozenset[str]:
             if root in DANGEROUS_MODULES or module in DANGEROUS_MODULES:
                 capabilities.add(f"import:{module}")
         elif isinstance(node, ast.Call):
-            name = _qualified_name(node.func)
+            name = _canonical_name(_qualified_name(node.func), bindings)
             if name in DANGEROUS_CALLS or any(
                 name.startswith(prefix) for prefix in DANGEROUS_CALL_PREFIXES
             ):
@@ -155,11 +186,12 @@ def capability_fingerprint(source: str) -> frozenset[str]:
 def destructive_capability_fingerprint(source: str) -> frozenset[str]:
     """Return deterministic destructive capabilities observable from Python syntax."""
     tree = ast.parse(source)
+    bindings = _import_bindings(tree)
     capabilities: set[str] = set()
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
-            name = _qualified_name(node.func)
+            name = _canonical_name(_qualified_name(node.func), bindings)
             if name in DESTRUCTIVE_CALLS or any(
                 name.startswith(prefix) for prefix in DESTRUCTIVE_CALL_PREFIXES
             ):
