@@ -75,3 +75,12 @@ def test_autonomous_workflow_persists_self_improvement_history_between_runs():
     restore = text[text.index("Restore previous self-improvement history"):text.index("Record autonomous starting commit")]
     assert "workflow: overnight-development.yml" not in restore
     assert "branch: main" not in restore
+
+
+def test_autonomous_workflow_is_schedule_only_not_main_push_trigger():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    event_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
+    assert "schedule:" in event_block
+    assert "workflow_dispatch:" in event_block
+    assert "push:" not in event_block
+    assert "branches:" not in event_block
