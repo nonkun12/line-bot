@@ -1,9 +1,6 @@
 name: Autonomous Development Loop
 
 on:
-  push:
-    branches:
-      - main
   schedule:
     - cron: "5 3 * * *"   # 03:05 JST
       timezone: "Asia/Tokyo"
