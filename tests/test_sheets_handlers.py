@@ -35,6 +35,8 @@ def test_handle_sheets_message_read():
 
 def test_handle_sheets_message_append():
     client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["テストデータ"]]
 
     result = handle_sheets_message(
         "シートに記録 テストデータ",
@@ -55,6 +57,8 @@ def test_handle_sheets_message_append_legacy_prefix_still_works():
     引き続き正常に動作すること。
     """
     client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["テストデータ"]]
 
     result = handle_sheets_message(
         "シートに記録 テストデータ",
@@ -63,7 +67,7 @@ def test_handle_sheets_message_append_legacy_prefix_still_works():
     )
 
     assert result["success"] is True
-    assert result["text"] == "Google Sheetsに記録しました：テストデータ"
+    assert result["text"] == "Google Sheetsに記録しました（書き込み確認済み）：テストデータ"
     client.append_row.assert_called_once_with(
         "A:A",
         ["テストデータ"],
@@ -76,6 +80,8 @@ def test_handle_sheets_message_append_natural_phrase_record():
     本文だけを抽出して保存すること(今回の回帰テスト)。
     """
     client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["テスト1"]]
 
     result = handle_sheets_message(
         "シートにテスト1を記録",
@@ -84,7 +90,7 @@ def test_handle_sheets_message_append_natural_phrase_record():
     )
 
     assert result["success"] is True
-    assert result["text"] == "Google Sheetsに記録しました：テスト1"
+    assert result["text"] == "Google Sheetsに記録しました（書き込み確認済み）：テスト1"
     client.append_row.assert_called_once_with(
         "A:A",
         ["テスト1"],
@@ -97,6 +103,8 @@ def test_handle_sheets_message_append_natural_phrase_record_te_form():
     テ形が付いても本文だけを抽出して保存すること。
     """
     client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["テスト2"]]
 
     result = handle_sheets_message(
         "シートにテスト2を記録して",
@@ -105,7 +113,7 @@ def test_handle_sheets_message_append_natural_phrase_record_te_form():
     )
 
     assert result["success"] is True
-    assert result["text"] == "Google Sheetsに記録しました：テスト2"
+    assert result["text"] == "Google Sheetsに記録しました（書き込み確認済み）：テスト2"
     client.append_row.assert_called_once_with(
         "A:A",
         ["テスト2"],
@@ -115,6 +123,8 @@ def test_handle_sheets_message_append_natural_phrase_record_te_form():
 def test_handle_sheets_message_append_natural_phrase_add():
     """「シートに<本文>を追加」のような自然な語順にも対応すること。"""
     client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["テスト3"]]
 
     result = handle_sheets_message(
         "シートにテスト3を追加",
@@ -132,6 +142,8 @@ def test_handle_sheets_message_append_natural_phrase_add():
 def test_handle_sheets_message_append_natural_phrase_name_te_form():
     """「シートに名前を記録して」のような一般的な自然文にも対応すること。"""
     client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["名前"]]
 
     result = handle_sheets_message(
         "シートに名前を記録して",
@@ -149,6 +161,8 @@ def test_handle_sheets_message_append_natural_phrase_name_te_form():
 def test_handle_sheets_message_append_natural_phrase_shopping_list():
     """「シートに買い物リストを追加」のような自然文にも対応すること。"""
     client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["買い物リスト"]]
 
     result = handle_sheets_message(
         "シートに買い物リストを追加",
@@ -166,6 +180,8 @@ def test_handle_sheets_message_append_natural_phrase_shopping_list():
 def test_handle_sheets_message_append_natural_phrase_google_sheets():
     """「Google Sheetsに」始まりの自然文でも本文だけを抽出すること。"""
     client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["会議メモ"]]
 
     result = handle_sheets_message(
         "Google Sheetsに会議メモを記録して",
@@ -205,6 +221,8 @@ def test_handle_sheets_message_append_content_containing_keyword_is_known_limita
     完全な自然言語解析ではないことをテストで明示しておく。
     """
     client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["来週の"]]
 
     result = handle_sheets_message(
         "シートに来週の記録を追加して",
@@ -439,6 +457,8 @@ def test_handle_sheets_message_append_still_works_after_read_expansion():
     引き続き正常に動作することを確認する回帰テスト。
     """
     client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["テスト1"]]
 
     result = handle_sheets_message(
         "シートにテスト1を記録",
@@ -447,7 +467,7 @@ def test_handle_sheets_message_append_still_works_after_read_expansion():
     )
 
     assert result["success"] is True
-    assert result["text"] == "Google Sheetsに記録しました：テスト1"
+    assert result["text"] == "Google Sheetsに記録しました（書き込み確認済み）：テスト1"
     client.append_row.assert_called_once_with(
         "A:A",
         ["テスト1"],
