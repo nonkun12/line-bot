@@ -132,6 +132,8 @@ def test_sheets_agent_node_write_and_read_still_work_end_to_end():
     assert supervised_write_state["next_agent"] == "sheets"
 
     write_client = MagicMock()
+    write_client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    write_client.read_rows.return_value = [["テスト1"]]
 
     with patch(
         "agents.sheets.node.GoogleSheetsClient",
@@ -141,8 +143,9 @@ def test_sheets_agent_node_write_and_read_still_work_end_to_end():
 
     write_result = write_result_state["agent_results"]["sheets"]
     assert write_result["success"] is True
-    assert write_result["text"] == "Google Sheetsに記録しました：テスト1"
+    assert write_result["text"] == "Google Sheetsに記録しました（書き込み確認済み）：テスト1"
     write_client.append_row.assert_called_once_with("A:A", ["テスト1"])
+    write_client.read_rows.assert_called_once_with("Sheet1!A5:A5")
 
     # 読み取り: 「シートを読んで」
     read_state = {
@@ -195,3 +198,24 @@ def test_classify_intent_routes_sheets_before_note_and_memory_generic_keywords()
 
     for message in messages:
         assert classify_intent(message) == "sheets"
+
+
+def test_sheets_append_fails_closed_when_read_back_does_not_match():
+    client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["別の値"]]
+
+    result = handle_sheets_message("シートにテスト1を記録", "user123", client)
+
+    assert result["success"] is False
+    assert "記録成功とは扱いません" in result["text"]
+
+
+def test_sheets_append_fails_closed_when_api_response_has_no_updated_range():
+    client = MagicMock()
+    client.append_row.return_value = {"updates": {}}
+
+    result = handle_sheets_message("シートにテスト1を記録", "user123", client)
+
+    assert result["success"] is False
+    client.read_rows.assert_not_called()
