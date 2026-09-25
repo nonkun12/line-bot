@@ -32,7 +32,7 @@ def test_is_sheets_intent_still_matches_existing_fixed_phrases():
         assert is_sheets_intent(message) is True
 
 
-def test_is_sheets_intent_matches_natural_language_analysis_requests():
+def test_is_sheets_intent_matches_standalone_english_sheets():\n    messages = [\n        "Sheetsテスト",\n        "Sheets test",\n        "【Sheetsテスト】2026-09-25 15:00 — 書き込み後に読み返して内容一致を確認",\n        "SHEETSにテスト結果を書いて",\n    ]\n\n    for message in messages:\n        assert is_sheets_intent(message) is True\n\n\ndef test_classify_intent_routes_sheets_test_with_datetime_to_sheets():\n    message = "【Sheetsテスト】2026-09-25 15:00 — 書き込み後に読み返して内容一致を確認"\n    assert classify_intent(message) == "sheets"\n\n\ndef test_is_sheets_intent_matches_natural_language_analysis_requests():
     messages = [
         "シートの内容を見て、重要な予定を教えて",
         "シートの内容を分析して",
