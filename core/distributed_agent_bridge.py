@@ -1,11 +1,15 @@
 """Bridge existing channel agents into the provider-neutral distributed runtime."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
 
 from .agents import Agent, AgentRequest
-from .distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG
+from .distributed_execution_artifact import ExecutionArtifactProvider
+from .distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG, descriptor_for_role
+from .distributed_agent_versions import DistributedAgentVersionRegistry
 from .distributed_domain_executor import HandlerExecutor
+from .distributed_execution_gate import require_exact_execution_identity
 from .distributed_executor_registry import DistributedExecutorRegistry
 from .multi_agent import AgentRole, AgentTask
 from .specialist_gate import assert_specialist_approved
@@ -18,8 +22,18 @@ _AGENT_NAMES: Mapping[AgentRole, str] = {
 }
 
 
-def build_agent_registry(agent_registry) -> DistributedExecutorRegistry:
-    """Adapt explicitly registered Core agents without creating providers."""
+def build_agent_registry(
+    agent_registry,
+    *,
+    version_registry: DistributedAgentVersionRegistry,
+    artifact_provider: ExecutionArtifactProvider,
+) -> DistributedExecutorRegistry:
+    """Adapt explicitly registered agents behind an exact identity gate.
+
+    Both the immutable execution artifact and version registry are mandatory.
+    There is deliberately no legacy bypass: execution must prove the exact
+    version/SHA/catalog identity immediately before the agent handler runs.
+    """
     registry = DistributedExecutorRegistry()
     for role, agent_name in _AGENT_NAMES.items():
         try:
@@ -28,19 +42,42 @@ def build_agent_registry(agent_registry) -> DistributedExecutorRegistry:
             continue
         if agent is None:
             continue
-        registry.register(role, HandlerExecutor(_build_handler(role, agent)))
+        registry.register(
+            role,
+            HandlerExecutor(
+                _build_handler(
+                    role,
+                    agent,
+                    version_registry=version_registry,
+                    artifact_provider=artifact_provider,
+                )
+            ),
+        )
     return registry
 
 
-def _build_handler(role: AgentRole, agent: Agent):
+def _build_handler(
+    role: AgentRole,
+    agent: Agent,
+    *,
+    version_registry: DistributedAgentVersionRegistry,
+    artifact_provider: ExecutionArtifactProvider,
+):
     def handle(task: AgentTask) -> str:
-        # Last-mile choke point: the role that is about to execute must be the
-        # role this executor was registered for, and it must be approved.
+        # Last-mile choke point: role + exact immutable execution identity
+        # must pass before any specialist agent code is invoked.
         if task.role is not role:
             raise RuntimeError(
                 f"task role {task.role.value} does not match executor role {role.value}"
             )
+
+        descriptor = descriptor_for_role(role)
+        if descriptor is None:
+            raise RuntimeError(f"no distributed catalog descriptor for role: {role.value}")
+        artifact = artifact_provider.get(descriptor.key)
+        require_exact_execution_identity(version_registry, artifact.identity)
         assert_specialist_approved(task.role)
+
         request = AgentRequest(
             user_id=task.task_id,
             message=task.instruction,
