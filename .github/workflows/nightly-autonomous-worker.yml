@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   autonomous-development:
+    if: vars.AUTONOMOUS_DEV_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
