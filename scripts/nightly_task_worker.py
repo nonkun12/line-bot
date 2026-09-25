@@ -5,14 +5,18 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from groq import Groq
 from core.execution_safety import GitWorktreeSafetyGate
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
 
-ROOT = Path(__file__).resolve().parents[1]
 MAX_FILES = 4
 MAX_FILE_CHARS = 9000
 MAX_PATCH_CHARS = 18000
