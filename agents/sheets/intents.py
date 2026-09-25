@@ -2,6 +2,9 @@
 Google Sheets Agent intent detection
 """
 
+import re
+
+
 def is_sheets_intent(message: str) -> bool:
     if not message:
         return False
@@ -19,6 +22,11 @@ def is_sheets_intent(message: str) -> bool:
     ]
 
     if any(keyword in message for keyword in keywords):
+        return True
+
+    # Treat standalone English "Sheets" as a Sheets intent, including
+    # Japanese-adjacent forms such as "Sheetsテスト".
+    if re.search(r"(?i)(?<![A-Za-z0-9_])sheets(?![A-Za-z0-9_])", message):
         return True
 
     if "シート" in message and "削除" in message:
