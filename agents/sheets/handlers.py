@@ -316,10 +316,31 @@ def handle_sheets_message(
                 "success": False,
             }
 
-        client.append_row("A:A", [content])
+        try:
+            append_result = client.append_row("A:A", [content])
+            updated_range = (append_result or {}).get("updates", {}).get("updatedRange")
+            if not updated_range:
+                return {
+                    "text": "Google Sheetsへの書き込み結果を確認できませんでした。記録成功とは扱いません。",
+                    "success": False,
+                }
+
+            # Verify the exact range returned by the append API. Do not report
+            # success merely because the write call returned without exception.
+            verified_rows = client.read_rows(updated_range)
+            if not verified_rows or not verified_rows[0] or str(verified_rows[0][0]) != content:
+                return {
+                    "text": "Google Sheetsへの書き込み後の確認に失敗しました。記録成功とは扱いません。",
+                    "success": False,
+                }
+        except Exception:
+            return {
+                "text": "Google Sheetsへの記録または確認に失敗しました。",
+                "success": False,
+            }
 
         return {
-            "text": f"Google Sheetsに記録しました：{content}",
+            "text": f"Google Sheetsに記録しました（書き込み確認済み）：{content}",
             "success": True,
         }
 
