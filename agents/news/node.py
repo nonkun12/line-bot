@@ -41,7 +41,15 @@ class AINewsAgent:
         # Remove stock-specific wording when AI NEWS is requested together with a stock quote.
         normalized = re.sub(r"(?:銘柄|ticker|コード)\s*[:：]?\s*[A-Za-z]{1,6}[.]?[A-Za-z]{0,3}|(?:銘柄|ticker|コード)\s*[:：]?\s*\d{4}", "", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"(?:株価|株|price)", "", normalized, flags=re.IGNORECASE)
-        normalized = re.sub(r"(?:教えて|見せて|ください|お願い|最新|ニュース|を|が)+$", "", normalized).strip()
+        # Keep the RSS query focused on the requested subject. Compound requests
+        # such as 「AI NEWSとトヨタ（7203）の最新情報を調べて」 must not send the
+        # entire assistant instruction to the news provider.
+        normalized = re.sub(r"[（(]\s*\d{4}\s*[）)]", "", normalized)
+        normalized = re.sub(
+            r"(?:結果|実行したAIの役割|役割|最新情報|最新|情報|調べて|教えて|見せて|ください|お願い|ニュース|を|が|と)+$",
+            "",
+            normalized,
+        ).strip()
         normalized = re.sub(r"^[\sと、,・&]+|[\sと、,・&]+$", "", normalized).strip()
         return normalized or "artificial intelligence"
 
