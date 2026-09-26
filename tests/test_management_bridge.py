@@ -655,7 +655,8 @@ def test_run_management_request_bounds_followup_feedback_through_bridge(monkeypa
 
     assert reply is not None
     assert len(planner.feedback) == 2
-    assert len(planner.feedback[1]) == 1
-    assert len(planner.feedback[1][0]) <= 1800
-    assert "x" * 1800 in planner.feedback[1][0]
-    assert "x" * 1801 not in planner.feedback[1][0]
+    assert len(planner.feedback[1]) == 2
+    news_feedback = next(item for item in planner.feedback[1] if "task_id=news-first" in item)
+    assert len(news_feedback) <= 1800
+    assert "x" * 1700 in news_feedback
+    assert "x" * 1801 not in news_feedback
