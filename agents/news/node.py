@@ -47,7 +47,7 @@ class AINewsAgent:
         normalized = re.sub(r"[（(]\s*\d{4}\s*[）)]", "", normalized)
         normalized = re.sub(r"[、,]\s*(?:結果|実行したAIの役割|役割).*?[。.]?$", "", normalized)
         normalized = re.sub(
-            r"(?:最新情報|最新|情報|調べて|教えて|見せて|ください|お願い|ニュース|を|が|と)+[。.]?$",
+            r"(?:最新情報|最新|情報|調べて|教えて|見せて|ください|お願い|ニュース|を|が|と|の)+[。.]?$",
             "",
             normalized,
         ).strip()
