@@ -137,6 +137,7 @@ def test_append_once_rejects_readback_mismatch():
 def test_record_autonomous_run_retries_once_after_constructor_failure(monkeypatch):
     record = make_record("789")
     configure_record_env(monkeypatch, record)
+    expected = ledger.build_record_from_env()
     calls = []
 
     class Factory:
@@ -144,7 +145,7 @@ def test_record_autonomous_run_retries_once_after_constructor_failure(monkeypatc
             calls.append(len(calls))
             if len(calls) == 1:
                 raise RuntimeError("temporary Sheets failure")
-            return FakeClient(readback=[record.values()])
+            return FakeClient(readback=[expected.values()])
 
     monkeypatch.setattr(ledger, "GoogleSheetsClient", Factory())
     assert ledger.record_autonomous_run() is True
@@ -154,6 +155,7 @@ def test_record_autonomous_run_retries_once_after_constructor_failure(monkeypatc
 def test_record_autonomous_run_deduplicates_after_append_then_client_error(monkeypatch):
     record = make_record("790")
     configure_record_env(monkeypatch, record)
+    expected = ledger.build_record_from_env()
     shared_rows = []
 
     class Client:
@@ -172,7 +174,7 @@ def test_record_autonomous_run_deduplicates_after_append_then_client_error(monke
             return [shared_rows[0]] if shared_rows else []
 
         def append_row(self, *args):
-            shared_rows.append(record.values())
+            shared_rows.append(expected.values())
             if self.fail_after_append:
                 raise RuntimeError("response lost after server-side append")
             return {
@@ -193,4 +195,4 @@ def test_record_autonomous_run_deduplicates_after_append_then_client_error(monke
     monkeypatch.setattr(ledger, "GoogleSheetsClient", Factory())
     assert ledger.record_autonomous_run() is False
     assert len(calls) == 2
-    assert shared_rows == [record.values()]
+    assert shared_rows == [expected.values()]
