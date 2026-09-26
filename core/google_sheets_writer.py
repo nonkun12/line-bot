@@ -40,9 +40,15 @@ class GoogleSheetsWriter:
                 credentials_file, scopes=SCOPES
             )
         service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+
+        # The existing Sheets Agent addresses the configured spreadsheet by
+        # column-only ranges (A:A / A:Z), which target the spreadsheet's first
+        # sheet. Keep the audit writer consistent instead of assuming a tab
+        # named "DevelopmentAudit". A named range can still be supplied when a
+        # dedicated audit tab is intentionally configured.
         range_name = (
-            os.environ.get("GOOGLE_SHEETS_AUDIT_RANGE", "DevelopmentAudit!A:I").strip()
-            or "DevelopmentAudit!A:I"
+            os.environ.get("GOOGLE_SHEETS_AUDIT_RANGE", "A:I").strip()
+            or "A:I"
         )
         return cls(service, spreadsheet_id, range_name)
 
