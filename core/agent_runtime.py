@@ -184,7 +184,8 @@ class MultiAgentRuntime:
                 evidence,
             )
             advice = run_hermes_advisor(prompt)
-        except (OSError, ValueError, TypeError):
+        except Exception:
+            # Hermes is advisory-only: an advisor outage must never block development.
             return None
         if not advice:
             return None
