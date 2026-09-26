@@ -167,7 +167,7 @@ class _CandidateRestrictedPlanner(ManagementPlanner):
             (role for role in self._allowed_roles if role not in planned_roles),
             key=lambda role: role.value,
         )
-        if missing_roles and not is_follow_up:
+        if missing_roles and not is_follow_up and not plan.continue_after_round:
             # On the initial round, require every deterministic specialist domain
             # detected from the user's message. Follow-up rounds may legitimately
             # narrow the work to only the specialists needed for the next step.
