@@ -128,7 +128,6 @@ def build_record_from_env() -> AutonomousRunRecord:
     hermes_invoked = os.getenv("HERMES_ADVISOR_INVOKED", "false").strip().lower() == "true"
     hermes_used = os.getenv("HERMES_ADVISOR_USED", "false").strip().lower() == "true"
     hermes_reason = os.getenv("HERMES_ADVISOR_REASON", "").strip()
-    hermes_excerpt = os.getenv("HERMES_ADVISORY_EXCERPT", "").strip()
     if hermes_invoked:
         action = "Hermes advisor invoked"
         if hermes_used:
@@ -136,8 +135,6 @@ def build_record_from_env() -> AutonomousRunRecord:
         elif hermes_reason:
             action += f"; not used: {hermes_reason}"
         task_summary = f"{task_summary} [{action}]"
-        if hermes_excerpt:
-            task_summary += f" advice={hermes_excerpt}"
     else:
         task_summary = f"{task_summary} [Hermes advisor not invoked]"
     agent = os.getenv("AUTONOMOUS_AGENT", "ManagementAI")
