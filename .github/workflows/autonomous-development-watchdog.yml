@@ -43,7 +43,7 @@ jobs:
           GOOGLE_SHEETS_AUDIT_RANGE: ${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
         run: |
           set +e
-          python scripts/check_autonomous_loop_watchdog.py | tee watchdog_result.json
+          PYTHONPATH=. python scripts/check_autonomous_loop_watchdog.py | tee watchdog_result.json
           RC=${PIPESTATUS[0]}
           echo "watchdog exit code=${RC}"
           {
