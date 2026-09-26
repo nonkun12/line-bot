@@ -480,3 +480,179 @@ def test_run_management_request_closed_loop_never_exceeds_two_rounds(monkeypatch
     assert news.calls == ["round-1", "round-2"]
     assert stocks.calls == ["stocks-task"]
     assert "round-2" in reply
+
+
+def test_run_management_request_rejects_followup_when_model_only_emits_out_of_scope_roles(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "core.management_bridge.build_core_agent_registry",
+        lambda: object(),
+    )
+    news = RecordingLoopExecutor(AgentRole.NEWS)
+    stocks = RecordingLoopExecutor(AgentRole.STOCKS)
+    monkeypatch.setattr(
+        "core.management_bridge.build_registry_executors",
+        lambda registry, request: {
+            AgentRole.NEWS: news,
+            AgentRole.STOCKS: stocks,
+        },
+    )
+
+    class UnauthorizedFollowupPlanner(ManagementPlanner):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def plan(self, request, decision, feedback=()):
+            self.calls += 1
+            if self.calls == 1:
+                return ManagementPlan(
+                    objective="bounded first round",
+                    decision=decision,
+                    tasks=(
+                        AgentTask(
+                            "news-first",
+                            AgentRole.NEWS,
+                            "Collect initial AI news evidence.",
+                            resources=frozenset({"news"}),
+                        ),
+                    ),
+                    continue_after_round=True,
+                )
+            return ManagementPlan(
+                objective="unauthorized followup",
+                decision=decision,
+                tasks=(
+                    AgentTask(
+                        "general-followup",
+                        AgentRole.GENERAL,
+                        "Provide general planning context.",
+                        resources=frozenset({"general"}),
+                    ),
+                ),
+                continue_after_round=False,
+            )
+
+    planner = UnauthorizedFollowupPlanner()
+    reply = run_management_request(
+        "u1",
+        "AIニュースと株価を調べて",
+        planner=planner,
+    )
+
+    assert reply is not None
+    assert "同じ専門AIを再実行せず" in reply
+    assert planner.calls == 2
+    assert news.calls == ["news-first"]
+    assert stocks.calls == []
+
+
+def test_run_management_request_stops_on_second_round_executor_failure_without_legacy_retry(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "core.management_bridge.build_core_agent_registry",
+        lambda: object(),
+    )
+
+    class FailSecondRoundExecutor(RecordingLoopExecutor):
+        def execute(self, task: AgentTask) -> AgentResult:
+            self.calls.append(task.task_id)
+            if task.task_id == "news-second":
+                raise RuntimeError("second round executor failed")
+            return AgentResult(task.task_id, True, f"{self.role.value} result for {task.task_id}")
+
+    news = FailSecondRoundExecutor(AgentRole.NEWS)
+    stocks = RecordingLoopExecutor(AgentRole.STOCKS)
+    monkeypatch.setattr(
+        "core.management_bridge.build_registry_executors",
+        lambda registry, request: {
+            AgentRole.NEWS: news,
+            AgentRole.STOCKS: stocks,
+        },
+    )
+
+    class TwoRoundFailPlanner(ManagementPlanner):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def plan(self, request, decision, feedback=()):
+            self.calls += 1
+            task_id = "news-first" if self.calls == 1 else "news-second"
+            return ManagementPlan(
+                objective="bounded two rounds",
+                decision=decision,
+                tasks=(
+                    AgentTask(
+                        task_id,
+                        AgentRole.NEWS,
+                        "Collect bounded AI news evidence.",
+                        resources=frozenset({"news"}),
+                    ),
+                ),
+                continue_after_round=True,
+            )
+
+    planner = TwoRoundFailPlanner()
+    reply = run_management_request(
+        "u1",
+        "AIニュースと株価を調べて",
+        planner=planner,
+    )
+
+    assert reply == "管理AIの実行で問題が発生したため、同じ専門AIを再実行せずに処理を停止しました。"
+    assert planner.calls == 2
+    assert news.calls == ["news-first", "news-second"]
+    assert stocks.calls == ["stocks-task"]
+
+
+def test_run_management_request_bounds_followup_feedback_through_bridge(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "core.management_bridge.build_core_agent_registry",
+        lambda: object(),
+    )
+
+    class HugeSummaryExecutor(RecordingLoopExecutor):
+        def execute(self, task: AgentTask) -> AgentResult:
+            self.calls.append(task.task_id)
+            return AgentResult(task.task_id, True, "x" * 5000)
+
+    news = HugeSummaryExecutor(AgentRole.NEWS)
+    stocks = RecordingLoopExecutor(AgentRole.STOCKS)
+    monkeypatch.setattr(
+        "core.management_bridge.build_registry_executors",
+        lambda registry, request: {
+            AgentRole.NEWS: news,
+            AgentRole.STOCKS: stocks,
+        },
+    )
+
+    class FeedbackRecordingPlanner(ManagementPlanner):
+        def __init__(self) -> None:
+            self.feedback: list[tuple[str, ...]] = []
+
+        def plan(self, request, decision, feedback=()):
+            self.feedback.append(tuple(feedback))
+            return ManagementPlan(
+                objective="bounded feedback",
+                decision=decision,
+                tasks=(
+                    AgentTask(
+                        "news-followup" if feedback else "news-first",
+                        AgentRole.NEWS,
+                        "Collect bounded AI news evidence.",
+                        resources=frozenset({"news"}),
+                    ),
+                ),
+                continue_after_round=not bool(feedback),
+            )
+
+    planner = FeedbackRecordingPlanner()
+    reply = run_management_request(
+        "u1",
+        "AIニュースと株価を調べて",
+        planner=planner,
+    )
+
+    assert reply is not None
+    assert len(planner.feedback) == 2
+    assert len(planner.feedback[1]) == 1
+    assert len(planner.feedback[1][0]) <= 1800
+    assert "x" * 1800 in planner.feedback[1][0]
+    assert "x" * 1801 not in planner.feedback[1][0]
