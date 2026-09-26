@@ -38,6 +38,7 @@ def run_self_improvement_cycle(
     *,
     target_paths: tuple[str, ...] = (),
     control_tower: "ControlTower | None" = None,
+    evidence: Mapping[str, object] | None = None,
     max_history: int = 200,
     min_occurrences: int = 2,
     max_patterns: int = 5,
@@ -75,7 +76,7 @@ def run_self_improvement_cycle(
     approved: list[ImprovementProposal] = []
     if control_tower is not None:
         for proposal in proposals:
-            decision = control_tower.evaluate_proposal(report, proposal)
+            decision = control_tower.evaluate_proposal(report, proposal, evidence=evidence)
             decisions.append(decision)
             if decision.approved_for_pipeline and decision.approved_task_matches(proposal.task):
                 approved.append(proposal)

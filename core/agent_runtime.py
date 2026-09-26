@@ -8,9 +8,11 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import Mapping, Protocol, Sequence, TYPE_CHECKING
 
+from .hermes_advisor import build_self_improvement_prompt, run_hermes_advisor
 from .multi_agent import AgentResult, AgentRole, AgentTask, plan_batches
 
 if TYPE_CHECKING:
@@ -116,6 +118,7 @@ class MultiAgentRuntime:
         self._last_self_improvement_cycle: SelfImprovementCycleResult | None = None
         self._last_self_improvement_cycle_error: str | None = None
         self._last_self_improvement_handoffs: tuple[ApprovedImprovementHandoff, ...] = ()
+        self._last_hermes_advice: str | None = None
         if feedback_engine is not None and control_tower is not None and control_tower.feedback_engine is not feedback_engine:
             raise ValueError("feedback_engine and control_tower must share the same feedback engine")
 
@@ -141,6 +144,11 @@ class MultiAgentRuntime:
         return self._last_self_improvement_cycle_error
 
     @property
+    def last_hermes_advice(self) -> str | None:
+        """Expose the latest bounded Hermes advisory result for auditing only."""
+        return self._last_hermes_advice
+
+    @property
     def last_self_improvement_handoffs(self) -> tuple[ApprovedImprovementHandoff, ...]:
         """Expose approved, immutable self-improvement handoffs without executing them."""
         return self._last_self_improvement_handoffs
@@ -152,12 +160,44 @@ class MultiAgentRuntime:
             return ()
         return self._self_improvement_handoff_store.load()
 
+    def _collect_hermes_advice(self, report: RuntimeReport) -> str | None:
+        """Ask Hermes for bounded review advice without granting execution authority."""
+        if os.environ.get("HERMES_ADVISOR_ENABLED", "").strip().casefold() != "true":
+            return None
+        evidence = []
+        for item in report.completed[-6:]:
+            summary = " ".join(str(item.result.summary or "").replace("\x00", "").split())
+            evidence.append(
+                f"task_id={item.task.task_id}; role={item.task.role.value}; "
+                f"success={item.result.success}; summary={summary[:700]}"
+            )
+        if report.failed_task_id or report.error:
+            evidence.append(
+                f"failed_task_id={report.failed_task_id or '-'}; "
+                f"error={str(report.error or '').replace(chr(0), ' ')[:700]}"
+            )
+        try:
+            prompt = build_self_improvement_prompt(
+                "Review this bounded distributed development cycle. "
+                "Return advisory observations only; do not issue commands, edits, deployment steps, "
+                "permission changes, or merge instructions.",
+                evidence,
+            )
+            advice = run_hermes_advisor(prompt)
+        except Exception:
+            # Hermes is advisory-only: an advisor outage must never block development.
+            return None
+        if not advice:
+            return None
+        return str(advice).strip()[:2000] or None
+
     def _finalize_development(self, report: RuntimeReport) -> RuntimeReport:
-        """Observe one completed development run through the management layer."""
+        """Observe one completed development run through Hermes and the management layer."""
         self._last_control_tower_decision = None
         self._last_self_improvement_cycle = None
         self._last_self_improvement_cycle_error = None
         self._last_self_improvement_handoffs = ()
+        self._last_hermes_advice = self._collect_hermes_advice(report)
 
         if self._self_improvement_history_path is not None:
             # The durable cycle is the single proposal path. Generated
@@ -171,6 +211,11 @@ class MultiAgentRuntime:
                     self._self_improvement_history_path,
                     target_paths=self._self_improvement_target_paths,
                     control_tower=self._control_tower,
+                    evidence=(
+                        {"hermes_advisory": self._last_hermes_advice}
+                        if self._last_hermes_advice
+                        else None
+                    ),
                 )
                 if self._last_self_improvement_cycle.control_tower_decisions:
                     self._last_control_tower_decision = (
