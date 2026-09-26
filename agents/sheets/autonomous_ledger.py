@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+import re
 
 from agents.sheets.client import GoogleSheetsClient
 
@@ -59,21 +60,65 @@ def ensure_headers(client: GoogleSheetsClient) -> None:
     client.update_row(header_range, HEADERS)
 
 
-def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
-    """Write once per exact run_id and verify the append response.
+def _normalized_row(row: list) -> list[str]:
+    """Normalize Sheets' trimmed trailing cells to the fixed ledger width."""
+    values = [str(cell) for cell in row[:len(HEADERS)]]
+    return values + [""] * (len(HEADERS) - len(values))
 
-    Idempotency assumes the workflow-level concurrency group keeps retries
-    serialized; callers must preserve that invariant when changing the workflow.
+
+def _verify_updated_range(updated_range: object) -> str:
+    if not isinstance(updated_range, str) or not updated_range.strip():
+        raise RuntimeError("Google Sheets append did not return updatedRange")
+
+    match = re.fullmatch(r"(.+)!([A-Z]+)([0-9]+):([A-Z]+)([0-9]+)", updated_range.strip())
+    if not match:
+        raise RuntimeError(f"Google Sheets append returned invalid updatedRange={updated_range!r}")
+
+    sheet, start_col, start_row, end_col, end_row = match.groups()
+    expected_sheet = LEDGER_RANGE.split("!", 1)[0].strip()
+    if sheet.startswith("'") and sheet.endswith("'"):
+        sheet = sheet[1:-1].replace("''", "'")
+    if expected_sheet.startswith("'") and expected_sheet.endswith("'"):
+        expected_sheet = expected_sheet[1:-1].replace("''", "'")
+    if sheet != expected_sheet:
+        raise RuntimeError(
+            f"Google Sheets append wrote to unexpected sheet={sheet!r}; expected={expected_sheet!r}"
+        )
+    if (start_col, end_col) != ("A", "Q") or start_row != end_row:
+        raise RuntimeError(f"Google Sheets append returned unexpected row range={updated_range!r}")
+
+    return f"{sheet}!A{start_row}:Q{end_row}"
+
+
+def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
+    """Write once per exact run_id and verify the actual row after the append.
+
+    A matching existing run_id is idempotent only when its full row matches the
+    same record. A stale or conflicting row fails closed instead of being trusted.
     """
     ensure_headers(client)
     sheet = LEDGER_RANGE.split("!", 1)[0]
     existing = client.search_column(f"{sheet}!A:Q", 1, record.run_id)
+    expected = record.values()
     if existing:
-        return False
-    response = client.append_row(LEDGER_RANGE, record.values())
+        matching = any(_normalized_row(row) == expected for row in existing)
+        if matching:
+            return False
+        raise RuntimeError(
+            f"Google Sheets contains an existing run_id with mismatched ledger data: {record.run_id}"
+        )
+
+    response = client.append_row(LEDGER_RANGE, expected)
     updates = response.get("updates", {}) if isinstance(response, dict) else {}
     if updates.get("updatedRows") != 1:
         raise RuntimeError(f"Google Sheets append updatedRows={updates.get('updatedRows')!r}")
+
+    readback_range = _verify_updated_range(updates.get("updatedRange"))
+    rows = client.read_rows(readback_range)
+    if len(rows) != 1 or _normalized_row(rows[0]) != expected:
+        raise RuntimeError(
+            f"Google Sheets append read-back mismatch for run_id={record.run_id}"
+        )
     return True
 
 

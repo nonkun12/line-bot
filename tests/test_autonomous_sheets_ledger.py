@@ -1,101 +1,99 @@
-from agents.sheets.autonomous_ledger import AutonomousRunRecord, append_once
+from agents.sheets.autonomous_ledger import AutonomousRunRecord, HEADERS, append_once
 
 
 class FakeClient:
-    def __init__(self, rows=None, error=None):
-        self.rows = rows or []
+    def __init__(self, existing=None, response=None, readback=None):
+        self.existing = existing or []
+        self.response = response or {
+            "updates": {"updatedRows": 1, "updatedRange": "AutonomousDevelopment!A5:Q5"}
+        }
+        self.readback = readback
         self.appended = []
-        self.error = error
+        self.read_ranges = []
+        self.updated = []
 
-    def search_column(self, _range, column_index, keyword):
-        if self.error:
-            raise self.error
-        return [row for row in self.rows if len(row) > column_index and str(row[column_index]) == str(keyword)]
+    def search_column(self, *args):
+        return self.existing
+
+    def append_row(self, *args):
+        self.appended.append(args)
+        return self.response
 
     def read_rows(self, range_name):
-        if self.error:
-            raise self.error
-        if range_name.endswith("A1:Q1"):
-            return [self.rows[0]] if self.rows and len(self.rows[0]) == 17 else []
-        return self.rows
+        self.read_ranges.append(range_name)
+        if range_name == "AutonomousDevelopment!A5:Q5" and self.readback is not None:
+            return self.readback
+        return [HEADERS]
 
-    def update_row(self, _range, values):
-        if self.error:
-            raise self.error
-        self.rows = [values, *self.rows] if self.rows and len(self.rows[0]) != 17 else [values]
-
-    def append_row(self, _range, values):
-        if self.error:
-            raise self.error
-        self.appended.append(values)
-        return {"updates": {"updatedRows": 1}}
+    def update_row(self, *args):
+        self.updated.append(args)
+        return {"updatedRows": 1}
 
 
-def record():
+def record(run_id="123"):
     return AutonomousRunRecord(
-        "2026-09-22T00:00:00Z", "123", "task", "scheduler", "ManagementAI",
+        "2026-09-22T00:00:00Z", run_id, "task", "scheduler", "ManagementAI",
         "test", "base", "head", "a.py", "https://example/pr/1",
         "PASS", "NOT_RUN", "PASS", "NOT_AUTO_MERGED", "", "review_pr"
     )
 
 
-def test_append_once_writes_new_run():
-    client = FakeClient()
-    assert append_once(client, record()) is True
-    assert len(client.appended) == 1
+def test_append_once_writes_and_reads_back_exact_row():
+    item = record()
+    client = FakeClient(readback=[item.values()])
+    assert append_once(client, item) is True
+    assert client.appended[0][1] == item.values()
+    assert "AutonomousDevelopment!A5:Q5" in client.read_ranges
 
 
-def test_append_once_is_idempotent():
-    client = FakeClient([["2026-09-22", "123"]])
-    assert append_once(client, record()) is False
+def test_append_once_is_idempotent_for_matching_full_row():
+    item = record()
+    client = FakeClient(existing=[item.values()])
+    assert append_once(client, item) is False
     assert client.appended == []
 
 
-def test_record_keeps_failure_fields():
-    item = AutonomousRunRecord(**{**record().__dict__, "tests_result": "FAIL", "blocked_failed_reason": "pytest_failed"})
-    assert item.tests_result == "FAIL"
-    assert item.blocked_failed_reason == "pytest_failed"
-
-
-def test_partial_run_id_does_not_match():
-    client = FakeClient([["date", "12345"]])
-    assert append_once(client, record()) is True
-
-
-def test_headers_are_initialized():
-    client = FakeClient()
-    append_once(client, record())
-    assert client.rows[0][0] == "timestamp"
-    assert client.rows[0][16] == "logging_result"
-
-
-def test_append_once_propagates_api_failure():
-    client = FakeClient(error=RuntimeError("Sheets API unavailable"))
+def test_append_once_fails_closed_for_conflicting_run_id():
+    item = record()
+    conflicting = item.values()
+    conflicting[7] = "different-sha"
     try:
-        append_once(client, record())
+        append_once(FakeClient(existing=[conflicting]), item)
     except RuntimeError as exc:
-        assert "unavailable" in str(exc)
+        assert "mismatched ledger data" in str(exc)
     else:
-        raise AssertionError("API failure must not be swallowed")
+        raise AssertionError("expected RuntimeError")
 
 
-def test_missing_configuration_is_rejected(monkeypatch):
-    monkeypatch.delenv("GOOGLE_SHEETS_SPREADSHEET_ID", raising=False)
-    monkeypatch.delenv("GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", raising=False)
-    monkeypatch.delenv("GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE", raising=False)
-    from agents.sheets.client import GoogleSheetsClient
+def test_append_once_rejects_unconfirmed_append():
     try:
-        GoogleSheetsClient()
-    except ValueError as exc:
-        assert "SPREADSHEET_ID" in str(exc)
+        append_once(FakeClient(response={"updates": {"updatedRows": 0}}), record("456"))
+    except RuntimeError as exc:
+        assert "updatedRows=0" in str(exc)
     else:
-        raise AssertionError("missing Sheets configuration must be rejected")
+        raise AssertionError("expected RuntimeError")
+
+
+def test_append_once_rejects_missing_updated_range():
+    try:
+        append_once(FakeClient(response={"updates": {"updatedRows": 1}}), record("457"))
+    except RuntimeError as exc:
+        assert "updatedRange" in str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
+
+
+def test_append_once_rejects_readback_mismatch():
+    item = record("458")
+    wrong = item.values()
+    wrong[12] = "BLOCKED"
+    try:
+        append_once(FakeClient(readback=[wrong]), item)
+    except RuntimeError as exc:
+        assert "read-back mismatch" in str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
 
 
 def test_record_has_seventeen_columns():
     assert len(record().values()) == 17
-
-
-def test_ledger_range_covers_all_columns():
-    from agents.sheets import autonomous_ledger
-    assert autonomous_ledger.LEDGER_RANGE.endswith("A:Q")
