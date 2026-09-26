@@ -1,13 +1,17 @@
-"""Video specialist agent foundation."""
+"""Video specialist agent for bounded scenario/storyboard planning."""
 from __future__ import annotations
 
 from core.agents import AgentRequest, AgentResponse
 from agents.video.intents import is_video_intent
+from agents.video.pipeline import build_initial_plan
 
 
 class VideoAgent:
     name = "video"
-    description = "Video planning, scripting, storyboarding, shot design, and editing plans."
+    description = (
+        "Video planning, scenario writing, storyboarding, shot design, and "
+        "provider-neutral generation planning."
+    )
     priority = 84
     enabled = True
 
@@ -15,37 +19,40 @@ class VideoAgent:
         return is_video_intent(request.message)
 
     def handle(self, request: AgentRequest) -> AgentResponse:
-        text = request.message.casefold()
-        if any(k in text for k in ("台本", "script", "脚本")):
-            mode = "script"
-            reply = (
-                "🎬 映像AIを起動しました。\n\n"
-                "動画台本を、目的・尺・視聴者・構成に合わせて設計します。"
-            )
-        elif any(k in text for k in ("絵コンテ", "storyboard", "ショット")):
-            mode = "storyboard"
-            reply = (
-                "🎬 映像AIを起動しました。\n\n"
-                "絵コンテ、ショットリスト、カット構成を設計します。"
-            )
-        elif any(k in text for k in ("編集", "カット", "字幕")):
+        plan = build_initial_plan(request.message)
+        message = request.message.strip().lower()
+        if "編集" in message:
             mode = "editing"
-            reply = (
-                "🎬 映像AIを起動しました。\n\n"
-                "カット、字幕、BGM、トランジションなどの編集設計を支援します。\n"
-                "動画ファイルの実編集・書き出し・配信連携はまだ接続していません。"
-            )
+        elif "台本" in message or "シナリオ" in message:
+            mode = "script"
         else:
-            mode = "video_planning"
-            reply = (
-                "🎬 映像AIを起動しました。\n\n"
-                "動画企画、構成、台本、絵コンテ、編集方針を支援します。\n"
-                "動画の実生成・書き出し連携は後段で接続します。"
-            )
+            mode = "production_plan"
 
+        scene_lines = [
+            f"{scene.scene_id}: {scene.narration} / {scene.duration_seconds}s"
+            for scene in plan.scenes
+        ]
+        reply = (
+            "🎬 Video Agent（映像AI）を起動しました.\n\n"
+            "文章を映像制作向けのシーン構成へ変換しました。\n"
+            f"タイトル: {plan.title}\n"
+            f"シーン数: {len(plan.scenes)}\n"
+            f"画角: {plan.aspect_ratio}\n\n"
+            + "\n".join(scene_lines)
+            + "\n\n"
+            + ("実編集・書き出し・配信連携はまだ接続していません。\n" if mode == "editing" else "")
+            + "次段階では各シーンの画像生成→動画生成→音声/編集へ接続できます。"
+            + "外部生成プロバイダ未設定時は安全に計画段階で停止します。"
+        )
         return AgentResponse(
             text=reply,
-            metadata={"feature": self.name, "status": "online", "mode": mode},
+            metadata={
+                "feature": self.name,
+                "status": "online",
+                "mode": mode,
+                "scene_count": len(plan.scenes),
+                "provider_generation": "fail_closed",
+            },
         )
 
 
