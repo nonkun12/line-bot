@@ -31,15 +31,8 @@ def test_news_pubdate_is_rendered_in_japan_time(monkeypatch) -> None:
       </item>
     </channel></rss>"""
 
-    monkeypatch.setattr(
-        "agents.news.node.urllib.request.urlopen",
-        lambda request, timeout: _FakeResponse(payload),
-    )
-    monkeypatch.setattr(
-        AINewsAgent,
-        "_now",
-        staticmethod(lambda: datetime(2026, 9, 15, 12, tzinfo=ZoneInfo("Asia/Tokyo"))),
-    )
+    monkeypatch.setattr("agents.news.node.urllib.request.urlopen", lambda request, timeout: _FakeResponse(payload))
+    monkeypatch.setattr(AINewsAgent, "_now", staticmethod(lambda: datetime(2026, 9, 15, 12, tzinfo=ZoneInfo("Asia/Tokyo"))))
 
     items = AINewsAgent._fetch("artificial intelligence")
 
@@ -56,15 +49,11 @@ def test_news_duplicate_links_are_removed_and_limit_is_applied(monkeypatch) -> N
       <item><title>Three</title><link>https://example.com/c</link><pubDate>Fri, 18 Sep 2026 03:00:00 +0000</pubDate></item>
     </channel></rss>"""
 
-    monkeypatch.setattr(
-        "agents.news.node.urllib.request.urlopen",
-        lambda request, timeout: _FakeResponse(payload),
-    )
+    monkeypatch.setattr("agents.news.node.urllib.request.urlopen", lambda request, timeout: _FakeResponse(payload))
+    monkeypatch.setattr(AINewsAgent, "_now", staticmethod(lambda: datetime(2026, 9, 19, 12, tzinfo=ZoneInfo("Asia/Tokyo"))))
 
     items = AINewsAgent._fetch("artificial intelligence")
 
     assert [item["link"] for item in items] == [
-        "https://example.com/a",
-        "https://example.com/b",
-        "https://example.com/c",
+        "https://example.com/a", "https://example.com/b", "https://example.com/c",
     ]
