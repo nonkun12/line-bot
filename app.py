@@ -74,6 +74,7 @@ from core.channel import handle_channel_request
 from core.gateway import AIGateway
 from core.request_path import run_core_request, extract_core_reply
 from core.management_bridge import should_route_to_management_ai, run_management_request
+from core.line_runtime_audit import record_line_runtime
 from core.self_introduction import handle_self_introduction
 from routes.core_api import core_api_bp
 from routes.voice_api import voice_api_bp
@@ -405,6 +406,8 @@ def _process_and_reply(event, user_id, text):
             label = "株式投資ダッシュボード" if command == "株式ダッシュボード" else "ダッシュボード"
             _line_reply(event.reply_token, f"{label}はこちらです。\n{dashboard_url}")
             return
+        status = "PASS"
+        route = "core-gateway"
         try:
             ai_response = handle_channel_request(
                 app.ai_gateway,
@@ -414,9 +417,12 @@ def _process_and_reply(event, user_id, text):
                 metadata={"route": "line_callback"},
             )
             reply = ai_response.text
-        except Exception:
-            print("[LOG] Core gateway failed; returning safe reply")
+            route = str(ai_response.metadata.get("route", route))
+        except Exception as exc:
+            print(f"[LOG] Core gateway failed; returning safe reply: {type(exc).__name__}")
+            status = "FAIL"
             reply = "AIサービスで一時的な問題が発生しました。少し時間を置いてもう一度お試しください。"
+        record_line_runtime(user_message=str(text), reply=reply, status=status, route=route)
         try:
             _line_reply(event.reply_token, reply)
         except Exception:
