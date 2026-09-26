@@ -381,11 +381,13 @@ class ManagementAI:
                 raise
             rounds.append(current)
             feedback = tuple(
-                "OBSERVATION "
-                f"task_id={observation.task_id}; "
-                f"role={observation.role.value}; "
-                f"success={observation.success}; "
-                f"summary={observation.summary}"
+                (
+                    "OBSERVATION "
+                    f"task_id={observation.task_id}; "
+                    f"role={observation.role.value}; "
+                    f"success={observation.success}; "
+                    f"summary={observation.summary}"
+                )[:1800]
                 for observation in current.observations
             )
             if not current.success:
