@@ -542,7 +542,10 @@ def test_run_management_request_rejects_followup_when_model_only_emits_out_of_sc
     assert "同じ専門AIを再実行せず" in reply
     assert planner.calls == 2
     assert news.calls == ["news-first"]
-    assert stocks.calls == []
+    # The initial bounded round fills the deterministic missing specialist role;
+    # the safety property under test is that the unauthorized follow-up does not
+    # execute any additional stock task.
+    assert stocks.calls == ["stocks-task"]
 
 
 def test_run_management_request_stops_on_second_round_executor_failure_without_legacy_retry(monkeypatch) -> None:
