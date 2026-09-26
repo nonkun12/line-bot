@@ -40,5 +40,5 @@ class GoogleSheetsWriter:
         return cls(service, spreadsheet_id, range_name)
 
     def append_development_result(self, *, instruction: str, status: str, target_path: str | None, branch: str | None, detail: str, base_sha: str | None, produced_sha: str | None) -> None:
-        row = [datetime.now(timezone.utc).isoformat(), status[:40], instruction[:2000], target_path or "", branch or "", base_sha or "", produced_sha or "", detail[:4000], "PASS"]
+        row = [datetime.now(timezone.utc).isoformat(), status[:40], instruction[:2000], target_path or "", branch or "", base_sha or "", produced_sha or "", detail[:4000], status[:40]]
         (self._service.spreadsheets().values().append(spreadsheetId=self._spreadsheet_id, range=self._range_name, valueInputOption="RAW", insertDataOption="INSERT_ROWS", body={"values": [row]}).execute())
