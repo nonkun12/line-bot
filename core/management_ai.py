@@ -16,7 +16,7 @@ from .distributed_scheduler import DistributedRun, DistributedTaskScheduler
 from .specialist_gate import approved_executors, assert_all_approved
 from .management_contract import ManagementDecision, ManagementRequest, Specialist
 from .management_router import route
-from .multi_agent import AgentRole, AgentTask, TaskBatch, plan_batches
+from .multi_agent import AgentResult, AgentRole, AgentTask, TaskBatch, plan_batches
 
 
 ModelCall = Callable[[str], str]
