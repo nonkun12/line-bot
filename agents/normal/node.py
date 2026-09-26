@@ -11,8 +11,15 @@ from zoneinfo import ZoneInfo
 
 import mcp_client
 from graph.state import AgentState
-from agents.normal.handlers import handle_normal_message
+from agents.normal.handlers import (
+    _AUTH_ERROR_REPLY,
+    _RATE_LIMIT_REPLY,
+    _SERVER_ERROR_REPLY,
+    _TIMEOUT_REPLY,
+    handle_normal_message,
+)
 from gemini_n8n_client import GeminiN8nError, call_gemini_via_n8n
+from core.provider_failover import provider_failover
 
 _LOOKUP_QUESTION_RE = re.compile(
     r"(?:予定|メモ|用事|スケジュール).*(?:は|って|ある|あります|残ってる|残っています|教えて|確認して|見せて)[？?]?$"
@@ -95,30 +102,72 @@ def _format_note_lookup_result(result):
     return text if text else "メモは見つかりませんでした。"
 
 
-def _normal_provider() -> str:
-    provider = os.getenv("NORMAL_AGENT_PROVIDER", "groq").strip().lower()
-    return provider if provider in {"groq", "gemini"} else "groq"
+def _primary_provider() -> str:
+    configured = (
+        os.getenv("AI_PROVIDER_PRIMARY")
+        or os.getenv("NORMAL_AGENT_PROVIDER")
+        or "gemini"
+    ).strip().lower()
+    return configured if configured in {"gemini", "groq"} else "gemini"
 
 
 def _gemini_request_id(state: AgentState) -> str:
+    """Return a stable request id for Gemini calls, generating one when absent."""
     request_id = state.get("request_id")
-    return str(request_id) if request_id else uuid.uuid4().hex
+    return str(request_id) if request_id else str(uuid.uuid4())
+
+
+def _provider_failure_reply(reply: str | None) -> bool:
+    return reply in {
+        _RATE_LIMIT_REPLY,
+        _SERVER_ERROR_REPLY,
+        _TIMEOUT_REPLY,
+        _AUTH_ERROR_REPLY,
+    }
+
+
+_ALL_PROVIDERS_UNAVAILABLE_REPLY = (
+    "GeminiとGroqの両方が現在利用できません。"
+    "復旧を確認できるまで処理を停止します。"
+)
 
 
 def _run_normal_generation(state: AgentState, raw_message: str, user_id: str, call_mcp_tool):
-    provider = _normal_provider()
-    if provider != "gemini":
-        return handle_normal_message(raw_message, user_id, call_mcp_tool), "groq"
-    try:
-        data = call_gemini_via_n8n(
-            message=raw_message, user_id=user_id,
-            request_id=_gemini_request_id(state), timeout=10.0,
-        )
-        return data["reply"].strip(), "gemini"
-    except GeminiN8nError as exc:
-        print("[GEMINI FALLBACK] n8n Gemini failed:", exc)
-        return handle_normal_message(raw_message, user_id, call_mcp_tool), "groq_fallback"
+    attempted = []
+    primary = _primary_provider()
+    providers = provider_failover.ordered(primary)
 
+    for provider in providers:
+        if provider in attempted:
+            continue
+        attempted.append(provider)
+
+        if provider == "gemini":
+            try:
+                data = call_gemini_via_n8n(
+                    message=raw_message,
+                    user_id=user_id,
+                    request_id=_gemini_request_id(state),
+                    timeout=10.0,
+                )
+                reply = data["reply"].strip()
+                provider_failover.mark_success("gemini")
+                return reply, "gemini"
+            except GeminiN8nError as exc:
+                print("[GEMINI FALLBACK] n8n Gemini failed:", exc)
+                provider_failover.mark_failure("gemini")
+                continue
+
+        if provider == "groq":
+            reply = handle_normal_message(raw_message, user_id, call_mcp_tool)
+            if _provider_failure_reply(reply):
+                print("[GROQ FALLBACK] Groq provider unavailable:", reply)
+                provider_failover.mark_failure("groq")
+                continue
+            provider_failover.mark_success("groq")
+            return reply, "groq"
+
+    return _ALL_PROVIDERS_UNAVAILABLE_REPLY, "failover_exhausted"
 
 def _extract_cancel_target(message: str):
     """キャンセル依頼から指定日時を抽出する。現在は明日/今日の時刻指定を優先対応。"""
