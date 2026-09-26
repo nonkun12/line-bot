@@ -16,7 +16,7 @@ from .distributed_scheduler import DistributedRun, DistributedTaskScheduler
 from .specialist_gate import approved_executors, assert_all_approved
 from .management_contract import ManagementDecision, ManagementRequest, Specialist
 from .management_router import route
-from .multi_agent import AgentRole, AgentTask, TaskBatch, plan_batches
+from .multi_agent import AgentResult, AgentRole, AgentTask, TaskBatch, plan_batches
 
 
 ModelCall = Callable[[str], str]
@@ -127,6 +127,13 @@ class ManagementCycleRun:
 
     @property
     def success(self) -> bool:
+        if not self.rounds:
+            return False
+        if self.stopped_reason not in {
+            "manager stopped the cycle",
+            "bounded round limit reached",
+        }:
+            return False
         return all(run.success for run in self.rounds)
 
 
@@ -312,7 +319,10 @@ class ManagementAI:
         # a denied role can never cause partial execution of earlier batches.
         assert_all_approved(task.role for task in plan.tasks)
         workers = self._max_workers if plan.parallel_safe else 1
-        distributed = DistributedTaskScheduler(self._executors, max_workers=workers).run(plan.tasks)
+        # Keep the generic scheduler strict, but bound untrusted specialist output
+        # before it becomes management feedback.
+        bounded_executors = {role: _BoundedResultExecutor(executor) for role, executor in self._executors.items()}
+        distributed = DistributedTaskScheduler(bounded_executors, max_workers=workers).run(plan.tasks)
         batches = plan_batches(plan.tasks)
         task_map = {task.task_id: task for task in plan.tasks}
         observations = tuple(
@@ -357,14 +367,27 @@ class ManagementAI:
         rounds: list[ManagementRun] = []
         feedback: tuple[str, ...] = ()
         for round_number in range(1, max_rounds + 1):
-            current = self.run(request, feedback)
+            try:
+                current = self.run(request, feedback)
+            except ManagementPlanningError:
+                if rounds:
+                    # A follow-up planning failure occurs after side effects from
+                    # an earlier round. Return a failed cycle so the caller cannot
+                    # fall back and duplicate those effects through another route.
+                    return ManagementCycleRun(
+                        tuple(rounds),
+                        "follow-up planning failed; fail closed",
+                    )
+                raise
             rounds.append(current)
             feedback = tuple(
-                "OBSERVATION "
-                f"task_id={observation.task_id}; "
-                f"role={observation.role.value}; "
-                f"success={observation.success}; "
-                f"summary={observation.summary}"
+                (
+                    "OBSERVATION "
+                    f"task_id={observation.task_id}; "
+                    f"role={observation.role.value}; "
+                    f"success={observation.success}; "
+                    f"summary={observation.summary}"
+                )[:1800]
                 for observation in current.observations
             )
             if not current.success:
@@ -374,6 +397,24 @@ class ManagementAI:
             if round_number == max_rounds:
                 return ManagementCycleRun(tuple(rounds), "bounded round limit reached")
         return ManagementCycleRun(tuple(rounds), "bounded round limit reached")
+
+
+class _BoundedResultExecutor:
+    """Normalize untrusted specialist summaries before manager feedback."""
+
+    def __init__(self, executor: object) -> None:
+        self._executor = executor
+
+    def execute(self, task: AgentTask):
+        result = self._executor.execute(task)
+        if not isinstance(result, AgentResult) or len(result.summary) <= 1800:
+            return result
+        return AgentResult(
+            task_id=result.task_id,
+            success=result.success,
+            summary=result.summary[:1800],
+            changed_resources=result.changed_resources,
+        )
 
 
 def _format_feedback_for_prompt(feedback: Sequence[str]) -> str:
