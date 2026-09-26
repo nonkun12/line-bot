@@ -135,7 +135,6 @@ class DistributedTaskScheduler:
                         task.task_id,
                         TypeError("executor must return AgentResult"),
                     )
-                self._validate_result(result, task)
                 if len(result.summary) > 1800:
                     result = AgentResult(
                         task_id=result.task_id,
@@ -143,6 +142,7 @@ class DistributedTaskScheduler:
                         summary=result.summary[:1800],
                         changed_resources=result.changed_resources,
                     )
+                self._validate_result(result, task)
                 if result.task_id != task.task_id:
                     raise DistributedExecutionError(
                         task.task_id,
