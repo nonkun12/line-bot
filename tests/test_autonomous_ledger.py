@@ -5,10 +5,7 @@ class FakeClient:
     def __init__(self, existing=None, response=None, readback=None):
         self.existing = existing or []
         self.response = response or {
-            "updates": {
-                "updatedRows": 1,
-                "updatedRange": "AutonomousDevelopment!A5:Q5",
-            }
+            "updates": {"updatedRows": 1, "updatedRange": "AutonomousDevelopment!A5:Q5"}
         }
         self.readback = readback
         self.appended = []
@@ -50,6 +47,29 @@ def make_record(run_id="123"):
         blocked_failed_reason="provider_error",
         next_action="review_failure",
     )
+
+
+def configure_record_env(monkeypatch, record):
+    values = {
+        "GITHUB_RUN_ID": record.run_id,
+        "AUTONOMOUS_TIMESTAMP": record.timestamp,
+        "AUTONOMOUS_TASK_ID": record.task_id,
+        "AUTONOMOUS_SOURCE": record.source,
+        "AUTONOMOUS_AGENT": record.agent,
+        "DEV_INSTRUCTION": record.task_summary,
+        "AUTONOMOUS_START_SHA": record.base_sha,
+        "AUTONOMOUS_PRODUCED_SHA": record.produced_sha,
+        "AUTONOMOUS_CHANGED_FILES": record.changed_files,
+        "AUTONOMOUS_PR_URL": record.pr_url,
+        "AUTONOMOUS_TESTS_RESULT": record.tests_result,
+        "AUTONOMOUS_VERIFICATION_RESULT": record.verification_result,
+        "AUTONOMOUS_SAFETY_GATE_RESULT": record.safety_gate_result,
+        "AUTONOMOUS_MERGE_RESULT": record.merge_result,
+        "AUTONOMOUS_BLOCKED_FAILED_REASON": record.blocked_failed_reason,
+        "AUTONOMOUS_NEXT_ACTION": record.next_action,
+    }
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
 
 
 def test_append_once_records_and_reads_back_exact_row():
@@ -115,6 +135,8 @@ def test_append_once_rejects_readback_mismatch():
 
 
 def test_record_autonomous_run_retries_once_after_constructor_failure(monkeypatch):
+    record = make_record("789")
+    configure_record_env(monkeypatch, record)
     calls = []
 
     class Factory:
@@ -122,20 +144,16 @@ def test_record_autonomous_run_retries_once_after_constructor_failure(monkeypatc
             calls.append(len(calls))
             if len(calls) == 1:
                 raise RuntimeError("temporary Sheets failure")
-            return FakeClient(readback=[make_record("789").values()])
+            return FakeClient(readback=[record.values()])
 
     monkeypatch.setattr(ledger, "GoogleSheetsClient", Factory())
-    monkeypatch.setenv("GITHUB_RUN_ID", "789")
-    monkeypatch.setenv("AUTONOMOUS_TIMESTAMP", "2026-09-23T03:00:00Z")
-    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "scheduled-distributed-development")
-    monkeypatch.setenv("DEV_INSTRUCTION", "test")
-
     assert ledger.record_autonomous_run() is True
     assert calls == [0, 1]
 
 
 def test_record_autonomous_run_deduplicates_after_append_then_client_error(monkeypatch):
     record = make_record("790")
+    configure_record_env(monkeypatch, record)
     shared_rows = []
 
     class Client:
@@ -173,11 +191,6 @@ def test_record_autonomous_run_deduplicates_after_append_then_client_error(monke
             return client
 
     monkeypatch.setattr(ledger, "GoogleSheetsClient", Factory())
-    monkeypatch.setenv("GITHUB_RUN_ID", "790")
-    monkeypatch.setenv("AUTONOMOUS_TIMESTAMP", record.timestamp)
-    monkeypatch.setenv("AUTONOMOUS_TASK_ID", record.task_id)
-    monkeypatch.setenv("DEV_INSTRUCTION", record.task_summary)
-
     assert ledger.record_autonomous_run() is False
     assert len(calls) == 2
     assert shared_rows == [record.values()]
