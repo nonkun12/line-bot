@@ -101,12 +101,12 @@ def _augment_instruction_with_history(instruction: str, history_path: Path) -> s
     return f"{instruction}\n\n{evidence[:budget]}"
 
 
-def _record_hermes_execution(*, invoked: bool, used: bool, reason: str = "", advice: str = "") -> None:
+def _record_hermes_execution(*, invoked: bool, used: bool, reason: str = "") -> None:
     """Publish bounded Hermes execution metadata for the durable audit step."""
     os.environ["HERMES_ADVISOR_INVOKED"] = "true" if invoked else "false"
     os.environ["HERMES_ADVISOR_USED"] = "true" if used else "false"
     os.environ["HERMES_ADVISOR_REASON"] = str(reason or "")[:500]
-    os.environ["HERMES_ADVISORY_EXCERPT"] = " ".join(str(advice or "").split())[:1000]
+    os.environ["HERMES_ADVISORY_EXCERPT"] = ""
     github_env = os.environ.get("GITHUB_ENV")
     if not github_env:
         return
@@ -131,6 +131,10 @@ def _augment_with_hermes_advice(instruction: str, history_path: Path) -> str:
             for pattern in analysis.recurring_patterns
         ]
         prompt = build_self_improvement_prompt(instruction, evidence)
+    except (OSError, ValueError, TypeError) as exc:
+        _record_hermes_execution(invoked=False, used=False, reason=f"advisor_preparation_error:{type(exc).__name__}")
+        return instruction
+    try:
         advice = run_hermes_advisor(prompt)
     except (OSError, ValueError, TypeError) as exc:
         _record_hermes_execution(invoked=True, used=False, reason=f"advisor_error:{type(exc).__name__}")
@@ -140,10 +144,10 @@ def _augment_with_hermes_advice(instruction: str, history_path: Path) -> str:
         return instruction
     budget = max(0, worker.MAX_INSTRUCTION_LENGTH - len(instruction) - 32)
     if budget < 64:
-        _record_hermes_execution(invoked=True, used=False, reason="instruction_budget_too_small", advice=advice)
+        _record_hermes_execution(invoked=True, used=False, reason="instruction_budget_too_small")
         return instruction
     bounded_advice = advice[:budget]
-    _record_hermes_execution(invoked=True, used=True, reason="advice_appended_to_development_instruction", advice=bounded_advice)
+    _record_hermes_execution(invoked=True, used=True, reason="advice_appended_to_development_instruction")
     return f"{instruction}\n\nUNTRUSTED HERMES ADVISORY:\n{bounded_advice}"
 
 
