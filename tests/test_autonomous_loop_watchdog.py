@@ -45,7 +45,7 @@ def test_find_scheduled_run_uses_workflow_scoped_schedule_endpoint(monkeypatch):
     # The expected slot is 2026-09-23 03:05 JST, so the example above is outside it.
     assert find_scheduled_run("nonkun12/line-bot", slot) is None
     assert captured["url"].endswith(
-        "/actions/workflows/overnight-development.yml/runs?event=schedule&per_page=20"
+        "/actions/workflows/nightly-autonomous-worker.yml/runs?event=schedule&per_page=20"
     )
 
     slot = datetime(2026, 9, 24, 3, 5, tzinfo=ZoneInfo("Asia/Tokyo")) - __import__("datetime").timedelta(days=1)
@@ -67,3 +67,9 @@ def test_find_scheduled_run_accepts_small_scheduler_delay(monkeypatch):
     )
     slot = datetime(2026, 9, 23, 3, 5, tzinfo=ZoneInfo("Asia/Tokyo"))
     assert find_scheduled_run("nonkun12/line-bot", slot) == scheduled
+
+
+def test_watchdog_bootstraps_repo_root_for_direct_execution():
+    source = __import__("pathlib").Path("scripts/check_autonomous_loop_watchdog.py").read_text(encoding="utf-8")
+    assert "ROOT = Path(__file__).resolve().parents[1]" in source
+    assert "sys.path.insert(0, str(ROOT))" in source
