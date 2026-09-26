@@ -127,6 +127,13 @@ class ManagementCycleRun:
 
     @property
     def success(self) -> bool:
+        if not self.rounds:
+            return False
+        if self.stopped_reason not in {
+            "manager stopped the cycle",
+            "bounded round limit reached",
+        }:
+            return False
         return all(run.success for run in self.rounds)
 
 
@@ -357,7 +364,18 @@ class ManagementAI:
         rounds: list[ManagementRun] = []
         feedback: tuple[str, ...] = ()
         for round_number in range(1, max_rounds + 1):
-            current = self.run(request, feedback)
+            try:
+                current = self.run(request, feedback)
+            except ManagementPlanningError:
+                if rounds:
+                    # A follow-up planning failure occurs after side effects from
+                    # an earlier round. Return a failed cycle so the caller cannot
+                    # fall back and duplicate those effects through another route.
+                    return ManagementCycleRun(
+                        tuple(rounds),
+                        "follow-up planning failed; fail closed",
+                    )
+                raise
             rounds.append(current)
             feedback = tuple(
                 "OBSERVATION "

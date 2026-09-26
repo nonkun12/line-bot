@@ -292,3 +292,191 @@ def test_management_bridge_detects_news_and_toyota_stock_as_two_specialists() ->
     roles = specialist_roles_for_message("AI NEWSとトヨタの株価を教えて")
     assert roles == frozenset({AgentRole.NEWS, AgentRole.STOCKS})
     assert should_route_to_management_ai("AI NEWSとトヨタの株価を教えて")
+
+
+class ClosedLoopPlanner(ManagementPlanner):
+    def __init__(self) -> None:
+        self.feedback: list[tuple[str, ...]] = []
+
+    def plan(self, request, decision, feedback=()):
+        self.feedback.append(tuple(feedback))
+        if len(self.feedback) == 1:
+            return ManagementPlan(
+                objective="bounded handoff",
+                decision=decision,
+                tasks=(
+                    AgentTask(
+                        "news-first",
+                        AgentRole.NEWS,
+                        "Collect initial AI news evidence.",
+                        resources=frozenset({"news"}),
+                    ),
+                    AgentTask(
+                        "stocks-first",
+                        AgentRole.STOCKS,
+                        "Collect initial stock evidence.",
+                        resources=frozenset({"stocks"}),
+                    ),
+                ),
+                continue_after_round=True,
+            )
+        return ManagementPlan(
+            objective="bounded follow-up",
+            decision=decision,
+            tasks=(
+                AgentTask(
+                    "news-followup",
+                    AgentRole.NEWS,
+                    "Summarize the next bounded step from the observations.",
+                    resources=frozenset({"news"}),
+                ),
+            ),
+            continue_after_round=False,
+        )
+
+
+class RecordingLoopExecutor(FakeExecutor):
+    def __init__(self, role: AgentRole) -> None:
+        super().__init__(role)
+        self.calls: list[str] = []
+
+    def execute(self, task: AgentTask) -> AgentResult:
+        self.calls.append(task.task_id)
+        return AgentResult(task.task_id, True, f"{self.role.value} result for {task.task_id}")
+
+
+def test_run_management_request_feeds_results_into_one_bounded_next_round(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "core.management_bridge.build_core_agent_registry",
+        lambda: object(),
+    )
+    news = RecordingLoopExecutor(AgentRole.NEWS)
+    stocks = RecordingLoopExecutor(AgentRole.STOCKS)
+    monkeypatch.setattr(
+        "core.management_bridge.build_registry_executors",
+        lambda registry, request: {
+            AgentRole.NEWS: news,
+            AgentRole.STOCKS: stocks,
+        },
+    )
+
+    planner = ClosedLoopPlanner()
+    reply = run_management_request(
+        "u1",
+        "AIニュースと株価を調べて",
+        planner=planner,
+    )
+
+    assert planner.feedback[0] == ()
+    assert planner.feedback[1]
+    assert "news-first" in planner.feedback[1][0]
+    assert news.calls == ["news-first", "news-followup"]
+    assert stocks.calls == ["stocks-first"]
+    assert "news-first" in reply
+    assert "news-followup" in reply
+    assert "stocks-first" in reply
+
+
+def test_run_management_request_does_not_fallback_after_followup_planning_failure(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "core.management_bridge.build_core_agent_registry",
+        lambda: object(),
+    )
+    news = RecordingLoopExecutor(AgentRole.NEWS)
+    stocks = RecordingLoopExecutor(AgentRole.STOCKS)
+    monkeypatch.setattr(
+        "core.management_bridge.build_registry_executors",
+        lambda registry, request: {
+            AgentRole.NEWS: news,
+            AgentRole.STOCKS: stocks,
+        },
+    )
+
+    class FailOnFollowupPlanner(ManagementPlanner):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def plan(self, request, decision, feedback=()):
+            self.calls += 1
+            if self.calls == 2:
+                raise ManagementPlanningError("follow-up plan rejected")
+            return ManagementPlan(
+                objective="bounded first round",
+                decision=decision,
+                tasks=(
+                    AgentTask(
+                        "news-first",
+                        AgentRole.NEWS,
+                        "Collect initial AI news evidence.",
+                        resources=frozenset({"news"}),
+                    ),
+                    AgentTask(
+                        "stocks-first",
+                        AgentRole.STOCKS,
+                        "Collect initial stock evidence.",
+                        resources=frozenset({"stocks"}),
+                    ),
+                ),
+                continue_after_round=True,
+            )
+
+    planner = FailOnFollowupPlanner()
+    reply = run_management_request(
+        "u1",
+        "AIニュースと株価を調べて",
+        planner=planner,
+    )
+
+    assert reply is not None
+    assert "同じ専門AIを再実行せず" in reply
+    assert planner.calls == 2
+    assert news.calls == ["news-first"]
+    assert stocks.calls == ["stocks-first"]
+
+
+def test_run_management_request_closed_loop_never_exceeds_two_rounds(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "core.management_bridge.build_core_agent_registry",
+        lambda: object(),
+    )
+    news = RecordingLoopExecutor(AgentRole.NEWS)
+    stocks = RecordingLoopExecutor(AgentRole.STOCKS)
+    monkeypatch.setattr(
+        "core.management_bridge.build_registry_executors",
+        lambda registry, request: {
+            AgentRole.NEWS: news,
+            AgentRole.STOCKS: stocks,
+        },
+    )
+
+    class AlwaysContinuePlanner(ManagementPlanner):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def plan(self, request, decision, feedback=()):
+            self.calls += 1
+            return ManagementPlan(
+                objective="bounded",
+                decision=decision,
+                tasks=(
+                    AgentTask(
+                        f"round-{self.calls}",
+                        AgentRole.NEWS,
+                        "Collect bounded evidence.",
+                        resources=frozenset({"news"}),
+                    ),
+                ),
+                continue_after_round=True,
+            )
+
+    planner = AlwaysContinuePlanner()
+    reply = run_management_request(
+        "u1",
+        "AIニュースと株価を調べて",
+        planner=planner,
+    )
+
+    assert planner.calls == 2
+    assert news.calls == ["round-1", "round-2"]
+    assert stocks.calls == ["stocks-task"]
+    assert "round-2" in reply
