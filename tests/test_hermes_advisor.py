@@ -59,6 +59,22 @@ def test_hermes_advisor_fails_closed_when_unavailable(monkeypatch):
     assert advisor.run_hermes_advisor("analyze this") is None
 
 
+def test_hermes_advisor_fails_closed_on_timeout(monkeypatch):
+    monkeypatch.setattr(advisor, "hermes_available", lambda _binary="hermes": True)
+
+    def fake_run(*args, **kwargs):
+        raise advisor.subprocess.TimeoutExpired(cmd=kwargs["args"] if "args" in kwargs else "hermes", timeout=1)
+
+    monkeypatch.setattr(advisor.subprocess, "run", fake_run)
+    assert advisor.run_hermes_advisor("analyze this") is None
+
+
+def test_hermes_advisor_fails_closed_on_process_error(monkeypatch):
+    monkeypatch.setattr(advisor, "hermes_available", lambda _binary="hermes": True)
+    monkeypatch.setattr(advisor.subprocess, "run", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("spawn failed")))
+    assert advisor.run_hermes_advisor("analyze this") is None
+
+
 def test_hermes_prompt_rejects_oversized_input():
     assert advisor.run_hermes_advisor("x" * (advisor.MAX_PROMPT_CHARS + 1)) is None
 

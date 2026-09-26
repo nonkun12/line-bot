@@ -60,6 +60,11 @@ def test_news_duplicate_links_are_removed_and_limit_is_applied(monkeypatch) -> N
         "agents.news.node.urllib.request.urlopen",
         lambda request, timeout: _FakeResponse(payload),
     )
+    monkeypatch.setattr(
+        AINewsAgent,
+        "_now",
+        staticmethod(lambda: datetime(2026, 9, 19, 12, tzinfo=ZoneInfo("Asia/Tokyo"))),
+    )
 
     items = AINewsAgent._fetch("artificial intelligence")
 
