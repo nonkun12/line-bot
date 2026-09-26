@@ -101,9 +101,27 @@ def _augment_instruction_with_history(instruction: str, history_path: Path) -> s
     return f"{instruction}\n\n{evidence[:budget]}"
 
 
+def _record_hermes_execution(*, invoked: bool, used: bool, reason: str = "") -> None:
+    """Publish bounded Hermes execution metadata for the durable audit step."""
+    os.environ["HERMES_ADVISOR_INVOKED"] = "true" if invoked else "false"
+    os.environ["HERMES_ADVISOR_USED"] = "true" if used else "false"
+    os.environ["HERMES_ADVISOR_REASON"] = str(reason or "")[:500]
+    os.environ["HERMES_ADVISORY_EXCERPT"] = ""
+    github_env = os.environ.get("GITHUB_ENV")
+    if not github_env:
+        return
+    with open(github_env, "a", encoding="utf-8") as fh:
+        fh.write(f"HERMES_ADVISOR_INVOKED={os.environ['HERMES_ADVISOR_INVOKED']}\n")
+        fh.write(f"HERMES_ADVISOR_USED={os.environ['HERMES_ADVISOR_USED']}\n")
+        fh.write(f"HERMES_ADVISOR_REASON={os.environ['HERMES_ADVISOR_REASON']}\n")
+        fh.write(f"HERMES_ADVISORY_EXCERPT={os.environ['HERMES_ADVISORY_EXCERPT']}\n")
+
+
 def _augment_with_hermes_advice(instruction: str, history_path: Path) -> str:
-    """Optionally append bounded, untrusted Hermes advice to the next run."""
-    if os.environ.get("HERMES_ADVISOR_ENABLED", "").strip().casefold() != "true":
+    """Optionally append bounded, untrusted Hermes advice and record what happened."""
+    enabled = os.environ.get("HERMES_ADVISOR_ENABLED", "").strip().casefold() == "true"
+    if not enabled:
+        _record_hermes_execution(invoked=False, used=False, reason="disabled")
         return instruction
     try:
         history = SelfImprovementHistory(history_path, max_records=200).load()
@@ -113,15 +131,24 @@ def _augment_with_hermes_advice(instruction: str, history_path: Path) -> str:
             for pattern in analysis.recurring_patterns
         ]
         prompt = build_self_improvement_prompt(instruction, evidence)
+    except (OSError, ValueError, TypeError) as exc:
+        _record_hermes_execution(invoked=False, used=False, reason=f"advisor_preparation_error:{type(exc).__name__}")
+        return instruction
+    try:
         advice = run_hermes_advisor(prompt)
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError) as exc:
+        _record_hermes_execution(invoked=True, used=False, reason=f"advisor_error:{type(exc).__name__}")
         return instruction
     if not advice:
+        _record_hermes_execution(invoked=True, used=False, reason="no_advice_returned")
         return instruction
     budget = max(0, worker.MAX_INSTRUCTION_LENGTH - len(instruction) - 32)
     if budget < 64:
+        _record_hermes_execution(invoked=True, used=False, reason="instruction_budget_too_small")
         return instruction
-    return f"{instruction}\n\nUNTRUSTED HERMES ADVISORY:\n{advice[:budget]}"
+    bounded_advice = advice[:budget]
+    _record_hermes_execution(invoked=True, used=True, reason="advice_appended_to_development_instruction")
+    return f"{instruction}\n\nUNTRUSTED HERMES ADVISORY:\n{bounded_advice}"
 
 
 def _write_summary(status: str, exit_code: int, start_sha: str, summary_path: Path) -> None:

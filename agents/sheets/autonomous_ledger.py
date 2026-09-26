@@ -123,13 +123,30 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
 
 
 def build_record_from_env() -> AutonomousRunRecord:
+    """Build an audit row that states whether Hermes actually participated."""
+    task_summary = os.getenv("DEV_INSTRUCTION", "")
+    hermes_invoked = os.getenv("HERMES_ADVISOR_INVOKED", "false").strip().lower() == "true"
+    hermes_used = os.getenv("HERMES_ADVISOR_USED", "false").strip().lower() == "true"
+    hermes_reason = os.getenv("HERMES_ADVISOR_REASON", "").strip()
+    if hermes_invoked:
+        action = "Hermes advisor invoked"
+        if hermes_used:
+            action += "; advisory appended to development instruction"
+        elif hermes_reason:
+            action += f"; not used: {hermes_reason}"
+        task_summary = f"{task_summary} [{action}]"
+    else:
+        task_summary = f"{task_summary} [Hermes advisor not invoked]"
+    agent = os.getenv("AUTONOMOUS_AGENT", "ManagementAI")
+    if hermes_invoked:
+        agent = f"{agent}+HermesAdvisor"
     return AutonomousRunRecord(
         timestamp=os.getenv("AUTONOMOUS_TIMESTAMP", ""),
         run_id=os.environ["GITHUB_RUN_ID"],
         task_id=os.getenv("AUTONOMOUS_TASK_ID", "autonomous-development"),
         source=os.getenv("AUTONOMOUS_SOURCE", "scheduler"),
-        agent=os.getenv("AUTONOMOUS_AGENT", "ManagementAI"),
-        task_summary=os.getenv("DEV_INSTRUCTION", ""),
+        agent=agent,
+        task_summary=task_summary[:4000],
         base_sha=os.getenv("AUTONOMOUS_START_SHA", ""),
         produced_sha=os.getenv("AUTONOMOUS_PRODUCED_SHA", ""),
         changed_files=os.getenv("AUTONOMOUS_CHANGED_FILES", ""),
