@@ -2,6 +2,13 @@ name: Autonomous Development Loop (legacy manual)
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * *'
+      timezone: 'Asia/Tokyo'
+    - cron: '0 16 * * *'
+      timezone: 'Asia/Tokyo'
+    - cron: '0 22 * * *'
+      timezone: 'Asia/Tokyo'
 
 # Scheduled runs are intentionally on the default branch.
 # Autonomous changes are pushed to a dedicated branch and reviewed via PR.

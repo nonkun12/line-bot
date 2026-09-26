@@ -37,11 +37,15 @@ def test_autonomous_workflow_blocks_existing_branch_but_allows_new_branch():
     assert 'exit 1' in guard
 
 
-def test_legacy_nightly_workflow_has_no_automatic_schedule():
-    legacy = ROOT / ".github" / "workflows" / "nightly-autonomous-worker.yml"
-    text = legacy.read_text(encoding="utf-8")
+def test_nightly_autonomous_worker_has_automatic_schedule():
+    worker = ROOT / ".github" / "workflows" / "nightly-autonomous-worker.yml"
+    text = worker.read_text(encoding="utf-8")
     schedule_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
-    assert "schedule:" not in schedule_block
+    assert "schedule:" in schedule_block
+    assert "cron: '0 4 * * *'" in schedule_block
+    assert "cron: '0 16 * * *'" in schedule_block
+    assert "cron: '0 22 * * *'" in schedule_block
+    assert "timezone: 'Asia/Tokyo'" in schedule_block
 
 
 def test_autonomous_workflow_has_final_safety_gate_before_pr_creation():
