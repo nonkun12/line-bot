@@ -319,7 +319,10 @@ class ManagementAI:
         # a denied role can never cause partial execution of earlier batches.
         assert_all_approved(task.role for task in plan.tasks)
         workers = self._max_workers if plan.parallel_safe else 1
-        distributed = DistributedTaskScheduler(self._executors, max_workers=workers).run(plan.tasks)
+        # Keep the generic scheduler strict, but bound untrusted specialist output
+        # before it becomes management feedback.
+        bounded_executors = {role: _BoundedResultExecutor(executor) for role, executor in self._executors.items()}
+        distributed = DistributedTaskScheduler(bounded_executors, max_workers=workers).run(plan.tasks)
         batches = plan_batches(plan.tasks)
         task_map = {task.task_id: task for task in plan.tasks}
         observations = tuple(
@@ -392,6 +395,24 @@ class ManagementAI:
             if round_number == max_rounds:
                 return ManagementCycleRun(tuple(rounds), "bounded round limit reached")
         return ManagementCycleRun(tuple(rounds), "bounded round limit reached")
+
+
+class _BoundedResultExecutor:
+    """Normalize untrusted specialist summaries before manager feedback."""
+
+    def __init__(self, executor: object) -> None:
+        self._executor = executor
+
+    def execute(self, task: AgentTask):
+        result = self._executor.execute(task)
+        if not isinstance(result, AgentResult) or len(result.summary) <= 1800:
+            return result
+        return AgentResult(
+            task_id=result.task_id,
+            success=result.success,
+            summary=result.summary[:1800],
+            changed_resources=result.changed_resources,
+        )
 
 
 def _format_feedback_for_prompt(feedback: Sequence[str]) -> str:
