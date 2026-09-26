@@ -45,8 +45,9 @@ class AINewsAgent:
         # such as 「AI NEWSとトヨタ（7203）の最新情報を調べて」 must not send the
         # entire assistant instruction to the news provider.
         normalized = re.sub(r"[（(]\s*\d{4}\s*[）)]", "", normalized)
+        normalized = re.sub(r"[、,]\s*(?:結果|実行したAIの役割|役割).*?[。.]?$", "", normalized)
         normalized = re.sub(
-            r"(?:結果|実行したAIの役割|役割|最新情報|最新|情報|調べて|教えて|見せて|ください|お願い|ニュース|を|が|と)+$",
+            r"(?:最新情報|最新|情報|調べて|教えて|見せて|ください|お願い|ニュース|を|が|と)+[。.]?$",
             "",
             normalized,
         ).strip()
