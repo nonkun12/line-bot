@@ -113,7 +113,7 @@ def test_build_record_captures_actual_hermes_participation(monkeypatch):
 
     assert item.agent == "DistributedDevelopmentRuntime+HermesAdvisor"
     assert "Hermes advisor invoked" in item.task_summary
-    assert "advice=review recurring failure pattern" in item.task_summary
+    assert "advice=" not in item.task_summary
 
 
 def test_build_record_records_when_hermes_was_not_invoked(monkeypatch):
@@ -127,3 +127,18 @@ def test_build_record_records_when_hermes_was_not_invoked(monkeypatch):
 
     assert item.agent == "ManagementAI"
     assert "[Hermes advisor not invoked]" in item.task_summary
+
+
+def test_build_record_does_not_persist_hermes_advice_excerpt(monkeypatch):
+    from agents.sheets.autonomous_ledger import build_record_from_env
+
+    monkeypatch.setenv("GITHUB_RUN_ID", "hermes-3")
+    monkeypatch.setenv("DEV_INSTRUCTION", "safe autonomous task")
+    monkeypatch.setenv("HERMES_ADVISOR_INVOKED", "true")
+    monkeypatch.setenv("HERMES_ADVISOR_USED", "true")
+    monkeypatch.setenv("HERMES_ADVISOR_REASON", "advice_appended_to_development_instruction")
+    monkeypatch.setenv("HERMES_ADVISORY_EXCERPT", "SECRET-DO-NOT-PERSIST")
+    item = build_record_from_env()
+
+    assert "SECRET-DO-NOT-PERSIST" not in item.task_summary
+    assert "advice=" not in item.task_summary
