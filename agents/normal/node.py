@@ -111,6 +111,12 @@ def _primary_provider() -> str:
     return configured if configured in {"gemini", "groq"} else "gemini"
 
 
+def _gemini_request_id(state: AgentState) -> str:
+    """Return a stable request id for Gemini calls, generating one when absent."""
+    request_id = state.get("request_id")
+    return str(request_id) if request_id else str(uuid.uuid4())
+
+
 def _provider_failure_reply(reply: str | None) -> bool:
     return reply in {
         _RATE_LIMIT_REPLY,
