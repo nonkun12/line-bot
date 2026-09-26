@@ -71,32 +71,35 @@ def run_hermes_advisor(
         return None
 
     bounded_timeout = max(1, min(int(timeout), TIMEOUT_SECONDS))
-    completed = subprocess.run(
-        [
-            binary,
-            "chat",
-            "--query-file",
-            "-",
-            "--oneshot",
-            "--format",
-            "stream-json",
-            "--toolsets",
-            TOOLSETS,
-            "--max-turns",
-            str(MAX_TURNS),
-            "--source",
-            "tool",
-            "--ignore-user-config",
-            "--safe-mode",
-            "--quiet",
-        ],
-        input=normalized,
-        text=True,
-        capture_output=True,
-        timeout=bounded_timeout,
-        check=False,
-        env=_safe_environment(),
-    )
+    try:
+        completed = subprocess.run(
+            [
+                binary,
+                "chat",
+                "--query-file",
+                "-",
+                "--oneshot",
+                "--format",
+                "stream-json",
+                "--toolsets",
+                TOOLSETS,
+                "--max-turns",
+                str(MAX_TURNS),
+                "--source",
+                "tool",
+                "--ignore-user-config",
+                "--safe-mode",
+                "--quiet",
+            ],
+            input=normalized,
+            text=True,
+            capture_output=True,
+            timeout=bounded_timeout,
+            check=False,
+            env=_safe_environment(),
+        )
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
     if completed.returncode != 0:
         return None
     return _extract_result(completed.stdout)
