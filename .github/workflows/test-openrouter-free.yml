@@ -1,0 +1,59 @@
+name: Test OpenRouter Free API
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/test-openrouter-free.yml"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check API key presence
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -n "$OPENROUTER_API_KEY" ]; then
+            echo "OPENROUTER_API_KEY_CONFIGURED=true"
+          else
+            echo "OPENROUTER_API_KEY_CONFIGURED=false"
+          fi
+
+      - name: Call OpenRouter Free once
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$OPENROUTER_API_KEY"
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          payload = {
+              "model": "openrouter/free",
+              "messages": [
+                  {"role": "user", "content": "Reply with exactly: OPENROUTER_FREE_OK"}
+              ],
+          }
+          body = json.dumps(payload).encode()
+          req = urllib.request.Request(
+              "https://openrouter.ai/api/v1/chat/completions",
+              data=body,
+              headers={
+                  "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
+                  "Content-Type": "application/json",
+                  "HTTP-Referer": "https://github.com/nonkun12/line-bot",
+                  "X-Title": "LINE AI Secretary OpenRouter probe",
+              },
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=30) as resp:
+              raw = resp.read().decode()
+              data = json.loads(raw)
+              choice = data["choices"][0]["message"]["content"]
+              print("HTTP_STATUS=200")
+              print("MODEL=" + str(data.get("model", "unknown")))
+              print("REPLY=" + choice)
+          PY
