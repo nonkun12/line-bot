@@ -742,3 +742,220 @@ def test_model_management_planner_receives_deterministic_routing_hints() -> None
     assert "Routing candidates (advisory): english, music" in prompts[0]
     assert "Routing priority (1=highest): 2" in prompts[0]
     assert "validate every planned role" in prompts[0]
+
+
+def test_management_ai_rejects_zero_and_overbound_round_limits() -> None:
+    manager = ManagementAI(
+        {AgentRole.NEWS: Executor(AgentRole.NEWS)},
+        planner=LoopPlanner(),
+    )
+    request = ManagementRequest("u1", "ニュースを調べて")
+    with pytest.raises(ValueError, match="between 1 and 3"):
+        manager.run_closed_loop(request, max_rounds=0)
+    with pytest.raises(ValueError, match="between 1 and 3"):
+        manager.run_closed_loop(request, max_rounds=4)
+
+
+def test_management_ai_followup_gate_denial_stops_before_second_execution(monkeypatch) -> None:
+    class TwoRoundPlanner(LoopPlanner):
+        def plan(self, request, decision, feedback=()):
+            self.feedback.append(tuple(feedback))
+            if len(self.feedback) == 1:
+                return ManagementPlan(
+                    objective="first round",
+                    decision=decision,
+                    tasks=(
+                        AgentTask(
+                            "first",
+                            AgentRole.NEWS,
+                            "Collect initial evidence.",
+                            resources=frozenset({"news"}),
+                        ),
+                    ),
+                    continue_after_round=True,
+                )
+            return ManagementPlan(
+                objective="followup",
+                decision=decision,
+                tasks=(
+                    AgentTask(
+                        "followup",
+                        AgentRole.STOCKS,
+                        "Summarize the bounded observation.",
+                        resources=frozenset({"stocks"}),
+                    ),
+                ),
+                continue_after_round=False,
+            )
+
+    news = Executor(AgentRole.NEWS)
+    stocks = Executor(AgentRole.STOCKS)
+    planner = TwoRoundPlanner()
+    manager = ManagementAI(
+        {AgentRole.NEWS: news, AgentRole.STOCKS: stocks},
+        planner=planner,
+    )
+
+    original_gate = __import__("core.management_ai", fromlist=["assert_all_approved"]).assert_all_approved
+    calls = 0
+
+    def deny_followup(values):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("follow-up role denied")
+        return original_gate(values)
+
+    monkeypatch.setattr("core.management_ai.assert_all_approved", deny_followup)
+
+    with pytest.raises(RuntimeError, match="follow-up role denied"):
+        manager.run_closed_loop(
+            ManagementRequest("u1", "ニュースと株価を調べて"),
+            max_rounds=2,
+        )
+
+    assert calls == 2
+    assert news.calls == ["first"]
+    assert stocks.calls == []
+
+
+def test_management_ai_second_round_executor_failure_stops_cycle_without_third_round() -> None:
+    class TwoRoundPlanner(LoopPlanner):
+        def plan(self, request, decision, feedback=()):
+            self.feedback.append(tuple(feedback))
+            task_id = "first" if len(self.feedback) == 1 else "second"
+            return ManagementPlan(
+                objective="two bounded rounds",
+                decision=decision,
+                tasks=(
+                    AgentTask(
+                        task_id,
+                        AgentRole.NEWS,
+                        "Collect bounded evidence.",
+                        resources=frozenset({"news"}),
+                    ),
+                ),
+                continue_after_round=True,
+            )
+
+    class FailSecondExecutor(Executor):
+        def execute(self, task):
+            self.calls.append(task.task_id)
+            if task.task_id == "second":
+                raise RuntimeError("second round failed")
+            return AgentResult(task.task_id, True, "done")
+
+    planner = TwoRoundPlanner()
+    news = FailSecondExecutor(AgentRole.NEWS)
+    manager = ManagementAI({AgentRole.NEWS: news}, planner=planner)
+
+    with pytest.raises(Exception, match="second round failed"):
+        manager.run_closed_loop(
+            ManagementRequest("u1", "ニュースと株価を調べて"),
+            max_rounds=2,
+        )
+
+    assert planner.feedback and len(planner.feedback) == 2
+    assert news.calls == ["first", "second"]
+
+
+def test_management_ai_first_round_executor_failure_never_calls_planner_again() -> None:
+    class CountingPlanner(LoopPlanner):
+        def plan(self, request, decision, feedback=()):
+            self.feedback.append(tuple(feedback))
+            return ManagementPlan(
+                objective="first round only",
+                decision=decision,
+                tasks=(
+                    AgentTask(
+                        "first",
+                        AgentRole.NEWS,
+                        "Collect bounded evidence.",
+                        resources=frozenset({"news"}),
+                    ),
+                ),
+                continue_after_round=True,
+            )
+
+    class FailExecutor(Executor):
+        def execute(self, task):
+            self.calls.append(task.task_id)
+            raise RuntimeError("first round failed")
+
+    planner = CountingPlanner()
+    news = FailExecutor(AgentRole.NEWS)
+    manager = ManagementAI({AgentRole.NEWS: news}, planner=planner)
+
+    with pytest.raises(Exception, match="first round failed"):
+        manager.run_closed_loop(
+            ManagementRequest("u1", "ニュースを調べて"),
+            max_rounds=2,
+        )
+
+    assert len(planner.feedback) == 1
+    assert news.calls == ["first"]
+
+
+def test_management_ai_continue_after_round_false_never_calls_planner_again() -> None:
+    class StopPlanner(LoopPlanner):
+        def plan(self, request, decision, feedback=()):
+            self.feedback.append(tuple(feedback))
+            return ManagementPlan(
+                objective="stop",
+                decision=decision,
+                tasks=(
+                    AgentTask(
+                        "only",
+                        AgentRole.NEWS,
+                        "Summarize bounded evidence.",
+                        resources=frozenset({"news"}),
+                    ),
+                ),
+                continue_after_round=False,
+            )
+
+    planner = StopPlanner()
+    news = Executor(AgentRole.NEWS)
+    manager = ManagementAI({AgentRole.NEWS: news}, planner=planner)
+
+    cycle = manager.run_closed_loop(
+        ManagementRequest("u1", "ニュースを調べて"),
+        max_rounds=2,
+    )
+
+    assert cycle.success
+    assert cycle.stopped_reason == "manager stopped the cycle"
+    assert len(planner.feedback) == 1
+    assert news.calls == ["only"]
+
+
+def test_model_management_planner_bounds_feedback_to_six_items_and_1800_chars() -> None:
+    prompts: list[str] = []
+
+    def model(prompt: str) -> str:
+        prompts.append(prompt)
+        return (
+            '{"objective":"follow up","parallel_safe":false,"tasks":['
+            '{"task_id":"followup","role":"news","instruction":"Review bounded evidence.",'
+            '"resources":["news"],"depends_on":[],"priority":1}]}'
+        )
+
+    planner = ModelManagementPlanner(model_call=model)
+    feedback = tuple(f"item-{i}-" + ("x" * 2000) for i in range(8))
+    planner.plan(
+        ManagementRequest("u1", "ニュースを調べて"),
+        ManagementDecision(Specialist.NEWS, "matched news", 0.95),
+        feedback=feedback,
+    )
+
+    prompt = prompts[0]
+    assert "item-0-" not in prompt
+    assert "item-1-" not in prompt
+    assert "item-2-" not in prompt
+    assert "item-3-" not in prompt
+    assert "item-4-" not in prompt
+    assert "item-5-" in prompt
+    assert "item-6-" in prompt
+    assert "item-7-" in prompt
+    assert "x" * 1800 in prompt
+    assert "x" * 1801 not in prompt
