@@ -1,6 +1,7 @@
 from core.agent_runtime import RuntimeReport
 from core.self_improvement_history import SelfImprovementHistory, SelfImprovementMemoryRecord
 from core.self_improvement_cycle import run_self_improvement_cycle
+from scripts.run_guarded_runtime import _augment_instruction_with_history
 
 
 def test_cycle_memory_persists_outcome_cause_improvement_and_next_action(tmp_path):
@@ -58,3 +59,21 @@ def test_cycle_memory_is_bounded(tmp_path):
 
     memories = history.load_memory(limit=20)
     assert [item.outcome for item in memories] == ["PASS", "BLOCKED"]
+
+
+def test_cycle_memory_feeds_next_instruction_without_recurring_pattern(tmp_path):
+    path = tmp_path / "memory.jsonl"
+    SelfImprovementHistory(path).append_memory(
+        SelfImprovementMemoryRecord(
+            outcome="PASS",
+            cause="gate passed",
+            improvements=("keep bounded checks",),
+            next_action="continue next loop",
+        )
+    )
+
+    augmented = _augment_instruction_with_history("next safe task", path)
+
+    assert augmented.startswith("next safe task\n\n")
+    assert "prior outcome=PASS" in augmented
+    assert "next_action=continue next loop" in augmented
