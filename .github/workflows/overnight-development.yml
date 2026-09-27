@@ -1,6 +1,9 @@
 name: Autonomous Development Loop
 
 on:
+  push:
+    branches:
+      - main
   schedule:
     - cron: "5 3 * * *"   # 03:05 JST
       timezone: "Asia/Tokyo"
@@ -21,6 +24,7 @@ concurrency:
 
 jobs:
   develop:
+    if: \${{ github.event_name != 'push' || startsWith(github.event.head_commit.message, '[run-autonomous-loop]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -38,6 +42,8 @@ jobs:
       # Hermes stays opt-in. Installation is isolated to the ephemeral runner and
       # does not activate the advisor unless the repository variable is explicitly true.
       - name: Prepare Hermes advisor (opt-in)
+        id: hermes
+        continue-on-error: true
         env:
           HERMES_HOME: ${{ runner.temp }}/hermes-home
           HERMES_GROQ_API_KEY: ${{ secrets.HERMES_GROQ_API_KEY || secrets.GROQ_API_KEY }}
@@ -79,6 +85,14 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      - name: Verify autonomous ledger dependencies
+        run: |
+          python - <<'PY'
+          from google.oauth2.service_account import Credentials
+          from googleapiclient.discovery import build
+          print("Google Sheets dependencies available")
+          PY
+
       - name: Preflight guarded runtime tests
         run: python -m pytest -q tests/test_agent_runtime.py tests/test_line_development_runtime.py
 
@@ -114,7 +128,7 @@ jobs:
           AUTONOMOUS_SUMMARY_PATH: ${{ runner.temp }}/autonomous_run_summary.json
           SELF_IMPROVEMENT_HISTORY_PATH: ${{ runner.temp }}/self-improvement-state/self-improvement.jsonl
           SELF_IMPROVEMENT_POLICY_ENFORCED: "true"
-          HERMES_ADVISOR_ENABLED: "true"
+          HERMES_ADVISOR_ENABLED: \${{ steps.hermes.outcome == 'success' && 'true' || 'false' }}
           HERMES_ALLOW_PRIVATE_URLS: "false"
           HERMES_REDACT_SECRETS: "true"
           HERMES_DISABLE_LAZY_INSTALLS: "true"
@@ -219,7 +233,6 @@ jobs:
           retention-days: 7
       - name: Record autonomous development result to Google Sheets
         if: always()
-        continue-on-error: true
         env:
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
@@ -228,7 +241,7 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           DEV_INSTRUCTION: "自律開発です。既存機能を壊さない安全な小規模改善を1件だけ実装してください。まずリポジトリ内の安全な候補から現在のコードとテストに基づいて改善対象を1ファイルだけ選び、既存機能との重複や不要な変更を避けてください。テスト可能な改善を優先し、必ずpytestとレビューゲートを通してください。mainへ直接変更せずPRを作成する前提です。"
         run: |
-          set +e
+          set -euo pipefail
           export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           export AUTONOMOUS_AGENT="DistributedDevelopmentRuntime"
           export AUTONOMOUS_TASK_ID="scheduled-distributed-development"
@@ -277,18 +290,35 @@ jobs:
           import os
           from agents.sheets.autonomous_ledger import record_autonomous_run
 
+          result = "FAILED:unknown"
           try:
               recorded = record_autonomous_run()
               result = "ALREADY_RECORDED" if not recorded else "RECORDED"
           except Exception as exc:
               result = f"FAILED:{type(exc).__name__}"
               print(f"Google Sheets logging failed: {exc}", flush=True)
-          else:
-              print(f"Google Sheets logging: {result}", flush=True)
 
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
               fh.write(f"AUTONOMOUS_LOGGING_RESULT={result}\n")
+
+          if result not in {"RECORDED", "ALREADY_RECORDED"}:
+              raise SystemExit(1)
+          print(f"Google Sheets logging: {result}", flush=True)
           PY
+
+      - name: Validate Google Sheets logging result
+        if: always()
+        run: |
+          case "${AUTONOMOUS_LOGGING_RESULT:-}" in
+            RECORDED|ALREADY_RECORDED)
+              echo "Google Sheets logging verified: ${AUTONOMOUS_LOGGING_RESULT}"
+              ;;
+            *)
+              echo "Google Sheets logging verification failed: ${AUTONOMOUS_LOGGING_RESULT:-MISSING}"
+              exit 1
+              ;;
+          esac
+
       - name: Notify Slack
         if: always()
         env:
