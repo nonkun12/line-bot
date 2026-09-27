@@ -296,14 +296,20 @@ def restore(paths: list[str]) -> None:
 
 
 def build_plan(client: Groq, instruction: str, chosen: str, context: str, test_output: str | None = None) -> dict:
-    system = '''You edit ONE repository file. Return JSON only.
-Real change: {"no_change":false,"changes":[{"file":"exact path","old":"exact existing text","new":"replacement text"}]}
+    system = '''You edit EXACTLY ONE repository file. Return JSON only.
+The selected file path is authoritative and immutable for this request.
+Real change: {"no_change":false,"changes":[{"file":"exact selected file path","old":"exact existing text","new":"replacement text"}]}
 No safe/needed change: {"no_change":true}
-Rules: one file only; old must be an exact substring of supplied context; minimal change; never modify security, credentials, deployment, workflow, or worker logic. Do not invent text that is not visible in context. `new` is replacement text only: never include unified-diff markers, markdown fences, or standalone `+`/`-` lines.'''
-    prompt = f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}\n\nCurrent context:\n{context}"
+Rules: the `changes` array MUST contain changes for the selected file and ONLY the selected file; never use any other path, even if the instruction mentions another file. old must be an exact substring of supplied context; minimal change; never modify security, credentials, deployment, workflow, or worker logic. Do not invent text that is not visible in context. `new` is replacement text only: never include unified-diff markers, markdown fences, or standalone `+`/`-` lines.'''
+    prompt = f"Instruction:\n{instruction}\n\nAUTHORITATIVE SELECTED FILE (must be used verbatim in every change.file):\n{chosen}\n\nCurrent context for that file only:\n{context}"
     if test_output:
         prompt += f"\n\nPytest failure:\n{test_output[-3000:]}"
-    return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
+    plan = parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
+    changes = plan.get("changes") if isinstance(plan, dict) else None
+    if isinstance(changes, list) and any(isinstance(change, dict) and change.get("file") != chosen for change in changes):
+        retry_system = system + f"\nYour previous JSON violated the file contract. Retry now. Every changes[*].file MUST be exactly: {chosen}"
+        plan = parse_plan(ask(client, retry_system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
+    return plan
 
 
 def main() -> int:
