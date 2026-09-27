@@ -65,8 +65,12 @@ def test_autonomous_workflow_does_not_hardcode_one_development_target():
 def test_autonomous_workflow_persists_self_improvement_history_between_runs():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "Find previous completed autonomous run" in text
-    assert "gh run list --workflow overnight-development.yml --branch main --status completed --limit 1" in text
-    assert "--json databaseId" in text
+    assert "Verify autonomous ledger configuration" in text
+    assert "missing GOOGLE_SHEETS_SPREADSHEET_ID" in text
+    assert "missing GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON" in text
+    assert "gh run list --workflow overnight-development.yml --branch main --status completed --limit 20" in text
+    assert "--json databaseId,conclusion" in text
+    assert 'select(.conclusion != "skipped")' in text
     assert "--jq" in text
     assert "Restore previous self-improvement history" in text
     assert "uses: actions/download-artifact@v4" in text
