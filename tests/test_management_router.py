@@ -38,6 +38,7 @@ def test_unresolved_request_records_empty_candidates() -> None:
     assert decision.specialist is Specialist.GENERAL
     assert decision.metadata["matched_specialists"] == []
     assert decision.metadata["routing_priority"] is None
+    # Note: this test ensures that unresolved requests have no priority assigned
 
 
 def test_normalizes_full_width_input_and_preserves_channel_metadata() -> None:
