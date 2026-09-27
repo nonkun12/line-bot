@@ -139,8 +139,7 @@ class SelfImprovementHistory:
             ) as temp:
                 temp_name = temp.name
                 for record in records:
-                    temp.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "
-")
+                    temp.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
             os.replace(temp_name, self.path)
             temp_name = None
         finally:
