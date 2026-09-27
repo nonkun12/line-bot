@@ -1,3 +1,5 @@
+import json
+
 from core.agent_runtime import RuntimeReport
 from core.self_improvement_history import SelfImprovementHistory, SelfImprovementMemoryRecord
 from core.self_improvement_cycle import run_self_improvement_cycle
@@ -92,4 +94,4 @@ def test_cycle_memory_is_written_as_one_json_record_per_line(tmp_path):
 
     lines = path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1
-    assert isinstance(__import__("json").loads(lines[0]), dict)
+    assert isinstance(json.loads(lines[0]), dict)
