@@ -103,7 +103,7 @@ jobs:
             echo "Google Sheets ledger is not configured: missing GOOGLE_SHEETS_SPREADSHEET_ID."
             exit 1
           fi
-          if [ -z "\${GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON:-}" ]; then
+          if [ -z "${GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON:-}" ]; then
             echo "Google Sheets ledger is not configured: missing GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON."
             exit 1
           fi
@@ -136,7 +136,7 @@ jobs:
         id: development
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          HERMES_GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          HERMES_GROQ_API_KEY: ${{ secrets.HERMES_GROQ_API_KEY || secrets.GROQ_API_KEY }}
           DEV_INSTRUCTION: "自律開発です。既存機能を壊さない安全な小規模改善を1件だけ実装してください。まずリポジトリ内の安全な候補から現在のコードとテストに基づいて改善対象を1ファイルだけ選び、既存機能との重複や不要な変更を避けてください。テスト可能な改善を優先し、必ずpytestとレビューゲートを通してください。mainへ直接変更せずPRを作成する前提です。"
           DEV_USER_ID: autonomous
           GITHUB_RUN_ID: ${{ github.run_id }}
@@ -226,16 +226,22 @@ jobs:
             echo "AUTONOMOUS_RESULT=no-changes" >> "$GITHUB_ENV"
             exit 0
           fi
-          if git ls-remote --exit-code origin "refs/heads/${BRANCH}" >/dev/null 2>&1; then
-            echo "Autonomous branch already exists: ${BRANCH}"
-            exit 1
-          fi
-          PR_URL="$(gh pr create \
+          PR_URL="$(gh pr list \
             --repo "${GITHUB_REPOSITORY}" \
             --head "${BRANCH}" \
             --base main \
-            --title "chore: autonomous development loop" \
-            --body "Autonomous development executed through the guarded multi-agent runtime. PR is intentionally left for review; no automatic merge.")"
+            --json url \
+            --jq '.[0].url // empty')"
+          if [ -z "$PR_URL" ]; then
+            PR_URL="$(gh pr create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --head "${BRANCH}" \
+              --base main \
+              --title "chore: autonomous development loop" \
+              --body "Autonomous development executed through the guarded multi-agent runtime. PR is intentionally left for review; no automatic merge.")"
+          else
+            echo "Autonomous PR already exists: ${PR_URL}"
+          fi
           echo "AUTONOMOUS_RESULT=pr-created" >> "$GITHUB_ENV"
           echo "AUTONOMOUS_PR_URL=${PR_URL}" >> "$GITHUB_ENV"
 
