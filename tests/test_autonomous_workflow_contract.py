@@ -34,6 +34,12 @@ def test_autonomous_workflow_surfaces_google_sheets_failures():
     assert "Google Sheets logging verification failed" in audit
 
 
+def test_autonomous_workflow_pins_hermes_release_installer():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "345cd2b057a452236de401d3534b8502a7465e8d/scripts/install.sh" in text
+    assert "--commit 345cd2b057a452236de401d3534b8502a7465e8d" in text
+    assert "--skip-computer-use" in text
+
 def test_autonomous_workflow_reuses_the_worker_pushed_branch_for_pr_creation():
     text = WORKFLOW.read_text(encoding="utf-8")
     guard = text[text.index("- name: Create GitHub PR"):text.index("- name: Persist self-improvement history")]
