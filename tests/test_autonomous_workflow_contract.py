@@ -19,14 +19,15 @@ def test_autonomous_workflow_does_not_escape_github_or_shell_variables():
     assert 'export AUTONOMOUS_SAFETY_GATE_RESULT="${AUTONOMOUS_SAFETY_GATE_RESULT:-BLOCKED}"' in text
     assert 'SHEETS_LOGGING_RESULT: ${{ env.AUTONOMOUS_LOGGING_RESULT }}' in text
 
-def test_autonomous_workflow_preserves_fail_tolerant_audit():
+def test_autonomous_workflow_surfaces_google_sheets_failures():
     text = WORKFLOW.read_text(encoding="utf-8")
     audit_start = text.index("- name: Record autonomous development result to Google Sheets")
     audit_end = text.index("- name: Notify Slack", audit_start)
     audit = text[audit_start:audit_end]
     assert "if: always()" in audit
-    assert "continue-on-error: true" in audit
-    assert "set +e" in audit
+    assert "continue-on-error: true" not in audit
+    assert "set -euo pipefail" in audit
+    assert "Google Sheets logging verification failed" in audit
 
 
 def test_autonomous_workflow_blocks_existing_branch_but_allows_new_branch():
@@ -81,10 +82,13 @@ def test_autonomous_workflow_persists_self_improvement_history_between_runs():
     assert "branch: main" not in restore
 
 
-def test_autonomous_workflow_is_schedule_only_not_main_push_trigger():
+def test_autonomous_workflow_supports_explicit_on_demand_push_trigger():
     text = WORKFLOW.read_text(encoding="utf-8")
     event_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
+    assert "push:" in event_block
+    assert "branches:" in event_block
+    assert "- main" in event_block
     assert "schedule:" in event_block
     assert "workflow_dispatch:" in event_block
-    assert "push:" not in event_block
-    assert "branches:" not in event_block
+    assert "[run-autonomous-loop]" in text
+    assert "github.event_name != 'push'" in text
