@@ -88,7 +88,7 @@ def _augment_instruction_with_history(instruction: str, history_path: Path) -> s
         analysis = analyze_signals(signals, min_occurrences=2, max_patterns=3)
     except (OSError, ValueError, TypeError):
         return instruction
-    if not analysis.recurring_patterns:
+    if not analysis.recurring_patterns and not memories:
         return instruction
 
     evidence_lines = [
