@@ -15,6 +15,10 @@ def test_autonomous_workflow_does_not_escape_github_or_shell_variables():
     assert "\\${{" not in text
     assert "\\${AUTONOMOUS_" not in text
     assert "GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}" in text
+    assert 'if [ -z "${GOOGLE_SHEETS_SPREADSHEET_ID:-}" ]; then' in text
+    assert 'if [ -z "${GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON:-}" ]; then' in text
+    assert '\\${GOOGLE_SHEETS_SPREADSHEET_ID' not in text
+    assert '\\${GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON' not in text
     assert "GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}" in text
     assert 'export AUTONOMOUS_SAFETY_GATE_RESULT="${AUTONOMOUS_SAFETY_GATE_RESULT:-BLOCKED}"' in text
     assert 'SHEETS_LOGGING_RESULT: ${{ env.AUTONOMOUS_LOGGING_RESULT }}' in text
@@ -30,12 +34,22 @@ def test_autonomous_workflow_surfaces_google_sheets_failures():
     assert "Google Sheets logging verification failed" in audit
 
 
-def test_autonomous_workflow_blocks_existing_branch_but_allows_new_branch():
+def test_autonomous_workflow_pins_hermes_release_installer():
     text = WORKFLOW.read_text(encoding="utf-8")
-    guard = text[text.index("- name: Create GitHub PR"):text.index("- name: Record autonomous development result to Google Sheets")]
-    assert 'if git ls-remote --exit-code origin "refs/heads/${BRANCH}" >/dev/null 2>&1; then' in guard
-    assert 'echo "Autonomous branch already exists: ${BRANCH}"' in guard
-    assert 'exit 1' in guard
+    assert "345cd2b057a452236de401d3534b8502a7465e8d/scripts/install.sh" in text
+    assert "--commit 345cd2b057a452236de401d3534b8502a7465e8d" in text
+    assert "--skip-computer-use" in text
+
+def test_autonomous_workflow_reuses_the_worker_pushed_branch_for_pr_creation():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    guard = text[text.index("- name: Create GitHub PR"):text.index("- name: Persist self-improvement history")]
+    assert "gh pr list" in guard
+    assert '--head "${BRANCH}"' in guard
+    assert "--base main" in guard
+    assert 'if [ -z "$PR_URL" ]; then' in guard
+    assert "gh pr create" in guard
+    assert 'Autonomous PR already exists: ${PR_URL}' in guard
+    assert 'git ls-remote --exit-code origin "refs/heads/${BRANCH}"' not in guard
 
 
 def test_nightly_autonomous_worker_has_automatic_schedule():
