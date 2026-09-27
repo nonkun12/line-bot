@@ -63,8 +63,8 @@ def test_autonomous_workflow_does_not_hardcode_one_development_target():
 
 def test_autonomous_workflow_persists_self_improvement_history_between_runs():
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "Find previous successful autonomous run" in text
-    assert "gh run list --workflow overnight-development.yml --branch main --status success --limit 1" in text
+    assert "Find previous completed autonomous run" in text
+    assert "gh run list --workflow overnight-development.yml --branch main --status completed --limit 1" in text
     assert "--json databaseId" in text
     assert "--jq" in text
     assert "Restore previous self-improvement history" in text
