@@ -46,7 +46,7 @@ jobs:
           HERMES_DISABLE_LAZY_INSTALLS: "true"
         run: |
           set -euo pipefail
-          curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --skip-setup --non-interactive --skip-browser
+          curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --tag v0.21.3 --skip-setup --non-interactive --skip-browser
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           mkdir -p "$HERMES_HOME"
           chmod 700 "$HERMES_HOME"
@@ -68,6 +68,10 @@ jobs:
           chmod 600 "$HERMES_HOME/.env" "$HERMES_HOME/config.yaml"
           HERMES_VERSION="$(hermes --version 2>&1 | head -n 1)"
           echo "Hermes installed: ${HERMES_VERSION}"
+          case "${HERMES_VERSION}" in
+            *v0.21.3*|*0.21.3*) ;;
+            *) echo "Hermes version pin verification failed: ${HERMES_VERSION}"; exit 1 ;;
+          esac
           hermes doctor || true
 
       - name: Install dependencies
@@ -78,12 +82,12 @@ jobs:
       - name: Preflight guarded runtime tests
         run: python -m pytest -q tests/test_agent_runtime.py tests/test_line_development_runtime.py
 
-      - name: Find previous successful autonomous run
+      - name: Find previous completed autonomous run
         id: previous_autonomous_run
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          PREVIOUS_RUN_ID="$(gh run list --workflow overnight-development.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+          PREVIOUS_RUN_ID="$(gh run list --workflow overnight-development.yml --branch main --status completed --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
           echo "run_id=${PREVIOUS_RUN_ID}" >> "$GITHUB_OUTPUT"
 
       - name: Restore previous self-improvement history
