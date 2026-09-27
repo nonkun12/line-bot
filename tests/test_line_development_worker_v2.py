@@ -130,6 +130,17 @@ def test_validate_plan_rejects_protected_selected_file():
     )
 
 
+def test_validate_plan_rejects_standalone_diff_markers_in_replacement():
+    plan = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "x", "new": "safe\n+\nchange"}],
+    }
+    assert worker.validate_plan(plan, "app.py") == (
+        False,
+        "diff_marker_in_replacement",
+    )
+
+
 def test_validate_plan_accepts_no_change():
     assert worker.validate_plan({"no_change": True}, "app.py") == (True, "no_change")
 
