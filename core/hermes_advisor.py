@@ -34,6 +34,9 @@ def _safe_environment() -> dict[str, str]:
         "SHELL",
         "TMPDIR",
         "HERMES_HOME",
+        # Only the dedicated advisor key is forwarded; provider credentials are
+        # never exposed wholesale to the Hermes subprocess.
+        "HERMES_GROQ_API_KEY",
     }
     return {
         key: value
