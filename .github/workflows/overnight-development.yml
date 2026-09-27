@@ -162,15 +162,27 @@ jobs:
             echo "AUTONOMOUS_BLOCKED_FAILED_REASON=missing_runtime_summary" >> "$GITHUB_ENV"
             exit 1
           fi
-          if ! python - "$SUMMARY_PATH" <<'PY'
+          if ! python - "$SUMMARY_PATH" "$AUTONOMOUS_START_SHA" "$PRODUCED_SHA" <<'PY'
           import json
           import sys
           from pathlib import Path
 
           summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected_base = sys.argv[2]
+          actual_produced = sys.argv[3]
           if summary.get("status") != "PASS":
               raise SystemExit(f"Safety Gate blocked: runtime status={summary.get('status')!r}")
-          print(f"runtime summary: {summary.get('base_sha')} -> {summary.get('produced_sha')}")
+          if summary.get("base_sha") != expected_base:
+              raise SystemExit(
+                  f"Safety Gate blocked: runtime base_sha mismatch: "
+                  f"summary={summary.get('base_sha')!r} expected={expected_base!r}"
+              )
+          if summary.get("produced_sha") != actual_produced:
+              raise SystemExit(
+                  f"Safety Gate blocked: runtime produced_sha mismatch: "
+                  f"summary={summary.get('produced_sha')!r} actual={actual_produced!r}"
+              )
+          print(f"runtime summary verified: {summary.get('base_sha')} -> {summary.get('produced_sha')}")
           PY
           then
             echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
