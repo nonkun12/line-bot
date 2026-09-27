@@ -195,3 +195,7 @@ venv/bin/pytest -q
 ### 今後の実装予定
 *   [ ] AI生成コードの品質自動チェック（`slopguard` 等の検証ツールとの連携）
 *   [ ] 各エージェントによる対応インテントや操作コマンドのさらなる拡充
+
+## 9. 自律開発Loopの明示実行
+
+自律開発Loopは通常のmainへのpushでは起動せず、明示的なコミットメッセージが `[run-autonomous-loop]` で始まる場合だけ起動します。実行は1件の guarded development runtimeとして行い、pytest・実体Safety Gate・PR作成・自己改良履歴・Google Sheets監査記録を順に検証します。自動マージは行いません。
