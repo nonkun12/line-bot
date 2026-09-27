@@ -128,7 +128,7 @@ jobs:
           AUTONOMOUS_SUMMARY_PATH: ${{ runner.temp }}/autonomous_run_summary.json
           SELF_IMPROVEMENT_HISTORY_PATH: ${{ runner.temp }}/self-improvement-state/self-improvement.jsonl
           SELF_IMPROVEMENT_POLICY_ENFORCED: "true"
-          HERMES_ADVISOR_ENABLED: \${{ steps.hermes.outcome == 'success' && 'true' || 'false' }}
+          HERMES_ADVISOR_ENABLED: ${{ steps.hermes.outcome == 'success' && 'true' || 'false' }}
           HERMES_ALLOW_PRIVATE_URLS: "false"
           HERMES_REDACT_SECRETS: "true"
           HERMES_DISABLE_LAZY_INSTALLS: "true"
