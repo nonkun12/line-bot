@@ -76,3 +76,20 @@ def test_cycle_memory_feeds_next_instruction_without_recurring_pattern(tmp_path)
     assert augmented.startswith("next safe task\n\n")
     assert "prior outcome=PASS" in augmented
     assert "next_action=continue next loop" in augmented
+
+
+def test_cycle_memory_is_written_as_one_json_record_per_line(tmp_path):
+    path = tmp_path / "memory.jsonl"
+    history = SelfImprovementHistory(path)
+    history.append_memory(
+        SelfImprovementMemoryRecord(
+            outcome="PASS",
+            cause="gate passed",
+            improvements=("bounded",),
+            next_action="continue",
+        )
+    )
+
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    assert isinstance(__import__("json").loads(lines[0]), dict)
