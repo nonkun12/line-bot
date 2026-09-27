@@ -93,6 +93,22 @@ jobs:
           print("Google Sheets dependencies available")
           PY
 
+      - name: Verify autonomous ledger configuration
+        env:
+          GOOGLE_SHEETS_SPREADSHEET_ID: \${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: \${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -z "\${GOOGLE_SHEETS_SPREADSHEET_ID:-}" ]; then
+            echo "Google Sheets ledger is not configured: missing GOOGLE_SHEETS_SPREADSHEET_ID."
+            exit 1
+          fi
+          if [ -z "\${GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON:-}" ]; then
+            echo "Google Sheets ledger is not configured: missing GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON."
+            exit 1
+          fi
+          echo "Google Sheets ledger configuration is present."
+
       - name: Preflight guarded runtime tests
         run: python -m pytest -q tests/test_agent_runtime.py tests/test_line_development_runtime.py
 
@@ -101,7 +117,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          PREVIOUS_RUN_ID="$(gh run list --workflow overnight-development.yml --branch main --status completed --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+          PREVIOUS_RUN_ID="$(gh run list --workflow overnight-development.yml --branch main --status completed --limit 20 --json databaseId,conclusion --jq '[.[] | select(.conclusion != "skipped")][0].databaseId // empty')"
           echo "run_id=${PREVIOUS_RUN_ID}" >> "$GITHUB_OUTPUT"
 
       - name: Restore previous self-improvement history
