@@ -52,7 +52,7 @@ jobs:
           HERMES_DISABLE_LAZY_INSTALLS: "true"
         run: |
           set -euo pipefail
-          curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/v0.21.3/scripts/install.sh | bash -s -- --skip-setup --non-interactive --skip-browser
+          curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/345cd2b057a452236de401d3534b8502a7465e8d/scripts/install.sh | bash -s -- --commit 345cd2b057a452236de401d3534b8502a7465e8d --skip-setup --non-interactive --skip-browser --skip-computer-use
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           mkdir -p "$HERMES_HOME"
           chmod 700 "$HERMES_HOME"
