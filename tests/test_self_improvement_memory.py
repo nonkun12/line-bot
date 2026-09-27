@@ -17,7 +17,7 @@ def test_cycle_memory_persists_outcome_cause_improvement_and_next_action(tmp_pat
         integration_ready=False,
     )
 
-    result = run_self_improvement_cycle(report, path, target_paths=("tests/example.py",))
+    result = run_self_improvement_cycle(report, path, target_paths=("tests/example.py",), min_occurrences=1)
 
     memories = SelfImprovementHistory(path).load_memory()
     assert len(memories) == 1
