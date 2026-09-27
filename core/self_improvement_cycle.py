@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .control_tower import ControlTower, ControlTowerDecision
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 from .agent_runtime import RuntimeReport
 from .self_improvement import ImprovementProposal, ImprovementSignal, SelfImprovementEngine
 from .self_improvement_analyzer import ImprovementAnalysis, analyze_signals
-from .self_improvement_history import SelfImprovementHistory
+from .self_improvement_history import SelfImprovementHistory, SelfImprovementMemoryRecord
 from .self_improvement_proposals import generate_improvement_proposals
 
 
@@ -43,7 +43,7 @@ def run_self_improvement_cycle(
     max_patterns: int = 5,
     max_proposals: int = 3,
 ) -> SelfImprovementCycleResult:
-    """Persist one report's signals and produce bounded reviewable proposals."""
+    """Persist one report and one bounded outcome/cause/improvement memory entry."""
     if not isinstance(report, RuntimeReport):
         raise TypeError("report must be a RuntimeReport")
 
@@ -68,9 +68,6 @@ def run_self_improvement_cycle(
         max_proposals=max_proposals,
     )
 
-    # A generated proposal is inert. When a ControlTower is supplied, every
-    # proposal must pass its Creator/Critic gate before it is exposed as
-    # approved for downstream execution.
     decisions: list["ControlTowerDecision"] = []
     approved: list[ImprovementProposal] = []
     if control_tower is not None:
@@ -79,6 +76,30 @@ def run_self_improvement_cycle(
             decisions.append(decision)
             if decision.approved_for_pipeline and decision.approved_task_matches(proposal.task):
                 approved.append(proposal)
+
+    outcome = "PASS" if report.success and report.integration_ready else "FAIL"
+    if report.error and "blocked" in report.error.casefold():
+        outcome = "BLOCKED"
+    cause = (report.error or report.failed_task_id or "development gate passed")[:1200]
+    improvements = tuple(
+        f"{proposal.title}: {proposal.rationale}"[:1200]
+        for proposal in proposals[:3]
+    )
+    if approved:
+        next_action = "review approved self-improvement handoff before execution"
+    elif proposals:
+        next_action = "review generated self-improvement proposal before execution"
+    else:
+        next_action = "carry validated outcome into the next bounded development loop"
+    memory = SelfImprovementMemoryRecord(
+        outcome=outcome,
+        cause=cause,
+        improvements=improvements,
+        next_action=next_action,
+        target_path=", ".join(target_paths)[:1200],
+        recurring_patterns=tuple(pattern.key[:1200] for pattern in analysis.recurring_patterns[:5]),
+    )
+    history.append_memory(memory)
 
     return SelfImprovementCycleResult(
         new_signals=new_signals,
