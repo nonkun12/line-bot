@@ -29,7 +29,7 @@ def test_hermes_advisor_is_bounded_and_returns_final_result(monkeypatch):
     result = advisor.run_hermes_advisor("analyze recurring test failures")
     assert result == "advisory result"
     command = captured["args"][0]
-    assert command[command.index("--toolsets") + 1] == "web"
+    assert "--toolsets" not in command
     assert command[command.index("--max-turns") + 1] == str(advisor.MAX_TURNS)
     assert command[command.index("--source") + 1] == "tool"
     assert captured["kwargs"]["timeout"] == advisor.TIMEOUT_SECONDS
