@@ -72,7 +72,7 @@ def _isolate_traceback_block(text: str) -> str:
     return text[start:]
 
 
-def _extract_file_hint(text: str):
+def _extract_file_hint(text: str) -> str | None:
     """
     テキスト中から拡張子付きファイル名らしきトークンを1つ抽出する。
     見つからない場合は None を返す。
