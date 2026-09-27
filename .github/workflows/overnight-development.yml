@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   develop:
-    if: \${{ github.event_name != 'push' || startsWith(github.event.head_commit.message, '[run-autonomous-loop]') }}
+    if: ${{ github.event_name != 'push' || startsWith(github.event.head_commit.message, '[run-autonomous-loop]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
