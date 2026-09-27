@@ -122,6 +122,29 @@ def test_validate_plan_rejects_change_outside_selected_file():
     assert worker.validate_plan(plan, "app.py") == (False, "change_outside_selected_file")
 
 
+def test_build_plan_retries_once_when_first_plan_targets_wrong_file():
+    responses = [
+        json.dumps({
+            "no_change": False,
+            "changes": [{"file": "README.md", "old": "TARGET", "new": "WRONG"}],
+        }),
+        json.dumps({
+            "no_change": False,
+            "changes": [{"file": "app.py", "old": "TARGET", "new": "REPLACED"}],
+        }),
+    ]
+    client = FakeClient(responses)
+
+    plan = worker.build_plan(client, "replace TARGET", "app.py", "before\nTARGET\nafter\n")
+
+    assert plan == {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "TARGET", "new": "REPLACED"}],
+    }
+    assert client.chat.completions.responses == []
+    assert worker.validate_plan(plan, "app.py") == (True, "app.py")
+
+
 def test_validate_plan_rejects_protected_selected_file():
     plan = {"no_change": False, "changes": [{"file": "line_development.py", "old": "a", "new": "b"}]}
     assert worker.validate_plan(plan, "line_development.py") == (
