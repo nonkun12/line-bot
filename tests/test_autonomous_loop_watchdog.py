@@ -1,3 +1,4 @@
+from pathlib import Path
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -67,3 +68,10 @@ def test_find_scheduled_run_accepts_small_scheduler_delay(monkeypatch):
     )
     slot = datetime(2026, 9, 23, 3, 5, tzinfo=ZoneInfo("Asia/Tokyo"))
     assert find_scheduled_run("nonkun12/line-bot", slot) == scheduled
+
+
+
+def test_watchdog_source_bootstraps_repo_root_for_direct_execution():
+    source = Path("scripts/check_autonomous_loop_watchdog.py").read_text(encoding="utf-8")
+    assert "ROOT = Path(__file__).resolve().parents[1]" in source
+    assert "sys.path.insert(0, str(ROOT))" in source
