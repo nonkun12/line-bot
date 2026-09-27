@@ -15,7 +15,7 @@ def test_autonomous_workflow_does_not_escape_github_or_shell_variables():
     assert "\\${{" not in text
     assert "\\${AUTONOMOUS_" not in text
     assert "GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}" in text
-    assert 'if: [ -z "${GOOGLE_SHEETS_SPREADSHEET_ID:-}" ]; then' in text
+    assert 'if [ -z "${GOOGLE_SHEETS_SPREADSHEET_ID:-}" ]; then' in text
     assert 'if [ -z "${GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON:-}" ]; then' in text
     assert '\\${GOOGLE_SHEETS_SPREADSHEET_ID' not in text
     assert '\\${GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON' not in text
