@@ -40,13 +40,13 @@ jobs:
       - name: Prepare Hermes advisor (opt-in)
         env:
           HERMES_HOME: ${{ runner.temp }}/hermes-home
-          HERMES_GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          HERMES_GROQ_API_KEY: ${{ secrets.HERMES_GROQ_API_KEY || secrets.GROQ_API_KEY }}
           HERMES_ALLOW_PRIVATE_URLS: "false"
           HERMES_REDACT_SECRETS: "true"
           HERMES_DISABLE_LAZY_INSTALLS: "true"
         run: |
           set -euo pipefail
-          curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --skip-setup --non-interactive --skip-browser
+          curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --tag v0.21.3 --skip-setup --non-interactive --skip-browser
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           mkdir -p "$HERMES_HOME"
           chmod 700 "$HERMES_HOME"
@@ -60,7 +60,7 @@ jobs:
           providers:
             groq:
               api: https://api.groq.com/openai/v1
-              key_env: GROQ_API_KEY
+              key_env: HERMES_GROQ_API_KEY
           model:
             default: llama-3.3-70b-versatile
             provider: custom:groq
@@ -68,6 +68,10 @@ jobs:
           chmod 600 "$HERMES_HOME/.env" "$HERMES_HOME/config.yaml"
           HERMES_VERSION="$(hermes --version 2>&1 | head -n 1)"
           echo "Hermes installed: ${HERMES_VERSION}"
+          case "${HERMES_VERSION}" in
+            *v0.21.3*|*0.21.3*) ;;
+            *) echo "Hermes version pin verification failed: ${HERMES_VERSION}"; exit 1 ;;
+          esac
           hermes doctor || true
 
       - name: Install dependencies
@@ -78,12 +82,12 @@ jobs:
       - name: Preflight guarded runtime tests
         run: python -m pytest -q tests/test_agent_runtime.py tests/test_line_development_runtime.py
 
-      - name: Find previous successful autonomous run
+      - name: Find previous completed autonomous run
         id: previous_autonomous_run
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          PREVIOUS_RUN_ID="$(gh run list --workflow overnight-development.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+          PREVIOUS_RUN_ID="$(gh run list --workflow overnight-development.yml --branch main --status completed --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
           echo "run_id=${PREVIOUS_RUN_ID}" >> "$GITHUB_OUTPUT"
 
       - name: Restore previous self-improvement history
@@ -102,6 +106,7 @@ jobs:
         id: development
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          HERMES_GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           DEV_INSTRUCTION: "自律開発です。既存機能を壊さない安全な小規模改善を1件だけ実装してください。まずリポジトリ内の安全な候補から現在のコードとテストに基づいて改善対象を1ファイルだけ選び、既存機能との重複や不要な変更を避けてください。テスト可能な改善を優先し、必ずpytestとレビューゲートを通してください。mainへ直接変更せずPRを作成する前提です。"
           DEV_USER_ID: autonomous
           GITHUB_RUN_ID: ${{ github.run_id }}

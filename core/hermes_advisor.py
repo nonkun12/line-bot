@@ -16,7 +16,6 @@ MAX_PROMPT_CHARS = 6000
 MAX_OUTPUT_CHARS = 4000
 MAX_TURNS = 3
 TIMEOUT_SECONDS = 120
-TOOLSETS = "web"
 
 
 def hermes_available(binary: str = "hermes") -> bool:
@@ -34,6 +33,9 @@ def _safe_environment() -> dict[str, str]:
         "SHELL",
         "TMPDIR",
         "HERMES_HOME",
+        # Only the advisor-scoped environment variable is forwarded to Hermes.
+        # A dedicated HERMES_GROQ_API_KEY secret can be supplied independently.
+        "HERMES_GROQ_API_KEY",
     }
     return {
         key: value
@@ -81,8 +83,6 @@ def run_hermes_advisor(
                 "--oneshot",
                 "--format",
                 "stream-json",
-                "--toolsets",
-                TOOLSETS,
                 "--max-turns",
                 str(MAX_TURNS),
                 "--source",
@@ -128,7 +128,6 @@ __all__ = [
     "MAX_OUTPUT_CHARS",
     "MAX_PROMPT_CHARS",
     "MAX_TURNS",
-    "TOOLSETS",
     "build_self_improvement_prompt",
     "hermes_available",
     "run_hermes_advisor",
