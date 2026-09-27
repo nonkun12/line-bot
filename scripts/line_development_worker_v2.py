@@ -249,6 +249,8 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
             return False, "invalid_old_new"
         if old == new:
             return False, "no_op_change"
+        if any(line.strip() in {"+", "-"} for line in new.splitlines()):
+            return False, "diff_marker_in_replacement"
         if len(old) > 1200 or len(new) > 1800:
             return False, "change_too_large"
     return True, chosen
@@ -297,7 +299,7 @@ def build_plan(client: Groq, instruction: str, chosen: str, context: str, test_o
     system = '''You edit ONE repository file. Return JSON only.
 Real change: {"no_change":false,"changes":[{"file":"exact path","old":"exact existing text","new":"replacement text"}]}
 No safe/needed change: {"no_change":true}
-Rules: one file only; old must be an exact substring of supplied context; minimal change; never modify security, credentials, deployment, workflow, or worker logic. Do not invent text that is not visible in context.'''
+Rules: one file only; old must be an exact substring of supplied context; minimal change; never modify security, credentials, deployment, workflow, or worker logic. Do not invent text that is not visible in context. `new` is replacement text only: never include unified-diff markers, markdown fences, or standalone `+`/`-` lines.'''
     prompt = f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}\n\nCurrent context:\n{context}"
     if test_output:
         prompt += f"\n\nPytest failure:\n{test_output[-3000:]}"
