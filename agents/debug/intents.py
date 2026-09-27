@@ -123,7 +123,7 @@ def is_debug_intent(raw_message: str) -> bool:
     has_error_word = _has_error_word(text)
 
     has_investigate_word = any(
-        keyword in text for keyword in _INVESTIGATE_KEYWORDS
+        keyword in text.lower() for keyword in _INVESTIGATE_KEYWORDS
     )
 
     # Pythonファイル名 + 調査依頼の自然文もDebugとして扱う。
