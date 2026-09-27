@@ -2,10 +2,48 @@ from __future__ import annotations
 
 import pytest
 
+from core.agent_specs import AgentLifecycle
+from core.distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG
+from core.distributed_agent_versions import DistributedAgentVersion, DistributedAgentVersionRegistry, catalog_digest
+from core.distributed_execution_artifact import ExecutionArtifact, StaticExecutionArtifactProvider
+from core.distributed_execution_context import DistributedExecutionContext
+from core.distributed_execution_gate import ExecutionIdentity
+
 from core.agents import AgentResponse
 from core.multi_agent import AgentRole
 from core.management_contract import Specialist, specialist_boundary
 from core import request_path
+
+
+@pytest.fixture(autouse=True)
+def configure_identity_context(monkeypatch):
+    records = []
+    artifacts = []
+    for descriptor in DISTRIBUTED_AGENT_CATALOG:
+        if descriptor.role is AgentRole.GENERAL:
+            continue
+        digest = catalog_digest(descriptor)
+        sha = "a" * 40
+        records.append(
+            DistributedAgentVersion(
+                agent_key=descriptor.key,
+                version="0.2.0",
+                lifecycle=AgentLifecycle.ENABLED,
+                git_sha=sha,
+                catalog_digest=digest,
+            )
+        )
+        artifacts.append(
+            ExecutionArtifact(
+                identity=ExecutionIdentity(descriptor.key, "0.2.0", sha, digest),
+                artifact_id=f"test-{descriptor.agent_name}",
+            )
+        )
+    context = DistributedExecutionContext(
+        version_registry=DistributedAgentVersionRegistry(records),
+        artifact_provider=StaticExecutionArtifactProvider(tuple(artifacts)),
+    )
+    monkeypatch.setattr(request_path, "_DISTRIBUTED_EXECUTION_CONTEXT", context)
 
 
 class FakeMusicAgent:

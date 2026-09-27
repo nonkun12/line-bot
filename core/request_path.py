@@ -21,8 +21,38 @@ from agents.jobs.intents import is_job_seeking_intent
 from agents.market.intents import is_market_intent
 from e2e_status import StepTimer
 from core.distributed_agent_bridge import build_agent_registry
+from core.distributed_agent_catalog import descriptor_for_role
+from core.distributed_execution_context import DistributedExecutionContext
+from core.distributed_execution_gate import require_exact_execution_identity
 from core.distributed_coordinator import DistributedAgentCoordinator
 from core.multi_agent import AgentRole
+
+_DISTRIBUTED_EXECUTION_CONTEXT: DistributedExecutionContext | None = None
+
+
+def configure_distributed_execution_context(context: DistributedExecutionContext) -> None:
+    """Install the explicit immutable identity dependencies for distributed execution."""
+    global _DISTRIBUTED_EXECUTION_CONTEXT
+    _DISTRIBUTED_EXECUTION_CONTEXT = context
+
+
+def _require_distributed_execution_context() -> DistributedExecutionContext:
+    context = _DISTRIBUTED_EXECUTION_CONTEXT
+    if context is None:
+        raise RuntimeError("distributed execution context is not configured")
+    return context
+
+
+def _build_distributed_executors(registry):
+    """Build distributed executors only with the configured exact-identity context."""
+    context = _require_distributed_execution_context()
+    return build_agent_registry(
+        registry,
+        version_registry=context.version_registry,
+        artifact_provider=context.artifact_provider,
+    ).build()
+
+
 from core.specialist_gate import (
     DOMAIN_AGENT_NAMES,
     SpecialistGateError,
@@ -125,6 +155,10 @@ def _run_multi_specialist_request(
 
     registry = build_core_agent_registry()
     request = AgentRequest(user_id=user_id, message=message, channel=channel, metadata=dict(metadata))
+    # Snapshot the execution dependencies once for the whole request. This
+    # prevents a concurrent context reconfiguration from changing the
+    # identity source between validation and dispatch.
+    context = _require_distributed_execution_context()
 
     agents = []
     for specialist in resolved:
@@ -138,14 +172,23 @@ def _run_multi_specialist_request(
             raise RuntimeError(f"required specialist not registered: {agent_name}")
         if not bool(getattr(agent, "enabled", True)):
             raise RuntimeError(f"required specialist disabled: {agent_name}")
-        if not agent.can_handle(request):
-            raise RuntimeError(f"required specialist rejected request: {agent_name}")
-        agents.append((agent_name, agent))
+        # `agent_name` is a registry identifier (e.g. `ai_news`, `job_seeking`),
+        # not the canonical AgentRole value. Resolve the catalog from the already
+        # validated specialist role so aliases cannot break the execution gate.
+        catalog_descriptor = descriptor_for_role(AgentRole(specialist.value))
+        if catalog_descriptor is None:
+            raise RuntimeError(f"no distributed catalog descriptor for specialist: {agent_name}")
+        catalog_key = catalog_descriptor.key
+        agents.append((agent_name, registry_name, catalog_key, agent))
 
-    def execute(item: tuple[str, Any]) -> tuple[str, dict[str, Any]]:
-        agent_name, agent = item
+    def execute(item: tuple[str, str, str, Any]) -> tuple[str, dict[str, Any]]:
+        agent_name, registry_name, catalog_key, agent = item
         try:
-            assert_specialist_approved(agent_name)  # last-mile, immediately before handle()
+            artifact = context.artifact_provider.get(catalog_key)
+            require_exact_execution_identity(context.version_registry, artifact.identity)
+            assert_specialist_approved(agent_name)  # capability gate remains separate
+            if not agent.can_handle(request):
+                raise RuntimeError(f"required specialist rejected request: {agent_name}")
             response = agent.handle(request)
             return agent_name, {
                 "text": response.text,
@@ -199,7 +242,12 @@ def _run_distributed_news_request(
 ) -> dict[str, Any]:
     """Route explicit AI NEWS requests through the distributed runtime."""
     registry = build_core_agent_registry()
-    executors = build_agent_registry(registry).build()
+    context = _require_distributed_execution_context()
+    executors = build_agent_registry(
+        registry,
+        version_registry=context.version_registry,
+        artifact_provider=context.artifact_provider,
+    ).build()
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
     request_id = f"news:{channel}:{user_id}".strip()
     report = coordinator.dispatch(request_id, message, expected_role=AgentRole.NEWS)
@@ -243,7 +291,12 @@ def _run_distributed_stocks_request(
 ) -> dict[str, Any]:
     """Route explicit stock requests through the distributed runtime."""
     registry = build_core_agent_registry()
-    executors = build_agent_registry(registry).build()
+    context = _require_distributed_execution_context()
+    executors = build_agent_registry(
+        registry,
+        version_registry=context.version_registry,
+        artifact_provider=context.artifact_provider,
+    ).build()
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
     request_id = f"stocks:{channel}:{user_id}".strip()
     report = coordinator.dispatch(request_id, message, expected_role=AgentRole.STOCKS)
@@ -286,7 +339,7 @@ def _run_distributed_english_request(
 ) -> dict[str, Any]:
     """Route explicit English-learning requests through the distributed runtime."""
     registry = build_core_agent_registry()
-    executors = build_agent_registry(registry).build()
+    executors = _build_distributed_executors(registry)
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
     request_id = f"english:{channel}:{user_id}".strip()
     report = coordinator.dispatch(request_id, message, expected_role=AgentRole.ENGLISH)
@@ -315,7 +368,7 @@ def _run_distributed_voice_request(
 ) -> dict[str, Any]:
     """Route explicit voice/speaker requests through the distributed runtime."""
     registry = build_core_agent_registry()
-    executors = build_agent_registry(registry).build()
+    executors = _build_distributed_executors(registry)
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
     request_id = f"voice:{channel}:{user_id}".strip()
     report = coordinator.dispatch(request_id, message, expected_role=AgentRole.VOICE)
@@ -344,7 +397,7 @@ def _run_distributed_music_request(
 ) -> dict[str, Any]:
     """Route explicit music requests through the distributed runtime."""
     registry = build_core_agent_registry()
-    executors = build_agent_registry(registry).build()
+    executors = _build_distributed_executors(registry)
     coordinator = DistributedAgentCoordinator(executors, max_rounds=1)
     request_id = f"music:{channel}:{user_id}".strip()
     report = coordinator.dispatch(request_id, message, expected_role=AgentRole.MUSIC)
@@ -383,7 +436,7 @@ def _run_distributed_video_request(
 ) -> dict[str, Any]:
     """Route explicit video requests through the distributed runtime."""
     registry = build_core_agent_registry()
-    executors = build_agent_registry(registry).build()
+    executors = _build_distributed_executors(registry)
     report = DistributedAgentCoordinator(executors, max_rounds=1).dispatch(
         f"video:{channel}:{user_id}".strip(), message,
         expected_role=AgentRole.VIDEO,
@@ -411,7 +464,7 @@ def _run_distributed_jobs_request(
 ) -> dict[str, Any]:
     """Route explicit job-seeking requests through the distributed runtime."""
     registry = build_core_agent_registry()
-    executors = build_agent_registry(registry).build()
+    executors = _build_distributed_executors(registry)
     report = DistributedAgentCoordinator(executors, max_rounds=1).dispatch(
         f"jobs:{channel}:{user_id}".strip(), message,
         expected_role=AgentRole.JOBS,
@@ -439,7 +492,7 @@ def _run_distributed_market_request(
 ) -> dict[str, Any]:
     """Route explicit market requests through the distributed runtime."""
     registry = build_core_agent_registry()
-    executors = build_agent_registry(registry).build()
+    executors = _build_distributed_executors(registry)
     report = DistributedAgentCoordinator(executors, max_rounds=1).dispatch(
         f"market:{channel}:{user_id}".strip(), message,
         expected_role=AgentRole.MARKET,

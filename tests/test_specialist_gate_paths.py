@@ -4,6 +4,12 @@ from __future__ import annotations
 import pytest
 
 from core import request_path
+from core.agent_specs import AgentLifecycle
+from core.distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG
+from core.distributed_agent_versions import DistributedAgentVersion, DistributedAgentVersionRegistry, catalog_digest
+from core.distributed_execution_artifact import ExecutionArtifact, StaticExecutionArtifactProvider
+from core.distributed_execution_context import DistributedExecutionContext
+from core.distributed_execution_gate import ExecutionIdentity
 from core import specialist_gate as gate
 from core.agents import AgentRegistry, AgentRequest, AgentResponse
 from core.langgraph_runtime import build_core_graph
@@ -22,6 +28,35 @@ from core.specialist_gate import SpecialistGateError
 
 # Real Core-registry agent names, keyed by canonical specialist.
 AGENT_NAME = dict(gate.DOMAIN_AGENT_NAMES)
+
+@pytest.fixture(autouse=True)
+def distributed_identity_context(monkeypatch):
+    records = []
+    artifacts = []
+    for descriptor in DISTRIBUTED_AGENT_CATALOG:
+        if descriptor.role is AgentRole.GENERAL:
+            continue
+        digest = catalog_digest(descriptor)
+        sha = "a" * 40
+        records.append(DistributedAgentVersion(
+            agent_key=descriptor.key,
+            version="0.2.0",
+            lifecycle=AgentLifecycle.ENABLED,
+            git_sha=sha,
+            catalog_digest=digest,
+        ))
+        artifacts.append(ExecutionArtifact(
+            identity=ExecutionIdentity(descriptor.key, "0.2.0", sha, digest),
+            artifact_id=f"test-{descriptor.agent_name}",
+        ))
+    monkeypatch.setattr(
+        request_path,
+        "_DISTRIBUTED_EXECUTION_CONTEXT",
+        DistributedExecutionContext(
+            version_registry=DistributedAgentVersionRegistry(records),
+            artifact_provider=StaticExecutionArtifactProvider(tuple(artifacts)),
+        ),
+    )
 
 
 class RecordingAgent:
@@ -225,6 +260,44 @@ def test_multi_path_last_mile_gate_blocks_execution_if_boundary_changes(
         )
     assert registry.executed() == []
 
+
+
+
+def test_multi_path_exact_identity_gate_runs_before_agent_can_handle(monkeypatch, registry):
+    """A rejected execution identity must not even invoke can_handle()."""
+    class GuardedAgent(RecordingAgent):
+        def __init__(self, name: str) -> None:
+            super().__init__(name)
+            self.can_handle_calls = 0
+
+        def can_handle(self, request) -> bool:
+            self.can_handle_calls += 1
+            return True
+
+    guarded = GuardedAgent("ai_news")
+    registry.agents["ai_news"] = guarded
+
+    context = request_path._DISTRIBUTED_EXECUTION_CONTEXT
+    descriptor = next(item for item in DISTRIBUTED_AGENT_CATALOG if item.key == "ai_news")
+    bad_identity = ExecutionIdentity(
+        descriptor.key,
+        "9.9.9",
+        "a" * 40,
+        catalog_digest(descriptor),
+    )
+    bad_artifact = ExecutionArtifact(identity=bad_identity, artifact_id="bad")
+    bad_context = DistributedExecutionContext(
+        version_registry=context.version_registry,
+        artifact_provider=StaticExecutionArtifactProvider((bad_artifact,)),
+    )
+    monkeypatch.setattr(request_path, "_DISTRIBUTED_EXECUTION_CONTEXT", bad_context)
+
+    with pytest.raises(RuntimeError, match="all multi-specialists failed"):
+        request_path._run_multi_specialist_request(
+            "u", "m", channel="line", metadata={}, specialists=("news",)
+        )
+    assert guarded.can_handle_calls == 0
+    assert guarded.calls == 0
 
 def test_multi_path_never_exceeds_worker_limit_on_the_happy_path(registry):
     result = request_path._run_multi_specialist_request(
