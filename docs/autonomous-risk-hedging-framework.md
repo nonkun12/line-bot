@@ -18,6 +18,131 @@ Safety has priority over throughput. Paid AI/API services are not a prerequisite
 
 Unknown or conflicting safety state must resolve to the safer state.
 
+## Continuous loop availability
+
+Outside REPAIR/FULL_STOP, the system should maintain at least one healthy autonomous loop.
+
+- The whole-system loop is not the only execution path.
+- Independent component loops may continue when another loop is failed or isolated.
+- A failed loop must not imply system-wide shutdown.
+- Watchdogs must detect unintended zero-loop states and attempt bounded recovery.
+- Recovery must never bypass Safety Gate, verification, permission boundaries, or rollback requirements.
+- FULL_STOP may stop mutation loops, but read-only monitoring/recovery-verification loops remain allowed.
+
+This prevents a single component failure from turning into system-wide inactivity while preserving a hard stop for major repair.
+
+## Backup and recovery architecture
+
+Backup is a first-class safety control, not an afterthought.
+
+### 1. Multiple recovery points
+
+Before autonomous mutation, preserve the last verified recovery point:
+
+- known-good Git commit/SHA
+- relevant workflow/run identifiers
+- test and Safety Gate evidence
+- configuration/version metadata needed for recovery
+- audit/ledger references
+- active loop/safety state
+
+Do not treat an unverified working tree or an AI-generated report as a recovery point.
+
+### 2. Layered backup
+
+Maintain independent layers where technically available:
+
+- repository history as the primary code rollback source
+- immutable or append-only audit records for execution evidence
+- periodic workflow artifacts for diagnostics and recovery evidence
+- configuration/state snapshots that exclude secrets
+- external recovery records for critical state where available
+
+A backup must be independently readable before it is considered usable.
+
+### 3. Pre-change checkpoint
+
+Every autonomous mutation cycle must establish:
+
+1. base SHA
+2. clean/expected working state
+3. selected target scope
+4. current Safety Gate state
+5. test/verification baseline
+6. rollback reference
+
+If the checkpoint cannot be established, mutation is blocked.
+
+### 4. Rollback
+
+Rollback must be bounded and evidence-driven.
+
+- Restore only to a verified recovery point.
+- Verify the actual resulting SHA/state after rollback.
+- Re-run the required safety and regression checks.
+- Record the rollback reason and result.
+- Never let the failing AI authorize its own rollback exception.
+
+### 5. Backup verification
+
+Backup success means more than "backup command succeeded".
+
+Periodically verify:
+
+- the recovery point exists
+- it can be read
+- its SHA/state is internally consistent
+- required metadata is present
+- restoration procedures remain compatible
+- the verification itself is logged
+
+A failed backup verification is a safety signal and must not be silently ignored.
+
+### 6. Recovery drills
+
+Run bounded, non-destructive recovery checks periodically. Test that:
+
+- a failed individual loop can be isolated
+- a loop can restart from a verified checkpoint
+- a bad change can be identified and rolled back
+- monitoring survives component failure
+- FULL_STOP remains effective
+- recovery does not expand permissions
+
+Do not perform destructive restore drills against production state automatically.
+
+### 7. Backup independence
+
+No single AI, loop, provider, or credential should be the sole path to recovery.
+
+In particular:
+
+- the component being repaired must not be the sole backup verifier
+- the same provider should not be the only recovery dependency when alternatives exist
+- backup metadata must not depend exclusively on the mutable system it protects
+- secrets must not be copied into general backup artifacts
+
+### 8. Recovery hierarchy
+
+Use the smallest safe recovery action first:
+
+1. restart/requeue isolated loop
+2. restore its last verified local checkpoint
+3. rollback the affected component
+4. isolate dependent components
+5. enter REPAIR
+6. enter FULL_STOP when safety boundaries or system-wide visibility are compromised
+
+### 9. Backup failure policy
+
+If the system cannot establish a reliable recovery point for a mutation:
+
+**do not mutate.**
+
+If an existing backup becomes unreadable, inconsistent, or unverifiable:
+
+**preserve the last independently verified state and escalate the safety state.**
+
 ## Multi-angle monitoring
 
 Monitor independently:
@@ -31,6 +156,7 @@ Monitor independently:
 7. audit integrity: self-improvement history and Google Sheets ledger
 8. infrastructure health: CI, runtime, external services
 9. monitor health: watchdog and verification paths themselves
+10. backup/recovery health: checkpoint availability, readability, integrity, restore readiness
 
 A monitoring report is not evidence by itself; it must be checked against observable system state.
 
@@ -100,7 +226,7 @@ Use bounded fallback. If all allowed providers are unavailable, record the condi
 
 ## Periodic system-wide review
 
-Periodically review the whole AI topology, permissions, dependencies, queues, failure history, monitoring coverage, rollback capability, and safety-control integrity.
+Periodically review the whole AI topology, permissions, dependencies, queues, failure history, monitoring coverage, rollback capability, backup health, and safety-control integrity.
 
 Loss of reliable system-wide visibility is itself a risk condition.
 
