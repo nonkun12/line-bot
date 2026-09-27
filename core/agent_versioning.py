@@ -73,6 +73,10 @@ class AgentVersionRegistry:
     def history(self, agent_name: str) -> tuple[AgentVersion, ...]:
         return tuple(self._history.get(str(agent_name).strip(), ()))
 
+    def all_versions(self, agent_name: str) -> tuple[AgentVersion, ...]:
+        """Return all registered versions for the given agent, sorted by version string."""
+        return tuple(sorted(self._history.get(str(agent_name).strip(), ()), key=lambda v: v.version))
+
     def rollback_target(self, agent_name: str) -> AgentVersion | None:
         history = self._history.get(str(agent_name).strip(), ())
         current_indexes = [
