@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from linebot.v3.messaging import (
     ApiClient,
@@ -372,13 +373,48 @@ def callback():
     try:
         handler.handle(body, signature)
         return "OK", 200
-    except Exception:
-        print("===== HANDLER ERROR =====")
-        print("handler failed")
+    except InvalidSignatureError:
+        # LINE SDK treats signature failures as a bad request. Returning 500 here
+        # makes LINE retry the same invalid request and hides the real cause.
+        app.logger.warning(
+            "LINE webhook rejected: invalid signature (body_len=%d)",
+            len(body),
+        )
         record_step(
             "line_in",
             False,
-            error="handler_failed",
+            http_status=400,
+            error="invalid_signature",
+            error_location="callback/signature",
+        )
+        return jsonify({"ok": False, "error": "invalid signature"}), 400
+    except json.JSONDecodeError:
+        app.logger.warning(
+            "LINE webhook rejected: malformed JSON (body_len=%d)",
+            len(body),
+        )
+        record_step(
+            "line_in",
+            False,
+            http_status=400,
+            error="malformed_json",
+            error_location="callback/json",
+        )
+        return jsonify({"ok": False, "error": "malformed json"}), 400
+    except Exception as exc:
+        # Keep the 500 response for genuine server-side failures, but preserve
+        # the complete traceback in Render logs so the next incident is
+        # diagnosable instead of appearing as a generic "handler failed".
+        app.logger.exception(
+            "LINE webhook handler failed (body_len=%d, signature_present=%s)",
+            len(body),
+            bool(signature),
+        )
+        record_step(
+            "line_in",
+            False,
+            http_status=500,
+            error=exc,
             error_location="callback/handler.handle",
         )
         return jsonify({"ok": False, "error": "internal server error"}), 500
