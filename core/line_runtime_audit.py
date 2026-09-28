@@ -1,6 +1,7 @@
 """Google Sheets audit for one LINE runtime execution."""
 from __future__ import annotations
 
+import traceback
 from core.google_sheets_writer import GoogleSheetsWriter
 from core.management_bridge import specialist_roles_for_message
 
@@ -20,3 +21,5 @@ def record_line_runtime(*, user_message: str, reply: str, status: str, route: st
         print("[GOOGLE-SHEETS] LINE runtime audit appended", flush=True)
     except Exception as exc:
         print(f"[GOOGLE-SHEETS] LINE runtime audit failed (non-blocking): {type(exc).__name__}: {exc}", flush=True)
+        print("[GOOGLE-SHEETS] LINE runtime audit traceback:", flush=True)
+        traceback.print_exc()
