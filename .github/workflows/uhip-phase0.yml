@@ -1,0 +1,37 @@
+name: UHIP Phase 0
+
+on:
+  push:
+    branches:
+      - feature/universal-human-input-phase0
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "uhip/**"
+      - ".github/workflows/uhip-phase0.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest jsonschema
+
+      - name: Run UHIP Phase 0 tests
+        working-directory: uhip/tests
+        run: |
+          pytest -q test_schema_contracts.py test_replay_contract.py test_replay_fixtures.py test_replay_runner.py
