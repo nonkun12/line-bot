@@ -376,9 +376,17 @@ def execute(instruction: str) -> int:
     touched = state.touched or []
     if not touched:
         _rollback_to_clean_baseline(baseline_sha)
-        print("Multi-agent development produced no file change.", flush=True)
-        _write_development_audit_to_google_sheets(instruction=instruction, status="BLOCKED", target_path=state.chosen, branch=None, exit_detail="no file change", base_sha=baseline_sha, produced_sha=baseline_sha)
-        return 1
+        print("Multi-agent development produced no file change; treating as a safe no-op.", flush=True)
+        _write_development_audit_to_google_sheets(
+            instruction=instruction,
+            status="NO_CHANGE",
+            target_path=state.chosen,
+            branch=None,
+            exit_detail="no file change",
+            base_sha=baseline_sha,
+            produced_sha=baseline_sha,
+        )
+        return 0
     branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
     identity = ["-c", "user.name=github-actions[bot]", "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com"]
     add = worker.run(["git", "add", "--", *touched])
