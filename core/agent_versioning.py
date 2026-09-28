@@ -68,7 +68,7 @@ class AgentVersionRegistry:
             for item in self._history.get(str(agent_name).strip(), ())
             if item.lifecycle == AgentLifecycle.ENABLED
         ]
-        return enabled[0] if enabled else None
+        return enabled[-1] if enabled else None
 
     def history(self, agent_name: str) -> tuple[AgentVersion, ...]:
         return tuple(self._history.get(str(agent_name).strip(), ()))
