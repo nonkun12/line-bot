@@ -103,7 +103,20 @@ jobs:
           if gh pr view --head "$branch" --base main >/dev/null 2>&1; then
             echo "PR already exists for $branch"
           else
-            gh pr create --base main --head "$branch" --draft --title "chore: distributed autonomous loop $GITHUB_RUN_ID" --body "Distributed autonomous development loop. Common guarded runtime, tests, review/integration gates, and Sheets audit are required. No automatic merge or deploy."
+            set +e
+            pr_output="$(gh pr create --base main --head "$branch" --draft --title "chore: distributed autonomous loop $GITHUB_RUN_ID" --body "Distributed autonomous development loop. Common guarded runtime, tests, review/integration gates, and Sheets audit are required. No automatic merge or deploy." 2>&1)"
+            pr_rc=$?
+            set -e
+            if [ "$pr_rc" -eq 0 ]; then
+              echo "$pr_output"
+              echo "PR_CREATE_RESULT=created"
+            else
+              echo "$pr_output"
+              echo "PR_CREATE_RESULT=blocked"
+              echo "GitHub Actions is not permitted to create pull requests in this repository."
+              echo "Enable the repository setting 'Allow GitHub Actions to create and approve pull requests' or provide an approved alternate PR credential."
+              echo "The autonomous branch remains published for review: $branch"
+            fi
           fi
 
       - name: Upload loop results
