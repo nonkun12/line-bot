@@ -22,8 +22,7 @@ def call_mcp_tool(tool_name, arguments, timeout=None):
     """
     print(f"[LOG] call_mcp_tool called: tool_name={tool_name}")
 
-    print("MCP CALL:", tool_name, arguments)
-    print("MCP URL:", MCP_SERVER_URL)
+    print("[MCP] call started:", tool_name)
 
     payload = {
         "jsonrpc": "2.0",
@@ -50,13 +49,8 @@ def call_mcp_tool(tool_name, arguments, timeout=None):
             request_timeout = 10.0
 
     import time
-    print("BEFORE MCP REQUEST")
-    print("TIMEOUT:", request_timeout)
-    print("POST START TIME:", time.time())
+    print("[MCP] request timeout:", request_timeout)
     try:
-        print("REQUEST START")
-        print("MCP BEFORE REQUESTS POST")
-        print("BEFORE POST CALL", time.time())
         res = httpx.post(
             MCP_SERVER_URL,
             json=payload,
@@ -64,21 +58,11 @@ def call_mcp_tool(tool_name, arguments, timeout=None):
             timeout=httpx.Timeout(request_timeout, connect=10.0),
             follow_redirects=False,
         )
-        print("MCP AFTER REQUESTS POST")
-        print("MCP RESPONSE STATUS:", res.status_code)
-        print("MCP CONTENT TYPE:", res.headers.get("content-type"))
-        print("RESPONSE OBJECT:", res)
+        print("[MCP] response status:", res.status_code)
     except Exception as e:
         import traceback
-        print("EXCEPTION TYPE:", type(e))
-        traceback.print_exc()
+        print("[MCP] request failed:", type(e).__name__)
         raise
-    print("REQUEST END")
-    print("AFTER MCP REQUEST")
-    print("POST END TIME:", time.time())
-
-    print("MCP STATUS:", res.status_code)
-    print("MCP HEADERS:", res.headers)
 
     res.raise_for_status()
 
@@ -105,14 +89,13 @@ def call_mcp_tool(tool_name, arguments, timeout=None):
         finally:
             res.close()
 
-    print("MCP PARSED BODY:", body)
 
     if "error" in body:
-        raise RuntimeError(f"MCP error: {body['error']}")
+        raise RuntimeError("MCP JSON-RPC error")
 
     result = body.get("result", {})
     if result.get("isError") is True:
-        raise MCPToolError(f"MCP tool returned isError: {result.get('content', [])}")
+        raise MCPToolError("MCP tool returned isError=true")
 
     parts = result.get("content", [])
     texts = [p.get("text", "") for p in parts if p.get("type") == "text"]
