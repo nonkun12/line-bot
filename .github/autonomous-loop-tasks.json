@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "max_tasks_per_run": 3,
+  "tasks": [
+    {"id":"router-regression-whitespace","instruction":"tests/test_management_router.py に、管理ルーターが前後の空白を含む専門Agent要求を正しく正規化して振り分ける回帰テストを1件追加してください。既存テストと重複しないケースにしてください。実装コードを変更せず、テストだけを最小変更で追加してください。対象ファイル: tests/test_management_router.py"},
+    {"id":"router-regression-channel-metadata","instruction":"tests/test_management_router.py に、channel-independent な要求metadataがルーティング結果に保持される境界ケースの回帰テストを1件追加してください。既存テストと重複しないケースにしてください。実装コードを変更せず、テストだけを最小変更で追加してください。対象ファイル: tests/test_management_router.py"},
+    {"id":"router-regression-general","instruction":"tests/test_management_router.py に、専門Agentキーワードを含まない要求がGeneralへ安全にfallbackし、routing metadataを保持する境界ケースの回帰テストを1件追加してください。既存テストと重複しないケースにしてください。実装コードを変更せず、テストだけを最小変更で追加してください。対象ファイル: tests/test_management_router.py"}
+  ]
+}
