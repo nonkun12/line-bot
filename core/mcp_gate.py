@@ -11,7 +11,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from mcp_client import call_mcp_tool as _raw_call_mcp_tool
+from mcp_client import MCPToolError, call_mcp_tool as _raw_call_mcp_tool
 
 
 READ_TOOLS = frozenset({
