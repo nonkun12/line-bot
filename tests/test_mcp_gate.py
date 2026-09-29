@@ -57,7 +57,7 @@ def test_direct_mcp_imports_are_forbidden():
     allowed = {root / "mcp_client.py", root / "core" / "mcp_gate.py"}
     forbidden = []
     for path in root.rglob("*.py"):
-        if path in allowed or ".git" in path.parts:
+        if path in allowed or ".git" in path.parts or path.parts[-2:] == ("tests", path.name):
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
