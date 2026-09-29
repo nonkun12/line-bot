@@ -154,7 +154,7 @@ save_memoryではなく 必ず set_reminder ツールを使用してください
     try:
         response = generate_chat_completion(
             messages=messages,
-            tools=MCP_TOOLS_SCHEMA,
+            tools=[],
             tool_choice=None,
             temperature=0.0,
             max_tokens=1024,
