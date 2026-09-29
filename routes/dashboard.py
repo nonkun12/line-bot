@@ -313,6 +313,44 @@ def system_status():
     return jsonify(result)
 
 
+@dashboard_bp.route("/api/dashboard/loop", methods=["GET"])
+@requires_dashboard_access
+def autonomous_loop_status():
+    """Expose configured autonomous-loop controls without claiming unverified runtime activity."""
+    return jsonify({
+        "ok": True,
+        "loop": {
+            "status": "configured",
+            "schedule_jst": ["04:30", "12:30", "16:30", "20:30"],
+            "frequency_per_day": 4,
+            "manual_run_available": True,
+            "manual_default_tasks": 1,
+            "max_tasks_per_run": 3,
+            "concurrency_cancel_in_progress": False,
+            "auto_apply_patch": False,
+            "auto_deploy": False,
+            "fail_closed": True,
+            "sheets_audit": True,
+            "runtime_telemetry": "github_actions",
+            "last_run": "not_available_from_dashboard_runtime",
+            "note": "未取得のGitHub Actions実行を成功・実行済みとは表示しません。",
+        },
+        "safety": {
+            "auto_merge": False,
+            "auto_deploy": False,
+            "self_improvement_policy": True,
+            "hermes_role": "adviser",
+            "hermes_is_auxiliary": True,
+        },
+        "hand_sign": {
+            "camera_smoke_test": "implemented",
+            "camera_upload": False,
+            "camera_storage": False,
+            "next_phase": "hand-sign recognition",
+        },
+    })
+
+
 _STOCK_DASHBOARD_TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.-]{0,9}$")
 _STOCK_DASHBOARD_MAX_TICKERS = 6
 
