@@ -7,6 +7,10 @@ import httpx
 from config import MCP_SERVER_URL, MCP_API_KEY
 
 
+class MCPToolError(RuntimeError):
+    """MCP tool returned a JSON-RPC/tool-level error."""
+
+
 def call_mcp_tool(tool_name, arguments, timeout=None):
     """
     my-mcp-server の /mcp エンドポイントへ JSON-RPC で tools/call を送る。
@@ -107,6 +111,9 @@ def call_mcp_tool(tool_name, arguments, timeout=None):
         raise RuntimeError(f"MCP error: {body['error']}")
 
     result = body.get("result", {})
+    if result.get("isError") is True:
+        raise MCPToolError(f"MCP tool returned isError: {result.get('content', [])}")
+
     parts = result.get("content", [])
     texts = [p.get("text", "") for p in parts if p.get("type") == "text"]
     return "\n".join(texts) if texts else ""
