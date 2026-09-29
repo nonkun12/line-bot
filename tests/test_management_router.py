@@ -9,6 +9,9 @@ def test_routes_specialist_requests_deterministically() -> None:
     assert route(ManagementRequest("u", "音声で話して")).specialist is Specialist.VOICE
     assert route(ManagementRequest("u", "  求人を探して  ")).specialist is Specialist.JOBS
     assert route(ManagementRequest("u", "NYダウを教えて")).specialist is Specialist.MARKET
+
+    # Full-width characters should still route to MARKET
+    assert route(ManagementRequest("u", "ＮＹダウを教えて")).specialist is Specialist.MARKET
     assert route(ManagementRequest("u", "ドル円を教えて")).specialist is Specialist.MARKET
     assert route(ManagementRequest("u", "音楽を選曲して")).specialist is Specialist.MUSIC
     assert route(ManagementRequest("u", "動画の台本を作って")).specialist is Specialist.VIDEO
