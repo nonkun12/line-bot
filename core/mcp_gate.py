@@ -8,12 +8,12 @@ unknown so callers must not report an unverified write as successful.
 from __future__ import annotations
 
 import os
-
-import httpx
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from mcp_client import MCPToolError, call_mcp_tool as _raw_call_mcp_tool
+import httpx
+import mcp_client
+from mcp_client import MCPToolError
 
 
 READ_TOOLS = frozenset({
@@ -71,6 +71,11 @@ class MCPUnknown(MCPGateError):
     """Execution outcome could not be established safely."""
 
 
+def _raw_call_mcp_tool(*args: Any, **kwargs: Any) -> Any:
+    """Indirection preserves test doubles while keeping MCP access centralized."""
+    return mcp_client.call_mcp_tool(*args, **kwargs)
+
+
 def _timeout(timeout: float | None) -> float:
     if timeout is not None:
         return max(1.0, min(float(timeout), 30.0))
@@ -118,7 +123,7 @@ def execute_mcp_tool(
             tool_name=tool_name,
             error=f"MCP timeout: {exc}",
         )
-    except MCPToolError as exc:
+    except MCPToolError:
         return GateResult(
             status="failed",
             tool_name=tool_name,
@@ -127,9 +132,6 @@ def execute_mcp_tool(
     except MCPGateError:
         raise
     except Exception as exc:
-        # A network/transport exception does not prove whether a write reached
-        # the server.  Keep the result unknown rather than inventing failure
-        # or retrying a potentially duplicated side effect.
         return GateResult(
             status="unknown" if tool_name in WRITE_TOOLS | DESTRUCTIVE_TOOLS else "failed",
             tool_name=tool_name,
@@ -139,8 +141,7 @@ def execute_mcp_tool(
 
 def parse_mcp_json_list(raw: Any) -> Any:
     """Parse legacy MCP list responses without performing MCP I/O."""
-    from mcp_client import parse_mcp_json_list as _parse
-    return _parse(raw)
+    return mcp_client.parse_mcp_json_list(raw)
 
 
 def call_mcp_tool(
@@ -148,11 +149,7 @@ def call_mcp_tool(
     arguments: Mapping[str, Any] | None = None,
     timeout: float | None = None,
 ) -> str:
-    """Compatibility wrapper returning the legacy text result on success.
-
-    Callers that need to distinguish unknown/rejected/failed outcomes should
-    use execute_mcp_tool() directly.
-    """
+    """Compatibility wrapper returning the legacy text result on success."""
     result = execute_mcp_tool(tool_name, arguments, timeout=timeout)
     if result.status == "ok":
         return result.data
