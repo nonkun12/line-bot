@@ -1,6 +1,6 @@
 from typing import Any
 
-import mcp_client
+from core.mcp_gate import call_mcp_tool as gated_call_mcp_tool
 from graph.state import AgentState
 from agents.notes.handlers import (
     handle_note_message,
@@ -11,7 +11,7 @@ def _call_mcp_tool(state: AgentState):
     call_mcp_tool = state.get("call_mcp_tool")
     if callable(call_mcp_tool):
         return call_mcp_tool
-    return mcp_client.call_mcp_tool
+    return gated_call_mcp_tool
 
 
 def notes_agent_node(state: AgentState) -> AgentState:
