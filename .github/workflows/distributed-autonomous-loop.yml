@@ -17,6 +17,8 @@ on:
       timezone: 'Asia/Tokyo'
     - cron: '30 12 * * *'
       timezone: 'Asia/Tokyo'
+    - cron: '30 16 * * *'
+      timezone: 'Asia/Tokyo'
     - cron: '30 20 * * *'
       timezone: 'Asia/Tokyo'
 
