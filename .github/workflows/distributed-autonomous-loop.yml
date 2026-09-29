@@ -61,7 +61,7 @@ jobs:
           from pathlib import Path
           data = json.loads(Path('.github/autonomous-loop-tasks.json').read_text(encoding='utf-8'))
           configured_max = int(data.get('max_tasks_per_run', 3))
-          requested_raw = "\${{ inputs.max_tasks }}"
+          requested_raw = "${{ inputs.max_tasks }}"
           requested_max = int(requested_raw) if requested_raw.isdigit() else configured_max
           max_tasks = max(1, min(requested_max, configured_max, 3))
           tasks = data.get('tasks', [])[:max_tasks]
@@ -103,6 +103,12 @@ jobs:
           echo "LOOP_EXECUTED=${executed}"
           echo "LOOP_SUCCEEDED=${succeeded}"
           echo "LOOP_BLOCKED=${blocked}"
+          # Validated no-op is success. If every attempted task is blocked/failed,
+          # fail closed so the scheduled run is visible as unhealthy.
+          if [ "$executed" -gt 0 ] && [ "$succeeded" -eq 0 ]; then
+            echo "FAIL_CLOSED=all attempted tasks were blocked or failed"
+            exit 1
+          fi
           exit 0
 
       - name: Publish one reviewable PR when a loop branch exists
