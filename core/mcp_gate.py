@@ -18,6 +18,7 @@ READ_TOOLS = frozenset({
     "get_memory",
     "get_all_memory",
     "search_notes",
+    "list_notes",
     "list_reminders",
     "get_today_schedule",
 })
@@ -32,6 +33,7 @@ DESTRUCTIVE_TOOLS = frozenset({
     "delete_memory",
     "delete_all_memory",
     "delete_note",
+    "delete_all_notes",
     "cancel_reminder",
 })
 
@@ -103,11 +105,22 @@ def execute_mcp_tool(
             dict(arguments),
             timeout=_timeout(timeout),
         )
+        return GateResult(
+            status="ok",
+            tool_name=tool_name,
+            data=data,
+        )
     except TimeoutError as exc:
         return GateResult(
             status="unknown",
             tool_name=tool_name,
             error=f"MCP timeout: {exc}",
+        )
+    except MCPToolError as exc:
+        return GateResult(
+            status="failed",
+            tool_name=tool_name,
+            error="MCP tool reported an error",
         )
     except MCPGateError:
         raise
