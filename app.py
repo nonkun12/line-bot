@@ -195,7 +195,7 @@ init_db()
 init_e2e_table()
 
 
-def call_mcp_tool(tool_name, arguments, timeout=3.0):
+def call_mcp_tool(tool_name, arguments, timeout=None):
     return _call_mcp_tool_impl(tool_name, arguments, timeout=timeout)
 
 
