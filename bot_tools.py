@@ -1,6 +1,6 @@
 import re
 
-import mcp_client
+from core.mcp_gate import call_mcp_tool as gated_call_mcp_tool
 from wikipedia_tool import WIKIPEDIA_TOOL_SCHEMA, wikipedia_search
 
 
@@ -181,7 +181,7 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
     LINEのuser_idはGroq(LLM)には見せず、ここでMCPツールの正式パラメータとして注入する。
     MCPサーバー側がuser_idを必須パラメータとして受け取るため、そのまま渡す。
     """
-    call_mcp_tool_fn = mcp_client.call_mcp_tool
+    call_mcp_tool_fn = gated_call_mcp_tool
 
     if name == "wikipedia_search":
         try:
