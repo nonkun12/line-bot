@@ -89,15 +89,17 @@ jobs:
           echo "LOOP_BLOCKED=${blocked}"
           exit 0
 
-      - name: Publish one reviewable PR when changes exist
+      - name: Publish one reviewable PR when a loop branch exists
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -z "$(git status --porcelain)" ]; then echo 'No changes; no PR.'; exit 0; fi
-          git diff --check
           branch="line-dev/$GITHUB_RUN_ID"
-          git checkout -B "$branch"
-          git push --set-upstream origin "$branch" || git push origin "$branch"
+          if ! git ls-remote --exit-code origin "refs/heads/$branch" >/dev/null 2>&1; then
+            echo "No autonomous branch was produced; no PR."
+            exit 0
+          fi
+          git fetch origin "$branch"
+          git diff --check "main...origin/$branch"
           if gh pr view --head "$branch" --base main >/dev/null 2>&1; then
             echo "PR already exists for $branch"
           else
