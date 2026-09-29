@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from linebot.v3.messaging import (
@@ -96,6 +96,12 @@ app.register_blueprint(voice_api_bp)
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"ok": True}), 200
+
+
+@app.route("/camera-test", methods=["GET"])
+def camera_test():
+    """Safe browser camera smoke-test page; no frames are uploaded or stored."""
+    return render_template("camera_test.html")
 
 client = _ai_client_client
 generate_ai_secretary_report = generate_secretary_report
