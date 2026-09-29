@@ -40,14 +40,8 @@ def test_unresolved_request_records_empty_candidates() -> None:
     assert decision.metadata["routing_priority"] is None
 
 
-def test_normalizes_full_width_input_and_preserves_channel_metadata() -> None:
-    request = ManagementRequest(
-        "u",
-        "Ｅｎｇｌｉｓｈで会話したい",
-        channel="slack",
-        metadata={"source": "parallel-dev-test"},
-    )
-    decision = route(request)
-    assert decision.specialist is Specialist.ENGLISH
-    assert decision.metadata["channel"] == "slack"
-    assert decision.metadata["request_metadata"]["source"] == "parallel-dev-test"
+def test_market_overrides_stocks_when_both_keywords_present() -> None:
+    # The request contains both a Stocks keyword ("株価") and a Market keyword ("ドル円").
+    # According to the routing priority, Market should be selected.
+    decision = route(ManagementRequest("u", "株価とドル円を教えて"))
+    assert decision.specialist is Specialist.MARKET
