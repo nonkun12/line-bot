@@ -72,7 +72,11 @@ def test_notes_graph_schedule_question_uses_explicit_lookup_path():
     assert result is not None
     assert "notes" not in result.get("agent_results", {})
     assert result.get("agent_results", {}).get("normal", {}).get("text") is not None
-    mock_call.assert_called_once_with(\n        "search_notes",\n        {"user_id": "test-user", "keyword": "明日15時"},\n        timeout=10.0,\n    )
+    mock_call.assert_called_once_with(
+        "search_notes",
+        {"user_id": "test-user", "keyword": "明日15時"},
+        timeout=10.0,
+    )
 
 
 def test_notes_graph_routes_note_intent_to_notes_agent():
