@@ -24,7 +24,7 @@ jobs:
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
       SELF_IMPROVEMENT_POLICY_ENFORCED: 'true'
-      HERMES_ADVISOR_ENABLED: 'false'
+      HERMES_ADVISOR_ENABLED: 'true'
       GOOGLE_SHEETS_AUDIT_ENABLED: 'true'
     steps:
       - name: Checkout
