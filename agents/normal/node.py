@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-import mcp_client
+from core.mcp_gate import call_mcp_tool as gated_call_mcp_tool
 from graph.state import AgentState
 from agents.normal.handlers import (
     _AUTH_ERROR_REPLY,
@@ -37,7 +37,7 @@ def _call_mcp_tool(state: AgentState):
     call_mcp_tool = state.get("call_mcp_tool")
     if callable(call_mcp_tool):
         return call_mcp_tool
-    return mcp_client.call_mcp_tool
+    return gated_call_mcp_tool
 
 
 def _is_reminder_lookup_question(message: str) -> bool:
