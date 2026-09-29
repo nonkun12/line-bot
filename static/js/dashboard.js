@@ -37,6 +37,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const f=features[key]||{}, status=f.status||'unknown';
         return `<div class="system-card"><div class="system-card-title">${icons[key]||'🤖'} ${esc(title)}</div><div class="system-status">${label(status)}</div><div class="system-details">${esc(f.detail||baseDetail)}</div></div>`;
       }).join('');
+      try {
+        const hr=await fetch(api('/api/dashboard/hermes')); const hd=await hr.json();
+        const h=hd.hermes||{};
+        document.getElementById('hermesSummary').textContent='実装済み ・ 補助Adviser';
+        document.getElementById('hermesCard').innerHTML=
+          '<div class="system-card"><div class="system-card-title">🧭 Hermes Adviser</div><div class="system-status">'+label('online')+'</div><div class="system-details">役割: '+esc(h.role||'adviser')+' ・ モード: '+esc(h.mode||'auxiliary')+'</div><div class="system-details">自律Loop: '+(h.fallback_safe?'Hermes停止時も継続':'要確認')+' ・ Workflow opt-in: '+(h.workflow_opt_in?'有効':'無効')+'</div><div class="system-details">実績: GitHub Actions側で記録。未取得の実行を「使用済み」とは表示しません。</div></div>';
+      } catch(e) {
+        document.getElementById('hermesSummary').textContent='実装済み ・ 状態取得失敗';
+        document.getElementById('hermesCard').innerHTML='<div class="system-details">Hermes状態を取得できません。安全のため稼働済みとは断定しません。</div>';
+      }
       const distributed=d.distributed_ai||{};
       const specialists=distributed.specialists||[];
       const onlineCount=specialists.filter(x=>x.status==='online').length;

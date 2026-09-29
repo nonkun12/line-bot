@@ -313,6 +313,24 @@ def system_status():
     return jsonify(result)
 
 
+@dashboard_bp.route("/api/dashboard/hermes", methods=["GET"])
+@requires_dashboard_access
+def hermes_status():
+    """Expose the verified Hermes integration boundary without overstating runtime use."""
+    return jsonify({
+        "ok": True,
+        "hermes": {
+            "status": "implemented",
+            "role": "adviser",
+            "mode": "auxiliary",
+            "workflow_opt_in": True,
+            "fallback_safe": True,
+            "runtime_telemetry": "github_actions",
+            "evidence_note": "Hermes is an optional adviser in the autonomous-development workflow; its quota/failure does not stop the main loop.",
+        },
+    })
+
+
 _STOCK_DASHBOARD_TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.-]{0,9}$")
 _STOCK_DASHBOARD_MAX_TICKERS = 6
 
