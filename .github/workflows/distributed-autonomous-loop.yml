@@ -1,0 +1,117 @@
+name: Distributed Autonomous Development Loop
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 7 * * *'
+      timezone: 'Asia/Tokyo'
+    - cron: '30 19 * * *'
+      timezone: 'Asia/Tokyo'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: distributed-autonomous-loop
+  cancel-in-progress: false
+
+jobs:
+  distributed-loop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      AUTO_APPLY_PATCH: 'false'
+      AUTO_DEPLOY: 'false'
+      SELF_IMPROVEMENT_POLICY_ENFORCED: 'true'
+      HERMES_ADVISOR_ENABLED: 'false'
+      GOOGLE_SHEETS_AUDIT_ENABLED: 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Load loop task queue
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('.github/autonomous-loop-tasks.json').read_text(encoding='utf-8'))
+          tasks = data.get('tasks', [])[:int(data.get('max_tasks_per_run', 3))]
+          if not tasks: raise SystemExit('Autonomous loop task queue is empty.')
+          Path('/tmp/loop_tasks.json').write_text(json.dumps(tasks, ensure_ascii=False), encoding='utf-8')
+          print(f'Loaded {len(tasks)} task(s).')
+          PY
+
+      - name: Run distributed development loop
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          DEV_USER_ID: autonomous-distributed-loop
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEETS_AUDIT_RANGE: ${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
+          SELF_IMPROVEMENT_HISTORY_PATH: /tmp/line-bot-self-improvement.jsonl
+        run: |
+          set +e
+          executed=0; succeeded=0; blocked=0
+          : > /tmp/distributed_loop_results.jsonl
+          while IFS= read -r task; do
+            id="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["id"])' "$task")"
+            instruction="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["instruction"])' "$task")"
+            echo "LOOP TASK ${id}"
+            export DEV_INSTRUCTION="$instruction"
+            export AUTONOMOUS_SUMMARY_PATH="/tmp/autonomous-${id}.json"
+            python scripts/run_guarded_runtime.py
+            rc=$?
+            executed=$((executed + 1))
+            status="FAIL"
+            if [ -f "$AUTONOMOUS_SUMMARY_PATH" ]; then
+              status="$(python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("status","FAIL"))' "$AUTONOMOUS_SUMMARY_PATH")"
+            fi
+            if [ "$rc" -eq 0 ]; then succeeded=$((succeeded + 1)); else blocked=$((blocked + 1)); fi
+            printf '%s\n' "$(python -c 'import json,sys; print(json.dumps({"task_id":sys.argv[1],"status":sys.argv[2],"exit_code":int(sys.argv[3])}, ensure_ascii=False))' "$id" "$status" "$rc")" >> /tmp/distributed_loop_results.jsonl
+            echo "Task ${id}: status=${status}, exit=${rc}"
+          done < <(python -c 'import json; [print(json.dumps(x,ensure_ascii=False)) for x in json.load(open("/tmp/loop_tasks.json",encoding="utf-8"))]')
+          echo "LOOP_EXECUTED=${executed}"
+          echo "LOOP_SUCCEEDED=${succeeded}"
+          echo "LOOP_BLOCKED=${blocked}"
+          exit 0
+
+      - name: Publish one reviewable PR when a loop branch exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="line-dev/$GITHUB_RUN_ID"
+          if ! git ls-remote --exit-code origin "refs/heads/$branch" >/dev/null 2>&1; then
+            echo "No autonomous branch was produced; no PR."
+            exit 0
+          fi
+          git fetch origin "$branch"
+          git diff --check "main...origin/$branch"
+          if gh pr view --head "$branch" --base main >/dev/null 2>&1; then
+            echo "PR already exists for $branch"
+          else
+            gh pr create --base main --head "$branch" --draft --title "chore: distributed autonomous loop $GITHUB_RUN_ID" --body "Distributed autonomous development loop. Common guarded runtime, tests, review/integration gates, and Sheets audit are required. No automatic merge or deploy."
+          fi
+
+      - name: Upload loop results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributed-loop-${{ github.run_id }}
+          path: |
+            /tmp/distributed_loop_results.jsonl
+            /tmp/autonomous-*.json
+          if-no-files-found: ignore
