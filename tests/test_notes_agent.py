@@ -93,4 +93,5 @@ def test_notes_graph_routes_note_intent_to_notes_agent():
     mock_call.assert_called_once_with(
         "search_notes",
         {"user_id": "test-user", "keyword": ""},
+        timeout=10.0,
     )
