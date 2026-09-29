@@ -61,7 +61,7 @@ def test_notes_agent_node_list_calls_search_notes():
     )
 
 
-def test_notes_graph_schedule_question_stays_mcp_free():
+def test_notes_graph_schedule_question_uses_explicit_lookup_path():
     with patch("mcp_client.call_mcp_tool") as mock_call:
         result = graph.invoke({
             "user_id": "test-user",
@@ -72,7 +72,7 @@ def test_notes_graph_schedule_question_stays_mcp_free():
     assert result is not None
     assert "notes" not in result.get("agent_results", {})
     assert result.get("agent_results", {}).get("normal", {}).get("text") is not None
-    mock_call.assert_not_called()
+    mock_call.assert_called_once_with(\n        "search_notes",\n        {"user_id": "test-user", "keyword": "明日15時"},\n        timeout=10.0,\n    )
 
 
 def test_notes_graph_routes_note_intent_to_notes_agent():
