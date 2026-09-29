@@ -73,6 +73,11 @@ class AgentVersionRegistry:
     def history(self, agent_name: str) -> tuple[AgentVersion, ...]:
         return tuple(self._history.get(str(agent_name).strip(), ()))
 
+    def latest(self, agent_name: str) -> AgentVersion | None:
+        """Return the most recent version for the given agent, regardless of lifecycle."""
+        history = self._history.get(str(agent_name).strip(), ())
+        return history[-1] if history else None
+
     def rollback_target(self, agent_name: str) -> AgentVersion | None:
         history = self._history.get(str(agent_name).strip(), ())
         current_indexes = [
