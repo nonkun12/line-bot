@@ -135,6 +135,12 @@ def execute_mcp_tool(
         )
 
 
+def parse_mcp_json_list(raw: Any) -> Any:
+    """Parse legacy MCP list responses without performing MCP I/O."""
+    from mcp_client import parse_mcp_json_list as _parse
+    return _parse(raw)
+
+
 def call_mcp_tool(
     tool_name: str,
     arguments: Mapping[str, Any] | None = None,
@@ -166,5 +172,6 @@ __all__ = [
     "READ_TOOLS",
     "WRITE_TOOLS",
     "call_mcp_tool",
+    "parse_mcp_json_list",
     "execute_mcp_tool",
 ]
