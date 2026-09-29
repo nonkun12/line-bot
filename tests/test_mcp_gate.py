@@ -47,3 +47,23 @@ def test_success_preserves_legacy_text_contract(monkeypatch):
     assert result.status == "ok"
     assert result.data == "saved"
     assert mcp_gate.call_mcp_tool("save_memory", {"user_id": "u"}) == "saved"
+
+
+def test_direct_mcp_imports_are_forbidden():
+    from pathlib import Path
+    import ast
+
+    root = Path(__file__).resolve().parents[1]
+    allowed = {root / "mcp_client.py", root / "core" / "mcp_gate.py"}
+    forbidden = []
+    for path in root.rglob("*.py"):
+        if path in allowed or ".git" in path.parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                if any(alias.name == "mcp_client" for alias in node.names):
+                    forbidden.append(str(path.relative_to(root)))
+            elif isinstance(node, ast.ImportFrom) and node.module == "mcp_client":
+                forbidden.append(str(path.relative_to(root)))
+    assert forbidden == []
