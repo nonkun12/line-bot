@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/uhip/application-adapter.schema.json",
+  "title": "UHIP Application Adapter Capability",
+  "description": "Generic, declarative capability contract for applications consuming UHIP Universal Events. This declaration is not an authorization grant.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "adapter_id",
+    "version",
+    "modalities",
+    "events",
+    "targets",
+    "max_risk",
+    "confirmation",
+    "actuator"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "adapter_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9._-]{0,63}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$"
+    },
+    "modalities": {
+      "type": "array",
+      "items": {
+        "enum": ["hand", "voice"]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "targets": {
+      "type": "array",
+      "description": "Application identifiers or logical targets accepted by this adapter.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "max_risk": {
+      "enum": ["low", "medium", "high"]
+    },
+    "confirmation": {
+      "enum": ["never", "policy", "always"]
+    },
+    "actuator": {
+      "enum": ["none", "separate_process"]
+    },
+    "policy_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    }
+  }
+}
