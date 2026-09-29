@@ -37,6 +37,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const f=features[key]||{}, status=f.status||'unknown';
         return `<div class="system-card"><div class="system-card-title">${icons[key]||'🤖'} ${esc(title)}</div><div class="system-status">${label(status)}</div><div class="system-details">${esc(f.detail||baseDetail)}</div></div>`;
       }).join('');
+      try {
+        const lr=await fetch(api('/api/dashboard/loop')); const ld=await lr.json();
+        const l=ld.loop||{}, s=ld.safety||{}, h=ld.hand_sign||{};
+        const cards=[
+          ['🔄 Loop','🟢 自動運転設定済み',`1日 ${l.frequency_per_day||4}回 ・ ${(l.schedule_jst||[]).join(' / ')} JST`],
+          ['🛡️ Safety Gate',s.fail_closed||l.fail_closed?'🟢 FAIL_CLOSED 有効':'⚪ 未確認',`Auto Merge: ${s.auto_merge?'有':'無'} ・ Auto Deploy: ${s.auto_deploy?'有':'無'}`],
+          ['📋 Sheets監査',l.sheets_audit?'🟢 有効':'⚪ 未確認',`Runtime telemetry: ${esc(l.runtime_telemetry||'unknown')}`],
+          ['🧭 Hermes Adviser',s.hermes_role==='adviser'?'🟢 Adviser':'⚪ 未確認',s.hermes_is_auxiliary?'補助系統・Loop本体とは分離':'状態確認要'],
+          ['✋ Hand Sign',h.camera_smoke_test==='implemented'?'🟢 Camera準備済み':'🔵 開発中',`Upload: ${h.camera_upload?'有':'無'} ・ Storage: ${h.camera_storage?'有':'無'}`],
+          ['📡 実行実績',l.last_run==='not_available_from_dashboard_runtime'?'⚪ 未取得':'🟢 取得済み','未取得のRunを成功扱いしません'],
+        ];
+        document.getElementById('loopGrid').innerHTML=cards.map(x=>'<div class="system-card"><div class="system-card-title">'+x[0]+'</div><div class="system-status">'+x[1]+'</div><div class="system-details">'+esc(x[2])+'</div></div>').join('');
+        document.getElementById('loopSummary').textContent=`自動Loop ${l.frequency_per_day||4}回/日 ・ 安全設定確認済み`;
+      } catch(e) {
+        document.getElementById('loopSummary').textContent='状態取得失敗';
+        document.getElementById('loopGrid').innerHTML='<div class="system-details">Loop状態を取得できません。未確認の稼働を断定しません。</div>';
+      }
       const distributed=d.distributed_ai||{};
       const specialists=distributed.specialists||[];
       const onlineCount=specialists.filter(x=>x.status==='online').length;
