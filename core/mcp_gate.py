@@ -8,6 +8,8 @@ unknown so callers must not report an unverified write as successful.
 from __future__ import annotations
 
 import os
+
+import httpx
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -71,7 +73,7 @@ class MCPUnknown(MCPGateError):
 
 def _timeout(timeout: float | None) -> float:
     if timeout is not None:
-        return float(timeout)
+        return max(1.0, min(float(timeout), 30.0))
     try:
         value = float(os.getenv("MCP_TIMEOUT_SEC", "10"))
     except ValueError:
@@ -110,7 +112,7 @@ def execute_mcp_tool(
             tool_name=tool_name,
             data=data,
         )
-    except TimeoutError as exc:
+    except httpx.TimeoutException as exc:
         return GateResult(
             status="unknown",
             tool_name=tool_name,
