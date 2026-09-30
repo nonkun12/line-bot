@@ -4,6 +4,6 @@
   "tasks": [
     {"id":"router-regression-whitespace","instruction":"tests/test_management_router.py に、前後の空白を含む「求人を探して」という要求がJobsへ正しく振り分けられる回帰テストを1件追加してください。既存テストと重複しないケースにしてください。実装コードは変更せず、テストだけを最小変更で追加してください。対象ファイル: tests/test_management_router.py"},
     {"id":"router-regression-fullwidth-market","instruction":"tests/test_management_router.py に、全角文字を含む「ＮＹダウを教えて」という要求がUnicode正規化後にMarketへ正しく振り分けられる回帰テストを1件追加してください。既存の英語全角テストとは異なる専門Agentケースにしてください。実装コードは変更せず、テストだけを最小変更で追加してください。対象ファイル: tests/test_management_router.py"},
-    {"id":"hand-sign-uhip-contract-test","instruction":"ハンドサイン実装の第1実践として、UHIP universal-event.schema.json の既存契約に対するテストを1件追加してください。hand modality、camera source、gesture=thumb_up、phase=end、hand.track_id、confidence、gate.recognition_passed を含む最小イベントがスキーマ契約を満たすことを検証してください。既存のUHIPテスト構造に合わせ、実装コードやスキーマ自体は変更せず、テストだけを最小変更で追加してください。実機カメラや外部通信は使用しないでください。対象: uhip/schema/universal-event.schema.json と既存UHIPテストを確認し、適切なテストファイルを1つだけ追加/変更してください。"} 
+    {"id":"hand-sign-uhip-contract-test","instruction":"ハンドサイン実装の第1実践として、既存の uhip/tests/test_schema_contracts.py にテストを1件だけ追加してください。既存の test_universal_event_accepts_generic_hand_event と重複しないよう、hand modality、camera source、gesture=thumb_up、phase=end、hand.track_id、confidence を含み、gate.recognition_passed=false のイベントでもUHIP universal-event.schema.json の契約を満たすことを検証してください。これは「認識失敗イベントを契約上表現できる」ことだけを検証し、実操作可能とは扱わないでください。schemaと実装コードは変更禁止、テストが失敗した場合はschema/実装を変更せず失敗として報告してください。実機カメラ、外部通信、OS操作は使用しないでください。新規テストファイルは作成せず、この1ファイルだけを変更してください。"} 
   ]
 }
