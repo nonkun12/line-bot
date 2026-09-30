@@ -46,7 +46,11 @@ document.addEventListener('DOMContentLoaded', () => {
           ['📋 Sheets監査',l.sheets_audit?'🟢 有効':'⚪ 未確認',`Runtime telemetry: ${esc(l.runtime_telemetry||'unknown')}`],
           ['🧭 Hermes Adviser',s.hermes_role==='adviser'?'🟢 Adviser':'⚪ 未確認',s.hermes_is_auxiliary?'補助系統・Loop本体とは分離':'状態確認要'],
           ['✋ Hand Sign',h.camera_smoke_test==='implemented'?'🟢 Camera準備済み':'🔵 開発中',`Upload: ${h.camera_upload?'有':'無'} ・ Storage: ${h.camera_storage?'有':'無'}`],
-          ['📡 実行実績',l.last_run==='not_available_from_dashboard_runtime'?'⚪ 未取得':'🟢 取得済み','未取得のRunを成功扱いしません'],
+          ['📡 実行実績',
+            l.last_run&&l.last_run.status==='ok'&&l.last_run.runs&&l.last_run.runs.length?'🟢 Run取得済み':'⚪ 未取得',
+            l.last_run&&l.last_run.runs&&l.last_run.runs.length
+              ? '最新: Run #'+(l.last_run.runs[0].run_number||'-')+' / '+(l.last_run.runs[0].status||'-')+' / '+(l.last_run.runs[0].conclusion||'実行中')
+              : '未取得のRunを成功扱いしません'],
         ];
         document.getElementById('loopGrid').innerHTML=cards.map(x=>'<div class="system-card"><div class="system-card-title">'+x[0]+'</div><div class="system-status">'+x[1]+'</div><div class="system-details">'+esc(x[2])+'</div></div>').join('');
         document.getElementById('loopSummary').textContent=`自動Loop ${l.frequency_per_day||4}回/日 ・ 安全設定確認済み`;
