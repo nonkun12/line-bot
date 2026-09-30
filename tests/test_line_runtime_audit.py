@@ -1,9 +1,7 @@
 from core import line_runtime_audit
 
 
-def test_record_line_runtime_writes_roles_and_route(monkeypatch):
-    calls = []
-
+def _writer(monkeypatch, calls):
     class Writer:
         def append_development_result(self, **kwargs):
             calls.append(kwargs)
@@ -13,6 +11,12 @@ def test_record_line_runtime_writes_roles_and_route(monkeypatch):
         "from_environment",
         classmethod(lambda cls: Writer()),
     )
+
+
+def test_record_line_runtime_writes_roles_and_route(monkeypatch):
+    calls = []
+    _writer(monkeypatch, calls)
+
     line_runtime_audit.record_line_runtime(
         user_message="AI NEWSとトヨタ（7203）の最新情報を調べて",
         reply="news result",
@@ -26,6 +30,21 @@ def test_record_line_runtime_writes_roles_and_route(monkeypatch):
     assert "route=management" in calls[0]["detail"]
 
 
+def test_record_line_runtime_skips_ordinary_conversation(monkeypatch):
+    calls = []
+    _writer(monkeypatch, calls)
+
+    for message in ("こんにちは", "東京の天気は？", "長い返信", "長文取得"):
+        line_runtime_audit.record_line_runtime(
+            user_message=message,
+            reply="ok",
+            status="PASS",
+            route="core-gateway",
+        )
+
+    assert calls == []
+
+
 def test_record_line_runtime_does_not_raise_when_sheets_is_unconfigured(monkeypatch):
     monkeypatch.setattr(
         line_runtime_audit.GoogleSheetsWriter,
@@ -33,5 +52,5 @@ def test_record_line_runtime_does_not_raise_when_sheets_is_unconfigured(monkeypa
         classmethod(lambda cls: None),
     )
     line_runtime_audit.record_line_runtime(
-        user_message="hello", reply="ok", status="PASS", route="core-gateway"
+        user_message="AI NEWSを調べて", reply="ok", status="PASS", route="core-gateway"
     )
