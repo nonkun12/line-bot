@@ -313,6 +313,75 @@ def system_status():
     return jsonify(result)
 
 
+@dashboard_bp.route("/api/dashboard/loop", methods=["GET"])
+@requires_dashboard_access
+def autonomous_loop_status():
+    """Expose configured autonomous-loop controls without claiming unverified runtime activity."""
+    return jsonify({
+        "ok": True,
+        "loop": {
+            "status": "configured",
+            "schedule_jst": ["04:30", "12:30", "16:30", "20:30"],
+            "frequency_per_day": 4,
+            "manual_run_available": True,
+            "manual_default_tasks": 1,
+            "max_tasks_per_run": 3,
+            "concurrency_cancel_in_progress": False,
+            "auto_apply_patch": False,
+            "auto_deploy": False,
+            "fail_closed": True,
+            "sheets_audit": True,
+            "runtime_telemetry": "github_actions",
+            "last_run": _github_loop_runs(),
+            "note": "未取得のGitHub Actions実行を成功・実行済みとは表示しません。",
+        },
+        "safety": {
+            "auto_merge": False,
+            "auto_deploy": False,
+            "self_improvement_policy": True,
+            "hermes_role": "adviser",
+            "hermes_is_auxiliary": True,
+        },
+        "hand_sign": {
+            "camera_smoke_test": "implemented",
+            "camera_upload": False,
+            "camera_storage": False,
+            "next_phase": "hand-sign recognition",
+        },
+    })
+
+
+def _github_loop_runs():
+    """Read-only GitHub Actions telemetry for the autonomous loop."""
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if not token:
+        return {"status": "unavailable", "reason": "GITHUB_TOKEN not configured"}
+    url = "https://api.github.com/repos/nonkun12/line-bot/actions/workflows/distributed-autonomous-loop.yml/runs"
+    headers = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {token}"}
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            response = client.get(url, headers=headers, params={"per_page": 5})
+        if response.status_code != 200:
+            return {"status": "unavailable", "reason": f"github_api_{response.status_code}"}
+        payload = response.json()
+        runs = []
+        for run in payload.get("workflow_runs", [])[:5]:
+            runs.append({
+                "id": run.get("id"),
+                "run_number": run.get("run_number"),
+                "status": run.get("status"),
+                "conclusion": run.get("conclusion"),
+                "event": run.get("event"),
+                "created_at": run.get("created_at"),
+                "updated_at": run.get("updated_at"),
+                "html_url": run.get("html_url"),
+            })
+        return {"status": "ok", "runs": runs}
+    except Exception:
+        current_app.logger.exception("DASHBOARD GITHUB LOOP TELEMETRY ERROR")
+        return {"status": "unavailable", "reason": "github_api_error"}
+
+
 _STOCK_DASHBOARD_TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.-]{0,9}$")
 _STOCK_DASHBOARD_MAX_TICKERS = 6
 
