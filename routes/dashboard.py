@@ -332,7 +332,7 @@ def autonomous_loop_status():
             "fail_closed": True,
             "sheets_audit": True,
             "runtime_telemetry": "github_actions",
-            "last_run": "not_available_from_dashboard_runtime",
+            "last_run": _github_loop_runs(),
             "note": "未取得のGitHub Actions実行を成功・実行済みとは表示しません。",
         },
         "safety": {
@@ -349,6 +349,37 @@ def autonomous_loop_status():
             "next_phase": "hand-sign recognition",
         },
     })
+
+
+def _github_loop_runs():
+    """Read-only GitHub Actions telemetry for the autonomous loop."""
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if not token:
+        return {"status": "unavailable", "reason": "GITHUB_TOKEN not configured"}
+    url = "https://api.github.com/repos/nonkun12/line-bot/actions/workflows/distributed-autonomous-loop.yml/runs"
+    headers = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {token}"}
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            response = client.get(url, headers=headers, params={"per_page": 5})
+        if response.status_code != 200:
+            return {"status": "unavailable", "reason": f"github_api_{response.status_code}"}
+        payload = response.json()
+        runs = []
+        for run in payload.get("workflow_runs", [])[:5]:
+            runs.append({
+                "id": run.get("id"),
+                "run_number": run.get("run_number"),
+                "status": run.get("status"),
+                "conclusion": run.get("conclusion"),
+                "event": run.get("event"),
+                "created_at": run.get("created_at"),
+                "updated_at": run.get("updated_at"),
+                "html_url": run.get("html_url"),
+            })
+        return {"status": "ok", "runs": runs}
+    except Exception:
+        current_app.logger.exception("DASHBOARD GITHUB LOOP TELEMETRY ERROR")
+        return {"status": "unavailable", "reason": "github_api_error"}
 
 
 _STOCK_DASHBOARD_TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.-]{0,9}$")
