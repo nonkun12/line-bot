@@ -37,6 +37,9 @@ PROTECTED_PATHS = {
     "scripts/line_development_worker.py",
     "scripts/line_development_worker_safe.py",
     "scripts/line_development_worker_v2.py",
+    "scripts/run_minimal_autonomous_loop.py",
+    "scripts/run_guarded_runtime.py",
+    "tests/test_minimal_autonomous_loop.py",
     "line_development.py",
     "git_safety.py", "patch_validator.py", "render_client.py",
 }
