@@ -175,6 +175,37 @@ def test_repair_anchor_plan_receives_ambiguity_and_returns_plan():
 
     assert plan["changes"][0]["old"].count("TARGET") == 1
 
+def test_repair_size_plan_returns_small_edit():
+    rejected = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "old", "new": "x" * 2000}],
+    }
+    response = json.dumps(
+        {
+            "no_change": False,
+            "changes": [
+                {
+                    "file": "app.py",
+                    "old": "def target():\n    old\n",
+                    "new": "def target():\n    new\n",
+                }
+            ],
+        }
+    )
+    client = FakeClient([response])
+
+    plan = worker.repair_size_plan(
+        client,
+        "app.py の対象を最小修正",
+        "app.py",
+        "def target():\n    old\n",
+        rejected,
+        "change_too_large_new",
+    )
+
+    assert worker.validate_plan(plan, "app.py") == (True, "app.py")
+
+
 def test_apply_plan_requires_unique_anchor(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     target = tmp_path / "app.py"
