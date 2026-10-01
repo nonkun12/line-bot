@@ -126,7 +126,7 @@ def test_debugger_restores_before_building_real_worker_plan(monkeypatch):
     )
 
     assert result.success
-    assert [name for name, _ in events] == ["restore", "context", "build_plan", "context", "apply"]
+    assert [name for name, _ in events] == ["restore", "context", "build_plan", "context", "context", "apply"]
     assert state.touched == ["core/example.py"]
 
 
@@ -179,4 +179,50 @@ def test_implementer_routes_plan_validation_through_bounded_repair(monkeypatch):
     assert calls == ["repair"]
     assert state.plan == repaired
     assert state.touched == [chosen]
+
+
+def test_implementer_routes_apply_failure_through_bounded_anchor_repair(monkeypatch):
+    chosen = "tests/test_management_router.py"
+    plan = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "missing", "new": "replacement"}],
+    }
+    repaired = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "exact", "new": "replacement"}],
+    }
+    calls = []
+
+    monkeypatch.setattr(
+        runtime.worker,
+        "build_plan",
+        lambda *args, **kwargs: plan,
+    )
+
+    def apply_with_repair(client, instruction, selected, current_plan, context):
+        calls.append(("apply", selected, current_plan))
+        return repaired, True, "applied", [selected]
+
+    monkeypatch.setattr(runtime.worker, "apply_plan_with_bounded_anchor_repair", apply_with_repair)
+
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="tests/test_management_router.py を最小修正",
+        chosen=chosen,
+    )
+    executor = runtime.DevelopmentExecutor(state)
+    task = AgentTask(
+        "implementer",
+        AgentRole.IMPLEMENTER,
+        "Implement the requested test change.",
+        resources=frozenset({"working-tree"}),
+    )
+
+    result = executor.execute(task)
+
+    assert result.success
+    assert calls and calls[0][0] == "apply"
+    assert state.plan == repaired
+    assert state.touched == [chosen]
+
 

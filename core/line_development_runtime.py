@@ -191,7 +191,13 @@ class DevelopmentExecutor:
                 if detail == "no_change":
                     self.state.plan = plan; self.state.touched = []
                     return AgentResult(task.task_id, True, "no safe change required")
-                applied, detail, touched = worker.apply_plan(plan)
+                plan, applied, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    worker.context_for(self.state.chosen),
+                )
                 if not applied:
                     worker.restore(touched)
                     return AgentResult(task.task_id, False, f"apply failed: {detail}")
@@ -218,7 +224,13 @@ class DevelopmentExecutor:
                 )
                 if not ok or detail == "no_change":
                     return AgentResult(task.task_id, False, f"debug plan rejected: {detail}")
-                applied, detail, touched = worker.apply_plan(plan)
+                plan, applied, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    worker.context_for(self.state.chosen),
+                )
                 if not applied:
                     worker.restore(touched)
                     return AgentResult(task.task_id, False, f"debug apply failed: {detail}")
@@ -239,7 +251,13 @@ class DevelopmentExecutor:
                     return AgentResult(task.task_id, False, f"refactor plan rejected: {detail}")
                 if detail == "no_change":
                     return AgentResult(task.task_id, True, "no refactor change required")
-                applied, detail, touched = worker.apply_plan(plan)
+                plan, applied, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    worker.context_for(self.state.chosen),
+                )
                 if not applied:
                     worker.restore(touched)
                     return AgentResult(task.task_id, False, f"refactor apply failed: {detail}")
@@ -269,7 +287,13 @@ class DevelopmentExecutor:
                 if not ok or detail == "no_change":
                     return AgentResult(task.task_id, False, f"repair plan rejected: {detail}")
                 worker.restore(self.state.touched or [])
-                applied, detail, touched = worker.apply_plan(plan)
+                plan, applied, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    worker.context_for(self.state.chosen),
+                )
                 if not applied:
                     worker.restore(touched)
                     return AgentResult(task.task_id, False, f"repair apply failed: {detail}")
