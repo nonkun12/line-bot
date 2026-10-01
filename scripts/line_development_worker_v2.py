@@ -310,10 +310,8 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
             return False, "no_op_change"
         if any(line.strip() in {"+", "-"} for line in new.splitlines()):
             return False, "diff_marker_in_replacement"
-        if len(old) > 1200:
-            return False, "change_too_large_old"
-        if len(new) > 1800:
-            return False, "change_too_large_new"
+        if len(old) > 1200 or len(new) > 1800:
+            return False, "change_too_large"
     return True, chosen
 
 
@@ -430,7 +428,7 @@ def main() -> int:
             ok, detail = validate_plan(repair_plan, chosen)
             if ok:
                 plan = repair_plan
-        if not ok and detail in {"change_too_large_old", "change_too_large_new"}:
+        if not ok and detail == "change_too_large":
             repair_plan = repair_size_plan(
                 client,
                 instruction,
