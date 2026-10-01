@@ -39,6 +39,7 @@ PROTECTED_PATHS = {
     "scripts/line_development_worker.py",
     "scripts/line_development_worker_safe.py",
     "scripts/line_development_worker_v2.py",
+    "core/line_development_runtime.py",
     "scripts/run_minimal_autonomous_loop.py",
     "scripts/run_guarded_runtime.py",
     "tests/test_minimal_autonomous_loop.py",
@@ -238,6 +239,28 @@ If the requested change cannot be expressed as a small safe search/replace, retu
         f"\n\nRejected plan:\n{rejected}"
     )
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
+
+
+def validate_plan_with_bounded_repairs(
+    client: Groq,
+    instruction: str,
+    chosen: str,
+    plan: dict,
+    context: str,
+) -> tuple[dict, bool, str]:
+    """Validate a plan and perform only the existing bounded validation repairs."""
+    ok, detail = validate_plan(plan, chosen)
+    if not ok and detail == "diff_marker_in_replacement":
+        repair_plan = repair_diff_marker_plan(client, instruction, chosen, context, plan)
+        ok, detail = validate_plan(repair_plan, chosen)
+        if ok:
+            plan = repair_plan
+    if not ok and detail == "change_too_large":
+        repair_plan = repair_size_plan(client, instruction, chosen, context, plan, detail)
+        ok, detail = validate_plan(repair_plan, chosen)
+        if ok:
+            plan = repair_plan
+    return plan, ok, detail
 
 
 def build_comment_test_plan(instruction: str, chosen: str) -> dict | None:
