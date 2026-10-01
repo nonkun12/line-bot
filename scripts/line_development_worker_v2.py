@@ -32,6 +32,7 @@ MAX_RESPONSE_TOKENS = 4096
 MAX_INSTRUCTION_LENGTH = 2000
 MAX_REPAIR_ATTEMPTS = 1
 MAX_APPLY_REPAIR_ATTEMPTS = 1
+MAX_PLAN_REPAIR_ATTEMPTS = 1
 ALLOWED_SUFFIXES = (".py", ".md", ".json", ".txt")
 PROTECTED_PATHS = {
     ".github", ".env", "config.py",
@@ -346,6 +347,19 @@ def main() -> int:
             traceback.print_exc()
             return 1
         ok, detail = validate_plan(plan, chosen)
+        if not ok and detail == "diff_marker_in_replacement":
+            repair_instruction = (
+                f"{instruction}\n\n"
+                "The previous implementation plan was rejected because its replacement text "
+                "contained unified-diff markers. Re-read the supplied current context and "
+                "return one minimal JSON search/replace plan. The new value must be replacement "
+                "text only, with no leading +/- diff markers, markdown fences, or standalone "
+                "+/- lines."
+            )
+            repair_plan = build_plan(client, repair_instruction, chosen, context_for(chosen))
+            ok, detail = validate_plan(repair_plan, chosen)
+            if ok:
+                plan = repair_plan
         if not ok:
             print("Rejected plan:", detail, flush=True)
             return 1
