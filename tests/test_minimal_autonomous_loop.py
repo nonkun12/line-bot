@@ -121,3 +121,40 @@ def test_summary_identity_mismatch_halts(monkeypatch, tmp_path: Path):
     result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
     assert result["status"] == "FAIL"
     assert result["failure_reason"] == "summary_identity_mismatch"
+
+
+def test_main_halts_after_first_failure(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(
+        loop,
+        "load_tasks",
+        lambda: [
+            {"id": "t1", "instruction": "one"},
+            {"id": "t2", "instruction": "two"},
+        ],
+    )
+    monkeypatch.setattr(loop.QUEUE, "read_text", lambda encoding="utf-8": '{"max_tasks_per_run": 3}')
+    monkeypatch.setattr(
+        loop,
+        "run_task",
+        lambda task, index, stop_file: {
+            "task_id": task["id"],
+            "status": "FAIL",
+            "exit_code": 1,
+        },
+    )
+    monkeypatch.setattr(loop.sys, "argv", ["loop", "--max-tasks", "2", "--results", str(tmp_path / "results.jsonl")])
+    assert loop.main() == 1
+    lines = (tmp_path / "results.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0])["task_id"] == "t1"
+
+
+def test_main_rejects_queue_limit(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(loop.QUEUE, "read_text", lambda encoding="utf-8": '{"max_tasks_per_run": 1}')
+    monkeypatch.setattr(loop.sys, "argv", ["loop", "--max-tasks", "2", "--results", str(tmp_path / "results.jsonl")])
+    try:
+        loop.main()
+    except SystemExit as exc:
+        assert "max_tasks_per_run=1" in str(exc)
+    else:
+        raise AssertionError("expected queue limit rejection")
