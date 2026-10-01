@@ -129,7 +129,7 @@ def _kill_process_group(process: subprocess.Popen[str]) -> None:
         pass
 
 
-def run_task(task: dict[str, str], run_index: int, stop_file: Path, summary_dir: Path = Path("/tmp")) -> dict[str, object]:
+def run_task(task: dict[str, object], run_index: int, stop_file: Path, summary_dir: Path = Path("/tmp")) -> dict[str, object]:
     summary = summary_dir / f"minimal-autonomous-{task['id']}.json"
     run_nonce = uuid.uuid4().hex
     start_time = datetime.now(timezone.utc)
