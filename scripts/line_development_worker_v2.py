@@ -263,6 +263,39 @@ def validate_plan_with_bounded_repairs(
     return plan, ok, detail
 
 
+def apply_plan_with_bounded_anchor_repair(
+    client: Groq,
+    instruction: str,
+    chosen: str,
+    plan: dict,
+    context: str,
+) -> tuple[dict, bool, str, list[str]]:
+    """Apply once, then allow exactly one bounded anchor repair on failure."""
+    applied, detail, touched = apply_plan(plan)
+    if applied:
+        return plan, True, detail, touched
+    restore(touched)
+    if MAX_APPLY_REPAIR_ATTEMPTS < 1:
+        return plan, False, detail, touched
+
+    repair_plan = repair_anchor_plan(
+        client,
+        instruction,
+        chosen,
+        context_for(chosen),
+        plan,
+        detail,
+    )
+    ok, repair_detail = validate_plan(repair_plan, chosen)
+    if not ok or repair_detail == "no_change":
+        return repair_plan, False, repair_detail, []
+    applied, apply_detail, touched = apply_plan(repair_plan)
+    if applied:
+        return repair_plan, True, apply_detail, touched
+    restore(touched)
+    return repair_plan, False, apply_detail, touched
+
+
 def build_comment_test_plan(instruction: str, chosen: str) -> dict | None:
     """Build the legacy self-test edit only when explicitly enabled."""
     if os.environ.get("ALLOW_SELF_TEST_COMMENT") != "1":
@@ -470,7 +503,9 @@ def main() -> int:
             passed, output = run_tests()
             print(output, flush=True)
             return 0 if passed else 1
-        applied, detail, touched = apply_plan(plan)
+        plan, applied, detail, touched = apply_plan_with_bounded_anchor_repair(
+                    client, instruction, chosen, plan, context_for(chosen)
+                )
         if not applied:
             restore(touched)
             apply_attempts = 0
