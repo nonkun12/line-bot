@@ -415,12 +415,6 @@ def main() -> int:
             apply_attempts = 0
             while not applied and apply_attempts < MAX_APPLY_REPAIR_ATTEMPTS:
                 apply_attempts += 1
-                repair_instruction = (
-                    f"{instruction}\n\n"
-                    f"The previous edit plan failed to apply with {detail}. "
-                    "Re-read the supplied current context and return a new plan whose old value "
-                    "is an exact substring of that context. Do not guess or reuse a stale anchor."
-                )
                 repair_plan = repair_anchor_plan(
                     client,
                     instruction,
