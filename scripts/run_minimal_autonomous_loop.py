@@ -301,11 +301,11 @@ def main() -> int:
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(result, ensure_ascii=False) + "\n")
 
-        if result["exit_code"] != 0 or result["status"] != "PASS":
+        if result["exit_code"] != 0 or result["status"] not in {"PASS", "NO_CHANGE"}:
             print(f"MINIMAL_LOOP=HALT task={task['id']} status={result['status']}", flush=True)
             return 1
 
-        print(f"MINIMAL_LOOP=PASS task={task['id']}", flush=True)
+        print(f"MINIMAL_LOOP={result['status']} task={task['id']}", flush=True)
 
     print("MINIMAL_LOOP=COMPLETE", flush=True)
     return 0
