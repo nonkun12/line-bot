@@ -24,7 +24,7 @@ DEFAULT_STOP_FILE = Path("/tmp/line-bot-autonomous-loop.stop")
 ACTIVE_PROCESS: subprocess.Popen[str] | None = None
 
 
-def load_tasks() -> list[dict[str, str]]:
+def load_tasks() -> list[dict[str, object]]:
     data = json.loads(QUEUE.read_text(encoding="utf-8"))
     tasks = data.get("tasks", [])
     if not isinstance(tasks, list):
@@ -104,11 +104,16 @@ def _kill_process_group(process: subprocess.Popen[str]) -> None:
     try:
         process.wait(timeout=10)
     except subprocess.TimeoutExpired:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        pass
+    # Do not rely on the leader still being alive: descendants may remain.
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    try:
         process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def run_task(task: dict[str, str], run_index: int, stop_file: Path, summary_dir: Path = Path("/tmp")) -> dict[str, object]:
@@ -183,14 +188,20 @@ def run_task(task: dict[str, str], run_index: int, stop_file: Path, summary_dir:
     else:
         try:
             summary_time = datetime.fromisoformat(str(payload["timestamp"]).replace("Z", "+00:00"))
+            now_time = datetime.now(timezone.utc)
             if summary_time < start_time:
                 failure_reason = failure_reason or "summary_stale"
+            elif summary_time > now_time:
+                failure_reason = failure_reason or "summary_timestamp_future"
         except (TypeError, ValueError):
             failure_reason = failure_reason or "summary_timestamp_invalid"
         if payload.get("task_id") != task["id"] or payload.get("run_nonce") != run_nonce:
             failure_reason = failure_reason or "summary_identity_mismatch"
         if payload.get("base_sha") != base_sha:
             failure_reason = failure_reason or "summary_base_sha_mismatch"
+
+    if stopped(stop_file):
+        failure_reason = failure_reason or "stop_requested_after_task"
 
     produced_sha = _git_head()
     if produced_sha == base_sha and _valid_sha(base_sha):
