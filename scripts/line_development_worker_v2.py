@@ -31,6 +31,8 @@ MAX_FILE_CHARS = 4500
 MAX_RESPONSE_TOKENS = 4096
 MAX_INSTRUCTION_LENGTH = 2000
 MAX_REPAIR_ATTEMPTS = 1
+MAX_APPLY_REPAIR_ATTEMPTS = 1
+MAX_PLAN_REPAIR_ATTEMPTS = 1
 ALLOWED_SUFFIXES = (".py", ".md", ".json", ".txt")
 PROTECTED_PATHS = {
     ".github", ".env", "config.py",
@@ -345,6 +347,19 @@ def main() -> int:
             traceback.print_exc()
             return 1
         ok, detail = validate_plan(plan, chosen)
+        if not ok and detail == "diff_marker_in_replacement":
+            repair_instruction = (
+                f"{instruction}\n\n"
+                "The previous implementation plan was rejected because its replacement text "
+                "contained unified-diff markers. Re-read the supplied current context and "
+                "return one minimal JSON search/replace plan. The new value must be replacement "
+                "text only, with no leading +/- diff markers, markdown fences, or standalone "
+                "+/- lines."
+            )
+            repair_plan = build_plan(client, repair_instruction, chosen, context_for(chosen))
+            ok, detail = validate_plan(repair_plan, chosen)
+            if ok:
+                plan = repair_plan
         if not ok:
             print("Rejected plan:", detail, flush=True)
             return 1
@@ -355,8 +370,27 @@ def main() -> int:
         applied, detail, touched = apply_plan(plan)
         if not applied:
             restore(touched)
-            print("Apply failed:", detail, flush=True)
-            return 1
+            apply_attempts = 0
+            while not applied and apply_attempts < MAX_APPLY_REPAIR_ATTEMPTS:
+                apply_attempts += 1
+                repair_instruction = (
+                    f"{instruction}\n\n"
+                    f"The previous edit plan failed to apply with {detail}. "
+                    "Re-read the supplied current context and return a new plan whose old value "
+                    "is an exact substring of that context. Do not guess or reuse a stale anchor."
+                )
+                repair_plan = build_plan(client, repair_instruction, chosen, context_for(chosen))
+                ok, repair_detail = validate_plan(repair_plan, chosen)
+                if not ok or repair_detail == "no_change":
+                    applied = False
+                    detail = repair_detail
+                    break
+                applied, detail, touched = apply_plan(repair_plan)
+                if not applied:
+                    restore(touched)
+            if not applied:
+                print("Apply failed:", detail, flush=True)
+                return 1
         passed, output = run_tests(touched)
         print(output, flush=True)
         attempts = 0
