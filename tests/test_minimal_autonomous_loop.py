@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from scripts import run_minimal_autonomous_loop as loop
-from scripts.run_minimal_autonomous_loop import load_tasks, stopped
+from scripts.run_minimal_autonomous_loop import load_completed, load_tasks, stopped
 
 
 def test_queue_contains_bounded_tasks():
@@ -34,6 +34,23 @@ def test_no_kill_switch_by_default(monkeypatch, tmp_path: Path):
 def test_unknown_nonempty_stop_value_fails_closed(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("AUTONOMOUS_LOOP_STOP", "STOP")
     assert stopped(tmp_path / "missing")
+
+
+def test_completed_state_filters_known_task_ids(tmp_path: Path):
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps({"version": 1, "completed": ["t1", "t2"]}), encoding="utf-8")
+    assert load_completed(state) == {"t1", "t2"}
+
+
+def test_invalid_completed_state_fails_closed(tmp_path: Path):
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps({"version": 1, "completed": "t1"}), encoding="utf-8")
+    try:
+        load_completed(state)
+    except ValueError as exc:
+        assert "completed" in str(exc)
+    else:
+        raise AssertionError("expected invalid state rejection")
 
 
 class _FakeProcess:
