@@ -4,47 +4,63 @@ on:
   workflow_dispatch:
     inputs:
       max_tasks:
-        description: 'Manual run task limit (1-3)'
+        description: 'Manual run task limit (1 only for MVP)'
         required: false
         default: '1'
         type: choice
         options:
           - '1'
-          - '2'
-          - '3'
   schedule:
     - cron: '30 4 * * *'
       timezone: 'Asia/Tokyo'
     - cron: '30 12 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '30 16 * * *'
       timezone: 'Asia/Tokyo'
     - cron: '30 20 * * *'
       timezone: 'Asia/Tokyo'
 
 permissions:
   contents: write
-  pull-requests: write
 
 concurrency:
   group: distributed-autonomous-loop
   cancel-in-progress: false
 
 jobs:
-  distributed-loop:
+  minimal-loop:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 40
     env:
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
       SELF_IMPROVEMENT_POLICY_ENFORCED: 'true'
       HERMES_ADVISOR_ENABLED: 'true'
-      GOOGLE_SHEETS_AUDIT_ENABLED: 'true'
+      DEV_USER_ID: autonomous-distributed-loop
+      GITHUB_RUN_ID: \${{ github.run_id }}
     steps:
-      - name: Checkout
+      - name: Checkout without persistent git credentials
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check remote kill switch
+        run: |
+          if [ -f .autonomous-loop.stop ]; then
+            echo "REMOTE_KILL_SWITCH=ON"
+            exit 1
+          fi
+
+      - name: Load durable loop state
+        run: |
+          set -euo pipefail
+          rm -f /tmp/autonomous-loop-state.json
+          if git ls-remote --exit-code origin refs/heads/autonomous-loop-state >/dev/null 2>&1; then
+            git fetch --quiet origin autonomous-loop-state
+            git show origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/autonomous-loop-state.json
+          else
+            printf '%s\n' '{"version":1,"completed":[]}' > /tmp/autonomous-loop-state.json
+          fi
+          python -m json.tool /tmp/autonomous-loop-state.json >/dev/null
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -56,99 +72,126 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Load loop task queue
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          data = json.loads(Path('.github/autonomous-loop-tasks.json').read_text(encoding='utf-8'))
-          configured_max = int(data.get('max_tasks_per_run', 3))
-          requested_raw = "${{ inputs.max_tasks }}"
-          requested_max = int(requested_raw) if requested_raw.isdigit() else configured_max
-          max_tasks = max(1, min(requested_max, configured_max, 3))
-          tasks = data.get('tasks', [])[:max_tasks]
-          if not tasks: raise SystemExit('Autonomous loop task queue is empty.')
-          Path('/tmp/loop_tasks.json').write_text(json.dumps(tasks, ensure_ascii=False), encoding='utf-8')
-          print(f'Loaded {len(tasks)} task(s).')
-          PY
-
-      - name: Run distributed development loop
+      - name: Run one bounded autonomous task
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          DEV_USER_ID: autonomous-distributed-loop
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
-          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
-          GOOGLE_SHEETS_AUDIT_RANGE: ${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
+          GROQ_API_KEY: \${{ secrets.GROQ_API_KEY }}
           SELF_IMPROVEMENT_HISTORY_PATH: /tmp/line-bot-self-improvement.jsonl
         run: |
-          set +e
-          executed=0; succeeded=0; blocked=0
-          : > /tmp/distributed_loop_results.jsonl
-          while IFS= read -r task; do
-            id="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["id"])' "$task")"
-            instruction="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["instruction"])' "$task")"
-            echo "LOOP TASK ${id}"
-            export DEV_INSTRUCTION="$instruction"
-            export AUTONOMOUS_SUMMARY_PATH="/tmp/autonomous-${id}.json"
-            python scripts/run_guarded_runtime.py
-            rc=$?
-            executed=$((executed + 1))
-            status="FAIL"
-            if [ -f "$AUTONOMOUS_SUMMARY_PATH" ]; then
-              status="$(python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("status","FAIL"))' "$AUTONOMOUS_SUMMARY_PATH")"
-            fi
-            if [ "$rc" -eq 0 ]; then succeeded=$((succeeded + 1)); else blocked=$((blocked + 1)); fi
-            printf '%s\n' "$(python -c 'import json,sys; print(json.dumps({"task_id":sys.argv[1],"status":sys.argv[2],"exit_code":int(sys.argv[3])}, ensure_ascii=False))' "$id" "$status" "$rc")" >> /tmp/distributed_loop_results.jsonl
-            echo "Task ${id}: status=${status}, exit=${rc}"
-          done < <(python -c 'import json; [print(json.dumps(x,ensure_ascii=False)) for x in json.load(open("/tmp/loop_tasks.json",encoding="utf-8"))]')
-          echo "LOOP_EXECUTED=${executed}"
-          echo "LOOP_SUCCEEDED=${succeeded}"
-          echo "LOOP_BLOCKED=${blocked}"
-          # Validated no-op is success. If every attempted task is blocked/failed,
-          # fail closed so the scheduled run is visible as unhealthy.
-          if [ "$executed" -gt 0 ] && [ "$succeeded" -eq 0 ]; then
-            echo "FAIL_CLOSED=all attempted tasks were blocked or failed"
-            exit 1
-          fi
-          exit 0
+          set -euo pipefail
+          : > /tmp/minimal-autonomous-loop.jsonl
+          STOP_FILE=/tmp/line-bot-autonomous-loop.stop
 
-      - name: Publish one reviewable PR when a loop branch exists
+          (
+            while sleep 15; do
+              if git fetch --quiet origin main 2>/dev/null && git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+                touch "$STOP_FILE"
+                exit 0
+              fi
+            done
+          ) &
+          POLLER_PID=$!
+          trap 'kill "$POLLER_PID" 2>/dev/null || true' EXIT
+
+          python scripts/run_minimal_autonomous_loop.py \
+            --max-tasks 1 \
+            --stop-file "$STOP_FILE" \
+            --state /tmp/autonomous-loop-state.json \
+            --results /tmp/minimal-autonomous-loop.jsonl
+
+      - name: Publish verified development branch
+        if: success()
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: \${{ github.token }}
         run: |
+          set -euo pipefail
           branch="line-dev/$GITHUB_RUN_ID"
-          if ! git ls-remote --exit-code origin "refs/heads/$branch" >/dev/null 2>&1; then
-            echo "No autonomous branch was produced; no PR."
+          head="$(git rev-parse HEAD)"
+          if [ "$head" = "$GITHUB_SHA" ]; then
+            echo "No development commit was produced; nothing to publish."
             exit 0
           fi
-          git fetch origin "$branch"
-          git diff --check "main...origin/$branch"
-          if gh pr view --head "$branch" --base main >/dev/null 2>&1; then
-            echo "PR already exists for $branch"
-          else
-            set +e
-            pr_output="$(gh pr create --base main --head "$branch" --draft --title "chore: distributed autonomous loop $GITHUB_RUN_ID" --body "Distributed autonomous development loop. Common guarded runtime, tests, review/integration gates, and Sheets audit are required. No automatic merge or deploy." 2>&1)"
-            pr_rc=$?
-            set -e
-            if [ "$pr_rc" -eq 0 ]; then
-              echo "$pr_output"
-              echo "PR_CREATE_RESULT=created"
-            else
-              echo "$pr_output"
-              echo "PR_CREATE_RESULT=blocked"
-              echo "GitHub Actions is not permitted to create pull requests in this repository."
-              echo "Enable the repository setting 'Allow GitHub Actions to create and approve pull requests' or provide an approved alternate PR credential."
-              echo "The autonomous branch remains published for review: $branch"
-            fi
+          git diff --check "$GITHUB_SHA...HEAD"
+          git diff --name-only "$GITHUB_SHA...HEAD"
+          auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          git push --set-upstream "$auth_url" "HEAD:refs/heads/$branch"
+          echo "PUBLISHED_BRANCH=$branch"
+          echo "PUBLISHED_SHA=$head"
+
+      - name: Persist completed task state
+        if: success()
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ ! -s /tmp/minimal-autonomous-loop.jsonl ]; then
+            echo "No loop result; state unchanged."
+            exit 0
           fi
 
-      - name: Upload loop results
+          status="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          lines = [x for x in Path('/tmp/minimal-autonomous-loop.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
+          print(json.loads(lines[-1]).get('status', 'FAIL'))
+          PY
+          )"
+          task_id="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          lines = [x for x in Path('/tmp/minimal-autonomous-loop.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
+          print(json.loads(lines[-1]).get('task_id', ''))
+          PY
+          )"
+
+          if [ "$status" != "PASS" ] || [ -z "$task_id" ]; then
+            echo "State is not advanced: status=$status task_id=$task_id"
+            exit 1
+          fi
+
+          state_branch="autonomous-loop-state"
+          auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          if ! git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1; then
+            git push "$auth_url" "refs/remotes/origin/main:refs/heads/$state_branch"
+          fi
+          git fetch --quiet origin "$state_branch"
+          rm -rf /tmp/autonomous-state-worktree
+          git worktree add --detach /tmp/autonomous-state-worktree "origin/$state_branch"
+          python - "$task_id" <<'PY'
+          import json, sys
+          from pathlib import Path
+          p = Path('/tmp/autonomous-state-worktree/.autonomous-loop-state.json')
+          if p.exists():
+              data = json.loads(p.read_text(encoding='utf-8'))
+          else:
+              data = {"version": 1, "completed": []}
+          completed = data.get("completed", [])
+          if not isinstance(completed, list):
+              raise SystemExit("invalid durable state")
+          task_id = sys.argv[1]
+          if task_id not in completed:
+              completed.append(task_id)
+          data["completed"] = completed
+          data["version"] = 1
+          p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding='utf-8')
+          PY
+          git -C /tmp/autonomous-state-worktree config user.name "github-actions[bot]"
+          git -C /tmp/autonomous-state-worktree config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C /tmp/autonomous-state-worktree add .autonomous-loop-state.json
+          if git -C /tmp/autonomous-state-worktree diff --cached --quiet; then
+            echo "State already contains task $task_id"
+          else
+            git -C /tmp/autonomous-state-worktree commit -m "chore: record autonomous loop completion"
+            git -C /tmp/autonomous-state-worktree push "$auth_url" HEAD:refs/heads/$state_branch
+          fi
+
+      - name: Upload durable run evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: distributed-loop-${{ github.run_id }}
+          name: minimal-autonomous-loop-\${{ github.run_id }}
+          retention-days: 30
           path: |
-            /tmp/distributed_loop_results.jsonl
+            /tmp/minimal-autonomous-loop.jsonl
+            /tmp/autonomous-loop-state.json
             /tmp/autonomous-*.json
           if-no-files-found: ignore
