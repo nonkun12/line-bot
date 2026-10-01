@@ -179,7 +179,13 @@ class DevelopmentExecutor:
                 explicit_comment_plan = _explicit_comment_plan(self.state.instruction, self.state.chosen)
                 comment_plan = None if explicit_comment_plan is not None else worker.build_comment_test_plan(self.state.instruction, self.state.chosen)
                 plan = explicit_comment_plan if explicit_comment_plan is not None else comment_plan if comment_plan is not None else worker.build_plan(self.state.client, self.state.instruction, self.state.chosen, worker.context_for(self.state.chosen))
-                ok, detail = worker.validate_plan(plan, self.state.chosen)
+                plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    worker.context_for(self.state.chosen),
+                )
                 if not ok:
                     return AgentResult(task.task_id, False, f"implementation plan rejected: {detail}")
                 if detail == "no_change":
@@ -203,7 +209,13 @@ class DevelopmentExecutor:
                 if self.state.test_output:
                     failure_context = f"{failure_context}\nPrevious test output:\n{self.state.test_output[-4000:]}"
                 plan = worker.build_plan(self.state.client, self.state.instruction, self.state.chosen, worker.context_for(self.state.chosen), failure_context)
-                ok, detail = worker.validate_plan(plan, self.state.chosen)
+                plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    worker.context_for(self.state.chosen),
+                )
                 if not ok or detail == "no_change":
                     return AgentResult(task.task_id, False, f"debug plan rejected: {detail}")
                 applied, detail, touched = worker.apply_plan(plan)
@@ -216,7 +228,13 @@ class DevelopmentExecutor:
                 if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
                     return AgentResult(task.task_id, True, "no refactor needed for deterministic comment change")
                 plan = worker.build_plan(self.state.client, f"Refactor the current implementation for clarity, maintainability, and duplication reduction. Preserve behavior and satisfy the original request. Original request: {self.state.instruction}", self.state.chosen, worker.context_for(self.state.chosen), self.state.test_output)
-                ok, detail = worker.validate_plan(plan, self.state.chosen)
+                plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    worker.context_for(self.state.chosen),
+                )
                 if not ok:
                     return AgentResult(task.task_id, False, f"refactor plan rejected: {detail}")
                 if detail == "no_change":
@@ -241,7 +259,13 @@ class DevelopmentExecutor:
                 if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
                     return AgentResult(task.task_id, True, "deterministic repair retry; no LLM JSON parsing")
                 plan = worker.build_plan(self.state.client, self.state.instruction, self.state.chosen, worker.context_for(self.state.chosen), self.state.test_output)
-                ok, detail = worker.validate_plan(plan, self.state.chosen)
+                plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    worker.context_for(self.state.chosen),
+                )
                 if not ok or detail == "no_change":
                     return AgentResult(task.task_id, False, f"repair plan rejected: {detail}")
                 worker.restore(self.state.touched or [])
