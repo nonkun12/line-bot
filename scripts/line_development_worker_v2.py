@@ -282,7 +282,7 @@ def apply_plan_with_bounded_anchor_repair(
         client,
         instruction,
         chosen,
-        context_for(chosen),
+        context,
         plan,
         detail,
     )
