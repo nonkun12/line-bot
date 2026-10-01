@@ -304,10 +304,26 @@ def build_plan(client: Groq, instruction: str, chosen: str, context: str, test_o
     system = '''You edit ONE repository file. Return JSON only.
 Real change: {"no_change":false,"changes":[{"file":"exact path","old":"exact existing text","new":"replacement text"}]}
 No safe/needed change: {"no_change":true}
-Rules: one file only; old must be an exact substring of supplied context; minimal change; never modify security, credentials, deployment, workflow, or worker logic. Do not invent text that is not visible in context. `new` is replacement text only: never include unified-diff markers, markdown fences, or standalone `+`/`-` lines.'''
+Rules: one file only; old must be an exact substring of supplied context; minimal change; never modify security, credentials, deployment, workflow, or worker logic. Do not invent text that is not visible in context. The new field is replacement text only: never include unified-diff markers, markdown fences, or standalone +/- lines. If you cannot express the change safely as exact search/replace, return {"no_change":true}.'''
     prompt = f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}\n\nCurrent context:\n{context}"
     if test_output:
         prompt += f"\n\nPytest failure:\n{test_output[-3000:]}"
+    return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
+
+
+def repair_diff_marker_plan(client: Groq, instruction: str, chosen: str, context: str, rejected_plan: dict) -> dict:
+    """Perform one bounded plan repair focused only on diff-marker contamination."""
+    rejected = json.dumps(rejected_plan, ensure_ascii=False)
+    system = '''Repair ONE rejected JSON search/replace plan. Return JSON only.
+Keep the same file and intent. Re-read the supplied context.
+The new field MUST contain plain replacement text only.
+Remove unified-diff syntax, patch hunks, markdown fences, and diff-only +/- marker lines.
+Do not invent missing source text. Do not broaden the requested change.
+If the original plan cannot be converted safely, return {"no_change":true}.'''
+    prompt = (
+        f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}"
+        f"\n\nCurrent context:\n{context}\n\nRejected plan:\n{rejected}"
+    )
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
 
 
@@ -348,15 +364,13 @@ def main() -> int:
             return 1
         ok, detail = validate_plan(plan, chosen)
         if not ok and detail == "diff_marker_in_replacement":
-            repair_instruction = (
-                f"{instruction}\n\n"
-                "The previous implementation plan was rejected because its replacement text "
-                "contained unified-diff markers. Re-read the supplied current context and "
-                "return one minimal JSON search/replace plan. The new value must be replacement "
-                "text only, with no leading +/- diff markers, markdown fences, or standalone "
-                "+/- lines."
+            repair_plan = repair_diff_marker_plan(
+                client,
+                instruction,
+                chosen,
+                context_for(chosen),
+                plan,
             )
-            repair_plan = build_plan(client, repair_instruction, chosen, context_for(chosen))
             ok, detail = validate_plan(repair_plan, chosen)
             if ok:
                 plan = repair_plan
