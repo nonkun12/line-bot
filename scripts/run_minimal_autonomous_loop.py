@@ -21,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 QUEUE = ROOT / ".github" / "autonomous-loop-tasks.json"
 DEFAULT_STOP_FILE = Path("/tmp/line-bot-autonomous-loop.stop")
+ACTIVE_PROCESS: subprocess.Popen[str] | None = None
 
 
 def load_tasks() -> list[dict[str, str]]:
@@ -132,6 +133,7 @@ def run_task(task: dict[str, str], run_index: int, stop_file: Path, summary_dir:
     payload: dict[str, object] = {}
     exit_code = 1
     failure_reason = ""
+    global ACTIVE_PROCESS
     process = subprocess.Popen(
         [sys.executable, "scripts/run_guarded_runtime.py"],
         cwd=ROOT,
@@ -139,6 +141,7 @@ def run_task(task: dict[str, str], run_index: int, stop_file: Path, summary_dir:
         text=True,
         start_new_session=True,
     )
+    ACTIVE_PROCESS = process
     deadline = datetime.now(timezone.utc).timestamp() + 1800
     try:
         while process.poll() is None:
@@ -158,6 +161,7 @@ def run_task(task: dict[str, str], run_index: int, stop_file: Path, summary_dir:
         if process.poll() is None:
             _kill_process_group(process)
     exit_code = process.returncode if process.returncode is not None else 1
+    ACTIVE_PROCESS = None
 
     if summary.exists():
         try:
@@ -222,7 +226,16 @@ def run_task(task: dict[str, str], run_index: int, stop_file: Path, summary_dir:
     }
 
 
+def _handle_signal(signum: int, _frame) -> None:
+    process = ACTIVE_PROCESS
+    if process is not None:
+        _kill_process_group(process)
+    raise SystemExit(128 + signum)
+
+
 def main() -> int:
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
     parser = argparse.ArgumentParser()
     parser.add_argument("--max-tasks", type=int, default=1)
     parser.add_argument("--stop-file", type=Path, default=DEFAULT_STOP_FILE)
