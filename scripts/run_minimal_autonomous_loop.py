@@ -73,8 +73,8 @@ def _kill_process_group(process: subprocess.Popen[str]) -> None:
         process.wait(timeout=10)
 
 
-def run_task(task: dict[str, str], run_index: int, stop_file: Path) -> dict[str, object]:
-    summary = Path("/tmp") / f"minimal-autonomous-{task['id']}.json"
+def run_task(task: dict[str, str], run_index: int, stop_file: Path, summary_dir: Path = Path("/tmp")) -> dict[str, object]:
+    summary = summary_dir / f"minimal-autonomous-{task['id']}.json"
     run_nonce = uuid.uuid4().hex
     start_time = datetime.now(timezone.utc)
     base_sha = _git_head()
