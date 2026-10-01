@@ -46,6 +46,11 @@ def stopped(stop_file: Path) -> bool:
         return True
 
 
+def _valid_sha(value: object) -> bool:
+    text = str(value or "")
+    return len(text) == 40 and all(ch in "0123456789abcdef" for ch in text.lower())
+
+
 def _git_head() -> str:
     completed = subprocess.run(
         ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
@@ -134,6 +139,10 @@ def run_task(task: dict[str, str], run_index: int, stop_file: Path, summary_dir:
     required = {"timestamp", "status", "exit_code", "base_sha", "produced_sha", "task_id", "run_nonce"}
     if not required.issubset(payload):
         failure_reason = failure_reason or "summary_missing_required_key"
+    elif not _valid_sha(base_sha) or not _valid_sha(payload.get("produced_sha")):
+        failure_reason = failure_reason or "summary_sha_invalid"
+    elif payload.get("exit_code") != exit_code:
+        failure_reason = failure_reason or "summary_exit_code_mismatch"
     else:
         try:
             summary_time = datetime.fromisoformat(str(payload["timestamp"]).replace("Z", "+00:00"))
@@ -147,7 +156,9 @@ def run_task(task: dict[str, str], run_index: int, stop_file: Path, summary_dir:
             failure_reason = failure_reason or "summary_base_sha_mismatch"
 
     produced_sha = _git_head()
-    if base_sha and produced_sha == base_sha:
+    if not _valid_sha(base_sha) or not _valid_sha(produced_sha):
+        failure_reason = failure_reason or "git_head_invalid"
+    elif produced_sha == base_sha:
         failure_reason = failure_reason or "no_change"
         status = "NO_CHANGE"
     elif payload:
