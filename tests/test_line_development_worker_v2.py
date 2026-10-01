@@ -145,6 +145,36 @@ def test_validate_plan_accepts_no_change():
     assert worker.validate_plan({"no_change": True}, "app.py") == (True, "no_change")
 
 
+def test_repair_anchor_plan_receives_ambiguity_and_returns_plan():
+    rejected = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "TARGET", "new": "REPLACED"}],
+    }
+    response = json.dumps(
+        {
+            "no_change": False,
+            "changes": [
+                {
+                    "file": "app.py",
+                    "old": "def target():\\n    TARGET\\n    return True\\n",
+                    "new": "def target():\\n    REPLACED\\n    return True\\n",
+                }
+            ],
+        }
+    )
+    client = FakeClient([response])
+
+    plan = worker.repair_anchor_plan(
+        client,
+        "app.py の対象を修正",
+        "app.py",
+        "def target():\\n    TARGET\\n    return True\\n",
+        rejected,
+        "anchor_count_app.py:2",
+    )
+
+    assert plan["changes"][0]["old"].count("TARGET") == 1
+
 def test_apply_plan_requires_unique_anchor(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     target = tmp_path / "app.py"
