@@ -1,5 +1,4 @@
-"""
-Normal Agent handlers
+"""Normal Agent handlers
 
 旧 generate_reply() の末尾に存在していた、GitHub/Debug/Memory/Notes
 のいずれにも該当しない通常メッセージに対する Groq 応答処理(function
@@ -85,6 +84,7 @@ def handle_normal_message(message, user_id, call_mcp_tool):
 
     # 名前などの既知情報は、AIのtool呼び出し判断に任せず毎回直接取得して
     # システムプロンプトへ埋め込む(会話履歴に残っていなくても思い出せるようにするため)。
+    memory_available = True
     try:
         stored_memory = call_mcp_tool(
             "get_all_memory",
@@ -92,9 +92,24 @@ def handle_normal_message(message, user_id, call_mcp_tool):
         )
     except Exception as e:
         print("GET ALL MEMORY ERROR:", e)
-        stored_memory = ""
+        stored_memory = None
+        memory_available = False
 
-    known_facts_block = stored_memory if stored_memory else "(まだ何も記憶していません)"
+    if memory_available:
+        known_facts_block = (
+            str(stored_memory).strip()
+            if stored_memory and str(stored_memory).strip()
+            else "(まだ何も記憶していません)"
+        )
+        memory_instruction = (
+            "記憶情報が空の場合は、記憶されている情報がないと判断して構いません。"
+        )
+    else:
+        known_facts_block = "(記憶サービスを取得できませんでした。記憶の有無を推測しないでください。)"
+        memory_instruction = (
+            "今回の記憶取得は失敗しています。記憶されている/いないと推測したり、"
+            "『まだ何も記憶していない』と断定したりせず、記憶に関する断定を避けてください。"
+        )
 
     system_prompt = f"""
 {random.choice(_PERSONALITIES)}
@@ -107,6 +122,7 @@ def handle_normal_message(message, user_id, call_mcp_tool):
 上記に情報がある場合は、それが必ず正しい最新の情報です。
 会話履歴に見当たらなくても、上記の記憶している情報を優先して答えてください。
 「覚えていません」「わかりません」と答える前に、必ず上記を確認してください。
+{memory_instruction}
 
 記憶情報は既に提供されています。
 get_memoryツールは使用しないでください。
