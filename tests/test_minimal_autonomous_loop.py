@@ -132,7 +132,9 @@ def test_main_halts_after_first_failure(monkeypatch, tmp_path: Path):
             {"id": "t2", "instruction": "two"},
         ],
     )
-    monkeypatch.setattr(loop.QUEUE, "read_text", lambda encoding="utf-8": '{"max_tasks_per_run": 3}')
+    queue = tmp_path / "queue.json"
+    queue.write_text('{"max_tasks_per_run": 3}', encoding="utf-8")
+    monkeypatch.setattr(loop, "QUEUE", queue)
     monkeypatch.setattr(
         loop,
         "run_task",
@@ -150,7 +152,9 @@ def test_main_halts_after_first_failure(monkeypatch, tmp_path: Path):
 
 
 def test_main_rejects_queue_limit(monkeypatch, tmp_path: Path):
-    monkeypatch.setattr(loop.QUEUE, "read_text", lambda encoding="utf-8": '{"max_tasks_per_run": 1}')
+    queue = tmp_path / "queue.json"
+    queue.write_text('{"max_tasks_per_run": 1}', encoding="utf-8")
+    monkeypatch.setattr(loop, "QUEUE", queue)
     monkeypatch.setattr(loop.sys, "argv", ["loop", "--max-tasks", "2", "--results", str(tmp_path / "results.jsonl")])
     try:
         loop.main()
