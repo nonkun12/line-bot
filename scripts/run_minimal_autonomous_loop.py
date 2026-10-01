@@ -32,7 +32,14 @@ def load_tasks() -> list[dict[str, str]]:
     for task in tasks:
         if not isinstance(task, dict) or not task.get("id") or not task.get("instruction"):
             raise ValueError("each task needs id and instruction")
-        result.append({"id": str(task["id"]), "instruction": str(task["instruction"])})
+        allowed_paths = task.get("allowed_paths")
+        if not isinstance(allowed_paths, list) or not allowed_paths or not all(isinstance(path, str) and path.strip() for path in allowed_paths):
+            raise ValueError("each task needs non-empty allowed_paths")
+        result.append({
+            "id": str(task["id"]),
+            "instruction": str(task["instruction"]),
+            "allowed_paths": [path.strip() for path in allowed_paths],
+        })
     return result
 
 
@@ -63,6 +70,31 @@ def _git_head() -> str:
     return completed.stdout.strip()
 
 
+def _git_checked(*args: str) -> tuple[int, str]:
+    completed = subprocess.run(("git", "-C", str(ROOT), *args), capture_output=True, text=True, timeout=15)
+    return completed.returncode, completed.stdout.strip()
+
+
+def _verify_produced_head(base_sha: str, produced_sha: str, allowed_paths: list[str]) -> tuple[bool, str]:
+    if not _valid_sha(base_sha) or not _valid_sha(produced_sha):
+        return False, "sha_invalid"
+    if _git_head() != produced_sha:
+        return False, "produced_sha_head_mismatch"
+    code, _ = _git_checked("merge-base", "--is-ancestor", base_sha, produced_sha)
+    if code != 0:
+        return False, "produced_not_descendant_of_base"
+    code, diff = _git_checked("diff", "--name-only", base_sha, produced_sha)
+    if code != 0:
+        return False, "diff_unavailable"
+    allowed = {str(path).strip().replace("\\", "/").lstrip("./") for path in allowed_paths}
+    if not allowed or any(path.startswith("/") or path == ".." or path.startswith("../") for path in allowed):
+        return False, "allowed_paths_invalid"
+    changed = {line.strip() for line in diff.splitlines() if line.strip()}
+    if not all(any(path == target or path.startswith(target.rstrip("/") + "/") for target in allowed) for path in changed):
+        return False, "diff_outside_allowed_paths"
+    return True, ""
+
+
 def _kill_process_group(process: subprocess.Popen[str]) -> None:
     try:
         os.killpg(process.pid, signal.SIGTERM)
@@ -89,6 +121,7 @@ def run_task(task: dict[str, str], run_index: int, stop_file: Path, summary_dir:
     env["AUTONOMOUS_RUN_SOURCE"] = "minimal-mvp-loop"
     env["AUTONOMOUS_TASK_ID"] = task["id"]
     env["AUTONOMOUS_RUN_NONCE"] = run_nonce
+    env["AUTONOMOUS_ALLOWED_PATHS"] = json.dumps(task["allowed_paths"], ensure_ascii=False)
     # Remove any prior summary so a failed/stalled runtime can never inherit an old PASS.
     try:
         summary.unlink()
@@ -156,13 +189,15 @@ def run_task(task: dict[str, str], run_index: int, stop_file: Path, summary_dir:
             failure_reason = failure_reason or "summary_base_sha_mismatch"
 
     produced_sha = _git_head()
-    if not _valid_sha(base_sha) or not _valid_sha(produced_sha):
-        failure_reason = failure_reason or "git_head_invalid"
-    elif produced_sha == base_sha:
+    if produced_sha == base_sha and _valid_sha(base_sha):
         failure_reason = failure_reason or "no_change"
         status = "NO_CHANGE"
     elif payload:
         status = str(payload.get("status", "FAIL"))
+    if not failure_reason:
+        verified, reason = _verify_produced_head(base_sha, produced_sha, task["allowed_paths"])
+        if not verified:
+            failure_reason = reason
 
     if exit_code != 0 or failure_reason:
         if failure_reason == "no_change":
