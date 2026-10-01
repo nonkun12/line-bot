@@ -214,6 +214,32 @@ Do not broaden the requested change. If a unique safe anchor cannot be identifie
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
 
 
+def repair_size_plan(
+    client: Groq,
+    instruction: str,
+    chosen: str,
+    context: str,
+    rejected_plan: dict,
+    size_error: str,
+) -> dict:
+    """Perform one bounded repair when a replacement is too large."""
+    rejected = json.dumps(rejected_plan, ensure_ascii=False)
+    system = '''Repair ONE rejected JSON search/replace plan. Return JSON only.
+Keep the same file and requested intent. Re-read the supplied current file context.
+Make the smallest possible edit. Use one distinctive, short anchor and one short replacement.
+The old value must be an exact substring of the current context. The new value must contain only
+the replacement text, never a full-file rewrite, unified-diff markers, or markdown fences.
+Stay below the worker's existing size limits. Do not broaden the requested change.
+If the requested change cannot be expressed as a small safe search/replace, return {"no_change":true}.'''
+    prompt = (
+        f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}"
+        f"\n\nCurrent file context:\n{context}"
+        f"\n\nSize validation error:\n{size_error}"
+        f"\n\nRejected plan:\n{rejected}"
+    )
+    return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
+
+
 def build_comment_test_plan(instruction: str, chosen: str) -> dict | None:
     """Build the legacy self-test edit only when explicitly enabled."""
     if os.environ.get("ALLOW_SELF_TEST_COMMENT") != "1":
@@ -284,8 +310,10 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
             return False, "no_op_change"
         if any(line.strip() in {"+", "-"} for line in new.splitlines()):
             return False, "diff_marker_in_replacement"
-        if len(old) > 1200 or len(new) > 1800:
-            return False, "change_too_large"
+        if len(old) > 1200:
+            return False, "change_too_large_old"
+        if len(new) > 1800:
+            return False, "change_too_large_new"
     return True, chosen
 
 
@@ -398,6 +426,18 @@ def main() -> int:
                 chosen,
                 context_for(chosen),
                 plan,
+            )
+            ok, detail = validate_plan(repair_plan, chosen)
+            if ok:
+                plan = repair_plan
+        if not ok and detail in {"change_too_large_old", "change_too_large_new"}:
+            repair_plan = repair_size_plan(
+                client,
+                instruction,
+                chosen,
+                context_for(chosen),
+                plan,
+                detail,
             )
             ok, detail = validate_plan(repair_plan, chosen)
             if ok:
