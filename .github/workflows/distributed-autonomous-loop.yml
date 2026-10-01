@@ -184,6 +184,77 @@ jobs:
             git -C /tmp/autonomous-state-worktree push "$auth_url" HEAD:refs/heads/$state_branch
           fi
 
+      - name: Record distributed loop result to Google Sheets
+        if: always()
+        env:
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+          AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
+          GOOGLE_SHEETS_AUDIT_RANGE: ${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export AUTONOMOUS_AGENT="DistributedAutonomousLoop"
+          export AUTONOMOUS_SOURCE="distributed-autonomous-loop"
+          export AUTONOMOUS_START_SHA="${GITHUB_SHA}"
+          export AUTONOMOUS_PRODUCED_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+          export AUTONOMOUS_CHANGED_FILES="none"
+          if git rev-parse "${AUTONOMOUS_START_SHA}^{commit}" >/dev/null 2>&1 && git rev-parse "${AUTONOMOUS_PRODUCED_SHA}^{commit}" >/dev/null 2>&1; then
+            AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "${AUTONOMOUS_START_SHA}" "${AUTONOMOUS_PRODUCED_SHA}" | paste -sd, -)"
+            export AUTONOMOUS_CHANGED_FILES="${AUTONOMOUS_CHANGED_FILES:-none}"
+          fi
+
+          export AUTONOMOUS_TASK_ID="unknown"
+          export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
+          export AUTONOMOUS_VERIFICATION_RESULT="NOT_RUN"
+          export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
+          export AUTONOMOUS_MERGE_RESULT="NOT_AUTO_MERGED"
+          export AUTONOMOUS_BLOCKED_FAILED_REASON=""
+          export AUTONOMOUS_NEXT_ACTION="review_failure"
+
+          if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
+            readarray -t _loop_fields < <(python - <<'PY'
+          import json
+          from pathlib import Path
+          lines = [x for x in Path("/tmp/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          row = json.loads(lines[-1])
+          print(str(row.get("task_id", "unknown")))
+          print(str(row.get("status", "FAIL")))
+          print(str(row.get("detail", "" )).replace("\n", " ")[:1000]))
+          PY
+            )
+            export AUTONOMOUS_TASK_ID="${_loop_fields[0]:-unknown}"
+            _status="${_loop_fields[1]:-FAIL}"
+            _detail="${_loop_fields[2]:-}"
+            if [ "$_status" = "PASS" ] || [ "$_status" = "NO_CHANGE" ]; then
+              export AUTONOMOUS_TESTS_RESULT="PASS"
+              export AUTONOMOUS_VERIFICATION_RESULT="$_status"
+              export AUTONOMOUS_SAFETY_GATE_RESULT="PASS"
+              export AUTONOMOUS_NEXT_ACTION="review_pr"
+            else
+              export AUTONOMOUS_TESTS_RESULT="FAIL"
+              export AUTONOMOUS_VERIFICATION_RESULT="$_status"
+              export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:$_detail"
+              export AUTONOMOUS_NEXT_ACTION="review_failure"
+            fi
+          fi
+
+          export DEV_INSTRUCTION="Distributed autonomous loop execution: ${AUTONOMOUS_TASK_ID}"
+          python - <<'PY'
+          import os
+          from agents.sheets.autonomous_ledger import record_autonomous_run
+
+          try:
+              recorded = record_autonomous_run()
+              result = "ALREADY_RECORDED" if not recorded else "RECORDED"
+          except Exception as exc:
+              print(f"Google Sheets logging failed: {type(exc).__name__}: {exc}", flush=True)
+              raise
+          else:
+              print(f"Google Sheets logging: {result}", flush=True)
+          PY
+
       - name: Upload durable run evidence
         if: always()
         uses: actions/upload-artifact@v4
