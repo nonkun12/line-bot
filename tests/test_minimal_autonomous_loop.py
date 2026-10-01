@@ -55,7 +55,7 @@ class _FakeProcess:
 
 
 def test_invalid_summary_halts(monkeypatch, tmp_path: Path):
-    task = {"id": "invalid-summary-test", "instruction": "test"}
+    task = {"id": "invalid-summary-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
     monkeypatch.setattr(loop, "_git_head", lambda: "a" * 40)
 
     def fake_popen(cmd, cwd, env, text, start_new_session):
@@ -70,7 +70,7 @@ def test_invalid_summary_halts(monkeypatch, tmp_path: Path):
 
 
 def test_no_change_is_not_pass(monkeypatch, tmp_path: Path):
-    task = {"id": "no-change-test", "instruction": "test"}
+    task = {"id": "no-change-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
     sha = "b" * 40
     monkeypatch.setattr(loop, "_git_head", lambda: sha)
 
@@ -97,7 +97,7 @@ def test_no_change_is_not_pass(monkeypatch, tmp_path: Path):
 
 
 def test_summary_identity_mismatch_halts(monkeypatch, tmp_path: Path):
-    task = {"id": "identity-test", "instruction": "test"}
+    task = {"id": "identity-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
     shas = iter(["c" * 40, "d" * 40])
     monkeypatch.setattr(loop, "_git_head", lambda: next(shas))
 
