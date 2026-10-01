@@ -73,6 +73,10 @@ class AgentVersionRegistry:
     def history(self, agent_name: str) -> tuple[AgentVersion, ...]:
         return tuple(self._history.get(str(agent_name).strip(), ()))
 
+    def enabled_versions(self, agent_name: str) -> list[AgentVersion]:
+        """Return all enabled versions for the given agent."""
+        return [item for item in self._history.get(str(agent_name).strip(), ()) if item.lifecycle == AgentLifecycle.ENABLED]
+
     def rollback_target(self, agent_name: str) -> AgentVersion | None:
         history = self._history.get(str(agent_name).strip(), ())
         current_indexes = [
