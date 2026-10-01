@@ -102,9 +102,9 @@ def test_debugger_restores_before_building_real_worker_plan(monkeypatch):
             "changes": [{"file": chosen, "old": "clean", "new": "fixed"}],
         }
 
-    def validate_plan(plan, chosen):
+    def validate_plan_with_bounded_repairs(client, instruction, chosen, plan, context):
         events.append(("validate", chosen))
-        return True, chosen
+        return plan, True, chosen
 
     def apply_plan(plan):
         events.append(("apply", plan["changes"][0]["file"]))
