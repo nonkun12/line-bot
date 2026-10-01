@@ -206,6 +206,36 @@ def test_repair_size_plan_returns_small_edit():
     assert worker.validate_plan(plan, "app.py") == (True, "app.py")
 
 
+def test_validate_plan_with_bounded_repairs_calls_size_repair_once():
+    chosen = "tests/test_management_router.py"
+    rejected = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "old", "new": "x" * 2000}],
+    }
+    response = json.dumps(
+        {
+            "no_change": False,
+            "changes": [
+                {"file": chosen, "old": "def target():\n    old\n", "new": "def target():\n    new\n"}
+            ],
+        }
+    )
+    client = FakeClient([response])
+
+    plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+        client,
+        "テストを最小修正",
+        chosen,
+        rejected,
+        "def target():\n    old\n",
+    )
+
+    assert ok
+    assert detail == chosen
+    assert plan["changes"][0]["new"] == "def target():\n    new\n"
+
+
+
 def test_apply_plan_requires_unique_anchor(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     target = tmp_path / "app.py"
