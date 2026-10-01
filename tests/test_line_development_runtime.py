@@ -129,3 +129,55 @@ def test_debugger_restores_before_building_real_worker_plan(monkeypatch):
     assert result.success
     assert [name for name, _ in events] == ["restore", "context", "build_plan", "validate", "apply"]
     assert state.touched == ["core/example.py"]
+
+
+def test_implementer_routes_plan_validation_through_bounded_repair(monkeypatch):
+    chosen = "tests/test_management_router.py"
+    rejected = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "old", "new": "x" * 2000}],
+    }
+    repaired = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "def target():\n    old\n", "new": "def target():\n    new\n"}],
+    }
+    calls = []
+
+    monkeypatch.setattr(
+        runtime.worker,
+        "build_plan",
+        lambda *args, **kwargs: rejected,
+    )
+
+    def repair(*args, **kwargs):
+        calls.append("repair")
+        return repaired
+
+    monkeypatch.setattr(runtime.worker, "repair_size_plan", repair)
+    monkeypatch.setattr(
+        runtime.worker,
+        "apply_plan",
+        lambda plan: (True, "applied", [chosen]),
+    )
+
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="tests/test_management_router.py を最小修正",
+        chosen=chosen,
+    )
+    executor = runtime.DevelopmentExecutor(state)
+    task = AgentTask(
+        "implementer",
+        AgentRole.IMPLEMENTER,
+        "Implement the requested test change.",
+        resources=frozenset({"working-tree"}),
+    )
+
+    result = executor.execute(task)
+
+    assert result.success
+    assert result.summary == "guarded change applied"
+    assert calls == ["repair"]
+    assert state.plan == repaired
+    assert state.touched == [chosen]
+
