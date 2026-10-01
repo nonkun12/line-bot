@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from scripts import run_minimal_autonomous_loop as loop
@@ -77,7 +78,7 @@ def test_no_change_is_not_pass(monkeypatch, tmp_path: Path):
         summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
         summary.write_text(
             json.dumps({
-                "timestamp": "2026-10-01T00:00:00+00:00",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "status": "PASS",
                 "exit_code": 0,
                 "base_sha": sha,
@@ -104,7 +105,7 @@ def test_summary_identity_mismatch_halts(monkeypatch, tmp_path: Path):
         summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
         summary.write_text(
             json.dumps({
-                "timestamp": "2026-10-01T00:00:01+00:00",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "status": "PASS",
                 "exit_code": 0,
                 "base_sha": "c" * 40,
