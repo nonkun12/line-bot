@@ -113,7 +113,6 @@ def test_debugger_restores_before_building_real_worker_plan(monkeypatch):
     monkeypatch.setattr(worker, "restore", restore)
     monkeypatch.setattr(worker, "context_for", context_for)
     monkeypatch.setattr(worker, "build_plan", build_plan)
-    monkeypatch.setattr(worker, "validate_plan", validate_plan)
     monkeypatch.setattr(worker, "apply_plan", apply_plan)
 
     executor = runtime.DevelopmentExecutor(state)
