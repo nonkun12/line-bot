@@ -12,7 +12,7 @@ def test_queue_contains_bounded_tasks():
     tasks = load_tasks()
     assert tasks
     assert len(tasks) <= 3
-    assert all(task["id"] and task["instruction"] for task in tasks)
+    assert all(task["id"] and task["instruction"] and task["allowed_paths"] for task in tasks)
 
 
 def test_kill_switch_env(monkeypatch, tmp_path: Path):
@@ -128,8 +128,8 @@ def test_main_halts_after_first_failure(monkeypatch, tmp_path: Path):
         loop,
         "load_tasks",
         lambda: [
-            {"id": "t1", "instruction": "one"},
-            {"id": "t2", "instruction": "two"},
+            {"id": "t1", "instruction": "one", "allowed_paths": ["tests/test_one.py"]},
+            {"id": "t2", "instruction": "two", "allowed_paths": ["tests/test_two.py"]},
         ],
     )
     queue = tmp_path / "queue.json"
