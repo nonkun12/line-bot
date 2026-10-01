@@ -47,6 +47,12 @@ def run_task(task: dict[str, str], run_index: int) -> dict[str, object]:
     env["DEV_INSTRUCTION"] = task["instruction"]
     env["AUTONOMOUS_SUMMARY_PATH"] = str(summary)
     env.setdefault("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
+    # Remove any prior summary so a failed/stalled runtime can never inherit an old PASS.
+    try:
+        summary.unlink()
+    except FileNotFoundError:
+        pass
+
     completed = subprocess.run(
         [sys.executable, "scripts/run_guarded_runtime.py"],
         cwd=ROOT,
