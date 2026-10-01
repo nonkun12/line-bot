@@ -37,6 +37,9 @@ PROTECTED_PATHS = {
     "scripts/line_development_worker.py",
     "scripts/line_development_worker_safe.py",
     "scripts/line_development_worker_v2.py",
+    "scripts/run_minimal_autonomous_loop.py",
+    "scripts/run_guarded_runtime.py",
+    "tests/test_minimal_autonomous_loop.py",
     "line_development.py",
     "git_safety.py", "patch_validator.py", "render_client.py",
 }
@@ -403,12 +406,7 @@ def main() -> int:
         if checkout.returncode != 0:
             print(checkout.stderr[-2000:], flush=True)
             return 1
-        push = run(["git", "push", "--set-upstream", "origin", branch])
-        if push.returncode != 0:
-            print(push.stderr[-2000:], flush=True)
-            return 1
-
-        print(f"Development branch pushed: {branch}", flush=True)
+        print(f"Development branch prepared locally: {branch}", flush=True)
         return 0
     except Exception as exc:
         print("Unexpected worker error:", type(exc).__name__, str(exc), flush=True)
