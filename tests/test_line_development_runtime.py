@@ -126,7 +126,7 @@ def test_debugger_restores_before_building_real_worker_plan(monkeypatch):
     )
 
     assert result.success
-    assert [name for name, _ in events] == ["restore", "context", "build_plan", "context", "apply"]
+    assert [name for name, _ in events] == ["restore", "context", "build_plan", "context", "context", "apply"]
     assert state.touched == ["core/example.py"]
 
 
@@ -179,7 +179,6 @@ def test_implementer_routes_plan_validation_through_bounded_repair(monkeypatch):
     assert calls == ["repair"]
     assert state.plan == repaired
     assert state.touched == [chosen]
-
 
 
 def test_implementer_routes_apply_failure_through_bounded_anchor_repair(monkeypatch):
