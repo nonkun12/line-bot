@@ -44,6 +44,19 @@ def load_tasks() -> list[dict[str, object]]:
     return result
 
 
+def load_completed(state_file: Path) -> set[str]:
+    if not state_file.exists():
+        return set()
+    try:
+        data = json.loads(state_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError("autonomous loop state is invalid")
+    completed = data.get("completed", [])
+    if not isinstance(completed, list) or not all(isinstance(item, str) and item.strip() for item in completed):
+        raise ValueError("autonomous loop state completed must be a string list")
+    return {item.strip() for item in completed}
+
+
 def stopped(stop_file: Path) -> bool:
     raw = os.environ.get("AUTONOMOUS_LOOP_STOP", "").strip()
     if raw and raw.casefold() not in {"0", "false", "no", "off"}:
@@ -251,6 +264,7 @@ def main() -> int:
     parser.add_argument("--max-tasks", type=int, default=1)
     parser.add_argument("--stop-file", type=Path, default=DEFAULT_STOP_FILE)
     parser.add_argument("--results", type=Path, default=Path("/tmp/minimal-autonomous-loop.jsonl"))
+    parser.add_argument("--state", type=Path, default=Path("/tmp/autonomous-loop-state.json"))
     args = parser.parse_args()
 
     if args.max_tasks < 1 or args.max_tasks > 3:
@@ -260,10 +274,11 @@ def main() -> int:
     queue_limit = int(queue_data.get("max_tasks_per_run", 3))
     if args.max_tasks > queue_limit:
         raise SystemExit(f"--max-tasks exceeds queue max_tasks_per_run={queue_limit}")
-    tasks = load_tasks()[: args.max_tasks]
+    completed = load_completed(args.state)
+    tasks = [task for task in load_tasks() if task["id"] not in completed][: args.max_tasks]
     if not tasks:
-        print("MINIMAL_LOOP=BLOCKED queue is empty")
-        return 1
+        print("MINIMAL_LOOP=COMPLETE queue exhausted")
+        return 0
 
     args.results.parent.mkdir(parents=True, exist_ok=True)
     for index, task in enumerate(tasks, 1):
