@@ -406,12 +406,7 @@ def main() -> int:
         if checkout.returncode != 0:
             print(checkout.stderr[-2000:], flush=True)
             return 1
-        push = run(["git", "push", "--set-upstream", "origin", branch])
-        if push.returncode != 0:
-            print(push.stderr[-2000:], flush=True)
-            return 1
-
-        print(f"Development branch pushed: {branch}", flush=True)
+        print(f"Development branch prepared locally: {branch}", flush=True)
         return 0
     except Exception as exc:
         print("Unexpected worker error:", type(exc).__name__, str(exc), flush=True)
