@@ -27,7 +27,7 @@ from core.self_improvement_policy import SelfImprovementDecision, assess_self_im
 ROOT = _ROOT
 MODEL = os.environ.get("DEV_AI_MODEL", "openai/gpt-oss-20b")
 MAX_FILES = 1
-MAX_FILE_CHARS = 4500
+MAX_FILE_CHARS = 12000
 MAX_RESPONSE_TOKENS = 4096
 MAX_INSTRUCTION_LENGTH = 2000
 MAX_REPAIR_ATTEMPTS = 1
@@ -184,6 +184,34 @@ def parse_plan(text: str) -> dict:
 def context_for(path: str) -> str:
     target = ROOT / path
     return target.read_text(encoding="utf-8")[:MAX_FILE_CHARS]
+
+
+def repair_anchor_plan(
+    client: Groq,
+    instruction: str,
+    chosen: str,
+    context: str,
+    rejected_plan: dict,
+    anchor_error: str,
+) -> dict:
+    """Perform one bounded repair when the chosen old text is not unique."""
+    rejected = json.dumps(rejected_plan, ensure_ascii=False)
+    system = '''Repair ONE rejected JSON search/replace plan. Return JSON only.
+Keep the same file and requested intent. Re-read the supplied current file context.
+The old value MUST be an exact substring that occurs exactly once in the current file.
+Choose a distinctive multi-line anchor near the intended edit, preferably including a unique
+test/function name and nearby lines. Do not use a generic single line such as "}," or a common
+dictionary fragment when a more specific anchor is available.
+The new field is replacement text only: no unified-diff markers or markdown fences.
+Do not broaden the requested change. If a unique safe anchor cannot be identified, return
+{"no_change":true}.'''
+    prompt = (
+        f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}"
+        f"\n\nCurrent file context:\n{context}"
+        f"\n\nApply error:\n{anchor_error}"
+        f"\n\nRejected plan:\n{rejected}"
+    )
+    return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
 
 
 def build_comment_test_plan(instruction: str, chosen: str) -> dict | None:
@@ -387,13 +415,14 @@ def main() -> int:
             apply_attempts = 0
             while not applied and apply_attempts < MAX_APPLY_REPAIR_ATTEMPTS:
                 apply_attempts += 1
-                repair_instruction = (
-                    f"{instruction}\n\n"
-                    f"The previous edit plan failed to apply with {detail}. "
-                    "Re-read the supplied current context and return a new plan whose old value "
-                    "is an exact substring of that context. Do not guess or reuse a stale anchor."
+                repair_plan = repair_anchor_plan(
+                    client,
+                    instruction,
+                    chosen,
+                    context_for(chosen),
+                    plan,
+                    detail,
                 )
-                repair_plan = build_plan(client, repair_instruction, chosen, context_for(chosen))
                 ok, repair_detail = validate_plan(repair_plan, chosen)
                 if not ok or repair_detail == "no_change":
                     applied = False
