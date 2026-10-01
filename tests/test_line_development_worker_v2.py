@@ -236,6 +236,41 @@ def test_validate_plan_with_bounded_repairs_calls_size_repair_once():
 
 
 
+def test_apply_plan_with_bounded_anchor_repair_recovers_once(monkeypatch, tmp_path):
+    target = tmp_path / "app.py"
+    target.write_text("exact\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    rejected = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "missing", "new": "replacement"}],
+    }
+    repaired = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "exact", "new": "replacement"}],
+    }
+    calls = []
+
+    client = FakeClient([])
+    monkeypatch.setattr(worker, "repair_anchor_plan", lambda *args: calls.append("repair") or repaired)
+
+    plan, ok, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+        client,
+        "app.py を最小修正",
+        "app.py",
+        rejected,
+        "exact\n",
+    )
+
+    assert ok
+    assert detail == "applied"
+    assert touched == ["app.py"]
+    assert calls == ["repair"]
+    assert plan == repaired
+    assert target.read_text(encoding="utf-8") == "replacement\n"
+
+
+
 def test_apply_plan_requires_unique_anchor(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     target = tmp_path / "app.py"
