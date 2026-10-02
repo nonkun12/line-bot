@@ -113,7 +113,7 @@ jobs:
           POLLER_PID=$!
           trap 'kill "$POLLER_PID" 2>/dev/null || true' EXIT
 
-          env -u GH_TOKEN -u GITHUB_TOKEN -u GITHUB_ENV -u GITHUB_OUTPUT -u GITHUB_PATH \
+          env -u GH_TOKEN -u GITHUB_TOKEN -u GITHUB_OUTPUT -u GITHUB_PATH \
             python scripts/run_minimal_autonomous_loop.py \
             --max-tasks 1 \
             --stop-file "$STOP_FILE" \
