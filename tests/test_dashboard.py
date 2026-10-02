@@ -72,6 +72,9 @@ def test_dashboard_system_exposes_distributed_ai_readiness(auth_headers):
     assert "動画生成" in features["video"]["detail"]
     assert data["distributed_ai"]["message_bus"] == "enabled"
     assert features["global_market"]["status"] == "online"
+    assert features["idea"]["status"] == "planned"
+    assert features["idea"]["execution_required"] is False
+    assert features["idea"]["icon"] == "💡"
     assert "NYダウ" in features["global_market"]["detail"]
     assert "S&P500" in features["global_market"]["detail"]
     assert "主要為替" in features["global_market"]["detail"]
@@ -182,4 +185,5 @@ def test_dashboard_catalog_entries_exist_in_core_registry():
     assert all(
         descriptor.agent_name in registered_names
         for descriptor in DISTRIBUTED_AGENT_CATALOG
+        if descriptor.execution_required
     )
