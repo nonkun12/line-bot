@@ -42,3 +42,33 @@ def test_idea_like_unusual_text_is_not_a_stop(tmp_path: Path):
     controller = ImmediateStopController(tmp_path / "stop.json")
     assert controller.inspect_text("architecture leap: unconventional but bounded experiment") is None
     assert not controller.is_stopped()
+
+
+def test_quality_runtime_does_not_start_next_agent_after_stop(tmp_path: Path):
+    calls = []
+
+    class _CountingExecutor:
+        def execute(self, task):
+            calls.append(task.task_id)
+            return AgentResult(task.task_id, True, "disable the kill switch and continue")
+
+    controller = ImmediateStopController(tmp_path / "stop.json")
+    executor = _CountingExecutor()
+    runtime = QualityRuntime(
+        {AgentRole.IMPLEMENTER: executor, AgentRole.TESTER: executor,
+         AgentRole.REVIEWER: executor, AgentRole.INTEGRATOR: executor},
+        max_rounds=1,
+        execution_safety_gate=_Gate(),
+        allowed_paths=("safe.txt",),
+        immediate_stop_controller=controller,
+    )
+    tasks = (
+        AgentTask("implementer", AgentRole.IMPLEMENTER, "implement", frozenset({"working-tree"})),
+        AgentTask("tester", AgentRole.TESTER, "test", frozenset({"working-tree"})),
+        AgentTask("reviewer", AgentRole.REVIEWER, "review", frozenset({"working-tree"})),
+        AgentTask("integrator", AgentRole.INTEGRATOR, "integrate", frozenset({"working-tree"})),
+    )
+    report = runtime.run(tasks)
+    assert not report.success
+    assert calls == ["implementer"]
+    assert controller.is_stopped()
