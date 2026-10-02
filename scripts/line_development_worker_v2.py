@@ -431,13 +431,8 @@ def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
     for key in list(os.environ):
         if key in blocked_exact or key.endswith(blocked_suffixes):
             saved_env[key] = os.environ.pop(key)
-    test_env = dict(os.environ)
     try:
-        tests = run(
-            [sys.executable, "-m", "pytest", "-q", "--tb=native"],
-            timeout=900,
-            env=test_env,
-        )
+        tests = run([sys.executable, '-m', 'pytest', '-q', '--tb=native'], timeout=900)
     finally:
         os.environ.update(saved_env)
     outputs.append("full pytest:")
