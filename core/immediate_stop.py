@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+import tempfile
 
 
 class StopReason(str, Enum):
@@ -62,7 +63,13 @@ class ImmediateStopController:
         return data if isinstance(data, dict) and data.get("stopped") is True else {}
 
     def is_stopped(self) -> bool:
-        return self._read() is None or bool(self._read())
+        """Return the latched stop state using one consistent state read.
+
+        A missing latch means normal operation; an unreadable/corrupt latch
+        fails closed and therefore blocks autonomous execution.
+        """
+        state = self._read()
+        return state is None or bool(state)
 
     def assert_can_execute(self) -> None:
         if self.is_stopped():
@@ -75,7 +82,20 @@ class ImmediateStopController:
             "evidence": evidence[-4000:],
         }
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        fd, tmp_name = tempfile.mkstemp(prefix=f".{self.path.name}.", dir=self.path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp_name, self.path)
+        except Exception:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
         return StopSignal(reason, evidence[-4000:])
 
     def inspect_text(self, text: str) -> StopSignal | None:
