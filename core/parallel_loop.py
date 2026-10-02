@@ -103,11 +103,18 @@ class ParallelLoopDispatcher:
     def stopped(self) -> bool:
         return self._stop.is_set()
 
-    async def _resource_guard(self, resources: frozenset[str]):
+    async def _acquire_resources(self, resources: frozenset[str]) -> list[asyncio.Lock]:
         locks = [self._resource_locks.setdefault(r, asyncio.Lock()) for r in sorted(resources)]
-        for lock in locks:
-            await lock.acquire()
-        return locks
+        acquired: list[asyncio.Lock] = []
+        try:
+            for lock in locks:
+                await lock.acquire()
+                acquired.append(lock)
+            return acquired
+        except BaseException:
+            for lock in reversed(acquired):
+                lock.release()
+            raise
 
     async def run(self, task: LoopTask, handler: Handler) -> LoopState:
         state = self.registry.get(task.loop_id)
@@ -126,7 +133,7 @@ class ParallelLoopDispatcher:
                 state.status = LoopStatus.STOPPED
                 state.last_result = "dispatcher stopped before handler"
                 return state
-            locks = await self._resource_guard(task.resources)
+            locks = await self._acquire_resources(task.resources)
             try:
                 if self._stop.is_set():
                     state.status = LoopStatus.STOPPED
