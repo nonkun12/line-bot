@@ -16,7 +16,7 @@ def test_registry_rejects_unregistered_loop():
     registry = LoopRegistry((LoopSpec("hand-sign", frozenset({"TEST"}), frozenset({"uhip"})),))
     dispatcher = ParallelLoopDispatcher(registry)
     with pytest.raises(KeyError):
-        asyncio.run(dispatcher.run(LoopTask("t1", "missing"), _handler))
+        asyncio.run(dispatcher.run(LoopTask("t1", "missing", agent_id="DEV"), _handler))
 
 
 async def _handler(task, state):
@@ -32,7 +32,7 @@ def test_independent_loops_run_in_parallel():
     dispatcher = ParallelLoopDispatcher(registry, max_concurrency=2)
     states = asyncio.run(run_parallel(
         dispatcher,
-        (LoopTask("t1", "a", frozenset({"a"})), LoopTask("t2", "b", frozenset({"b"}))),
+        (LoopTask("t1", "a", frozenset({"a"}), "DEV", frozenset({"a"})), LoopTask("t2", "b", frozenset({"b"}), "DEV", frozenset({"b"}))),
         _handler,
     ))
     assert {state.status for state in states} == {LoopStatus.PASSED}
@@ -42,7 +42,7 @@ def test_stop_is_fail_closed_and_not_resettable():
     registry = LoopRegistry((LoopSpec("a", frozenset({"DEV"}), frozenset({"a"})),))
     dispatcher = ParallelLoopDispatcher(registry)
     dispatcher.request_stop()
-    state = asyncio.run(dispatcher.run(LoopTask("t1", "a"), _handler))
+    state = asyncio.run(dispatcher.run(LoopTask("t1", "a", agent_id="DEV"), _handler))
     assert state.status is LoopStatus.STOPPED
     assert dispatcher.stopped()
 
@@ -66,7 +66,24 @@ def test_same_resource_is_serialized():
 
     asyncio.run(run_parallel(
         dispatcher,
-        (LoopTask("t1", "a", frozenset({"shared"})), LoopTask("t2", "b", frozenset({"shared"}))),
+        (LoopTask("t1", "a", frozenset({"shared"}), "DEV", frozenset({"shared"})), LoopTask("t2", "b", frozenset({"shared"}), "DEV", frozenset({"shared"}))),
         guarded_handler,
     ))
     assert peak == 1
+
+
+def test_agent_and_scope_boundaries_fail_closed():
+    registry = LoopRegistry((
+        LoopSpec("a", frozenset({"DEV"}), frozenset({"allowed"})),
+    ))
+    dispatcher = ParallelLoopDispatcher(registry)
+    state = asyncio.run(dispatcher.run(
+        LoopTask("t-agent", "a", agent_id="TEST"),
+        _handler,
+    ))
+    assert state.status is LoopStatus.FAILED
+    state = asyncio.run(dispatcher.run(
+        LoopTask("t-scope", "a", agent_id="DEV", scope=frozenset({"forbidden"})),
+        _handler,
+    ))
+    assert state.status is LoopStatus.FAILED
