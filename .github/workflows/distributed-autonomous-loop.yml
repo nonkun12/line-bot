@@ -155,8 +155,7 @@ jobs:
           rm -rf /tmp/autonomous-stop-worktree
           git worktree add --detach /tmp/autonomous-stop-worktree "origin/$state_branch"
           cp "$stop_file" /tmp/autonomous-stop-worktree/.autonomous-loop-stop.json
-          printf '%s
-' 'PERSISTED_IMMEDIATE_STOP=ON' > /tmp/autonomous-stop-worktree/.autonomous-loop.stop
+          echo 'PERSISTED_IMMEDIATE_STOP=ON' > /tmp/autonomous-stop-worktree/.autonomous-loop.stop
           git -C /tmp/autonomous-stop-worktree config user.name "github-actions[bot]"
           git -C /tmp/autonomous-stop-worktree config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git -C /tmp/autonomous-stop-worktree add .autonomous-loop.stop .autonomous-loop-stop.json
