@@ -19,6 +19,8 @@ from .self_improvement_policy import SelfImprovementDecision, assess_self_improv
 from .self_improvement_cycle import SelfImprovementCycleResult, run_self_improvement_cycle
 from .execution_safety import GitWorktreeSafetyGate
 from .multi_agent import AgentResult, AgentRole, AgentTask
+from .idea_ai import IdeaAgent
+from .idea_handoff import IdeaAcceptance, handoff_idea
 from .quality_runtime import QualityRuntime
 from scripts import line_development_worker_v2 as worker
 
@@ -335,8 +337,63 @@ def _write_development_audit_to_google_sheets(*, instruction: str, status: str, 
         print(f"[GOOGLE-SHEETS] audit write failed (non-blocking): {type(exc).__name__}: {exc}", flush=True)
 
 
+
+def _prepare_idea_stage(instruction: str) -> tuple[str, str | None, str | None]:
+    """Optionally run the bounded IDEA stage before implementation.
+    
+    IDEA_MODE is opt-in. Without explicit acceptance, the loop stops before
+    any implementation task is created. This preserves human-on-the-loop.
+    """
+    if os.environ.get("IDEA_MODE", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return instruction, None, None
+
+    ideas = IdeaAgent().propose(instruction, limit=5)
+    requested_id = os.environ.get("IDEA_ACCEPTED_ID", "").strip()
+    accepted = next((idea for idea in ideas if idea.idea_id == requested_id), None)
+    if accepted is None:
+        print(
+            "[IDEA] proposals generated; no explicit acceptance. "
+            "Implementation blocked closed.",
+            flush=True,
+        )
+        for idea in ideas:
+            print(f"[IDEA] {idea.idea_id}: {idea.title}", flush=True)
+        return instruction, None, "IDEA acceptance required"
+
+    acceptance_reason = os.environ.get(
+        "IDEA_ACCEPTANCE_REASON",
+        "explicit human-on-the-loop acceptance",
+    ).strip()[:500]
+    handoff = handoff_idea(
+        accepted,
+        IdeaAcceptance(accepted=True, reason=acceptance_reason),
+    )
+    if handoff is None:
+        return instruction, None, "IDEA handoff rejected"
+
+    print(
+        f"[IDEA] accepted={accepted.idea_id}; handoff={handoff.task_id}; "
+        "implementation remains behind normal quality/safety gates",
+        flush=True,
+    )
+    return handoff.instruction, handoff.task_id, None
+
 def execute(instruction: str) -> int:
     """Run one real guarded development request through the quality pipeline."""
+    instruction, idea_task_id, idea_block_reason = _prepare_idea_stage(instruction)
+    if idea_block_reason is not None:
+        _write_development_audit_to_google_sheets(
+            instruction=instruction,
+            status="BLOCKED",
+            target_path=None,
+            branch=None,
+            exit_detail=idea_block_reason,
+            base_sha=None,
+            produced_sha=None,
+        )
+        return 1
+    if idea_task_id:
+        os.environ["AUTONOMOUS_TASK_ID"] = idea_task_id
     client = worker.Groq(api_key=os.environ["GROQ_API_KEY"])
     state = DevelopmentState(client=client, instruction=instruction)
     executor = DevelopmentExecutor(state)
