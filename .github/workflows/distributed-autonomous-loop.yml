@@ -206,10 +206,10 @@ jobs:
           fi
 
           export AUTONOMOUS_TASK_ID="unknown"
-          export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
-          export AUTONOMOUS_VERIFICATION_RESULT="NOT_RUN"
-          export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
-          export AUTONOMOUS_MERGE_RESULT="NOT_AUTO_MERGED"
+          export AUTONOMOUS_TESTS_RESULT="${AUTONOMOUS_TESTS_RESULT:-NOT_REPORTED}"
+          export AUTONOMOUS_VERIFICATION_RESULT="${AUTONOMOUS_VERIFICATION_RESULT:-NOT_REPORTED}"
+          export AUTONOMOUS_SAFETY_GATE_RESULT="${AUTONOMOUS_SAFETY_GATE_RESULT:-BLOCKED}"
+          export AUTONOMOUS_MERGE_RESULT="${AUTONOMOUS_MERGE_RESULT:-NOT_AUTO_MERGED}"
           export AUTONOMOUS_BLOCKED_FAILED_REASON=""
           export AUTONOMOUS_NEXT_ACTION="review_failure"
 
@@ -221,20 +221,20 @@ jobs:
           row = json.loads(lines[-1])
           print(str(row.get("task_id", "unknown")))
           print(str(row.get("status", "FAIL")))
-          print(str(row.get("detail", "" )).replace("\n", " ")[:1000]))
+          print(str(row.get("failure_reason", "" )).replace("\n", " ")[:1000]))
           PY
             )
             export AUTONOMOUS_TASK_ID="${_loop_fields[0]:-unknown}"
             _status="${_loop_fields[1]:-FAIL}"
             _detail="${_loop_fields[2]:-}"
             if [ "$_status" = "PASS" ] || [ "$_status" = "NO_CHANGE" ]; then
-              export AUTONOMOUS_TESTS_RESULT="PASS"
-              export AUTONOMOUS_VERIFICATION_RESULT="$_status"
-              export AUTONOMOUS_SAFETY_GATE_RESULT="PASS"
-              export AUTONOMOUS_NEXT_ACTION="review_pr"
+              if [ "$AUTONOMOUS_SAFETY_GATE_RESULT" = "PASS" ]; then
+                export AUTONOMOUS_NEXT_ACTION="review_pr"
+              else
+                export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:safety_gate_not_reported"
+                export AUTONOMOUS_NEXT_ACTION="review_failure"
+              fi
             else
-              export AUTONOMOUS_TESTS_RESULT="FAIL"
-              export AUTONOMOUS_VERIFICATION_RESULT="$_status"
               export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:$_detail"
               export AUTONOMOUS_NEXT_ACTION="review_failure"
             fi
