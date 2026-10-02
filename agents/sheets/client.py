@@ -39,7 +39,7 @@ class GoogleSheetsClient:
         return self.service.spreadsheets().values().append(
             spreadsheetId=self.spreadsheet_id,
             range=range_name,
-            valueInputOption="USER_ENTERED",
+            valueInputOption="RAW",
             insertDataOption="INSERT_ROWS",
             body={"values": [values]},
         ).execute()
