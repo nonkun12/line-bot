@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const features=d.features||{};
       const featureOrder=[
         ['management_ai','統合AI / Management','タスク分解・配分・結果回収'],
+        ['idea','発想AI','多様な発想・再構成・新しい組合せ。実行はSafety Gate配下'],
         ['general','General AI','汎用・フォールバック'],
         ['english_learning','英語学習AI','学習・進捗・復習'],
         ['stocks','株価AI','株価・テクニカル分析・監視'],
@@ -31,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ['music','音楽AI','選曲・作曲/作詞補助・プレイリスト'],
         ['video','映像AI','企画・台本・絵コンテ・編集'],
       ];
-      const icons={management_ai:'🧠',general:'🧩',english_learning:'🇬🇧',stocks:'📈',global_market:'🌎',ai_news:'📰',voice:'🎙️',jobs:'💼',music:'🎵',video:'🎬'};
+      const icons={management_ai:'🧠',idea:'💡',general:'🧩',english_learning:'🇬🇧',stocks:'📈',global_market:'🌎',ai_news:'📰',voice:'🎙️',jobs:'💼',music:'🎵',video:'🎬'};
       const featureGrid=document.getElementById('featureGrid');
       featureGrid.innerHTML=featureOrder.map(([key,title,baseDetail])=>{
         const f=features[key]||{}, status=f.status||'unknown';
