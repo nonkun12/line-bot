@@ -23,6 +23,7 @@ class QualityRuntime:
         max_rounds: int = 3,
         execution_safety_gate: object | None = None,
         allowed_paths: tuple[str, ...] = (),
+        immediate_stop_controller: object | None = None,
     ) -> None:
         if max_rounds < 1 or max_rounds > 3:
             raise ValueError("max_rounds must be between 1 and 3")
@@ -32,6 +33,7 @@ class QualityRuntime:
         self._max_rounds = max_rounds
         self._execution_safety_gate = execution_safety_gate
         self._allowed_paths = tuple(allowed_paths)
+        self._immediate_stop_controller = immediate_stop_controller
 
     def _execute(self, task: AgentTask) -> RuntimeTaskResult:
         executor = self._executors.get(task.role)
@@ -41,6 +43,8 @@ class QualityRuntime:
                 AgentResult(task.task_id, False, f"missing executor for role: {task.role.value}"),
             )
         try:
+            if self._immediate_stop_controller is not None:
+                self._immediate_stop_controller.assert_can_execute()
             result = executor.execute(task)
         except Exception as exc:
             result = AgentResult(task.task_id, False, f"{type(exc).__name__}: {exc}")
@@ -48,6 +52,13 @@ class QualityRuntime:
             result = AgentResult(task.task_id, False, "executor must return AgentResult")
         elif result.task_id != task.task_id:
             result = AgentResult(task.task_id, False, f"executor returned task_id {result.task_id!r}")
+        if self._immediate_stop_controller is not None:
+            signal = self._immediate_stop_controller.inspect_text(result.summary)
+            if signal is not None:
+                return RuntimeTaskResult(
+                    task,
+                    AgentResult(task.task_id, False, f"IMMEDIATE STOP: {signal.reason.value}"),
+                )
         if result.success and self._execution_safety_gate is not None and task.role is not AgentRole.MANAGER:
             try:
                 verified = self._execution_safety_gate.verify(task, result, self._allowed_paths)
@@ -61,6 +72,11 @@ class QualityRuntime:
                     ),
                 )
             if not verified:
+                if self._immediate_stop_controller is not None:
+                    self._immediate_stop_controller.request_stop(
+                        __import__("core.immediate_stop", fromlist=["StopReason"]).StopReason.RESULT_MISMATCH,
+                        f"Safety Gate rejected actual worktree state for {task.task_id}",
+                    )
                 return RuntimeTaskResult(
                     task,
                     AgentResult(
