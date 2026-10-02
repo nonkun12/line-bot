@@ -169,24 +169,16 @@ class ParallelLoopDispatcher:
                 return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.STOPPED, state.last_result)
 
             if task.agent_id not in state.spec.allowed_agents:
-                state.status = LoopStatus.FAILED
-                state.last_result = "agent not allowed for loop"
-                return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, state.last_result)
+                return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, "agent not allowed for loop")
 
             if not task.scope.issubset(state.spec.allowed_scope):
-                state.status = LoopStatus.FAILED
-                state.last_result = "task scope exceeds loop scope"
-                return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, state.last_result)
+                return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, "task scope exceeds loop scope")
 
             if not task.resources.issubset(state.spec.allowed_resources):
-                state.status = LoopStatus.FAILED
-                state.last_result = "task resources exceed loop resources"
-                return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, state.last_result)
+                return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, "task resources exceed loop resources")
 
             if state.iterations >= state.spec.max_iterations:
-                state.status = LoopStatus.FAILED
-                state.last_result = "max iterations exceeded"
-                return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, state.last_result)
+                return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, "max iterations exceeded")
 
             # Reservation is atomic with the max-iteration check: no await occurs
             # between admission and iteration consumption.
