@@ -32,6 +32,7 @@ class AgentRole(str, Enum):
     JOBS = "jobs"
     MUSIC = "music"
     VIDEO = "video"
+    IDEA = "idea"
 
 
 @dataclass(frozen=True)
