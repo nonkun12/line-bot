@@ -159,6 +159,88 @@ def observe_self_improvement(
         return None
 
 
+def _deterministic_autonomous_test_plan(chosen: str) -> dict | None:
+    """Return bounded plans for the explicit queued regression-test tasks."""
+    task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+    if task_id == "hand-sign-uhip-contract-test" and chosen == "uhip/tests/test_schema_contracts.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_universal_event_accepts_hand_event_with_recognition_failure"
+        if f"def {name}(" in text:
+            return {"no_change": True}
+        addition = '''
+def test_universal_event_accepts_hand_event_with_recognition_failure():
+    event = {
+        "schema_version": "0.3",
+        "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f13",
+        "session_id": "session-1",
+        "device_id": "device-1",
+        "seq": 2,
+        "t_mono_ns": 200,
+        "t_wall": "2026-09-28T01:00:01Z",
+        "source": {
+            "device_kind": "mac",
+            "sensor": "camera",
+            "engine": "mediapipe",
+            "engine_version": "0.1",
+            "model_sha256": "a" * 64,
+        },
+        "modality": "hand",
+        "payload": {
+            "gesture": "thumb_up",
+            "phase": "end",
+            "value": None,
+            "hand": {
+                "label": "right",
+                "track_id": 3,
+                "mirrored": True,
+            },
+            "confidence": {
+                "raw": 0.99,
+                "calibrated": 0.97,
+            },
+            "stability": {
+                "frames": 8,
+                "duration_ms": 160,
+            },
+        },
+        "gate": {
+            "recognition_passed": False,
+            "rule_version": "phase0-1",
+        },
+        "ttl_ms": 500,
+    }
+    validate(event, EVENT_SCHEMA)
+'''
+        old = text.rstrip() + "\n"
+        return {"no_change": False, "source": "deterministic_autonomous_task", "changes": [{"file": chosen, "old": old, "new": old + addition.lstrip("\n")}]}
+    if task_id == "router-regression-whitespace" and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_routes_jobs_request_with_surrounding_whitespace"
+        if f"def {name}(" in text:
+            return {"no_change": True}
+        addition = '''
+def test_routes_jobs_request_with_surrounding_whitespace() -> None:
+    assert route(ManagementRequest("u", "  求人を探して  ")).specialist is Specialist.JOBS
+'''
+        old = text.rstrip() + "\n"
+        return {"no_change": False, "source": "deterministic_autonomous_task", "changes": [{"file": chosen, "old": old, "new": old + addition.lstrip("\n")}]}
+    if task_id == "router-regression-fullwidth-market" and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_routes_fullwidth_market_request_after_normalization"
+        if f"def {name}(" in text:
+            return {"no_change": True}
+        addition = '''
+def test_routes_fullwidth_market_request_after_normalization() -> None:
+    assert route(ManagementRequest("u", "ＮＹダウを教えて")).specialist is Specialist.MARKET
+'''
+        old = text.rstrip() + "\n"
+        return {"no_change": False, "source": "deterministic_autonomous_task", "changes": [{"file": chosen, "old": old, "new": old + addition.lstrip("\n")}]}
+    return None
+
+
 class DevelopmentExecutor:
     """Execute concrete development roles against one guarded worktree."""
 
@@ -179,9 +261,10 @@ class DevelopmentExecutor:
             if self.state.chosen is None:
                 return AgentResult(task.task_id, False, "manager selection missing")
             if task.role is AgentRole.IMPLEMENTER:
+                deterministic_task_plan = _deterministic_autonomous_test_plan(self.state.chosen)
                 explicit_comment_plan = _explicit_comment_plan(self.state.instruction, self.state.chosen)
                 comment_plan = None if explicit_comment_plan is not None else worker.build_comment_test_plan(self.state.instruction, self.state.chosen)
-                plan = explicit_comment_plan if explicit_comment_plan is not None else comment_plan if comment_plan is not None else worker.build_plan(self.state.client, self.state.instruction, self.state.chosen, worker.context_for(self.state.chosen))
+                plan = deterministic_task_plan if deterministic_task_plan is not None else explicit_comment_plan if explicit_comment_plan is not None else comment_plan if comment_plan is not None else worker.build_plan(self.state.client, self.state.instruction, self.state.chosen, worker.context_for(self.state.chosen))
                 plan, ok, detail = worker.validate_plan_with_bounded_repairs(
                     self.state.client,
                     self.state.instruction,
