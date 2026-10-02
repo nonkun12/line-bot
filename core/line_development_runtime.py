@@ -761,7 +761,7 @@ def execute(instruction: str) -> int:
     print(f"Development branch ready for verified publish: {branch}", flush=True)
     produced = worker.run(["git", "rev-parse", "HEAD"])
     produced_sha = produced.stdout.strip() if produced.returncode == 0 else None
-    _write_development_audit_to_google_sheets(instruction=instruction, status="PASS", target_path=state.chosen, branch=branch, exit_detail="development branch pushed", base_sha=baseline_sha, produced_sha=produced_sha)
+    _write_development_audit_to_google_sheets(instruction=instruction, status="PASS", target_path=state.chosen, branch=branch, exit_detail="development branch committed; workflow publish pending", base_sha=baseline_sha, produced_sha=produced_sha)
     print(f"Development branch pushed: {branch}", flush=True)
     return 0
 
