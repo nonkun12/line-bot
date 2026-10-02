@@ -72,7 +72,7 @@ class IdeaAgent:
                 task_id=f"idea-{style}-{index}",
                 role=AgentRole.IDEA,
                 instruction=(
-                    "発想候補のみ作成。実装・実行・マージ・デプロイは禁止。"
+                    "発想候補のみ作成。実装・実行・マージ・デプロイは禁止。 No implementation, execution, merge, deploy."
                     "奇抜・非典型・前提破壊という理由だけで候補を捨てない。"
                     "ただし有害な実行方法や権限拡大は提案しない。"
                     f" Focus: {focus}{suffix}"
