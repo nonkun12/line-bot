@@ -137,6 +137,39 @@ def test_max_iterations_is_atomic():
     assert registry.get("a").iterations == 1
 
 
+def test_rejected_task_does_not_overwrite_active_task_status():
+    registry = LoopRegistry((spec("a"),))
+    dispatcher = ParallelLoopDispatcher(registry, max_concurrency=2)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_handler(task, state):
+        started.set()
+        await release.wait()
+        return "active-pass"
+
+    async def scenario():
+        active = asyncio.create_task(dispatcher.run(
+            LoopTask("t-active", "a", frozenset({"a"}), "DEV", frozenset({"a"})),
+            slow_handler,
+        ))
+        await started.wait()
+        rejected = await dispatcher.run(
+            LoopTask("t-rejected", "a", frozenset({"a"}), "DEV", frozenset({"a"})),
+            slow_handler,
+        )
+        assert rejected.status is LoopStatus.FAILED
+        assert rejected.task_id == "t-rejected"
+        release.set()
+        passed = await active
+        return rejected, passed
+
+    rejected, passed = asyncio.run(scenario())
+    assert passed.status is LoopStatus.PASSED
+    assert passed.task_id == "t-active"
+    assert registry.get("a").status is LoopStatus.PASSED
+
+
 def test_stop_after_handler_never_returns_pass():
     registry = LoopRegistry((spec("a"),))
     dispatcher = ParallelLoopDispatcher(registry)
