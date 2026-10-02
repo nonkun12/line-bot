@@ -1,6 +1,8 @@
 name: Distributed Autonomous Development Loop
 
 on:
+  # Automatic schedule remains disabled until a main-branch manual E2E
+  # validates the complete fail-closed path with production-like secrets.
   workflow_dispatch:
     inputs:
       max_tasks:
@@ -10,13 +12,6 @@ on:
         type: choice
         options:
           - '1'
-  schedule:
-    - cron: '30 4 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '30 12 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '30 20 * * *'
-      timezone: 'Asia/Tokyo'
 
 permissions:
   contents: write
