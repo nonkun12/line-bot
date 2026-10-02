@@ -126,7 +126,7 @@ def test_debugger_restores_before_building_real_worker_plan(monkeypatch):
     )
 
     assert result.success
-    assert [name for name, _ in events] == ["restore", "context", "build_plan", "context", "context", "apply"]
+    assert [name for name, _ in events] == ["restore", "context", "build_plan", "apply"]
     assert state.touched == ["core/example.py"]
 
 
