@@ -58,6 +58,10 @@ jobs:
           rm -f /tmp/autonomous-loop-state.json
           if git ls-remote --exit-code origin refs/heads/autonomous-loop-state >/dev/null 2>&1; then
             git fetch --quiet origin autonomous-loop-state
+            if git cat-file -e origin/autonomous-loop-state:.autonomous-loop.stop 2>/dev/null; then
+              echo "REMOTE_PERSISTED_KILL_SWITCH=ON"
+              exit 1
+            fi
             git show origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/autonomous-loop-state.json
           else
             printf '%s\n' '{"version":1,"completed":[]}' > /tmp/autonomous-loop-state.json
@@ -125,6 +129,40 @@ jobs:
           echo "PUBLISHED_SHA=$head"
           echo "AUTONOMOUS_PUBLISH_RESULT=PUBLISHED" >> "$GITHUB_ENV"
           echo "AUTONOMOUS_PUBLISHED_SHA=$head" >> "$GITHUB_ENV"
+
+      - name: Persist immediate stop latch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          stop_file="/tmp/line-bot-immediate-stop.json"
+          if [ ! -e "$stop_file" ]; then
+            exit 0
+          fi
+
+          state_branch="autonomous-loop-state"
+          auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          git remote set-url origin "$auth_url"
+          if ! git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1; then
+            git push "$auth_url" "refs/remotes/origin/main:refs/heads/$state_branch"
+          fi
+
+          git fetch --quiet origin "$state_branch"
+          rm -rf /tmp/autonomous-stop-worktree
+          git worktree add --detach /tmp/autonomous-stop-worktree "origin/$state_branch"
+          cp "$stop_file" /tmp/autonomous-stop-worktree/.autonomous-loop-stop.json
+          printf '%s
+' 'PERSISTED_IMMEDIATE_STOP=ON' > /tmp/autonomous-stop-worktree/.autonomous-loop.stop
+          git -C /tmp/autonomous-stop-worktree config user.name "github-actions[bot]"
+          git -C /tmp/autonomous-stop-worktree config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C /tmp/autonomous-stop-worktree add .autonomous-loop.stop .autonomous-loop-stop.json
+          if git -C /tmp/autonomous-stop-worktree diff --cached --quiet; then
+            echo "Immediate stop latch already persisted."
+          else
+            git -C /tmp/autonomous-stop-worktree commit -m "chore: persist autonomous loop stop latch"
+            git -C /tmp/autonomous-stop-worktree push "$auth_url" HEAD:refs/heads/$state_branch
+          fi
 
       - name: Record distributed loop result to Google Sheets
         if: always()
