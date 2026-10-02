@@ -38,8 +38,8 @@ class StopSignal:
 
 
 _DANGEROUS_PATTERNS: tuple[tuple[StopReason, re.Pattern[str]], ...] = (
-    (StopReason.SELF_DISABLE_STOP_CONTROL, re.compile(r"(disable|bypass|remove|delete).{0,60}(kills*switch|immediates*stop|safetys*gate|stops*control)", re.I | re.S)),
-    (StopReason.SAFETY_GATE_BYPASS, re.compile(r"(bypass|skip|disable).{0,40}(safetys*gate|safetys*check)", re.I | re.S)),
+    (StopReason.SELF_DISABLE_STOP_CONTROL, re.compile(r"(disable|bypass|remove|delete).{0,60}(kill\s*switch|immediate\s*stop|safety\s*gate|stop\s*control)", re.I | re.S)),
+    (StopReason.SAFETY_GATE_BYPASS, re.compile(r"(bypass|skip|disable).{0,40}(safety\s*gate|safety\s*check)", re.I | re.S)),
     (StopReason.PERMISSION_EXPANSION, re.compile(r"(grant|expand|escalat).{0,50}(permission|privilege|credential|admin|root)", re.I | re.S)),
     (StopReason.SECRET_ACCESS, re.compile(r"(steal|extract|dump|exfiltrat|obtain).{0,50}(secret|token|password|credential|api[_ -]?key)", re.I | re.S)),
     (StopReason.UNAUTHORIZED_EXTERNAL_ACTION, re.compile(r"(send|post|publish|delete|modify).{0,60}(external|production|third[- ]party).{0,60}(without|no|bypass).{0,30}(approval|authorization)", re.I | re.S)),
