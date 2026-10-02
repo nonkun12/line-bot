@@ -160,7 +160,7 @@ def _augment_with_hermes_advice(instruction: str, history_path: Path) -> str:
 def _write_summary(status: str, exit_code: int, start_sha: str, summary_path: Path) -> None:
     produced_sha = _git("rev-parse", "HEAD")
     branch = _git("branch", "--show-current")
-    safety_gate_result = "BLOCKED" if exit_code != 0 else os.environ.get("AUTONOMOUS_SAFETY_GATE_RESULT", "PASS")
+    safety_gate_result = "BLOCKED" if exit_code != 0 else os.environ.get("AUTONOMOUS_SAFETY_GATE_RESULT", "NOT_REPORTED").strip() or "NOT_REPORTED"
     tests_result = os.environ.get("AUTONOMOUS_TESTS_RESULT", "NOT_REPORTED")
     verification_result = os.environ.get("AUTONOMOUS_VERIFICATION_RESULT", "NOT_REPORTED")
     payload = {
