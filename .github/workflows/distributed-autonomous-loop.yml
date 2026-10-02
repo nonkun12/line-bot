@@ -75,9 +75,12 @@ jobs:
       - name: Run one bounded autonomous task
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
           SELF_IMPROVEMENT_HISTORY_PATH: /tmp/line-bot-self-improvement.jsonl
         run: |
           set -euo pipefail
+          auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          git remote set-url origin "$auth_url"
           : > /tmp/minimal-autonomous-loop.jsonl
           STOP_FILE=/tmp/line-bot-autonomous-loop.stop
 
@@ -108,6 +111,8 @@ jobs:
           head="$(git rev-parse HEAD)"
           if [ "$head" = "$GITHUB_SHA" ]; then
             echo "No development commit was produced; nothing to publish."
+            echo "AUTONOMOUS_PUBLISH_RESULT=NO_CHANGE" >> "$GITHUB_ENV"
+            echo "AUTONOMOUS_PUBLISHED_SHA=" >> "$GITHUB_ENV"
             exit 0
           fi
           git diff --check "$GITHUB_SHA...HEAD"
@@ -116,6 +121,8 @@ jobs:
           git push --set-upstream "$auth_url" "HEAD:refs/heads/$branch"
           echo "PUBLISHED_BRANCH=$branch"
           echo "PUBLISHED_SHA=$head"
+          echo "AUTONOMOUS_PUBLISH_RESULT=PUBLISHED" >> "$GITHUB_ENV"
+          echo "AUTONOMOUS_PUBLISHED_SHA=$head" >> "$GITHUB_ENV"
 
       - name: Persist completed task state
         if: success()
