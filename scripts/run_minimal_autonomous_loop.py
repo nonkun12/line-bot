@@ -247,6 +247,9 @@ def run_task(task: dict[str, object], run_index: int, stop_file: Path, summary_d
         "base_sha": base_sha,
         "produced_sha": produced_sha,
         "failure_reason": failure_reason,
+        "tests_result": str(payload.get("tests_result", "NOT_REPORTED")),
+        "verification_result": str(payload.get("verification_result", "NOT_REPORTED")),
+        "safety_gate_result": str(payload.get("safety_gate_result", "BLOCKED")),
     }
 
 
@@ -290,6 +293,9 @@ def main() -> int:
                 "status": "STOPPED",
                 "exit_code": 1,
                 "failure_reason": "stop_requested_before_task",
+                "tests_result": "NOT_REPORTED",
+                "verification_result": "NOT_REPORTED",
+                "safety_gate_result": "BLOCKED",
             }
             with args.results.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(result, ensure_ascii=False) + "\n")
