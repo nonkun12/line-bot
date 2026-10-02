@@ -226,3 +226,108 @@ def test_implementer_routes_apply_failure_through_bounded_anchor_repair(monkeypa
     assert state.touched == [chosen]
 
 
+
+
+def test_deterministic_autonomous_test_plan_hand_sign_within_size_bounds(monkeypatch, tmp_path):
+    target = tmp_path / "uhip" / "tests" / "test_schema_contracts.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    real_file = runtime.worker.ROOT / "uhip" / "tests" / "test_schema_contracts.py"
+    target.write_text(real_file.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
+
+    plan, err = runtime._deterministic_autonomous_test_plan("uhip/tests/test_schema_contracts.py")
+
+    assert err is None
+    assert plan is not None
+    assert plan["no_change"] is False
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert len(plan["changes"]) == 1
+    change = plan["changes"][0]
+    assert change["file"] == "uhip/tests/test_schema_contracts.py"
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    # Must pass worker.validate_plan cleanly without size/marker repairs
+    ok, detail = runtime.worker.validate_plan(plan, "uhip/tests/test_schema_contracts.py")
+    assert ok is True
+    assert detail == "uhip/tests/test_schema_contracts.py"
+
+
+def test_deterministic_autonomous_test_plan_no_change_when_test_present(monkeypatch, tmp_path):
+    target = tmp_path / "uhip" / "tests" / "test_schema_contracts.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("def test_universal_event_accepts_hand_event_with_recognition_failure(): pass\n", encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
+
+    plan, err = runtime._deterministic_autonomous_test_plan("uhip/tests/test_schema_contracts.py")
+
+    assert err is None
+    assert plan == {"no_change": True, "source": "deterministic_autonomous_task"}
+
+
+def test_deterministic_autonomous_test_plan_fails_closed_on_anchor_mismatch(monkeypatch, tmp_path):
+    target = tmp_path / "uhip" / "tests" / "test_schema_contracts.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# anchor missing completely\n", encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
+
+    plan, err = runtime._deterministic_autonomous_test_plan("uhip/tests/test_schema_contracts.py")
+
+    assert plan is None
+    assert "anchor_count" in err
+
+
+def test_implementer_applies_deterministic_task_plan_without_llm_repair(monkeypatch, tmp_path):
+    chosen = "uhip/tests/test_schema_contracts.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    real_file = runtime.worker.ROOT / chosen
+    target.write_text(real_file.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
+
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="ハンドサイン契約テストを追加して",
+        chosen=chosen,
+    )
+    executor = runtime.DevelopmentExecutor(state)
+    task = AgentTask(
+        "implementer",
+        AgentRole.IMPLEMENTER,
+        "Implement the hand-sign test.",
+        resources=frozenset({"working-tree"}),
+    )
+
+    result = executor.execute(task)
+
+    assert result.success is True
+    assert result.summary == "guarded change applied"
+    assert state.touched == [chosen]
+    updated_text = target.read_text(encoding="utf-8")
+    assert "def test_universal_event_accepts_hand_event_with_recognition_failure():" in updated_text
+
+
+def test_debugger_rejects_llm_mutation_for_deterministic_task(monkeypatch):
+    chosen = "uhip/tests/test_schema_contracts.py"
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
+
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="ハンドサイン契約テストを追加して",
+        chosen=chosen,
+    )
+    executor = runtime.DevelopmentExecutor(state)
+    task = AgentTask(
+        "debugger",
+        AgentRole.DEBUGGER,
+        "Retry the failed test.",
+        resources=frozenset({"working-tree"}),
+    )
+
+    result = executor.execute(task)
+
+    assert result.success is False
+    assert "must not be mutated by LLM" in result.summary

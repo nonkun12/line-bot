@@ -159,6 +159,152 @@ def observe_self_improvement(
         return None
 
 
+
+
+def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
+    if not task_id or not chosen:
+        return False
+    return (
+        (task_id == "hand-sign-uhip-contract-test" and chosen == "uhip/tests/test_schema_contracts.py")
+        or (task_id in {"router-regression-whitespace", "router-regression-fullwidth-market"} and chosen == "tests/test_management_router.py")
+    )
+
+
+def _deterministic_autonomous_test_plan(chosen: str) -> tuple[dict | None, str | None]:
+    """Return bounded, deterministic plans for explicit queued regression-test tasks.
+
+    Enforces size limits (old <= 1200, new <= 1800) and strict anchor uniqueness
+    (text.count(anchor) == 1) at generation time to fail-closed immediately without
+    invoking non-deterministic LLM plan repair.
+    """
+    task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+    if not task_id:
+        return None, None
+
+    if task_id == "hand-sign-uhip-contract-test" and chosen == "uhip/tests/test_schema_contracts.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_universal_event_accepts_hand_event_with_recognition_failure"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = "    with pytest.raises(jsonschema.ValidationError):\n        validate(adapter, ADAPTER_SCHEMA)\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+
+        addition = (
+            "\n\ndef test_universal_event_accepts_hand_event_with_recognition_failure():\n"
+            "    event = {\n"
+            '        "schema_version": "0.3",\n'
+            '        "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f13",\n'
+            '        "session_id": "session-1",\n'
+            '        "device_id": "device-1",\n'
+            '        "seq": 2,\n'
+            '        "t_mono_ns": 200,\n'
+            '        "t_wall": "2026-09-28T01:00:01Z",\n'
+            '        "source": {\n'
+            '            "device_kind": "mac",\n'
+            '            "sensor": "camera",\n'
+            '            "engine": "mediapipe",\n'
+            '            "engine_version": "0.1",\n'
+            '            "model_sha256": "a" * 64,\n'
+            "        },\n"
+            '        "modality": "hand",\n'
+            '        "payload": {\n'
+            '            "gesture": "thumb_up",\n'
+            '            "phase": "end",\n'
+            '            "value": None,\n'
+            '            "hand": {\n'
+            '                "label": "right",\n'
+            '                "track_id": 3,\n'
+            '                "mirrored": True,\n'
+            "            },\n"
+            '            "confidence": {\n'
+            '                "raw": 0.99,\n'
+            '                "calibrated": 0.97,\n'
+            "            },\n"
+            '            "stability": {\n'
+            '                "frames": 8,\n'
+            '                "duration_ms": 160,\n'
+            "            },\n"
+            "        },\n"
+            '        "gate": {\n'
+            '            "recognition_passed": False,\n'
+            '            "rule_version": "phase0-1",\n'
+            "        },\n"
+            '        "ttl_ms": 500,\n'
+            "    }\n"
+            "    validate(event, EVENT_SCHEMA)\n"
+        )
+        new = anchor + addition
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "router-regression-whitespace" and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_routes_jobs_request_with_surrounding_whitespace"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = '    assert decision.metadata["request_metadata"]["source"] == "parallel-dev-test"\n'
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+
+        addition = (
+            "\n\ndef test_routes_jobs_request_with_surrounding_whitespace() -> None:\n"
+            '    assert route(ManagementRequest("u", "  求人を探して  ")).specialist is Specialist.JOBS\n'
+        )
+        new = anchor + addition
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "router-regression-fullwidth-market" and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_routes_fullwidth_market_request_after_normalization"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = '    assert decision.metadata["request_metadata"]["source"] == "parallel-dev-test"\n'
+        if "test_routes_jobs_request_with_surrounding_whitespace" in text:
+            anchor = '    assert route(ManagementRequest("u", "  求人を探して  ")).specialist is Specialist.JOBS\n'
+
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+
+        addition = (
+            "\n\ndef test_routes_fullwidth_market_request_after_normalization() -> None:\n"
+            '    assert route(ManagementRequest("u", "ＮＹダウを教えて")).specialist is Specialist.MARKET\n'
+        )
+        new = anchor + addition
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    return None, None
+
+
 class DevelopmentExecutor:
     """Execute concrete development roles against one guarded worktree."""
 
@@ -179,6 +325,25 @@ class DevelopmentExecutor:
             if self.state.chosen is None:
                 return AgentResult(task.task_id, False, "manager selection missing")
             if task.role is AgentRole.IMPLEMENTER:
+                deterministic_plan, deterministic_err = _deterministic_autonomous_test_plan(self.state.chosen)
+                if deterministic_err:
+                    return AgentResult(task.task_id, False, f"deterministic plan generation failed: {deterministic_err}")
+                if deterministic_plan is not None:
+                    ok, detail = worker.validate_plan(deterministic_plan, self.state.chosen)
+                    if not ok:
+                        return AgentResult(task.task_id, False, f"deterministic plan rejected: {detail}")
+                    if detail == "no_change":
+                        self.state.plan = deterministic_plan
+                        self.state.touched = []
+                        return AgentResult(task.task_id, True, "no safe change required")
+                    applied, detail, touched = worker.apply_plan(deterministic_plan)
+                    if not applied:
+                        worker.restore(touched)
+                        return AgentResult(task.task_id, False, f"apply failed: {detail}")
+                    self.state.plan = deterministic_plan
+                    self.state.touched = touched
+                    return AgentResult(task.task_id, True, "guarded change applied", frozenset(touched))
+
                 explicit_comment_plan = _explicit_comment_plan(self.state.instruction, self.state.chosen)
                 comment_plan = None if explicit_comment_plan is not None else worker.build_comment_test_plan(self.state.instruction, self.state.chosen)
                 plan = explicit_comment_plan if explicit_comment_plan is not None else comment_plan if comment_plan is not None else worker.build_plan(self.state.client, self.state.instruction, self.state.chosen, worker.context_for(self.state.chosen))
@@ -211,6 +376,9 @@ class DevelopmentExecutor:
                 self.state.tests_passed = passed; self.state.test_output = output
                 return AgentResult(task.task_id, passed, output[-4000:], frozenset(self.state.touched or []))
             if task.role is AgentRole.DEBUGGER:
+                task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+                if _is_deterministic_autonomous_task(task_id, self.state.chosen):
+                    return AgentResult(task.task_id, False, "deterministic test failure; schema and test must not be mutated by LLM")
                 if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
                     return AgentResult(task.task_id, True, "deterministic debug retry; no LLM JSON parsing")
                 worker.restore(self.state.touched or [])
@@ -240,6 +408,9 @@ class DevelopmentExecutor:
                 self.state.plan = plan; self.state.touched = touched
                 return AgentResult(task.task_id, True, "debug fix applied", frozenset(touched))
             if task.role is AgentRole.REFACTORER:
+                task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+                if _is_deterministic_autonomous_task(task_id, self.state.chosen):
+                    return AgentResult(task.task_id, True, "no refactor needed for deterministic test task")
                 if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
                     return AgentResult(task.task_id, True, "no refactor needed for deterministic comment change")
                 plan = worker.build_plan(self.state.client, f"Refactor the current implementation for clarity, maintainability, and duplication reduction. Preserve behavior and satisfy the original request. Original request: {self.state.instruction}", self.state.chosen, worker.context_for(self.state.chosen), self.state.test_output)

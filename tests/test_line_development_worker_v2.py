@@ -327,3 +327,28 @@ def test_worker_entrypoint_is_executable():
     )
     assert proc.returncode == 2
     assert "No development instruction supplied." in proc.stdout
+
+
+def test_build_plan_system_prompt_constrains_to_selected_file_and_diff_markers(monkeypatch):
+    recorded = {}
+
+    def fake_ask(client, system, prompt, max_tokens=1024):
+        recorded["system"] = system
+        recorded["prompt"] = prompt
+        return json.dumps({"no_change": True})
+
+    monkeypatch.setattr(worker, "ask", fake_ask)
+    client = FakeClient([])
+    chosen = "uhip/tests/test_schema_contracts.py"
+
+    plan = worker.build_plan(client, "テストを追加して", chosen, "context_text")
+
+    assert plan == {"no_change": True}
+    sys_prompt = recorded["system"]
+    assert f"The ONLY editable file is: {chosen}" in sys_prompt
+    assert f'changes[0]["file"] must be exactly "{chosen}"' in sys_prompt
+    assert "The new field is replacement text only" in sys_prompt
+    assert "never include unified-diff markers" in sys_prompt
+    assert 'return {"no_change":true}' in sys_prompt
+    user_prompt = recorded["prompt"]
+    assert f"Selected file (ONLY editable file):\n{chosen}" in user_prompt

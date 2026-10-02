@@ -411,11 +411,27 @@ def restore(paths: list[str]) -> None:
 
 
 def build_plan(client: Groq, instruction: str, chosen: str, context: str, test_output: str | None = None) -> dict:
-    system = '''You edit ONE repository file. Return JSON only.
-Real change: {"no_change":false,"changes":[{"file":"exact path","old":"exact existing text","new":"replacement text"}]}
-No safe/needed change: {"no_change":true}
-Rules: one file only; old must be an exact substring of supplied context; minimal change; never modify security, credentials, deployment, workflow, or worker logic. Do not invent text that is not visible in context. The new field is replacement text only: never include unified-diff markers, markdown fences, or standalone +/- lines. If you cannot express the change safely as exact search/replace, return {"no_change":true}.'''
-    prompt = f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}\n\nCurrent context:\n{context}"
+    system = (
+        "You edit EXACTLY ONE repository file. Return JSON only.\n\n"
+        f"The ONLY editable file is: {chosen}\n\n"
+        'Real change: {"no_change":false,"changes":[{"file":"exact path","old":"exact existing text","new":"replacement text"}]}\n'
+        'No safe/needed change: {"no_change":true}\n\n'
+        "Rules:\n"
+        f'- changes must contain at most one item, and changes[0]["file"] must be exactly "{chosen}".\n'
+        "- Never return another file path.\n"
+        '- If the requested improvement requires another file, return {"no_change":true}.\n'
+        "- old must be an exact substring of supplied context.\n"
+        "- minimal change.\n"
+        "- never modify security, credentials, deployment, workflow, or worker logic.\n"
+        "- do not invent text that is not visible in context.\n"
+        "- The new field is replacement text only: never include unified-diff markers, markdown fences, or standalone +/- lines.\n"
+        '- If you cannot express the change safely as exact search/replace, return {"no_change":true}.'
+    )
+    prompt = (
+        f"Instruction:\n{instruction}\n\n"
+        f"Selected file (ONLY editable file):\n{chosen}\n\n"
+        f"Current context:\n{context}"
+    )
     if test_output:
         prompt += f"\n\nPytest failure:\n{test_output[-3000:]}"
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
@@ -504,32 +520,11 @@ def main() -> int:
             print(output, flush=True)
             return 0 if passed else 1
         plan, applied, detail, touched = apply_plan_with_bounded_anchor_repair(
-                    client, instruction, chosen, plan, context_for(chosen)
-                )
+            client, instruction, chosen, plan, context_for(chosen)
+        )
         if not applied:
-            restore(touched)
-            apply_attempts = 0
-            while not applied and apply_attempts < MAX_APPLY_REPAIR_ATTEMPTS:
-                apply_attempts += 1
-                repair_plan = repair_anchor_plan(
-                    client,
-                    instruction,
-                    chosen,
-                    context_for(chosen),
-                    plan,
-                    detail,
-                )
-                ok, repair_detail = validate_plan(repair_plan, chosen)
-                if not ok or repair_detail == "no_change":
-                    applied = False
-                    detail = repair_detail
-                    break
-                applied, detail, touched = apply_plan(repair_plan)
-                if not applied:
-                    restore(touched)
-            if not applied:
-                print("Apply failed:", detail, flush=True)
-                return 1
+            print("Apply failed:", detail, flush=True)
+            return 1
         passed, output = run_tests(touched)
         print(output, flush=True)
         attempts = 0
