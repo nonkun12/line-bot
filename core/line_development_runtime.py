@@ -492,7 +492,8 @@ def execute(instruction: str) -> int:
         _rollback_to_clean_baseline(baseline_sha)
         detail = report.error or report.failed_task_id or "quality runtime failed"
         print(f"Multi-agent development failed: {detail}", flush=True)
-        _write_development_audit_to_google_sheets(instruction=instruction, status="FAIL", target_path=state.chosen, branch=None, exit_detail=detail, base_sha=baseline_sha, produced_sha=None)
+        stopped = stop_controller.is_stopped()
+        _write_development_audit_to_google_sheets(instruction=instruction, status="STOP" if stopped else "FAIL", target_path=state.chosen, branch=None, exit_detail=detail, base_sha=baseline_sha, produced_sha=None)
         return 1
     touched = state.touched or []
     if not touched:
