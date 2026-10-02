@@ -655,6 +655,22 @@ def execute(instruction: str) -> int:
         stopped = stop_controller.is_stopped()
         _write_development_audit_to_google_sheets(instruction=instruction, status="STOP" if stopped else "FAIL", target_path=state.chosen, branch=None, exit_detail=detail, base_sha=baseline_sha, produced_sha=None)
         return 1
+    # Export independent stage evidence for the durable autonomous-run ledger.
+    completed_by_role = {item.task.role: item for item in report.completed}
+    tester_result = completed_by_role.get(AgentRole.TESTER)
+    reviewer_result = completed_by_role.get(AgentRole.REVIEWER)
+    tests_result = "PASS" if tester_result is not None and tester_result.result.success else "FAIL"
+    verification_result = "PASS" if reviewer_result is not None and reviewer_result.result.success else "FAIL"
+    safety_gate_result = "PASS" if report.success and report.integration_ready else "BLOCKED"
+    os.environ["AUTONOMOUS_TESTS_RESULT"] = tests_result
+    os.environ["AUTONOMOUS_VERIFICATION_RESULT"] = verification_result
+    os.environ["AUTONOMOUS_SAFETY_GATE_RESULT"] = safety_gate_result
+    github_env = os.environ.get("GITHUB_ENV")
+    if github_env:
+        with open(github_env, "a", encoding="utf-8") as fh:
+            fh.write(f"AUTONOMOUS_TESTS_RESULT={tests_result}\n")
+            fh.write(f"AUTONOMOUS_VERIFICATION_RESULT={verification_result}\n")
+            fh.write(f"AUTONOMOUS_SAFETY_GATE_RESULT={safety_gate_result}\n")
     print(f"[manager] {tasks[0].task_id}: {manager_result.summary[-1500:]}", flush=True)
     for item in report.completed:
         print(f"[{item.task.role.value}] {item.task.task_id}: {item.result.summary[-1500:]}", flush=True)
