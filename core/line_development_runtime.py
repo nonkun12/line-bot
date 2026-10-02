@@ -21,6 +21,7 @@ from .execution_safety import GitWorktreeSafetyGate
 from .multi_agent import AgentResult, AgentRole, AgentTask
 from .idea_ai import IdeaAgent
 from .idea_handoff import IdeaAcceptance, handoff_idea
+from .immediate_stop import ImmediateStop, ImmediateStopController, StopReason
 from .quality_runtime import QualityRuntime
 from scripts import line_development_worker_v2 as worker
 
@@ -380,6 +381,13 @@ def _prepare_idea_stage(instruction: str) -> tuple[str, str | None, str | None]:
 
 def execute(instruction: str) -> int:
     """Run one real guarded development request through the quality pipeline."""
+    stop_controller = ImmediateStopController()
+    try:
+        stop_controller.assert_can_execute()
+    except ImmediateStop as exc:
+        print(f"IMMEDIATE STOP: {exc}", flush=True)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=None, branch=None, exit_detail=str(exc), base_sha=None, produced_sha=None)
+        return 1
     instruction, idea_task_id, idea_block_reason = _prepare_idea_stage(instruction)
     if idea_block_reason is not None:
         _write_development_audit_to_google_sheets(
@@ -407,7 +415,13 @@ def execute(instruction: str) -> int:
     # Manager is read-only target selection. Establish a clean baseline immediately
     # before any file-changing role so pre-existing dirty state cannot be mistaken
     # for autonomous work.
-    manager_result = executor.execute(tasks[0])
+    try:
+        stop_controller.assert_can_execute()
+        manager_result = executor.execute(tasks[0])
+    except ImmediateStop as exc:
+        print(f"IMMEDIATE STOP: {exc}", flush=True)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=None, branch=None, exit_detail=str(exc), base_sha=None, produced_sha=None)
+        return 1
     if not manager_result.success:
         print(f"Manager selection failed: {manager_result.summary}", flush=True)
         _write_development_audit_to_google_sheets(instruction=instruction, status="BLOCKED", target_path=None, branch=None, exit_detail=manager_result.summary, base_sha=None, produced_sha=None)
@@ -459,6 +473,7 @@ def execute(instruction: str) -> int:
         max_rounds=3,
         execution_safety_gate=safety_gate,
         allowed_paths=(state.chosen,),
+        immediate_stop_controller=stop_controller,
     )
     try:
         report = runtime.run(tasks[1:])
@@ -466,7 +481,8 @@ def execute(instruction: str) -> int:
         _rollback_to_clean_baseline(baseline_sha)
         detail = f"{type(exc).__name__}: {exc}"
         print(f"Multi-agent development failed closed: {detail}", flush=True)
-        _write_development_audit_to_google_sheets(instruction=instruction, status="FAIL", target_path=state.chosen, branch=None, exit_detail=detail, base_sha=baseline_sha, produced_sha=None)
+        stopped = stop_controller.is_stopped()
+        _write_development_audit_to_google_sheets(instruction=instruction, status="STOP" if stopped else "FAIL", target_path=state.chosen, branch=None, exit_detail=detail, base_sha=baseline_sha, produced_sha=None)
         return 1
     print(f"[manager] {tasks[0].task_id}: {manager_result.summary[-1500:]}", flush=True)
     for item in report.completed:
@@ -492,6 +508,12 @@ def execute(instruction: str) -> int:
             produced_sha=baseline_sha,
         )
         return 0
+    try:
+        stop_controller.assert_can_execute()
+    except ImmediateStop as exc:
+        _rollback_to_clean_baseline(baseline_sha)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=state.chosen, branch=None, exit_detail=str(exc), base_sha=baseline_sha, produced_sha=None)
+        return 1
     branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
     identity = ["-c", "user.name=github-actions[bot]", "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com"]
     add = worker.run(["git", "add", "--", *touched])
@@ -500,12 +522,24 @@ def execute(instruction: str) -> int:
     status = worker.run(["git", "status", "--short"])
     if status.returncode != 0 or not status.stdout.strip():
         worker.restore(touched); print("No changes to commit.", flush=True); return 1
+    try:
+        stop_controller.assert_can_execute()
+    except ImmediateStop as exc:
+        _rollback_to_clean_baseline(baseline_sha)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=state.chosen, branch=None, exit_detail=str(exc), base_sha=baseline_sha, produced_sha=None)
+        return 1
     commit = worker.run(["git", *identity, "commit", "-m", "feat: LINE development request"])
     if commit.returncode != 0:
         worker.restore(touched); print(commit.stderr[-2000:], flush=True); return 1
     checkout = worker.run(["git", "checkout", "-B", branch])
     if checkout.returncode != 0:
         print(checkout.stderr[-2000:], flush=True); return 1
+    try:
+        stop_controller.assert_can_execute()
+    except ImmediateStop as exc:
+        _rollback_to_clean_baseline(baseline_sha)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=state.chosen, branch=branch, exit_detail=str(exc), base_sha=baseline_sha, produced_sha=None)
+        return 1
     push = worker.run(["git", "push", "--set-upstream", "origin", branch])
     if push.returncode != 0:
         print(push.stderr[-2000:], flush=True); return 1
