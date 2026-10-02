@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Awaitable, Callable
 
+from core.loop_execution_contract import ExecutionEvidence, ExecutionResult
+
 
 class LoopStatus(str, Enum):
     IDLE = "idle"
@@ -82,9 +84,10 @@ class TaskExecutionResult:
     status: LoopStatus
     message: str
     iteration: int | None = None
+    evidence: ExecutionEvidence | None = None
 
 
-Handler = Callable[[LoopTask, LoopState], Awaitable[str]]
+Handler = Callable[[LoopTask, LoopState], Awaitable[ExecutionEvidence]]
 StopProvider = Callable[[], bool]
 
 
@@ -116,7 +119,7 @@ class ParallelLoopDispatcher:
         registry: LoopRegistry,
         *,
         max_concurrency: int = 2,
-        stop_provider: StopProvider | None = None,
+        stop_provider: StopProvider,
     ) -> None:
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
@@ -137,13 +140,22 @@ class ParallelLoopDispatcher:
     def _is_stopped(self) -> bool:
         if self._stop.is_set():
             return True
-        if self._stop_provider is None:
-            return False
         try:
             return bool(self._stop_provider())
         except Exception:
             # External stop sources fail closed.
             return True
+
+    def validate_task(self, task: LoopTask) -> LoopState:
+        """Validate registry membership and declared boundaries without mutating state."""
+        state = self.registry.get(task.loop_id)
+        if task.agent_id not in state.spec.allowed_agents:
+            raise ValueError("agent not allowed for loop")
+        if not task.scope.issubset(state.spec.allowed_scope):
+            raise ValueError("task scope exceeds loop scope")
+        if not task.resources.issubset(state.spec.allowed_resources):
+            raise ValueError("task resources exceed loop resources")
+        return state
 
     async def _acquire_resources(self, resources: frozenset[str]) -> list[asyncio.Lock]:
         locks = [self._resource_locks.setdefault(r, asyncio.Lock()) for r in sorted(resources)]
@@ -159,7 +171,7 @@ class ParallelLoopDispatcher:
             raise
 
     async def run(self, task: LoopTask, handler: Handler) -> TaskExecutionResult:
-        state = self.registry.get(task.loop_id)
+        state = self.validate_task(task)
         iteration_lock = self._iteration_locks.setdefault(task.loop_id, asyncio.Lock())
 
         async with iteration_lock:
@@ -167,15 +179,6 @@ class ParallelLoopDispatcher:
                 state.status = LoopStatus.STOPPED
                 state.last_result = "dispatcher stopped before admission"
                 return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.STOPPED, state.last_result)
-
-            if task.agent_id not in state.spec.allowed_agents:
-                return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, "agent not allowed for loop")
-
-            if not task.scope.issubset(state.spec.allowed_scope):
-                return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, "task scope exceeds loop scope")
-
-            if not task.resources.issubset(state.spec.allowed_resources):
-                return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, "task resources exceed loop resources")
 
             if state.iterations >= state.spec.max_iterations:
                 return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, "max iterations exceeded")
@@ -200,14 +203,30 @@ class ParallelLoopDispatcher:
                     return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.STOPPED, state.last_result, iteration)
 
                 try:
-                    message = await handler(task, state)
+                    evidence = await handler(task, state)
+                    if not isinstance(evidence, ExecutionEvidence):
+                        state.status = LoopStatus.FAILED
+                        state.last_result = "handler did not return ExecutionEvidence"
+                        return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, state.last_result, iteration)
+                    if evidence.task_id != task.task_id or evidence.loop_id != task.loop_id:
+                        state.status = LoopStatus.FAILED
+                        state.last_result = "ExecutionEvidence task/loop mismatch"
+                        return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, state.last_result, iteration, evidence)
                     if self._is_stopped():
                         state.status = LoopStatus.STOPPED
                         state.last_result = "dispatcher stopped after handler"
-                        return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.STOPPED, state.last_result, iteration)
-                    state.last_result = message
-                    state.status = LoopStatus.PASSED
-                    return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.PASSED, message, iteration)
+                        return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.STOPPED, state.last_result, iteration, evidence)
+                    if evidence.result is ExecutionResult.PASS:
+                        state.last_result = "execution evidence PASS"
+                        state.status = LoopStatus.PASSED
+                        return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.PASSED, state.last_result, iteration, evidence)
+                    if evidence.result is ExecutionResult.STOPPED:
+                        state.last_result = evidence.error or "execution evidence stopped"
+                        state.status = LoopStatus.STOPPED
+                        return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.STOPPED, state.last_result, iteration, evidence)
+                    state.last_result = evidence.error or "execution evidence failed"
+                    state.status = LoopStatus.FAILED
+                    return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, state.last_result, iteration, evidence)
                 except asyncio.CancelledError:
                     state.status = LoopStatus.STOPPED
                     state.last_result = "task cancelled"
@@ -226,5 +245,7 @@ async def run_parallel(
     tasks: tuple[LoopTask, ...],
     handler: Handler,
 ) -> tuple[TaskExecutionResult, ...]:
-    """Dispatch a fixed task set concurrently; no task creation occurs here."""
+    """Validate the entire fixed task set before any handler starts."""
+    for task in tasks:
+        dispatcher.validate_task(task)
     return tuple(await asyncio.gather(*(dispatcher.run(task, handler) for task in tasks)))
