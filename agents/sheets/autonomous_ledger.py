@@ -68,6 +68,18 @@ def _normalized_row(row: list) -> list[str]:
     return values + [""] * (len(HEADERS) - len(values))
 
 
+def _normalized_slice(row: list, start: int) -> list[str]:
+    values = [str(cell) for cell in row[start : start + len(HEADERS)]]
+    return values + [""] * (len(HEADERS) - len(values))
+
+
+def _column_number(label: str) -> int:
+    number = 0
+    for char in label:
+        number = number * 26 + (ord(char) - ord("A") + 1)
+    return number
+
+
 def _verify_updated_range(updated_range: object) -> str:
     if not isinstance(updated_range, str) or not updated_range.strip():
         raise RuntimeError("Google Sheets append did not return updatedRange")
@@ -86,10 +98,34 @@ def _verify_updated_range(updated_range: object) -> str:
         raise RuntimeError(
             f"Google Sheets append wrote to unexpected sheet={sheet!r}; expected={expected_sheet!r}"
         )
-    if (start_col, end_col) != ("A", "Q") or start_row != end_row:
+
+    width = _column_number(end_col) - _column_number(start_col) + 1
+    if width != len(HEADERS) or start_row != end_row:
         raise RuntimeError(f"Google Sheets append returned unexpected row range={updated_range!r}")
 
-    return f"{sheet}!A{start_row}:Q{end_row}"
+    return f"{sheet}!{start_col}{start_row}:{end_col}{end_row}"
+
+
+def _find_existing_run(client: GoogleSheetsClient, sheet: str, record: AutonomousRunRecord) -> bool:
+    """Find an existing run_id anywhere in the ledger table and verify its full row.
+
+    Google Sheets may append to the sheet's detected table range even when the
+    requested A:Q range is a different starting column. Search the used area so
+    idempotency remains correct across that case and across legacy ledger rows.
+    """
+    expected = record.values()
+    rows = client.read_rows(f"{sheet}!A:ZZ")
+    for row in rows:
+        for index, cell in enumerate(row):
+            if str(cell) != record.run_id or index == 0:
+                continue
+            start = index - 1
+            if _normalized_slice(row, start) == expected:
+                return True
+            raise RuntimeError(
+                f"Google Sheets contains an existing run_id with mismatched ledger data: {record.run_id}"
+            )
+    return False
 
 
 def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
@@ -100,15 +136,9 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
     """
     ensure_headers(client)
     sheet = LEDGER_RANGE.split("!", 1)[0]
-    existing = client.search_column(f"{sheet}!A:Q", 1, record.run_id)
     expected = record.values()
-    if existing:
-        matching = any(_normalized_row(row) == expected for row in existing)
-        if matching:
-            return False
-        raise RuntimeError(
-            f"Google Sheets contains an existing run_id with mismatched ledger data: {record.run_id}"
-        )
+    if _find_existing_run(client, sheet, record):
+        return False
 
     response = client.append_row(LEDGER_RANGE, expected)
     updates = response.get("updates", {}) if isinstance(response, dict) else {}
