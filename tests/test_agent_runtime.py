@@ -431,3 +431,39 @@ def test_control_tower_approval_is_bound_to_exact_task():
     assert decision.approved_task_matches(approved)
     assert not decision.approved_task_matches(tampered)
     assert decision.approved_task is approved
+
+
+
+def test_development_runtime_invites_hermes_as_advisory_reviewer(monkeypatch) -> None:
+    monkeypatch.setenv("HERMES_ADVISOR_ENABLED", "true")
+    calls = []
+
+    def fake_advisor(prompt):
+        calls.append(prompt)
+        return "Review note: keep the safety gate and test evidence authoritative."
+
+    monkeypatch.setattr("core.agent_runtime.run_hermes_advisor", fake_advisor)
+
+    runtime = development_runtime()
+    report = runtime.run_development(development_tasks())
+
+    assert report.success and report.integration_ready
+    assert runtime.last_hermes_advice is not None
+    assert "safety gate" in runtime.last_hermes_advice
+    assert len(calls) == 1
+    assert "distributed development cycle" in calls[0]
+
+
+def test_development_runtime_continues_when_hermes_is_unavailable(monkeypatch) -> None:
+    monkeypatch.setenv("HERMES_ADVISOR_ENABLED", "true")
+
+    def unavailable(prompt):
+        raise RuntimeError("Hermes unavailable")
+
+    monkeypatch.setattr("core.agent_runtime.run_hermes_advisor", unavailable)
+
+    runtime = development_runtime()
+    report = runtime.run_development(development_tasks())
+
+    assert report.success and report.integration_ready
+    assert runtime.last_hermes_advice is None
