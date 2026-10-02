@@ -157,8 +157,15 @@ jobs:
           state_branch="autonomous-loop-state"
           auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
           git remote set-url origin "$auth_url"
-          if ! git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1; then
+          set +e
+          git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1
+          state_ref_rc=$?
+          set -e
+          if [ "$state_ref_rc" -eq 2 ]; then
             git push "$auth_url" "refs/remotes/origin/main:refs/heads/$state_branch"
+          elif [ "$state_ref_rc" -ne 0 ]; then
+            echo "Unable to query $state_branch (git ls-remote rc=$state_ref_rc); failing closed."
+            exit 1
           fi
 
           git fetch --quiet origin "$state_branch"
@@ -199,6 +206,8 @@ jobs:
           export AUTONOMOUS_CHANGED_FILES="none"
           export AUTONOMOUS_BLOCKED_FAILED_REASON="workflow_no_loop_evidence"
           export AUTONOMOUS_NEXT_ACTION="review_failure"
+          export AUTONOMOUS_RUN_STATUS="QUEUE_EXHAUSTED"
+          export AUTONOMOUS_LEDGER_RESULT="NOT_RECORDED"
 
           if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
             _loop_payload="$(python - <<'PY'
@@ -221,13 +230,12 @@ jobs:
             [ -n "$_status" ] || exit 1
             [ -n "$_exit_code" ] || exit 1
 
+            export AUTONOMOUS_RUN_STATUS="$_status"
             if [ "$_exit_code" != "0" ]; then
-              export AUTONOMOUS_TESTS_RESULT="FAIL"
-              export AUTONOMOUS_VERIFICATION_RESULT="FAIL"
               export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
               export AUTONOMOUS_PRODUCED_SHA=""
               export AUTONOMOUS_CHANGED_FILES="none"
-              export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:$_failure_reason"
+              export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:status=$_status;reason=$_failure_reason"
               export AUTONOMOUS_NEXT_ACTION="review_failure"
             elif [ "$_status" = "PASS" ]; then
               if [ "$AUTONOMOUS_TESTS_RESULT" != "PASS" ] || [ "$AUTONOMOUS_VERIFICATION_RESULT" != "PASS" ] || [ "$AUTONOMOUS_SAFETY_GATE_RESULT" != "PASS" ]; then
@@ -249,12 +257,15 @@ jobs:
               export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
               export AUTONOMOUS_PRODUCED_SHA=""
               export AUTONOMOUS_CHANGED_FILES="none"
-              export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:no_change"
+              export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:status=NO_CHANGE"
               export AUTONOMOUS_NEXT_ACTION="review_failure"
             else
+              export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
+              export AUTONOMOUS_VERIFICATION_RESULT="NOT_RUN"
               export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
               export AUTONOMOUS_PRODUCED_SHA=""
-              export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:unpublishable_result:$_status"
+              export AUTONOMOUS_CHANGED_FILES="none"
+              export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:status=$_status"
               export AUTONOMOUS_NEXT_ACTION="review_failure"
             fi
           fi
@@ -270,11 +281,19 @@ jobs:
           export DEV_INSTRUCTION="Distributed autonomous loop execution: $AUTONOMOUS_TASK_ID"
           export GITHUB_RUN_ID="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           python - <<'PY'
+          from pathlib import Path
           from agents.sheets.autonomous_ledger import record_autonomous_run
           recorded = record_autonomous_run()
           result = "ALREADY_RECORDED" if not recorded else "RECORDED"
           print(f"Google Sheets logging: {result}", flush=True)
+          Path("/tmp/autonomous-ledger-result").write_text(result, encoding="utf-8")
           PY
+          export AUTONOMOUS_LEDGER_RESULT="$(cat /tmp/autonomous-ledger-result)"
+          echo "AUTONOMOUS_LEDGER_RESULT=$AUTONOMOUS_LEDGER_RESULT" >> "$GITHUB_ENV"
+          echo "AUTONOMOUS_RUN_STATUS=$AUTONOMOUS_RUN_STATUS" >> "$GITHUB_ENV"
+          if [ "$AUTONOMOUS_RUN_STATUS" = "QUEUE_EXHAUSTED" ]; then
+            export AUTONOMOUS_TASK_ID="queue-exhausted"
+          fi
       - name: Persist completed task state
         if: success()
         env:
@@ -301,15 +320,34 @@ jobs:
           PY
           )"
 
-          if [[ "$status" != "PASS" && "$status" != "NO_CHANGE" ]] || [ -z "$task_id" ]; then
-            echo "State is not advanced: status=$status task_id=$task_id"
+          if [ "$AUTONOMOUS_LEDGER_RESULT" != "RECORDED" ] && [ "$AUTONOMOUS_LEDGER_RESULT" != "ALREADY_RECORDED" ]; then
+            echo "State is not advanced: distributed loop ledger result=$AUTONOMOUS_LEDGER_RESULT"
+            exit 1
+          fi
+          if [ "$AUTONOMOUS_RUN_STATUS" != "PASS" ]; then
+            echo "State is not advanced: runner status=$AUTONOMOUS_RUN_STATUS task_id=$task_id"
+            exit 1
+          fi
+          if [ "$AUTONOMOUS_TESTS_RESULT" != "PASS" ] || [ "$AUTONOMOUS_VERIFICATION_RESULT" != "PASS" ] || [ "$AUTONOMOUS_SAFETY_GATE_RESULT" != "PASS" ]; then
+            echo "State is not advanced: independent gates are not all PASS."
+            exit 1
+          fi
+          if [ -z "$task_id" ]; then
+            echo "State is not advanced: task_id is empty"
             exit 1
           fi
 
           state_branch="autonomous-loop-state"
           auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
-          if ! git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1; then
+          set +e
+          git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1
+          state_ref_rc=$?
+          set -e
+          if [ "$state_ref_rc" -eq 2 ]; then
             git push "$auth_url" "refs/remotes/origin/main:refs/heads/$state_branch"
+          elif [ "$state_ref_rc" -ne 0 ]; then
+            echo "Unable to query $state_branch (git ls-remote rc=$state_ref_rc); failing closed."
+            exit 1
           fi
           git fetch --quiet origin "$state_branch"
           rm -rf /tmp/autonomous-state-worktree
