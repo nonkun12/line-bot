@@ -91,7 +91,6 @@ jobs:
 
       - name: Run one bounded autonomous task
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           SELF_IMPROVEMENT_HISTORY_PATH: /tmp/line-bot-self-improvement.jsonl
         run: |
           set -euo pipefail
@@ -113,8 +112,9 @@ jobs:
           POLLER_PID=$!
           trap 'kill "$POLLER_PID" 2>/dev/null || true' EXIT
 
+          GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" \
           env -u GH_TOKEN -u GITHUB_TOKEN -u GITHUB_OUTPUT -u GITHUB_PATH \
-            python scripts/run_minimal_autonomous_loop.py \
+            GROQ_API_KEY="$GROQ_API_KEY" python scripts/run_minimal_autonomous_loop.py \
             --max-tasks 1 \
             --stop-file "$STOP_FILE" \
             --state /tmp/autonomous-loop-state.json \
@@ -278,6 +278,11 @@ jobs:
             [ -n "$AUTONOMOUS_CHANGED_FILES" ] || exit 1
           fi
 
+          if [ "$AUTONOMOUS_RUN_STATUS" = "QUEUE_EXHAUSTED" ]; then
+            export AUTONOMOUS_TASK_ID="queue-exhausted"
+            export AUTONOMOUS_BLOCKED_FAILED_REASON="queue_exhausted"
+            export AUTONOMOUS_NEXT_ACTION="idle_until_next_task"
+          fi
           export DEV_INSTRUCTION="Distributed autonomous loop execution: $AUTONOMOUS_TASK_ID"
           export GITHUB_RUN_ID="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           python - <<'PY'
@@ -291,9 +296,6 @@ jobs:
           export AUTONOMOUS_LEDGER_RESULT="$(cat /tmp/autonomous-ledger-result)"
           echo "AUTONOMOUS_LEDGER_RESULT=$AUTONOMOUS_LEDGER_RESULT" >> "$GITHUB_ENV"
           echo "AUTONOMOUS_RUN_STATUS=$AUTONOMOUS_RUN_STATUS" >> "$GITHUB_ENV"
-          if [ "$AUTONOMOUS_RUN_STATUS" = "QUEUE_EXHAUSTED" ]; then
-            export AUTONOMOUS_TASK_ID="queue-exhausted"
-          fi
       - name: Persist completed task state
         if: success()
         env:
