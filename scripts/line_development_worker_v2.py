@@ -399,7 +399,21 @@ def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
             outputs.append(compile_result.stderr)
         if compile_result.returncode != 0:
             return False, "\n".join(outputs)[-8000:]
-    tests = run([sys.executable, "-m", "pytest", "-q", "--tb=native"], timeout=900)
+
+    # The parent autonomous runner uses AUTONOMOUS_TASK_ID as runtime context.
+    # Do not leak that orchestration-only selector into the test subprocess:
+    # unit tests may instantiate DevelopmentExecutor directly and would then
+    # accidentally enter deterministic autonomous-task mode.
+    test_env = os.environ.copy()
+    test_env.pop("AUTONOMOUS_TASK_ID", None)
+    tests = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "--tb=native"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=900,
+        env=test_env,
+    )
     outputs.append("full pytest:")
     outputs.extend([tests.stdout, tests.stderr])
     return tests.returncode == 0, "\n".join(outputs)[-8000:]
