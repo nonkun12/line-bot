@@ -9,6 +9,7 @@ class FakeClient:
         }
         self.readback = readback
         self.appended = []
+        self.append_options = []
         self.read_ranges = []
 
     def search_column(self, *args):
@@ -16,6 +17,7 @@ class FakeClient:
 
     def append_row(self, *args, **kwargs):
         self.appended.append(args)
+        self.append_options.append(kwargs)
         return self.response
 
     def read_rows(self, range_name):
@@ -78,7 +80,7 @@ def test_append_once_records_and_reads_back_exact_row():
     assert ledger.append_once(client, record) is True
     assert len(client.appended) == 1
     assert client.appended[0][1] == record.values()
-    assert client.appended[0][2] == "RAW"
+    assert client.append_options[0]["value_input_option"] == "RAW"
     assert "AutonomousDevelopment!A5:Q5" in client.read_ranges
 
 
