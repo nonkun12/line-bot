@@ -19,6 +19,7 @@ class DistributedAgentDescriptor:
     icon: str
     detail: str
     capability: str
+    execution_required: bool = True
 
 
 DISTRIBUTED_AGENT_CATALOG: tuple[DistributedAgentDescriptor, ...] = (
@@ -57,6 +58,10 @@ DISTRIBUTED_AGENT_CATALOG: tuple[DistributedAgentDescriptor, ...] = (
     DistributedAgentDescriptor(
         AgentRole.VIDEO, "video", "video", "映像AI", "🎬",
         "動画企画・台本・絵コンテ・編集設計。動画生成・書き出しは未接続", "video_planning",
+    ),
+    DistributedAgentDescriptor(
+        AgentRole.IDEA, "idea", "idea", "発想AI", "💡",
+        "多様な発想・再構成・組合せ・専門化・アーキテクチャ探索。実行はSafety Gate配下", "idea_proposals",
     ),
 )
 

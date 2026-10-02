@@ -290,8 +290,13 @@ def system_status():
         status = specialist_status(descriptor)
         result["features"][descriptor.key] = {
             "status": status,
+            "key": descriptor.key,
+            "role": descriptor.role.value,
             "label": descriptor.label,
+            "icon": descriptor.icon,
             "detail": descriptor.detail,
+            "capability": descriptor.capability,
+            "execution_required": descriptor.execution_required,
         }
 
     specialists = [
@@ -300,6 +305,9 @@ def system_status():
             "label": descriptor.label,
             "status": specialist_status(descriptor),
             "role": descriptor.detail,
+            "icon": descriptor.icon,
+            "capability": descriptor.capability,
+            "execution_required": descriptor.execution_required,
         }
         for descriptor in DISTRIBUTED_AGENT_CATALOG
     ]

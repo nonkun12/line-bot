@@ -19,23 +19,13 @@ document.addEventListener('DOMContentLoaded', () => {
       setStatus('dbStatus', d.notes?.status === 'ok' ? 'online' : 'error'); document.getElementById('dbStatus').textContent=`Database: ${d.notes?.status === 'ok' ? 'online' : 'error'}`;
       setStatus('aiStatus', d.services?.ai_mcp || 'unknown'); document.getElementById('aiDetails').textContent='LangGraph / MCP';
       const features=d.features||{};
-      const featureOrder=[
-        ['management_ai','統合AI / Management','タスク分解・配分・結果回収'],
-        ['general','General AI','汎用・フォールバック'],
-        ['english_learning','英語学習AI','学習・進捗・復習'],
-        ['stocks','株価AI','株価・テクニカル分析・監視'],
-        ['global_market','世界市場AI','NYダウ・主要為替'],
-        ['ai_news','AI NEWS','取得・要約・配信'],
-        ['voice','AIスピーカー / Voice','音声入力・音声出力'],
-        ['jobs','求職AI','求人検索・応募支援'],
-        ['music','音楽AI','選曲・作曲/作詞補助・プレイリスト'],
-        ['video','映像AI','企画・台本・絵コンテ・編集'],
-      ];
-      const icons={management_ai:'🧠',general:'🧩',english_learning:'🇬🇧',stocks:'📈',global_market:'🌎',ai_news:'📰',voice:'🎙️',jobs:'💼',music:'🎵',video:'🎬'};
+      const icons={management_ai:'🧠',idea:'💡',general:'🧩',english_learning:'🇬🇧',stocks:'📈',global_market:'🌎',ai_news:'📰',voice:'🎙️',jobs:'💼',music:'🎵',video:'🎬'};
+      const featureOrder=['management_ai', ...Object.keys(features).filter(k => k !== 'management_ai')];
       const featureGrid=document.getElementById('featureGrid');
-      featureGrid.innerHTML=featureOrder.map(([key,title,baseDetail])=>{
+      featureGrid.innerHTML=featureOrder.map(key=>{
         const f=features[key]||{}, status=f.status||'unknown';
-        return `<div class="system-card"><div class="system-card-title">${icons[key]||'🤖'} ${esc(title)}</div><div class="system-status">${label(status)}</div><div class="system-details">${esc(f.detail||baseDetail)}</div></div>`;
+        const title=f.label||key, icon=f.icon||icons[key]||'🤖';
+        return `<div class="system-card"><div class="system-card-title">${esc(icon)} ${esc(title)}</div><div class="system-status">${label(status)}</div><div class="system-details">${esc(f.detail||'')}</div></div>`;
       }).join('');
       try {
         const lr=await fetch(api('/api/dashboard/loop')); const ld=await lr.json();
