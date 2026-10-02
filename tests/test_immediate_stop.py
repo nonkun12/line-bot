@@ -47,3 +47,22 @@ def test_unconventional_idea_alone_does_not_stop(tmp_path: Path):
     controller = ImmediateStopController(tmp_path / "stop.json")
     assert controller.inspect_text("try an unconventional architecture leap with no new permissions") is None
     assert not controller.is_stopped()
+
+
+def test_missing_stop_latch_allows_normal_operation(tmp_path: Path):
+    controller = ImmediateStopController(tmp_path / "missing.json")
+    assert not controller.is_stopped()
+    controller.assert_can_execute()
+
+
+def test_stop_state_is_read_once_per_check(tmp_path: Path):
+    class _CountingController(ImmediateStopController):
+        reads = 0
+
+        def _read(self):
+            self.reads += 1
+            return super()._read()
+
+    controller = _CountingController(tmp_path / "stop.json")
+    assert not controller.is_stopped()
+    assert controller.reads == 1
