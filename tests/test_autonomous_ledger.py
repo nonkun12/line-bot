@@ -14,7 +14,7 @@ class FakeClient:
     def search_column(self, *args):
         return self.existing
 
-    def append_row(self, *args):
+    def append_row(self, *args, **kwargs):
         self.appended.append(args)
         return self.response
 
@@ -174,7 +174,7 @@ def test_record_autonomous_run_deduplicates_after_append_then_client_error(monke
         def search_column(self, *args):
             return [shared_rows[0]] if shared_rows else []
 
-        def append_row(self, *args):
+        def append_row(self, *args, **kwargs):
             shared_rows.append(expected.values())
             if self.fail_after_append:
                 raise RuntimeError("response lost after server-side append")
