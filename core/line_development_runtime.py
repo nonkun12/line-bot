@@ -23,6 +23,7 @@ from .idea_ai import IdeaAgent
 from .idea_handoff import IdeaAcceptance, handoff_idea
 from .immediate_stop import ImmediateStop, ImmediateStopController, StopReason
 from .quality_runtime import QualityRuntime
+from .adaptive_loop import route_task
 from scripts import line_development_worker_v2 as worker
 
 
@@ -574,32 +575,41 @@ def execute(instruction: str) -> int:
     if idea_task_id:
         os.environ["AUTONOMOUS_TASK_ID"] = idea_task_id
     client = worker.Groq(api_key=os.environ["GROQ_API_KEY"])
+    available_files = set(worker.repo_files())
+    route = route_task(instruction, available_files)
+    print(f"[ROUTER] manager_required={route.manager_required}; reason={route.reason}", flush=True)
     state = DevelopmentState(client=client, instruction=instruction)
     executor = DevelopmentExecutor(state)
-    tasks = (
-        AgentTask("manager", AgentRole.MANAGER, "Select one safe implementation target.", resources=frozenset({"target-selection"})),
-        AgentTask("implementer", AgentRole.IMPLEMENTER, "Implement the explicit LINE development request.", resources=frozenset({"working-tree"}), depends_on=("manager",)),
-        AgentTask("tester", AgentRole.TESTER, "Run guarded compile and full pytest checks.", resources=frozenset({"working-tree"}), depends_on=("implementer",)),
-        AgentTask("reviewer", AgentRole.REVIEWER, "Review the resulting diff and gate the change.", resources=frozenset({"working-tree"}), depends_on=("tester",)),
-        AgentTask("integrator", AgentRole.INTEGRATOR, "Run the final integration gate.", resources=frozenset({"working-tree"}), depends_on=("reviewer",)),
-    )
+    task_list = []
+    if route.manager_required:
+        task_list.append(AgentTask("manager", AgentRole.MANAGER, "Select one safe implementation target.", resources=frozenset({"target-selection"})))
+    task_list.append(AgentTask("implementer", AgentRole.IMPLEMENTER, "Implement the explicit LINE development request.", resources=frozenset({"working-tree"}), depends_on=("manager",) if route.manager_required else ()))
+    task_list.append(AgentTask("tester", AgentRole.TESTER, "Run guarded compile and full pytest checks.", resources=frozenset({"working-tree"}), depends_on=("implementer",)))
+    task_list.append(AgentTask("reviewer", AgentRole.REVIEWER, "Review the resulting diff and gate the change.", resources=frozenset({"working-tree"}), depends_on=("tester",)))
+    task_list.append(AgentTask("integrator", AgentRole.INTEGRATOR, "Run the final integration gate.", resources=frozenset({"working-tree"}), depends_on=("reviewer",)))
+    tasks = tuple(task_list)
     # Manager is read-only target selection. Establish a clean baseline immediately
     # before any file-changing role so pre-existing dirty state cannot be mistaken
     # for autonomous work.
-    try:
-        stop_controller.assert_can_execute()
-        manager_result = executor.execute(tasks[0])
-    except ImmediateStop as exc:
-        print(f"IMMEDIATE STOP: {exc}", flush=True)
-        _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=None, branch=None, exit_detail=str(exc), base_sha=None, produced_sha=None)
-        return 1
-    if not manager_result.success:
-        print(f"Manager selection failed: {manager_result.summary}", flush=True)
-        _write_development_audit_to_google_sheets(instruction=instruction, status="BLOCKED", target_path=None, branch=None, exit_detail=manager_result.summary, base_sha=None, produced_sha=None)
-        return 1
+    manager_result = None
+    if route.manager_required:
+        try:
+            stop_controller.assert_can_execute()
+            manager_result = executor.execute(tasks[0])
+        except ImmediateStop as exc:
+            print(f"IMMEDIATE STOP: {exc}", flush=True)
+            _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=None, branch=None, exit_detail=str(exc), base_sha=None, produced_sha=None)
+            return 1
+        if not manager_result.success:
+            print(f"Manager selection failed: {manager_result.summary}", flush=True)
+            _write_development_audit_to_google_sheets(instruction=instruction, status="BLOCKED", target_path=None, branch=None, exit_detail=manager_result.summary, base_sha=None, produced_sha=None)
+            return 1
+    else:
+        target = route.reason.split(": ", 1)[1]
+        state.chosen = target
+        manager_result = AgentResult("router", True, route.reason, frozenset({target}))
     if state.chosen is None:
-        print("Manager produced no target.", flush=True)
-        _write_development_audit_to_google_sheets(instruction=instruction, status="BLOCKED", target_path=None, branch=None, exit_detail="manager produced no target", base_sha=None, produced_sha=None)
+        print("No safe target selected.", flush=True)
         return 1
     if os.environ.get("SELF_IMPROVEMENT_POLICY_ENFORCED", "").strip().lower() in {"1", "true", "yes", "on"}:
         assessment = assess_self_improvement((state.chosen,))
@@ -647,7 +657,7 @@ def execute(instruction: str) -> int:
         immediate_stop_controller=stop_controller,
     )
     try:
-        report = runtime.run(tasks[1:])
+        report = runtime.run(tasks[1:] if route.manager_required else tasks)
     except Exception as exc:
         _rollback_to_clean_baseline(baseline_sha)
         detail = f"{type(exc).__name__}: {exc}"
@@ -655,7 +665,7 @@ def execute(instruction: str) -> int:
         stopped = stop_controller.is_stopped()
         _write_development_audit_to_google_sheets(instruction=instruction, status="STOP" if stopped else "FAIL", target_path=state.chosen, branch=None, exit_detail=detail, base_sha=baseline_sha, produced_sha=None)
         return 1
-    print(f"[manager] {tasks[0].task_id}: {manager_result.summary[-1500:]}", flush=True)
+    print(f"[router] {manager_result.summary[-1500:]}", flush=True)
     for item in report.completed:
         print(f"[{item.task.role.value}] {item.task.task_id}: {item.result.summary[-1500:]}", flush=True)
     improvement_result = observe_self_improvement(report, state.chosen)
