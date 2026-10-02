@@ -171,7 +171,10 @@ class ParallelLoopDispatcher:
             raise
 
     async def run(self, task: LoopTask, handler: Handler) -> TaskExecutionResult:
-        state = self.validate_task(task)
+        try:
+            state = self.validate_task(task)
+        except ValueError as exc:
+            return TaskExecutionResult(task.task_id, task.loop_id, LoopStatus.FAILED, str(exc))
         iteration_lock = self._iteration_locks.setdefault(task.loop_id, asyncio.Lock())
 
         async with iteration_lock:
