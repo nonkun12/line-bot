@@ -404,16 +404,12 @@ def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
     # Do not leak that orchestration-only selector into the test subprocess:
     # unit tests may instantiate DevelopmentExecutor directly and would then
     # accidentally enter deterministic autonomous-task mode.
-    test_env = os.environ.copy()
-    test_env.pop("AUTONOMOUS_TASK_ID", None)
-    tests = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "--tb=native"],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        timeout=900,
-        env=test_env,
-    )
+    saved_task_id = os.environ.pop("AUTONOMOUS_TASK_ID", None)
+    try:
+        tests = run([sys.executable, "-m", "pytest", "-q", "--tb=native"], timeout=900)
+    finally:
+        if saved_task_id is not None:
+            os.environ["AUTONOMOUS_TASK_ID"] = saved_task_id
     outputs.append("full pytest:")
     outputs.extend([tests.stdout, tests.stderr])
     return tests.returncode == 0, "\n".join(outputs)[-8000:]
