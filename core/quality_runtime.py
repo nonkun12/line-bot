@@ -5,6 +5,7 @@ from typing import Mapping, Sequence
 
 from .agent_runtime import RuntimeReport, RuntimeTaskResult
 from .multi_agent import AgentResult, AgentRole, AgentTask
+from .immediate_stop import StopReason
 
 
 class QualityRuntime:
@@ -74,7 +75,7 @@ class QualityRuntime:
             if not verified:
                 if self._immediate_stop_controller is not None:
                     self._immediate_stop_controller.request_stop(
-                        __import__("core.immediate_stop", fromlist=["StopReason"]).StopReason.RESULT_MISMATCH,
+                        StopReason.RESULT_MISMATCH,
                         f"Safety Gate rejected actual worktree state for {task.task_id}",
                     )
                 return RuntimeTaskResult(
