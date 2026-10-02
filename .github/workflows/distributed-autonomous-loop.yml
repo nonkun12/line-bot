@@ -36,6 +36,8 @@ jobs:
       HERMES_ADVISOR_ENABLED: 'true'
       DEV_USER_ID: autonomous-distributed-loop
       GITHUB_RUN_ID: ${{ github.run_id }}
+      AUTONOMOUS_PUBLISH_RESULT: NOT_PUBLISHED
+      AUTONOMOUS_PUBLISHED_SHA: ''
     steps:
       - name: Checkout without persistent git credentials
         uses: actions/checkout@v4
@@ -124,6 +126,105 @@ jobs:
           echo "AUTONOMOUS_PUBLISH_RESULT=PUBLISHED" >> "$GITHUB_ENV"
           echo "AUTONOMOUS_PUBLISHED_SHA=$head" >> "$GITHUB_ENV"
 
+      - name: Record distributed loop result to Google Sheets
+        if: always()
+        env:
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+          AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
+          GOOGLE_SHEETS_AUDIT_RANGE: ${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export AUTONOMOUS_AGENT="DistributedAutonomousLoop"
+          export AUTONOMOUS_SOURCE="distributed-autonomous-loop"
+          export AUTONOMOUS_START_SHA="$GITHUB_SHA"
+          export AUTONOMOUS_TASK_ID="unknown"
+          export AUTONOMOUS_TESTS_RESULT="NOT_REPORTED"
+          export AUTONOMOUS_VERIFICATION_RESULT="NOT_REPORTED"
+          export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
+          export AUTONOMOUS_MERGE_RESULT="NOT_AUTO_MERGED"
+          export AUTONOMOUS_PRODUCED_SHA=""
+          export AUTONOMOUS_CHANGED_FILES="none"
+          export AUTONOMOUS_BLOCKED_FAILED_REASON="workflow_no_loop_evidence"
+          export AUTONOMOUS_NEXT_ACTION="review_failure"
+
+          if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
+            _loop_payload="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          lines = [line for line in Path("/tmp/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+          if not lines:
+              raise SystemExit("loop result file is empty")
+          row = json.loads(lines[-1])
+          required = ("task_id","status","exit_code","base_sha","produced_sha","failure_reason","tests_result","verification_result","safety_gate_result")
+          missing = [key for key in required if key not in row]
+          if missing:
+              raise SystemExit("loop evidence missing keys: " + ",".join(missing))
+          print("\t".join(str(row[key]).replace("\t"," ").replace("\n"," ") for key in required))
+          PY
+          )" || exit 1
+
+            IFS=$'\t' read -r AUTONOMOUS_TASK_ID _status _exit_code _loop_base_sha _loop_produced_sha _failure_reason AUTONOMOUS_TESTS_RESULT AUTONOMOUS_VERIFICATION_RESULT AUTONOMOUS_SAFETY_GATE_RESULT <<< "$_loop_payload"
+            [ -n "$AUTONOMOUS_TASK_ID" ] || exit 1
+            [ -n "$_status" ] || exit 1
+            [ -n "$_exit_code" ] || exit 1
+
+            if [ "$_exit_code" != "0" ]; then
+              export AUTONOMOUS_TESTS_RESULT="FAIL"
+              export AUTONOMOUS_VERIFICATION_RESULT="FAIL"
+              export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
+              export AUTONOMOUS_PRODUCED_SHA=""
+              export AUTONOMOUS_CHANGED_FILES="none"
+              export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:$_failure_reason"
+              export AUTONOMOUS_NEXT_ACTION="review_failure"
+            elif [ "$_status" = "PASS" ]; then
+              if [ "$AUTONOMOUS_TESTS_RESULT" != "PASS" ] || [ "$AUTONOMOUS_VERIFICATION_RESULT" != "PASS" ] || [ "$AUTONOMOUS_SAFETY_GATE_RESULT" != "PASS" ]; then
+                export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
+                export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:gates_not_independently_reported"
+                export AUTONOMOUS_NEXT_ACTION="review_failure"
+              elif [ "$AUTONOMOUS_PUBLISH_RESULT" != "PUBLISHED" ] || [ -z "$AUTONOMOUS_PUBLISHED_SHA" ] || [ "$_loop_produced_sha" != "$AUTONOMOUS_PUBLISHED_SHA" ] || [ "$_loop_base_sha" != "$GITHUB_SHA" ]; then
+                export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
+                export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:published_sha_or_base_mismatch"
+                export AUTONOMOUS_NEXT_ACTION="review_failure"
+              else
+                export AUTONOMOUS_PRODUCED_SHA="$AUTONOMOUS_PUBLISHED_SHA"
+                export AUTONOMOUS_BLOCKED_FAILED_REASON=""
+                export AUTONOMOUS_NEXT_ACTION="review_pr"
+              fi
+            elif [ "$_status" = "NO_CHANGE" ]; then
+              export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
+              export AUTONOMOUS_VERIFICATION_RESULT="NO_CHANGE"
+              export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
+              export AUTONOMOUS_PRODUCED_SHA=""
+              export AUTONOMOUS_CHANGED_FILES="none"
+              export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:no_change"
+              export AUTONOMOUS_NEXT_ACTION="review_failure"
+            else
+              export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
+              export AUTONOMOUS_PRODUCED_SHA=""
+              export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:unpublishable_result:$_status"
+              export AUTONOMOUS_NEXT_ACTION="review_failure"
+            fi
+          fi
+
+          if [ -n "$AUTONOMOUS_PRODUCED_SHA" ]; then
+            git rev-parse "$AUTONOMOUS_START_SHA^{commit}" >/dev/null
+            git rev-parse "$AUTONOMOUS_PRODUCED_SHA^{commit}" >/dev/null
+            AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "$AUTONOMOUS_START_SHA" "$AUTONOMOUS_PRODUCED_SHA" | paste -sd, -)"
+            export AUTONOMOUS_CHANGED_FILES
+            [ -n "$AUTONOMOUS_CHANGED_FILES" ] || exit 1
+          fi
+
+          export DEV_INSTRUCTION="Distributed autonomous loop execution: $AUTONOMOUS_TASK_ID"
+          export GITHUB_RUN_ID="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          python - <<'PY'
+          from agents.sheets.autonomous_ledger import record_autonomous_run
+          recorded = record_autonomous_run()
+          result = "ALREADY_RECORDED" if not recorded else "RECORDED"
+          print(f"Google Sheets logging: {result}", flush=True)
+          PY
       - name: Persist completed task state
         if: success()
         env:
@@ -190,77 +291,6 @@ jobs:
             git -C /tmp/autonomous-state-worktree commit -m "chore: record autonomous loop completion"
             git -C /tmp/autonomous-state-worktree push "$auth_url" HEAD:refs/heads/$state_branch
           fi
-
-      - name: Record distributed loop result to Google Sheets
-        if: always()
-        env:
-          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
-          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
-          AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
-          GOOGLE_SHEETS_AUDIT_RANGE: ${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          export AUTONOMOUS_AGENT="DistributedAutonomousLoop"
-          export AUTONOMOUS_SOURCE="distributed-autonomous-loop"
-          export AUTONOMOUS_START_SHA="${GITHUB_SHA}"
-          export AUTONOMOUS_PRODUCED_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
-          export AUTONOMOUS_CHANGED_FILES="none"
-          if git rev-parse "${AUTONOMOUS_START_SHA}^{commit}" >/dev/null 2>&1 && git rev-parse "${AUTONOMOUS_PRODUCED_SHA}^{commit}" >/dev/null 2>&1; then
-            AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "${AUTONOMOUS_START_SHA}" "${AUTONOMOUS_PRODUCED_SHA}" | paste -sd, -)"
-            export AUTONOMOUS_CHANGED_FILES="${AUTONOMOUS_CHANGED_FILES:-none}"
-          fi
-
-          export AUTONOMOUS_TASK_ID="unknown"
-          export AUTONOMOUS_TESTS_RESULT="${AUTONOMOUS_TESTS_RESULT:-NOT_REPORTED}"
-          export AUTONOMOUS_VERIFICATION_RESULT="${AUTONOMOUS_VERIFICATION_RESULT:-NOT_REPORTED}"
-          export AUTONOMOUS_SAFETY_GATE_RESULT="${AUTONOMOUS_SAFETY_GATE_RESULT:-BLOCKED}"
-          export AUTONOMOUS_MERGE_RESULT="${AUTONOMOUS_MERGE_RESULT:-NOT_AUTO_MERGED}"
-          export AUTONOMOUS_BLOCKED_FAILED_REASON=""
-          export AUTONOMOUS_NEXT_ACTION="review_failure"
-
-          if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
-            readarray -t _loop_fields < <(python - <<'PY'
-          import json
-          from pathlib import Path
-          lines = [x for x in Path("/tmp/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
-          row = json.loads(lines[-1])
-          print(str(row.get("task_id", "unknown")))
-          print(str(row.get("status", "FAIL")))
-          print(str(row.get("failure_reason", "" )).replace("\n", " ")[:1000]))
-          PY
-            )
-            export AUTONOMOUS_TASK_ID="${_loop_fields[0]:-unknown}"
-            _status="${_loop_fields[1]:-FAIL}"
-            _detail="${_loop_fields[2]:-}"
-            if [ "$_status" = "PASS" ] || [ "$_status" = "NO_CHANGE" ]; then
-              if [ "$AUTONOMOUS_SAFETY_GATE_RESULT" = "PASS" ]; then
-                export AUTONOMOUS_NEXT_ACTION="review_pr"
-              else
-                export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:safety_gate_not_reported"
-                export AUTONOMOUS_NEXT_ACTION="review_failure"
-              fi
-            else
-              export AUTONOMOUS_BLOCKED_FAILED_REASON="loop:$_detail"
-              export AUTONOMOUS_NEXT_ACTION="review_failure"
-            fi
-          fi
-
-          export DEV_INSTRUCTION="Distributed autonomous loop execution: ${AUTONOMOUS_TASK_ID}"
-          python - <<'PY'
-          import os
-          from agents.sheets.autonomous_ledger import record_autonomous_run
-
-          try:
-              recorded = record_autonomous_run()
-              result = "ALREADY_RECORDED" if not recorded else "RECORDED"
-          except Exception as exc:
-              print(f"Google Sheets logging failed: {type(exc).__name__}: {exc}", flush=True)
-              raise
-          else:
-              print(f"Google Sheets logging: {result}", flush=True)
-          PY
 
       - name: Upload durable run evidence
         if: always()
