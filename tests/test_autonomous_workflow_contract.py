@@ -2,6 +2,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "overnight-development.yml"
+DISTRIBUTED_WORKFLOW = ROOT / ".github" / "workflows" / "distributed-autonomous-loop.yml"
+
 
 def test_autonomous_workflow_is_manual_only_until_safety_rollout():
     text = WORKFLOW.read_text(encoding='utf-8')
@@ -106,3 +108,11 @@ def test_legacy_autonomous_workflow_has_no_automatic_or_push_trigger():
     assert 'workflow_dispatch:' in event_block
     assert 'github.ref == ' in text
 
+
+def test_distributed_autonomous_loop_is_manual_only_during_safety_rollout():
+    text = DISTRIBUTED_WORKFLOW.read_text(encoding="utf-8")
+    event_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
+    assert "workflow_dispatch:" in event_block
+    assert "schedule:" not in event_block
+    assert "push:" not in event_block
+    assert "github.ref == 'refs/heads/main'" in text
