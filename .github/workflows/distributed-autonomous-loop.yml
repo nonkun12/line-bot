@@ -57,15 +57,25 @@ jobs:
         run: |
           set -euo pipefail
           rm -f /tmp/autonomous-loop-state.json
-          if git ls-remote --exit-code origin refs/heads/autonomous-loop-state >/dev/null 2>&1; then
+          set +e
+          git ls-remote --exit-code origin refs/heads/autonomous-loop-state >/dev/null 2>&1
+          state_ref_rc=$?
+          set -e
+          if [ "$state_ref_rc" -eq 0 ]; then
             git fetch --quiet origin autonomous-loop-state
             if git cat-file -e origin/autonomous-loop-state:.autonomous-loop.stop 2>/dev/null; then
               echo "REMOTE_PERSISTED_KILL_SWITCH=ON"
               exit 1
             fi
-            git show origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/autonomous-loop-state.json
-          else
+            if ! git show origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/autonomous-loop-state.json; then
+              echo "Failed to read durable autonomous loop state; failing closed."
+              exit 1
+            fi
+          elif [ "$state_ref_rc" -eq 2 ]; then
             printf '%s\n' '{"version":1,"completed":[]}' > /tmp/autonomous-loop-state.json
+          else
+            echo "Unable to query autonomous-loop-state (git ls-remote rc=$state_ref_rc); failing closed."
+            exit 1
           fi
           python -m json.tool /tmp/autonomous-loop-state.json >/dev/null
 
@@ -82,18 +92,19 @@ jobs:
       - name: Run one bounded autonomous task
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          GH_TOKEN: ${{ github.token }}
           SELF_IMPROVEMENT_HISTORY_PATH: /tmp/line-bot-self-improvement.jsonl
         run: |
           set -euo pipefail
-          auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
-          git remote set-url origin "$auth_url"
           : > /tmp/minimal-autonomous-loop.jsonl
           STOP_FILE=/tmp/line-bot-autonomous-loop.stop
 
           (
             while sleep 15; do
-              if git fetch --quiet origin main 2>/dev/null && git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+              if ! git fetch --quiet origin main 2>/dev/null; then
+                touch "$STOP_FILE"
+                exit 0
+              fi
+              if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
                 touch "$STOP_FILE"
                 exit 0
               fi
@@ -102,7 +113,8 @@ jobs:
           POLLER_PID=$!
           trap 'kill "$POLLER_PID" 2>/dev/null || true' EXIT
 
-          python scripts/run_minimal_autonomous_loop.py \
+          env -u GH_TOKEN -u GITHUB_TOKEN -u GITHUB_ENV -u GITHUB_OUTPUT -u GITHUB_PATH \
+            python scripts/run_minimal_autonomous_loop.py \
             --max-tasks 1 \
             --stop-file "$STOP_FILE" \
             --state /tmp/autonomous-loop-state.json \
