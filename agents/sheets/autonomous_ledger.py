@@ -107,13 +107,22 @@ def _verify_updated_range(updated_range: object) -> str:
 
 
 def _find_existing_run(client: GoogleSheetsClient, sheet: str, record: AutonomousRunRecord) -> bool:
-    """Find an existing run_id anywhere in the ledger table and verify its full row.
+    """Find an existing run_id and verify its complete 17-cell ledger row.
 
-    Google Sheets may append to the sheet's detected table range even when the
-    requested A:Q range is a different starting column. Search the used area so
-    idempotency remains correct across that case and across legacy ledger rows.
+    Prefer the canonical A:Q lookup for compatibility with existing clients,
+    then scan the used area because Sheets can append to its detected table
+    range (for example K:AA) even when A:Q was requested.
     """
     expected = record.values()
+    canonical = client.search_column(f"{sheet}!A:Q", 1, record.run_id)
+    if canonical:
+        for row in canonical:
+            if _normalized_row(row) == expected:
+                return True
+        raise RuntimeError(
+            f"Google Sheets contains an existing run_id with mismatched ledger data: {record.run_id}"
+        )
+
     rows = client.read_rows(f"{sheet}!A:ZZ")
     for row in rows:
         for index, cell in enumerate(row):
