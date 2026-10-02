@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
       setStatus('dbStatus', d.notes?.status === 'ok' ? 'online' : 'error'); document.getElementById('dbStatus').textContent=`Database: ${d.notes?.status === 'ok' ? 'online' : 'error'}`;
       setStatus('aiStatus', d.services?.ai_mcp || 'unknown'); document.getElementById('aiDetails').textContent='LangGraph / MCP';
       const features=d.features||{};
-      const features=d.features||{};
+      const icons={management_ai:'🧠',idea:'💡',general:'🧩',english_learning:'🇬🇧',stocks:'📈',global_market:'🌎',ai_news:'📰',voice:'🎙️',jobs:'💼',music:'🎵',video:'🎬'};
       const featureOrder=['management_ai', ...Object.keys(features).filter(k => k !== 'management_ai')];
       const featureGrid=document.getElementById('featureGrid');
       featureGrid.innerHTML=featureOrder.map(key=>{
