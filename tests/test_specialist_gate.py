@@ -34,6 +34,7 @@ DEV_ROLES = frozenset(
         AgentRole.REVIEWER,
         AgentRole.REPAIRER,
         AgentRole.INTEGRATOR,
+        AgentRole.IDEA,
     }
 )
 
