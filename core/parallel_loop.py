@@ -11,7 +11,7 @@ It provides the safe concurrency boundary for the distributed AI Loop:
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Awaitable, Callable
 
@@ -51,10 +51,14 @@ class LoopTask:
     task_id: str
     loop_id: str
     resources: frozenset[str] = frozenset()
+    agent_id: str = ""
+    scope: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         if not self.task_id or not self.loop_id:
             raise ValueError("task_id and loop_id are required")
+        if not self.agent_id:
+            raise ValueError("agent_id is required")
 
 
 Handler = Callable[[LoopTask, LoopState], Awaitable[str]]
@@ -121,6 +125,14 @@ class ParallelLoopDispatcher:
         if self._stop.is_set():
             state.status = LoopStatus.STOPPED
             state.last_result = "dispatcher stopped before execution"
+            return state
+        if task.agent_id not in state.spec.allowed_agents:
+            state.status = LoopStatus.FAILED
+            state.last_result = "agent not allowed for loop"
+            return state
+        if task.scope and not task.scope.issubset(state.spec.allowed_scope):
+            state.status = LoopStatus.FAILED
+            state.last_result = "task scope exceeds loop scope"
             return state
         if state.iterations >= state.spec.max_iterations:
             state.status = LoopStatus.FAILED
