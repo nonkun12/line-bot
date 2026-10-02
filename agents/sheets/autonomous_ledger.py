@@ -149,7 +149,7 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
     if _find_existing_run(client, sheet, record):
         return False
 
-    response = client.append_row(LEDGER_RANGE, expected)
+    response = client.append_row(LEDGER_RANGE, expected, value_input_option="RAW")
     updates = response.get("updates", {}) if isinstance(response, dict) else {}
     if updates.get("updatedRows") != 1:
         raise RuntimeError(f"Google Sheets append updatedRows={updates.get('updatedRows')!r}")
