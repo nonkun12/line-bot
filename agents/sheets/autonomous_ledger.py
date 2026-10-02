@@ -55,9 +55,11 @@ def ensure_headers(client: GoogleSheetsClient) -> None:
     sheet = LEDGER_RANGE.split("!", 1)[0]
     header_range = f"{sheet}!A1:Q1"
     existing = client.read_rows(header_range)
-    if existing and existing[0] == HEADERS:
+    if not existing:
+        client.update_row(header_range, HEADERS)
         return
-    client.update_row(header_range, HEADERS)
+    if existing[0] != HEADERS:
+        raise RuntimeError(f"Google Sheets ledger header mismatch in {header_range}")
 
 
 def _normalized_row(row: list) -> list[str]:
