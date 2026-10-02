@@ -1,9 +1,6 @@
 name: Distributed Autonomous Development Loop
 
 on:
-  push:
-    branches:
-      - fix/distributed-loop-sheets-ledger-v2
   workflow_dispatch:
     inputs:
       max_tasks:
@@ -30,6 +27,7 @@ concurrency:
 
 jobs:
   minimal-loop:
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
