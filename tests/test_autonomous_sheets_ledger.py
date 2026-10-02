@@ -15,7 +15,7 @@ class FakeClient:
     def search_column(self, *args):
         return self.existing
 
-    def append_row(self, *args):
+    def append_row(self, *args, **kwargs):
         self.appended.append(args)
         return self.response
 
