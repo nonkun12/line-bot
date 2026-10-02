@@ -86,3 +86,21 @@ def test_guarded_ask_recovers_on_third_attempt_and_uses_stricter_prompt():
     assert json.loads(content) == {"file": "tests/test_management_router.py"}
     assert len(client.completions.calls) == 3
     assert "smallest valid JSON object" in client.completions.calls[2]["messages"][0]["content"]
+
+
+def test_write_summary_fails_closed_when_safety_gate_is_unreported(monkeypatch, tmp_path):
+    import scripts.run_guarded_runtime as guarded
+
+    monkeypatch.delenv("AUTONOMOUS_SAFETY_GATE_RESULT", raising=False)
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+    monkeypatch.setattr(
+        guarded,
+        "_git",
+        lambda *args: "base" if args == ("rev-parse", "HEAD") else "main",
+    )
+
+    summary_path = tmp_path / "summary.json"
+    guarded._write_summary("PASS", 0, "base", summary_path)
+
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert payload["safety_gate_result"] == "NOT_REPORTED"

@@ -6,6 +6,7 @@ this runtime itself.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -553,6 +554,22 @@ def _prepare_idea_stage(instruction: str) -> tuple[str, str | None, str | None]:
 def execute(instruction: str) -> int:
     """Run one real guarded development request through the quality pipeline."""
     stop_controller = ImmediateStopController()
+    allowed_paths = None
+    raw_allowed_paths = os.environ.get("AUTONOMOUS_ALLOWED_PATHS", "").strip()
+    if raw_allowed_paths:
+        try:
+            parsed_allowed = json.loads(raw_allowed_paths)
+        except (TypeError, ValueError):
+            print("Autonomous allowed_paths is invalid; failing closed.", flush=True)
+            return 1
+        if (
+            not isinstance(parsed_allowed, list)
+            or not parsed_allowed
+            or not all(isinstance(path, str) and path.strip() for path in parsed_allowed)
+        ):
+            print("Autonomous allowed_paths must be a non-empty string list; failing closed.", flush=True)
+            return 1
+        allowed_paths = tuple(path.strip().lstrip("./") for path in parsed_allowed)
     try:
         stop_controller.assert_can_execute()
     except ImmediateStop as exc:
@@ -600,6 +617,19 @@ def execute(instruction: str) -> int:
     if state.chosen is None:
         print("Manager produced no target.", flush=True)
         _write_development_audit_to_google_sheets(instruction=instruction, status="BLOCKED", target_path=None, branch=None, exit_detail="manager produced no target", base_sha=None, produced_sha=None)
+        return 1
+    if allowed_paths is not None and state.chosen not in allowed_paths:
+        detail = f"manager target outside AUTONOMOUS_ALLOWED_PATHS: {state.chosen}"
+        print(detail, flush=True)
+        _write_development_audit_to_google_sheets(
+            instruction=instruction,
+            status="BLOCKED",
+            target_path=state.chosen,
+            branch=None,
+            exit_detail=detail,
+            base_sha=None,
+            produced_sha=None,
+        )
         return 1
     if os.environ.get("SELF_IMPROVEMENT_POLICY_ENFORCED", "").strip().lower() in {"1", "true", "yes", "on"}:
         assessment = assess_self_improvement((state.chosen,))
@@ -655,6 +685,22 @@ def execute(instruction: str) -> int:
         stopped = stop_controller.is_stopped()
         _write_development_audit_to_google_sheets(instruction=instruction, status="STOP" if stopped else "FAIL", target_path=state.chosen, branch=None, exit_detail=detail, base_sha=baseline_sha, produced_sha=None)
         return 1
+    # Export independent stage evidence for the durable autonomous-run ledger.
+    completed_by_role = {item.task.role: item for item in report.completed}
+    tester_result = completed_by_role.get(AgentRole.TESTER)
+    reviewer_result = completed_by_role.get(AgentRole.REVIEWER)
+    tests_result = "PASS" if tester_result is not None and tester_result.result.success else "FAIL"
+    verification_result = "PASS" if reviewer_result is not None and reviewer_result.result.success else "FAIL"
+    safety_gate_result = "PASS" if report.success and report.integration_ready else "BLOCKED"
+    os.environ["AUTONOMOUS_TESTS_RESULT"] = tests_result
+    os.environ["AUTONOMOUS_VERIFICATION_RESULT"] = verification_result
+    os.environ["AUTONOMOUS_SAFETY_GATE_RESULT"] = safety_gate_result
+    github_env = os.environ.get("GITHUB_ENV")
+    if github_env:
+        with open(github_env, "a", encoding="utf-8") as fh:
+            fh.write(f"AUTONOMOUS_TESTS_RESULT={tests_result}\n")
+            fh.write(f"AUTONOMOUS_VERIFICATION_RESULT={verification_result}\n")
+            fh.write(f"AUTONOMOUS_SAFETY_GATE_RESULT={safety_gate_result}\n")
     print(f"[manager] {tasks[0].task_id}: {manager_result.summary[-1500:]}", flush=True)
     for item in report.completed:
         print(f"[{item.task.role.value}] {item.task.task_id}: {item.result.summary[-1500:]}", flush=True)
@@ -712,13 +758,11 @@ def execute(instruction: str) -> int:
         _rollback_to_clean_baseline(baseline_sha)
         _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=state.chosen, branch=branch, exit_detail=str(exc), base_sha=baseline_sha, produced_sha=None)
         return 1
-    push = worker.run(["git", "push", "--set-upstream", "origin", branch])
-    if push.returncode != 0:
-        print(push.stderr[-2000:], flush=True); return 1
+    print(f"Development branch ready for verified publish: {branch}", flush=True)
     produced = worker.run(["git", "rev-parse", "HEAD"])
     produced_sha = produced.stdout.strip() if produced.returncode == 0 else None
-    _write_development_audit_to_google_sheets(instruction=instruction, status="PASS", target_path=state.chosen, branch=branch, exit_detail="development branch pushed", base_sha=baseline_sha, produced_sha=produced_sha)
-    print(f"Development branch pushed: {branch}", flush=True)
+    _write_development_audit_to_google_sheets(instruction=instruction, status="PASS", target_path=state.chosen, branch=branch, exit_detail="development branch committed; workflow publish pending", base_sha=baseline_sha, produced_sha=produced_sha)
+    print(f"Development branch committed for workflow publish: {branch}", flush=True)
     return 0
 
 

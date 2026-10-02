@@ -55,15 +55,29 @@ def ensure_headers(client: GoogleSheetsClient) -> None:
     sheet = LEDGER_RANGE.split("!", 1)[0]
     header_range = f"{sheet}!A1:Q1"
     existing = client.read_rows(header_range)
-    if existing and existing[0] == HEADERS:
+    if not existing:
+        client.update_row(header_range, HEADERS)
         return
-    client.update_row(header_range, HEADERS)
+    if existing[0] != HEADERS:
+        raise RuntimeError(f"Google Sheets ledger header mismatch in {header_range}")
 
 
 def _normalized_row(row: list) -> list[str]:
     """Normalize Sheets' trimmed trailing cells to the fixed ledger width."""
     values = [str(cell) for cell in row[:len(HEADERS)]]
     return values + [""] * (len(HEADERS) - len(values))
+
+
+def _normalized_slice(row: list, start: int) -> list[str]:
+    values = [str(cell) for cell in row[start : start + len(HEADERS)]]
+    return values + [""] * (len(HEADERS) - len(values))
+
+
+def _column_number(label: str) -> int:
+    number = 0
+    for char in label:
+        number = number * 26 + (ord(char) - ord("A") + 1)
+    return number
 
 
 def _verify_updated_range(updated_range: object) -> str:
@@ -84,10 +98,43 @@ def _verify_updated_range(updated_range: object) -> str:
         raise RuntimeError(
             f"Google Sheets append wrote to unexpected sheet={sheet!r}; expected={expected_sheet!r}"
         )
-    if (start_col, end_col) != ("A", "Q") or start_row != end_row:
+
+    width = _column_number(end_col) - _column_number(start_col) + 1
+    if width != len(HEADERS) or start_row != end_row:
         raise RuntimeError(f"Google Sheets append returned unexpected row range={updated_range!r}")
 
-    return f"{sheet}!A{start_row}:Q{end_row}"
+    return f"{sheet}!{start_col}{start_row}:{end_col}{end_row}"
+
+
+def _find_existing_run(client: GoogleSheetsClient, sheet: str, record: AutonomousRunRecord) -> bool:
+    """Find an existing run_id and verify its complete 17-cell ledger row.
+
+    Prefer the canonical A:Q lookup for compatibility with existing clients,
+    then scan the used area because Sheets can append to its detected table
+    range (for example K:AA) even when A:Q was requested.
+    """
+    expected = record.values()
+    canonical = client.search_column(f"{sheet}!A:Q", 1, record.run_id)
+    if canonical:
+        for row in canonical:
+            if _normalized_row(row) == expected:
+                return True
+        raise RuntimeError(
+            f"Google Sheets contains an existing run_id with mismatched ledger data: {record.run_id}"
+        )
+
+    rows = client.read_rows(f"{sheet}!A:ZZ")
+    for row in rows:
+        for index, cell in enumerate(row):
+            if str(cell) != record.run_id or index == 0:
+                continue
+            start = index - 1
+            if _normalized_slice(row, start) == expected:
+                return True
+            raise RuntimeError(
+                f"Google Sheets contains an existing run_id with mismatched ledger data: {record.run_id}"
+            )
+    return False
 
 
 def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
@@ -98,17 +145,11 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
     """
     ensure_headers(client)
     sheet = LEDGER_RANGE.split("!", 1)[0]
-    existing = client.search_column(f"{sheet}!A:Q", 1, record.run_id)
     expected = record.values()
-    if existing:
-        matching = any(_normalized_row(row) == expected for row in existing)
-        if matching:
-            return False
-        raise RuntimeError(
-            f"Google Sheets contains an existing run_id with mismatched ledger data: {record.run_id}"
-        )
+    if _find_existing_run(client, sheet, record):
+        return False
 
-    response = client.append_row(LEDGER_RANGE, expected)
+    response = client.append_row(LEDGER_RANGE, expected, value_input_option="RAW")
     updates = response.get("updates", {}) if isinstance(response, dict) else {}
     if updates.get("updatedRows") != 1:
         raise RuntimeError(f"Google Sheets append updatedRows={updates.get('updatedRows')!r}")

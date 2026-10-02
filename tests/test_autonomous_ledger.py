@@ -9,13 +9,15 @@ class FakeClient:
         }
         self.readback = readback
         self.appended = []
+        self.append_options = []
         self.read_ranges = []
 
     def search_column(self, *args):
         return self.existing
 
-    def append_row(self, *args):
+    def append_row(self, *args, **kwargs):
         self.appended.append(args)
+        self.append_options.append(kwargs)
         return self.response
 
     def read_rows(self, range_name):
@@ -78,6 +80,7 @@ def test_append_once_records_and_reads_back_exact_row():
     assert ledger.append_once(client, record) is True
     assert len(client.appended) == 1
     assert client.appended[0][1] == record.values()
+    assert client.append_options[0]["value_input_option"] == "RAW"
     assert "AutonomousDevelopment!A5:Q5" in client.read_ranges
 
 
@@ -173,7 +176,7 @@ def test_record_autonomous_run_deduplicates_after_append_then_client_error(monke
         def search_column(self, *args):
             return [shared_rows[0]] if shared_rows else []
 
-        def append_row(self, *args):
+        def append_row(self, *args, **kwargs):
             shared_rows.append(expected.values())
             if self.fail_after_append:
                 raise RuntimeError("response lost after server-side append")

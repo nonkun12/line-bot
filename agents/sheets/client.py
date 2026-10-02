@@ -35,11 +35,11 @@ class GoogleSheetsClient:
         ).execute()
         return result.get("values", [])
 
-    def append_row(self, range_name: str, values: list):
+    def append_row(self, range_name: str, values: list, value_input_option: str = "USER_ENTERED"):
         return self.service.spreadsheets().values().append(
             spreadsheetId=self.spreadsheet_id,
             range=range_name,
-            valueInputOption="USER_ENTERED",
+            valueInputOption=value_input_option,
             insertDataOption="INSERT_ROWS",
             body={"values": [values]},
         ).execute()

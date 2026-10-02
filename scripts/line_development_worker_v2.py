@@ -55,8 +55,21 @@ _TEST_INSTRUCTION_PATTERN = re.compile(r"(?:workflow|connection)[\s_-]*test", re
 _TEST_INSTRUCTION_EXACT = {"開発接続テスト", "接続テスト", "動作確認", "疎通確認", "LINE自動開発テスト"}
 
 
-def run(cmd: list[str], timeout: int = 900, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=ROOT, text=True, input=input_text, capture_output=True, timeout=timeout)
+def run(
+    cmd: list[str],
+    timeout: int = 900,
+    input_text: str | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        cmd,
+        cwd=ROOT,
+        text=True,
+        input=input_text,
+        capture_output=True,
+        timeout=timeout,
+        env=env,
+    )
 
 
 def is_protected(path: str) -> bool:
@@ -399,7 +412,29 @@ def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
             outputs.append(compile_result.stderr)
         if compile_result.returncode != 0:
             return False, "\n".join(outputs)[-8000:]
-    tests = run([sys.executable, "-m", "pytest", "-q", "--tb=native"], timeout=900)
+
+    # Tests execute repository code that may be influenced by an autonomous edit.
+    # Remove orchestration secrets and GitHub command-channel variables both from
+    # the test child's environment and from this process while pytest is running.
+    blocked_exact = {
+        "AUTONOMOUS_TASK_ID",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "GITHUB_ENV",
+        "GITHUB_OUTPUT",
+        "GITHUB_PATH",
+        "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON",
+        "GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE",
+    }
+    blocked_suffixes = ("_API_KEY", "_TOKEN")
+    saved_env: dict[str, str] = {}
+    for key in list(os.environ):
+        if key in blocked_exact or key.endswith(blocked_suffixes):
+            saved_env[key] = os.environ.pop(key)
+    try:
+        tests = run([sys.executable, '-m', 'pytest', '-q', '--tb=native'], timeout=900)
+    finally:
+        os.environ.update(saved_env)
     outputs.append("full pytest:")
     outputs.extend([tests.stdout, tests.stderr])
     return tests.returncode == 0, "\n".join(outputs)[-8000:]

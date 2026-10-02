@@ -160,6 +160,9 @@ def _augment_with_hermes_advice(instruction: str, history_path: Path) -> str:
 def _write_summary(status: str, exit_code: int, start_sha: str, summary_path: Path) -> None:
     produced_sha = _git("rev-parse", "HEAD")
     branch = _git("branch", "--show-current")
+    safety_gate_result = "BLOCKED" if exit_code != 0 else os.environ.get("AUTONOMOUS_SAFETY_GATE_RESULT", "NOT_REPORTED").strip() or "NOT_REPORTED"
+    tests_result = os.environ.get("AUTONOMOUS_TESTS_RESULT", "NOT_REPORTED")
+    verification_result = os.environ.get("AUTONOMOUS_VERIFICATION_RESULT", "NOT_REPORTED")
     payload = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "status": status,
@@ -170,14 +173,16 @@ def _write_summary(status: str, exit_code: int, start_sha: str, summary_path: Pa
         "runtime": "common_guarded_runtime",
         "task_id": os.environ.get("AUTONOMOUS_TASK_ID", ""),
         "run_nonce": os.environ.get("AUTONOMOUS_RUN_NONCE", ""),
+        "tests_result": tests_result,
+        "verification_result": verification_result,
+        "safety_gate_result": safety_gate_result,
     }
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     github_env = os.environ.get("GITHUB_ENV")
     if github_env:
-        gate_result = "PASS" if exit_code == 0 else "BLOCKED"
         with open(github_env, "a", encoding="utf-8") as fh:
-            fh.write(f"AUTONOMOUS_SAFETY_GATE_RESULT={gate_result}\n")
+            fh.write(f"AUTONOMOUS_SAFETY_GATE_RESULT={safety_gate_result}\n")
             fh.write(f"AUTONOMOUS_SUMMARY_PATH={summary_path}\n")
 
 

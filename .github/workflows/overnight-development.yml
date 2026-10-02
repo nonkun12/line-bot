@@ -1,16 +1,6 @@
 name: Autonomous Development Loop
 
 on:
-  push:
-    branches:
-      - main
-  schedule:
-    - cron: "5 3 * * *"   # 03:05 JST
-      timezone: "Asia/Tokyo"
-    - cron: "5 15 * * *"  # 15:05 JST
-      timezone: "Asia/Tokyo"
-    - cron: "5 21 * * *"  # 21:05 JST
-      timezone: "Asia/Tokyo"
   workflow_dispatch:
 
 permissions:
@@ -24,7 +14,7 @@ concurrency:
 
 jobs:
   develop:
-    if: ${{ github.event_name != 'push' || startsWith(github.event.head_commit.message, '[run-autonomous-loop]') }}
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
