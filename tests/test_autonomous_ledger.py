@@ -78,6 +78,7 @@ def test_append_once_records_and_reads_back_exact_row():
     assert ledger.append_once(client, record) is True
     assert len(client.appended) == 1
     assert client.appended[0][1] == record.values()
+    assert client.appended[0][2] == "RAW"
     assert "AutonomousDevelopment!A5:Q5" in client.read_ranges
 
 
