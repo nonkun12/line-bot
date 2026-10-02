@@ -19,6 +19,7 @@ class DistributedAgentDescriptor:
     icon: str
     detail: str
     capability: str
+    execution_required: bool = True
 
 
 DISTRIBUTED_AGENT_CATALOG: tuple[DistributedAgentDescriptor, ...] = (
