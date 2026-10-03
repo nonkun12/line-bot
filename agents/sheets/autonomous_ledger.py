@@ -51,9 +51,18 @@ class AutonomousRunRecord:
         )]
 
 
+def _ledger_column_bounds() -> tuple[str, str]:
+    raw = LEDGER_RANGE.split("!", 1)[1].strip()
+    match = re.fullmatch(r"([A-Z]+):([A-Z]+)", raw)
+    if not match:
+        raise RuntimeError(f"Unsupported AUTONOMOUS_DEV_LEDGER_RANGE={LEDGER_RANGE!r}")
+    return match.group(1), match.group(2)
+
+
 def ensure_headers(client: GoogleSheetsClient) -> None:
     sheet = LEDGER_RANGE.split("!", 1)[0]
-    header_range = f"{sheet}!A1:Q1"
+    start_col, end_col = _ledger_column_bounds()
+    header_range = f"{sheet}!{start_col}1:{end_col}1"
     existing = client.read_rows(header_range)
     if existing and existing[0] == HEADERS:
         return
@@ -76,6 +85,7 @@ def _verify_updated_range(updated_range: object) -> str:
 
     sheet, start_col, start_row, end_col, end_row = match.groups()
     expected_sheet = LEDGER_RANGE.split("!", 1)[0].strip()
+    expected_start_col, expected_end_col = _ledger_column_bounds()
     if sheet.startswith("'") and sheet.endswith("'"):
         sheet = sheet[1:-1].replace("''", "'")
     if expected_sheet.startswith("'") and expected_sheet.endswith("'"):
@@ -84,10 +94,9 @@ def _verify_updated_range(updated_range: object) -> str:
         raise RuntimeError(
             f"Google Sheets append wrote to unexpected sheet={sheet!r}; expected={expected_sheet!r}"
         )
-    if (start_col, end_col) != ("A", "Q") or start_row != end_row:
+    if (start_col, end_col) != (expected_start_col, expected_end_col) or start_row != end_row:
         raise RuntimeError(f"Google Sheets append returned unexpected row range={updated_range!r}")
-
-    return f"{sheet}!A{start_row}:Q{end_row}"
+    return f"{sheet}!{expected_start_col}{start_row}:{expected_end_col}{end_row}"
 
 
 def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
@@ -98,7 +107,8 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
     """
     ensure_headers(client)
     sheet = LEDGER_RANGE.split("!", 1)[0]
-    existing = client.search_column(f"{sheet}!A:Q", 1, record.run_id)
+    start_col, end_col = _ledger_column_bounds()
+    existing = client.search_column(f"{sheet}!{start_col}:{end_col}", 1, record.run_id)
     expected = record.values()
     if existing:
         matching = any(_normalized_row(row) == expected for row in existing)
