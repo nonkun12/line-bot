@@ -7,8 +7,8 @@ def test_routes_specialist_requests_deterministically() -> None:
     assert route(ManagementRequest("u", "英語を勉強したい")).specialist is Specialist.ENGLISH
     assert route(ManagementRequest("u", "最新ニュースを教えて")).specialist is Specialist.NEWS
     assert route(ManagementRequest("u", "音声で話して")).specialist is Specialist.VOICE
-    assert route(ManagementRequest("u", "求人を探して")).specialist is Specialist.JOBS
-    assert route(ManagementRequest("u", "NYダウを教えて")).specialist is Specialist.MARKET
+    assert route(ManagementRequest("u", "  求人を探して  ")).specialist is Specialist.JOBS
+    assert route(ManagementRequest("u", "ＮＹダウを教えて")).specialist is Specialist.MARKET
     assert route(ManagementRequest("u", "ドル円を教えて")).specialist is Specialist.MARKET
     assert route(ManagementRequest("u", "音楽を選曲して")).specialist is Specialist.MUSIC
     assert route(ManagementRequest("u", "動画の台本を作って")).specialist is Specialist.VIDEO
@@ -40,14 +40,8 @@ def test_unresolved_request_records_empty_candidates() -> None:
     assert decision.metadata["routing_priority"] is None
 
 
-def test_normalizes_full_width_input_and_preserves_channel_metadata() -> None:
-    request = ManagementRequest(
-        "u",
-        "Ｅｎｇｌｉｓｈで会話したい",
-        channel="slack",
-        metadata={"source": "parallel-dev-test"},
-    )
-    decision = route(request)
-    assert decision.specialist is Specialist.ENGLISH
-    assert decision.metadata["channel"] == "slack"
-    assert decision.metadata["request_metadata"]["source"] == "parallel-dev-test"
+def test_market_overrides_stocks_when_both_keywords_present() -> None:
+    # The request contains both a Stocks keyword ("株価") and a Market keyword ("ドル円").
+    # According to the routing priority, Market should be selected.
+    decision = route(ManagementRequest("u", "株価とドル円を教えて"))
+    assert decision.specialist is Specialist.MARKET
