@@ -43,6 +43,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Record distributed run base commit
+        run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Check remote kill switch
         run: |
           if [ -f .autonomous-loop.stop ]; then
@@ -73,6 +76,7 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Run one bounded autonomous task
+        id: run_task
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           SELF_IMPROVEMENT_HISTORY_PATH: /tmp/line-bot-self-improvement.jsonl
@@ -99,6 +103,7 @@ jobs:
             --results /tmp/minimal-autonomous-loop.jsonl
 
       - name: Publish verified development branch
+        id: publish
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -118,6 +123,7 @@ jobs:
           echo "PUBLISHED_SHA=$head"
 
       - name: Persist completed task state
+        id: persist_state
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -195,3 +201,82 @@ jobs:
             /tmp/autonomous-loop-state.json
             /tmp/autonomous-*.json
           if-no-files-found: ignore
+
+      - name: Record distributed run result to Google Sheets
+        if: always()
+        env:
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+          AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+          DEV_INSTRUCTION: Distributed autonomous loop scheduled task
+          RUN_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          LOOP_OUTCOME: ${{ steps.run_task.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          STATE_OUTCOME: ${{ steps.persist_state.outcome }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export AUTONOMOUS_START_SHA="${AUTONOMOUS_START_SHA:-$GITHUB_SHA}"
+          export AUTONOMOUS_PRODUCED_SHA="$(git rev-parse HEAD 2>/dev/null || printf '%s' "$GITHUB_SHA")"
+          if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            export AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "$AUTONOMOUS_START_SHA" "$AUTONOMOUS_PRODUCED_SHA" | paste -sd, -)"
+          else
+            export AUTONOMOUS_CHANGED_FILES=""
+          fi
+          export AUTONOMOUS_SOURCE="distributed-loop"
+          export AUTONOMOUS_AGENT="DistributedAutonomousLoop"
+          export AUTONOMOUS_PR_URL=""
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          results_path = Path('/tmp/minimal-autonomous-loop.jsonl')
+          rows = []
+          if results_path.exists():
+              for line in results_path.read_text(encoding='utf-8').splitlines():
+                  if line.strip():
+                      try:
+                          value = json.loads(line)
+                          if isinstance(value, dict):
+                              rows.append(value)
+                      except json.JSONDecodeError:
+                          pass
+          result = rows[-1] if rows else {}
+          status = str(result.get('status') or '')
+          task_id = str(result.get('task_id') or '')
+          run_outcome = os.getenv('LOOP_OUTCOME', '')
+          publish = os.getenv('PUBLISH_OUTCOME', '')
+          state = os.getenv('STATE_OUTCOME', '')
+
+          if status not in {'PASS', 'NO_CHANGE', 'FAIL', 'BLOCKED'}:
+              status = 'BLOCKED' if not result or status in {'STOPPED', 'TIMEOUT'} else 'FAIL'
+          os.environ['AUTONOMOUS_TASK_ID'] = task_id or 'distributed-loop-no-task-result'
+          os.environ['DEV_INSTRUCTION'] = str(result.get('summary') or result.get('task_summary') or os.environ['DEV_INSTRUCTION'])
+          os.environ['AUTONOMOUS_TESTS_RESULT'] = status
+          os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'PASS' if publish == 'success' else ('NOT_RUN' if publish == 'skipped' else 'FAIL')
+          os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'PASS' if status in {'PASS', 'NO_CHANGE'} and run_outcome == 'success' and publish == 'success' and state == 'success' else 'BLOCKED'
+          os.environ['AUTONOMOUS_MERGE_RESULT'] = 'NOT_AUTO_MERGED'
+          reason = str(result.get('failure_reason') or '')
+          if not reason and status not in {'PASS', 'NO_CHANGE'}:
+              reason = f"loop_{status.lower()}" if result else f"workflow_failed_before_result:{run_outcome or 'not_run'}"
+          if not reason and publish not in {'success', 'skipped'}:
+              reason = f'publish_{publish or "not_run"}'
+          if not reason and state not in {'success', 'skipped'}:
+              reason = f'state_persistence_{state or "not_run"}'
+          os.environ['AUTONOMOUS_BLOCKED_FAILED_REASON'] = reason
+          if status == 'PASS' and run_outcome == 'success' and publish == 'success' and state == 'success':
+              action = 'review_changes'
+          elif status == 'NO_CHANGE':
+              action = 'none'
+          else:
+              action = 'inspect_workflow_run'
+          os.environ['AUTONOMOUS_NEXT_ACTION'] = action
+
+          from agents.sheets.autonomous_ledger import record_autonomous_run
+          record_autonomous_run()
+          print('distributed run result recorded to Google Sheets')
+          PY

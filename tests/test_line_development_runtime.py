@@ -131,7 +131,7 @@ def test_debugger_restores_before_building_real_worker_plan(monkeypatch):
 
 
 def test_implementer_routes_plan_validation_through_bounded_repair(monkeypatch):
-    chosen = "tests/test_management_router.py"
+    chosen = "core/structured_output.py"
     rejected = {
         "no_change": False,
         "changes": [{"file": chosen, "old": "old", "new": "x" * 2000}],
@@ -182,7 +182,7 @@ def test_implementer_routes_plan_validation_through_bounded_repair(monkeypatch):
 
 
 def test_implementer_routes_apply_failure_through_bounded_anchor_repair(monkeypatch):
-    chosen = "tests/test_management_router.py"
+    chosen = "core/structured_output.py"
     plan = {
         "no_change": False,
         "changes": [{"file": chosen, "old": "missing", "new": "replacement"}],
