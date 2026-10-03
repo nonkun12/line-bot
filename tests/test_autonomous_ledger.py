@@ -196,3 +196,31 @@ def test_record_autonomous_run_deduplicates_after_append_then_client_error(monke
     assert ledger.record_autonomous_run() is False
     assert len(calls) == 2
     assert shared_rows == [expected.values()]
+
+
+
+class DiscoveringClient(FakeClient):
+    def read_rows(self, range_name):
+        self.read_ranges.append(range_name)
+        if range_name == "AutonomousDevelopment!A:ZZ":
+            return [[""] * 30 + ledger.HEADERS]
+        if range_name == "AutonomousDevelopment!AE185:AU185":
+            return [self.readback] if self.readback is not None else []
+        return []
+
+
+def test_append_once_discovers_existing_ledger_table_location(monkeypatch):
+    monkeypatch.setattr(ledger, "LEDGER_RANGE", "AutonomousDevelopment!U:AK")
+    record = make_record("discover-1")
+    client = DiscoveringClient(readback=record.values())
+    client.response = {
+        "updates": {
+            "updatedRows": 1,
+            "updatedRange": "AutonomousDevelopment!AE185:AU185",
+        }
+    }
+
+    assert ledger.append_once(client, record) is True
+    assert client.appended[0][0] == "AutonomousDevelopment!AE:AU"
+    assert "AutonomousDevelopment!A:ZZ" in client.read_ranges
+    assert "AutonomousDevelopment!AE185:AU185" in client.read_ranges
