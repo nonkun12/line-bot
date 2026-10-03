@@ -155,6 +155,7 @@ class _CandidateRestrictedPlanner(ManagementPlanner):
             task for task in plan.tasks if task.role not in self._allowed_roles
         )
         unexpected_task_ids = {task.task_id for task in unexpected_tasks}
+        is_follow_up = bool(feedback)
         filtered_tasks = tuple(
             task
             for task in plan.tasks
@@ -166,12 +167,11 @@ class _CandidateRestrictedPlanner(ManagementPlanner):
             (role for role in self._allowed_roles if role not in planned_roles),
             key=lambda role: role.value,
         )
-        if missing_roles:
-            # The model may invent a dependency on an out-of-scope role. Never
-            # execute that graph and never let the model widen the allowed set.
-            # Replace the affected/missing roles with bounded, dependency-free
-            # tasks derived only from the deterministic role set detected from
-            # the user's message.
+        if missing_roles and not is_follow_up:
+            # On the initial round, require every deterministic specialist domain
+            # detected from the user's message. Follow-up rounds may legitimately
+            # narrow the work to only the specialists needed for the next step.
+            # Never let a model invent a new role or dependency.
             fallback_tasks = list(filtered_tasks)
             used_ids = {task.task_id for task in fallback_tasks}
             for role in missing_roles:
@@ -197,7 +197,11 @@ class _CandidateRestrictedPlanner(ManagementPlanner):
                 parallel_safe=False,
             )
         elif unexpected_tasks:
+            if is_follow_up and not filtered_tasks:
+                raise ManagementPlanningError("follow-up plan contains no allowed tasks")
             plan = replace(plan, tasks=filtered_tasks)
+        elif is_follow_up and not filtered_tasks:
+            raise ManagementPlanningError("follow-up plan contains no allowed tasks")
         return _bind_source_instructions(plan, request.message)
 
 
@@ -252,7 +256,7 @@ def run_management_request(
     )
 
     try:
-        run = manager.run(management_request)
+        cycle = manager.run_closed_loop(management_request, max_rounds=2)
     except SpecialistGateError:
         raise  # fail-closed: never fall back to the legacy route on a gate denial
     except ManagementPlanningError as exc:
@@ -271,14 +275,18 @@ def run_management_request(
         print(f"[MANAGEMENT AI] unexpected execution failure; no legacy retry: {type(exc).__name__}: {exc}")
         return _MANAGEMENT_EXECUTION_FAILURE
 
-    if not run.success:
-        print("[MANAGEMENT AI] distributed round reported failure; no legacy retry")
+    if not cycle.success:
+        print(
+            "[MANAGEMENT AI] distributed loop reported failure; "
+            "no legacy retry: " + cycle.stopped_reason
+        )
         return _MANAGEMENT_EXECUTION_FAILURE
 
     parts: list[str] = []
-    for observation in run.observations:
-        label = _ROLE_LABELS.get(observation.role, observation.role.value)
-        parts.append("【" + label + "】\n" + observation.summary)
+    for round_run in cycle.rounds:
+        for observation in round_run.observations:
+            label = _ROLE_LABELS.get(observation.role, observation.role.value)
+            parts.append("【" + label + "】\n" + observation.summary)
 
     return "\n\n".join(parts) if parts else None
 
