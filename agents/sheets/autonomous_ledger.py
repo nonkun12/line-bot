@@ -53,7 +53,9 @@ class AutonomousRunRecord:
 
 def ensure_headers(client: GoogleSheetsClient) -> None:
     sheet = LEDGER_RANGE.split("!", 1)[0]
-    header_range = f"{sheet}!A1:Q1"
+    configured_range = LEDGER_RANGE.split("!", 1)[-1].strip()
+    start_col, end_col = configured_range.split(":", 1)
+    header_range = f"{sheet}!{start_col}1:{end_col}1"
     existing = client.read_rows(header_range)
     if existing and existing[0] == HEADERS:
         return
@@ -70,24 +72,47 @@ def _verify_updated_range(updated_range: object) -> str:
     if not isinstance(updated_range, str) or not updated_range.strip():
         raise RuntimeError("Google Sheets append did not return updatedRange")
 
-    match = re.fullmatch(r"(.+)!([A-Z]+)([0-9]+):([A-Z]+)([0-9]+)", updated_range.strip())
+    match = re.fullmatch(
+        r"(.+)!([A-Z]+)([0-9]+):([A-Z]+)([0-9]+)",
+        updated_range.strip(),
+    )
     if not match:
-        raise RuntimeError(f"Google Sheets append returned invalid updatedRange={updated_range!r}")
+        raise RuntimeError(
+            f"Google Sheets append returned invalid updatedRange={updated_range!r}"
+        )
 
     sheet, start_col, start_row, end_col, end_row = match.groups()
     expected_sheet = LEDGER_RANGE.split("!", 1)[0].strip()
+    configured_range = LEDGER_RANGE.split("!", 1)[-1].strip()
+
+    range_match = re.fullmatch(r"([A-Z]+):([A-Z]+)", configured_range)
+    if not range_match:
+        raise RuntimeError(
+            f"Google Sheets ledger range must be a whole-column range, "
+            f"got={LEDGER_RANGE!r}"
+        )
+    expected_start_col, expected_end_col = range_match.groups()
+
     if sheet.startswith("'") and sheet.endswith("'"):
         sheet = sheet[1:-1].replace("''", "'")
     if expected_sheet.startswith("'") and expected_sheet.endswith("'"):
         expected_sheet = expected_sheet[1:-1].replace("''", "'")
+
     if sheet != expected_sheet:
         raise RuntimeError(
-            f"Google Sheets append wrote to unexpected sheet={sheet!r}; expected={expected_sheet!r}"
+            f"Google Sheets append wrote to unexpected sheet={sheet!r}; "
+            f"expected={expected_sheet!r}"
         )
-    if (start_col, end_col) != ("A", "Q") or start_row != end_row:
-        raise RuntimeError(f"Google Sheets append returned unexpected row range={updated_range!r}")
 
-    return f"{sheet}!A{start_row}:Q{end_row}"
+    if (
+        (start_col, end_col) != (expected_start_col, expected_end_col)
+        or start_row != end_row
+    ):
+        raise RuntimeError(
+            f"Google Sheets append returned unexpected row range={updated_range!r}"
+        )
+
+    return f"{sheet}!{start_col}{start_row}:{end_col}{end_row}"
 
 
 def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
@@ -98,7 +123,8 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
     """
     ensure_headers(client)
     sheet = LEDGER_RANGE.split("!", 1)[0]
-    existing = client.search_column(f"{sheet}!A:Q", 1, record.run_id)
+    configured_range = LEDGER_RANGE.split("!", 1)[-1].strip()
+    existing = client.search_column(f"{sheet}!{configured_range}", 1, record.run_id)
     expected = record.values()
     if existing:
         matching = any(_normalized_row(row) == expected for row in existing)
