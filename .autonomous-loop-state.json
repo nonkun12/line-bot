@@ -2,6 +2,7 @@
   "version": 1,
   "completed": [
     "hand-sign-uhip-contract-test",
-    "router-regression-whitespace"
+    "router-regression-whitespace",
+    "router-regression-fullwidth-market"
   ]
 }
