@@ -21,7 +21,7 @@ class FakeClient:
 
     def read_rows(self, range_name):
         self.read_ranges.append(range_name)
-        if range_name == "AutonomousDevelopment!A5:Q5" and self.readback is not None:
+        if range_name in ("AutonomousDevelopment!A5:Q5", "AutonomousDevelopment!K5:AA5") and self.readback is not None:
             return self.readback
         return [HEADERS]
 
@@ -142,3 +142,28 @@ def test_build_record_does_not_persist_hermes_advice_excerpt(monkeypatch):
 
     assert "SECRET-DO-NOT-PERSIST" not in item.task_summary
     assert "advice=" not in item.task_summary
+
+
+def test_append_once_supports_configured_non_aq_ledger_range(monkeypatch):
+    import agents.sheets.autonomous_ledger as ledger
+
+    monkeypatch.setattr(
+        ledger,
+        "LEDGER_RANGE",
+        "AutonomousDevelopment!K:AA",
+    )
+
+    item = record("459")
+    client = FakeClient(
+        response={
+            "updates": {
+                "updatedRows": 1,
+                "updatedRange": "AutonomousDevelopment!K5:AA5",
+            }
+        },
+        readback=[item.values()],
+    )
+
+    assert ledger.append_once(client, item) is True
+    assert "AutonomousDevelopment!K5:AA5" in client.read_ranges
+    assert client.appended[0][0] == "AutonomousDevelopment!K:AA"
