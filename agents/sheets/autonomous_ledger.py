@@ -72,17 +72,21 @@ def _number_to_column(number: int) -> str:
     return "".join(reversed(out))
 
 def _discover_table_range(client: GoogleSheetsClient) -> str | None:
+    table = _discover_table(client)
+    return table[0] if table else None
+
+def _discover_table(client: GoogleSheetsClient) -> tuple[str, int] | None:
     sheet = _configured_sheet()
     rows = client.read_rows(f"{sheet}!A:ZZ")
     width = len(HEADERS)
-    for row in rows:
+    for row_index, row in enumerate(rows, start=1):
         if not isinstance(row, list) or len(row) < width:
             continue
         for start in range(0, len(row) - width + 1):
             if row[start:start + width] == HEADERS:
                 start_col = _number_to_column(start + 1)
                 end_col = _number_to_column(start + width)
-                return f"{sheet}!{start_col}:{end_col}"
+                return f"{sheet}!{start_col}:{end_col}", row_index
     return None
 
 def ensure_headers(client: GoogleSheetsClient) -> str:
@@ -117,28 +121,48 @@ def _normalize_sheet_name(sheet: str) -> str:
         return sheet[1:-1].replace("''", "'")
     return sheet
 
-def _verify_updated_range(updated_range: object, expected_range: str) -> str:
+def _exact_next_row(client: GoogleSheetsClient, table_range: str) -> str:
+    sheet, start_col, end_col = _split_column_range(table_range)
+    rows = client.read_rows(table_range)
+    last_nonempty = 0
+    for index, row in enumerate(rows, start=1):
+        if any(str(cell).strip() for cell in row):
+            last_nonempty = index
+    # read_rows omits trailing empty rows, so the first row after the last
+    # observed value is the append destination. A blank ledger gap is never
+    # reused; records remain append-only.
+    row_number = max(2, last_nonempty + 1)
+    return f"{sheet}!{start_col}{row_number}:{end_col}{row_number}"
+
+def _verify_updated_range(updated_range: object, expected_row_range: str) -> str:
     if not isinstance(updated_range, str) or not updated_range.strip():
-        raise RuntimeError("Google Sheets append did not return updatedRange")
-    match = re.fullmatch(
-        r"(.+)!([A-Z]+)([0-9]+):([A-Z]+)([0-9]+)",
-        updated_range.strip(),
-    )
+        raise RuntimeError("Google Sheets write did not return updatedRange")
+    match = re.fullmatch(r"(.+)!([A-Z]+)([0-9]+):([A-Z]+)([0-9]+)", updated_range.strip())
     if not match:
-        raise RuntimeError(
-            f"Google Sheets append returned invalid updatedRange={updated_range!r}"
-        )
+        raise RuntimeError(f"Google Sheets write returned invalid updatedRange={updated_range!r}")
     sheet, start_col, start_row, end_col, end_row = match.groups()
-    expected_sheet, expected_start_col, expected_end_col = _split_column_range(expected_range)
+    expected_sheet, expected_start_col, expected_start_row, expected_end_col, expected_end_row = (
+        _split_explicit_row_range(expected_row_range)
+    )
     if _normalize_sheet_name(sheet) != _normalize_sheet_name(expected_sheet):
         raise RuntimeError(
-            f"Google Sheets append wrote to unexpected sheet={sheet!r}; expected={expected_sheet!r}"
+            f"Google Sheets write wrote to unexpected sheet={sheet!r}; expected={expected_sheet!r}"
         )
-    if (start_col, end_col) != (expected_start_col, expected_end_col) or start_row != end_row:
+    if (start_col, start_row, end_col, end_row) != (
+        expected_start_col, expected_start_row, expected_end_col, expected_end_row
+    ):
         raise RuntimeError(
-            f"Google Sheets append returned unexpected row range={updated_range!r}"
+            f"Google Sheets write returned unexpected row range={updated_range!r}; "
+            f"expected={expected_row_range!r}"
         )
-    return f"{expected_sheet}!{expected_start_col}{start_row}:{expected_end_col}{end_row}"
+    return updated_range.strip()
+
+def _split_explicit_row_range(range_name: str) -> tuple[str, str, str, str, str]:
+    sheet, raw = range_name.split("!", 1)
+    match = re.fullmatch(r"([A-Z]+)([0-9]+):([A-Z]+)([0-9]+)", raw.strip())
+    if not match:
+        raise RuntimeError(f"Invalid explicit ledger row range={range_name!r}")
+    return (sheet.strip(), *match.groups())
 
 def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
     table_range = ensure_headers(client)
@@ -151,15 +175,18 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
             "Google Sheets contains an existing run_id with mismatched ledger data: "
             f"{record.run_id}"
         )
-    response = client.append_row(table_range, expected)
-    updates = response.get("updates", {}) if isinstance(response, dict) else {}
-    if updates.get("updatedRows") != 1:
-        raise RuntimeError(f"Google Sheets append updatedRows={updates.get('updatedRows')!r}")
-    readback_range = _verify_updated_range(updates.get("updatedRange"), table_range)
+
+    target_row = _exact_next_row(client, table_range)
+    client.update_row(target_row, expected)
+
+    readback_range = _verify_updated_range(
+        client.read_rows(target_row) and target_row or target_row,
+        target_row,
+    )
     rows = client.read_rows(readback_range)
     if len(rows) != 1 or _normalized_row(rows[0]) != expected:
         raise RuntimeError(
-            f"Google Sheets append read-back mismatch for run_id={record.run_id}"
+            f"Google Sheets write read-back mismatch for run_id={record.run_id}"
         )
     return True
 
