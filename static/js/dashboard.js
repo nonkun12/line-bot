@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
           ['🛡️ Safety Gate',s.fail_closed||l.fail_closed?'🟢 FAIL_CLOSED 有効':'⚪ 未確認',`Auto Merge: ${s.auto_merge?'有':'無'} ・ Auto Deploy: ${s.auto_deploy?'有':'無'}`],
           ['📋 Sheets監査',l.sheets_audit?'🟢 有効':'⚪ 未確認',`Runtime telemetry: ${esc(l.runtime_telemetry||'unknown')}`],
           ['🧭 Hermes Adviser',s.hermes_role==='adviser'?'🟢 Adviser':'⚪ 未確認',s.hermes_is_auxiliary?'補助系統・Loop本体とは分離':'状態確認要'],
-          ['✋ Hand Sign',h.camera_smoke_test==='implemented'?'🟢 Camera準備済み':'🔵 開発中',`Upload: ${h.camera_upload?'有':'無'} ・ Storage: ${h.camera_storage?'有':'無'}`],
+          ['✋ Hand Sign',h.camera_smoke_test==='implemented'?'🟢 Camera準備済み':'🔵 開発中',`Camera: ${h.camera_smoke_test==='implemented'?'smoke test実装済み':'未実装'} ・ Upload: ${h.camera_upload?'有':'無'} ・ Storage: ${h.camera_storage?'有':'無'}`],
           ['📡 実行実績',
             l.last_run&&l.last_run.status==='ok'&&l.last_run.runs&&l.last_run.runs.length?'🟢 Run取得済み':'⚪ 未取得',
             l.last_run&&l.last_run.runs&&l.last_run.runs.length
@@ -54,6 +54,14 @@ document.addEventListener('DOMContentLoaded', () => {
         ];
         document.getElementById('loopGrid').innerHTML=cards.map(x=>'<div class="system-card"><div class="system-card-title">'+x[0]+'</div><div class="system-status">'+x[1]+'</div><div class="system-details">'+esc(x[2])+'</div></div>').join('');
         document.getElementById('loopSummary').textContent=`自動Loop ${l.frequency_per_day||4}回/日 ・ 安全設定確認済み`;
+        const cameraStatus=document.getElementById('cameraPanelStatus');
+        if(cameraStatus) cameraStatus.textContent=h.camera_smoke_test==='implemented' ? 'Camera smoke test 実装済み' : 'Phase 0';
+        const gateStatus=document.getElementById('handGateStatus');
+        const gateDetails=document.getElementById('handGateDetails');
+        if(gateStatus) gateStatus.textContent=h.camera_smoke_test==='implemented' ? '🟢 契約境界確認済み' : '🔵 開発中';
+        if(gateDetails) gateDetails.textContent=h.camera_smoke_test==='implemented'
+          ? 'recognition_passed=false のイベント契約を検証済み。認識成功までは操作へ進めません。'
+          : 'UHIP契約の実装待ち。';
       } catch(e) {
         document.getElementById('loopSummary').textContent='状態取得失敗';
         document.getElementById('loopGrid').innerHTML='<div class="system-details">Loop状態を取得できません。未確認の稼働を断定しません。</div>';

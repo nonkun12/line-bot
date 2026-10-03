@@ -72,6 +72,50 @@ def test_universal_event_accepts_generic_hand_event():
     validate(event, EVENT_SCHEMA)
 
 
+def test_universal_event_accepts_hand_event_when_recognition_gate_fails():
+    event = {
+        "schema_version": "0.3",
+        "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f13",
+        "session_id": "session-1",
+        "device_id": "device-1",
+        "seq": 2,
+        "t_mono_ns": 200,
+        "t_wall": "2026-09-30T13:00:00Z",
+        "source": {
+            "device_kind": "mac",
+            "sensor": "camera",
+            "engine": "mediapipe",
+            "engine_version": "0.1",
+            "model_sha256": "a" * 64,
+        },
+        "modality": "hand",
+        "payload": {
+            "gesture": "thumb_up",
+            "phase": "end",
+            "value": None,
+            "hand": {
+                "label": "right",
+                "track_id": 3,
+                "mirrored": True,
+            },
+            "confidence": {
+                "raw": 0.42,
+                "calibrated": 0.40,
+            },
+            "stability": {
+                "frames": 2,
+                "duration_ms": 40,
+            },
+        },
+        "gate": {
+            "recognition_passed": False,
+            "rule_version": "phase0-1",
+        },
+        "ttl_ms": 500,
+    }
+    validate(event, EVENT_SCHEMA)
+
+
 def test_universal_event_rejects_application_specific_command():
     event = {
         "schema_version": "0.3",
