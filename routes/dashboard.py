@@ -7,7 +7,7 @@ import re
 import time
 from flask import Blueprint, current_app, render_template, request, jsonify, Response
 from db import get_conn
-from mcp_client import call_mcp_tool, parse_mcp_json_list
+from core.mcp_gate import call_mcp_tool, parse_mcp_json_list
 from e2e_status import get_e2e_status
 from core.distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG
 from core.specialist_gate import is_specialist_approved

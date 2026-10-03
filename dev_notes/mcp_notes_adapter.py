@@ -25,7 +25,7 @@ class McpNotesLogAdapter(DevNotesLogAdapter):
     ) -> None:
 
         try:
-            import mcp_client
+            from core.mcp_gate import call_mcp_tool
 
             entry = ExecutionLogEntry(
                 category=category,
@@ -38,7 +38,7 @@ class McpNotesLogAdapter(DevNotesLogAdapter):
 
             payload = entry.to_dict()
 
-            mcp_client.call_mcp_tool(
+            call_mcp_tool(
                 "save_note",
                 {
                     "user_id": "system-agent-log",

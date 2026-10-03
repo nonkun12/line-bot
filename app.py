@@ -49,10 +49,8 @@ from reminders import (
 )
 from agents.notes.intents import is_note_intent
 from agents.github.intents import is_github_intent
-from mcp_client import (
-    call_mcp_tool as _call_mcp_tool_impl,
-    parse_mcp_json_list as _parse_mcp_json_list_impl,
-)
+from core.mcp_gate import call_mcp_tool as _call_mcp_tool_impl
+from core.mcp_gate import parse_mcp_json_list as _parse_mcp_json_list_impl
 from ai_client import (
     generate_chat_completion,
     generate_secretary_report,
@@ -195,7 +193,7 @@ init_db()
 init_e2e_table()
 
 
-def call_mcp_tool(tool_name, arguments, timeout=3.0):
+def call_mcp_tool(tool_name, arguments, timeout=None):
     return _call_mcp_tool_impl(tool_name, arguments, timeout=timeout)
 
 

@@ -172,6 +172,12 @@ PROTECTED_FILES = frozenset(
         "core/control_tower.py",
         "core/self_improvement_policy.py",
         "core/hermes_advisor.py",
+        "core/mcp_gate.py",
+        "mcp_client.py",
+        "core/specialist_gate.py",
+        "core/management_contract.py",
+        "render_client.py",
+        "agents/deploy/node.py",
         "core/agent_runtime.py",
         "scripts/line_development_worker_v2.py",
     }

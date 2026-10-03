@@ -209,6 +209,11 @@ def review_patch(patch, target_function=None):
     dangerous_files = [
         "config.py",
         "mcp_client.py",
+        "core/mcp_gate.py",
+        "core/specialist_gate.py",
+        "core/management_contract.py",
+        "render_client.py",
+        "agents/deploy/node.py",
         ".env"
     ]
 

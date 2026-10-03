@@ -45,6 +45,11 @@ HIGH_RISK_FILES = frozenset(
         "core/management_safety.py",
         "core/self_improvement_policy.py",
         "core/hermes_advisor.py",
+        "core/mcp_gate.py",
+        "mcp_client.py",
+        "core/specialist_gate.py",
+        "core/management_contract.py",
+        "render_client.py",
     }
 )
 

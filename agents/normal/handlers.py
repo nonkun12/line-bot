@@ -83,18 +83,9 @@ def handle_normal_message(message, user_id, call_mcp_tool):
     now_jst = datetime.now(timezone(timedelta(hours=9)))
     now_str = now_jst.strftime("%Y-%m-%dT%H:%M:%S+09:00")
 
-    # 名前などの既知情報は、AIのtool呼び出し判断に任せず毎回直接取得して
-    # システムプロンプトへ埋め込む(会話履歴に残っていなくても思い出せるようにするため)。
-    try:
-        stored_memory = call_mcp_tool(
-            "get_all_memory",
-            {"user_id": user_id},
-        )
-    except Exception as e:
-        print("GET ALL MEMORY ERROR:", e)
-        stored_memory = ""
-
-    known_facts_block = stored_memory if stored_memory else "(まだ何も記憶していません)"
+    # 通常会話ではMCPを自動取得しない。記憶・メモ・予定は専用agent/nodeで明示的に処理する。
+    # これにより通常会話の応答がMCP障害や副作用経路へ依存しない。
+    known_facts_block = "(通常会話ではMCP記憶を自動取得しません)"
 
     system_prompt = f"""
 {random.choice(_PERSONALITIES)}
@@ -154,7 +145,7 @@ save_memoryではなく 必ず set_reminder ツールを使用してください
     try:
         response = generate_chat_completion(
             messages=messages,
-            tools=MCP_TOOLS_SCHEMA,
+            tools=[],
             tool_choice=None,
             temperature=0.0,
             max_tokens=1024,
@@ -169,7 +160,12 @@ save_memoryではなく 必ず set_reminder ツールを使用してください
         except Exception as e:
             print("CHECK TOOL CALLS ERROR:", e)
 
-        if not tool_calls_happened:
+        if tool_calls_happened:
+            print("[NORMAL MCP GUARD] provider returned tool calls; side effects disabled")
+            sanitized_override_reply = _SANITIZED_REPLY
+            forced_tool_call = None
+            forced_tool_args = {}
+        elif not tool_calls_happened:
             # 稀にcontent内へ壊れたfunction-call文字列が混入することがあるため、
             # その場合は同じforced_tool_call経路へ合流させる。
             inline_content = choice.content or ""
@@ -187,8 +183,7 @@ save_memoryではなく 必ず set_reminder ツールを使用してください
                         inline_args = {}
 
                 if inline_name in _SAFE_INLINE_TOOLS:
-                    forced_tool_call = inline_name
-                    forced_tool_args = inline_args
+                    sanitized_override_reply = _SANITIZED_REPLY
 
                 elif inline_name == "set_reminder":
                     reminder_message = inline_args.get("message")
@@ -206,8 +201,7 @@ save_memoryではなく 必ず set_reminder ツールを使用してください
                             validated_args = None
 
                     if validated_args is not None:
-                        forced_tool_call = "set_reminder"
-                        forced_tool_args = validated_args
+                        sanitized_override_reply = _SANITIZED_REPLY
                     else:
                         print("INLINE SET_REMINDER REJECTED (invalid args):", repr(inline_args))
                         sanitized_override_reply = _SANITIZED_REPLY
@@ -241,8 +235,8 @@ save_memoryではなく 必ず set_reminder ツールを使用してください
             print("FAILED_GENERATION PARSE ERROR:", parse_err)
 
         if failed_name in _SAFE_FALLBACK_TOOLS:
-            forced_tool_call = failed_name
-            forced_tool_args = failed_args
+            print("[NORMAL MCP GUARD] failed-generation tool fallback disabled")
+            sanitized_override_reply = _SANITIZED_REPLY
             choice = None
         else:
             print("===== NORMAL AGENT END (UNRECOVERABLE FIRST-CALL ERROR) =====")
@@ -282,7 +276,7 @@ save_memoryではなく 必ず set_reminder ツールを使用してください
             "content": tool_result,
         })
 
-    elif choice.tool_calls:
+    elif False and choice.tool_calls:
         messages.append({
             "role": "assistant",
             "content": choice.content or "",
