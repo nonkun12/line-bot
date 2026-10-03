@@ -1,31 +1,39 @@
 import agents.sheets.autonomous_ledger as ledger
 
 
+SHEET = "AutonomousDevelopment"
+LEDGER_START = 30  # AE, zero-based within A:ZZ
+LEDGER_RANGE = "AutonomousDevelopment!AE:AU"
+
+
 class FakeClient:
     def __init__(self, existing=None, response=None, readback=None):
         self.existing = existing or []
         self.response = response or {
-            "updates": {"updatedRows": 1, "updatedRange": "AutonomousDevelopment!A5:Q5"}
+            "updates": {"updatedRows": 1, "updatedRange": f"{SHEET}!AE185:AU185"}
         }
         self.readback = readback
         self.appended = []
         self.read_ranges = []
 
-    def search_column(self, *args):
-        return self.existing
+    def _header_row(self):
+        return [""] * LEDGER_START + ledger.HEADERS
+
+    def read_rows(self, range_name):
+        self.read_ranges.append(range_name)
+        if range_name == f"{SHEET}!A:ZZ":
+            return [self._header_row(), *self.existing]
+        match = range_name == f"{SHEET}!AE185:AU185"
+        if match and self.readback is not None:
+            return self.readback
+        return []
+
+    def update_row(self, *args):
+        return {"updatedRows": 1}
 
     def append_row(self, *args):
         self.appended.append(args)
         return self.response
-
-    def read_rows(self, range_name):
-        self.read_ranges.append(range_name)
-        if range_name == "AutonomousDevelopment!A5:Q5" and self.readback is not None:
-            return self.readback
-        return [ledger.HEADERS]
-
-    def update_row(self, *args):
-        return {"updatedRows": 1}
 
 
 def make_record(run_id="123"):
@@ -47,6 +55,10 @@ def make_record(run_id="123"):
         blocked_failed_reason="provider_error",
         next_action="review_failure",
     )
+
+
+def ledger_row(values):
+    return [""] * LEDGER_START + values
 
 
 def configure_record_env(monkeypatch, record):
@@ -72,18 +84,18 @@ def configure_record_env(monkeypatch, record):
         monkeypatch.setenv(key, value)
 
 
-def test_append_once_records_and_reads_back_exact_row():
+def test_append_once_accepts_google_table_location_shift():
     record = make_record()
     client = FakeClient(readback=[record.values()])
     assert ledger.append_once(client, record) is True
-    assert len(client.appended) == 1
-    assert client.appended[0][1] == record.values()
-    assert "AutonomousDevelopment!A5:Q5" in client.read_ranges
+    assert client.appended[0][0] == f"{SHEET}!A:ZZ"
+    assert f"{SHEET}!A:ZZ" in client.read_ranges
+    assert f"{SHEET}!AE185:AU185" in client.read_ranges
 
 
 def test_append_once_is_idempotent_only_for_matching_existing_row():
     record = make_record("123")
-    client = FakeClient(existing=[record.values()])
+    client = FakeClient(existing=[ledger_row(record.values())])
     assert ledger.append_once(client, record) is False
     assert client.appended == []
 
@@ -92,7 +104,7 @@ def test_append_once_fails_closed_for_conflicting_existing_run_id():
     record = make_record("123")
     conflicting = record.values()
     conflicting[7] = "different-sha"
-    client = FakeClient(existing=[conflicting])
+    client = FakeClient(existing=[ledger_row(conflicting)])
     try:
         ledger.append_once(client, record)
     except RuntimeError as exc:
@@ -117,6 +129,25 @@ def test_append_once_rejects_missing_updated_range():
         ledger.append_once(client, make_record("457"))
     except RuntimeError as exc:
         assert "updatedRange" in str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
+
+
+def test_append_once_rejects_wrong_width():
+    record = make_record("459")
+    client = FakeClient(
+        response={
+            "updates": {
+                "updatedRows": 1,
+                "updatedRange": f"{SHEET}!AE185:AT185",
+            }
+        },
+        readback=[record.values()],
+    )
+    try:
+        ledger.append_once(client, record)
+    except RuntimeError as exc:
+        assert "column width" in str(exc)
     else:
         raise AssertionError("expected RuntimeError")
 
@@ -163,24 +194,23 @@ def test_record_autonomous_run_deduplicates_after_append_then_client_error(monke
             self.fail_after_append = fail_after_append
 
         def read_rows(self, range_name):
-            if range_name == "AutonomousDevelopment!A5:Q5" and shared_rows:
-                return [shared_rows[0]]
-            return [ledger.HEADERS]
-
-        def update_row(self, *args):
-            return {"updatedRows": 1}
-
-        def search_column(self, *args):
-            return [shared_rows[0]] if shared_rows else []
+            if range_name == f"{SHEET}!A:ZZ":
+                return [
+                    [""] * LEDGER_START + ledger.HEADERS,
+                    *shared_rows,
+                ]
+            if range_name == f"{SHEET}!AE185:AU185" and shared_rows:
+                return [expected.values()]
+            return []
 
         def append_row(self, *args):
-            shared_rows.append(expected.values())
+            shared_rows[:] = [ledger_row(expected.values())]
             if self.fail_after_append:
                 raise RuntimeError("response lost after server-side append")
             return {
                 "updates": {
                     "updatedRows": 1,
-                    "updatedRange": "AutonomousDevelopment!A5:Q5",
+                    "updatedRange": f"{SHEET}!AE185:AU185",
                 }
             }
 
@@ -195,32 +225,4 @@ def test_record_autonomous_run_deduplicates_after_append_then_client_error(monke
     monkeypatch.setattr(ledger, "GoogleSheetsClient", Factory())
     assert ledger.record_autonomous_run() is False
     assert len(calls) == 2
-    assert shared_rows == [expected.values()]
-
-
-
-class DiscoveringClient(FakeClient):
-    def read_rows(self, range_name):
-        self.read_ranges.append(range_name)
-        if range_name == "AutonomousDevelopment!A:ZZ":
-            return [[""] * 30 + ledger.HEADERS]
-        if range_name == "AutonomousDevelopment!AE185:AU185":
-            return [self.readback] if self.readback is not None else []
-        return []
-
-
-def test_append_once_discovers_existing_ledger_table_location(monkeypatch):
-    monkeypatch.setattr(ledger, "LEDGER_RANGE", "AutonomousDevelopment!U:AK")
-    record = make_record("discover-1")
-    client = DiscoveringClient(readback=record.values())
-    client.response = {
-        "updates": {
-            "updatedRows": 1,
-            "updatedRange": "AutonomousDevelopment!AE185:AU185",
-        }
-    }
-
-    assert ledger.append_once(client, record) is True
-    assert client.appended[0][0] == "AutonomousDevelopment!AE:AU"
-    assert "AutonomousDevelopment!A:ZZ" in client.read_ranges
-    assert "AutonomousDevelopment!AE185:AU185" in client.read_ranges
+    assert shared_rows == [ledger_row(expected.values())]
