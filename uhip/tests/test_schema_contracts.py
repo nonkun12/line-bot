@@ -72,6 +72,41 @@ def test_universal_event_accepts_generic_hand_event():
     validate(event, EVENT_SCHEMA)
 
 
+def test_universal_event_accepts_voice_event_when_recognition_gate_fails():
+    event = {
+        "schema_version": "0.3",
+        "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f14",
+        "session_id": "session-voice-1",
+        "device_id": "device-voice-1",
+        "seq": 1,
+        "t_mono_ns": 100,
+        "t_wall": "2026-10-01T00:00:00Z",
+        "source": {
+            "device_kind": "iphone",
+            "sensor": "mic",
+            "engine": "local-stt",
+            "engine_version": "0.1",
+            "model_sha256": "b" * 64,
+        },
+        "modality": "voice",
+        "payload": {
+            "value": None,
+            "intent": "open_app",
+            "lang": "ja-JP",
+            "wake_confidence": 0.88,
+            "stt_confidence": 0.41,
+            "local": True,
+            "audio_retained": False,
+        },
+        "gate": {
+            "recognition_passed": False,
+            "rule_version": "voice-phase0-1",
+        },
+        "ttl_ms": 1000,
+    }
+    validate(event, EVENT_SCHEMA)
+
+
 def test_universal_event_rejects_application_specific_command():
     event = {
         "schema_version": "0.3",
