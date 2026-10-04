@@ -166,7 +166,7 @@ def _existing_matching_run(
     run_id = str(record.run_id)
     width = len(HEADERS)
 
-    for row in client.read_rows(_sheet_scan_range(client)):
+    for row in client.read_rows(_sheet_scan_range(sheet)):
         if not isinstance(row, list) or run_id not in {str(cell) for cell in row}:
             continue
 
