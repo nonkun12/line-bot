@@ -55,6 +55,7 @@ LEGACY_GRAPH_NODES: Mapping[str, str] = {
     "job_seeking": "jobs_agent",
     "music": "music_agent",
     "video": "video_agent",
+    "obsidian": "obsidian_agent",
     "fallback": "fallback_agent",
 }
 
