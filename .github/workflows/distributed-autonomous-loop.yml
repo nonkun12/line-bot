@@ -190,19 +190,6 @@ jobs:
             git -C /tmp/autonomous-state-worktree push "$auth_url" HEAD:refs/heads/$state_branch
           fi
 
-      - name: Upload durable run evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: minimal-autonomous-loop-${{ github.run_id }}
-          retention-days: 30
-          path: |
-            /tmp/minimal-autonomous-loop.jsonl
-            /tmp/autonomous-loop-state.json
-            /tmp/autonomous-*.json
-            /tmp/distributed-sheets-log-result.json
-          if-no-files-found: ignore
-
       - name: Record distributed run result to Google Sheets
         if: always()
         env:
@@ -290,3 +277,17 @@ jobs:
               encoding='utf-8',
           )
           PY
+
+      - name: Upload durable run evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimal-autonomous-loop-${{ github.run_id }}
+          retention-days: 30
+          path: |
+            /tmp/minimal-autonomous-loop.jsonl
+            /tmp/autonomous-loop-state.json
+            /tmp/autonomous-*.json
+            /tmp/distributed-sheets-log-result.json
+          if-no-files-found: ignore
+
