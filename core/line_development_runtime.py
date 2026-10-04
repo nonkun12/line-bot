@@ -346,13 +346,25 @@ class DevelopmentExecutor:
 
                 explicit_comment_plan = _explicit_comment_plan(self.state.instruction, self.state.chosen)
                 comment_plan = None if explicit_comment_plan is not None else worker.build_comment_test_plan(self.state.instruction, self.state.chosen)
-                plan = explicit_comment_plan if explicit_comment_plan is not None else comment_plan if comment_plan is not None else worker.build_plan(self.state.client, self.state.instruction, self.state.chosen, worker.context_for(self.state.chosen))
+                context = worker.context_for(self.state.chosen)
+                plan = (
+                    explicit_comment_plan
+                    if explicit_comment_plan is not None
+                    else comment_plan
+                    if comment_plan is not None
+                    else worker.build_plan(
+                        self.state.client,
+                        self.state.instruction,
+                        self.state.chosen,
+                        context,
+                    )
+                )
                 plan, ok, detail = worker.validate_plan_with_bounded_repairs(
                     self.state.client,
                     self.state.instruction,
                     self.state.chosen,
                     plan,
-                    worker.context_for(self.state.chosen),
+                    context,
                 )
                 if not ok:
                     return AgentResult(task.task_id, False, f"implementation plan rejected: {detail}")
@@ -364,7 +376,7 @@ class DevelopmentExecutor:
                     self.state.instruction,
                     self.state.chosen,
                     plan,
-                    worker.context_for(self.state.chosen),
+                    context,
                 )
                 if not applied:
                     worker.restore(touched)
@@ -385,13 +397,20 @@ class DevelopmentExecutor:
                 failure_context = task.instruction
                 if self.state.test_output:
                     failure_context = f"{failure_context}\nPrevious test output:\n{self.state.test_output[-4000:]}"
-                plan = worker.build_plan(self.state.client, self.state.instruction, self.state.chosen, worker.context_for(self.state.chosen), failure_context)
+                context = worker.context_for(self.state.chosen)
+                plan = worker.build_plan(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    context,
+                    failure_context,
+                )
                 plan, ok, detail = worker.validate_plan_with_bounded_repairs(
                     self.state.client,
                     self.state.instruction,
                     self.state.chosen,
                     plan,
-                    worker.context_for(self.state.chosen),
+                    context,
                 )
                 if not ok or detail == "no_change":
                     return AgentResult(task.task_id, False, f"debug plan rejected: {detail}")
