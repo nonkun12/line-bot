@@ -21,6 +21,7 @@ from agents.voice.node import agent as voice_agent
 from agents.jobs.node import agent as job_seeking_agent
 from agents.music.node import agent as music_agent
 from agents.video.node import agent as video_agent
+from agents.obsidian.node import obsidian_agent_node
 from core.legacy_adapter import build_legacy_registry
 from core.agents import AgentRegistry
 
