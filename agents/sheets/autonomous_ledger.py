@@ -61,7 +61,7 @@ def _configured_sheet() -> str:
 
 
 def _sheet_scan_range() -> str:
-    return f"{_configured_sheet()}!A:ZZ"
+    return f"{_configured_sheet()}!A1:ZZ1000"
 
 
 def _normalized_row(row: list) -> list[str]:
