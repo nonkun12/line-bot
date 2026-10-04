@@ -4,6 +4,7 @@ from core.obsidian_bridge import OBSIDIAN_JOB_TYPE, enqueue_obsidian_request
 
 
 def test_enqueue_obsidian_request_accepts_only_explicit_commands(monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_BRIDGE_KEY", "secret")
     captured = {}
 
     def fake_create_job(user_id, message, **kwargs):
@@ -20,6 +21,14 @@ def test_enqueue_obsidian_request_accepts_only_explicit_commands(monkeypatch):
     assert captured["kwargs"]["job_type"] == OBSIDIAN_JOB_TYPE
     assert captured["kwargs"]["source"] == "line"
     assert captured["kwargs"]["max_retries"] == 3
+
+
+def test_enqueue_obsidian_request_fails_closed_without_bridge_key(monkeypatch):
+    monkeypatch.delenv("OBSIDIAN_BRIDGE_KEY", raising=False)
+
+    import pytest
+    with pytest.raises(ValueError, match="bridge is not configured"):
+        enqueue_obsidian_request("U1", "Obsidian一覧")
 
 
 def test_enqueue_obsidian_request_rejects_non_obsidian():
