@@ -10,6 +10,9 @@ class FakeClient:
         self.appended = []
         self.read_ranges = []
 
+    def sheet_titles(self):
+        return [SHEET]
+
     def append_row(self, *args):
         self.appended.append(args)
         return self.response
