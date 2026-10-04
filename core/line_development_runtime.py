@@ -419,7 +419,7 @@ class DevelopmentExecutor:
                     self.state.instruction,
                     self.state.chosen,
                     plan,
-                    worker.context_for(self.state.chosen),
+                    context,
                 )
                 if not applied:
                     worker.restore(touched)
