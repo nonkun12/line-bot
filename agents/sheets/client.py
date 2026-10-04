@@ -29,6 +29,18 @@ class GoogleSheetsClient:
 
         self.service = build("sheets", "v4", credentials=credentials)
 
+    def sheet_titles(self) -> list[str]:
+        """Return the existing worksheet/tab titles without mutating the spreadsheet."""
+        result = self.service.spreadsheets().get(
+            spreadsheetId=self.spreadsheet_id,
+            fields="sheets.properties.title",
+        ).execute()
+        return [
+            str(sheet.get("properties", {}).get("title", ""))
+            for sheet in result.get("sheets", [])
+            if sheet.get("properties", {}).get("title")
+        ]
+
     def read_rows(self, range_name: str):
         result = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id, range=range_name
