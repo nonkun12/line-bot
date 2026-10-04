@@ -91,6 +91,27 @@ def resolve_specialist(value: Specialist | AgentRole | str) -> Specialist:
         raise SpecialistGateError(f"unknown specialist: {key}") from None
 
 
+def assert_specialist_capability(
+    value: Specialist | AgentRole | str,
+    capability: str,
+) -> Specialist:
+    """Require one exact capability already declared for a specialist."""
+    specialist = resolve_specialist(value)
+    if not isinstance(capability, str) or not capability.strip():
+        raise SpecialistGateError("capability is required")
+    try:
+        boundary = specialist_boundary(specialist)
+    except Exception as exc:
+        raise SpecialistGateError(
+            f"specialist boundary unavailable: {specialist.value}"
+        ) from exc
+    if capability.strip() not in tuple(boundary.capabilities):
+        raise SpecialistGateError(
+            f"specialist capability not approved: {specialist.value}:{capability.strip()}"
+        )
+    return specialist
+
+
 def assert_specialist_approved(value: Specialist | AgentRole | str) -> Specialist:
     """Return the canonical Specialist, or raise if it is not approved."""
     specialist = resolve_specialist(value)
@@ -158,6 +179,7 @@ __all__ = [
     "assert_agent_approved",
     "assert_all_approved",
     "assert_specialist_approved",
+    "assert_specialist_capability",
     "is_specialist_approved",
     "resolve_specialist",
 ]
