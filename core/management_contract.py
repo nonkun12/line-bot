@@ -26,6 +26,7 @@ class Specialist(str, Enum):
     JOBS = "jobs"
     MUSIC = "music"
     VIDEO = "video"
+    OBSIDIAN = "obsidian"
 
 
 @dataclass(frozen=True)
