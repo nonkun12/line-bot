@@ -7,6 +7,7 @@ import re
 import httpx
 
 _APP_PREFIX = re.compile(r"^(?:アプリ開発|app|app-dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
+_TODO_APP_COMMAND = re.compile(r"^(?:ToDo|TODO|todo)\s*(?:アプリ|app)\s*(?:を\s*)?(?:作って|作成して|つくって)\s*$", re.IGNORECASE)
 _MAX_REQUIREMENT_LENGTH = 3000
 _WORKFLOW_FILE = "app-development.yml"
 
@@ -14,9 +15,12 @@ _WORKFLOW_FILE = "app-development.yml"
 def extract_app_development_request(message: str) -> str | None:
     text = str(message or "").strip()
     match = _APP_PREFIX.match(text)
-    if not match:
+    if match:
+        requirement = match.group(1).strip()
+    elif _TODO_APP_COMMAND.match(text):
+        requirement = text
+    else:
         return None
-    requirement = match.group(1).strip()
     return requirement[:_MAX_REQUIREMENT_LENGTH] if requirement else ""
 
 

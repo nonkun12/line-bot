@@ -12,3 +12,9 @@ def test_empty_explicit_request_is_preserved():
 
 def test_english_prefix_is_supported():
     assert extract_app_development_request("app-dev: build a tiny todo web app") == "build a tiny todo web app"
+
+
+def test_natural_todo_app_command_is_supported():
+    assert extract_app_development_request("ToDoアプリを作って") == "ToDoアプリを作って"
+    assert extract_app_development_request("TODO app を作成して") == "TODO app を作成して"
+
