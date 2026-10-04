@@ -194,18 +194,6 @@ jobs:
             git -C /tmp/autonomous-state-worktree push "$auth_url" HEAD:refs/heads/$state_branch
           fi
 
-      - name: Upload durable run evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: minimal-autonomous-loop-${{ github.run_id }}
-          retention-days: 30
-          path: |
-            /tmp/minimal-autonomous-loop.jsonl
-            /tmp/autonomous-loop-state.json
-            /tmp/autonomous-*.json
-          if-no-files-found: ignore
-
       - name: Record distributed run result to Google Sheets
         if: always()
         env:
@@ -281,6 +269,29 @@ jobs:
           os.environ['AUTONOMOUS_NEXT_ACTION'] = action
 
           from agents.sheets.autonomous_ledger import record_autonomous_run
-          record_autonomous_run()
-          print('distributed run result recorded to Google Sheets')
+          recorded = record_autonomous_run()
+          os.environ['AUTONOMOUS_SHEETS_LOG_RESULT'] = 'RECORDED' if recorded else 'ALREADY_RECORDED'
+          print(f'distributed run Sheets ledger result: {os.environ["AUTONOMOUS_SHEETS_LOG_RESULT"]}')
+          Path('/tmp/distributed-sheets-log-result.json').write_text(
+              json.dumps({
+                  'run_id': os.environ.get('GITHUB_RUN_ID', ''),
+                  'task_id': os.environ.get('AUTONOMOUS_TASK_ID', ''),
+                  'result': os.environ['AUTONOMOUS_SHEETS_LOG_RESULT'],
+              }, ensure_ascii=False, indent=2) + '\n',
+              encoding='utf-8',
+          )
           PY
+
+      - name: Upload durable run evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimal-autonomous-loop-${{ github.run_id }}
+          retention-days: 30
+          path: |
+            /tmp/minimal-autonomous-loop.jsonl
+            /tmp/autonomous-loop-state.json
+            /tmp/autonomous-*.json
+            /tmp/distributed-sheets-log-result.json
+          if-no-files-found: ignore
+
