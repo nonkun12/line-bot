@@ -16,7 +16,7 @@ class FakeClient:
 
     def read_rows(self, range_name):
         self.read_ranges.append(range_name)
-        if range_name == "AutonomousDevelopment!A:ZZ":
+        if range_name == "AutonomousDevelopment!A1:ZZ1000":
             return [[ ""] * 30 + ledger.HEADERS, *self.existing]
         if range_name == "AutonomousDevelopment!AE185:AU185" and self.readback is not None:
             return self.readback
@@ -36,8 +36,8 @@ def test_append_once_accepts_existing_table_location():
     item = record()
     client = FakeClient(readback=[item.values()])
     assert ledger.append_once(client, item) is True
-    assert client.appended[0][0] == "AutonomousDevelopment!A:ZZ"
-    assert "AutonomousDevelopment!A:ZZ" in client.read_ranges
+    assert client.appended[0][0] == "AutonomousDevelopment!A1:ZZ1000"
+    assert "AutonomousDevelopment!A1:ZZ1000" in client.read_ranges
 
 def test_append_once_is_idempotent_for_matching_full_row():
     item = record()
