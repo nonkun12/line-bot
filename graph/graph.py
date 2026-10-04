@@ -26,6 +26,7 @@ from agents.voice.node import agent as voice_agent
 from agents.jobs.node import agent as job_seeking_agent
 from agents.music.node import agent as music_agent
 from agents.video.node import agent as video_agent
+from agents.obsidian.node import obsidian_agent_node
 from dev_notes.wrappers.graph_node_wrapper import with_execution_logging
 from dev_notes.factory import get_default_adapter
 
@@ -163,6 +164,7 @@ def build_graph():
     builder.add_node("jobs_agent", _agent_node(job_seeking_agent))
     builder.add_node("music_agent", _agent_node(music_agent))
     builder.add_node("video_agent", _agent_node(video_agent))
+    builder.add_node("obsidian_agent", obsidian_agent_node)
 
     builder.add_node("fix_agent", fix_agent_node)
     builder.add_node("patch_generate_agent", patch_generate_node)
@@ -194,6 +196,7 @@ def build_graph():
             "jobs_agent": "jobs_agent",
             "music_agent": "music_agent",
             "video_agent": "video_agent",
+            "obsidian_agent": "obsidian_agent",
             "fallback_agent": "fallback_agent",
         },
     )
@@ -216,6 +219,7 @@ def build_graph():
         "jobs_agent",
         "music_agent",
         "video_agent",
+        "obsidian_agent",
     ):
         builder.add_edge(node, "finalizer")
 

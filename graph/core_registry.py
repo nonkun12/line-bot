@@ -21,6 +21,7 @@ from agents.voice.node import agent as voice_agent
 from agents.jobs.node import agent as job_seeking_agent
 from agents.music.node import agent as music_agent
 from agents.video.node import agent as video_agent
+from agents.obsidian.node import obsidian_agent_node
 from core.legacy_adapter import build_legacy_registry
 from core.agents import AgentRegistry
 
@@ -34,6 +35,7 @@ LEGACY_AGENT_NODES: Mapping[str, Callable[[Mapping[str, Any]], Mapping[str, Any]
     "sheets": sheets_agent_node,
     "weather": weather_agent_node,
     "english_learning": english_learning_agent_node,
+    "obsidian": obsidian_agent_node,
 }
 
 LEGACY_GRAPH_NODES: Mapping[str, str] = {
@@ -53,6 +55,7 @@ LEGACY_GRAPH_NODES: Mapping[str, str] = {
     "job_seeking": "jobs_agent",
     "music": "music_agent",
     "video": "video_agent",
+    "obsidian": "obsidian_agent",
     "fallback": "fallback_agent",
 }
 

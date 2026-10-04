@@ -12,6 +12,7 @@ def test_routes_specialist_requests_deterministically() -> None:
     assert route(ManagementRequest("u", "ドル円を教えて")).specialist is Specialist.MARKET
     assert route(ManagementRequest("u", "音楽を選曲して")).specialist is Specialist.MUSIC
     assert route(ManagementRequest("u", "動画の台本を作って")).specialist is Specialist.VIDEO
+    assert route(ManagementRequest("u", "Obsidianに保存 notes/test.md: hello")).specialist is Specialist.OBSIDIAN
 
 
 def test_falls_back_to_general() -> None:
