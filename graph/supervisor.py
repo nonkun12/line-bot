@@ -71,6 +71,8 @@ def classify_intent(raw_message: str, user_id: str | None = None) -> str:
         return "voice"
     if is_sheets_intent(text):
         return "sheets"
+    if is_obsidian_intent(text):
+        return "obsidian"
     if is_note_intent(text, user_id=user_id):
         return "note"
     if is_github_intent(text):
