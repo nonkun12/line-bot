@@ -269,17 +269,34 @@ jobs:
           os.environ['AUTONOMOUS_NEXT_ACTION'] = action
 
           from agents.sheets.autonomous_ledger import record_autonomous_run
-          recorded = record_autonomous_run()
-          os.environ['AUTONOMOUS_SHEETS_LOG_RESULT'] = 'RECORDED' if recorded else 'ALREADY_RECORDED'
-          print(f'distributed run Sheets ledger result: {os.environ["AUTONOMOUS_SHEETS_LOG_RESULT"]}')
-          Path('/tmp/distributed-sheets-log-result.json').write_text(
-              json.dumps({
-                  'run_id': os.environ.get('GITHUB_RUN_ID', ''),
-                  'task_id': os.environ.get('AUTONOMOUS_TASK_ID', ''),
-                  'result': os.environ['AUTONOMOUS_SHEETS_LOG_RESULT'],
-              }, ensure_ascii=False, indent=2) + '\n',
-              encoding='utf-8',
-          )
+          try:
+              recorded = record_autonomous_run()
+          except Exception as exc:
+              error_text = f"{type(exc).__name__}: {exc}"
+              os.environ['AUTONOMOUS_SHEETS_LOG_RESULT'] = 'ERROR'
+              Path('/tmp/distributed-sheets-log-result.json').write_text(
+                  json.dumps({
+                      'run_id': os.environ.get('GITHUB_RUN_ID', ''),
+                      'task_id': os.environ.get('AUTONOMOUS_TASK_ID', ''),
+                      'result': 'ERROR',
+                      'error_type': type(exc).__name__,
+                      'error': str(exc),
+                  }, ensure_ascii=False, indent=2) + '\n',
+                  encoding='utf-8',
+              )
+              print(f'distributed run Sheets ledger result: ERROR: {error_text}')
+              raise
+          else:
+              os.environ['AUTONOMOUS_SHEETS_LOG_RESULT'] = 'RECORDED' if recorded else 'ALREADY_RECORDED'
+              print(f'distributed run Sheets ledger result: {os.environ["AUTONOMOUS_SHEETS_LOG_RESULT"]}')
+              Path('/tmp/distributed-sheets-log-result.json').write_text(
+                  json.dumps({
+                      'run_id': os.environ.get('GITHUB_RUN_ID', ''),
+                      'task_id': os.environ.get('AUTONOMOUS_TASK_ID', ''),
+                      'result': os.environ['AUTONOMOUS_SHEETS_LOG_RESULT'],
+                  }, ensure_ascii=False, indent=2) + '\n',
+                  encoding='utf-8',
+              )
           PY
 
       - name: Upload durable run evidence
