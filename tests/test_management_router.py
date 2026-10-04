@@ -55,3 +55,7 @@ def test_normalizes_full_width_input_and_preserves_channel_metadata() -> None:
 
 def test_routes_jobs_request_with_surrounding_whitespace() -> None:
     assert route(ManagementRequest("u", "  求人を探して  ")).specialist is Specialist.JOBS
+
+
+def test_routes_fullwidth_market_request_after_normalization() -> None:
+    assert route(ManagementRequest("u", "ＮＹダウを教えて")).specialist is Specialist.MARKET
