@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import traceback
+from functools import lru_cache
 from pathlib import Path
 from urllib import error as urllib_error
 from urllib import request as urllib_request
@@ -63,6 +64,7 @@ def is_protected(path: str) -> bool:
     return path in PROTECTED_PATHS or any(path.startswith(prefix) for prefix in PROTECTED_PREFIXES)
 
 
+@lru_cache(maxsize=512)
 def _shared_policy_decision(path: str) -> SelfImprovementDecision:
     return assess_self_improvement((path,)).decision
 
