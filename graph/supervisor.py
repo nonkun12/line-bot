@@ -24,6 +24,7 @@ from agents.stocks.intents import is_stock_intent
 from agents.news.intents import is_ai_news_intent
 from agents.voice.intents import is_voice_intent
 from agents.jobs.intents import is_job_seeking_intent
+from agents.obsidian.intents import is_obsidian_intent
 
 _DEBUG_PREFIX = "debug"
 
