@@ -56,3 +56,21 @@ def test_unconfigured_vault_fails_closed(monkeypatch, tmp_path):
     result = obsidian_agent_node(_state("Obsidian一覧", tmp_path))
     assert result["agent_results"]["obsidian"]["success"] is False
     assert result["agent_results"]["obsidian"]["reason"] == "vault_not_configured"
+
+
+def test_obisidian_routes_through_current_core_graph(tmp_path, monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+    from graph.supervisor import supervisor_node
+    from graph.core_graph import build_current_core_graph
+
+    state = supervisor_node({
+        "user_id": "test-user",
+        "raw_message": "Obsidianに保存 notes/graph.md: hello",
+        "channel": "test",
+        "metadata": {},
+        "agent_results": {},
+    })
+    result = build_current_core_graph().invoke(state)
+    assert result["intent"] == "obsidian"
+    assert result["next_agent"] == "obsidian"
+    assert result["agent_results"]["obsidian"]["text"].startswith("Obsidianに保存しました")
