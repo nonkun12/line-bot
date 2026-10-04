@@ -84,7 +84,8 @@ def _resolved_sheet(client: GoogleSheetsClient) -> str:
 
 
 def _sheet_scan_range(client: GoogleSheetsClient) -> str:
-    return f"{_resolved_sheet(client)}!A1:ZZ1000"
+    sheet = _resolved_sheet(client).replace("'", "''")
+    return f"'{sheet}'!A1:ZZ1000"
 
 
 def _normalized_row(row: list) -> list[str]:
@@ -165,7 +166,7 @@ def _existing_matching_run(
     run_id = str(record.run_id)
     width = len(HEADERS)
 
-    for row in client.read_rows(_sheet_scan_range()):
+    for row in client.read_rows(_sheet_scan_range(client)):
         if not isinstance(row, list) or run_id not in {str(cell) for cell in row}:
             continue
 
