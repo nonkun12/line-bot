@@ -16,6 +16,9 @@ class FakeClient:
         self.appended = []
         self.read_ranges = []
 
+    def sheet_titles(self):
+        return [SHEET]
+
     def _header_row(self):
         return [""] * LEDGER_START + ledger.HEADERS
 
