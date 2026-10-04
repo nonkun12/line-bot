@@ -34,6 +34,7 @@ def test_default_boundaries_are_explicit() -> None:
         Specialist.JOBS,
         Specialist.MUSIC,
         Specialist.VIDEO,
+        Specialist.OBSIDIAN,
     )
     assert default_specialist_boundaries()[1].allowed_channels == ("voice",)
 
@@ -53,7 +54,7 @@ def test_management_request_contract_is_bounded() -> None:
     with pytest.raises(ValueError, match="channel exceeds"):
         ManagementRequest("u1", "hello", channel="x" * 101)
     with pytest.raises(ValueError, match="metadata contains too many"):
-        ManagementRequest("u1", "hello", metadata={str(i): i for i in range(17)})
+        ManagementRequest("u1", "hello", metadata={str(i): "v" for i in range(17)})
     with pytest.raises(ValueError, match="metadata key exceeds"):
         ManagementRequest("u1", "hello", metadata={"x" * 101: "v"})
     with pytest.raises(ValueError, match="metadata value exceeds"):

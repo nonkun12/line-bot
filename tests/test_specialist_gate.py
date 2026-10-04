@@ -198,10 +198,17 @@ def test_every_agent_role_is_classified_as_specialist_or_development():
 
 
 def test_role_and_agent_name_tables_agree_with_the_gate():
-    domain = {AgentRole(s.value): name for s, name in gate.DOMAIN_AGENT_NAMES.items()}
+    # Obsidian is a directly routed local specialist and intentionally has no
+    # AgentRole/multi-agent management surface.
+    agent_backed_specialists = frozenset(set(Specialist) - {Specialist.OBSIDIAN})
+    domain = {
+        AgentRole(s.value): name
+        for s, name in gate.DOMAIN_AGENT_NAMES.items()
+        if s in agent_backed_specialists
+    }
     assert dict(_AGENT_NAMES) == domain
     assert {r: n for r, n in ROLE_TO_AGENT_NAME.items() if r is not AgentRole.GENERAL} == domain
-    assert PLANNABLE_ROLES == {AgentRole(s.value) for s in Specialist}
+    assert PLANNABLE_ROLES == {AgentRole(s.value) for s in agent_backed_specialists}
     assert SUPPORTED_MULTI_SPECIALISTS == PLANNABLE_ROLES - {AgentRole.GENERAL}
 
 

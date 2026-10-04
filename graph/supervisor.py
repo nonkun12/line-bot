@@ -24,6 +24,7 @@ from agents.stocks.intents import is_stock_intent
 from agents.news.intents import is_ai_news_intent
 from agents.voice.intents import is_voice_intent
 from agents.jobs.intents import is_job_seeking_intent
+from agents.obsidian.intents import is_obsidian_intent
 
 _DEBUG_PREFIX = "debug"
 
@@ -70,6 +71,8 @@ def classify_intent(raw_message: str, user_id: str | None = None) -> str:
         return "voice"
     if is_sheets_intent(text):
         return "sheets"
+    if is_obsidian_intent(text):
+        return "obsidian"
     if is_note_intent(text, user_id=user_id):
         return "note"
     if is_github_intent(text):
@@ -91,7 +94,7 @@ def supervisor_node(state: AgentState) -> AgentState:
         "debug": "debug", "app_development": "app_development", "note": "notes",
         "memory": "memory", "github": "github", "sheets": "sheets", "weather": "weather",
         "english_learning": "english_learning", "stocks": "stocks", "ai_news": "ai_news",
-        "voice": "voice", "jobs": "job_seeking", "unsupported": "normal",
+        "voice": "voice", "jobs": "job_seeking", "obsidian": "obsidian", "unsupported": "normal",
     }.get(intent, "fallback")
     pending_status = get_pending_status(user_id).value if user_id is not None else PendingStatus.NONE.value
     return {**state, "intent": intent, "next_agent": next_agent, "pending_status": pending_status}
