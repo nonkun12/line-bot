@@ -231,8 +231,11 @@ def test_implementer_routes_apply_failure_through_bounded_anchor_repair(monkeypa
 def test_deterministic_autonomous_test_plan_hand_sign_within_size_bounds(monkeypatch, tmp_path):
     target = tmp_path / "uhip" / "tests" / "test_schema_contracts.py"
     target.parent.mkdir(parents=True, exist_ok=True)
-    real_file = runtime.worker.ROOT / "uhip" / "tests" / "test_schema_contracts.py"
-    target.write_text(real_file.read_text(encoding="utf-8"), encoding="utf-8")
+    target.write_text(
+        "    with pytest.raises(jsonschema.ValidationError):\n"
+        "        validate(adapter, ADAPTER_SCHEMA)\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
 
@@ -283,8 +286,11 @@ def test_implementer_applies_deterministic_task_plan_without_llm_repair(monkeypa
     chosen = "uhip/tests/test_schema_contracts.py"
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
-    real_file = runtime.worker.ROOT / chosen
-    target.write_text(real_file.read_text(encoding="utf-8"), encoding="utf-8")
+    target.write_text(
+        "    with pytest.raises(jsonschema.ValidationError):\n"
+        "        validate(adapter, ADAPTER_SCHEMA)\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
 
