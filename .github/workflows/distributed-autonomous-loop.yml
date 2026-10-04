@@ -13,9 +13,11 @@ on:
   schedule:
     - cron: '30 4 * * *'
       timezone: 'Asia/Tokyo'
-    - cron: '30 12 * * *'
+    - cron: '30 10 * * *'
       timezone: 'Asia/Tokyo'
-    - cron: '30 20 * * *'
+    - cron: '30 16 * * *'
+      timezone: 'Asia/Tokyo'
+    - cron: '30 22 * * *'
       timezone: 'Asia/Tokyo'
 
 permissions:
