@@ -22,6 +22,8 @@ from agents.market.intents import is_market_intent
 from e2e_status import StepTimer
 from core.distributed_agent_bridge import build_agent_registry
 from core.distributed_coordinator import DistributedAgentCoordinator
+from agents.obsidian.intents import is_obsidian_intent
+from core.obsidian_bridge import enqueue_obsidian_request
 from core.multi_agent import AgentRole
 from core.specialist_gate import (
     DOMAIN_AGENT_NAMES,
@@ -471,6 +473,32 @@ def run_core_request(
 ) -> dict[str, Any]:
     """Classify with Supervisor, then execute one or a bounded specialist plan via Core."""
     request_metadata = dict(metadata or {})
+    if is_obsidian_intent(message):
+        with StepTimer("core") as core_timer:
+            try:
+                job_id = enqueue_obsidian_request(user_id, message)
+                result = {
+                    "user_id": user_id,
+                    "raw_message": message,
+                    "channel": channel,
+                    "metadata": {**request_metadata, "obsidian_job_id": job_id},
+                    "intent": "obsidian_bridge_queue",
+                    "next_agent": "obsidian_bridge",
+                    "route": "obsidian:mac_bridge",
+                    "agent_results": {},
+                    "final_reply": f"Obsidian処理をMac Bridgeへ登録しました。Mac起動中なら実行されます。Job ID: {job_id}",
+                    "error": None,
+                    "specialists": ["obsidian"],
+                    "parallel": False,
+                    "max_workers": 1,
+                    "failed_specialists": [],
+                }
+            except Exception as exc:
+                core_timer.fail(error=exc, error_location="core/request_path.obsidian_bridge")
+                raise
+            core_timer.ok()
+            return result
+
     specialists = _resolve_multi_specialist_plan(message)
     if specialists is not None:
         with StepTimer("core") as core_timer:

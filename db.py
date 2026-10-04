@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import secrets
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB = os.environ.get("CHAT_DB_PATH", os.path.join(BASE_DIR, "chat.db"))
@@ -63,14 +64,25 @@ def init_db():
             max_retries INTEGER NOT NULL DEFAULT 3,
             last_error TEXT,
             result TEXT,
+            claim_token TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(parent_job_id) REFERENCES jobs(id)
         )
         """)
+        columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(jobs)").fetchall()
+        }
+        if "claim_token" not in columns:
+            conn.execute("ALTER TABLE jobs ADD COLUMN claim_token TEXT")
         conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_jobs_status_created_at
         ON jobs(status, created_at)
+        """)
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_jobs_type_status_created_at
+        ON jobs(job_type, status, created_at)
         """)
         conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_jobs_user_id
@@ -97,9 +109,6 @@ def init_db():
         """)
 
 
-# =========================
-# 会話保存
-# =========================
 def save_message(user_id, role, content):
     print(f"[LOG] save_message called: user_id={user_id}, role={role}")
     try:
@@ -112,9 +121,6 @@ def save_message(user_id, role, content):
         print("DB SAVE_MESSAGE ERROR:", e)
 
 
-# =========================
-# 履歴
-# =========================
 def load_history(user_id):
     print(f"[LOG] load_history called: user_id={user_id}")
     try:
@@ -132,9 +138,6 @@ def load_history(user_id):
     return list(reversed(rows))
 
 
-# =========================
-# Jobs
-# =========================
 def create_job(user_id, message, job_type="ai_task", source="line", parent_job_id=None, max_retries=3):
     """非同期実行用Jobをpending状態で登録する。"""
     with get_conn() as conn:
@@ -153,7 +156,8 @@ def get_job(job_id):
         row = conn.execute(
             """
             SELECT id, user_id, job_type, source, parent_job_id, message, status,
-                   retry_count, max_retries, last_error, result, created_at, updated_at
+                   retry_count, max_retries, last_error, result, claim_token,
+                   created_at, updated_at
             FROM jobs WHERE id=?
             """,
             (job_id,),
@@ -162,7 +166,8 @@ def get_job(job_id):
         return None
     keys = (
         "id", "user_id", "job_type", "source", "parent_job_id", "message", "status",
-        "retry_count", "max_retries", "last_error", "result", "created_at", "updated_at"
+        "retry_count", "max_retries", "last_error", "result", "claim_token",
+        "created_at", "updated_at"
     )
     return dict(zip(keys, row))
 
@@ -187,6 +192,102 @@ def claim_pending_job():
         if cursor.rowcount != 1:
             return None
     return get_job(job_id)
+
+
+def claim_pending_job_by_type(job_type, *, stale_after_seconds=900):
+    """Atomically claim one bounded job of a specific type with a private token."""
+    if not isinstance(job_type, str) or not job_type.strip():
+        raise ValueError("job_type is required")
+    if (
+        not isinstance(stale_after_seconds, int)
+        or isinstance(stale_after_seconds, bool)
+        or stale_after_seconds < 60
+        or stale_after_seconds > 3600
+    ):
+        raise ValueError("stale_after_seconds must be between 60 and 3600")
+
+    token = secrets.token_urlsafe(32)
+    stale_expr = f"-{stale_after_seconds} seconds"
+
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE jobs
+            SET status='pending',
+                claim_token=NULL,
+                retry_count=retry_count + 1,
+                updated_at=CURRENT_TIMESTAMP
+            WHERE job_type=?
+              AND status='running'
+              AND updated_at < datetime('now', ?)
+              AND retry_count < max_retries
+            """,
+            (job_type.strip(), stale_expr),
+        )
+        row = conn.execute(
+            """
+            SELECT id
+            FROM jobs
+            WHERE job_type=? AND status='pending'
+            ORDER BY id
+            LIMIT 1
+            """,
+            (job_type.strip(),),
+        ).fetchone()
+        if row is None:
+            return None
+        job_id = row[0]
+        cursor = conn.execute(
+            """
+            UPDATE jobs
+            SET status='running',
+                claim_token=?,
+                updated_at=CURRENT_TIMESTAMP
+            WHERE id=? AND job_type=? AND status='pending'
+            """,
+            (token, job_id, job_type.strip()),
+        )
+        if cursor.rowcount != 1:
+            return None
+    return get_job(job_id)
+
+
+def complete_claimed_job(
+    job_id,
+    claim_token,
+    *,
+    success,
+    result=None,
+    last_error=None,
+):
+    """Complete only the exact running job claimed by this bridge instance."""
+    if not isinstance(job_id, int) or isinstance(job_id, bool) or job_id <= 0:
+        raise ValueError("job_id is required")
+    if not isinstance(claim_token, str) or not claim_token.strip():
+        raise ValueError("claim_token is required")
+    if not isinstance(success, bool):
+        raise ValueError("success must be boolean")
+    status = "completed" if success else "failed"
+    with get_conn() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE jobs
+            SET status=?,
+                result=?,
+                last_error=?,
+                claim_token=NULL,
+                updated_at=CURRENT_TIMESTAMP
+            WHERE id=? AND status='running' AND claim_token=?
+            """,
+            (
+                status,
+                result,
+                last_error,
+                job_id,
+                claim_token,
+            ),
+        )
+        return cursor.rowcount == 1
 
 
 def update_job(job_id, status=None, result=None, last_error=None, retry_count=None):
@@ -238,7 +339,7 @@ def get_latest_checkpoint(job_id):
             WHERE job_id=?
             ORDER BY id DESC LIMIT 1
             """,
-            (job_id,),
+            (job_id,)
         ).fetchone()
     if row is None:
         return None
@@ -246,9 +347,6 @@ def get_latest_checkpoint(job_id):
     return dict(zip(keys, row))
 
 
-# =========================
-# processed_events
-# =========================
 def create_processed_event(event_id, user_id=None, source="line"):
     print(f"[LOG] create_processed_event called: event_id={event_id}")
     try:

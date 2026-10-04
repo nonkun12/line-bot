@@ -78,6 +78,7 @@ from core.management_bridge import should_route_to_management_ai, run_management
 from core.line_runtime_audit import record_line_runtime
 from core.self_introduction import handle_self_introduction
 from routes.core_api import core_api_bp
+from routes.obsidian_bridge import obsidian_bridge_bp
 from routes.voice_api import voice_api_bp
 from app_development import extract_app_development_request, dispatch_app_development_workflow
 from line_development import extract_development_instruction, dispatch_development_workflow
@@ -91,6 +92,7 @@ app.register_blueprint(dashboard_bp)
 from routes.e2e_dashboard import e2e_bp
 app.register_blueprint(e2e_bp)
 app.register_blueprint(core_api_bp)
+app.register_blueprint(obsidian_bridge_bp)
 app.register_blueprint(voice_api_bp)
 
 @app.route("/health", methods=["GET"])
