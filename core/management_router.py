@@ -17,6 +17,11 @@ _KEYWORDS: tuple[tuple[Specialist, tuple[str, ...]], ...] = (
     (Specialist.VIDEO, ("動画", "映像", "video", "movie", "絵コンテ", "動画制作", "ショート動画")),
 )
 
+_CASEFOLDED_KEYWORDS: tuple[tuple[Specialist, tuple[str, ...]], ...] = tuple(
+    (specialist, tuple(keyword.casefold() for keyword in keywords))
+    for specialist, keywords in _KEYWORDS
+)
+
 
 def route(request: ManagementRequest) -> ManagementDecision:
     """Choose one specialist without invoking a model.
@@ -34,8 +39,8 @@ def route(request: ManagementRequest) -> ManagementDecision:
     }
     matches = [
         specialist
-        for specialist, keywords in _KEYWORDS
-        if any(keyword.casefold() in message for keyword in keywords)
+        for specialist, keywords in _CASEFOLDED_KEYWORDS
+        if any(keyword in message for keyword in keywords)
     ]
     routing_metadata["matched_specialists"] = [specialist.value for specialist in matches]
     routing_metadata["routing_priority"] = (
