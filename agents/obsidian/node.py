@@ -10,6 +10,7 @@ from graph.state import AgentState
 
 
 _MAX_CONTENT_CHARS = 20_000
+_MAX_READ_RESULTS = 20
 _SAVE_RE = re.compile(
     r"^obsidian\s*(?:に|へ)\s*(?P<mode>保存|記録|追記|追加)\b\s+"
     r"(?P<path>[^\s:：]+\.md)"
@@ -22,6 +23,11 @@ _READ_RE = re.compile(
     r"(?P<path>[^\s:：]+\.md)\s*$",
     re.IGNORECASE,
 )
+_SEARCH_RE = re.compile(
+    r"^obsidian\s*(?:で|から)\s*(?:検索|探して)\b\s+(?P<keyword>[\s\S]{1,200})$",
+    re.IGNORECASE,
+)
+_LIST_RE = re.compile(r"^obsidian\s*(?:の)?\s*(?:一覧|リスト)\s*$", re.IGNORECASE)
 
 
 def _response(state: AgentState, text: str, **metadata: object) -> AgentState:
@@ -31,7 +37,7 @@ def _response(state: AgentState, text: str, **metadata: object) -> AgentState:
 
 
 def obsidian_agent_node(state: AgentState) -> AgentState:
-    """Execute only the two explicit, bounded Obsidian operations."""
+    """Execute bounded Obsidian operations only after explicit capability gating."""
     assert_agent_approved("obsidian")
 
     message = str(state.get("raw_message", "") or "").strip()
@@ -39,27 +45,32 @@ def obsidian_agent_node(state: AgentState) -> AgentState:
     if vault is None:
         return _response(
             state,
-            "Obsidian連携は未設定です。OBSIDIAN_VAULT_PATHを設定してください。",
+            "Obsidian連携は未設定です。ローカル実行環境でOBSIDIAN_VAULT_PATHを設定してください。",
             success=False,
             reason="vault_not_configured",
         )
 
     if not is_obsidian_intent(message):
-        return _response(state, "Obsidianの操作形式を理解できませんでした。", success=False)
+        return _response(
+            state,
+            "Obsidianの操作形式を理解できませんでした。",
+            success=False,
+            reason="intent_rejected",
+        )
 
-    save_match = _SAVE_RE.fullmatch(message)
-    if save_match:
-        path = save_match.group("path")
-        content = save_match.group("content")
-        if len(content) > _MAX_CONTENT_CHARS:
-            return _response(
-                state,
-                "安全上、1回のObsidian書き込みは20,000文字までです。",
-                success=False,
-                reason="content_too_large",
-            )
+    try:
+        save_match = _SAVE_RE.fullmatch(message)
+        if save_match:
+            path = save_match.group("path")
+            content = save_match.group("content")
+            if len(content) > _MAX_CONTENT_CHARS:
+                return _response(
+                    state,
+                    "安全上、1回のObsidian書き込みは20,000文字までです。",
+                    success=False,
+                    reason="content_too_large",
+                )
 
-        try:
             mode = save_match.group("mode")
             if mode in {"保存", "記録"} and vault.exists(path):
                 return _response(
@@ -69,39 +80,72 @@ def obsidian_agent_node(state: AgentState) -> AgentState:
                     reason="overwrite_blocked",
                 )
             target = vault.write_note(path, content, append=mode in {"追記", "追加"})
-        except (ObsidianError, OSError) as exc:
             return _response(
                 state,
-                f"Obsidianへの書き込みを停止しました: {exc}",
-                success=False,
-                reason="write_rejected",
+                f"Obsidianに保存しました: {target}",
+                success=True,
+                operation="append" if mode in {"追記", "追加"} else "create",
+                path=path,
             )
+
+        read_match = _READ_RE.fullmatch(message)
+        if read_match:
+            path = read_match.group("path")
+            content = vault.read_note(path)
+            if len(content) > _MAX_CONTENT_CHARS:
+                content = content[:_MAX_CONTENT_CHARS] + "\n\n[表示上限を超えたため省略]"
+            return _response(state, content, success=True, operation="read", path=path)
+
+        search_match = _SEARCH_RE.fullmatch(message)
+        if search_match:
+            keyword = search_match.group("keyword").strip()
+            matches = vault.search_notes(keyword, limit=_MAX_READ_RESULTS)
+            if not matches:
+                return _response(
+                    state,
+                    f"「{keyword}」に一致するObsidianノートはありませんでした。",
+                    success=True,
+                    operation="search",
+                    count=0,
+                )
+            body = "\n".join(f"- {path}" for path in matches)
+            return _response(
+                state,
+                f"Obsidian検索結果（{len(matches)}件以内）:\n{body}",
+                success=True,
+                operation="search",
+                count=len(matches),
+            )
+
+        if _LIST_RE.fullmatch(message):
+            matches = vault.list_notes(limit=200)
+            if not matches:
+                return _response(
+                    state,
+                    "ObsidianにMarkdownノートはありませんでした。",
+                    success=True,
+                    operation="list",
+                    count=0,
+                )
+            body = "\n".join(f"- {path}" for path in matches)
+            return _response(
+                state,
+                f"Obsidianノート一覧（最大200件）:\n{body}",
+                success=True,
+                operation="list",
+                count=len(matches),
+            )
+    except (ObsidianError, OSError) as exc:
         return _response(
             state,
-            f"Obsidianに保存しました: {target}",
-            success=True,
-            operation="append" if mode in {"追記", "追加"} else "create",
+            f"Obsidian操作を停止しました: {exc}",
+            success=False,
+            reason="operation_rejected",
         )
-
-    read_match = _READ_RE.fullmatch(message)
-    if read_match:
-        path = read_match.group("path")
-        try:
-            content = vault.read_note(path)
-        except (ObsidianError, OSError) as exc:
-            return _response(
-                state,
-                f"Obsidianの読み取りを停止しました: {exc}",
-                success=False,
-                reason="read_rejected",
-            )
-        if len(content) > _MAX_CONTENT_CHARS:
-            content = content[:_MAX_CONTENT_CHARS] + "\n\n[表示上限を超えたため省略]"
-        return _response(state, content, success=True, operation="read")
 
     return _response(
         state,
-        "形式: 「Obsidianに保存 notes/example.md: 内容」または「Obsidianを読む notes/example.md」",
+        "形式: 「Obsidianに保存 notes/example.md: 内容」「Obsidianに追記 notes/example.md: 内容」「Obsidianを読む notes/example.md」「Obsidianで検索 キーワード」「Obsidian一覧」",
         success=False,
         reason="invalid_command",
     )
