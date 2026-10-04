@@ -94,7 +94,7 @@ def supervisor_node(state: AgentState) -> AgentState:
         "debug": "debug", "app_development": "app_development", "note": "notes",
         "memory": "memory", "github": "github", "sheets": "sheets", "weather": "weather",
         "english_learning": "english_learning", "stocks": "stocks", "ai_news": "ai_news",
-        "voice": "voice", "jobs": "job_seeking", "unsupported": "normal",
+        "voice": "voice", "jobs": "job_seeking", "obsidian": "obsidian", "unsupported": "normal",
     }.get(intent, "fallback")
     pending_status = get_pending_status(user_id).value if user_id is not None else PendingStatus.NONE.value
     return {**state, "intent": intent, "next_agent": next_agent, "pending_status": pending_status}
