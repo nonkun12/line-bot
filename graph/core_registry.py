@@ -35,6 +35,7 @@ LEGACY_AGENT_NODES: Mapping[str, Callable[[Mapping[str, Any]], Mapping[str, Any]
     "sheets": sheets_agent_node,
     "weather": weather_agent_node,
     "english_learning": english_learning_agent_node,
+    "obsidian": obsidian_agent_node,
 }
 
 LEGACY_GRAPH_NODES: Mapping[str, str] = {
