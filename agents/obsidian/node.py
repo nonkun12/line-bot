@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 
 from agents.obsidian.intents import is_obsidian_intent
-from core.specialist_gate import assert_agent_approved
+from core.specialist_gate import assert_agent_approved, assert_specialist_capability
 from core.obsidian import ObsidianError, ObsidianVault
 from graph.state import AgentState
 
@@ -79,6 +79,7 @@ def obsidian_agent_node(state: AgentState) -> AgentState:
                     success=False,
                     reason="overwrite_blocked",
                 )
+            assert_specialist_capability("obsidian", "obsidian_write")
             target = vault.write_note(path, content, append=mode in {"追記", "追加"})
             return _response(
                 state,
@@ -91,6 +92,7 @@ def obsidian_agent_node(state: AgentState) -> AgentState:
         read_match = _READ_RE.fullmatch(message)
         if read_match:
             path = read_match.group("path")
+            assert_specialist_capability("obsidian", "obsidian_read")
             content = vault.read_note(path)
             if len(content) > _MAX_CONTENT_CHARS:
                 content = content[:_MAX_CONTENT_CHARS] + "\n\n[表示上限を超えたため省略]"
@@ -99,6 +101,7 @@ def obsidian_agent_node(state: AgentState) -> AgentState:
         search_match = _SEARCH_RE.fullmatch(message)
         if search_match:
             keyword = search_match.group("keyword").strip()
+            assert_specialist_capability("obsidian", "obsidian_read")
             matches = vault.search_notes(keyword, limit=_MAX_READ_RESULTS)
             if not matches:
                 return _response(
@@ -118,6 +121,7 @@ def obsidian_agent_node(state: AgentState) -> AgentState:
             )
 
         if _LIST_RE.fullmatch(message):
+            assert_specialist_capability("obsidian", "obsidian_read")
             matches = vault.list_notes(limit=200)
             if not matches:
                 return _response(
