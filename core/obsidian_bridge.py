@@ -5,6 +5,8 @@ Obsidian commands for an authenticated Mac bridge to claim and execute locally.
 """
 from __future__ import annotations
 
+import os
+
 from .obsidian import ObsidianError
 from agents.obsidian.intents import is_obsidian_intent
 from db import create_job
@@ -27,6 +29,8 @@ def enqueue_obsidian_request(user_id: str, message: str) -> int:
         raise ObsidianError("Obsidian message exceeds 4000 characters")
     if not is_obsidian_intent(normalized_message):
         raise ObsidianError("only explicit Obsidian commands may be queued")
+    if not os.environ.get("OBSIDIAN_BRIDGE_KEY", "").strip():
+        raise ObsidianError("Obsidian Mac bridge is not configured")
     job_id = create_job(
         normalized_user_id,
         normalized_message,
