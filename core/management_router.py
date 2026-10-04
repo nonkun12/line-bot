@@ -15,6 +15,7 @@ _KEYWORDS: tuple[tuple[Specialist, tuple[str, ...]], ...] = (
     (Specialist.JOBS, ("求職", "転職", "就職", "求人", "仕事探し", "仕事を探", "採用", "応募", "履歴書", "職務経歴書", "志望動機", "面接", "キャリア", "job", "jobs", "career", "resume", "cv", "interview", "application")),
     (Specialist.MUSIC, ("音楽", "music", "作曲", "作詞", "playlist", "プレイリスト", "BGM", "楽曲")),
     (Specialist.VIDEO, ("動画", "映像", "video", "movie", "絵コンテ", "動画制作", "ショート動画")),
+    (Specialist.OBSIDIAN, ("obsidianに保存", "obsidianへ保存", "obsidianに記録", "obsidianに書", "obsidianを読む", "obsidianから読む")),
 )
 
 _CASEFOLDED_KEYWORDS: tuple[tuple[Specialist, tuple[str, ...]], ...] = tuple(
