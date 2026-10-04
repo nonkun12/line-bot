@@ -160,22 +160,48 @@ def _existing_matching_run(
 
 def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
     """Append once to the existing sheet table and verify the actual returned row."""
-    target_range = ensure_headers(client)
+    try:
+        target_range = ensure_headers(client)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Google Sheets ledger header/read failed for sheet={_configured_sheet()!r}: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
 
-    if _existing_matching_run(client, record):
-        return False
+    try:
+        if _existing_matching_run(client, record):
+            return False
+    except Exception as exc:
+        raise RuntimeError(
+            f"Google Sheets duplicate-check failed for run_id={record.run_id}: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
 
-    response = client.append_row(target_range, record.values())
+    try:
+        response = client.append_row(target_range, record.values())
+    except Exception as exc:
+        raise RuntimeError(
+            f"Google Sheets append API failed for run_id={record.run_id}: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
     updates = response.get("updates", {}) if isinstance(response, dict) else {}
     if updates.get("updatedRows") != 1:
         raise RuntimeError(
             f"Google Sheets append updatedRows={updates.get('updatedRows')!r}"
         )
 
-    readback_range = _verify_updated_range(
-        updates.get("updatedRange"), _configured_sheet()
-    )
-    rows = client.read_rows(readback_range)
+    try:
+        readback_range = _verify_updated_range(
+            updates.get("updatedRange"), _configured_sheet()
+        )
+        rows = client.read_rows(readback_range)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Google Sheets append verification failed for run_id={record.run_id}: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
     if len(rows) != 1 or _normalized_row(rows[0]) != record.values():
         raise RuntimeError(
             f"Google Sheets append read-back mismatch for run_id={record.run_id}"
@@ -237,5 +263,5 @@ def record_autonomous_run() -> bool:
     assert last_error is not None
     raise RuntimeError(
         "Google Sheets autonomous ledger write failed after bounded retry: "
-        f"{last_error}"
+        f"{type(last_error).__name__}: {last_error}"
     ) from last_error
