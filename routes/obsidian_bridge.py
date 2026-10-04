@@ -90,8 +90,8 @@ def complete():
     if job["status"] != "running":
         return jsonify({"ok": False, "error": "job is not claimable"}), 409
 
-    stored_result = reply if success else None
-    stored_error = error if not success else None
+    stored_result = reply if isinstance(reply, str) and reply.strip() else None
+    stored_error = error if isinstance(error, str) and error.strip() else None
     try:
         updated = complete_claimed_job(
             job_id,
@@ -107,7 +107,7 @@ def complete():
     if not updated:
         return jsonify({"ok": False, "error": "claim token rejected"}), 409
 
-    if success and isinstance(reply, str) and reply.strip():
+    if isinstance(reply, str) and reply.strip():
         try:
             # LINE credentials stay on the server; the Mac bridge never receives them.
             from app import _line_push
