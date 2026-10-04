@@ -1,9 +1,4 @@
-"""Append one immutable autonomous-development execution record to Google Sheets.
-
-This module is intentionally separate from user-facing Sheets operations.
-It is the canonical ledger used by the nightly autonomous workflow; the optional
-`core.line_development_runtime` audit hook is a separate, best-effort path.
-"""
+"""Append one immutable autonomous-development execution record to Google Sheets."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,7 +7,12 @@ import re
 
 from agents.sheets.client import GoogleSheetsClient
 
-LEDGER_RANGE = (os.getenv("AUTONOMOUS_DEV_LEDGER_RANGE") or os.getenv("GOOGLE_SHEETS_AUDIT_RANGE") or "AutonomousDevelopment!A:Q").strip()
+LEDGER_RANGE = (
+    os.getenv("AUTONOMOUS_DEV_LEDGER_RANGE")
+    or os.getenv("GOOGLE_SHEETS_AUDIT_RANGE")
+    or "AutonomousDevelopment!A:ZZ"
+).strip()
+
 HEADERS = [
     "timestamp", "run_id", "task_id", "source", "agent", "task_summary",
     "base_sha", "produced_sha", "changed_files", "pr_url", "tests_result",
@@ -51,71 +51,157 @@ class AutonomousRunRecord:
         )]
 
 
-def ensure_headers(client: GoogleSheetsClient) -> None:
-    sheet = LEDGER_RANGE.split("!", 1)[0]
-    header_range = f"{sheet}!A1:Q1"
-    existing = client.read_rows(header_range)
-    if existing and existing[0] == HEADERS:
-        return
-    client.update_row(header_range, HEADERS)
+def _configured_sheet() -> str:
+    if "!" not in LEDGER_RANGE:
+        raise RuntimeError(f"Unsupported ledger range: {LEDGER_RANGE!r}")
+    sheet = LEDGER_RANGE.split("!", 1)[0].strip()
+    if not sheet:
+        raise RuntimeError(f"Missing sheet name in ledger range: {LEDGER_RANGE!r}")
+    return sheet
+
+
+def _sheet_scan_range() -> str:
+    return f"{_configured_sheet()}!A:ZZ"
+
+
+def _header_range() -> str:
+    end_column = "Q"  # 17 ledger columns
+    return f"{_configured_sheet()}!A1:{end_column}1"
 
 
 def _normalized_row(row: list) -> list[str]:
-    """Normalize Sheets' trimmed trailing cells to the fixed ledger width."""
     values = [str(cell) for cell in row[:len(HEADERS)]]
     return values + [""] * (len(HEADERS) - len(values))
 
 
-def _verify_updated_range(updated_range: object) -> str:
+def _headers_exist(client: GoogleSheetsClient) -> bool:
+    width = len(HEADERS)
+    for row in client.read_rows(_sheet_scan_range()):
+        if not isinstance(row, list) or len(row) < width:
+            continue
+        for start in range(0, len(row) - width + 1):
+            if row[start:start + width] == HEADERS:
+                return True
+    return False
+
+
+def ensure_headers(client: GoogleSheetsClient) -> str:
+    """Ensure the existing ledger has its schema; initialize only a truly empty sheet."""
+    scan_range = _sheet_scan_range()
+    rows = client.read_rows(scan_range)
+
+    width = len(HEADERS)
+    for row in rows:
+        if not isinstance(row, list) or len(row) < width:
+            continue
+        for start in range(0, len(row) - width + 1):
+            if row[start:start + width] == HEADERS:
+                return scan_range
+
+    # An actually empty sheet is safe to initialize. Never overwrite non-empty data.
+    if not rows:
+        header_range = _header_range()
+        client.update_row(header_range, HEADERS)
+        readback = client.read_rows(header_range)
+        if len(readback) != 1 or _normalized_row(readback[0]) != HEADERS:
+            raise RuntimeError(
+                f"Google Sheets header initialization read-back mismatch on {_configured_sheet()!r}"
+            )
+        return scan_range
+
+    raise RuntimeError(
+        f"Google Sheets ledger headers not found on {_configured_sheet()!r}; "
+        "refusing to overwrite a non-empty sheet"
+    )
+
+
+def _column_to_number(column: str) -> int:
+    value = 0
+    for char in column:
+        value = value * 26 + (ord(char) - ord("A") + 1)
+    return value
+
+
+def _normalize_sheet_name(sheet: str) -> str:
+    sheet = sheet.strip()
+    if sheet.startswith("'") and sheet.endswith("'"):
+        return sheet[1:-1].replace("''", "'")
+    return sheet
+
+
+def _verify_updated_range(updated_range: object, expected_sheet: str) -> str:
     if not isinstance(updated_range, str) or not updated_range.strip():
         raise RuntimeError("Google Sheets append did not return updatedRange")
 
-    match = re.fullmatch(r"(.+)!([A-Z]+)([0-9]+):([A-Z]+)([0-9]+)", updated_range.strip())
+    match = re.fullmatch(
+        r"(.+)!([A-Z]+)([0-9]+):([A-Z]+)([0-9]+)",
+        updated_range.strip(),
+    )
     if not match:
-        raise RuntimeError(f"Google Sheets append returned invalid updatedRange={updated_range!r}")
+        raise RuntimeError(
+            f"Google Sheets append returned invalid updatedRange={updated_range!r}"
+        )
 
     sheet, start_col, start_row, end_col, end_row = match.groups()
-    expected_sheet = LEDGER_RANGE.split("!", 1)[0].strip()
-    if sheet.startswith("'") and sheet.endswith("'"):
-        sheet = sheet[1:-1].replace("''", "'")
-    if expected_sheet.startswith("'") and expected_sheet.endswith("'"):
-        expected_sheet = expected_sheet[1:-1].replace("''", "'")
-    if sheet != expected_sheet:
+    if _normalize_sheet_name(sheet) != _normalize_sheet_name(expected_sheet):
         raise RuntimeError(
-            f"Google Sheets append wrote to unexpected sheet={sheet!r}; expected={expected_sheet!r}"
+            f"Google Sheets append wrote to unexpected sheet={sheet!r}; "
+            f"expected={expected_sheet!r}"
         )
-    if (start_col, end_col) != ("A", "Q") or start_row != end_row:
-        raise RuntimeError(f"Google Sheets append returned unexpected row range={updated_range!r}")
+    if start_row != end_row:
+        raise RuntimeError(
+            f"Google Sheets append must update exactly one row: {updated_range!r}"
+        )
+    width = _column_to_number(end_col) - _column_to_number(start_col) + 1
+    if width != len(HEADERS):
+        raise RuntimeError(
+            f"Google Sheets append returned unexpected column width={updated_range!r}"
+        )
+    return updated_range.strip()
 
-    return f"{sheet}!A{start_row}:Q{end_row}"
+
+def _existing_matching_run(
+    client: GoogleSheetsClient, record: AutonomousRunRecord
+) -> bool:
+    expected = record.values()
+    run_id = str(record.run_id)
+    width = len(HEADERS)
+
+    for row in client.read_rows(_sheet_scan_range()):
+        if not isinstance(row, list) or run_id not in {str(cell) for cell in row}:
+            continue
+
+        for start in range(0, max(1, len(row) - width + 1)):
+            if _normalized_row(row[start:start + width]) == expected:
+                return True
+
+        raise RuntimeError(
+            "Google Sheets contains an existing run_id with mismatched ledger data: "
+            f"{record.run_id}"
+        )
+
+    return False
 
 
 def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
-    """Write once per exact run_id and verify the actual row after the append.
+    """Append once to the existing sheet table and verify the actual returned row."""
+    target_range = ensure_headers(client)
 
-    A matching existing run_id is idempotent only when its full row matches the
-    same record. A stale or conflicting row fails closed instead of being trusted.
-    """
-    ensure_headers(client)
-    sheet = LEDGER_RANGE.split("!", 1)[0]
-    existing = client.search_column(f"{sheet}!A:Q", 1, record.run_id)
-    expected = record.values()
-    if existing:
-        matching = any(_normalized_row(row) == expected for row in existing)
-        if matching:
-            return False
-        raise RuntimeError(
-            f"Google Sheets contains an existing run_id with mismatched ledger data: {record.run_id}"
-        )
+    if _existing_matching_run(client, record):
+        return False
 
-    response = client.append_row(LEDGER_RANGE, expected)
+    response = client.append_row(target_range, record.values())
     updates = response.get("updates", {}) if isinstance(response, dict) else {}
     if updates.get("updatedRows") != 1:
-        raise RuntimeError(f"Google Sheets append updatedRows={updates.get('updatedRows')!r}")
+        raise RuntimeError(
+            f"Google Sheets append updatedRows={updates.get('updatedRows')!r}"
+        )
 
-    readback_range = _verify_updated_range(updates.get("updatedRange"))
+    readback_range = _verify_updated_range(
+        updates.get("updatedRange"), _configured_sheet()
+    )
     rows = client.read_rows(readback_range)
-    if len(rows) != 1 or _normalized_row(rows[0]) != expected:
+    if len(rows) != 1 or _normalized_row(rows[0]) != record.values():
         raise RuntimeError(
             f"Google Sheets append read-back mismatch for run_id={record.run_id}"
         )
@@ -123,7 +209,6 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
 
 
 def build_record_from_env() -> AutonomousRunRecord:
-    """Build an audit row that states whether Hermes actually participated."""
     task_summary = os.getenv("DEV_INSTRUCTION", "")
     hermes_invoked = os.getenv("HERMES_ADVISOR_INVOKED", "false").strip().lower() == "true"
     hermes_used = os.getenv("HERMES_ADVISOR_USED", "false").strip().lower() == "true"
@@ -137,9 +222,11 @@ def build_record_from_env() -> AutonomousRunRecord:
         task_summary = f"{task_summary} [{action}]"
     else:
         task_summary = f"{task_summary} [Hermes advisor not invoked]"
+
     agent = os.getenv("AUTONOMOUS_AGENT", "ManagementAI")
     if hermes_invoked:
         agent = f"{agent}+HermesAdvisor"
+
     return AutonomousRunRecord(
         timestamp=os.getenv("AUTONOMOUS_TIMESTAMP", ""),
         run_id=os.environ["GITHUB_RUN_ID"],
@@ -161,7 +248,7 @@ def build_record_from_env() -> AutonomousRunRecord:
 
 
 def record_autonomous_run() -> bool:
-    """Record the run, retrying transient Google API failures once."""
+    """Record the run, retrying the Google API once after an exception."""
     last_error: Exception | None = None
     record = build_record_from_env()
     for attempt in range(2):
@@ -171,7 +258,9 @@ def record_autonomous_run() -> bool:
             last_error = exc
             if attempt == 0:
                 continue
+
     assert last_error is not None
     raise RuntimeError(
-        f"Google Sheets autonomous ledger write failed after bounded retry: {last_error}"
+        "Google Sheets autonomous ledger write failed after bounded retry: "
+        f"{last_error}"
     ) from last_error
