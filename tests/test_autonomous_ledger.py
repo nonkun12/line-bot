@@ -21,7 +21,7 @@ class FakeClient:
 
     def read_rows(self, range_name):
         self.read_ranges.append(range_name)
-        if range_name == f"{SHEET}!A:ZZ":
+        if range_name == f"{SHEET}!A1:ZZ1000":
             return [self._header_row(), *self.existing]
         match = range_name == f"{SHEET}!AE185:AU185"
         if match and self.readback is not None:
@@ -88,8 +88,8 @@ def test_append_once_accepts_google_table_location_shift():
     record = make_record()
     client = FakeClient(readback=[record.values()])
     assert ledger.append_once(client, record) is True
-    assert client.appended[0][0] == f"{SHEET}!A:ZZ"
-    assert f"{SHEET}!A:ZZ" in client.read_ranges
+    assert client.appended[0][0] == f"{SHEET}!A1:ZZ1000"
+    assert f"{SHEET}!A1:ZZ1000" in client.read_ranges
     assert f"{SHEET}!AE185:AU185" in client.read_ranges
 
 
@@ -194,7 +194,7 @@ def test_record_autonomous_run_deduplicates_after_append_then_client_error(monke
             self.fail_after_append = fail_after_append
 
         def read_rows(self, range_name):
-            if range_name == f"{SHEET}!A:ZZ":
+            if range_name == f"{SHEET}!A1:ZZ1000":
                 return [
                     [""] * LEDGER_START + ledger.HEADERS,
                     *shared_rows,
