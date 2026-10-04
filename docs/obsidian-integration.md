@@ -28,3 +28,25 @@ Obsidian一覧
 The vault is a local filesystem. A cloud-hosted Render process cannot access a Mac-local vault path.
 
 For LINE-to-Mac Obsidian operation, the next production deployment step is a local Mac bridge running only while the Mac is online. The bridge should authenticate requests, accept only the same bounded operations, and never expose the vault directly to the public network.
+
+## Mac-local bridge
+
+Set a dedicated secret in Render:
+
+`OBSIDIAN_BRIDGE_KEY=<random-long-secret>`
+
+The Mac uses the same secret and the local vault path. The bridge makes outbound HTTPS polling requests to:
+
+`POST /api/obsidian/claim`
+`POST /api/obsidian/complete`
+
+Example on the Mac:
+
+`export OBSIDIAN_BRIDGE_SERVER_URL="https://line-bot-yvea.onrender.com"`
+`export OBSIDIAN_BRIDGE_KEY="..."`
+`export OBSIDIAN_VAULT_PATH="$HOME/Documents/ObsidianVault"`
+`python3 scripts/obsidian_mac_bridge.py`
+
+The bridge should run only on the trusted Mac. It opens no inbound listening port, does not expose the Vault, and prints no request contents or secrets.
+
+When the Mac is offline, LINE commands remain as bounded `obsidian` jobs until a bridge claims them. Stale running claims are safely re-claimable with a bounded retry count; a completion requires the claim token issued to that bridge instance.
