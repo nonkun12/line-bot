@@ -4,14 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       max_tasks:
-        description: 'Manual run task limit (1 only for MVP)'
+        description: 'Manual run task limit (1 or 4; each task remains independently gated)'
         required: false
         default: '1'
         type: choice
         options:
           - '1'
-  # ChatGPT can request a bounded one-task run by creating an authorized PR comment.
-  # The job remains fail-closed and max-tasks is hard-coded to 1 for this trigger.
+          - '4'
+    # ChatGPT can request a bounded run with /distributed-loop or /distributed-loop 4.
+  # Only authorized PR commenters can trigger it; the task runner remains fail-closed.
   issue_comment:
     types: [created]
   schedule:
@@ -37,7 +38,7 @@ jobs:
       github.event_name != 'issue_comment' ||
       (
         github.event.issue.pull_request &&
-        github.event.comment.body == '/distributed-loop' &&
+        (github.event.comment.body == '/distributed-loop' || github.event.comment.body == '/distributed-loop 4') &&
         (
           github.event.comment.author_association == 'OWNER' ||
           github.event.comment.author_association == 'MEMBER' ||
@@ -53,6 +54,7 @@ jobs:
       HERMES_ADVISOR_ENABLED: 'true'
       DEV_USER_ID: autonomous-distributed-loop
       GITHUB_RUN_ID: ${{ github.run_id }}
+      LOOP_MAX_TASKS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || (github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop 4' && '4' || '1') }}
     steps:
       - name: Checkout without persistent git credentials
         uses: actions/checkout@v4
@@ -92,7 +94,7 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run one bounded autonomous task
+      - name: Run bounded autonomous tasks
         id: run_task
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -116,7 +118,7 @@ jobs:
           trap 'kill "$POLLER_PID" 2>/dev/null || true' EXIT
 
           python scripts/run_minimal_autonomous_loop.py \
-            --max-tasks 1 \
+            --max-tasks "$LOOP_MAX_TASKS" \
             --stop-file "$STOP_FILE" \
             --state /tmp/autonomous-loop-state.json \
             --results /tmp/minimal-autonomous-loop.jsonl
@@ -153,25 +155,16 @@ jobs:
             exit 0
           fi
 
-          status="$(python - <<'PY'
+          python - <<'PY'
           import json
           from pathlib import Path
-          lines = [x for x in Path('/tmp/minimal-autonomous-loop.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
-          print(json.loads(lines[-1]).get('status', 'FAIL'))
+          rows = [json.loads(x) for x in Path('/tmp/minimal-autonomous-loop.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
+          if not rows:
+              raise SystemExit("No loop result; state is not advanced")
+          for row in rows:
+              if row.get("status") not in {"PASS", "NO_CHANGE"} or not row.get("task_id"):
+                  raise SystemExit(f"State is not advanced: status={row.get('status')} task_id={row.get('task_id')}")
           PY
-          )"
-          task_id="$(python - <<'PY'
-          import json
-          from pathlib import Path
-          lines = [x for x in Path('/tmp/minimal-autonomous-loop.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
-          print(json.loads(lines[-1]).get('task_id', ''))
-          PY
-          )"
-
-          if [[ "$status" != "PASS" && "$status" != "NO_CHANGE" ]] || [ -z "$task_id" ]; then
-            echo "State is not advanced: status=$status task_id=$task_id"
-            exit 1
-          fi
 
           state_branch="autonomous-loop-state"
           auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
@@ -239,6 +232,7 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import subprocess
           from pathlib import Path
 
           results_path = Path('/tmp/minimal-autonomous-loop.jsonl')
@@ -252,67 +246,50 @@ jobs:
                               rows.append(value)
                       except json.JSONDecodeError:
                           pass
-          result = rows[-1] if rows else {}
-          status = str(result.get('status') or '')
-          task_id = str(result.get('task_id') or '')
+
           run_outcome = os.getenv('LOOP_OUTCOME', '')
           publish = os.getenv('PUBLISH_OUTCOME', '')
           state = os.getenv('STATE_OUTCOME', '')
-
-          if status not in {'PASS', 'NO_CHANGE', 'FAIL', 'BLOCKED'}:
-              status = 'BLOCKED' if not result or status in {'STOPPED', 'TIMEOUT'} else 'FAIL'
-          os.environ['AUTONOMOUS_TASK_ID'] = task_id or 'distributed-loop-no-task-result'
-          os.environ['DEV_INSTRUCTION'] = str(result.get('summary') or result.get('task_summary') or os.environ['DEV_INSTRUCTION'])
-          os.environ['AUTONOMOUS_TESTS_RESULT'] = status
-          os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'PASS' if publish == 'success' else ('NOT_RUN' if publish == 'skipped' else 'FAIL')
-          os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'PASS' if status in {'PASS', 'NO_CHANGE'} and run_outcome == 'success' and publish == 'success' and state == 'success' else 'BLOCKED'
+          valid = {'PASS', 'NO_CHANGE'}
+          overall = 'PASS' if rows and all(str(r.get('status')) in valid for r in rows) else 'BLOCKED'
+          os.environ['AUTONOMOUS_TESTS_RESULT'] = overall
+          os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'PASS' if publish == 'success' else 'FAIL'
+          os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'PASS' if overall == 'PASS' and run_outcome == 'success' and publish == 'success' and state == 'success' else 'BLOCKED'
           os.environ['AUTONOMOUS_MERGE_RESULT'] = 'NOT_AUTO_MERGED'
-          reason = str(result.get('failure_reason') or '')
-          if not reason and status not in {'PASS', 'NO_CHANGE'}:
-              reason = f"loop_{status.lower()}" if result else f"workflow_failed_before_result:{run_outcome or 'not_run'}"
-          if not reason and publish not in {'success', 'skipped'}:
-              reason = f'publish_{publish or "not_run"}'
-          if not reason and state not in {'success', 'skipped'}:
-              reason = f'state_persistence_{state or "not_run"}'
-          os.environ['AUTONOMOUS_BLOCKED_FAILED_REASON'] = reason
-          if status == 'PASS' and run_outcome == 'success' and publish == 'success' and state == 'success':
-              action = 'review_changes'
-          elif status == 'NO_CHANGE':
-              action = 'none'
-          else:
-              action = 'inspect_workflow_run'
-          os.environ['AUTONOMOUS_NEXT_ACTION'] = action
+          os.environ['AUTONOMOUS_BLOCKED_FAILED_REASON'] = '' if overall == 'PASS' else 'one_or_more_tasks_failed'
+          os.environ['AUTONOMOUS_NEXT_ACTION'] = 'review_changes' if overall == 'PASS' else 'inspect_workflow_run'
 
           from agents.sheets.autonomous_ledger import record_autonomous_run
-          try:
-              recorded = record_autonomous_run()
-          except Exception as exc:
-              error_text = f"{type(exc).__name__}: {exc}"
-              os.environ['AUTONOMOUS_SHEETS_LOG_RESULT'] = 'ERROR'
-              Path('/tmp/distributed-sheets-log-result.json').write_text(
-                  json.dumps({
-                      'run_id': os.environ.get('GITHUB_RUN_ID', ''),
-                      'task_id': os.environ.get('AUTONOMOUS_TASK_ID', ''),
-                      'result': 'ERROR',
-                      'error_type': type(exc).__name__,
-                      'error': str(exc),
-                  }, ensure_ascii=False, indent=2) + '\n',
-                  encoding='utf-8',
-              )
-              print(f'distributed run Sheets ledger result: ERROR: {error_text}')
-              raise
-          else:
-              os.environ['AUTONOMOUS_SHEETS_LOG_RESULT'] = 'RECORDED' if recorded else 'ALREADY_RECORDED'
-              print(f'distributed run Sheets ledger result: {os.environ["AUTONOMOUS_SHEETS_LOG_RESULT"]}')
-              Path('/tmp/distributed-sheets-log-result.json').write_text(
-                  json.dumps({
-                      'run_id': os.environ.get('GITHUB_RUN_ID', ''),
-                      'task_id': os.environ.get('AUTONOMOUS_TASK_ID', ''),
-                      'result': os.environ['AUTONOMOUS_SHEETS_LOG_RESULT'],
-                  }, ensure_ascii=False, indent=2) + '\n',
-                  encoding='utf-8',
-              )
-          PY
+          sheet_rows = []
+          for result in rows:
+              task_id = str(result.get('task_id') or 'distributed-loop-no-task-result')
+              base_sha = str(result.get('base_sha') or os.environ.get('GITHUB_SHA', ''))
+              produced_sha = str(result.get('produced_sha') or os.environ.get('GITHUB_SHA', ''))
+              try:
+                  changed = subprocess.run(['git', 'diff', '--name-only', base_sha, produced_sha], capture_output=True, text=True, check=True, timeout=15).stdout.strip().replace('\n', ',')
+              except Exception:
+                  changed = ''
+              os.environ['AUTONOMOUS_TASK_ID'] = task_id
+              os.environ['DEV_INSTRUCTION'] = str(result.get('summary') or result.get('task_summary') or 'Distributed autonomous loop task')
+              os.environ['AUTONOMOUS_TESTS_RESULT'] = str(result.get('status') or 'BLOCKED')
+              os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'PASS' if str(result.get('status')) in valid and run_outcome == 'success' and publish == 'success' and state == 'success' else 'BLOCKED'
+              os.environ['AUTONOMOUS_BLOCKED_FAILED_REASON'] = str(result.get('failure_reason') or '')
+              os.environ['AUTONOMOUS_NEXT_ACTION'] = 'review_changes' if str(result.get('status')) == 'PASS' else ('none' if str(result.get('status')) == 'NO_CHANGE' else 'inspect_workflow_run')
+              os.environ['AUTONOMOUS_TIMESTAMP'] = str(result.get('timestamp') or '')
+              os.environ['AUTONOMOUS_START_SHA'] = base_sha
+              os.environ['AUTONOMOUS_PRODUCED_SHA'] = produced_sha
+              os.environ['AUTONOMOUS_CHANGED_FILES'] = changed
+              try:
+                  recorded = record_autonomous_run()
+                  sheet_rows.append({'task_id': task_id, 'result': 'RECORDED' if recorded else 'ALREADY_RECORDED'})
+              except Exception as exc:
+                  sheet_rows.append({'task_id': task_id, 'result': 'ERROR', 'error': str(exc)})
+                  Path('/tmp/distributed-sheets-log-result.json').write_text(json.dumps({'run_id': os.environ.get('GITHUB_RUN_ID', ''), 'rows': sheet_rows}, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+                  raise
+
+          Path('/tmp/distributed-sheets-log-result.json').write_text(json.dumps({'run_id': os.environ.get('GITHUB_RUN_ID', ''), 'overall': overall, 'rows': sheet_rows}, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps({'overall_status': overall, 'sheets': sheet_rows}, ensure_ascii=False))
+
 
       - name: Notify LINE of successful distributed loop
         if: success()
