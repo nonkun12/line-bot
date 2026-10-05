@@ -41,3 +41,20 @@ def test_enqueue_obsidian_request_rejects_oversized_message():
     import pytest
     with pytest.raises(ValueError, match="4000"):
         enqueue_obsidian_request("U1", "Obsidian一覧" + ("x" * 4000))
+
+
+def test_enqueue_obsidian_request_normalizes_natural_record_command(monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_BRIDGE_KEY", "secret")
+    captured = {}
+
+    def fake_create_job(user_id, message, **kwargs):
+        captured.update(user_id=user_id, message=message, kwargs=kwargs)
+        return 43
+
+    monkeypatch.setattr("core.obsidian_bridge.create_job", fake_create_job)
+
+    job_id = enqueue_obsidian_request("U1", "Obsidianに「自然文テスト」と記録して")
+
+    assert job_id == 43
+    assert captured["message"] == "Obsidianに追記 LINE-Inbox.md: 自然文テスト"
+    assert captured["kwargs"]["job_type"] == OBSIDIAN_JOB_TYPE
