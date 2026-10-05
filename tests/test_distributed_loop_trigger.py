@@ -92,6 +92,17 @@ def test_full_natural_four_task_command():
     assert _requested_max_tasks(message) == 4
 
 
+def test_full_natural_four_task_command_accepts_safety_confirmation_wording():
+    from distributed_loop_trigger import _requested_max_tasks
+
+    message = (
+        "分散Loopを起動。4タスクまで安全確認付きで実行し、"
+        "各タスクをSafety Gate付きで確認。問題があれば即停止し、"
+        "最後にTask ID / PASS・FAIL / SHA / 変更ファイル / 成果を報告してください。"
+    )
+    assert _requested_max_tasks(message) == 4
+
+
 def test_full_natural_four_task_command_tolerates_line_transport_variants():
     from distributed_loop_trigger import _requested_max_tasks
 
