@@ -64,6 +64,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          : > /tmp/line-development-loop.log
           # Only an explicitly test-only request may bypass the autonomous runtime.
           # Implementation requests remain on the development path even when they
           # mention E2E, tests, or pytest as acceptance criteria.
@@ -79,13 +80,55 @@ jobs:
               *) echo "invalid loop_count=$loop_count" >&2; exit 1 ;;
             esac
             for loop_index in $(seq 1 "$loop_count"); do
-              echo "LINE_DEVELOPMENT_LOOP=RUN index=${loop_index}/${loop_count}"
+              echo "LINE_DEVELOPMENT_LOOP=RUN index=${loop_index}/${loop_count}" | tee -a /tmp/line-development-loop.log
               export AUTONOMOUS_LOOP_INDEX="$loop_index"
               export AUTONOMOUS_LOOP_TOTAL="$loop_count"
               python -m scripts.run_guarded_runtime
-              echo "LINE_DEVELOPMENT_LOOP=PASS index=${loop_index}/${loop_count}"
+              echo "LINE_DEVELOPMENT_LOOP=PASS index=${loop_index}/${loop_count}" | tee -a /tmp/line-development-loop.log
             done
           fi
+
+      - name: Build final LINE development report
+        if: always()
+        env:
+          DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
+          LOOP_COUNT: ${{ github.event.inputs.loop_count || '4' }}
+          DEVELOPMENT_OUTCOME: ${{ steps.development.outcome }}
+          TEST_ONLY: ${{ steps.development.outputs.test_only }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set +e
+          completed=0
+          if [ -f /tmp/line-development-loop.log ]; then
+            completed=$(grep -c 'LINE_DEVELOPMENT_LOOP=PASS' /tmp/line-development-loop.log 2>/dev/null || true)
+          fi
+          requested="${LOOP_COUNT:-4}"
+          outcome="${DEVELOPMENT_OUTCOME:-unknown}"
+          if [ "${TEST_ONLY:-false}" = "true" ]; then
+            title="本線E2Eテスト終了報告"
+            result="${outcome}"
+            detail="E2E専用経路でpytestを実行"
+          elif [ "$outcome" = "success" ]; then
+            title="AI自動開発 終了報告"
+            result="COMPLETED"
+            detail="${completed}/${requested} 回を正常完了"
+          else
+            title="AI自動開発 停止報告"
+            result="STOPPED/FAILED"
+            detail="${completed}/${requested} 回完了後に停止"
+          fi
+          {
+            echo "# $title"
+            echo
+            echo "- 結果: **$result**"
+            echo "- 詳細: $detail"
+            echo "- 指示: ${DEV_INSTRUCTION}"
+            echo "- ループ: ${completed}/${requested}"
+            echo "- 実行: ${RUN_URL}"
+            echo
+            echo "### 実行ログ"
+            if [ -s /tmp/line-development-loop.log ]; then cat /tmp/line-development-loop.log; else echo "(ループログなし)"; fi
+          } | tee /tmp/line-development-final-report.txt >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create or reuse GitHub PR
         id: create_pr
@@ -175,12 +218,11 @@ jobs:
           instruction = os.environ.get("DEV_INSTRUCTION", "")
           run_url = os.environ.get("RUN_URL", "")
           test_only = os.environ.get("TEST_ONLY") == "true"
-          if outcome == "success" and test_only:
-              text = "✅ *本線E2Eテスト完了*\n" f"指示: {instruction}\n" "E2E専用経路でpytestを実行し成功しました。\n" f"GitHub Actions: {run_url}"
-          elif outcome == "success":
-              text = "✅ *AI自動開発 完了*\n" f"指示: {instruction}\n" "Manager → Implementer → Tester → Reviewer → Integrator を実行しました。\n" f"GitHub Actions: {run_url}"
-          else:
-              text = "❌ *AI自動開発 失敗*\n" f"指示: {instruction}\n" f"失敗地点: GitHub Actions（{outcome}）\n" f"詳細: {run_url}"
+          try:
+              with open("/tmp/line-development-final-report.txt", encoding="utf-8") as fh:
+                  message = fh.read()
+          except OSError:
+              message = "⚠️ 終了報告生成失敗\\n" f"指示: {instruction}\\n" f"実行結果: {run_url}\\n" f"Outcome: {outcome}"
           request = urllib.request.Request(webhook, data=json.dumps({"text": text}).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
           with urllib.request.urlopen(request, timeout=20) as response:
               print(f"SLACK_NOTIFICATION=HTTP_{response.status}")
