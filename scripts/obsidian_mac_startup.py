@@ -57,7 +57,13 @@ def main() -> int:
     if not _ask_execute():
         return 0
     subprocess.run(["/usr/bin/open", "-a", "Obsidian"], check=False)
-    completed = subprocess.run([sys.executable, str(BRIDGE_SCRIPT), "--server-url", server_url, "--bridge-key", bridge_key, "--vault", vault_path], check=False)
+    bridge_env = os.environ.copy()
+    bridge_env.update({
+        "OBSIDIAN_BRIDGE_SERVER_URL": server_url,
+        "OBSIDIAN_BRIDGE_KEY": bridge_key,
+        "OBSIDIAN_VAULT_PATH": vault_path,
+    })
+    completed = subprocess.run([sys.executable, str(BRIDGE_SCRIPT)], env=bridge_env, check=False)
     if completed.returncode != 0:
         _notify("LINE AI Secretary", "Obsidian保存処理が完了しませんでした。")
         return completed.returncode
