@@ -132,7 +132,7 @@ def _mcp_service_id() -> str:
         raise RuntimeError("MCP_RENDER_SERVICE_ID が設定されていません")
     if service_id == SERVICE_ID:
         raise RuntimeError("MCP_RENDER_SERVICE_ID はLINE-botのService IDと分離してください")
-    if not service_id.startswith("srv-") or not service_id.replace("-", "").isalnum():
+    if re.fullmatch(r"srv-[A-Za-z0-9]+", service_id) is None:
         raise RuntimeError("MCP_RENDER_SERVICE_ID の形式が不正です")
     return service_id
 
@@ -203,9 +203,6 @@ def wait_for_service_running(
         time.sleep(max(0.1, poll_sec))
         last = get_service(service_id)
     return last
-
-
-from contextlib import contextmanager
 
 
 @contextmanager
