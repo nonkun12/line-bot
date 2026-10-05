@@ -57,8 +57,8 @@ def _headers(bridge_key: str) -> dict[str, str]:
     return {"X-Obsidian-Bridge-Key": bridge_key}
 
 
-def run_bridge(server_url: str, bridge_key: str, vault_path: str, poll_seconds: float = POLL_SECONDS) -> None:
-    """Poll, execute, and complete one job at a time until stopped."""
+def run_bridge(server_url: str, bridge_key: str, vault_path: str, poll_seconds: float = POLL_SECONDS, watch: bool = False) -> None:
+    """Claim and execute jobs; one-shot by default, continuous polling only with watch=True."""
     if not server_url.startswith(("https://", "http://localhost", "http://127.0.0.1")):
         raise ValueError("server_url must use HTTPS unless targeting localhost")
     if not bridge_key.strip():
@@ -83,6 +83,9 @@ def run_bridge(server_url: str, bridge_key: str, vault_path: str, poll_seconds: 
                 payload = response.json()
                 job = payload.get("job")
                 if job is None:
+                    if not watch:
+                        print("[OBSIDIAN BRIDGE] no pending job; stopped")
+                        return
                     time.sleep(poll_seconds)
                     continue
 
@@ -123,11 +126,15 @@ def run_bridge(server_url: str, bridge_key: str, vault_path: str, poll_seconds: 
                     f"success={complete_payload['success']} "
                     f"server_status={completed_payload.get('status', 'unknown')}"
                 )
+                if not watch:
+                    return
             except KeyboardInterrupt:
                 raise
             except Exception as exc:
                 # Do not print request bodies or bridge secrets.
                 print(f"[OBSIDIAN BRIDGE] stopped request cycle: {type(exc).__name__}")
+                if not watch:
+                    raise
                 time.sleep(poll_seconds)
 
 
@@ -137,10 +144,11 @@ def main() -> int:
     parser.add_argument("--bridge-key", default=os.environ.get("OBSIDIAN_BRIDGE_KEY", ""))
     parser.add_argument("--vault", default=os.environ.get("OBSIDIAN_VAULT_PATH", ""))
     parser.add_argument("--poll-seconds", type=float, default=POLL_SECONDS)
+    parser.add_argument("--watch", action="store_true", help="Keep polling continuously; default is one-shot.")
     args = parser.parse_args()
 
     try:
-        run_bridge(args.server_url, args.bridge_key, args.vault, args.poll_seconds)
+        run_bridge(args.server_url, args.bridge_key, args.vault, args.poll_seconds, args.watch)
     except KeyboardInterrupt:
         print("[OBSIDIAN BRIDGE] stopped")
         return 0
