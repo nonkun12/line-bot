@@ -12,14 +12,16 @@ from config import MCP_SERVER_URL, MCP_API_KEY
 def _hibernate_retry_settings():
     """Return bounded retry settings for Render Free hibernation responses."""
     try:
-        max_wait = float(os.getenv("MCP_HIBERNATE_RETRY_MAX_SEC", "65"))
+        max_wait = float(os.getenv("MCP_HIBERNATE_RETRY_MAX_SEC", "120"))
     except ValueError:
-        max_wait = 65.0
+        max_wait = 120.0
     try:
-        interval = float(os.getenv("MCP_HIBERNATE_RETRY_INTERVAL_SEC", "2"))
+        interval = float(os.getenv("MCP_HIBERNATE_RETRY_INTERVAL_SEC", "60"))
     except ValueError:
-        interval = 2.0
+        interval = 60.0
 
+    # Render Free startup is approximately one minute. Avoid request flooding
+    # while the service is waking and keep the fallback bounded.
     return max(0.0, max_wait), max(0.1, interval)
 
 
@@ -42,7 +44,8 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
 
     Render Free が自動スピンダウンから復帰する際に返す
     429 + x-render-routing=hibernate-rate-limited だけは、
-    最大65秒の範囲で限定的に再試行する。それ以外の429/通信失敗は従来どおり即時失敗。
+    約1分の間隔で限定的に再試行し、最大120秒で打ち切る。
+    それ以外の429/通信失敗は従来どおり即時失敗。
     """
     print(f"[LOG] call_mcp_tool called: tool_name={tool_name}")
 
@@ -100,17 +103,17 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
                 break
 
             remaining = retry_deadline - time.monotonic()
-            if remaining <= 0:
+            if remaining < retry_interval:
                 print("MCP HIBERNATE RETRY DEADLINE EXCEEDED", flush=True)
                 break
 
             print(
                 f"MCP HIBERNATE RATE LIMIT: retrying in "
-                f"{min(retry_interval, remaining):.1f}s",
+                f"{retry_interval:.1f}s",
                 flush=True,
             )
             res.close()
-            time.sleep(min(retry_interval, remaining))
+            time.sleep(retry_interval)
     except Exception as e:
         import traceback
         print("EXCEPTION TYPE:", type(e))
