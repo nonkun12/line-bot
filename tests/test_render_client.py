@@ -138,13 +138,18 @@ def test_mcp_service_session_resumes_then_suspends(monkeypatch):
         "suspend_service",
         lambda service_id: calls.append(("suspend", service_id)) or {},
     )
-    monkeypatch.setattr(render_client.time, "sleep", lambda seconds: None, raising=False)
+    monkeypatch.setattr(
+        render_client,
+        "wait_for_service_running",
+        lambda service_id: calls.append(("wait", service_id)) or {},
+    )
 
     with render_client.mcp_service_session():
         calls.append(("work",))
 
     assert calls == [
         ("resume", "srv-mcp123"),
+        ("wait", "srv-mcp123"),
         ("work",),
         ("suspend", "srv-mcp123"),
     ]
@@ -197,7 +202,11 @@ def test_mcp_service_session_suspends_after_operation_failure(monkeypatch):
         "suspend_service",
         lambda service_id: calls.append(("suspend", service_id)) or {},
     )
-    monkeypatch.setattr(render_client.time, "sleep", lambda seconds: None, raising=False)
+    monkeypatch.setattr(
+        render_client,
+        "wait_for_service_running",
+        lambda service_id: calls.append(("wait", service_id)) or {},
+    )
 
     try:
         with render_client.mcp_service_session():
@@ -206,6 +215,44 @@ def test_mcp_service_session_suspends_after_operation_failure(monkeypatch):
         pass
     else:
         raise AssertionError("Expected operation failure")
+
+    assert calls == [
+        ("resume", "srv-mcp123"),
+        ("suspend", "srv-mcp123"),
+    ]
+
+
+def test_mcp_service_session_suspends_when_startup_wait_fails(monkeypatch):
+    monkeypatch.setenv("MCP_RENDER_ON_DEMAND", "true")
+    monkeypatch.setenv("MCP_RENDER_SERVICE_ID", "srv-mcp123")
+
+    calls = []
+    monkeypatch.setattr(
+        render_client,
+        "get_service",
+        lambda service_id: {"suspended": "suspended"},
+    )
+    monkeypatch.setattr(
+        render_client,
+        "resume_service",
+        lambda service_id: calls.append(("resume", service_id)) or {},
+    )
+    monkeypatch.setattr(
+        render_client,
+        "wait_for_service_running",
+        lambda service_id: (_ for _ in ()).throw(RuntimeError("startup timeout")),
+    )
+    monkeypatch.setattr(
+        render_client,
+        "suspend_service",
+        lambda service_id: calls.append(("suspend", service_id)) or {},
+    )
+
+    try:
+        with render_client.mcp_service_session():
+            raise AssertionError("MCP operation must not run before startup succeeds")
+    except RuntimeError as exc:
+        assert "startup timeout" in str(exc)
 
     assert calls == [
         ("resume", "srv-mcp123"),
