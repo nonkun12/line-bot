@@ -261,7 +261,9 @@ def mcp_service_session():
     Start the dedicated MCP Render service only when explicitly enabled.
 
     - Disabled: preserve the existing MCP behavior exactly.
-    - Suspended at entry: resume, wait for not_suspended, then suspend on exit.
+    - Explicitly suspended at entry: resume, wait for not_suspended, then suspend on exit.
+    - HTTP hibernate while control-plane says not_suspended: probe /health and rely on
+      the normal HTTP wake-up path; never misuse the explicit resume endpoint.
     - Already running at entry: do not suspend it on exit.
     - Any startup/configuration failure: fail closed before the MCP request.
     """
@@ -280,13 +282,11 @@ def mcp_service_session():
             resumed_by_us = True
             wait_for_service_running(service_id)
         elif _mcp_http_is_hibernate_rate_limited():
-            # Render's control-plane API can report not_suspended while the HTTP
-            # layer is still serving the Free-plan hibernate limiter. In that case
-            # explicitly wake only the dedicated MCP service.
-            print("MCP HTTP hibernate detected; resuming dedicated service", flush=True)
-            resume_service(service_id)
-            resumed_by_us = True
-            wait_for_service_running(service_id)
+            # A Free Render service can be HTTP-hibernating while the control-plane
+            # state remains "not_suspended". A normal HTTP request wakes it; the
+            # /health probe above is that wake-up request. Do not call the explicit
+            # resume endpoint unless the service is actually "suspended".
+            print("MCP HTTP hibernate detected; waiting for HTTP wake-up", flush=True)
 
         yield
     finally:
