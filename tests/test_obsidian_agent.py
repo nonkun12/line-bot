@@ -74,3 +74,14 @@ def test_obisidian_routes_through_current_core_graph(tmp_path, monkeypatch):
     assert result["intent"] == "obsidian"
     assert result["next_agent"] == "obsidian"
     assert result["agent_results"]["obsidian"]["text"].startswith("Obsidianに保存しました")
+
+
+def test_natural_record_command_appends_to_default_note(tmp_path, monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+    result = obsidian_agent_node(
+        _state("Obsidianに「自然文Bridgeテスト」と記録して", tmp_path)
+    )
+    assert result["agent_results"]["obsidian"]["success"] is True
+    assert result["agent_results"]["obsidian"]["operation"] == "append"
+    target = tmp_path / "LINE-Inbox.md"
+    assert target.read_text(encoding="utf-8") == "自然文Bridgeテスト"
