@@ -22,7 +22,7 @@ from agents.market.intents import is_market_intent
 from e2e_status import StepTimer
 from core.distributed_agent_bridge import build_agent_registry
 from core.distributed_coordinator import DistributedAgentCoordinator
-from agents.obsidian.intents import is_obsidian_intent
+from agents.obsidian.intents import is_obsidian_intent, normalize_obsidian_command
 from core.obsidian_bridge import enqueue_obsidian_request
 from core.multi_agent import AgentRole
 from core.specialist_gate import (
@@ -473,10 +473,11 @@ def run_core_request(
 ) -> dict[str, Any]:
     """Classify with Supervisor, then execute one or a bounded specialist plan via Core."""
     request_metadata = dict(metadata or {})
-    if is_obsidian_intent(message):
+    obsidian_command = normalize_obsidian_command(message)
+    if obsidian_command is not None:
         with StepTimer("core") as core_timer:
             try:
-                job_id = enqueue_obsidian_request(user_id, message)
+                job_id = enqueue_obsidian_request(user_id, obsidian_command)
                 result = {
                     "user_id": user_id,
                     "raw_message": message,
