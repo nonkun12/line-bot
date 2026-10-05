@@ -14,6 +14,13 @@ _MAX_AI_OUTPUT_CHARS = 5000
 
 
 def _extract_ai_request(text: str) -> str:
+    """Extract the user’s intent from a raw message.
+
+    The function removes common prefixes such as ``英語AI`` or ``english tutor``
+    (case‑insensitive) and returns the remaining trimmed string.  It is used
+    by the tutor reply logic to strip any leading role identifiers before
+    sending the prompt to the LLM.
+    """
     value = text.strip()
     value = re.sub(r"^英語AI\s*[:：]?\s*", "", value, flags=re.IGNORECASE)
     value = re.sub(r"^AI英語\s*[:：]?\s*", "", value, flags=re.IGNORECASE)
