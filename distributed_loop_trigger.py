@@ -40,9 +40,19 @@ _NATURAL_FOUR_TASK_TRIGGERS = frozenset(
             "最後にTask ID / PASS・FAIL / SHA / 変更ファイル / 成果を報告してください。"
         ),
         (
+            "分散Loopを起動。4タスクまで安全に実行し、"
+            "各タスクをSafety Gate付きで確認。問題があれば即停止し、"
+            "最後にTask ID / PASS・FAIL / SHA / 変更ファイル / 成果を報告してください"
+        ),
+        (
             "分散Loopを起動。4タスクまで安全確認付きで実行し、"
             "各タスクをSafety Gate付きで確認。問題があれば即停止し、"
             "最後にTask ID / PASS・FAIL / SHA / 変更ファイル / 成果を報告してください。"
+        ),
+        (
+            "分散Loopを起動。4タスクまで安全確認付きで実行し、"
+            "各タスクをSafety Gate付きで確認。問題があれば即停止し、"
+            "最後にTask ID / PASS・FAIL / SHA / 変更ファイル / 成果を報告してください"
         ),
     }
 )
