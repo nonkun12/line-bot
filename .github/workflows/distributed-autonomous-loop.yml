@@ -10,6 +10,10 @@ on:
         type: choice
         options:
           - '1'
+  # ChatGPT can request a bounded one-task run by creating an authorized PR comment.
+  # The job remains fail-closed and max-tasks is hard-coded to 1 for this trigger.
+  issue_comment:
+    types: [created]
   schedule:
     - cron: '30 4 * * *'
       timezone: 'Asia/Tokyo'
@@ -29,6 +33,17 @@ concurrency:
 
 jobs:
   minimal-loop:
+    if: >-
+      github.event_name != 'issue_comment' ||
+      (
+        github.event.issue.pull_request &&
+        github.event.comment.body == '/distributed-loop' &&
+        (
+          github.event.comment.author_association == 'OWNER' ||
+          github.event.comment.author_association == 'MEMBER' ||
+          github.event.comment.author_association == 'COLLABORATOR'
+        )
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
