@@ -4,12 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       max_tasks:
-        description: 'Manual run task limit (1 only for MVP)'
+        description: 'Manual run task limit (1-4; fail-closed)'
         required: false
-        default: '1'
+        default: '4'
         type: choice
         options:
           - '1'
+          - '2'
+          - '3'
+          - '4'
   # ChatGPT can request a bounded one-task run by creating an authorized PR comment.
   # The job remains fail-closed and max-tasks is hard-coded to 1 for this trigger.
   issue_comment:
@@ -47,6 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
+      MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || '4' }}
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
       SELF_IMPROVEMENT_POLICY_ENFORCED: 'true'
