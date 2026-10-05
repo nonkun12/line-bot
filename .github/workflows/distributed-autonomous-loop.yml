@@ -299,6 +299,49 @@ jobs:
               )
           PY
 
+      - name: Notify LINE of successful distributed loop
+        if: success()
+        env:
+          LINE_INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
+          DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${LINE_INTERNAL_PUSH_KEY:-}" ] || [ -z "${DISTRIBUTED_LOOP_LINE_USER_ID:-}" ]; then
+            echo "LINE success notification skipped: required GitHub secrets are not configured."
+            exit 0
+          fi
+          task_id="distributed-loop-no-task-result"
+          status="PASS"
+          if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
+            task_id="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          rows=[json.loads(x) for x in Path('/tmp/minimal-autonomous-loop.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
+          print(rows[-1].get('task_id') or 'distributed-loop-no-task-result')
+          PY
+            )"
+            status="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          rows=[json.loads(x) for x in Path('/tmp/minimal-autonomous-loop.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
+          print(rows[-1].get('status') or 'PASS')
+          PY
+            )"
+          fi
+          produced_sha="$(git rev-parse HEAD)"
+          message="✅ 分散Loop SUCCESS\nRun #${{ github.run_number }}\nTask: $task_id\nStatus: $status\nSHA: $produced_sha\n${RUN_URL}"
+          export MESSAGE="$message"
+          payload="$(python - <<'PY'
+          import json, os
+          print(json.dumps({'user_id': os.environ['DISTRIBUTED_LOOP_LINE_USER_ID'], 'message': os.environ['MESSAGE']}, ensure_ascii=False))
+          PY
+          )"
+          curl --fail-with-body --silent --show-error --max-time 15 \
+            -X POST "https://line-bot-yvea.onrender.com/internal/push" \
+            -H "Content-Type: application/json" \
+            -H "x-internal-key: ${LINE_INTERNAL_PUSH_KEY}" \
+            --data "$payload"
       - name: Upload durable run evidence
         if: always()
         uses: actions/upload-artifact@v4
