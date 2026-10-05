@@ -7,17 +7,35 @@ import re
 import httpx
 
 _APP_PREFIX = re.compile(r"^(?:アプリ開発|app|app-dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
+_NATURAL_APP_CREATE_RE = re.compile(
+    r"(?:アプリ|webアプリ|アプリケーション).*?(?:作って|作成して|開発して|作ってください|作成してください|開発してください)",
+    re.IGNORECASE | re.DOTALL,
+)
+_NATURAL_APP_QUESTION_RE = re.compile(
+    r"(?:方法|やり方|教えて|おすすめ|比較|できますか|可能ですか|どうやって)",
+    re.IGNORECASE,
+)
 _MAX_REQUIREMENT_LENGTH = 3000
 _WORKFLOW_FILE = "app-development.yml"
 
 
 def extract_app_development_request(message: str) -> str | None:
     text = str(message or "").strip()
-    match = _APP_PREFIX.match(text)
-    if not match:
+    if not text:
         return None
-    requirement = match.group(1).strip()
-    return requirement[:_MAX_REQUIREMENT_LENGTH] if requirement else ""
+
+    match = _APP_PREFIX.match(text)
+    if match:
+        requirement = match.group(1).strip()
+        return requirement[:_MAX_REQUIREMENT_LENGTH] if requirement else ""
+
+    # Natural-language creation requests from LINE should enter the same
+    # authorized workflow as the explicit "アプリ開発:" command. Questions
+    # about how to build an app remain normal conversational requests.
+    if _NATURAL_APP_CREATE_RE.search(text) and not _NATURAL_APP_QUESTION_RE.search(text):
+        return text[:_MAX_REQUIREMENT_LENGTH]
+
+    return None
 
 
 def _is_authorized_user(user_id: str) -> bool:
