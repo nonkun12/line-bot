@@ -60,8 +60,32 @@ def _configured_sheet() -> str:
     return sheet
 
 
-def _sheet_scan_range() -> str:
-    return f"{_configured_sheet()}!A1:ZZ1000"
+def _resolved_sheet(client: GoogleSheetsClient) -> str:
+    configured = _configured_sheet()
+    titles = client.sheet_titles()
+    if configured in titles:
+        return configured
+
+    def key(value: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", value.strip().lower())
+
+    matches = [title for title in titles if key(title) == key(configured)]
+    if len(matches) == 1:
+        return matches[0]
+    available = ", ".join(repr(title) for title in titles)
+    if matches:
+        raise RuntimeError(
+            f"Ambiguous Google Sheets tab match for {configured!r}: {matches!r}"
+        )
+    raise RuntimeError(
+        f"Google Sheets tab {configured!r} was not found. "
+        f"Available tabs: [{available}]"
+    )
+
+
+def _sheet_scan_range(sheet: str) -> str:
+    escaped = sheet.replace("'", "''")
+    return f"'{escaped}'!A1:ZZ1000"
 
 
 def _normalized_row(row: list) -> list[str]:
@@ -69,9 +93,9 @@ def _normalized_row(row: list) -> list[str]:
     return values + [""] * (len(HEADERS) - len(values))
 
 
-def _headers_exist(client: GoogleSheetsClient) -> bool:
+def _headers_exist(client: GoogleSheetsClient, sheet: str) -> bool:
     width = len(HEADERS)
-    for row in client.read_rows(_sheet_scan_range()):
+    for row in client.read_rows(_sheet_scan_range(sheet)):
         if not isinstance(row, list) or len(row) < width:
             continue
         for start in range(0, len(row) - width + 1):
@@ -80,14 +104,14 @@ def _headers_exist(client: GoogleSheetsClient) -> bool:
     return False
 
 
-def ensure_headers(client: GoogleSheetsClient) -> str:
+def ensure_headers(client: GoogleSheetsClient, sheet: str) -> str:
     """Require the pre-existing ledger; never create/overwrite a new table implicitly."""
-    if not _headers_exist(client):
+    if not _headers_exist(client, sheet):
         raise RuntimeError(
-            f"Google Sheets ledger headers not found on {_configured_sheet()!r}; "
+            f"Google Sheets ledger headers not found on {sheet!r}; "
             "refusing to create or overwrite a table implicitly"
         )
-    return _sheet_scan_range()
+    return _sheet_scan_range(sheet)
 
 
 def _column_to_number(column: str) -> int:
@@ -136,13 +160,13 @@ def _verify_updated_range(updated_range: object, expected_sheet: str) -> str:
 
 
 def _existing_matching_run(
-    client: GoogleSheetsClient, record: AutonomousRunRecord
+    client: GoogleSheetsClient, sheet: str, record: AutonomousRunRecord
 ) -> bool:
     expected = record.values()
     run_id = str(record.run_id)
     width = len(HEADERS)
 
-    for row in client.read_rows(_sheet_scan_range()):
+    for row in client.read_rows(_sheet_scan_range(sheet)):
         if not isinstance(row, list) or run_id not in {str(cell) for cell in row}:
             continue
 
@@ -161,7 +185,8 @@ def _existing_matching_run(
 def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
     """Append once to the existing sheet table and verify the actual returned row."""
     try:
-        target_range = ensure_headers(client)
+        sheet = _resolved_sheet(client)
+        target_range = ensure_headers(client, sheet)
     except Exception as exc:
         raise RuntimeError(
             f"Google Sheets ledger header/read failed for sheet={_configured_sheet()!r}: "
@@ -169,7 +194,7 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
         ) from exc
 
     try:
-        if _existing_matching_run(client, record):
+        if _existing_matching_run(client, sheet, record):
             return False
     except Exception as exc:
         raise RuntimeError(
@@ -193,7 +218,7 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
 
     try:
         readback_range = _verify_updated_range(
-            updates.get("updatedRange"), _configured_sheet()
+            updates.get("updatedRange"), sheet
         )
         rows = client.read_rows(readback_range)
     except Exception as exc:
