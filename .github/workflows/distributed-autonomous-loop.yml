@@ -4,14 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       max_tasks:
-        description: 'Manual run task limit (1 only for MVP)'
+        description: 'Manual run task limit (1 or 4; each task remains independently gated)'
         required: false
         default: '1'
         type: choice
         options:
           - '1'
-  # ChatGPT can request a bounded one-task run by creating an authorized PR comment.
-  # The job remains fail-closed and max-tasks is hard-coded to 1 for this trigger.
+          - '4'
+    # ChatGPT can request a bounded run with /distributed-loop or /distributed-loop 4.
+  # Only authorized PR commenters can trigger it; the task runner remains fail-closed.
   issue_comment:
     types: [created]
   schedule:
@@ -37,7 +38,7 @@ jobs:
       github.event_name != 'issue_comment' ||
       (
         github.event.issue.pull_request &&
-        github.event.comment.body == '/distributed-loop' &&
+        (github.event.comment.body == '/distributed-loop' || github.event.comment.body == '/distributed-loop 4') &&
         (
           github.event.comment.author_association == 'OWNER' ||
           github.event.comment.author_association == 'MEMBER' ||
@@ -53,6 +54,7 @@ jobs:
       HERMES_ADVISOR_ENABLED: 'true'
       DEV_USER_ID: autonomous-distributed-loop
       GITHUB_RUN_ID: ${{ github.run_id }}
+      LOOP_MAX_TASKS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || (github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop 4' && '4' || '1') }}
     steps:
       - name: Checkout without persistent git credentials
         uses: actions/checkout@v4
@@ -92,7 +94,7 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run one bounded autonomous task
+      - name: Run bounded autonomous tasks
         id: run_task
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -116,7 +118,7 @@ jobs:
           trap 'kill "$POLLER_PID" 2>/dev/null || true' EXIT
 
           python scripts/run_minimal_autonomous_loop.py \
-            --max-tasks 1 \
+            --max-tasks "$LOOP_MAX_TASKS" \
             --stop-file "$STOP_FILE" \
             --state /tmp/autonomous-loop-state.json \
             --results /tmp/minimal-autonomous-loop.jsonl
