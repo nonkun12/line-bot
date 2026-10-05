@@ -14,11 +14,30 @@ TRIGGER_PHRASES = frozenset({
     "distributed loop start",
 })
 
+# LINE users may request a bounded number of passes explicitly. Keep this
+# parser deliberately strict: only 1-4 are accepted and the command must
+# clearly identify the distributed loop. Anything else falls through to the
+# normal AI conversation path instead of being interpreted as execution.
+_BOUNDED_TRIGGER_RE = __import__("re").compile(
+    r"^(?:分散ループ|分散Loop|分散AIループ|分散AI Loop)を([1-4])回"
+    r"(?:、?安全確認付きで実行|、?安全確認付きで実行してください)?$"
+)
+
+def _requested_max_tasks(message: str) -> int | None:
+    command = str(message).strip()
+    if command in TRIGGER_PHRASES:
+        return 1
+    match = _BOUNDED_TRIGGER_RE.fullmatch(command)
+    if match:
+        return int(match.group(1))
+    return None
+
 def _allowed_users() -> set[str]:
     return {x.strip() for x in os.environ.get("DISTRIBUTED_LOOP_LINE_USER_IDS", "").split(",") if x.strip()}
 
 def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
-    if str(message).strip() not in TRIGGER_PHRASES:
+    max_tasks = _requested_max_tasks(message)
+    if max_tasks is None:
         return False, ""
     if not user_id or user_id not in _allowed_users():
         return True, "分散Loop起動は許可されていません。"
@@ -36,9 +55,9 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                 if r.json().get("workflow_runs", []):
                     return True, "分散Loopはすでに実行中です。重複起動はしません。"
             r = client.post(f"{base}/actions/workflows/{WORKFLOW}/dispatches",
-                            json={"ref":"main","inputs":{"max_tasks":"1"}}, headers=headers)
+                            json={"ref":"main","inputs":{"max_tasks":str(max_tasks)}}, headers=headers)
             if r.status_code == 204:
-                return True, "分散Loopを起動しました。1タスク限定で安全に実行します。"
+                return True, f"分散Loopを起動しました。{max_tasks}タスクまで安全に実行します。"
             if r.status_code in {401,403}:
                 return True, "分散Loopを起動できません（GitHub Actions権限不足）。"
             return True, f"分散Loop起動に失敗しました（GitHub HTTP {r.status_code}）。"
