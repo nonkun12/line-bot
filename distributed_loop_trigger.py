@@ -6,7 +6,13 @@ import httpx
 
 REPO = os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
 WORKFLOW = "distributed-autonomous-loop.yml"
-TRIGGER_PHRASES = frozenset({"分散ループ開始", "分散AIループ開始", "distributed loop start"})
+TRIGGER_PHRASES = frozenset({
+    "分散ループ開始",
+    "分散Loop開始",
+    "分散AIループ開始",
+    "分散AI Loop開始",
+    "distributed loop start",
+})
 
 def _allowed_users() -> set[str]:
     return {x.strip() for x in os.environ.get("DISTRIBUTED_LOOP_LINE_USER_IDS", "").split(",") if x.strip()}
