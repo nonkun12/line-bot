@@ -219,6 +219,7 @@ def test_mcp_service_session_suspends_after_operation_failure(monkeypatch):
 
     assert calls == [
         ("resume", "srv-mcp123"),
+        ("wait", "srv-mcp123"),
         ("suspend", "srv-mcp123"),
     ]
 
