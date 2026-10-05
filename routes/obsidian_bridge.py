@@ -11,7 +11,7 @@ import os
 from flask import Blueprint, current_app, jsonify, request
 
 from core.obsidian_bridge import OBSIDIAN_JOB_TYPE
-from db import claim_pending_job_by_type, complete_claimed_job, get_job
+from db import (\n    claim_pending_job_by_type,\n    complete_claimed_job,\n    get_job,\n    has_pending_job_by_type,\n)
 
 
 obsidian_bridge_bp = Blueprint("obsidian_bridge", __name__, url_prefix="/api/obsidian")
@@ -54,6 +54,21 @@ def claim():
             },
         }
     ), 200
+
+
+@obsidian_bridge_bp.route("/pending", methods=["GET"])
+def pending():
+    """Check for a pending Obsidian job without claiming or mutating it."""
+    if not _authorized():
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    try:
+        has_pending = has_pending_job_by_type(OBSIDIAN_JOB_TYPE)
+    except Exception:
+        current_app.logger.exception("OBSIDIAN BRIDGE PENDING ERROR")
+        return jsonify({"ok": False, "error": "bridge unavailable"}), 503
+
+    return jsonify({"ok": True, "pending": has_pending}), 200
 
 
 @obsidian_bridge_bp.route("/complete", methods=["POST"])
