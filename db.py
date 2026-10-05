@@ -172,6 +172,24 @@ def get_job(job_id):
     return dict(zip(keys, row))
 
 
+def has_pending_job_by_type(job_type: str) -> bool:
+    """Return whether a pending Obsidian job exists without claiming it."""
+    if not isinstance(job_type, str) or not job_type.strip():
+        raise ValueError("job_type is required")
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM jobs
+            WHERE job_type=? AND status='pending'
+            ORDER BY id
+            LIMIT 1
+            """,
+            (job_type.strip(),),
+        ).fetchone()
+    return row is not None
+
+
 def claim_pending_job():
     """最古のpending Jobを1件だけrunningへ移す。SQLite向けの最小claim実装。"""
     with get_conn() as conn:
