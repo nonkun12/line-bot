@@ -263,6 +263,10 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         before = text.split(anchor, 1)[0]
         if before and not before.endswith("\n\n"):
             return None, "deterministic_plan_invalid:anchor_not_standalone_def"
+        prefix = before.rstrip("\n")
+        prior_nonblank = prefix.splitlines()[-1].strip() if prefix.splitlines() else ""
+        if prior_nonblank.startswith("@") or prior_nonblank.startswith("#"):
+            return None, "deterministic_plan_invalid:anchor_not_standalone_def"
 
         addition = (
             "\n\ndef test_universal_event_accepts_zero_confidence_hand_event():\n"
