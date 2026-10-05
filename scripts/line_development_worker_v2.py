@@ -439,6 +439,24 @@ def build_plan(client: Groq, instruction: str, chosen: str, context: str, test_o
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
 
 
+def repair_invalid_old_new_plan(client: Groq, instruction: str, chosen: str, context: str, rejected_plan: dict) -> dict:
+    """Perform one bounded repair when the model omitted or malformed old/new fields."""
+    rejected = json.dumps(rejected_plan, ensure_ascii=False)
+    system = '''Repair ONE rejected JSON search/replace plan. Return JSON only.
+Keep the same file and requested intent. Re-read the supplied current file context.
+The change MUST contain exactly one object with file, old, and new fields.
+The old value MUST be an exact non-empty substring of the current context and the new value
+must be replacement text only. Make the smallest possible edit. Never include unified-diff
+markers, markdown fences, or standalone +/- lines. Do not invent missing source text or broaden
+the requested change. If a safe exact replacement cannot be identified, return {"no_change":true}.'''
+    prompt = (
+        f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}"
+        f"\n\nCurrent file context:\n{context}"
+        f"\n\nRejected plan:\n{rejected}"
+    )
+    return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
+
+
 def repair_diff_marker_plan(client: Groq, instruction: str, chosen: str, context: str, rejected_plan: dict) -> dict:
     """Perform one bounded plan repair focused only on diff-marker contamination."""
     rejected = json.dumps(rejected_plan, ensure_ascii=False)
@@ -491,6 +509,17 @@ def main() -> int:
             traceback.print_exc()
             return 1
         ok, detail = validate_plan(plan, chosen)
+        if not ok and detail == "invalid_old_new":
+            repair_plan = repair_invalid_old_new_plan(
+                client,
+                instruction,
+                chosen,
+                context_for(chosen),
+                plan,
+            )
+            ok, detail = validate_plan(repair_plan, chosen)
+            if ok:
+                plan = repair_plan
         if not ok and detail == "diff_marker_in_replacement":
             repair_plan = repair_diff_marker_plan(
                 client,
