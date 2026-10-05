@@ -255,7 +255,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
 
-        anchor = '    validate(adapter, ADAPTER_SCHEMA)\n'
+        anchor = 'def test_adapter_schema_rejects_unknown_risk():\n'
         count = text.count(anchor)
         if count != 1:
             return None, f"anchor_count_{chosen}:{count}"
