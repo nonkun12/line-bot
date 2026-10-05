@@ -299,9 +299,15 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "    }\n"
             "    validate(event, EVENT_SCHEMA)\n"
         )
-        new = anchor + addition
+        new_test = addition.lstrip("\n")
+        new = new_test + "\n\n" + anchor
+        candidate = text.replace(anchor, new, 1)
         if len(anchor) > 1200 or len(new) > 1800:
             return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
 
         return {
             "no_change": False,
