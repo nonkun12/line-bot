@@ -13,8 +13,8 @@ on:
           - '2'
           - '3'
           - '4'
-  # ChatGPT can request a bounded one-task run by creating an authorized PR comment.
-  # The job remains fail-closed and max-tasks is hard-coded to 1 for this trigger.
+  # ChatGPT can request a bounded run by creating an authorized PR comment.
+  # The trigger defaults to four tasks and remains fail-closed.
   issue_comment:
     types: [created]
   schedule:
@@ -120,7 +120,7 @@ jobs:
           trap 'kill "$POLLER_PID" 2>/dev/null || true' EXIT
 
           python scripts/run_minimal_autonomous_loop.py \
-            --max-tasks 1 \
+            --max-tasks "${MAX_TASKS}" \
             --stop-file "$STOP_FILE" \
             --state /tmp/autonomous-loop-state.json \
             --results /tmp/minimal-autonomous-loop.jsonl
