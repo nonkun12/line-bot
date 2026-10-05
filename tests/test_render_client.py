@@ -1,3 +1,5 @@
+import pytest
+
 import render_client
 
 
@@ -180,6 +182,11 @@ def test_mcp_service_session_leaves_already_running_service_alone(monkeypatch):
         render_client,
         "suspend_service",
         lambda service_id: calls.append(("suspend", service_id)) or {},
+    )
+    monkeypatch.setattr(
+        render_client.requests,
+        "get",
+        lambda url, **kwargs: _FakeResponse({"ok": True}, status_code=200),
     )
 
     with render_client.mcp_service_session():
