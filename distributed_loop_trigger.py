@@ -14,13 +14,10 @@ TRIGGER_PHRASES = frozenset({
     "distributed loop start",
 })
 
-# LINE users may request a bounded number of passes explicitly. Keep this
-# parser deliberately strict: only 1-4 are accepted and the command must
-# clearly identify the distributed loop. Anything else falls through to the
-# normal AI conversation path instead of being interpreted as execution.
+# Explicit bounded commands must include an unambiguous safety confirmation.
 _BOUNDED_TRIGGER_RE = __import__("re").compile(
     r"^(?:分散ループ|分散Loop|分散AIループ|分散AI Loop)を([1-4])回"
-    r"(?:、?安全確認付きで実行|、?安全確認付きで実行してください)?$"
+    r"、?安全確認付きで実行(?:してください)?$"
 )
 
 def _requested_max_tasks(message: str) -> int | None:
