@@ -155,25 +155,16 @@ jobs:
             exit 0
           fi
 
-          status="$(python - <<'PY'
+          python - <<'PY'
           import json
           from pathlib import Path
-          lines = [x for x in Path('/tmp/minimal-autonomous-loop.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
-          print(json.loads(lines[-1]).get('status', 'FAIL'))
+          rows = [json.loads(x) for x in Path('/tmp/minimal-autonomous-loop.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
+          if not rows:
+              raise SystemExit("No loop result; state is not advanced")
+          for row in rows:
+              if row.get("status") not in {"PASS", "NO_CHANGE"} or not row.get("task_id"):
+                  raise SystemExit(f"State is not advanced: status={row.get('status')} task_id={row.get('task_id')}")
           PY
-          )"
-          task_id="$(python - <<'PY'
-          import json
-          from pathlib import Path
-          lines = [x for x in Path('/tmp/minimal-autonomous-loop.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
-          print(json.loads(lines[-1]).get('task_id', ''))
-          PY
-          )"
-
-          if [[ "$status" != "PASS" && "$status" != "NO_CHANGE" ]] || [ -z "$task_id" ]; then
-            echo "State is not advanced: status=$status task_id=$task_id"
-            exit 1
-          fi
 
           state_branch="autonomous-loop-state"
           auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
