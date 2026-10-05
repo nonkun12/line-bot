@@ -90,3 +90,21 @@ def test_full_natural_four_task_command():
         "最後にTask ID / PASS・FAIL / SHA / 変更ファイル / 成果を報告してください。"
     )
     assert _requested_max_tasks(message) == 4
+
+
+def test_full_natural_four_task_command_tolerates_line_transport_variants():
+    from distributed_loop_trigger import _requested_max_tasks
+
+    message = (
+        "\u200b分散Loopを起動。4タスクまで安全に実行し、\r\n"
+        "各タスクをSafety Gate付きで確認。問題があれば即停止し、\n"
+        "最後にTask ID / PASS・FAIL / SHA / 変更ファイル / 成果を報告してください。\ufeff"
+    )
+    assert _requested_max_tasks(message) == 4
+
+
+def test_bounded_command_keeps_four_task_cap_after_normalization():
+    from distributed_loop_trigger import _requested_max_tasks
+
+    assert _requested_max_tasks(" 分散Loopを4回、 安全確認付きで実行 ") == 4
+    assert _requested_max_tasks("分散Loopを５回、安全確認付きで実行") is None
