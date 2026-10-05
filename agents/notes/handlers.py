@@ -6,6 +6,7 @@ import unicodedata
 from typing import Any, Callable, Optional
 
 from agents.notes.patterns import extract_explicit_note_body
+from note_save_guard import save_note_safely
 
 CallMcpTool = Callable[[str, dict[str, Any]], Any]
 
@@ -106,13 +107,13 @@ def handle_save_note(message: str, user_id: str, call_mcp_tool: CallMcpTool) -> 
     if not body:
         return "メモする内容を指定してください。"
     category = _classify_note_category(body)
-    return call_mcp_tool("save_note", {"user_id": user_id, "title": "LINEメモ", "body": body, "category": category})
+    return save_note_safely(call_mcp_tool, user_id, "LINEメモ", body, category).message
 
 
 def handle_auto_save_note(message: str, user_id: str, call_mcp_tool: CallMcpTool) -> Optional[Any]:
     if not _should_auto_save(message):
         return None
-    return call_mcp_tool("save_note", {"user_id": user_id, "title": "自動メモ", "body": message, "category": "一般"})
+    return save_note_safely(call_mcp_tool, user_id, "自動メモ", message, "一般").message
 
 
 def handle_delete_note(message: str, user_id: str, call_mcp_tool: CallMcpTool) -> Optional[Any]:

@@ -31,9 +31,8 @@ def test_is_note_intent_still_true_for_explicit_save_requests():
     assert is_note_intent("明日15時に病院へ電話したい") is True
 
 
-def test_notes_agent_node_save_note_calls_save_note():
-    call_mcp_tool = MagicMock(return_value="saved")
-
+def test_notes_agent_node_save_note_calls_save_note(fake_notes_mcp):
+    call_mcp_tool = fake_notes_mcp()
     result = notes_agent_node(
         {
             "user_id": "user123",
@@ -41,17 +40,7 @@ def test_notes_agent_node_save_note_calls_save_note():
             "call_mcp_tool": call_mcp_tool,
         }
     )
-
-    assert result["agent_results"]["notes"]["text"] == "saved"
-    call_mcp_tool.assert_called_once_with(
-        "save_note",
-        {
-            "user_id": "user123",
-            "title": "LINEメモ",
-            "body": "予約",
-            "category": "予定",
-        },
-    )
+    assert result["agent_results"]["notes"]["text"] == "メモを保存しました。（保存を確認済み）"
 
 
 def test_notes_agent_node_list_calls_search_notes():

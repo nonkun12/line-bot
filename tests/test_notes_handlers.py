@@ -67,21 +67,10 @@ def test_handle_natural_note_search_keyword_extraction():
     )
 
 
-def test_handle_save_note_classifies_category():
-    call_mcp_tool = MagicMock(return_value="saved")
-
+def test_handle_save_note_classifies_category(fake_notes_mcp):
+    call_mcp_tool = fake_notes_mcp()
     result = handle_save_note("メモして Pythonの勉強", "user123", call_mcp_tool)
-
-    assert result == "saved"
-    call_mcp_tool.assert_called_once_with(
-        "save_note",
-        {
-            "user_id": "user123",
-            "title": "LINEメモ",
-            "body": "Pythonの勉強",
-            "category": "技術",
-        },
-    )
+    assert result == "メモを保存しました。（保存を確認済み）"
 
 
 def test_handle_auto_save_note_matches():

@@ -3,6 +3,7 @@ import os
 import re
 import time
 import uuid
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -31,6 +32,87 @@ def _is_hibernate_rate_limited(response):
         return False
     routing = response.headers.get("x-render-routing", "").strip().lower()
     return routing == "hibernate-rate-limited"
+
+
+def _env_float(name, default):
+    try:
+        return float(os.getenv(name, str(default)))
+    except ValueError:
+        return float(default)
+
+
+def mcp_health_url():
+    """Return the unauthenticated HTTP health URL for the MCP service."""
+    override = os.getenv("MCP_HEALTH_URL", "").strip()
+    if override:
+        return override
+    parts = urlsplit(MCP_SERVER_URL)
+    return f"{parts.scheme}://{parts.netloc}/health"
+
+
+def _mcp_ready_check_enabled():
+    return os.getenv("MCP_HTTP_READY_CHECK", "true").strip().lower() != "false"
+
+
+class McpNotReadyError(RuntimeError):
+    """MCP /health did not become ready in the bounded wait."""
+
+
+def wait_for_mcp_http_ready(max_wait=None, poll_interval=None, stable_count=None):
+    """Wait for stable HTTP readiness before issuing a write."""
+    if not _mcp_ready_check_enabled():
+        return
+    max_wait = _env_float("MCP_READY_MAX_SEC", 90.0) if max_wait is None else max_wait
+    poll_interval = _env_float("MCP_READY_POLL_SEC", 5.0) if poll_interval is None else poll_interval
+    stable_count = int(_env_float("MCP_READY_STABLE_COUNT", 2)) if stable_count is None else stable_count
+    max_wait = max(0.0, max_wait)
+    poll_interval = max(0.1, poll_interval)
+    stable_count = max(1, stable_count)
+    deadline = time.monotonic() + max_wait
+    consecutive = 0
+    last_reason = "no response"
+    while True:
+        try:
+            res = httpx.get(
+                mcp_health_url(),
+                timeout=httpx.Timeout(8.0, connect=8.0),
+                follow_redirects=False,
+            )
+            ok = False
+            if res.status_code == 200:
+                try:
+                    body = res.json()
+                    ok = isinstance(body, dict) and body.get("ok") is True
+                except ValueError:
+                    ok = False
+            last_reason = f"status={res.status_code} routing={res.headers.get('x-render-routing', '')}"
+            res.close()
+        except httpx.HTTPError as exc:
+            ok = False
+            last_reason = type(exc).__name__
+        if ok:
+            consecutive += 1
+            if consecutive >= stable_count:
+                print("MCP HTTP READY", flush=True)
+                return
+        else:
+            consecutive = 0
+        if time.monotonic() + poll_interval > deadline:
+            raise McpNotReadyError(f"MCP server not ready ({last_reason})")
+        time.sleep(poll_interval)
+
+
+def classify_mcp_failure(exc):
+    """Classify MCP failures by delivery certainty; writes retry only when safe."""
+    if isinstance(exc, (McpNotReadyError, httpx.ConnectError, httpx.ConnectTimeout)):
+        return "not_delivered"
+    if isinstance(exc, httpx.HTTPStatusError):
+        response = exc.response
+        if _is_hibernate_rate_limited(response):
+            return "not_delivered"
+        if 400 <= response.status_code < 500:
+            return "rejected"
+    return "ambiguous"
 
 
 def _call_mcp_tool_once(tool_name, arguments, timeout=None):

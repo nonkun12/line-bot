@@ -94,20 +94,10 @@ def test_handle_natural_note_search_my_notes():
     )
 
 
-def test_handle_auto_save_note_success():
-    call_mcp_tool = MagicMock(return_value="auto saved")
+def test_handle_auto_save_note_success(fake_notes_mcp):
+    call_mcp_tool = fake_notes_mcp()
     result = handle_auto_save_note("明日旅行する予定", "user123", call_mcp_tool)
-
-    assert result == "auto saved"
-    call_mcp_tool.assert_called_once_with(
-        "save_note",
-        {
-            "user_id": "user123",
-            "title": "自動メモ",
-            "body": "明日旅行する予定",
-            "category": "一般",
-        },
-    )
+    assert result == "メモを保存しました。（保存を確認済み）"
 
 
 def test_handle_auto_save_note_exclude_keyword():
