@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "max_tasks_per_run": 3,
+  "max_tasks_per_run": 4,
   "tasks": [
     {
       "id": "hand-sign-uhip-contract-test",
@@ -21,6 +21,13 @@
       "instruction": "tests/test_management_router.py に、全角文字を含む「ＮＹダウを教えて」という要求がUnicode正規化後にMarketへ正しく振り分けられる回帰テストを1件追加してください。既存の英語全角テストとは異なる専門Agentケースにしてください。実装コードは変更せず、テストだけを最小変更で追加してください。対象ファイル: tests/test_management_router.py",
       "allowed_paths": [
         "tests/test_management_router.py"
+      ]
+    },
+    {
+      "id": "distributed-loop-command-whitespace-regression",
+      "instruction": "tests/test_distributed_loop_trigger.py に、前後の空白を含む「分散ループ開始」というLINEコマンドが正しく認識される回帰テストを1件だけ追加してください。既存テストと重複しないケースにしてください。実装コードは変更せず、テストだけを最小変更で追加してください。GitHub API、外部通信、OS操作は使用しないでください。対象ファイル: tests/test_distributed_loop_trigger.py",
+      "allowed_paths": [
+        "tests/test_distributed_loop_trigger.py"
       ]
     }
   ]
