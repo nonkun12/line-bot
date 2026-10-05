@@ -311,7 +311,7 @@ def test_resume_and_suspend_use_exact_service_endpoint(monkeypatch):
     ]
 
 
-def test_mcp_service_session_resumes_when_http_layer_is_hibernating(monkeypatch):
+def test_mcp_service_session_waits_for_free_hibernate_wake_without_resume(monkeypatch):
     monkeypatch.setenv("MCP_RENDER_ON_DEMAND", "true")
     monkeypatch.setenv("MCP_RENDER_SERVICE_ID", "srv-mcp123")
 
@@ -325,11 +325,6 @@ def test_mcp_service_session_resumes_when_http_layer_is_hibernating(monkeypatch)
         render_client,
         "resume_service",
         lambda service_id: calls.append(("resume", service_id)) or {},
-    )
-    monkeypatch.setattr(
-        render_client,
-        "wait_for_service_running",
-        lambda service_id: calls.append(("wait", service_id)) or {},
     )
     monkeypatch.setattr(
         render_client,
@@ -352,8 +347,9 @@ def test_mcp_service_session_resumes_when_http_layer_is_hibernating(monkeypatch)
     with render_client.mcp_service_session():
         calls.append(("work",))
 
-    assert [item[0] for item in calls] == ["health", "resume", "wait", "work", "suspend"]
-    assert calls[1] == ("resume", "srv-mcp123")
+    assert [item[0] for item in calls] == ["health", "work"]
+    assert not any(item[0] == "resume" for item in calls)
+    assert not any(item[0] == "suspend" for item in calls)
     assert calls[0][2]["headers"] == {"Accept": "application/json"}
 
 
