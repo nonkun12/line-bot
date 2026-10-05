@@ -295,8 +295,9 @@ def test_negative_confidence_plan_preserves_existing_test_body_and_is_syntax_saf
     chosen = "uhip/tests/test_schema_contracts.py"
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
-    real_file = runtime.worker.ROOT / chosen
-    original = real_file.read_text(encoding="utf-8")
+    show = runtime.worker.run(["git", "show", f"HEAD:{chosen}"])
+    assert show.returncode == 0
+    original = show.stdout
     target.write_text(original, encoding="utf-8")
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-negative-confidence")
