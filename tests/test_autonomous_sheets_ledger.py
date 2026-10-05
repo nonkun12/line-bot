@@ -12,9 +12,6 @@ class FakeClient:
         self.sheet_title_calls = 0
 
     def sheet_titles(self):
-        return [SHEET]
-
-    def sheet_titles(self):
         self.sheet_title_calls += 1
         return [SHEET]
 
@@ -45,7 +42,7 @@ def test_append_once_accepts_existing_table_location():
     client = FakeClient(readback=[item.values()])
     assert ledger.append_once(client, item) is True
     assert client.appended[0][0] == "'AutonomousDevelopment'!A1:ZZ1000"
-    assert "AutonomousDevelopment!A1:ZZ1000" in client.read_ranges
+    assert "'AutonomousDevelopment'!A1:ZZ1000" in client.read_ranges
 
 def test_append_once_is_idempotent_for_matching_full_row():
     item = record()
