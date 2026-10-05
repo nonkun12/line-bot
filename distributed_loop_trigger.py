@@ -30,10 +30,21 @@ _BOUNDED_TRIGGER_RE = re.compile(
     r"、?安全確認付きで実行(?:してください)?$"
 )
 
-_NATURAL_FOUR_TASK_TRIGGER = (
-    "分散Loopを起動。4タスクまで安全に実行し、"
-    "各タスクをSafety Gate付きで確認。問題があれば即停止し、"
-    "最後にTask ID / PASS・FAIL / SHA / 変更ファイル / 成果を報告してください。"
+# Keep the natural 4-task command strict, but accept the exact phrasings
+# used by the LINE secretary without broadening to arbitrary text.
+_NATURAL_FOUR_TASK_TRIGGERS = frozenset(
+    {
+        (
+            "分散Loopを起動。4タスクまで安全に実行し、"
+            "各タスクをSafety Gate付きで確認。問題があれば即停止し、"
+            "最後にTask ID / PASS・FAIL / SHA / 変更ファイル / 成果を報告してください。"
+        ),
+        (
+            "分散Loopを起動。4タスクまで安全確認付きで実行し、"
+            "各タスクをSafety Gate付きで確認。問題があれば即停止し、"
+            "最後にTask ID / PASS・FAIL / SHA / 変更ファイル / 成果を報告してください。"
+        ),
+    }
 )
 
 
@@ -50,7 +61,7 @@ def _requested_max_tasks(message: str) -> int | None:
     if command in normalized_trigger_phrases:
         return 4 if "起動" in command else 1
 
-    if command == _normalize_command(_NATURAL_FOUR_TASK_TRIGGER):
+    if command in {_normalize_command(text) for text in _NATURAL_FOUR_TASK_TRIGGERS}:
         return 4
 
     normalized_bounded_pattern = re.compile(
