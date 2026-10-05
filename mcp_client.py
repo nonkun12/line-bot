@@ -59,10 +59,17 @@ class McpNotReadyError(RuntimeError):
 
 
 def wait_for_mcp_http_ready(max_wait=None, poll_interval=None, stable_count=None):
-    """Wait for stable HTTP readiness before issuing a write."""
+    """
+    Wait for stable HTTP readiness before issuing a write.
+
+    Free Render hibernation can remain rate-limited beyond the platform's
+    approximate one-minute wake-up time. Keep the wait bounded, but use
+    exponential backoff so repeated health probes do not create a request
+    storm while the service is waking.
+    """
     if not _mcp_ready_check_enabled():
         return
-    max_wait = _env_float("MCP_READY_MAX_SEC", 90.0) if max_wait is None else max_wait
+    max_wait = _env_float("MCP_READY_MAX_SEC", 180.0) if max_wait is None else max_wait
     poll_interval = _env_float("MCP_READY_POLL_SEC", 5.0) if poll_interval is None else poll_interval
     stable_count = int(_env_float("MCP_READY_STABLE_COUNT", 2)) if stable_count is None else stable_count
     max_wait = max(0.0, max_wait)
@@ -71,6 +78,7 @@ def wait_for_mcp_http_ready(max_wait=None, poll_interval=None, stable_count=None
     deadline = time.monotonic() + max_wait
     consecutive = 0
     last_reason = "no response"
+    current_interval = poll_interval
     while True:
         try:
             res = httpx.get(
@@ -97,9 +105,14 @@ def wait_for_mcp_http_ready(max_wait=None, poll_interval=None, stable_count=None
                 return
         else:
             consecutive = 0
-        if time.monotonic() + poll_interval > deadline:
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
             raise McpNotReadyError(f"MCP server not ready ({last_reason})")
-        time.sleep(poll_interval)
+
+        sleep_for = min(current_interval, remaining)
+        time.sleep(sleep_for)
+        current_interval = min(current_interval * 2.0, 30.0)
 
 
 def classify_mcp_failure(exc):
