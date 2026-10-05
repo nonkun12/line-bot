@@ -91,3 +91,123 @@ def test_trigger_deploy_http_error(monkeypatch):
     assert result["triggered"] is False
     assert result["deploy_id"] is None
     assert result["error"] is not None
+
+
+def test_mcp_service_session_disabled_does_not_touch_render(monkeypatch):
+    monkeypatch.delenv("MCP_RENDER_ON_DEMAND", raising=False)
+
+    def fail(*args, **kwargs):
+        raise AssertionError("Render API must not be called when disabled")
+
+    monkeypatch.setattr(render_client, "get_service", fail)
+    with render_client.mcp_service_session():
+        pass
+
+
+def test_mcp_service_session_rejects_line_bot_service_id(monkeypatch):
+    monkeypatch.setenv("MCP_RENDER_ON_DEMAND", "true")
+    monkeypatch.setenv("MCP_RENDER_SERVICE_ID", render_client.SERVICE_ID)
+
+    try:
+        with render_client.mcp_service_session():
+            pass
+    except RuntimeError as exc:
+        assert "LINE-bot" in str(exc)
+    else:
+        raise AssertionError("Expected dedicated MCP service ID validation")
+
+
+def test_mcp_service_session_resumes_then_suspends(monkeypatch):
+    monkeypatch.setenv("MCP_RENDER_ON_DEMAND", "true")
+    monkeypatch.setenv("MCP_RENDER_SERVICE_ID", "srv-mcp123")
+
+    states = iter([
+        {"suspended": "suspended"},
+        {"suspended": "not_suspended"},
+    ])
+    calls = []
+
+    monkeypatch.setattr(render_client, "get_service", lambda service_id: next(states))
+    monkeypatch.setattr(
+        render_client,
+        "resume_service",
+        lambda service_id: calls.append(("resume", service_id)) or {},
+    )
+    monkeypatch.setattr(
+        render_client,
+        "suspend_service",
+        lambda service_id: calls.append(("suspend", service_id)) or {},
+    )
+    monkeypatch.setattr(render_client.time, "sleep", lambda seconds: None, raising=False)
+
+    with render_client.mcp_service_session():
+        calls.append(("work",))
+
+    assert calls == [
+        ("resume", "srv-mcp123"),
+        ("work",),
+        ("suspend", "srv-mcp123"),
+    ]
+
+
+def test_mcp_service_session_leaves_already_running_service_alone(monkeypatch):
+    monkeypatch.setenv("MCP_RENDER_ON_DEMAND", "true")
+    monkeypatch.setenv("MCP_RENDER_SERVICE_ID", "srv-mcp123")
+
+    calls = []
+    monkeypatch.setattr(
+        render_client,
+        "get_service",
+        lambda service_id: {"suspended": "not_suspended"},
+    )
+    monkeypatch.setattr(
+        render_client,
+        "resume_service",
+        lambda service_id: calls.append(("resume", service_id)) or {},
+    )
+    monkeypatch.setattr(
+        render_client,
+        "suspend_service",
+        lambda service_id: calls.append(("suspend", service_id)) or {},
+    )
+
+    with render_client.mcp_service_session():
+        calls.append(("work",))
+
+    assert calls == [("work",)]
+
+
+def test_mcp_service_session_suspends_after_operation_failure(monkeypatch):
+    monkeypatch.setenv("MCP_RENDER_ON_DEMAND", "true")
+    monkeypatch.setenv("MCP_RENDER_SERVICE_ID", "srv-mcp123")
+
+    calls = []
+    states = iter([
+        {"suspended": "suspended"},
+        {"suspended": "not_suspended"},
+    ])
+    monkeypatch.setattr(render_client, "get_service", lambda service_id: next(states))
+    monkeypatch.setattr(
+        render_client,
+        "resume_service",
+        lambda service_id: calls.append(("resume", service_id)) or {},
+    )
+    monkeypatch.setattr(
+        render_client,
+        "suspend_service",
+        lambda service_id: calls.append(("suspend", service_id)) or {},
+    )
+    monkeypatch.setattr(render_client.time, "sleep", lambda seconds: None, raising=False)
+
+    try:
+        with render_client.mcp_service_session():
+            raise ValueError("operation failed")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Expected operation failure")
+
+    assert calls == [
+        ("resume", "srv-mcp123"),
+        ("suspend", "srv-mcp123"),
+    ]
