@@ -30,6 +30,7 @@ from scripts import line_development_worker_v2 as worker
 class DevelopmentState:
     client: object
     instruction: str
+    autonomous_task_id: str = ""
     chosen: str | None = None
     plan: dict | None = None
     touched: list[str] | None = None
@@ -170,14 +171,14 @@ def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
     )
 
 
-def _deterministic_autonomous_test_plan(chosen: str) -> tuple[dict | None, str | None]:
+def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None) -> tuple[dict | None, str | None]:
     """Return bounded, deterministic plans for explicit queued regression-test tasks.
 
     Enforces size limits (old <= 1200, new <= 1800) and strict anchor uniqueness
     (text.count(anchor) == 1) at generation time to fail-closed immediately without
     invoking non-deterministic LLM plan repair.
     """
-    task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+    task_id = str(task_id or os.environ.get("AUTONOMOUS_TASK_ID", "")).strip()
     if not task_id:
         return None, None
 
@@ -386,7 +387,21 @@ class DevelopmentExecutor:
             if self.state.chosen is None:
                 return AgentResult(task.task_id, False, "manager selection missing")
             if task.role is AgentRole.IMPLEMENTER:
-                deterministic_plan, deterministic_err = _deterministic_autonomous_test_plan(self.state.chosen)
+                task_id = self.state.autonomous_task_id.strip()
+                if not task_id:
+                    task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+                # Exact instruction fallback is bounded to the known queued task and target.
+                if (
+                    not task_id
+                    and self.state.chosen == "uhip/tests/test_schema_contracts.py"
+                    and "confidence=0.0" in self.state.instruction
+                    and "recognition_passed=false" in self.state.instruction
+                ):
+                    task_id = "hand-sign-uhip-contract-negative-confidence"
+                deterministic_plan, deterministic_err = _deterministic_autonomous_test_plan(
+                    self.state.chosen,
+                    task_id,
+                )
                 if deterministic_err:
                     return AgentResult(task.task_id, False, f"deterministic plan generation failed: {deterministic_err}")
                 if deterministic_plan is not None:
@@ -654,7 +669,11 @@ def execute(instruction: str) -> int:
     if idea_task_id:
         os.environ["AUTONOMOUS_TASK_ID"] = idea_task_id
     client = worker.Groq(api_key=os.environ["GROQ_API_KEY"])
-    state = DevelopmentState(client=client, instruction=instruction)
+    state = DevelopmentState(
+        client=client,
+        instruction=instruction,
+        autonomous_task_id=os.environ.get("AUTONOMOUS_TASK_ID", "").strip(),
+    )
     executor = DevelopmentExecutor(state)
     tasks = (
         AgentTask("manager", AgentRole.MANAGER, "Select one safe implementation target.", resources=frozenset({"target-selection"})),
