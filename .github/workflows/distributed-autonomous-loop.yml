@@ -29,6 +29,8 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
+  issues: write
 
 concurrency:
   group: distributed-autonomous-loop
@@ -318,8 +320,101 @@ jobs:
               )
           PY
 
-      - name: Notify LINE of successful distributed loop
+      - name: Build final distributed loop report
+        if: always()
+        env:
+          MAX_TASKS: ${{ env.MAX_TASKS }}
+          LOOP_OUTCOME: ${{ steps.run_task.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          STATE_OUTCOME: ${{ steps.persist_state.outcome }}
+          JOB_STATUS: ${{ job.status }}
+          PR_NUMBER: ${{ github.event.issue.number || '' }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          requested="${MAX_TASKS:-4}"
+          completed=0
+          total=0
+          if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
+            total=$(grep -cve '^
         if: success()
+        env:
+          LINE_INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
+          DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${LINE_INTERNAL_PUSH_KEY:-}" ] || [ -z "${DISTRIBUTED_LOOP_LINE_USER_ID:-}" ]; then
+            echo "LINE success notification skipped: required GitHub secrets are not configured."
+            exit 0
+          fi
+          if [ -s /tmp/distributed-final-report.txt ]; then
+            message="$(cat /tmp/distributed-final-report.txt)"
+          else
+            message="⚠️ 分散Loop終了報告を生成できませんでした。Run #${{ github.run_number }}"
+          fi
+          export MESSAGE="$message"
+          payload="$(python - <<'PY'
+          import json, os
+          print(json.dumps({'user_id': os.environ['DISTRIBUTED_LOOP_LINE_USER_ID'], 'message': os.environ['MESSAGE']}, ensure_ascii=False))
+          PY
+          )"
+          curl --fail-with-body --silent --show-error --max-time 15 \
+            -X POST "https://line-bot-yvea.onrender.com/internal/push" \
+            -H "Content-Type: application/json" \
+            -H "x-internal-key: ${LINE_INTERNAL_PUSH_KEY}" \
+            --data "$payload"
+      - name: Upload durable run evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimal-autonomous-loop-${{ github.run_id }}
+          retention-days: 30
+          path: |
+            /tmp/minimal-autonomous-loop.jsonl
+            /tmp/autonomous-loop-state.json
+            /tmp/autonomous-*.json
+            /tmp/distributed-sheets-log-result.json
+          if-no-files-found: ignore
+
+ /tmp/minimal-autonomous-loop.jsonl 2>/dev/null || true)
+            completed=$(python - <<'PY'
+from pathlib import Path
+import json
+rows=[]
+for line in Path("/tmp/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines():
+    if line.strip():
+        try: rows.append(json.loads(line))
+        except json.JSONDecodeError: pass
+print(sum(1 for r in rows if r.get("status") in {"PASS","NO_CHANGE"}))
+PY
+            )
+          fi
+          result="STOPPED/FAILED"
+          if [ "${LOOP_OUTCOME:-}" = "success" ] && [ "$completed" = "$requested" ]; then result="COMPLETED"; fi
+          produced_sha="$(git rev-parse HEAD 2>/dev/null || echo "${GITHUB_SHA}")"
+          {
+            echo "# 分散Loop 終了報告"
+            echo
+            echo "- 結果: **$result**"
+            echo "- ループ: ${completed}/${requested}"
+            echo "- 最終SHA: ${produced_sha}"
+            echo "- Task結果: ${LOOP_OUTCOME:-not_run}"
+            echo "- Publish: ${PUBLISH_OUTCOME:-not_run}"
+            echo "- State: ${STATE_OUTCOME:-not_run}"
+            echo "- Job: ${JOB_STATUS:-unknown}"
+            echo "- Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo "### Task別結果"
+            if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then cat /tmp/minimal-autonomous-loop.jsonl; else echo "(結果なし)"; fi
+          } | tee /tmp/distributed-final-report.txt >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${GITHUB_EVENT_NAME}" = "issue_comment" ] && [ -n "${PR_NUMBER:-}" ] && command -v gh >/dev/null 2>&1; then
+            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/distributed-final-report.txt || true
+          fi
+
+      - name: Notify LINE of distributed loop final report
+        if: always()
         env:
           LINE_INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
           DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
