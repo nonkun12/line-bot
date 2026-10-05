@@ -65,19 +65,18 @@ def test_get_memory_direct():
         assert res == "あなたの名前は たろう です。"
         print("PASS: ○○は？ -> get_memory")
 
-def test_save_note():
-    with patch("app.call_mcp_tool") as mock_call:
-        mock_call.return_value = "メモを保存しました"
+def test_save_note(fake_notes_mcp):
+    fake = fake_notes_mcp()
+    with patch("app.call_mcp_tool", side_effect=fake):
         res = app.generate_reply("user123", "メモして 今日はテニスの日")
-        
-        mock_call.assert_called_with("save_note", {
-            "user_id": "user123",
-            "title": "LINEメモ",
-            "body": "今日はテニスの日",
-            "category": "一般"
-        })
-        assert res == "メモを保存しました"
-        print("PASS: メモして ○○ -> save_note")
+    assert fake.saves()[0][1] == {
+        "user_id": "user123",
+        "title": "LINEメモ",
+        "body": "今日はテニスの日",
+        "category": "一般",
+    }
+    assert res == "メモを保存しました。（保存を確認済み）"
+    print("PASS: メモして ○○ -> save_note")
 
 def test_search_notes():
     with patch("app.call_mcp_tool") as mock_call:

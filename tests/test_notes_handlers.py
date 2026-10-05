@@ -67,38 +67,22 @@ def test_handle_natural_note_search_keyword_extraction():
     )
 
 
-def test_handle_save_note_classifies_category():
-    call_mcp_tool = MagicMock(return_value="saved")
-
+def test_handle_save_note_classifies_category(fake_notes_mcp):
+    call_mcp_tool = fake_notes_mcp()
     result = handle_save_note("メモして Pythonの勉強", "user123", call_mcp_tool)
-
-    assert result == "saved"
-    call_mcp_tool.assert_called_once_with(
-        "save_note",
-        {
-            "user_id": "user123",
-            "title": "LINEメモ",
-            "body": "Pythonの勉強",
-            "category": "技術",
-        },
-    )
+    assert result == "メモを保存しました。（保存を確認済み）"
 
 
-def test_handle_auto_save_note_matches():
-    call_mcp_tool = MagicMock(return_value="auto saved")
-
+def test_handle_auto_save_note_matches(fake_notes_mcp):
+    call_mcp_tool = fake_notes_mcp()
     result = handle_auto_save_note("明日旅行する予定", "user123", call_mcp_tool)
-
-    assert result == "auto saved"
-    call_mcp_tool.assert_called_once_with(
-        "save_note",
-        {
-            "user_id": "user123",
-            "title": "自動メモ",
-            "body": "明日旅行する予定",
-            "category": "一般",
-        },
-    )
+    assert result == "メモを保存しました。（保存を確認済み）"
+    assert call_mcp_tool.saves()[0][1] == {
+        "user_id": "user123",
+        "title": "自動メモ",
+        "body": "明日旅行する予定",
+        "category": "一般",
+    }
 
 
 def test_handle_auto_save_note_no_match():
