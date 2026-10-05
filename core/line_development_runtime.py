@@ -255,10 +255,18 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
 
-        anchor = '    validate(adapter, ADAPTER_SCHEMA)\n'
+        anchor = 'def test_adapter_schema_rejects_unknown_risk():\n'
         count = text.count(anchor)
         if count != 1:
             return None, f"anchor_count_{chosen}:{count}"
+
+        before = text.split(anchor, 1)[0]
+        if before and not before.endswith("\n\n"):
+            return None, "deterministic_plan_invalid:anchor_not_standalone_def"
+        prefix = before.rstrip("\n")
+        prior_nonblank = prefix.splitlines()[-1].strip() if prefix.splitlines() else ""
+        if prior_nonblank.startswith("@") or prior_nonblank.startswith("#"):
+            return None, "deterministic_plan_invalid:anchor_not_standalone_def"
 
         addition = (
             "\n\ndef test_universal_event_accepts_zero_confidence_hand_event():\n"
@@ -299,9 +307,15 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "    }\n"
             "    validate(event, EVENT_SCHEMA)\n"
         )
-        new = anchor + addition
+        new_test = addition.lstrip("\n")
+        new = new_test + "\n\n" + anchor
+        candidate = text.replace(anchor, new, 1)
         if len(anchor) > 1200 or len(new) > 1800:
             return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
 
         return {
             "no_change": False,
