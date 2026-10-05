@@ -75,7 +75,6 @@ from core.channel import handle_channel_request
 from core.gateway import AIGateway
 from core.request_path import run_core_request, extract_core_reply
 from core.management_bridge import should_route_to_management_ai, run_management_request
-from core.line_runtime_audit import record_line_runtime
 from core.self_introduction import handle_self_introduction
 from routes.core_api import core_api_bp
 from routes.obsidian_bridge import obsidian_bridge_bp
@@ -471,7 +470,6 @@ def _process_and_reply(event, user_id, text):
             print(f"[LOG] Core gateway failed; returning safe reply: {type(exc).__name__}")
             status = "FAIL"
             reply = "AIサービスで一時的な問題が発生しました。少し時間を置いてもう一度お試しください。"
-        record_line_runtime(user_message=str(text), reply=reply, status=status, route=route)
         try:
             _line_reply(event.reply_token, reply)
         except Exception:
