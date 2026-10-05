@@ -39,7 +39,8 @@ def configure_git_identity(workspace: Path) -> None:
 
 
 def ensure_main_base(workspace: Path) -> None:
-    """Guarantee that the target repository has a PR base branch named main."""
+    """Guarantee a usable main base and deterministic CI git identity."""
+    configure_git_identity(workspace)
     has_head = run(["git", "rev-parse", "--verify", "HEAD"], workspace, timeout=60)
     if has_head.returncode == 0:
         main_ref = run(["git", "show-ref", "--verify", "refs/remotes/origin/main"], workspace, timeout=60)
