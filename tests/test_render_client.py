@@ -399,7 +399,7 @@ def test_mcp_health_probe_accepts_only_ok_true(monkeypatch):
         lambda url, **kwargs: _FakeResponse({}, status_code=200),
     )
 
-    with pytest.raises(RuntimeError, match="valid JSON"):
+    with pytest.raises(RuntimeError, match="status=200"):
         render_client._mcp_http_is_hibernate_rate_limited()
 
 
