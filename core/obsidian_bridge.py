@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 
 from .obsidian import ObsidianError
-from agents.obsidian.intents import is_obsidian_intent
+from agents.obsidian.intents import is_obsidian_intent, normalize_obsidian_command
 from db import create_job
 
 OBSIDIAN_JOB_TYPE = "obsidian"
@@ -18,7 +18,7 @@ MAX_OBSIDIAN_MESSAGE_CHARS = 4000
 def enqueue_obsidian_request(user_id: str, message: str) -> int:
     """Queue one explicit Obsidian request for the Mac bridge."""
     normalized_user_id = str(user_id or "").strip()
-    normalized_message = str(message or "").strip()
+    normalized_message = normalize_obsidian_command(message)
     if not normalized_user_id:
         raise ObsidianError("user_id is required")
     if len(normalized_user_id) > 200:
