@@ -7,7 +7,7 @@ import httpx
 from config import MCP_SERVER_URL, MCP_API_KEY
 
 
-def call_mcp_tool(tool_name, arguments, timeout=None):
+def _call_mcp_tool_once(tool_name, arguments, timeout=None):
     """
     my-mcp-server の /mcp エンドポイントへ JSON-RPC で tools/call を送る。
     StreamableHTTPServerTransport はレスポンスを
@@ -110,6 +110,15 @@ def call_mcp_tool(tool_name, arguments, timeout=None):
     parts = result.get("content", [])
     texts = [p.get("text", "") for p in parts if p.get("type") == "text"]
     return "\n".join(texts) if texts else ""
+
+
+
+def call_mcp_tool(tool_name, arguments, timeout=None):
+    """Call MCP, optionally wrapped in the dedicated on-demand Render session."""
+    from render_client import mcp_service_session
+
+    with mcp_service_session():
+        return _call_mcp_tool_once(tool_name, arguments, timeout=timeout)
 
 
 def _parse_reminder_text_lines(raw):
