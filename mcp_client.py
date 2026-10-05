@@ -22,7 +22,7 @@ def _hibernate_retry_settings():
 
     # Render Free startup is approximately one minute. Avoid request flooding
     # while the service is waking and keep the fallback bounded.
-    return max(0.0, max_wait), max(5.0, interval)
+    return max(0.0, max_wait), max(0.1, interval)
 
 
 def _is_hibernate_rate_limited(response):
