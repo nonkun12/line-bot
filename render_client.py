@@ -216,7 +216,11 @@ def _mcp_http_is_hibernate_rate_limited() -> bool:
     try:
         if response.status_code == 429:
             routing = response.headers.get("x-render-routing", "").strip().lower()
-            return routing == "hibernate-rate-limited"
+            if routing == "hibernate-rate-limited":
+                return True
+            raise RuntimeError(
+                f"MCP health probe returned unexpected 429 routing={routing}"
+            )
         if response.status_code == 200:
             try:
                 payload = response.json()
