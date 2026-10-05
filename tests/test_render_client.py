@@ -2,10 +2,15 @@ import render_client
 
 
 class _FakeResponse:
-    def __init__(self, json_data, status_code=200):
+    def __init__(self, json_data, status_code=200, headers=None):
         self._json_data = json_data
         self.status_code = status_code
         self.content = b"{}"
+        self.headers = headers or {}
+        self.closed = False
+
+    def close(self):
+        self.closed = True
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -297,3 +302,109 @@ def test_resume_and_suspend_use_exact_service_endpoint(monkeypatch):
         ("https://api.render.com/v1/services/srv-mcp123/resume", "Bearer dummy-key", 15),
         ("https://api.render.com/v1/services/srv-mcp123/suspend", "Bearer dummy-key", 15),
     ]
+
+
+def test_mcp_service_session_resumes_when_http_layer_is_hibernating(monkeypatch):
+    monkeypatch.setenv("MCP_RENDER_ON_DEMAND", "true")
+    monkeypatch.setenv("MCP_RENDER_SERVICE_ID", "srv-mcp123")
+
+    calls = []
+    monkeypatch.setattr(
+        render_client,
+        "get_service",
+        lambda service_id: {"suspended": "not_suspended"},
+    )
+    monkeypatch.setattr(
+        render_client,
+        "resume_service",
+        lambda service_id: calls.append(("resume", service_id)) or {},
+    )
+    monkeypatch.setattr(
+        render_client,
+        "wait_for_service_running",
+        lambda service_id: calls.append(("wait", service_id)) or {},
+    )
+    monkeypatch.setattr(
+        render_client,
+        "suspend_service",
+        lambda service_id: calls.append(("suspend", service_id)) or {},
+    )
+    monkeypatch.setattr(
+        render_client.requests,
+        "get",
+        lambda url, **kwargs: (
+            calls.append(("health", url, kwargs)),
+            _FakeResponse(
+                {},
+                status_code=429,
+                headers={"x-render-routing": "hibernate-rate-limited"},
+            ),
+        )[1],
+    )
+
+    with render_client.mcp_service_session():
+        calls.append(("work",))
+
+    assert [item[0] for item in calls] == ["health", "resume", "wait", "work", "suspend"]
+    assert calls[1] == ("resume", "srv-mcp123")
+    assert calls[0][2]["headers"] == {"Accept": "application/json"}
+
+
+def test_mcp_service_session_does_not_resume_on_other_429(monkeypatch):
+    monkeypatch.setenv("MCP_RENDER_ON_DEMAND", "true")
+    monkeypatch.setenv("MCP_RENDER_SERVICE_ID", "srv-mcp123")
+
+    resumed = []
+    monkeypatch.setattr(
+        render_client,
+        "get_service",
+        lambda service_id: {"suspended": "not_suspended"},
+    )
+    monkeypatch.setattr(
+        render_client,
+        "resume_service",
+        lambda service_id: resumed.append(service_id) or {},
+    )
+    monkeypatch.setattr(
+        render_client.requests,
+        "get",
+        lambda url, **kwargs: _FakeResponse(
+            {},
+            status_code=429,
+            headers={"x-render-routing": "other-rate-limit"},
+        ),
+    )
+
+    try:
+        with render_client.mcp_service_session():
+            raise AssertionError("MCP operation must not run")
+    except RuntimeError as exc:
+        assert "health probe returned" in str(exc)
+
+    assert resumed == []
+
+
+def test_mcp_health_probe_accepts_only_ok_true(monkeypatch):
+    monkeypatch.setenv("MCP_HEALTH_URL", "https://example.test/health")
+    monkeypatch.setattr(
+        render_client.requests,
+        "get",
+        lambda url, **kwargs: _FakeResponse({}, status_code=200),
+    )
+
+    with pytest.raises(RuntimeError, match="valid JSON"):
+        render_client._mcp_http_is_hibernate_rate_limited()
+
+
+def test_mcp_health_probe_does_not_send_api_key(monkeypatch):
+    monkeypatch.setenv("MCP_HEALTH_URL", "https://example.test/health")
+    seen = {}
+
+    def fake_get(url, **kwargs):
+        seen.update(url=url, kwargs=kwargs)
+        return _FakeResponse({"ok": True}, status_code=200)
+
+    monkeypatch.setattr(render_client.requests, "get", fake_get)
+
+    assert render_client._mcp_http_is_hibernate_rate_limited() is False
+    assert "x-api-key" not in seen["kwargs"].get("headers", {})
