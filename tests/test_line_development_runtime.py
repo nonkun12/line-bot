@@ -253,6 +253,32 @@ def test_deterministic_autonomous_test_plan_hand_sign_within_size_bounds(monkeyp
     assert detail == "uhip/tests/test_schema_contracts.py"
 
 
+def test_negative_confidence_plan_preserves_existing_test_body_and_is_syntax_safe(monkeypatch, tmp_path):
+    chosen = "uhip/tests/test_schema_contracts.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    real_file = runtime.worker.ROOT / chosen
+    original = real_file.read_text(encoding="utf-8")
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-negative-confidence")
+
+    plan, err = runtime._deterministic_autonomous_test_plan(chosen)
+
+    assert err is None
+    assert plan is not None
+    change = plan["changes"][0]
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert candidate.count("def test_universal_event_accepts_zero_confidence_hand_event():") == 1
+    assert candidate.count("def test_adapter_schema_rejects_unknown_risk():") == 1
+    assert "    adapter = {" in candidate
+    assert "    with pytest.raises(jsonschema.ValidationError):" in candidate
+    assert candidate.index(
+        "def test_universal_event_accepts_zero_confidence_hand_event():"
+    ) < candidate.index("def test_adapter_schema_rejects_unknown_risk():")
+
+
 def test_deterministic_autonomous_test_plan_no_change_when_test_present(monkeypatch, tmp_path):
     target = tmp_path / "uhip" / "tests" / "test_schema_contracts.py"
     target.parent.mkdir(parents=True, exist_ok=True)
