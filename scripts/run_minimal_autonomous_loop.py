@@ -1,6 +1,6 @@
 """Minimal, fail-closed autonomous development loop.
 
-This MVP executes at most one queued task by default. A later task is reached
+This MVP executes a bounded number of queued tasks by default. A later task is reached
 only when the previous guarded runtime returns success. No merge/deploy is
 performed here. A kill-switch file or environment variable stops before the
 next task.
@@ -267,11 +267,11 @@ def main() -> int:
     parser.add_argument("--state", type=Path, default=Path("/tmp/autonomous-loop-state.json"))
     args = parser.parse_args()
 
-    if args.max_tasks < 1 or args.max_tasks > 3:
-        raise SystemExit("--max-tasks must be between 1 and 3")
+    if args.max_tasks < 1 or args.max_tasks > 4:
+        raise SystemExit("--max-tasks must be between 1 and 4")
 
     queue_data = json.loads(QUEUE.read_text(encoding="utf-8"))
-    queue_limit = int(queue_data.get("max_tasks_per_run", 3))
+    queue_limit = int(queue_data.get("max_tasks_per_run", 4))
     if args.max_tasks > queue_limit:
         raise SystemExit(f"--max-tasks exceeds queue max_tasks_per_run={queue_limit}")
     completed = load_completed(args.state)
