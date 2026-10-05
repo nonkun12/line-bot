@@ -83,18 +83,12 @@ def handle_normal_message(message, user_id, call_mcp_tool):
     now_jst = datetime.now(timezone(timedelta(hours=9)))
     now_str = now_jst.strftime("%Y-%m-%dT%H:%M:%S+09:00")
 
-    # 名前などの既知情報は、AIのtool呼び出し判断に任せず毎回直接取得して
-    # システムプロンプトへ埋め込む(会話履歴に残っていなくても思い出せるようにするため)。
-    try:
-        stored_memory = call_mcp_tool(
-            "get_all_memory",
-            {"user_id": user_id},
-        )
-    except Exception as e:
-        print("GET ALL MEMORY ERROR:", e)
-        stored_memory = ""
-
-    known_facts_block = stored_memory if stored_memory else "(まだ何も記憶していません)"
+    # 通常会話ではMCPを暗黙的に呼び出さない。
+    # Memory/Notes/Reminder等のMCP利用はSupervisor/専用Agentの明示的な
+    # intent route、またはユーザーが明確に要求したtool呼び出しに限定する。
+    # 以前ここで毎回 get_all_memory を実行していたため、MCP停止時でも
+    # 通常会話が3秒待たされたり、MCP障害が通常応答へ波及していた。
+    known_facts_block = "(通常会話では記憶を自動取得しません)"
 
     system_prompt = f"""
 {random.choice(_PERSONALITIES)}
