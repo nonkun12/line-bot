@@ -119,3 +119,35 @@ def test_bounded_command_keeps_four_task_cap_after_normalization():
 
     assert _requested_max_tasks(" 分散Loopを4回、 安全確認付きで実行 ") == 4
     assert _requested_max_tasks("分散Loopを５回、安全確認付きで実行") is None
+
+
+def test_full_natural_four_task_command_accepts_missing_terminal_period():
+    from distributed_loop_trigger import _requested_max_tasks
+
+    message = (
+        "分散Loopを起動。4タスクまで安全確認付きで実行し、"
+        "各タスクをSafety Gate付きで確認。問題があれば即停止し、"
+        "最後にTask ID / PASS・FAIL / SHA / 変更ファイル / 成果を報告してください"
+    )
+    assert _requested_max_tasks(message) == 4
+
+
+def test_full_natural_four_task_command_accepts_missing_terminal_period_with_transport_whitespace():
+    from distributed_loop_trigger import _requested_max_tasks
+
+    message = (
+        "\u200b分散Loopを起動。4タスクまで安全確認付きで実行し、\r\n"
+        "各タスクをSafety Gate付きで確認。問題があれば即停止し、\n"
+        "最後にTask ID / PASS・FAIL / SHA / 変更ファイル / 成果を報告してください\ufeff"
+    )
+    assert _requested_max_tasks(message) == 4
+
+
+def test_similar_unapproved_natural_command_does_not_trigger():
+    from distributed_loop_trigger import _requested_max_tasks
+
+    message = (
+        "分散Loopを起動。4タスクまで安全確認付きで実行し、"
+        "問題があれば停止して、結果を報告してください"
+    )
+    assert _requested_max_tasks(message) is None
