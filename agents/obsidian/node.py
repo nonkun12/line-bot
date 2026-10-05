@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from agents.obsidian.intents import is_obsidian_intent
+from agents.obsidian.intents import is_obsidian_intent, normalize_obsidian_command
 from core.specialist_gate import assert_agent_approved, assert_specialist_capability
 from core.obsidian import ObsidianError, ObsidianVault
 from graph.state import AgentState
@@ -40,7 +40,8 @@ def obsidian_agent_node(state: AgentState) -> AgentState:
     """Execute bounded Obsidian operations only after explicit capability gating."""
     assert_agent_approved("obsidian")
 
-    message = str(state.get("raw_message", "") or "").strip()
+    raw_message = str(state.get("raw_message", "") or "").strip()
+    message = normalize_obsidian_command(raw_message) or raw_message
     vault = ObsidianVault.from_env()
     if vault is None:
         return _response(
@@ -50,7 +51,7 @@ def obsidian_agent_node(state: AgentState) -> AgentState:
             reason="vault_not_configured",
         )
 
-    if not is_obsidian_intent(message):
+    if not is_obsidian_intent(raw_message):
         return _response(
             state,
             "Obsidianの操作形式を理解できませんでした。",
