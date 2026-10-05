@@ -381,26 +381,11 @@ PY
             echo "LINE success notification skipped: required GitHub secrets are not configured."
             exit 0
           fi
-          task_id="distributed-loop-no-task-result"
-          status="PASS"
-          if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
-            task_id="$(python - <<'PY'
-          import json
-          from pathlib import Path
-          rows=[json.loads(x) for x in Path('/tmp/minimal-autonomous-loop.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
-          print(rows[-1].get('task_id') or 'distributed-loop-no-task-result')
-          PY
-            )"
-            status="$(python - <<'PY'
-          import json
-          from pathlib import Path
-          rows=[json.loads(x) for x in Path('/tmp/minimal-autonomous-loop.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
-          print(rows[-1].get('status') or 'PASS')
-          PY
-            )"
+          if [ -s /tmp/distributed-final-report.txt ]; then
+            message="$(cat /tmp/distributed-final-report.txt)"
+          else
+            message="⚠️ 分散Loop終了報告を生成できませんでした。Run #${{ github.run_number }}"
           fi
-          produced_sha="$(git rev-parse HEAD)"
-          message="✅ 分散Loop SUCCESS\nRun #${{ github.run_number }}\nTask: $task_id\nStatus: $status\nSHA: $produced_sha\n${RUN_URL}"
           export MESSAGE="$message"
           payload="$(python - <<'PY'
           import json, os
