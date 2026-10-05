@@ -18,13 +18,9 @@ on:
   issue_comment:
     types: [created]
   schedule:
-    - cron: '30 4 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '30 10 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '30 16 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '30 22 * * *'
+    # Same four daily fire times, expressed as one cron entry.
+    # Changing the cron expression also reactivates a deactivated scheduled workflow.
+    - cron: '30 4,10,16,22 * * *'
       timezone: 'Asia/Tokyo'
 
 permissions:
