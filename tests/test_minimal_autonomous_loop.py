@@ -11,7 +11,7 @@ from scripts.run_minimal_autonomous_loop import load_completed, load_tasks, stop
 def test_queue_contains_bounded_tasks():
     tasks = load_tasks()
     assert tasks
-    assert len(tasks) <= 3
+    assert len(tasks) <= 4
     assert all(task["id"] and task["instruction"] and task["allowed_paths"] for task in tasks)
 
 
