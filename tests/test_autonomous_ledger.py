@@ -33,7 +33,7 @@ class FakeClient:
             *[f"'{title}'!A1:ZZ1000" for title in self.titles],
         ):
             return [self._header_row(), *self.existing]
-        match = range_name in (f"{SHEET}!AE185:AU185", f"'{SHEET}'!AE185:AU185")
+        match = range_name in (f"{SHEET}!AE185:AU185", f"'{SHEET}'!AE185:AU185", *[f"'{title}'!AE185:AU185" for title in self.titles])
         if match and self.readback is not None:
             return self.readback
         return []
@@ -106,7 +106,7 @@ def test_append_once_accepts_google_table_location_shift():
 
 def test_append_once_resolves_unique_normalized_tab_name_once():
     record = make_record()
-    client = FakeClient(readback=[record.values()], titles=["Other", "Autonomous Development"])
+    client = FakeClient(readback=[record.values()], titles=["Other", "Autonomous Development"], response={"updates": {"updatedRows": 1, "updatedRange": "'Autonomous Development'!AE185:AU185"}})
     assert ledger.append_once(client, record) is True
     assert client.appended[0][0] == "'Autonomous Development'!A1:ZZ1000"
     assert client.sheet_title_calls == 1
