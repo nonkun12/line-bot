@@ -38,19 +38,26 @@ _NATURAL_FOUR_TASK_TRIGGER = (
 
 
 def _normalize_command(message: str) -> str:
-    """Normalize harmless LINE text transport differences without widening commands."""
+    """Normalize harmless LINE transport differences without broadening command tokens."""
     command = unicodedata.normalize("NFKC", str(message))
     command = re.sub(r"[\u200b-\u200d\ufeff]", "", command)
-    return re.sub(r"\s+", " ", command).strip()
+    return re.sub(r"\s+", "", command)
 
 
 def _requested_max_tasks(message: str) -> int | None:
     command = _normalize_command(message)
-    if command in TRIGGER_PHRASES:
+    normalized_trigger_phrases = {_normalize_command(phrase) for phrase in TRIGGER_PHRASES}
+    if command in normalized_trigger_phrases:
         return 4 if "起動" in command else 1
-    if command == _NATURAL_FOUR_TASK_TRIGGER:
+
+    if command == _normalize_command(_NATURAL_FOUR_TASK_TRIGGER):
         return 4
-    match = _BOUNDED_TRIGGER_RE.fullmatch(command)
+
+    normalized_bounded_pattern = re.compile(
+        r"^(?:分散ループ|分散Loop|分散AIループ|分散AI Loop)を([1-4])回"
+        r"、?安全確認付きで実行(?:してください)?$"
+    )
+    match = normalized_bounded_pattern.fullmatch(command)
     if match:
         return int(match.group(1))
     return None
