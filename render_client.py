@@ -227,12 +227,12 @@ def mcp_service_session():
     was_suspended = current.get("suspended") == "suspended"
     resumed_by_us = False
 
-    if was_suspended:
-        resume_service(service_id)
-        resumed_by_us = True
-        wait_for_service_running(service_id)
-
     try:
+        if was_suspended:
+            resume_service(service_id)
+            resumed_by_us = True
+            wait_for_service_running(service_id)
+
         yield
     finally:
         if resumed_by_us:
