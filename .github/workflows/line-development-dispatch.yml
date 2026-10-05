@@ -11,6 +11,16 @@ on:
         description: "LINE user ID"
         required: true
         type: string
+      loop_count:
+        description: "Sequential safe development passes (1-4)"
+        required: false
+        default: "4"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
 
 permissions:
   contents: write
@@ -63,7 +73,18 @@ jobs:
             python -m pytest -q --tb=native
           else
             echo "test_only=false" >> "$GITHUB_OUTPUT"
-            python -m scripts.run_guarded_runtime
+            loop_count="${{ github.event.inputs.loop_count || '4' }}"
+            case "$loop_count" in
+              1|2|3|4) ;;
+              *) echo "invalid loop_count=$loop_count" >&2; exit 1 ;;
+            esac
+            for loop_index in $(seq 1 "$loop_count"); do
+              echo "LINE_DEVELOPMENT_LOOP=RUN index=${loop_index}/${loop_count}"
+              export AUTONOMOUS_LOOP_INDEX="$loop_index"
+              export AUTONOMOUS_LOOP_TOTAL="$loop_count"
+              python -m scripts.run_guarded_runtime
+              echo "LINE_DEVELOPMENT_LOOP=PASS index=${loop_index}/${loop_count}"
+            done
           fi
 
       - name: Create or reuse GitHub PR
