@@ -75,5 +75,15 @@ def test_hibernate_retry_is_bounded(monkeypatch):
     with pytest.raises(httpx.HTTPStatusError):
         mcp_client._call_mcp_tool_once("save_memory", {"key": "k", "value": "v"})
 
-    assert len(calls) == 4
-    assert clock[0] == pytest.approx(1.0)
+    assert len(calls) == 3
+    assert clock[0] == pytest.approx(0.8)
+
+
+def test_hibernate_retry_default_wait_is_long(monkeypatch):
+    monkeypatch.delenv("MCP_HIBERNATE_RETRY_MAX_SEC", raising=False)
+    monkeypatch.delenv("MCP_HIBERNATE_RETRY_INTERVAL_SEC", raising=False)
+
+    max_wait, interval = mcp_client._hibernate_retry_settings()
+
+    assert max_wait == 120.0
+    assert interval == 60.0
