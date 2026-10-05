@@ -335,15 +335,15 @@ jobs:
           completed=0
           if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
             completed=$(python - <<'PY'
-from pathlib import Path
-import json
-rows=[]
-for line in Path("/tmp/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines():
-    if line.strip():
-        try: rows.append(json.loads(line))
-        except json.JSONDecodeError: pass
-print(sum(1 for r in rows if r.get("status") in {"PASS","NO_CHANGE"}))
-PY
+            from pathlib import Path
+            import json
+            rows=[]
+            for line in Path("/tmp/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    try: rows.append(json.loads(line))
+                    except json.JSONDecodeError: pass
+            print(sum(1 for r in rows if r.get("status") in {"PASS","NO_CHANGE"}))
+            PY
             )
           fi
           result="STOPPED/FAILED"
