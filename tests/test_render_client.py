@@ -5,6 +5,7 @@ class _FakeResponse:
     def __init__(self, json_data, status_code=200):
         self._json_data = json_data
         self.status_code = status_code
+        self.content = b"{}"
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -257,4 +258,41 @@ def test_mcp_service_session_suspends_when_startup_wait_fails(monkeypatch):
     assert calls == [
         ("resume", "srv-mcp123"),
         ("suspend", "srv-mcp123"),
+    ]
+
+
+def test_get_service_uses_service_endpoint(monkeypatch):
+    monkeypatch.setenv("RENDER_API_KEY", "dummy-key")
+    captured = {}
+
+    def fake_get(url, headers=None, timeout=None):
+        captured.update(url=url, headers=headers, timeout=timeout)
+        return _FakeResponse({"id": "srv-mcp123", "suspended": "suspended"})
+
+    monkeypatch.setattr(render_client.requests, "get", fake_get)
+
+    result = render_client.get_service("srv-mcp123")
+
+    assert captured["url"] == "https://api.render.com/v1/services/srv-mcp123"
+    assert captured["headers"]["Authorization"] == "Bearer dummy-key"
+    assert captured["timeout"] == 10
+    assert result["suspended"] == "suspended"
+
+
+def test_resume_and_suspend_use_exact_service_endpoint(monkeypatch):
+    monkeypatch.setenv("RENDER_API_KEY", "dummy-key")
+    urls = []
+
+    def fake_post(url, headers=None, timeout=None, json=None):
+        urls.append((url, headers["Authorization"], timeout))
+        return _FakeResponse({})
+
+    monkeypatch.setattr(render_client.requests, "post", fake_post)
+
+    render_client.resume_service("srv-mcp123")
+    render_client.suspend_service("srv-mcp123")
+
+    assert urls == [
+        ("https://api.render.com/v1/services/srv-mcp123/resume", "Bearer dummy-key", 15),
+        ("https://api.render.com/v1/services/srv-mcp123/suspend", "Bearer dummy-key", 15),
     ]
