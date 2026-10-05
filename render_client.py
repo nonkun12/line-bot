@@ -5,6 +5,7 @@ import os
 import re
 import requests
 from contextlib import contextmanager
+from urllib.parse import urlsplit
 
 
 SERVICE_ID = "srv-d93loivlk1mc739gssvg"
@@ -188,6 +189,49 @@ def suspend_service(service_id: str) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _mcp_health_url() -> str:
+    """Return the MCP health URL without reusing the MCP API key."""
+    override = os.getenv("MCP_HEALTH_URL", "").strip()
+    if override:
+        return override
+    from config import MCP_SERVER_URL
+    parts = urlsplit(MCP_SERVER_URL)
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        raise RuntimeError("MCP_SERVER_URL is invalid")
+    return f"{parts.scheme}://{parts.netloc}/health"
+
+
+def _mcp_http_is_hibernate_rate_limited() -> bool:
+    """Detect Render's HTTP hibernation state independently of the control-plane flag."""
+    try:
+        response = requests.get(
+            _mcp_health_url(),
+            headers={"Accept": "application/json"},
+            timeout=8,
+            allow_redirects=False,
+        )
+    except requests.RequestException as exc:
+        raise RuntimeError(f"MCP health probe failed: {type(exc).__name__}") from exc
+
+    try:
+        if response.status_code == 429:
+            routing = response.headers.get("x-render-routing", "").strip().lower()
+            return routing == "hibernate-rate-limited"
+        if response.status_code == 200:
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise RuntimeError("MCP health response is not valid JSON") from exc
+            if isinstance(payload, dict) and payload.get("ok") is True:
+                return False
+        raise RuntimeError(
+            f"MCP health probe returned status={response.status_code} "
+            f"routing={response.headers.get('x-render-routing', '')}"
+        )
+    finally:
+        response.close()
+
+
 def wait_for_service_running(
     service_id: str,
     *,
@@ -228,6 +272,14 @@ def mcp_service_session():
 
     try:
         if was_suspended:
+            resume_service(service_id)
+            resumed_by_us = True
+            wait_for_service_running(service_id)
+        elif _mcp_http_is_hibernate_rate_limited():
+            # Render's control-plane API can report not_suspended while the HTTP
+            # layer is still serving the Free-plan hibernate limiter. In that case
+            # explicitly wake only the dedicated MCP service.
+            print("MCP HTTP hibernate detected; resuming dedicated service", flush=True)
             resume_service(service_id)
             resumed_by_us = True
             wait_for_service_running(service_id)
