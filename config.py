@@ -68,6 +68,7 @@ def handle_message_event(event):
             _line_push,
         )
         from line_development import extract_development_instruction, dispatch_development_workflow
+        from distributed_loop_trigger import request_distributed_loop
         from db import is_processed_event, create_processed_event
         from e2e_status import record_step
 
@@ -120,6 +121,32 @@ def handle_message_event(event):
                 target=_run_development_async,
                 daemon=True,
                 name="line-development-dispatch",
+            ).start()
+            return
+
+        # Distributed Loop is a dedicated LINE protocol and must be decided
+        # before normal AI routing. This direct entry gate prevents the command
+        # from falling through to the normal agent/supervisor path.
+        loop_handled, loop_reply = request_distributed_loop(str(user_id or ""), text)
+        print(
+            "[DISTRIBUTED LOOP ENTRY] "
+            f"handled={loop_handled} user_present={bool(user_id)}",
+            flush=True,
+        )
+        if loop_handled:
+            def _run_distributed_loop_async():
+                try:
+                    _line_push(str(user_id), loop_reply)
+                except Exception:
+                    print("===== DISTRIBUTED LOOP PUSH ERROR =====")
+                    import traceback
+                    traceback.print_exc()
+
+            threading = __import__("threading")
+            threading.Thread(
+                target=_run_distributed_loop_async,
+                daemon=True,
+                name="line-distributed-loop-dispatch",
             ).start()
             return
 
