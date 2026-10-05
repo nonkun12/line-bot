@@ -1,4 +1,14 @@
+from pathlib import Path
+
+import pytest
+
 from scripts import empty_repo_app_builder as builder
+
+
+@pytest.fixture(autouse=True)
+def _make_builder_module_importable(monkeypatch):
+    repo_root = Path(__file__).resolve().parents[1]
+    monkeypatch.syspath_prepend(str(repo_root / "scripts"))
 
 
 def test_configure_git_identity_sets_explicit_non_secret_bot_identity(monkeypatch):
