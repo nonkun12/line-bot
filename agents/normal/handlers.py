@@ -43,7 +43,13 @@ _SAFE_INLINE_TOOLS = {
     "get_today_schedule",
 }
 
-_SAFE_FALLBACK_TOOLS = {"list_reminders", "get_memory"}
+_SAFE_FALLBACK_TOOLS = {"list_reminders"}
+
+_NORMAL_MCP_TOOL_NAMES = {"set_reminder", "list_reminders", "cancel_reminder"}
+_NORMAL_MCP_TOOLS_SCHEMA = [
+    tool for tool in MCP_TOOLS_SCHEMA
+    if tool.get("function", {}).get("name") in _NORMAL_MCP_TOOL_NAMES
+]
 
 _RATE_LIMIT_REPLY = (
     "ごめんなさい、今日利用できるAIの上限に達してしまいました🙏\n"
@@ -119,8 +125,10 @@ Wikipedia以外の外部検索ツール(brave_searchなど)は利用できませ
 「〇〇についてメモ残ってる？」
 これらはnotes検索であり、get_all_memoryやsave_memoryは使用しません。
 
-ユーザーについて新しく覚えておくべきことがあれば save_memory ツールで保存し、
-上記に載っていないその他の情報を思い出す必要があれば get_all_memory ツールで確認してください。
+ユーザーについて新しく覚えておくべき情報の保存や過去の記憶・メモの検索は、
+Supervisorが専用のMemory/Notes Agentへルーティングして処理します。
+通常会話から get_memory / get_all_memory / search_notes を直接呼び出してはいけません。
+リマインダーについてユーザーが明示的に依頼した場合だけ、利用可能なリマインダーツールを使用してください。
 ツールのkeyはユーザーごとに自動で区別されるので、あなたはkey名(name, hobbyなど)だけ気にしてください。
 名前を保存・取得する際は、必ずkey="name"を使ってください。
 
@@ -148,7 +156,7 @@ save_memoryではなく 必ず set_reminder ツールを使用してください
     try:
         response = generate_chat_completion(
             messages=messages,
-            tools=MCP_TOOLS_SCHEMA,
+            tools=_NORMAL_MCP_TOOLS_SCHEMA,
             tool_choice=None,
             temperature=0.0,
             max_tokens=1024,
@@ -180,7 +188,7 @@ save_memoryではなく 必ず set_reminder ツールを使用してください
                         print("INLINE FUNCTION-CALL ARGS PARSE ERROR:", args_err)
                         inline_args = {}
 
-                if inline_name in _SAFE_INLINE_TOOLS:
+                if inline_name in _NORMAL_MCP_TOOL_NAMES and inline_name in _SAFE_INLINE_TOOLS:
                     forced_tool_call = inline_name
                     forced_tool_args = inline_args
 
@@ -298,7 +306,12 @@ save_memoryではなく 必ず set_reminder ツールを使用してください
         for tc in choice.tool_calls:
             tc_name = tc.function.name
 
-            if tc_name in {"set_reminder", "cancel_reminder", "save_memory"}:
+            # Defense in depth: forged/unsupported tool calls fail closed.
+            if tc_name not in _NORMAL_MCP_TOOL_NAMES:
+                print(f"[MCP GATE] rejected normal-agent tool: {tc_name}")
+                continue
+
+            if tc_name in {"set_reminder", "cancel_reminder"}:
                 if tc_name in executed_side_effect_tools:
                     print(f"[SKIP DUPLICATE TOOL] {tc_name}")
                     continue
