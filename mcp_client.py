@@ -1,10 +1,34 @@
 import json
 import os
 import re
+import time
 import uuid
+
 import httpx
 
 from config import MCP_SERVER_URL, MCP_API_KEY
+
+
+def _hibernate_retry_settings():
+    """Return bounded retry settings for Render Free hibernation responses."""
+    try:
+        max_wait = float(os.getenv("MCP_HIBERNATE_RETRY_MAX_SEC", "65"))
+    except ValueError:
+        max_wait = 65.0
+    try:
+        interval = float(os.getenv("MCP_HIBERNATE_RETRY_INTERVAL_SEC", "2"))
+    except ValueError:
+        interval = 2.0
+
+    return max(0.0, max_wait), max(0.1, interval)
+
+
+def _is_hibernate_rate_limited(response):
+    """Retry only Render's explicit hibernate-rate-limited 429 response."""
+    if response.status_code != 429:
+        return False
+    routing = response.headers.get("x-render-routing", "").strip().lower()
+    return routing == "hibernate-rate-limited"
 
 
 def _call_mcp_tool_once(tool_name, arguments, timeout=None):
@@ -15,6 +39,10 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
 
     MCP_TIMEOUT_SEC が設定されていればそれを使用し、未設定時は10秒。
     Render Free等のcold startで3秒を超えるケースを考慮する。
+
+    Render Free が自動スピンダウンから復帰する際に返す
+    429 + x-render-routing=hibernate-rate-limited だけは、
+    最大65秒の範囲で限定的に再試行する。それ以外の429/通信失敗は従来どおり即時失敗。
     """
     print(f"[LOG] call_mcp_tool called: tool_name={tool_name}")
 
@@ -45,25 +73,44 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
         except ValueError:
             request_timeout = 10.0
 
-    import time
+    retry_max_wait, retry_interval = _hibernate_retry_settings()
+    retry_deadline = time.monotonic() + retry_max_wait
+
     print("BEFORE MCP REQUEST")
     print("TIMEOUT:", request_timeout)
     print("POST START TIME:", time.time())
     try:
-        print("REQUEST START")
-        print("MCP BEFORE REQUESTS POST")
-        print("BEFORE POST CALL", time.time())
-        res = httpx.post(
-            MCP_SERVER_URL,
-            json=payload,
-            headers=headers,
-            timeout=httpx.Timeout(request_timeout, connect=10.0),
-            follow_redirects=False,
-        )
-        print("MCP AFTER REQUESTS POST")
-        print("MCP RESPONSE STATUS:", res.status_code)
-        print("MCP CONTENT TYPE:", res.headers.get("content-type"))
-        print("RESPONSE OBJECT:", res)
+        while True:
+            print("REQUEST START")
+            print("MCP BEFORE REQUESTS POST")
+            print("BEFORE POST CALL", time.time())
+            res = httpx.post(
+                MCP_SERVER_URL,
+                json=payload,
+                headers=headers,
+                timeout=httpx.Timeout(request_timeout, connect=10.0),
+                follow_redirects=False,
+            )
+            print("MCP AFTER REQUESTS POST")
+            print("MCP RESPONSE STATUS:", res.status_code)
+            print("MCP CONTENT TYPE:", res.headers.get("content-type"))
+            print("RESPONSE OBJECT:", res)
+
+            if not _is_hibernate_rate_limited(res):
+                break
+
+            remaining = retry_deadline - time.monotonic()
+            if remaining <= 0:
+                print("MCP HIBERNATE RETRY DEADLINE EXCEEDED", flush=True)
+                break
+
+            print(
+                f"MCP HIBERNATE RATE LIMIT: retrying in "
+                f"{min(retry_interval, remaining):.1f}s",
+                flush=True,
+            )
+            res.close()
+            time.sleep(min(retry_interval, remaining))
     except Exception as e:
         import traceback
         print("EXCEPTION TYPE:", type(e))
@@ -110,7 +157,6 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
     parts = result.get("content", [])
     texts = [p.get("text", "") for p in parts if p.get("type") == "text"]
     return "\n".join(texts) if texts else ""
-
 
 
 def call_mcp_tool(tool_name, arguments, timeout=None):
