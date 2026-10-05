@@ -165,7 +165,7 @@ def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
     if not task_id or not chosen:
         return False
     return (
-        (task_id == "hand-sign-uhip-contract-test" and chosen == "uhip/tests/test_schema_contracts.py")
+        (task_id in {"hand-sign-uhip-contract-test", "hand-sign-uhip-contract-negative-confidence"} and chosen == "uhip/tests/test_schema_contracts.py")
         or (task_id in {"router-regression-whitespace", "router-regression-fullwidth-market"} and chosen == "tests/test_management_router.py")
     )
 
@@ -227,6 +227,67 @@ def _deterministic_autonomous_test_plan(chosen: str) -> tuple[dict | None, str |
             '            "stability": {\n'
             '                "frames": 8,\n'
             '                "duration_ms": 160,\n'
+            "            },\n"
+            "        },\n"
+            '        "gate": {\n'
+            '            "recognition_passed": False,\n'
+            '            "rule_version": "phase0-1",\n'
+            "        },\n"
+            '        "ttl_ms": 500,\n'
+            "    }\n"
+            "    validate(event, EVENT_SCHEMA)\n"
+        )
+        new = anchor + addition
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "hand-sign-uhip-contract-negative-confidence" and chosen == "uhip/tests/test_schema_contracts.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_universal_event_accepts_zero_confidence_hand_event"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = '    validate(adapter, ADAPTER_SCHEMA)\n'
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+
+        addition = (
+            "\n\ndef test_universal_event_accepts_zero_confidence_hand_event():\n"
+            "    event = {\n"
+            '        "schema_version": "0.3",\n'
+            '        "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f14",\n'
+            '        "session_id": "session-1",\n'
+            '        "device_id": "device-1",\n'
+            '        "seq": 3,\n'
+            '        "t_mono_ns": 300,\n'
+            '        "source": {\n'
+            '            "device_kind": "mac",\n'
+            '            "sensor": "camera",\n'
+            '            "engine": "mediapipe",\n'
+            '            "engine_version": "0.1",\n'
+            '            "model_sha256": "a" * 64,\n'
+            "        },\n"
+            '        "modality": "hand",\n'
+            '        "payload": {\n'
+            '            "gesture": "thumb_up",\n'
+            '            "phase": "end",\n'
+            '            "value": None,\n'
+            '            "hand": {\n'
+            '                "label": "right",\n'
+            '                "track_id": 4,\n'
+            '                "mirrored": True,\n'
+            "            },\n"
+            '            "confidence": {\n'
+            '                "raw": 0.0,\n'
+            '                "calibrated": 0.0,\n'
             "            },\n"
             "        },\n"
             '        "gate": {\n'
