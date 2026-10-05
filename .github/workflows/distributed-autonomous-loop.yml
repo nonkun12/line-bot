@@ -329,55 +329,11 @@ jobs:
           STATE_OUTCOME: ${{ steps.persist_state.outcome }}
           JOB_STATUS: ${{ job.status }}
           PR_NUMBER: ${{ github.event.issue.number || '' }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           set +e
           requested="${MAX_TASKS:-4}"
           completed=0
-          total=0
           if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
-            total=$(grep -cve '^
-        if: success()
-        env:
-          LINE_INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
-          DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          if [ -z "${LINE_INTERNAL_PUSH_KEY:-}" ] || [ -z "${DISTRIBUTED_LOOP_LINE_USER_ID:-}" ]; then
-            echo "LINE success notification skipped: required GitHub secrets are not configured."
-            exit 0
-          fi
-          if [ -s /tmp/distributed-final-report.txt ]; then
-            message="$(cat /tmp/distributed-final-report.txt)"
-          else
-            message="⚠️ 分散Loop終了報告を生成できませんでした。Run #${{ github.run_number }}"
-          fi
-          export MESSAGE="$message"
-          payload="$(python - <<'PY'
-          import json, os
-          print(json.dumps({'user_id': os.environ['DISTRIBUTED_LOOP_LINE_USER_ID'], 'message': os.environ['MESSAGE']}, ensure_ascii=False))
-          PY
-          )"
-          curl --fail-with-body --silent --show-error --max-time 15 \
-            -X POST "https://line-bot-yvea.onrender.com/internal/push" \
-            -H "Content-Type: application/json" \
-            -H "x-internal-key: ${LINE_INTERNAL_PUSH_KEY}" \
-            --data "$payload"
-      - name: Upload durable run evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: minimal-autonomous-loop-${{ github.run_id }}
-          retention-days: 30
-          path: |
-            /tmp/minimal-autonomous-loop.jsonl
-            /tmp/autonomous-loop-state.json
-            /tmp/autonomous-*.json
-            /tmp/distributed-sheets-log-result.json
-          if-no-files-found: ignore
-
- /tmp/minimal-autonomous-loop.jsonl 2>/dev/null || true)
             completed=$(python - <<'PY'
 from pathlib import Path
 import json
@@ -399,7 +355,7 @@ PY
             echo "- 結果: **$result**"
             echo "- ループ: ${completed}/${requested}"
             echo "- 最終SHA: ${produced_sha}"
-            echo "- Task結果: ${LOOP_OUTCOME:-not_run}"
+            echo "- Task実行: ${LOOP_OUTCOME:-not_run}"
             echo "- Publish: ${PUBLISH_OUTCOME:-not_run}"
             echo "- State: ${STATE_OUTCOME:-not_run}"
             echo "- Job: ${JOB_STATUS:-unknown}"
@@ -467,5 +423,6 @@ PY
             /tmp/autonomous-loop-state.json
             /tmp/autonomous-*.json
             /tmp/distributed-sheets-log-result.json
+            /tmp/distributed-final-report.txt
           if-no-files-found: ignore
 
