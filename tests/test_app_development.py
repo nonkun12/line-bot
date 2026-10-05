@@ -1,9 +1,9 @@
 from app_development import extract_app_development_request
 
 
-def test_explicit_japanese_prefix_is_required():
+def test_explicit_and_natural_japanese_creation_requests_are_supported():
     assert extract_app_development_request("アプリ開発: 家計簿アプリを作って") == "家計簿アプリを作って"
-    assert extract_app_development_request("アプリを作って") is None
+    assert extract_app_development_request("アプリを作って") == "アプリを作って"
 
 
 def test_empty_explicit_request_is_preserved():
