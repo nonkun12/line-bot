@@ -267,8 +267,8 @@ def main() -> int:
     parser.add_argument("--state", type=Path, default=Path("/tmp/autonomous-loop-state.json"))
     args = parser.parse_args()
 
-    if args.max_tasks < 1 or args.max_tasks > 3:
-        raise SystemExit("--max-tasks must be between 1 and 3")
+    if args.max_tasks < 1 or args.max_tasks > 4:
+        raise SystemExit("--max-tasks must be between 1 and 4")
 
     queue_data = json.loads(QUEUE.read_text(encoding="utf-8"))
     queue_limit = int(queue_data.get("max_tasks_per_run", 3))
