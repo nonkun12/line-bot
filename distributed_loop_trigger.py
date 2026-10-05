@@ -12,6 +12,10 @@ TRIGGER_PHRASES = frozenset({
     "分散AIループ開始",
     "分散AI Loop開始",
     "distributed loop start",
+    "分散ループを起動",
+    "分散Loopを起動",
+    "分散AIループを起動",
+    "分散AI Loopを起動",
 })
 
 # Explicit bounded commands must include an unambiguous safety confirmation.
@@ -20,10 +24,18 @@ _BOUNDED_TRIGGER_RE = __import__("re").compile(
     r"、?安全確認付きで実行(?:してください)?$"
 )
 
+_NATURAL_FOUR_TASK_TRIGGER = (
+    "分散Loopを起動。4タスクまで安全に実行し、"
+    "各タスクをSafety Gate付きで確認。問題があれば即停止し、"
+    "最後にTask ID / PASS・FAIL / SHA / 変更ファイル / 成果を報告してください。"
+)
+
 def _requested_max_tasks(message: str) -> int | None:
     command = str(message).strip()
     if command in TRIGGER_PHRASES:
-        return 1
+        return 4 if "起動" in command else 1
+    if command == _NATURAL_FOUR_TASK_TRIGGER:
+        return 4
     match = _BOUNDED_TRIGGER_RE.fullmatch(command)
     if match:
         return int(match.group(1))

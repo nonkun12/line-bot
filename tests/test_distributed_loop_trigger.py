@@ -48,3 +48,45 @@ def test_invalid_loop_count_does_not_trigger(monkeypatch):
     handled, reply = request_distributed_loop("u1", "分散ループを5回、安全確認付きで実行")
     assert handled is False
     assert reply == ""
+
+
+def test_natural_start_defaults_to_four_tasks():
+    from distributed_loop_trigger import _requested_max_tasks
+
+    assert _requested_max_tasks("分散Loopを起動") == 4
+
+
+def test_natural_start_variants_default_to_four_tasks():
+    from distributed_loop_trigger import _requested_max_tasks
+
+    assert _requested_max_tasks("分散ループを起動") == 4
+    assert _requested_max_tasks("分散AIループを起動") == 4
+
+
+def test_legacy_start_remains_one_task():
+    from distributed_loop_trigger import _requested_max_tasks
+
+    assert _requested_max_tasks("分散Loop開始") == 1
+
+
+def test_bounded_command_respects_requested_count():
+    from distributed_loop_trigger import _requested_max_tasks
+
+    assert _requested_max_tasks("分散Loopを2回、安全確認付きで実行") == 2
+
+
+def test_more_than_four_tasks_is_rejected():
+    from distributed_loop_trigger import _requested_max_tasks
+
+    assert _requested_max_tasks("分散Loopを5回、安全確認付きで実行") is None
+
+
+def test_full_natural_four_task_command():
+    from distributed_loop_trigger import _requested_max_tasks
+
+    message = (
+        "分散Loopを起動。4タスクまで安全に実行し、"
+        "各タスクをSafety Gate付きで確認。問題があれば即停止し、"
+        "最後にTask ID / PASS・FAIL / SHA / 変更ファイル / 成果を報告してください。"
+    )
+    assert _requested_max_tasks(message) == 4
