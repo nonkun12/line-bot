@@ -19,9 +19,6 @@ class FakeClient:
         self.sheet_title_calls = 0
 
     def sheet_titles(self):
-        return [SHEET]
-
-    def sheet_titles(self):
         self.sheet_title_calls += 1
         return self.titles
 
@@ -30,7 +27,11 @@ class FakeClient:
 
     def read_rows(self, range_name):
         self.read_ranges.append(range_name)
-        if range_name in (f"{SHEET}!A1:ZZ1000", f"'{SHEET}'!A1:ZZ1000"):
+        if range_name in (
+            f"{SHEET}!A1:ZZ1000",
+            f"'{SHEET}'!A1:ZZ1000",
+            *[f"'{title}'!A1:ZZ1000" for title in self.titles],
+        ):
             return [self._header_row(), *self.existing]
         match = range_name in (f"{SHEET}!AE185:AU185", f"'{SHEET}'!AE185:AU185")
         if match and self.readback is not None:
