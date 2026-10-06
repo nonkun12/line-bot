@@ -4,6 +4,7 @@
     "hand-sign-uhip-contract-test",
     "router-regression-whitespace",
     "router-regression-fullwidth-market",
-    "hand-sign-uhip-contract-negative-confidence"
+    "hand-sign-uhip-contract-negative-confidence",
+    "hand-sign-uhip-contract-iphone-camera"
   ]
 }
