@@ -389,6 +389,10 @@ jobs:
             echo "LINE success notification skipped: required GitHub secrets are not configured."
             exit 0
           fi
+          if [ -s /tmp/distributed-final-report.txt ] && grep -q -- '^- 結果理由: queue_exhausted_no_tasks$' /tmp/distributed-final-report.txt; then
+            echo "LINE notification skipped: no task was executed and the queue is already exhausted."
+            exit 0
+          fi
           if [ -s /tmp/distributed-final-report.txt ]; then
             message="$(cat /tmp/distributed-final-report.txt)"
           else
