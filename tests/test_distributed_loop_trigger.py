@@ -1,3 +1,4 @@
+import distributed_loop_trigger as trigger
 from distributed_loop_trigger import request_distributed_loop
 
 def test_trigger_ignores_non_command(monkeypatch):
