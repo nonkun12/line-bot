@@ -378,8 +378,118 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "changes": [{"file": chosen, "old": anchor, "new": new}],
         }, None
 
-    return None, None
+    if task_id == "hand-sign-uhip-contract-iphone-camera" and chosen == "uhip/tests/test_schema_contracts.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_universal_event_accepts_iphone_camera_hand_event"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "    validate(event, EVENT_SCHEMA)\n\n\ndef test_universal_event_rejects_application_specific_command():\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "\n\ndef test_universal_event_accepts_iphone_camera_hand_event():\n"
+            "    event = {\n"
+            '        "schema_version": "0.3",\n'
+            '        "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f15",\n'
+            '        "session_id": "session-iphone",\n'
+            '        "device_id": "iphone-1",\n'
+            '        "seq": 2,\n'
+            '        "t_mono_ns": 200,\n'
+            '        "source": {\n'
+            '            "device_kind": "iphone",\n'
+            '            "sensor": "camera",\n'
+            '            "engine": "mediapipe",\n'
+            '            "engine_version": "0.1",\n'
+            '            "model_sha256": "a" * 64,\n'
+            "        },\n"
+            '        "modality": "hand",\n'
+            '        "payload": {\n'
+            '            "gesture": "thumb_up",\n'
+            '            "phase": "end",\n'
+            '            "value": None,\n'
+            '            "hand": {"label": "right", "track_id": 3, "mirrored": True},\n'
+            '            "confidence": {"raw": 0.99, "calibrated": 0.97},\n'
+            "        },\n"
+            '        "gate": {"recognition_passed": True, "rule_version": "phase0-1"},\n'
+            '        "ttl_ms": 500,\n'
+            "    }\n"
+            "    validate(event, EVENT_SCHEMA)\n"
+        )
+        new = "    validate(event, EVENT_SCHEMA)\n" + addition + "\n\ndef test_universal_event_rejects_application_specific_command():\n"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
 
+    if task_id == "hand-sign-uhip-contract-unknown-hand-label" and chosen == "uhip/tests/test_schema_contracts.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_universal_event_accepts_unknown_hand_label"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "    validate(event, EVENT_SCHEMA)\n\n\ndef test_universal_event_rejects_application_specific_command():\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "\n\ndef test_universal_event_accepts_unknown_hand_label():\n"
+            "    event = {\n"
+            '        "schema_version": "0.3",\n'
+            '        "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f16",\n'
+            '        "session_id": "session-unknown-hand",\n'
+            '        "device_id": "iphone-1",\n'
+            '        "seq": 3,\n'
+            '        "t_mono_ns": 300,\n'
+            '        "source": {"device_kind": "iphone", "sensor": "camera", "engine": "mediapipe", "engine_version": "0.1", "model_sha256": "a" * 64},\n'
+            '        "modality": "hand",\n'
+            '        "payload": {\n'
+            '            "gesture": "open_palm",\n'
+            '            "phase": "end",\n'
+            '            "value": None,\n'
+            '            "hand": {"label": "unknown", "track_id": 4, "mirrored": False},\n'
+            '            "confidence": {"raw": 0.80, "calibrated": 0.78},\n'
+            "        },\n"
+            '        "gate": {"recognition_passed": True, "rule_version": "phase0-1"},\n'
+            '        "ttl_ms": 500,\n'
+            "    }\n"
+            "    validate(event, EVENT_SCHEMA)\n"
+        )
+        new = "    validate(event, EVENT_SCHEMA)\n" + addition + "\n\ndef test_universal_event_rejects_application_specific_command():\n"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "router-regression-casefold-english" and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_routes_mixed_case_english_request"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = '    assert decision.confidence == 0.95\n\n\ndef test_preserves_multi_specialist_candidates_and_priority() -> None:\n'
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "\n\ndef test_routes_mixed_case_english_request() -> None:\n"
+            '    assert route(ManagementRequest("u", "eNgLiShで会話したい")).specialist is Specialist.ENGLISH\n'
+        )
+        new = '    assert decision.confidence == 0.95\n' + addition + "\n\ndef test_preserves_multi_specialist_candidates_and_priority() -> None:\n"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "router-regression-mixed-specialists" and chosen == "tests/test_management_router.py":
+        # Current router order puts MARKET before JOBS. The queued task asks for
+        # JOBS without allowing implementation changes, which is internally
+        # inconsistent. Fail closed instead of generating a test that contradicts
+        # the live deterministic routing contract.
+        return None, "task_spec_conflict: current deterministic priority routes Market before Jobs"
+
+    return None, None
 
 class DevelopmentExecutor:
     """Execute concrete development roles against one guarded worktree."""
