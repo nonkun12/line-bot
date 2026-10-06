@@ -522,6 +522,18 @@ class DevelopmentExecutor:
                 if not chosen:
                     return AgentResult(task.task_id, False, "manager could not select a safe target")
                 self.state.chosen = chosen
+                autonomous_task_id = self.state.autonomous_task_id.strip() or os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+                expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(autonomous_task_id)
+                if expected_target is not None and chosen != expected_target:
+                    self.state.chosen = None
+                    return AgentResult(
+                        task.task_id,
+                        False,
+                        f"deterministic target mismatch: expected {expected_target}, got {chosen}",
+                    )
+                if autonomous_task_id == "router-regression-mixed-specialists":
+                    self.state.chosen = None
+                    return AgentResult(task.task_id, False, "deterministic target mismatch: mixed-specialists task is fail-closed")
                 return AgentResult(task.task_id, True, f"selected {chosen}", frozenset({chosen}))
             if self.state.chosen is None:
                 return AgentResult(task.task_id, False, "manager selection missing")
