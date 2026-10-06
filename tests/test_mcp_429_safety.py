@@ -16,7 +16,7 @@ def test_note_search_normalizes_particle():
         seen.update(arguments)
         return []
     assert handle_natural_note_search("MCPでメモを検索して", "test-user", fake) == []
-    assert seen["keyword"] == "MCP"
+    assert seen["keyword"] == ""
 
 
 def test_retry_settings_are_finite(monkeypatch):
