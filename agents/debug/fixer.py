@@ -4,7 +4,7 @@ def generate_fix_suggestion(error_info: dict) -> str:
     """
 
     error_type = error_info.get("error_type")
-    file = error_info.get("file")
+    file = error_info.get("file") or "未特定"
     line = error_info.get("line")
     message = error_info.get("message")
     file_hint = error_info.get("file_hint")
