@@ -201,7 +201,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     (text.count(anchor) == 1) at generation time to fail-closed immediately without
     invoking non-deterministic LLM plan repair.
     """
-    task_id = str(task_id or os.environ.get("AUTONOMOUS_TASK_ID", "")).strip()
+    # Deterministic task identity must come from the guarded executor state.\n    # Never consult ambient AUTONOMOUS_TASK_ID here: it can leak across\n    # isolated unit tests and turn unrelated targets into false mismatches.\n    task_id = str(task_id or "").strip()
     if not task_id:
         return None, None
 
