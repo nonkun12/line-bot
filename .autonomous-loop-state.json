@@ -7,6 +7,7 @@
     "hand-sign-uhip-contract-negative-confidence",
     "hand-sign-uhip-contract-iphone-camera",
     "hand-sign-uhip-contract-unknown-hand-label",
-    "router-regression-casefold-english"
+    "router-regression-casefold-english",
+    "router-regression-mixed-specialists"
   ]
 }
