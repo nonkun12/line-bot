@@ -67,7 +67,7 @@ def test_hibernate_retry_is_bounded(monkeypatch):
     clock = [0.0]
 
     monkeypatch.setenv("MCP_HIBERNATE_RETRY_MAX_SEC", "1")
-    monkeypatch.setenv("MCP_HIBERNATE_RETRY_INTERVAL_SEC", "0.4")
+    monkeypatch.setenv("MCP_HIBERNATE_RETRY_INTERVAL_SEC", "1")
     monkeypatch.setattr(mcp_client.time, "monotonic", lambda: clock[0])
 
     def fake_sleep(seconds):
@@ -81,11 +81,11 @@ def test_hibernate_retry_is_bounded(monkeypatch):
         or _response(429, headers={"x-render-routing": "hibernate-rate-limited"}),
     )
 
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(mcp_client.McpNotReadyError):
         mcp_client._call_mcp_tool_once("save_memory", {"key": "k", "value": "v"})
 
-    assert len(calls) == 3
-    assert clock[0] == pytest.approx(0.8)
+    assert len(calls) == 2
+    assert clock[0] == pytest.approx(1.0)
 
 
 def test_hibernate_retry_default_wait_is_long(monkeypatch):
