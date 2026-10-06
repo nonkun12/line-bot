@@ -72,9 +72,11 @@ def test_hibernate_retry_is_bounded(monkeypatch):
         or _response(429, headers={"x-render-routing": "hibernate-rate-limited"}),
     )
 
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(mcp_client.McpNotReadyError):
         mcp_client._call_mcp_tool_once("save_memory", {"key": "k", "value": "v"})
 
+    mcp_client._HIBERNATE_COOLDOWN_UNTIL = 0.0
+    mcp_client._HIBERNATE_WAKE_OWNER = False
     assert len(calls) == 3
     assert clock[0] == pytest.approx(0.8)
 
