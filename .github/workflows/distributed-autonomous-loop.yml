@@ -389,39 +389,9 @@ jobs:
             echo "LINE success notification skipped: required GitHub secrets are not configured."
             exit 0
           fi
-          # Explicit LINE-triggered workflow_dispatch runs must always return a final report, including the fail-closed queue-exhausted result.
-          # Scheduled maintenance runs may suppress that no-op notification to avoid unsolicited LINE messages.
-          if [ "${GITHUB_EVENT_NAME:-}" != "workflow_dispatch" ] && [ -s /tmp/distributed-final-report.txt ] && grep -q -- '^- 結果理由: queue_exhausted_no_tasks          if [ -s /tmp/distributed-final-report.txt ]; then
-            message="$(cat /tmp/distributed-final-report.txt)"
-          else
-            message="⚠️ 分散Loop終了報告を生成できませんでした。Run #${{ github.run_number }}"
-          fi
-          export MESSAGE="$message"
-          payload="$(python - <<'PY'
-          import json, os
-          print(json.dumps({'user_id': os.environ['DISTRIBUTED_LOOP_LINE_USER_ID'], 'message': os.environ['MESSAGE']}, ensure_ascii=False))
-          PY
-          )"
-          curl --fail-with-body --silent --show-error --max-time 15 \
-            -X POST "https://line-bot-yvea.onrender.com/internal/push" \
-            -H "Content-Type: application/json" \
-            -H "x-internal-key: ${LINE_INTERNAL_PUSH_KEY}" \
-            --data "$payload"
-      - name: Upload durable run evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: minimal-autonomous-loop-${{ github.run_id }}
-          retention-days: 30
-          path: |
-            /tmp/minimal-autonomous-loop.jsonl
-            /tmp/autonomous-loop-state.json
-            /tmp/autonomous-*.json
-            /tmp/distributed-sheets-log-result.json
-            /tmp/distributed-final-report.txt
-          if-no-files-found: ignore
-
- /tmp/distributed-final-report.txt; then
+          # Explicit LINE-triggered workflow_dispatch runs always return a final report, even when the queue is exhausted.
+          # Scheduled runs may suppress that no-op notification.
+          if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] && grep -q "queue_exhausted_no_tasks" /tmp/distributed-final-report.txt 2>/dev/null; then
             echo "LINE notification skipped: scheduled run has no remaining task."
             exit 0
           fi
