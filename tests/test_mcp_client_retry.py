@@ -65,6 +65,8 @@ def test_hibernate_retry_is_bounded(monkeypatch):
         clock[0] += seconds
 
     monkeypatch.setattr(mcp_client.time, "sleep", fake_sleep)
+    mcp_client._HIBERNATE_COOLDOWN_UNTIL = 0.0
+    mcp_client._HIBERNATE_WAKE_OWNER = False
     monkeypatch.setattr(
         mcp_client.httpx,
         "post",
@@ -75,10 +77,10 @@ def test_hibernate_retry_is_bounded(monkeypatch):
     with pytest.raises(mcp_client.McpNotReadyError):
         mcp_client._call_mcp_tool_once("save_memory", {"key": "k", "value": "v"})
 
-    mcp_client._HIBERNATE_COOLDOWN_UNTIL = 0.0
-    mcp_client._HIBERNATE_WAKE_OWNER = False
     assert len(calls) == 3
     assert clock[0] == pytest.approx(0.8)
+    mcp_client._HIBERNATE_COOLDOWN_UNTIL = 0.0
+    mcp_client._HIBERNATE_WAKE_OWNER = False
 
 
 def test_hibernate_retry_default_wait_is_long(monkeypatch):
