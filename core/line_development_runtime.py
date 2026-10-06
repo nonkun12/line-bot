@@ -214,8 +214,6 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
     if expected_target is not None and chosen != expected_target:
         return None, "deterministic_target_mismatch"
-    if task_id == "router-regression-mixed-specialists":
-        return None, "deterministic_target_mismatch"
 
     if task_id == "hand-sign-uhip-contract-test" and chosen == "uhip/tests/test_schema_contracts.py":
         target = worker.ROOT / chosen
