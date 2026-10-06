@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import os
 import re
+import time
 import unicodedata
+from datetime import datetime, timezone
 from typing import Tuple
 
 import httpx
@@ -118,13 +120,44 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                 r.raise_for_status()
                 if r.json().get("workflow_runs", []):
                     return True, "分散Loopはすでに実行中です。重複起動はしません。"
+            dispatch_started_at = datetime.now(timezone.utc).timestamp()
             r = client.post(
                 f"{base}/actions/workflows/{WORKFLOW}/dispatches",
                 json={"ref": "main", "inputs": {"max_tasks": str(max_tasks)}},
                 headers=headers,
             )
             if r.status_code == 204:
-                return True, f"分散Loopを起動しました。{max_tasks}タスクまで安全に実行します。"
+                # GitHub accepts workflow_dispatch with HTTP 204, but the API
+                # does not return a run id. Do not tell LINE that execution
+                # started until a matching workflow_dispatch run is observable.
+                deadline = time.monotonic() + 20.0
+                while time.monotonic() < deadline:
+                    runs = client.get(
+                        f"{base}/actions/workflows/{WORKFLOW}/runs",
+                        params={"branch": "main", "event": "workflow_dispatch", "per_page": 10},
+                        headers=headers,
+                    )
+                    runs.raise_for_status()
+                    for run in runs.json().get("workflow_runs", []):
+                        created_at = run.get("created_at")
+                        if not created_at:
+                            continue
+                        try:
+                            created_ts = datetime.fromisoformat(
+                                created_at.replace("Z", "+00:00")
+                            ).timestamp()
+                        except ValueError:
+                            continue
+                        if created_ts >= dispatch_started_at - 5:
+                            return True, (
+                                f"分散Loopを起動しました。Run #{run.get('run_number', '?')} / "
+                                f"{max_tasks}タスクまで安全に実行します。"
+                            )
+                    time.sleep(1.0)
+                return True, (
+                    "分散Loop起動要求はGitHubに受理されましたが、"
+                    "実行開始を確認できませんでした。安全のため再実行していません。"
+                )
             if r.status_code in {401, 403}:
                 return True, "分散Loopを起動できません（GitHub Actions権限不足）。"
             return True, f"分散Loop起動に失敗しました（GitHub HTTP {r.status_code}）。"
