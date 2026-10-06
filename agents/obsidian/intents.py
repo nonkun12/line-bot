@@ -22,6 +22,10 @@ _LIST_RE = re.compile(
     r"^obsidian\s*(?:の)?\s*(?:一覧|リスト)\s*$",
     re.IGNORECASE,
 )
+_LINE_TO_OBSIDIAN_RE = re.compile(
+    "^" + "\u30e1\u30e2" + "\u3092Obsidian" + "\u306b\u4fdd\u5b58\u3057\u3066\\s*[\\u300c\\u300e\"\\u201c](?P<content>[\\s\\S]+?)[\\u300d\\u300f\"\\u201d]\\s*(?:\\u3068\\u66f8\\u3044\u3066)?[\\u3002\\uff0e.!\\uff01]*$",
+    re.IGNORECASE,
+)
 _NATURAL_RECORD_RE = re.compile(
     r'^obsidian\s*(?:に|へ)\s*[「『"“](?P<content>[\s\S]+?)[」』"”]'
     r"\s*(?:と)?\s*(?:保存|記録|追記|追加)して[。．.!！]*$",
@@ -47,6 +51,13 @@ def normalize_obsidian_command(raw_message: str) -> str | None:
     text = unicodedata.normalize("NFKC", (raw_message or "").strip())
     if not text:
         return None
+
+    line_match = _LINE_TO_OBSIDIAN_RE.fullmatch(text)
+    if line_match:
+        content = line_match.group("content").strip()
+        if not content:
+            return None
+        return f"Obsidianに追記 {_default_note_path()}: {content}"
 
     natural_match = _NATURAL_RECORD_RE.fullmatch(text)
     if natural_match:

@@ -79,6 +79,7 @@ from core.line_runtime_audit import record_line_runtime
 from core.self_introduction import handle_self_introduction
 from routes.core_api import core_api_bp
 from routes.obsidian_bridge import obsidian_bridge_bp
+from core.obsidian_bridge import enqueue_obsidian_request
 from routes.voice_api import voice_api_bp
 from app_development import extract_app_development_request, dispatch_app_development_workflow
 from line_development import extract_development_instruction, dispatch_development_workflow
@@ -309,6 +310,13 @@ def _handle_ai_gateway_request(ai_request):
     loop_handled, loop_reply = request_distributed_loop(user_id, message)
     if loop_handled:
         return loop_reply
+
+    if is_obsidian_intent(message):
+        try:
+            job_id = enqueue_obsidian_request(user_id, message)
+            return f"Obsidianへの保存依頼を受け付けました。Macで「実行」を選ぶと保存します。（Job {job_id}）"
+        except Exception:
+            return "Obsidianへの保存依頼を受け付けられませんでした。設定を確認してください。"
 
     app_development_requirement = extract_app_development_request(message)
     if app_development_requirement is not None:
