@@ -4,6 +4,15 @@ import pytest
 import mcp_client
 
 
+@pytest.fixture(autouse=True)
+def reset_hibernate_state():
+    mcp_client._HIBERNATE_COOLDOWN_UNTIL = 0.0
+    mcp_client._HIBERNATE_WAKE_OWNER = False
+    yield
+    mcp_client._HIBERNATE_COOLDOWN_UNTIL = 0.0
+    mcp_client._HIBERNATE_WAKE_OWNER = False
+
+
 def _response(status_code, *, headers=None, json_data=None):
     request = httpx.Request("POST", "https://example.test/mcp")
     if json_data is not None:
