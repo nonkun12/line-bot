@@ -82,21 +82,27 @@ def _should_auto_save(message: str) -> bool:
     return True
 
 
+def _safe_note_read(call_mcp_tool: CallMcpTool, user_id: str, keyword: str) -> Any:
+    try:
+        return call_mcp_tool("search_notes", {"user_id": user_id, "keyword": keyword})
+    except Exception:
+        return "メモサービスが一時的に利用できません。少し時間を置いてもう一度お試しください。"
+
+
 def handle_list_notes(user_id: str, call_mcp_tool: CallMcpTool) -> Any:
-    return call_mcp_tool("search_notes", {"user_id": user_id, "keyword": ""})
+    return _safe_note_read(call_mcp_tool, user_id, "")
 
 
 def handle_search_notes(message: str, user_id: str, call_mcp_tool: CallMcpTool) -> Any:
     keyword = _extract_search_keyword(message)
     if not keyword:
         return "検索キーワードを指定してください。\n例: メモ検索 テニス"
-    return call_mcp_tool("search_notes", {"user_id": user_id, "keyword": keyword})
+    return _safe_note_read(call_mcp_tool, user_id, keyword)
 
 
 def handle_natural_note_search(message: str, user_id: str, call_mcp_tool: CallMcpTool) -> Any:
     keyword = _normalize_natural_search_message(message)
-    return call_mcp_tool("search_notes", {"user_id": user_id, "keyword": keyword})
-
+    return _safe_note_read(call_mcp_tool, user_id, keyword)
 
 def handle_save_note(message: str, user_id: str, call_mcp_tool: CallMcpTool) -> Any:
     body = extract_explicit_note_body(message)
