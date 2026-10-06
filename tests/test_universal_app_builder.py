@@ -43,6 +43,7 @@ def test_validate_files_requires_safe_supported_new_files_only():
 def test_validate_files_requires_complete_runnable_project_manifest():
     valid, _, _ = validate_files([
         {"path": "app.py", "content": "print('ok')"},
+        {"path": "run.py", "content": "print('run')"},
         {"path": "README.md", "content": "# app"},
         {"path": "requirements.txt", "content": "pytest"},
         {"path": "tests/test_app.py", "content": "def test_ok(): pass"},
