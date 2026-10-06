@@ -52,3 +52,10 @@ def test_normalizes_full_width_input_and_preserves_channel_metadata() -> None:
     assert decision.specialist is Specialist.ENGLISH
     assert decision.metadata["channel"] == "slack"
     assert decision.metadata["request_metadata"]["source"] == "parallel-dev-test"
+
+
+def test_preserves_market_priority_over_jobs_for_mixed_request() -> None:
+    decision = route(ManagementRequest("u", "求人とNYダウについて教えて"))
+    assert decision.specialist is Specialist.MARKET
+    assert decision.metadata["matched_specialists"] == ["market", "jobs"]
+    assert decision.metadata["routing_priority"] == 4

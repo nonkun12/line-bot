@@ -35,3 +35,22 @@ def test_validate_files_requires_safe_supported_new_files_only():
     ])
     assert invalid is False
     assert "unsafe path" in reason
+
+
+def test_validate_files_requires_complete_runnable_project_manifest():
+    valid, _, _ = validate_files([
+        {"path": "app.py", "content": "print('ok')"},
+        {"path": "README.md", "content": "# app"},
+        {"path": "requirements.txt", "content": "pytest"},
+        {"path": "tests/test_app.py", "content": "def test_ok(): pass"},
+    ])
+    assert valid is True
+
+
+def test_validate_files_rejects_partial_app_without_manifest_or_tests():
+    valid, reason, _ = validate_files([
+        {"path": "app.py", "content": "print('ok')"},
+        {"path": "README.md", "content": "# app"},
+    ])
+    assert valid is False
+    assert "required project files missing" in reason or "pytest file" in reason
