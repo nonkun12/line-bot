@@ -389,8 +389,10 @@ jobs:
             echo "LINE success notification skipped: required GitHub secrets are not configured."
             exit 0
           fi
-          if [ -s /tmp/distributed-final-report.txt ] && grep -q -- '^- 結果理由: queue_exhausted_no_tasks$' /tmp/distributed-final-report.txt; then
-            echo "LINE notification skipped: no task was executed and the queue is already exhausted."
+          # Explicit LINE-triggered workflow_dispatch runs always return a final report, even when the queue is exhausted.
+          # Scheduled runs may suppress that no-op notification.
+          if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] && grep -q "queue_exhausted_no_tasks" /tmp/distributed-final-report.txt 2>/dev/null; then
+            echo "LINE notification skipped: scheduled run has no remaining task."
             exit 0
           fi
           if [ -s /tmp/distributed-final-report.txt ]; then
