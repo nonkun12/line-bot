@@ -31,7 +31,18 @@ def _extract_search_keyword(message: str) -> str:
 def _normalize_natural_search_message(message: str) -> str:
     if any(phrase in message for phrase in ["私のメモ", "メモはある", "メモある", "メモはあります", "メモあります"]):
         return ""
-    exact_phrases = ["LINE Botのメモを探して", "メモを探して", "予定はある？", "予定はある?", "予定がありますか"]
+    explicit_mcp_search = re.fullmatch(
+        r"MCPで(?:メモを)?(?:検索|探し|見せ)(?:し|して)?[。！!？?]?",
+        message,
+        re.IGNORECASE,
+    )
+    if explicit_mcp_search:
+        return ""
+
+    exact_phrases = [
+        "LINE Botのメモを探して", "メモを探して", "予定はある？",
+        "予定はある?", "予定がありますか",
+    ]
     if message in exact_phrases:
         return "予定" if message.startswith("予定") else ""
     if "予定" in message or "予約" in message:
@@ -42,7 +53,8 @@ def _normalize_natural_search_message(message: str) -> str:
         return keyword or "予定"
     suffixes = [
         "LINE Botのメモを探して", "メモを探して", "メモを見せて", "メモを検索して",
-        "を検索して", "を探して", "を見せて",
+        "メモを検索し", "メモを探し", "を検索して", "を検索し", "を探して", "を探し",
+        "を見せて",
     ]
     for suffix in suffixes:
         if message.endswith(suffix) and message != suffix:
