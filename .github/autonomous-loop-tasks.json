@@ -19,7 +19,7 @@
     },
     {
       "id": "router-regression-mixed-specialists",
-      "instruction": "tests/test_management_router.py に、JobsとMarketの両方のキーワードを含む要求が現在のdeterministic priorityに従ってMarketではなくJobsへ振り分けられることを検証する回帰テストを1件追加してください。matched_specialistsとrouting_priorityも確認してください。実装コードは変更せず、テストだけを最小変更で追加してください。",
+      "instruction": "tests/test_management_router.py に、JobsとMarketの両方のキーワードを含む要求が現在のdeterministic priorityに従ってMarketへ振り分けられることを検証する回帰テストを1件追加してください。matched_specialistsとrouting_priorityも確認してください。実装コードは変更せず、テストだけを最小変更で追加してください。",
       "allowed_paths": ["tests/test_management_router.py"]
     }
   ]
