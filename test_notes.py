@@ -75,7 +75,7 @@ def test_handle_natural_note_search_keyword_extraction():
         "search_notes",
         {
             "user_id": "user123",
-            "keyword": "テニスの",
+            "keyword": "テニス",
         },
     )
 
