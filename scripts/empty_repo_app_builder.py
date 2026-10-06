@@ -65,6 +65,23 @@ def ensure_main_base(workspace: Path) -> None:
         raise RuntimeError(f"cannot push main branch: {push.stderr[-2000:]}")
 
 
+def plan_with_bounded_retries(client: Groq, requirement: str) -> tuple[dict | None, str]:
+    last_failure = ""
+    for attempt in range(MAX_REPAIR_ATTEMPTS + 1):
+        try:
+            plan = ask(client, requirement, last_failure)
+        except Exception as exc:
+            last_failure = f"AI planning failed: {type(exc).__name__}: {exc}"
+            print(last_failure)
+            continue
+        valid, detail, _ = validate_files(plan.get("files"))
+        if valid:
+            return plan, ""
+        last_failure = f"model plan rejected: {detail}"
+        print(last_failure)
+    return None, last_failure
+
+
 def main() -> int:
     requirement = os.environ.get("APP_REQUIREMENT", "").strip()[:MAX_REQUIREMENT_LENGTH]
     token = os.environ.get("APP_GITHUB_TOKEN", "").strip()
@@ -78,7 +95,10 @@ def main() -> int:
 
     try:
         client = Groq(api_key=os.environ["GROQ_API_KEY"])
-        current_plan = ask(client, requirement)
+        current_plan, planning_error = plan_with_bounded_retries(client, requirement)
+        if current_plan is None:
+            print(f"AI planning failed after bounded retries: {planning_error}")
+            return 1
     except Exception as exc:
         print(f"AI planning failed: {type(exc).__name__}: {exc}")
         return 1
@@ -119,8 +139,9 @@ def main() -> int:
                         return 1
                 valid, detail, files = validate_files(current_plan.get("files"))
                 if not valid:
-                    print(f"Rejected model plan: {detail}")
-                    return 1
+                    last_failure = f"model plan rejected: {detail}"
+                    print(last_failure)
+                    continue
                 clear_generated_files(workspace, generated_paths)
                 # Existing files in the independent app repository may be
                 # artifacts from a previous failed generation or an earlier
