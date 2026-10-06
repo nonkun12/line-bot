@@ -151,3 +151,67 @@ def test_similar_unapproved_natural_command_does_not_trigger():
         "問題があれば停止して、結果を報告してください"
     )
     assert _requested_max_tasks(message) is None
+
+
+class _Response:
+    def __init__(self, status_code=200, payload=None):
+        self.status_code = status_code
+        self._payload = payload or {}
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+class _Client:
+    def __init__(self, runs):
+        self.runs = list(runs)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def get(self, *args, **kwargs):
+        if "event" in kwargs.get("params", {}):
+            return _Response(200, {"workflow_runs": self.runs})
+        return _Response(200, {"workflow_runs": []})
+
+    def post(self, *args, **kwargs):
+        return _Response(204)
+
+
+def test_dispatch_acknowledges_only_after_run_is_visible(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _Client([{
+        "run_number": 86,
+        "event": "workflow_dispatch",
+        "created_at": "2099-01-01T00:00:00Z",
+    }])
+    from unittest.mock import patch
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = trigger.request_distributed_loop(
+            "u1", "分散Loopを4回、安全確認付きで実行"
+        )
+    assert handled is True
+    assert "Run #86" in reply
+    assert "4タスク" in reply
+
+
+def test_dispatch_does_not_claim_started_when_run_is_not_visible(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _Client([])
+    from unittest.mock import patch
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        with patch.object(trigger.time, "monotonic", side_effect=[0, 21]):
+            handled, reply = trigger.request_distributed_loop(
+                "u1", "分散Loopを4回、安全確認付きで実行"
+            )
+    assert handled is True
+    assert "実行開始を確認できませんでした" in reply
+    assert "安全のため再実行していません" in reply
