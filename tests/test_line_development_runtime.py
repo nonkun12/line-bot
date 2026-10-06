@@ -236,7 +236,7 @@ def test_deterministic_autonomous_test_plan_hand_sign_within_size_bounds(monkeyp
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
 
-    plan, err = runtime._deterministic_autonomous_test_plan("uhip/tests/test_schema_contracts.py")
+    plan, err = runtime._deterministic_autonomous_test_plan("uhip/tests/test_schema_contracts.py", "hand-sign-uhip-contract-test")
 
     assert err is None
     assert plan is not None
@@ -266,7 +266,7 @@ def test_negative_confidence_plan_rejects_decorated_anchor(monkeypatch, tmp_path
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-negative-confidence")
 
-    plan, err = runtime._deterministic_autonomous_test_plan(chosen)
+    plan, err = runtime._deterministic_autonomous_test_plan(chosen, "hand-sign-uhip-contract-negative-confidence")
 
     assert plan is None
     assert err == "deterministic_plan_invalid:anchor_not_standalone_def"
@@ -285,7 +285,7 @@ def test_negative_confidence_plan_rejects_commented_anchor(monkeypatch, tmp_path
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-negative-confidence")
 
-    plan, err = runtime._deterministic_autonomous_test_plan(chosen)
+    plan, err = runtime._deterministic_autonomous_test_plan(chosen, "hand-sign-uhip-contract-negative-confidence")
 
     assert plan is None
     assert err == "deterministic_plan_invalid:anchor_not_standalone_def"
@@ -302,7 +302,7 @@ def test_negative_confidence_plan_preserves_existing_test_body_and_is_syntax_saf
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-negative-confidence")
 
-    plan, err = runtime._deterministic_autonomous_test_plan(chosen)
+    plan, err = runtime._deterministic_autonomous_test_plan(chosen, "hand-sign-uhip-contract-negative-confidence")
 
     assert err is None
     assert plan is not None
@@ -325,7 +325,7 @@ def test_deterministic_autonomous_test_plan_no_change_when_test_present(monkeypa
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
 
-    plan, err = runtime._deterministic_autonomous_test_plan("uhip/tests/test_schema_contracts.py")
+    plan, err = runtime._deterministic_autonomous_test_plan("uhip/tests/test_schema_contracts.py", "hand-sign-uhip-contract-test")
 
     assert err is None
     assert plan == {"no_change": True, "source": "deterministic_autonomous_task"}
@@ -338,7 +338,7 @@ def test_deterministic_autonomous_test_plan_fails_closed_on_anchor_mismatch(monk
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
 
-    plan, err = runtime._deterministic_autonomous_test_plan("uhip/tests/test_schema_contracts.py")
+    plan, err = runtime._deterministic_autonomous_test_plan("uhip/tests/test_schema_contracts.py", "hand-sign-uhip-contract-test")
 
     assert plan is None
     assert "anchor_count" in err
