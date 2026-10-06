@@ -204,6 +204,7 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
     retry_max_wait, retry_interval = _hibernate_retry_settings()
     retry_deadline = time.monotonic() + retry_max_wait
     wake_owner = False
+    wake_cooldown = 0.0
     if _hibernate_cooldown_active():
         raise McpNotReadyError("MCP hibernate cooldown is active")
 
@@ -228,6 +229,7 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
             print("RESPONSE OBJECT:", res)
 
             if not _is_hibernate_rate_limited(res):
+                wake_cooldown = 0.0
                 break
 
             if not wake_owner:
@@ -235,6 +237,7 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
                     res.close()
                     raise McpNotReadyError("MCP hibernate wake already in progress")
                 wake_owner = True
+                wake_cooldown = retry_interval
 
             remaining = retry_deadline - time.monotonic()
             if remaining < retry_interval:
@@ -256,7 +259,7 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
         raise
     finally:
         if wake_owner:
-            _release_hibernate_wake(retry_interval)
+            _release_hibernate_wake(wake_cooldown)
     print("REQUEST END")
     print("AFTER MCP REQUEST")
     print("POST END TIME:", time.time())
