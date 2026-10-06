@@ -3,6 +3,8 @@ import os
 import re
 import time
 import uuid
+import math
+import threading
 from urllib.parse import urlsplit
 
 import httpx
@@ -10,20 +12,48 @@ import httpx
 from config import MCP_SERVER_URL, MCP_API_KEY
 
 
-def _hibernate_retry_settings():
-    """Return bounded retry settings for Render Free hibernation responses."""
-    try:
-        max_wait = float(os.getenv("MCP_HIBERNATE_RETRY_MAX_SEC", "120"))
-    except ValueError:
-        max_wait = 120.0
-    try:
-        interval = float(os.getenv("MCP_HIBERNATE_RETRY_INTERVAL_SEC", "60"))
-    except ValueError:
-        interval = 60.0
+_HIBERNATE_STATE_LOCK = threading.Lock()
+_HIBERNATE_COOLDOWN_UNTIL = 0.0
+_HIBERNATE_WAKE_OWNER = False
 
-    # Render Free startup is approximately one minute. Avoid request flooding
-    # while the service is waking and keep the fallback bounded.
-    return max(0.0, max_wait), max(0.1, interval)
+def _finite_env_float(name, default, *, minimum, maximum):
+    try:
+        value = float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = float(default)
+    if not math.isfinite(value):
+        value = float(default)
+    return min(max(value, minimum), maximum)
+
+def _hibernate_retry_settings():
+    """Return finite, bounded retry settings for Render Free hibernation responses."""
+    max_wait = _finite_env_float(
+        "MCP_HIBERNATE_RETRY_MAX_SEC", 120.0, minimum=0.0, maximum=300.0
+    )
+    interval = _finite_env_float(
+        "MCP_HIBERNATE_RETRY_INTERVAL_SEC", 60.0, minimum=1.0, maximum=120.0
+    )
+    return max_wait, interval
+
+def _claim_hibernate_wake():
+    """Allow only one process-wide hibernate wake/retry sequence at a time."""
+    global _HIBERNATE_COOLDOWN_UNTIL, _HIBERNATE_WAKE_OWNER
+    now = time.monotonic()
+    with _HIBERNATE_STATE_LOCK:
+        if now < _HIBERNATE_COOLDOWN_UNTIL or _HIBERNATE_WAKE_OWNER:
+            return False
+        _HIBERNATE_WAKE_OWNER = True
+        return True
+
+def _release_hibernate_wake(cooldown_sec):
+    global _HIBERNATE_COOLDOWN_UNTIL, _HIBERNATE_WAKE_OWNER
+    with _HIBERNATE_STATE_LOCK:
+        _HIBERNATE_WAKE_OWNER = False
+        _HIBERNATE_COOLDOWN_UNTIL = time.monotonic() + max(0.0, cooldown_sec)
+
+def _hibernate_cooldown_active():
+    with _HIBERNATE_STATE_LOCK:
+        return time.monotonic() < _HIBERNATE_COOLDOWN_UNTIL or _HIBERNATE_WAKE_OWNER
 
 
 def _is_hibernate_rate_limited(response):
@@ -69,11 +99,11 @@ def wait_for_mcp_http_ready(max_wait=None, poll_interval=None, stable_count=None
     """
     if not _mcp_ready_check_enabled():
         return
-    max_wait = _env_float("MCP_READY_MAX_SEC", 180.0) if max_wait is None else max_wait
-    poll_interval = _env_float("MCP_READY_POLL_SEC", 5.0) if poll_interval is None else poll_interval
-    stable_count = int(_env_float("MCP_READY_STABLE_COUNT", 2)) if stable_count is None else stable_count
-    max_wait = max(0.0, max_wait)
-    poll_interval = max(0.1, poll_interval)
+    max_wait = _finite_env_float("MCP_READY_MAX_SEC", 180.0, minimum=0.0, maximum=300.0) if max_wait is None else max_wait
+    poll_interval = _finite_env_float("MCP_READY_POLL_SEC", 5.0, minimum=0.1, maximum=30.0) if poll_interval is None else poll_interval
+    stable_count = int(_finite_env_float("MCP_READY_STABLE_COUNT", 2, minimum=1, maximum=5)) if stable_count is None else stable_count
+    max_wait = min(max(max_wait, 0.0), 300.0)
+    poll_interval = min(max(poll_interval, 0.1), 30.0)
     stable_count = max(1, stable_count)
     deadline = time.monotonic() + max_wait
     consecutive = 0
@@ -173,6 +203,10 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
 
     retry_max_wait, retry_interval = _hibernate_retry_settings()
     retry_deadline = time.monotonic() + retry_max_wait
+    wake_owner = False
+    wake_cooldown = 0.0
+    if _hibernate_cooldown_active():
+        raise McpNotReadyError("MCP hibernate cooldown is active")
 
     print("BEFORE MCP REQUEST")
     print("TIMEOUT:", request_timeout)
@@ -195,12 +229,21 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
             print("RESPONSE OBJECT:", res)
 
             if not _is_hibernate_rate_limited(res):
+                wake_cooldown = 0.0
                 break
+
+            if not wake_owner:
+                if not _claim_hibernate_wake():
+                    res.close()
+                    raise McpNotReadyError("MCP hibernate wake already in progress")
+                wake_owner = True
+                wake_cooldown = retry_interval
 
             remaining = retry_deadline - time.monotonic()
             if remaining < retry_interval:
                 print("MCP HIBERNATE RETRY DEADLINE EXCEEDED", flush=True)
-                break
+                res.close()
+                raise McpNotReadyError("MCP hibernate retry deadline exceeded")
 
             print(
                 f"MCP HIBERNATE RATE LIMIT: retrying in "
@@ -214,6 +257,9 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
         print("EXCEPTION TYPE:", type(e))
         traceback.print_exc()
         raise
+    finally:
+        if wake_owner:
+            _release_hibernate_wake(wake_cooldown)
     print("REQUEST END")
     print("AFTER MCP REQUEST")
     print("POST END TIME:", time.time())

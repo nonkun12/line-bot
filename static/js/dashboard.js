@@ -88,5 +88,5 @@ document.addEventListener('DOMContentLoaded', () => {
   const modal=document.getElementById('newNoteModal'); const closeModal=()=>modal.classList.add('hidden');
   document.getElementById('refreshBtn').onclick=fetchNotes; document.getElementById('searchInput').oninput=filterNotes; document.getElementById('systemRefreshBtn').onclick=fetchSystem; document.getElementById('newNoteBtn').onclick=()=>{document.getElementById('newNoteForm').reset();modal.classList.remove('hidden');document.getElementById('noteTitle').focus();}; document.getElementById('closeModalBtn').onclick=closeModal; document.getElementById('cancelModalBtn').onclick=closeModal; modal.onclick=e=>{if(e.target===modal)closeModal();};
   document.getElementById('newNoteForm').onsubmit=e=>{e.preventDefault();const t=document.getElementById('noteTitle').value.trim(),b=document.getElementById('noteBody').value.trim(),c=document.getElementById('noteCategory').value;if(t&&b)addNote(t,b,c);};
-  fetchSystem(); fetchNotes(); setInterval(fetchSystem,30000);
+  fetchSystem(); fetchNotes();
 });

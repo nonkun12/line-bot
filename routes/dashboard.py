@@ -255,20 +255,11 @@ def system_status():
     error = _require_user_id(user_id)
     if error:
         return error
-    try:
-        notes = parse_mcp_json_list(call_mcp_tool("list_notes", {"user_id": user_id}))
-        result["notes"] = {"status": "ok", "count": len(notes), "latest": notes[:5]}
-    except Exception:
-        current_app.logger.exception("DASHBOARD SYSTEM NOTES ERROR")
-        result["notes"] = {"status": "error", "error": "internal server error"}
-    try:
-        reminders = parse_mcp_json_list(call_mcp_tool("list_reminders", {"user_id": user_id}))
-        result["reminders"] = {"status": "ok", "count": len(reminders), "latest": reminders[:5]}
-    except Exception:
-        current_app.logger.exception("DASHBOARD SYSTEM REMINDERS ERROR")
-        result["reminders"] = {"status": "error", "error": "internal server error"}
-    if result.get("notes", {}).get("status") == "ok" and result.get("reminders", {}).get("status") == "ok":
-        result["services"]["ai_mcp"] = "online"
+    # Do not wake the on-demand MCP service from the dashboard heartbeat.
+    # Notes/reminders are fetched only by explicit user actions. Keeping this
+    # endpoint MCP-free prevents a browser poll from creating cold-start/429 bursts.
+    result["notes"] = {"status": "unknown", "count": None, "latest": []}
+    result["reminders"] = {"status": "unknown", "count": None, "latest": []}
 
     registry = build_core_agent_registry()
     registered_names = set(registry.names())
