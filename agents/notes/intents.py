@@ -8,7 +8,8 @@ from agents.notes.patterns import is_explicit_save_note
 
 _LOOKUP_WORDS = [
     "ある", "あります", "残ってる", "残っています", "覚えてる", "覚えています",
-    "覚えてるか", "覚えているか", "教えて", "確認して", "見せて", "探して", "検索して",
+    "覚えてるか", "覚えているか", "教えて", "確認して", "見せて", "見せ",
+    "探して", "探し", "検索して", "検索し", "検索",
 ]
 
 
@@ -25,13 +26,17 @@ def is_note_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
     if text.startswith("メモ"):
         return True
 
-    # 予定・将来行動の自然文は、質問でなければ保存意図として扱う。
+    # 明示的に「MCPでメモを検索/探す」と指定された場合は、通常AIへ落とさず
+    # Notes Agentへルーティングする。MCP自体をツールとして直接公開するのではなく、
+    # Notes Agentの許可された実行経路だけを通す。
+    if re.search(r"\bMCP\b.*メモ.*(?:検索|探し|見せ)", text, re.IGNORECASE):
+        return True
+
     if "予定" in text:
         has_lookup = any(word in text for word in _LOOKUP_WORDS) or text.endswith("？") or text.endswith("?")
         if not has_lookup:
             return True
 
-    # 「明日電話したい」のような明示的な将来行動も自然メモとして扱う。
     future_markers = ("明日", "あした", "来週", "今度")
     action_markers = ("したい", "する", "行く", "行きたい", "電話")
     if any(marker in text for marker in future_markers):
