@@ -407,26 +407,6 @@ jobs:
             -H "Content-Type: application/json" \
             -H "x-internal-key: ${LINE_INTERNAL_PUSH_KEY}" \
             --data "$payload"
- /tmp/distributed-final-report.txt; then
-            echo "LINE notification skipped: scheduled run has no remaining task."
-            exit 0
-          fi
-          if [ -s /tmp/distributed-final-report.txt ]; then
-            message="$(cat /tmp/distributed-final-report.txt)"
-          else
-            message="⚠️ 分散Loop終了報告を生成できませんでした。Run #${{ github.run_number }}"
-          fi
-          export MESSAGE="$message"
-          payload="$(python - <<'PY'
-          import json, os
-          print(json.dumps({'user_id': os.environ['DISTRIBUTED_LOOP_LINE_USER_ID'], 'message': os.environ['MESSAGE']}, ensure_ascii=False))
-          PY
-          )"
-          curl --fail-with-body --silent --show-error --max-time 15 \
-            -X POST "https://line-bot-yvea.onrender.com/internal/push" \
-            -H "Content-Type: application/json" \
-            -H "x-internal-key: ${LINE_INTERNAL_PUSH_KEY}" \
-            --data "$payload"
       - name: Upload durable run evidence
         if: always()
         uses: actions/upload-artifact@v4
