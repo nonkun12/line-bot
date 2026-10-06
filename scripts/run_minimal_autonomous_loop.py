@@ -217,18 +217,26 @@ def run_task(task: dict[str, object], run_index: int, stop_file: Path, summary_d
         failure_reason = failure_reason or "stop_requested_after_task"
 
     produced_sha = _git_head()
-    if produced_sha == base_sha and _valid_sha(base_sha):
+    if payload:
+        status = str(payload.get("status", "FAIL"))
+
+    # A zero exit code with an unchanged HEAD is the only valid NO_CHANGE.
+    # A failed runtime must never be reclassified as NO_CHANGE merely because
+    # its rollback restored the base SHA; otherwise the report hides the
+    # actual guarded-runtime failure.
+    if exit_code == 0 and produced_sha == base_sha and _valid_sha(base_sha):
         failure_reason = failure_reason or "no_change"
         status = "NO_CHANGE"
-    elif payload:
-        status = str(payload.get("status", "FAIL"))
-    if not failure_reason:
+    elif exit_code != 0 and not failure_reason:
+        failure_reason = "task_runtime_failed"
+
+    if exit_code == 0 and not failure_reason:
         verified, reason = _verify_produced_head(base_sha, produced_sha, task["allowed_paths"])
         if not verified:
             failure_reason = reason
 
     if exit_code != 0 or failure_reason:
-        if failure_reason == "no_change":
+        if failure_reason == "no_change" and exit_code == 0:
             status = "NO_CHANGE"
         elif failure_reason == "task_timeout":
             status = "TIMEOUT"
