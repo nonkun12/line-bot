@@ -29,7 +29,7 @@ def is_note_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
     # 明示的に「MCPでメモを検索/探す」と指定された場合は、通常AIへ落とさず
     # Notes Agentへルーティングする。MCP自体をツールとして直接公開するのではなく、
     # Notes Agentの許可された実行経路だけを通す。
-    if re.search(r"\bMCP\b.*メモ.*(?:検索|探し|見せ)", text, re.IGNORECASE):
+    if re.search(r"(?:^|[\s、。])MCP(?:で|\s|$).*メモ.*(?:検索|探し|見せ)", text, re.IGNORECASE):
         return True
 
     if "予定" in text:
