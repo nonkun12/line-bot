@@ -389,6 +389,38 @@ jobs:
             echo "LINE success notification skipped: required GitHub secrets are not configured."
             exit 0
           fi
+          if [ -s /tmp/distributed-final-report.txt ] && grep -q '^- 結果理由: queue_exhausted_no_tasks
+            message="⚠️ 分散Loop終了報告を生成できませんでした。Run #${{ github.run_number }}"
+          fi
+          export MESSAGE="$message"
+          payload="$(python - <<'PY'
+          import json, os
+          print(json.dumps({'user_id': os.environ['DISTRIBUTED_LOOP_LINE_USER_ID'], 'message': os.environ['MESSAGE']}, ensure_ascii=False))
+          PY
+          )"
+          curl --fail-with-body --silent --show-error --max-time 15 \
+            -X POST "https://line-bot-yvea.onrender.com/internal/push" \
+            -H "Content-Type: application/json" \
+            -H "x-internal-key: ${LINE_INTERNAL_PUSH_KEY}" \
+            --data "$payload"
+      - name: Upload durable run evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimal-autonomous-loop-${{ github.run_id }}
+          retention-days: 30
+          path: |
+            /tmp/minimal-autonomous-loop.jsonl
+            /tmp/autonomous-loop-state.json
+            /tmp/autonomous-*.json
+            /tmp/distributed-sheets-log-result.json
+            /tmp/distributed-final-report.txt
+          if-no-files-found: ignore
+
+ /tmp/distributed-final-report.txt; then
+            echo "LINE notification skipped: no task was executed and the queue is already exhausted."
+            exit 0
+          fi
           if [ -s /tmp/distributed-final-report.txt ]; then
             message="$(cat /tmp/distributed-final-report.txt)"
           else
