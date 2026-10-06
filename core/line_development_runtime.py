@@ -162,13 +162,20 @@ def observe_self_improvement(
 
 
 
+_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
+    "hand-sign-uhip-contract-test": "uhip/tests/test_schema_contracts.py",
+    "hand-sign-uhip-contract-negative-confidence": "uhip/tests/test_schema_contracts.py",
+    "hand-sign-uhip-contract-iphone-camera": "uhip/tests/test_schema_contracts.py",
+    "hand-sign-uhip-contract-unknown-hand-label": "uhip/tests/test_schema_contracts.py",
+    "router-regression-whitespace": "tests/test_management_router.py",
+    "router-regression-fullwidth-market": "tests/test_management_router.py",
+    "router-regression-casefold-english": "tests/test_management_router.py",
+}
+
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
     if not task_id or not chosen:
         return False
-    return (
-        (task_id in {"hand-sign-uhip-contract-test", "hand-sign-uhip-contract-negative-confidence"} and chosen == "uhip/tests/test_schema_contracts.py")
-        or (task_id in {"router-regression-whitespace", "router-regression-fullwidth-market"} and chosen == "tests/test_management_router.py")
-    )
+    return _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id) == chosen
 
 
 def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None) -> tuple[dict | None, str | None]:
@@ -181,6 +188,14 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     task_id = str(task_id or os.environ.get("AUTONOMOUS_TASK_ID", "")).strip()
     if not task_id:
         return None, None
+
+    # Known autonomous test tasks are deterministic and fail closed if the
+    # manager selects any target other than the declared target.
+    expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
+    if expected_target is not None and chosen != expected_target:
+        return None, "deterministic_target_mismatch"
+    if task_id == "router-regression-mixed-specialists":
+        return None, "deterministic_target_mismatch"
 
     if task_id == "hand-sign-uhip-contract-test" and chosen == "uhip/tests/test_schema_contracts.py":
         target = worker.ROOT / chosen
@@ -507,6 +522,18 @@ class DevelopmentExecutor:
                 if not chosen:
                     return AgentResult(task.task_id, False, "manager could not select a safe target")
                 self.state.chosen = chosen
+                autonomous_task_id = self.state.autonomous_task_id.strip() or os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+                expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(autonomous_task_id)
+                if expected_target is not None and chosen != expected_target:
+                    self.state.chosen = None
+                    return AgentResult(
+                        task.task_id,
+                        False,
+                        f"deterministic target mismatch: expected {expected_target}, got {chosen}",
+                    )
+                if autonomous_task_id == "router-regression-mixed-specialists":
+                    self.state.chosen = None
+                    return AgentResult(task.task_id, False, "deterministic target mismatch: mixed-specialists task is fail-closed")
                 return AgentResult(task.task_id, True, f"selected {chosen}", frozenset({chosen}))
             if self.state.chosen is None:
                 return AgentResult(task.task_id, False, "manager selection missing")
