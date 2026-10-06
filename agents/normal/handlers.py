@@ -43,7 +43,13 @@ _SAFE_INLINE_TOOLS = {
     "get_today_schedule",
 }
 
-_SAFE_FALLBACK_TOOLS = {"list_reminders", "get_memory"}
+_SAFE_FALLBACK_TOOLS = {"list_reminders"}
+
+_NORMAL_MCP_TOOL_NAMES = {"set_reminder", "list_reminders", "cancel_reminder"}
+_NORMAL_MCP_TOOLS_SCHEMA = [
+    tool for tool in MCP_TOOLS_SCHEMA
+    if tool.get("function", {}).get("name") in _NORMAL_MCP_TOOL_NAMES
+]
 
 _RATE_LIMIT_REPLY = (
     "ごめんなさい、今日利用できるAIの上限に達してしまいました🙏\n"
@@ -85,16 +91,7 @@ def handle_normal_message(message, user_id, call_mcp_tool):
 
     # 名前などの既知情報は、AIのtool呼び出し判断に任せず毎回直接取得して
     # システムプロンプトへ埋め込む(会話履歴に残っていなくても思い出せるようにするため)。
-    try:
-        stored_memory = call_mcp_tool(
-            "get_all_memory",
-            {"user_id": user_id},
-        )
-    except Exception as e:
-        print("GET ALL MEMORY ERROR:", e)
-        stored_memory = ""
-
-    known_facts_block = stored_memory if stored_memory else "(まだ何も記憶していません)"
+    known_facts_block = "(通常会話では記憶を自動取得しません)"
 
     system_prompt = f"""
 {random.choice(_PERSONALITIES)}
@@ -154,7 +151,7 @@ save_memoryではなく 必ず set_reminder ツールを使用してください
     try:
         response = generate_chat_completion(
             messages=messages,
-            tools=MCP_TOOLS_SCHEMA,
+            tools=_NORMAL_MCP_TOOLS_SCHEMA,
             tool_choice=None,
             temperature=0.0,
             max_tokens=1024,
@@ -186,7 +183,7 @@ save_memoryではなく 必ず set_reminder ツールを使用してください
                         print("INLINE FUNCTION-CALL ARGS PARSE ERROR:", args_err)
                         inline_args = {}
 
-                if inline_name in _SAFE_INLINE_TOOLS:
+                if inline_name in _NORMAL_MCP_TOOL_NAMES and inline_name in _SAFE_INLINE_TOOLS:
                     forced_tool_call = inline_name
                     forced_tool_args = inline_args
 
@@ -304,7 +301,11 @@ save_memoryではなく 必ず set_reminder ツールを使用してください
         for tc in choice.tool_calls:
             tc_name = tc.function.name
 
-            if tc_name in {"set_reminder", "cancel_reminder", "save_memory"}:
+            if tc_name not in _NORMAL_MCP_TOOL_NAMES:
+                print(f"[MCP GATE] rejected normal-agent tool: {tc_name}")
+                continue
+
+            if tc_name in {"set_reminder", "cancel_reminder"}:
                 if tc_name in executed_side_effect_tools:
                     print(f"[SKIP DUPLICATE TOOL] {tc_name}")
                     continue
