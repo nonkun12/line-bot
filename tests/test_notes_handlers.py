@@ -63,7 +63,7 @@ def test_handle_natural_note_search_keyword_extraction():
     assert result == "search result"
     call_mcp_tool.assert_called_once_with(
         "search_notes",
-        {"user_id": "user123", "keyword": "テニスの"},
+        {"user_id": "user123", "keyword": "テニス"},
     )
 
 
