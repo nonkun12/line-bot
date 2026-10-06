@@ -27,6 +27,11 @@ _NATURAL_RECORD_RE = re.compile(
     r"\s*(?:と)?\s*(?:保存|記録|追記|追加)して[。．.!！]*$",
     re.IGNORECASE,
 )
+_LINE_NOTE_RECORD_RE = re.compile(
+    r'^メモ\s*を\s*obsidian\s*(?:に|へ)\s*(?:保存|記録|追記|追加)して\s*[「『"“](?P<content>[\s\S]+?)[」』"”]'
+    r"\s*(?:と)?\s*(?:書いて|保存して|記録して|追記して)[。．.!！]*$",
+    re.IGNORECASE,
+)
 
 _DEFAULT_NOTE_PATH = "LINE-Inbox.md"
 
@@ -51,6 +56,13 @@ def normalize_obsidian_command(raw_message: str) -> str | None:
     natural_match = _NATURAL_RECORD_RE.fullmatch(text)
     if natural_match:
         content = natural_match.group("content").strip()
+        if not content:
+            return None
+        return f"Obsidianに追記 {_default_note_path()}: {content}"
+
+    line_note_match = _LINE_NOTE_RECORD_RE.fullmatch(text)
+    if line_note_match:
+        content = line_note_match.group("content").strip()
         if not content:
             return None
         return f"Obsidianに追記 {_default_note_path()}: {content}"

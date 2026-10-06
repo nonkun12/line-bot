@@ -85,3 +85,14 @@ def test_natural_record_command_appends_to_default_note(tmp_path, monkeypatch):
     assert result["agent_results"]["obsidian"]["operation"] == "append"
     target = tmp_path / "LINE-Inbox.md"
     assert target.read_text(encoding="utf-8") == "自然文Bridgeテスト"
+
+
+def test_line_note_natural_record_command_appends_to_default_note(tmp_path, monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+    result = obsidian_agent_node(
+        _state("メモをObsidianに保存して「MCPとObsidianの実保存テスト」と書いて", tmp_path)
+    )
+    assert result["agent_results"]["obsidian"]["success"] is True
+    assert result["agent_results"]["obsidian"]["operation"] == "append"
+    target = tmp_path / "LINE-Inbox.md"
+    assert target.read_text(encoding="utf-8") == "MCPとObsidianの実保存テスト"
