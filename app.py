@@ -80,6 +80,7 @@ from core.self_introduction import handle_self_introduction
 from routes.core_api import core_api_bp
 from routes.obsidian_bridge import obsidian_bridge_bp
 from core.obsidian_bridge import enqueue_obsidian_request
+from agents.obsidian.intents import is_obsidian_intent
 from routes.voice_api import voice_api_bp
 from app_development import extract_app_development_request, dispatch_app_development_workflow
 from line_development import extract_development_instruction, dispatch_development_workflow
