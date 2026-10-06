@@ -27,7 +27,12 @@ class AgentRouter:
     def route(self, request: AgentRequest) -> RouteResult:
         agent = self._registry.resolve(request)
         if agent is None:
-            return RouteResult(agent=None)
+            # Fallback to a default agent if available and enabled
+            fallback = self._registry.get("fallback")
+            if fallback and getattr(fallback, "enabled", True):
+                agent = fallback
+            else:
+                return RouteResult(agent=None)
         assert_agent_approved(agent.name)
         response = agent.handle(request)
         if not isinstance(response, AgentResponse):
