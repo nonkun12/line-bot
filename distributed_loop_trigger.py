@@ -120,6 +120,7 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                 r.raise_for_status()
                 if r.json().get("workflow_runs", []):
                     return True, "分散Loopはすでに実行中です。重複起動はしません。"
+            dispatch_started_at = datetime.now(timezone.utc).timestamp()
             r = client.post(
                 f"{base}/actions/workflows/{WORKFLOW}/dispatches",
                 json={"ref": "main", "inputs": {"max_tasks": str(max_tasks)}},
@@ -129,7 +130,6 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                 # GitHub accepts workflow_dispatch with HTTP 204, but the API
                 # does not return a run id. Do not tell LINE that execution
                 # started until a matching workflow_dispatch run is observable.
-                dispatch_after = datetime.now(timezone.utc).timestamp()
                 deadline = time.monotonic() + 20.0
                 while time.monotonic() < deadline:
                     runs = client.get(
@@ -148,7 +148,7 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                             ).timestamp()
                         except ValueError:
                             continue
-                        if created_ts >= dispatch_after - 5:
+                        if created_ts >= dispatch_started_at - 5:
                             return True, (
                                 f"分散Loopを起動しました。Run #{run.get('run_number', '?')} / "
                                 f"{max_tasks}タスクまで安全に実行します。"
