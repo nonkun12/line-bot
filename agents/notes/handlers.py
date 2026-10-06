@@ -46,7 +46,8 @@ def _normalize_natural_search_message(message: str) -> str:
     ]
     for suffix in suffixes:
         if message.endswith(suffix) and message != suffix:
-            return message[: -len(suffix)].strip()
+            keyword = message[: -len(suffix)].strip()
+            return re.sub(r"[でをにはがのへとからまで]\s*$", "", keyword).strip()
     return (
         message.replace("LINE Botのメモを探して", "")
         .replace("メモを探して", "").replace("メモを見せて", "")
