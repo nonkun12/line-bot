@@ -178,6 +178,22 @@ def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
     return _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id) == chosen
 
 
+def _autonomous_task_id_for_state(state: DevelopmentState) -> str:
+    """Use ambient task identity only when it matches the selected target.
+    
+    Unit/runtime callers may share AUTONOMOUS_TASK_ID across isolated executor
+    tests. Never turn an unrelated selected file into a deterministic-target
+    mismatch merely because that ambient variable is present.
+    """
+    task_id = state.autonomous_task_id.strip()
+    if task_id:
+        return task_id
+    ambient = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+    if not ambient or not state.chosen:
+        return ""
+    return ambient if _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(ambient) == state.chosen else ""
+
+
 def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None) -> tuple[dict | None, str | None]:
     """Return bounded, deterministic plans for explicit queued regression-test tasks.
 
@@ -538,9 +554,7 @@ class DevelopmentExecutor:
             if self.state.chosen is None:
                 return AgentResult(task.task_id, False, "manager selection missing")
             if task.role is AgentRole.IMPLEMENTER:
-                task_id = self.state.autonomous_task_id.strip()
-                if not task_id:
-                    task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+                task_id = _autonomous_task_id_for_state(self.state)
                 # Exact instruction fallback is bounded to the known queued task and target.
                 if (
                     not task_id
@@ -615,7 +629,7 @@ class DevelopmentExecutor:
                 self.state.tests_passed = passed; self.state.test_output = output
                 return AgentResult(task.task_id, passed, output[-4000:], frozenset(self.state.touched or []))
             if task.role is AgentRole.DEBUGGER:
-                task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+                task_id = _autonomous_task_id_for_state(self.state)
                 if _is_deterministic_autonomous_task(task_id, self.state.chosen):
                     return AgentResult(task.task_id, False, "deterministic test failure; schema and test must not be mutated by LLM")
                 if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
@@ -654,7 +668,7 @@ class DevelopmentExecutor:
                 self.state.plan = plan; self.state.touched = touched
                 return AgentResult(task.task_id, True, "debug fix applied", frozenset(touched))
             if task.role is AgentRole.REFACTORER:
-                task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+                task_id = _autonomous_task_id_for_state(self.state)
                 if _is_deterministic_autonomous_task(task_id, self.state.chosen):
                     return AgentResult(task.task_id, True, "no refactor needed for deterministic test task")
                 if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
