@@ -24,10 +24,13 @@ def test_relative_paths_never_allow_traversal_or_hidden_control_files():
 def test_validate_files_requires_safe_supported_new_files_only():
     valid, _, files = validate_files([
         {"path": "app.py", "content": "print('ok')"},
-        {"path": "tests.py", "content": "assert True"},
+        {"path": "run.py", "content": "print('run')"},
+        {"path": "README.md", "content": "# app"},
+        {"path": "requirements.txt", "content": "pytest"},
+        {"path": "tests/test_app.py", "content": "def test_ok(): pass"},
     ])
     assert valid is True
-    assert len(files) == 2
+    assert len(files) == 5
 
     invalid, reason, _ = validate_files([
         {"path": "app.py", "content": "print('ok')"},
@@ -54,3 +57,14 @@ def test_validate_files_rejects_partial_app_without_manifest_or_tests():
     ])
     assert valid is False
     assert "required project files missing" in reason or "pytest file" in reason
+
+
+def test_validate_files_requires_single_user_entrypoint():
+    valid, reason, _ = validate_files([
+        {"path": "app.py", "content": "print('ok')"},
+        {"path": "README.md", "content": "# app"},
+        {"path": "requirements.txt", "content": "pytest"},
+        {"path": "tests/test_app.py", "content": "def test_ok(): pass"},
+    ])
+    assert valid is False
+    assert "run.py entrypoint" in reason

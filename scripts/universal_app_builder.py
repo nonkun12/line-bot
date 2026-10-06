@@ -24,6 +24,7 @@ MAX_TOTAL_CHARS = 50000
 MAX_REPAIR_ATTEMPTS = 2
 REQUIRED_PROJECT_FILES = {"README.md", "requirements.txt"}
 REQUIRED_TEST_PREFIX = "tests/"
+REQUIRED_ENTRYPOINT = "run.py"
 MAX_REQUIREMENT_LENGTH = 3000
 ALLOWED_SUFFIXES = {".py", ".md", ".html", ".css", ".js", ".json", ".txt"}
 FORBIDDEN_NAMES = {".env", ".env.local", ".env.production", "Dockerfile", "render.yaml"}
@@ -157,6 +158,8 @@ def validate_files(files: object) -> tuple[bool, str, list[dict[str, str]]]:
     executable_files = [p for p in paths if p.endswith(".py") and not p.startswith(REQUIRED_TEST_PREFIX)]
     if not executable_files:
         return False, "at least one application Python source file is required", []
+    if REQUIRED_ENTRYPOINT not in paths:
+        return False, "run.py entrypoint is required so the user has one file to execute", []
     return True, "ok", cleaned
 
 
@@ -165,7 +168,7 @@ def ask(client: Groq, requirement: str, repair: str = "") -> dict:
         "You generate a small production-quality Python web application. Return JSON only. "
         "Schema: {\"project_slug\":\"safe-repository-name\",\"summary\":\"short summary\","
         "\"files\":[{\"path\":\"relative/file.py\",\"content\":\"full file content\"}]}. "
-        "Use standard-library or minimal Python dependencies. Include pytest tests, a README, and a requirements.txt file. "
+        "Use standard-library or minimal Python dependencies. Include pytest tests, a README, a requirements.txt file, and a run.py entrypoint that starts the finished application. "
         "Never emit secrets, credentials, CI workflows, deployment config, shell scripts, subprocess, or os.system. "
         "All paths must be relative and use only .py, .md, .html, .css, .js, .json, or .txt."
     )
