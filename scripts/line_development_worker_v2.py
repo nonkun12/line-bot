@@ -33,7 +33,7 @@ MAX_RESPONSE_TOKENS = 4096
 MAX_INSTRUCTION_LENGTH = 2000
 MAX_REPAIR_ATTEMPTS = 1
 MAX_APPLY_REPAIR_ATTEMPTS = 1
-MAX_PLAN_REPAIR_ATTEMPTS = 1
+MAX_PLAN_REPAIR_ATTEMPTS = 2
 ALLOWED_SUFFIXES = (".py", ".md", ".json", ".txt")
 PROTECTED_PATHS = {
     ".github", ".env", "config.py",
@@ -510,16 +510,25 @@ def main() -> int:
             return 1
         ok, detail = validate_plan(plan, chosen)
         if not ok and detail == "invalid_old_new":
-            repair_plan = repair_invalid_old_new_plan(
-                client,
-                instruction,
-                chosen,
-                context_for(chosen),
-                plan,
-            )
-            ok, detail = validate_plan(repair_plan, chosen)
-            if ok:
-                plan = repair_plan
+            repair_plan = plan
+            for _ in range(MAX_PLAN_REPAIR_ATTEMPTS):
+                repair_plan = repair_invalid_old_new_plan(
+                    client,
+                    instruction,
+                    chosen,
+                    context_for(chosen),
+                    repair_plan,
+                )
+                ok, detail = validate_plan(repair_plan, chosen)
+                if ok:
+                    plan = repair_plan
+                    break
+            else:
+                print(
+                    "Rejected plan after bounded invalid_old_new repairs:",
+                    detail,
+                    flush=True,
+                )
         if not ok and detail == "diff_marker_in_replacement":
             repair_plan = repair_diff_marker_plan(
                 client,
