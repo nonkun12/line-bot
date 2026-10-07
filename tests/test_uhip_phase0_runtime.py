@@ -100,3 +100,10 @@ def test_replay_is_deterministic_and_fail_closed():
     assert [(x.result.passed, x.result.reason) for x in first] == [
         (x.result.passed, x.result.reason) for x in second
     ]
+
+
+def test_unknown_observation_fails_closed_without_exception():
+    result = recognize(make_observation(gesture="unknown"))
+    assert result.passed is False
+    assert result.reason == "gesture_not_allowlisted"
+    assert result.event is None

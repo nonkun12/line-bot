@@ -17,6 +17,7 @@ Gesture = Literal[
 _ALLOWED_GESTURES = frozenset(
     {"thumb_up", "swipe_left", "swipe_right", "open_palm", "fist", "pinch"}
 )
+_INTERNAL_GESTURES = _ALLOWED_GESTURES | {"unknown"}
 
 
 @dataclass(frozen=True)
@@ -64,7 +65,7 @@ class Observation:
     model_sha256: str = "phase0-no-model"
 
     def __post_init__(self) -> None:
-        if self.gesture not in _ALLOWED_GESTURES:
+        if self.gesture not in _INTERNAL_GESTURES:
             raise ValueError(f"unsupported gesture: {self.gesture}")
         if not 0.0 <= self.confidence_raw <= 1.0:
             raise ValueError("confidence_raw must be between 0 and 1")
