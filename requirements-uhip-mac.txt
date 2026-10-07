@@ -1,5 +1,5 @@
 # Local-only UHIP Phase 0 camera stack.
-# Intentionally separate from requirements.txt so Render/LINE does not install camera dependencies.
+# Kept separate from requirements.txt so the LINE/Render service does not install camera dependencies.
 mediapipe==1.1.0
 opencv-python==5.0.0.93
 numpy>=2.0,<3
