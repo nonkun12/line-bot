@@ -402,8 +402,13 @@ def test_phase_start_deterministic_task_plan_is_syntax_safe(monkeypatch, tmp_pat
     chosen = "uhip/tests/test_schema_contracts.py"
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
-    real_file = runtime.worker.ROOT / chosen
-    original = real_file.read_text(encoding="utf-8")
+    original = (
+        "def test_existing_event():\n"
+        "    event = {}\n"
+        "    validate(event, EVENT_SCHEMA)\n\n\n"
+        "def test_universal_event_rejects_application_specific_command():\n"
+        "    pass\n"
+    )
     target.write_text(original, encoding="utf-8")
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
 
@@ -414,6 +419,7 @@ def test_phase_start_deterministic_task_plan_is_syntax_safe(monkeypatch, tmp_pat
 
     assert err is None
     assert plan is not None
+    assert plan["no_change"] is False
     assert plan["source"] == "deterministic_autonomous_task"
     change = plan["changes"][0]
     candidate = original.replace(change["old"], change["new"], 1)
