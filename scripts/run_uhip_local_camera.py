@@ -37,8 +37,8 @@ def main() -> int:
         device_id=args.device_id,
         session_id=args.session_id,
         engine="mediapipe-hands-local",
-        engine_version="1.1.0",
-        model_sha256="mediapipe-hands-1.1.0",
+        engine_version="0.10.21",
+        model_sha256="mediapipe-hands-0.10.21",
     )
 
     accepted = 0
