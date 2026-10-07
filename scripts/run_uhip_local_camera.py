@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 
 from uhip.phase0 import CameraAdapter
 from uhip.phase0.camera_adapter import CameraFrame, ClassifiedHand
+from uhip.phase0.hand_position import HandPosition
 from uhip.phase0.mediapipe_camera import MediaPipeHandsClassifier, OpenCVCameraSource
 
 
@@ -56,16 +57,26 @@ class PreviewClassifier:
 
     classifier: MediaPipeHandsClassifier
     last_result: ClassifiedHand | None = None
+    last_position: HandPosition | None = None
 
     def classify(self, frame: CameraFrame) -> ClassifiedHand:
         self.last_result = self.classifier.classify(frame)
+        self.last_position = self.classifier.last_position
         return self.last_result
+
+
+def preview_classifier_position(position: HandPosition | None) -> str:
+    """Return a display-only normalized hand coordinate when available."""
+    if position is None:
+        return "unavailable"
+    return f"({position.x:.3f},{position.y:.3f})"
 
 
 def _draw_preview(
     cv2: object,
     frame: CameraFrame,
     classified: ClassifiedHand | None,
+    hand_position: HandPosition | None,
     passed: bool,
     reason: str,
     camera_index: int,
@@ -81,6 +92,7 @@ def _draw_preview(
             f"camera_index={camera_index}",
             f"hand_count={classified.hand_count}",
             f"gesture={classified.gesture}",
+            f"hand_xy={preview_classifier_position(hand_position)}",
             f"confidence={classified.confidence_calibrated:.2f}",
             f"stable_frames={classified.stable_frames}",
             f"gate={'PASS' if passed else 'FAIL'}:{reason}",
@@ -148,6 +160,7 @@ def main() -> int:
                     cv2,
                     source.last_frame,
                     preview_classifier.last_result,
+                    preview_classifier.last_position,
                     result.passed,
                     result.reason,
                     args.camera_index,
