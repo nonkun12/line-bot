@@ -28,7 +28,49 @@ def validate(instance: dict, schema_path: Path) -> None:
     jsonschema.Draft202012Validator(load_schema(schema_path)).validate(instance)
 
 
-def test_universal_event_accepts_generic_hand_event():
+def test_universal_event_accepts_generic_hand_event_start_and_start_phase():
+    event = {
+        "schema_version": "0.3",
+        "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f12",
+        "session_id": "session-1",
+        "device_id": "device-1",
+        "seq": 1,
+        "t_mono_ns": 100,
+        "t_wall": "2026-09-28T01:00:00Z",
+        "source": {
+            "device_kind": "mac",
+            "sensor": "camera",
+            "engine": "mediapipe",
+            "engine_version": "0.1",
+            "model_sha256": "a" * 64,
+        },
+        "modality": "hand",
+        "payload": {
+            "gesture": "thumb_up",
+            "phase": "start",
+            "value": None,
+            "hand": {
+                "label": "right",
+                "track_id": 3,
+                "mirrored": True,
+            },
+            "confidence": {
+                "raw": 0.99,
+                "calibrated": 0.97,
+            },
+            "stability": {
+                "frames": 8,
+                "duration_ms": 160,
+            },
+        },
+        "gate": {
+            "recognition_passed": True,
+            "rule_version": "phase0-1",
+        },
+        "ttl_ms": 500,
+    }
+    validate(event, EVENT_SCHEMA)
+
     event = {
         "schema_version": "0.3",
         "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f12",
