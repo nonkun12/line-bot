@@ -32,6 +32,7 @@ def test_recognition_gate_builds_local_universal_event_only():
     assert result.event["payload"]["local"] is True
     assert result.event["gate"]["recognition_passed"] is True
     assert result.event["ttl_ms"] == 500
+    assert result.event == recognize(make_observation()).event
 
 
 def test_gate_fails_closed_for_multiple_hands():
