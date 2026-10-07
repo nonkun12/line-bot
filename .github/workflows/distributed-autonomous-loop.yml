@@ -342,6 +342,7 @@ jobs:
           STATE_OUTCOME: ${{ steps.persist_state.outcome }}
           JOB_STATUS: ${{ job.status }}
           PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event_name == 'pull_request_target' && github.event.pull_request.number || '' }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set +e
           requested="${MAX_TASKS:-4}"
@@ -350,8 +351,16 @@ jobs:
             completed="$(python -c 'import json; from pathlib import Path; print(sum(1 for line in Path("/tmp/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines() if line.strip() and isinstance(json.loads(line), dict) and json.loads(line).get("status") in {"PASS","NO_CHANGE"}))')"
           fi
           queue_total="$(python -c 'import json; from pathlib import Path; print(len(json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8")).get("tasks", [])))')"
-          state_completed="$(python -c 'import json; from pathlib import Path; print(len(json.loads(Path("/tmp/autonomous-loop-state.json").read_text(encoding="utf-8")).get("completed", [])))')"
-          queue_completed=$((state_completed + completed))
+          state_current_completed="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          queue = json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8")).get("tasks", [])
+          completed = set(json.loads(Path("/tmp/autonomous-loop-state.json").read_text(encoding="utf-8")).get("completed", []))
+          ids = [task.get("id") for task in queue if isinstance(task, dict)]
+          print(sum(1 for task_id in ids if task_id in completed))
+          PY
+          )"
+          queue_completed=$((state_current_completed + completed))
           if [ "$queue_completed" -gt "$queue_total" ]; then queue_completed="$queue_total"; fi
           result="STOPPED/FAILED"
           result_reason="workflow_failed"
