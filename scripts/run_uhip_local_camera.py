@@ -19,7 +19,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Bounded local UHIP Phase 0 camera recognition smoke test."
     )
-    parser.add_argument("--camera-index", type=int, default=0)
+    parser.add_argument(
+        "--camera-index",
+        type=int,
+        default=1,
+        help="OpenCV camera index. On this Mac, 1 is the MacBook Pro camera; 0 is the iPhone.",
+    )
     parser.add_argument("--max-frames", type=int, default=120)
     parser.add_argument("--device-id", default="mac-camera")
     parser.add_argument("--session-id", default=f"camera-{secrets.token_hex(6)}")
