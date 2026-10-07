@@ -16,14 +16,24 @@ from uhip.phase0.mediapipe_camera import MediaPipeHandsClassifier, OpenCVCameraS
 
 
 GESTURE_MEANINGS = {
-    "open_palm": "手のひらを開く",
-    "thumb_up": "親指を立てる",
-    "fist": "握りこぶし",
-    "swipe_left": "左へスワイプ（未実装）",
-    "swipe_right": "右へスワイプ（未実装）",
-    "pinch": "親指と人差し指をつまむ（未実装）",
-    "unknown": "認識できない／安全側で拒否",
+    "open_palm": "open hand",
+    "thumb_up": "thumb up",
+    "fist": "closed fist",
+    "swipe_left": "swipe left (not implemented)",
+    "swipe_right": "swipe right (not implemented)",
+    "pinch": "pinch (not implemented)",
+    "unknown": "unknown / fail-closed",
 }
+
+GESTURE_MEANINGS_JA = {
+    "open_palm": "open_palm = 手のひらを開く",
+    "thumb_up": "thumb_up = 親指を立てる",
+    "fist": "fist = 握りこぶし",
+    "swipe_left": "swipe_left = 左へスワイプ（未実装）",
+    "swipe_right": "swipe_right = 右へスワイプ（未実装）",
+    "pinch": "pinch = 親指と人差し指をつまむ（未実装）",
+}
+
 
 
 def parse_args() -> argparse.Namespace:
@@ -134,6 +144,11 @@ def main() -> int:
         engine_version="0.10.21",
         model_sha256="mediapipe-hands-0.10.21",
     )
+
+    print("Gesture mapping:")
+    for meaning in GESTURE_MEANINGS_JA.values():
+        print(f"  - {meaning}")
+    print("  - unknown = 認識できない／安全側で拒否")
 
     accepted = 0
     rejected = 0
