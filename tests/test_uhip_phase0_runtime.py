@@ -45,8 +45,10 @@ def test_gate_fails_closed_for_low_confidence_and_unstable_tracking():
     policy = GatePolicy(min_confidence=0.90, min_stable_frames=3)
     low = recognize(make_observation(confidence_calibrated=0.50), policy)
     unstable = recognize(make_observation(stable_frames=2), policy)
-    assert low == unstable or low.passed is False
+    assert low.passed is False
+    assert low.reason == "calibrated_confidence"
     assert unstable.passed is False
+    assert unstable.reason == "unstable"
     assert low.event is None
     assert unstable.event is None
 
