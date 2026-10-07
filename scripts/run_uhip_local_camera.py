@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 
 from uhip.phase0 import CameraAdapter
 from uhip.phase0.camera_adapter import CameraFrame, ClassifiedHand
-from uhip.phase0.hand_position import HandPosition
+from uhip.phase0.hand_position import HandPosition, screen_candidate
 from uhip.phase0.mediapipe_camera import MediaPipeHandsClassifier, OpenCVCameraSource
 
 
@@ -28,6 +28,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--max-frames", type=int, default=120)
     parser.add_argument("--device-id", default="mac-camera")
+    parser.add_argument("--screen-width", type=int, default=1920)
+    parser.add_argument("--screen-height", type=int, default=1080)
     parser.add_argument("--session-id", default=f"camera-{secrets.token_hex(6)}")
     parser.add_argument(
         "--preview",
@@ -80,6 +82,8 @@ def _draw_preview(
     passed: bool,
     reason: str,
     camera_index: int,
+    screen_width: int,
+    screen_height: int,
 ) -> None:
     image = frame.data.copy()
     if classified is None:
@@ -93,6 +97,7 @@ def _draw_preview(
             f"hand_count={classified.hand_count}",
             f"gesture={classified.gesture}",
             f"hand_xy={preview_classifier_position(hand_position)}",
+            f"screen_candidate={screen_candidate(hand_position, width=screen_width, height=screen_height) if hand_position is not None else "unavailable"}",
             f"confidence={classified.confidence_calibrated:.2f}",
             f"stable_frames={classified.stable_frames}",
             f"gate={'PASS' if passed else 'FAIL'}:{reason}",
@@ -164,6 +169,8 @@ def main() -> int:
                     result.passed,
                     result.reason,
                     args.camera_index,
+                    args.screen_width,
+                    args.screen_height,
                 )
                 key = cv2.waitKey(1) & 0xFF
                 if key in (ord("q"), 27):
