@@ -1,5 +1,7 @@
 # Local-only UHIP Phase 0 camera stack.
+# MediaPipe 0.10.21 provides the Python Hands solution API used by this runner.
+# Use Python 3.12 for this isolated camera environment.
 # Kept separate from requirements.txt so the LINE/Render service does not install camera dependencies.
-mediapipe==1.1.0
-opencv-python==5.0.0.93
-numpy>=2.0,<3
+mediapipe==0.10.21
+opencv-python==4.10.0.84
+numpy<2,>=1.26
