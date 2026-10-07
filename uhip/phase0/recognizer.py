@@ -112,8 +112,6 @@ def recognize(
         return RecognitionResult(False, "unstable")
     if observation.gesture not in _ALLOWED_GESTURES:
         return RecognitionResult(False, "gesture_not_allowlisted")
-    if observation.ttl_ms if hasattr(observation, "ttl_ms") else False:
-        return RecognitionResult(False, "invalid_observation")
     if observation.hand_label not in {"left", "right", "unknown"}:
         return RecognitionResult(False, "hand_label")
     if observation.device_kind != "mac" or observation.sensor != "camera":
