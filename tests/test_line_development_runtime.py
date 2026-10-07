@@ -426,3 +426,46 @@ def test_phase_start_deterministic_task_plan_is_syntax_safe(monkeypatch, tmp_pat
     compile(candidate, chosen, "exec")
     assert candidate.count("def test_universal_event_accepts_hand_event_with_phase_start():") == 1
     assert '"phase": "start"' in candidate
+
+
+def test_new_distributed_queue_tasks_have_deterministic_plans(monkeypatch, tmp_path):
+    cases = [
+        (
+            "hand-sign-uhip-contract-left-hand",
+            "uhip/tests/test_schema_contracts.py",
+            "def test_universal_event_rejects_application_specific_command():\n    pass\n",
+            '"label": "left"',
+            '"mirrored": False',
+        ),
+        (
+            "router-regression-jobs-market-metadata",
+            "tests/test_management_router.py",
+            "def test_preserves_multi_specialist_candidates_and_priority() -> None:\n    pass\n",
+            'decision = route(ManagementRequest("u", "JobsとNYダウの情報を一緒に教えて"))',
+            '["market", "jobs"]',
+        ),
+        (
+            "router-regression-english-casefold",
+            "tests/test_management_router.py",
+            "def test_preserves_multi_specialist_candidates_and_priority() -> None:\n    pass\n",
+            'eNgLiShで会話したい',
+            "Specialist.ENGLISH",
+        ),
+    ]
+
+    for task_id, chosen, original, expected_one, expected_two in cases:
+        target = tmp_path / chosen
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(original, encoding="utf-8")
+        monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+        plan, err = runtime._deterministic_autonomous_test_plan(chosen, task_id)
+
+        assert err is None
+        assert plan is not None
+        assert plan["no_change"] is False
+        change = plan["changes"][0]
+        candidate = original.replace(change["old"], change["new"], 1)
+        compile(candidate, chosen, "exec")
+        assert expected_one in candidate
+        assert expected_two in candidate
