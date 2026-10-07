@@ -172,25 +172,31 @@ jobs:
             exit 0
           fi
 
-          status="$(python - <<'PY'
+          python - <<'PY'
           import json
           from pathlib import Path
-          lines = [x for x in Path('/tmp/minimal-autonomous-loop.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
-          print(json.loads(lines[-1]).get('status', 'FAIL'))
-          PY
-          )"
-          task_id="$(python - <<'PY'
-          import json
-          from pathlib import Path
-          lines = [x for x in Path('/tmp/minimal-autonomous-loop.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
-          print(json.loads(lines[-1]).get('task_id', ''))
-          PY
-          )"
 
-          if [[ "$status" != "PASS" && "$status" != "NO_CHANGE" ]] || [ -z "$task_id" ]; then
-            echo "State is not advanced: status=$status task_id=$task_id"
-            exit 1
-          fi
+          path = Path('/tmp/minimal-autonomous-loop.jsonl')
+          lines = [x for x in path.read_text(encoding='utf-8').splitlines() if x.strip()]
+          results = [json.loads(line) for line in lines]
+          if not results:
+              raise SystemExit("no loop results")
+          completed_ids = []
+          for result in results:
+              status = result.get("status", "FAIL")
+              task_id = result.get("task_id", "")
+              if status not in {"PASS", "NO_CHANGE"} or not task_id:
+                  raise SystemExit(
+                      f"State is not advanced: status={status} task_id={task_id}"
+                  )
+              if task_id not in completed_ids:
+                  completed_ids.append(task_id)
+          Path('/tmp/autonomous-completed-task-ids.json').write_text(
+              json.dumps(completed_ids, ensure_ascii=False),
+              encoding='utf-8',
+          )
+          print("Completed task IDs:", ", ".join(completed_ids))
+          PY
 
           state_branch="autonomous-loop-state"
           auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
