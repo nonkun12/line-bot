@@ -10,15 +10,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from uhip.phase0 import CameraAdapter
-from uhip.phase0.mediapipe_camera import MediaPipeGestureClassifier, OpenCVCameraSource
+from uhip.phase0.mediapipe_camera import MediaPipeHandsClassifier, OpenCVCameraSource
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Bounded local UHIP Phase 0 camera recognition smoke test."
     )
-    parser.add_argument("--model", required=True, help="Path to gesture_recognizer.task")
-    parser.add_argument("--model-sha256", required=True, help="Expected SHA-256 of the model")
     parser.add_argument("--camera-index", type=int, default=0)
     parser.add_argument("--max-frames", type=int, default=120)
     parser.add_argument("--device-id", default="mac-camera")
@@ -32,18 +30,15 @@ def main() -> int:
         camera_index=args.camera_index,
         max_frames=args.max_frames,
     )
-    classifier = MediaPipeGestureClassifier(
-        model_path=args.model,
-        expected_model_sha256=args.model_sha256,
-    )
+    classifier = MediaPipeHandsClassifier()
     adapter = CameraAdapter(
         source=source,
         classifier=classifier,
         device_id=args.device_id,
         session_id=args.session_id,
-        engine="mediapipe-gesture-recognizer",
+        engine="mediapipe-hands-local",
         engine_version="1.1.0",
-        model_sha256=args.model_sha256.lower(),
+        model_sha256="mediapipe-hands-1.1.0",
     )
 
     accepted = 0
