@@ -163,6 +163,7 @@ def observe_self_improvement(
 
 
 _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
+    "hand-sign-uhip-contract-phase-start": "uhip/tests/test_schema_contracts.py",
     "hand-sign-uhip-contract-test": "uhip/tests/test_schema_contracts.py",
     "hand-sign-uhip-contract-negative-confidence": "uhip/tests/test_schema_contracts.py",
     "hand-sign-uhip-contract-iphone-camera": "uhip/tests/test_schema_contracts.py",
@@ -214,6 +215,73 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
     if expected_target is not None and chosen != expected_target:
         return None, "deterministic_target_mismatch"
+
+    if task_id == "hand-sign-uhip-contract-phase-start" and chosen == "uhip/tests/test_schema_contracts.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_universal_event_accepts_hand_event_with_phase_start"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = "    validate(event, EVENT_SCHEMA)\n\n\ndef test_universal_event_rejects_application_specific_command():\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+
+        addition = (
+            "\n\ndef test_universal_event_accepts_hand_event_with_phase_start():\n"
+            "    event = {\n"
+            '        "schema_version": "0.3",\n'
+            '        "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f17",\n'
+            '        "session_id": "session-phase-start",\n'
+            '        "device_id": "device-1",\n'
+            '        "seq": 2,\n'
+            '        "t_mono_ns": 200,\n'
+            '        "t_wall": "2026-09-28T01:00:01Z",\n'
+            '        "source": {\n'
+            '            "device_kind": "mac",\n'
+            '            "sensor": "camera",\n'
+            '            "engine": "mediapipe",\n'
+            '            "engine_version": "0.1",\n'
+            '            "model_sha256": "a" * 64,\n'
+            "        },\n"
+            '        "modality": "hand",\n'
+            '        "payload": {\n'
+            '            "gesture": "thumb_up",\n'
+            '            "phase": "start",\n'
+            '            "value": None,\n'
+            '            "hand": {\n'
+            '                "label": "right",\n'
+            '                "track_id": 3,\n'
+            '                "mirrored": True,\n'
+            "            },\n"
+            '            "confidence": {\n'
+            '                "raw": 0.99,\n'
+            '                "calibrated": 0.97,\n'
+            "            },\n"
+            "        },\n"
+            '        "gate": {\n'
+            '            "recognition_passed": True,\n'
+            '            "rule_version": "phase0-1",\n'
+            "        },\n"
+            '        "ttl_ms": 500,\n'
+            "    }\n"
+            "    validate(event, EVENT_SCHEMA)\n"
+        )
+        new = "    validate(event, EVENT_SCHEMA)\n" + addition + "\n\ndef test_universal_event_rejects_application_specific_command():\n"
+        candidate = text.replace(anchor, new, 1)
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
 
     if task_id == "hand-sign-uhip-contract-test" and chosen == "uhip/tests/test_schema_contracts.py":
         target = worker.ROOT / chosen
