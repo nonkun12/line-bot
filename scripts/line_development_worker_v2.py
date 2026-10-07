@@ -32,7 +32,7 @@ MAX_FILE_CHARS = 12000
 MAX_RESPONSE_TOKENS = 4096
 MAX_INSTRUCTION_LENGTH = 2000
 MAX_REPAIR_ATTEMPTS = 1
-MAX_APPLY_REPAIR_ATTEMPTS = 1
+MAX_APPLY_REPAIR_ATTEMPTS = 2
 MAX_PLAN_REPAIR_ATTEMPTS = 2
 ALLOWED_SUFFIXES = (".py", ".md", ".json", ".txt")
 PROTECTED_PATHS = {
@@ -280,22 +280,30 @@ def apply_plan_with_bounded_anchor_repair(
     if MAX_APPLY_REPAIR_ATTEMPTS < 1:
         return plan, False, detail, touched
 
-    repair_plan = repair_anchor_plan(
-        client,
-        instruction,
-        chosen,
-        context,
-        plan,
-        detail,
-    )
-    ok, repair_detail = validate_plan(repair_plan, chosen)
-    if not ok or repair_detail == "no_change":
-        return repair_plan, False, repair_detail, []
-    applied, apply_detail, touched = apply_plan(repair_plan)
-    if applied:
-        return repair_plan, True, apply_detail, touched
-    restore(touched)
-    return repair_plan, False, apply_detail, touched
+    repair_plan = plan
+    for _ in range(MAX_APPLY_REPAIR_ATTEMPTS):
+        repair_plan = repair_anchor_plan(
+            client,
+            instruction,
+            chosen,
+            context,
+            repair_plan,
+            detail,
+        )
+        ok, repair_detail = validate_plan(repair_plan, chosen)
+        if not ok or repair_detail == "no_change":
+            return repair_plan, False, repair_detail, []
+        target = ROOT / chosen
+        old_value = repair_plan["changes"][0]["old"]
+        if target.read_text(encoding="utf-8").count(old_value) != 1:
+            detail = f"anchor_count_{chosen}:{target.read_text(encoding='utf-8').count(old_value)}"
+            continue
+        applied, apply_detail, touched = apply_plan(repair_plan)
+        if applied:
+            return repair_plan, True, apply_detail, touched
+        restore(touched)
+        detail = apply_detail
+    return repair_plan, False, detail, []
 
 
 def build_comment_test_plan(instruction: str, chosen: str) -> dict | None:

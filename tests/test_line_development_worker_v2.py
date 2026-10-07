@@ -270,6 +270,47 @@ def test_apply_plan_with_bounded_anchor_repair_recovers_once(monkeypatch, tmp_pa
     assert target.read_text(encoding="utf-8") == "replacement\n"
 
 
+def test_apply_plan_with_bounded_anchor_repair_retries_non_unique_anchor(monkeypatch, tmp_path):
+    target = tmp_path / "app.py"
+    target.write_text("x\nx\nexact\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    rejected = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "missing", "new": "replacement"}],
+    }
+    ambiguous = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "x", "new": "y"}],
+    }
+    repaired = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "exact", "new": "replacement"}],
+    }
+    calls = []
+
+    client = FakeClient([])
+    def repair(*args):
+        calls.append("repair")
+        return ambiguous if len(calls) == 1 else repaired
+    monkeypatch.setattr(worker, "repair_anchor_plan", repair)
+
+    plan, ok, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+        client,
+        "app.py を最小修正",
+        "app.py",
+        rejected,
+        "x\nx\nexact\n",
+    )
+
+    assert ok
+    assert detail == "applied"
+    assert touched == ["app.py"]
+    assert calls == ["repair", "repair"]
+    assert plan == repaired
+    assert target.read_text(encoding="utf-8") == "x\nx\nreplacement\n"
+
+
 
 def test_apply_plan_requires_unique_anchor(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "ROOT", tmp_path)
