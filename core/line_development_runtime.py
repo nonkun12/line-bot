@@ -367,7 +367,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
 
         addition = (
             "\n\ndef test_routes_jobs_and_market_request_with_market_priority_metadata() -> None:\n"
-            '    decision = route(ManagementRequest("u", "JobsとNYダウの情報を一緒に教えて"))\n'
+            '    decision = route(ManagementRequest("u", "JobsとMarketについて一緒に教えて"))\n'
             '    assert decision.specialist is Specialist.MARKET\n'
             '    assert decision.metadata["matched_specialists"] == ["market", "jobs"]\n'
             '    assert decision.metadata["routing_priority"] == 4\n'
