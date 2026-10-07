@@ -27,6 +27,13 @@ def test_general_does_not_capture_specialist_request() -> None:
     assert decision.confidence == 0.95
 
 
+
+
+def test_routes_jobs_and_market_request_with_market_priority_metadata() -> None:
+    decision = route(ManagementRequest("u", "JobsとNYダウの情報を一緒に教えて"))
+    assert decision.specialist is Specialist.MARKET
+    assert decision.metadata["matched_specialists"] == ["market", "jobs"]
+    assert decision.metadata["routing_priority"] == 4
 def test_preserves_multi_specialist_candidates_and_priority() -> None:
     decision = route(ManagementRequest("u", "音楽を作りながら英語も勉強したい"))
     assert decision.specialist is Specialist.ENGLISH
