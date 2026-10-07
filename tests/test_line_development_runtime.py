@@ -396,3 +396,27 @@ def test_debugger_rejects_llm_mutation_for_deterministic_task(monkeypatch):
 
     assert result.success is False
     assert "must not be mutated by LLM" in result.summary
+
+
+def test_phase_start_deterministic_task_plan_is_syntax_safe(monkeypatch, tmp_path):
+    chosen = "uhip/tests/test_schema_contracts.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    real_file = runtime.worker.ROOT / chosen
+    original = real_file.read_text(encoding="utf-8")
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen,
+        "hand-sign-uhip-contract-phase-start",
+    )
+
+    assert err is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    change = plan["changes"][0]
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert candidate.count("def test_universal_event_accepts_hand_event_with_phase_start():") == 1
+    assert '"phase": "start"' in candidate
