@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Literal
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid5
 
 
 Gesture = Literal[
@@ -119,7 +119,7 @@ def recognize(
     
     event = {
         "schema_version": "0.3",
-        "event_id": str(uuid4()),
+        "event_id": str(uuid5(NAMESPACE_URL, f"uhip:{observation.session_id}:{observation.seq}:{observation.t_mono_ns}")),
         "session_id": observation.session_id,
         "device_id": observation.device_id,
         "seq": observation.seq,
