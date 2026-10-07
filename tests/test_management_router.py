@@ -34,6 +34,10 @@ def test_routes_jobs_and_market_request_with_market_priority_metadata() -> None:
     assert decision.specialist is Specialist.MARKET
     assert decision.metadata["matched_specialists"] == ["market", "jobs"]
     assert decision.metadata["routing_priority"] == 4
+
+
+def test_routes_mixed_case_english_request_for_distributed_loop() -> None:
+    assert route(ManagementRequest("u", "eNgLiShで会話したい")).specialist is Specialist.ENGLISH
 def test_preserves_multi_specialist_candidates_and_priority() -> None:
     decision = route(ManagementRequest("u", "音楽を作りながら英語も勉強したい"))
     assert decision.specialist is Specialist.ENGLISH
