@@ -441,7 +441,7 @@ def test_new_distributed_queue_tasks_have_deterministic_plans(monkeypatch, tmp_p
             "router-regression-jobs-market-metadata",
             "tests/test_management_router.py",
             "def test_preserves_multi_specialist_candidates_and_priority() -> None:\n    pass\n",
-            'decision = route(ManagementRequest("u", "JobsとMarketについて一緒に教えて"))',
+            'decision = route(ManagementRequest("u", "JobsとNYダウの情報を一緒に教えて"))',
             '["market", "jobs"]',
         ),
         (
