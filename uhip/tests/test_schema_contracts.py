@@ -113,7 +113,6 @@ def test_universal_event_accepts_hand_event_with_phase_start():
 
 
 
-
 def test_universal_event_accepts_hand_event_with_left_hand():
     event = {
         "schema_version": "0.3",
@@ -152,6 +151,8 @@ def test_universal_event_accepts_hand_event_with_left_hand():
         "ttl_ms": 500,
     }
     validate(event, EVENT_SCHEMA)
+
+
 def test_universal_event_rejects_application_specific_command():
     event = {
         "schema_version": "0.3",
