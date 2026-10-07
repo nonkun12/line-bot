@@ -38,7 +38,11 @@ jobs:
       github.event_name != 'issue_comment' ||
       (
         github.event.issue.pull_request &&
-        github.event.comment.body == '/distributed-loop' &&
+        (github.event.comment.body == '/distributed-loop' ||
+         github.event.comment.body == '/distributed-loop max_tasks=1' ||
+         github.event.comment.body == '/distributed-loop max_tasks=2' ||
+         github.event.comment.body == '/distributed-loop max_tasks=3' ||
+         github.event.comment.body == '/distributed-loop max_tasks=4') &&
         (
           github.event.comment.author_association == 'OWNER' ||
           github.event.comment.author_association == 'MEMBER' ||
