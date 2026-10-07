@@ -3,24 +3,32 @@
   "max_tasks_per_run": 4,
   "tasks": [
     {
-      "id": "hand-sign-uhip-contract-iphone-camera",
-      "instruction": "uhip/tests/test_schema_contracts.py に、iphone + camera をsourceに持つ hand universal event がUHIP universal-event.schema.jsonの契約を満たすことを検証するテストを1件だけ追加してください。既存のgeneric hand eventとはdevice_kindが異なるケースにしてください。schemaと実装コードは変更禁止、テストのみ、実機カメラ・外部通信・OS操作は禁止、新規テストファイルは禁止。",
-      "allowed_paths": ["uhip/tests/test_schema_contracts.py"]
+      "id": "hand-sign-uhip-contract-phase-start",
+      "instruction": "uhip/tests/test_schema_contracts.py に、hand universal event の payload.phase=start を含むイベントが UHIP universal-event.schema.json の契約を満たすことを検証するテストを1件だけ追加してください。既存の generic hand event の phase=end とは異なるケースにしてください。schemaと実装コードは変更禁止、テストのみ、実機カメラ・外部通信・OS操作は禁止、新規テストファイルは禁止。",
+      "allowed_paths": [
+        "uhip/tests/test_schema_contracts.py"
+      ]
     },
     {
-      "id": "hand-sign-uhip-contract-unknown-hand-label",
-      "instruction": "uhip/tests/test_schema_contracts.py に、hand.label=unknown を含むhand universal eventがUHIP universal-event.schema.jsonの契約を満たすことを検証するテストを1件だけ追加してください。既存テストと重複しないケースにしてください。schemaと実装コードは変更禁止、テストのみ、実機カメラ・外部通信・OS操作は禁止、新規テストファイルは禁止。",
-      "allowed_paths": ["uhip/tests/test_schema_contracts.py"]
+      "id": "hand-sign-uhip-contract-left-hand",
+      "instruction": "uhip/tests/test_schema_contracts.py に、hand.label=left と mirrored=false を含む hand universal event が UHIP universal-event.schema.json の契約を満たすことを検証するテストを1件だけ追加してください。既存の right/mirrored=true ケースとは異なるケースにしてください。schemaと実装コードは変更禁止、テストのみ、実機カメラ・外部通信・OS操作は禁止、新規テストファイルは禁止。",
+      "allowed_paths": [
+        "uhip/tests/test_schema_contracts.py"
+      ]
     },
     {
-      "id": "router-regression-casefold-english",
-      "instruction": "tests/test_management_router.py に、英語キーワードを大文字小文字混在で含む要求（例: 'ENGLISHで会話したい'）がEnglishへ正しく振り分けられる回帰テストを1件追加してください。既存の全角Englishテストとは異なるcasefold検証にしてください。実装コードは変更せず、テストだけを最小変更で追加してください。",
-      "allowed_paths": ["tests/test_management_router.py"]
+      "id": "router-regression-jobs-market-metadata",
+      "instruction": "tests/test_management_router.py に、JobsとMarketの両方のキーワードを含む要求がMarketへ振り分けられ、matched_specialistsとrouting_priorityが現在のdeterministic priorityと一致することを検証する回帰テストを1件だけ追加してください。既存の同一ケースと重複しない別の表現を使ってください。実装コードは変更せず、テストだけを最小変更で追加してください。",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
     },
     {
-      "id": "router-regression-mixed-specialists",
-      "instruction": "tests/test_management_router.py に、JobsとMarketの両方のキーワードを含む要求が現在のdeterministic priorityに従ってMarketへ振り分けられることを検証する回帰テストを1件追加してください。matched_specialistsとrouting_priorityも確認してください。実装コードは変更せず、テストだけを最小変更で追加してください。",
-      "allowed_paths": ["tests/test_management_router.py"]
+      "id": "router-regression-english-casefold",
+      "instruction": "tests/test_management_router.py に、英語キーワードを大文字小文字混在で含む要求がEnglishへ振り分けられる回帰テストを1件だけ追加してください。既存のEnglishテストと異なる入力表現にしてください。実装コードは変更せず、テストだけを最小変更で追加してください。",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
     }
   ]
 }
