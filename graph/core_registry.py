@@ -22,6 +22,7 @@ from agents.jobs.node import agent as job_seeking_agent
 from agents.music.node import agent as music_agent
 from agents.video.node import agent as video_agent
 from agents.obsidian.node import obsidian_agent_node
+from agents.obsidian_organizer.node import obsidian_organizer_agent
 from core.legacy_adapter import build_legacy_registry
 from core.agents import AgentRegistry
 
@@ -61,7 +62,7 @@ LEGACY_GRAPH_NODES: Mapping[str, str] = {
 
 
 def build_core_agent_registry() -> AgentRegistry:
-    """Return the shared Core registry, including the future feature agents."""
+    """Return the shared Core registry, including proposal-only feature agents."""
     registry = build_legacy_registry(
         LEGACY_AGENT_NODES,
         graph_nodes=LEGACY_GRAPH_NODES,
@@ -74,4 +75,5 @@ def build_core_agent_registry() -> AgentRegistry:
     registry.register(job_seeking_agent)
     registry.register(music_agent)
     registry.register(video_agent)
+    registry.register(obsidian_organizer_agent)
     return registry
