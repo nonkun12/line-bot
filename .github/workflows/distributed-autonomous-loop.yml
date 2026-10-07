@@ -206,29 +206,35 @@ jobs:
           git fetch --quiet origin "$state_branch"
           rm -rf /tmp/autonomous-state-worktree
           git worktree add --detach /tmp/autonomous-state-worktree "origin/$state_branch"
-          python - "$task_id" <<'PY'
-          import json, sys
+          python - <<'PY'
+          import json
           from pathlib import Path
-          p = Path('/tmp/autonomous-state-worktree/.autonomous-loop-state.json')
-          if p.exists():
-              data = json.loads(p.read_text(encoding='utf-8'))
+          state_path = Path('/tmp/autonomous-state-worktree/.autonomous-loop-state.json')
+          ids_path = Path('/tmp/autonomous-completed-task-ids.json')
+          if state_path.exists():
+              data = json.loads(state_path.read_text(encoding='utf-8'))
           else:
               data = {"version": 1, "completed": []}
           completed = data.get("completed", [])
           if not isinstance(completed, list):
               raise SystemExit("invalid durable state")
-          task_id = sys.argv[1]
-          if task_id not in completed:
-              completed.append(task_id)
+          task_ids = json.loads(ids_path.read_text(encoding='utf-8'))
+          if not isinstance(task_ids, list) or not task_ids:
+              raise SystemExit("invalid completed task IDs")
+          for task_id in task_ids:
+              if not isinstance(task_id, str) or not task_id:
+                  raise SystemExit("invalid completed task ID")
+              if task_id not in completed:
+                  completed.append(task_id)
           data["completed"] = completed
           data["version"] = 1
-          p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding='utf-8')
+          state_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding='utf-8')
           PY
           git -C /tmp/autonomous-state-worktree config user.name "github-actions[bot]"
           git -C /tmp/autonomous-state-worktree config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git -C /tmp/autonomous-state-worktree add .autonomous-loop-state.json
           if git -C /tmp/autonomous-state-worktree diff --cached --quiet; then
-            echo "State already contains task $task_id"
+            echo "Durable state already contains all completed task IDs."
           else
             git -C /tmp/autonomous-state-worktree commit -m "chore: record autonomous loop completion"
             git -C /tmp/autonomous-state-worktree push "$auth_url" HEAD:refs/heads/$state_branch
