@@ -17,6 +17,10 @@ on:
   # The trigger defaults to four tasks and remains fail-closed.
   issue_comment:
     types: [created]
+  # Reliable fallback trigger for ChatGPT: adding this exact label to a PR.
+  # pull_request_target executes the workflow from the default branch, not PR code.
+  pull_request_target:
+    types: [labeled]
   schedule:
     # Same four daily fire times, expressed as one cron entry.
     # Changing the cron expression also reactivates a deactivated scheduled workflow.
@@ -35,8 +39,10 @@ concurrency:
 jobs:
   minimal-loop:
     if: >-
-      github.event_name != 'issue_comment' ||
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
       (
+        github.event_name == 'issue_comment' &&
         github.event.issue.pull_request &&
         (github.event.comment.body == '/distributed-loop' ||
          github.event.comment.body == '/distributed-loop max_tasks=1' ||
@@ -48,6 +54,13 @@ jobs:
           github.event.comment.author_association == 'MEMBER' ||
           github.event.comment.author_association == 'COLLABORATOR'
         )
+      ) ||
+      (
+        github.event_name == 'pull_request_target' &&
+        github.event.action == 'labeled' &&
+        github.event.label.name == 'distributed-loop-max4' &&
+        github.event.sender.login == 'nonkun12' &&
+        github.event.pull_request.user.login == 'nonkun12'
       )
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -328,7 +341,7 @@ jobs:
           PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
           STATE_OUTCOME: ${{ steps.persist_state.outcome }}
           JOB_STATUS: ${{ job.status }}
-          PR_NUMBER: ${{ github.event.issue.number || '' }}
+          PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event_name == 'pull_request_target' && github.event.pull_request.number || '' }}
         run: |
           set +e
           requested="${MAX_TASKS:-4}"
@@ -377,7 +390,7 @@ jobs:
             fi
           } | tee /tmp/distributed-final-report.txt >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "${GITHUB_EVENT_NAME}" = "issue_comment" ] && [ -n "${PR_NUMBER:-}" ] && command -v gh >/dev/null 2>&1; then
+          if { [ "${GITHUB_EVENT_NAME}" = "issue_comment" ] || [ "${GITHUB_EVENT_NAME}" = "pull_request_target" ]; } && [ -n "${PR_NUMBER:-}" ] && command -v gh >/dev/null 2>&1; then
             gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/distributed-final-report.txt || true
           fi
 
