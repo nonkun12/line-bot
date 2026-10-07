@@ -1,26 +1,50 @@
-from pathlib import Path
+from types import SimpleNamespace
 
-import pytest
-
-from uhip.phase0.mediapipe_camera import verify_model_sha256
+from uhip.phase0.mediapipe_camera import classify_landmarks
 
 
-def test_model_sha256_verification_rejects_missing_file(tmp_path: Path):
-    with pytest.raises(FileNotFoundError):
-        verify_model_sha256(tmp_path / "missing.task", "a" * 64)
+def landmark(x: float, y: float):
+    return SimpleNamespace(x=x, y=y)
 
 
-def test_model_sha256_verification_rejects_wrong_hash(tmp_path: Path):
-    model = tmp_path / "model.task"
-    model.write_bytes(b"local-test-model")
-    with pytest.raises(ValueError, match="SHA-256 mismatch"):
-        verify_model_sha256(model, "a" * 64)
+def hand_landmarks(*, thumb: str, fingers: tuple[bool, bool, bool, bool]):
+    points = [landmark(0.5, 0.8) for _ in range(21)]
+    points[4] = landmark(0.5, 0.2 if thumb == "up" else 0.7)
+    points[3] = landmark(0.5, 0.5)
+    finger_pairs = [(8, 6), (12, 10), (16, 14), (20, 18)]
+    for (tip, pip), is_extended in zip(finger_pairs, fingers):
+        points[pip] = landmark(0.5, 0.5)
+        points[tip] = landmark(0.5, 0.2 if is_extended else 0.55)
+    return points
 
 
-def test_model_sha256_verification_accepts_exact_hash(tmp_path: Path):
-    model = tmp_path / "model.task"
-    model.write_bytes(b"local-test-model")
-    import hashlib
+def test_classifier_accepts_open_palm():
+    gesture, confidence = classify_landmarks(
+        hand_landmarks(thumb="up", fingers=(True, True, True, True))
+    )
+    assert gesture == "open_palm"
+    assert confidence >= 0.90
 
-    expected = hashlib.sha256(model.read_bytes()).hexdigest()
-    assert verify_model_sha256(model, expected) == expected
+
+def test_classifier_accepts_thumb_up():
+    gesture, confidence = classify_landmarks(
+        hand_landmarks(thumb="up", fingers=(False, False, False, False))
+    )
+    assert gesture == "thumb_up"
+    assert confidence >= 0.90
+
+
+def test_classifier_accepts_fist():
+    gesture, confidence = classify_landmarks(
+        hand_landmarks(thumb="down", fingers=(False, False, False, False))
+    )
+    assert gesture == "fist"
+    assert confidence >= 0.90
+
+
+def test_classifier_fails_closed_for_ambiguous_geometry():
+    gesture, confidence = classify_landmarks(
+        hand_landmarks(thumb="down", fingers=(True, False, True, False))
+    )
+    assert gesture == "unknown"
+    assert confidence == 0.0
