@@ -97,7 +97,7 @@ def _draw_preview(
             f"hand_count={classified.hand_count}",
             f"gesture={classified.gesture}",
             f"hand_xy={preview_classifier_position(hand_position)}",
-            f"screen_candidate={screen_candidate(hand_position, width=screen_width, height=screen_height) if hand_position is not None else "unavailable"}",
+            f"screen_candidate={screen_candidate(hand_position, width=screen_width, height=screen_height) if hand_position is not None else 'unavailable'}",
             f"confidence={classified.confidence_calibrated:.2f}",
             f"stable_frames={classified.stable_frames}",
             f"gate={'PASS' if passed else 'FAIL'}:{reason}",
