@@ -67,11 +67,18 @@ def classify_landmarks(landmarks: list[object]) -> tuple[str, float]:
     thumb_ratio = _distance(wrist, landmarks[4]) / max(
         _distance(wrist, landmarks[3]), 1e-9
     )
-    thumb_extended = thumb_ratio > 1.08
     _, thumb_y = _xy(landmarks[4])
     _, wrist_y = _xy(wrist)
     palm = max(_distance(wrist, landmarks[9]), 1e-9)
+    near_index_pip = _distance(landmarks[4], landmarks[6]) / palm
     near_middle_pip = _distance(landmarks[4], landmarks[10]) / palm
+
+    # The wrist-to-tip ratio alone is unreliable for a curled thumb: a thumb
+    # folded across the palm can still have a tip farther from the wrist than
+    # its IP joint. Use its location relative to the palm to distinguish a
+    # curled thumb from a true thumbs-up.
+    thumb_in_palm = near_middle_pip < 0.45 or near_index_pip < 0.50
+    thumb_extended = thumb_ratio > 1.08 and not thumb_in_palm
     thumb_up = (
         thumb_extended
         and thumb_y < wrist_y - 0.03
@@ -82,7 +89,7 @@ def classify_landmarks(landmarks: list[object]) -> tuple[str, float]:
         return "open_palm", 0.96
     if thumb_up and not any(extended):
         return "thumb_up", 0.95
-    if not any(extended) and not thumb_extended:
+    if not any(extended) and thumb_in_palm:
         return "fist", 0.94
     return "unknown", 0.0
 
