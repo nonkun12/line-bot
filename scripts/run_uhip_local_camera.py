@@ -14,6 +14,7 @@ from uhip.phase0 import CameraAdapter
 from uhip.phase0.camera_adapter import CameraFrame, ClassifiedHand
 from uhip.phase0.hand_position import HandPosition, screen_candidate
 from uhip.phase0.mediapipe_camera import MediaPipeHandsClassifier, OpenCVCameraSource, thumb_geometry_features
+from uhip.phase1.click_control import ClickPolicy, SafetyGateClickController
 from uhip.phase1.cursor_control import CursorPolicy, SafetyGateCursorController
 
 
@@ -40,7 +41,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--armed",
         action="store_true",
-        help="Explicitly arm cursor movement. Default is disarmed.",
+        help="Explicitly arm enabled local OS actions. Default is disarmed.",
+    )
+    parser.add_argument(
+        "--click", action="store_true",
+        help="Enable one-shot local left click from a stable thumb-up. Requires --armed.",
     )
     parser.add_argument(
         "--kill-switch-file",
@@ -165,6 +170,7 @@ def main() -> int:
     rejected = 0
     stopped_by_user = False
     cursor_moves = 0
+    click_count = 0
     cursor = SafetyGateCursorController(
         CursorPolicy(
             # The local Phase 0 fist allowlist emits 0.94 confidence; keep the
@@ -178,6 +184,9 @@ def main() -> int:
     if args.cursor and args.armed:
         # Arming is explicit, but actual movement remains gated per frame below.
         cursor.arm(False)
+    clicker = SafetyGateClickController(ClickPolicy(min_confidence=0.95, min_stable_frames=5, kill_switch_file=args.kill_switch_file))
+    if args.click and args.armed:
+        clicker.arm(False)
     try:
         import cv2
 
@@ -189,9 +198,21 @@ def main() -> int:
                     features = preview_classifier.classifier.last_thumb_geometry
                     if features:
                         print(json.dumps({"thumb_geometry": features}, ensure_ascii=False, sort_keys=True))
+                classified = preview_classifier.last_result
+                position = preview_classifier.last_position
+                if args.click:
+                    if classified is not None and classified.gesture == "open_palm":
+                        clicker.stop()
+                    elif classified is not None and classified.gesture == "thumb_up" and args.armed:
+                        if not clicker.armed:
+                            clicker.arm(True)
+                        if clicker.observe_thumb_up(confidence=classified.confidence_calibrated, stable_frames=classified.stable_frames):
+                            click_count += 1
+                    else:
+                        clicker.reset_gesture()
+                        if not args.armed:
+                            clicker.update_gate(False)
                 if args.cursor:
-                    classified = preview_classifier.last_result
-                    position = preview_classifier.last_position
                     # UHIP semantics: open_palm is STOP/CANCEL, never a movement grant.
                     # Fist is the explicit cursor-mode gesture in Phase 1-C; actual movement
                     # still requires the CLI --armed switch plus the Recognition Gate.
@@ -247,9 +268,11 @@ def main() -> int:
                 if key in (ord("q"), 27):
                     stopped_by_user = True
                     cursor.stop()
+                    clicker.stop()
                     break
     finally:
         cursor.stop()
+        clicker.stop()
         classifier.close()
         if args.preview:
             try:
@@ -267,8 +290,9 @@ def main() -> int:
                     "rejected": rejected,
                     "max_frames": args.max_frames,
                     "network": False,
-                    "os_actions": cursor_moves > 0,
+                    "os_actions": cursor_moves > 0 or click_count > 0,
                     "cursor_moves": cursor_moves,
+                    "clicks": click_count,
                     "preview": args.preview,
                     "stopped_by_user": stopped_by_user,
                 }
