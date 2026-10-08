@@ -96,7 +96,7 @@ def classify_landmarks(landmarks: list[object]) -> tuple[str, float]:
         return "thumb_up", 0.95
     if index_pointing:
         return "index_point", 0.94
-    if not any(extended) and thumb_in_palm:
+    if not any(extended) and (thumb_in_palm or thumb_ratio < 0.8):
         return "fist", 0.94
     return "unknown", 0.0
 
