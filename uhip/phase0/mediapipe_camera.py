@@ -180,7 +180,11 @@ class MediaPipeHandsClassifier:
             )
 
         if gesture == "unknown":
-            self._reset_stability()
+            # Preserve the just-measured landmarks geometry for diagnostics.
+            # Classification remains fail-closed; this does not grant an event.
+            self._last_key = None
+            self._stable_frames = 0
+            self._stable_since_ns = None
             return ClassifiedHand(
                 gesture="unknown",
                 confidence_raw=0.0,
