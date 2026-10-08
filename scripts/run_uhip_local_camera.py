@@ -159,6 +159,7 @@ def main() -> int:
     accepted = 0
     rejected = 0
     stopped_by_user = False
+    cursor_moves = 0
     cursor = SafetyGateCursorController(
         CursorPolicy(
             screen_width=args.screen_width,
@@ -189,7 +190,8 @@ def main() -> int:
                     if args.armed and gate_ok:
                         if not cursor.armed:
                             cursor.arm(True)
-                        cursor.move(position)
+                        if cursor.move(position):
+                            cursor_moves += 1
                     else:
                         cursor.update_gate(False)
             else:
@@ -239,8 +241,8 @@ def main() -> int:
                     "rejected": rejected,
                     "max_frames": args.max_frames,
                     "network": False,
-                    "os_actions": bool(args.cursor and args.armed),
-                    "cursor_armed": bool(cursor.armed),
+                    "os_actions": cursor_moves > 0,
+                    "cursor_moves": cursor_moves,
                     "preview": args.preview,
                     "stopped_by_user": stopped_by_user,
                 }
