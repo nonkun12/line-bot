@@ -215,13 +215,21 @@ def main() -> int:
             else:
                 rejected += 1
                 cursor.stop()
-                print(
-                    json.dumps(
-                        {"accepted": False, "reason": result.reason},
-                        ensure_ascii=False,
-                        sort_keys=True,
-                    )
-                )
+                rejected_payload = {"accepted": False, "reason": result.reason}
+                if args.debug_thumb_geometry and preview_classifier.last_result is not None:
+                    classified = preview_classifier.last_result
+                    rejected_payload["classifier"] = {
+                        "gesture": classified.gesture,
+                        "confidence_raw": classified.confidence_raw,
+                        "confidence_calibrated": classified.confidence_calibrated,
+                        "stable_frames": classified.stable_frames,
+                        "hand_count": classified.hand_count,
+                        "hand_label": classified.hand_label,
+                    }
+                    features = preview_classifier.classifier.last_thumb_geometry
+                    if features:
+                        rejected_payload["thumb_geometry"] = features
+                print(json.dumps(rejected_payload, ensure_ascii=False, sort_keys=True))
 
             if args.preview and source.last_frame is not None:
                 _draw_preview(
