@@ -11,11 +11,12 @@ Gesture = Literal[
     "swipe_right",
     "open_palm",
     "fist",
+    "index_point",
     "pinch",
 ]
 
 _ALLOWED_GESTURES = frozenset(
-    {"thumb_up", "swipe_left", "swipe_right", "open_palm", "fist", "pinch"}
+    {"thumb_up", "swipe_left", "swipe_right", "open_palm", "fist", "index_point", "pinch"}
 )
 _INTERNAL_GESTURES = _ALLOWED_GESTURES | {"unknown"}
 
