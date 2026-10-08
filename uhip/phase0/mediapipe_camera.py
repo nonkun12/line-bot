@@ -84,11 +84,18 @@ def classify_landmarks(landmarks: list[object]) -> tuple[str, float]:
         and thumb_y < wrist_y - 0.03
         and near_middle_pip > 0.5
     )
+    index_pointing = (
+        extended[0]
+        and not any(extended[1:])
+        and thumb_in_palm
+    )
 
     if all(extended) and thumb_extended:
         return "open_palm", 0.96
     if thumb_up and not any(extended):
         return "thumb_up", 0.95
+    if index_pointing:
+        return "index_point", 0.94
     if not any(extended) and thumb_in_palm:
         return "fist", 0.94
     return "unknown", 0.0
