@@ -17,6 +17,39 @@ def _distance(a: object, b: object) -> float:
     return hypot(ax - bx, ay - by)
 
 
+def thumb_geometry_features(landmarks: list[object]) -> dict[str, float]:
+    """Return numeric-only thumb geometry diagnostics without changing classification."""
+    if len(landmarks) != 21:
+        return {}
+
+    wrist = landmarks[0]
+    tip = landmarks[4]
+    ip = landmarks[3]
+    index_mcp = landmarks[5]
+    index_pip = landmarks[6]
+    middle_pip = landmarks[10]
+    palm = max(_distance(wrist, landmarks[9]), 1e-9)
+    tip_ip = _distance(tip, ip)
+    ip_mcp = _distance(ip, landmarks[2])
+
+    v1x, v1y = _xy(landmarks[2])[0] - _xy(ip)[0], _xy(landmarks[2])[1] - _xy(ip)[1]
+    v2x, v2y = _xy(tip)[0] - _xy(ip)[0], _xy(tip)[1] - _xy(ip)[1]
+    denom = max((v1x * v1x + v1y * v1y) ** 0.5 * (v2x * v2x + v2y * v2y) ** 0.5, 1e-9)
+    ip_angle_cos = (v1x * v2x + v1y * v2y) / denom
+
+    return {
+        "palm": palm,
+        "near_index_mcp": _distance(tip, index_mcp) / palm,
+        "near_index_pip": _distance(tip, index_pip) / palm,
+        "near_middle_pip": _distance(tip, middle_pip) / palm,
+        "reach": _distance(tip, index_mcp) / palm,
+        "tip_ip": tip_ip / palm,
+        "ip_mcp": ip_mcp / palm,
+        "ip_angle_cos": ip_angle_cos,
+        "tip_y_minus_wrist_y": _xy(tip)[1] - _xy(wrist)[1],
+        "thumb_ratio": _distance(wrist, tip) / max(_distance(wrist, ip), 1e-9),
+    }
+
 def classify_landmarks(landmarks: list[object]) -> tuple[str, float]:
     """Conservative local geometry classifier for the Phase 0 allowlist."""
     if len(landmarks) != 21:
