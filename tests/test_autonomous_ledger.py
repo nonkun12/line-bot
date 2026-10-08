@@ -98,7 +98,7 @@ def test_append_once_accepts_google_table_location_shift():
     record = make_record()
     client = FakeClient(readback=[record.values()])
     assert ledger.append_once(client, record) is True
-    assert client.appended[0][0] == f"'{SHEET}'!A1:ZZ1000"
+    assert client.appended[0][0] == f"'{SHEET}'!AE:AU"
     assert f"'{SHEET}'!A1:ZZ1000" in client.read_ranges
     assert f"{SHEET}!AE185:AU185" in client.read_ranges
     assert client.sheet_title_calls == 1
@@ -108,7 +108,7 @@ def test_append_once_resolves_unique_normalized_tab_name_once():
     record = make_record()
     client = FakeClient(readback=[record.values()], titles=["Other", "Autonomous Development"], response={"updates": {"updatedRows": 1, "updatedRange": "'Autonomous Development'!AE185:AU185"}})
     assert ledger.append_once(client, record) is True
-    assert client.appended[0][0] == "'Autonomous Development'!A1:ZZ1000"
+    assert client.appended[0][0] == "'Autonomous Development'!AE:AU"
     assert client.sheet_title_calls == 1
 
 

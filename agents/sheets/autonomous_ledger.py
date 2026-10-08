@@ -93,25 +93,47 @@ def _normalized_row(row: list) -> list[str]:
     return values + [""] * (len(HEADERS) - len(values))
 
 
-def _headers_exist(client: GoogleSheetsClient, sheet: str) -> bool:
+def _column_name(column_number: int) -> str:
+    if column_number < 1:
+        raise ValueError("column_number must be >= 1")
+    result = ""
+    while column_number:
+        column_number, remainder = divmod(column_number - 1, 26)
+        result = chr(ord("A") + remainder) + result
+    return result
+
+
+def _header_start_columns(client: GoogleSheetsClient, sheet: str) -> list[int]:
+    """Find the exact contiguous header sequence and return 1-based start columns."""
     width = len(HEADERS)
+    starts: list[int] = []
     for row in client.read_rows(_sheet_scan_range(sheet)):
         if not isinstance(row, list) or len(row) < width:
             continue
         for start in range(0, len(row) - width + 1):
             if row[start:start + width] == HEADERS:
-                return True
-    return False
+                starts.append(start + 1)
+    return starts
 
 
 def ensure_headers(client: GoogleSheetsClient, sheet: str) -> str:
-    """Require the pre-existing ledger; never create/overwrite a new table implicitly."""
-    if not _headers_exist(client, sheet):
+    """Return the ledger's actual column span without implicitly creating a table."""
+    starts = _header_start_columns(client, sheet)
+    if not starts:
         raise RuntimeError(
             f"Google Sheets ledger headers not found on {sheet!r}; "
             "refusing to create or overwrite a table implicitly"
         )
-    return _sheet_scan_range(sheet)
+    if len(starts) != 1:
+        raise RuntimeError(
+            f"Ambiguous Google Sheets ledger headers on {sheet!r}: start columns={starts!r}"
+        )
+    start = starts[0]
+    end = start + len(HEADERS) - 1
+    escaped = sheet.replace("'", "''")
+    # Append only within the columns occupied by the header sequence. Using A:ZZ
+    # shifts records left whenever the existing ledger starts in a later column.
+    return f"'{escaped}'!{_column_name(start)}:{_column_name(end)}"
 
 
 def _column_to_number(column: str) -> int:
