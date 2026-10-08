@@ -162,6 +162,9 @@ def main() -> int:
     cursor_moves = 0
     cursor = SafetyGateCursorController(
         CursorPolicy(
+            # The local Phase 0 fist allowlist emits 0.94 confidence; keep the
+            # cursor gate aligned with that explicit classifier floor.
+            min_confidence=0.94,
             screen_width=args.screen_width,
             screen_height=args.screen_height,
             kill_switch_file=args.kill_switch_file,
