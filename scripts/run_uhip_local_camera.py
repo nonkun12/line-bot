@@ -180,14 +180,20 @@ def main() -> int:
                 if args.cursor:
                     classified = preview_classifier.last_result
                     position = preview_classifier.last_position
+                    # UHIP semantics: open_palm is STOP/CANCEL, never a movement grant.
+                    # Fist is the explicit cursor-mode gesture in Phase 1-C; actual movement
+                    # still requires the CLI --armed switch plus the Recognition Gate.
+                    stop_gesture = classified is not None and classified.gesture == "open_palm"
                     gate_ok = (
                         classified is not None
-                        and classified.gesture == "open_palm"
+                        and classified.gesture == "fist"
                         and classified.confidence_calibrated >= cursor.policy.min_confidence
                         and classified.stable_frames >= cursor.policy.min_stable_frames
                         and position is not None
                     )
-                    if args.armed and gate_ok:
+                    if stop_gesture:
+                        cursor.stop()
+                    elif args.armed and gate_ok:
                         if not cursor.armed:
                             cursor.arm(True)
                         if cursor.move(position):
