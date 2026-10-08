@@ -14,6 +14,7 @@ from uhip.phase0 import CameraAdapter
 from uhip.phase0.camera_adapter import CameraFrame, ClassifiedHand
 from uhip.phase0.hand_position import HandPosition, screen_candidate
 from uhip.phase0.mediapipe_camera import MediaPipeHandsClassifier, OpenCVCameraSource
+from uhip.phase1.cursor_control import CursorPolicy, SafetyGateCursorController
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,6 +32,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--screen-width", type=int, default=1920)
     parser.add_argument("--screen-height", type=int, default=1080)
     parser.add_argument("--session-id", default=f"camera-{secrets.token_hex(6)}")
+    parser.add_argument(
+        "--cursor",
+        action="store_true",
+        help="Enable the Phase 1-C cursor adapter. Movement still requires --armed and a passing gate.",
+    )
+    parser.add_argument(
+        "--armed",
+        action="store_true",
+        help="Explicitly arm cursor movement. Default is disarmed.",
+    )
+    parser.add_argument(
+        "--kill-switch-file",
+        default=None,
+        help="If this local file exists, cursor movement stops immediately.",
+    )
     parser.add_argument(
         "--preview",
         action="store_true",
@@ -143,6 +159,16 @@ def main() -> int:
     accepted = 0
     rejected = 0
     stopped_by_user = False
+    cursor = SafetyGateCursorController(
+        CursorPolicy(
+            screen_width=args.screen_width,
+            screen_height=args.screen_height,
+            kill_switch_file=args.kill_switch_file,
+        )
+    )
+    if args.cursor and args.armed:
+        # Arming is explicit, but actual movement remains gated per frame below.
+        cursor.arm(False)
     try:
         import cv2
 
@@ -150,8 +176,25 @@ def main() -> int:
             if result.passed:
                 accepted += 1
                 print(json.dumps(result.event, ensure_ascii=False, sort_keys=True))
+                if args.cursor:
+                    classified = preview_classifier.last_result
+                    position = preview_classifier.last_position
+                    gate_ok = (
+                        classified is not None
+                        and classified.gesture == "open_palm"
+                        and classified.confidence_calibrated >= cursor.policy.min_confidence
+                        and classified.stable_frames >= cursor.policy.min_stable_frames
+                        and position is not None
+                    )
+                    if args.armed and gate_ok:
+                        if not cursor.armed:
+                            cursor.arm(True)
+                        cursor.move(position)
+                    else:
+                        cursor.update_gate(False)
             else:
                 rejected += 1
+                cursor.stop()
                 print(
                     json.dumps(
                         {"accepted": False, "reason": result.reason},
@@ -175,8 +218,10 @@ def main() -> int:
                 key = cv2.waitKey(1) & 0xFF
                 if key in (ord("q"), 27):
                     stopped_by_user = True
+                    cursor.stop()
                     break
     finally:
+        cursor.stop()
         classifier.close()
         if args.preview:
             try:
@@ -194,7 +239,8 @@ def main() -> int:
                     "rejected": rejected,
                     "max_frames": args.max_frames,
                     "network": False,
-                    "os_actions": False,
+                    "os_actions": bool(args.cursor and args.armed),
+                    "cursor_armed": bool(cursor.armed),
                     "preview": args.preview,
                     "stopped_by_user": stopped_by_user,
                 }
