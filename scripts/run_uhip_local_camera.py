@@ -236,6 +236,7 @@ def main() -> int:
             else:
                 rejected += 1
                 cursor.stop()
+                clicker.stop()
                 rejected_payload = {"accepted": False, "reason": result.reason}
                 if args.debug_thumb_geometry and preview_classifier.last_result is not None:
                     classified = preview_classifier.last_result
