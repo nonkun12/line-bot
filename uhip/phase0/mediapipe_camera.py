@@ -92,6 +92,7 @@ class MediaPipeHandsClassifier:
     _stable_frames: int = field(default=0, init=False, repr=False)
     _stable_since_ns: int | None = field(default=None, init=False, repr=False)
     last_position: HandPosition | None = field(default=None, init=False)
+    last_thumb_geometry: dict[str, float] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.min_detection_confidence <= 1.0:
@@ -121,6 +122,7 @@ class MediaPipeHandsClassifier:
         if self._hands is None:
             raise RuntimeError("MediaPipe Hands classifier is closed")
         self.last_position = None
+        self.last_thumb_geometry = {}
         if frame.data is None:
             self._reset_stability()
             return self._unknown()
@@ -152,6 +154,7 @@ class MediaPipeHandsClassifier:
             handedness = {"Left": "right", "Right": "left"}.get(label, "unknown")
 
         landmarks = list(detected[0].landmark)
+        self.last_thumb_geometry = thumb_geometry_features(landmarks)
         self.last_position = normalized_palm_position(landmarks)
         gesture, confidence = classify_landmarks(landmarks)
 
@@ -210,6 +213,7 @@ class MediaPipeHandsClassifier:
 
     def _reset_stability(self) -> None:
         self.last_position = None
+        self.last_thumb_geometry = {}
         self._last_key = None
         self._stable_frames = 0
         self._stable_since_ns = None
