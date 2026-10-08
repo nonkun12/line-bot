@@ -218,24 +218,38 @@ def main() -> int:
                         clicker.reset_gesture()
                         if not args.armed:
                             clicker.update_gate(False)
-                if args.cursor:
-                    # UHIP semantics: open_palm is STOP/CANCEL, never a movement grant.
-                    # Fist is the explicit cursor-mode gesture in Phase 1-C; actual movement
-                    # still requires the CLI --armed switch plus the Recognition Gate.
+                if args.cursor or args.point:
+                    # open_palm is STOP/CANCEL. Fist uses palm center; index-point uses fingertip.
                     stop_gesture = classified is not None and classified.gesture == "open_palm"
-                    gate_ok = (
-                        classified is not None
+                    cursor_gesture_ok = (
+                        args.cursor
+                        and classified is not None
                         and classified.gesture == "fist"
+                        and position is not None
+                    )
+                    point_gesture_ok = (
+                        args.point
+                        and classified is not None
+                        and classified.gesture == "index_point"
+                        and preview_classifier.last_index_tip_position is not None
+                    )
+                    target_position = (
+                        position if cursor_gesture_ok
+                        else preview_classifier.last_index_tip_position if point_gesture_ok
+                        else None
+                    )
+                    gate_ok = (
+                        (cursor_gesture_ok or point_gesture_ok)
                         and classified.confidence_calibrated >= cursor.policy.min_confidence
                         and classified.stable_frames >= cursor.policy.min_stable_frames
-                        and position is not None
+                        and target_position is not None
                     )
                     if stop_gesture:
                         cursor.stop()
                     elif args.armed and gate_ok:
                         if not cursor.armed:
                             cursor.arm(True)
-                        if cursor.move(position):
+                        if cursor.move(target_position):
                             cursor_moves += 1
                     else:
                         cursor.update_gate(False)
