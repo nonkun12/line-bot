@@ -422,8 +422,10 @@ jobs:
           set -euo pipefail
           # Free Render instances may need time to wake after inactivity.
           # Retry only the harmless health check; do not repeat the task or push request.
-          curl --fail-with-body --silent --show-error --retry 2 --retry-delay 3 --retry-all-errors --max-time 30 \
-            "https://line-bot-yvea.onrender.com/health"
+          if ! curl --fail-with-body --silent --show-error --retry 2 --retry-delay 3 --retry-all-errors --max-time 30 \
+            "https://line-bot-yvea.onrender.com/health"; then
+            echo "::warning::Render health warm-up failed; continuing to the single LINE push attempt."
+          fi
       - name: Notify LINE of distributed loop final report
         if: always()
         env:
