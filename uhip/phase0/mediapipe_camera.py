@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from math import hypot
 
 from .camera_adapter import CameraFrame, ClassifiedHand
+from .hand_position import HandPosition, normalized_palm_position
 
 
 def _xy(landmark: object) -> tuple[float, float]:
@@ -57,6 +58,7 @@ class MediaPipeHandsClassifier:
     _last_key: tuple[str, str] | None = field(default=None, init=False, repr=False)
     _stable_frames: int = field(default=0, init=False, repr=False)
     _stable_since_ns: int | None = field(default=None, init=False, repr=False)
+    last_position: HandPosition | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.min_detection_confidence <= 1.0:
@@ -85,6 +87,7 @@ class MediaPipeHandsClassifier:
     def classify(self, frame: CameraFrame) -> ClassifiedHand:
         if self._hands is None:
             raise RuntimeError("MediaPipe Hands classifier is closed")
+        self.last_position = None
         if frame.data is None:
             self._reset_stability()
             return self._unknown()
@@ -115,7 +118,9 @@ class MediaPipeHandsClassifier:
             label = result.multi_handedness[0].classification[0].label
             handedness = {"Left": "right", "Right": "left"}.get(label, "unknown")
 
-        gesture, confidence = classify_landmarks(list(detected[0].landmark))
+        landmarks = list(detected[0].landmark)
+        self.last_position = normalized_palm_position(landmarks)
+        gesture, confidence = classify_landmarks(landmarks)
 
         if hand_count != 1:
             self._reset_stability()
@@ -171,6 +176,7 @@ class MediaPipeHandsClassifier:
         )
 
     def _reset_stability(self) -> None:
+        self.last_position = None
         self._last_key = None
         self._stable_frames = 0
         self._stable_since_ns = None
