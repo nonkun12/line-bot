@@ -245,7 +245,7 @@ jobs:
         env:
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
-          
+          AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE || 'AutonomousDevelopment!A:ZZ' }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_SHA: ${{ github.sha }}
           DEV_INSTRUCTION: Distributed autonomous loop scheduled task
@@ -267,6 +267,7 @@ jobs:
           export AUTONOMOUS_SOURCE="distributed-loop"
           export AUTONOMOUS_AGENT="DistributedAutonomousLoop"
           export AUTONOMOUS_PR_URL=""
+          echo "Google Sheets ledger target: ${AUTONOMOUS_DEV_LEDGER_RANGE}"
           python - <<'PY'
           import json
           import os
