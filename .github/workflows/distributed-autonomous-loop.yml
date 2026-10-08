@@ -268,6 +268,27 @@ jobs:
           export AUTONOMOUS_AGENT="DistributedAutonomousLoop"
           export AUTONOMOUS_PR_URL=""
           echo "Google Sheets ledger target: ${AUTONOMOUS_DEV_LEDGER_RANGE}"
+          # Read-only preflight: expose the configured spreadsheet title and ledger tab
+          # so a successful write cannot silently land in an unexpected spreadsheet.
+          python - <<'PY'
+          import os
+          from agents.sheets.client import GoogleSheetsClient
+
+          client = GoogleSheetsClient()
+          spreadsheet = client.service.spreadsheets().get(
+              spreadsheetId=client.spreadsheet_id,
+              fields="properties.title,sheets.properties.title"
+          ).execute()
+          title = spreadsheet.get("properties", {}).get("title", "Unknown")
+          sheet_names = [s.get("properties", {}).get("title", "") for s in spreadsheet.get("sheets", [])]
+          target = os.environ.get("AUTONOMOUS_DEV_LEDGER_RANGE", "AutonomousDevelopment!A:ZZ")
+          tab = target.split("!", 1)[0] if "!" in target else target
+          print(f"Google Sheets spreadsheet title: {title}")
+          print(f"Google Sheets available tabs: {', '.join(x for x in sheet_names if x)}")
+          print(f"Google Sheets target tab: {tab}")
+          if tab not in sheet_names:
+              raise SystemExit(f"target tab not found: {tab}")
+          PY
           python - <<'PY'
           import json
           import os
