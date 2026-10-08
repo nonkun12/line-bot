@@ -41,7 +41,7 @@ def test_append_once_accepts_existing_table_location():
     item = record()
     client = FakeClient(readback=[item.values()])
     assert ledger.append_once(client, item) is True
-    assert client.appended[0][0] == "'AutonomousDevelopment'!A1:ZZ1000"
+    assert client.appended[0][0] == "'AutonomousDevelopment'!AE:AU"
     assert "'AutonomousDevelopment'!A1:ZZ1000" in client.read_ranges
 
 def test_append_once_is_idempotent_for_matching_full_row():
