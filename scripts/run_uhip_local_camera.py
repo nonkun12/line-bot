@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 from uhip.phase0 import CameraAdapter
 from uhip.phase0.camera_adapter import CameraFrame, ClassifiedHand
 from uhip.phase0.hand_position import HandPosition, screen_candidate
-from uhip.phase0.mediapipe_camera import MediaPipeHandsClassifier, OpenCVCameraSource
+from uhip.phase0.mediapipe_camera import MediaPipeHandsClassifier, OpenCVCameraSource, thumb_geometry_features
 from uhip.phase1.cursor_control import CursorPolicy, SafetyGateCursorController
 
 
@@ -46,6 +46,11 @@ def parse_args() -> argparse.Namespace:
         "--kill-switch-file",
         default=None,
         help="If this local file exists, cursor movement stops immediately.",
+    )
+    parser.add_argument(
+        "--debug-thumb-geometry",
+        action="store_true",
+        help="Print numeric-only thumb geometry diagnostics; classification and cursor gating are unchanged.",
     )
     parser.add_argument(
         "--preview",
@@ -180,6 +185,10 @@ def main() -> int:
             if result.passed:
                 accepted += 1
                 print(json.dumps(result.event, ensure_ascii=False, sort_keys=True))
+                if args.debug_thumb_geometry and preview_classifier.last_result is not None:
+                    features = thumb_geometry_features(preview_classifier.classifier._last_landmarks) if getattr(preview_classifier.classifier, "_last_landmarks", None) is not None else {}
+                    if features:
+                        print(json.dumps({"thumb_geometry": features}, ensure_ascii=False, sort_keys=True))
                 if args.cursor:
                     classified = preview_classifier.last_result
                     position = preview_classifier.last_position
