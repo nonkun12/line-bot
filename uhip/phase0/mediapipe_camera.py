@@ -17,6 +17,39 @@ def _distance(a: object, b: object) -> float:
     return hypot(ax - bx, ay - by)
 
 
+def thumb_geometry_features(landmarks: list[object]) -> dict[str, float]:
+    """Return numeric-only thumb geometry diagnostics without changing classification."""
+    if len(landmarks) != 21:
+        return {}
+
+    wrist = landmarks[0]
+    tip = landmarks[4]
+    ip = landmarks[3]
+    index_mcp = landmarks[5]
+    index_pip = landmarks[6]
+    middle_pip = landmarks[10]
+    palm = max(_distance(wrist, landmarks[9]), 1e-9)
+    tip_ip = _distance(tip, ip)
+    ip_mcp = _distance(ip, landmarks[2])
+
+    v1x, v1y = _xy(landmarks[2])[0] - _xy(ip)[0], _xy(landmarks[2])[1] - _xy(ip)[1]
+    v2x, v2y = _xy(tip)[0] - _xy(ip)[0], _xy(tip)[1] - _xy(ip)[1]
+    denom = max((v1x * v1x + v1y * v1y) ** 0.5 * (v2x * v2x + v2y * v2y) ** 0.5, 1e-9)
+    ip_angle_cos = (v1x * v2x + v1y * v2y) / denom
+
+    return {
+        "palm": palm,
+        "near_index_mcp": _distance(tip, index_mcp) / palm,
+        "near_index_pip": _distance(tip, index_pip) / palm,
+        "near_middle_pip": _distance(tip, middle_pip) / palm,
+        "reach": _distance(tip, index_mcp) / palm,
+        "tip_ip": tip_ip / palm,
+        "ip_mcp": ip_mcp / palm,
+        "ip_angle_cos": ip_angle_cos,
+        "tip_y_minus_wrist_y": _xy(tip)[1] - _xy(wrist)[1],
+        "thumb_ratio": _distance(wrist, tip) / max(_distance(wrist, ip), 1e-9),
+    }
+
 def classify_landmarks(landmarks: list[object]) -> tuple[str, float]:
     """Conservative local geometry classifier for the Phase 0 allowlist."""
     if len(landmarks) != 21:
@@ -37,7 +70,13 @@ def classify_landmarks(landmarks: list[object]) -> tuple[str, float]:
     thumb_extended = thumb_ratio > 1.08
     _, thumb_y = _xy(landmarks[4])
     _, wrist_y = _xy(wrist)
-    thumb_up = thumb_extended and thumb_y < wrist_y - 0.03
+    palm = max(_distance(wrist, landmarks[9]), 1e-9)
+    near_middle_pip = _distance(landmarks[4], landmarks[10]) / palm
+    thumb_up = (
+        thumb_extended
+        and thumb_y < wrist_y - 0.03
+        and near_middle_pip > 0.5
+    )
 
     if all(extended) and thumb_extended:
         return "open_palm", 0.96
@@ -59,6 +98,7 @@ class MediaPipeHandsClassifier:
     _stable_frames: int = field(default=0, init=False, repr=False)
     _stable_since_ns: int | None = field(default=None, init=False, repr=False)
     last_position: HandPosition | None = field(default=None, init=False)
+    last_thumb_geometry: dict[str, float] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.min_detection_confidence <= 1.0:
@@ -88,6 +128,7 @@ class MediaPipeHandsClassifier:
         if self._hands is None:
             raise RuntimeError("MediaPipe Hands classifier is closed")
         self.last_position = None
+        self.last_thumb_geometry = {}
         if frame.data is None:
             self._reset_stability()
             return self._unknown()
@@ -119,6 +160,7 @@ class MediaPipeHandsClassifier:
             handedness = {"Left": "right", "Right": "left"}.get(label, "unknown")
 
         landmarks = list(detected[0].landmark)
+        self.last_thumb_geometry = thumb_geometry_features(landmarks)
         self.last_position = normalized_palm_position(landmarks)
         gesture, confidence = classify_landmarks(landmarks)
 
@@ -138,7 +180,11 @@ class MediaPipeHandsClassifier:
             )
 
         if gesture == "unknown":
-            self._reset_stability()
+            # Preserve the just-measured landmarks geometry for diagnostics.
+            # Classification remains fail-closed; this does not grant an event.
+            self._last_key = None
+            self._stable_frames = 0
+            self._stable_since_ns = None
             return ClassifiedHand(
                 gesture="unknown",
                 confidence_raw=0.0,
@@ -177,6 +223,7 @@ class MediaPipeHandsClassifier:
 
     def _reset_stability(self) -> None:
         self.last_position = None
+        self.last_thumb_geometry = {}
         self._last_key = None
         self._stable_frames = 0
         self._stable_since_ns = None

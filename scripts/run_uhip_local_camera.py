@@ -13,7 +13,8 @@ sys.path.insert(0, str(ROOT))
 from uhip.phase0 import CameraAdapter
 from uhip.phase0.camera_adapter import CameraFrame, ClassifiedHand
 from uhip.phase0.hand_position import HandPosition, screen_candidate
-from uhip.phase0.mediapipe_camera import MediaPipeHandsClassifier, OpenCVCameraSource
+from uhip.phase0.mediapipe_camera import MediaPipeHandsClassifier, OpenCVCameraSource, thumb_geometry_features
+from uhip.phase1.cursor_control import CursorPolicy, SafetyGateCursorController
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,6 +32,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--screen-width", type=int, default=1920)
     parser.add_argument("--screen-height", type=int, default=1080)
     parser.add_argument("--session-id", default=f"camera-{secrets.token_hex(6)}")
+    parser.add_argument(
+        "--cursor",
+        action="store_true",
+        help="Enable the Phase 1-C cursor adapter. Movement still requires --armed and a passing gate.",
+    )
+    parser.add_argument(
+        "--armed",
+        action="store_true",
+        help="Explicitly arm cursor movement. Default is disarmed.",
+    )
+    parser.add_argument(
+        "--kill-switch-file",
+        default=None,
+        help="If this local file exists, cursor movement stops immediately.",
+    )
+    parser.add_argument(
+        "--debug-thumb-geometry",
+        action="store_true",
+        help="Print numeric-only thumb geometry diagnostics; classification and cursor gating are unchanged.",
+    )
     parser.add_argument(
         "--preview",
         action="store_true",
@@ -143,6 +164,20 @@ def main() -> int:
     accepted = 0
     rejected = 0
     stopped_by_user = False
+    cursor_moves = 0
+    cursor = SafetyGateCursorController(
+        CursorPolicy(
+            # The local Phase 0 fist allowlist emits 0.94 confidence; keep the
+            # cursor gate aligned with that explicit classifier floor.
+            min_confidence=0.94,
+            screen_width=args.screen_width,
+            screen_height=args.screen_height,
+            kill_switch_file=args.kill_switch_file,
+        )
+    )
+    if args.cursor and args.armed:
+        # Arming is explicit, but actual movement remains gated per frame below.
+        cursor.arm(False)
     try:
         import cv2
 
@@ -150,15 +185,51 @@ def main() -> int:
             if result.passed:
                 accepted += 1
                 print(json.dumps(result.event, ensure_ascii=False, sort_keys=True))
+                if args.debug_thumb_geometry and preview_classifier.last_result is not None:
+                    features = preview_classifier.classifier.last_thumb_geometry
+                    if features:
+                        print(json.dumps({"thumb_geometry": features}, ensure_ascii=False, sort_keys=True))
+                if args.cursor:
+                    classified = preview_classifier.last_result
+                    position = preview_classifier.last_position
+                    # UHIP semantics: open_palm is STOP/CANCEL, never a movement grant.
+                    # Fist is the explicit cursor-mode gesture in Phase 1-C; actual movement
+                    # still requires the CLI --armed switch plus the Recognition Gate.
+                    stop_gesture = classified is not None and classified.gesture == "open_palm"
+                    gate_ok = (
+                        classified is not None
+                        and classified.gesture == "fist"
+                        and classified.confidence_calibrated >= cursor.policy.min_confidence
+                        and classified.stable_frames >= cursor.policy.min_stable_frames
+                        and position is not None
+                    )
+                    if stop_gesture:
+                        cursor.stop()
+                    elif args.armed and gate_ok:
+                        if not cursor.armed:
+                            cursor.arm(True)
+                        if cursor.move(position):
+                            cursor_moves += 1
+                    else:
+                        cursor.update_gate(False)
             else:
                 rejected += 1
-                print(
-                    json.dumps(
-                        {"accepted": False, "reason": result.reason},
-                        ensure_ascii=False,
-                        sort_keys=True,
-                    )
-                )
+                cursor.stop()
+                rejected_payload = {"accepted": False, "reason": result.reason}
+                if args.debug_thumb_geometry and preview_classifier.last_result is not None:
+                    classified = preview_classifier.last_result
+                    rejected_payload["classifier"] = {
+                        "gesture": classified.gesture,
+                        "confidence_raw": classified.confidence_raw,
+                        "confidence_calibrated": classified.confidence_calibrated,
+                        "stable_frames": classified.stable_frames,
+                        "hand_count": classified.hand_count,
+                        "hand_label": classified.hand_label,
+                    }
+                    features = preview_classifier.classifier.last_thumb_geometry
+                    if features:
+                        rejected_payload["thumb_geometry"] = features
+                print(json.dumps(rejected_payload, ensure_ascii=False, sort_keys=True))
 
             if args.preview and source.last_frame is not None:
                 _draw_preview(
@@ -175,8 +246,10 @@ def main() -> int:
                 key = cv2.waitKey(1) & 0xFF
                 if key in (ord("q"), 27):
                     stopped_by_user = True
+                    cursor.stop()
                     break
     finally:
+        cursor.stop()
         classifier.close()
         if args.preview:
             try:
@@ -194,7 +267,8 @@ def main() -> int:
                     "rejected": rejected,
                     "max_frames": args.max_frames,
                     "network": False,
-                    "os_actions": False,
+                    "os_actions": cursor_moves > 0,
+                    "cursor_moves": cursor_moves,
                     "preview": args.preview,
                     "stopped_by_user": stopped_by_user,
                 }
