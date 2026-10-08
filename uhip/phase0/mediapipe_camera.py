@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from math import hypot
 
 from .camera_adapter import CameraFrame, ClassifiedHand
-from .hand_position import HandPosition, normalized_palm_position
+from .hand_position import HandPosition, normalized_index_tip_position, normalized_palm_position
 
 
 def _xy(landmark: object) -> tuple[float, float]:
@@ -67,22 +67,36 @@ def classify_landmarks(landmarks: list[object]) -> tuple[str, float]:
     thumb_ratio = _distance(wrist, landmarks[4]) / max(
         _distance(wrist, landmarks[3]), 1e-9
     )
-    thumb_extended = thumb_ratio > 1.08
     _, thumb_y = _xy(landmarks[4])
     _, wrist_y = _xy(wrist)
     palm = max(_distance(wrist, landmarks[9]), 1e-9)
+    near_index_pip = _distance(landmarks[4], landmarks[6]) / palm
     near_middle_pip = _distance(landmarks[4], landmarks[10]) / palm
+
+    # The wrist-to-tip ratio alone is unreliable for a curled thumb: a thumb
+    # folded across the palm can still have a tip farther from the wrist than
+    # its IP joint. Use its location relative to the palm to distinguish a
+    # curled thumb from a true thumbs-up.
+    thumb_in_palm = near_middle_pip < 0.45 or near_index_pip < 0.50
+    thumb_extended = thumb_ratio > 1.08 and not thumb_in_palm
     thumb_up = (
         thumb_extended
         and thumb_y < wrist_y - 0.03
         and near_middle_pip > 0.5
+    )
+    index_pointing = (
+        extended[0]
+        and not any(extended[1:])
+        and thumb_in_palm
     )
 
     if all(extended) and thumb_extended:
         return "open_palm", 0.96
     if thumb_up and not any(extended):
         return "thumb_up", 0.95
-    if not any(extended) and not thumb_extended:
+    if index_pointing:
+        return "index_point", 0.94
+    if not any(extended) and thumb_in_palm:
         return "fist", 0.94
     return "unknown", 0.0
 
@@ -98,6 +112,7 @@ class MediaPipeHandsClassifier:
     _stable_frames: int = field(default=0, init=False, repr=False)
     _stable_since_ns: int | None = field(default=None, init=False, repr=False)
     last_position: HandPosition | None = field(default=None, init=False)
+    last_index_tip_position: HandPosition | None = field(default=None, init=False)
     last_thumb_geometry: dict[str, float] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
@@ -128,6 +143,7 @@ class MediaPipeHandsClassifier:
         if self._hands is None:
             raise RuntimeError("MediaPipe Hands classifier is closed")
         self.last_position = None
+        self.last_index_tip_position = None
         self.last_thumb_geometry = {}
         if frame.data is None:
             self._reset_stability()
@@ -162,6 +178,7 @@ class MediaPipeHandsClassifier:
         landmarks = list(detected[0].landmark)
         self.last_thumb_geometry = thumb_geometry_features(landmarks)
         self.last_position = normalized_palm_position(landmarks)
+        self.last_index_tip_position = normalized_index_tip_position(landmarks)
         gesture, confidence = classify_landmarks(landmarks)
 
         if hand_count != 1:

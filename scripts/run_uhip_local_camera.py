@@ -14,6 +14,7 @@ from uhip.phase0 import CameraAdapter
 from uhip.phase0.camera_adapter import CameraFrame, ClassifiedHand
 from uhip.phase0.hand_position import HandPosition, screen_candidate
 from uhip.phase0.mediapipe_camera import MediaPipeHandsClassifier, OpenCVCameraSource, thumb_geometry_features
+from uhip.phase1.click_control import ClickPolicy, SafetyGateClickController
 from uhip.phase1.cursor_control import CursorPolicy, SafetyGateCursorController
 
 
@@ -40,7 +41,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--armed",
         action="store_true",
-        help="Explicitly arm cursor movement. Default is disarmed.",
+        help="Explicitly arm enabled local OS actions. Default is disarmed.",
+    )
+    parser.add_argument(
+        "--click", action="store_true",
+        help="Enable one-shot local left click from a stable thumb-up. Requires --armed.",
+    )
+    parser.add_argument(
+        "--point", action="store_true",
+        help="Enable local cursor positioning from a stable index-point. Requires --armed; no click is generated.",
     )
     parser.add_argument(
         "--kill-switch-file",
@@ -81,10 +90,12 @@ class PreviewClassifier:
     classifier: MediaPipeHandsClassifier
     last_result: ClassifiedHand | None = None
     last_position: HandPosition | None = None
+    last_index_tip_position: HandPosition | None = None
 
     def classify(self, frame: CameraFrame) -> ClassifiedHand:
         self.last_result = self.classifier.classify(frame)
         self.last_position = self.classifier.last_position
+        self.last_index_tip_position = self.classifier.last_index_tip_position
         return self.last_result
 
 
@@ -165,6 +176,7 @@ def main() -> int:
     rejected = 0
     stopped_by_user = False
     cursor_moves = 0
+    click_count = 0
     cursor = SafetyGateCursorController(
         CursorPolicy(
             # The local Phase 0 fist allowlist emits 0.94 confidence; keep the
@@ -175,9 +187,12 @@ def main() -> int:
             kill_switch_file=args.kill_switch_file,
         )
     )
-    if args.cursor and args.armed:
+    if (args.cursor or args.point) and args.armed:
         # Arming is explicit, but actual movement remains gated per frame below.
         cursor.arm(False)
+    clicker = SafetyGateClickController(ClickPolicy(min_confidence=0.95, min_stable_frames=5, kill_switch_file=args.kill_switch_file))
+    if args.click and args.armed:
+        clicker.arm(False)
     try:
         import cv2
 
@@ -189,32 +204,59 @@ def main() -> int:
                     features = preview_classifier.classifier.last_thumb_geometry
                     if features:
                         print(json.dumps({"thumb_geometry": features}, ensure_ascii=False, sort_keys=True))
-                if args.cursor:
-                    classified = preview_classifier.last_result
-                    position = preview_classifier.last_position
-                    # UHIP semantics: open_palm is STOP/CANCEL, never a movement grant.
-                    # Fist is the explicit cursor-mode gesture in Phase 1-C; actual movement
-                    # still requires the CLI --armed switch plus the Recognition Gate.
+                classified = preview_classifier.last_result
+                position = preview_classifier.last_position
+                if args.click:
+                    if classified is not None and classified.gesture == "open_palm":
+                        clicker.stop()
+                    elif classified is not None and classified.gesture == "thumb_up" and args.armed:
+                        if not clicker.armed:
+                            clicker.arm(True)
+                        if clicker.observe_thumb_up(confidence=classified.confidence_calibrated, stable_frames=classified.stable_frames):
+                            click_count += 1
+                    else:
+                        clicker.reset_gesture()
+                        if not args.armed:
+                            clicker.update_gate(False)
+                if args.cursor or args.point:
+                    # open_palm is STOP/CANCEL. Fist uses palm center; index-point uses fingertip.
                     stop_gesture = classified is not None and classified.gesture == "open_palm"
-                    gate_ok = (
-                        classified is not None
+                    cursor_gesture_ok = (
+                        args.cursor
+                        and classified is not None
                         and classified.gesture == "fist"
+                        and position is not None
+                    )
+                    point_gesture_ok = (
+                        args.point
+                        and classified is not None
+                        and classified.gesture == "index_point"
+                        and preview_classifier.last_index_tip_position is not None
+                    )
+                    target_position = (
+                        position if cursor_gesture_ok
+                        else preview_classifier.last_index_tip_position if point_gesture_ok
+                        else None
+                    )
+                    gate_ok = (
+                        (cursor_gesture_ok or point_gesture_ok)
                         and classified.confidence_calibrated >= cursor.policy.min_confidence
                         and classified.stable_frames >= cursor.policy.min_stable_frames
-                        and position is not None
+                        and target_position is not None
                     )
                     if stop_gesture:
                         cursor.stop()
                     elif args.armed and gate_ok:
                         if not cursor.armed:
                             cursor.arm(True)
-                        if cursor.move(position):
+                        if cursor.move(target_position):
                             cursor_moves += 1
                     else:
                         cursor.update_gate(False)
             else:
                 rejected += 1
                 cursor.stop()
+                clicker.stop()
                 rejected_payload = {"accepted": False, "reason": result.reason}
                 if args.debug_thumb_geometry and preview_classifier.last_result is not None:
                     classified = preview_classifier.last_result
@@ -247,9 +289,11 @@ def main() -> int:
                 if key in (ord("q"), 27):
                     stopped_by_user = True
                     cursor.stop()
+                    clicker.stop()
                     break
     finally:
         cursor.stop()
+        clicker.stop()
         classifier.close()
         if args.preview:
             try:
@@ -267,8 +311,9 @@ def main() -> int:
                     "rejected": rejected,
                     "max_frames": args.max_frames,
                     "network": False,
-                    "os_actions": cursor_moves > 0,
+                    "os_actions": cursor_moves > 0 or click_count > 0,
                     "cursor_moves": cursor_moves,
+                    "clicks": click_count,
                     "preview": args.preview,
                     "stopped_by_user": stopped_by_user,
                 }
