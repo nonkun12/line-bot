@@ -416,6 +416,16 @@ jobs:
             gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/distributed-final-report.txt || true
           fi
 
+      - name: Wake Render before LINE final report
+        if: always()
+        run: |
+          set -euo pipefail
+          # Free Render instances may need time to wake after inactivity.
+          # Retry only the harmless health check; do not repeat the task or push request.
+          if ! curl --fail-with-body --silent --show-error --retry 2 --retry-delay 3 --retry-all-errors --max-time 30 \
+            "https://line-bot-yvea.onrender.com/health"; then
+            echo "::warning::Render health warm-up failed; continuing to the single LINE push attempt."
+          fi
       - name: Notify LINE of distributed loop final report
         if: always()
         env:
@@ -441,7 +451,7 @@ jobs:
           print(json.dumps({'user_id': os.environ['DISTRIBUTED_LOOP_LINE_USER_ID'], 'message': os.environ['MESSAGE']}, ensure_ascii=False))
           PY
           )"
-          curl --fail-with-body --silent --show-error --max-time 15 \
+          curl --fail-with-body --silent --show-error --max-time 30 \
             -X POST "https://line-bot-yvea.onrender.com/internal/push" \
             -H "Content-Type: application/json" \
             -H "x-internal-key: ${LINE_INTERNAL_PUSH_KEY}" \
