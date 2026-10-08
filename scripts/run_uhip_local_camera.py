@@ -186,7 +186,7 @@ def main() -> int:
                 accepted += 1
                 print(json.dumps(result.event, ensure_ascii=False, sort_keys=True))
                 if args.debug_thumb_geometry and preview_classifier.last_result is not None:
-                    features = thumb_geometry_features(preview_classifier.classifier._last_landmarks) if getattr(preview_classifier.classifier, "_last_landmarks", None) is not None else {}
+                    features = preview_classifier.classifier.last_thumb_geometry
                     if features:
                         print(json.dumps({"thumb_geometry": features}, ensure_ascii=False, sort_keys=True))
                 if args.cursor:

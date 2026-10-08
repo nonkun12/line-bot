@@ -70,7 +70,13 @@ def classify_landmarks(landmarks: list[object]) -> tuple[str, float]:
     thumb_extended = thumb_ratio > 1.08
     _, thumb_y = _xy(landmarks[4])
     _, wrist_y = _xy(wrist)
-    thumb_up = thumb_extended and thumb_y < wrist_y - 0.03
+    palm = max(_distance(wrist, landmarks[9]), 1e-9)
+    near_middle_pip = _distance(landmarks[4], landmarks[10]) / palm
+    thumb_up = (
+        thumb_extended
+        and thumb_y < wrist_y - 0.03
+        and near_middle_pip > 0.5
+    )
 
     if all(extended) and thumb_extended:
         return "open_palm", 0.96

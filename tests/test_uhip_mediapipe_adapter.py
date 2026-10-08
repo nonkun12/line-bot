@@ -9,6 +9,10 @@ def landmark(x: float, y: float):
 
 def hand_landmarks(*, thumb: str, fingers: tuple[bool, bool, bool, bool]):
     points = [landmark(0.5, 0.8) for _ in range(21)]
+    points[5] = landmark(0.42, 0.65)
+    points[9] = landmark(0.50, 0.60)
+    points[13] = landmark(0.58, 0.65)
+    points[17] = landmark(0.64, 0.72)
     points[4] = landmark(0.5, 0.2 if thumb == "up" else 0.7)
     points[3] = landmark(0.5, 0.5)
     finger_pairs = [(8, 6), (12, 10), (16, 14), (20, 18)]
