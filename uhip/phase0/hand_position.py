@@ -58,3 +58,13 @@ def screen_candidate(
     x_px = min(width - 1, max(0, round(x * (width - 1))))
     y_px = min(height - 1, max(0, round(position.y * (height - 1))))
     return x_px, y_px
+
+
+def normalized_index_tip_position(landmarks: list[object]) -> HandPosition | None:
+    """Return the index fingertip (landmark 8) as a bounded point candidate."""
+    if len(landmarks) != 21:
+        return None
+    try:
+        return HandPosition(x=float(landmarks[8].x), y=float(landmarks[8].y))
+    except (AttributeError, TypeError, ValueError):
+        return None
