@@ -48,6 +48,10 @@ def parse_args() -> argparse.Namespace:
         help="Enable one-shot local left click from a stable thumb-up. Requires --armed.",
     )
     parser.add_argument(
+        "--point", action="store_true",
+        help="Enable local cursor positioning from a stable index-point. Requires --armed; no click is generated.",
+    )
+    parser.add_argument(
         "--kill-switch-file",
         default=None,
         help="If this local file exists, cursor movement stops immediately.",
@@ -86,10 +90,12 @@ class PreviewClassifier:
     classifier: MediaPipeHandsClassifier
     last_result: ClassifiedHand | None = None
     last_position: HandPosition | None = None
+    last_index_tip_position: HandPosition | None = None
 
     def classify(self, frame: CameraFrame) -> ClassifiedHand:
         self.last_result = self.classifier.classify(frame)
         self.last_position = self.classifier.last_position
+        self.last_index_tip_position = self.classifier.last_index_tip_position
         return self.last_result
 
 
@@ -181,7 +187,7 @@ def main() -> int:
             kill_switch_file=args.kill_switch_file,
         )
     )
-    if args.cursor and args.armed:
+    if (args.cursor or args.point) and args.armed:
         # Arming is explicit, but actual movement remains gated per frame below.
         cursor.arm(False)
     clicker = SafetyGateClickController(ClickPolicy(min_confidence=0.95, min_stable_frames=5, kill_switch_file=args.kill_switch_file))
