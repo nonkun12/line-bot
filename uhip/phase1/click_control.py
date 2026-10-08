@@ -90,11 +90,13 @@ class SafetyGateClickController:
                 ) from exc
             self._backend = Quartz
 
+        current_event = self._backend.CGEventCreate(None)
+        point = self._backend.CGEventGetLocation(current_event)
         down = self._backend.CGEventCreateMouseEvent(
-            None, self._backend.kCGEventLeftMouseDown, (0, 0), self._backend.kCGMouseButtonLeft
+            None, self._backend.kCGEventLeftMouseDown, point, self._backend.kCGMouseButtonLeft
         )
         up = self._backend.CGEventCreateMouseEvent(
-            None, self._backend.kCGEventLeftMouseUp, (0, 0), self._backend.kCGMouseButtonLeft
+            None, self._backend.kCGEventLeftMouseUp, point, self._backend.kCGMouseButtonLeft
         )
         self._backend.CGEventPost(self._backend.kCGHIDEventTap, down)
         self._backend.CGEventPost(self._backend.kCGHIDEventTap, up)
