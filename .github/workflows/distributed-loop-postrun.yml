@@ -111,7 +111,6 @@ jobs:
           Path("postrun-findings.json").write_text(json.dumps(issues, ensure_ascii=False) + "\n", encoding="utf-8")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
               out.write(f"issues={len(issues)}\n")
-              out.write(f"sheets_result={sheets_result}\n")
           print("\n".join(report))
           PY
 
@@ -145,7 +144,7 @@ jobs:
           print("- Make only a reviewed, bounded fix. Do not auto-deploy, bypass safety gates, or loop-retry.")
           PY
           )"
-          gh issue create --repo "$REPOSITORY" --title "$title" --body "$body" --label "bug" || {
+          gh issue create --repo "$REPOSITORY" --title "$title" --body "$body" || {
             echo "::warning::Could not create issue (label may be unavailable or token lacks permission)."
             exit 0
           }
