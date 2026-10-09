@@ -135,6 +135,11 @@ def _deterministic_target_for_task(task: dict[str, object]) -> str | None:
     allowed_paths = task.get("allowed_paths")
     if not task_id or not isinstance(allowed_paths, list):
         return None
+    # A directly launched script can have scripts/ at sys.path[0], without the
+    # repository root being importable. Add the known project root explicitly.
+    root_text = str(ROOT)
+    if root_text not in sys.path:
+        sys.path.insert(0, root_text)
     # Import lazily to keep queue/state inspection lightweight.
     from core.line_development_runtime import _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
 
