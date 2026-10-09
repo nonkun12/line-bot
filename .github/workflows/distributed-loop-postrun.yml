@@ -155,6 +155,7 @@ jobs:
           DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
           RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
           set -euo pipefail
           if [ -z "${LINE_INTERNAL_PUSH_KEY:-}" ] || [ -z "${DISTRIBUTED_LOOP_LINE_USER_ID:-}" ]; then
