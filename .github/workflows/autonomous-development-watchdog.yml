@@ -3,11 +3,8 @@ name: Autonomous Development Watchdog
 on:
   workflow_dispatch:
   schedule:
-    - cron: '15 4 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '15 16 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '15 22 * * *'
+    # Check shortly after each of the four distributed-loop slots (Asia/Tokyo).
+    - cron: '0 5,11,17,23 * * *'
       timezone: 'Asia/Tokyo'
 
 permissions:
@@ -32,7 +29,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install google-auth google-api-python-client
 
-      - name: Check scheduled run and Sheets audit
+      - name: Check distributed scheduled run and Sheets audit
         id: watchdog
         env:
           GITHUB_TOKEN: ${{ github.token }}
