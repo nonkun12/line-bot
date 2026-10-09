@@ -149,8 +149,7 @@ jobs:
             exit 0
           }
 
-      - name: Notify LINE only when follow-up is required
-        if: steps.verify.outputs.issues != '0'
+      - name: Always report the completed Loop to LINE when credentials are configured
         env:
           LINE_INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
           DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
@@ -166,10 +165,17 @@ jobs:
           import json, os
           from pathlib import Path
           findings = json.loads(Path("postrun-findings.json").read_text(encoding="utf-8"))
-          text = "⚠️ 分散Loopの終了後検証で確認事項があります。\n"
+          if findings:
+              text = "⚠️ 分散Loop終了後レポート：要確認事項あり\n"
+          else:
+              text = "✅ 分散Loop終了後レポート：成果物検証で不一致は検出されませんでした\n"
+          text += f"Workflow: {os.environ.get('RUN_CONCLUSION', 'unknown')}\n"
           text += f"Run ID: {os.environ.get('RUN_ID', '')}\n"
           text += f"Run: {os.environ.get('RUN_URL', '')}\n"
-          text += "\n".join("- " + x for x in findings)
+          if findings:
+              text += "\n".join("- " + x for x in findings)
+          else:
+              text += "タスク成果物の検証で問題は検出されませんでした。Google Sheetsの実シート行を独立確認した結果ではありません。"
           print(text[:4500])
           PY
           )"
