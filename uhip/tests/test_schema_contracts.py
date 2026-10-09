@@ -153,6 +153,23 @@ def test_universal_event_accepts_hand_event_with_left_hand():
     validate(event, EVENT_SCHEMA)
 
 
+def test_universal_event_accepts_confidence_boundary_values():
+    event = {
+        "schema_version": "0.3",
+        "event_id": "confidence-boundary-acceptance-20261009",
+        "session_id": "confidence-boundary-session-20261009",
+        "device_id": "device-1",
+        "seq": 1,
+        "t_mono_ns": 100,
+        "source": {"device_kind": "mac", "sensor": "camera", "engine": "mediapipe", "engine_version": "0.1", "model_sha256": "a" * 64},
+        "modality": "hand",
+        "payload": {"confidence": {"raw": 1.0, "calibrated": 0.0}},
+        "gate": {"recognition_passed": True, "rule_version": "phase0-1"},
+        "ttl_ms": 500,
+    }
+    validate(event, EVENT_SCHEMA)
+
+
 def test_universal_event_rejects_application_specific_command():
     event = {
         "schema_version": "0.3",
