@@ -16,6 +16,7 @@
     "uhip-confidence-boundary-acceptance",
     "uhip-confidence-out-of-range-rejection",
     "router-regression-stock-jobs-priority",
-    "router-regression-market-channel-metadata"
+    "router-regression-market-channel-metadata",
+    "macos-readiness-audit-no-secret-leak"
   ]
 }
