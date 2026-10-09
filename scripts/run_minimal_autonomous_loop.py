@@ -129,12 +129,41 @@ def _kill_process_group(process: subprocess.Popen[str]) -> None:
         pass
 
 
+def _deterministic_target_for_task(task: dict[str, object]) -> str | None:
+    """Resolve only queue tasks whose ID and allowed path match the runtime policy."""
+    task_id = str(task.get("id", "")).strip()
+    allowed_paths = task.get("allowed_paths")
+    if not task_id or not isinstance(allowed_paths, list):
+        return None
+    # Import lazily to keep queue/state inspection lightweight.
+    from core.line_development_runtime import _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
+
+    expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
+    if expected_target is None or allowed_paths != [expected_target]:
+        return None
+    return expected_target
+
+
 def run_task(task: dict[str, object], run_index: int, stop_file: Path, summary_dir: Path = Path("/tmp")) -> dict[str, object]:
     summary = summary_dir / f"minimal-autonomous-{task['id']}.json"
     run_nonce = uuid.uuid4().hex
     start_time = datetime.now(timezone.utc)
     base_sha = _git_head()
     env = os.environ.copy()
+    if _deterministic_target_for_task(task) is not None:
+        # Do not expose provider credentials to deterministic test-only tasks.
+        for key in (
+            "GROQ_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "GOOGLE_API_KEY",
+            "GEMINI_API_KEY",
+            "OPENROUTER_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "MISTRAL_API_KEY",
+            "COHERE_API_KEY",
+        ):
+            env.pop(key, None)
     env["DEV_INSTRUCTION"] = task["instruction"]
     env["AUTONOMOUS_SUMMARY_PATH"] = str(summary)
     env["AUTONOMOUS_RUN_SOURCE"] = "minimal-mvp-loop"

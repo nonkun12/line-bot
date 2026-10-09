@@ -71,6 +71,47 @@ def test_fallback_safe_target_returns_none_without_preferred_targets():
     assert runtime._fallback_safe_target(["core/example.py"]) is None
 
 
+def test_deterministic_manager_uses_declared_target_without_llm(monkeypatch):
+    task_id = "uhip-confidence-out-of-range-rejection"
+    chosen = "uhip/tests/test_schema_contracts.py"
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", task_id)
+    monkeypatch.setattr(runtime.worker, "repo_files", lambda: [chosen])
+
+    def forbidden_model_selection(*args, **kwargs):
+        raise AssertionError("deterministic task must not call model-backed file selection")
+
+    monkeypatch.setattr(runtime.worker, "choose_file", forbidden_model_selection)
+    state = runtime.DevelopmentState(
+        client=None,
+        instruction="Add the confidence out-of-range schema contract test.",
+        autonomous_task_id=task_id,
+    )
+
+    result = runtime.DevelopmentExecutor(state).execute(
+        AgentTask(
+            "manager",
+            AgentRole.MANAGER,
+            "Select one safe implementation target.",
+            resources=frozenset({"target-selection"}),
+        )
+    )
+
+    assert result.success is True
+    assert result.summary == f"selected {chosen}"
+    assert state.chosen == chosen
+
+
+def test_self_improvement_observation_skips_external_ai_for_deterministic_task(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "uhip-confidence-out-of-range-rejection")
+
+    def forbidden_provider_initialization(*args, **kwargs):
+        raise AssertionError("deterministic task must not initialize self-improvement providers")
+
+    monkeypatch.setattr(runtime, "SelfImprovementEngine", forbidden_provider_initialization)
+
+    assert runtime.observe_self_improvement(object(), "uhip/tests/test_schema_contracts.py") is None
+
+
 def test_debugger_restores_before_building_real_worker_plan(monkeypatch):
     state = runtime.DevelopmentState(client=object(), instruction="fix the failing implementation")
     state.chosen = "core/example.py"

@@ -117,11 +117,19 @@ def observe_self_improvement(
     report: RuntimeReport,
     target_path: str,
 ) -> SelfImprovementCycleResult | None:
-    """Feed one real development report into the bounded improvement loop.
+    """Feed eligible development reports into bounded self-improvement.
 
-    This is an observation/approval boundary only. Generated proposals and
-    approved handoffs are never executed from this function.
+    Deterministic queued tasks skip creator/critic and control-tower processing:
+    these tasks must complete without any external AI provider calls.
     """
+    task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+    if task_id in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS:
+        print(
+            "[SELF-IMPROVEMENT] skipped for deterministic task; external AI disabled",
+            flush=True,
+        )
+        return None
+
     try:
         feedback_engine = SelfImprovementEngine()
         creator_critic = (
@@ -907,15 +915,26 @@ class DevelopmentExecutor:
     def execute(self, task: AgentTask) -> AgentResult:
         try:
             if task.role is AgentRole.MANAGER:
+                autonomous_task_id = self.state.autonomous_task_id.strip() or os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+                expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(autonomous_task_id)
                 files = worker.repo_files()
-                chosen = worker.choose_file(self.state.client, self.state.instruction, files)
-                if not chosen:
-                    chosen = _fallback_safe_target(files)
+                if expected_target is not None:
+                    # Deterministic queue tasks use their declared target directly;
+                    # never call the model-backed file selector for these tasks.
+                    if expected_target not in files:
+                        return AgentResult(
+                            task.task_id,
+                            False,
+                            f"deterministic target unavailable or disallowed: {expected_target}",
+                        )
+                    chosen = expected_target
+                else:
+                    chosen = worker.choose_file(self.state.client, self.state.instruction, files)
+                    if not chosen:
+                        chosen = _fallback_safe_target(files)
                 if not chosen:
                     return AgentResult(task.task_id, False, "manager could not select a safe target")
                 self.state.chosen = chosen
-                autonomous_task_id = self.state.autonomous_task_id.strip() or os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
-                expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(autonomous_task_id)
                 if expected_target is not None and chosen != expected_target:
                     self.state.chosen = None
                     return AgentResult(
@@ -1199,7 +1218,13 @@ def execute(instruction: str) -> int:
         print(f"IMMEDIATE STOP: {exc}", flush=True)
         _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=None, branch=None, exit_detail=str(exc), base_sha=None, produced_sha=None)
         return 1
-    instruction, idea_task_id, idea_block_reason = _prepare_idea_stage(instruction)
+    autonomous_task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+    deterministic_task = autonomous_task_id in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
+    if deterministic_task:
+        # Queue tasks with explicit deterministic plans require no ideation stage.
+        instruction, idea_task_id, idea_block_reason = instruction, None, None
+    else:
+        instruction, idea_task_id, idea_block_reason = _prepare_idea_stage(instruction)
     if idea_block_reason is not None:
         _write_development_audit_to_google_sheets(
             instruction=instruction,
@@ -1213,7 +1238,10 @@ def execute(instruction: str) -> int:
         return 1
     if idea_task_id:
         os.environ["AUTONOMOUS_TASK_ID"] = idea_task_id
-    client = worker.Groq(api_key=os.environ["GROQ_API_KEY"])
+    # Deterministic queue tasks must run with no provider client and no API key.
+    # If a deterministic plan unexpectedly needs a model, the guarded executor
+    # fails closed instead of falling back to an external service.
+    client = None if deterministic_task else worker.Groq(api_key=os.environ["GROQ_API_KEY"])
     state = DevelopmentState(
         client=client,
         instruction=instruction,
