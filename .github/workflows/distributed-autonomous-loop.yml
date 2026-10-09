@@ -65,11 +65,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || '4' }}
+      MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || '4' }}
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
       SELF_IMPROVEMENT_POLICY_ENFORCED: 'true'
-      HERMES_ADVISOR_ENABLED: 'true'
+      # Hosted loop must not call an unverified cloud Hermes provider.
+      HERMES_ADVISOR_ENABLED: 'false'
       DEV_USER_ID: autonomous-distributed-loop
       GITHUB_RUN_ID: ${{ github.run_id }}
     steps:
@@ -110,6 +111,41 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Validate requested task limit
+        env:
+          REQUESTED_TASK_LIMIT: ${{ env.MAX_TASKS }}
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event_name == 'issue_comment' && github.event.comment.body || '' }}
+          DISPATCH_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || '' }}
+        run: |
+          set -euo pipefail
+          case "${REQUESTED_TASK_LIMIT}" in
+            1|2|3|4) ;;
+            *) echo "::error::Invalid task limit: ${REQUESTED_TASK_LIMIT}"; exit 1 ;;
+          esac
+          expected="${REQUESTED_TASK_LIMIT}"
+          if [ "${EVENT_NAME}" = "issue_comment" ]; then
+            case "${COMMENT_BODY}" in
+              "/distributed-loop") expected="4" ;;
+              "/distributed-loop max_tasks=1") expected="1" ;;
+              "/distributed-loop max_tasks=2") expected="2" ;;
+              "/distributed-loop max_tasks=3") expected="3" ;;
+              "/distributed-loop max_tasks=4") expected="4" ;;
+              *) echo "::error::Unexpected issue-comment trigger"; exit 1 ;;
+            esac
+          elif [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            expected="${DISPATCH_INPUT:-4}"
+          elif [ "${EVENT_NAME}" = "schedule" ]; then
+            expected="1"
+          elif [ "${EVENT_NAME}" = "pull_request_target" ]; then
+            expected="4"
+          fi
+          if [ "${REQUESTED_TASK_LIMIT}" != "${expected}" ]; then
+            echo "::error::Task limit mismatch: got=${REQUESTED_TASK_LIMIT} expected=${expected}"
+            exit 1
+          fi
+          echo "Validated bounded task limit: ${REQUESTED_TASK_LIMIT}"
 
       - name: Run one bounded autonomous task
         id: run_task
