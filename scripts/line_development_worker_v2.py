@@ -418,7 +418,7 @@ def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
 def has_python_compile_failure(output: str) -> bool:
     """Return True when a touched Python file failed its pre-pytest compile check."""
     for line in str(output or "").splitlines():
-        match = re.match(r"^py_compile .+: returncode=(-?\\d+)$", line.strip())
+        match = re.match(r"^py_compile .+: returncode=(-?\d+)$", line.strip())
         if match and int(match.group(1)) != 0:
             return True
     return False
