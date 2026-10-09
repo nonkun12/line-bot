@@ -496,3 +496,31 @@ def test_confidence_rejection_plan_is_idempotent_when_test_exists(monkeypatch, t
     assert err is None
     assert plan == {"no_change": True, "source": "deterministic_autonomous_task"}
 
+
+def test_repairer_fails_closed_for_deterministic_task_without_llm(monkeypatch):
+    chosen = "uhip/tests/test_schema_contracts.py"
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "uhip-confidence-out-of-range-rejection")
+
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Add the confidence out-of-range schema test.",
+        chosen=chosen,
+    )
+    executor = runtime.DevelopmentExecutor(state)
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("LLM plan generation must not run for deterministic tasks")
+
+    monkeypatch.setattr(runtime.worker, "build_plan", fail_if_called)
+    task = AgentTask(
+        "repairer",
+        AgentRole.REPAIRER,
+        "Retry the failed deterministic test.",
+        resources=frozenset({"working-tree"}),
+    )
+
+    result = executor.execute(task)
+
+    assert result.success is False
+    assert result.summary == "deterministic test failure; no LLM repair"
+
