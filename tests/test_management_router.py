@@ -53,6 +53,16 @@ def test_unresolved_request_records_empty_candidates() -> None:
     assert decision.metadata["routing_priority"] is None
 
 
+
+
+def test_router_regression_market_channel_metadata_distributed_loop() -> None:
+    request = ManagementRequest("u", "Explain FOREX exchange rates", channel="line", metadata={"source": "distributed-loop-regression"})
+    decision = route(request)
+    assert decision.specialist is Specialist.MARKET
+    assert decision.metadata["matched_specialists"] == ["market"]
+    assert decision.metadata["routing_priority"] == 4
+    assert decision.metadata["channel"] == "line"
+    assert decision.metadata["request_metadata"]["source"] == "distributed-loop-regression"
 def test_normalizes_full_width_input_and_preserves_channel_metadata() -> None:
     request = ManagementRequest(
         "u",
