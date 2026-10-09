@@ -96,6 +96,12 @@ def capture_internal_push_api(monkeypatch):
         def __init__(self, api_client):
             pass
 
+        def get_message_quota(self):
+            return type("Quota", (), {"type": "limited", "value": 200})()
+
+        def get_message_quota_consumption(self):
+            return type("Consumption", (), {"total_usage": 0})()
+
         def push_message(self, request):
             calls.append(("push", request))
 
