@@ -1014,6 +1014,13 @@ class DevelopmentExecutor:
                     return AgentResult(task.task_id, False, "reviewer found no resulting diff")
                 return AgentResult(task.task_id, True, "review gate passed", frozenset(self.state.touched or []))
             if task.role is AgentRole.REPAIRER:
+                task_id = _autonomous_task_id_for_state(self.state)
+                if _is_deterministic_autonomous_task(task_id, self.state.chosen):
+                    return AgentResult(
+                        task.task_id,
+                        False,
+                        "deterministic test failure; no LLM repair",
+                    )
                 if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
                     return AgentResult(task.task_id, True, "deterministic repair retry; no LLM JSON parsing")
                 plan = worker.build_plan(self.state.client, self.state.instruction, self.state.chosen, worker.context_for(self.state.chosen), self.state.test_output)
