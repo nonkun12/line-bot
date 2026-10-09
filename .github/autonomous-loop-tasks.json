@@ -3,29 +3,29 @@
   "max_tasks_per_run": 4,
   "tasks": [
     {
-      "id": "hand-sign-uhip-contract-phase-start",
-      "instruction": "uhip/tests/test_schema_contracts.py に、hand universal event の payload.phase=start を含むイベントが UHIP universal-event.schema.json の契約を満たすことを検証するテストを1件だけ追加してください。既存の generic hand event の phase=end とは異なるケースにしてください。schemaと実装コードは変更禁止、テストのみ、実機カメラ・外部通信・OS操作は禁止、新規テストファイルは禁止。",
+      "id": "uhip-confidence-boundary-acceptance",
+      "instruction": "uhip/tests/test_schema_contracts.py に、既存の valid hand event をベースに confidence.raw=1.0 と confidence.calibrated=0.0 の境界値を検証する schema contract test を1件追加してください。既存テストを重複させず、event_id と session_id は一意にし、schema/実装コードは変更禁止、テストのみ、実機カメラ・外部通信・OS操作は禁止。",
       "allowed_paths": [
         "uhip/tests/test_schema_contracts.py"
       ]
     },
     {
-      "id": "hand-sign-uhip-contract-left-hand",
-      "instruction": "uhip/tests/test_schema_contracts.py に、hand.label=left と mirrored=false を含む hand universal event が UHIP universal-event.schema.json の契約を満たすことを検証するテストを1件だけ追加してください。既存の right/mirrored=true ケースとは異なるケースにしてください。schemaと実装コードは変更禁止、テストのみ、実機カメラ・外部通信・OS操作は禁止、新規テストファイルは禁止。",
+      "id": "uhip-confidence-out-of-range-rejection",
+      "instruction": "uhip/tests/test_schema_contracts.py に、既存の valid hand event をベースに confidence.calibrated=1.01 が schema validation で拒否されることを検証する test を1件追加してください。既存の application-specific command rejection とは別のケースにし、event_id と session_id は一意にしてください。schema/実装コードは変更禁止、テストのみ、実機カメラ・外部通信・OS操作は禁止。",
       "allowed_paths": [
         "uhip/tests/test_schema_contracts.py"
       ]
     },
     {
-      "id": "router-regression-jobs-market-metadata",
-      "instruction": "tests/test_management_router.py に、JobsとMarketの両方のキーワードを含む要求がMarketへ振り分けられ、matched_specialistsとrouting_priorityが現在のdeterministic priorityと一致することを検証する回帰テストを1件だけ追加してください。既存の同一ケースと重複しない別の表現を使ってください。実装コードは変更せず、テストだけを最小変更で追加してください。",
+      "id": "router-regression-stock-jobs-priority",
+      "instruction": "tests/test_management_router.py に、stock と job の両キーワードを含む新しい英語表現が STOCKS に振り分けられ、matched_specialists=['stocks','jobs'] と routing_priority=5 を返す回帰テストを1件追加してください。既存の market/jobs ケースや同一入力は再利用しないでください。実装コードは変更せずテストだけを最小変更で追加してください。",
       "allowed_paths": [
         "tests/test_management_router.py"
       ]
     },
     {
-      "id": "router-regression-english-casefold",
-      "instruction": "tests/test_management_router.py に、英語キーワードを大文字小文字混在で含む要求がEnglishへ振り分けられる回帰テストを1件だけ追加してください。既存のEnglishテストと異なる入力表現にしてください。実装コードは変更せず、テストだけを最小変更で追加してください。",
+      "id": "router-regression-market-channel-metadata",
+      "instruction": "tests/test_management_router.py に、channel='line' と request metadata を指定した FOREX キーワードの要求が MARKET に振り分けられ、channel と request_metadata が decision metadata に保持される回帰テストを1件追加してください。既存の market priority と channel metadata テストの単純な重複を避け、実装コードは変更せずテストだけを最小変更で追加してください。",
       "allowed_paths": [
         "tests/test_management_router.py"
       ]
