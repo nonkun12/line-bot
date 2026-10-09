@@ -171,6 +171,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "hand-sign-uhip-contract-negative-confidence": "uhip/tests/test_schema_contracts.py",
     "hand-sign-uhip-contract-iphone-camera": "uhip/tests/test_schema_contracts.py",
     "hand-sign-uhip-contract-unknown-hand-label": "uhip/tests/test_schema_contracts.py",
+    "uhip-confidence-boundary-acceptance": "uhip/tests/test_schema_contracts.py",
     "router-regression-whitespace": "tests/test_management_router.py",
     "router-regression-fullwidth-market": "tests/test_management_router.py",
     "router-regression-casefold-english": "tests/test_management_router.py",
@@ -739,6 +740,46 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         new = anchor + addition
         if len(anchor) > 1200 or len(new) > 1800:
             return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "uhip-confidence-boundary-acceptance" and chosen == "uhip/tests/test_schema_contracts.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_universal_event_accepts_confidence_boundary_values"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_universal_event_rejects_application_specific_command():\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "def test_universal_event_accepts_confidence_boundary_values():\n"
+            "    event = {\n"
+            '        "schema_version": "0.3",\n'
+            '        "event_id": "confidence-boundary-acceptance-20261009",\n'
+            '        "session_id": "confidence-boundary-session-20261009",\n'
+            '        "device_id": "device-1",\n'
+            '        "seq": 1,\n'
+            '        "t_mono_ns": 100,\n'
+            '        "source": {"device_kind": "mac", "sensor": "camera", "engine": "mediapipe", "engine_version": "0.1", "model_sha256": "a" * 64},\n'
+            '        "modality": "hand",\n'
+            '        "payload": {"confidence": {"raw": 1.0, "calibrated": 0.0}},\n'
+            '        "gate": {"recognition_passed": True, "rule_version": "phase0-1"},\n'
+            '        "ttl_ms": 500,\n'
+            "    }\n"
+            "    validate(event, EVENT_SCHEMA)\n\n\n"
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
         return {
             "no_change": False,
             "source": "deterministic_autonomous_task",
