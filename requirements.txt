@@ -4,6 +4,7 @@ line-bot-sdk==3.11.0
 groq
 python-dotenv
 pytest
+jsonschema
 httpx
 langgraph==1.2.10
 langchain-groq
@@ -12,3 +13,4 @@ uvicorn[standard]
 
 google-auth
 google-api-python-client
+
