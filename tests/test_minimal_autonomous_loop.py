@@ -113,6 +113,67 @@ def test_no_change_is_not_pass(monkeypatch, tmp_path: Path):
     assert result["failure_reason"] == "no_change"
 
 
+def _capture_task_provider_env(monkeypatch, tmp_path: Path, task: dict[str, object]) -> tuple[dict[str, str], dict[str, object]]:
+    observed: dict[str, str] = {}
+    sha = "e" * 40
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        observed.update({
+            key: value
+            for key, value in env.items()
+            if key.endswith("_API_KEY") or key.endswith("_API_TOKEN")
+        })
+        summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
+        summary.write_text(
+            json.dumps({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "PASS",
+                "exit_code": 0,
+                "base_sha": sha,
+                "produced_sha": sha,
+                "task_id": task["id"],
+                "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+            }),
+            encoding="utf-8",
+        )
+        return _FakeProcess(env, lambda _: None)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+    return observed, result
+
+
+def test_deterministic_task_subprocess_has_no_provider_credentials(monkeypatch, tmp_path: Path):
+    task = {
+        "id": "uhip-confidence-out-of-range-rejection",
+        "instruction": "Run the bounded schema contract task.",
+        "allowed_paths": ["uhip/tests/test_schema_contracts.py"],
+    }
+    monkeypatch.setenv("GROQ_API_KEY", "test-only-sentinel")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-sentinel")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-only-sentinel")
+
+    provider_env, result = _capture_task_provider_env(monkeypatch, tmp_path, task)
+
+    assert result["status"] == "NO_CHANGE"
+    assert provider_env == {}
+
+
+def test_unmapped_task_keeps_provider_credentials_for_its_own_policy(monkeypatch, tmp_path: Path):
+    task = {
+        "id": "future-model-assisted-task",
+        "instruction": "Run a non-deterministic task.",
+        "allowed_paths": ["tests/test_line_development_runtime.py"],
+    }
+    monkeypatch.setenv("GROQ_API_KEY", "test-only-sentinel")
+
+    provider_env, result = _capture_task_provider_env(monkeypatch, tmp_path, task)
+
+    assert result["status"] == "NO_CHANGE"
+    assert provider_env["GROQ_API_KEY"] == "test-only-sentinel"
+
+
 def test_summary_identity_mismatch_halts(monkeypatch, tmp_path: Path):
     task = {"id": "identity-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
     shas = iter(["c" * 40, "d" * 40])
