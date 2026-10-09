@@ -458,6 +458,20 @@ def test_new_distributed_queue_tasks_have_deterministic_plans(monkeypatch, tmp_p
             '"calibrated": 1.01',
             "confidence-range-session-20261009",
         ),
+        (
+            "router-regression-stock-jobs-priority",
+            "tests/test_management_router.py",
+            "def test_preserves_market_priority_over_jobs_for_mixed_request() -> None:\n    pass\n",
+            "test_router_regression_stock_jobs_priority_distributed_loop",
+            '["stocks", "jobs"]',
+        ),
+        (
+            "router-regression-market-channel-metadata",
+            "tests/test_management_router.py",
+            "def test_normalizes_full_width_input_and_preserves_channel_metadata() -> None:\n    pass\n",
+            "test_router_regression_market_channel_metadata_distributed_loop",
+            "distributed-loop-regression",
+        ),
     ]
 
     for task_id, chosen, original, expected_one, expected_two in cases:
@@ -523,4 +537,24 @@ def test_repairer_fails_closed_for_deterministic_task_without_llm(monkeypatch):
 
     assert result.success is False
     assert result.summary == "deterministic test failure; no LLM repair"
+
+
+def test_router_regression_plans_are_idempotent_when_tests_exist(monkeypatch, tmp_path):
+    chosen = "tests/test_management_router.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "def test_router_regression_stock_jobs_priority_distributed_loop():\n    pass\n\n"
+        "def test_router_regression_market_channel_metadata_distributed_loop():\n    pass\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    for task_id in (
+        "router-regression-stock-jobs-priority",
+        "router-regression-market-channel-metadata",
+    ):
+        plan, err = runtime._deterministic_autonomous_test_plan(chosen, task_id)
+        assert err is None
+        assert plan == {"no_change": True, "source": "deterministic_autonomous_task"}
 
