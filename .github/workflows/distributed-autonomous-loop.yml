@@ -71,6 +71,7 @@ jobs:
       SELF_IMPROVEMENT_POLICY_ENFORCED: 'true'
       # Hosted loop must not call an unverified cloud Hermes provider.
       HERMES_ADVISOR_ENABLED: 'false'
+      SELF_IMPROVEMENT_CREATOR_CRITIC: 'false'
       DEV_USER_ID: autonomous-distributed-loop
       GITHUB_RUN_ID: ${{ github.run_id }}
     steps:
