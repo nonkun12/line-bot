@@ -51,5 +51,6 @@ def is_english_learning_intent(text: str) -> bool:
             "会話",
             "復習",
             "review",
+            "lesson",
         )
     )
