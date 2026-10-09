@@ -14,6 +14,7 @@
     "hand-sign-uhip-contract-left-hand",
     "router-regression-jobs-market-metadata",
     "uhip-confidence-boundary-acceptance",
-    "uhip-confidence-out-of-range-rejection"
+    "uhip-confidence-out-of-range-rejection",
+    "router-regression-stock-jobs-priority"
   ]
 }
