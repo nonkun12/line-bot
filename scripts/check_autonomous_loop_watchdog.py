@@ -119,6 +119,44 @@ def main() -> int:
                     problems.append(
                         f"Sheets result={ledger_result or 'empty'} conflicts with successful run_id={run_id}"
                     )
+
+                # A row existing is not enough: validate the audit fields that prove
+                # verification, safety gating, and ledger recording were completed.
+                verification = ledger_record.get("verification_result", "")
+                safety_gate = ledger_record.get("safety_gate_result", "")
+                logging = ledger_record.get("logging_result", "")
+                merge_result = ledger_record.get("merge_result", "")
+                if logging != "RECORDED":
+                    problems.append(
+                        f"Sheets logging_result={logging or 'empty'} for run_id={run_id}"
+                    )
+                if merge_result != "NOT_AUTO_MERGED":
+                    problems.append(
+                        f"Sheets merge_result={merge_result or 'empty'} for run_id={run_id}; "
+                        "unexpected automatic merge state"
+                    )
+                if ledger_result == "NO_TASKS":
+                    if verification != "NO_TASKS":
+                        problems.append(
+                            f"Sheets verification_result={verification or 'empty'} "
+                            f"conflicts with NO_TASKS run_id={run_id}"
+                        )
+                    if safety_gate != "NOT_APPLICABLE":
+                        problems.append(
+                            f"Sheets safety_gate_result={safety_gate or 'empty'} "
+                            f"conflicts with NO_TASKS run_id={run_id}"
+                        )
+                elif ledger_result in {"PASS", "NO_CHANGE"}:
+                    if verification != "PASS":
+                        problems.append(
+                            f"Sheets verification_result={verification or 'empty'} "
+                            f"conflicts with successful task run_id={run_id}"
+                        )
+                    if safety_gate != "PASS":
+                        problems.append(
+                            f"Sheets safety_gate_result={safety_gate or 'empty'} "
+                            f"conflicts with successful task run_id={run_id}"
+                        )
                 recorded_at = datetime.fromisoformat(
                     ledger_record["timestamp"].replace("Z", "+00:00")
                 )
