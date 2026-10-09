@@ -3,29 +3,29 @@
   "max_tasks_per_run": 4,
   "tasks": [
     {
-      "id": "uhip-confidence-boundary-acceptance",
-      "instruction": "uhip/tests/test_schema_contracts.py に、既存の valid hand event をベースに confidence.raw=1.0 と confidence.calibrated=0.0 の境界値を検証する schema contract test を1件追加してください。既存テストを重複させず、event_id と session_id は一意にし、schema/実装コードは変更禁止、テストのみ、実機カメラ・外部通信・OS操作は禁止。",
-      "allowed_paths": [
-        "uhip/tests/test_schema_contracts.py"
-      ]
-    },
-    {
-      "id": "uhip-confidence-out-of-range-rejection",
-      "instruction": "uhip/tests/test_schema_contracts.py に、既存の valid hand event をベースに confidence.calibrated=1.01 が schema validation で拒否されることを検証する test を1件追加してください。既存の application-specific command rejection とは別のケースにし、event_id と session_id は一意にしてください。schema/実装コードは変更禁止、テストのみ、実機カメラ・外部通信・OS操作は禁止。",
-      "allowed_paths": [
-        "uhip/tests/test_schema_contracts.py"
-      ]
-    },
-    {
-      "id": "router-regression-stock-jobs-priority",
-      "instruction": "tests/test_management_router.py に、stock と job の両キーワードを含む新しい英語表現が STOCKS に振り分けられ、matched_specialists=['stocks','jobs'] と routing_priority=5 を返す回帰テストを1件追加してください。既存の market/jobs ケースや同一入力は再利用しないでください。実装コードは変更せずテストだけを最小変更で追加してください。",
+      "id": "router-regression-nbsp-whitespace",
+      "instruction": "Add one regression test confirming a JOBS request surrounded by non-breaking spaces routes to JOBS. Test-only; no implementation changes, network, paid APIs, camera, or OS operations.",
       "allowed_paths": [
         "tests/test_management_router.py"
       ]
     },
     {
-      "id": "router-regression-market-channel-metadata",
-      "instruction": "tests/test_management_router.py に、channel='line' と request metadata を指定した FOREX キーワードの要求が MARKET に振り分けられ、channel と request_metadata が decision metadata に保持される回帰テストを1件追加してください。既存の market priority と channel metadata テストの単純な重複を避け、実装コードは変更せずテストだけを最小変更で追加してください。",
+      "id": "router-regression-ideographic-whitespace",
+      "instruction": "Add one regression test confirming a JOBS request surrounded by ideographic full-width spaces routes to JOBS. Test-only; no implementation changes, network, paid APIs, camera, or OS operations.",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
+    },
+    {
+      "id": "router-regression-tab-newline-whitespace",
+      "instruction": "Add one regression test confirming a JOBS request surrounded by tab/newline whitespace routes to JOBS. Test-only; no implementation changes, network, paid APIs, camera, or OS operations.",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
+    },
+    {
+      "id": "router-regression-mixed-whitespace",
+      "instruction": "Add one regression test confirming a JOBS request surrounded by mixed ASCII space, tab, and newline whitespace routes to JOBS. Test-only; no implementation changes, network, paid APIs, camera, or OS operations.",
       "allowed_paths": [
         "tests/test_management_router.py"
       ]
