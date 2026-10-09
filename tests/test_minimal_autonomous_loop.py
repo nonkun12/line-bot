@@ -119,11 +119,18 @@ def _capture_task_provider_env(monkeypatch, tmp_path: Path, task: dict[str, obje
     monkeypatch.setattr(loop, "_git_head", lambda: sha)
 
     def fake_popen(cmd, cwd, env, text, start_new_session):
-        observed.update({
-            key: value
-            for key, value in env.items()
-            if key.endswith("_API_KEY") or key.endswith("_API_TOKEN")
-        })
+        provider_keys = {
+            "GROQ_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "GOOGLE_API_KEY",
+            "GEMINI_API_KEY",
+            "OPENROUTER_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "MISTRAL_API_KEY",
+            "COHERE_API_KEY",
+        }
+        observed.update({key: env[key] for key in provider_keys if key in env})
         summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
         summary.write_text(
             json.dumps({
