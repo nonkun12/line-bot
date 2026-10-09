@@ -45,6 +45,23 @@ def test_kanban_database_with_missing_tasks_table_fails_closed(tmp_path: Path):
     assert "tasks table is missing" in detail
 
 
+
+
+def test_readiness_report_never_exposes_bridge_key(monkeypatch, tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setenv("OBSIDIAN_BRIDGE_SERVER_URL", "https://example.invalid")
+    monkeypatch.setenv("OBSIDIAN_BRIDGE_KEY", "secret-canary-never-logged")
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(vault))
+    monkeypatch.delenv("HERMES_KANBAN_HOME", raising=False)
+    monkeypatch.delenv("HERMES_KANBAN_DB", raising=False)
+
+    report = readiness.collect_checks(home=tmp_path)
+    rendered = repr(report)
+
+    assert "secret-canary-never-logged" not in rendered
+    assert report["external_requests"] == 0
+    assert report["project_writes"] == 0
 def test_load_env_file_ignores_comments_and_strips_quotes(tmp_path: Path):
     env_path = tmp_path / "bridge.env"
     env_path.write_text(
