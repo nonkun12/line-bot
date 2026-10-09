@@ -15,6 +15,20 @@ def test_queue_contains_bounded_tasks():
     assert all(task["id"] and task["instruction"] and task["allowed_paths"] for task in tasks)
 
 
+def test_deterministic_target_resolves_when_project_root_is_not_on_sys_path(monkeypatch):
+    root_text = str(loop.ROOT)
+    monkeypatch.setattr(loop.sys, "path", [entry for entry in loop.sys.path if entry != root_text])
+    task = {
+        "id": "uhip-confidence-out-of-range-rejection",
+        "instruction": "test",
+        "allowed_paths": ["uhip/tests/test_schema_contracts.py"],
+    }
+
+    assert root_text not in loop.sys.path
+    assert loop._deterministic_target_for_task(task) == "uhip/tests/test_schema_contracts.py"
+    assert root_text in loop.sys.path
+
+
 def test_kill_switch_env(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("AUTONOMOUS_LOOP_STOP", "true")
     assert stopped(tmp_path / "missing-stop-file")
