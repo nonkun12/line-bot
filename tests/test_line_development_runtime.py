@@ -451,6 +451,13 @@ def test_new_distributed_queue_tasks_have_deterministic_plans(monkeypatch, tmp_p
             'eNgLiShで会話したい',
             "Specialist.ENGLISH",
         ),
+        (
+            "uhip-confidence-out-of-range-rejection",
+            "uhip/tests/test_schema_contracts.py",
+            "def test_universal_event_rejects_application_specific_command():\n    pass\n",
+            '"calibrated": 1.01',
+            "confidence-range-session-20261009",
+        ),
     ]
 
     for task_id, chosen, original, expected_one, expected_two in cases:
