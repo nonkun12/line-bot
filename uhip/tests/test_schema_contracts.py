@@ -28,6 +28,60 @@ def validate(instance: dict, schema_path: Path) -> None:
     jsonschema.Draft202012Validator(load_schema(schema_path)).validate(instance)
 
 
+def _hand_event_with_confidence(
+    *,
+    event_id: str,
+    session_id: str,
+    raw_confidence: float,
+    calibrated_confidence: float,
+) -> dict:
+    return {
+        "schema_version": "0.3",
+        "event_id": event_id,
+        "session_id": session_id,
+        "device_id": "device-confidence-test",
+        "seq": 900,
+        "t_mono_ns": 900,
+        "source": {
+            "device_kind": "mac",
+            "sensor": "camera",
+            "engine": "mediapipe",
+            "engine_version": "0.1",
+            "model_sha256": "c" * 64,
+        },
+        "modality": "hand",
+        "payload": {
+            "gesture": "thumb_up",
+            "phase": "end",
+            "value": None,
+            "hand": {
+                "label": "right",
+                "track_id": 9,
+                "mirrored": False,
+            },
+            "confidence": {
+                "raw": raw_confidence,
+                "calibrated": calibrated_confidence,
+            },
+        },
+        "gate": {
+            "recognition_passed": True,
+            "rule_version": "phase0-1",
+        },
+        "ttl_ms": 500,
+    }
+
+
+def test_universal_event_accepts_confidence_boundary_values():
+    event = _hand_event_with_confidence(
+        event_id="confidence-boundary-acceptance",
+        session_id="session-confidence-boundary-acceptance",
+        raw_confidence=1.0,
+        calibrated_confidence=0.0,
+    )
+    validate(event, EVENT_SCHEMA)
+
+
 def test_universal_event_accepts_generic_hand_event():
     event = {
         "schema_version": "0.3",
