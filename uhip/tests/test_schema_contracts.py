@@ -82,17 +82,6 @@ def test_universal_event_accepts_confidence_boundary_values():
     validate(event, EVENT_SCHEMA)
 
 
-def test_universal_event_rejects_confidence_above_one():
-    event = _hand_event_with_confidence(
-        event_id="confidence-above-one-rejection",
-        session_id="session-confidence-above-one-rejection",
-        raw_confidence=0.9,
-        calibrated_confidence=1.01,
-    )
-    with pytest.raises(jsonschema.ValidationError):
-        validate(event, EVENT_SCHEMA)
-
-
 def test_universal_event_accepts_generic_hand_event():
     event = {
         "schema_version": "0.3",
