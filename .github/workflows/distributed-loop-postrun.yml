@@ -54,6 +54,7 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
+          from pathlib import Path
 
           files = list(Path("evidence").rglob("*"))
           files = [p for p in files if p.is_file()]
@@ -107,9 +108,9 @@ jobs:
           report += ["- " + x for x in issues] if issues else ["- No post-run evidence discrepancy detected."]
           Path("postrun-report.md").write_text("\n".join(report) + "\n", encoding="utf-8")
           Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text("\n".join(report) + "\n", encoding="utf-8")
+          Path("postrun-findings.json").write_text(json.dumps(issues, ensure_ascii=False) + "\n", encoding="utf-8")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
               out.write(f"issues={len(issues)}\n")
-              out.write("findings=" + json.dumps(issues, ensure_ascii=False) + "\n")
               out.write(f"sheets_result={sheets_result}\n")
           print("\n".join(report))
           PY
@@ -121,7 +122,6 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
-          FINDINGS: ${{ steps.verify.outputs.findings }}
         run: |
           set -euo pipefail
           title="Distributed Loop follow-up: run $RUN_ID"
@@ -131,7 +131,8 @@ jobs:
           fi
           body="$(python - <<'PY'
           import json, os
-          findings = json.loads(os.environ.get("FINDINGS", "[]"))
+          from pathlib import Path
+          findings = json.loads(Path("postrun-findings.json").read_text(encoding="utf-8"))
           print("Automated post-run verification found an issue requiring investigation.\n")
           print(f"- Run: {os.environ.get('RUN_URL', '')}")
           print(f"- Run ID: {os.environ.get('RUN_ID', '')}")
@@ -156,7 +157,6 @@ jobs:
           DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
           RUN_ID: ${{ github.event.workflow_run.id }}
-          FINDINGS: ${{ steps.verify.outputs.findings }}
         run: |
           set -euo pipefail
           if [ -z "${LINE_INTERNAL_PUSH_KEY:-}" ] || [ -z "${DISTRIBUTED_LOOP_LINE_USER_ID:-}" ]; then
@@ -165,7 +165,8 @@ jobs:
           fi
           export MESSAGE="$(python - <<'PY'
           import json, os
-          findings = json.loads(os.environ.get("FINDINGS", "[]"))
+          from pathlib import Path
+          findings = json.loads(Path("postrun-findings.json").read_text(encoding="utf-8"))
           text = "⚠️ 分散Loopの終了後検証で確認事項があります。\n"
           text += f"Run ID: {os.environ.get('RUN_ID', '')}\n"
           text += f"Run: {os.environ.get('RUN_URL', '')}\n"
@@ -175,6 +176,7 @@ jobs:
           )"
           payload="$(python - <<'PY'
           import json, os
+          from pathlib import Path
           print(json.dumps({"user_id": os.environ["DISTRIBUTED_LOOP_LINE_USER_ID"], "message": os.environ["MESSAGE"]}, ensure_ascii=False))
           PY
           )"
