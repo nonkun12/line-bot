@@ -21,17 +21,56 @@ def _make_dashboard_url(user_id: str) -> str:
     return f"https://line-bot-yvea.onrender.com/dashboard?{query}"
 
 
-def _line_push_direct(user_id: str, message: str) -> None:
-    """Push through the same SDK path used by the main LINE application."""
+_MINIMUM_FREE_MONTHLY_MESSAGES = 200
+_LINE_PUSH_SAFETY_RESERVE = 20
+
+
+def _line_push_direct(user_id: str, message: str) -> dict[str, object]:
+    """Send only when quota can be verified and a conservative free buffer remains.
+
+    Japan's lowest free tier includes 200 messages. Keep 20 messages in reserve
+    and fail closed if the quota API is unavailable, unbounded, or malformed.
+    """
     from app import _build_line_messages
 
     with ApiClient(configuration) as api:
-        MessagingApi(api).push_message(
+        line_api = MessagingApi(api)
+        try:
+            quota = line_api.get_message_quota()
+            consumption = line_api.get_message_quota_consumption()
+            quota_type = getattr(getattr(quota, "type", None), "value", getattr(quota, "type", None))
+            raw_limit = getattr(quota, "value", None)
+            raw_usage = getattr(consumption, "total_usage", None)
+            if quota_type != "limited" or type(raw_limit) is not int or type(raw_usage) is not int:
+                return {"sent": False, "reason": "quota_unavailable_or_unbounded"}
+            if raw_limit < 1 or raw_usage < 0:
+                return {"sent": False, "reason": "quota_response_invalid"}
+
+            safe_limit = min(raw_limit, _MINIMUM_FREE_MONTHLY_MESSAGES)
+            if raw_usage + _LINE_PUSH_SAFETY_RESERVE >= safe_limit:
+                return {
+                    "sent": False,
+                    "reason": "free_quota_safety_reserve",
+                    "usage": raw_usage,
+                    "safe_limit": safe_limit,
+                    "reserve": _LINE_PUSH_SAFETY_RESERVE,
+                }
+        except Exception as exc:
+            # Do not push blindly if quota state cannot be verified.
+            return {"sent": False, "reason": f"quota_check_failed:{type(exc).__name__}"}
+
+        line_api.push_message(
             PushMessageRequest(
                 to=user_id,
                 messages=_build_line_messages(message),
             )
         )
+        return {
+            "sent": True,
+            "usage_before_send": raw_usage,
+            "safe_limit": safe_limit,
+            "reserve": _LINE_PUSH_SAFETY_RESERVE,
+        }
 
 
 def register_internal_ask_route(app, internal_push_key, generate_reply_func):
@@ -72,8 +111,16 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         if not isinstance(user_id, str) or not user_id.strip() or not isinstance(message, str) or not message.strip():
             return jsonify({"ok": False, "error": "user_id and message are required"}), 400
         try:
-            _line_push_direct(user_id.strip(), message.strip())
-            return jsonify({"ok": True})
+            result = _line_push_direct(user_id.strip(), message.strip())
+            if not result.get("sent"):
+                app.logger.warning(
+                    "INTERNAL PUSH SKIPPED by free-quota guard: reason=%s usage=%s safe_limit=%s",
+                    result.get("reason", "unknown"),
+                    result.get("usage", "unknown"),
+                    result.get("safe_limit", "unknown"),
+                )
+                return jsonify({"ok": True, **result}), 200
+            return jsonify({"ok": True, **result}), 200
         except Exception as exc:
             app.logger.exception("INTERNAL PUSH ERROR")
             error = "internal server error"
