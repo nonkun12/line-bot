@@ -101,15 +101,40 @@ def test_deterministic_manager_uses_declared_target_without_llm(monkeypatch):
     assert state.chosen == chosen
 
 
-def test_self_improvement_observation_skips_external_ai_for_deterministic_task(monkeypatch):
+def test_self_improvement_observation_skips_external_ai_when_explicitly_disabled(monkeypatch):
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "uhip-confidence-out-of-range-rejection")
 
     def forbidden_provider_initialization(*args, **kwargs):
-        raise AssertionError("deterministic task must not initialize self-improvement providers")
+        raise AssertionError("disabled observation must not initialize external providers")
 
     monkeypatch.setattr(runtime, "SelfImprovementEngine", forbidden_provider_initialization)
 
-    assert runtime.observe_self_improvement(object(), "uhip/tests/test_schema_contracts.py") is None
+    assert runtime.observe_self_improvement(
+        object(),
+        "uhip/tests/test_schema_contracts.py",
+        allow_external_ai=False,
+    ) is None
+
+
+def test_deterministic_task_id_does_not_disable_unrelated_self_improvement_calls(monkeypatch, tmp_path):
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "uhip-confidence-out-of-range-rejection")
+    monkeypatch.setenv("SELF_IMPROVEMENT_CREATOR_CRITIC", "false")
+    monkeypatch.setenv("SELF_IMPROVEMENT_HISTORY_PATH", str(tmp_path / "history.jsonl"))
+
+    def fake_cycle(report, history_path, *, target_paths, control_tower):
+        return type("Result", (), {
+            "new_signals": (),
+            "analysis": type("Analysis", (), {"recurring_patterns": ()})(),
+            "proposals": (),
+            "approved_proposals": (),
+        })()
+
+    monkeypatch.setattr(runtime, "ControlTower", lambda **kwargs: object())
+    monkeypatch.setattr(runtime, "run_self_improvement_cycle", fake_cycle)
+
+    result = runtime.observe_self_improvement(object(), "tests/test_agent_runtime.py")
+
+    assert result is not None
 
 
 def test_debugger_restores_before_building_real_worker_plan(monkeypatch):
