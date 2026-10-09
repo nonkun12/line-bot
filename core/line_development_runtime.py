@@ -189,7 +189,31 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "router-regression-mixed-specialists": "tests/test_management_router.py",
     "router-regression-stock-jobs-priority": "tests/test_management_router.py",
     "router-regression-market-channel-metadata": "tests/test_management_router.py",
+    "router-regression-nbsp-whitespace": "tests/test_management_router.py",
+    "router-regression-ideographic-whitespace": "tests/test_management_router.py",
+    "router-regression-tab-newline-whitespace": "tests/test_management_router.py",
+    "router-regression-mixed-whitespace": "tests/test_management_router.py",
 }
+
+_DETERMINISTIC_ROUTER_WHITESPACE_CASES = {
+    "router-regression-nbsp-whitespace": (
+        "test_routes_jobs_request_with_nonbreaking_whitespace",
+        "\u00a0求人を探して\u00a0",
+    ),
+    "router-regression-ideographic-whitespace": (
+        "test_routes_jobs_request_with_ideographic_whitespace",
+        "\u3000求人を探して\u3000",
+    ),
+    "router-regression-tab-newline-whitespace": (
+        "test_routes_jobs_request_with_tab_newline_whitespace",
+        "\t求人を探して\n",
+    ),
+    "router-regression-mixed-whitespace": (
+        "test_routes_jobs_request_with_mixed_surrounding_whitespace",
+        " \t求人を探して\n ",
+    ),
+}
+
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
     if not task_id or not chosen:
@@ -232,6 +256,37 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
     if expected_target is not None and chosen != expected_target:
         return None, "deterministic_target_mismatch"
+
+    if task_id in _DETERMINISTIC_ROUTER_WHITESPACE_CASES and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name, request_text = _DETERMINISTIC_ROUTER_WHITESPACE_CASES[task_id]
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = '    assert route(ManagementRequest("u", "  求人を探して  ")).specialist is Specialist.JOBS\\n'
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+
+        addition = (
+            f"\\n\\ndef {name}() -> None:\\n"
+            f"    assert route(ManagementRequest('u', {request_text!r})).specialist is Specialist.JOBS\\n"
+        )
+        new = anchor + addition
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
 
     if task_id == "hand-sign-uhip-contract-phase-start" and chosen == "uhip/tests/test_schema_contracts.py":
         target = worker.ROOT / chosen
