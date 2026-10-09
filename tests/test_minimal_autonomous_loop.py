@@ -179,3 +179,31 @@ def test_main_rejects_queue_limit(monkeypatch, tmp_path: Path):
         assert "max_tasks_per_run=1" in str(exc)
     else:
         raise AssertionError("expected queue limit rejection")
+
+
+def test_empty_remaining_queue_writes_explicit_no_tasks_result(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(loop, "load_tasks", lambda: [
+        {"id": "done", "instruction": "done", "allowed_paths": ["tests/test_one.py"]},
+    ])
+    queue = tmp_path / "queue.json"
+    queue.write_text('{"max_tasks_per_run": 3}', encoding="utf-8")
+    state = tmp_path / "state.json"
+    original_state = '{"version":1,"completed":["done"]}\n'
+    state.write_text(original_state, encoding="utf-8")
+    results = tmp_path / "results.jsonl"
+    monkeypatch.setattr(loop, "QUEUE", queue)
+    monkeypatch.setattr(
+        loop.sys,
+        "argv",
+        ["loop", "--max-tasks", "1", "--state", str(state), "--results", str(results)],
+    )
+    monkeypatch.setattr(loop, "run_task", lambda *_args: (_ for _ in ()).throw(AssertionError("must not spawn a task")))
+
+    assert loop.main() == 0
+    result = json.loads(results.read_text(encoding="utf-8"))
+    assert result["status"] == "NO_TASKS"
+    assert result["task_id"] == ""
+    assert result["task_count"] == 0
+    assert result["queue_total"] == 1
+    assert result["queue_completed"] == 1
+    assert state.read_text(encoding="utf-8") == original_state

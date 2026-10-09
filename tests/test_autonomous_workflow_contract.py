@@ -10,6 +10,32 @@ def test_autonomous_workflow_keeps_jst_schedule_slots():
     assert 'cron: "5 21 * * *"' in text
     assert 'timezone: "Asia/Tokyo"' in text
 
+
+def test_distributed_loop_and_watchdog_schedules_are_aligned():
+    distributed = (ROOT / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    watchdog = (ROOT / ".github" / "workflows" / "autonomous-development-watchdog.yml").read_text(encoding="utf-8")
+    assert "cron: '30 4,10,16,22 * * *'" in distributed
+    assert distributed.count("timezone: 'Asia/Tokyo'") == 1
+    for hour in (5, 11, 17, 23):
+        assert f"cron: '30 {hour} * * *'" in watchdog
+    assert watchdog.count("timezone: 'Asia/Tokyo'") == 4
+    assert "AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE || secrets.GOOGLE_SHEETS_AUDIT_RANGE || 'AutonomousDevelopment!A:ZZ' }}" in watchdog
+    assert "INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}" in watchdog
+    assert "DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}" in watchdog
+    assert "send_internal_line_push(message)" in watchdog
+
+
+def test_distributed_loop_reports_queue_exhaustion_as_no_tasks():
+    distributed = (ROOT / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert "status == 'NO_TASKS'" in distributed
+    assert "result=\"NO_TASKS\"" in distributed
+    assert "queue_exhausted_no_tasks" in distributed
+    assert "task_id = task_id or 'distributed-loop-no-task-result'" not in distributed
+    assert "_resolved_sheet(client)" in distributed
+    assert "ensure_headers(client, tab)" in distributed
+    assert "Queue exhausted; durable task state unchanged." in distributed
+    assert "Queue exhausted; no task was executed." in distributed
+
 def test_autonomous_workflow_does_not_escape_github_or_shell_variables():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "\\${{" not in text

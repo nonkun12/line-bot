@@ -3,11 +3,13 @@ name: Autonomous Development Watchdog
 on:
   workflow_dispatch:
   schedule:
-    - cron: '15 4 * * *'
+    - cron: '30 5 * * *'
       timezone: 'Asia/Tokyo'
-    - cron: '15 16 * * *'
+    - cron: '30 11 * * *'
       timezone: 'Asia/Tokyo'
-    - cron: '15 22 * * *'
+    - cron: '30 17 * * *'
+      timezone: 'Asia/Tokyo'
+    - cron: '30 23 * * *'
       timezone: 'Asia/Tokyo'
 
 permissions:
@@ -39,7 +41,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
-          AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
+          AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE || secrets.GOOGLE_SHEETS_AUDIT_RANGE || 'AutonomousDevelopment!A:ZZ' }}
           GOOGLE_SHEETS_AUDIT_RANGE: ${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
         run: |
           set +e
@@ -57,16 +59,21 @@ jobs:
         if: failure()
         continue-on-error: true
         env:
-          CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
+          INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
+          DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          LINE_NOTIFY_USER_ID: ${{ secrets.LINE_NOTIFY_USER_ID }}
           WATCHDOG_RESULT: ${{ steps.watchdog.outputs.result }}
         run: |
+          if ! curl --fail-with-body --silent --show-error --retry 2 --retry-delay 3 --retry-all-errors --max-time 30 \
+            "https://line-bot-yvea.onrender.com/health"; then
+            echo "LINE_RENDER_HEALTH=FAILED; attempting one authenticated push anyway."
+          fi
           python - <<'PY'
           import json
           import os
           import urllib.error
           import urllib.request
+          from scripts.send_internal_line_push import send_internal_line_push
 
           message = "⚠️ 自律開発Watchdog警告\n" + os.environ.get("WATCHDOG_RESULT", "watchdog failed")
 
@@ -84,27 +91,13 @@ jobs:
               except Exception as exc:
                   print(f"SLACK_NOTIFICATION=ERROR_{type(exc).__name__}")
 
-          token = os.environ.get("CHANNEL_ACCESS_TOKEN", "").strip()
-          user_id = os.environ.get("LINE_NOTIFY_USER_ID", "").strip()
-          if token and user_id:
-              payload = {
-                  "to": user_id,
-                  "messages": [{"type": "text", "text": message}],
-              }
-              request = urllib.request.Request(
-                  "https://api.line.me/v2/bot/message/push",
-                  data=json.dumps(payload).encode("utf-8"),
-                  headers={
-                      "Authorization": "Bearer " + token,
-                      "Content-Type": "application/json",
-                  },
-                  method="POST",
-              )
-              try:
-                  with urllib.request.urlopen(request, timeout=15) as response:
-                      print(f"LINE_NOTIFICATION=HTTP_{response.status}")
-              except Exception as exc:
-                  print(f"LINE_NOTIFICATION=ERROR_{type(exc).__name__}")
+          result = send_internal_line_push(message)
+          print(f"LINE_NOTIFICATION={'SUCCESS' if result.ok else 'FAILED'}")
+          print(f"LINE_NOTIFICATION_HTTP={result.http_status if result.http_status is not None else 'NOT_SENT'}")
+          if result.reason:
+              print(f"LINE_NOTIFICATION_ERROR={result.reason}")
+          if not result.ok:
+              raise SystemExit(1)
 
       - name: Upload watchdog result
         if: always()

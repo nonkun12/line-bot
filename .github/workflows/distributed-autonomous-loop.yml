@@ -181,6 +181,11 @@ jobs:
           results = [json.loads(line) for line in lines]
           if not results:
               raise SystemExit("no loop results")
+          if any(result.get("status") == "NO_TASKS" for result in results):
+              if len(results) != 1 or results[0].get("task_count") != 0 or results[0].get("task_id"):
+                  raise SystemExit("invalid NO_TASKS loop result")
+              print("Queue exhausted; durable task state unchanged.")
+              raise SystemExit(0)
           completed_ids = []
           for result in results:
               status = result.get("status", "FAIL")
@@ -245,7 +250,7 @@ jobs:
         env:
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
-          AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE || 'AutonomousDevelopment!A:ZZ' }}
+          AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE || secrets.GOOGLE_SHEETS_AUDIT_RANGE || 'AutonomousDevelopment!A:ZZ' }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_SHA: ${{ github.sha }}
           DEV_INSTRUCTION: Distributed autonomous loop scheduled task
@@ -269,6 +274,24 @@ jobs:
           export AUTONOMOUS_PR_URL=""
           echo "Google Sheets ledger target: ${AUTONOMOUS_DEV_LEDGER_RANGE}"
           python - <<'PY'
+          from agents.sheets.autonomous_ledger import _resolved_sheet, ensure_headers
+          from agents.sheets.client import GoogleSheetsClient
+
+          client = GoogleSheetsClient()
+          metadata = client.service.spreadsheets().get(
+              spreadsheetId=client.spreadsheet_id,
+              fields="properties.title,sheets.properties.title",
+          ).execute()
+          title = metadata.get("properties", {}).get("title", "Unknown")
+          titles = [item.get("properties", {}).get("title", "") for item in metadata.get("sheets", [])]
+          tab = _resolved_sheet(client)
+          append_range = ensure_headers(client, tab)
+          print(f"Google Sheets spreadsheet title: {title}")
+          print(f"Google Sheets tabs: {', '.join(value for value in titles if value)}")
+          print(f"Google Sheets resolved ledger tab: {tab}")
+          print(f"Google Sheets verified ledger range: {append_range}")
+          PY
+          python - <<'PY'
           import json
           import os
           from pathlib import Path
@@ -291,16 +314,19 @@ jobs:
           publish = os.getenv('PUBLISH_OUTCOME', '')
           state = os.getenv('STATE_OUTCOME', '')
 
-          if status not in {'PASS', 'NO_CHANGE', 'FAIL', 'BLOCKED'}:
+          if status not in {'PASS', 'NO_CHANGE', 'NO_TASKS', 'FAIL', 'BLOCKED'}:
               status = 'BLOCKED' if not result or status in {'STOPPED', 'TIMEOUT'} else 'FAIL'
-          os.environ['AUTONOMOUS_TASK_ID'] = task_id or 'distributed-loop-no-task-result'
-          os.environ['DEV_INSTRUCTION'] = str(result.get('summary') or result.get('task_summary') or os.environ['DEV_INSTRUCTION'])
+          os.environ['AUTONOMOUS_TASK_ID'] = task_id
+          os.environ['DEV_INSTRUCTION'] = str(
+              result.get('summary') or result.get('task_summary')
+              or ('Queue exhausted; no task was executed.' if status == 'NO_TASKS' else os.environ['DEV_INSTRUCTION'])
+          )
           os.environ['AUTONOMOUS_TESTS_RESULT'] = status
-          os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'PASS' if publish == 'success' else ('NOT_RUN' if publish == 'skipped' else 'FAIL')
-          os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'PASS' if status in {'PASS', 'NO_CHANGE'} and run_outcome == 'success' and publish == 'success' and state == 'success' else 'BLOCKED'
+          os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'NO_TASKS' if status == 'NO_TASKS' else ('PASS' if publish == 'success' else ('NOT_RUN' if publish == 'skipped' else 'FAIL'))
+          os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'NOT_APPLICABLE' if status == 'NO_TASKS' else ('PASS' if status in {'PASS', 'NO_CHANGE'} and run_outcome == 'success' and publish == 'success' and state == 'success' else 'BLOCKED')
           os.environ['AUTONOMOUS_MERGE_RESULT'] = 'NOT_AUTO_MERGED'
           reason = str(result.get('failure_reason') or '')
-          if not reason and status not in {'PASS', 'NO_CHANGE'}:
+          if not reason and status not in {'PASS', 'NO_CHANGE', 'NO_TASKS'}:
               reason = f"loop_{status.lower()}" if result else f"workflow_failed_before_result:{run_outcome or 'not_run'}"
           if not reason and publish not in {'success', 'skipped'}:
               reason = f'publish_{publish or "not_run"}'
@@ -311,6 +337,8 @@ jobs:
               action = 'review_changes'
           elif status == 'NO_CHANGE':
               action = 'none'
+          elif status == 'NO_TASKS':
+              action = 'review_queue_for_new_candidate'
           else:
               action = 'inspect_workflow_run'
           os.environ['AUTONOMOUS_NEXT_ACTION'] = action
@@ -378,12 +406,14 @@ jobs:
           result="STOPPED/FAILED"
           result_reason="workflow_failed"
           if [ "${LOOP_OUTCOME:-}" = "success" ] && { [ "$completed" = "$requested" ] || [ "$queue_completed" = "$queue_total" ]; }; then
-            result="COMPLETED"
             if [ "$completed" = "0" ] && [ "$queue_completed" = "$queue_total" ]; then
+              result="NO_TASKS"
               result_reason="queue_exhausted_no_tasks"
             elif [ "$completed" = "$requested" ]; then
+              result="COMPLETED"
               result_reason="requested_task_limit_reached"
             else
+              result="COMPLETED"
               result_reason="queue_completed"
             fi
           fi
@@ -429,33 +459,19 @@ jobs:
       - name: Notify LINE of distributed loop final report
         if: always()
         env:
-          LINE_INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
+          INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
           DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          if [ -z "${LINE_INTERNAL_PUSH_KEY:-}" ] || [ -z "${DISTRIBUTED_LOOP_LINE_USER_ID:-}" ]; then
-            echo "LINE success notification skipped: required GitHub secrets are not configured."
-            exit 0
-          fi
           # Every completed distributed-loop run must send its final report to LINE,
           # including queue-exhausted runs, so LINE remains the authoritative user-facing status.
           if [ -s /tmp/distributed-final-report.txt ]; then
-            message="$(cat /tmp/distributed-final-report.txt)"
+            message_file=/tmp/distributed-final-report.txt
           else
-            message="⚠️ 分散Loop終了報告を生成できませんでした。Run #${{ github.run_number }}"
+            printf '%s\n' "⚠️ 分散Loop終了報告を生成できませんでした。Run #${{ github.run_number }}" > /tmp/distributed-final-report-fallback.txt
+            message_file=/tmp/distributed-final-report-fallback.txt
           fi
-          export MESSAGE="$message"
-          payload="$(python - <<'PY'
-          import json, os
-          print(json.dumps({'user_id': os.environ['DISTRIBUTED_LOOP_LINE_USER_ID'], 'message': os.environ['MESSAGE']}, ensure_ascii=False))
-          PY
-          )"
-          curl --fail-with-body --silent --show-error --max-time 30 \
-            -X POST "https://line-bot-yvea.onrender.com/internal/push" \
-            -H "Content-Type: application/json" \
-            -H "x-internal-key: ${LINE_INTERNAL_PUSH_KEY}" \
-            --data "$payload"
+          python scripts/send_internal_line_push.py "$message_file"
       - name: Upload durable run evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -469,4 +485,3 @@ jobs:
             /tmp/distributed-sheets-log-result.json
             /tmp/distributed-final-report.txt
           if-no-files-found: ignore
-
