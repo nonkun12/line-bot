@@ -1,5 +1,6 @@
 """Tests for /internal/push input validation and successful push handling."""
 import pytest
+from types import SimpleNamespace
 
 import app
 import internal_ask_route
@@ -7,9 +8,25 @@ import internal_ask_route
 
 class _CapturingMessagingApi:
     calls = []
+    quota_type = "limited"
+    quota_value = 200
+    total_usage = 0
+    quota_error = None
 
     def __init__(self, api_client):
         pass
+
+    def get_message_quota(self):
+        self.calls.append(("quota", None))
+        if self.quota_error:
+            raise self.quota_error
+        return SimpleNamespace(type=self.quota_type, value=self.quota_value)
+
+    def get_message_quota_consumption(self):
+        self.calls.append(("consumption", None))
+        if self.quota_error:
+            raise self.quota_error
+        return SimpleNamespace(total_usage=self.total_usage)
 
     def reply_message(self, request):
         self.calls.append(("reply", request))
@@ -21,6 +38,10 @@ class _CapturingMessagingApi:
 @pytest.fixture
 def capture_messaging_api(monkeypatch):
     _CapturingMessagingApi.calls = []
+    _CapturingMessagingApi.quota_type = "limited"
+    _CapturingMessagingApi.quota_value = 200
+    _CapturingMessagingApi.total_usage = 0
+    _CapturingMessagingApi.quota_error = None
     monkeypatch.setattr(internal_ask_route, "MessagingApi", _CapturingMessagingApi)
     yield _CapturingMessagingApi.calls
 
@@ -100,7 +121,69 @@ def test_internal_push_valid_input_still_returns_200_regression(client, valid_he
     )
     assert resp.status_code == 200
     assert resp.get_json()["ok"] is True
-    assert len(capture_messaging_api) == 1
-    kind, request = capture_messaging_api[0]
+    assert resp.get_json()["sent"] is True
+    push_calls = [(kind, request) for kind, request in capture_messaging_api if kind == "push"]
+    assert len(push_calls) == 1
+    kind, request = push_calls[0]
     assert kind == "push"
     assert request.messages[0].text == "テスト"
+
+
+def test_internal_push_skips_when_free_quota_reserve_would_be_breached(client, valid_headers, capture_messaging_api, monkeypatch):
+    _CapturingMessagingApi.total_usage = 180
+    monkeypatch.setattr(app, "save_message", lambda *a, **k: None)
+
+    resp = client.post(
+        "/internal/push",
+        json={"user_id": USER_ID, "message": "test"},
+        headers=valid_headers,
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json() == {
+        "ok": True,
+        "sent": False,
+        "reason": "free_quota_safety_reserve",
+        "usage": 180,
+        "safe_limit": 200,
+        "reserve": 20,
+    }
+    assert not any(kind == "push" for kind, _ in capture_messaging_api)
+
+
+def test_internal_push_fails_closed_when_quota_api_is_unavailable(client, valid_headers, capture_messaging_api, monkeypatch):
+    _CapturingMessagingApi.quota_error = RuntimeError("quota API unavailable")
+    monkeypatch.setattr(app, "save_message", lambda *a, **k: None)
+
+    resp = client.post(
+        "/internal/push",
+        json={"user_id": USER_ID, "message": "test"},
+        headers=valid_headers,
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json() == {
+        "ok": True,
+        "sent": False,
+        "reason": "quota_check_failed:RuntimeError",
+    }
+    assert not any(kind == "push" for kind, _ in capture_messaging_api)
+
+
+def test_internal_push_skips_when_quota_is_not_limited(client, valid_headers, capture_messaging_api, monkeypatch):
+    _CapturingMessagingApi.quota_type = "none"
+    monkeypatch.setattr(app, "save_message", lambda *a, **k: None)
+
+    resp = client.post(
+        "/internal/push",
+        json={"user_id": USER_ID, "message": "test"},
+        headers=valid_headers,
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json() == {
+        "ok": True,
+        "sent": False,
+        "reason": "quota_unavailable_or_unbounded",
+    }
+    assert not any(kind == "push" for kind, _ in capture_messaging_api)
