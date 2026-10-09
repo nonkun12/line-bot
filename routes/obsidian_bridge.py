@@ -11,7 +11,12 @@ import os
 from flask import Blueprint, current_app, jsonify, request
 
 from core.obsidian_bridge import OBSIDIAN_JOB_TYPE
-from db import (\n    claim_pending_job_by_type,\n    complete_claimed_job,\n    get_job,\n    has_pending_job_by_type,\n)
+from db import (
+    claim_pending_job_by_type,
+    complete_claimed_job,
+    get_job,
+    has_pending_job_by_type,
+)
 
 
 obsidian_bridge_bp = Blueprint("obsidian_bridge", __name__, url_prefix="/api/obsidian")
