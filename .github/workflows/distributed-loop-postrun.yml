@@ -1,0 +1,186 @@
+name: Distributed Loop Post-Run Verification
+
+on:
+  workflow_run:
+    workflows: ["Distributed Autonomous Development Loop"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: distributed-loop-postrun-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  verify-and-follow-up:
+    # Never execute code from the completed run's branch; this workflow is trusted
+    # default-branch code and only reads the completed run's artifacts.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Download evidence from completed loop run
+        id: evidence
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          gh run download "$RUN_ID" --repo "$REPOSITORY" \
+            --name "minimal-autonomous-loop-$RUN_ID" --dir evidence
+          find evidence -maxdepth 3 -type f -print
+          echo "downloaded=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify task and Sheets evidence
+        id: verify
+        env:
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from pathlib import Path
+
+          files = list(Path("evidence").rglob("*"))
+          files = [p for p in files if p.is_file()]
+          result_files = [p for p in files if p.name == "minimal-autonomous-loop.jsonl"]
+          sheets_files = [p for p in files if p.name == "distributed-sheets-log-result.json"]
+          report_files = [p for p in files if p.name == "distributed-final-report.txt"]
+          tasks = []
+          for path in result_files:
+              for line in path.read_text(encoding="utf-8").splitlines():
+                  if line.strip():
+                      try:
+                          item = json.loads(line)
+                          if isinstance(item, dict):
+                              tasks.append(item)
+                      except json.JSONDecodeError:
+                          pass
+          sheets = {}
+          if sheets_files:
+              try:
+                  sheets = json.loads(sheets_files[0].read_text(encoding="utf-8"))
+              except Exception:
+                  sheets = {}
+          statuses = [str(x.get("status", "UNKNOWN")) for x in tasks]
+          sheets_result = str(sheets.get("result", "MISSING"))
+          conclusion = os.environ.get("RUN_CONCLUSION", "unknown")
+          issues = []
+          if conclusion != "success":
+              issues.append(f"Loop workflow conclusion is {conclusion}.")
+          if not tasks:
+              issues.append("Task result evidence is missing or empty.")
+          if any(s not in {"PASS", "NO_CHANGE"} for s in statuses):
+              issues.append("One or more task results are not PASS/NO_CHANGE: " + ", ".join(statuses))
+          if sheets_result not in {"RECORDED", "ALREADY_RECORDED"}:
+              issues.append("Google Sheets evidence is not confirmed: " + sheets_result)
+          report = [
+              "# Distributed Loop Post-Run Verification",
+              "",
+              f"- Run: {os.environ.get('RUN_URL', '')}",
+              f"- Run ID: {os.environ.get('RUN_ID', '')}",
+              f"- Workflow conclusion: {conclusion}",
+              f"- Head SHA: {os.environ.get('HEAD_SHA', '')}",
+              f"- Task count in evidence: {len(tasks)}",
+              f"- Task statuses: {', '.join(statuses) if statuses else 'NO EVIDENCE'}",
+              f"- Google Sheets artifact result: {sheets_result}",
+              f"- Sheets artifact task ID: {sheets.get('task_id', 'unknown')}",
+              "",
+          ]
+          if report_files:
+              report += ["## Original run report", "", report_files[0].read_text(encoding="utf-8")[:12000], ""]
+          report += ["## Follow-up findings", ""]
+          report += ["- " + x for x in issues] if issues else ["- No post-run evidence discrepancy detected."]
+          Path("postrun-report.md").write_text("\n".join(report) + "\n", encoding="utf-8")
+          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text("\n".join(report) + "\n", encoding="utf-8")
+          Path("postrun-findings.json").write_text(json.dumps(issues, ensure_ascii=False) + "\n", encoding="utf-8")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"issues={len(issues)}\n")
+          print("\n".join(report))
+          PY
+
+      - name: Open a deduplicated follow-up issue when evidence is incomplete or failed
+        if: steps.verify.outputs.issues != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          title="Distributed Loop follow-up: run $RUN_ID"
+          if gh issue list --repo "$REPOSITORY" --state open --search "$title in:title" --json title --jq '.[].title' | grep -Fxq "$title"; then
+            echo "An open follow-up issue already exists for this run."
+            exit 0
+          fi
+          body="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          findings = json.loads(Path("postrun-findings.json").read_text(encoding="utf-8"))
+          print("Automated post-run verification found an issue requiring investigation.\n")
+          print(f"- Run: {os.environ.get('RUN_URL', '')}")
+          print(f"- Run ID: {os.environ.get('RUN_ID', '')}")
+          print("\n## Findings")
+          for item in findings:
+              print(f"- {item}")
+          print("\n## Required follow-up")
+          print("- Inspect the original run logs and uploaded evidence.")
+          print("- Verify the Google Sheets row directly; an artifact alone is not proof of a live row.")
+          print("- Make only a reviewed, bounded fix. Do not auto-deploy, bypass safety gates, or loop-retry.")
+          PY
+          )"
+          gh issue create --repo "$REPOSITORY" --title "$title" --body "$body" || {
+            echo "::warning::Could not create issue (label may be unavailable or token lacks permission)."
+            exit 0
+          }
+
+      - name: Notify LINE only when follow-up is required
+        if: steps.verify.outputs.issues != '0'
+        env:
+          LINE_INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
+          DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${LINE_INTERNAL_PUSH_KEY:-}" ] || [ -z "${DISTRIBUTED_LOOP_LINE_USER_ID:-}" ]; then
+            echo "LINE follow-up skipped: required secrets are not configured."
+            exit 0
+          fi
+          export MESSAGE="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          findings = json.loads(Path("postrun-findings.json").read_text(encoding="utf-8"))
+          text = "⚠️ 分散Loopの終了後検証で確認事項があります。\n"
+          text += f"Run ID: {os.environ.get('RUN_ID', '')}\n"
+          text += f"Run: {os.environ.get('RUN_URL', '')}\n"
+          text += "\n".join("- " + x for x in findings)
+          print(text[:4500])
+          PY
+          )"
+          payload="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          print(json.dumps({"user_id": os.environ["DISTRIBUTED_LOOP_LINE_USER_ID"], "message": os.environ["MESSAGE"]}, ensure_ascii=False))
+          PY
+          )"
+          curl --fail-with-body --silent --show-error --max-time 30 \
+            -X POST "https://line-bot-yvea.onrender.com/internal/push" \
+            -H "Content-Type: application/json" \
+            -H "x-internal-key: ${LINE_INTERNAL_PUSH_KEY}" \
+            --data "$payload"
