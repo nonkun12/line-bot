@@ -116,16 +116,18 @@ def _self_improvement_creator_critic_enabled() -> bool:
 def observe_self_improvement(
     report: RuntimeReport,
     target_path: str,
+    *,
+    allow_external_ai: bool = True,
 ) -> SelfImprovementCycleResult | None:
     """Feed eligible development reports into bounded self-improvement.
 
-    Deterministic queued tasks skip creator/critic and control-tower processing:
-    these tasks must complete without any external AI provider calls.
+    Callers executing deterministic queue tasks must explicitly disable this
+    provider-backed observation stage. Do not infer that policy from the ambient
+    task ID: unit tests and unrelated callers can run in the same environment.
     """
-    task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
-    if task_id in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS:
+    if not allow_external_ai:
         print(
-            "[SELF-IMPROVEMENT] skipped for deterministic task; external AI disabled",
+            "[SELF-IMPROVEMENT] skipped by caller; external AI disabled",
             flush=True,
         )
         return None
@@ -1330,7 +1332,11 @@ def execute(instruction: str) -> int:
     print(f"[manager] {tasks[0].task_id}: {manager_result.summary[-1500:]}", flush=True)
     for item in report.completed:
         print(f"[{item.task.role.value}] {item.task.task_id}: {item.result.summary[-1500:]}", flush=True)
-    improvement_result = observe_self_improvement(report, state.chosen)
+    improvement_result = observe_self_improvement(
+        report,
+        state.chosen,
+        allow_external_ai=not deterministic_task,
+    )
     if not report.success or not report.integration_ready:
         _rollback_to_clean_baseline(baseline_sha)
         detail = report.error or report.failed_task_id or "quality runtime failed"
