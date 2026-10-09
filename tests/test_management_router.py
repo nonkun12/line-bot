@@ -66,6 +66,13 @@ def test_normalizes_full_width_input_and_preserves_channel_metadata() -> None:
     assert decision.metadata["request_metadata"]["source"] == "parallel-dev-test"
 
 
+
+
+def test_router_regression_stock_jobs_priority_distributed_loop() -> None:
+    decision = route(ManagementRequest("u", "Find stock prices and job opportunities"))
+    assert decision.specialist is Specialist.STOCKS
+    assert decision.metadata["matched_specialists"] == ["stocks", "jobs"]
+    assert decision.metadata["routing_priority"] == 5
 def test_preserves_market_priority_over_jobs_for_mixed_request() -> None:
     decision = route(ManagementRequest("u", "求人とNYダウについて教えて"))
     assert decision.specialist is Specialist.MARKET
