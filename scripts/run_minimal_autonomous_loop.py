@@ -283,8 +283,21 @@ def main() -> int:
     if args.max_tasks > queue_limit:
         raise SystemExit(f"--max-tasks exceeds queue max_tasks_per_run={queue_limit}")
     completed = load_completed(args.state)
-    tasks = [task for task in load_tasks() if task["id"] not in completed][: args.max_tasks]
+    queued_tasks = load_tasks()
+    tasks = [task for task in queued_tasks if task["id"] not in completed][: args.max_tasks]
     if not tasks:
+        args.results.parent.mkdir(parents=True, exist_ok=True)
+        result = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "NO_TASKS",
+            "task_id": "",
+            "task_count": 0,
+            "queue_total": len(queued_tasks),
+            "queue_completed": sum(1 for task in queued_tasks if task["id"] in completed),
+            "failure_reason": "",
+        }
+        with args.results.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(result, ensure_ascii=False) + "\n")
         print("MINIMAL_LOOP=COMPLETE queue exhausted")
         return 0
 
