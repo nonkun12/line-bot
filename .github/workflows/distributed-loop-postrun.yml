@@ -16,6 +16,11 @@ concurrency:
 
 jobs:
   verify-and-follow-up:
+    # GitHub emits completed workflow_run events even when the source workflow's
+    # jobs were skipped by an intentional trigger guard (for example, an ordinary
+    # issue comment). Such runs have no task/Sheets artifacts by design and must
+    # not generate a false failure report or follow-up issue.
+    if: github.event.workflow_run.conclusion != 'skipped'
     # Never execute code from the completed run's branch; this workflow is trusted
     # default-branch code and only reads the completed run's artifacts.
     runs-on: ubuntu-latest
