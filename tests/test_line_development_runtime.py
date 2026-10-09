@@ -476,3 +476,23 @@ def test_new_distributed_queue_tasks_have_deterministic_plans(monkeypatch, tmp_p
         compile(candidate, chosen, "exec")
         assert expected_one in candidate
         assert expected_two in candidate
+
+
+def test_confidence_rejection_plan_is_idempotent_when_test_exists(monkeypatch, tmp_path):
+    chosen = "uhip/tests/test_schema_contracts.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "def test_universal_event_rejects_out_of_range_calibrated_confidence():\n    pass\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen,
+        "uhip-confidence-out-of-range-rejection",
+    )
+
+    assert err is None
+    assert plan == {"no_change": True, "source": "deterministic_autonomous_task"}
+
