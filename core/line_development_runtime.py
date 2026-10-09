@@ -177,6 +177,8 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "router-regression-fullwidth-market": "tests/test_management_router.py",
     "router-regression-casefold-english": "tests/test_management_router.py",
     "router-regression-mixed-specialists": "tests/test_management_router.py",
+    "router-regression-stock-jobs-priority": "tests/test_management_router.py",
+    "router-regression-market-channel-metadata": "tests/test_management_router.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -814,6 +816,71 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "    }\n"
             "    with pytest.raises(jsonschema.ValidationError):\n"
             "        validate(event, EVENT_SCHEMA)\n\n\n"
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "router-regression-stock-jobs-priority" and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_router_regression_stock_jobs_priority_distributed_loop"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_preserves_market_priority_over_jobs_for_mixed_request() -> None:\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+        addition = (
+            "\n\ndef test_router_regression_stock_jobs_priority_distributed_loop() -> None:\n"
+            '    decision = route(ManagementRequest("u", "Find stock prices and job opportunities"))\n'
+            "    assert decision.specialist is Specialist.STOCKS\n"
+            '    assert decision.metadata["matched_specialists"] == ["stocks", "jobs"]\n'
+            '    assert decision.metadata["routing_priority"] == 5\n'
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "router-regression-market-channel-metadata" and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_router_regression_market_channel_metadata_distributed_loop"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_normalizes_full_width_input_and_preserves_channel_metadata() -> None:\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+        addition = (
+            "\n\ndef test_router_regression_market_channel_metadata_distributed_loop() -> None:\n"
+            '    request = ManagementRequest("u", "Explain FOREX exchange rates", channel="line", metadata={"source": "distributed-loop-regression"})\n'
+            "    decision = route(request)\n"
+            "    assert decision.specialist is Specialist.MARKET\n"
+            '    assert decision.metadata["matched_specialists"] == ["market"]\n'
+            '    assert decision.metadata["routing_priority"] == 4\n'
+            '    assert decision.metadata["channel"] == "line"\n'
+            '    assert decision.metadata["request_metadata"]["source"] == "distributed-loop-regression"\n'
         )
         new = addition + anchor
         if len(anchor) > 1200 or len(new) > 1800:
