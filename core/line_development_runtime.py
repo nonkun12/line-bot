@@ -189,6 +189,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "router-regression-mixed-specialists": "tests/test_management_router.py",
     "router-regression-stock-jobs-priority": "tests/test_management_router.py",
     "router-regression-market-channel-metadata": "tests/test_management_router.py",
+    "macos-readiness-audit-no-secret-leak": "tests/test_macos_kanban_obsidian_readiness.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -891,6 +892,47 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             '    assert decision.metadata["routing_priority"] == 4\n'
             '    assert decision.metadata["channel"] == "line"\n'
             '    assert decision.metadata["request_metadata"]["source"] == "distributed-loop-regression"\n'
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "macos-readiness-audit-no-secret-leak" and chosen == "tests/test_macos_kanban_obsidian_readiness.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_readiness_report_never_exposes_bridge_key"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_load_env_file_ignores_comments_and_strips_quotes(tmp_path: Path):\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+        addition = (
+            "\n\ndef test_readiness_report_never_exposes_bridge_key(monkeypatch, tmp_path: Path):\n"
+            "    vault = tmp_path / \"vault\"\n"
+            "    vault.mkdir()\n"
+            '    monkeypatch.setenv("OBSIDIAN_BRIDGE_SERVER_URL", "https://example.invalid")\n'
+            '    monkeypatch.setenv("OBSIDIAN_BRIDGE_KEY", "secret-canary-never-logged")\n'
+            '    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(vault))\n'
+            '    monkeypatch.delenv("HERMES_KANBAN_HOME", raising=False)\n'
+            '    monkeypatch.delenv("HERMES_KANBAN_DB", raising=False)\n'
+            "\n"
+            "    report = readiness.collect_checks(home=tmp_path)\n"
+            "    rendered = repr(report)\n"
+            "\n"
+            '    assert "secret-canary-never-logged" not in rendered\n'
+            '    assert report["external_requests"] == 0\n'
+            '    assert report["project_writes"] == 0\n'
         )
         new = addition + anchor
         if len(anchor) > 1200 or len(new) > 1800:

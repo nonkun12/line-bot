@@ -538,6 +538,13 @@ def test_new_distributed_queue_tasks_have_deterministic_plans(monkeypatch, tmp_p
             "test_router_regression_market_channel_metadata_distributed_loop",
             "distributed-loop-regression",
         ),
+        (
+            "macos-readiness-audit-no-secret-leak",
+            "tests/test_macos_kanban_obsidian_readiness.py",
+            "def test_load_env_file_ignores_comments_and_strips_quotes(tmp_path: Path):\n    pass\n",
+            "secret-canary-never-logged",
+            'report["project_writes"] == 0',
+        ),
     ]
 
     for task_id, chosen, original, expected_one, expected_two in cases:

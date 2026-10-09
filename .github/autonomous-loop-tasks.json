@@ -24,10 +24,10 @@
       ]
     },
     {
-      "id": "router-regression-market-channel-metadata",
-      "instruction": "tests/test_management_router.py に、channel='line' と request metadata を指定した FOREX キーワードの要求が MARKET に振り分けられ、channel と request_metadata が decision metadata に保持される回帰テストを1件追加してください。既存の market priority と channel metadata テストの単純な重複を避け、実装コードは変更せずテストだけを最小変更で追加してください。",
+      "id": "macos-readiness-audit-no-secret-leak",
+      "instruction": "tests/test_macos_kanban_obsidian_readiness.py に、OBSIDIAN_BRIDGE_KEY を設定しても readiness report に鍵の値が含まれず、external_requests=0 と project_writes=0 が保たれる回帰テストを1件追加してください。既存テストと重複させず、テストファイルだけを変更してください。実際のネットワーク、外部API、OS操作、LaunchAgentの実行は禁止。シークレット値はダミー文字列のみ使用してください。",
       "allowed_paths": [
-        "tests/test_management_router.py"
+        "tests/test_macos_kanban_obsidian_readiness.py"
       ]
     }
   ]
