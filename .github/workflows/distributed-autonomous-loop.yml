@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || '4' }}
+      MAX_TASKS: ${{ github.event_name == 'schedule' && '4' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || '4' }}
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
       SELF_IMPROVEMENT_POLICY_ENFORCED: 'true'
@@ -137,7 +137,7 @@ jobs:
           elif [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
             expected="${DISPATCH_INPUT:-4}"
           elif [ "${EVENT_NAME}" = "schedule" ]; then
-            expected="1"
+            expected="4"
           elif [ "${EVENT_NAME}" = "pull_request_target" ]; then
             expected="4"
           fi
