@@ -13,6 +13,7 @@
     "hand-sign-uhip-contract-phase-start",
     "hand-sign-uhip-contract-left-hand",
     "router-regression-jobs-market-metadata",
-    "uhip-confidence-boundary-acceptance"
+    "uhip-confidence-boundary-acceptance",
+    "uhip-confidence-out-of-range-rejection"
   ]
 }
