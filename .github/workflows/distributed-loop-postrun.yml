@@ -85,10 +85,19 @@ jobs:
           statuses = [str(x.get("status", "UNKNOWN")) for x in tasks]
           sheets_result = str(sheets.get("result", "MISSING"))
           conclusion = os.environ.get("RUN_CONCLUSION", "unknown")
+          original_report = (
+              report_files[0].read_text(encoding="utf-8")[:12000]
+              if report_files else ""
+          )
+          # Empty queue is an expected no-work outcome, not missing task evidence.
+          # Match the exact reason marker produced by the trusted source workflow.
+          queue_empty = "- 結果理由: queue_exhausted_no_tasks" in original_report
           issues = []
           if conclusion != "success":
               issues.append(f"Loop workflow conclusion is {conclusion}.")
-          if not tasks:
+          if queue_empty and tasks:
+              issues.append("Queue-empty report conflicts with task result evidence.")
+          if not tasks and not queue_empty:
               issues.append("Task result evidence is missing or empty.")
           if any(s not in {"PASS", "NO_CHANGE"} for s in statuses):
               issues.append("One or more task results are not PASS/NO_CHANGE: " + ", ".join(statuses))
