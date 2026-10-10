@@ -227,15 +227,6 @@ _ENTRIES: dict[str, WordEntry] = {
         example="We watched a preview of the film.（私たちは映画の予告編を見た。）",
         note="「前もって見る」は覚えるためのイメージです。",
     ),
-    "prevent": WordEntry(
-        word="prevent",
-        pronunciation="プリベント",
-        core_image="先回りして起こらないようにする → 防ぐ・予防する",
-        parts="ラテン語 praevenire（先に来る）に由来する語。pre-（前に）と venire（来る）に関連。",
-        related=("prevention（予防）", "preventable（防止できる）", "intervene（介入する）"),
-        example="A seat belt can prevent serious injuries.（シートベルトは重傷を防ぐことがある。）",
-        note="「先回りする」は意味をつかむための手がかりです。",
-    ),
     "intervene": WordEntry(
         word="intervene",
         pronunciation="インタービーン",
@@ -460,15 +451,6 @@ _ENTRIES: dict[str, WordEntry] = {
         related=("digression（脱線）", "progress（進歩）", "regress（後退する）"),
         example="Let me digress for a moment.（少し話を脱線させてください。）",
         note="主に話や文章が本題からそれることを表します。",
-    ),
-    "transfer": WordEntry(
-        word="transfer",
-        pronunciation="トランスファー",
-        core_image="向こう側へ運び移す → 移す・転送する・転勤する",
-        parts="trans-（越えて／向こうへ）+ fer（運ぶ：ラテン語 ferre 系）",
-        related=("transport（輸送する）", "refer（言及する・参照する）", "transferable（移転可能な）"),
-        example="Please transfer the file to this folder.（ファイルをこのフォルダーに移してください。）",
-        note="データ・お金・人の移動など幅広く使います。",
     ),
     "refer": WordEntry(
         word="refer",
