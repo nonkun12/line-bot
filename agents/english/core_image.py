@@ -106,7 +106,7 @@ _ENTRIES: dict[str, WordEntry] = {
         related=("environmental（環境の）", "surroundings（周囲のもの）", "environs（周辺地域）"),
         example="Children need a safe learning environment.（子どもには安全な学習環境が必要です。）",
         note="「取り巻くもの・条件」が中心イメージです。語源の細かな歴史を単純な分解だけで断定しないでください。",
-    ),,
+    ),
 
     "postpone": WordEntry(
         word="postpone",
