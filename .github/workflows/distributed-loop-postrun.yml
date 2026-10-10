@@ -183,6 +183,7 @@ jobs:
           import json, os
           from pathlib import Path
           findings = json.loads(Path("postrun-findings.json").read_text(encoding="utf-8"))
+          queue_empty = os.environ.get("QUEUE_EMPTY", "false").lower() == "true"
           if findings:
               text = "⚠️ 分散Loop終了後レポート：要確認事項あり\n"
           elif queue_empty:
