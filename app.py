@@ -87,6 +87,7 @@ from app_development import extract_app_development_request, dispatch_app_develo
 from line_development import extract_development_instruction, dispatch_development_workflow
 from slack_command import register_slack_command
 from distributed_loop_trigger import request_distributed_loop
+from agents.english.core_image import handle_core_image_command
 
 app = Flask(__name__)
 
@@ -322,6 +323,10 @@ def _handle_ai_gateway_request(ai_request):
     loop_handled, loop_reply = request_distributed_loop(user_id, message)
     if loop_handled:
         return loop_reply
+
+    core_image_reply = handle_core_image_command(message)
+    if core_image_reply is not None:
+        return core_image_reply
 
     # Route only explicit Obsidian commands to the authenticated Mac approval queue.
     # Never fall through to a cloud agent that cannot access the local vault.
