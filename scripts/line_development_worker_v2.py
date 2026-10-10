@@ -455,6 +455,15 @@ def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
     return tests.returncode == 0, "\n".join(outputs)[-8000:]
 
 
+def has_python_compile_failure(output: str) -> bool:
+    """Return True when a touched Python file failed its pre-pytest compile check."""
+    for line in str(output or "").splitlines():
+        match = re.match(r"^py_compile .+: returncode=(-?\d+)$", line.strip())
+        if match and int(match.group(1)) != 0:
+            return True
+    return False
+
+
 def restore(paths: list[str]) -> None:
     if paths:
         run(["git", "checkout", "--", *paths])
@@ -615,6 +624,10 @@ def main() -> int:
             return 1
         passed, output = run_tests(touched)
         print(output, flush=True)
+        if not passed and has_python_compile_failure(output):
+            restore(touched)
+            print("Fail-closed: Python syntax/compile check failed; skipping AI repair call.", flush=True)
+            return 1
         attempts = 0
         while not passed and attempts < MAX_REPAIR_ATTEMPTS:
             attempts += 1
