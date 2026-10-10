@@ -218,9 +218,6 @@ _ENTRIES: dict[str, WordEntry] = {
         example="Noise can distract me while I work.（作業中、騒音で気が散ることがある。）",
         note="attract と並べて覚えると、引きつける／注意をそらすの対比になります。",
     ),
-}
-
-
     "preview": WordEntry(
         word="preview",
         pronunciation="プレビュー",
@@ -500,6 +497,7 @@ _ENTRIES: dict[str, WordEntry] = {
         example="She offered to help us.（彼女は私たちを手伝うと申し出た。）",
         note="物の提供にも、提案や申し出にも使います。",
     ),
+}
 
 
 _COMMAND_RE = re.compile(
