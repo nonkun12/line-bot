@@ -19,6 +19,9 @@ ENV_FILE = Path.home() / ".config" / "line-ai-secretary" / "obsidian-bridge.env"
 STARTUP_LOG = Path.home() / "Library" / "Logs" / "line-ai-secretary" / "obsidian-startup.log"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BRIDGE_SCRIPT = REPO_ROOT / "scripts" / "obsidian_mac_bridge.py"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+from scripts.obsidian_mac_bridge import _validate_server_url
 BRIDGE_DIAGNOSTIC_PREFIX = "OBSIDIAN_BRIDGE_DIAGNOSTIC "
 BRIDGE_CATEGORIES = {
     "url_validation_failed", "configuration_error", "render_api_failure",
@@ -208,6 +211,13 @@ def main() -> int:
         if _notify("LINE AI Secretary", "Obsidian設定が不足しています。"):
             log_event("notification_shown", purpose="configuration_missing")
         log_event("configuration_missing")
+        return 1
+    try:
+        _validate_server_url(server_url)
+    except ValueError as exc:
+        log_event("configuration_invalid", exception=type(exc).__name__)
+        if _notify("LINE AI Secretary", "Obsidian設定を確認してください。"):
+            log_event("notification_shown", purpose="configuration_invalid")
         return 1
     try:
         response = httpx.get(
