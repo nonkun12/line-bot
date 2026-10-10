@@ -305,23 +305,26 @@ def run_bridge(
                     )
 
                 execution_exception = False
+                diagnostic_category = None
+                diagnostic_detail = None
                 try:
                     result = execute_local_job(job, vault_path)
                 except Exception as exc:
                     execution_exception = True
-                    category = (
+                    diagnostic_category = (
                         "vault_write_failed" if _is_write_job(job) else "local_job_failed"
                     )
-                    _emit_diagnostic(category, exception=type(exc).__name__)
+                    diagnostic_detail = type(exc).__name__
+                    _emit_diagnostic(diagnostic_category, exception=diagnostic_detail)
                     result = {
                         "success": False,
                         "reply": "Mac側のObsidian処理を停止しました。",
-                        "error": f"local operation failed ({type(exc).__name__})",
+                        "error": f"local operation failed ({diagnostic_detail})",
                     }
 
                 if result.get("success") is not True and not execution_exception:
-                    category, reason = _local_failure_diagnostic(job, result)
-                    _emit_diagnostic(category, reason=reason)
+                    diagnostic_category, diagnostic_detail = _local_failure_diagnostic(job, result)
+                    _emit_diagnostic(diagnostic_category, reason=diagnostic_detail)
 
                 complete_payload = {
                     "job_id": job_id,
@@ -330,6 +333,11 @@ def run_bridge(
                     "reply": str(result.get("reply", ""))[:20000],
                     "error": str(result.get("error", ""))[:2000] or None,
                 }
+                if diagnostic_category is not None:
+                    # Send only allowlisted category/class or reason code.
+                    # Raw exception messages and Obsidian note contents stay local.
+                    complete_payload["diagnostic_category"] = diagnostic_category
+                    complete_payload["diagnostic_detail"] = diagnostic_detail
                 completed_payload = _post_json(
                     client,
                     f"{base_url}/api/obsidian/complete",

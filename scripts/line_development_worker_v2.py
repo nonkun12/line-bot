@@ -73,14 +73,54 @@ def _is_shared_policy_autonomous(path: str) -> bool:
     return _shared_policy_decision(path) is SelfImprovementDecision.AUTONOMOUS_REVIEW
 
 
+def _autonomous_allowed_path_manifest() -> set[str] | None:
+    """Parse the per-task edit scope; malformed manifests fail closed."""
+    raw = os.environ.get("AUTONOMOUS_ALLOWED_PATHS")
+    if raw is None:
+        return None
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        raise RuntimeError("AUTONOMOUS_ALLOWED_PATHS is invalid") from None
+    if not isinstance(value, list) or not value:
+        raise RuntimeError("AUTONOMOUS_ALLOWED_PATHS is invalid")
+
+    paths: set[str] = set()
+    for item in value:
+        if (
+            not isinstance(item, str)
+            or not item
+            or item != item.strip()
+            or item.startswith("/")
+            or "\\" in item
+            or any(char in item for char in ("\n", "\r", "\x00"))
+            or re.match(r"^[A-Za-z]:", item)
+            or any(part in {"", ".", ".."} for part in item.split("/"))
+        ):
+            raise RuntimeError("AUTONOMOUS_ALLOWED_PATHS is invalid")
+        paths.add(item)
+    return paths
+
+
 def repo_files() -> list[str]:
     proc = run(["git", "ls-files"])
     if proc.returncode != 0:
-        raise RuntimeError(proc.stderr[-2000:])
+        raise RuntimeError("git ls-files failed")
+    tracked = [p for p in proc.stdout.splitlines() if p]
+    allowed_paths = _autonomous_allowed_path_manifest()
+    if allowed_paths is not None:
+        # Exact tracked-path membership is required: no globs, traversal,
+        # untracked files, or expansion to neighboring source files.
+        if not allowed_paths.issubset(set(tracked)):
+            raise RuntimeError("AUTONOMOUS_ALLOWED_PATHS references untracked files")
+        for path in allowed_paths:
+            if is_protected(path) or not _is_shared_policy_autonomous(path):
+                raise RuntimeError("AUTONOMOUS_ALLOWED_PATHS contains a protected file")
     return [
         p
-        for p in proc.stdout.splitlines()
-        if p.endswith(ALLOWED_SUFFIXES)
+        for p in tracked
+        if (allowed_paths is None or p in allowed_paths)
+        and p.endswith(ALLOWED_SUFFIXES)
         and not is_protected(p)
         and _is_shared_policy_autonomous(p)
     ]
