@@ -56,3 +56,35 @@ def test_diagnostic_does_not_accept_an_unexpected_https_host():
     assert result["bridge_validator_accepts"] is True
     assert result["url_hostname_matches_expected"] is False
     assert result["diagnostic_accepts"] is False
+
+
+
+def test_diagnostic_script_can_run_directly_outside_repository(tmp_path):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "diagnose_obsidian_bridge_config.py"
+    child_env = dict(os.environ)
+    child_env["HOME"] = str(tmp_path)
+    child_env.pop("PYTHONPATH", None)
+    for key in (
+        "OBSIDIAN_BRIDGE_SERVER_URL",
+        "OBSIDIAN_BRIDGE_KEY",
+        "OBSIDIAN_VAULT_PATH",
+    ):
+        child_env.pop(key, None)
+
+    completed = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=tmp_path,
+        env=child_env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 1  # Missing config is a safe diagnostic failure.
+    assert "url_set=False" in completed.stdout
+    assert "ModuleNotFoundError" not in completed.stderr
+    assert "OBSIDIAN_BRIDGE_KEY" not in completed.stdout
