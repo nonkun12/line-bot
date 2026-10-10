@@ -63,3 +63,97 @@ def test_workflow_state_is_not_advanced_for_empty_queue():
     persist = workflow[workflow.index("- name: Persist completed task state"):workflow.index("- name: Record distributed run result to Google Sheets")]
     assert "autonomous-loop-not-run" in persist
     assert "state unchanged" in persist
+
+
+# Summary-evidence regression tests: exit code 0 alone must never manufacture PASS.
+from datetime import datetime, timezone
+
+
+class _FakeProcess:
+    def __init__(self, returncode=0):
+        self.pid = 4242
+        self.returncode = None
+        self._final = returncode
+
+    def poll(self):
+        self.returncode = self._final
+        return self.returncode
+
+    def wait(self, timeout=None):
+        self.returncode = self._final
+        return self.returncode
+
+
+def _run_with_summary(monkeypatch, tmp_path, summary_factory, *, exit_code=0, heads=("a" * 40, "c" * 40)):
+    task = _task("evidence-task")
+    sequence = list(heads)
+
+    def fake_head():
+        return sequence.pop(0) if len(sequence) > 1 else sequence[0]
+
+    monkeypatch.setattr(loop, "_git_head", fake_head)
+    monkeypatch.setattr(loop, "_verify_produced_head", lambda *a, **k: (True, ""))
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        content = summary_factory(env)
+        if content is not None:
+            Path(env["AUTONOMOUS_SUMMARY_PATH"]).write_text(content, encoding="utf-8")
+        return _FakeProcess(exit_code)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    return loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+
+
+def _summary(env, **overrides):
+    payload = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status": "PASS",
+        "exit_code": 0,
+        "base_sha": "a" * 40,
+        "produced_sha": "c" * 40,
+        "task_id": "evidence-task",
+        "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+    }
+    payload.update(overrides)
+    return json.dumps(payload)
+
+
+def test_consistent_pass_summary_is_accepted(monkeypatch, tmp_path):
+    result = _run_with_summary(monkeypatch, tmp_path, lambda env: _summary(env))
+    assert result["status"] == "PASS"
+    assert result["failure_reason"] == ""
+
+
+def test_missing_summary_cannot_be_pass(monkeypatch, tmp_path):
+    result = _run_with_summary(monkeypatch, tmp_path, lambda env: None)
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "summary_missing_required_key"
+
+
+def test_unknown_summary_status_cannot_be_pass(monkeypatch, tmp_path):
+    result = _run_with_summary(monkeypatch, tmp_path, lambda env: _summary(env, status="SUCCESS"))
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "summary_status_invalid"
+
+
+def test_produced_sha_must_match_observed_head(monkeypatch, tmp_path):
+    result = _run_with_summary(monkeypatch, tmp_path, lambda env: _summary(env, produced_sha="d" * 40))
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "summary_produced_sha_mismatch"
+
+
+def test_no_change_claim_with_moved_head_is_rejected(monkeypatch, tmp_path):
+    result = _run_with_summary(monkeypatch, tmp_path, lambda env: _summary(env, status="NO_CHANGE"))
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "summary_no_change_but_head_moved"
+
+
+def test_consistent_no_change_summary_is_accepted(monkeypatch, tmp_path):
+    base = "a" * 40
+    result = _run_with_summary(
+        monkeypatch, tmp_path,
+        lambda env: _summary(env, status="NO_CHANGE", produced_sha=base),
+        heads=(base, base),
+    )
+    assert result["status"] == "NO_CHANGE"
+    assert result["failure_reason"] == "no_change"
