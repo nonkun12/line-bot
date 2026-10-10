@@ -155,6 +155,23 @@ def complete():
             repair_notice = "既存の分散Loopが稼働中のため、新しいLoopは起動していません。"
         elif dispatch_reason == "cooldown_active":
             repair_notice = "連続起動防止の待機時間中のため、新しいLoopは起動していません。"
+        elif dispatch_reason in {"github_http_401", "dispatch_http_401"}:
+            repair_notice = (
+                "GitHub認証エラー（401）。RenderのGITHUB_ACTIONS_DISPATCH_TOKENが"
+                "有効か確認してください。トークン値をLINEに送らないでください。"
+            )
+        elif dispatch_reason in {"github_http_403", "dispatch_http_403"}:
+            repair_notice = (
+                "GitHub権限エラー（403）。対象リポジトリのActions読み書き権限と"
+                "workflow起動権限を確認してください。"
+            )
+        elif dispatch_reason in {"github_http_404", "dispatch_http_404"}:
+            repair_notice = (
+                "GitHubのリポジトリまたはworkflowにアクセスできません（404）。"
+                "リポジトリ名、workflow名、tokenの対象範囲を確認してください。"
+            )
+        elif dispatch_reason in {"github_http_429", "dispatch_http_429"}:
+            repair_notice = "GitHub APIの利用制限中（429）です。待ってから再確認してください。"
         else:
             # The reason is a fixed internal code or an HTTP status code, never raw user data.
             repair_notice = (

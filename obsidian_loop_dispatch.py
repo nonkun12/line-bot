@@ -120,6 +120,12 @@ def request_obsidian_incident_repair(
                     return False, f"dispatch_http_{dispatch_response.status_code}"
                 _LAST_DISPATCH_AT[category] = time.monotonic()
                 return True, "dispatch_accepted"
+        except httpx.HTTPStatusError as exc:
+            # Keep HTTP diagnostics numeric: never include response bodies or headers.
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            if isinstance(status_code, int) and 100 <= status_code <= 599:
+                return False, f"github_http_{status_code}"
+            return False, "github_http_error"
         except httpx.HTTPError as exc:
             # Exception text may contain URLs; keep logs to a safe class name.
             return False, type(exc).__name__
