@@ -93,7 +93,7 @@ def _autonomous_allowed_path_manifest() -> set[str] | None:
             or item != item.strip()
             or item.startswith("/")
             or "\\" in item
-            or any(char in item for char in ("\\n", "\\r", "\\x00"))
+            or any(char in item for char in ("\n", "\r", "\x00"))
             or re.match(r"^[A-Za-z]:", item)
             or any(part in {"", ".", ".."} for part in item.split("/"))
         ):
