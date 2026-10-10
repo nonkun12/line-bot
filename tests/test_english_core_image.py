@@ -94,3 +94,38 @@ def test_batch_three_common_words_have_local_core_images():
         assert cue in response, word
         assert "外部API" in response, word
         assert "説明を保留" not in response, word
+
+
+
+def test_expanded_core_image_lexicon_has_common_word_families():
+    cases = {
+        "preview": ("事前確認", "pre-"),
+        "prevent": ("防ぐ", "venire"),
+        "construct": ("建設する", "struct"),
+        "inject": ("注入する", "ject"),
+        "reject": ("拒否する", "ject"),
+        "prescribe": ("処方する", "scribe"),
+        "transcribe": ("書き起こす", "trans-"),
+        "audience": ("聴衆", "audire"),
+        "interact": ("相互作用", "inter-"),
+        "emerge": ("現れる", "emergere"),
+        "immerse": ("没頭", "merge"),
+        "progress": ("進歩", "gress"),
+        "regress": ("後退", "gress"),
+        "transfer": ("移す", "trans-"),
+        "refer": ("参照", "reference"),
+        "prefer": ("好む", "pre-"),
+        "offer": ("申し出る", "差し出す"),
+    }
+    for word, (meaning, cue) in cases.items():
+        response = explain_core_image(word)
+        assert meaning in response, word
+        assert cue in response, word
+        assert "外部API" in response, word
+        assert "説明を保留" not in response, word
+
+
+def test_expanded_lexicon_keeps_unknown_words_fail_closed():
+    response = explain_core_image("unverifiedword")
+    assert "説明を保留" in response
+    assert "推測で断定しない" in response
