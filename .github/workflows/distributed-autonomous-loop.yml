@@ -561,20 +561,23 @@ jobs:
               status = 'BLOCKED' if not result or status in {'STOPPED', 'TIMEOUT'} else 'FAIL'
           if task_health_outcome != 'success' and status in {'PASS', 'NO_CHANGE', 'NOT_RUN', 'BLOCKED'}:
               status = 'BLOCKED'
-          # Do not fabricate a task ID or task instruction when no task ran.
+          # Do not fabricate a task ID when no task executed, including BLOCKED runs.
           if status == 'NOT_RUN':
               os.environ['AUTONOMOUS_TASK_ID'] = ''
               os.environ['DEV_INSTRUCTION'] = 'Queue exhausted; no task executed; replenish the task queue.'
+          elif status == 'BLOCKED' and not task_id:
+              os.environ['AUTONOMOUS_TASK_ID'] = ''
+              os.environ['DEV_INSTRUCTION'] = 'No task completed: held task or durable state persistence requires attention.'
           else:
-              os.environ['AUTONOMOUS_TASK_ID'] = task_id or 'distributed-loop-no-task-result'
+              os.environ['AUTONOMOUS_TASK_ID'] = task_id or ''
               os.environ['DEV_INSTRUCTION'] = str(result.get('summary') or result.get('task_summary') or os.environ['DEV_INSTRUCTION'])
           os.environ['AUTONOMOUS_TESTS_RESULT'] = status
-          if status == 'NOT_RUN':
+          if status in {'NOT_RUN', 'BLOCKED'}:
               os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'NOT_RUN'
-              os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'NOT_RUN'
+              os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'NOT_RUN' if status == 'NOT_RUN' else 'BLOCKED'
           else:
               os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'PASS' if publish == 'success' else ('NOT_RUN' if publish == 'skipped' else 'FAIL')
-              os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'PASS' if status in {'PASS', 'NO_CHANGE'} and run_outcome == 'success' and publish == 'success' and state == 'success' else 'BLOCKED'
+              os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'PASS' if status in {'PASS', 'NO_CHANGE'} and run_outcome == 'success' and publish == 'success' and state == 'success' and task_health_outcome == 'success' else 'BLOCKED'
           os.environ['AUTONOMOUS_MERGE_RESULT'] = 'NOT_AUTO_MERGED'
           reason = str(result.get('failure_reason') or '')
           if task_health_outcome != 'success':
@@ -592,6 +595,8 @@ jobs:
               action = 'none'
           elif status == 'NOT_RUN':
               action = 'replenish_task_queue'
+          elif status == 'BLOCKED' and blocked:
+              action = 'resume_held_task_after_fix'
           else:
               action = 'inspect_workflow_run'
           os.environ['AUTONOMOUS_NEXT_ACTION'] = action
