@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from .self_improvement_cycle import SelfImprovementCycleResult
     from .self_improvement_handoff import ApprovedImprovementHandoff
     from .self_improvement_handoff_store import ApprovedImprovementHandoffStore
+    from .self_improvement_handoff_claim_store import ApprovedImprovementHandoffClaimStore
 
 
 class RuntimeExecutor(Protocol):
@@ -90,6 +91,7 @@ class MultiAgentRuntime:
         self_improvement_history_path: str | Path | None = None,
         self_improvement_target_paths: tuple[str, ...] = (),
         self_improvement_handoff_path: str | Path | None = None,
+        self_improvement_handoff_claim_path: str | Path | None = None,
     ) -> None:
         if max_workers < 1:
             raise ValueError("max_workers must be >= 1")
@@ -107,6 +109,10 @@ class MultiAgentRuntime:
         )
         self._self_improvement_target_paths = tuple(self_improvement_target_paths)
         self._self_improvement_handoff_store: ApprovedImprovementHandoffStore | None = None
+        self._self_improvement_handoff_claim_store: ApprovedImprovementHandoffClaimStore | None = None
+        if self_improvement_handoff_claim_path is not None:
+            from .self_improvement_handoff_claim_store import ApprovedImprovementHandoffClaimStore
+            self._self_improvement_handoff_claim_store = ApprovedImprovementHandoffClaimStore(self_improvement_handoff_claim_path)
         if self_improvement_handoff_path is not None:
             from .self_improvement_handoff_store import ApprovedImprovementHandoffStore
 
@@ -144,6 +150,18 @@ class MultiAgentRuntime:
     def last_self_improvement_handoffs(self) -> tuple[ApprovedImprovementHandoff, ...]:
         """Expose approved, immutable self-improvement handoffs without executing them."""
         return self._last_self_improvement_handoffs
+
+    def claim_self_improvement_handoff(self, handoff: ApprovedImprovementHandoff) -> bool:
+        """Claim one validated handoff without executing or mutating the repository."""
+        if self._self_improvement_handoff_claim_store is None:
+            raise RuntimeError("self-improvement handoff claim store is not configured")
+        return self._self_improvement_handoff_claim_store.claim(handoff)
+
+    def is_self_improvement_handoff_claimed(self, handoff: ApprovedImprovementHandoff) -> bool:
+        """Check whether a validated handoff has already been claimed."""
+        if self._self_improvement_handoff_claim_store is None:
+            return False
+        return self._self_improvement_handoff_claim_store.is_claimed(handoff)
 
     @property
     def persisted_self_improvement_handoffs(self) -> tuple[ApprovedImprovementHandoff, ...]:
