@@ -85,10 +85,19 @@ jobs:
           statuses = [str(x.get("status", "UNKNOWN")) for x in tasks]
           sheets_result = str(sheets.get("result", "MISSING"))
           conclusion = os.environ.get("RUN_CONCLUSION", "unknown")
+          original_report = (
+              report_files[0].read_text(encoding="utf-8")[:12000]
+              if report_files else ""
+          )
+          # Empty queue is an expected no-work outcome, not missing task evidence.
+          # Match the exact reason marker produced by the trusted source workflow.
+          queue_empty = "- 結果理由: queue_exhausted_no_tasks" in original_report
           issues = []
           if conclusion != "success":
               issues.append(f"Loop workflow conclusion is {conclusion}.")
-          if not tasks:
+          if queue_empty and tasks:
+              issues.append("Queue-empty report conflicts with task result evidence.")
+          if not tasks and not queue_empty:
               issues.append("Task result evidence is missing or empty.")
           if any(s not in {"PASS", "NO_CHANGE"} for s in statuses):
               issues.append("One or more task results are not PASS/NO_CHANGE: " + ", ".join(statuses))
@@ -103,6 +112,7 @@ jobs:
               f"- Head SHA: {os.environ.get('HEAD_SHA', '')}",
               f"- Task count in evidence: {len(tasks)}",
               f"- Task statuses: {', '.join(statuses) if statuses else 'NO EVIDENCE'}",
+              f"- Queue state: {'QUEUE_EMPTY (no task executed)' if queue_empty else ('TASK_RESULTS_PRESENT' if tasks else 'UNKNOWN')}",
               f"- Google Sheets artifact result: {sheets_result}",
               f"- Sheets artifact task ID: {sheets.get('task_id', 'unknown')}",
               "",
@@ -116,6 +126,7 @@ jobs:
           Path("postrun-findings.json").write_text(json.dumps(issues, ensure_ascii=False) + "\n", encoding="utf-8")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
               out.write(f"issues={len(issues)}\n")
+              out.write(f"queue_empty={'true' if queue_empty else 'false'}\n")
           print("\n".join(report))
           PY
 
@@ -159,6 +170,7 @@ jobs:
           LINE_INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
           DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
+          QUEUE_EMPTY: ${{ steps.verify.outputs.queue_empty }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
@@ -171,8 +183,11 @@ jobs:
           import json, os
           from pathlib import Path
           findings = json.loads(Path("postrun-findings.json").read_text(encoding="utf-8"))
+          queue_empty = os.environ.get("QUEUE_EMPTY", "false").lower() == "true"
           if findings:
               text = "⚠️ 分散Loop終了後レポート：要確認事項あり\n"
+          elif queue_empty:
+              text = "ℹ️ 分散Loop終了後レポート：キュー空（今回の開発タスク実行なし）\n"
           else:
               text = "✅ 分散Loop終了後レポート：成果物検証で不一致は検出されませんでした\n"
           text += f"Workflow: {os.environ.get('RUN_CONCLUSION', 'unknown')}\n"
@@ -180,6 +195,8 @@ jobs:
           text += f"Run: {os.environ.get('RUN_URL', '')}\n"
           if findings:
               text += "\n".join("- " + x for x in findings)
+          elif queue_empty:
+              text += "未完了タスクがないため、今回はタスクを実行していません。新しいレビュー済みタスクが追加されるまで、実行結果はありません。"
           else:
               text += "タスク成果物の検証で問題は検出されませんでした。Google Sheetsの実シート行を独立確認した結果ではありません。"
           print(text[:4500])
