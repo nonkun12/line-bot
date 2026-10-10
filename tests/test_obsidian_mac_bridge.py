@@ -155,6 +155,8 @@ def test_run_bridge_classifies_local_write_failure_without_sensitive_details(tmp
     assert "dummy-secret" not in stderr
     completion_data = client.post.call_args_list[1].kwargs["json"]
     assert completion_data["error"] == "local operation failed (PermissionError)"
+    assert completion_data["diagnostic_category"] == "vault_write_failed"
+    assert completion_data["diagnostic_detail"] == "PermissionError"
 
 
 def test_execute_local_job_uses_the_guarded_agent(tmp_path, monkeypatch):
