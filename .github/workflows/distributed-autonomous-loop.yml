@@ -559,7 +559,7 @@ jobs:
               status = 'NOT_RUN'
           elif status not in {'PASS', 'NO_CHANGE', 'FAIL', 'BLOCKED'}:
               status = 'BLOCKED' if not result or status in {'STOPPED', 'TIMEOUT'} else 'FAIL'
-          if task_health_outcome != 'success' and status in {'PASS', 'NO_CHANGE', 'NOT_RUN', 'BLOCKED'}:
+          if run_outcome != 'skipped' and task_health_outcome != 'success' and status in {'PASS', 'NO_CHANGE', 'NOT_RUN', 'BLOCKED'}:
               status = 'BLOCKED'
           # Do not fabricate a task ID when no task executed, including BLOCKED runs.
           if status == 'NOT_RUN':
@@ -580,7 +580,7 @@ jobs:
               os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'PASS' if status in {'PASS', 'NO_CHANGE'} and run_outcome == 'success' and publish == 'success' and state == 'success' and task_health_outcome == 'success' else 'BLOCKED'
           os.environ['AUTONOMOUS_MERGE_RESULT'] = 'NOT_AUTO_MERGED'
           reason = str(result.get('failure_reason') or '')
-          if task_health_outcome != 'success':
+          if run_outcome != 'skipped' and task_health_outcome != 'success':
               reason = f"task_health_persistence_{task_health_outcome}" + (f"; {reason}" if reason else '')
           if not reason and status not in {'PASS', 'NO_CHANGE'}:
               reason = f"loop_{status.lower()}" if result else f"workflow_failed_before_result:{run_outcome or 'not_run'}"
@@ -668,7 +668,7 @@ jobs:
           if [ "$queue_completed" -gt "$queue_total" ]; then queue_completed="$queue_total"; fi
           result="STOPPED/FAILED"
           result_reason="workflow_failed"
-          if [ "${TASK_HEALTH_OUTCOME:-}" != "success" ]; then
+          if [ "${LOOP_OUTCOME:-}" != "skipped" ] && [ "${TASK_HEALTH_OUTCOME:-}" != "success" ]; then
             result_reason="task_health_persistence_${TASK_HEALTH_OUTCOME:-not_run}"
           elif [ "${LOOP_OUTCOME:-}" = "success" ] && [ -f /tmp/autonomous-loop-blocked ] && [ "$completed" = "0" ]; then
             result="BLOCKED"
