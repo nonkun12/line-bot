@@ -1,6 +1,12 @@
-import sqlite3
+import hashlib
+import hmac
+import json
 import os
+import re
 import secrets
+import sqlite3
+from contextlib import closing
+from pathlib import Path
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB = os.environ.get("CHAT_DB_PATH", os.path.join(BASE_DIR, "chat.db"))
@@ -306,6 +312,193 @@ def complete_claimed_job(
             ),
         )
         return cursor.rowcount == 1
+
+
+
+_SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
+_MAX_JOB_ID = 2**31 - 1
+_OPERATOR_CANCEL_ERROR = "cancelled by operator"
+
+
+def _message_sha256(message):
+    if not isinstance(message, str):
+        return None
+    return hashlib.sha256(message.encode("utf-8")).hexdigest()
+
+
+def _is_valid_job_id(job_id):
+    return (
+        isinstance(job_id, int)
+        and not isinstance(job_id, bool)
+        and 0 < job_id <= _MAX_JOB_ID
+    )
+
+
+def _readonly_conn():
+    """Open the jobs DB so that the SQLite engine itself rejects every write."""
+    uri = Path(DB).resolve().as_uri() + "?mode=ro"
+    return sqlite3.connect(uri, uri=True)
+
+
+def get_job_status_summary(job_id, job_type):
+    """Read-only status of exactly one job of the given type."""
+    if not isinstance(job_type, str) or not job_type.strip():
+        raise ValueError("job_type is required")
+    if not _is_valid_job_id(job_id):
+        return None
+    with closing(_readonly_conn()) as conn:
+        row = conn.execute(
+            """
+            SELECT id, job_type, status, retry_count, max_retries, message,
+                   claim_token IS NOT NULL, last_error IS NOT NULL,
+                   created_at, updated_at
+            FROM jobs
+            WHERE id=? AND job_type=?
+            """,
+            (job_id, job_type.strip()),
+        ).fetchone()
+    if row is None:
+        return None
+    message = row[5]
+    return {
+        "id": row[0],
+        "job_type": row[1],
+        "status": row[2],
+        "retry_count": row[3],
+        "max_retries": row[4],
+        "message_sha256": _message_sha256(message),
+        "message_chars": len(message) if isinstance(message, str) else 0,
+        "has_claim": bool(row[6]),
+        "has_error": bool(row[7]),
+        "created_at": row[8],
+        "updated_at": row[9],
+    }
+
+
+def cancel_pending_job_by_type(job_id, job_type, expected_message_sha256):
+    """Atomically cancel one exactly identified pending job and audit its prior state."""
+    if not _is_valid_job_id(job_id):
+        raise ValueError("job_id is invalid")
+    if not isinstance(job_type, str) or not job_type.strip():
+        raise ValueError("job_type is required")
+    if not isinstance(expected_message_sha256, str) or not _SHA256_HEX_RE.fullmatch(
+        expected_message_sha256
+    ):
+        raise ValueError("expected_message_sha256 must be 64 lowercase hex characters")
+    job_type = job_type.strip()
+
+    conn = get_conn()
+    try:
+        conn.create_function("_sha256_hex", 1, _message_sha256, deterministic=True)
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """
+            SELECT job_type, status, message, retry_count, max_retries, updated_at,
+                   claim_token
+            FROM jobs WHERE id=?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None or row[0] != job_type:
+            conn.rollback()
+            return {"outcome": "not_found", "status": None}
+
+        message_hash = _message_sha256(row[2])
+        if message_hash is None or not hmac.compare_digest(
+            message_hash, expected_message_sha256
+        ):
+            conn.rollback()
+            return {"outcome": "message_mismatch", "status": None}
+        if row[1] != "pending":
+            conn.rollback()
+            return {"outcome": "not_pending", "status": row[1]}
+        if row[6] is not None:
+            conn.rollback()
+            return {"outcome": "not_cancellable", "status": "pending"}
+
+        cursor = conn.execute(
+            """
+            UPDATE jobs
+            SET status='failed', last_error=?, claim_token=NULL, updated_at=CURRENT_TIMESTAMP
+            WHERE id=? AND job_type=? AND status='pending'
+              AND claim_token IS NULL AND _sha256_hex(message)=?
+            """,
+            (_OPERATOR_CANCEL_ERROR, job_id, job_type, expected_message_sha256),
+        )
+        if cursor.rowcount != 1:
+            conn.rollback()
+            return {"outcome": "not_cancellable", "status": row[1]}
+
+        conn.execute(
+            """
+            INSERT INTO job_checkpoints(job_id, step_name, step_status, output_snapshot)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                job_id,
+                "operator_cancel",
+                "cancelled",
+                json.dumps(
+                    {
+                        "previous_status": "pending",
+                        "previous_retry_count": row[3],
+                        "previous_max_retries": row[4],
+                        "previous_updated_at": row[5],
+                        "message_sha256": message_hash,
+                    },
+                    sort_keys=True,
+                ),
+            ),
+        )
+        conn.commit()
+        return {"outcome": "cancelled", "status": "failed"}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def backup_database(dest_path):
+    """Create an exclusive, owner-only consistent backup without overwriting anything."""
+    dest = Path(dest_path).resolve()
+    if not dest.parent.is_dir():
+        raise FileNotFoundError("backup destination directory does not exist")
+
+    # O_EXCL prevents overwriting an existing file or following a symlink.
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+    fd = os.open(str(dest), flags, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        created_stat = os.fstat(fd)
+    except Exception:
+        os.close(fd)
+        try:
+            dest.unlink()
+        except OSError:
+            pass
+        raise
+    os.close(fd)
+
+    try:
+        # mode=rw requires the exclusively-created file to still exist.
+        target_uri = dest.as_uri() + "?mode=rw"
+        with closing(_readonly_conn()) as source, closing(
+            sqlite3.connect(target_uri, uri=True)
+        ) as target:
+            source.backup(target)
+        return str(dest)
+    except Exception:
+        # Remove only the file we created; never unlink a replacement.
+        try:
+            current_stat = dest.stat()
+            if (current_stat.st_dev, current_stat.st_ino) == (
+                created_stat.st_dev, created_stat.st_ino
+            ):
+                dest.unlink()
+        except OSError:
+            pass
+        raise
 
 
 def update_job(job_id, status=None, result=None, last_error=None, retry_count=None):
