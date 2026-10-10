@@ -61,3 +61,20 @@ def test_postpone_has_core_image_and_related_words():
     assert "延期する" in response
     assert "post-" in response
     assert "外部API" in response
+
+
+def test_batch_two_common_words_have_local_core_images():
+    cases = {
+        "include": ("含める", "exclude"),
+        "exclude": ("除外する", "include"),
+        "connect": ("つなぐ", "disconnect"),
+        "interrupt": ("中断する", "rupt"),
+        "predict": ("予測する", "pre-"),
+        "review": ("見直す", "再び"),
+    }
+    for word, (meaning, cue) in cases.items():
+        response = explain_core_image(word)
+        assert meaning in response, word
+        assert cue in response, word
+        assert "外部API" in response, word
+        assert "説明を保留" not in response, word
