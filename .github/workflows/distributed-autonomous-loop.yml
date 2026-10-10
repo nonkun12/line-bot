@@ -395,6 +395,30 @@ jobs:
             git -C /tmp/autonomous-health-worktree push "$auth_url" HEAD:refs/heads/$state_branch
             echo "Task health state persisted."
           fi
+          # Read back the exact remote snapshot before this step can count as successful.
+          git fetch --quiet origin "$state_branch"
+          python - <<'PY'
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path.cwd() / 'scripts'))
+          import autonomous_loop_task_health as health
+          expected = json.loads(Path('/tmp/autonomous-task-health.json').read_text(encoding='utf-8'))
+          raw = subprocess.run(
+              ['git', 'show', 'origin/autonomous-loop-state:.autonomous-loop-state.json'],
+              check=True, capture_output=True, text=True,
+          ).stdout
+          actual = json.loads(raw)
+          if not isinstance(actual, dict):
+              raise SystemExit('invalid task health read-back state')
+          health.load_task_health(actual)
+          if actual.get('task_health', {}) != expected.get('task_health', {}):
+              raise SystemExit('task health read-back mismatch')
+          if actual.get('resume_log', []) != expected.get('resume_log', []):
+              raise SystemExit('task resume audit read-back mismatch')
+          print('Task health and resume audit read-back verified.')
+          PY
 
       - name: Publish verified development branch
         id: publish
