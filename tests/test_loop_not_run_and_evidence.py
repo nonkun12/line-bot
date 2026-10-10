@@ -46,8 +46,8 @@ def test_workflow_maps_only_exit_78_to_not_run():
     workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     assert 'if [ "$loop_rc" -eq 78 ]' in workflow
     assert 'exit "$loop_rc"' in workflow
-    assert 'AUTO_APPLY_PATCH: \'false\'' in workflow
-    assert 'AUTO_DEPLOY: \'false\'' in workflow
+    assert "AUTO_APPLY_PATCH: 'false'" in workflow
+    assert "AUTO_DEPLOY: 'false'" in workflow
     assert ".autonomous-loop.stop" in workflow
 
 
