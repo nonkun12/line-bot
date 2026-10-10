@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+
+import httpx
 from unittest.mock import MagicMock, patch
 
 from scripts import obsidian_mac_startup as startup
@@ -217,21 +219,84 @@ def test_startup_pending_check_failure_is_classified_without_exception_text(tmp_
 
 
 def test_startup_pending_http_failure_logs_status_only(tmp_path):
-    import httpx
     request = httpx.Request("GET", "https://dummy.invalid/private")
     response = httpx.Response(503, request=request)
-    error = httpx.HTTPStatusError("response body with credentials", request=request, response=response)
     with patch.object(startup, "_load_env_file", return_value={
         "OBSIDIAN_BRIDGE_SERVER_URL": "https://dummy.invalid/private",
         "OBSIDIAN_BRIDGE_KEY": "dummy-key",
         "OBSIDIAN_VAULT_PATH": "/tmp/dummy-vault",
     }), patch.object(startup, "STARTUP_LOG", tmp_path / "startup.log"), \
-         patch.object(startup.httpx, "get", side_effect=error):
+         patch.object(startup.httpx, "get", return_value=response) as get_mock, \
+         patch.object(startup.time, "sleep") as sleep_mock:
         assert startup.main() == 1
+    assert get_mock.call_count == len(startup.PENDING_RETRY_DELAYS_SECONDS) + 1
+    assert sleep_mock.call_count == len(startup.PENDING_RETRY_DELAYS_SECONDS)
     records = read_log_records(tmp_path)
     assert records[-1]["event"] == "pending_check_failed"
     assert records[-1]["status"] == 503
+    retries = [record for record in records if record["event"] == "pending_check_retry"]
+    assert len(retries) == len(startup.PENDING_RETRY_DELAYS_SECONDS)
+    assert all(record["kind"] == "http_status" for record in retries)
     assert "dummy.invalid" not in repr(records)
+    assert "dummy-key" not in repr(records)
+
+
+def test_startup_retries_transient_timeout_without_bypassing_approval(tmp_path):
+    request = httpx.Request("GET", "https://example.test/api/obsidian/pending")
+    timeout_error = httpx.ReadTimeout("private URL and credentials", request=request)
+    response = MagicMock()
+    response.json.return_value = {"ok": True, "pending": True}
+    response.raise_for_status.return_value = None
+    with patch.object(startup, "_load_env_file", return_value={
+        "OBSIDIAN_BRIDGE_SERVER_URL": "https://example.test",
+        "OBSIDIAN_BRIDGE_KEY": "dummy-key",
+        "OBSIDIAN_VAULT_PATH": "/tmp/dummy-vault",
+    }), patch.object(startup, "STARTUP_LOG", tmp_path / "startup.log"), \
+         patch.object(startup.httpx, "get", side_effect=[timeout_error, response]) as get_mock, \
+         patch.object(startup.time, "sleep") as sleep_mock, \
+         patch.object(startup, "_ask_execute", return_value=("later", 0)) as ask_mock, \
+         patch.object(startup.subprocess, "run") as run_mock:
+        assert startup.main() == 0
+    assert get_mock.call_count == 2
+    sleep_mock.assert_called_once_with(startup.PENDING_RETRY_DELAYS_SECONDS[0])
+    ask_mock.assert_called_once()
+    run_mock.assert_not_called()
+    records = read_log_records(tmp_path)
+    assert [record["event"] for record in records] == [
+        "startup_started", "pending_check_retry", "notification_shown", "user_deferred",
+    ]
+    assert records[1]["exception"] == "ReadTimeout"
+    assert "private URL" not in repr(records)
+    assert "dummy-key" not in repr(records)
+
+
+def test_startup_retries_gateway_error_then_checks_pending_state(tmp_path):
+    request = httpx.Request("GET", "https://example.test/api/obsidian/pending")
+    gateway_response = httpx.Response(503, request=request)
+    gateway_error = httpx.HTTPStatusError(
+        "private response details", request=request, response=gateway_response
+    )
+    response = MagicMock()
+    response.json.return_value = {"ok": True, "pending": False}
+    response.raise_for_status.return_value = None
+    with patch.object(startup, "_load_env_file", return_value={
+        "OBSIDIAN_BRIDGE_SERVER_URL": "https://example.test",
+        "OBSIDIAN_BRIDGE_KEY": "dummy-key",
+        "OBSIDIAN_VAULT_PATH": "/tmp/dummy-vault",
+    }), patch.object(startup, "STARTUP_LOG", tmp_path / "startup.log"), \
+         patch.object(startup.httpx, "get", side_effect=[gateway_response, response]) as get_mock, \
+         patch.object(startup.time, "sleep") as sleep_mock, \
+         patch.object(startup, "_ask_execute") as ask_mock:
+        assert startup.main() == 0
+    assert get_mock.call_count == 2
+    sleep_mock.assert_called_once_with(startup.PENDING_RETRY_DELAYS_SECONDS[0])
+    ask_mock.assert_not_called()
+    records = read_log_records(tmp_path)
+    assert records[1]["event"] == "pending_check_retry"
+    assert records[1]["kind"] == "http_status"
+    assert records[1]["status"] == 503
+    assert records[-1]["event"] == "pending_none"
+    assert "private response details" not in repr(records)
     assert "dummy-key" not in repr(records)
 
 

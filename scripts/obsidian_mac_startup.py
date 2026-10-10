@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -185,6 +186,62 @@ def _stderr_exception_class(stderr: str) -> str | None:
     return None
 
 
+
+# A free Render instance may need tens of seconds to wake after idle. This is
+# an idempotent GET-only retry policy: it never claims or executes an Obsidian
+# job. Human approval remains mandatory after a positive pending response.
+PENDING_REQUEST_TIMEOUT_SECONDS = 5.0
+PENDING_RETRY_DELAYS_SECONDS = (1.0, 2.0, 3.0, 5.0, 8.0, 8.0, 8.0)
+PENDING_RETRYABLE_STATUS_CODES = {502, 503, 504}
+
+
+def _fetch_pending_payload(server_url: str, bridge_key: str, log_event) -> dict:
+    """Read pending-job state with bounded retries for transient wake-up failures."""
+    max_attempts = len(PENDING_RETRY_DELAYS_SECONDS) + 1
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = httpx.get(
+                server_url + "/api/obsidian/pending",
+                headers={"X-Obsidian-Bridge-Key": bridge_key},
+                timeout=PENDING_REQUEST_TIMEOUT_SECONDS,
+                follow_redirects=False,
+            )
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                if (
+                    exc.response.status_code not in PENDING_RETRYABLE_STATUS_CODES
+                    or attempt == max_attempts
+                ):
+                    raise
+                log_event(
+                    "pending_check_retry",
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    kind="http_status",
+                    status=exc.response.status_code,
+                )
+                time.sleep(PENDING_RETRY_DELAYS_SECONDS[attempt - 1])
+                continue
+
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise ValueError("pending response must be an object")
+            return payload
+        except httpx.TransportError as exc:
+            if attempt == max_attempts:
+                raise
+            log_event(
+                "pending_check_retry",
+                attempt=attempt,
+                max_attempts=max_attempts,
+                kind="exception",
+                exception=type(exc).__name__,
+            )
+            time.sleep(PENDING_RETRY_DELAYS_SECONDS[attempt - 1])
+
+    raise RuntimeError("pending check exhausted unexpectedly")
+
 def main() -> int:
     run_id = uuid.uuid4().hex
 
@@ -220,16 +277,7 @@ def main() -> int:
             log_event("notification_shown", purpose="configuration_invalid")
         return 1
     try:
-        response = httpx.get(
-            server_url + "/api/obsidian/pending",
-            headers={"X-Obsidian-Bridge-Key": bridge_key},
-            timeout=5.0,
-            follow_redirects=False,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise ValueError("pending response must be an object")
+        payload = _fetch_pending_payload(server_url, bridge_key, log_event)
     except httpx.HTTPStatusError as exc:
         log_event("pending_check_failed", kind="http_status", status=exc.response.status_code)
         return 1
