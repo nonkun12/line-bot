@@ -12,6 +12,10 @@ import re
 from flask import Blueprint, current_app, jsonify, request
 
 from core.obsidian_bridge import OBSIDIAN_JOB_TYPE
+from obsidian_loop_dispatch import (
+    is_repairable_obsidian_incident,
+    request_obsidian_incident_repair,
+)
 from db import (
     cancel_pending_job_by_type,
     claim_pending_job_by_type,
@@ -131,6 +135,24 @@ def complete():
 
     if not updated:
         return jsonify({"ok": False, "error": "claim token rejected"}), 409
+
+    diagnostic_category = data.get("diagnostic_category")
+    diagnostic_detail = data.get("diagnostic_detail")
+    if not success and is_repairable_obsidian_incident(
+        diagnostic_category, diagnostic_detail
+    ):
+        dispatched, dispatch_reason = request_obsidian_incident_repair(
+            diagnostic_category, diagnostic_detail, job_id
+        )
+        # Never log raw user text, notes, exception messages, or credentials.
+        current_app.logger.info(
+            "OBSIDIAN AUTOREPAIR category=%s detail=%s job_id=%s dispatched=%s reason=%s",
+            diagnostic_category,
+            diagnostic_detail,
+            job_id,
+            dispatched,
+            dispatch_reason,
+        )
 
     if isinstance(reply, str) and reply.strip():
         try:
