@@ -162,7 +162,9 @@ def test_bridge_process_start_failure_logs_class_only(tmp_path):
     failure = next(record for record in records if record["event"] == "bridge_process_start_failed")
     assert failure["exception"] == "FileNotFoundError"
     assert "secret interpreter path" not in repr(records)
-    assert records[-1]["event"] == "bridge_exit"
+    assert any(record["event"] == "bridge_exit" for record in records)
+    assert records[-1]["event"] == "notification_shown"
+    assert records[-1]["purpose"] == "bridge_failed"
 
 
 def test_bridge_environment_reaches_a_child_process_with_dummy_values(monkeypatch):
