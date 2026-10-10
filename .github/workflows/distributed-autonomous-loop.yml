@@ -260,7 +260,17 @@ jobs:
               loop_args+=(--incident-job-id "$INCIDENT_JOB_ID")
             fi
           fi
+          rm -f /tmp/autonomous-loop-not-run
+          set +e
           python scripts/run_minimal_autonomous_loop.py "${loop_args[@]}"
+          loop_rc=$?
+          set -e
+          if [ "$loop_rc" -eq 78 ]; then
+            echo "queue_empty" > /tmp/autonomous-loop-not-run
+            echo "::notice::NOT_RUN: queue_empty - no task was executed."
+            exit 0
+          fi
+          exit "$loop_rc"
 
       - name: Publish verified development branch
         id: publish
@@ -289,6 +299,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          if [ -f /tmp/autonomous-loop-not-run ]; then
+            echo "NOT_RUN ($(cat /tmp/autonomous-loop-not-run)): no task executed; state unchanged."
+            exit 0
+          fi
           if [ ! -s /tmp/minimal-autonomous-loop.jsonl ]; then
             echo "No loop result; state unchanged."
             exit 0
@@ -413,13 +427,20 @@ jobs:
           publish = os.getenv('PUBLISH_OUTCOME', '')
           state = os.getenv('STATE_OUTCOME', '')
 
-          if status not in {'PASS', 'NO_CHANGE', 'FAIL', 'BLOCKED'}:
+          not_run = os.path.exists('/tmp/autonomous-loop-not-run')
+          if not_run:
+              status = 'NOT_RUN'
+          elif status not in {'PASS', 'NO_CHANGE', 'FAIL', 'BLOCKED'}:
               status = 'BLOCKED' if not result or status in {'STOPPED', 'TIMEOUT'} else 'FAIL'
           os.environ['AUTONOMOUS_TASK_ID'] = task_id or 'distributed-loop-no-task-result'
           os.environ['DEV_INSTRUCTION'] = str(result.get('summary') or result.get('task_summary') or os.environ['DEV_INSTRUCTION'])
           os.environ['AUTONOMOUS_TESTS_RESULT'] = status
-          os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'PASS' if publish == 'success' else ('NOT_RUN' if publish == 'skipped' else 'FAIL')
-          os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'PASS' if status in {'PASS', 'NO_CHANGE'} and run_outcome == 'success' and publish == 'success' and state == 'success' else 'BLOCKED'
+          if status == 'NOT_RUN':
+              os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'NOT_RUN'
+              os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'NOT_RUN'
+          else:
+              os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'PASS' if publish == 'success' else ('NOT_RUN' if publish == 'skipped' else 'FAIL')
+              os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'PASS' if status in {'PASS', 'NO_CHANGE'} and run_outcome == 'success' and publish == 'success' and state == 'success' else 'BLOCKED'
           os.environ['AUTONOMOUS_MERGE_RESULT'] = 'NOT_AUTO_MERGED'
           reason = str(result.get('failure_reason') or '')
           if not reason and status not in {'PASS', 'NO_CHANGE'}:
@@ -433,6 +454,8 @@ jobs:
               action = 'review_changes'
           elif status == 'NO_CHANGE':
               action = 'none'
+          elif status == 'NOT_RUN':
+              action = 'replenish_task_queue'
           else:
               action = 'inspect_workflow_run'
           os.environ['AUTONOMOUS_NEXT_ACTION'] = action
@@ -499,11 +522,12 @@ jobs:
           if [ "$queue_completed" -gt "$queue_total" ]; then queue_completed="$queue_total"; fi
           result="STOPPED/FAILED"
           result_reason="workflow_failed"
-          if [ "${LOOP_OUTCOME:-}" = "success" ] && { [ "$completed" = "$requested" ] || [ "$queue_completed" = "$queue_total" ]; }; then
+          if [ "${LOOP_OUTCOME:-}" = "success" ] && [ -f /tmp/autonomous-loop-not-run ] && [ "$completed" = "0" ]; then
+            result="NOT_RUN"
+            result_reason="$(cat /tmp/autonomous-loop-not-run)"
+          elif [ "${LOOP_OUTCOME:-}" = "success" ] && [ "$completed" -ge 1 ] && { [ "$completed" = "$requested" ] || [ "$queue_completed" = "$queue_total" ]; }; then
             result="COMPLETED"
-            if [ "$completed" = "0" ] && [ "$queue_completed" = "$queue_total" ]; then
-              result_reason="queue_exhausted_no_tasks"
-            elif [ "$completed" = "$requested" ]; then
+            if [ "$completed" = "$requested" ]; then
               result_reason="requested_task_limit_reached"
             else
               result_reason="queue_completed"
@@ -525,10 +549,13 @@ jobs:
             echo "- Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo
             echo "### Task別結果"
+            if [ "$result" = "NOT_RUN" ]; then
+              echo "(NOT_RUN: タスクは1件も実行されていません。理由: ${result_reason}。キューは ${queue_completed}/${queue_total} で、未完了Taskがありません。タスクの補充が必要です。)"
+            fi
             if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
               cat /tmp/minimal-autonomous-loop.jsonl
-            elif [ "$result_reason" = "queue_exhausted_no_tasks" ]; then
-              echo "(今回実行する未完了Taskはありません。キューは ${queue_completed}/${queue_total} で完了済みです。)"
+            elif [ "$result" = "NOT_RUN" ]; then
+              :
             else
               echo "(結果なし: Task結果ファイルが生成されませんでした。)"
             fi
