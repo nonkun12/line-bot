@@ -106,6 +106,16 @@ _ENTRIES: dict[str, WordEntry] = {
         related=("environmental（環境の）", "surroundings（周囲のもの）", "environs（周辺地域）"),
         example="Children need a safe learning environment.（子どもには安全な学習環境が必要です。）",
         note="「取り巻くもの・条件」が中心イメージです。語源の細かな歴史を単純な分解だけで断定しないでください。",
+    ),,
+
+    "postpone": WordEntry(
+        word="postpone",
+        pronunciation="ポストポーン",
+        core_image="後ろの時点へ置く → 延期する・先送りする",
+        parts="post-（後ろに／後で）+ pone（置く、ラテン語 ponere に由来する語根形）。",
+        related=("position（位置・置くことに関連）", "component（構成要素）", "opponent（対戦相手）"),
+        example="We postponed the meeting until Friday.（私たちは会議を金曜日まで延期した。）",
+        note="「後ろの時点に置く」は意味を覚えるための手がかりです。関連語の歴史的な語形成はそれぞれ異なるため、形だけで同一の語源と断定しないでください。",
     ),
 }
 
