@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -146,6 +147,43 @@ def stopped(stop_file: Path) -> bool:
 def _valid_sha(value: object) -> bool:
     text = str(value or "")
     return len(text) == 40 and all(ch in "0123456789abcdef" for ch in text.lower())
+
+
+def _valid_test_evidence(value: object, run_nonce: str) -> bool:
+    """Accept only current-run evidence from the guarded worker's actual pytest call."""
+    if not isinstance(value, dict):
+        return False
+    if value.get("schema_version") != 1:
+        return False
+    if value.get("runner") != "scripts/line_development_worker_v2.py::run_tests":
+        return False
+    if not re.fullmatch(r"[0-9a-f]{32}", run_nonce or "") or value.get("run_nonce") != run_nonce:
+        return False
+    command = value.get("pytest_command")
+    if (
+        not isinstance(command, list)
+        or len(command) != 4
+        or not isinstance(command[0], str)
+        or not os.path.basename(command[0]).startswith("python")
+        or command[1:] != ["-m", "pytest", "-q", "--tb=native"]
+    ):
+        return False
+    exit_code = value.get("pytest_exit_code")
+    if isinstance(exit_code, bool) or not isinstance(exit_code, int) or exit_code != 0:
+        return False
+    digest = value.get("pytest_output_sha256")
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        return False
+    compile_results = value.get("py_compile")
+    if not isinstance(compile_results, list):
+        return False
+    for item in compile_results:
+        if not isinstance(item, dict) or not isinstance(item.get("path"), str) or not item["path"].strip():
+            return False
+        code = item.get("exit_code")
+        if isinstance(code, bool) or not isinstance(code, int) or code != 0:
+            return False
+    return True
 
 
 def _git_head() -> str:
@@ -337,6 +375,10 @@ def run_task(task: dict[str, object], run_index: int, stop_file: Path, summary_d
             failure_reason = "summary_status_invalid"
         elif payload.get("produced_sha") != produced_sha:
             failure_reason = "summary_produced_sha_mismatch"
+        elif not _valid_test_evidence(payload.get("test_evidence"), run_nonce):
+            # A stable HEAD alone is not proof that validation ran. The evidence must
+            # be emitted by this run's guarded worker and bound to its fresh nonce.
+            failure_reason = "summary_test_evidence_missing_or_invalid"
         elif payload.get("status") == "NO_CHANGE" and produced_sha != base_sha:
             failure_reason = "summary_no_change_but_head_moved"
 
