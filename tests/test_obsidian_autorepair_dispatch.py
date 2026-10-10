@@ -234,3 +234,65 @@ def test_complete_route_does_not_dispatch_for_normal_rejections(monkeypatch):
     )
     assert response.status_code == 200
     assert dispatch_calls == []
+
+
+@pytest.mark.parametrize(
+    ("dispatch_result", "expected_notice"),
+    [
+        (
+            (True, "dispatch_accepted"),
+            "自動修復Loopへの起動要求を受け付けました（最大2タスク。",
+        ),
+        (
+            (False, "dispatch_token_missing"),
+            "自動修復Loopは起動できませんでした（理由コード: dispatch_token_missing）。",
+        ),
+        (
+            (False, "loop_already_running"),
+            "既存の分散Loopが稼働中のため、新しいLoopは起動していません。",
+        ),
+    ],
+)
+def test_complete_route_reports_autorepair_dispatch_outcome_to_line(
+    monkeypatch, dispatch_result, expected_notice
+):
+    from flask import Flask
+    import app as line_app
+
+    app = Flask(__name__)
+    app.register_blueprint(obsidian_routes.obsidian_bridge_bp)
+    app.config.update(TESTING=True)
+    monkeypatch.setenv("OBSIDIAN_BRIDGE_KEY", "dummy-bridge-key")
+    monkeypatch.setattr(obsidian_routes, "get_job", lambda _job_id: {
+        "id": 17, "job_type": "obsidian", "status": "running", "user_id": "dummy-user"
+    })
+    monkeypatch.setattr(obsidian_routes, "complete_claimed_job", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        obsidian_routes,
+        "request_obsidian_incident_repair",
+        lambda *args, **kwargs: dispatch_result,
+    )
+    pushed = []
+    monkeypatch.setattr(
+        line_app, "_line_push",
+        lambda user_id, message: pushed.append((user_id, message)),
+    )
+
+    response = app.test_client().post(
+        "/api/obsidian/complete",
+        headers={"X-Obsidian-Bridge-Key": "dummy-bridge-key"},
+        json={
+            "job_id": 17,
+            "claim_token": "dummy-claim-token",
+            "success": False,
+            "reply": "Mac側のObsidian処理を停止しました。",
+            "error": "local operation failed (RuntimeError)",
+            "diagnostic_category": "local_job_failed",
+            "diagnostic_detail": "RuntimeError",
+        },
+    )
+
+    assert response.status_code == 200
+    assert len(pushed) == 1
+    assert pushed[0][0] == "dummy-user"
+    assert expected_notice in pushed[0][1]
