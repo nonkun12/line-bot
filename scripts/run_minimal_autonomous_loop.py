@@ -23,6 +23,71 @@ QUEUE = ROOT / ".github" / "autonomous-loop-tasks.json"
 DEFAULT_STOP_FILE = Path("/tmp/line-bot-autonomous-loop.stop")
 ACTIVE_PROCESS: subprocess.Popen[str] | None = None
 
+INCIDENT_CATEGORIES = frozenset({"local_job_failed", "vault_write_failed"})
+INCIDENT_DETAILS = frozenset({
+    "OSError", "PermissionError", "FileNotFoundError", "IsADirectoryError",
+    "NotADirectoryError", "RuntimeError", "ValueError", "TypeError", "KeyError",
+    "AttributeError", "UnicodeDecodeError",
+})
+INCIDENT_SOURCE_PATHS = [
+    "core/obsidian_bridge.py",
+    "obsidian_loop_dispatch.py",
+    "routes/obsidian_bridge.py",
+    "scripts/obsidian_mac_bridge.py",
+    "scripts/obsidian_mac_startup.py",
+]
+INCIDENT_TEST_PATHS = [
+    "tests/test_obsidian_autorepair_dispatch.py",
+    "tests/test_obsidian_mac_bridge.py",
+    "tests/test_obsidian_mac_startup.py",
+]
+
+
+def incident_tasks(category: str, detail: str, job_id: str | None) -> list[dict[str, object]]:
+    """Build two bounded repair/test tasks from an allowlisted incident taxonomy."""
+    if category not in INCIDENT_CATEGORIES or detail not in INCIDENT_DETAILS:
+        raise ValueError("incident category/detail is not allowlisted")
+    if job_id is not None:
+        if not isinstance(job_id, str) or not job_id.isascii() or not job_id.isdigit():
+            raise ValueError("incident job ID is invalid")
+        if not 1 <= int(job_id) <= 2**31 - 1 or len(job_id) > 10:
+            raise ValueError("incident job ID is out of range")
+
+    job_label = job_id if job_id is not None else "not-provided"
+    context = f"Sanitized incident: category={category}, exception_class={detail}, job_id={job_label}."
+    source_instruction = (
+        f"{context} Investigate the Obsidian bridge implementation and tests in this repository. "
+        "This is the source-repair stage. Identify one reproducible defect that plausibly matches "
+        "the category and exception class, then make the smallest source-only correction if justified. "
+        "If evidence instead indicates a normal user-input rejection, vault permission/configuration "
+        "problem, or no code defect, make no source change. Never weaken path validation, approval, "
+        "overwrite protection, authentication, kill switches, or fail-closed behavior. "
+        "Do not access vault contents, secrets, production services, external APIs/websites, camera, "
+        "or OS UI. Do not edit workflow/config/secret/control-plane files and do not merge/deploy. "
+        "One source file maximum; run the available automated tests and report evidence."
+    )
+    test_instruction = (
+        f"{context} This is the regression-test stage following the guarded source review. "
+        "Add or strengthen exactly one focused test proving the source behavior for the indicated "
+        "category/exception class, using dummy data only. Never make the test pass by weakening a guard. "
+        "Do not access vault contents, secrets, production services, external APIs/websites, camera, "
+        "or OS UI. Do not edit workflow/config/secret/control-plane files and do not merge/deploy. "
+        "One test file maximum; run the available automated tests and report evidence."
+    )
+    suffix = f"{category}-{detail.lower()}"
+    return [
+        {
+            "id": f"obsidian-bridge-fix-{suffix}",
+            "instruction": source_instruction,
+            "allowed_paths": INCIDENT_SOURCE_PATHS,
+        },
+        {
+            "id": f"obsidian-bridge-regression-{suffix}",
+            "instruction": test_instruction,
+            "allowed_paths": INCIDENT_TEST_PATHS,
+        },
+    ]
+
 
 def load_tasks() -> list[dict[str, object]]:
     data = json.loads(QUEUE.read_text(encoding="utf-8"))
@@ -307,6 +372,9 @@ def main() -> int:
     parser.add_argument("--stop-file", type=Path, default=DEFAULT_STOP_FILE)
     parser.add_argument("--results", type=Path, default=Path("/tmp/minimal-autonomous-loop.jsonl"))
     parser.add_argument("--state", type=Path, default=Path("/tmp/autonomous-loop-state.json"))
+    parser.add_argument("--incident-category", choices=sorted(INCIDENT_CATEGORIES))
+    parser.add_argument("--incident-detail", choices=sorted(INCIDENT_DETAILS))
+    parser.add_argument("--incident-job-id")
     args = parser.parse_args()
 
     if args.max_tasks < 1 or args.max_tasks > 4:
@@ -317,7 +385,14 @@ def main() -> int:
     if args.max_tasks > queue_limit:
         raise SystemExit(f"--max-tasks exceeds queue max_tasks_per_run={queue_limit}")
     completed = load_completed(args.state)
-    tasks = [task for task in load_tasks() if task["id"] not in completed][: args.max_tasks]
+    if args.incident_category is not None:
+        if args.max_tasks != 2 or args.incident_detail is None:
+            raise SystemExit("Obsidian incident mode requires exactly two tasks and an allowlisted detail")
+        tasks = incident_tasks(args.incident_category, args.incident_detail, args.incident_job_id)
+    else:
+        if args.incident_detail is not None or args.incident_job_id is not None:
+            raise SystemExit("incident detail/job ID require incident category")
+        tasks = [task for task in load_tasks() if task["id"] not in completed][: args.max_tasks]
     if not tasks:
         print("MINIMAL_LOOP=COMPLETE queue exhausted")
         return 0
