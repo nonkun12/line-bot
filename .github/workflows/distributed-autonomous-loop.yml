@@ -432,8 +432,13 @@ jobs:
               status = 'NOT_RUN'
           elif status not in {'PASS', 'NO_CHANGE', 'FAIL', 'BLOCKED'}:
               status = 'BLOCKED' if not result or status in {'STOPPED', 'TIMEOUT'} else 'FAIL'
-          os.environ['AUTONOMOUS_TASK_ID'] = task_id or 'distributed-loop-no-task-result'
-          os.environ['DEV_INSTRUCTION'] = str(result.get('summary') or result.get('task_summary') or os.environ['DEV_INSTRUCTION'])
+          # Do not fabricate a task ID or task instruction when no task ran.
+          if status == 'NOT_RUN':
+              os.environ['AUTONOMOUS_TASK_ID'] = ''
+              os.environ['DEV_INSTRUCTION'] = 'Queue exhausted; no task executed; replenish the task queue.'
+          else:
+              os.environ['AUTONOMOUS_TASK_ID'] = task_id or 'distributed-loop-no-task-result'
+              os.environ['DEV_INSTRUCTION'] = str(result.get('summary') or result.get('task_summary') or os.environ['DEV_INSTRUCTION'])
           os.environ['AUTONOMOUS_TESTS_RESULT'] = status
           if status == 'NOT_RUN':
               os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'NOT_RUN'
