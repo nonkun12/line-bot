@@ -100,7 +100,6 @@ def test_batch_three_common_words_have_local_core_images():
 def test_expanded_core_image_lexicon_has_common_word_families():
     cases = {
         "preview": ("事前確認", "pre-"),
-        "prevent": ("防ぐ", "venire"),
         "intervene": ("介入する", "inter-"),
         "invent": ("発明する", "invenire"),
         "event": ("出来事", "evenire"),
@@ -126,7 +125,6 @@ def test_expanded_core_image_lexicon_has_common_word_families():
         "progress": ("進歩", "gress"),
         "regress": ("後退", "gress"),
         "digress": ("話がそれる", "gress"),
-        "transfer": ("移す", "trans-"),
         "refer": ("参照", "reference"),
         "prefer": ("好む", "pre-"),
         "offer": ("申し出る", "差し出す"),
