@@ -2,7 +2,14 @@
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 from urllib.parse import urlparse
+
+# Direct script execution sets sys.path[0] to scripts/, not the repository root.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.obsidian_mac_startup import ENV_FILE, _load_env_file
 from scripts.obsidian_mac_bridge import _validate_server_url
