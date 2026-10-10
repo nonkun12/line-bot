@@ -47,6 +47,30 @@ class FakeClient:
         return FakeResponse(self.dispatch_status, {})
 
 
+@pytest.mark.parametrize(
+    ("token", "repo", "expected"),
+    [
+        ("test-only-secret", "nonkun12/line-bot", {
+            "token_present": True, "repo_format_valid": True, "repo_is_target": True
+        }),
+        ("", "nonkun12/line-bot", {
+            "token_present": False, "repo_format_valid": True, "repo_is_target": True
+        }),
+        ("test-only-secret", "malformed//repo", {
+            "token_present": True, "repo_format_valid": False, "repo_is_target": False
+        }),
+    ],
+)
+def test_dispatch_configuration_status_exposes_only_safe_booleans(monkeypatch, token, repo, expected):
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", token)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setenv("AI_REPORT_GITHUB_REPO", repo)
+    actual = dispatch.dispatch_configuration_status()
+    assert actual == expected
+    assert all(isinstance(value, bool) for value in actual.values())
+    assert token not in json.dumps(actual) if token else True
+
+
 def test_dispatch_rejects_unapproved_categories_and_details(monkeypatch):
     monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "dummy-token")
     assert dispatch.request_obsidian_incident_repair("local_job_rejected", "PermissionError", 1) == (
