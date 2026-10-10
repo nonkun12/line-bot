@@ -18,6 +18,7 @@ import httpx
 
 ENV_FILE = Path.home() / ".config" / "line-ai-secretary" / "obsidian-bridge.env"
 STARTUP_LOG = Path.home() / "Library" / "Logs" / "line-ai-secretary" / "obsidian-startup.log"
+DEFER_STATE_PATH = Path.home() / "Library" / "Application Support" / "line-ai-secretary" / "obsidian-startup-state.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BRIDGE_SCRIPT = REPO_ROOT / "scripts" / "obsidian_mac_bridge.py"
 if str(REPO_ROOT) not in sys.path:
@@ -193,6 +194,7 @@ def _stderr_exception_class(stderr: str) -> str | None:
 PENDING_REQUEST_TIMEOUT_SECONDS = 5.0
 PENDING_RETRY_DELAYS_SECONDS = (1.0, 2.0, 3.0, 5.0, 8.0, 8.0, 8.0)
 PENDING_RETRYABLE_STATUS_CODES = {502, 503, 504}
+DEFER_COOLDOWN_SECONDS = 30 * 60
 
 
 def _fetch_pending_payload(server_url: str, bridge_key: str, log_event) -> dict:
@@ -242,6 +244,54 @@ def _fetch_pending_payload(server_url: str, bridge_key: str, log_event) -> dict:
 
     raise RuntimeError("pending check exhausted unexpectedly")
 
+
+def _load_deferred_until(path: Path) -> float | None:
+    """Load a local, non-secret cooldown deadline after a user defers a prompt."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get("deferred_until_epoch")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _save_deferred_until(path: Path, deferred_until: float) -> bool:
+    """Persist only the cooldown deadline, atomically, with owner-only file access."""
+    temporary_path = path.with_name(path.name + ".tmp")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        descriptor = os.open(
+            temporary_path,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            0o600,
+        )
+        with os.fdopen(descriptor, "w", encoding="utf-8") as state_file:
+            json.dump({"deferred_until_epoch": int(deferred_until)}, state_file)
+            state_file.write("\n")
+        os.replace(temporary_path, path)
+        os.chmod(path, 0o600)
+        return True
+    except OSError:
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
+
+
+def _clear_deferred_until(path: Path) -> bool:
+    """Remove cooldown once no job remains, or when the user approves execution."""
+    try:
+        path.unlink(missing_ok=True)
+        return True
+    except OSError:
+        return False
+
+
 def main() -> int:
     run_id = uuid.uuid4().hex
 
@@ -285,8 +335,23 @@ def main() -> int:
         log_event("pending_check_failed", kind="exception", exception=type(exc).__name__)
         return 1
     if payload.get("pending") is not True:
+        if not _clear_deferred_until(DEFER_STATE_PATH):
+            log_event("defer_state_clear_failed")
         log_event("pending_none")
         return 0
+
+    now = time.time()
+    deferred_until = _load_deferred_until(DEFER_STATE_PATH)
+    if deferred_until is not None and deferred_until > now:
+        log_event(
+            "approval_prompt_suppressed",
+            reason="deferred_cooldown",
+            seconds_remaining=int(deferred_until - now),
+        )
+        return 0
+    if deferred_until is not None and not _clear_deferred_until(DEFER_STATE_PATH):
+        log_event("defer_state_clear_failed")
+
     try:
         choice, dialog_exit = _ask_execute()
     except Exception as exc:
@@ -297,8 +362,12 @@ def main() -> int:
         return 1
     log_event("notification_shown", purpose="approval_prompt")
     if choice == "later":
+        if not _save_deferred_until(DEFER_STATE_PATH, time.time() + DEFER_COOLDOWN_SECONDS):
+            log_event("defer_state_save_failed")
         log_event("user_deferred")
         return 0
+    if not _clear_deferred_until(DEFER_STATE_PATH):
+        log_event("defer_state_clear_failed")
     log_event("user_approved")
     try:
         subprocess.run(["/usr/bin/open", "-a", "Obsidian"], check=False,
