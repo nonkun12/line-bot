@@ -306,8 +306,8 @@ jobs:
         id: persist_task_health
         if: always() && steps.run_task.conclusion != 'skipped'
         env:
-          GH_TOKEN: \${{ github.token }}
-          GITHUB_REPOSITORY: \${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           # Do not mistake a failed local state write for a successfully persisted counter.
