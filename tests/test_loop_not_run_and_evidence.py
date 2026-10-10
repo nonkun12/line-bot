@@ -27,6 +27,10 @@ def test_empty_queue_records_not_run_and_returns_78(monkeypatch, tmp_path, capsy
     assert row["status"] == "NOT_RUN"
     assert row["failure_reason"] == "queue_empty"
     assert row["task_count"] == 0
+    assert row["queue_total"] == 1
+    assert row["queue_completed"] == 1
+    # Empty-queue reporting must not mutate durable completion state.
+    assert json.loads(state.read_text(encoding="utf-8")) == {"version": 1, "completed": ["task-1"]}
 
 
 def test_empty_task_list_records_not_run(monkeypatch, tmp_path):
