@@ -23,6 +23,11 @@ _CASEFOLDED_KEYWORDS: tuple[tuple[Specialist, tuple[str, ...]], ...] = tuple(
     for specialist, keywords in _KEYWORDS
 )
 
+_CASEFOLDED_KEYWORDS: tuple[tuple[Specialist, tuple[str, ...]], ...] = tuple(
+    (specialist, tuple(keyword.casefold() for keyword in keywords))
+    for specialist, keywords in _KEYWORDS
+)
+
 
 def route(request: ManagementRequest) -> ManagementDecision:
     """Choose one specialist without invoking a model.
