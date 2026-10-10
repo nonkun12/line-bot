@@ -1,7 +1,9 @@
 import json
+from pathlib import Path
 
 import pytest
 
+import scripts.run_guarded_runtime as guarded_runtime
 from scripts.run_guarded_runtime import guarded_ask
 
 
@@ -86,3 +88,44 @@ def test_guarded_ask_recovers_on_third_attempt_and_uses_stricter_prompt():
     assert json.loads(content) == {"file": "tests/test_management_router.py"}
     assert len(client.completions.calls) == 3
     assert "smallest valid JSON object" in client.completions.calls[2]["messages"][0]["content"]
+
+
+
+def test_runtime_summary_carries_current_run_test_evidence(monkeypatch, tmp_path: Path):
+    nonce = "d" * 32
+    evidence = {
+        "schema_version": 1,
+        "runner": "scripts/line_development_worker_v2.py::run_tests",
+        "run_nonce": nonce,
+        "pytest_command": ["/usr/bin/python3", "-m", "pytest", "-q", "--tb=native"],
+        "pytest_exit_code": 0,
+        "pytest_output_sha256": "e" * 64,
+        "py_compile": [],
+    }
+    monkeypatch.setenv("AUTONOMOUS_RUN_NONCE", nonce)
+    monkeypatch.setenv("AUTONOMOUS_TEST_EVIDENCE", json.dumps(evidence))
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: "f" * 40 if args == ("rev-parse", "HEAD") else "test-branch")
+    path = tmp_path / "summary.json"
+
+    guarded_runtime._write_summary("PASS", 0, "a" * 40, path)
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["test_evidence"] == evidence
+
+
+def test_runtime_summary_omits_stale_nonce_test_evidence(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("AUTONOMOUS_RUN_NONCE", "d" * 32)
+    monkeypatch.setenv("AUTONOMOUS_TEST_EVIDENCE", json.dumps({
+        "schema_version": 1, "runner": "scripts/line_development_worker_v2.py::run_tests",
+        "run_nonce": "0" * 32, "pytest_command": ["/usr/bin/python3", "-m", "pytest", "-q", "--tb=native"],
+        "pytest_exit_code": 0, "pytest_output_sha256": "e" * 64, "py_compile": [],
+    }))
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: "f" * 40 if args == ("rev-parse", "HEAD") else "test-branch")
+    path = tmp_path / "summary.json"
+
+    guarded_runtime._write_summary("PASS", 0, "a" * 40, path)
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["test_evidence"] is None
