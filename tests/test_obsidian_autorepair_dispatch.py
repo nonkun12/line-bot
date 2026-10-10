@@ -26,9 +26,10 @@ class FakeResponse:
 
 
 class FakeClient:
-    def __init__(self, runs=None, dispatch_status=204):
+    def __init__(self, runs=None, dispatch_status=204, runs_status=200):
         self.runs = runs if runs is not None else []
         self.dispatch_status = dispatch_status
+        self.runs_status = runs_status
         self.calls = []
 
     def __enter__(self):
@@ -39,7 +40,7 @@ class FakeClient:
 
     def get(self, url, **kwargs):
         self.calls.append(("get", url, kwargs))
-        return FakeResponse(200, {"workflow_runs": self.runs})
+        return FakeResponse(self.runs_status, {"workflow_runs": self.runs})
 
     def post(self, url, **kwargs):
         self.calls.append(("post", url, kwargs))
@@ -86,6 +87,25 @@ def test_dispatch_sends_only_allowlisted_metadata(monkeypatch):
     }
     assert "vault" not in json.dumps(body).lower()
     assert "dummy-token" not in json.dumps(body)
+
+
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected_reason"),
+    [(401, "github_http_401"), (403, "github_http_403"), (404, "github_http_404")],
+)
+def test_dispatch_returns_safe_github_http_status(monkeypatch, status_code, expected_reason):
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "dummy-token")
+    monkeypatch.setattr(dispatch, "_LAST_DISPATCH_AT", {})
+    fake = FakeClient(runs_status=status_code)
+    with patch.object(dispatch.httpx, "Client", return_value=fake):
+        ok, reason = dispatch.request_obsidian_incident_repair(
+            "local_job_failed", "RuntimeError", 17
+        )
+    assert (ok, reason) == (False, expected_reason)
+    assert not any(call[0] == "post" for call in fake.calls)
+    assert "dummy-token" not in json.dumps(fake.calls)
 
 
 def test_dispatch_skips_when_loop_is_already_running(monkeypatch):
