@@ -38,3 +38,18 @@ def test_plain_word_does_not_capture_normal_line_messages():
 def test_invalid_input_is_rejected():
     response = explain_core_image("../secret")
     assert "1語指定" in response
+
+
+
+def test_circumstance_has_conservative_core_image():
+    response = explain_core_image("circumstance")
+    assert "周囲に立っている事情" in response
+    assert "circum-" in response
+    assert "説明を保留" not in response
+
+
+def test_environment_has_core_image_and_no_external_api():
+    response = explain_core_image("environment")
+    assert "取り巻くもの・条件" in response
+    assert "環境" in response
+    assert "外部API" in response
