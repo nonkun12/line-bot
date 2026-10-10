@@ -78,3 +78,19 @@ def test_batch_two_common_words_have_local_core_images():
         assert cue in response, word
         assert "外部API" in response, word
         assert "説明を保留" not in response, word
+
+
+def test_batch_three_common_words_have_local_core_images():
+    cases = {
+        "visible": ("目に見える", "vision"),
+        "dictate": ("指示する", "dict"),
+        "contradict": ("矛盾する", "contra-"),
+        "attract": ("引きつける", "distract"),
+        "distract": ("注意をそらす", "tract"),
+    }
+    for word, (meaning, cue) in cases.items():
+        response = explain_core_image(word)
+        assert meaning in response, word
+        assert cue in response, word
+        assert "外部API" in response, word
+        assert "説明を保留" not in response, word
