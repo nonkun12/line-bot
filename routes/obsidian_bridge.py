@@ -7,14 +7,17 @@ from __future__ import annotations
 
 import hmac
 import os
+import re
 
 from flask import Blueprint, current_app, jsonify, request
 
 from core.obsidian_bridge import OBSIDIAN_JOB_TYPE
 from db import (
+    cancel_pending_job_by_type,
     claim_pending_job_by_type,
     complete_claimed_job,
     get_job,
+    get_job_status_summary,
     has_pending_job_by_type,
 )
 
@@ -23,6 +26,8 @@ obsidian_bridge_bp = Blueprint("obsidian_bridge", __name__, url_prefix="/api/obs
 
 _MAX_REPLY_CHARS = 20_000
 _MAX_ERROR_CHARS = 2_000
+_MAX_JOB_ID = 2**31 - 1
+_SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _authorized() -> bool:
@@ -140,6 +145,64 @@ def complete():
             ), 503
 
     return jsonify({"ok": True, "status": "completed" if success else "failed"}), 200
+
+
+
+def _job_cancel_enabled() -> bool:
+    """Cancellation is disabled unless an operator explicitly enables it."""
+    return os.environ.get("OBSIDIAN_BRIDGE_ALLOW_JOB_CANCEL", "").strip().lower() == "true"
+
+
+@obsidian_bridge_bp.route("/jobs/<int:job_id>/status", methods=["GET"])
+def job_status(job_id: int):
+    """Read-only status for one Obsidian job; never claims or mutates anything."""
+    if not _authorized():
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    if not 0 < job_id <= _MAX_JOB_ID:
+        return jsonify({"ok": False, "error": "job not found"}), 404
+    try:
+        summary = get_job_status_summary(job_id, OBSIDIAN_JOB_TYPE)
+    except Exception:
+        current_app.logger.exception("OBSIDIAN BRIDGE STATUS ERROR")
+        return jsonify({"ok": False, "error": "bridge unavailable"}), 503
+    if summary is None:
+        return jsonify({"ok": False, "error": "job not found"}), 404
+    return jsonify({"ok": True, "job": summary}), 200
+
+
+@obsidian_bridge_bp.route("/jobs/<int:job_id>/cancel", methods=["POST"])
+def job_cancel(job_id: int):
+    """Cancel exactly one matching pending job only when the operator feature flag is enabled."""
+    if not _authorized():
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    if not 0 < job_id <= _MAX_JOB_ID:
+        return jsonify({"ok": False, "error": "job not found"}), 404
+    if not _job_cancel_enabled():
+        return jsonify({"ok": False, "error": "job cancellation disabled"}), 403
+
+    data = request.get_json(silent=True)
+    expected = data.get("expected_message_sha256") if isinstance(data, dict) else None
+    if not isinstance(expected, str) or not _SHA256_HEX_RE.fullmatch(expected):
+        return jsonify(
+            {"ok": False, "error": "expected_message_sha256 must be 64 lowercase hex characters"}
+        ), 400
+    try:
+        result = cancel_pending_job_by_type(job_id, OBSIDIAN_JOB_TYPE, expected)
+    except Exception:
+        current_app.logger.exception("OBSIDIAN BRIDGE CANCEL ERROR")
+        return jsonify({"ok": False, "error": "bridge unavailable"}), 503
+
+    outcome = result.get("outcome")
+    if outcome == "cancelled":
+        current_app.logger.info("OBSIDIAN BRIDGE JOB CANCELLED id=%s", job_id)
+        return jsonify({"ok": True, "cancelled": True, "status": "failed"}), 200
+    if outcome == "not_found":
+        return jsonify({"ok": False, "error": "job not found"}), 404
+    if outcome == "message_mismatch":
+        return jsonify({"ok": False, "error": "message mismatch"}), 409
+    if outcome == "not_pending":
+        return jsonify({"ok": False, "error": "job is not pending", "status": result.get("status")}), 409
+    return jsonify({"ok": False, "error": "job is not cancellable"}), 409
 
 
 __all__ = ["obsidian_bridge_bp"]
