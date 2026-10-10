@@ -87,7 +87,7 @@ _ENTRIES: dict[str, WordEntry] = {
         related=("inspect（詳しく調べる）", "spectator（観客）", "respect（尊重する）"),
         example="Try to see it from her perspective.（彼女の視点からそれを見てみて。）",
         note="語源の細部は複雑なので、パーツは記憶の手がかりとして使ってください。",
-    ),,
+    ),
 
     "circumstance": WordEntry(
         word="circumstance",
