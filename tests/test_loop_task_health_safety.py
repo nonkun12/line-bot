@@ -201,7 +201,7 @@ def test_real_worker_records_pytest_command_exit_code_and_output_digest(monkeypa
     assert evidence["run_nonce"] == nonce
     assert evidence["pytest_command"] == [sys.executable, "-m", "pytest", "-q", "--tb=native"]
     assert evidence["pytest_exit_code"] == 0
-    assert evidence["pytest_output_sha256"] == hashlib.sha256(b"42 passed\\n").hexdigest()
+    assert evidence["pytest_output_sha256"] == hashlib.sha256(b"42 passed\n").hexdigest()
     assert evidence["py_compile"] == [{"path": "tests/dummy.py", "exit_code": 0}]
     assert len(outputs) == 2
 
