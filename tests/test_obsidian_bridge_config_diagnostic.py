@@ -77,7 +77,7 @@ def test_diagnostic_script_can_run_directly_outside_repository(tmp_path):
         child_env.pop(key, None)
 
     completed = subprocess.run(
-        [sys.executable, str(script)],
+        [sys.executable, "-S", str(script)],
         cwd=tmp_path,
         env=child_env,
         capture_output=True,

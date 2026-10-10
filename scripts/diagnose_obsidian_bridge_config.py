@@ -1,20 +1,19 @@
-"""Read-only, secret-safe diagnostics for the Startup-to-Bridge URL config."""
+"""Read-only, secret-safe Obsidian bridge configuration diagnostic.
+
+This script intentionally uses only the Python standard library so it can run
+with the system Python before project dependencies such as httpx are installed.
+It never makes network requests and never prints configured values.
+"""
 from __future__ import annotations
 
+import ipaddress
 import os
-import sys
+import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-# Direct script execution sets sys.path[0] to scripts/, not the repository root.
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.obsidian_mac_startup import ENV_FILE, _load_env_file
-from scripts.obsidian_mac_bridge import _validate_server_url
-
-
+ENV_FILE = Path.home() / ".config" / "line-ai-secretary" / "obsidian-bridge.env"
 EXPECTED_HOSTNAME = "line-bot-yvea.onrender.com"
 ENV_KEYS = {
     "url": "OBSIDIAN_BRIDGE_SERVER_URL",
@@ -23,7 +22,71 @@ ENV_KEYS = {
 }
 
 
-def inspect_values(file_values: dict[str, str], process_env: dict[str, str]) -> dict[str, object]:
+def _load_env_file(path: Path) -> dict[str, str]:
+    """Read the startup env file format without importing startup dependencies."""
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
+def _validate_server_url(server_url: str) -> None:
+    """Match bridge URL policy using standard-library-only parsing."""
+    try:
+        if (
+            not isinstance(server_url, str)
+            or not server_url
+            or any(char.isspace() for char in server_url)
+        ):
+            raise ValueError
+        parsed = urlparse(server_url)
+        hostname = parsed.hostname
+        parsed.port  # Access validates malformed port values.
+    except (AttributeError, ValueError):
+        raise ValueError("invalid server URL") from None
+
+    valid_hostname = False
+    if hostname and not any(char.isspace() for char in hostname):
+        try:
+            ipaddress.ip_address(hostname)
+            valid_hostname = True
+        except ValueError:
+            try:
+                ascii_hostname = hostname.encode("idna").decode("ascii")
+                labels = ascii_hostname.rstrip(".").split(".")
+                valid_hostname = all(
+                    label
+                    and len(label) <= 63
+                    and label[0].isalnum()
+                    and label[-1].isalnum()
+                    and all(char.isalnum() or char == "-" for char in label)
+                    for label in labels
+                )
+            except UnicodeError:
+                valid_hostname = False
+
+    has_credentials = parsed.username is not None or parsed.password is not None
+    if has_credentials:
+        valid_hostname = False
+    is_https = parsed.scheme == "https" and valid_hostname
+    is_loopback_http = (
+        parsed.scheme == "http"
+        and hostname in {"localhost", "127.0.0.1"}
+        and not has_credentials
+    )
+    if not (is_https or is_loopback_http):
+        raise ValueError("invalid server URL")
+
+
+def inspect_values(
+    file_values: dict[str, str], process_env: dict[str, str]
+) -> dict[str, object]:
     """Mirror Startup's setting precedence and report properties, never values."""
     selected = {
         name: (
@@ -55,11 +118,14 @@ def inspect_values(file_values: dict[str, str], process_env: dict[str, str]) -> 
         result["url_scheme_https"] = parsed.scheme == "https"
         result["url_hostname_present"] = bool(hostname)
         result["url_hostname_matches_expected"] = hostname == EXPECTED_HOSTNAME
-        result["url_has_userinfo"] = parsed.username is not None or parsed.password is not None
+        result["url_has_userinfo"] = (
+            parsed.username is not None or parsed.password is not None
+        )
         parsed.port
         result["url_port_parses"] = True
     except (AttributeError, ValueError):
         pass
+
     try:
         _validate_server_url(url)
         result["bridge_validator_accepts"] = True
@@ -68,9 +134,7 @@ def inspect_values(file_values: dict[str, str], process_env: dict[str, str]) -> 
         result["bridge_validator_accepts"] = False
         result["bridge_validator_error"] = "invalid_server_url"
 
-    # Diagnostic succeeds only for the exact expected production host. This is
-    # stricter than URL syntax validation, so alternate hosts are never mistaken
-    # for the configured Render service.
+    # Diagnostic succeeds only for the exact expected production host.
     result["diagnostic_accepts"] = bool(
         result["url_set"]
         and result["url_scheme_https"]
@@ -86,7 +150,8 @@ def inspect_values(file_values: dict[str, str], process_env: dict[str, str]) -> 
 def main() -> int:
     try:
         file_values = _load_env_file(ENV_FILE)
-    except Exception as exc:
+    except (OSError, UnicodeError) as exc:
+        # Only exception class is safe to show; configured values stay private.
         print(f"config_load_error={type(exc).__name__}")
         return 1
     result = inspect_values(file_values, dict(os.environ))
