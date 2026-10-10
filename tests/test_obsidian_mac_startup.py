@@ -2,9 +2,15 @@ import json
 from pathlib import Path
 
 import httpx
+import pytest
 from unittest.mock import MagicMock, patch
 
 from scripts import obsidian_mac_startup as startup
+
+
+@pytest.fixture(autouse=True)
+def isolate_defer_state(tmp_path, monkeypatch):
+    monkeypatch.setattr(startup, "DEFER_STATE_PATH", tmp_path / "defer-state.json")
 
 
 def read_log_records(tmp_path):
@@ -323,3 +329,37 @@ def test_startup_bridge_failure_is_classified_without_environment_values(tmp_pat
     assert bridge_exit["exit_code"] == 2
     assert diagnostic["category"] == "bridge_unclassified_failure"
     assert "secret" not in repr(records)
+
+def test_deferred_pending_job_is_suppressed_during_cooldown(tmp_path):
+    response = MagicMock()
+    response.json.return_value = {"ok": True, "pending": True}
+    response.raise_for_status.return_value = None
+    assert startup._save_deferred_until(
+        startup.DEFER_STATE_PATH, startup.time.time() + 120
+    )
+    with patch.object(startup, "_load_env_file", return_value={"OBSIDIAN_BRIDGE_SERVER_URL": "https://example.test", "OBSIDIAN_BRIDGE_KEY": "dummy-key", "OBSIDIAN_VAULT_PATH": "/tmp/vault"}), patch.object(startup, "STARTUP_LOG", tmp_path / "startup.log"), patch.object(startup.httpx, "get", return_value=response), patch.object(startup, "_ask_execute") as ask_mock, patch.object(startup.subprocess, "run") as run_mock:
+        assert startup.main() == 0
+    ask_mock.assert_not_called()
+    run_mock.assert_not_called()
+    records = read_log_records(tmp_path)
+    assert records[-1]["event"] == "approval_prompt_suppressed"
+    assert records[-1]["reason"] == "deferred_cooldown"
+
+
+def test_pending_none_clears_defer_state(tmp_path):
+    response = MagicMock()
+    response.json.return_value = {"ok": True, "pending": False}
+    response.raise_for_status.return_value = None
+    assert startup._save_deferred_until(startup.DEFER_STATE_PATH, startup.time.time() + 120)
+    with patch.object(startup, "_load_env_file", return_value={"OBSIDIAN_BRIDGE_SERVER_URL": "https://example.test", "OBSIDIAN_BRIDGE_KEY": "dummy-key", "OBSIDIAN_VAULT_PATH": "/tmp/vault"}), patch.object(startup, "STARTUP_LOG", tmp_path / "startup.log"), patch.object(startup.httpx, "get", return_value=response):
+        assert startup.main() == 0
+    assert not startup.DEFER_STATE_PATH.exists()
+    assert read_log_records(tmp_path)[-1]["event"] == "pending_none"
+
+
+def test_defer_state_contains_only_deadline_and_is_private(tmp_path):
+    state_path = tmp_path / "state.json"
+    assert startup._save_deferred_until(state_path, 1234567890)
+    assert json.loads(state_path.read_text(encoding="utf-8")) == {"deferred_until_epoch": 1234567890}
+    assert state_path.stat().st_mode & 0o777 == 0o600
+
