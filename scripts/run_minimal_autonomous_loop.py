@@ -17,6 +17,11 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+try:  # package import in tests; direct import when executed as a script
+    from scripts import autonomous_loop_task_health as health
+except ImportError:
+    import autonomous_loop_task_health as health  # type: ignore[no-redef]
+
 
 ROOT = Path(__file__).resolve().parents[1]
 QUEUE = ROOT / ".github" / "autonomous-loop-tasks.json"
@@ -25,6 +30,8 @@ ACTIVE_PROCESS: subprocess.Popen[str] | None = None
 
 EXIT_NOT_RUN = 78
 NOT_RUN_REASON_QUEUE_EMPTY = "queue_empty"
+EXIT_BLOCKED_HELD = 79
+BLOCKED_REASON_ALL_HELD = "all_pending_tasks_held"
 VALID_RUNTIME_STATUSES = frozenset({"PASS", "NO_CHANGE"})
 
 INCIDENT_CATEGORIES = frozenset({"local_job_failed", "vault_write_failed"})
@@ -386,6 +393,7 @@ def main() -> int:
     parser.add_argument("--stop-file", type=Path, default=DEFAULT_STOP_FILE)
     parser.add_argument("--results", type=Path, default=Path("/tmp/minimal-autonomous-loop.jsonl"))
     parser.add_argument("--state", type=Path, default=Path("/tmp/autonomous-loop-state.json"))
+    parser.add_argument("--resume-task", help="Explicitly resume one held task after its cause is fixed")
     parser.add_argument("--incident-category", choices=sorted(INCIDENT_CATEGORIES))
     parser.add_argument("--incident-detail", choices=sorted(INCIDENT_DETAILS))
     parser.add_argument("--incident-job-id")
@@ -399,16 +407,63 @@ def main() -> int:
     if args.max_tasks > queue_limit:
         raise SystemExit(f"--max-tasks exceeds queue max_tasks_per_run={queue_limit}")
     completed = load_completed(args.state)
+    state = health.read_state(args.state)  # corrupt health state must fail closed
     queued_tasks: list[dict[str, object]] = []
+    pending: list[dict[str, object]] = []
+    track_health = args.incident_category is None
     if args.incident_category is not None:
         if args.max_tasks != 2 or args.incident_detail is None:
             raise SystemExit("Obsidian incident mode requires exactly two tasks and an allowlisted detail")
+        if args.resume_task:
+            raise SystemExit("--resume-task cannot be combined with incident mode")
         tasks = incident_tasks(args.incident_category, args.incident_detail, args.incident_job_id)
     else:
         if args.incident_detail is not None or args.incident_job_id is not None:
             raise SystemExit("incident detail/job ID require incident category")
         queued_tasks = load_tasks()
-        tasks = [task for task in queued_tasks if task["id"] not in completed][: args.max_tasks]
+        queue_ids = {str(task["id"]) for task in queued_tasks}
+        if args.resume_task:
+            if args.resume_task not in queue_ids or args.resume_task in completed:
+                raise SystemExit("--resume-task must identify an incomplete task in the queue")
+            try:
+                audit = health.resume_task(state, args.resume_task)
+                health.write_state(args.state, state)
+            except (ValueError, OSError) as exc:
+                raise SystemExit(f"cannot resume task: {exc}") from exc
+            print(
+                f"MINIMAL_LOOP=RESUMED task={audit['task_id']} "
+                f"previous_failures={audit['previous_consecutive_failures']}",
+                flush=True,
+            )
+        held_ids = health.held_task_ids(state)
+        pending = [task for task in queued_tasks if task["id"] not in completed]
+        tasks = [task for task in pending if task["id"] not in held_ids][: args.max_tasks]
+    if not tasks and pending:
+        pending_ids = {str(task["id"]) for task in pending}
+        held_list = [item for item in health.held_details(state) if item["task_id"] in pending_ids]
+        args.results.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "BLOCKED",
+            "task_id": "",
+            "task_count": 0,
+            "queue_total": len(queued_tasks),
+            "queue_completed": sum(1 for task in queued_tasks if task["id"] in completed),
+            "pending_total": len(pending),
+            "held_tasks": held_list,
+            "exit_code": EXIT_BLOCKED_HELD,
+            "failure_reason": BLOCKED_REASON_ALL_HELD,
+        }
+        with args.results.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        held_text = ",".join(
+            f"{item['task_id']}({item['consecutive_failures']}x:{item['reason']})" for item in held_list
+        )
+        print(
+            f"MINIMAL_LOOP=BLOCKED reason={BLOCKED_REASON_ALL_HELD} held={held_text} (no task was executed)",
+            flush=True,
+        )
+        return EXIT_BLOCKED_HELD
     if not tasks:
         queued_ids = [str(task["id"]) for task in queued_tasks]
         args.results.parent.mkdir(parents=True, exist_ok=True)
@@ -445,9 +500,40 @@ def main() -> int:
 
         print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
         result = run_task(task, index, args.stop_file)
+        health_error = False
+        if track_health:
+            try:
+                before = json.dumps(state, sort_keys=True, ensure_ascii=False)
+                outcome = health.record_task_result(
+                    state, str(task["id"]), str(result.get("status", "")), result.get("failure_reason", "")
+                )
+                result["consecutive_failures"] = outcome["consecutive_failures"]
+                result["held"] = outcome["held"]
+                result["newly_held"] = outcome["newly_held"]
+                after = json.dumps(state, sort_keys=True, ensure_ascii=False)
+                if before != after:
+                    health.write_state(args.state, state)
+            except (ValueError, OSError):
+                # Do not let an unpersisted retry counter permit more work or report PASS.
+                health_error = True
+                result["status"] = "FAIL"
+                result["exit_code"] = 1
+                result["failure_reason"] = "task_health_persist_failed"
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(result, ensure_ascii=False) + "\n")
 
+        if health_error:
+            print(
+                f"MINIMAL_LOOP=HALT task={task['id']} reason=task_health_persist_failed",
+                flush=True,
+            )
+            return 1
+        if result.get("newly_held"):
+            print(
+                f"MINIMAL_LOOP=HELD task={task['id']} consecutive_failures={result['consecutive_failures']} "
+                "automatic retries stopped until explicitly resumed",
+                flush=True,
+            )
         if result["exit_code"] != 0 or result["status"] not in {"PASS", "NO_CHANGE"}:
             print(f"MINIMAL_LOOP=HALT task={task['id']} status={result['status']}", flush=True)
             return 1
