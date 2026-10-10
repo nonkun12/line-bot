@@ -50,6 +50,11 @@ on:
         description: 'Numeric Obsidian job ID; no note content'
         required: false
         type: string
+      resume_task_id:
+        description: 'Explicitly resume one held task after fixing its cause'
+        required: false
+        default: ''
+        type: string
   # ChatGPT can request a bounded run by creating an authorized PR comment.
   # The trigger defaults to four tasks and remains fail-closed.
   issue_comment:
@@ -107,6 +112,7 @@ jobs:
       INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_category || '' }}
       INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_detail || '' }}
       INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_job_id || '' }}
+      RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || '' }}
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
       SELF_IMPROVEMENT_POLICY_ENFORCED: 'true'
@@ -164,6 +170,7 @@ jobs:
           INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_category || '' }}
           INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_detail || '' }}
           INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_job_id || '' }}
+          RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || '' }}
         run: |
           set -euo pipefail
           case "${REQUESTED_TASK_LIMIT}" in
@@ -220,6 +227,20 @@ jobs:
             echo "::error::Incident mode is available only through workflow_dispatch"
             exit 1
           fi
+          if [ -n "${RESUME_TASK_ID:-}" ]; then
+            if [ "${EVENT_NAME}" != "workflow_dispatch" ]; then
+              echo "::error::Task resume is available only through workflow_dispatch"
+              exit 1
+            fi
+            if [ "${TRIGGER_MODE}" != "normal" ]; then
+              echo "::error::Task resume cannot be combined with incident mode"
+              exit 1
+            fi
+            if ! [[ "${RESUME_TASK_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]]; then
+              echo "::error::Invalid task ID for resume"
+              exit 1
+            fi
+          fi
           if [ "${REQUESTED_TASK_LIMIT}" != "${expected}" ]; then
             echo "::error::Task limit mismatch: got=${REQUESTED_TASK_LIMIT} expected=${expected}"
             exit 1
@@ -236,6 +257,7 @@ jobs:
           INCIDENT_CATEGORY: ${{ env.INCIDENT_CATEGORY }}
           INCIDENT_DETAIL: ${{ env.INCIDENT_DETAIL }}
           INCIDENT_JOB_ID: ${{ env.INCIDENT_JOB_ID }}
+          RESUME_TASK_ID: ${{ env.RESUME_TASK_ID }}
         run: |
           set -euo pipefail
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
@@ -260,7 +282,10 @@ jobs:
               loop_args+=(--incident-job-id "$INCIDENT_JOB_ID")
             fi
           fi
-          rm -f /tmp/autonomous-loop-not-run
+          if [ -n "${RESUME_TASK_ID:-}" ]; then
+            loop_args+=(--resume-task "$RESUME_TASK_ID")
+          fi
+          rm -f /tmp/autonomous-loop-not-run /tmp/autonomous-loop-blocked
           set +e
           python scripts/run_minimal_autonomous_loop.py "${loop_args[@]}"
           loop_rc=$?
@@ -270,7 +295,130 @@ jobs:
             echo "::notice::NOT_RUN: queue_empty - no task was executed."
             exit 0
           fi
+          if [ "$loop_rc" -eq 79 ]; then
+            echo "all_pending_tasks_held" > /tmp/autonomous-loop-blocked
+            echo "::warning::BLOCKED: all pending tasks are on hold after repeated failures."
+            exit 0
+          fi
           exit "$loop_rc"
+
+      - name: Persist task failure counters and holds
+        id: persist_task_health
+        if: always() && steps.run_task.conclusion != 'skipped'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Do not mistake a failed local state write for a successfully persisted counter.
+          if [ -f /tmp/minimal-autonomous-loop.jsonl ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          result_path = Path('/tmp/minimal-autonomous-loop.jsonl')
+          for line in result_path.read_text(encoding='utf-8').splitlines():
+              if not line.strip():
+                  continue
+              row = json.loads(line)
+              if isinstance(row, dict) and row.get('failure_reason') == 'task_health_persist_failed':
+                  raise SystemExit('task health state could not be saved locally; durable persistence is blocked')
+          PY
+          fi
+
+          python - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          import autonomous_loop_task_health as health
+          path = Path('/tmp/autonomous-loop-state.json')
+          if not path.is_file():
+              raise SystemExit('local durable loop state is missing; refusing to overwrite remote state')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          if not isinstance(data, dict):
+              raise SystemExit('local durable loop state is invalid')
+          health.load_task_health(data)
+          resume_log = data.get('resume_log', [])
+          if not isinstance(resume_log, list):
+              raise SystemExit('invalid resume_log in local state')
+          Path('/tmp/autonomous-task-health.json').write_text(
+              json.dumps({'task_health': data.get('task_health', {}), 'resume_log': resume_log}, ensure_ascii=False),
+              encoding='utf-8',
+          )
+          PY
+
+          state_branch="autonomous-loop-state"
+          auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          if ! git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1; then
+            git push "$auth_url" "refs/remotes/origin/main:refs/heads/$state_branch"
+          fi
+          git fetch --quiet origin "$state_branch"
+          rm -rf /tmp/autonomous-health-worktree
+          git worktree prune
+          git worktree add --detach /tmp/autonomous-health-worktree "origin/$state_branch"
+          python - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path.cwd() / 'scripts'))
+          import autonomous_loop_task_health as health
+          state_path = Path('/tmp/autonomous-health-worktree/.autonomous-loop-state.json')
+          data = json.loads(state_path.read_text(encoding='utf-8')) if state_path.exists() else {'version': 1, 'completed': []}
+          if not isinstance(data, dict) or not isinstance(data.get('completed', []), list):
+              raise SystemExit('invalid durable state on state branch')
+          health.load_task_health(data)
+          existing_resume_log = data.get('resume_log', [])
+          if not isinstance(existing_resume_log, list):
+              raise SystemExit('invalid durable resume_log on state branch')
+          incoming = json.loads(Path('/tmp/autonomous-task-health.json').read_text(encoding='utf-8'))
+          if not isinstance(incoming, dict) or not isinstance(incoming.get('task_health', {}), dict):
+              raise SystemExit('invalid incoming task health')
+          health.load_task_health({'task_health': incoming.get('task_health', {})})
+          if incoming['task_health']:
+              data['task_health'] = incoming['task_health']
+          else:
+              data.pop('task_health', None)
+          if incoming['resume_log']:
+              data['resume_log'] = incoming['resume_log']
+          else:
+              data.pop('resume_log', None)
+          data['version'] = 1
+          state_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+          git -C /tmp/autonomous-health-worktree config user.name "github-actions[bot]"
+          git -C /tmp/autonomous-health-worktree config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C /tmp/autonomous-health-worktree add .autonomous-loop-state.json
+          if git -C /tmp/autonomous-health-worktree diff --cached --quiet; then
+            echo "Task health state unchanged."
+          else
+            git -C /tmp/autonomous-health-worktree commit -m "chore: persist distributed loop task health"
+            git -C /tmp/autonomous-health-worktree push "$auth_url" HEAD:refs/heads/$state_branch
+            echo "Task health state persisted."
+          fi
+          # Read back the exact remote snapshot before this step can count as successful.
+          git fetch --quiet origin "$state_branch"
+          python - <<'PY'
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path.cwd() / 'scripts'))
+          import autonomous_loop_task_health as health
+          expected = json.loads(Path('/tmp/autonomous-task-health.json').read_text(encoding='utf-8'))
+          raw = subprocess.run(
+              ['git', 'show', 'origin/autonomous-loop-state:.autonomous-loop-state.json'],
+              check=True, capture_output=True, text=True,
+          ).stdout
+          actual = json.loads(raw)
+          if not isinstance(actual, dict):
+              raise SystemExit('invalid task health read-back state')
+          health.load_task_health(actual)
+          if actual.get('task_health', {}) != expected.get('task_health', {}):
+              raise SystemExit('task health read-back mismatch')
+          if actual.get('resume_log', []) != expected.get('resume_log', []):
+              raise SystemExit('task resume audit read-back mismatch')
+          print('Task health and resume audit read-back verified.')
+          PY
 
       - name: Publish verified development branch
         id: publish
@@ -389,6 +537,7 @@ jobs:
           LOOP_OUTCOME: ${{ steps.run_task.outcome }}
           PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
           STATE_OUTCOME: ${{ steps.persist_state.outcome }}
+          TASK_HEALTH_OUTCOME: ${{ steps.persist_task_health.outcome }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -426,28 +575,37 @@ jobs:
           run_outcome = os.getenv('LOOP_OUTCOME', '')
           publish = os.getenv('PUBLISH_OUTCOME', '')
           state = os.getenv('STATE_OUTCOME', '')
+          task_health_outcome = os.getenv('TASK_HEALTH_OUTCOME', 'not_run')
 
           not_run = os.path.exists('/tmp/autonomous-loop-not-run')
+          blocked = os.path.exists('/tmp/autonomous-loop-blocked')
           if not_run:
               status = 'NOT_RUN'
           elif status not in {'PASS', 'NO_CHANGE', 'FAIL', 'BLOCKED'}:
               status = 'BLOCKED' if not result or status in {'STOPPED', 'TIMEOUT'} else 'FAIL'
-          # Do not fabricate a task ID or task instruction when no task ran.
+          if run_outcome != 'skipped' and task_health_outcome != 'success' and status in {'PASS', 'NO_CHANGE', 'NOT_RUN', 'BLOCKED'}:
+              status = 'BLOCKED'
+          # Do not fabricate a task ID when no task executed, including BLOCKED runs.
           if status == 'NOT_RUN':
               os.environ['AUTONOMOUS_TASK_ID'] = ''
               os.environ['DEV_INSTRUCTION'] = 'Queue exhausted; no task executed; replenish the task queue.'
+          elif status == 'BLOCKED' and not task_id:
+              os.environ['AUTONOMOUS_TASK_ID'] = ''
+              os.environ['DEV_INSTRUCTION'] = 'No task completed: held task or durable state persistence requires attention.'
           else:
-              os.environ['AUTONOMOUS_TASK_ID'] = task_id or 'distributed-loop-no-task-result'
+              os.environ['AUTONOMOUS_TASK_ID'] = task_id or ''
               os.environ['DEV_INSTRUCTION'] = str(result.get('summary') or result.get('task_summary') or os.environ['DEV_INSTRUCTION'])
           os.environ['AUTONOMOUS_TESTS_RESULT'] = status
-          if status == 'NOT_RUN':
+          if status in {'NOT_RUN', 'BLOCKED'}:
               os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'NOT_RUN'
-              os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'NOT_RUN'
+              os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'NOT_RUN' if status == 'NOT_RUN' else 'BLOCKED'
           else:
               os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'PASS' if publish == 'success' else ('NOT_RUN' if publish == 'skipped' else 'FAIL')
-              os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'PASS' if status in {'PASS', 'NO_CHANGE'} and run_outcome == 'success' and publish == 'success' and state == 'success' else 'BLOCKED'
+              os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'PASS' if status in {'PASS', 'NO_CHANGE'} and run_outcome == 'success' and publish == 'success' and state == 'success' and task_health_outcome == 'success' else 'BLOCKED'
           os.environ['AUTONOMOUS_MERGE_RESULT'] = 'NOT_AUTO_MERGED'
           reason = str(result.get('failure_reason') or '')
+          if run_outcome != 'skipped' and task_health_outcome != 'success':
+              reason = f"task_health_persistence_{task_health_outcome}" + (f"; {reason}" if reason else '')
           if not reason and status not in {'PASS', 'NO_CHANGE'}:
               reason = f"loop_{status.lower()}" if result else f"workflow_failed_before_result:{run_outcome or 'not_run'}"
           if not reason and publish not in {'success', 'skipped'}:
@@ -455,12 +613,14 @@ jobs:
           if not reason and state not in {'success', 'skipped'}:
               reason = f'state_persistence_{state or "not_run"}'
           os.environ['AUTONOMOUS_BLOCKED_FAILED_REASON'] = reason
-          if status == 'PASS' and run_outcome == 'success' and publish == 'success' and state == 'success':
+          if status == 'PASS' and run_outcome == 'success' and publish == 'success' and state == 'success' and task_health_outcome == 'success':
               action = 'review_changes'
           elif status == 'NO_CHANGE':
               action = 'none'
           elif status == 'NOT_RUN':
               action = 'replenish_task_queue'
+          elif status == 'BLOCKED' and blocked:
+              action = 'resume_held_task_after_fix'
           else:
               action = 'inspect_workflow_run'
           os.environ['AUTONOMOUS_NEXT_ACTION'] = action
@@ -503,6 +663,7 @@ jobs:
           LOOP_OUTCOME: ${{ steps.run_task.outcome }}
           PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
           STATE_OUTCOME: ${{ steps.persist_state.outcome }}
+          TASK_HEALTH_OUTCOME: ${{ steps.persist_task_health.outcome }}
           JOB_STATUS: ${{ job.status }}
           PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event_name == 'pull_request_target' && github.event.pull_request.number || '' }}
           GH_TOKEN: ${{ github.token }}
@@ -523,14 +684,23 @@ jobs:
           print(sum(1 for task_id in ids if task_id in completed))
           PY
           )"
-          queue_completed=$((state_current_completed + completed))
+          durable_completed="$completed"
+          if [ "${STATE_OUTCOME:-}" != "success" ] || [ "${TASK_HEALTH_OUTCOME:-}" != "success" ]; then
+            durable_completed=0
+          fi
+          queue_completed=$((state_current_completed + durable_completed))
           if [ "$queue_completed" -gt "$queue_total" ]; then queue_completed="$queue_total"; fi
           result="STOPPED/FAILED"
           result_reason="workflow_failed"
-          if [ "${LOOP_OUTCOME:-}" = "success" ] && [ -f /tmp/autonomous-loop-not-run ] && [ "$completed" = "0" ]; then
+          if [ "${LOOP_OUTCOME:-}" != "skipped" ] && [ "${TASK_HEALTH_OUTCOME:-}" != "success" ]; then
+            result_reason="task_health_persistence_${TASK_HEALTH_OUTCOME:-not_run}"
+          elif [ "${LOOP_OUTCOME:-}" = "success" ] && [ -f /tmp/autonomous-loop-blocked ] && [ "$completed" = "0" ]; then
+            result="BLOCKED"
+            result_reason="$(cat /tmp/autonomous-loop-blocked)"
+          elif [ "${LOOP_OUTCOME:-}" = "success" ] && [ -f /tmp/autonomous-loop-not-run ] && [ "$completed" = "0" ]; then
             result="NOT_RUN"
             result_reason="$(cat /tmp/autonomous-loop-not-run)"
-          elif [ "${LOOP_OUTCOME:-}" = "success" ] && [ "$completed" -ge 1 ] && { [ "$completed" = "$requested" ] || [ "$queue_completed" = "$queue_total" ]; }; then
+          elif [ "${LOOP_OUTCOME:-}" = "success" ] && [ "${PUBLISH_OUTCOME:-}" = "success" ] && [ "${STATE_OUTCOME:-}" = "success" ] && [ "${TASK_HEALTH_OUTCOME:-}" = "success" ] && [ "$completed" -ge 1 ] && { [ "$completed" = "$requested" ] || [ "$queue_completed" = "$queue_total" ]; }; then
             result="COMPLETED"
             if [ "$completed" = "$requested" ]; then
               result_reason="requested_task_limit_reached"
@@ -550,6 +720,7 @@ jobs:
             echo "- Task実行: ${LOOP_OUTCOME:-not_run}"
             echo "- Publish: ${PUBLISH_OUTCOME:-not_run}"
             echo "- State: ${STATE_OUTCOME:-not_run}"
+            echo "- Task health persistence: ${TASK_HEALTH_OUTCOME:-not_run}"
             echo "- Job: ${JOB_STATUS:-unknown}"
             echo "- Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo
@@ -557,7 +728,26 @@ jobs:
             if [ "$result" = "NOT_RUN" ]; then
               echo "(NOT_RUN: タスクは1件も実行されていません。理由: ${result_reason}。キューは ${queue_completed}/${queue_total} で、未完了Taskがありません。タスクの補充が必要です。)"
             fi
+            if [ "$result" = "BLOCKED" ]; then
+              echo "(BLOCKED: 未完了タスクは保留中です。原因を修正し、workflow_dispatch の resume_task_id で明示的に再開してください。)"
+            fi
             if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
+              python - <<'PY' || true
+          import json
+          from pathlib import Path
+          for line in Path('/tmp/minimal-autonomous-loop.jsonl').read_text(encoding='utf-8').splitlines():
+              try:
+                  row = json.loads(line)
+              except ValueError:
+                  continue
+              if not isinstance(row, dict):
+                  continue
+              for held in row.get('held_tasks') or []:
+                  if isinstance(held, dict):
+                      print(f"- 保留中: task_id={held.get('task_id')} 連続失敗={held.get('consecutive_failures')}回 理由={held.get('reason')}")
+              if row.get('newly_held'):
+                  print(f"- 新たに保留: task_id={row.get('task_id')} 連続失敗={row.get('consecutive_failures')}回 理由={row.get('failure_reason')} (明示再開まで自動再試行を停止)")
+          PY
               cat /tmp/minimal-autonomous-loop.jsonl
             elif [ "$result" = "NOT_RUN" ]; then
               :

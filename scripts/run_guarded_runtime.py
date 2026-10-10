@@ -157,6 +157,19 @@ def _augment_with_hermes_advice(instruction: str, history_path: Path) -> str:
     return f"{instruction}\n\nUNTRUSTED HERMES ADVISORY:\n{bounded_advice}"
 
 
+def _test_evidence_from_env() -> dict | None:
+    raw = os.environ.get("AUTONOMOUS_TEST_EVIDENCE", "")
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(value, dict):
+        return None
+    if value.get("run_nonce") != os.environ.get("AUTONOMOUS_RUN_NONCE", ""):
+        return None
+    return value
+
+
 def _write_summary(status: str, exit_code: int, start_sha: str, summary_path: Path) -> None:
     produced_sha = _git("rev-parse", "HEAD")
     branch = _git("branch", "--show-current")
@@ -170,6 +183,7 @@ def _write_summary(status: str, exit_code: int, start_sha: str, summary_path: Pa
         "runtime": "common_guarded_runtime",
         "task_id": os.environ.get("AUTONOMOUS_TASK_ID", ""),
         "run_nonce": os.environ.get("AUTONOMOUS_RUN_NONCE", ""),
+        "test_evidence": _test_evidence_from_env(),
     }
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -192,6 +206,8 @@ def main() -> int:
     instruction = _augment_with_hermes_advice(instruction, history_path)
     summary_path = Path(os.environ.get("AUTONOMOUS_SUMMARY_PATH", "/tmp/autonomous_run_summary.json"))
     exit_code = 1
+    # Never allow an inherited or previous run's test evidence to satisfy this run.
+    os.environ.pop("AUTONOMOUS_TEST_EVIDENCE", None)
     try:
         exit_code = runtime.execute(instruction)
         return exit_code
