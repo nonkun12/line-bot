@@ -188,6 +188,11 @@ def test_workflow_requires_health_persistence_before_completed_state_and_publish
     assert "TASK_HEALTH_OUTCOME" in ledger.get("env", {})
     assert "task_health_outcome != 'success'" in ledger["run"]
     assert "status = 'BLOCKED'" in ledger["run"]
+    assert "if status in {'NOT_RUN', 'BLOCKED'}:" in ledger["run"]
+    assert "distributed-loop-no-task-result" not in workflow
+    assert r"GH_TOKEN: ${{ github.token }}" not in workflow
+    assert "task health read-back mismatch" in workflow
+    assert "task resume audit read-back mismatch" in workflow
     report = next(step for step in steps if step.get("name") == "Build final distributed loop report")
     assert "TASK_HEALTH_OUTCOME" in report.get("env", {})
     assert 'result_reason="task_health_persistence_' in report["run"]
