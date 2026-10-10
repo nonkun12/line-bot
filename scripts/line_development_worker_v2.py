@@ -6,6 +6,7 @@ Security-sensitive files are never editable by this worker.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -436,22 +437,47 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
     return True, "applied", touched
 
 
+def _record_test_evidence(
+    compile_results: list[dict[str, object]],
+    pytest_result=None,
+    pytest_output: str = "",
+) -> None:
+    """Record only bounded, non-secret evidence from tests actually run."""
+    evidence = {
+        "schema_version": 1,
+        "runner": "scripts/line_development_worker_v2.py::run_tests",
+        "run_nonce": os.environ.get("AUTONOMOUS_RUN_NONCE", ""),
+        "pytest_command": [sys.executable, "-m", "pytest", "-q", "--tb=native"],
+        "pytest_exit_code": getattr(pytest_result, "returncode", None),
+        "pytest_output_sha256": hashlib.sha256(pytest_output.encode("utf-8", errors="replace")).hexdigest()
+        if pytest_result is not None else "",
+        "py_compile": compile_results,
+    }
+    os.environ["AUTONOMOUS_TEST_EVIDENCE"] = json.dumps(evidence, sort_keys=True, separators=(",", ":"))
+
+
 def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
     outputs: list[str] = []
+    compile_results: list[dict[str, object]] = []
     for path in touched or []:
         if not path.endswith(".py"):
             continue
         compile_result = run([sys.executable, "-m", "py_compile", path], timeout=120)
+        compile_results.append({"path": path, "exit_code": int(compile_result.returncode)})
         outputs.append(f"py_compile {path}: returncode={compile_result.returncode}")
         if compile_result.stdout:
             outputs.append(compile_result.stdout)
         if compile_result.stderr:
             outputs.append(compile_result.stderr)
         if compile_result.returncode != 0:
+            _record_test_evidence(compile_results)
             return False, "\n".join(outputs)[-8000:]
-    tests = run([sys.executable, "-m", "pytest", "-q", "--tb=native"], timeout=900)
+    pytest_command = [sys.executable, "-m", "pytest", "-q", "--tb=native"]
+    tests = run(pytest_command, timeout=900)
     outputs.append("full pytest:")
     outputs.extend([tests.stdout, tests.stderr])
+    pytest_output = "\n".join([tests.stdout or "", tests.stderr or ""])
+    _record_test_evidence(compile_results, tests, pytest_output)
     return tests.returncode == 0, "\n".join(outputs)[-8000:]
 
 
