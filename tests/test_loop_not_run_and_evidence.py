@@ -161,3 +161,10 @@ def test_consistent_no_change_summary_is_accepted(monkeypatch, tmp_path):
     )
     assert result["status"] == "NO_CHANGE"
     assert result["failure_reason"] == "no_change"
+
+def test_not_run_does_not_fabricate_task_identity_or_instruction():
+    workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert "if status == 'NOT_RUN':" in workflow
+    assert "os.environ['AUTONOMOUS_TASK_ID'] = ''" in workflow
+    assert "Queue exhausted; no task executed; replenish the task queue." in workflow
+
