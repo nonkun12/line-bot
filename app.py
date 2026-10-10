@@ -79,6 +79,7 @@ from core.line_runtime_audit import record_line_runtime
 from core.self_introduction import handle_self_introduction
 from routes.core_api import core_api_bp
 from routes.obsidian_bridge import obsidian_bridge_bp
+from obsidian_loop_dispatch import dispatch_configuration_status
 from core.obsidian_bridge import enqueue_obsidian_request
 from agents.obsidian.intents import is_obsidian_intent
 from routes.voice_api import voice_api_bp
@@ -96,6 +97,16 @@ from routes.e2e_dashboard import e2e_bp
 app.register_blueprint(e2e_bp)
 app.register_blueprint(core_api_bp)
 app.register_blueprint(obsidian_bridge_bp)
+
+# Log only non-secret configuration booleans so deployment setup can be checked
+# without exposing token values or running an autonomous task.
+_obsidian_dispatch_config = dispatch_configuration_status()
+app.logger.info(
+    "OBSIDIAN AUTOREPAIR CONFIG token_present=%s repo_format_valid=%s repo_is_target=%s",
+    _obsidian_dispatch_config["token_present"],
+    _obsidian_dispatch_config["repo_format_valid"],
+    _obsidian_dispatch_config["repo_is_target"],
+)
 app.register_blueprint(voice_api_bp)
 
 @app.route("/health", methods=["GET"])

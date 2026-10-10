@@ -33,6 +33,21 @@ _DISPATCH_LOCK = threading.Lock()
 _LAST_DISPATCH_AT: dict[str, float] = {}
 
 
+def dispatch_configuration_status() -> dict[str, bool]:
+    """Return non-secret booleans about dispatch configuration; never return values."""
+    repo = os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot").strip()
+    token = (
+        os.environ.get("GITHUB_ACTIONS_DISPATCH_TOKEN")
+        or os.environ.get("GITHUB_TOKEN")
+        or ""
+    ).strip()
+    return {
+        "token_present": bool(token),
+        "repo_format_valid": bool(re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo)),
+        "repo_is_target": repo == "nonkun12/line-bot",
+    }
+
+
 def is_repairable_obsidian_incident(category: object, detail: object) -> bool:
     """Accept only a known failure class, never arbitrary diagnostic text."""
     return (
@@ -134,6 +149,7 @@ def request_obsidian_incident_repair(
 __all__ = [
     "AUTOREPAIR_INCIDENT_CATEGORIES",
     "AUTOREPAIR_EXCEPTION_NAMES",
+    "dispatch_configuration_status",
     "is_repairable_obsidian_incident",
     "request_obsidian_incident_repair",
 ]
