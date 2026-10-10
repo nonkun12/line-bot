@@ -7,6 +7,7 @@ import pytest
 
 from scripts import autonomous_loop_task_health as health
 from scripts import run_minimal_autonomous_loop as loop
+from scripts import line_development_worker_v2 as worker
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -171,6 +172,57 @@ def test_resume_cli_rejects_task_not_on_hold(monkeypatch, tmp_path: Path):
     with pytest.raises(SystemExit, match="cannot be resumed"):
         loop.main()
     assert json.loads(state_path.read_text(encoding="utf-8"))["task_health"]["task-one"]["consecutive_failures"] == 2
+
+
+def test_real_worker_records_pytest_command_exit_code_and_output_digest(monkeypatch):
+    import hashlib
+    import os
+    import sys
+    from types import SimpleNamespace
+
+    nonce = "b" * 32
+    monkeypatch.setenv("AUTONOMOUS_RUN_NONCE", nonce)
+    monkeypatch.delenv("AUTONOMOUS_TEST_EVIDENCE", raising=False)
+    outputs = []
+
+    def fake_run(command, timeout=None):
+        outputs.append((command, timeout))
+        if command[1:3] == ["-m", "py_compile"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        assert command[1:] == ["-m", "pytest", "-q", "--tb=native"]
+        return SimpleNamespace(returncode=0, stdout="42 passed", stderr="")
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    passed, _ = worker.run_tests(["tests/dummy.py"])
+    assert passed is True
+    evidence = json.loads(os.environ["AUTONOMOUS_TEST_EVIDENCE"])
+    assert evidence["schema_version"] == 1
+    assert evidence["runner"] == "scripts/line_development_worker_v2.py::run_tests"
+    assert evidence["run_nonce"] == nonce
+    assert evidence["pytest_command"] == [sys.executable, "-m", "pytest", "-q", "--tb=native"]
+    assert evidence["pytest_exit_code"] == 0
+    assert evidence["pytest_output_sha256"] == hashlib.sha256(b"42 passed\\n").hexdigest()
+    assert evidence["py_compile"] == [{"path": "tests/dummy.py", "exit_code": 0}]
+    assert len(outputs) == 2
+
+
+def test_failed_pytest_is_captured_as_failed_evidence(monkeypatch):
+    import json
+    import os
+    from types import SimpleNamespace
+
+    monkeypatch.setenv("AUTONOMOUS_RUN_NONCE", "c" * 32)
+    monkeypatch.delenv("AUTONOMOUS_TEST_EVIDENCE", raising=False)
+    monkeypatch.setattr(
+        worker,
+        "run",
+        lambda command, timeout=None: SimpleNamespace(returncode=2, stdout="1 failed", stderr=""),
+    )
+    passed, _ = worker.run_tests([])
+    evidence = json.loads(os.environ["AUTONOMOUS_TEST_EVIDENCE"])
+    assert passed is False
+    assert evidence["pytest_exit_code"] == 2
+    assert evidence["pytest_output_sha256"]
 
 
 def test_workflow_requires_health_persistence_before_completed_state_and_publish():
