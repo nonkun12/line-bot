@@ -13,6 +13,43 @@ on:
           - '2'
           - '3'
           - '4'
+      mode:
+        description: 'Run mode'
+        required: false
+        default: 'normal'
+        type: choice
+        options:
+          - 'normal'
+          - 'obsidian_incident'
+      incident_category:
+        description: 'Allowlisted Obsidian incident category'
+        required: false
+        default: 'vault_write_failed'
+        type: choice
+        options:
+          - 'local_job_failed'
+          - 'vault_write_failed'
+      incident_detail:
+        description: 'Allowlisted exception class (not raw error text)'
+        required: false
+        default: 'PermissionError'
+        type: choice
+        options:
+          - 'OSError'
+          - 'PermissionError'
+          - 'FileNotFoundError'
+          - 'IsADirectoryError'
+          - 'NotADirectoryError'
+          - 'RuntimeError'
+          - 'ValueError'
+          - 'TypeError'
+          - 'KeyError'
+          - 'AttributeError'
+          - 'UnicodeDecodeError'
+      incident_job_id:
+        description: 'Numeric Obsidian job ID; no note content'
+        required: false
+        type: string
   # ChatGPT can request a bounded run by creating an authorized PR comment.
   # The trigger defaults to four tasks and remains fail-closed.
   issue_comment:
@@ -66,6 +103,10 @@ jobs:
     timeout-minutes: 40
     env:
       MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || '4' }}
+      TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'normal' }}
+      INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_category || '' }}
+      INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_detail || '' }}
+      INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_job_id || '' }}
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
       SELF_IMPROVEMENT_POLICY_ENFORCED: 'true'
@@ -119,6 +160,10 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           COMMENT_BODY: ${{ github.event_name == 'issue_comment' && github.event.comment.body || '' }}
           DISPATCH_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || '' }}
+          TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'normal' }}
+          INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_category || '' }}
+          INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_detail || '' }}
+          INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_job_id || '' }}
         run: |
           set -euo pipefail
           case "${REQUESTED_TASK_LIMIT}" in
@@ -142,6 +187,39 @@ jobs:
           elif [ "${EVENT_NAME}" = "pull_request_target" ]; then
             expected="4"
           fi
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            case "${TRIGGER_MODE}" in
+              normal)
+                ;;
+              obsidian_incident)
+                if [ "${REQUESTED_TASK_LIMIT}" != "2" ]; then
+                  echo "::error::Obsidian incident runs must be capped at exactly two tasks"
+                  exit 1
+                fi
+                case "${INCIDENT_CATEGORY}:${INCIDENT_DETAIL}" in
+                  local_job_failed:OSError|local_job_failed:PermissionError|local_job_failed:FileNotFoundError|local_job_failed:IsADirectoryError|local_job_failed:NotADirectoryError|local_job_failed:RuntimeError|local_job_failed:ValueError|local_job_failed:TypeError|local_job_failed:KeyError|local_job_failed:AttributeError|local_job_failed:UnicodeDecodeError|vault_write_failed:OSError|vault_write_failed:PermissionError|vault_write_failed:FileNotFoundError|vault_write_failed:IsADirectoryError|vault_write_failed:NotADirectoryError|vault_write_failed:RuntimeError|vault_write_failed:ValueError|vault_write_failed:TypeError|vault_write_failed:KeyError|vault_write_failed:AttributeError|vault_write_failed:UnicodeDecodeError) ;;
+                  *) echo "::error::Incident category/detail is not allowlisted"; exit 1 ;;
+                esac
+                if [ -n "${INCIDENT_JOB_ID}" ]; then
+                  if ! [[ "${INCIDENT_JOB_ID}" =~ ^[1-9][0-9]{0,9}$ ]]; then
+                    echo "::error::Invalid incident job ID"
+                    exit 1
+                  fi
+                  if [ "${INCIDENT_JOB_ID}" -gt 2147483647 ]; then
+                    echo "::error::Incident job ID is out of range"
+                    exit 1
+                  fi
+                fi
+                ;;
+              *)
+                echo "::error::Unknown workflow dispatch mode"
+                exit 1
+                ;;
+            esac
+          elif [ "${TRIGGER_MODE}" != "normal" ]; then
+            echo "::error::Incident mode is available only through workflow_dispatch"
+            exit 1
+          fi
           if [ "${REQUESTED_TASK_LIMIT}" != "${expected}" ]; then
             echo "::error::Task limit mismatch: got=${REQUESTED_TASK_LIMIT} expected=${expected}"
             exit 1
@@ -154,6 +232,10 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GH_TOKEN: ${{ github.token }}
           SELF_IMPROVEMENT_HISTORY_PATH: /tmp/line-bot-self-improvement.jsonl
+          TRIGGER_MODE: ${{ env.TRIGGER_MODE }}
+          INCIDENT_CATEGORY: ${{ env.INCIDENT_CATEGORY }}
+          INCIDENT_DETAIL: ${{ env.INCIDENT_DETAIL }}
+          INCIDENT_JOB_ID: ${{ env.INCIDENT_JOB_ID }}
         run: |
           set -euo pipefail
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
@@ -171,11 +253,14 @@ jobs:
           POLLER_PID=$!
           trap 'kill "$POLLER_PID" 2>/dev/null || true' EXIT
 
-          python scripts/run_minimal_autonomous_loop.py \
-            --max-tasks "${MAX_TASKS}" \
-            --stop-file "$STOP_FILE" \
-            --state /tmp/autonomous-loop-state.json \
-            --results /tmp/minimal-autonomous-loop.jsonl
+          loop_args=(--max-tasks "${MAX_TASKS}" --stop-file "$STOP_FILE" --state /tmp/autonomous-loop-state.json --results /tmp/minimal-autonomous-loop.jsonl)
+          if [ "$TRIGGER_MODE" = "obsidian_incident" ]; then
+            loop_args+=(--incident-category "$INCIDENT_CATEGORY" --incident-detail "$INCIDENT_DETAIL")
+            if [ -n "$INCIDENT_JOB_ID" ]; then
+              loop_args+=(--incident-job-id "$INCIDENT_JOB_ID")
+            fi
+          fi
+          python scripts/run_minimal_autonomous_loop.py "${loop_args[@]}"
 
       - name: Publish verified development branch
         id: publish
