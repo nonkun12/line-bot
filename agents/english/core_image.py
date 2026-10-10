@@ -87,6 +87,25 @@ _ENTRIES: dict[str, WordEntry] = {
         related=("inspect（詳しく調べる）", "spectator（観客）", "respect（尊重する）"),
         example="Try to see it from her perspective.（彼女の視点からそれを見てみて。）",
         note="語源の細部は複雑なので、パーツは記憶の手がかりとして使ってください。",
+    ),,
+
+    "circumstance": WordEntry(
+        word="circumstance",
+        pronunciation="サーカムスタンス",
+        core_image="人や出来事の周りに立っている事情 → 状況・環境・境遇",
+        parts="circum-（周囲に）+ stance（立つことに関係する語形）。ラテン語 circumstantia（周囲に立つこと・付随する事情）に由来。",
+        related=("circum-（周囲に）", "circumnavigate（周航する）", "stand（立つ）"),
+        example="Under the circumstances, we did our best.（そのような状況の中で、私たちは最善を尽くした。）",
+        note="「周囲にある事情」というコアイメージは記憶の手がかりです。現代の意味を語のパーツだけで完全に説明するものではありません。",
+    ),
+    "environment": WordEntry(
+        word="environment",
+        pronunciation="エンヴァイロンメント",
+        core_image="人や物を取り巻くもの・条件 → 環境",
+        parts="environ（取り巻く、周囲）に関係する語形 + -ment（名詞を作る語尾）。フランス語系の語源を持つ語。",
+        related=("environmental（環境の）", "surroundings（周囲のもの）", "environs（周辺地域）"),
+        example="Children need a safe learning environment.（子どもには安全な学習環境が必要です。）",
+        note="「取り巻くもの・条件」が中心イメージです。語源の細かな歴史を単純な分解だけで断定しないでください。",
     ),
 }
 
