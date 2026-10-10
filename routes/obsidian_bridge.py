@@ -138,12 +138,29 @@ def complete():
 
     diagnostic_category = data.get("diagnostic_category")
     diagnostic_detail = data.get("diagnostic_detail")
+    repair_notice = None
     if not success and is_repairable_obsidian_incident(
         diagnostic_category, diagnostic_detail
     ):
         dispatched, dispatch_reason = request_obsidian_incident_repair(
             diagnostic_category, diagnostic_detail, job_id
         )
+        if dispatched:
+            repair_notice = (
+                "自動修復Loopへの起動要求を受け付けました（最大2タスク。"
+                "自動マージ・自動デプロイは無効です）。"
+                "起動要求の受理は修復完了を意味しません。"
+            )
+        elif dispatch_reason == "loop_already_running":
+            repair_notice = "既存の分散Loopが稼働中のため、新しいLoopは起動していません。"
+        elif dispatch_reason == "cooldown_active":
+            repair_notice = "連続起動防止の待機時間中のため、新しいLoopは起動していません。"
+        else:
+            # The reason is a fixed internal code or an HTTP status code, never raw user data.
+            repair_notice = (
+                f"自動修復Loopは起動できませんでした（理由コード: {dispatch_reason}）。"
+                "設定とGitHub Actionsの状態確認が必要です。"
+            )
         # Never log raw user text, notes, exception messages, or credentials.
         current_app.logger.info(
             "OBSIDIAN AUTOREPAIR category=%s detail=%s job_id=%s dispatched=%s reason=%s",
@@ -159,7 +176,10 @@ def complete():
             # LINE credentials stay on the server; the Mac bridge never receives them.
             from app import _line_push
 
-            _line_push(job["user_id"], reply.strip())
+            reply_message = reply.strip()
+            if repair_notice:
+                reply_message = f"{reply_message}\n\n{repair_notice}"
+            _line_push(job["user_id"], reply_message)
         except Exception:
             current_app.logger.exception("OBSIDIAN BRIDGE LINE PUSH ERROR")
             return jsonify(
