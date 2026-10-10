@@ -23,6 +23,10 @@ QUEUE = ROOT / ".github" / "autonomous-loop-tasks.json"
 DEFAULT_STOP_FILE = Path("/tmp/line-bot-autonomous-loop.stop")
 ACTIVE_PROCESS: subprocess.Popen[str] | None = None
 
+EXIT_NOT_RUN = 78
+NOT_RUN_REASON_QUEUE_EMPTY = "queue_empty"
+VALID_RUNTIME_STATUSES = frozenset({"PASS", "NO_CHANGE"})
+
 INCIDENT_CATEGORIES = frozenset({"local_job_failed", "vault_write_failed"})
 INCIDENT_DETAILS = frozenset({
     "OSError", "PermissionError", "FileNotFoundError", "IsADirectoryError",
@@ -319,6 +323,16 @@ def run_task(task: dict[str, object], run_index: int, stop_file: Path, summary_d
     if payload:
         status = str(payload.get("status", "FAIL"))
 
+    # A successful exit code is not sufficient evidence: status and produced SHA
+    # must agree with the observed repository state.
+    if payload and exit_code == 0 and not failure_reason:
+        if payload.get("status") not in VALID_RUNTIME_STATUSES:
+            failure_reason = "summary_status_invalid"
+        elif payload.get("produced_sha") != produced_sha:
+            failure_reason = "summary_produced_sha_mismatch"
+        elif payload.get("status") == "NO_CHANGE" and produced_sha != base_sha:
+            failure_reason = "summary_no_change_but_head_moved"
+
     # A zero exit code with an unchanged HEAD is the only valid NO_CHANGE.
     # A failed runtime must never be reclassified as NO_CHANGE merely because
     # its rollback restored the base SHA; otherwise the report hides the
@@ -385,6 +399,7 @@ def main() -> int:
     if args.max_tasks > queue_limit:
         raise SystemExit(f"--max-tasks exceeds queue max_tasks_per_run={queue_limit}")
     completed = load_completed(args.state)
+    queued_tasks: list[dict[str, object]] = []
     if args.incident_category is not None:
         if args.max_tasks != 2 or args.incident_detail is None:
             raise SystemExit("Obsidian incident mode requires exactly two tasks and an allowlisted detail")
@@ -392,10 +407,25 @@ def main() -> int:
     else:
         if args.incident_detail is not None or args.incident_job_id is not None:
             raise SystemExit("incident detail/job ID require incident category")
-        tasks = [task for task in load_tasks() if task["id"] not in completed][: args.max_tasks]
+        queued_tasks = load_tasks()
+        tasks = [task for task in queued_tasks if task["id"] not in completed][: args.max_tasks]
     if not tasks:
-        print("MINIMAL_LOOP=COMPLETE queue exhausted")
-        return 0
+        queued_ids = [str(task["id"]) for task in queued_tasks]
+        args.results.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "NOT_RUN",
+            "task_id": "",
+            "task_count": 0,
+            "queue_total": len(queued_ids),
+            "queue_completed": sum(1 for task_id in queued_ids if task_id in completed),
+            "exit_code": EXIT_NOT_RUN,
+            "failure_reason": NOT_RUN_REASON_QUEUE_EMPTY,
+        }
+        with args.results.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        print(f"MINIMAL_LOOP=NOT_RUN reason={NOT_RUN_REASON_QUEUE_EMPTY} (no task was executed)", flush=True)
+        return EXIT_NOT_RUN
 
     args.results.parent.mkdir(parents=True, exist_ok=True)
     for index, task in enumerate(tasks, 1):
