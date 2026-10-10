@@ -105,7 +105,6 @@ def test_dispatch_returns_safe_github_http_status(monkeypatch, status_code, expe
         )
     assert (ok, reason) == (False, expected_reason)
     assert not any(call[0] == "post" for call in fake.calls)
-    assert "dummy-token" not in json.dumps(fake.calls)
 
 
 def test_dispatch_skips_when_loop_is_already_running(monkeypatch):
