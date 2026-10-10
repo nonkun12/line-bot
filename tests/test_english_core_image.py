@@ -53,3 +53,11 @@ def test_environment_has_core_image_and_no_external_api():
     assert "取り巻くもの・条件" in response
     assert "環境" in response
     assert "外部API" in response
+
+
+
+def test_postpone_has_core_image_and_related_words():
+    response = explain_core_image("postpone")
+    assert "延期する" in response
+    assert "post-" in response
+    assert "外部API" in response
