@@ -172,6 +172,52 @@ _ENTRIES: dict[str, WordEntry] = {
         example="Please review the report before sending it.（送信前に報告書を見直してください。）",
         note="文脈により「評価する」「批評する」などの意味にもなります。",
     ),
+
+    "visible": WordEntry(
+        word="visible",
+        pronunciation="ヴィジブル",
+        core_image="目に入って見える → 目に見える・明らかな",
+        parts="vis（見る：ラテン語 videre 系）+ -ible（〜できる）",
+        related=("vision（視覚・展望）", "invisible（見えない）", "visual（視覚の）"),
+        example="The stars were visible after sunset.（日没後、星が見えた。）",
+        note="vis/vid は「見る」に関係する語根の手がかりです。",
+    ),
+    "dictate": WordEntry(
+        word="dictate",
+        pronunciation="ディクテイト",
+        core_image="言葉で指示する → 指図する・書き取らせる",
+        parts="dict（言う：ラテン語 dicere 系）に関係する語",
+        related=("predict（予測する）", "contradict（反論する）", "dictation（書き取り）"),
+        example="The rules dictate how the data is stored.（規則がデータの保存方法を定めている。）",
+        note="dict を含む語には「言う・述べる」に関係するものがあります。",
+    ),
+    "contradict": WordEntry(
+        word="contradict",
+        pronunciation="コントラディクト",
+        core_image="反対のことを言う → 否定する・矛盾する",
+        parts="contra-（反対に）+ dict（言う：ラテン語 dicere 系）",
+        related=("dictate（指示する）", "contradiction（矛盾）", "predict（予測する）"),
+        example="The two reports contradict each other.（2つの報告書は互いに矛盾している。）",
+        note="「反対に言う」は意味を覚えるための手がかりです。",
+    ),
+    "attract": WordEntry(
+        word="attract",
+        pronunciation="アトラクト",
+        core_image="自分の方へ引き寄せる → 引きつける・魅了する",
+        parts="ラテン語 attrahere（引き寄せる）に由来する語",
+        related=("attraction（魅力・引力）", "distract（注意をそらす）", "attractive（魅力的な）"),
+        example="Bright colors attract attention.（鮮やかな色は注意を引く。）",
+        note="「引き寄せる」は物理的な引力にも、関心を引く意味にもつながります。",
+    ),
+    "distract": WordEntry(
+        word="distract",
+        pronunciation="ディストラクト",
+        core_image="注意を別方向へ引っ張る → 気を散らす・注意をそらす",
+        parts="dis-（離れて／別方向へ）+ tract（引く：ラテン語 trahere 系）",
+        related=("attract（引きつける）", "distraction（気の散ること）", "tract（引くことに関係する語根）"),
+        example="Noise can distract me while I work.（作業中、騒音で気が散ることがある。）",
+        note="attract と並べて覚えると、引きつける／注意をそらすの対比になります。",
+    ),
 }
 
 
