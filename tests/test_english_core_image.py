@@ -94,3 +94,41 @@ def test_batch_three_common_words_have_local_core_images():
         assert cue in response, word
         assert "外部API" in response, word
         assert "説明を保留" not in response, word
+
+def test_batch_four_common_words_have_local_core_images():
+    cases = {
+        "benefit": ("恩恵", "beneficial"),
+        "support": ("下から支える", "支援"),
+        "transfer": ("向こうへ運ぶ", "trans-"),
+        "transform": ("変形", "form"),
+        "prevent": ("防ぐ", "pre-"),
+        "discover": ("発見", "cover"),
+        "describe": ("描写", "description"),
+        "construct": ("建設", "structure"),
+        "reduce": ("減らす", "duc"),
+        "produce": ("生産", "product"),
+    }
+    for word, (meaning, cue) in cases.items():
+        response = explain_core_image(word)
+        assert meaning in response, word
+        assert cue in response, word
+        assert "外部API" in response, word
+        assert "説明を保留" not in response, word
+
+
+def test_core_image_dictionary_has_no_duplicate_literal_word_keys():
+    import ast
+    from pathlib import Path
+
+    source = Path("agents/english/core_image.py").read_text(encoding="utf-8")
+    module = ast.parse(source)
+    entries = next(
+        node for node in module.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "_ENTRIES"
+    )
+    keys = [key.value for key in entries.value.keys if isinstance(key, ast.Constant)]
+    assert len(keys) == len(set(keys))
+    assert len(keys) >= 30
+
