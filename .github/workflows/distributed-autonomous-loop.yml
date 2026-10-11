@@ -530,7 +530,10 @@ jobs:
           )"
           queue_completed=$((state_current_completed + completed))
           if [ "$queue_completed" -gt "$queue_total" ]; then queue_completed="$queue_total"; fi
-          REQUESTED_TASKS="$requested" QUEUE_COMPLETED="$queue_completed" QUEUE_TOTAL="$queue_total" outcome_json="$(python - <<'PY'
+          export REQUESTED_TASKS="$requested"
+          export QUEUE_COMPLETED="$queue_completed"
+          export QUEUE_TOTAL="$queue_total"
+          if outcome_json="$(python - <<'PY'
           import json
           import os
           from pathlib import Path
@@ -561,9 +564,13 @@ jobs:
           )
           print(json.dumps({"outcome": outcome, "reason": reason}))
           PY
-          )"
-          result="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["outcome"])' "$outcome_json")"
-          result_reason="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["reason"])' "$outcome_json")"
+          )"; then
+            result="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["outcome"])' "$outcome_json")"
+            result_reason="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["reason"])' "$outcome_json")"
+          else
+            result="BLOCKED"
+            result_reason="final_outcome_classifier_failed"
+          fi
           produced_sha="$(git rev-parse HEAD 2>/dev/null || echo "${GITHUB_SHA}")"
           {
             echo "# 分散Loop 終了報告"
