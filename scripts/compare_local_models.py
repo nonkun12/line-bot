@@ -47,7 +47,7 @@ MAX_OUTPUT = 5000
 
 
 def _minimal_env() -> dict[str, str]:
-    keys = ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "OLLAMA_HOST")
+    keys = ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL")
     env = {key: os.environ[key] for key in keys if os.environ.get(key)}
     env.setdefault("PATH", "/usr/bin:/bin")
     return env
