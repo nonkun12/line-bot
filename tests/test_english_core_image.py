@@ -153,6 +153,42 @@ def test_batch_five_advanced_exam_words_have_local_core_images():
         assert "説明を保留" not in response, word
 
 
+def test_batch_six_advanced_academic_words_have_local_core_images():
+    cases = {
+        "corroborate": ("裏付ける", "corroboration"),
+        "concede": ("しぶしぶ認める", "concession"),
+        "contend": ("主張する", "contention"),
+        "assert": ("断言する", "assertion"),
+        "refute": ("反論する", "refutation"),
+        "reconcile": ("和解させる", "reconciliation"),
+        "infer": ("推論する", "inference"),
+        "deduce": ("演繹する", "deduction"),
+        "implication": ("含意", "imply"),
+        "contention": ("主張", "contend"),
+        "premise": ("前提", "premise"),
+        "conjecture": ("推測", "conjecture"),
+        "scrupulous": ("綿密な", "scrupulously"),
+        "pervasive": ("広く浸透した", "pervade"),
+        "obsolete": ("廃れた", "obsolescence"),
+        "intricate": ("入り組んだ", "intricacy"),
+        "indispensable": ("不可欠な", "indispensability"),
+        "profound": ("深遠な", "profoundly"),
+        "ambivalent": ("相反する気持ちのある", "ambivalence"),
+        "conspicuous": ("目立つ", "conspicuously"),
+        "diligent": ("勤勉な", "diligence"),
+        "meticulous": ("細心の", "meticulously"),
+        "plight": ("苦境", "in dire straits"),
+        "incentive": ("動機", "incentivize"),
+        "disparity": ("格差", "disparate"),
+    }
+    for word, (meaning, cue) in cases.items():
+        response = explain_core_image(word)
+        assert meaning in response, word
+        assert cue in response, word
+        assert "外部API" in response, word
+        assert "説明を保留" not in response, word
+
+
 def test_core_image_dictionary_has_no_duplicate_literal_word_keys():
     import ast
     from pathlib import Path
