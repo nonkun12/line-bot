@@ -94,3 +94,50 @@ def test_batch_three_common_words_have_local_core_images():
         assert cue in response, word
         assert "外部API" in response, word
         assert "説明を保留" not in response, word
+
+
+
+def test_expanded_core_image_lexicon_has_common_word_families():
+    cases = {
+        "preview": ("事前確認", "pre-"),
+        "intervene": ("介入する", "inter-"),
+        "invent": ("発明する", "invenire"),
+        "event": ("出来事", "evenire"),
+        "manufacture": ("製造する", "manus"),
+        "manual": ("説明書", "manus"),
+        "construct": ("建設する", "struct"),
+        "destruct": ("破壊する", "struct"),
+        "instruct": ("指示する", "instruere"),
+        "structure": ("構造", "struere"),
+        "inject": ("注入する", "ject"),
+        "reject": ("拒否する", "ject"),
+        "project": ("投影する", "ject"),
+        "describe": ("説明する", "description"),
+        "prescribe": ("処方する", "scribe"),
+        "subscribe": ("購読する", "subscription"),
+        "transcribe": ("書き起こす", "trans-"),
+        "audience": ("聴衆", "audire"),
+        "audible": ("聞こえる", "audire"),
+        "interact": ("相互作用", "inter-"),
+        "emerge": ("現れる", "emergere"),
+        "immerse": ("没頭", "merge"),
+        "submerge": ("水没", "sub-"),
+        "progress": ("進歩", "gress"),
+        "regress": ("後退", "gress"),
+        "digress": ("話がそれる", "gress"),
+        "refer": ("参照", "reference"),
+        "prefer": ("好む", "pre-"),
+        "offer": ("申し出る", "差し出す"),
+    }
+    for word, (meaning, cue) in cases.items():
+        response = explain_core_image(word)
+        assert meaning in response, word
+        assert cue in response, word
+        assert "外部API" in response, word
+        assert "説明を保留" not in response, word
+
+
+def test_expanded_lexicon_keeps_unknown_words_fail_closed():
+    response = explain_core_image("unverifiedword")
+    assert "説明を保留" in response
+    assert "推測で断定しない" in response
