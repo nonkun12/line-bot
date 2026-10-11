@@ -253,6 +253,9 @@ jobs:
           POLLER_PID=$!
           trap 'kill "$POLLER_PID" 2>/dev/null || true' EXIT
 
+          # Never let a reused self-hosted runner carry result rows into this run.
+          # Stale PASS rows could otherwise inflate the final task count for NOT_RUN.
+          rm -f /tmp/minimal-autonomous-loop.jsonl
           loop_args=(--max-tasks "${MAX_TASKS}" --stop-file "$STOP_FILE" --state /tmp/autonomous-loop-state.json --results /tmp/minimal-autonomous-loop.jsonl)
           if [ "$TRIGGER_MODE" = "obsidian_incident" ]; then
             loop_args+=(--incident-category "$INCIDENT_CATEGORY" --incident-detail "$INCIDENT_DETAIL")
