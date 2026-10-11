@@ -150,6 +150,19 @@ jobs:
           fi
           python -m json.tool /tmp/autonomous-loop-state.json >/dev/null
 
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
+          recovery = state.get('recovery_ai', {'schema_version': 1, 'tasks': {}, 'checkpoint': None})
+          if (not isinstance(recovery, dict) or recovery.get('schema_version') != 1
+                  or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
+              raise SystemExit('durable Recovery AI state is invalid; refusing to run')
+          Path('/tmp/recovery-ai-state.json').write_text(
+              json.dumps(recovery, ensure_ascii=False, sort_keys=True) + '\\n', encoding='utf-8'
+          )
+          PY
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -341,8 +354,19 @@ jobs:
           resume_log = data.get('resume_log', [])
           if not isinstance(resume_log, list):
               raise SystemExit('invalid resume_log in local state')
+          recovery_path = Path('/tmp/recovery-ai-state.json')
+          if not recovery_path.is_file():
+              raise SystemExit('Recovery AI state missing; refusing durable persistence')
+          recovery = json.loads(recovery_path.read_text(encoding='utf-8'))
+          if (not isinstance(recovery, dict) or recovery.get('schema_version') != 1
+                  or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
+              raise SystemExit('Recovery AI state invalid; refusing durable persistence')
           Path('/tmp/autonomous-task-health.json').write_text(
-              json.dumps({'task_health': data.get('task_health', {}), 'resume_log': resume_log}, ensure_ascii=False),
+              json.dumps({
+                  'task_health': data.get('task_health', {}),
+                  'resume_log': resume_log,
+                  'recovery_ai': recovery,
+              }, ensure_ascii=False),
               encoding='utf-8',
           )
           PY
@@ -382,6 +406,11 @@ jobs:
               data['resume_log'] = incoming['resume_log']
           else:
               data.pop('resume_log', None)
+          recovery = incoming.get('recovery_ai')
+          if (not isinstance(recovery, dict) or recovery.get('schema_version') != 1
+                  or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
+              raise SystemExit('invalid incoming Recovery AI state')
+          data['recovery_ai'] = recovery
           data['version'] = 1
           state_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
           PY
@@ -417,6 +446,8 @@ jobs:
               raise SystemExit('task health read-back mismatch')
           if actual.get('resume_log', []) != expected.get('resume_log', []):
               raise SystemExit('task resume audit read-back mismatch')
+          if actual.get('recovery_ai') != expected.get('recovery_ai'):
+              raise SystemExit('Recovery AI state read-back mismatch')
           print('Task health and resume audit read-back verified.')
           PY
 
@@ -810,6 +841,7 @@ jobs:
             /tmp/minimal-autonomous-loop.jsonl
             /tmp/autonomous-loop-state.json
             /tmp/autonomous-*.json
+            /tmp/recovery-ai-state.json
             /tmp/distributed-sheets-log-result.json
             /tmp/distributed-final-report.txt
           if-no-files-found: ignore
