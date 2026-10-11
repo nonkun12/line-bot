@@ -1,4 +1,4 @@
-"""Optional local advisor backed by Apple's on-device Foundation Models CLI.
+""""Optional local advisor backed by Apple's on-device Foundation Models CLI.
 
 This adapter is advisory only: its output must never determine PASS/FAIL, retries,
 patch application, task resumption, merge, or deployment. The deterministic
@@ -16,7 +16,7 @@ from typing import Iterable
 
 
 TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
-TEST_ID_RE = re.compile(r"^[A-Za-z0-9_./:\[\] -]{1,180}$")
+TEST_ID_RE = re.compile(r"^[A-Za-z0-9_./:\\[\\] -]{1,180}$")
 ALLOWED_CATEGORIES = frozenset({
     "network_transient", "service_unavailable", "rate_limited",
     "test_regression", "timeout", "process_crash", "invalid_task",
@@ -36,7 +36,7 @@ class AdvisorResult:
 def _safe_metadata(task_id: str, category: str, failing_tests: Iterable[str]) -> dict:
     if not isinstance(task_id, str) or not TASK_ID_RE.fullmatch(task_id):
         raise ValueError("invalid task ID")
-    if category not in ALLOWED_CATEGORIES:
+    if not isinstance(category, str) or category not in ALLOWED_CATEGORIES:
         category = "unknown"
     tests = []
     for item in failing_tests:
@@ -82,7 +82,8 @@ def advise(task_id: str, category: str, failing_tests: Iterable[str] = (), *, ti
             check=False,
             env=_minimal_environment(),
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired, UnicodeDecodeError):
+        # An unavailable, timed-out, or undecodable local model must provide no advice.
         return AdvisorResult(False, reason="fm_execution_failed")
     if completed.returncode != 0:
         return AdvisorResult(False, reason="fm_nonzero_exit")
