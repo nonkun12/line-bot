@@ -6,13 +6,13 @@ from scripts.check_autonomous_loop_watchdog import expected_slot, find_scheduled
 
 def test_expected_slot_selects_latest_completed_jst_slot():
     now = datetime(2026, 9, 23, 5, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
-    assert expected_slot(now).hour == 4
+    assert expected_slot(now).hour == 5
     assert expected_slot(now).minute == 30
 
 
 def test_expected_slot_selects_afternoon_slot():
     now = datetime(2026, 9, 23, 17, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
-    assert expected_slot(now).hour == 16
+    assert expected_slot(now).hour == 17
     assert expected_slot(now).minute == 30
 
 
@@ -20,7 +20,7 @@ def test_expected_slot_before_first_window_uses_previous_day_last_window():
     now = datetime(2026, 9, 23, 3, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
     slot = expected_slot(now)
     assert slot.date().day == 22
-    assert (slot.hour, slot.minute) == (22, 30)
+    assert (slot.hour, slot.minute) == (23, 30)
 
 
 def test_find_scheduled_run_uses_workflow_scoped_schedule_endpoint(monkeypatch):
@@ -28,7 +28,7 @@ def test_find_scheduled_run_uses_workflow_scoped_schedule_endpoint(monkeypatch):
         "name": "Distributed Autonomous Development Loop",
         "event": "schedule",
         "id": 123,
-        "created_at": "2026-09-22T19:37:00Z",
+        "created_at": "2026-09-22T20:37:00Z",
         "status": "completed",
         "conclusion": "failure",
     }
@@ -48,7 +48,7 @@ def test_find_scheduled_run_uses_workflow_scoped_schedule_endpoint(monkeypatch):
         fake_github_json,
     )
 
-    slot = datetime(2026, 9, 24, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    slot = datetime(2026, 9, 24, 5, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
     assert find_scheduled_run("nonkun12/line-bot", slot) is None
     assert captured["url"].endswith(
         "/actions/workflows/distributed-autonomous-loop.yml/runs?event=schedule&per_page=20"
@@ -63,7 +63,7 @@ def test_find_scheduled_run_accepts_small_scheduler_delay(monkeypatch):
         "name": "Distributed Autonomous Development Loop",
         "event": "schedule",
         "id": 456,
-        "created_at": "2026-09-22T19:35:00Z",
+        "created_at": "2026-09-22T20:35:00Z",
         "status": "completed",
         "conclusion": "success",
     }
@@ -71,7 +71,7 @@ def test_find_scheduled_run_accepts_small_scheduler_delay(monkeypatch):
         "scripts.check_autonomous_loop_watchdog.github_json",
         lambda _url: {"workflow_runs": [scheduled]},
     )
-    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    slot = datetime(2026, 9, 23, 5, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
     assert find_scheduled_run("nonkun12/line-bot", slot) == scheduled
 
 
@@ -80,7 +80,7 @@ def test_find_scheduled_run_rejects_a_different_slot_on_the_same_day(monkeypatch
         "name": "Distributed Autonomous Development Loop",
         "event": "schedule",
         "id": 789,
-        "created_at": "2026-09-23T01:30:00Z",  # 10:30 JST, not 04:30 JST
+        "created_at": "2026-09-23T01:30:00Z",  # 11:30 JST, not 05:30 JST
         "status": "completed",
         "conclusion": "success",
     }
