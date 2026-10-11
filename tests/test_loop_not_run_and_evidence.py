@@ -165,7 +165,7 @@ def test_no_change_claim_with_moved_head_is_rejected(monkeypatch, tmp_path):
 def test_no_change_without_pytest_evidence_is_rejected(monkeypatch, tmp_path):
     result = _run_with_summary(
         monkeypatch, tmp_path,
-        lambda env: _summary(env, status="PASS", test_evidence=None),
+        lambda env: _summary(env, status="PASS", produced_sha="a" * 40, test_evidence=None),
         heads=("a" * 40, "a" * 40),
     )
     assert result["status"] == "FAIL"
@@ -183,7 +183,7 @@ def test_nonzero_pytest_evidence_cannot_authorize_no_change(monkeypatch, tmp_pat
     }
     result = _run_with_summary(
         monkeypatch, tmp_path,
-        lambda env: _summary(env, status="PASS", test_evidence={**evidence, "run_nonce": env["AUTONOMOUS_RUN_NONCE"]}),
+        lambda env: _summary(env, status="PASS", produced_sha="a" * 40, test_evidence={**evidence, "run_nonce": env["AUTONOMOUS_RUN_NONCE"]}),
         heads=("a" * 40, "a" * 40),
     )
     assert result["status"] == "FAIL"
