@@ -42,7 +42,7 @@ def classify_final_outcome(
     """Fail closed when task evidence, requested work, or a post-run gate is missing."""
     successful = {"PASS", "NO_CHANGE"}
     if queue_empty and not any(status in successful for status in task_statuses):
-        if all(status == "NOT_RUN" for status in task_statuses) and loop_outcome == "success":
+        if task_statuses and all(status == "NOT_RUN" for status in task_statuses) and loop_outcome == "success":
             return "NOT_RUN", "queue_empty"
         return "BLOCKED", "queue_empty_evidence_mismatch"
 
