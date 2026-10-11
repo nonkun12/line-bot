@@ -576,6 +576,7 @@ jobs:
             echo "- Task実行: ${LOOP_OUTCOME:-not_run}"
             echo "- Publish: ${PUBLISH_OUTCOME:-not_run}"
             echo "- State: ${STATE_OUTCOME:-not_run}"
+            echo "- Sheets: ${SHEETS_OUTCOME:-not_run}"
             echo "- Job: ${JOB_STATUS:-unknown}"
             echo "- Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo
