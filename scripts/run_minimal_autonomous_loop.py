@@ -542,6 +542,23 @@ def main() -> int:
 
         print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
         result = run_task(task, index, args.stop_file)
+        recovery_error = False
+        try:
+            # Keep recovery state separate from queue/health state, then persist it
+            # through the existing durable state branch in the workflow.
+            root_text = str(ROOT)
+            if root_text not in sys.path:
+                sys.path.insert(0, root_text)
+            from scripts.recovery_ai_loop_adapter import record_loop_outcome
+            recovery_path = args.state.parent / "recovery-ai-state.json"
+            result["recovery_ai"] = record_loop_outcome(recovery_path, result)
+        except Exception:
+            # State cannot be trusted: fail closed and stop before another task.
+            recovery_error = True
+            result["status"] = "FAIL"
+            result["exit_code"] = 1
+            result["failure_reason"] = "recovery_ai_state_persist_failed"
+            result["recovery_ai"] = {"recorded": False, "reason": "state_persistence_failed"}
         health_error = False
         if track_health:
             try:
@@ -564,6 +581,12 @@ def main() -> int:
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(result, ensure_ascii=False) + "\n")
 
+        if recovery_error:
+            print(
+                f"MINIMAL_LOOP=HALT task={task['id']} reason=recovery_ai_state_persist_failed",
+                flush=True,
+            )
+            return 1
         if health_error:
             print(
                 f"MINIMAL_LOOP=HALT task={task['id']} reason=task_health_persist_failed",
