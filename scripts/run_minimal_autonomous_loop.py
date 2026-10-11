@@ -162,7 +162,7 @@ def _valid_test_evidence(value: object, run_nonce: str) -> bool:
     command = value.get("pytest_command")
     if (
         not isinstance(command, list)
-        or len(command) != 4
+        or len(command) != 5
         or not isinstance(command[0], str)
         or not os.path.basename(command[0]).startswith("python")
         or command[1:] != ["-m", "pytest", "-q", "--tb=native"]
