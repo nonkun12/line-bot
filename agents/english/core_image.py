@@ -304,7 +304,6 @@ _ENTRIES: dict[str, WordEntry] = {
         example="This farm produces fresh vegetables.（この農場は新鮮な野菜を生産している。）",
         note="名詞 produce は「農産物」を表すこともあり、発音も動詞と異なります。",
     ),
-,
 
     "alleviate": WordEntry(word="alleviate", pronunciation="アリーヴィエイト", core_image="重荷や痛みを軽くする → 緩和する・和らげる", parts="語源の細かな分解は断定せず、意味の核を記憶の手がかりにする。", related=("relieve（和らげる）", "mitigate（軽減する）", "alleviation（緩和）"), example="The new policy may alleviate the housing shortage.（新しい政策は住宅不足を緩和するかもしれない。）"),
     "exacerbate": WordEntry(word="exacerbate", pronunciation="イグザサベイト", core_image="悪い状態をさらに悪くする → 悪化させる", parts="語源の分解は省略。意味の核と目的語の組み合わせで覚える。", related=("worsen（悪化させる）", "aggravate（悪化させる）", "exacerbation（悪化）"), example="Delays could exacerbate the economic crisis.（遅れは経済危機を悪化させかねない。）"),
