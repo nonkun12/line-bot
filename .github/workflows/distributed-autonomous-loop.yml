@@ -333,8 +333,10 @@ jobs:
               if not line.strip():
                   continue
               row = json.loads(line)
-              if isinstance(row, dict) and row.get('failure_reason') == 'task_health_persist_failed':
-                  raise SystemExit('task health state could not be saved locally; durable persistence is blocked')
+              if isinstance(row, dict) and row.get('failure_reason') in {
+                  'task_health_persist_failed', 'recovery_ai_state_persist_failed'
+              }:
+                  raise SystemExit('loop health or Recovery AI state could not be saved locally; durable persistence is blocked')
           PY
           fi
 
