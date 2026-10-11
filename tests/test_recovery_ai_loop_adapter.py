@@ -48,3 +48,14 @@ def test_queue_summary_without_task_id_is_not_recorded(tmp_path):
     assert record_loop_outcome(tmp_path / "recovery.json", {
         "status": "NOT_RUN", "exit_code": 78, "failure_reason": "queue_empty"
     }) == {"recorded": False, "reason": "no_task_id"}
+
+
+def test_verified_no_change_is_success_not_a_failure(tmp_path):
+    path = tmp_path / "recovery.json"
+    store = RecoveryStore(path)
+    store.record_failure("task-a", "timeout")
+    result = record_loop_outcome(path, {
+        "task_id": "task-a", "status": "NO_CHANGE", "exit_code": 0, "failure_reason": "no_change"
+    })
+    assert result == {"recorded": True, "status": "NO_CHANGE", "verified": True}
+    assert store.task_status("task-a")["consecutive_failures"] == 0
