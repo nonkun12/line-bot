@@ -41,8 +41,8 @@ def classify_final_outcome(
 ) -> tuple[str, str]:
     """Fail closed when task evidence, requested work, or a post-run gate is missing."""
     successful = {"PASS", "NO_CHANGE"}
-    if queue_empty and not any(status in successful for status in task_statuses):
-        if task_statuses and all(status == "NOT_RUN" for status in task_statuses) and loop_outcome == "success":
+    if queue_empty:
+        if task_statuses == ["NOT_RUN"] and loop_outcome == "success":
             return "NOT_RUN", "queue_empty"
         return "BLOCKED", "queue_empty_evidence_mismatch"
 
