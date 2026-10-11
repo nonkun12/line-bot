@@ -116,6 +116,43 @@ def test_batch_four_common_words_have_local_core_images():
         assert "説明を保留" not in response, word
 
 
+
+def test_batch_five_advanced_exam_words_have_local_core_images():
+    cases = {
+        "alleviate": ("緩和", "mitigate"),
+        "exacerbate": ("悪化", "worsen"),
+        "mitigate": ("軽減", "alleviate"),
+        "substantiate": ("裏付け", "evidence"),
+        "scrutinize": ("精査", "scrutiny"),
+        "undermine": ("損なう", "confidence"),
+        "foster": ("育む", "innovation"),
+        "ubiquitous": ("至る所", "widespread"),
+        "plausible": ("もっともらしい", "credible"),
+        "arbitrary": ("恣意的", "discretion"),
+        "inherent": ("固有", "intrinsic"),
+        "subsequent": ("その後", "subsequently"),
+        "preliminary": ("予備的", "tentative"),
+        "ambiguous": ("曖昧", "ambiguity"),
+        "compel": ("余儀なく", "compulsory"),
+        "relinquish": ("手放す", "surrender"),
+        "stringent": ("厳格", "rigorous"),
+        "detrimental": ("悪影響", "harmful"),
+        "feasible": ("実現可能", "feasibility"),
+        "discrepancy": ("食い違い", "inconsistency"),
+        "coherent": ("首尾一貫", "coherence"),
+        "consensus": ("合意", "agreement"),
+        "tentative": ("暫定", "provisional"),
+        "resilient": ("回復力", "resilience"),
+        "allocate": ("配分", "allocation"),
+    }
+    for word, (meaning, cue) in cases.items():
+        response = explain_core_image(word)
+        assert meaning in response, word
+        assert cue in response, word
+        assert "外部API" in response, word
+        assert "説明を保留" not in response, word
+
+
 def test_core_image_dictionary_has_no_duplicate_literal_word_keys():
     import ast
     from pathlib import Path
@@ -130,5 +167,5 @@ def test_core_image_dictionary_has_no_duplicate_literal_word_keys():
     )
     keys = [key.value for key in entries.value.keys if isinstance(key, ast.Constant)]
     assert len(keys) == len(set(keys))
-    assert len(keys) >= 30
+    assert len(keys) >= 55
 
