@@ -27,6 +27,42 @@ EXIT_NOT_RUN = 78
 NOT_RUN_REASON_QUEUE_EMPTY = "queue_empty"
 VALID_RUNTIME_STATUSES = frozenset({"PASS", "NO_CHANGE"})
 
+def classify_final_outcome(
+    task_statuses: list[str],
+    *,
+    loop_outcome: str,
+    publish_outcome: str,
+    state_outcome: str,
+    sheets_outcome: str,
+    queue_empty: bool = False,
+) -> tuple[str, str]:
+    """Fail closed when task evidence or any required post-run gate is missing."""
+    successful = {"PASS", "NO_CHANGE"}
+    if queue_empty and not any(status in successful for status in task_statuses):
+        if all(status == "NOT_RUN" for status in task_statuses) and loop_outcome == "success":
+            return "NOT_RUN", "queue_empty"
+        return "BLOCKED", "queue_empty_evidence_mismatch"
+
+    if not task_statuses:
+        return "BLOCKED", "missing_task_evidence"
+    invalid = [status for status in task_statuses if status not in successful]
+    if invalid:
+        return "FAILED", "task_status:" + ",".join(invalid)
+
+    failed_gates = [
+        name for name, outcome in (
+            ("loop", loop_outcome),
+            ("publish", publish_outcome),
+            ("state", state_outcome),
+            ("sheets", sheets_outcome),
+        )
+        if outcome != "success"
+    ]
+    if failed_gates:
+        return "FAILED", "post_run_gate_failed:" + ",".join(failed_gates)
+    return "COMPLETED", "required_gates_passed"
+
+
 INCIDENT_CATEGORIES = frozenset({"local_job_failed", "vault_write_failed"})
 INCIDENT_DETAILS = frozenset({
     "OSError", "PermissionError", "FileNotFoundError", "IsADirectoryError",
