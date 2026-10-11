@@ -61,7 +61,9 @@ def test_workflow_never_completes_zero_task_empty_queue():
     assert 'queue_exhausted_no_tasks' not in workflow
     assert "classify_final_outcome" in workflow
     assert "final_outcome_classifier_failed" in workflow
-    assert 'result="NOT_RUN"' in workflow
+    assert 'queue_empty' in workflow
+    assert 'QUEUE_EMPTY' not in workflow
+    assert 'Path("/tmp/autonomous-loop-not-run").exists()' in workflow
 
 
 def test_workflow_state_is_not_advanced_for_empty_queue():
