@@ -159,7 +159,7 @@ jobs:
                   or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
               raise SystemExit('durable Recovery AI state is invalid; refusing to run')
           Path('/tmp/recovery-ai-state.json').write_text(
-              json.dumps(recovery, ensure_ascii=False, sort_keys=True) + '\\n', encoding='utf-8'
+              json.dumps(recovery, ensure_ascii=False, sort_keys=True) + '\n', encoding='utf-8'
           )
           PY
 
