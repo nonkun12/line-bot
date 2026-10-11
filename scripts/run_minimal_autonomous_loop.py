@@ -42,9 +42,19 @@ def classify_final_outcome(
     """Fail closed when task evidence, requested work, or a post-run gate is missing."""
     successful = {"PASS", "NO_CHANGE"}
     if queue_empty:
-        if task_statuses == ["NOT_RUN"] and loop_outcome == "success":
-            return "NOT_RUN", "queue_empty"
-        return "BLOCKED", "queue_empty_evidence_mismatch"
+        if task_statuses != ["NOT_RUN"] or loop_outcome != "success":
+            return "BLOCKED", "queue_empty_evidence_mismatch"
+        failed_gates = [
+            name for name, outcome in (
+                ("publish", publish_outcome),
+                ("state", state_outcome),
+                ("sheets", sheets_outcome),
+            )
+            if outcome != "success"
+        ]
+        if failed_gates:
+            return "BLOCKED", "queue_empty_post_run_gate_failed:" + ",".join(failed_gates)
+        return "NOT_RUN", "queue_empty"
 
     if not task_statuses:
         return "BLOCKED", "missing_task_evidence"
