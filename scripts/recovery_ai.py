@@ -171,6 +171,23 @@ class RecoveryStore:
         self._write(data)
         return RecoveryDecision(action, reason, task_id, fingerprint, count, delay, human)
 
+    def record_success(self, task_id: str, *, verified: bool) -> None:
+        """Reset consecutive failures only after the caller supplies verified success."""
+        task_id = _safe_id(task_id)
+        if verified is not True:
+            raise ValueError("only verified success may reset failure counters")
+        data = self._read()
+        record = data["tasks"].get(task_id)
+        if not isinstance(record, dict):
+            # A first-time success need not create a failure record.
+            return
+        if record.get("held") is True:
+            raise ValueError("held task requires explicit resume before success can reset state")
+        record["consecutive_failures"] = 0
+        record["same_fingerprint_attempts"] = 0
+        record["last_success_at"] = utc_now()
+        self._write(data)
+
     def save_checkpoint(self, task_id: str, checkpoint_id: str, *, verified: bool) -> None:
         task_id = _safe_id(task_id)
         checkpoint_id = _safe_id(checkpoint_id)
