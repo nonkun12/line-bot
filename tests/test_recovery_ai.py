@@ -101,3 +101,25 @@ def test_elapsed_seconds_requires_aware_nonnegative_timestamps():
         elapsed_seconds("2026-10-11T00:00:00", "2026-10-11T00:00:01+00:00")
     with pytest.raises(ValueError):
         elapsed_seconds("2026-10-11T00:00:02+00:00", "2026-10-11T00:00:01+00:00")
+
+def test_non_string_or_unhashable_category_is_normalized_to_unknown(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    decision = store.record_failure("task-a", {})
+    assert decision.action == "HOLD"
+    assert store.task_status("task-a")["last_category"] == "unknown"
+    assert failure_fingerprint("task-a", {}) == failure_fingerprint("task-a", "unknown")
+
+
+def test_write_failure_fails_closed_without_returning_recovery_decision(tmp_path, monkeypatch):
+    import scripts.recovery_ai as recovery_ai
+
+    store = RecoveryStore(tmp_path / "state.json")
+
+    def fail_replace(*args, **kwargs):
+        raise OSError("simulated write failure")
+
+    monkeypatch.setattr(recovery_ai.os, "replace", fail_replace)
+    with pytest.raises(RecoveryStateError, match="persistence failed"):
+        store.record_failure("task-a", "timeout")
+    assert store.path.exists() is False
+
