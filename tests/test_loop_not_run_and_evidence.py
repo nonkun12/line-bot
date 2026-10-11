@@ -259,3 +259,15 @@ def test_final_outcome_allows_queue_exhaustion_after_fewer_tasks():
         queue_completed=5,
         queue_total=5,
     ) == ("COMPLETED", "required_gates_passed")
+
+
+
+def test_final_outcome_empty_queue_without_result_row_is_blocked():
+    assert loop.classify_final_outcome(
+        [],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        queue_empty=True,
+    ) == ("BLOCKED", "queue_empty_evidence_mismatch")
