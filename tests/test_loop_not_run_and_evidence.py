@@ -232,3 +232,30 @@ def test_final_outcome_empty_queue_marker_mismatch_is_blocked():
         sheets_outcome="success",
         queue_empty=True,
     ) == ("BLOCKED", "queue_empty_evidence_mismatch")
+
+
+
+def test_final_outcome_does_not_claim_completion_before_requested_work():
+    assert loop.classify_final_outcome(
+        ["PASS"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        requested_tasks=4,
+        queue_completed=2,
+        queue_total=5,
+    ) == ("INCOMPLETE", "requested_task_limit_not_met")
+
+
+def test_final_outcome_allows_queue_exhaustion_after_fewer_tasks():
+    assert loop.classify_final_outcome(
+        ["PASS"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        requested_tasks=4,
+        queue_completed=5,
+        queue_total=5,
+    ) == ("COMPLETED", "required_gates_passed")
