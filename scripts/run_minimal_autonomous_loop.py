@@ -35,8 +35,11 @@ def classify_final_outcome(
     state_outcome: str,
     sheets_outcome: str,
     queue_empty: bool = False,
+    requested_tasks: int | None = None,
+    queue_completed: int | None = None,
+    queue_total: int | None = None,
 ) -> tuple[str, str]:
-    """Fail closed when task evidence or any required post-run gate is missing."""
+    """Fail closed when task evidence, requested work, or a post-run gate is missing."""
     successful = {"PASS", "NO_CHANGE"}
     if queue_empty and not any(status in successful for status in task_statuses):
         if all(status == "NOT_RUN" for status in task_statuses) and loop_outcome == "success":
@@ -60,6 +63,10 @@ def classify_final_outcome(
     ]
     if failed_gates:
         return "FAILED", "post_run_gate_failed:" + ",".join(failed_gates)
+
+    if requested_tasks is not None and queue_completed is not None and queue_total is not None:
+        if len(task_statuses) < requested_tasks and queue_completed < queue_total:
+            return "INCOMPLETE", "requested_task_limit_not_met"
     return "COMPLETED", "required_gates_passed"
 
 
