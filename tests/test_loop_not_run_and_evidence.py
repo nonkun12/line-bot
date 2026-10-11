@@ -1,5 +1,6 @@
 """Regression tests for NOT_RUN empty queues and consistent task evidence."""
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -117,6 +118,15 @@ def _summary(env, **overrides):
         "produced_sha": "c" * 40,
         "task_id": "evidence-task",
         "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+        "test_evidence": {
+            "schema_version": 1,
+            "runner": "scripts/line_development_worker_v2.py::run_tests",
+            "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+            "pytest_command": [sys.executable, "-m", "pytest", "-q", "--tb=native"],
+            "pytest_exit_code": 0,
+            "pytest_output_sha256": "e" * 64,
+            "py_compile": [],
+        },
     }
     payload.update(overrides)
     return json.dumps(payload)
@@ -150,6 +160,34 @@ def test_no_change_claim_with_moved_head_is_rejected(monkeypatch, tmp_path):
     result = _run_with_summary(monkeypatch, tmp_path, lambda env: _summary(env, status="NO_CHANGE"))
     assert result["status"] == "FAIL"
     assert result["failure_reason"] == "summary_no_change_but_head_moved"
+
+
+def test_no_change_without_pytest_evidence_is_rejected(monkeypatch, tmp_path):
+    result = _run_with_summary(
+        monkeypatch, tmp_path,
+        lambda env: _summary(env, status="PASS", test_evidence=None),
+        heads=("a" * 40, "a" * 40),
+    )
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "summary_test_evidence_missing_or_invalid"
+
+
+def test_nonzero_pytest_evidence_cannot_authorize_no_change(monkeypatch, tmp_path):
+    evidence = {
+        "schema_version": 1,
+        "runner": "scripts/line_development_worker_v2.py::run_tests",
+        "pytest_command": [sys.executable, "-m", "pytest", "-q", "--tb=native"],
+        "pytest_exit_code": 2,
+        "pytest_output_sha256": "e" * 64,
+        "py_compile": [],
+    }
+    result = _run_with_summary(
+        monkeypatch, tmp_path,
+        lambda env: _summary(env, status="PASS", test_evidence={**evidence, "run_nonce": env["AUTONOMOUS_RUN_NONCE"]}),
+        heads=("a" * 40, "a" * 40),
+    )
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "summary_test_evidence_missing_or_invalid"
 
 
 def test_consistent_no_change_summary_is_accepted(monkeypatch, tmp_path):

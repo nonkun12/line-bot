@@ -1,11 +1,24 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from scripts import run_minimal_autonomous_loop as loop
 from scripts.run_minimal_autonomous_loop import load_completed, load_tasks, stopped
+
+
+def _valid_test_evidence(run_nonce: str) -> dict:
+    return {
+        "schema_version": 1,
+        "runner": "scripts/line_development_worker_v2.py::run_tests",
+        "run_nonce": run_nonce,
+        "pytest_command": [sys.executable, "-m", "pytest", "-q", "--tb=native"],
+        "pytest_exit_code": 0,
+        "pytest_output_sha256": "a" * 64,
+        "py_compile": [],
+    }
 
 
 def test_queue_contains_bounded_tasks():
@@ -116,6 +129,7 @@ def test_no_change_is_not_pass(monkeypatch, tmp_path: Path):
                 "produced_sha": sha,
                 "task_id": task["id"],
                 "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+                "test_evidence": _valid_test_evidence(env["AUTONOMOUS_RUN_NONCE"]),
             }),
             encoding="utf-8",
         )
@@ -155,6 +169,7 @@ def _capture_task_provider_env(monkeypatch, tmp_path: Path, task: dict[str, obje
                 "produced_sha": sha,
                 "task_id": task["id"],
                 "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+                "test_evidence": _valid_test_evidence(env["AUTONOMOUS_RUN_NONCE"]),
             }),
             encoding="utf-8",
         )
@@ -194,6 +209,62 @@ def test_unmapped_task_keeps_provider_credentials_for_its_own_policy(monkeypatch
     assert result["status"] == "NO_CHANGE"
     assert provider_env["GROQ_API_KEY"] == "test-only-sentinel"
 
+
+
+
+def test_no_change_without_current_run_test_evidence_is_rejected(monkeypatch, tmp_path: Path):
+    task = {"id": "no-evidence-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
+    sha = "f" * 40
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
+        summary.write_text(
+            json.dumps({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "PASS",
+                "exit_code": 0,
+                "base_sha": sha,
+                "produced_sha": sha,
+                "task_id": task["id"],
+                "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+            }),
+            encoding="utf-8",
+        )
+        return _FakeProcess(env, lambda _: None)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "summary_test_evidence_missing_or_invalid"
+
+
+def test_stale_test_evidence_nonce_is_rejected(monkeypatch, tmp_path: Path):
+    task = {"id": "stale-evidence-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
+    sha = "f" * 40
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
+        summary.write_text(
+            json.dumps({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "PASS",
+                "exit_code": 0,
+                "base_sha": sha,
+                "produced_sha": sha,
+                "task_id": task["id"],
+                "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+                "test_evidence": _valid_test_evidence("0" * 32),
+            }),
+            encoding="utf-8",
+        )
+        return _FakeProcess(env, lambda _: None)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "summary_test_evidence_missing_or_invalid"
 
 def test_summary_identity_mismatch_halts(monkeypatch, tmp_path: Path):
     task = {"id": "identity-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
