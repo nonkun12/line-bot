@@ -9,7 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from scripts.recovery_ai import RecoveryStateError, RecoveryStore
+from scripts.recovery_ai import RecoveryStore
 
 
 def _category(result: dict[str, Any]) -> str:
