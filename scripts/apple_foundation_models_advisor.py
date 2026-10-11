@@ -36,7 +36,7 @@ class AdvisorResult:
 def _safe_metadata(task_id: str, category: str, failing_tests: Iterable[str]) -> dict:
     if not isinstance(task_id, str) or not TASK_ID_RE.fullmatch(task_id):
         raise ValueError("invalid task ID")
-    if category not in ALLOWED_CATEGORIES:
+    if not isinstance(category, str) or category not in ALLOWED_CATEGORIES:
         category = "unknown"
     tests = []
     for item in failing_tests:
@@ -82,7 +82,8 @@ def advise(task_id: str, category: str, failing_tests: Iterable[str] = (), *, ti
             check=False,
             env=_minimal_environment(),
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired, UnicodeDecodeError):
+        # An unavailable, timed-out, or undecodable local model must provide no advice.
         return AdvisorResult(False, reason="fm_execution_failed")
     if completed.returncode != 0:
         return AdvisorResult(False, reason="fm_nonzero_exit")
