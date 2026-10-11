@@ -274,3 +274,22 @@ def test_final_outcome_empty_queue_without_result_row_is_blocked():
         sheets_outcome="success",
         queue_empty=True,
     ) == ("BLOCKED", "queue_empty_evidence_mismatch")
+
+@pytest.mark.parametrize(
+    ("gate", "outcome"),
+    [("publish", "failure"), ("state", "failure"), ("sheets", "failure")],
+)
+def test_final_outcome_empty_queue_blocks_when_required_gate_fails(gate, outcome):
+    outcomes = {
+        "loop_outcome": "success",
+        "publish_outcome": "success",
+        "state_outcome": "success",
+        "sheets_outcome": "success",
+        "queue_empty": True,
+    }
+    outcomes[{"loop": "loop_outcome", "publish": "publish_outcome", "state": "state_outcome", "sheets": "sheets_outcome"}.get(gate, gate)] = outcome
+    assert loop.classify_final_outcome(["NOT_RUN"], **outcomes) == (
+        "BLOCKED",
+        f"queue_empty_post_run_gate_failed:{gate}",
+    )
+
