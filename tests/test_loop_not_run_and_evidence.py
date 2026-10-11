@@ -169,3 +169,66 @@ def test_not_run_does_not_fabricate_task_identity_or_instruction():
     assert "os.environ['AUTONOMOUS_TASK_ID'] = ''" in workflow
     assert "Queue exhausted; no task executed; replenish the task queue." in workflow
 
+
+
+
+def test_final_outcome_empty_queue_is_not_run():
+    assert loop.classify_final_outcome(
+        ["NOT_RUN"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        queue_empty=True,
+    ) == ("NOT_RUN", "queue_empty")
+
+
+@pytest.mark.parametrize(
+    ("gate", "expected_reason"),
+    [
+        ("publish", "post_run_gate_failed:publish"),
+        ("state", "post_run_gate_failed:state"),
+        ("sheets", "post_run_gate_failed:sheets"),
+        ("loop", "post_run_gate_failed:loop"),
+    ],
+)
+def test_final_outcome_pass_is_not_completed_when_post_run_gate_fails(gate, expected_reason):
+    outcomes = {
+        "loop_outcome": "success",
+        "publish_outcome": "success",
+        "state_outcome": "success",
+        "sheets_outcome": "success",
+    }
+    outcomes[f"{gate}_outcome"] = "failure"
+    assert loop.classify_final_outcome(["PASS"], **outcomes) == ("FAILED", expected_reason)
+
+
+def test_final_outcome_normal_pass_requires_all_gates():
+    assert loop.classify_final_outcome(
+        ["PASS", "NO_CHANGE"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+    ) == ("COMPLETED", "required_gates_passed")
+
+
+def test_final_outcome_missing_evidence_fails_closed():
+    assert loop.classify_final_outcome(
+        [],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+    ) == ("BLOCKED", "missing_task_evidence")
+
+
+def test_final_outcome_empty_queue_marker_mismatch_is_blocked():
+    assert loop.classify_final_outcome(
+        ["PASS"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        queue_empty=True,
+    ) == ("BLOCKED", "queue_empty_evidence_mismatch")
