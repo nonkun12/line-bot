@@ -58,7 +58,7 @@ def _normalized_tests(failing_tests: Iterable[str]) -> list[str]:
 
 def failure_fingerprint(task_id: str, category: str, failing_tests: Iterable[str] = ()) -> str:
     task_id = _safe_id(task_id)
-    if category not in FAILURE_CATEGORIES:
+    if not isinstance(category, str) or category not in FAILURE_CATEGORIES:
         category = "unknown"
     payload = json.dumps(
         {"task_id": task_id, "category": category, "failing_tests": _normalized_tests(failing_tests)},
@@ -132,7 +132,7 @@ class RecoveryStore:
         *, transient_attempt: int = 1,
     ) -> RecoveryDecision:
         task_id = _safe_id(task_id)
-        if category not in FAILURE_CATEGORIES:
+        if not isinstance(category, str) or category not in FAILURE_CATEGORIES:
             category = "unknown"
         tests = _normalized_tests(failing_tests)
         fingerprint = failure_fingerprint(task_id, category, tests)
