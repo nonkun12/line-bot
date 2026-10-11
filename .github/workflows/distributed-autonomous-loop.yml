@@ -530,7 +530,7 @@ jobs:
           )"
           queue_completed=$((state_current_completed + completed))
           if [ "$queue_completed" -gt "$queue_total" ]; then queue_completed="$queue_total"; fi
-          outcome_json="$(python - <<'PY'
+          REQUESTED_TASKS="$requested" QUEUE_COMPLETED="$queue_completed" QUEUE_TOTAL="$queue_total" outcome_json="$(python - <<'PY'
           import json
           import os
           from pathlib import Path
@@ -555,6 +555,9 @@ jobs:
               state_outcome=os.getenv("STATE_OUTCOME", ""),
               sheets_outcome=os.getenv("SHEETS_OUTCOME", ""),
               queue_empty=Path("/tmp/autonomous-loop-not-run").exists(),
+              requested_tasks=int(os.getenv("REQUESTED_TASKS", "4")),
+              queue_completed=int(os.getenv("QUEUE_COMPLETED", "0")),
+              queue_total=int(os.getenv("QUEUE_TOTAL", "0")),
           )
           print(json.dumps({"outcome": outcome, "reason": reason}))
           PY
