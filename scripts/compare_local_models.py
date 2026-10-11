@@ -44,6 +44,7 @@ CASES = [
     },
 ]
 MAX_OUTPUT = 5000
+PREFERRED_QWEN_MODELS = ("qwen2.5-coder:7b-hermes64k", "qwen2.5-coder:7b")
 
 
 def _minimal_env() -> dict[str, str]:
@@ -88,15 +89,41 @@ def _run(label: str, command: list[str], prompt: str, timeout: int = 60) -> dict
         }
 
 
+def _installed_qwen_model(ollama: str | None) -> tuple[str | None, str]:
+    """Choose an already-installed model; never let Ollama auto-pull one."""
+    if not ollama:
+        return None, "ollama CLI not found"
+    try:
+        listed = subprocess.run(
+            [ollama, "list"], capture_output=True, text=True, timeout=10,
+            check=False, env=_minimal_env(),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, f"could not inspect installed Ollama models: {exc}"
+    if listed.returncode != 0:
+        return None, (listed.stderr or "ollama list failed")[:500]
+    installed = set()
+    for line in (listed.stdout or "").splitlines()[1:]:
+        fields = line.split()
+        if fields:
+            installed.add(fields[0])
+    for candidate in PREFERRED_QWEN_MODELS:
+        if candidate in installed:
+            return candidate, ""
+    return None, "No supported Qwen model is already installed; skipped to avoid downloads"
+
+
 def main() -> int:
     fm = shutil.which("fm")
     ollama = shutil.which("ollama")
+    qwen_model, qwen_note = _installed_qwen_model(ollama)
     results = {
         "started_at": datetime.now(timezone.utc).isoformat(),
         "privacy": "synthetic prompts only; local CLI execution; no repo files or secrets",
         "models": {
             "apple_foundation_models": "available" if fm else "cli_missing",
-            "qwen2.5-coder:7b": "available" if ollama else "cli_missing",
+            "qwen": qwen_model or "unavailable",
+            "qwen_note": qwen_note,
         },
         "cases": [],
         "interpretation": (
@@ -116,11 +143,11 @@ def main() -> int:
         else:
             models.append({"model": "apple_foundation_models", "status": "unavailable",
                            "elapsed_seconds": 0, "output": "", "error": "fm CLI not found"})
-        if ollama:
-            models.append(_run("qwen2.5-coder:7b", [ollama, "run", "qwen2.5-coder:7b"], prompt))
+        if ollama and qwen_model:
+            models.append(_run(qwen_model, [ollama, "run", qwen_model], prompt))
         else:
-            models.append({"model": "qwen2.5-coder:7b", "status": "unavailable",
-                           "elapsed_seconds": 0, "output": "", "error": "ollama CLI not found"})
+            models.append({"model": "qwen", "status": "unavailable",
+                           "elapsed_seconds": 0, "output": "", "error": qwen_note})
         results["cases"].append({
             "id": case["id"], "rubric": case["rubric"], "models": models,
         })
