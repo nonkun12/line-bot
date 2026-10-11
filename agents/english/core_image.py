@@ -330,8 +330,6 @@ _ENTRIES: dict[str, WordEntry] = {
     "tentative": WordEntry(word="tentative", pronunciation="テンタティブ", core_image="まだ確定していない → 暫定的な・仮の", parts="tentative plan / conclusion は、今後の情報で変更され得る計画／結論。", related=("tentatively（暫定的に）", "preliminary（予備的な）", "provisional（仮の）"), example="We have made a tentative decision.（私たちは暫定的な決定をした。）"),
     "resilient": WordEntry(word="resilient", pronunciation="リジリエント", core_image="押されても戻り立ち直る → 回復力のある・しなやかな", parts="人・組織・経済・素材などが、衝撃や困難の後に回復する性質を表す。", related=("resilience（回復力）", "recover（回復する）", "robust（強健な）"), example="Small businesses must be resilient during downturns.（中小企業は景気後退期にも回復力を備える必要がある。）"),
     "allocate": WordEntry(word="allocate", pronunciation="アロケイト", core_image="用途や人ごとに割り当てる → 配分する・割り当てる", parts="allocate resources / funds / time のように、資源・資金・時間の配分に使う。", related=("allocation（配分）", "reallocate（再配分する）", "assign（割り当てる）"), example="The agency allocated funds to rural schools.（その機関は地方の学校に資金を配分した。）"),
-}
-
     "corroborate": WordEntry(word="corroborate", pronunciation="コロボレイト", core_image="別の証拠で補強する → 裏付ける", parts="語源の細分化は省略。独立した証拠が主張を支える場面で使う。", related=("corroboration（裏付け）", "substantiate（立証する）", "verify（検証する）"), example="The data corroborate her account.（そのデータは彼女の説明を裏付けている。）"),
     "concede": WordEntry(word="concede", pronunciation="コンシード", core_image="抵抗した後で認める → しぶしぶ認める・譲歩する", parts="concede that ... は「…だと認める」。concede a point は議論の一部を認めること。", related=("concession（譲歩）", "admit（認める）", "yield（譲る）"), example="He conceded that the evidence was strong.（彼は証拠が強力であることを認めた。）"),
     "contend": WordEntry(word="contend", pronunciation="コンテンド", core_image="立場を主張して争う → 主張する・論争する", parts="contend that ... は「…と主張する」。compete のように争う意味もある。", related=("contention（主張・論争）", "argue（主張する）", "maintain（主張し続ける）"), example="Some researchers contend that the policy is ineffective.（その政策は効果がないと主張する研究者もいる。）"),
@@ -357,6 +355,7 @@ _ENTRIES: dict[str, WordEntry] = {
     "plight": WordEntry(word="plight", pronunciation="プライト", core_image="困難に陥った状態 → 苦境・窮状", parts="the plight of ... は「〜の窮状」。深刻な困難にある人々について使われやすい。", related=("in dire straits（窮地にある）", "predicament（困った状況）", "hardship（苦難）"), example="The report highlighted the plight of displaced families.（その報告書は避難を余儀なくされた家族の窮状を取り上げた。）"),
     "incentive": WordEntry(word="incentive", pronunciation="インセンティブ", core_image="行動を起こすきっかけとして与えるもの → 動機・奨励策", parts="financial incentive は「金銭的な誘因」。incentive to do は「〜する動機」。", related=("incentivize（動機づける）", "motivation（動機）", "inducement（誘因）"), example="Tax incentives encouraged firms to invest.（税制上の優遇策が企業の投資を促した。）"),
     "disparity": WordEntry(word="disparity", pronunciation="ディスパリティ", core_image="並べると釣り合わない差 → 格差・不均衡", parts="disparity between A and B は「AとBの格差」。単なる違いより不均衡の含みがある。", related=("disparate（大きく異なる）", "inequality（不平等）", "gap（格差）"), example="The study examined the disparity in access to education.（その研究は教育機会の格差を調べた。）"),
+}
 
 _COMMAND_RE = re.compile(
     r"^(?:コアイメージ|語根|語幹|core\s*image|word\s*root)\s*[:：]?\s+([A-Za-z][A-Za-z'-]{0,63})\s*[?？。！!]*$",
