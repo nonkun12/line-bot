@@ -4,13 +4,6 @@ on:
   pull_request:
     branches:
       - fix/loop-task-health-safety
-    paths:
-      - "scripts/recovery_ai.py"
-      - "tests/test_recovery_ai.py"
-      - "docs/recovery-ai.md"
-      - ".github/workflows/recovery-ai-tests.yml"
-      - "requirements.txt"
-      - "pytest.ini"
   workflow_dispatch:
 
 permissions:
