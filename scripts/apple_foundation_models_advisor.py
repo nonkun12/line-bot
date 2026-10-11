@@ -1,4 +1,4 @@
-""""Optional local advisor backed by Apple's on-device Foundation Models CLI.
+"""Optional local advisor backed by Apple's on-device Foundation Models CLI.
 
 This adapter is advisory only: its output must never determine PASS/FAIL, retries,
 patch application, task resumption, merge, or deployment. The deterministic
@@ -16,7 +16,7 @@ from typing import Iterable
 
 
 TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
-TEST_ID_RE = re.compile(r"^[A-Za-z0-9_./:\\[\\] -]{1,180}$")
+TEST_ID_RE = re.compile(r"^[A-Za-z0-9_./:\[\] -]{1,180}$")
 ALLOWED_CATEGORIES = frozenset({
     "network_transient", "service_unavailable", "rate_limited",
     "test_regression", "timeout", "process_crash", "invalid_task",
