@@ -38,7 +38,14 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
         return {"recorded": False, "reason": "no_task_id"}
     store = RecoveryStore(state_path)
     status = str(result.get("status", "")).upper()
-    if status in {"PASS", "NO_CHANGE"} and result.get("exit_code") == 0 and not result.get("failure_reason"):
+    verified_success = (
+        result.get("exit_code") == 0
+        and (
+            (status == "PASS" and not result.get("failure_reason"))
+            or (status == "NO_CHANGE" and result.get("failure_reason") in {"", "no_change"})
+        )
+    )
+    if verified_success:
         store.record_success(task_id, verified=True)
         return {"recorded": True, "status": status, "verified": True}
     decision = store.record_failure(task_id, _category(result), ())
