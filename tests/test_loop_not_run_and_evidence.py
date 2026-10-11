@@ -59,7 +59,8 @@ def test_workflow_maps_only_exit_78_to_not_run():
 def test_workflow_never_completes_zero_task_empty_queue():
     workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     assert 'queue_exhausted_no_tasks' not in workflow
-    assert '[ "$completed" -ge 1 ]' in workflow
+    assert "classify_final_outcome" in workflow
+    assert "final_outcome_classifier_failed" in workflow
     assert 'result="NOT_RUN"' in workflow
 
 
