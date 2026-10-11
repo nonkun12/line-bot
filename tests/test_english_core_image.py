@@ -189,6 +189,42 @@ def test_batch_six_advanced_academic_words_have_local_core_images():
         assert "説明を保留" not in response, word
 
 
+def test_batch_seven_advanced_nuance_words_have_local_core_images():
+    cases = {
+        "ameliorate": ("改善する", "amelioration"),
+        "equivocal": ("曖昧な", "equivocate"),
+        "unequivocal": ("明白な", "unequivocally"),
+        "ostensibly": ("表向きは", "ostensible"),
+        "extraneous": ("無関係な", "irrelevant"),
+        "salient": ("顕著な", "salience"),
+        "cogent": ("説得力のある", "cogency"),
+        "tenable": ("妥当な", "tenability"),
+        "untenable": ("維持できない", "tenable"),
+        "prescient": ("先見の明", "prescience"),
+        "pragmatic": ("実用的な", "pragmatism"),
+        "dogmatic": ("独断的な", "dogma"),
+        "altruistic": ("利他的な", "altruism"),
+        "clandestine": ("秘密の", "clandestinely"),
+        "circumvent": ("回避する", "circumvention"),
+        "espouse": ("支持する", "espousal"),
+        "disparage": ("けなす", "disparagement"),
+        "laudable": ("称賛すべき", "commendable"),
+        "contentious": ("議論を呼ぶ", "contention"),
+        "impartial": ("公平な", "impartiality"),
+        "redundant": ("冗長な", "redundancy"),
+        "elusive": ("捉えにくい", "elude"),
+        "volatile": ("不安定な", "volatility"),
+        "erratic": ("不規則な", "erratically"),
+        "impartiality": ("公平性", "impartial"),
+    }
+    for word, (meaning, cue) in cases.items():
+        response = explain_core_image(word)
+        assert meaning in response, word
+        assert cue in response, word
+        assert "外部API" in response, word
+        assert "説明を保留" not in response, word
+
+
 def test_core_image_dictionary_has_no_duplicate_literal_word_keys():
     import ast
     from pathlib import Path
@@ -203,5 +239,5 @@ def test_core_image_dictionary_has_no_duplicate_literal_word_keys():
     )
     keys = [key.value for key in entries.value.keys if isinstance(key, ast.Constant)]
     assert len(keys) == len(set(keys))
-    assert len(keys) >= 55
+    assert len(keys) >= 100
 
