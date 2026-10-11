@@ -17,7 +17,7 @@ from agents.sheets.autonomous_ledger import (
 from agents.sheets.client import GoogleSheetsClient
 
 JST = ZoneInfo("Asia/Tokyo")
-SLOT_HOURS = (4, 10, 16, 22)
+SLOT_HOURS = (5, 11, 17, 23)
 SLOT_MINUTE = 30
 
 
