@@ -24,6 +24,18 @@
   "recovery_ai": {
     "checkpoint": null,
     "schema_version": 1,
-    "tasks": {}
+    "tasks": {
+      "loop-test-recovery-state-isolation": {
+        "consecutive_failures": 1,
+        "fingerprints": [
+          "503a6a5bc6a3d649e95781b7ecedb9154a2e7a9cfeb4c8cd1982c4c9d91dadbf"
+        ],
+        "held": true,
+        "last_category": "unknown",
+        "last_fingerprint": "503a6a5bc6a3d649e95781b7ecedb9154a2e7a9cfeb4c8cd1982c4c9d91dadbf",
+        "same_fingerprint_attempts": 1,
+        "updated_at": "2026-10-12T15:11:02.566779+00:00"
+      }
+    }
   }
 }
