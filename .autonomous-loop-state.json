@@ -20,5 +20,22 @@
     "macos-readiness-audit-no-secret-leak",
     "router-regression-general-request-metadata",
     "recovery-ai-loop-adapter-durable-state-readback"
-  ]
+  ],
+  "recovery_ai": {
+    "checkpoint": null,
+    "schema_version": 1,
+    "tasks": {
+      "t1": {
+        "consecutive_failures": 1,
+        "fingerprints": [
+          "4a0af154ce6ba0e050b288965baa951e0aa0430d43143a1e9414ac23145d6d45"
+        ],
+        "held": true,
+        "last_category": "unknown",
+        "last_fingerprint": "4a0af154ce6ba0e050b288965baa951e0aa0430d43143a1e9414ac23145d6d45",
+        "same_fingerprint_attempts": 1,
+        "updated_at": "2026-10-12T14:46:12.132212+00:00"
+      }
+    }
+  }
 }
