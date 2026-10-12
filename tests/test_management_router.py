@@ -46,6 +46,17 @@ def test_preserves_multi_specialist_candidates_and_priority() -> None:
     assert decision.metadata["routing_priority"] == 2
 
 
+def test_router_regression_general_request_keeps_channel_and_request_metadata() -> None:
+    request = ManagementRequest("u", "今日は何をしよう？", channel="line", metadata={"source": "distributed-loop-general-metadata"})
+    decision = route(request)
+    assert decision.specialist is Specialist.GENERAL
+    assert decision.metadata["routing"] == "deterministic"
+    assert decision.metadata["matched_specialists"] == []
+    assert decision.metadata["routing_priority"] is None
+    assert decision.metadata["channel"] == "line"
+    assert decision.metadata["request_metadata"]["source"] == "distributed-loop-general-metadata"
+
+
 def test_unresolved_request_records_empty_candidates() -> None:
     decision = route(ManagementRequest("u", "今日は何をしよう？"))
     assert decision.specialist is Specialist.GENERAL
