@@ -497,11 +497,18 @@ jobs:
           if [ "$queue_completed" -gt "$queue_total" ]; then queue_completed="$queue_total"; fi
           result="STOPPED/FAILED"
           result_reason="workflow_failed"
-          if [ "${LOOP_OUTCOME:-}" = "success" ] && { [ "$completed" = "$requested" ] || [ "$queue_completed" = "$queue_total" ]; }; then
-            result="COMPLETED"
-            if [ "$completed" = "0" ] && [ "$queue_completed" = "$queue_total" ]; then
+          # An empty result file means no task was executed in this run. Do not
+          # report COMPLETED merely because every queued task was completed earlier.
+          if [ "${LOOP_OUTCOME:-}" = "success" ] && [ "$completed" = "0" ]; then
+            result="NOT_RUN"
+            if [ "$queue_completed" = "$queue_total" ]; then
               result_reason="queue_exhausted_no_tasks"
-            elif [ "$completed" = "$requested" ]; then
+            else
+              result_reason="no_task_executed"
+            fi
+          elif [ "${LOOP_OUTCOME:-}" = "success" ] && { [ "$completed" = "$requested" ] || [ "$queue_completed" = "$queue_total" ]; }; then
+            result="COMPLETED"
+            if [ "$completed" = "$requested" ]; then
               result_reason="requested_task_limit_reached"
             else
               result_reason="queue_completed"
