@@ -116,8 +116,15 @@ class QualityRuntime:
             if repaired.task.role in (AgentRole.DEBUGGER, AgentRole.REFACTORER):
                 return RuntimeReport(tuple(completed), repaired.task.task_id, repaired.result.summary, rounds, attempts)
             if not repaired.result.success:
-                reviewer = repaired
-                continue
+                # A failed mandatory retest after review repair must fail closed.
+                # Do not reinterpret a TEST failure as another review failure.
+                return RuntimeReport(
+                    tuple(completed),
+                    repaired.task.task_id,
+                    repaired.result.summary,
+                    rounds,
+                    attempts,
+                )
             rereview = self._execute(AgentTask(
                 f"review:{attempts}:rereview",
                 AgentRole.REVIEWER,
