@@ -62,6 +62,16 @@ def _rollback_to_clean_baseline(baseline_sha: str) -> bool:
     return clean.returncode == 0
 
 
+def _push_development_branch(branch: str) -> tuple[bool, str]:
+    """Push normally, or defer publishing to the authenticated GitHub Actions step."""
+    if os.environ.get("AUTONOMOUS_PUBLISH_VIA_WORKFLOW", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return True, "deferred_to_authenticated_workflow_publisher"
+    push = worker.run(["git", "push", "--set-upstream", "origin", branch])
+    if push.returncode != 0:
+        return False, push.stderr[-2000:] or "git push failed"
+    return True, "development branch pushed"
+
+
 def _explicit_comment_plan(instruction: str, chosen: str) -> dict | None:
     """Build deterministic plans for explicit one-line comment E2E requests."""
     if chosen != "line_development.py":
@@ -1488,13 +1498,31 @@ def execute(instruction: str) -> int:
         _rollback_to_clean_baseline(baseline_sha)
         _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=state.chosen, branch=branch, exit_detail=str(exc), base_sha=baseline_sha, produced_sha=None)
         return 1
-    push = worker.run(["git", "push", "--set-upstream", "origin", branch])
-    if push.returncode != 0:
-        print(push.stderr[-2000:], flush=True); return 1
+    pushed, publish_detail = _push_development_branch(branch)
+    if not pushed:
+        print(publish_detail[-2000:], flush=True)
+        return 1
     produced = worker.run(["git", "rev-parse", "HEAD"])
     produced_sha = produced.stdout.strip() if produced.returncode == 0 else None
-    _write_development_audit_to_google_sheets(instruction=instruction, status="PASS", target_path=state.chosen, branch=branch, exit_detail="development branch pushed", base_sha=baseline_sha, produced_sha=produced_sha)
-    print(f"Development branch pushed: {branch}", flush=True)
+    deferred = publish_detail == "deferred_to_authenticated_workflow_publisher"
+    audit_status = "PREPARED" if deferred else "PASS"
+    audit_detail = (
+        "local branch prepared; authenticated workflow publisher must verify remote push"
+        if deferred else "development branch pushed"
+    )
+    _write_development_audit_to_google_sheets(
+        instruction=instruction,
+        status=audit_status,
+        target_path=state.chosen,
+        branch=branch,
+        exit_detail=audit_detail,
+        base_sha=baseline_sha,
+        produced_sha=produced_sha,
+    )
+    if deferred:
+        print(f"Development branch prepared for authenticated workflow publisher: {branch}", flush=True)
+    else:
+        print(f"Development branch pushed: {branch}", flush=True)
     return 0
 
 
