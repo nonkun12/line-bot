@@ -123,3 +123,37 @@ def test_success_never_calls_optional_advisor(monkeypatch, tmp_path):
         "task_id": "task-a", "status": "PASS", "exit_code": 0, "failure_reason": ""
     })
     assert result == {"recorded": True, "status": "PASS", "verified": True}
+
+def test_recovery_state_write_failure_stops_before_advisor(monkeypatch, tmp_path):
+    import scripts.apple_foundation_models_advisor as advisor
+
+    monkeypatch.setenv("RECOVERY_AI_APPLE_ADVISOR", "1")
+    calls = []
+    monkeypatch.setattr(advisor, "advise", lambda *args, **kwargs: calls.append(args))
+    monkeypatch.setattr(
+        RecoveryStore, "_write",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RecoveryStateError("write blocked")),
+    )
+    with pytest.raises(RecoveryStateError):
+        record_loop_outcome(tmp_path / "recovery.json", {
+            "task_id": "task-write-fail", "status": "FAIL", "exit_code": 1,
+            "failure_reason": "task_timeout",
+        })
+    assert calls == []
+
+
+def test_recovery_state_readback_mismatch_fails_closed(monkeypatch, tmp_path):
+    original = RecoveryStore.task_status
+
+    def mismatched_status(self, task_id):
+        status = original(self, task_id)
+        status["last_category"] = "unknown"
+        return status
+
+    monkeypatch.setattr(RecoveryStore, "task_status", mismatched_status)
+    with pytest.raises(RecoveryStateError, match="read-back verification failed"):
+        record_loop_outcome(tmp_path / "recovery.json", {
+            "task_id": "task-readback-mismatch", "status": "FAIL", "exit_code": 1,
+            "failure_reason": "task_timeout",
+        })
+
