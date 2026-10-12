@@ -157,10 +157,10 @@ class DevelopmentExecutor:
                     return AgentResult(task.task_id, True, "deterministic debug retry; no LLM JSON parsing")
                 plan = worker.build_plan(
                     self.state.client,
-                    self.state.instruction,
+                    f"{task.instruction}\nOriginal request: {self.state.instruction}",
                     self.state.chosen,
                     worker.context_for(self.state.chosen),
-                    self.state.test_output,
+                    f"{self.state.test_output}\n\nCurrent failure context:\n{task.instruction}",
                 )
                 ok, detail = worker.validate_plan(plan, self.state.chosen)
                 if not ok or detail == "no_change":
@@ -179,10 +179,10 @@ class DevelopmentExecutor:
                     return AgentResult(task.task_id, True, "no refactor needed for deterministic comment change")
                 plan = worker.build_plan(
                     self.state.client,
-                    f"Refactor the current implementation for clarity, maintainability, and duplication reduction. Preserve behavior and satisfy the original request. Original request: {self.state.instruction}",
+                    f"{task.instruction}\nOriginal request: {self.state.instruction}",
                     self.state.chosen,
                     worker.context_for(self.state.chosen),
-                    self.state.test_output,
+                    f"{self.state.test_output}\n\nCurrent task context:\n{task.instruction}",
                 )
                 ok, detail = worker.validate_plan(plan, self.state.chosen)
                 if not ok:
