@@ -2,7 +2,18 @@
 import pytest
 
 from scripts.recovery_ai import RecoveryStateError, RecoveryStore
-from scripts.recovery_ai_loop_adapter import record_loop_outcome
+from scripts.recovery_ai_loop_adapter import _category, record_loop_outcome
+
+
+@pytest.mark.parametrize(("reason", "expected"), [
+    ("rate_limited_http_429", "rate_limited"),
+    ("service_unavailable_http_503", "service_unavailable"),
+    ("network_transient_connection_reset", "network_transient"),
+    ("task_timeout", "timeout"),
+    ("sha_mismatch", "security_violation"),
+])
+def test_failure_reason_maps_to_expected_recovery_category(reason, expected):
+    assert _category({"status": "FAIL", "failure_reason": reason}) == expected
 
 
 def test_verified_pass_is_recorded_and_resets_streak(tmp_path):
