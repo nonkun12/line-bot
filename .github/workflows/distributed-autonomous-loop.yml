@@ -315,6 +315,57 @@ jobs:
           fi
           exit "$loop_rc"
 
+      - name: Record loop outcomes in Recovery AI
+        if: always() && steps.run_task.conclusion != 'skipped'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.recovery_ai_loop_adapter import record_loop_outcome
+
+          results_path = Path('/tmp/minimal-autonomous-loop.jsonl')
+          state_path = Path('/tmp/recovery-ai-state.json')
+          if not results_path.is_file():
+              raise SystemExit('loop result evidence is missing; refusing Recovery AI update')
+          if not state_path.is_file():
+              raise SystemExit('Recovery AI state is missing; refusing loop outcome update')
+
+          rows = []
+          for line_number, line in enumerate(results_path.read_text(encoding='utf-8').splitlines(), 1):
+              if not line.strip():
+                  continue
+              try:
+                  row = json.loads(line)
+              except json.JSONDecodeError as exc:
+                  raise SystemExit(f'invalid loop result JSON at line {line_number}') from exc
+              if not isinstance(row, dict):
+                  raise SystemExit(f'invalid loop result record at line {line_number}')
+              rows.append(row)
+
+          for row in rows:
+              outcome = record_loop_outcome(state_path, row)
+              print(json.dumps({
+                  'task_id': row.get('task_id', ''),
+                  'status': row.get('status', ''),
+                  'recovery_recorded': outcome.get('recorded', False),
+                  'recovery_reason': outcome.get('reason', ''),
+                  'decision_action': outcome.get('decision', {}).get('action', ''),
+              }, sort_keys=True))
+
+          # Verify every task outcome was recorded or explicitly identified as a
+          # synthetic non-task record; then re-read the JSON state before persistence.
+          state = json.loads(state_path.read_text(encoding='utf-8'))
+          if (not isinstance(state, dict) or state.get('schema_version') != 1
+                  or not isinstance(state.get('tasks'), dict) or 'checkpoint' not in state):
+              raise SystemExit('Recovery AI state read-back validation failed')
+          for row in rows:
+              task_id = str(row.get('task_id', '')).strip()
+              if task_id and task_id not in state['tasks']:
+                  raise SystemExit('Recovery AI task read-back missing')
+          print('Recovery AI loop outcome state read-back verified.')
+          PY
+
       - name: Persist task failure counters and holds
         id: persist_task_health
         if: always() && steps.run_task.conclusion != 'skipped'
