@@ -18,6 +18,7 @@
     "router-regression-stock-jobs-priority",
     "router-regression-market-channel-metadata",
     "macos-readiness-audit-no-secret-leak",
-    "router-regression-general-request-metadata"
+    "router-regression-general-request-metadata",
+    "recovery-ai-loop-adapter-durable-state-readback"
   ]
 }
