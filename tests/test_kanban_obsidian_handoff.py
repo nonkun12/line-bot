@@ -90,7 +90,8 @@ def test_payload_is_sanitized_and_fixed_vault_destination_is_used(client):
     response = client.post("/api/obsidian/kanban-result", json=payload, headers=HEADERS)
     assert response.status_code == 202
     job = db.get_job(response.get_json()["job_id"])
-    assert "SECRET=value" in job["message"]
+    assert "SECRET=value" not in job["message"]
+    assert "SECRET=[REDACTED]" in job["message"]
     assert "\n" not in job["message"]
     assert "LINE-Inbox.md" in job["message"]
     assert "user_id" not in json.dumps(response.get_json())
