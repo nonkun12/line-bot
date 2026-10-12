@@ -69,3 +69,58 @@ def test_fallback_safe_target_prefers_management_router_test():
 
 def test_fallback_safe_target_returns_none_without_preferred_targets():
     assert runtime._fallback_safe_target(["core/example.py"]) is None
+
+def _assert_quality_agent_receives_task_context(monkeypatch, role, instruction):
+    from core.multi_agent import AgentRole, AgentTask
+
+    captured = {}
+
+    def fake_build_plan(client, prompt, chosen, context, test_output):
+        captured["prompt"] = prompt
+        captured["test_output"] = test_output
+        return {
+            "no_change": False,
+            "changes": [{"file": chosen, "old": "old", "new": "new"}],
+        }
+
+    monkeypatch.setattr(worker, "build_plan", fake_build_plan)
+    monkeypatch.setattr(worker, "validate_plan", lambda plan, chosen: (True, chosen))
+    monkeypatch.setattr(worker, "context_for", lambda chosen: "target context")
+    monkeypatch.setattr(worker, "restore", lambda touched: None)
+    monkeypatch.setattr(worker, "apply_plan", lambda plan: (True, "applied", ["tests/example.py"]))
+
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Original user request",
+        chosen="tests/example.py",
+        touched=["tests/example.py"],
+        test_output="STALE TEST OUTPUT",
+    )
+    task = AgentTask(
+        "quality-context-test",
+        role,
+        instruction,
+        frozenset({"tests/example.py"}),
+    )
+
+    result = runtime.DevelopmentExecutor(state).execute(task)
+
+    assert result.success
+    assert instruction in captured["prompt"]
+    assert "Original user request" in captured["prompt"]
+    assert instruction in captured["test_output"]
+
+
+def test_debugger_receives_reviewer_failure_context(monkeypatch):
+    from core.multi_agent import AgentRole
+
+    failure = "Reviewer failure: missing edge-case handling"
+    _assert_quality_agent_receives_task_context(monkeypatch, AgentRole.DEBUGGER, failure)
+
+
+def test_refactorer_receives_current_task_context(monkeypatch):
+    from core.multi_agent import AgentRole
+
+    instruction = "Refactor after reviewer failure: missing edge-case handling"
+    _assert_quality_agent_receives_task_context(monkeypatch, AgentRole.REFACTORER, instruction)
+
