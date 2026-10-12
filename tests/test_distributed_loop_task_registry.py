@@ -79,6 +79,36 @@ def test_recovery_readback_task_plan_is_bounded_and_idempotent(monkeypatch, tmp_
     assert repeated == {"no_change": True, "source": "deterministic_autonomous_task"}
 
 
+def test_recovery_state_isolation_task_plan_is_bounded_and_idempotent(monkeypatch, tmp_path) -> None:
+    task_id = "loop-test-recovery-state-isolation"
+    target = "tests/test_minimal_autonomous_loop.py"
+    target_path = tmp_path / target
+    target_path.parent.mkdir(parents=True)
+    anchor = '    assert json.loads(lines[0])["task_id"] == "t1"\n'
+    original = anchor
+    target_path.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, error = runtime._deterministic_autonomous_test_plan(target, task_id=task_id)
+
+    assert error is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert plan["no_change"] is False
+    assert len(plan["changes"]) == 1
+    change = plan["changes"][0]
+    assert change["file"] == target
+    assert change["old"] == anchor
+    assert "test_main_halts_after_first_failure_persists_recovery_state" in change["new"]
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, target, "exec")
+
+    target_path.write_text(candidate, encoding="utf-8")
+    repeated, repeated_error = runtime._deterministic_autonomous_test_plan(target, task_id=task_id)
+    assert repeated_error is None
+    assert repeated == {"no_change": True, "source": "deterministic_autonomous_task"}
+
+
 def test_queue_ids_are_unique_and_all_targets_match_the_registry() -> None:
     root = runtime.worker.ROOT
     queue = json.loads((root / ".github" / "autonomous-loop-tasks.json").read_text(encoding="utf-8"))
