@@ -44,3 +44,44 @@ def test_synthetic_timeout_records_measurable_recovery_duration(tmp_path):
     assert metrics["repair_execution_seconds"] >= 0
     assert metrics["measured_monotonic_seconds"] >= 0
     assert metrics["failure_at"] <= metrics["repair_started_at"] <= metrics["recovered_at"]
+
+
+
+def test_adapter_failure_to_verified_success_duration(tmp_path):
+    """Exercise the real adapter boundary with isolated state and a bounded retry."""
+    from time import sleep
+
+    from scripts.recovery_ai_loop_adapter import record_loop_outcome
+
+    path = tmp_path / "adapter-recovery-state.json"
+    started = monotonic()
+    failure_at = _iso_now()
+    failed_payload = {
+        "task_id": "adapter-fault-test",
+        "status": "TIMEOUT",
+        "exit_code": 1,
+        "failure_reason": "task_timeout",
+    }
+    failed = record_loop_outcome(path, failed_payload)
+    assert failed["recorded"] is True
+    assert failed["decision"]["action"] == "REPAIR_ONCE"
+
+    # Simulate the caller's single bounded retry; no worker, shell, or production
+    # service is invoked. The success is accepted only with fresh run identity.
+    sleep(0.02)
+    success_at = _iso_now()
+    succeeded = record_loop_outcome(path, {
+        "task_id": "adapter-fault-test",
+        "status": "PASS",
+        "exit_code": 0,
+        "failure_reason": "",
+        "base_sha": "a" * 40,
+        "produced_sha": "b" * 40,
+        "run_nonce": "c" * 32,
+    })
+    elapsed = round(monotonic() - started, 6)
+
+    assert succeeded == {"recorded": True, "status": "PASS", "verified": True}
+    assert RecoveryStore(path).task_status("adapter-fault-test")["consecutive_failures"] == 0
+    assert elapsed >= 0.02
+    assert elapsed_seconds(failure_at, success_at) >= 0
