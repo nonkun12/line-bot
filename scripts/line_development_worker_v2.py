@@ -449,17 +449,29 @@ def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
             outputs.append(compile_result.stderr)
         if compile_result.returncode != 0:
             return False, "\n".join(outputs)[-8000:]
-    # The per-task allowlist constrains the development worker's target selection.
-    # Do not leak that scoped manifest into the full pytest subprocess: tests may
-    # exercise repo_files() against temporary tracked-file fixtures. Restore it
-    # in the parent process immediately after pytest returns, including exceptions.
+    # Runtime task context constrains the worker, not the independent full test
+    # suite. Tests must not inherit the current task identity/prompt/allowlist:
+    # repo_files() may be tested against temporary fixtures, and test subprocesses
+    # should never inherit the task's prompt or summary path. Restore all values
+    # in the parent process even when pytest raises or times out.
+    task_scoped_names = (
+        "AUTONOMOUS_ALLOWED_PATHS",
+        "AUTONOMOUS_TASK_ID",
+        "AUTONOMOUS_SUMMARY_PATH",
+        "AUTONOMOUS_RUN_NONCE",
+        "AUTONOMOUS_RUN_SOURCE",
+        "DEV_INSTRUCTION",
+    )
     missing = object()
-    task_scope = os.environ.pop("AUTONOMOUS_ALLOWED_PATHS", missing)
+    task_scope = {name: os.environ.pop(name, missing) for name in task_scoped_names}
     try:
         tests = run([sys.executable, "-m", "pytest", "-q", "--tb=native"], timeout=900)
     finally:
-        if task_scope is not missing:
-            os.environ["AUTONOMOUS_ALLOWED_PATHS"] = task_scope
+        for name, value in task_scope.items():
+            if value is missing:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
     outputs.append("full pytest:")
     outputs.extend([tests.stdout, tests.stderr])
     return tests.returncode == 0, "\n".join(outputs)[-8000:]
