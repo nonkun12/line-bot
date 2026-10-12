@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 
 from scripts.recovery_ai import RecoveryStore
@@ -29,7 +30,9 @@ def main() -> int:
                 "exit_code": 1,
                 "failure_reason": "network_transient",
             }
+            started = time.perf_counter()
             outcome = record_loop_outcome(state_path, synthetic_result)
+            elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
             state = RecoveryStore(state_path)._read()
             task_state = state["tasks"].get("fm-smoke-test", {})
             advisor = outcome.get("apple_advisor", {})
@@ -46,6 +49,7 @@ def main() -> int:
             print(json.dumps({
                 "checks": checks,
                 "advisor_reason": advisor.get("reason", "missing"),
+                "end_to_end_elapsed_ms": elapsed_ms,
                 "decision_action": decision.get("action", "missing"),
                 "live_queue_touched": False,
                 "patch_or_deploy_performed": False,
