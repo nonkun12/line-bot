@@ -46,9 +46,9 @@ def test_valid_json_advice_is_returned_as_advisory_only(tmp_path, monkeypatch):
 @pytest.mark.parametrize(("body", "reason"), [
     ("import sys; sys.exit(3)", "fm_nonzero_exit"),
     ("print('not json')", "fm_output_not_json"),
-    ("print('{\\"advice\\": \\"x\\", \\"decision\\": \\"PASS\\"}')", "fm_output_schema_invalid"),
-    ("print('{\\"advice\\": \\"\\"}')", "fm_advice_invalid"),
-    ("print('{\\"advice\\": \\"' + 'x' * 501 + '\\"}')", "fm_advice_invalid"),
+    ("import json; print(json.dumps({\"advice\": \"x\", \"decision\": \"PASS\"}))", "fm_output_schema_invalid"),
+    ("import json; print(json.dumps({\"advice\": \"\"}))", "fm_advice_invalid"),
+    ("import json; print(json.dumps({\"advice\": \"x\" * 501}))", "fm_advice_invalid"),
     ("print('x' * 2000)", "fm_output_invalid"),
     ("", "fm_output_invalid"),
 ])
