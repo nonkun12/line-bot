@@ -10,9 +10,17 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import time
 from pathlib import Path
+
+# Direct script execution puts scripts/ rather than the repository root at
+# sys.path[0]. Add the root explicitly so `from scripts...` works in a clean
+# checkout and in a detached Git worktree.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.recovery_ai import RecoveryStore
 from scripts.recovery_ai_loop_adapter import record_loop_outcome
