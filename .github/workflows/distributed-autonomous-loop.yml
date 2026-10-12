@@ -155,7 +155,7 @@ jobs:
                   or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
               raise SystemExit('durable Recovery AI state is invalid; refusing to run')
           Path('/tmp/recovery-ai-state.json').write_text(
-              json.dumps(recovery, ensure_ascii=False, sort_keys=True) + '\\n', encoding='utf-8'
+              json.dumps(recovery, ensure_ascii=False, sort_keys=True) + '\n', encoding='utf-8'
           )
           PY
 
@@ -353,7 +353,7 @@ jobs:
               raise SystemExit('Recovery AI schema is invalid')
           data['recovery_ai'] = recovery
           data['version'] = 1
-          state_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\\n', encoding='utf-8')
+          state_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
           PY
           git -C /tmp/recovery-ai-state-worktree config user.name "github-actions[bot]"
           git -C /tmp/recovery-ai-state-worktree config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -494,6 +494,7 @@ jobs:
           LOOP_OUTCOME: ${{ steps.run_task.outcome }}
           PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
           STATE_OUTCOME: ${{ steps.persist_state.outcome }}
+          RECOVERY_OUTCOME: ${{ steps.persist_recovery_ai.outcome }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -531,6 +532,7 @@ jobs:
           run_outcome = os.getenv('LOOP_OUTCOME', '')
           publish = os.getenv('PUBLISH_OUTCOME', '')
           state = os.getenv('STATE_OUTCOME', '')
+          recovery = os.getenv('RECOVERY_OUTCOME', '')
 
           not_run = os.path.exists('/tmp/autonomous-loop-not-run')
           held_tasks = os.path.exists('/tmp/autonomous-loop-held-tasks')
@@ -558,7 +560,7 @@ jobs:
               os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'BLOCKED'
           else:
               os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'PASS' if publish == 'success' else ('NOT_RUN' if publish == 'skipped' else 'FAIL')
-              os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'PASS' if status in {'PASS', 'NO_CHANGE'} and run_outcome == 'success' and publish == 'success' and state == 'success' else 'BLOCKED'
+              os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'PASS' if status in {'PASS', 'NO_CHANGE'} and run_outcome == 'success' and publish == 'success' and state == 'success' and recovery == 'success' else 'BLOCKED'
           os.environ['AUTONOMOUS_MERGE_RESULT'] = 'NOT_AUTO_MERGED'
           reason = str(result.get('failure_reason') or '')
           if held_tasks:
@@ -620,6 +622,7 @@ jobs:
           LOOP_OUTCOME: ${{ steps.run_task.outcome }}
           PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
           STATE_OUTCOME: ${{ steps.persist_state.outcome }}
+          RECOVERY_OUTCOME: ${{ steps.persist_recovery_ai.outcome }}
           SHEETS_OUTCOME: ${{ steps.sheets.outcome }}
           JOB_STATUS: ${{ job.status }}
           PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event_name == 'pull_request_target' && github.event.pull_request.number || '' }}
@@ -670,6 +673,7 @@ jobs:
               publish_outcome=os.getenv("PUBLISH_OUTCOME", ""),
               state_outcome=os.getenv("STATE_OUTCOME", ""),
               sheets_outcome=os.getenv("SHEETS_OUTCOME", ""),
+              recovery_outcome=os.getenv("RECOVERY_OUTCOME", ""),
               queue_empty=Path("/tmp/autonomous-loop-not-run").exists(),
               all_tasks_held=Path("/tmp/autonomous-loop-held-tasks").exists(),
               requested_tasks=int(os.getenv("REQUESTED_TASKS", "4")),
@@ -697,6 +701,7 @@ jobs:
             echo "- Task実行: ${LOOP_OUTCOME:-not_run}"
             echo "- Publish: ${PUBLISH_OUTCOME:-not_run}"
             echo "- State: ${STATE_OUTCOME:-not_run}"
+            echo "- Recovery AI state: ${RECOVERY_OUTCOME:-not_run}"
             echo "- Sheets: ${SHEETS_OUTCOME:-not_run}"
             echo "- Job: ${JOB_STATUS:-unknown}"
             echo "- Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
