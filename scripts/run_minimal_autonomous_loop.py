@@ -35,6 +35,7 @@ def classify_final_outcome(
     state_outcome: str,
     sheets_outcome: str,
     queue_empty: bool = False,
+    all_tasks_held: bool = False,
     requested_tasks: int | None = None,
     queue_completed: int | None = None,
     queue_total: int | None = None,
@@ -55,6 +56,21 @@ def classify_final_outcome(
         if failed_gates:
             return "BLOCKED", "queue_empty_post_run_gate_failed:" + ",".join(failed_gates)
         return "NOT_RUN", "queue_empty"
+
+    if all_tasks_held:
+        if task_statuses != ["BLOCKED"] or loop_outcome != "success":
+            return "BLOCKED", "held_queue_evidence_mismatch"
+        failed_gates = [
+            name for name, outcome in (
+                ("publish", publish_outcome),
+                ("state", state_outcome),
+                ("sheets", sheets_outcome),
+            )
+            if outcome != "success"
+        ]
+        if failed_gates:
+            return "BLOCKED", "held_queue_post_run_gate_failed:" + ",".join(failed_gates)
+        return "BLOCKED", "all_pending_tasks_held"
 
     if not task_statuses:
         return "BLOCKED", "missing_task_evidence"
