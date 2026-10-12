@@ -99,7 +99,7 @@ def test_recovery_state_isolation_task_plan_is_bounded_and_idempotent(monkeypatc
     change = plan["changes"][0]
     assert change["file"] == target
     assert change["old"] == anchor
-    assert "test_main_halts_after_first_failure_persists_recovery_state" in change["new"]
+    assert 'RecoveryStore(tmp_path / "recovery-ai-state.json")' in change["new"]
     candidate = original.replace(change["old"], change["new"], 1)
     compile(candidate, target, "exec")
 
