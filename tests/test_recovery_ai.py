@@ -62,6 +62,8 @@ def test_failure_streak_resets_only_after_verified_success(tmp_path):
     status = store.task_status("task-a")
     assert status["consecutive_failures"] == 0
     assert "last_success_at" in status
+    assert status["last_recovery_seconds"] >= 0
+    assert status["updated_at"] == status["last_success_at"]
 
 
 def test_checkpoint_must_be_verified_and_is_resumable(tmp_path):
