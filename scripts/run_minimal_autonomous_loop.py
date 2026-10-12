@@ -19,6 +19,11 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Running this file as `python scripts/run_minimal_autonomous_loop.py` puts
+# scripts/ (not the repository root) at sys.path[0]. Add ROOT explicitly so
+# fail-closed Recovery AI imports work in GitHub Actions and local invocations.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 QUEUE = ROOT / ".github" / "autonomous-loop-tasks.json"
 DEFAULT_STOP_FILE = Path("/tmp/line-bot-autonomous-loop.stop")
 ACTIVE_PROCESS: subprocess.Popen[str] | None = None
