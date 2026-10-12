@@ -27,6 +27,20 @@ def test_timeout_is_bounded_repair_decision_and_does_not_execute_repair(tmp_path
     assert result["decision"]["reason"] == "bounded_repair_attempt"
 
 
+def test_failure_record_survives_new_store_readback(tmp_path):
+    path = tmp_path / "recovery.json"
+    result = record_loop_outcome(path, {
+        "task_id": "recovery-readback-task", "status": "FAIL", "exit_code": 1,
+        "failure_reason": "task_timeout",
+    })
+    assert result["decision"]["action"] == "REPAIR_ONCE"
+    reopened = RecoveryStore(path)
+    status = reopened.task_status("recovery-readback-task")
+    assert status["consecutive_failures"] == 1
+    assert status["last_category"] == "timeout"
+    assert status["same_fingerprint_attempts"] == 1
+
+
 def test_invalid_evidence_holds_for_human_review(tmp_path):
     result = record_loop_outcome(tmp_path / "recovery.json", {
         "task_id": "task-a", "status": "FAIL", "exit_code": 1,
