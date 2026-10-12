@@ -1039,8 +1039,8 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     if task_id == "loop-test-recovery-state-isolation" and chosen == "tests/test_minimal_autonomous_loop.py":
         target = worker.ROOT / chosen
         text = target.read_text(encoding="utf-8")
-        name = "test_main_halts_after_first_failure_persists_recovery_state"
-        if f"def {name}(" in text:
+        marker = 'RecoveryStore(tmp_path / "recovery-ai-state.json")'
+        if marker in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
         old = '    assert json.loads(lines[0])["task_id"] == "t1"\n'
         count = text.count(old)
