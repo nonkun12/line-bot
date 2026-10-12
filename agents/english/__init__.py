@@ -8,3 +8,7 @@ from agents.english_agent import EnglishLearningAgent, agent, build_english_resp
 from .node import english_learning_agent_node
 
 __all__ = ["EnglishLearningAgent", "agent", "build_english_responder", "english_learning_agent_node"]
+
+def get_default_agent():
+    """Return a new instance of the default EnglishLearningAgent."""
+    return EnglishLearningAgent()
