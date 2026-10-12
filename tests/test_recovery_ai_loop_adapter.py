@@ -12,7 +12,8 @@ def test_verified_pass_is_recorded_and_resets_streak(tmp_path):
     store = RecoveryStore(path)
     store.record_failure("task-a", "timeout")
     result = record_loop_outcome(path, {
-        "task_id": "task-a", "status": "PASS", "exit_code": 0, "failure_reason": ""
+        "task_id": "task-a", "status": "PASS", "exit_code": 0, "failure_reason": "",
+        "base_sha": "a" * 40, "produced_sha": "b" * 40, "run_nonce": "c" * 32
     })
     assert result == {"recorded": True, "status": "PASS", "verified": True}
     assert store.task_status("task-a")["consecutive_failures"] == 0
@@ -50,12 +51,24 @@ def test_queue_summary_without_task_id_is_not_recorded(tmp_path):
     }) == {"recorded": False, "reason": "no_task_id"}
 
 
+def test_success_without_current_run_identity_is_held(tmp_path):
+    path = tmp_path / "recovery.json"
+    result = record_loop_outcome(path, {
+        "task_id": "task-a", "status": "PASS", "exit_code": 0, "failure_reason": ""
+    })
+    assert result["recorded"] is True
+    assert result["decision"]["action"] == "HOLD"
+    assert result["decision"]["requires_human"] is True
+    assert RecoveryStore(path).task_status("task-a")["consecutive_failures"] == 1
+
+
 def test_verified_no_change_is_success_not_a_failure(tmp_path):
     path = tmp_path / "recovery.json"
     store = RecoveryStore(path)
     store.record_failure("task-a", "timeout")
     result = record_loop_outcome(path, {
-        "task_id": "task-a", "status": "NO_CHANGE", "exit_code": 0, "failure_reason": "no_change"
+        "task_id": "task-a", "status": "NO_CHANGE", "exit_code": 0, "failure_reason": "no_change",
+        "base_sha": "a" * 40, "produced_sha": "a" * 40, "run_nonce": "b" * 32
     })
     assert result == {"recorded": True, "status": "NO_CHANGE", "verified": True}
     assert store.task_status("task-a")["consecutive_failures"] == 0
