@@ -183,9 +183,16 @@ class RecoveryStore:
             return
         if record.get("held") is True:
             raise ValueError("held task requires explicit resume before success can reset state")
+        resumed_at = utc_now()
+        failure_at = record.get("updated_at")
+        if isinstance(failure_at, str):
+            # Measure failure-recorded -> verified-success time; this is not wall-clock
+            # outage duration unless the caller's failure timestamp represents onset.
+            record["last_recovery_seconds"] = elapsed_seconds(failure_at, resumed_at)
         record["consecutive_failures"] = 0
         record["same_fingerprint_attempts"] = 0
-        record["last_success_at"] = utc_now()
+        record["last_success_at"] = resumed_at
+        record["updated_at"] = resumed_at
         self._write(data)
 
     def save_checkpoint(self, task_id: str, checkpoint_id: str, *, verified: bool) -> None:
