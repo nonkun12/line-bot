@@ -186,9 +186,14 @@ class RecoveryStore:
         resumed_at = utc_now()
         failure_at = record.get("updated_at")
         if isinstance(failure_at, str):
-            # Measure failure-recorded -> verified-success time; this is not wall-clock
-            # outage duration unless the caller's failure timestamp represents onset.
-            record["last_recovery_seconds"] = elapsed_seconds(failure_at, resumed_at)
+            # Measure last-failure-recorded -> verified-success time; this is not wall-clock
+            # outage duration (updated_at is refreshed on every failure).
+            # Duration is observability only: skewed or malformed timestamps must never
+            # block recording a verified success.
+            try:
+                record["last_recovery_seconds"] = elapsed_seconds(failure_at, resumed_at)
+            except ValueError:
+                record["last_recovery_seconds"] = None
         record["consecutive_failures"] = 0
         record["same_fingerprint_attempts"] = 0
         record["last_success_at"] = resumed_at
