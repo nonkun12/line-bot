@@ -148,3 +148,47 @@ def test_failed_recovery_state_persistence_blocks_final_completion():
         sheets_outcome="success",
         recovery_outcome="failure",
     ) == ("FAILED", "post_run_gate_failed:recovery_ai_persistence")
+
+
+def test_pass_with_unchanged_sha_is_rejected_as_invalid_evidence(tmp_path):
+    payload = {
+        "task_id": "task-same-sha",
+        "status": "PASS",
+        "exit_code": 0,
+        "failure_reason": "",
+        "base_sha": "a" * 40,
+        "produced_sha": "a" * 40,
+        "run_nonce": "c" * 32,
+    }
+    outcome = record_loop_outcome(tmp_path / "recovery.json", payload)
+    assert outcome["status"] == "FAIL"
+    assert payload["status"] == "FAIL"
+    assert payload["failure_reason"] == "recovery_ai_invalid_evidence"
+
+
+def test_task_runtime_failed_is_classified_as_test_regression(tmp_path):
+    outcome = record_loop_outcome(tmp_path / "recovery.json", {
+        "task_id": "task-runtime-failure",
+        "status": "FAIL",
+        "exit_code": 1,
+        "failure_reason": "task_runtime_failed",
+    })
+    assert outcome["decision"]["action"] == "REPAIR_ONCE"
+    assert outcome["decision"]["reason"] == "bounded_repair_attempt"
+
+
+def test_kill_switch_stop_does_not_increment_failure_counter(tmp_path):
+    path = tmp_path / "recovery.json"
+    store = RecoveryStore(path)
+    store.record_failure("task-stopped", "timeout")
+    before = store.task_status("task-stopped")["consecutive_failures"]
+
+    outcome = record_loop_outcome(path, {
+        "task_id": "task-stopped",
+        "status": "STOPPED",
+        "exit_code": 78,
+        "failure_reason": "kill_switch",
+    })
+
+    assert outcome == {"recorded": False, "status": "STOPPED", "reason": "intentional_stop"}
+    assert store.task_status("task-stopped")["consecutive_failures"] == before
