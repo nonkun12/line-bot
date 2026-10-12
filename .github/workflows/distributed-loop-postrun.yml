@@ -112,7 +112,7 @@ jobs:
           issues = []
           if conclusion != "success":
               issues.append(f"Loop workflow conclusion is {conclusion}.")
-          if queue_empty and len(empty_rows) != len(tasks):
+          if exact_empty_reason and not queue_empty:
               issues.append("Queue-empty report conflicts with task result evidence.")
           if all_tasks_held:
               issues.append("All pending tasks are held; manual review is required before resuming.")
