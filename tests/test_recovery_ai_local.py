@@ -18,12 +18,21 @@ class FakeStore:
         )
         self.error = error
         self.calls = []
+        self.last_category = None
 
     def record_failure(self, task_id, category, failing_tests, *, transient_attempt=1):
         self.calls.append((task_id, category, tuple(failing_tests), transient_attempt))
         if self.error:
             raise self.error
+        self.last_category = category
         return self.decision
+
+    def task_status(self, task_id):
+        return {
+            "last_category": self.last_category,
+            "last_fingerprint": self.decision.fingerprint,
+            "consecutive_failures": self.decision.consecutive_failures,
+        }
 
 
 def test_opt_in_advisor_adds_advice_without_changing_decision(monkeypatch):
@@ -123,3 +132,20 @@ def test_failing_test_iterable_is_materialized_once(monkeypatch):
     assert store.calls[0][2] == ("tests/test_example.py",)
     assert observed == ["tests/test_example.py"]
     assert result.decision is store.decision
+
+
+def test_state_readback_failure_stops_before_advisor(monkeypatch):
+    store = FakeStore()
+    monkeypatch.setattr(
+        store, "task_status",
+        lambda _task_id: {"last_category": "timeout", "last_fingerprint": "wrong", "consecutive_failures": 1},
+    )
+    monkeypatch.setattr(
+        recovery_ai_local, "advise",
+        lambda *args: pytest.fail("must not call advisor before verified state read-back"),
+    )
+
+    with pytest.raises(RecoveryStateError, match="read-back"):
+        recovery_ai_local.record_failure_with_local_advice(
+            store, "task-1", "timeout", advisor_enabled=True
+        )
