@@ -49,6 +49,36 @@ def test_new_queue_task_rejects_an_unapproved_target() -> None:
     assert error == "deterministic_target_mismatch"
 
 
+def test_recovery_readback_task_plan_is_bounded_and_idempotent(monkeypatch, tmp_path) -> None:
+    task_id = "recovery-ai-loop-adapter-durable-state-readback"
+    target = "tests/test_recovery_ai_loop_adapter.py"
+    target_path = tmp_path / target
+    target_path.parent.mkdir(parents=True)
+    anchor = "def test_invalid_evidence_holds_for_human_review(tmp_path):\n"
+    original = anchor + "    pass\n"
+    target_path.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, error = runtime._deterministic_autonomous_test_plan(target, task_id=task_id)
+
+    assert error is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert plan["no_change"] is False
+    assert len(plan["changes"]) == 1
+    change = plan["changes"][0]
+    assert change["file"] == target
+    assert change["old"] == anchor
+    assert "test_failure_record_survives_new_store_readback" in change["new"]
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, target, "exec")
+
+    target_path.write_text(candidate, encoding="utf-8")
+    repeated, repeated_error = runtime._deterministic_autonomous_test_plan(target, task_id=task_id)
+    assert repeated_error is None
+    assert repeated == {"no_change": True, "source": "deterministic_autonomous_task"}
+
+
 def test_queue_ids_are_unique_and_all_targets_match_the_registry() -> None:
     root = runtime.worker.ROOT
     queue = json.loads((root / ".github" / "autonomous-loop-tasks.json").read_text(encoding="utf-8"))
