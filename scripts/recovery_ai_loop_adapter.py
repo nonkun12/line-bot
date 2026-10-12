@@ -1,15 +1,17 @@
 """Bridge sanitized distributed-loop results into deterministic Recovery AI.
 
-This adapter records decisions only. It never reruns tasks, applies patches, or
-changes the existing loop's fail-closed stop behavior.
+The optional Apple advisor is called only after a failure is durably recorded and
+read back. It adds text-only diagnostics; it never changes the deterministic
+decision or the loop's exit status. Hosted Actions keep the opt-in disabled.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from scripts.recovery_ai import RecoveryStore
+from scripts.recovery_ai import RecoveryStateError, RecoveryStore
 
 
 def _category(result: dict[str, Any]) -> str:
@@ -26,6 +28,21 @@ def _category(result: dict[str, Any]) -> str:
     if any(token in reason for token in ("crash", "process")):
         return "process_crash"
     return "unknown"
+
+
+def _optional_local_advice(task_id: str, category: str) -> dict[str, Any]:
+    """Call fm only on explicit local opt-in; return advisory metadata, never control."""
+    if os.environ.get("RECOVERY_AI_APPLE_ADVISOR") != "1":
+        return {"available": False, "reason": "advisor_not_enabled"}
+    if category == "state_persistence_failure":
+        return {"available": False, "reason": "state_persistence_failure"}
+    try:
+        from scripts.apple_foundation_models_advisor import advise
+        result = advise(task_id, category)
+        return {"available": result.available, "advice": result.advice, "reason": result.reason}
+    except Exception:
+        # The optional model must never change the deterministic decision or halt policy.
+        return {"available": False, "reason": "advisor_unexpected_error"}
 
 
 def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[str, Any]:
@@ -48,5 +65,17 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
     if verified_success:
         store.record_success(task_id, verified=True)
         return {"recorded": True, "status": status, "verified": True}
-    decision = store.record_failure(task_id, _category(result), ())
-    return {"recorded": True, "status": status, "decision": asdict(decision)}
+
+    category = _category(result)
+    decision = store.record_failure(task_id, category, ())
+    persisted = store.task_status(task_id)
+    if (
+        persisted.get("last_category") != category
+        or persisted.get("last_fingerprint") != decision.fingerprint
+        or persisted.get("consecutive_failures") != decision.consecutive_failures
+    ):
+        raise RecoveryStateError("recovery state read-back verification failed")
+    output = {"recorded": True, "status": status, "decision": asdict(decision)}
+    # Advisory is deliberately last: durable deterministic state is the gate.
+    output["apple_advisor"] = _optional_local_advice(task_id, category)
+    return output
