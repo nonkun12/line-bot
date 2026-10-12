@@ -91,13 +91,13 @@ jobs:
           )
           # Empty queue is an expected no-work outcome, not missing task evidence.
           # Match the exact reason marker produced by the trusted source workflow.
-          queue_empty = any(
-    marker in original_report
-    for marker in (
-        "- 結果理由: queue_empty",
-        "- 結果理由: queue_exhausted_no_tasks",  # legacy report format
-    )
-)
+                    queue_empty = any(
+              marker in original_report
+              for marker in (
+                  "- 結果理由: queue_empty",
+                  "- 結果理由: queue_exhausted_no_tasks",  # legacy report format
+              )
+          )
           issues = []
           if conclusion != "success":
               issues.append(f"Loop workflow conclusion is {conclusion}.")
