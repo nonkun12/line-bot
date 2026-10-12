@@ -1,6 +1,4 @@
 """Regression tests for the distributed-loop Recovery AI adapter."""
-import json
-
 import pytest
 
 from scripts.recovery_ai import RecoveryStateError, RecoveryStore
@@ -18,15 +16,18 @@ def test_verified_pass_is_recorded_and_resets_streak(tmp_path):
     assert store.task_status("task-a")["consecutive_failures"] == 0
 
 
-def test_timeout_is_bounded_repair_decision_and_does_not_execute_repair(tmp_path):
+def test_timeout_is_bounded_repair_decision_and_does_not_execute_repair(tmp_path, monkeypatch):
+    monkeypatch.delenv("RECOVERY_AI_APPLE_ADVISOR", raising=False)
     result = record_loop_outcome(tmp_path / "recovery.json", {
         "task_id": "task-a", "status": "TIMEOUT", "exit_code": 1, "failure_reason": "task_timeout"
     })
     assert result["decision"]["action"] == "REPAIR_ONCE"
     assert result["decision"]["reason"] == "bounded_repair_attempt"
+    assert result["apple_advisor"] == {"available": False, "reason": "advisor_not_enabled"}
 
 
-def test_invalid_evidence_holds_for_human_review(tmp_path):
+def test_invalid_evidence_holds_for_human_review(tmp_path, monkeypatch):
+    monkeypatch.delenv("RECOVERY_AI_APPLE_ADVISOR", raising=False)
     result = record_loop_outcome(tmp_path / "recovery.json", {
         "task_id": "task-a", "status": "FAIL", "exit_code": 1,
         "failure_reason": "summary_test_evidence_missing_or_invalid"
@@ -59,3 +60,43 @@ def test_verified_no_change_is_success_not_a_failure(tmp_path):
     })
     assert result == {"recorded": True, "status": "NO_CHANGE", "verified": True}
     assert store.task_status("task-a")["consecutive_failures"] == 0
+
+
+def test_opt_in_calls_advisor_after_persist_and_keeps_decision(monkeypatch, tmp_path):
+    import scripts.apple_foundation_models_advisor as advisor
+
+    calls = []
+    monkeypatch.setenv("RECOVERY_AI_APPLE_ADVISOR", "1")
+    monkeypatch.setattr(advisor, "advise", lambda task_id, category: (
+        calls.append((task_id, category)) or advisor.AdvisorResult(True, "Inspect timeout boundary", "advisory_only")
+    ))
+    path = tmp_path / "recovery.json"
+    result = record_loop_outcome(path, {
+        "task_id": "task-a", "status": "TIMEOUT", "exit_code": 1, "failure_reason": "task_timeout"
+    })
+    assert calls == [("task-a", "timeout")]
+    assert result["decision"]["action"] == "REPAIR_ONCE"
+    assert result["apple_advisor"] == {
+        "available": True, "advice": "Inspect timeout boundary", "reason": "advisory_only"
+    }
+    assert RecoveryStore(path).task_status("task-a")["consecutive_failures"] == 1
+
+
+def test_advisor_failure_does_not_change_deterministic_decision(monkeypatch, tmp_path):
+    import scripts.apple_foundation_models_advisor as advisor
+
+    monkeypatch.setenv("RECOVERY_AI_APPLE_ADVISOR", "1")
+    monkeypatch.setattr(advisor, "advise", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("offline")))
+    result = record_loop_outcome(tmp_path / "recovery.json", {
+        "task_id": "task-a", "status": "TIMEOUT", "exit_code": 1, "failure_reason": "task_timeout"
+    })
+    assert result["decision"]["action"] == "REPAIR_ONCE"
+    assert result["apple_advisor"] == {"available": False, "reason": "advisor_unexpected_error"}
+
+
+def test_success_never_calls_optional_advisor(monkeypatch, tmp_path):
+    monkeypatch.setenv("RECOVERY_AI_APPLE_ADVISOR", "1")
+    result = record_loop_outcome(tmp_path / "recovery.json", {
+        "task_id": "task-a", "status": "PASS", "exit_code": 0, "failure_reason": ""
+    })
+    assert result == {"recorded": True, "status": "PASS", "verified": True}
