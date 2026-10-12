@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feat/distinct-quality-agents
 
   pull_request:
     branches:
