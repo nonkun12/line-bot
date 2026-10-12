@@ -157,3 +157,19 @@ def test_recovery_state_readback_mismatch_fails_closed(monkeypatch, tmp_path):
             "failure_reason": "task_timeout",
         })
 
+def test_transient_retry_fast_path_skips_advisor_even_when_opted_in(monkeypatch, tmp_path):
+    import scripts.apple_foundation_models_advisor as advisor
+
+    calls = []
+    monkeypatch.setenv("RECOVERY_AI_APPLE_ADVISOR", "1")
+    monkeypatch.setattr(advisor, "advise", lambda *args, **kwargs: calls.append(args))
+    result = record_loop_outcome(tmp_path / "recovery.json", {
+        "task_id": "task-fast-retry", "status": "FAIL", "exit_code": 1,
+        "failure_reason": "network_transient",
+    })
+    assert result["decision"]["action"] == "RETRY"
+    assert result["apple_advisor"] == {
+        "available": False, "reason": "fast_path_no_advice_needed"
+    }
+    assert calls == []
+
