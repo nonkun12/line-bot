@@ -40,6 +40,17 @@ def record_failure_with_local_advice(
     decision = store.record_failure(
         task_id, category, tests, transient_attempt=transient_attempt
     )
+    # Verify the persisted state before any optional model call. A successful
+    # write return alone is not enough evidence that the state can be read back.
+    persisted = store.task_status(task_id)
+    if (
+        not isinstance(persisted, dict)
+        or persisted.get("last_category") != category
+        or persisted.get("last_fingerprint") != decision.fingerprint
+        or persisted.get("consecutive_failures") != decision.consecutive_failures
+    ):
+        from scripts.recovery_ai import RecoveryStateError
+        raise RecoveryStateError("recovery state read-back verification failed")
     if not advisor_enabled or category == "state_persistence_failure":
         return RecoveryAssessment(
             decision, AdvisorResult(False, reason="advisor_disabled_or_not_applicable")
