@@ -135,3 +135,16 @@ def test_held_task_classifier_fails_closed_on_post_run_gate_error():
         sheets_outcome="success",
         all_tasks_held=True,
     ) == ("BLOCKED", "held_queue_post_run_gate_failed:state")
+
+
+def test_failed_recovery_state_persistence_blocks_final_completion():
+    from scripts.run_minimal_autonomous_loop import classify_final_outcome
+
+    assert classify_final_outcome(
+        ["PASS"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        recovery_outcome="failure",
+    ) == ("FAILED", "post_run_gate_failed:recovery_ai_persistence")
