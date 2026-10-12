@@ -18,6 +18,8 @@ def _category(result: dict[str, Any]) -> str:
     status = str(result.get("status", "")).upper()
     if status == "TIMEOUT" or "timeout" in reason:
         return "timeout"
+    if "task_runtime_failed" in reason or status == "FAIL" and any(token in reason for token in ("pytest", "test_regression")):
+        return "test_regression"
     if any(token in reason for token in ("sha_mismatch", "nonce_mismatch", "outside_allowed_paths", "security")):
         return "security_violation"
     if any(token in reason for token in ("evidence", "summary_missing", "summary_invalid")):
@@ -42,6 +44,8 @@ def _has_verified_run_identity(result: dict[str, Any], status: str) -> bool:
         return False
     if status == "NO_CHANGE" and base_sha != produced_sha:
         return False
+    if status == "PASS" and base_sha == produced_sha:
+        return False
     return True
 
 
@@ -55,6 +59,10 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
         return {"recorded": False, "reason": "no_task_id"}
     store = RecoveryStore(state_path)
     status = str(result.get("status", "")).upper()
+    # An intentional kill-switch stop is not a task failure and must not consume
+    # the retry/hold budget. It is recorded as a non-failure outcome.
+    if status in {"STOPPED", "CANCELLED"}:
+        return {"recorded": False, "status": status, "reason": "intentional_stop"}
     run_identity_verified = _has_verified_run_identity(result, status)
     success_like = status in {"PASS", "NO_CHANGE"}
     if success_like and (result.get("exit_code") != 0 or not run_identity_verified):

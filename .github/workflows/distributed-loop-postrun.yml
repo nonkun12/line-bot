@@ -89,17 +89,36 @@ jobs:
               report_files[0].read_text(encoding="utf-8")[:12000]
               if report_files else ""
           )
-          # Empty queue is an expected no-work outcome, not missing task evidence.
-          # Match the exact reason marker produced by the trusted source workflow.
-          queue_empty = any(marker in original_report for marker in ("- 結果理由: queue_empty", "- 結果理由: queue_exhausted_no_tasks"))
+          # Accept an empty queue only when the report reason and the structured
+          # evidence agree exactly. Never use substring matching: BLOCKED reasons
+          # such as queue_empty_evidence_mismatch must not be treated as empty.
+          empty_rows = [
+              x for x in tasks
+              if x.get("status") == "NOT_RUN"
+              and x.get("failure_reason") == "queue_empty"
+              and x.get("exit_code") == 78
+          ]
+          exact_empty_reason = any(
+              line.strip() in {"- 結果理由: queue_empty", "- 結果理由: queue_exhausted_no_tasks"}
+              for line in original_report.splitlines()
+          )
+          queue_empty = exact_empty_reason and len(empty_rows) == 1 and len(tasks) == 1
+          all_tasks_held = any(
+              x.get("status") == "BLOCKED"
+              and x.get("failure_reason") == "all_pending_tasks_held"
+              and x.get("exit_code") == 79
+              for x in tasks
+          ) or any(line.strip() == "- 結果理由: all_pending_tasks_held" for line in original_report.splitlines())
           issues = []
           if conclusion != "success":
               issues.append(f"Loop workflow conclusion is {conclusion}.")
-          if queue_empty and tasks:
+          if exact_empty_reason and not queue_empty:
               issues.append("Queue-empty report conflicts with task result evidence.")
+          if all_tasks_held:
+              issues.append("All pending tasks are held; manual review is required before resuming.")
           if not tasks and not queue_empty:
               issues.append("Task result evidence is missing or empty.")
-          if any(s not in {"PASS", "NO_CHANGE"} for s in statuses):
+          if any(s not in {"PASS", "NO_CHANGE", "NOT_RUN", "BLOCKED"} for s in statuses) or (not queue_empty and not all_tasks_held and any(s not in {"PASS", "NO_CHANGE"} for s in statuses)):
               issues.append("One or more task results are not PASS/NO_CHANGE: " + ", ".join(statuses))
           if sheets_result not in {"RECORDED", "ALREADY_RECORDED"}:
               issues.append("Google Sheets evidence is not confirmed: " + sheets_result)
@@ -112,7 +131,7 @@ jobs:
               f"- Head SHA: {os.environ.get('HEAD_SHA', '')}",
               f"- Task count in evidence: {len(tasks)}",
               f"- Task statuses: {', '.join(statuses) if statuses else 'NO EVIDENCE'}",
-              f"- Queue state: {'QUEUE_EMPTY (no task executed)' if queue_empty else ('TASK_RESULTS_PRESENT' if tasks else 'UNKNOWN')}",
+              f"- Queue state: {'QUEUE_EMPTY (no task executed)' if queue_empty else ('ALL_PENDING_TASKS_HELD' if all_tasks_held else ('TASK_RESULTS_PRESENT' if tasks else 'UNKNOWN'))}",
               f"- Google Sheets artifact result: {sheets_result}",
               f"- Sheets artifact task ID: {sheets.get('task_id', 'unknown')}",
               "",
