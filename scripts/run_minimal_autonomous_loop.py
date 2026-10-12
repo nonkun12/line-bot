@@ -561,9 +561,36 @@ def main() -> int:
                 result["status"] = "FAIL"
                 result["exit_code"] = 1
                 result["failure_reason"] = "task_health_persist_failed"
+        recovery_error = False
+        if not health_error:
+            try:
+                # Only update Recovery AI after the loop's own health state is durable.
+                root_text = str(ROOT)
+                if root_text not in sys.path:
+                    sys.path.insert(0, root_text)
+                from scripts.recovery_ai_loop_adapter import record_loop_outcome
+                recovery_path = args.state.parent / "recovery-ai-state.json"
+                result["recovery_ai"] = record_loop_outcome(recovery_path, result)
+            except Exception:
+                # State cannot be trusted: fail closed and stop before another task.
+                recovery_error = True
+                result["status"] = "FAIL"
+                result["exit_code"] = 1
+                result["failure_reason"] = "recovery_ai_state_persist_failed"
+                result["recovery_ai"] = {"recorded": False, "reason": "state_persistence_failed"}
+        else:
+            recovery_error = True
+            result["recovery_ai"] = {"recorded": False, "reason": "task_health_state_untrusted"}
+
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(result, ensure_ascii=False) + "\n")
 
+        if recovery_error:
+            print(
+                f"MINIMAL_LOOP=HALT task={task['id']} reason=recovery_ai_state_persist_failed",
+                flush=True,
+            )
+            return 1
         if health_error:
             print(
                 f"MINIMAL_LOOP=HALT task={task['id']} reason=task_health_persist_failed",
