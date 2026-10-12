@@ -91,7 +91,7 @@ jobs:
           )
           # Empty queue is an expected no-work outcome, not missing task evidence.
           # Match the exact reason marker produced by the trusted source workflow.
-                    queue_empty = any(
+          queue_empty = any(
               marker in original_report
               for marker in (
                   "- 結果理由: queue_empty",
