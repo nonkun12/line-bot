@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from scripts.apple_foundation_models_advisor import AdvisorResult, advise
-from scripts.recovery_ai import RecoveryDecision, RecoveryStore
+from scripts.recovery_ai import FAILURE_CATEGORIES, RecoveryDecision, RecoveryStore
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,10 @@ def record_failure_with_local_advice(
     advice and cannot change the already-computed RecoveryDecision.
     """
     tests = tuple(failing_tests)
+    # Match the deterministic controller's category normalization before
+    # validating read-back; unknown categories are persisted as "unknown".
+    if not isinstance(category, str) or category not in FAILURE_CATEGORIES:
+        category = "unknown"
     decision = store.record_failure(
         task_id, category, tests, transient_attempt=transient_attempt
     )
