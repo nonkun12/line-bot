@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - fix/loop-task-health-safety
+      - feat/recovery-ai-loop-integration
   workflow_dispatch:
 
 permissions:
