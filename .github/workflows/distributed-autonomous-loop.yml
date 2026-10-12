@@ -115,6 +115,8 @@ jobs:
       SELF_IMPROVEMENT_CREATOR_CRITIC: 'false'
       DEV_USER_ID: autonomous-distributed-loop
       GITHUB_RUN_ID: ${{ github.run_id }}
+      # Let this workflow's GH_TOKEN-backed publisher perform the only remote push.
+      AUTONOMOUS_PUBLISH_VIA_WORKFLOW: 'true'
     steps:
       - name: Checkout without persistent git credentials
         uses: actions/checkout@v4
