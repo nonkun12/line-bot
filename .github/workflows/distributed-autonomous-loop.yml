@@ -350,7 +350,14 @@ jobs:
 
           outcomes = []
           for row in rows:
-              outcome = record_loop_outcome(state_path, row)
+              # The loop runner records each outcome before allowing the next task.
+              # Reuse that verified result; recording it again resets the recovery
+              # timestamp and can double-count failures or falsify recovery duration.
+              existing = row.get('recovery_ai')
+              if isinstance(existing, dict) and existing.get('recorded') is True:
+                  outcome = existing
+              else:
+                  outcome = record_loop_outcome(state_path, row)
               outcomes.append((row, outcome))
               print(json.dumps({
                   'task_id': row.get('task_id', ''),
