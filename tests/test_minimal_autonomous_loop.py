@@ -243,7 +243,7 @@ def test_main_halts_after_first_failure(monkeypatch, tmp_path: Path):
             "exit_code": 1,
         },
     )
-    monkeypatch.setattr(loop.sys, "argv", ["loop", "--max-tasks", "2", "--results", str(tmp_path / "results.jsonl")])
+    monkeypatch.setattr(loop.sys, "argv", ["loop", "--max-tasks", "2", "--state", str(tmp_path / "loop-state.json"), "--results", str(tmp_path / "results.jsonl")])
     assert loop.main() == 1
     lines = (tmp_path / "results.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1
@@ -254,7 +254,7 @@ def test_main_rejects_queue_limit(monkeypatch, tmp_path: Path):
     queue = tmp_path / "queue.json"
     queue.write_text('{"max_tasks_per_run": 1}', encoding="utf-8")
     monkeypatch.setattr(loop, "QUEUE", queue)
-    monkeypatch.setattr(loop.sys, "argv", ["loop", "--max-tasks", "2", "--results", str(tmp_path / "results.jsonl")])
+    monkeypatch.setattr(loop.sys, "argv", ["loop", "--max-tasks", "2", "--state", str(tmp_path / "loop-state.json"), "--results", str(tmp_path / "results.jsonl")])
     try:
         loop.main()
     except SystemExit as exc:
