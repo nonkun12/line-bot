@@ -533,14 +533,19 @@ jobs:
           state = os.getenv('STATE_OUTCOME', '')
 
           not_run = os.path.exists('/tmp/autonomous-loop-not-run')
+          held_tasks = os.path.exists('/tmp/autonomous-loop-held-tasks')
           if not_run:
               status = 'NOT_RUN'
+          elif held_tasks:
+              status = 'BLOCKED'
           elif status not in {'PASS', 'NO_CHANGE', 'FAIL', 'BLOCKED'}:
               status = 'BLOCKED' if not result or status in {'STOPPED', 'TIMEOUT'} else 'FAIL'
-          # Do not fabricate a task ID or task instruction when no task ran.
-          if status == 'NOT_RUN':
+          if not_run:
               os.environ['AUTONOMOUS_TASK_ID'] = ''
               os.environ['DEV_INSTRUCTION'] = 'Queue exhausted; no task executed; replenish the task queue.'
+          elif held_tasks:
+              os.environ['AUTONOMOUS_TASK_ID'] = ''
+              os.environ['DEV_INSTRUCTION'] = 'All pending tasks are held; human review is required before resume.'
           else:
               os.environ['AUTONOMOUS_TASK_ID'] = task_id or 'distributed-loop-no-task-result'
               os.environ['DEV_INSTRUCTION'] = str(result.get('summary') or result.get('task_summary') or os.environ['DEV_INSTRUCTION'])
@@ -548,11 +553,16 @@ jobs:
           if status == 'NOT_RUN':
               os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'NOT_RUN'
               os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'NOT_RUN'
+          elif held_tasks:
+              os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'NOT_RUN'
+              os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'BLOCKED'
           else:
               os.environ['AUTONOMOUS_VERIFICATION_RESULT'] = 'PASS' if publish == 'success' else ('NOT_RUN' if publish == 'skipped' else 'FAIL')
               os.environ['AUTONOMOUS_SAFETY_GATE_RESULT'] = 'PASS' if status in {'PASS', 'NO_CHANGE'} and run_outcome == 'success' and publish == 'success' and state == 'success' else 'BLOCKED'
           os.environ['AUTONOMOUS_MERGE_RESULT'] = 'NOT_AUTO_MERGED'
           reason = str(result.get('failure_reason') or '')
+          if held_tasks:
+              reason = 'all_pending_tasks_held'
           if not reason and status not in {'PASS', 'NO_CHANGE'}:
               reason = f"loop_{status.lower()}" if result else f"workflow_failed_before_result:{run_outcome or 'not_run'}"
           if not reason and publish not in {'success', 'skipped'}:
@@ -566,6 +576,8 @@ jobs:
               action = 'none'
           elif status == 'NOT_RUN':
               action = 'replenish_task_queue'
+          elif held_tasks:
+              action = 'review_held_tasks'
           else:
               action = 'inspect_workflow_run'
           os.environ['AUTONOMOUS_NEXT_ACTION'] = action
@@ -659,6 +671,7 @@ jobs:
               state_outcome=os.getenv("STATE_OUTCOME", ""),
               sheets_outcome=os.getenv("SHEETS_OUTCOME", ""),
               queue_empty=Path("/tmp/autonomous-loop-not-run").exists(),
+              all_tasks_held=Path("/tmp/autonomous-loop-held-tasks").exists(),
               requested_tasks=int(os.getenv("REQUESTED_TASKS", "4")),
               queue_completed=int(os.getenv("QUEUE_COMPLETED", "0")),
               queue_total=int(os.getenv("QUEUE_TOTAL", "0")),
@@ -691,6 +704,8 @@ jobs:
             echo "### Task別結果"
             if [ "$result" = "NOT_RUN" ]; then
               echo "(NOT_RUN: タスクは1件も実行されていません。理由: ${result_reason}。キューは ${queue_completed}/${queue_total} で、未完了Taskがありません。タスクの補充が必要です。)"
+            elif [ "$result" = "BLOCKED" ] && [ -f /tmp/autonomous-loop-held-tasks ]; then
+              echo "(BLOCKED: 未完了Taskはすべて安全上の保留状態です。自動再実行せず、人による原因修正と再開確認が必要です。)"
             fi
             if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
               cat /tmp/minimal-autonomous-loop.jsonl
@@ -754,6 +769,8 @@ jobs:
           path: |
             /tmp/minimal-autonomous-loop.jsonl
             /tmp/autonomous-loop-state.json
+            /tmp/recovery-ai-state.json
+            /tmp/recovery-ai-state-readback.json
             /tmp/autonomous-*.json
             /tmp/distributed-sheets-log-result.json
             /tmp/distributed-final-report.txt
