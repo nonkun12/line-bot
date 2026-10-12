@@ -201,6 +201,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "router-regression-market-channel-metadata": "tests/test_management_router.py",
     "macos-readiness-audit-no-secret-leak": "tests/test_macos_kanban_obsidian_readiness.py",
     "router-regression-general-request-metadata": "tests/test_management_router.py",
+    "recovery-ai-loop-adapter-durable-state-readback": "tests/test_recovery_ai_loop_adapter.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -979,6 +980,45 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             '    assert decision.metadata["routing_priority"] is None\n'
             '    assert decision.metadata["channel"] == "line"\n'
             '    assert decision.metadata["request_metadata"]["source"] == "distributed-loop-general-metadata"\n'
+            "\n\n"
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "recovery-ai-loop-adapter-durable-state-readback" and chosen == "tests/test_recovery_ai_loop_adapter.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_failure_record_survives_new_store_readback"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_invalid_evidence_holds_for_human_review(tmp_path):\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+        addition = (
+            "def test_failure_record_survives_new_store_readback(tmp_path):\n"
+            '    path = tmp_path / "recovery.json"\n'
+            "    result = record_loop_outcome(path, {\n"
+            '        "task_id": "recovery-readback-task", "status": "FAIL", "exit_code": 1,\n'
+            '        "failure_reason": "task_timeout",\n'
+            "    })\n"
+            '    assert result["decision"]["action"] == "REPAIR_ONCE"\n'
+            "    reopened = RecoveryStore(path)\n"
+            '    status = reopened.task_status("recovery-readback-task")\n'
+            '    assert status["consecutive_failures"] == 1\n'
+            '    assert status["last_category"] == "timeout"\n'
+            '    assert status["same_fingerprint_attempts"] == 1\n'
             "\n\n"
         )
         new = addition + anchor
