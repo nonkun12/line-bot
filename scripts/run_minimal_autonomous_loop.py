@@ -34,7 +34,9 @@ def classify_final_outcome(
     publish_outcome: str,
     state_outcome: str,
     sheets_outcome: str,
+    recovery_outcome: str | None = None,
     queue_empty: bool = False,
+    all_tasks_held: bool = False,
     requested_tasks: int | None = None,
     queue_completed: int | None = None,
     queue_total: int | None = None,
@@ -56,19 +58,37 @@ def classify_final_outcome(
             return "BLOCKED", "queue_empty_post_run_gate_failed:" + ",".join(failed_gates)
         return "NOT_RUN", "queue_empty"
 
+    if all_tasks_held:
+        if task_statuses != ["BLOCKED"] or loop_outcome != "success":
+            return "BLOCKED", "held_queue_evidence_mismatch"
+        failed_gates = [
+            name for name, outcome in (
+                ("publish", publish_outcome),
+                ("state", state_outcome),
+                ("sheets", sheets_outcome),
+            )
+            if outcome != "success"
+        ]
+        if failed_gates:
+            return "BLOCKED", "held_queue_post_run_gate_failed:" + ",".join(failed_gates)
+        return "BLOCKED", "all_pending_tasks_held"
+
     if not task_statuses:
         return "BLOCKED", "missing_task_evidence"
     invalid = [status for status in task_statuses if status not in successful]
     if invalid:
         return "FAILED", "task_status:" + ",".join(invalid)
 
+    gate_outcomes = [
+        ("loop", loop_outcome),
+        ("publish", publish_outcome),
+        ("state", state_outcome),
+        ("sheets", sheets_outcome),
+    ]
+    if recovery_outcome is not None:
+        gate_outcomes.append(("recovery_ai_persistence", recovery_outcome))
     failed_gates = [
-        name for name, outcome in (
-            ("loop", loop_outcome),
-            ("publish", publish_outcome),
-            ("state", state_outcome),
-            ("sheets", sheets_outcome),
-        )
+        name for name, outcome in gate_outcomes
         if outcome != "success"
     ]
     if failed_gates:
@@ -461,7 +481,35 @@ def main() -> int:
         if args.incident_detail is not None or args.incident_job_id is not None:
             raise SystemExit("incident detail/job ID require incident category")
         queued_tasks = load_tasks()
-        tasks = [task for task in queued_tasks if task["id"] not in completed][: args.max_tasks]
+        tasks = [task for task in queued_tasks if task["id"] not in completed]
+
+    # Recovery state is read before selection so tasks already held after repeated
+    # failures cannot be run again automatically on the next scheduled invocation.
+    from scripts.recovery_ai import RecoveryStore
+    recovery_store = RecoveryStore(args.state.parent / "recovery-ai-state.json")
+    pending_tasks = list(tasks)
+    tasks = [
+        task for task in pending_tasks
+        if recovery_store.task_status(str(task["id"])).get("held") is not True
+    ]
+    if pending_tasks and not tasks:
+        args.results.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "BLOCKED",
+            "task_id": "",
+            "task_count": 0,
+            "queue_total": len(queued_tasks) if queued_tasks else len(pending_tasks),
+            "queue_completed": sum(1 for task in queued_tasks if task["id"] in completed),
+            "exit_code": 79,
+            "failure_reason": "all_pending_tasks_held",
+        }
+        with args.results.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        print("MINIMAL_LOOP=BLOCKED reason=all_pending_tasks_held", flush=True)
+        return 79
+    tasks = tasks[: args.max_tasks]
+
     if not tasks:
         queued_ids = [str(task["id"]) for task in queued_tasks]
         args.results.parent.mkdir(parents=True, exist_ok=True)
@@ -498,8 +546,33 @@ def main() -> int:
 
         print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
         result = run_task(task, index, args.stop_file)
+        recovery_error = False
+        try:
+            from scripts.recovery_ai_loop_adapter import record_loop_outcome
+            result["recovery_ai"] = record_loop_outcome(
+                args.state.parent / "recovery-ai-state.json", result
+            )
+        except Exception:
+            # Do not report PASS or proceed to another task unless the recovery
+            # decision can be durably recorded and read back.
+            recovery_error = True
+            result["status"] = "FAIL"
+            result["exit_code"] = 1
+            result["failure_reason"] = "recovery_ai_state_persist_failed"
+            result["recovery_ai"] = {
+                "recorded": False,
+                "reason": "state_persistence_failed",
+            }
+
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(result, ensure_ascii=False) + "\n")
+
+        if recovery_error:
+            print(
+                f"MINIMAL_LOOP=HALT task={task['id']} reason=recovery_ai_state_persist_failed",
+                flush=True,
+            )
+            return 1
 
         if result["exit_code"] != 0 or result["status"] not in {"PASS", "NO_CHANGE"}:
             print(f"MINIMAL_LOOP=HALT task={task['id']} status={result['status']}", flush=True)
