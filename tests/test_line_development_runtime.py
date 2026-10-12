@@ -631,3 +631,56 @@ def test_router_regression_plans_are_idempotent_when_tests_exist(monkeypatch, tm
         assert err is None
         assert plan == {"no_change": True, "source": "deterministic_autonomous_task"}
 
+def test_refactorer_receives_current_repair_task_context(monkeypatch):
+    chosen = "core/example.py"
+    task_context = "Reviewer failure: stale assertion remains in test_example"
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Fix the example implementation",
+    )
+    state.chosen = chosen
+    state.touched = [chosen]
+    state.test_output = "Old test output unrelated to reviewer failure"
+    calls = {}
+
+    def build_plan(client, instruction, path, context, test_output):
+        calls["instruction"] = instruction
+        calls["test_output"] = test_output
+        return {
+            "no_change": False,
+            "changes": [{"file": path, "old": "before", "new": "after"}],
+        }
+
+    monkeypatch.setattr(worker, "build_plan", build_plan)
+    monkeypatch.setattr(worker, "context_for", lambda path: "current source context")
+    monkeypatch.setattr(
+        worker,
+        "validate_plan_with_bounded_repairs",
+        lambda client, instruction, path, plan, context: (plan, True, "validated"),
+    )
+    monkeypatch.setattr(
+        worker,
+        "apply_plan_with_bounded_anchor_repair",
+        lambda client, instruction, path, plan, context: (
+            plan,
+            True,
+            "applied",
+            [path],
+        ),
+    )
+
+    result = runtime.DevelopmentExecutor(state).execute(
+        AgentTask(
+            "refactor:reviewer-failure",
+            AgentRole.REFACTORER,
+            task_context,
+            frozenset({"working-tree"}),
+        )
+    )
+
+    assert result.success
+    assert task_context in calls["instruction"]
+    assert "Fix the example implementation" in calls["instruction"]
+    assert task_context in calls["test_output"]
+    assert "Old test output unrelated to reviewer failure" in calls["test_output"]
+

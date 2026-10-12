@@ -1109,7 +1109,26 @@ class DevelopmentExecutor:
                     return AgentResult(task.task_id, True, "no refactor needed for deterministic test task")
                 if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
                     return AgentResult(task.task_id, True, "no refactor needed for deterministic comment change")
-                plan = worker.build_plan(self.state.client, f"Refactor the current implementation for clarity, maintainability, and duplication reduction. Preserve behavior and satisfy the original request. Original request: {self.state.instruction}", self.state.chosen, worker.context_for(self.state.chosen), self.state.test_output)
+                refactor_instruction = (
+                    "Refactor the current implementation for clarity, maintainability, "
+                    "and duplication reduction. Preserve behavior and satisfy the original request. "
+                    f"Original request: {self.state.instruction} "
+                    f"Current repair task context: {task.instruction}"
+                )
+                refactor_context = self.state.test_output
+                if task.instruction:
+                    refactor_context = (
+                        f"{refactor_context}\n\nCurrent repair task context:\n{task.instruction}"
+                        if refactor_context
+                        else f"Current repair task context:\n{task.instruction}"
+                    )
+                plan = worker.build_plan(
+                    self.state.client,
+                    refactor_instruction,
+                    self.state.chosen,
+                    worker.context_for(self.state.chosen),
+                    refactor_context,
+                )
                 plan, ok, detail = worker.validate_plan_with_bounded_repairs(
                     self.state.client,
                     self.state.instruction,
