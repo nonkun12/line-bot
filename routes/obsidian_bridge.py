@@ -23,6 +23,7 @@ from db import (
     get_job,
     get_job_status_summary,
     has_pending_job_by_type,
+    get_conn,
 )
 
 
@@ -219,6 +220,7 @@ def _safe_handoff_text(value: object, limit: int) -> str | None:
         return None
     value = re.sub(r"[\x00-\x1f\x7f]", " ", value)
     value = re.sub(r"\s+", " ", value).strip()
+    value = re.sub(r"(?i)\b(secret|token|password|api[_-]?key)\s*[:=]\s*[^\s,;]+", r"\1=[REDACTED]", value)
     if not value or len(value) > limit:
         return None
     return value
@@ -273,7 +275,7 @@ def enqueue_verified_kanban_result():
 
     try:
         # Insert the durable job and unique task marker in one transaction.
-        with __import__("db").get_conn() as conn:
+        with get_conn() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS kanban_obsidian_handoffs (
                     task_id TEXT PRIMARY KEY,
