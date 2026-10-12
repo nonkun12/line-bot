@@ -85,7 +85,7 @@ def test_recovery_state_isolation_task_plan_is_bounded_and_idempotent(monkeypatc
     target_path = tmp_path / target
     target_path.parent.mkdir(parents=True)
     anchor = '    assert json.loads(lines[0])["task_id"] == "t1"\n'
-    original = anchor
+    original = "def fixture():\n    lines = []\n" + anchor
     target_path.write_text(original, encoding="utf-8")
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
 
