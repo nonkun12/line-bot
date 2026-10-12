@@ -17,7 +17,13 @@ from scripts.recovery_ai import RecoveryStateError, RecoveryStore
 def _category(result: dict[str, Any]) -> str:
     reason = str(result.get("failure_reason", "")).lower()
     status = str(result.get("status", "")).upper()
-    # Prefer specific transient categories before the broader timeout/crash checks.
+    # Storage failures must stop closed, not be retried as ordinary unknown errors.
+    if any(token in reason for token in (
+        "vault_write_failed", "permissionerror", "permission_denied",
+        "state_persistence_failure", "recovery state persistence failed",
+    )):
+        return "state_persistence_failure"
+    # Prefer specific transient categories before broader timeout/crash checks.
     if any(token in reason for token in (
         "rate_limited", "rate_limit", "too_many_requests", "http_429", "status_429",
     )):
