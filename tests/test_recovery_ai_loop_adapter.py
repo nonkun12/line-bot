@@ -11,6 +11,7 @@ from scripts.recovery_ai_loop_adapter import _category, record_loop_outcome
     ("network_transient_connection_reset", "network_transient"),
     ("task_timeout", "timeout"),
     ("sha_mismatch", "security_violation"),
+    ("vault_write_failed: PermissionError", "state_persistence_failure"),
 ])
 def test_failure_reason_maps_to_expected_recovery_category(reason, expected):
     assert _category({"status": "FAIL", "failure_reason": reason}) == expected
@@ -45,6 +46,17 @@ def test_invalid_evidence_holds_for_human_review(tmp_path, monkeypatch):
     })
     assert result["decision"]["action"] == "HOLD"
     assert result["decision"]["requires_human"] is True
+
+
+def test_vault_write_failure_stops_fail_closed(tmp_path, monkeypatch):
+    monkeypatch.setenv("RECOVERY_AI_APPLE_ADVISOR", "1")
+    result = record_loop_outcome(tmp_path / "recovery.json", {
+        "task_id": "task-a", "status": "FAIL", "exit_code": 1,
+        "failure_reason": "vault_write_failed: PermissionError"
+    })
+    assert result["decision"]["action"] == "STOP_FAIL_CLOSED"
+    assert result["decision"]["requires_human"] is True
+    assert result["apple_advisor"] == {"available": False, "reason": "state_persistence_failure"}
 
 
 def test_corrupt_recovery_state_fails_closed(tmp_path):
