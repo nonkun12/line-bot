@@ -5,6 +5,7 @@ on:
     branches:
       - fix/loop-task-health-safety
       - feat/recovery-ai-core
+      - feat/recovery-ai-loop-integration
   workflow_dispatch:
 
 permissions:
