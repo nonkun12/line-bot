@@ -17,6 +17,20 @@ from scripts.recovery_ai import RecoveryStateError, RecoveryStore
 def _category(result: dict[str, Any]) -> str:
     reason = str(result.get("failure_reason", "")).lower()
     status = str(result.get("status", "")).upper()
+    # Prefer specific transient categories before the broader timeout/crash checks.
+    if any(token in reason for token in (
+        "rate_limited", "rate_limit", "too_many_requests", "http_429", "status_429",
+    )):
+        return "rate_limited"
+    if any(token in reason for token in (
+        "service_unavailable", "temporarily_unavailable", "http_503", "status_503",
+    )):
+        return "service_unavailable"
+    if any(token in reason for token in (
+        "network_transient", "connection_reset", "connection_refused",
+        "connection_error", "dns_failure", "network_unreachable",
+    )):
+        return "network_transient"
     if status == "TIMEOUT" or "timeout" in reason:
         return "timeout"
     if any(token in reason for token in ("sha_mismatch", "nonce_mismatch", "outside_allowed_paths", "security")):
