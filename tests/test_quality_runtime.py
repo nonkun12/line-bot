@@ -164,9 +164,11 @@ def test_repeated_review_failures_stop_at_max_rounds():
     report = runtime.run(base_tasks())
 
     assert not report.success
-    assert report.failed_task_id.startswith("review:")
+    # A failed mandatory retest is the terminal failure, even when the
+    # repair attempt was triggered by a failed review.
+    assert report.failed_task_id.startswith("test:")
     roles = [call.role for call in executor.calls]
-    assert roles.count(AgentRole.REVIEWER) == 3
+    assert roles.count(AgentRole.REVIEWER) == 2
     assert roles.count(AgentRole.DEBUGGER) == 2
     assert roles.count(AgentRole.REFACTORER) == 2
     assert roles.count(AgentRole.TESTER) == 3
