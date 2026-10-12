@@ -35,3 +35,16 @@ def test_completed_requires_at_least_one_verified_task_in_this_run():
     completed = report_logic.index('result="COMPLETED"')
     assert not_run < completed
     assert '[ "$completed" = "0" ]' in report_logic[:completed]
+
+
+def test_postrun_accepts_current_and_legacy_empty_queue_reason_markers():
+    postrun = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "distributed-loop-postrun.yml"
+    ).read_text(encoding="utf-8")
+
+    assert '"- 結果理由: queue_empty"' in postrun
+    assert '"- 結果理由: queue_exhausted_no_tasks"' in postrun
+    assert "queue_empty={'true' if queue_empty else 'false'}" in postrun
