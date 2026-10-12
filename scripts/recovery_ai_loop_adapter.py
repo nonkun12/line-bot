@@ -96,6 +96,11 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
     ):
         raise RecoveryStateError("recovery state read-back verification failed")
     output = {"recorded": True, "status": status, "decision": asdict(decision)}
+    # Keep the hot path fast: bounded transient retries need no model advice.
+    # Invoke the optional local model only when a repair or safety hold needs diagnosis.
     # Advisory is deliberately last: durable deterministic state is the gate.
-    output["apple_advisor"] = _optional_local_advice(task_id, category)
+    if decision.action in {"REPAIR_ONCE", "HOLD"}:
+        output["apple_advisor"] = _optional_local_advice(task_id, category)
+    else:
+        output["apple_advisor"] = {"available": False, "reason": "fast_path_no_advice_needed"}
     return output
