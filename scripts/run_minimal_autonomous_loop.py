@@ -34,6 +34,7 @@ def classify_final_outcome(
     publish_outcome: str,
     state_outcome: str,
     sheets_outcome: str,
+    recovery_outcome: str | None = None,
     queue_empty: bool = False,
     all_tasks_held: bool = False,
     requested_tasks: int | None = None,
@@ -78,13 +79,16 @@ def classify_final_outcome(
     if invalid:
         return "FAILED", "task_status:" + ",".join(invalid)
 
+    gate_outcomes = [
+        ("loop", loop_outcome),
+        ("publish", publish_outcome),
+        ("state", state_outcome),
+        ("sheets", sheets_outcome),
+    ]
+    if recovery_outcome is not None:
+        gate_outcomes.append(("recovery_ai_persistence", recovery_outcome))
     failed_gates = [
-        name for name, outcome in (
-            ("loop", loop_outcome),
-            ("publish", publish_outcome),
-            ("state", state_outcome),
-            ("sheets", sheets_outcome),
-        )
+        name for name, outcome in gate_outcomes
         if outcome != "success"
     ]
     if failed_gates:
