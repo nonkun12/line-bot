@@ -109,3 +109,29 @@ def test_success_without_run_identity_invalidates_task_result(tmp_path):
     assert result_payload["status"] == "FAIL"
     assert result_payload["exit_code"] == 1
     assert result_payload["failure_reason"] == "recovery_ai_invalid_evidence"
+
+
+def test_all_pending_tasks_held_is_blocked_not_completed():
+    from scripts.run_minimal_autonomous_loop import classify_final_outcome
+
+    assert classify_final_outcome(
+        ["BLOCKED"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        all_tasks_held=True,
+    ) == ("BLOCKED", "all_pending_tasks_held")
+
+
+def test_held_task_classifier_fails_closed_on_post_run_gate_error():
+    from scripts.run_minimal_autonomous_loop import classify_final_outcome
+
+    assert classify_final_outcome(
+        ["BLOCKED"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="failure",
+        sheets_outcome="success",
+        all_tasks_held=True,
+    ) == ("BLOCKED", "held_queue_post_run_gate_failed:state")
