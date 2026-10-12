@@ -449,7 +449,17 @@ def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
             outputs.append(compile_result.stderr)
         if compile_result.returncode != 0:
             return False, "\n".join(outputs)[-8000:]
-    tests = run([sys.executable, "-m", "pytest", "-q", "--tb=native"], timeout=900)
+    # The per-task allowlist constrains the development worker's target selection.
+    # Do not leak that scoped manifest into the full pytest subprocess: tests may
+    # exercise repo_files() against temporary tracked-file fixtures. Restore it
+    # in the parent process immediately after pytest returns, including exceptions.
+    missing = object()
+    task_scope = os.environ.pop("AUTONOMOUS_ALLOWED_PATHS", missing)
+    try:
+        tests = run([sys.executable, "-m", "pytest", "-q", "--tb=native"], timeout=900)
+    finally:
+        if task_scope is not missing:
+            os.environ["AUTONOMOUS_ALLOWED_PATHS"] = task_scope
     outputs.append("full pytest:")
     outputs.extend([tests.stdout, tests.stderr])
     return tests.returncode == 0, "\n".join(outputs)[-8000:]
