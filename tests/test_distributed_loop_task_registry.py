@@ -1,4 +1,6 @@
 """Regression tests for deterministic distributed-loop task registration."""
+import json
+
 from core import line_development_runtime as runtime
 
 
@@ -45,3 +47,17 @@ def test_new_queue_task_rejects_an_unapproved_target() -> None:
     )
     assert plan is None
     assert error == "deterministic_target_mismatch"
+
+
+def test_queue_ids_are_unique_and_all_targets_match_the_registry() -> None:
+    root = runtime.worker.ROOT
+    queue = json.loads((root / ".github" / "autonomous-loop-tasks.json").read_text(encoding="utf-8"))
+    tasks = queue["tasks"]
+    ids = [item["id"] for item in tasks]
+
+    assert 1 <= queue["max_tasks_per_run"] <= 4
+    assert len(ids) == len(set(ids))
+    for item in tasks:
+        allowed_paths = item["allowed_paths"]
+        assert len(allowed_paths) == 1
+        assert runtime._DETERMINISTIC_AUTONOMOUS_TASK_TARGETS[item["id"]] == allowed_paths[0]
