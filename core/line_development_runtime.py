@@ -202,6 +202,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "macos-readiness-audit-no-secret-leak": "tests/test_macos_kanban_obsidian_readiness.py",
     "router-regression-general-request-metadata": "tests/test_management_router.py",
     "recovery-ai-loop-adapter-durable-state-readback": "tests/test_recovery_ai_loop_adapter.py",
+    "loop-test-recovery-state-isolation": "tests/test_minimal_autonomous_loop.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -1033,6 +1034,37 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "no_change": False,
             "source": "deterministic_autonomous_task",
             "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "loop-test-recovery-state-isolation" and chosen == "tests/test_minimal_autonomous_loop.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        marker = 'RecoveryStore(tmp_path / "recovery-ai-state.json")'
+        if marker in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        old = '    assert json.loads(lines[0])["task_id"] == "t1"\n'
+        count = text.count(old)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+        new = (
+            old
+            + '    from scripts.recovery_ai import RecoveryStore\n'
+            + '    recovery = RecoveryStore(tmp_path / "recovery-ai-state.json")\n'
+            + '    status = recovery.task_status("t1")\n'
+            + '    assert status["consecutive_failures"] == 1\n'
+            + '    assert status["last_category"] == "unknown"\n'
+        )
+        candidate = text.replace(old, new, 1)
+        if len(old) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(old)}, new={len(new)}"
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": old, "new": new}],
         }, None
 
     return None, None

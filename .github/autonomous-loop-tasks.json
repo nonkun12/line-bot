@@ -15,6 +15,13 @@
       "allowed_paths": [
         "tests/test_recovery_ai_loop_adapter.py"
       ]
+    },
+    {
+      "id": "loop-test-recovery-state-isolation",
+      "instruction": "tests/test_minimal_autonomous_loop.py のみに回帰テストを1件追加してください。既存の test_main_halts_after_first_failure において、一時の --state パスを使った loop.main() の失敗タスク t1 が tmp_path/recovery-ai-state.json に保存され、新規 RecoveryStore で読み直したとき consecutive_failures=1 であることを確認してください。既存ロジックの変更、外部通信、シークレット参照、OS操作は禁止。変更は指定ファイルのみ。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_minimal_autonomous_loop.py"
+      ]
     }
   ]
 }
