@@ -134,6 +134,22 @@ def test_failing_test_iterable_is_materialized_once(monkeypatch):
     assert result.decision is store.decision
 
 
+def test_unknown_category_is_normalized_before_readback(monkeypatch):
+    store = FakeStore()
+    monkeypatch.setattr(
+        recovery_ai_local, "advise",
+        lambda *args: pytest.fail("advisor should stay disabled for this normalization test"),
+    )
+
+    result = recovery_ai_local.record_failure_with_local_advice(
+        store, "task-1", "not-a-supported-category", advisor_enabled=False
+    )
+
+    assert store.calls[0][1] == "unknown"
+    assert result.decision is store.decision
+    assert result.advisor.available is False
+
+
 def test_state_readback_failure_stops_before_advisor(monkeypatch):
     store = FakeStore()
     monkeypatch.setattr(
