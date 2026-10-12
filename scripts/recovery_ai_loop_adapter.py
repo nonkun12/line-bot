@@ -24,6 +24,11 @@ def _category(result: dict[str, Any]) -> str:
         return "invalid_evidence"
     if status == "FAIL" and any(token in reason for token in ("pytest", "test_regression")):
         return "test_regression"
+    # The loop uses this exact generic reason when the guarded runtime exits
+    # non-zero without a more specific, already-classified failure. Treat it as
+    # one bounded process-level recovery attempt, not an immediate unknown/HOLD.
+    if status == "FAIL" and reason == "task_runtime_failed":
+        return "process_crash"
     if any(token in reason for token in ("crash", "process")):
         return "process_crash"
     return "unknown"
@@ -50,11 +55,15 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
     if not isinstance(result, dict):
         raise ValueError("loop result must be an object")
     task_id = str(result.get("task_id", "")).strip()
+    status = str(result.get("status", "")).upper()
+    if status == "STOPPED" or "stop_requested" in str(result.get("failure_reason", "")).lower():
+        # An operator/kill-switch stop is control flow, not a task defect.
+        # Never consume retry budget or create a held task for a requested stop.
+        return {"recorded": False, "reason": "stop_requested"}
     if not task_id:
         # Synthetic queue/incident summaries are not task outcomes.
         return {"recorded": False, "reason": "no_task_id"}
     store = RecoveryStore(state_path)
-    status = str(result.get("status", "")).upper()
     run_identity_verified = _has_verified_run_identity(result, status)
     success_like = status in {"PASS", "NO_CHANGE"}
     if success_like and (result.get("exit_code") != 0 or not run_identity_verified):

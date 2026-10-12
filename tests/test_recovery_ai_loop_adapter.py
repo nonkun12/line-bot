@@ -148,3 +148,28 @@ def test_failed_recovery_state_persistence_blocks_final_completion():
         sheets_outcome="success",
         recovery_outcome="failure",
     ) == ("FAILED", "post_run_gate_failed:recovery_ai_persistence")
+
+
+def test_generic_runtime_failure_gets_one_bounded_recovery_attempt(tmp_path):
+    path = tmp_path / "recovery.json"
+    result = record_loop_outcome(path, {
+        "task_id": "task-runtime",
+        "status": "FAIL",
+        "exit_code": 1,
+        "failure_reason": "task_runtime_failed",
+    })
+    assert result["decision"]["action"] == "REPAIR_ONCE"
+    assert result["decision"]["reason"] == "bounded_repair_attempt"
+    assert RecoveryStore(path).task_status("task-runtime")["last_category"] == "process_crash"
+
+
+def test_operator_stop_does_not_create_recovery_failure_or_hold(tmp_path):
+    path = tmp_path / "recovery.json"
+    result = record_loop_outcome(path, {
+        "task_id": "task-stopped",
+        "status": "STOPPED",
+        "exit_code": 1,
+        "failure_reason": "stop_requested_during_task",
+    })
+    assert result == {"recorded": False, "reason": "stop_requested"}
+    assert RecoveryStore(path).task_status("task-stopped") == {}
