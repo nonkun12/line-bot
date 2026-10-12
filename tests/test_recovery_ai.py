@@ -101,3 +101,24 @@ def test_elapsed_seconds_requires_aware_nonnegative_timestamps():
         elapsed_seconds("2026-10-11T00:00:00", "2026-10-11T00:00:01+00:00")
     with pytest.raises(ValueError):
         elapsed_seconds("2026-10-11T00:00:02+00:00", "2026-10-11T00:00:01+00:00")
+
+
+def test_durable_state_survives_store_recreation_and_readback(tmp_path):
+    state_path = tmp_path / "state.json"
+    first_store = RecoveryStore(state_path)
+    first = first_store.record_failure("task-persist", "timeout")
+    assert first.action == "REPAIR_ONCE"
+
+    # A new store instance simulates a later process, not the original in-memory object.
+    second_store = RecoveryStore(state_path)
+    status = second_store.task_status("task-persist")
+    assert status["consecutive_failures"] == 1
+    assert status["last_category"] == "timeout"
+    assert status["last_fingerprint"] == first.fingerprint
+
+    second = second_store.record_failure("task-persist", "timeout")
+    third_store = RecoveryStore(state_path)
+    persisted = third_store.task_status("task-persist")
+    assert second.action == "HOLD"
+    assert persisted["consecutive_failures"] == 2
+    assert persisted["same_fingerprint_attempts"] == 2
