@@ -72,3 +72,26 @@ def test_verified_no_change_is_success_not_a_failure(tmp_path):
     })
     assert result == {"recorded": True, "status": "NO_CHANGE", "verified": True}
     assert store.task_status("task-a")["consecutive_failures"] == 0
+
+
+def test_state_write_failure_fails_closed_and_preserves_previous_state(tmp_path, monkeypatch):
+    path = tmp_path / "recovery.json"
+    store = RecoveryStore(path)
+    store.record_failure("task-existing", "timeout")
+    before = json.loads(path.read_text(encoding="utf-8"))
+
+    def fail_replace(_source, _destination):
+        raise OSError("simulated disk failure")
+
+    monkeypatch.setattr("scripts.recovery_ai.os.replace", fail_replace)
+    with pytest.raises(RecoveryStateError, match="persistence failed"):
+        record_loop_outcome(path, {
+            "task_id": "task-new",
+            "status": "FAIL",
+            "exit_code": 1,
+            "failure_reason": "timeout",
+        })
+
+    assert json.loads(path.read_text(encoding="utf-8")) == before
+    assert store.task_status("task-existing")["consecutive_failures"] == 1
+    assert store.task_status("task-new") == {}
