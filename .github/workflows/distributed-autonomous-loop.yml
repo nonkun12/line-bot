@@ -343,8 +343,15 @@ jobs:
                   raise SystemExit(f'invalid loop result record at line {line_number}')
               rows.append(row)
 
+          before_state = json.loads(state_path.read_text(encoding='utf-8'))
+          if (not isinstance(before_state, dict) or before_state.get('schema_version') != 1
+                  or not isinstance(before_state.get('tasks'), dict) or 'checkpoint' not in before_state):
+              raise SystemExit('Recovery AI state is invalid before outcome recording')
+
+          outcomes = []
           for row in rows:
               outcome = record_loop_outcome(state_path, row)
+              outcomes.append((row, outcome))
               print(json.dumps({
                   'task_id': row.get('task_id', ''),
                   'status': row.get('status', ''),
@@ -353,16 +360,24 @@ jobs:
                   'decision_action': outcome.get('decision', {}).get('action', ''),
               }, sort_keys=True))
 
-          # Verify every task outcome was recorded or explicitly identified as a
-          # synthetic non-task record; then re-read the JSON state before persistence.
+          # Verify the durable-state payload can be read after every outcome.
           state = json.loads(state_path.read_text(encoding='utf-8'))
           if (not isinstance(state, dict) or state.get('schema_version') != 1
                   or not isinstance(state.get('tasks'), dict) or 'checkpoint' not in state):
               raise SystemExit('Recovery AI state read-back validation failed')
-          for row in rows:
+          for row, outcome in outcomes:
               task_id = str(row.get('task_id', '')).strip()
-              if task_id and task_id not in state['tasks']:
-                  raise SystemExit('Recovery AI task read-back missing')
+              if not task_id:
+                  if outcome.get('recorded') is not False:
+                      raise SystemExit('unexpected result for synthetic non-task record')
+                  continue
+              if outcome.get('decision'):
+                  if task_id not in state['tasks']:
+                      raise SystemExit('Recovery AI failure decision read-back missing')
+              elif outcome.get('verified') is True and task_id in before_state['tasks']:
+                  current = state['tasks'].get(task_id)
+                  if not isinstance(current, dict) or current.get('consecutive_failures') != 0:
+                      raise SystemExit('Recovery AI success reset read-back mismatch')
           print('Recovery AI loop outcome state read-back verified.')
           PY
 
