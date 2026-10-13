@@ -94,3 +94,42 @@ def test_batch_three_common_words_have_local_core_images():
         assert cue in response, word
         assert "外部API" in response, word
         assert "説明を保留" not in response, word
+
+def test_batch_four_common_words_have_local_core_images():
+    cases = {
+        "improve": ("改善する", "improvement"),
+        "decide": ("決定する", "decision"),
+        "explain": ("説明する", "explanation"),
+        "compare": ("比較する", "comparison"),
+        "prepare": ("準備する", "preparation"),
+        "support": ("支援する", "supporter"),
+        "reduce": ("減らす", "reduction"),
+        "increase": ("増える", "growth"),
+        "manage": ("管理する", "management"),
+        "create": ("創造する", "creation"),
+        "develop": ("発展する", "development"),
+        "focus": ("集中する", "attention"),
+        "achieve": ("達成する", "achievement"),
+        "avoid": ("避ける", "avoidance"),
+        "allow": ("許可する", "permission"),
+        "require": ("必要とする", "requirement"),
+        "provide": ("提供する", "provider"),
+        "receive": ("受け取る", "receiver"),
+        "share": ("共有する", "sharing"),
+        "discover": ("発見する", "discovery"),
+    }
+    for word, (meaning, cue) in cases.items():
+        response = explain_core_image(word)
+        assert meaning in response, word
+        assert cue in response, word
+        assert "外部API" in response, word
+        assert "説明を保留" not in response, word
+
+
+def test_core_image_dictionary_has_unique_keys_and_at_least_40_entries():
+    from agents.english import core_image
+
+    keys = list(core_image._ENTRIES)
+    assert len(keys) == len(set(keys))
+    assert len(keys) >= 40
+
