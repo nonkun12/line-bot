@@ -1,0 +1,31 @@
+name: Core English 1000 Progress Check
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Daily, independent of Mac availability. UTC 00:40 (JST 09:40).
+    - cron: "40 0 * * *"
+  push:
+    paths:
+      - "agents/english/core_image.py"
+      - "scripts/check_core_image_dictionary.py"
+      - ".github/workflows/core-english-1000-progress.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-english-1000-progress
+  cancel-in-progress: false
+
+jobs:
+  count-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Count and validate reviewed dictionary entries
+        run: python scripts/check_core_image_dictionary.py --target 1000
