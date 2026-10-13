@@ -203,6 +203,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "router-regression-general-request-metadata": "tests/test_management_router.py",
     "recovery-ai-loop-adapter-durable-state-readback": "tests/test_recovery_ai_loop_adapter.py",
     "recovery-ai-state-isolation": "tests/test_recovery_ai.py",
+    "ai-speaker-empty-transcript-no-brain-call": "tests/test_ai_speaker.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -246,6 +247,42 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
     if expected_target is not None and chosen != expected_target:
         return None, "deterministic_target_mismatch"
+
+    if task_id == "ai-speaker-empty-transcript-no-brain-call" and chosen == "tests/test_ai_speaker.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_ai_speaker_rejects_empty_transcript_without_brain_call"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = "def test_ai_speaker_rejects_empty_transcript():\\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "def test_ai_speaker_rejects_empty_transcript_without_brain_call():\\n"
+            "    brain = FakeBrain()\\n"
+            "    speaker = AISpeaker(brain)\\n"
+            "    try:\\n"
+            '        speaker.handle_transcript("  ")\\n'
+            "    except ValueError as exc:\\n"
+            '        assert str(exc) == "speech transcript must not be empty"\\n'
+            "    else:\\n"
+            '        raise AssertionError("empty transcript must fail closed")\\n'
+            "    assert brain.requests == []\\n"
+        )
+        new = addition + "\\n\\n" + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
 
     if task_id == "recovery-ai-state-isolation" and chosen == "tests/test_recovery_ai.py":
         target = worker.ROOT / chosen
