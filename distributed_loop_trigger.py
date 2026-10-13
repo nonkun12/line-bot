@@ -95,14 +95,21 @@ def _allowed_users() -> set[str]:
 
 
 def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
+    command = _normalize_command(message)
+    status_kind = None
+    if command in {"統括AIの状況", "統括AI状況", "分散Loopの状況", "分散ループの状況"}:
+        status_kind = "status"
+    elif command in {"分散Loopの結果", "分散ループの結果", "分散Loop結果", "分散ループ結果"}:
+        status_kind = "result"
+
     max_tasks = _requested_max_tasks(message)
-    if max_tasks is None:
+    if max_tasks is None and status_kind is None:
         return False, ""
     if not user_id or user_id not in _allowed_users():
-        return True, "分散Loop起動は許可されていません。"
+        return True, "分散Loop起動は許可されていません（このLINEユーザーには統括AIの操作権限がありません）。"
     token = os.environ.get("GITHUB_ACTIONS_DISPATCH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if not token:
-        return True, "分散Loop起動を安全に実行できません（GitHub認証未設定）。"
+        return True, "統括AIを安全に操作できません（GitHub認証未設定）。"
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github+json",
@@ -111,6 +118,36 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
     base = f"https://api.github.com/repos/{REPO}"
     try:
         with httpx.Client(timeout=8.0) as client:
+            if status_kind is not None:
+                response = client.get(
+                    f"{base}/actions/workflows/{WORKFLOW}/runs",
+                    params={"branch": "main", "per_page": 5},
+                    headers=headers,
+                )
+                if response.status_code in {401, 403}:
+                    return True, "統括AIの状態を取得できません（GitHub権限不足）。"
+                response.raise_for_status()
+                runs = response.json().get("workflow_runs", [])
+                if not runs:
+                    return True, "分散Loopの実行履歴はまだありません。"
+                if status_kind == "result":
+                    runs = [next((run for run in runs if run.get("status") == "completed"), runs[0])]
+                lines = ["統括AI／分散Loop 状況" if status_kind == "status" else "分散Loop 最新結果"]
+                for run in runs[:5 if status_kind == "status" else 1]:
+                    number = run.get("run_number", "?")
+                    state = run.get("conclusion") if run.get("status") == "completed" else run.get("status", "unknown")
+                    title = str(run.get("display_title") or "分散Loop")[:100]
+                    sha = str(run.get("head_sha") or "")
+                    created = str(run.get("created_at") or "")
+                    url = str(run.get("html_url") or "")
+                    lines.append(f"Run #{number}: {state} / {title}")
+                    if created:
+                        lines.append(f"開始: {created}")
+                    if sha:
+                        lines.append(f"SHA: {sha[:12]}")
+                    if url.startswith("https://github.com/"):
+                        lines.append(url)
+                return True, "\n".join(lines)
             for status in ("in_progress", "queued"):
                 r = client.get(
                     f"{base}/actions/workflows/{WORKFLOW}/runs",
@@ -127,18 +164,15 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                 headers=headers,
             )
             if r.status_code == 204:
-                # GitHub accepts workflow_dispatch with HTTP 204, but the API
-                # does not return a run id. Do not tell LINE that execution
-                # started until a matching workflow_dispatch run is observable.
                 deadline = time.monotonic() + 20.0
                 while time.monotonic() < deadline:
-                    runs = client.get(
+                    runs_response = client.get(
                         f"{base}/actions/workflows/{WORKFLOW}/runs",
                         params={"branch": "main", "event": "workflow_dispatch", "per_page": 10},
                         headers=headers,
                     )
-                    runs.raise_for_status()
-                    for run in runs.json().get("workflow_runs", []):
+                    runs_response.raise_for_status()
+                    for run in runs_response.json().get("workflow_runs", []):
                         created_at = run.get("created_at")
                         if not created_at:
                             continue
@@ -162,4 +196,4 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                 return True, "分散Loopを起動できません（GitHub Actions権限不足）。"
             return True, f"分散Loop起動に失敗しました（GitHub HTTP {r.status_code}）。"
     except httpx.HTTPError:
-        return True, "分散Loop起動に失敗しました（GitHub通信エラー）。"
+        return True, "統括AIへの接続に失敗しました（GitHub通信エラー）。"

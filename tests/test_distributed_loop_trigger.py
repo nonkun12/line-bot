@@ -177,7 +177,8 @@ class _Client:
         return False
 
     def get(self, *args, **kwargs):
-        if "event" in kwargs.get("params", {}):
+        params = kwargs.get("params", {})
+        if "event" in params or params.get("per_page") == 5:
             return _Response(200, {"workflow_runs": self.runs})
         return _Response(200, {"workflow_runs": []})
 
@@ -216,3 +217,64 @@ def test_dispatch_does_not_claim_started_when_run_is_not_visible(monkeypatch):
     assert handled is True
     assert "実行開始を確認できませんでした" in reply
     assert "安全のため再実行していません" in reply
+
+
+def test_status_command_requires_allowlisted_user_and_token(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.delenv("GITHUB_ACTIONS_DISPATCH_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    handled, reply = request_distributed_loop("u1", "統括AIの状況")
+    assert handled is True
+    assert "GitHub認証未設定" in reply
+    handled, reply = request_distributed_loop("u2", "統括AIの状況")
+    assert handled is True
+    assert "権限がありません" in reply
+
+
+def test_status_command_reports_latest_runs(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _Client([{
+        "run_number": 86,
+        "event": "workflow_dispatch",
+        "status": "completed",
+        "conclusion": "success",
+        "display_title": "test task",
+        "head_sha": "a" * 40,
+        "created_at": "2026-10-13T00:00:00Z",
+        "html_url": "https://github.com/nonkun12/line-bot/actions/runs/86",
+    }])
+    from unittest.mock import patch
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = trigger.request_distributed_loop("u1", "統括AIの状況")
+    assert handled is True
+    assert "Run #86" in reply
+    assert "success" in reply
+    assert "a" * 12 in reply
+
+
+def test_result_command_reports_latest_completed_run(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _Client([{
+        "run_number": 87,
+        "status": "in_progress",
+        "display_title": "running",
+        "head_sha": "b" * 40,
+        "created_at": "2026-10-13T00:00:00Z",
+        "html_url": "https://github.com/nonkun12/line-bot/actions/runs/87",
+    }, {
+        "run_number": 86,
+        "status": "completed",
+        "conclusion": "failure",
+        "display_title": "failed task",
+        "head_sha": "c" * 40,
+        "created_at": "2026-10-12T00:00:00Z",
+        "html_url": "https://github.com/nonkun12/line-bot/actions/runs/86",
+    }])
+    from unittest.mock import patch
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = trigger.request_distributed_loop("u1", "分散Loopの結果")
+    assert handled is True
+    assert "Run #86" in reply
+    assert "failure" in reply
