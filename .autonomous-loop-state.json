@@ -19,7 +19,8 @@
     "router-regression-market-channel-metadata",
     "macos-readiness-audit-no-secret-leak",
     "router-regression-general-request-metadata",
-    "recovery-ai-loop-adapter-durable-state-readback"
+    "recovery-ai-loop-adapter-durable-state-readback",
+    "recovery-ai-state-isolation"
   ],
   "recovery_ai": {
     "checkpoint": null,
