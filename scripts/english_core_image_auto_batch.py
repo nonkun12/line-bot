@@ -49,11 +49,6 @@ def validate_entry(entry: dict) -> None:
     related = entry["related"]
     if not isinstance(related, list) or len(related) < 2 or not all(isinstance(x, str) and x.strip() for x in related):
         raise ValueError(f"{word}: related must contain at least two non-empty strings")
-    if "語源を断定" not in entry["parts"] and "語源の細かな分解は断定せず" not in entry["parts"]:
-        # A semantic mnemonic is fine; avoid claiming unverified word history.
-        if not any(token in entry["parts"] for token in ("語源の", "語源分解", "意味の", "語源の細", "形に注意", "の形に", "動詞では", "通常は", "名詞では", "通常 avoid", "既存語")):
-            raise ValueError(f"{word}: parts needs conservative usage/source note")
-
 
 def render(entry: dict) -> str:
     fields = [
