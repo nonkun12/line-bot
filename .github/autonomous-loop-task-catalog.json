@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "orchestrator-regression-empty-queue-classification",
+      "instruction": "tests/test_minimal_autonomous_loop.py のみに、新しい固有名の回帰テストを追加してください。queue_empty のとき NOT_RUN/queue_empty になり、成功タスクとして数えられないこと、証拠が不整合なら BLOCKED になることを確認してください。既存テストは変更せず、テストファイル以外を変更しないでください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_minimal_autonomous_loop.py"
+      ]
+    },
+    {
+      "id": "orchestrator-regression-requested-task-limit",
+      "instruction": "tests/test_minimal_autonomous_loop.py のみに、新しい固有名の回帰テストを追加してください。要求タスク数と実行タスク数が一致しない場合に INCOMPLETE と分類される条件を確認してください。既存テストは変更せず、テストファイル以外を変更しないでください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_minimal_autonomous_loop.py"
+      ]
+    },
+    {
+      "id": "recovery-ai-regression-held-task-isolation",
+      "instruction": "tests/test_recovery_ai.py のみに、新しい固有名の回帰テストを追加してください。ある task_id が held 状態でも、別 task_id の状態や判断が影響を受けないことを検証してください。既存テストは変更せず、テストファイル以外を変更しないでください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_recovery_ai.py"
+      ]
+    },
+    {
+      "id": "management-router-regression-general-intent-variants",
+      "instruction": "tests/test_management_router.py のみに、新しい固有名の回帰テストを追加してください。曖昧な一般依頼が専門家向けルートに誤振り分けされず GENERAL に留まる境界ケースを1件検証してください。channel と metadata が保持されることも確認してください。既存テストは変更せず、テストファイル以外を変更しないでください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
+    }
+  ]
+}
