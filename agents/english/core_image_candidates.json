@@ -358,5 +358,773 @@
       "lower（下げる）"
     ],
     "example": "We should reduce unnecessary costs.（不要な費用を減らすべきだ。）"
+  },
+  {
+    "word": "analyze",
+    "pronunciation": "アナライズ",
+    "core_image": "全体を要素に分けて詳しく調べる → 分析する",
+    "parts": "analyze data / a problem のように、要素を分けて調べる意味。",
+    "related": [
+      "analysis（分析）",
+      "analyst（分析者）",
+      "examine（調べる）"
+    ],
+    "example": "We analyzed the survey results.（私たちは調査結果を分析した。）"
+  },
+  {
+    "word": "anticipate",
+    "pronunciation": "アンティシペイト",
+    "core_image": "先を考えて起こりそうなことに備える → 予期する",
+    "parts": "anticipate a problem / demand のように、先回りして予想する。",
+    "related": [
+      "anticipation（予期）",
+      "expect（予想する）",
+      "foresee（予見する）"
+    ],
+    "example": "We anticipate higher demand next year.（来年は需要の増加を見込んでいる。）"
+  },
+  {
+    "word": "appreciate",
+    "pronunciation": "アプリーシエイト",
+    "core_image": "価値や良さを認める → 評価する・感謝する",
+    "parts": "appreciate help / art / the difference のように使う。",
+    "related": [
+      "appreciation（評価・感謝）",
+      "value（価値を認める）",
+      "grateful（感謝している）"
+    ],
+    "example": "I appreciate your help.（ご協力に感謝します。）"
+  },
+  {
+    "word": "clarify",
+    "pronunciation": "クラリファイ",
+    "core_image": "曖昧なものを明るくはっきりさせる → 明確にする",
+    "parts": "clarify a point / meaning / issue のように使う。",
+    "related": [
+      "clarification（明確化）",
+      "clear（明確な）",
+      "explain（説明する）"
+    ],
+    "example": "Could you clarify your main point?（要点を明確にしていただけますか。）"
+  },
+  {
+    "word": "communicate",
+    "pronunciation": "コミュニケイト",
+    "core_image": "情報や考えを相手と共有する → 伝える・意思疎通する",
+    "parts": "communicate with someone / communicate information の形に注意。",
+    "related": [
+      "communication（意思疎通）",
+      "communicative（話好きな・伝達の）",
+      "convey（伝える）"
+    ],
+    "example": "The team communicates openly.（そのチームは率直に意思疎通する。）"
+  },
+  {
+    "word": "concentrate",
+    "pronunciation": "コンセントレイト",
+    "core_image": "注意や力を一点に集める → 集中する",
+    "parts": "concentrate on の形で「〜に集中する」。",
+    "related": [
+      "concentration（集中）",
+      "focus（集中する）",
+      "attentive（注意深い）"
+    ],
+    "example": "I cannot concentrate with this noise.（この騒音では集中できない。）"
+  },
+  {
+    "word": "confirm",
+    "pronunciation": "コンファーム",
+    "core_image": "確かめて正しいと裏づける → 確認する",
+    "parts": "confirm a booking / detail / result のように使う。",
+    "related": [
+      "confirmation（確認）",
+      "verify（検証する）",
+      "validate（妥当性を確認する）"
+    ],
+    "example": "Please confirm your email address.（メールアドレスを確認してください。）"
+  },
+  {
+    "word": "contribute",
+    "pronunciation": "コントリビュート",
+    "core_image": "全体に一部を差し出す → 貢献する・寄付する",
+    "parts": "contribute to a project / cause の形に注意する。",
+    "related": [
+      "contribution（貢献・寄付）",
+      "contributor（貢献者）",
+      "donate（寄付する）"
+    ],
+    "example": "Everyone contributed to the project.（全員がそのプロジェクトに貢献した。）"
+  },
+  {
+    "word": "convince",
+    "pronunciation": "コンヴィンス",
+    "core_image": "相手の考えを納得へ動かす → 説得する",
+    "parts": "convince someone that / to do の形で使う。",
+    "related": [
+      "convincing（説得力のある）",
+      "persuade（説得する）",
+      "convinced（確信している）"
+    ],
+    "example": "She convinced me to reconsider.（彼女は私に再考するよう説得した。）"
+  },
+  {
+    "word": "cope",
+    "pronunciation": "コウプ",
+    "core_image": "困難に対処して持ちこたえる → 対処する",
+    "parts": "cope with の形で「〜に対処する」。",
+    "related": [
+      "cope with stress（ストレスに対処する）",
+      "manage（何とか対処する）",
+      "handle（扱う）"
+    ],
+    "example": "He learned to cope with stress.（彼はストレスへの対処法を身につけた。）"
+  },
+  {
+    "word": "decline",
+    "pronunciation": "ディクライン",
+    "core_image": "下向きに傾く → 減少する・断る",
+    "parts": "数値の低下と、招待などを丁寧に断る意味がある。",
+    "related": [
+      "decline（減少）",
+      "decrease（減少する）",
+      "refuse（断る）"
+    ],
+    "example": "Sales declined slightly in June.（6月の売上はわずかに減少した。）"
+  },
+  {
+    "word": "demonstrate",
+    "pronunciation": "デモンストレイト",
+    "core_image": "目に見える形で示す → 実演する・証明する",
+    "parts": "demonstrate how / that の形で示す内容を続けられる。",
+    "related": [
+      "demonstration（実演・デモ）",
+      "demonstrative（表現豊かな）",
+      "show（示す）"
+    ],
+    "example": "The experiment demonstrates the effect clearly.（その実験は効果を明確に示している。）"
+  },
+  {
+    "word": "derive",
+    "pronunciation": "ディライブ",
+    "core_image": "ある源から結果や形を引き出す → 由来する・得る",
+    "parts": "derive A from B / derive from の形に注意。",
+    "related": [
+      "derivation（導出・由来）",
+      "derived（派生した）",
+      "originate（起源を持つ）"
+    ],
+    "example": "Many English words derive from Latin.（英語の多くの単語はラテン語に由来する。）"
+  },
+  {
+    "word": "distinguish",
+    "pronunciation": "ディスティングウィッシュ",
+    "core_image": "違いを見分けて分ける → 区別する",
+    "parts": "distinguish A from B の形で使う。",
+    "related": [
+      "distinction（区別）",
+      "distinct（明確に異なる）",
+      "differentiate（区別する）"
+    ],
+    "example": "It is hard to distinguish fact from opinion.（事実と意見を区別するのは難しい。）"
+  },
+  {
+    "word": "emerge",
+    "pronunciation": "イマージ",
+    "core_image": "隠れていたものが外に現れる → 現れる・明らかになる",
+    "parts": "emerge from / emerge as の形に注意する。",
+    "related": [
+      "emergence（出現）",
+      "emerging（新興の）",
+      "appear（現れる）"
+    ],
+    "example": "A new pattern emerged from the data.（データから新しい傾向が浮かび上がった。）"
+  },
+  {
+    "word": "emphasize",
+    "pronunciation": "エンファサイズ",
+    "core_image": "重要な点に重みを置く → 強調する",
+    "parts": "emphasize the importance / point のように使う。",
+    "related": [
+      "emphasis（強調）",
+      "emphatic（強調した）",
+      "highlight（強調する）"
+    ],
+    "example": "The report emphasizes safety.（その報告書は安全性を強調している。）"
+  },
+  {
+    "word": "encounter",
+    "pronunciation": "エンカウンター",
+    "core_image": "進んでいる途中で何かに出会う → 遭遇する",
+    "parts": "encounter a problem / difficulty / person のように使う。",
+    "related": [
+      "encounter（遭遇）",
+      "face（直面する）",
+      "meet（出会う）"
+    ],
+    "example": "We encountered several unexpected problems.（私たちは予期しない問題にいくつか遭遇した。）"
+  },
+  {
+    "word": "enhance",
+    "pronunciation": "エンハンス",
+    "core_image": "良い性質や程度をさらに高める → 高める・強化する",
+    "parts": "enhance quality / performance / security のように使う。",
+    "related": [
+      "enhancement（向上）",
+      "improve（改善する）",
+      "strengthen（強化する）"
+    ],
+    "example": "The update enhances data security.（その更新はデータの安全性を高める。）"
+  },
+  {
+    "word": "ensure",
+    "pronunciation": "エンシュア",
+    "core_image": "結果が確実になるようにする → 確実にする",
+    "parts": "ensure that ... は「必ず…となるようにする」。",
+    "related": [
+      "ensure（確保する）",
+      "assure（安心させる）",
+      "guarantee（保証する）"
+    ],
+    "example": "Please ensure that the door is locked.（ドアが施錠されていることを確認してください。）"
+  },
+  {
+    "word": "evaluate",
+    "pronunciation": "イヴァリュエイト",
+    "core_image": "基準に照らして価値や成果を判断する → 評価する",
+    "parts": "evaluate options / performance / evidence のように使う。",
+    "related": [
+      "evaluation（評価）",
+      "evaluate（評価する）",
+      "assess（評価する）"
+    ],
+    "example": "We evaluated three possible solutions.（私たちは三つの解決策を評価した。）"
+  },
+  {
+    "word": "examine",
+    "pronunciation": "イグザミン",
+    "core_image": "詳しく見て状態や事実を確かめる → 調べる・診察する",
+    "parts": "examine evidence / a patient / a question のように使う。",
+    "related": [
+      "examination（検査・試験）",
+      "examiner（試験官）",
+      "inspect（検査する）"
+    ],
+    "example": "The doctor examined the patient.（医師は患者を診察した。）"
+  },
+  {
+    "word": "exclude",
+    "pronunciation": "エクスクルード",
+    "core_image": "範囲の外に置く → 除外する",
+    "parts": "exclude A from B の形で使う。",
+    "related": [
+      "exclusion（除外）",
+      "exclusive（限定的な）",
+      "include（含める）"
+    ],
+    "example": "The price excludes delivery.（その価格には配送料が含まれていない。）"
+  },
+  {
+    "word": "extend",
+    "pronunciation": "エクステンド",
+    "core_image": "端をさらに先へ伸ばす → 延長する・広げる",
+    "parts": "extend a deadline / offer / area のように使う。",
+    "related": [
+      "extension（延長・拡張）",
+      "extensive（広範囲の）",
+      "expand（拡大する）"
+    ],
+    "example": "They extended the deadline by one week.（彼らは期限を1週間延長した。）"
+  },
+  {
+    "word": "facilitate",
+    "pronunciation": "ファシリテイト",
+    "core_image": "進行を容易にする → 促進する・容易にする",
+    "parts": "facilitate communication / access / learning のように使う。",
+    "related": [
+      "facilitation（促進）",
+      "facilitator（進行役）",
+      "enable（可能にする）"
+    ],
+    "example": "The tool facilitates collaboration.（そのツールは共同作業を容易にする。）"
+  },
+  {
+    "word": "function",
+    "pronunciation": "ファンクション",
+    "core_image": "役割や働きを果たす → 機能する・機能",
+    "parts": "名詞「機能」と動詞「機能する」の両方で使う。",
+    "related": [
+      "functional（機能的な）",
+      "functionality（機能性）",
+      "operate（作動する）"
+    ],
+    "example": "The device functions without an internet connection.（その装置はインターネット接続なしで動作する。）"
+  },
+  {
+    "word": "generate",
+    "pronunciation": "ジェネレイト",
+    "core_image": "何かを生み出して発生させる → 生成する",
+    "parts": "generate power / ideas / reports のように使う。",
+    "related": [
+      "generation（生成・世代）",
+      "generator（発生装置）",
+      "produce（生み出す）"
+    ],
+    "example": "The system generates a daily report.（そのシステムは日次レポートを生成する。）"
+  },
+  {
+    "word": "illustrate",
+    "pronunciation": "イラストレイト",
+    "core_image": "例や図で意味を見えるようにする → 説明する・例示する",
+    "parts": "illustrate a point / with an example の形に注意。",
+    "related": [
+      "illustration（図解・例示）",
+      "illustrative（説明用の）",
+      "demonstrate（示す）"
+    ],
+    "example": "This example illustrates the main idea.（この例は中心的な考えを説明している。）"
+  },
+  {
+    "word": "imply",
+    "pronunciation": "インプライ",
+    "core_image": "直接言わずに意味を含ませる → 暗示する・意味する",
+    "parts": "imply that ... は「…を暗に示す」。",
+    "related": [
+      "implication（含意・影響）",
+      "implicit（暗黙の）",
+      "suggest（示唆する）"
+    ],
+    "example": "His silence does not imply agreement.（彼の沈黙は同意を意味するわけではない。）"
+  },
+  {
+    "word": "improve",
+    "pronunciation": "インプルーヴ",
+    "core_image": "状態や質をより良くする → 改善する・上達する",
+    "parts": "improve quality / skills / conditions のように使う。",
+    "related": [
+      "improvement（改善）",
+      "improved（改善された）",
+      "enhance（高める）"
+    ],
+    "example": "Practice will improve your pronunciation.（練習すれば発音が上達する。）"
+  },
+  {
+    "word": "incorporate",
+    "pronunciation": "インコーポレイト",
+    "core_image": "別の要素を全体の中に組み込む → 取り入れる・法人化する",
+    "parts": "incorporate A into B の形に注意する。",
+    "related": [
+      "incorporation（組み込み・法人化）",
+      "integrate（統合する）",
+      "include（含める）"
+    ],
+    "example": "We incorporated the feedback into the design.（私たちはその意見を設計に取り入れた。）"
+  },
+  {
+    "word": "influence",
+    "pronunciation": "インフルエンス",
+    "core_image": "考えや行動に作用を及ぼす → 影響する・影響",
+    "parts": "名詞と動詞の両方で使える。",
+    "related": [
+      "influential（影響力のある）",
+      "influence（影響）",
+      "affect（影響する）"
+    ],
+    "example": "Sleep can influence your mood.（睡眠は気分に影響することがある。）"
+  },
+  {
+    "word": "justify",
+    "pronunciation": "ジャスティファイ",
+    "core_image": "理由や根拠を示して正当と説明する → 正当化する",
+    "parts": "justify a decision / cost / action のように使う。",
+    "related": [
+      "justification（正当化の理由）",
+      "justified（正当な）",
+      "defend（擁護する）"
+    ],
+    "example": "The evidence does not justify that conclusion.（その証拠はその結論を正当化しない。）"
+  },
+  {
+    "word": "limit",
+    "pronunciation": "リミット",
+    "core_image": "境界を設けて範囲を止める → 制限する・限界",
+    "parts": "limit A to B の形で上限を示せる。",
+    "related": [
+      "limitation（制限・限界）",
+      "limited（限られた）",
+      "restrict（制限する）"
+    ],
+    "example": "We limit each batch to twenty entries.（各バッチを20項目に制限する。）"
+  },
+  {
+    "word": "obvious",
+    "pronunciation": "オビアス",
+    "core_image": "見ればすぐ分かるほど明らかな → 明白な",
+    "parts": "obvious to / obvious that の形で使う。",
+    "related": [
+      "obviously（明らかに）",
+      "evident（明白な）",
+      "apparent（明らかな）"
+    ],
+    "example": "The cause was not obvious at first.（原因は最初は明らかではなかった。）"
+  },
+  {
+    "word": "participate",
+    "pronunciation": "パーティシペイト",
+    "core_image": "活動の一部に加わる → 参加する",
+    "parts": "participate in の形で使う。",
+    "related": [
+      "participation（参加）",
+      "participant（参加者）",
+      "take part in（参加する）"
+    ],
+    "example": "More than fifty students participated in the event.（50人を超える学生がその行事に参加した。）"
+  },
+  {
+    "word": "perceive",
+    "pronunciation": "パーシーヴ",
+    "core_image": "感覚や考えを通して物事を捉える → 知覚する・認識する",
+    "parts": "perceive A as B / perceive that ... の形に注意。",
+    "related": [
+      "perception（認識）",
+      "perceptive（洞察力のある）",
+      "notice（気づく）"
+    ],
+    "example": "People perceive risk in different ways.（人によってリスクの捉え方は異なる。）"
+  },
+  {
+    "word": "persist",
+    "pronunciation": "パーシスト",
+    "core_image": "困難があっても続ける → 持続する・やり抜く",
+    "parts": "persist in doing / persist despite の形に注意する。",
+    "related": [
+      "persistence（粘り強さ）",
+      "persistent（持続する）",
+      "continue（続ける）"
+    ],
+    "example": "The problem persisted after the restart.（再起動後も問題は続いた。）"
+  },
+  {
+    "word": "potential",
+    "pronunciation": "ポテンシャル",
+    "core_image": "まだ現れていない可能性として内にある力 → 潜在的な・可能性",
+    "parts": "potential risk / benefit / to do のように使う。",
+    "related": [
+      "potentially（潜在的に）",
+      "possibility（可能性）",
+      "capacity（能力）"
+    ],
+    "example": "The change has potential benefits.（その変更には潜在的な利点がある。）"
+  },
+  {
+    "word": "principle",
+    "pronunciation": "プリンシプル",
+    "core_image": "判断や行動を支える基本ルール → 原則・信条",
+    "parts": "principle（原則）と principal（主要な／校長）を区別する。",
+    "related": [
+      "principled（信念のある）",
+      "principal（主要な・校長）",
+      "rule（規則）"
+    ],
+    "example": "Safety is a basic design principle.（安全性は基本的な設計原則だ。）"
+  },
+  {
+    "word": "process",
+    "pronunciation": "プロセス",
+    "core_image": "段階を追って進む一連の働き → 処理する・過程",
+    "parts": "名詞「過程」と動詞「処理する」の両方で使う。",
+    "related": [
+      "processing（処理）",
+      "procedure（手順）",
+      "handle（処理する）"
+    ],
+    "example": "The app processes the data locally.（そのアプリはデータをローカルで処理する。）"
+  },
+  {
+    "word": "promote",
+    "pronunciation": "プロモウト",
+    "core_image": "前へ進める・成長を後押しする → 促進する・昇進させる",
+    "parts": "promote growth / health / someone のように使う。",
+    "related": [
+      "promotion（促進・昇進）",
+      "promotional（販促の）",
+      "encourage（促す）"
+    ],
+    "example": "The policy promotes equal access.（その方針は平等なアクセスを促進する。）"
+  },
+  {
+    "word": "prove",
+    "pronunciation": "プルーヴ",
+    "core_image": "証拠を示して真実だと確かめる → 証明する",
+    "parts": "prove that ... / prove something to someone の形に注意。",
+    "related": [
+      "proof（証拠・証明）",
+      "proven（実証済みの）",
+      "demonstrate（示す）"
+    ],
+    "example": "The test did not prove the claim.（その検査はその主張を証明しなかった。）"
+  },
+  {
+    "word": "publish",
+    "pronunciation": "パブリッシュ",
+    "core_image": "情報を人々が見られる形で公にする → 公開する・出版する",
+    "parts": "publish a report / article / update のように使う。",
+    "related": [
+      "publication（出版物・公開）",
+      "publisher（出版社）",
+      "release（公開する）"
+    ],
+    "example": "The team published its findings online.（チームは研究結果をオンラインで公開した。）"
+  },
+  {
+    "word": "recover",
+    "pronunciation": "リカバー",
+    "core_image": "失った状態や通常の状態を取り戻す → 回復する・取り戻す",
+    "parts": "recover from illness / failure; recover data のように使う。",
+    "related": [
+      "recovery（回復）",
+      "recoverable（復旧可能な）",
+      "restore（復元する）"
+    ],
+    "example": "The service recovered after a restart.（そのサービスは再起動後に復旧した。）"
+  },
+  {
+    "word": "reflect",
+    "pronunciation": "リフレクト",
+    "core_image": "光や考えを跳ね返す・映し出す → 反映する・熟考する",
+    "parts": "reflect on は「〜について熟考する」。",
+    "related": [
+      "reflection（反射・熟考）",
+      "reflective（熟考する）",
+      "consider（考慮する）"
+    ],
+    "example": "The report reflects the latest results.（その報告書は最新の結果を反映している。）"
+  },
+  {
+    "word": "regulate",
+    "pronunciation": "レギュレイト",
+    "core_image": "基準や規則で動きを整える → 規制する・調整する",
+    "parts": "regulate activity / temperature / industry のように使う。",
+    "related": [
+      "regulation（規制）",
+      "regulator（規制当局・調整器）",
+      "control（制御する）"
+    ],
+    "example": "The device regulates the temperature automatically.（その装置は温度を自動調整する。）"
+  },
+  {
+    "word": "relevant",
+    "pronunciation": "レレヴァント",
+    "core_image": "今の話題や目的に関係している → 関連する・適切な",
+    "parts": "relevant to の形で「〜に関連する」。",
+    "related": [
+      "relevance（関連性）",
+      "irrelevant（無関係な）",
+      "pertinent（関連する）"
+    ],
+    "example": "Please include only relevant details.（関連する詳細だけを含めてください。）"
+  },
+  {
+    "word": "rely",
+    "pronunciation": "リライ",
+    "core_image": "支えとして当てにする → 頼る・信頼する",
+    "parts": "rely on の形で「〜に頼る」。",
+    "related": [
+      "reliable（信頼できる）",
+      "reliance（依存・信頼）",
+      "depend on（頼る）"
+    ],
+    "example": "You can rely on this backup.（このバックアップは信頼できます。）"
+  },
+  {
+    "word": "remove",
+    "pronunciation": "リムーヴ",
+    "core_image": "対象をその場所や集合から取り去る → 取り除く",
+    "parts": "remove A from B の形に注意する。",
+    "related": [
+      "removal（除去）",
+      "removable（取り外し可能な）",
+      "eliminate（取り除く）"
+    ],
+    "example": "Remove duplicate entries before saving.（保存前に重複項目を取り除いてください。）"
+  },
+  {
+    "word": "replace",
+    "pronunciation": "リプレイス",
+    "core_image": "古いものの位置に別のものを置く → 置き換える",
+    "parts": "replace A with B の形で使う。",
+    "related": [
+      "replacement（交換・代替品）",
+      "replaceable（交換可能な）",
+      "substitute（代わりに使う）"
+    ],
+    "example": "We replaced the old component.（古い部品を交換した。）"
+  },
+  {
+    "word": "represent",
+    "pronunciation": "レプリゼント",
+    "core_image": "何かを代わりに示す・表す → 代表する・表現する",
+    "parts": "represent a group / data / idea のように使う。",
+    "related": [
+      "representation（表現・代表）",
+      "representative（代表者・代表的な）",
+      "symbolize（象徴する）"
+    ],
+    "example": "The chart represents monthly sales.（そのグラフは月間売上を表している。）"
+  },
+  {
+    "word": "resolve",
+    "pronunciation": "リゾルヴ",
+    "core_image": "絡まった問題をほどいて決着させる → 解決する・決意する",
+    "parts": "resolve an issue / conflict; resolve to do のように使う。",
+    "related": [
+      "resolution（解決・決意・解像度）",
+      "resolvable（解決可能な）",
+      "settle（解決する）"
+    ],
+    "example": "We resolved the issue without losing data.（データを失うことなく問題を解決した。）"
+  },
+  {
+    "word": "retain",
+    "pronunciation": "リテイン",
+    "core_image": "手元や状態にとどめておく → 保持する・覚えている",
+    "parts": "retain information / control / access のように使う。",
+    "related": [
+      "retention（保持）",
+      "retained（保持された）",
+      "keep（保つ）"
+    ],
+    "example": "The system retains logs for seven days.（そのシステムはログを7日間保持する。）"
+  },
+  {
+    "word": "reveal",
+    "pronunciation": "リヴィール",
+    "core_image": "覆いを取り除いて見えるようにする → 明らかにする",
+    "parts": "reveal a fact / result / identity のように使う。",
+    "related": [
+      "revelation（発覚・啓示）",
+      "revealing（明らかにする）",
+      "disclose（開示する）"
+    ],
+    "example": "The audit revealed a configuration error.（監査で設定ミスが明らかになった。）"
+  },
+  {
+    "word": "significant",
+    "pronunciation": "シグニフィカント",
+    "core_image": "意味や影響が無視できない → 重要な・かなりの",
+    "parts": "significant change / difference / result のように使う。",
+    "related": [
+      "significance（重要性）",
+      "significantly（大幅に・有意に）",
+      "important（重要な）"
+    ],
+    "example": "There was a significant improvement in speed.（速度に大幅な改善があった。）"
+  },
+  {
+    "word": "specify",
+    "pronunciation": "スペシファイ",
+    "core_image": "内容を具体的に指し示す → 明記する・指定する",
+    "parts": "specify a date / requirement / value のように使う。",
+    "related": [
+      "specific（具体的な）",
+      "specification（仕様・明細）",
+      "state（述べる）"
+    ],
+    "example": "Please specify the required version.（必要なバージョンを指定してください。）"
+  },
+  {
+    "word": "submit",
+    "pronunciation": "サブミット",
+    "core_image": "判断や処理を受ける側へ差し出す → 提出する",
+    "parts": "submit a form / report / proposal のように使う。",
+    "related": [
+      "submission（提出）",
+      "submitter（提出者）",
+      "present（提示する）"
+    ],
+    "example": "Submit the report before Friday.（金曜日までに報告書を提出してください。）"
+  },
+  {
+    "word": "sustain",
+    "pronunciation": "サステイン",
+    "core_image": "途切れないよう支え続ける → 維持する・持続させる",
+    "parts": "sustain growth / damage / attention のように使う。",
+    "related": [
+      "sustainable（持続可能な）",
+      "sustainability（持続可能性）",
+      "maintain（維持する）"
+    ],
+    "example": "The team sustained its progress for months.（チームは数か月にわたり進展を維持した。）"
+  },
+  {
+    "word": "target",
+    "pronunciation": "ターゲット",
+    "core_image": "狙いを定めた対象 → 目標・対象にする",
+    "parts": "target a group / market / goal のように使う。",
+    "related": [
+      "targeted（対象を絞った）",
+      "targeting（標的設定）",
+      "aim（狙う）"
+    ],
+    "example": "The campaign targets new learners.（そのキャンペーンは新しい学習者を対象にしている。）"
+  },
+  {
+    "word": "transform",
+    "pronunciation": "トランスフォーム",
+    "core_image": "形や性質を大きく変える → 変換する・一変させる",
+    "parts": "transform A into B の形に注意する。",
+    "related": [
+      "transformation（変革・変換）",
+      "transformative（大きく変える）",
+      "convert（変換する）"
+    ],
+    "example": "The tool transforms text into a structured record.（そのツールはテキストを構造化データに変換する。）"
+  },
+  {
+    "word": "transmit",
+    "pronunciation": "トランスミット",
+    "core_image": "信号や情報を送り渡す → 送信する・伝える",
+    "parts": "transmit data / signals / disease のように使う。",
+    "related": [
+      "transmission（送信・伝達）",
+      "transmitter（送信機）",
+      "send（送る）"
+    ],
+    "example": "The device transmits data securely.（その装置はデータを安全に送信する。）"
+  },
+  {
+    "word": "undertake",
+    "pronunciation": "アンダーテイク",
+    "core_image": "責任を引き受けて仕事に着手する → 引き受ける・着手する",
+    "parts": "undertake a task / project / responsibility のように使う。",
+    "related": [
+      "undertaking（事業・取り組み）",
+      "take on（引き受ける）",
+      "perform（実行する）"
+    ],
+    "example": "She undertook a detailed review.（彼女は詳細なレビューに着手した。）"
+  },
+  {
+    "word": "vary",
+    "pronunciation": "ヴェアリ",
+    "core_image": "同じ状態から違いが生じる → 変わる・変化させる",
+    "parts": "vary by / vary from A to B の形に注意する。",
+    "related": [
+      "variation（変動・変化）",
+      "variety（多様性）",
+      "variable（変数・変わりやすい）"
+    ],
+    "example": "Prices vary by region.（価格は地域によって異なる。）"
+  },
+  {
+    "word": "withstand",
+    "pronunciation": "ウィズスタンド",
+    "core_image": "圧力や攻撃を受けても持ちこたえる → 耐える",
+    "parts": "withstand pressure / heat / criticism のように使う。",
+    "related": [
+      "withstanding（耐えること）",
+      "resist（抵抗する）",
+      "endure（耐える）"
+    ],
+    "example": "The system can withstand heavy traffic.（そのシステムは大量のアクセスに耐えられる。）"
   }
 ]
