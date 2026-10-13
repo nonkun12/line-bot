@@ -10,6 +10,8 @@ def _load_builder():
     spec = importlib.util.spec_from_file_location("english_core_image_auto_batch", path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
+    import sys
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
