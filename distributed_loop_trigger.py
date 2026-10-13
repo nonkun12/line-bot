@@ -106,7 +106,7 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
     if max_tasks is None and status_kind is None:
         return False, ""
     if not user_id or user_id not in _allowed_users():
-        return True, "このLINEユーザーには統括AIの操作権限がありません。"
+        return True, "分散Loop起動は許可されていません（このLINEユーザーには統括AIの操作権限がありません）。"
     token = os.environ.get("GITHUB_ACTIONS_DISPATCH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if not token:
         return True, "統括AIを安全に操作できません（GitHub認証未設定）。"
