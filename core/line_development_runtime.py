@@ -255,7 +255,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
 
-        anchor = "def test_ai_speaker_rejects_empty_transcript():\n"
+        anchor = "def test_ai_speaker_rejects_empty_transcript() -> None:\n"
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
         addition = (
