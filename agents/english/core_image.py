@@ -218,7 +218,6 @@ _ENTRIES: dict[str, WordEntry] = {
         example="Noise can distract me while I work.（作業中、騒音で気が散ることがある。）",
         note="attract と並べて覚えると、引きつける／注意をそらすの対比になります。",
     ),
-}
 
     "improve": WordEntry(
         word="improve",
@@ -380,6 +379,7 @@ _ENTRIES: dict[str, WordEntry] = {
         related=("discovery（発見）", "discoverer（発見者）", "find（見つける）",),
         example="Scientists discovered a new species.（科学者たちは新種を発見した。）",
     ),
+}
 
 _COMMAND_RE = re.compile(
     r"^(?:コアイメージ|語根|語幹|core\s*image|word\s*root)\s*[:：]?\s+([A-Za-z][A-Za-z'-]{0,63})\s*[?？。！!]*$",
