@@ -40,7 +40,7 @@ class EnglishLearningAgent:
                 "会話・英文添削・練習問題を共通Coreから処理できます。\n"
                 f"入力: {lesson.prompt}"
             ),
-            metadata={"feature": self.name, "status": "foundation"},
+            metadata={"feature": self.name, "status": "foundation", "prompt": lesson.prompt},
         )
 
 
