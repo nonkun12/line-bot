@@ -22,6 +22,13 @@
       "allowed_paths": [
         "tests/test_recovery_ai.py"
       ]
+    },
+    {
+      "id": "ai-speaker-empty-transcript-no-brain-call",
+      "instruction": "tests/test_ai_speaker.py のみに新しい固有名の回帰テストを1件追加してください。空白だけの文字起こしを渡すと AISpeaker.handle_transcript が ValueError('speech transcript must not be empty') を返し、FakeBrain.requests が空のままであることを確認してください。既存テストを変更せず、変更は指定されたテストファイル1つだけにしてください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_ai_speaker.py"
+      ]
     }
   ]
 }
