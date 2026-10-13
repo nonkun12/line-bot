@@ -1,0 +1,362 @@
+[
+  {
+    "word": "adapt",
+    "pronunciation": "アダプト",
+    "core_image": "周囲や条件に合わせて形を変える → 適応する・適合させる",
+    "parts": "語源の細かな分解は断定せず、状況に合わせて変える動きで覚える。",
+    "related": [
+      "adaptation（適応）",
+      "adjust（調整する）",
+      "adopt（採用する）"
+    ],
+    "example": "We must adapt to changing conditions.（私たちは変化する状況に適応しなければならない。）"
+  },
+  {
+    "word": "adopt",
+    "pronunciation": "アダプト",
+    "core_image": "自分のものとして受け入れる → 採用する・養子にする",
+    "parts": "adapt（適応する）と綴りが似るが、意味を区別して覚える。",
+    "related": [
+      "adoption（採用・養子縁組）",
+      "adapt（適応する）",
+      "embrace（受け入れる）"
+    ],
+    "example": "The company adopted a new policy.（その会社は新しい方針を採用した。）"
+  },
+  {
+    "word": "acquire",
+    "pronunciation": "アクワイア",
+    "core_image": "時間や努力をかけて自分のものにする → 習得する・獲得する",
+    "parts": "acquire a skill / knowledge / company のように、技能・知識・企業などの獲得に使う。",
+    "related": [
+      "acquisition（獲得）",
+      "obtain（得る）",
+      "gain（獲得する）"
+    ],
+    "example": "She acquired strong communication skills.（彼女は高いコミュニケーション能力を身につけた。）"
+  },
+  {
+    "word": "approach",
+    "pronunciation": "アプローチ",
+    "core_image": "対象に近づいていく → 近づく・取り組み方",
+    "parts": "動詞では「近づく／取り組む」、名詞では「接近／方法」。",
+    "related": [
+      "approach a problem（問題に取り組む）",
+      "method（方法）",
+      "近接する（近づく）"
+    ],
+    "example": "We need a different approach to the problem.（その問題には別の取り組み方が必要だ。）"
+  },
+  {
+    "word": "assess",
+    "pronunciation": "アセス",
+    "core_image": "情報を見て価値や状態を見積もる → 評価する・査定する",
+    "parts": "assess risk / performance / damage のように、リスク・成果・損害の評価に使う。",
+    "related": [
+      "assessment（評価）",
+      "evaluate（評価する）",
+      "estimate（見積もる）"
+    ],
+    "example": "The team assessed the risks before launch.（チームは公開前にリスクを評価した。）"
+  },
+  {
+    "word": "assume",
+    "pronunciation": "アスーム",
+    "core_image": "確かめずにそうだと置く → 仮定する・思い込む",
+    "parts": "assume that ... は「…と仮定する」。事実として確認済みとは限らない。",
+    "related": [
+      "assumption（仮定）",
+      "presume（推定する）",
+      "verify（確かめる）"
+    ],
+    "example": "Do not assume that everyone agrees.（全員が同意していると思い込まないでください。）"
+  },
+  {
+    "word": "establish",
+    "pronunciation": "エスタブリッシュ",
+    "core_image": "土台を作って安定させる → 設立する・確立する",
+    "parts": "establish a company / rule / fact のように、組織・規則・事実の確立に使う。",
+    "related": [
+      "establishment（設立・確立）",
+      "found（設立する）",
+      "confirm（確認する）"
+    ],
+    "example": "The study established a clear link between the factors.（その研究は要因間の明確な関連を確立した。）"
+  },
+  {
+    "word": "maintain",
+    "pronunciation": "メインテイン",
+    "core_image": "状態を保ち続ける → 維持する・主張する",
+    "parts": "maintain quality / equipment / that ... など、状態の維持にも主張にも使う。",
+    "related": [
+      "maintenance（維持・保守）",
+      "preserve（保つ）",
+      "sustain（持続させる）"
+    ],
+    "example": "It is important to maintain accurate records.（正確な記録を維持することが重要だ。）"
+  },
+  {
+    "word": "obtain",
+    "pronunciation": "オブテイン",
+    "core_image": "必要な手続きを経て手に入れる → 得る・取得する",
+    "parts": "obtain permission / information / a degree のように、許可・情報・資格などに使う。",
+    "related": [
+      "obtainable（入手可能な）",
+      "acquire（獲得する）",
+      "receive（受け取る）"
+    ],
+    "example": "You must obtain permission before entering.（入る前に許可を得なければならない。）"
+  },
+  {
+    "word": "require",
+    "pronunciation": "リクワイア",
+    "core_image": "必要条件として求める → 必要とする・要求する",
+    "parts": "require A to do / require that ... の形に注意する。",
+    "related": [
+      "requirement（必要条件）",
+      "necessary（必要な）",
+      "demand（要求する）"
+    ],
+    "example": "The job requires careful attention to detail.（その仕事には細部への注意が必要だ。）"
+  },
+  {
+    "word": "respond",
+    "pronunciation": "レスポンド",
+    "core_image": "働きかけに返す → 返答する・反応する",
+    "parts": "respond to a question / treatment / change のように、質問や変化への反応に使う。",
+    "related": [
+      "response（返答・反応）",
+      "responsive（反応のよい）",
+      "reply（返事をする）"
+    ],
+    "example": "The system responds quickly to user input.（そのシステムはユーザー入力に素早く反応する。）"
+  },
+  {
+    "word": "involve",
+    "pronunciation": "インヴォルヴ",
+    "core_image": "活動や状況の中に含める → 関与させる・伴う",
+    "parts": "involve someone in / involve doing の形に注意する。",
+    "related": [
+      "involvement（関与）",
+      "include（含める）",
+      "engage（関与させる）"
+    ],
+    "example": "The project involves several research teams.（そのプロジェクトには複数の研究チームが関わっている。）"
+  },
+  {
+    "word": "indicate",
+    "pronunciation": "インディケイト",
+    "core_image": "手がかりを示して方向づける → 示す・指し示す",
+    "parts": "indicate that ... は「…を示す」。必ずしも証明するという意味ではない。",
+    "related": [
+      "indication（兆候・表示）",
+      "indicator（指標）",
+      "suggest（示唆する）"
+    ],
+    "example": "The results indicate a need for further study.（その結果はさらなる研究の必要性を示している。）"
+  },
+  {
+    "word": "affect",
+    "pronunciation": "アフェクト",
+    "core_image": "対象に働きかけて変化を与える → 影響する",
+    "parts": "通常は動詞。effect（結果・影響）との綴りと品詞の違いに注意する。",
+    "related": [
+      "effect（結果・影響）",
+      "impact（影響する）",
+      "influence（影響する）"
+    ],
+    "example": "Weather can affect travel plans.（天候は旅行計画に影響することがある。）"
+  },
+  {
+    "word": "effect",
+    "pronunciation": "イフェクト",
+    "core_image": "原因から生じた結果 → 効果・影響",
+    "parts": "名詞では「結果・効果」。affect は通常動詞として「影響する」。",
+    "related": [
+      "effective（効果的な）",
+      "affect（影響する）",
+      "consequence（結果）"
+    ],
+    "example": "The new rule had little effect.（新しい規則はほとんど効果がなかった。）"
+  },
+  {
+    "word": "achieve",
+    "pronunciation": "アチーブ",
+    "core_image": "努力を積み重ねて目標に届く → 達成する",
+    "parts": "achieve a goal / result / success のように、目標や成果の達成に使う。",
+    "related": [
+      "achievement（達成）",
+      "accomplish（成し遂げる）",
+      "attain（到達する）"
+    ],
+    "example": "They achieved their target ahead of schedule.（彼らは予定より早く目標を達成した。）"
+  },
+  {
+    "word": "avoid",
+    "pronunciation": "アヴォイド",
+    "core_image": "危険や望ましくない事態から離れる → 避ける",
+    "parts": "avoid doing の形を使い、通常 avoid to do とはしない。",
+    "related": [
+      "avoidance（回避）",
+      "prevent（防ぐ）",
+      "evade（逃れる）"
+    ],
+    "example": "Try to avoid making the same mistake.（同じ間違いをするのを避けるようにしてください。）"
+  },
+  {
+    "word": "compare",
+    "pronunciation": "コンペア",
+    "core_image": "二つ以上を並べて違いや共通点を見る → 比較する",
+    "parts": "compare A with B / compare A to B の形に注意する。",
+    "related": [
+      "comparison（比較）",
+      "comparable（比較できる）",
+      "contrast（対比する）"
+    ],
+    "example": "The report compares costs across three options.（その報告書は三つの選択肢の費用を比較している。）"
+  },
+  {
+    "word": "consider",
+    "pronunciation": "コンシダー",
+    "core_image": "複数の面からよく考える → 検討する・考慮する",
+    "parts": "consider doing / consider A (to be) B の形に注意する。",
+    "related": [
+      "consideration（考慮）",
+      "considerable（かなりの）",
+      "evaluate（評価する）"
+    ],
+    "example": "Please consider the long-term effects.（長期的な影響を考慮してください。）"
+  },
+  {
+    "word": "determine",
+    "pronunciation": "ディターミン",
+    "core_image": "調べて境界や答えをはっきりさせる → 決定する・特定する",
+    "parts": "determine the cause / outcome のように、原因や結果の特定にも使う。",
+    "related": [
+      "determination（決意・決定）",
+      "determinant（決定要因）",
+      "identify（特定する）"
+    ],
+    "example": "Further tests will determine the cause.（追加検査で原因が特定されるだろう。）"
+  },
+  {
+    "word": "develop",
+    "pronunciation": "ディヴェロップ",
+    "core_image": "段階を経て形や能力が育つ → 発展する・開発する",
+    "parts": "develop a skill / product / problem のように、発達・開発・問題の発生など幅広く使う。",
+    "related": [
+      "development（発展・開発）",
+      "developer（開発者）",
+      "evolve（発展する）"
+    ],
+    "example": "The team developed a simple tool for analysis.（チームは分析用の簡単なツールを開発した。）"
+  },
+  {
+    "word": "enable",
+    "pronunciation": "イネイブル",
+    "core_image": "できる条件や手段を整える → 可能にする",
+    "parts": "enable someone to do は「人が〜できるようにする」。",
+    "related": [
+      "ability（能力）",
+      "empower（力を与える）",
+      "allow（可能にする）"
+    ],
+    "example": "The update enables users to save time.（その更新によってユーザーは時間を節約できる。）"
+  },
+  {
+    "word": "expand",
+    "pronunciation": "イクスパンド",
+    "core_image": "範囲や大きさを外へ広げる → 拡大する・詳しく述べる",
+    "parts": "expand a business / market / explanation のように、規模や説明を広げるときに使う。",
+    "related": [
+      "expansion（拡大）",
+      "extend（延長する）",
+      "enlarge（大きくする）"
+    ],
+    "example": "The company plans to expand into new markets.（その会社は新しい市場へ事業を拡大する計画だ。）"
+  },
+  {
+    "word": "identify",
+    "pronunciation": "アイデンティファイ",
+    "core_image": "特徴を照合して何かを見分ける → 特定する・識別する",
+    "parts": "identify a problem / person / cause のように、問題・人物・原因の特定に使う。",
+    "related": [
+      "identification（識別・特定）",
+      "identity（身元・同一性）",
+      "recognize（見分ける）"
+    ],
+    "example": "Researchers identified three major factors.（研究者たちは三つの主要因を特定した。）"
+  },
+  {
+    "word": "interpret",
+    "pronunciation": "インタープリット",
+    "core_image": "情報や言葉に意味を与えて読み解く → 解釈する・通訳する",
+    "parts": "interpret data / a statement / between languages のように使う。",
+    "related": [
+      "interpretation（解釈）",
+      "interpreter（通訳者）",
+      "explain（説明する）"
+    ],
+    "example": "Different readers may interpret the poem differently.（読者によってその詩の解釈は異なることがある。）"
+  },
+  {
+    "word": "occur",
+    "pronunciation": "アカー",
+    "core_image": "出来事が起こる、考えが心に浮かぶ → 発生する・思い浮かぶ",
+    "parts": "occur to someone は「人の頭に浮かぶ」。occur は通常自動詞。",
+    "related": [
+      "occurrence（発生）",
+      "happen（起こる）",
+      "take place（発生する）"
+    ],
+    "example": "The error occurred during the update.（そのエラーは更新中に発生した。）"
+  },
+  {
+    "word": "perform",
+    "pronunciation": "パフォーム",
+    "core_image": "求められた動作や役割を実際に行う → 実行する・演じる",
+    "parts": "perform a task / experiment / role のように使う。",
+    "related": [
+      "performance（実績・性能・演技）",
+      "performer（実演者）",
+      "execute（実行する）"
+    ],
+    "example": "The device performs well under pressure.（その装置は負荷がかかっても良好に動作する。）"
+  },
+  {
+    "word": "provide",
+    "pronunciation": "プロヴァイド",
+    "core_image": "必要なものを相手に行き渡らせる → 提供する・備える",
+    "parts": "provide A for B / provide B with A の形に注意する。",
+    "related": [
+      "provision（供給・規定）",
+      "provider（提供者）",
+      "supply（供給する）"
+    ],
+    "example": "The guide provides useful information for beginners.（そのガイドは初心者に役立つ情報を提供する。）"
+  },
+  {
+    "word": "recognize",
+    "pronunciation": "レコグナイズ",
+    "core_image": "見覚えや根拠からそれだと分かる → 認識する・認める",
+    "parts": "recognize a face / pattern / achievement のように、識別にも評価にも使う。",
+    "related": [
+      "recognition（認識・評価）",
+      "recognizable（識別できる）",
+      "identify（特定する）"
+    ],
+    "example": "The software recognizes common speech patterns.（そのソフトは一般的な音声パターンを認識する。）"
+  },
+  {
+    "word": "reduce",
+    "pronunciation": "リデュース",
+    "core_image": "量や程度を小さくする → 減らす・縮小する",
+    "parts": "既存語のため重複時は自動スキップする候補。",
+    "related": [
+      "reduction（削減）",
+      "decrease（減少する）",
+      "lower（下げる）"
+    ],
+    "example": "We should reduce unnecessary costs.（不要な費用を減らすべきだ。）"
+  }
+]
