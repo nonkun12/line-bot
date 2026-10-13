@@ -98,7 +98,7 @@ def _has_error_word(text: str) -> bool:
     Pythonの例外クラス名らしき表記が含まれているかを判定する。
     """
 
-    if any(keyword in text for keyword in _ERROR_KEYWORDS):
+    if any(keyword.lower() in text.lower() for keyword in _ERROR_KEYWORDS):
         return True
 
     if any(keyword in text for keyword in _PYTHON_EXCEPTION_NAMES):
