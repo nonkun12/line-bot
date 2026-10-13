@@ -202,7 +202,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "macos-readiness-audit-no-secret-leak": "tests/test_macos_kanban_obsidian_readiness.py",
     "router-regression-general-request-metadata": "tests/test_management_router.py",
     "recovery-ai-loop-adapter-durable-state-readback": "tests/test_recovery_ai_loop_adapter.py",
-    "loop-test-recovery-state-isolation": "tests/test_minimal_autonomous_loop.py",
+    "recovery-ai-state-isolation": "tests/test_recovery_ai.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -246,6 +246,45 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
     if expected_target is not None and chosen != expected_target:
         return None, "deterministic_target_mismatch"
+
+    if task_id == "recovery-ai-state-isolation" and chosen == "tests/test_recovery_ai.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_recovery_ai_state_isolation_between_task_ids"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = "def test_same_deterministic_failure_is_not_repaired_repeatedly(tmp_path):\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "def test_recovery_ai_state_isolation_between_task_ids(tmp_path):\n"
+            '    store = RecoveryStore(tmp_path / "state.json")\n'
+            '    first = store.record_failure("task-a", "timeout", ["tests/test_x.py::test_y"])\n'
+            '    second = store.record_failure("task-b", "timeout", ["tests/test_x.py::test_y"])\n'
+            '    assert first.task_id == "task-a"\n'
+            '    assert second.task_id == "task-b"\n'
+            '    assert first.fingerprint != second.fingerprint\n'
+            '    assert first.action == "REPAIR_ONCE"\n'
+            '    assert second.action == "REPAIR_ONCE"\n'
+            '    assert store.task_status("task-a")["consecutive_failures"] == 1\n'
+            '    assert store.task_status("task-b")["consecutive_failures"] == 1\n'
+            '    assert store.task_status("task-a")["last_category"] == "timeout"\n'
+            '    assert store.task_status("task-b")["last_category"] == "timeout"\n'
+        )
+        new = addition + "\n\n" + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
 
     if task_id == "hand-sign-uhip-contract-phase-start" and chosen == "uhip/tests/test_schema_contracts.py":
         target = worker.ROOT / chosen
