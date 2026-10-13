@@ -22,6 +22,21 @@ def test_transient_failure_uses_bounded_retry_and_backoff(tmp_path):
     assert store.task_status("task-a")["held"] is True
 
 
+def test_recovery_ai_state_isolation_between_task_ids(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    first = store.record_failure("task-a", "timeout", ["tests/test_x.py::test_y"])
+    second = store.record_failure("task-b", "timeout", ["tests/test_x.py::test_y"])
+    assert first.task_id == "task-a"
+    assert second.task_id == "task-b"
+    assert first.fingerprint != second.fingerprint
+    assert first.action == "REPAIR_ONCE"
+    assert second.action == "REPAIR_ONCE"
+    assert store.task_status("task-a")["consecutive_failures"] == 1
+    assert store.task_status("task-b")["consecutive_failures"] == 1
+    assert store.task_status("task-a")["last_category"] == "timeout"
+    assert store.task_status("task-b")["last_category"] == "timeout"
+
+
 def test_same_deterministic_failure_is_not_repaired_repeatedly(tmp_path):
     store = RecoveryStore(tmp_path / "state.json")
     first = store.record_failure("task-a", "test_regression", ["tests/test_x.py::test_y"])
