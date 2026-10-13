@@ -177,7 +177,8 @@ class _Client:
         return False
 
     def get(self, *args, **kwargs):
-        if "event" in kwargs.get("params", {}):
+        params = kwargs.get("params", {})
+        if "event" in params or params.get("per_page") == 5:
             return _Response(200, {"workflow_runs": self.runs})
         return _Response(200, {"workflow_runs": []})
 
