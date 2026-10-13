@@ -26,6 +26,17 @@
     "checkpoint": null,
     "schema_version": 1,
     "tasks": {
+      "ai-speaker-empty-transcript-no-brain-call": {
+        "consecutive_failures": 1,
+        "fingerprints": [
+          "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56"
+        ],
+        "held": true,
+        "last_category": "unknown",
+        "last_fingerprint": "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56",
+        "same_fingerprint_attempts": 1,
+        "updated_at": "2026-10-13T13:08:26.164696+00:00"
+      },
       "loop-test-recovery-state-isolation": {
         "consecutive_failures": 1,
         "fingerprints": [
