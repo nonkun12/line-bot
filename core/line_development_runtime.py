@@ -255,22 +255,22 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
 
-        anchor = "def test_ai_speaker_rejects_empty_transcript():\\n"
+        anchor = "def test_ai_speaker_rejects_empty_transcript():\n"
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
         addition = (
-            "def test_ai_speaker_rejects_empty_transcript_without_brain_call():\\n"
-            "    brain = FakeBrain()\\n"
-            "    speaker = AISpeaker(brain)\\n"
-            "    try:\\n"
-            '        speaker.handle_transcript("  ")\\n'
-            "    except ValueError as exc:\\n"
-            '        assert str(exc) == "speech transcript must not be empty"\\n'
-            "    else:\\n"
-            '        raise AssertionError("empty transcript must fail closed")\\n'
-            "    assert brain.requests == []\\n"
+            "def test_ai_speaker_rejects_empty_transcript_without_brain_call():\n"
+            "    brain = FakeBrain()\n"
+            "    speaker = AISpeaker(brain)\n"
+            "    try:\n"
+            '        speaker.handle_transcript("  ")\n'
+            "    except ValueError as exc:\n"
+            '        assert str(exc) == "speech transcript must not be empty"\n'
+            "    else:\n"
+            '        raise AssertionError("empty transcript must fail closed")\n'
+            "    assert brain.requests == []\n"
         )
-        new = addition + "\\n\\n" + anchor
+        new = addition + "\n\n" + anchor
         if len(anchor) > 1200 or len(new) > 1800:
             return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
         candidate = text.replace(anchor, new, 1)
