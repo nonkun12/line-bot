@@ -279,6 +279,7 @@ jobs:
           INCIDENT_CATEGORY: ${{ env.INCIDENT_CATEGORY }}
           INCIDENT_DETAIL: ${{ env.INCIDENT_DETAIL }}
           INCIDENT_JOB_ID: ${{ env.INCIDENT_JOB_ID }}
+          EVENT_NAME: ${{ github.event_name }}
           RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || '' }}
           CONFIRM_CAUSE_FIXED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_cause_fixed || 'false' }}
         run: |
