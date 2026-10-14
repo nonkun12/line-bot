@@ -590,6 +590,8 @@ def main() -> int:
             )
         except (ValueError, RuntimeError) as exc:
             raise SystemExit(f"held-task resume rejected: {exc}") from exc
+        if resumed_task_id is not None:
+            ACTIVE_RESUME_CONTEXT = (recovery_store, resumed_task_id)
     pending_tasks = list(tasks)
     # An explicit resume run must execute only the selected task. Never unhold
     # one task and then accidentally run an earlier queue item instead.
