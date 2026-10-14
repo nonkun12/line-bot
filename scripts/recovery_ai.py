@@ -21,7 +21,7 @@ HOLD_AFTER_FAILURES = 3
 MAX_TRANSIENT_RETRIES = 2
 MAX_REPAIR_ATTEMPTS_PER_FINGERPRINT = 1
 MAX_RESUME_ATTEMPTS = 2
-_RESUME_AUDIT_KEYS = ("archived_fingerprints", "resume_count", "resumed_at", "resume_requires_review", "resume_review_status", "resume_actor", "resume_run_id")
+_RESUME_AUDIT_KEYS = ("archived_fingerprints", "resume_count", "resumed_at", "resume_requires_review", "resume_review_status", "resume_actor", "resume_run_id", "resume_interrupted_at", "resume_interruption_reason")
 _MAX_ARCHIVED_FINGERPRINTS = 100
 
 TRANSIENT_CATEGORIES = frozenset({"network_transient", "service_unavailable", "rate_limited"})
