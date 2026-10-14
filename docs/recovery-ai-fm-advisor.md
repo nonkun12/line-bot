@@ -1,30 +1,37 @@
 # Recovery AI: local Apple Foundation Model advisor
 
-This is an **optional Mac-only diagnostic helper** for the Recovery AI workflow.
-It calls Apple's `fm respond` CLI, which uses the on-device system model.
+This is an **optional Mac-only diagnostic helper** for Recovery AI. It calls Apple's
+`fm respond` CLI for on-device diagnostic suggestions.
 
-## Safety boundaries
+## Safe integration boundary
 
-- It accepts task ID, failure category, and failing-test identifiers only; do not pass raw logs, prompts, tracebacks, or secrets.
-- It validates a strict JSON response schema and applies a 20-second default timeout (maximum 60 seconds).
-- It never executes model suggestions, changes files, applies patches, merges pull requests, or deploys.
-- Errors do not include the model's stdout/stderr, to avoid leaking sensitive output.
-- On non-macOS hosts, it stops with an explicit error. The hosted GitHub Actions loop must skip this adapter; it cannot access a Mac's on-device model.
-- Existing Recovery AI and distributed-loop behavior is unchanged. Keep `AUTO_APPLY_PATCH=false` and `AUTO_DEPLOY=false`.
+- `scripts/recovery_ai.py` remains the authoritative deterministic controller.
+- `scripts/recovery_ai_local_advisor.py` is an explicit, opt-in bridge. It asks fm
+  only when the supplied decision is `REPAIR_ONCE` and the category is allowlisted
+  (`test_regression`, `timeout`, or `process_crash`).
+- `HOLD`, `STOP_FAIL_CLOSED`, `RETRY`, security violations, invalid evidence, and
+  other categories skip diagnosis.
+- The result is marked `ADVISORY_ONLY`; it is not a repair instruction. It does not
+  persist state, execute commands, edit files, apply patches, merge, or deploy.
+- Adapter failures or invalid output produce `UNAVAILABLE` without changing the
+  original RecoveryDecision.
+- Never pass raw logs, prompts, tracebacks, or secrets; provide identifiers only.
+- The hosted distributed loop must not invoke this Mac-only adapter. Keep
+  `AUTO_APPLY_PATCH=false` and `AUTO_DEPLOY=false`.
 
-## Use on a Mac
-
-From the repository root, call it from Python with a task identifier, allowlisted failure category, and test identifiers:
+## Opt-in use on a Mac
 
 ```python
-from scripts.recovery_ai_fm_advisor import diagnose
+from scripts.recovery_ai_local_advisor import advise_for_decision
 
-suggestion = diagnose(
-    task_id="example-task",
+result = advise_for_decision(
+    decision,  # RecoveryDecision already returned by the deterministic controller
     category="test_regression",
     failing_tests=["tests/test_example.py::test_expected_behavior"],
 )
-print(suggestion)
+# Review result only when result.status == "ADVISORY_ONLY".
+print(result)
 ```
 
-The Mac must have the `fm` CLI installed and report the system model as available. This module deliberately does not integrate itself into the hosted loop or automatically apply advice. A later integration should store the suggestion as untrusted advisory metadata and preserve the existing deterministic safety gates.
+The bridge is deliberately not wired into the hosted loop. It requires an explicit
+caller on a Mac, and advice must be independently reviewed before any repair work.
