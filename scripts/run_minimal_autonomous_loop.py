@@ -28,6 +28,7 @@ if str(ROOT) not in sys.path:
 QUEUE = ROOT / ".github" / "autonomous-loop-tasks.json"
 DEFAULT_STOP_FILE = Path("/tmp/line-bot-autonomous-loop.stop")
 ACTIVE_PROCESS: subprocess.Popen[str] | None = None
+ACTIVE_RESUME_CONTEXT = None
 
 EXIT_NOT_RUN = 78
 NOT_RUN_REASON_QUEUE_EMPTY = "queue_empty"
