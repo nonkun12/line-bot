@@ -278,8 +278,8 @@ jobs:
           REQUESTED_RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || '' }}
           CONFIRM_CAUSE_FIXED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_cause_fixed || 'false' }}
           AUTO_RESUME_ENABLED: ${{ vars.RECOVERY_AI_SCHEDULED_AUTO_RESUME || 'false' }}
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
+          RESUME_ACTOR: ${{ github.actor }}
+          RESUME_RUN_ID: ${{ github.run_id }}
           GITHUB_SHA: ${{ github.sha }}
           RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || '' }}
         run: |
@@ -353,8 +353,8 @@ jobs:
               raise SystemExit('resume attempt limit reached or counter invalid')
           record['resume_count'] = count + 1
           record['held'] = True
-          record['resume_actor'] = os.environ['GITHUB_ACTOR'] or 'unknown'
-          record['resume_run_id'] = os.environ['GITHUB_RUN_ID']
+          record['resume_actor'] = os.environ['RESUME_ACTOR'] or 'unknown'
+          record['resume_run_id'] = os.environ['RESUME_RUN_ID']
           record['resume_intent_at'] = datetime.now(timezone.utc).isoformat()
           record['resume_intent_status'] = 'reserved_held_before_execution'
           recovery['tasks'][task_id] = record
