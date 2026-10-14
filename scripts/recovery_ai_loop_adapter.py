@@ -1,16 +1,18 @@
 """Bridge sanitized distributed-loop results into deterministic Recovery AI.
 
 This adapter records decisions only. It never reruns tasks, applies patches, or
-changes the existing loop's fail-closed stop behavior.
+changes the existing loop's fail-closed stop behavior. Optional RAG history is
+advisory only: it never changes Recovery AI decisions.
 """
 from __future__ import annotations
 
 from dataclasses import asdict
+import os
 from pathlib import Path
 import re
 from typing import Any
 
-from scripts.recovery_ai import RecoveryStore
+from scripts.recovery_ai import RecoveryStore, failure_fingerprint
 
 
 def _category(result: dict[str, Any]) -> str:
@@ -45,6 +47,54 @@ def _has_verified_run_identity(result: dict[str, Any], status: str) -> bool:
     return True
 
 
+def _attach_rag_advisory(
+    outcome: dict[str, Any], *, task_id: str, status: str, category: str
+) -> dict[str, Any]:
+    """Record/search sanitized RAG history when configured; never affect the decision."""
+    db_path = os.environ.get("RECOVERY_RAG_DB_PATH", "").strip()
+    if not db_path:
+        return outcome
+    namespace = os.environ.get("RECOVERY_RAG_NAMESPACE", "distributed-loop").strip()
+    if not namespace:
+        outcome["recovery_rag"] = {"recorded": False, "error": "invalid_namespace"}
+        return outcome
+    try:
+        from scripts.recovery_rag import record_outcome, search_prior_outcomes
+
+        fingerprint = failure_fingerprint(task_id, category, ())
+        # Read only a small, sanitized summary. Retrieved text is never executed
+        # or passed to the repair path as instructions.
+        prior = search_prior_outcomes(
+            db_path, namespace=namespace, query=category, limit=5
+        )
+        record_outcome(
+            db_path,
+            namespace=namespace,
+            task_id=task_id,
+            status=status if status in {"PASS", "NO_CHANGE", "FAIL", "TIMEOUT", "STOPPED", "BLOCKED"} else "BLOCKED",
+            category=category,
+            fingerprint=fingerprint,
+        )
+        outcome["recovery_rag"] = {
+            "recorded": True,
+            "prior_matches": len(prior),
+            "prior_statuses": sorted({
+                item.get("metadata", {}).get("status", "")
+                for item in prior
+                if item.get("metadata", {}).get("status")
+            }),
+            "scope": "current_database",
+        }
+    except Exception as exc:
+        # RAG is non-authoritative. Preserve the already-persisted Recovery AI
+        # decision and expose only the exception class, never its raw message.
+        outcome["recovery_rag"] = {
+            "recorded": False,
+            "error": type(exc).__name__,
+        }
+    return outcome
+
+
 def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[str, Any]:
     """Persist one verified outcome; fail closed if state cannot be trusted."""
     if not isinstance(result, dict):
@@ -64,7 +114,10 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
         result["status"] = "FAIL"
         result["exit_code"] = 1
         result["failure_reason"] = "recovery_ai_invalid_evidence"
-        return {"recorded": True, "status": "FAIL", "decision": asdict(decision)}
+        outcome = {"recorded": True, "status": "FAIL", "decision": asdict(decision)}
+        return _attach_rag_advisory(
+            outcome, task_id=task_id, status="FAIL", category="invalid_evidence"
+        )
 
     verified_success = (
         result.get("exit_code") == 0
@@ -76,6 +129,13 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
     )
     if verified_success:
         store.record_success(task_id, verified=True)
-        return {"recorded": True, "status": status, "verified": True}
-    decision = store.record_failure(task_id, _category(result), ())
-    return {"recorded": True, "status": status, "decision": asdict(decision)}
+        return _attach_rag_advisory(
+            {"recorded": True, "status": status, "verified": True},
+            task_id=task_id, status=status, category="unknown",
+        )
+    category = _category(result)
+    decision = store.record_failure(task_id, category, ())
+    return _attach_rag_advisory(
+        {"recorded": True, "status": status, "decision": asdict(decision)},
+        task_id=task_id, status=status, category=category,
+    )
