@@ -281,6 +281,7 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_SHA: ${{ github.sha }}
+          RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || '' }}
         run: |
           set -euo pipefail
           if [ "${EVENT_NAME}" = "workflow_dispatch" ] && [ "${CONFIRM_CAUSE_FIXED}" != "true" ]; then
@@ -315,6 +316,7 @@ jobs:
             echo "::error::Invalid resume task ID"
             exit 1
           fi
+          export RESUME_TASK_ID="${resume_id}"
           state_branch="autonomous-loop-state"
           auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
           git fetch --quiet origin "$state_branch"
@@ -324,11 +326,9 @@ jobs:
           python - <<'PY'
           import json
           import os
+          from datetime import datetime, timezone
           from pathlib import Path
-          from scripts.recovery_ai import (
-              MAX_RESUME_ATTEMPTS, RESUMABLE_CATEGORIES,
-              is_legacy_anchor_failure_record,
-          )
+          from scripts.recovery_ai import MAX_RESUME_ATTEMPTS, RESUMABLE_CATEGORIES, is_legacy_anchor_failure_record
           root = Path('/tmp/recovery-ai-resume-reservation')
           state_path = root / '.autonomous-loop-state.json'
           state = json.loads(state_path.read_text(encoding='utf-8'))
@@ -351,12 +351,11 @@ jobs:
           count = record.get('resume_count', 0)
           if isinstance(count, bool) or not isinstance(count, int) or count < 0 or count >= MAX_RESUME_ATTEMPTS:
               raise SystemExit('resume attempt limit reached or counter invalid')
-          # Write-ahead reservation: increment while still held before any task starts.
           record['resume_count'] = count + 1
           record['held'] = True
           record['resume_actor'] = os.environ['GITHUB_ACTOR'] or 'unknown'
           record['resume_run_id'] = os.environ['GITHUB_RUN_ID']
-          record['resume_intent_at'] = __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat()
+          record['resume_intent_at'] = datetime.now(timezone.utc).isoformat()
           record['resume_intent_status'] = 'reserved_held_before_execution'
           recovery['tasks'][task_id] = record
           state['recovery_ai'] = recovery
@@ -366,10 +365,6 @@ jobs:
               encoding='utf-8',
           )
           PY
-        env:
-          RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || '' }}
-        run: |
-          set -euo pipefail
           git -C /tmp/recovery-ai-resume-reservation config user.name "github-actions[bot]"
           git -C /tmp/recovery-ai-resume-reservation config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git -C /tmp/recovery-ai-resume-reservation add .autonomous-loop-state.json
