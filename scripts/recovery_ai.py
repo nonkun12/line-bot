@@ -29,6 +29,41 @@ REPAIRABLE_CATEGORIES = frozenset({"test_regression", "timeout", "process_crash"
 NON_REPAIRABLE_CATEGORIES = frozenset({"invalid_task", "invalid_evidence", "security_violation"})
 # Only known, bounded failures may be resumed after explicit cause-fix confirmation.
 RESUMABLE_CATEGORIES = frozenset(TRANSIENT_CATEGORIES | REPAIRABLE_CATEGORIES)
+
+LEGACY_ANCHOR_TASK_ID = "ai-speaker-empty-transcript-no-brain-call"
+LEGACY_ANCHOR_FINGERPRINT = "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56"
+LEGACY_ANCHOR_FIX_SHA = "833043c9e45248eb5ad49a0e35574cfc523f0b6f"
+
+
+def is_legacy_anchor_failure_record(task_id: str, record: object) -> bool:
+    """Recognize only the exact pre-fix planner-anchor incident; never generic unknowns."""
+    return (
+        task_id == LEGACY_ANCHOR_TASK_ID
+        and isinstance(record, dict)
+        and record.get("last_category") == "unknown"
+        and record.get("held") is True
+        and record.get("last_fingerprint") == LEGACY_ANCHOR_FINGERPRINT
+        and record.get("fingerprints") == [LEGACY_ANCHOR_FINGERPRINT]
+        and record.get("resume_count", 0) == 0
+        and "resume_legacy_migration" not in record
+    )
+
+
+def is_eligible_for_legacy_anchor_auto_resume(
+    task_id: str,
+    record: object,
+    *,
+    queued_task_ids: set[str],
+    completed_task_ids: set[str],
+    fix_sha_present: bool,
+) -> bool:
+    """Single shared gate for scheduled auto-resume; fail closed on missing evidence."""
+    return (
+        fix_sha_present is True
+        and task_id in queued_task_ids
+        and task_id not in completed_task_ids
+        and is_legacy_anchor_failure_record(task_id, record)
+    )
 FAILURE_CATEGORIES = (
     TRANSIENT_CATEGORIES | REPAIRABLE_CATEGORIES | NON_REPAIRABLE_CATEGORIES
     | {"state_persistence_failure", "unknown"}
@@ -234,16 +269,7 @@ class RecoveryStore:
         # One audited migration only: this exact legacy record came from the known
         # deterministic planner anchor-count failure, fixed on main by 833043c9.
         # Never generalize this exception to other unknown tasks.
-        legacy_anchor_migration = (
-            task_id == "ai-speaker-empty-transcript-no-brain-call"
-            and category == "unknown"
-            and record.get("held") is True
-            and record.get("last_fingerprint") == "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56"
-            and isinstance(record.get("fingerprints"), list)
-            and record.get("fingerprints") == [
-                "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56"
-            ]
-        )
+        legacy_anchor_migration = is_legacy_anchor_failure_record(task_id, record)
         if category not in RESUMABLE_CATEGORIES and not legacy_anchor_migration:
             # Unknown, security-related, malformed-evidence, and persistence failures
             # remain held unless the exact audited legacy record above matches.
