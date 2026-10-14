@@ -460,8 +460,16 @@ def _handle_signal(signum: int, _frame) -> None:
         store, task_id = ACTIVE_RESUME_CONTEXT
         try:
             store.hold_interrupted_resume(task_id, reason="signal_interrupted_resume")
-        except Exception:
-            pass
+        except Exception as exc:
+            # Preserve the last durable state (which should still be held) rather
+            # than publishing a local state that may show the task as unheld.
+            try:
+                Path("/tmp/autonomous-loop-held-tasks").write_text(
+                    f"resume re-hold failed: {type(exc).__name__}", encoding="utf-8"
+                )
+            except OSError:
+                pass
+            print("MINIMAL_LOOP=HALT reason=resume_rehold_failed", file=sys.stderr, flush=True)
         ACTIVE_RESUME_CONTEXT = None
     raise SystemExit(128 + signum)
 
