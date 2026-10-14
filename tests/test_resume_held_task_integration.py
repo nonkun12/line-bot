@@ -57,6 +57,8 @@ def test_resume_runs_one_fake_task_validates_evidence_and_persists_success(monke
             "--state", str(tmp_path / "loop-state.json"),
             "--results", str(results_path),
             "--resume-task-id", task["id"],
+            "--resume-actor", "test-operator",
+            "--resume-run-id", "12345",
             "--confirm-cause-fixed",
         ],
     )
