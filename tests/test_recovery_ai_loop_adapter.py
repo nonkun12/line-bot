@@ -148,3 +148,44 @@ def test_failed_recovery_state_persistence_blocks_final_completion():
         sheets_outcome="success",
         recovery_outcome="failure",
     ) == ("FAILED", "post_run_gate_failed:recovery_ai_persistence")
+
+
+
+def test_rag_connection_records_sanitized_outcomes_and_reads_prior_history(tmp_path, monkeypatch):
+    db_path = tmp_path / "recovery-rag.sqlite3"
+    monkeypatch.setenv("RECOVERY_RAG_DB_PATH", str(db_path))
+    monkeypatch.setenv("RECOVERY_RAG_NAMESPACE", "test-loop")
+
+    first = record_loop_outcome(tmp_path / "recovery.json", {
+        "task_id": "task-rag-a", "status": "TIMEOUT", "exit_code": 1,
+        "failure_reason": "task_timeout; never store this raw message",
+    })
+    second = record_loop_outcome(tmp_path / "recovery.json", {
+        "task_id": "task-rag-b", "status": "TIMEOUT", "exit_code": 1,
+        "failure_reason": "task_timeout",
+    })
+
+    assert first["decision"]["action"] == "REPAIR_ONCE"
+    assert first["recovery_rag"]["recorded"] is True
+    assert second["recovery_rag"]["recorded"] is True
+    assert second["recovery_rag"]["prior_matches"] == 1
+    from rag_store import RagStore
+    stored = RagStore(db_path).search(namespace="test-loop", query="timeout", limit=5)
+    assert len(stored) == 2
+    assert all("never store this raw message" not in item["content"] for item in stored)
+
+
+def test_rag_storage_failure_does_not_change_recovery_ai_decision(tmp_path, monkeypatch):
+    monkeypatch.setenv("RECOVERY_RAG_DB_PATH", str(tmp_path / "recovery-rag.sqlite3"))
+
+    def fail_record(*args, **kwargs):
+        raise OSError("raw private path should not be returned")
+
+    monkeypatch.setattr("scripts.recovery_rag.record_outcome", fail_record)
+    outcome = record_loop_outcome(tmp_path / "recovery.json", {
+        "task_id": "task-rag-failure", "status": "TIMEOUT", "exit_code": 1,
+        "failure_reason": "task_timeout",
+    })
+
+    assert outcome["decision"]["action"] == "REPAIR_ONCE"
+    assert outcome["recovery_rag"] == {"recorded": False, "error": "OSError"}
