@@ -684,3 +684,57 @@ def test_refactorer_receives_current_repair_task_context(monkeypatch):
     assert task_context in calls["test_output"]
     assert "Old test output unrelated to reviewer failure" in calls["test_output"]
 
+
+
+def test_ai_speaker_empty_transcript_plan_handles_existing_unannotated_test(monkeypatch, tmp_path):
+    chosen = "tests/test_ai_speaker.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    original = (
+        "class FakeBrain:\\n"
+        "    def __init__(self): self.requests = []\\n"
+        "def test_ai_speaker_rejects_empty_transcript():\\n"
+        "    brain = FakeBrain()\\n"
+        "    try:\\n"
+        '        raise ValueError("speech transcript must not be empty")\\n'
+        "    except ValueError as exc:\\n"
+        '        assert str(exc) == "speech transcript must not be empty"\\n'
+        "    else:\\n"
+        '        raise AssertionError("empty transcript must fail closed")\\n'
+    )
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen, "ai-speaker-empty-transcript-no-brain-call"
+    )
+
+    assert err is None
+    assert plan is not None
+    assert plan["no_change"] is False
+    change = plan["changes"][0]
+    assert change["old"] == '        raise AssertionError("empty transcript must fail closed")\\n'
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert candidate.count("def test_ai_speaker_rejects_empty_transcript()") == 1
+    assert "    assert brain.requests == []\\n" in candidate
+
+
+def test_ai_speaker_empty_transcript_plan_is_idempotent_after_assertion(monkeypatch, tmp_path):
+    chosen = "tests/test_ai_speaker.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "def test_ai_speaker_rejects_empty_transcript():\\n"
+        "    brain = FakeBrain()\\n"
+        '    assert brain.requests == []\\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen, "ai-speaker-empty-transcript-no-brain-call"
+    )
+
+    assert err is None
+    assert plan == {"no_change": True, "source": "deterministic_autonomous_task"}
