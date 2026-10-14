@@ -189,3 +189,60 @@ def test_rag_storage_failure_does_not_change_recovery_ai_decision(tmp_path, monk
 
     assert outcome["decision"]["action"] == "REPAIR_ONCE"
     assert outcome["recovery_rag"] == {"recorded": False, "error": "OSError"}
+
+def test_local_advisor_is_disabled_by_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("RECOVERY_LOCAL_ADVISOR_ENABLED", raising=False)
+    outcome = record_loop_outcome(tmp_path / "recovery.json", {
+        "task_id": "task-local-disabled", "status": "TIMEOUT", "exit_code": 1,
+        "failure_reason": "task_timeout",
+    })
+    assert outcome["decision"]["action"] == "REPAIR_ONCE"
+    assert "recovery_local_advisor" not in outcome
+
+
+def test_opt_in_local_advisor_only_receives_real_recovery_decision(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import scripts.recovery_ai_local_advisor as local_advisor
+
+    calls = []
+    def fake_advice(decision, category, failing_tests):
+        calls.append((decision.action, category, list(failing_tests)))
+        return SimpleNamespace(
+            status="ADVISORY_ONLY", decision_action=decision.action,
+            suggestion={"diagnosis": "test", "action": "inspect", "risk": "no changes"},
+            reason="test_only",
+        )
+
+    monkeypatch.setenv("RECOVERY_LOCAL_ADVISOR_ENABLED", "true")
+    monkeypatch.setattr(local_advisor, "advise_for_decision", fake_advice)
+    outcome = record_loop_outcome(tmp_path / "recovery.json", {
+        "task_id": "task-local-enabled", "status": "TIMEOUT", "exit_code": 1,
+        "failure_reason": "task_timeout",
+    })
+    assert calls == [("REPAIR_ONCE", "timeout", [])]
+    assert outcome["recovery_local_advisor"]["status"] == "ADVISORY_ONLY"
+    assert outcome["decision"]["action"] == "REPAIR_ONCE"
+
+
+def test_opt_in_local_advisor_skips_non_repairable_decision(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import scripts.recovery_ai_local_advisor as local_advisor
+
+    calls = []
+    def fake_advice(decision, category, failing_tests):
+        calls.append((decision.action, category))
+        return SimpleNamespace(
+            status="SKIPPED", decision_action=decision.action,
+            suggestion=None, reason="deterministic_decision_does_not_allow_repair",
+        )
+
+    monkeypatch.setenv("RECOVERY_LOCAL_ADVISOR_ENABLED", "true")
+    monkeypatch.setattr(local_advisor, "advise_for_decision", fake_advice)
+    outcome = record_loop_outcome(tmp_path / "recovery.json", {
+        "task_id": "task-local-security", "status": "FAIL", "exit_code": 1,
+        "failure_reason": "security_path_outside_allowed_paths",
+    })
+    assert calls == [("HOLD", "security_violation")]
+    assert outcome["recovery_local_advisor"]["status"] == "SKIPPED"
+    assert outcome["decision"]["action"] == "HOLD"
+
