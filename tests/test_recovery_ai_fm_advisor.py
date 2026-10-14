@@ -37,11 +37,16 @@ class AdvisorValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(advisor.AdvisorError, "requires macOS"):
                 advisor.diagnose("task-1", "timeout")
 
+    def test_custom_executable_is_not_supported(self):
+        # The adapter's executable is intentionally fixed to the local `fm` CLI.
+        with self.assertRaises(TypeError):
+            advisor.diagnose("task-1", "timeout", executable="/bin/echo")
+
     @patch.object(advisor.platform, "system", return_value="Darwin")
     @patch.object(advisor.shutil, "which", return_value="/usr/bin/fm")
     @patch.object(advisor.subprocess, "run")
     def test_runs_fm_without_shell_and_returns_validated_json(
-        self, run_mock, _which_mock, _platform_mock
+        self, run_mock, which_mock, _platform_mock
     ):
         run_mock.return_value.returncode = 0
         run_mock.return_value.stdout = (
@@ -56,6 +61,7 @@ class AdvisorValidationTests(unittest.TestCase):
         self.assertNotIn("shell", kwargs)
         self.assertIn("--no-stream", args[0])
         self.assertIn("task-1", kwargs["input"])
+        which_mock.assert_called_once_with("fm")
 
     @patch.object(advisor.platform, "system", return_value="Darwin")
     @patch.object(advisor.shutil, "which", return_value="/usr/bin/fm")
