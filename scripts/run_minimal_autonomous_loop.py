@@ -652,6 +652,9 @@ def main() -> int:
                 "exit_code": 80,
                 "failure_reason": "loop_budget_insufficient_for_task",
             }
+            if resumed_task_id is not None:
+                recovery_store.hold_interrupted_resume(resumed_task_id, reason="loop_budget_insufficient_for_task")
+                ACTIVE_RESUME_CONTEXT = None
             with args.results.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record, ensure_ascii=False) + "\n")
             print("MINIMAL_LOOP=HALT reason=loop_budget_insufficient_for_task", flush=True)
