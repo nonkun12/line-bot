@@ -660,6 +660,9 @@ def main() -> int:
             print("MINIMAL_LOOP=HALT reason=loop_budget_insufficient_for_task", flush=True)
             return 80
         if stopped(args.stop_file):
+            if resumed_task_id is not None:
+                recovery_store.hold_interrupted_resume(resumed_task_id, reason="stop_requested_before_task")
+                ACTIVE_RESUME_CONTEXT = None
             result = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "run_index": index,
