@@ -721,14 +721,29 @@ def main() -> int:
                 "reason": "state_persistence_failed",
             }
 
+        if resumed_task_id is not None and (
+            recovery_error or result.get("exit_code") != 0 or result.get("status") not in {"PASS", "NO_CHANGE"}
+        ):
+            try:
+                recovery_store.hold_interrupted_resume(resumed_task_id, reason="resumed_task_failed")
+            except Exception:
+                recovery_error = True
+                result["failure_reason"] = "resume_rehold_failed"
+            ACTIVE_RESUME_CONTEXT = None
+
         if resumed_task_id is not None:
-            audit = recovery_store.task_status(resumed_task_id)
+            try:
+                audit = recovery_store.task_status(resumed_task_id)
+            except Exception:
+                audit = {}
             result["resume_audit"] = {
                 "task_id": resumed_task_id,
                 "resume_count": audit.get("resume_count", 0),
                 "operator": audit.get("resume_actor", "unknown"),
                 "workflow_run_id": audit.get("resume_run_id", "unknown"),
                 "review_status": "audit_only_not_an_approval_gate",
+                "interruption_reason": audit.get("resume_interruption_reason"),
+                "held_after_run": audit.get("held") is True,
             }
 
         with args.results.open("a", encoding="utf-8") as fh:
