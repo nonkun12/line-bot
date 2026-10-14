@@ -53,6 +53,40 @@ def test_find_scheduled_run_uses_distributed_workflow_and_schedule_event(monkeyp
     )
 
 
+def test_find_scheduled_run_accepts_delayed_run_within_four_hours(monkeypatch):
+    scheduled = {
+        "name": "Distributed Autonomous Development Loop",
+        "event": "schedule",
+        "id": 789,
+        "created_at": "2026-09-22T22:26:00Z",  # 07:26 JST, 2h56 after 04:30 slot
+        "status": "completed",
+        "conclusion": "failure",
+    }
+    monkeypatch.setattr(
+        "scripts.check_autonomous_loop_watchdog.github_json",
+        lambda _url: {"workflow_runs": [scheduled]},
+    )
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert find_scheduled_run("nonkun12/line-bot", slot) == scheduled
+
+
+def test_find_scheduled_run_rejects_run_after_four_hour_window(monkeypatch):
+    too_late = {
+        "name": "Distributed Autonomous Development Loop",
+        "event": "schedule",
+        "id": 790,
+        "created_at": "2026-09-22T23:31:00Z",  # 08:31 JST, over four hours late
+        "status": "completed",
+        "conclusion": "success",
+    }
+    monkeypatch.setattr(
+        "scripts.check_autonomous_loop_watchdog.github_json",
+        lambda _url: {"workflow_runs": [too_late]},
+    )
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert find_scheduled_run("nonkun12/line-bot", slot) is None
+
+
 def test_find_scheduled_run_accepts_small_scheduler_delay(monkeypatch):
     scheduled = {
         "name": "Distributed Autonomous Development Loop",
