@@ -762,6 +762,7 @@ def main() -> int:
 
         print(f"MINIMAL_LOOP={result['status']} task={task['id']}", flush=True)
 
+    ACTIVE_RESUME_CONTEXT = None
     print("MINIMAL_LOOP=COMPLETE", flush=True)
     return 0
 
