@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from scripts.recovery_ai import RecoveryDecision, RecoveryStore
-from scripts.recovery_ai_local_advisor import advise_for_decision
+from scripts.recovery_ai_local_advisor import advise_for_decision, record_failure_and_advise
 
 
 def decision(action="REPAIR_ONCE"):
@@ -78,6 +78,37 @@ class LocalAdvisorBridgeTests(unittest.TestCase):
                 }),
             )
             self.assertEqual(store.task_status("task-1"), before)
+
+    def test_real_store_decision_controls_advisor_invocation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = RecoveryStore(Path(tmp) / "state.json")
+            advisor = Mock(return_value={"diagnosis": "原因候補", "action": "調査", "risk": "変更しない"})
+            decision_result, advice = record_failure_and_advise(store, "task-1", "test_regression", ["tests/test_example.py"], advisor=advisor)
+            self.assertEqual(decision_result.action, "REPAIR_ONCE")
+            self.assertEqual(advice.status, "ADVISORY_ONLY")
+            advisor.assert_called_once()
+
+    def test_real_store_hold_prevents_local_advisor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = RecoveryStore(Path(tmp) / "state.json")
+            store.record_failure("task-1", "test_regression")
+            store.record_failure("task-1", "test_regression")
+            advisor = Mock()
+            decision_result, advice = record_failure_and_advise(store, "task-1", "test_regression", advisor=advisor)
+            self.assertEqual(decision_result.action, "HOLD")
+            self.assertEqual(advice.status, "SKIPPED")
+            advisor.assert_not_called()
+
+    def test_persistence_error_prevents_advisor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_text("{invalid", encoding="utf-8")
+            store = RecoveryStore(path)
+            advisor = Mock()
+            from scripts.recovery_ai import RecoveryStateError
+            with self.assertRaises(RecoveryStateError):
+                record_failure_and_advise(store, "task-1", "test_regression", advisor=advisor)
+            advisor.assert_not_called()
 
 
 if __name__ == "__main__":
