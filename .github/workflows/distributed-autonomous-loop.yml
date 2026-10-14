@@ -50,6 +50,15 @@ on:
         description: 'Numeric Obsidian job ID; no note content'
         required: false
         type: string
+      resume_task_id:
+        description: 'Held queue task ID to resume after fixing its cause'
+        required: false
+        type: string
+      confirm_cause_fixed:
+        description: 'Confirm the held task cause has been fixed (required with resume_task_id)'
+        required: false
+        default: false
+        type: boolean
   # ChatGPT can request a bounded run by creating an authorized PR comment.
   # The trigger defaults to four tasks and remains fail-closed.
   issue_comment:
@@ -100,7 +109,7 @@ jobs:
         github.event.pull_request.user.login == 'nonkun12'
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 300
     env:
       MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || '4' }}
       TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'normal' }}
@@ -179,6 +188,8 @@ jobs:
           INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_category || '' }}
           INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_detail || '' }}
           INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_job_id || '' }}
+          RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || '' }}
+          CONFIRM_CAUSE_FIXED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_cause_fixed || 'false' }}
         run: |
           set -euo pipefail
           case "${REQUESTED_TASK_LIMIT}" in
@@ -235,6 +246,23 @@ jobs:
             echo "::error::Incident mode is available only through workflow_dispatch"
             exit 1
           fi
+          if [ -n "${RESUME_TASK_ID}" ]; then
+            if [ "${EVENT_NAME}" != "workflow_dispatch" ] || [ "${TRIGGER_MODE}" != "normal" ]; then
+              echo "::error::Held-task resume is allowed only in normal workflow_dispatch runs"
+              exit 1
+            fi
+            if [ "${CONFIRM_CAUSE_FIXED}" != "true" ]; then
+              echo "::error::Resume requires explicit confirm_cause_fixed=true"
+              exit 1
+            fi
+            if ! [[ "${RESUME_TASK_ID}" =~ ^[A-Za-z0-9._-]{1,100}$ ]]; then
+              echo "::error::Invalid resume_task_id"
+              exit 1
+            fi
+          elif [ "${CONFIRM_CAUSE_FIXED}" = "true" ]; then
+            echo "::error::confirm_cause_fixed=true requires resume_task_id"
+            exit 1
+          fi
           if [ "${REQUESTED_TASK_LIMIT}" != "${expected}" ]; then
             echo "::error::Task limit mismatch: got=${REQUESTED_TASK_LIMIT} expected=${expected}"
             exit 1
@@ -250,6 +278,8 @@ jobs:
           INCIDENT_CATEGORY: ${{ env.INCIDENT_CATEGORY }}
           INCIDENT_DETAIL: ${{ env.INCIDENT_DETAIL }}
           INCIDENT_JOB_ID: ${{ env.INCIDENT_JOB_ID }}
+          RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || '' }}
+          CONFIRM_CAUSE_FIXED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_cause_fixed || 'false' }}
         run: |
           set -euo pipefail
           : > /tmp/minimal-autonomous-loop.jsonl
@@ -274,6 +304,12 @@ jobs:
             loop_args+=(--incident-category "$INCIDENT_CATEGORY" --incident-detail "$INCIDENT_DETAIL")
             if [ -n "$INCIDENT_JOB_ID" ]; then
               loop_args+=(--incident-job-id "$INCIDENT_JOB_ID")
+            fi
+          fi
+          if [ -n "$RESUME_TASK_ID" ]; then
+            loop_args+=(--resume-task-id "$RESUME_TASK_ID")
+            if [ "$CONFIRM_CAUSE_FIXED" = "true" ]; then
+              loop_args+=(--confirm-cause-fixed)
             fi
           fi
           rm -f /tmp/autonomous-loop-not-run
