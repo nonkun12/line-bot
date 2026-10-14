@@ -59,6 +59,20 @@ def test_invalid_model_output_fails_closed(monkeypatch):
     assert result["reason"] == "fm_output_invalid"
 
 
+
+def test_malformed_category_type_fails_closed(monkeypatch):
+    def fake_run(*args, **kwargs):
+        kwargs["stdout"].write(
+            b'{"suggested_category":[],"summary":"ok","checks":[]}'
+        )
+        return subprocess.CompletedProcess(args[0], 0)
+
+    monkeypatch.setattr("scripts.fm_recovery_advisor.subprocess.run", fake_run)
+    result = advise({"task_id": "task-123"}, executable="/fake/fm")
+    assert result["status"] == "UNAVAILABLE"
+    assert result["reason"] == "fm_output_invalid"
+
+
 def test_timeout_is_bounded_and_fail_closed(monkeypatch):
     def fake_run(*args, **kwargs):
         raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
