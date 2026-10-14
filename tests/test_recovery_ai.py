@@ -8,6 +8,10 @@ from scripts.recovery_ai import (
     RecoveryStore,
     elapsed_seconds,
     failure_fingerprint,
+    is_eligible_for_legacy_anchor_auto_resume,
+    is_legacy_anchor_failure_record,
+    LEGACY_ANCHOR_TASK_ID,
+    LEGACY_ANCHOR_FINGERPRINT,
 )
 
 
@@ -86,6 +90,25 @@ def test_held_task_requires_explicit_cause_fixed_confirmation(tmp_path):
     assert store.task_status("task-a")["held"] is False
     assert store.task_status("task-a")["consecutive_failures"] == 0
     assert store.task_status("task-a")["resume_requires_review"] is True
+    status = store.task_status("task-a")
+    assert status["resume_review_status"] == "audit_only_not_an_approval_gate"
+
+
+def test_resume_attempts_are_capped_and_operator_is_audited(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    for resume_index in range(3):
+        for _ in range(3):
+            store.record_failure("task-a", "timeout")
+        if resume_index < 2:
+            store.resume_held_task("task-a", cause_fixed=True, actor="operator", run_id=str(100 + resume_index))
+        else:
+            with pytest.raises(ValueError, match="resume attempt limit"):
+                store.resume_held_task("task-a", cause_fixed=True, actor="operator", run_id="102")
+    status = store.task_status("task-a")
+    assert status["resume_count"] == 2
+    assert status["resume_actor"] == "operator"
+    assert status["resume_run_id"] == "101"
+    assert status["held"] is True
 
 
 def test_fingerprint_is_stable_and_does_not_include_raw_error_output():
@@ -101,3 +124,165 @@ def test_elapsed_seconds_requires_aware_nonnegative_timestamps():
         elapsed_seconds("2026-10-11T00:00:00", "2026-10-11T00:00:01+00:00")
     with pytest.raises(ValueError):
         elapsed_seconds("2026-10-11T00:00:02+00:00", "2026-10-11T00:00:01+00:00")
+
+
+
+def test_resume_archives_fingerprint_history_and_restores_one_bounded_repair(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    for _ in range(3):
+        store.record_failure("task-a", "timeout")
+    held = store.task_status("task-a")
+    old_fingerprints = list(held["fingerprints"])
+    assert held["held"] is True and len(old_fingerprints) == 3
+
+    store.resume_held_task("task-a", cause_fixed=True)
+    resumed = store.task_status("task-a")
+    assert resumed["archived_fingerprints"] == old_fingerprints
+    assert resumed["fingerprints"] == []
+    assert resumed["same_fingerprint_attempts"] == 0
+    assert resumed["resume_count"] == 1
+
+    first = store.record_failure("task-a", "timeout")
+    second = store.record_failure("task-a", "timeout")
+    assert first.action == "REPAIR_ONCE"
+    assert second.action == "HOLD"
+    assert second.reason == "repair_budget_exhausted"
+    after = store.task_status("task-a")
+    assert after["archived_fingerprints"] == old_fingerprints
+    assert after["resume_count"] == 1
+    assert "resumed_at" in after
+    assert after["resume_requires_review"] is True
+
+
+@pytest.mark.parametrize(
+    "category",
+    ["unknown", "security_violation", "invalid_task", "invalid_evidence", "state_persistence_failure"],
+)
+def test_resume_rejects_unknown_or_non_repairable_failures_without_mutating_state(tmp_path, category):
+    store = RecoveryStore(tmp_path / "state.json")
+    if category == "state_persistence_failure":
+        for _ in range(3):
+            store.record_failure("task-a", "timeout")
+        data = json.loads(store.path.read_text(encoding="utf-8"))
+        data["tasks"]["task-a"]["last_category"] = category
+        store.path.write_text(json.dumps(data), encoding="utf-8")
+    else:
+        decision = store.record_failure("task-a", category)
+        assert decision.action == "HOLD"
+    before = store.path.read_bytes()
+    with pytest.raises(ValueError, match="not eligible for resume"):
+        store.resume_held_task("task-a", cause_fixed=True)
+    assert store.path.read_bytes() == before
+    assert store.task_status("task-a")["held"] is True
+
+
+def test_resume_allows_only_allowlisted_repairable_category(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    for _ in range(3):
+        store.record_failure("task-a", "timeout")
+    store.resume_held_task("task-a", cause_fixed=True)
+    assert store.task_status("task-a")["held"] is False
+    assert store.task_status("task-a")["resume_count"] == 1
+
+
+def test_resume_rejects_task_that_is_not_held_and_leaves_state_unchanged(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    store.record_failure("task-a", "timeout")
+    before = store.task_status("task-a")
+    with pytest.raises(ValueError, match="not held"):
+        store.resume_held_task("task-a", cause_fixed=True)
+    with pytest.raises(ValueError, match="not held"):
+        store.resume_held_task("never-seen", cause_fixed=True)
+    assert store.task_status("task-a") == before
+
+
+def test_interrupted_resume_is_held_again_and_audited(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    for _ in range(3):
+        store.record_failure("task-a", "timeout")
+    store.resume_held_task("task-a", cause_fixed=True, actor="operator", run_id="987")
+    assert store.task_status("task-a")["held"] is False
+
+    store.hold_interrupted_resume("task-a", reason="signal_interrupted_resume")
+    status = store.task_status("task-a")
+    assert status["held"] is True
+    assert status["consecutive_failures"] >= 1
+    assert status["resume_interruption_reason"] == "signal_interrupted_resume"
+    assert status["resume_actor"] == "operator"
+    assert status["resume_run_id"] == "987"
+
+
+def _legacy_anchor_record():
+    return {
+        "held": True,
+        "last_category": "unknown",
+        "last_fingerprint": LEGACY_ANCHOR_FINGERPRINT,
+        "fingerprints": [LEGACY_ANCHOR_FINGERPRINT],
+        "resume_count": 0,
+    }
+
+
+def test_legacy_anchor_auto_resume_requires_exact_record_and_unspent_attempt():
+    record = _legacy_anchor_record()
+    assert is_legacy_anchor_failure_record(LEGACY_ANCHOR_TASK_ID, record)
+    assert is_eligible_for_legacy_anchor_auto_resume(
+        LEGACY_ANCHOR_TASK_ID, record,
+        queued_task_ids={LEGACY_ANCHOR_TASK_ID},
+        completed_task_ids=set(),
+        fix_sha_present=True,
+    )
+
+
+@pytest.mark.parametrize("mutation", [
+    {"last_category": "security_violation"},
+    {"last_fingerprint": "0" * 64},
+    {"fingerprints": []},
+    {"resume_count": 1},
+    {"resume_count": False},
+    {"resume_legacy_migration": "already_attempted"},
+    {"held": False},
+])
+def test_legacy_anchor_auto_resume_rejects_mutated_or_retried_record(mutation):
+    record = {**_legacy_anchor_record(), **mutation}
+    assert not is_legacy_anchor_failure_record(LEGACY_ANCHOR_TASK_ID, record)
+    assert not is_eligible_for_legacy_anchor_auto_resume(
+        LEGACY_ANCHOR_TASK_ID, record,
+        queued_task_ids={LEGACY_ANCHOR_TASK_ID},
+        completed_task_ids=set(),
+        fix_sha_present=True,
+    )
+
+
+def test_legacy_anchor_auto_resume_requires_fix_queue_and_incomplete_evidence():
+    record = _legacy_anchor_record()
+    assert not is_eligible_for_legacy_anchor_auto_resume(
+        LEGACY_ANCHOR_TASK_ID, record, queued_task_ids=set(),
+        completed_task_ids=set(), fix_sha_present=True,
+    )
+    assert not is_eligible_for_legacy_anchor_auto_resume(
+        LEGACY_ANCHOR_TASK_ID, record, queued_task_ids={LEGACY_ANCHOR_TASK_ID},
+        completed_task_ids={LEGACY_ANCHOR_TASK_ID}, fix_sha_present=True,
+    )
+    assert not is_eligible_for_legacy_anchor_auto_resume(
+        LEGACY_ANCHOR_TASK_ID, record, queued_task_ids={LEGACY_ANCHOR_TASK_ID},
+        completed_task_ids=set(), fix_sha_present=False,
+    )
+    assert not is_legacy_anchor_failure_record("different-task", record)
+
+
+def test_legacy_anchor_resume_migration_is_audited_and_cannot_be_reused(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    data = {
+        "schema_version": 1,
+        "tasks": {LEGACY_ANCHOR_TASK_ID: _legacy_anchor_record()},
+        "checkpoint": None,
+    }
+    store.path.write_text(json.dumps(data), encoding="utf-8")
+    store.resume_held_task(LEGACY_ANCHOR_TASK_ID, cause_fixed=True, actor="scheduled-auto-resume", run_id="123")
+    status = store.task_status(LEGACY_ANCHOR_TASK_ID)
+    assert status["resume_legacy_migration"] == "known_planner_anchor_failure_to_test_regression"
+    assert status["resume_original_category"] == "unknown"
+    assert status["last_category"] == "test_regression"
+    assert status["resume_count"] == 1
+    assert status["resume_actor"] == "scheduled-auto-resume"
+    assert not is_legacy_anchor_failure_record(LEGACY_ANCHOR_TASK_ID, status)

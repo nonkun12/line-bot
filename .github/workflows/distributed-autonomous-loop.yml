@@ -50,6 +50,15 @@ on:
         description: 'Numeric Obsidian job ID; no note content'
         required: false
         type: string
+      resume_task_id:
+        description: 'Held queue task ID to resume after fixing its cause'
+        required: false
+        type: string
+      confirm_cause_fixed:
+        description: 'Confirm the held task cause has been fixed (required with resume_task_id)'
+        required: false
+        default: false
+        type: boolean
   # ChatGPT can request a bounded run by creating an authorized PR comment.
   # The trigger defaults to four tasks and remains fail-closed.
   issue_comment:
@@ -100,7 +109,7 @@ jobs:
         github.event.pull_request.user.login == 'nonkun12'
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: ${{ github.event_name == 'schedule' && 90 || 300 }}
     env:
       MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || '4' }}
       TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'normal' }}
@@ -115,6 +124,7 @@ jobs:
       SELF_IMPROVEMENT_CREATOR_CRITIC: 'false'
       DEV_USER_ID: autonomous-distributed-loop
       GITHUB_RUN_ID: ${{ github.run_id }}
+      AUTONOMOUS_LOOP_BUDGET_SECONDS: ${{ github.event_name == 'schedule' && '3300' || '12000' }}
       # Runtime prepares changes; only the workflow's scoped GH_TOKEN step publishes.
       AUTONOMOUS_PUBLISH_VIA_WORKFLOW: 'true'
     steps:
@@ -179,6 +189,8 @@ jobs:
           INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_category || '' }}
           INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_detail || '' }}
           INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_job_id || '' }}
+          RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || '' }}
+          CONFIRM_CAUSE_FIXED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_cause_fixed || 'false' }}
         run: |
           set -euo pipefail
           case "${REQUESTED_TASK_LIMIT}" in
@@ -235,11 +247,143 @@ jobs:
             echo "::error::Incident mode is available only through workflow_dispatch"
             exit 1
           fi
+          if [ -n "${RESUME_TASK_ID}" ]; then
+            if [ "${EVENT_NAME}" != "workflow_dispatch" ] || [ "${TRIGGER_MODE}" != "normal" ]; then
+              echo "::error::Held-task resume is allowed only in normal workflow_dispatch runs"
+              exit 1
+            fi
+            if [ "${CONFIRM_CAUSE_FIXED}" != "true" ]; then
+              echo "::error::Resume requires explicit confirm_cause_fixed=true"
+              exit 1
+            fi
+            if ! [[ "${RESUME_TASK_ID}" =~ ^[A-Za-z0-9._-]{1,100}$ ]]; then
+              echo "::error::Invalid resume_task_id"
+              exit 1
+            fi
+          elif [ "${CONFIRM_CAUSE_FIXED}" = "true" ]; then
+            echo "::error::confirm_cause_fixed=true requires resume_task_id"
+            exit 1
+          fi
           if [ "${REQUESTED_TASK_LIMIT}" != "${expected}" ]; then
             echo "::error::Task limit mismatch: got=${REQUESTED_TASK_LIMIT} expected=${expected}"
             exit 1
           fi
           echo "Validated bounded task limit: ${REQUESTED_TASK_LIMIT}"
+
+      - name: Reserve Recovery AI resume attempt before execution
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id != '' || github.event_name == 'schedule' && vars.RECOVERY_AI_SCHEDULED_AUTO_RESUME == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || '' }}
+          CONFIRM_CAUSE_FIXED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_cause_fixed || 'false' }}
+          AUTO_RESUME_ENABLED: ${{ vars.RECOVERY_AI_SCHEDULED_AUTO_RESUME || 'false' }}
+          RESUME_ACTOR: ${{ github.actor }}
+          RESUME_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+          RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || '' }}
+        run: |
+          set -euo pipefail
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ] && [ "${CONFIRM_CAUSE_FIXED}" != "true" ]; then
+            echo "::error::Write-ahead resume reservation requires explicit confirmation"
+            exit 1
+          fi
+          resume_id="${REQUESTED_RESUME_TASK_ID}"
+          if [ "${EVENT_NAME}" = "schedule" ]; then
+            resume_id=""
+            if [ "${AUTO_RESUME_ENABLED}" = "true" ] && git merge-base --is-ancestor 833043c9e45248eb5ad49a0e35574cfc523f0b6f "${GITHUB_SHA}"; then
+              resume_id="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.recovery_ai import is_eligible_for_legacy_anchor_auto_resume
+          state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
+          queue = json.loads(Path('.github/autonomous-loop-tasks.json').read_text(encoding='utf-8'))
+          task_id = 'ai-speaker-empty-transcript-no-brain-call'
+          queued = {str(t.get('id')) for t in queue.get('tasks', []) if isinstance(t, dict)}
+          completed = set(state.get('completed', []))
+          record = state.get('recovery_ai', {}).get('tasks', {}).get(task_id, {})
+          if is_eligible_for_legacy_anchor_auto_resume(task_id, record, queued_task_ids=queued, completed_task_ids=completed, fix_sha_present=True):
+              print(task_id)
+          PY
+              )"
+            fi
+          fi
+          if [ -z "${resume_id}" ]; then
+            echo "No resume requested; write-ahead reservation not needed."
+            exit 0
+          fi
+          if ! [[ "${resume_id}" =~ ^[A-Za-z0-9._-]{1,100}$ ]]; then
+            echo "::error::Invalid resume task ID"
+            exit 1
+          fi
+          export RESUME_TASK_ID="${resume_id}"
+          state_branch="autonomous-loop-state"
+          auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          git fetch --quiet origin "$state_branch"
+          rm -rf /tmp/recovery-ai-resume-reservation
+          git worktree prune
+          git worktree add --detach /tmp/recovery-ai-resume-reservation "origin/$state_branch"
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from scripts.recovery_ai import MAX_RESUME_ATTEMPTS, RESUMABLE_CATEGORIES, is_legacy_anchor_failure_record
+          root = Path('/tmp/recovery-ai-resume-reservation')
+          state_path = root / '.autonomous-loop-state.json'
+          state = json.loads(state_path.read_text(encoding='utf-8'))
+          queue = json.loads(Path('.github/autonomous-loop-tasks.json').read_text(encoding='utf-8'))
+          task_id = os.environ['RESUME_TASK_ID']
+          queued = {str(t.get('id')) for t in queue.get('tasks', []) if isinstance(t, dict)}
+          completed = set(state.get('completed', []))
+          recovery = state.get('recovery_ai')
+          if not isinstance(recovery, dict) or not isinstance(recovery.get('tasks'), dict):
+              raise SystemExit('durable Recovery AI task state is invalid')
+          record = recovery['tasks'].get(task_id)
+          if task_id not in queued or task_id in completed:
+              raise SystemExit('resume target must be queued and incomplete')
+          if not isinstance(record, dict) or record.get('held') is not True:
+              raise SystemExit('resume target is not durably held')
+          category = record.get('last_category', 'unknown')
+          legacy = is_legacy_anchor_failure_record(task_id, record)
+          if category not in RESUMABLE_CATEGORIES and not legacy:
+              raise SystemExit('resume category is not eligible')
+          count = record.get('resume_count', 0)
+          if isinstance(count, bool) or not isinstance(count, int) or count < 0 or count >= MAX_RESUME_ATTEMPTS:
+              raise SystemExit('resume attempt limit reached or counter invalid')
+          record['resume_count'] = count + 1
+          record['held'] = True
+          record['resume_actor'] = os.environ['RESUME_ACTOR'] or 'unknown'
+          record['resume_run_id'] = os.environ['RESUME_RUN_ID']
+          record['resume_intent_at'] = datetime.now(timezone.utc).isoformat()
+          record['resume_intent_status'] = 'reserved_held_before_execution'
+          recovery['tasks'][task_id] = record
+          state['recovery_ai'] = recovery
+          state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          Path('/tmp/recovery-ai-resume-reservation-expected.json').write_text(
+              json.dumps({'task_id': task_id, 'resume_count': count + 1, 'actor': record['resume_actor'], 'run_id': record['resume_run_id']}),
+              encoding='utf-8',
+          )
+          PY
+          git -C /tmp/recovery-ai-resume-reservation config user.name "github-actions[bot]"
+          git -C /tmp/recovery-ai-resume-reservation config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C /tmp/recovery-ai-resume-reservation add .autonomous-loop-state.json
+          git -C /tmp/recovery-ai-resume-reservation commit -m "chore: reserve Recovery AI resume attempt before execution"
+          git -C /tmp/recovery-ai-resume-reservation push "$auth_url" HEAD:refs/heads/$state_branch
+          git fetch --quiet origin "$state_branch"
+          git show "origin/$state_branch:.autonomous-loop-state.json" > /tmp/recovery-ai-resume-reservation-readback.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          expected = json.loads(Path('/tmp/recovery-ai-resume-reservation-expected.json').read_text(encoding='utf-8'))
+          durable = json.loads(Path('/tmp/recovery-ai-resume-reservation-readback.json').read_text(encoding='utf-8'))
+          record = durable.get('recovery_ai', {}).get('tasks', {}).get(expected['task_id'], {})
+          if (record.get('resume_count') != expected['resume_count'] or record.get('held') is not True
+                  or record.get('resume_actor') != expected['actor'] or record.get('resume_run_id') != expected['run_id']
+                  or record.get('resume_intent_status') != 'reserved_held_before_execution'):
+              raise SystemExit('write-ahead resume reservation read-back mismatch')
+          print('Write-ahead resume reservation durably verified before task execution.')
+          PY
 
       - name: Run one bounded autonomous task
         id: run_task
@@ -250,6 +394,9 @@ jobs:
           INCIDENT_CATEGORY: ${{ env.INCIDENT_CATEGORY }}
           INCIDENT_DETAIL: ${{ env.INCIDENT_DETAIL }}
           INCIDENT_JOB_ID: ${{ env.INCIDENT_JOB_ID }}
+          EVENT_NAME: ${{ github.event_name }}
+          RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || '' }}
+          CONFIRM_CAUSE_FIXED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_cause_fixed || 'false' }}
         run: |
           set -euo pipefail
           : > /tmp/minimal-autonomous-loop.jsonl
@@ -269,11 +416,50 @@ jobs:
           # Never let a reused self-hosted runner carry result rows into this run.
           # Stale PASS rows could otherwise inflate the final task count for NOT_RUN.
           rm -f /tmp/minimal-autonomous-loop.jsonl
+
+          RESUME_ACTOR="$GITHUB_ACTOR"
+          # Scheduled runs resume only the exact not-yet-resumed legacy task.
+          # Eligibility is shared with RecoveryStore and requires queued+incomplete.
+          if [ "${EVENT_NAME}" = "schedule" ] \
+             && [ "${{ vars.RECOVERY_AI_SCHEDULED_AUTO_RESUME }}" = "true" ] \
+             && [ -z "${RESUME_TASK_ID}" ] \
+             && git merge-base --is-ancestor 833043c9e45248eb5ad49a0e35574cfc523f0b6f "${GITHUB_SHA}"; then
+            auto_resume_id="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.recovery_ai import is_eligible_for_legacy_anchor_auto_resume
+          task_id = "ai-speaker-empty-transcript-no-brain-call"
+          state = json.loads(Path("/tmp/autonomous-loop-state.json").read_text(encoding="utf-8"))
+          queue = json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8"))
+          queued = {str(t.get("id")) for t in queue.get("tasks", []) if isinstance(t, dict)}
+          completed = set(state.get("completed", []))
+          record = state.get("recovery_ai", {}).get("tasks", {}).get(task_id, {})
+          eligible = is_eligible_for_legacy_anchor_auto_resume(
+              task_id, record, queued_task_ids=queued,
+              completed_task_ids=completed, fix_sha_present=True,
+          )
+          print(task_id if eligible else "")
+          PY
+            )"
+            if [ -n "$auto_resume_id" ]; then
+              RESUME_TASK_ID="$auto_resume_id"
+              CONFIRM_CAUSE_FIXED=true
+              RESUME_ACTOR="scheduled-auto-resume"
+              echo "::notice::AUTO_RESUME: one audited legacy task selected; max task count remains 1."
+            fi
+          fi
+
           loop_args=(--max-tasks "${MAX_TASKS}" --stop-file "$STOP_FILE" --state /tmp/autonomous-loop-state.json --results /tmp/minimal-autonomous-loop.jsonl)
           if [ "$TRIGGER_MODE" = "obsidian_incident" ]; then
             loop_args+=(--incident-category "$INCIDENT_CATEGORY" --incident-detail "$INCIDENT_DETAIL")
             if [ -n "$INCIDENT_JOB_ID" ]; then
               loop_args+=(--incident-job-id "$INCIDENT_JOB_ID")
+            fi
+          fi
+          if [ -n "$RESUME_TASK_ID" ]; then
+            loop_args+=(--resume-task-id "$RESUME_TASK_ID" --resume-actor "$RESUME_ACTOR" --resume-run-id "$GITHUB_RUN_ID")
+            if [ "$CONFIRM_CAUSE_FIXED" = "true" ]; then
+              loop_args+=(--confirm-cause-fixed)
             fi
           fi
           rm -f /tmp/autonomous-loop-not-run
@@ -399,15 +585,20 @@ jobs:
 
       - name: Persist Recovery AI durable state
         id: persist_recovery_ai
-        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
+        if: ${{ always() && steps.run_task.conclusion != 'skipped' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ -f /tmp/autonomous-loop-not-run ] || [ -f /tmp/autonomous-loop-held-tasks ]; then
+          if [ -f /tmp/autonomous-loop-not-run ]; then
             echo "No task ran; Recovery AI durable state remains unchanged."
             exit 0
           fi
+          if [ -f /tmp/autonomous-loop-held-tasks ] && grep -q "all_pending_tasks_held" /tmp/autonomous-loop-held-tasks; then
+            echo "All pending tasks are held; Recovery AI durable state remains unchanged."
+            exit 0
+          fi
+          rm -f /tmp/recovery-ai-allow-reheld-persist
           if [ ! -s /tmp/minimal-autonomous-loop.jsonl ] || [ ! -f /tmp/recovery-ai-state.json ]; then
             echo "::error::Recovery AI result/state evidence is missing."
             exit 1
@@ -427,10 +618,42 @@ jobs:
           if any(row.get('failure_reason') == 'recovery_ai_state_persist_failed' for row in rows):
               raise SystemExit('local Recovery AI persistence failed; durable update blocked')
           recovery = json.loads(Path('/tmp/recovery-ai-state.json').read_text(encoding='utf-8'))
+          guard = Path('/tmp/autonomous-loop-held-tasks')
+          if guard.exists():
+              # A retained guard is publishable only for a real failed attempt
+              # whose result and local durable state both prove it was re-held.
+              last = rows[-1]
+              task_id = last.get('task_id')
+              audit = last.get('resume_audit')
+              record = recovery.get('tasks', {}).get(task_id, {}) if isinstance(task_id, str) else {}
+              interruption = audit.get('interruption_reason') if isinstance(audit, dict) else None
+              allowed_interruption_status = {
+                  'resumed_task_failed': {'FAIL', 'TIMEOUT', 'STOPPED'},
+                  'loop_budget_insufficient_for_task': {'BUDGET_EXHAUSTED'},
+                  'stop_requested_before_task': {'STOPPED'},
+              }
+              valid_failure = (
+                  isinstance(audit, dict)
+                  and last.get('status') in allowed_interruption_status.get(interruption, set())
+                  and audit.get('held_after_run') is True
+                  and isinstance(audit.get('resume_count'), int)
+                  and not isinstance(audit.get('resume_count'), bool)
+                  and audit.get('resume_count', 0) >= 1
+                  and isinstance(record, dict)
+                  and record.get('held') is True
+                  and record.get('resume_count') == audit.get('resume_count')
+                  and record.get('resume_interruption_reason') == interruption
+              )
+              if valid_failure:
+                  Path('/tmp/recovery-ai-allow-reheld-persist').write_text(task_id, encoding='utf-8')
           if (not isinstance(recovery, dict) or recovery.get('schema_version') != 1
                   or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
               raise SystemExit('invalid local Recovery AI state; durable update blocked')
           PY
+          if [ -f /tmp/autonomous-loop-held-tasks ] && [ ! -f /tmp/recovery-ai-allow-reheld-persist ]; then
+            echo "Resume did not produce verified re-held task evidence; durable state unchanged."
+            exit 0
+          fi
           state_branch="autonomous-loop-state"
           auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
           if ! git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1; then

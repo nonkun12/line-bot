@@ -13,6 +13,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,7 @@ if str(ROOT) not in sys.path:
 QUEUE = ROOT / ".github" / "autonomous-loop-tasks.json"
 DEFAULT_STOP_FILE = Path("/tmp/line-bot-autonomous-loop.stop")
 ACTIVE_PROCESS: subprocess.Popen[str] | None = None
+ACTIVE_RESUME_CONTEXT = None
 
 EXIT_NOT_RUN = 78
 NOT_RUN_REASON_QUEUE_EMPTY = "queue_empty"
@@ -450,13 +452,97 @@ def run_task(task: dict[str, object], run_index: int, stop_file: Path, summary_d
 
 
 def _handle_signal(signum: int, _frame) -> None:
+    global ACTIVE_RESUME_CONTEXT
     process = ACTIVE_PROCESS
     if process is not None:
         _kill_process_group(process)
+    if ACTIVE_RESUME_CONTEXT is not None:
+        store, task_id = ACTIVE_RESUME_CONTEXT
+        try:
+            store.hold_interrupted_resume(task_id, reason="signal_interrupted_resume")
+        except Exception as exc:
+            # Preserve the last durable state (which should still be held) rather
+            # than publishing a local state that may show the task as unheld.
+            try:
+                Path("/tmp/autonomous-loop-held-tasks").write_text(
+                    f"resume re-hold failed: {type(exc).__name__}", encoding="utf-8"
+                )
+            except OSError:
+                pass
+            print("MINIMAL_LOOP=HALT reason=resume_rehold_failed", file=sys.stderr, flush=True)
+        ACTIVE_RESUME_CONTEXT = None
     raise SystemExit(128 + signum)
 
 
+def should_attempt_bounded_repair(
+    result: dict[str, object],
+    recovery_decision: dict[str, object],
+    *,
+    stop_requested: bool,
+) -> bool:
+    """Allow one automatic repair pass only for a clean, unchanged timeout."""
+    return (
+        not stop_requested
+        and result.get("status") == "TIMEOUT"
+        and result.get("failure_reason") == "task_timeout"
+        and result.get("base_sha") == result.get("produced_sha")
+        and bool(_valid_sha(result.get("base_sha")))
+        and recovery_decision.get("action") == "REPAIR_ONCE"
+    )
+
+
+def build_bounded_repair_task(
+    task: dict[str, object], failure_reason: str
+) -> dict[str, object]:
+    """Add a sanitized repair instruction without changing the task's path allowlist."""
+    if failure_reason != "task_timeout":
+        raise ValueError("automatic repair reason is not allowlisted")
+    instruction = str(task.get("instruction", "")).strip()
+    allowed_paths = task.get("allowed_paths")
+    if not instruction or not isinstance(allowed_paths, list) or not allowed_paths:
+        raise ValueError("automatic repair task is invalid")
+    return {
+        **task,
+        "instruction": (
+            instruction
+            + "\n\nRecovery AI automatic repair attempt (1 of 1): "
+            + "the prior attempt timed out before changing the repository. "
+            + "Inspect the task and its allowed files, make one focused correction "
+            + "to prevent the timeout, and run the required checks. Do not expand "
+            + "the allowed paths. Do not merge, deploy, access secrets, or retry again. "
+            + "If the cause cannot be established safely, stop without changes."
+        ),
+    }
+
+
+def resume_held_task_for_run(
+    task_id: str | None,
+    *,
+    cause_fixed: bool,
+    queued_tasks: list[dict[str, object]],
+    completed: set[str],
+    recovery_store,
+    actor: str | None = None,
+    run_id: str | None = None,
+) -> str | None:
+    """Resume one explicitly confirmed held queue task; never resume arbitrary IDs."""
+    if not task_id:
+        if cause_fixed:
+            raise ValueError("cause_fixed confirmation requires a task ID")
+        return None
+    if cause_fixed is not True:
+        raise ValueError("explicit cause_fixed confirmation is required")
+    queued_ids = {str(task.get("id", "")) for task in queued_tasks if isinstance(task, dict)}
+    if task_id not in queued_ids:
+        raise ValueError("resume task ID is not present in the current queue")
+    if task_id in completed:
+        raise ValueError("completed tasks cannot be resumed")
+    recovery_store.resume_held_task(task_id, cause_fixed=True, actor=actor, run_id=run_id)
+    return task_id
+
+
 def main() -> int:
+    global ACTIVE_RESUME_CONTEXT
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
     parser = argparse.ArgumentParser()
@@ -467,6 +553,10 @@ def main() -> int:
     parser.add_argument("--incident-category", choices=sorted(INCIDENT_CATEGORIES))
     parser.add_argument("--incident-detail", choices=sorted(INCIDENT_DETAILS))
     parser.add_argument("--incident-job-id")
+    parser.add_argument("--resume-task-id")
+    parser.add_argument("--resume-actor")
+    parser.add_argument("--resume-run-id")
+    parser.add_argument("--confirm-cause-fixed", action="store_true")
     args = parser.parse_args()
 
     if args.max_tasks < 1 or args.max_tasks > 4:
@@ -492,7 +582,39 @@ def main() -> int:
     # failures cannot be run again automatically on the next scheduled invocation.
     from scripts.recovery_ai import RecoveryStore
     recovery_store = RecoveryStore(args.state.parent / "recovery-ai-state.json")
+    resumed_task_id = None
+    if args.resume_task_id is not None or args.confirm_cause_fixed:
+        if args.incident_category is not None:
+            raise SystemExit("held-task resume is unavailable in incident mode")
+        # Pre-create the workflow persistence guard before unholding anything.
+        # If creation fails, abort without changing the durable held state.
+        resume_persistence_guard = Path("/tmp/autonomous-loop-held-tasks")
+        if args.resume_task_id is not None:
+            try:
+                resume_persistence_guard.write_text("resume in progress; publish only after verified success", encoding="utf-8")
+            except OSError as exc:
+                raise SystemExit(f"held-task resume rejected: cannot establish persistence guard ({type(exc).__name__})") from exc
+        try:
+            resumed_task_id = resume_held_task_for_run(
+                args.resume_task_id,
+                cause_fixed=args.confirm_cause_fixed,
+                queued_tasks=queued_tasks,
+                completed=completed,
+                recovery_store=recovery_store,
+                actor=args.resume_actor,
+                run_id=args.resume_run_id,
+            )
+        except (ValueError, RuntimeError) as exc:
+            raise SystemExit(f"held-task resume rejected: {exc}") from exc
+        if resumed_task_id is not None:
+            ACTIVE_RESUME_CONTEXT = (recovery_store, resumed_task_id)
     pending_tasks = list(tasks)
+    # An explicit resume run must execute only the selected task. Never unhold
+    # one task and then accidentally run an earlier queue item instead.
+    if resumed_task_id is not None:
+        pending_tasks = [task for task in pending_tasks if str(task["id"]) == resumed_task_id]
+        if not pending_tasks:
+            raise SystemExit("held-task resume rejected: target is not pending in this run")
     tasks = [
         task for task in pending_tasks
         if recovery_store.task_status(str(task["id"])).get("held") is not True
@@ -534,8 +656,39 @@ def main() -> int:
         return EXIT_NOT_RUN
 
     args.results.parent.mkdir(parents=True, exist_ok=True)
+    budget_seconds = int(os.environ.get("AUTONOMOUS_LOOP_BUDGET_SECONDS", "0") or 0)
+    loop_started = time.monotonic()
     for index, task in enumerate(tasks, 1):
+        if budget_seconds > 0 and budget_seconds - (time.monotonic() - loop_started) < 1800:
+            record = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "BUDGET_EXHAUSTED",
+                "task_id": str(task["id"]),
+                "run_index": index,
+                "exit_code": 80,
+                "failure_reason": "loop_budget_insufficient_for_task",
+            }
+            if resumed_task_id is not None:
+                recovery_store.hold_interrupted_resume(resumed_task_id, reason="loop_budget_insufficient_for_task")
+                audit = recovery_store.task_status(resumed_task_id)
+                record["resume_audit"] = {
+                    "task_id": resumed_task_id,
+                    "resume_count": audit.get("resume_count", 0),
+                    "operator": audit.get("resume_actor", "unknown"),
+                    "workflow_run_id": audit.get("resume_run_id", "unknown"),
+                    "review_status": "audit_only_not_an_approval_gate",
+                    "interruption_reason": audit.get("resume_interruption_reason"),
+                    "held_after_run": audit.get("held") is True,
+                }
+                ACTIVE_RESUME_CONTEXT = None
+            with args.results.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            print("MINIMAL_LOOP=HALT reason=loop_budget_insufficient_for_task", flush=True)
+            return 80
         if stopped(args.stop_file):
+            if resumed_task_id is not None:
+                recovery_store.hold_interrupted_resume(resumed_task_id, reason="stop_requested_before_task")
+                ACTIVE_RESUME_CONTEXT = None
             result = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "run_index": index,
@@ -544,6 +697,17 @@ def main() -> int:
                 "exit_code": 1,
                 "failure_reason": "stop_requested_before_task",
             }
+            if resumed_task_id is not None:
+                audit = recovery_store.task_status(resumed_task_id)
+                result["resume_audit"] = {
+                    "task_id": resumed_task_id,
+                    "resume_count": audit.get("resume_count", 0),
+                    "operator": audit.get("resume_actor", "unknown"),
+                    "workflow_run_id": audit.get("resume_run_id", "unknown"),
+                    "review_status": "audit_only_not_an_approval_gate",
+                    "interruption_reason": audit.get("resume_interruption_reason"),
+                    "held_after_run": audit.get("held") is True,
+                }
             with args.results.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(result, ensure_ascii=False) + "\n")
             print(f"MINIMAL_LOOP=STOPPED before task={task['id']}")
@@ -557,6 +721,31 @@ def main() -> int:
             result["recovery_ai"] = record_loop_outcome(
                 args.state.parent / "recovery-ai-state.json", result
             )
+            recovery_decision = result["recovery_ai"].get("decision", {})
+            if (
+                should_attempt_bounded_repair(
+                    result,
+                    recovery_decision if isinstance(recovery_decision, dict) else {},
+                    stop_requested=stopped(args.stop_file),
+                )
+                and (budget_seconds <= 0 or budget_seconds - (time.monotonic() - loop_started) >= 1800)
+            ):
+                prior_failure_reason = str(result.get("failure_reason", ""))
+                repair_task = build_bounded_repair_task(task, prior_failure_reason)
+                repaired = run_task(repair_task, index, args.stop_file)
+                repaired["automatic_repair"] = {
+                    "attempted": True,
+                    "attempt": 1,
+                    "max_attempts": 1,
+                    "trigger": "task_timeout",
+                    "prior_attempt_status": "TIMEOUT",
+                    "prior_failure_reason": prior_failure_reason,
+                    "prior_attempt_sha_unchanged": True,
+                }
+                repaired["recovery_ai"] = record_loop_outcome(
+                    args.state.parent / "recovery-ai-state.json", repaired
+                )
+                result = repaired
         except Exception:
             # Do not report PASS or proceed to another task unless the recovery
             # decision can be durably recorded and read back.
@@ -569,8 +758,43 @@ def main() -> int:
                 "reason": "state_persistence_failed",
             }
 
+        if resumed_task_id is not None and (
+            recovery_error or result.get("exit_code") != 0 or result.get("status") not in {"PASS", "NO_CHANGE"}
+        ):
+            try:
+                recovery_store.hold_interrupted_resume(resumed_task_id, reason="resumed_task_failed")
+            except Exception:
+                recovery_error = True
+                result["failure_reason"] = "recovery_ai_state_persist_failed"
+            ACTIVE_RESUME_CONTEXT = None
+
+        if resumed_task_id is not None:
+            try:
+                audit = recovery_store.task_status(resumed_task_id)
+            except Exception:
+                audit = {}
+            result["resume_audit"] = {
+                "task_id": resumed_task_id,
+                "resume_count": audit.get("resume_count", 0),
+                "operator": audit.get("resume_actor", "unknown"),
+                "workflow_run_id": audit.get("resume_run_id", "unknown"),
+                "review_status": "audit_only_not_an_approval_gate",
+                "interruption_reason": audit.get("resume_interruption_reason"),
+                "held_after_run": audit.get("held") is True,
+            }
+
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(result, ensure_ascii=False) + "\n")
+
+        # Keep the guard for failures/interruption; only verified successful resume
+        # may allow the workflow to publish the new durable state.
+        if resumed_task_id is not None and not recovery_error and result.get("status") in {"PASS", "NO_CHANGE"} and result.get("exit_code") == 0:
+            try:
+                Path("/tmp/autonomous-loop-held-tasks").unlink(missing_ok=True)
+            except OSError:
+                recovery_error = True
+                result["failure_reason"] = "recovery_ai_state_persist_failed"
+                print("MINIMAL_LOOP=HALT reason=resume_guard_clear_failed", file=sys.stderr, flush=True)
 
         if recovery_error:
             print(
@@ -585,6 +809,7 @@ def main() -> int:
 
         print(f"MINIMAL_LOOP={result['status']} task={task['id']}", flush=True)
 
+    ACTIVE_RESUME_CONTEXT = None
     print("MINIMAL_LOOP=COMPLETE", flush=True)
     return 0
 

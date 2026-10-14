@@ -20,10 +20,52 @@ SCHEMA_VERSION = 1
 HOLD_AFTER_FAILURES = 3
 MAX_TRANSIENT_RETRIES = 2
 MAX_REPAIR_ATTEMPTS_PER_FINGERPRINT = 1
+MAX_RESUME_ATTEMPTS = 2
+_RESUME_AUDIT_KEYS = ("archived_fingerprints", "resume_count", "resumed_at", "resume_requires_review", "resume_review_status", "resume_actor", "resume_run_id", "resume_interrupted_at", "resume_interruption_reason")
+_MAX_ARCHIVED_FINGERPRINTS = 100
 
 TRANSIENT_CATEGORIES = frozenset({"network_transient", "service_unavailable", "rate_limited"})
 REPAIRABLE_CATEGORIES = frozenset({"test_regression", "timeout", "process_crash"})
 NON_REPAIRABLE_CATEGORIES = frozenset({"invalid_task", "invalid_evidence", "security_violation"})
+# Only known, bounded failures may be resumed after explicit cause-fix confirmation.
+RESUMABLE_CATEGORIES = frozenset(TRANSIENT_CATEGORIES | REPAIRABLE_CATEGORIES)
+
+LEGACY_ANCHOR_TASK_ID = "ai-speaker-empty-transcript-no-brain-call"
+LEGACY_ANCHOR_FINGERPRINT = "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56"
+LEGACY_ANCHOR_FIX_SHA = "833043c9e45248eb5ad49a0e35574cfc523f0b6f"
+
+
+def is_legacy_anchor_failure_record(task_id: str, record: object) -> bool:
+    """Recognize only the exact pre-fix planner-anchor incident; never generic unknowns."""
+    return (
+        task_id == LEGACY_ANCHOR_TASK_ID
+        and isinstance(record, dict)
+        and record.get("last_category") == "unknown"
+        and record.get("held") is True
+        and record.get("last_fingerprint") == LEGACY_ANCHOR_FINGERPRINT
+        and record.get("fingerprints") == [LEGACY_ANCHOR_FINGERPRINT]
+        and isinstance(record.get("resume_count", 0), int)
+        and not isinstance(record.get("resume_count", 0), bool)
+        and record.get("resume_count", 0) == 0
+        and "resume_legacy_migration" not in record
+    )
+
+
+def is_eligible_for_legacy_anchor_auto_resume(
+    task_id: str,
+    record: object,
+    *,
+    queued_task_ids: set[str],
+    completed_task_ids: set[str],
+    fix_sha_present: bool,
+) -> bool:
+    """Single shared gate for scheduled auto-resume; fail closed on missing evidence."""
+    return (
+        fix_sha_present is True
+        and task_id in queued_task_ids
+        and task_id not in completed_task_ids
+        and is_legacy_anchor_failure_record(task_id, record)
+    )
 FAILURE_CATEGORIES = (
     TRANSIENT_CATEGORIES | REPAIRABLE_CATEGORIES | NON_REPAIRABLE_CATEGORIES
     | {"state_persistence_failure", "unknown"}
@@ -146,7 +188,9 @@ class RecoveryStore:
             raise RecoveryStateError("failure fingerprint history invalid")
         same_count = sum(1 for item in history if item == fingerprint)
         now = utc_now()
+        carried = {key: previous[key] for key in _RESUME_AUDIT_KEYS if key in previous}
         data["tasks"][task_id] = {
+            **carried,
             "consecutive_failures": count,
             "last_category": category,
             "last_fingerprint": fingerprint,
@@ -213,7 +257,9 @@ class RecoveryStore:
             raise RecoveryStateError("checkpoint is not verified")
         return dict(checkpoint)
 
-    def resume_held_task(self, task_id: str, *, cause_fixed: bool) -> None:
+    def resume_held_task(
+        self, task_id: str, *, cause_fixed: bool, actor: str | None = None, run_id: str | None = None
+    ) -> None:
         task_id = _safe_id(task_id)
         if cause_fixed is not True:
             raise ValueError("explicit confirmation that the cause is fixed is required")
@@ -221,10 +267,67 @@ class RecoveryStore:
         record = data["tasks"].get(task_id)
         if not isinstance(record, dict) or record.get("held") is not True:
             raise ValueError("task is not held")
+        category = record.get("last_category", "unknown")
+        # One audited migration only: this exact legacy record came from the known
+        # deterministic planner anchor-count failure, fixed on main by 833043c9.
+        # Never generalize this exception to other unknown tasks.
+        legacy_anchor_migration = is_legacy_anchor_failure_record(task_id, record)
+        if category not in RESUMABLE_CATEGORIES and not legacy_anchor_migration:
+            # Unknown, security-related, malformed-evidence, and persistence failures
+            # remain held unless the exact audited legacy record above matches.
+            raise ValueError("task failure category is not eligible for resume")
+        if legacy_anchor_migration:
+            record["resume_legacy_migration"] = "known_planner_anchor_failure_to_test_regression"
+            record["resume_original_category"] = "unknown"
+            record["last_category"] = "test_regression"
+        history = record.get("fingerprints", [])
+        archived = record.get("archived_fingerprints", [])
+        for items in (history, archived):
+            if not isinstance(items, list) or not all(isinstance(x, str) for x in items):
+                raise RecoveryStateError("failure fingerprint history invalid")
+        # Preserve old fingerprints for audit while granting one bounded repair attempt.
+        record["archived_fingerprints"] = (archived + history)[-_MAX_ARCHIVED_FINGERPRINTS:]
+        record["fingerprints"] = []
+        record["same_fingerprint_attempts"] = 0
+        raw_resume_count = record.get("resume_count", 0)
+        if isinstance(raw_resume_count, bool) or not isinstance(raw_resume_count, int) or raw_resume_count < 0:
+            raise RecoveryStateError("resume count invalid")
+        if raw_resume_count >= MAX_RESUME_ATTEMPTS:
+            raise ValueError(f"resume attempt limit reached ({MAX_RESUME_ATTEMPTS})")
+        if actor is not None and (not actor.strip() or len(actor) > 100 or not actor.isascii()):
+            raise ValueError("resume actor invalid")
+        if run_id is not None and (not run_id.isascii() or not run_id.isdigit() or len(run_id) > 20):
+            raise ValueError("resume workflow run ID invalid")
+        record["resume_count"] = raw_resume_count + 1
+        record["resume_actor"] = actor or "unknown"
+        record["resume_run_id"] = run_id or "unknown"
+        record["resume_review_status"] = "audit_only_not_an_approval_gate"
         record["held"] = False
         record["consecutive_failures"] = 0
         record["resumed_at"] = utc_now()
         record["resume_requires_review"] = True
+        self._write(data)
+
+    def hold_interrupted_resume(self, task_id: str, *, reason: str) -> None:
+        """Fail closed if an explicitly resumed task is interrupted or fails."""
+        task_id = _safe_id(task_id)
+        allowed_reasons = {
+            "signal_interrupted_resume",
+            "stop_requested_before_task",
+            "loop_budget_insufficient_for_task",
+            "resumed_task_failed",
+        }
+        if reason not in allowed_reasons:
+            raise ValueError("resume interruption reason is not allowlisted")
+        data = self._read()
+        record = data["tasks"].get(task_id)
+        if not isinstance(record, dict) or not isinstance(record.get("resume_count"), int):
+            raise RecoveryStateError("resume audit record missing")
+        record["held"] = True
+        record["consecutive_failures"] = max(int(record.get("consecutive_failures", 0)), 1)
+        record["resume_interrupted_at"] = utc_now()
+        record["resume_interruption_reason"] = reason
+        record["updated_at"] = utc_now()
         self._write(data)
 
     def task_status(self, task_id: str) -> dict:

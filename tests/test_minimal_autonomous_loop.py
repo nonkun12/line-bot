@@ -250,6 +250,27 @@ def test_main_halts_after_first_failure(monkeypatch, tmp_path: Path):
     assert json.loads(lines[0])["task_id"] == "t1"
 
 
+def test_loop_budget_prevents_starting_task_without_30_minutes_remaining(monkeypatch, tmp_path: Path):
+    task = {"id": "budget-task", "instruction": "bounded", "allowed_paths": ["tests/test_budget.py"]}
+    queue = tmp_path / "queue.json"
+    queue.write_text('{"max_tasks_per_run": 1}', encoding="utf-8")
+    monkeypatch.setattr(loop, "QUEUE", queue)
+    monkeypatch.setattr(loop, "load_tasks", lambda: [task])
+    monkeypatch.setenv("AUTONOMOUS_LOOP_BUDGET_SECONDS", "100")
+    monkeypatch.setattr(loop, "run_task", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("task must not start")))
+    results = tmp_path / "results.jsonl"
+    monkeypatch.setattr(loop.sys, "argv", [
+        "loop", "--max-tasks", "1", "--state", str(tmp_path / "state.json"),
+        "--results", str(results),
+    ])
+
+    assert loop.main() == 80
+    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["status"] == "BUDGET_EXHAUSTED"
+    assert rows[0]["failure_reason"] == "loop_budget_insufficient_for_task"
+
+
 def test_main_rejects_queue_limit(monkeypatch, tmp_path: Path):
     queue = tmp_path / "queue.json"
     queue.write_text('{"max_tasks_per_run": 1}', encoding="utf-8")
@@ -261,3 +282,108 @@ def test_main_rejects_queue_limit(monkeypatch, tmp_path: Path):
         assert "max_tasks_per_run=1" in str(exc)
     else:
         raise AssertionError("expected queue limit rejection")
+
+
+def test_resume_held_task_requires_queue_membership_and_explicit_confirmation(tmp_path: Path):
+    from scripts.recovery_ai import RecoveryStore
+
+    store = RecoveryStore(tmp_path / "recovery-ai-state.json")
+    for _ in range(3):
+        decision = store.record_failure("task-a", "timeout")
+    assert decision.action == "HOLD"
+
+    task = {"id": "task-a", "instruction": "bounded task", "allowed_paths": ["tests/test_one.py"]}
+    assert loop.resume_held_task_for_run(
+        "task-a", cause_fixed=True, queued_tasks=[task], completed=set(), recovery_store=store
+    ) == "task-a"
+    assert store.task_status("task-a")["held"] is False
+    assert store.task_status("task-a")["resume_requires_review"] is True
+
+
+def test_resume_held_task_rejects_missing_confirmation_unknown_or_completed_task(tmp_path: Path):
+    import pytest
+    from scripts.recovery_ai import RecoveryStore
+
+    store = RecoveryStore(tmp_path / "recovery-ai-state.json")
+    task = {"id": "task-a", "instruction": "bounded task", "allowed_paths": ["tests/test_one.py"]}
+    store.record_failure("task-a", "timeout")
+    with pytest.raises(ValueError, match="confirmation"):
+        loop.resume_held_task_for_run(
+            "task-a", cause_fixed=False, queued_tasks=[task], completed=set(), recovery_store=store
+        )
+    with pytest.raises(ValueError, match="current queue"):
+        loop.resume_held_task_for_run(
+            "not-queued", cause_fixed=True, queued_tasks=[task], completed=set(), recovery_store=store
+        )
+    with pytest.raises(ValueError, match="completed"):
+        loop.resume_held_task_for_run(
+            "task-a", cause_fixed=True, queued_tasks=[task], completed={"task-a"}, recovery_store=store
+        )
+
+
+def test_resume_held_task_for_run_rejects_task_that_is_not_held(tmp_path: Path):
+    import pytest
+    from scripts.recovery_ai import RecoveryStore
+
+    store = RecoveryStore(tmp_path / "recovery-ai-state.json")
+    task = {"id": "task-a", "instruction": "bounded task", "allowed_paths": ["tests/test_one.py"]}
+    store.record_failure("task-a", "timeout")
+    before = store.task_status("task-a")
+    with pytest.raises(ValueError, match="not held"):
+        loop.resume_held_task_for_run(
+            "task-a", cause_fixed=True, queued_tasks=[task], completed=set(), recovery_store=store
+        )
+    assert store.task_status("task-a") == before
+
+
+def test_main_rejects_confirmation_without_task_id_and_incident_mode(monkeypatch, tmp_path: Path):
+    import pytest
+
+    queue = tmp_path / "queue.json"
+    queue.write_text('{"max_tasks_per_run": 3}', encoding="utf-8")
+    monkeypatch.setattr(loop, "QUEUE", queue)
+    monkeypatch.setattr(loop, "load_tasks", lambda: [
+        {"id": "task-a", "instruction": "bounded task", "allowed_paths": ["tests/test_one.py"]},
+    ])
+    base = ["loop", "--max-tasks", "1", "--state", str(tmp_path / "loop-state.json"),
+            "--results", str(tmp_path / "results.jsonl")]
+    monkeypatch.setattr(loop.sys, "argv", base + ["--confirm-cause-fixed"])
+    with pytest.raises(SystemExit, match="held-task resume rejected"):
+        loop.main()
+    monkeypatch.setattr(loop.sys, "argv", base + ["--max-tasks", "2", "--resume-task-id", "task-a",
+                                                  "--confirm-cause-fixed", "--incident-category", "local_job_failed",
+                                                  "--incident-detail", "OSError"])
+    with pytest.raises(SystemExit, match="held-task resume is unavailable in incident mode"):
+        loop.main()
+    assert not (tmp_path / "results.jsonl").exists()
+
+
+def test_bounded_repair_requires_timeout_unchanged_sha_and_recovery_approval():
+    sha = "a" * 40
+    result = {
+        "status": "TIMEOUT",
+        "failure_reason": "task_timeout",
+        "base_sha": sha,
+        "produced_sha": sha,
+    }
+    assert loop.should_attempt_bounded_repair(result, {"action": "REPAIR_ONCE"}, stop_requested=False)
+    assert not loop.should_attempt_bounded_repair(result, {"action": "HOLD"}, stop_requested=False)
+    assert not loop.should_attempt_bounded_repair({**result, "produced_sha": "b" * 40}, {"action": "REPAIR_ONCE"}, stop_requested=False)
+    assert not loop.should_attempt_bounded_repair(result, {"action": "REPAIR_ONCE"}, stop_requested=True)
+    assert not loop.should_attempt_bounded_repair({**result, "failure_reason": "security_violation"}, {"action": "REPAIR_ONCE"}, stop_requested=False)
+
+
+def test_bounded_repair_task_preserves_allowlist_and_rejects_other_reasons():
+    import pytest
+
+    task = {
+        "id": "task-a",
+        "instruction": "Fix the bounded task.",
+        "allowed_paths": ["tests/test_one.py"],
+    }
+    repaired = loop.build_bounded_repair_task(task, "task_timeout")
+    assert repaired["allowed_paths"] == task["allowed_paths"]
+    assert "attempt (1 of 1)" in repaired["instruction"]
+    assert "\n\nRecovery AI automatic repair attempt" in repaired["instruction"]
+    with pytest.raises(ValueError, match="not allowlisted"):
+        loop.build_bounded_repair_task(task, "security_violation")
