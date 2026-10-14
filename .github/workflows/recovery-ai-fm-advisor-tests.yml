@@ -1,0 +1,31 @@
+name: Recovery AI FM Advisor Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/recovery_ai_fm_advisor.py"
+      - "tests/test_recovery_ai_fm_advisor.py"
+      - ".github/workflows/recovery-ai-fm-advisor-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recovery-ai-fm-advisor-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Run isolated advisor tests
+        run: python -m unittest discover -s tests -p 'test_recovery_ai_fm_advisor.py' -v
