@@ -246,6 +246,10 @@ jobs:
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           SELF_IMPROVEMENT_HISTORY_PATH: /tmp/line-bot-self-improvement.jsonl
+          # RAG is advisory and sanitized; the authoritative Recovery AI state
+          # remains durable in autonomous-loop-state. This SQLite cache is run-local.
+          RECOVERY_RAG_DB_PATH: /tmp/recovery-rag.sqlite3
+          RECOVERY_RAG_NAMESPACE: distributed-loop
           TRIGGER_MODE: ${{ env.TRIGGER_MODE }}
           INCIDENT_CATEGORY: ${{ env.INCIDENT_CATEGORY }}
           INCIDENT_DETAIL: ${{ env.INCIDENT_DETAIL }}
