@@ -4,8 +4,11 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - "scripts/recovery_ai.py"
       - "scripts/recovery_ai_fm_advisor.py"
+      - "scripts/recovery_ai_local_advisor.py"
       - "tests/test_recovery_ai_fm_advisor.py"
+      - "tests/test_recovery_ai_local_advisor.py"
       - ".github/workflows/recovery-ai-fm-advisor-tests.yml"
   workflow_dispatch:
 
@@ -28,4 +31,4 @@ jobs:
         with:
           python-version: "3.13"
       - name: Run isolated advisor tests
-        run: python -m unittest discover -s tests -p 'test_recovery_ai_fm_advisor.py' -v
+        run: python -m unittest discover -s tests -p 'test_recovery_ai_*advisor.py' -v
