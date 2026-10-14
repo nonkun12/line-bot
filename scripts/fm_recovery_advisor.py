@@ -100,7 +100,7 @@ def _validate_advice(raw: str) -> dict[str, Any]:
     category = data["suggested_category"]
     summary = data["summary"]
     checks = data["checks"]
-    if category not in ALLOWED_CATEGORIES:
+    if not isinstance(category, str) or category not in ALLOWED_CATEGORIES:
         raise ValueError("advisory category is not allowlisted")
     if not isinstance(summary, str) or not summary.strip() or len(summary) > 300:
         raise ValueError("advisory summary invalid")
