@@ -670,6 +670,16 @@ def main() -> int:
             }
             if resumed_task_id is not None:
                 recovery_store.hold_interrupted_resume(resumed_task_id, reason="loop_budget_insufficient_for_task")
+                audit = recovery_store.task_status(resumed_task_id)
+                record["resume_audit"] = {
+                    "task_id": resumed_task_id,
+                    "resume_count": audit.get("resume_count", 0),
+                    "operator": audit.get("resume_actor", "unknown"),
+                    "workflow_run_id": audit.get("resume_run_id", "unknown"),
+                    "review_status": "audit_only_not_an_approval_gate",
+                    "interruption_reason": audit.get("resume_interruption_reason"),
+                    "held_after_run": audit.get("held") is True,
+                }
                 ACTIVE_RESUME_CONTEXT = None
             with args.results.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -687,6 +697,17 @@ def main() -> int:
                 "exit_code": 1,
                 "failure_reason": "stop_requested_before_task",
             }
+            if resumed_task_id is not None:
+                audit = recovery_store.task_status(resumed_task_id)
+                result["resume_audit"] = {
+                    "task_id": resumed_task_id,
+                    "resume_count": audit.get("resume_count", 0),
+                    "operator": audit.get("resume_actor", "unknown"),
+                    "workflow_run_id": audit.get("resume_run_id", "unknown"),
+                    "review_status": "audit_only_not_an_approval_gate",
+                    "interruption_reason": audit.get("resume_interruption_reason"),
+                    "held_after_run": audit.get("held") is True,
+                }
             with args.results.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(result, ensure_ascii=False) + "\n")
             print(f"MINIMAL_LOOP=STOPPED before task={task['id']}")
