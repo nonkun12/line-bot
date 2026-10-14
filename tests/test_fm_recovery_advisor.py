@@ -36,7 +36,8 @@ def test_advice_is_never_authoritative(monkeypatch):
     })
 
     def fake_run(*args, **kwargs):
-        return subprocess.CompletedProcess(args[0], 0, stdout=payload, stderr="")
+        kwargs["stdout"].write(payload.encode("utf-8"))
+        return subprocess.CompletedProcess(args[0], 0)
 
     monkeypatch.setattr("scripts.fm_recovery_advisor.subprocess.run", fake_run)
     result = advise({"task_id": "task-123"}, executable="/fake/fm")
@@ -49,7 +50,8 @@ def test_advice_is_never_authoritative(monkeypatch):
 
 def test_invalid_model_output_fails_closed(monkeypatch):
     def fake_run(*args, **kwargs):
-        return subprocess.CompletedProcess(args[0], 0, stdout='{"suggested_category":"unknown","summary":"ok","checks":[],"action":"deploy"}', stderr="")
+        kwargs["stdout"].write(b'{"suggested_category":"unknown","summary":"ok","checks":[],"action":"deploy"}')
+        return subprocess.CompletedProcess(args[0], 0)
 
     monkeypatch.setattr("scripts.fm_recovery_advisor.subprocess.run", fake_run)
     result = advise({"task_id": "task-123"}, executable="/fake/fm")
