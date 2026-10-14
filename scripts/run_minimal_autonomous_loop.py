@@ -586,6 +586,14 @@ def main() -> int:
     if args.resume_task_id is not None or args.confirm_cause_fixed:
         if args.incident_category is not None:
             raise SystemExit("held-task resume is unavailable in incident mode")
+        # Pre-create the workflow persistence guard before unholding anything.
+        # If creation fails, abort without changing the durable held state.
+        resume_persistence_guard = Path("/tmp/autonomous-loop-held-tasks")
+        if args.resume_task_id is not None:
+            try:
+                resume_persistence_guard.write_text("resume in progress; publish only after verified success", encoding="utf-8")
+            except OSError as exc:
+                raise SystemExit(f"held-task resume rejected: cannot establish persistence guard ({type(exc).__name__})") from exc
         try:
             resumed_task_id = resume_held_task_for_run(
                 args.resume_task_id,
@@ -756,6 +764,16 @@ def main() -> int:
 
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(result, ensure_ascii=False) + "\n")
+
+        # Keep the guard for failures/interruption; only verified successful resume
+        # may allow the workflow to publish the new durable state.
+        if resumed_task_id is not None and not recovery_error and result.get("status") in {"PASS", "NO_CHANGE"} and result.get("exit_code") == 0:
+            try:
+                Path("/tmp/autonomous-loop-held-tasks").unlink(missing_ok=True)
+            except OSError:
+                recovery_error = True
+                result["failure_reason"] = "recovery_ai_state_persist_failed"
+                print("MINIMAL_LOOP=HALT reason=resume_guard_clear_failed", file=sys.stderr, flush=True)
 
         if recovery_error:
             print(
