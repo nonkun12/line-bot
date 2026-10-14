@@ -95,6 +95,31 @@ def _attach_rag_advisory(
     return outcome
 
 
+def _attach_local_advisor(
+    outcome: dict[str, Any], *, decision: Any, category: str
+) -> dict[str, Any]:
+    """Optionally attach Mac-local diagnostic advice; never affect the loop decision."""
+    if os.environ.get("RECOVERY_LOCAL_ADVISOR_ENABLED", "").strip().lower() != "true":
+        return outcome
+    try:
+        from scripts.recovery_ai_local_advisor import advise_for_decision
+
+        result = advise_for_decision(decision, category, ())
+        outcome["recovery_local_advisor"] = {
+            "status": result.status,
+            "decision_action": result.decision_action,
+            "suggestion": result.suggestion,
+            "reason": result.reason,
+        }
+    except Exception as exc:
+        # Advisory integration is non-authoritative; disclose only the exception class.
+        outcome["recovery_local_advisor"] = {
+            "status": "UNAVAILABLE",
+            "reason": type(exc).__name__,
+        }
+    return outcome
+
+
 def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[str, Any]:
     """Persist one verified outcome; fail closed if state cannot be trusted."""
     if not isinstance(result, dict):
@@ -115,6 +140,9 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
         result["exit_code"] = 1
         result["failure_reason"] = "recovery_ai_invalid_evidence"
         outcome = {"recorded": True, "status": "FAIL", "decision": asdict(decision)}
+        outcome = _attach_local_advisor(
+            outcome, decision=decision, category="invalid_evidence"
+        )
         return _attach_rag_advisory(
             outcome, task_id=task_id, status="FAIL", category="invalid_evidence"
         )
@@ -135,7 +163,8 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
         )
     category = _category(result)
     decision = store.record_failure(task_id, category, ())
+    outcome = {"recorded": True, "status": status, "decision": asdict(decision)}
+    outcome = _attach_local_advisor(outcome, decision=decision, category=category)
     return _attach_rag_advisory(
-        {"recorded": True, "status": status, "decision": asdict(decision)},
-        task_id=task_id, status=status, category=category,
+        outcome, task_id=task_id, status=status, category=category,
     )
