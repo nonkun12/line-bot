@@ -250,6 +250,27 @@ def test_main_halts_after_first_failure(monkeypatch, tmp_path: Path):
     assert json.loads(lines[0])["task_id"] == "t1"
 
 
+def test_loop_budget_prevents_starting_task_without_30_minutes_remaining(monkeypatch, tmp_path: Path):
+    task = {"id": "budget-task", "instruction": "bounded", "allowed_paths": ["tests/test_budget.py"]}
+    queue = tmp_path / "queue.json"
+    queue.write_text('{"max_tasks_per_run": 1}', encoding="utf-8")
+    monkeypatch.setattr(loop, "QUEUE", queue)
+    monkeypatch.setattr(loop, "load_tasks", lambda: [task])
+    monkeypatch.setenv("AUTONOMOUS_LOOP_BUDGET_SECONDS", "100")
+    monkeypatch.setattr(loop, "run_task", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("task must not start")))
+    results = tmp_path / "results.jsonl"
+    monkeypatch.setattr(loop.sys, "argv", [
+        "loop", "--max-tasks", "1", "--state", str(tmp_path / "state.json"),
+        "--results", str(results),
+    ])
+
+    assert loop.main() == 80
+    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["status"] == "BUDGET_EXHAUSTED"
+    assert rows[0]["failure_reason"] == "loop_budget_insufficient_for_task"
+
+
 def test_main_rejects_queue_limit(monkeypatch, tmp_path: Path):
     queue = tmp_path / "queue.json"
     queue.write_text('{"max_tasks_per_run": 1}', encoding="utf-8")
