@@ -641,7 +641,7 @@ def main() -> int:
                 "failure_reason": "loop_budget_insufficient_for_task",
             }
             with args.results.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(record, ensure_ascii=False) + "\\n")
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
             print("MINIMAL_LOOP=HALT reason=loop_budget_insufficient_for_task", flush=True)
             return 80
         if stopped(args.stop_file):
