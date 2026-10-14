@@ -109,7 +109,7 @@ jobs:
         github.event.pull_request.user.login == 'nonkun12'
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: ${{ github.event_name == 'schedule' && 90 || 300 }}
     env:
       MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || '4' }}
       TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'normal' }}
@@ -124,6 +124,7 @@ jobs:
       SELF_IMPROVEMENT_CREATOR_CRITIC: 'false'
       DEV_USER_ID: autonomous-distributed-loop
       GITHUB_RUN_ID: ${{ github.run_id }}
+      AUTONOMOUS_LOOP_BUDGET_SECONDS: ${{ github.event_name == 'schedule' && '3300' || '12000' }}
       # Runtime prepares changes; only the workflow's scoped GH_TOKEN step publishes.
       AUTONOMOUS_PUBLISH_VIA_WORKFLOW: 'true'
     steps:
@@ -307,7 +308,7 @@ jobs:
             fi
           fi
           if [ -n "$RESUME_TASK_ID" ]; then
-            loop_args+=(--resume-task-id "$RESUME_TASK_ID")
+            loop_args+=(--resume-task-id "$RESUME_TASK_ID" --resume-actor "$GITHUB_ACTOR" --resume-run-id "$GITHUB_RUN_ID")
             if [ "$CONFIRM_CAUSE_FIXED" = "true" ]; then
               loop_args+=(--confirm-cause-fixed)
             fi
@@ -435,7 +436,7 @@ jobs:
 
       - name: Persist Recovery AI durable state
         id: persist_recovery_ai
-        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
+        if: ${{ always() && steps.run_task.conclusion != 'skipped' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
