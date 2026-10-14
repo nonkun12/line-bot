@@ -254,7 +254,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         function_start = text.find("def test_ai_speaker_rejects_empty_transcript(")
         if function_start < 0:
             return None, f"existing_test_missing:{chosen}"
-        next_function = text.find("\\ndef ", function_start + 1)
+        next_function = text.find("\ndef ", function_start + 1)
         function_end = next_function if next_function >= 0 else len(text)
         existing_test = text[function_start:function_end]
         if "assert brain.requests == []" in existing_test:
@@ -263,10 +263,10 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         # Match a stable body line, not the exact function signature: existing
         # tests may use annotations or omit them. Strengthen the existing test
         # instead of inserting a duplicate test function.
-        anchor = '        raise AssertionError("empty transcript must fail closed")\\n'
+        anchor = '        raise AssertionError("empty transcript must fail closed")\n'
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
-        new = anchor + "    assert brain.requests == []\\n"
+        new = anchor + "    assert brain.requests == []\n"
         if len(anchor) > 1200 or len(new) > 1800:
             return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
         candidate = text.replace(anchor, new, 1)
