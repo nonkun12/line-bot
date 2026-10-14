@@ -301,24 +301,24 @@ jobs:
           # Stale PASS rows could otherwise inflate the final task count for NOT_RUN.
           rm -f /tmp/minimal-autonomous-loop.jsonl
 
-          # Scheduled runs may resume exactly one known legacy task after the
-          # deterministic planner fix is present on the default branch. All other
-          # unknown held records remain untouched and fail-closed.
+          RESUME_ACTOR="$GITHUB_ACTOR"
+          # Scheduled runs resume only the exact not-yet-resumed legacy task.
+          # Eligibility is shared with RecoveryStore and requires queued+incomplete.
           if [ "${EVENT_NAME}" = "schedule" ] && [ -z "${RESUME_TASK_ID}" ] \
              && git merge-base --is-ancestor 833043c9e45248eb5ad49a0e35574cfc523f0b6f "${GITHUB_SHA}"; then
             auto_resume_id="$(python - <<'PY'
           import json
           from pathlib import Path
+          from scripts.recovery_ai import is_eligible_for_legacy_anchor_auto_resume
           task_id = "ai-speaker-empty-transcript-no-brain-call"
-          fingerprint = "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56"
           state = json.loads(Path("/tmp/autonomous-loop-state.json").read_text(encoding="utf-8"))
+          queue = json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8"))
+          queued = {str(t.get("id")) for t in queue.get("tasks", []) if isinstance(t, dict)}
+          completed = set(state.get("completed", []))
           record = state.get("recovery_ai", {}).get("tasks", {}).get(task_id, {})
-          eligible = (
-              isinstance(record, dict)
-              and record.get("held") is True
-              and record.get("last_category") == "unknown"
-              and record.get("last_fingerprint") == fingerprint
-              and record.get("fingerprints") == [fingerprint]
+          eligible = is_eligible_for_legacy_anchor_auto_resume(
+              task_id, record, queued_task_ids=queued,
+              completed_task_ids=completed, fix_sha_present=True,
           )
           print(task_id if eligible else "")
           PY
@@ -326,6 +326,7 @@ jobs:
             if [ -n "$auto_resume_id" ]; then
               RESUME_TASK_ID="$auto_resume_id"
               CONFIRM_CAUSE_FIXED=true
+              RESUME_ACTOR="scheduled-auto-resume"
               echo "::notice::AUTO_RESUME: one audited legacy task selected; max task count remains 1."
             fi
           fi
@@ -338,7 +339,7 @@ jobs:
             fi
           fi
           if [ -n "$RESUME_TASK_ID" ]; then
-            loop_args+=(--resume-task-id "$RESUME_TASK_ID" --resume-actor "$GITHUB_ACTOR" --resume-run-id "$GITHUB_RUN_ID")
+            loop_args+=(--resume-task-id "$RESUME_TASK_ID" --resume-actor "$RESUME_ACTOR" --resume-run-id "$GITHUB_RUN_ID")
             if [ "$CONFIRM_CAUSE_FIXED" = "true" ]; then
               loop_args+=(--confirm-cause-fixed)
             fi
