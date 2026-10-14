@@ -736,7 +736,7 @@ def main() -> int:
                 recovery_store.hold_interrupted_resume(resumed_task_id, reason="resumed_task_failed")
             except Exception:
                 recovery_error = True
-                result["failure_reason"] = "resume_rehold_failed"
+                result["failure_reason"] = "recovery_ai_state_persist_failed"
             ACTIVE_RESUME_CONTEXT = None
 
         if resumed_task_id is not None:
