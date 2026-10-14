@@ -534,6 +534,7 @@ def resume_held_task_for_run(
 
 
 def main() -> int:
+    global ACTIVE_RESUME_CONTEXT
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
     parser = argparse.ArgumentParser()
