@@ -146,26 +146,31 @@ def advise(raw: Any, *, executable: str | None = None, timeout: int = MAX_TIMEOU
     try:
         with tempfile.TemporaryDirectory(prefix="fm-recovery-advisor-") as temp_dir:
             schema_path = Path(temp_dir) / "schema.json"
+            output_path = Path(temp_dir) / "advice.json"
             schema_path.write_text(json.dumps(_SCHEMA), encoding="utf-8")
-            completed = subprocess.run(
-                [
-                    command, "respond", "--no-stream", "--greedy", "--schema", str(schema_path),
-                    "--instructions", instructions, prompt,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                check=False,
-            )
+            with output_path.open("wb") as output_file:
+                completed = subprocess.run(
+                    [
+                        command, "respond", "--no-stream", "--greedy", "--schema", str(schema_path),
+                        "--instructions", instructions, prompt,
+                    ],
+                    stdout=output_file,
+                    stderr=subprocess.DEVNULL,
+                    timeout=timeout,
+                    check=False,
+                )
+            if completed.returncode != 0:
+                return {"status": "UNAVAILABLE", "reason": "fm_nonzero_exit", "authority": "none"}
+            if output_path.stat().st_size > MAX_OUTPUT_BYTES:
+                return {"status": "UNAVAILABLE", "reason": "fm_output_invalid", "authority": "none"}
+            output = output_path.read_text(encoding="utf-8")
     except subprocess.TimeoutExpired:
         return {"status": "UNAVAILABLE", "reason": "fm_timeout", "authority": "none"}
-    except OSError:
+    except (OSError, UnicodeError):
         return {"status": "UNAVAILABLE", "reason": "fm_execution_failed", "authority": "none"}
 
-    if completed.returncode != 0:
-        return {"status": "UNAVAILABLE", "reason": "fm_nonzero_exit", "authority": "none"}
     try:
-        return _validate_advice(completed.stdout.strip())
+        return _validate_advice(output.strip())
     except ValueError:
         return {"status": "UNAVAILABLE", "reason": "fm_output_invalid", "authority": "none"}
 
