@@ -23,8 +23,7 @@ def test_sanitize_rejects_raw_logs_and_unknown_fields():
 
 
 def test_missing_fm_fails_closed():
-    result = advise({"task_id": "task-123"}, executable=None)
-    # An explicit nonexistent executable is used to make this deterministic.
+    result = advise({"task_id": "task-123"}, executable="/definitely/not/a/real/fm")
     # subprocess raises OSError; it must never be treated as a recovery success.
     assert result["status"] == "UNAVAILABLE"
 
