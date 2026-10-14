@@ -23,6 +23,7 @@ from db import (
     get_job,
     get_job_status_summary,
     has_pending_job_by_type,
+    get_conn,
 )
 
 
@@ -205,6 +206,106 @@ def complete():
 
     return jsonify({"ok": True, "status": "completed" if success else "failed"}), 200
 
+
+
+
+_MAX_KANBAN_TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
+_SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
+_HANDOFF_KEY_ENV = "KANBAN_OBSIDIAN_HANDOFF_KEY"
+_HANDOFF_USER_ENV = "KANBAN_OBSIDIAN_USER_ID"
+
+
+def _safe_handoff_text(value: object, limit: int) -> str | None:
+    if not isinstance(value, str):
+        return None
+    value = re.sub(r"[\x00-\x1f\x7f]", " ", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    value = re.sub(r"(?i)\b(secret|token|password|api[_-]?key)\s*[:=]\s*[^\s,;]+", r"\1=[REDACTED]", value)
+    if not value or len(value) > limit:
+        return None
+    return value
+
+
+@obsidian_bridge_bp.route("/kanban-result", methods=["POST"])
+def enqueue_verified_kanban_result():
+    """Queue a bounded PASS summary for explicit Mac approval; never writes to the vault."""
+    expected = os.environ.get(_HANDOFF_KEY_ENV, "")
+    provided = request.headers.get("X-Kanban-Handoff-Key", "")
+    if not expected or not provided or not hmac.compare_digest(expected, provided):
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    user_id = os.environ.get(_HANDOFF_USER_ENV, "").strip()
+    if not user_id or len(user_id) > 200:
+        return jsonify({"ok": False, "error": "handoff unavailable"}), 503
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"ok": False, "error": "invalid payload"}), 400
+
+    task_id = data.get("task_id")
+    status = data.get("status")
+    summary = _safe_handoff_text(data.get("summary"), 500)
+    evidence_ref = _safe_handoff_text(data.get("evidence_ref"), 300)
+    commit_sha = data.get("commit_sha")
+    verification = data.get("verification")
+
+    if not isinstance(task_id, str) or not _MAX_KANBAN_TASK_ID.fullmatch(task_id):
+        return jsonify({"ok": False, "error": "invalid task_id"}), 400
+    if status != "PASS":
+        return jsonify({"ok": False, "error": "only PASS results may be queued"}), 422
+    if summary is None or evidence_ref is None:
+        return jsonify({"ok": False, "error": "summary and evidence_ref are required and bounded"}), 400
+    if not isinstance(commit_sha, str) or not _SHA40_RE.fullmatch(commit_sha):
+        return jsonify({"ok": False, "error": "valid commit_sha is required"}), 400
+    if not isinstance(verification, dict) or (
+        verification.get("tests_passed") is not True
+        or verification.get("safety_gate_passed") is not True
+    ):
+        return jsonify({"ok": False, "error": "verification evidence is incomplete"}), 422
+    if not evidence_ref.startswith("https://") and not _SHA40_RE.fullmatch(evidence_ref):
+        return jsonify({"ok": False, "error": "evidence_ref must be an HTTPS URL or commit SHA"}), 400
+    # Keep the note to a fixed destination and a bounded, sanitized summary.
+    message = (
+        "Obsidianに追記 LINE-Inbox.md: "
+        f"[Kanban PASS] Task {task_id}; {summary}; "
+        f"commit {commit_sha}; evidence {evidence_ref}"
+    )
+    if len(message) > 1500:
+        return jsonify({"ok": False, "error": "result too large"}), 400
+
+    try:
+        # Insert the durable job and unique task marker in one transaction.
+        with get_conn() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS kanban_obsidian_handoffs (
+                    task_id TEXT PRIMARY KEY,
+                    job_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            existing = conn.execute(
+                "SELECT job_id FROM kanban_obsidian_handoffs WHERE task_id=?",
+                (task_id,),
+            ).fetchone()
+            if existing:
+                return jsonify({"ok": False, "error": "duplicate task_id"}), 409
+            cursor = conn.execute(
+                """INSERT INTO jobs
+                   (user_id, job_type, source, parent_job_id, message, status, max_retries)
+                   VALUES (?, ?, 'kanban', NULL, ?, 'pending', 1)""",
+                (user_id, OBSIDIAN_JOB_TYPE, message),
+            )
+            job_id = cursor.lastrowid
+            conn.execute(
+                "INSERT INTO kanban_obsidian_handoffs(task_id, job_id) VALUES (?, ?)",
+                (task_id, job_id),
+            )
+    except Exception:
+        current_app.logger.exception("KANBAN OBSIDIAN HANDOFF ERROR")
+        return jsonify({"ok": False, "error": "handoff unavailable"}), 503
+
+    current_app.logger.info("KANBAN OBSIDIAN HANDOFF queued task_id=%s job_id=%s", task_id, job_id)
+    return jsonify({"ok": True, "status": "pending_approval", "job_id": job_id}), 202
 
 
 def _job_cancel_enabled() -> bool:
