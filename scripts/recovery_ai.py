@@ -20,10 +20,14 @@ SCHEMA_VERSION = 1
 HOLD_AFTER_FAILURES = 3
 MAX_TRANSIENT_RETRIES = 2
 MAX_REPAIR_ATTEMPTS_PER_FINGERPRINT = 1
+_RESUME_AUDIT_KEYS = ("archived_fingerprints", "resume_count", "resumed_at", "resume_requires_review")
+_MAX_ARCHIVED_FINGERPRINTS = 100
 
 TRANSIENT_CATEGORIES = frozenset({"network_transient", "service_unavailable", "rate_limited"})
 REPAIRABLE_CATEGORIES = frozenset({"test_regression", "timeout", "process_crash"})
 NON_REPAIRABLE_CATEGORIES = frozenset({"invalid_task", "invalid_evidence", "security_violation"})
+# Only known, bounded failures may be resumed after explicit cause-fix confirmation.
+RESUMABLE_CATEGORIES = frozenset(TRANSIENT_CATEGORIES | REPAIRABLE_CATEGORIES)
 FAILURE_CATEGORIES = (
     TRANSIENT_CATEGORIES | REPAIRABLE_CATEGORIES | NON_REPAIRABLE_CATEGORIES
     | {"state_persistence_failure", "unknown"}
@@ -146,7 +150,9 @@ class RecoveryStore:
             raise RecoveryStateError("failure fingerprint history invalid")
         same_count = sum(1 for item in history if item == fingerprint)
         now = utc_now()
+        carried = {key: previous[key] for key in _RESUME_AUDIT_KEYS if key in previous}
         data["tasks"][task_id] = {
+            **carried,
             "consecutive_failures": count,
             "last_category": category,
             "last_fingerprint": fingerprint,
@@ -221,6 +227,24 @@ class RecoveryStore:
         record = data["tasks"].get(task_id)
         if not isinstance(record, dict) or record.get("held") is not True:
             raise ValueError("task is not held")
+        category = record.get("last_category", "unknown")
+        if category not in RESUMABLE_CATEGORIES:
+            # Unknown, security-related, malformed-evidence, and persistence failures
+            # must remain held even when a caller supplies cause_fixed=True.
+            raise ValueError("task failure category is not eligible for resume")
+        history = record.get("fingerprints", [])
+        archived = record.get("archived_fingerprints", [])
+        for items in (history, archived):
+            if not isinstance(items, list) or not all(isinstance(x, str) for x in items):
+                raise RecoveryStateError("failure fingerprint history invalid")
+        # Preserve old fingerprints for audit while granting one bounded repair attempt.
+        record["archived_fingerprints"] = (archived + history)[-_MAX_ARCHIVED_FINGERPRINTS:]
+        record["fingerprints"] = []
+        record["same_fingerprint_attempts"] = 0
+        raw_resume_count = record.get("resume_count", 0)
+        if isinstance(raw_resume_count, bool) or not isinstance(raw_resume_count, int) or raw_resume_count < 0:
+            raise RecoveryStateError("resume count invalid")
+        record["resume_count"] = raw_resume_count + 1
         record["held"] = False
         record["consecutive_failures"] = 0
         record["resumed_at"] = utc_now()
