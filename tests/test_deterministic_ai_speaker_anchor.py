@@ -32,9 +32,11 @@ def test_ai_speaker_anchor_plan_is_idempotent(tmp_path, monkeypatch) -> None:
     target.write_text(
         'def test_ai_speaker_rejects_empty_transcript() -> None:\n'
         '    try:\n'
-        '        raise AssertionError("empty transcript must fail closed")\n'
+        '        raise ValueError("empty transcript")\n'
         '    except ValueError:\n'
-        '        pass\n',
+        '        pass\n'
+        '    else:\n'
+        '        raise AssertionError("empty transcript must fail closed")\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
