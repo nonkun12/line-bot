@@ -1,5 +1,3 @@
-import json
-
 import pytest
 
 from rag_store import RagStore
@@ -67,4 +65,16 @@ def test_rejects_empty_document(tmp_path):
     with pytest.raises(ValueError):
         store.add_document(
             namespace="engineering", source="test", source_id="empty", content="  "
+        )
+
+
+def test_rejects_sensitive_metadata_key(tmp_path):
+    store = RagStore(tmp_path / "rag.sqlite3")
+    with pytest.raises(ValueError, match="sensitive"):
+        store.add_document(
+            namespace="engineering",
+            source="test",
+            source_id="secret",
+            content="not a credential",
+            metadata={"api_key": "should-not-be-stored"},
         )
