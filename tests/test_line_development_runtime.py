@@ -691,16 +691,16 @@ def test_ai_speaker_empty_transcript_plan_handles_existing_unannotated_test(monk
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
     original = (
-        "class FakeBrain:\\n"
-        "    def __init__(self): self.requests = []\\n"
-        "def test_ai_speaker_rejects_empty_transcript():\\n"
-        "    brain = FakeBrain()\\n"
-        "    try:\\n"
-        '        raise ValueError("speech transcript must not be empty")\\n'
-        "    except ValueError as exc:\\n"
-        '        assert str(exc) == "speech transcript must not be empty"\\n'
-        "    else:\\n"
-        '        raise AssertionError("empty transcript must fail closed")\\n'
+        "class FakeBrain:\n"
+        "    def __init__(self): self.requests = []\n"
+        "def test_ai_speaker_rejects_empty_transcript():\n"
+        "    brain = FakeBrain()\n"
+        "    try:\n"
+        '        raise ValueError("speech transcript must not be empty")\n'
+        "    except ValueError as exc:\n"
+        '        assert str(exc) == "speech transcript must not be empty"\n'
+        "    else:\n"
+        '        raise AssertionError("empty transcript must fail closed")\n'
     )
     target.write_text(original, encoding="utf-8")
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
@@ -713,11 +713,11 @@ def test_ai_speaker_empty_transcript_plan_handles_existing_unannotated_test(monk
     assert plan is not None
     assert plan["no_change"] is False
     change = plan["changes"][0]
-    assert change["old"] == '        raise AssertionError("empty transcript must fail closed")\\n'
+    assert change["old"] == '        raise AssertionError("empty transcript must fail closed")\n'
     candidate = original.replace(change["old"], change["new"], 1)
     compile(candidate, chosen, "exec")
     assert candidate.count("def test_ai_speaker_rejects_empty_transcript()") == 1
-    assert "    assert brain.requests == []\\n" in candidate
+    assert "    assert brain.requests == []\n" in candidate
 
 
 def test_ai_speaker_empty_transcript_plan_is_idempotent_after_assertion(monkeypatch, tmp_path):
@@ -725,9 +725,9 @@ def test_ai_speaker_empty_transcript_plan_is_idempotent_after_assertion(monkeypa
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
-        "def test_ai_speaker_rejects_empty_transcript():\\n"
-        "    brain = FakeBrain()\\n"
-        '    assert brain.requests == []\\n',
+        "def test_ai_speaker_rejects_empty_transcript():\n"
+        "    brain = FakeBrain()\n"
+        '    assert brain.requests == []\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
