@@ -305,7 +305,9 @@ jobs:
           RESUME_ACTOR="$GITHUB_ACTOR"
           # Scheduled runs resume only the exact not-yet-resumed legacy task.
           # Eligibility is shared with RecoveryStore and requires queued+incomplete.
-          if [ "${EVENT_NAME}" = "schedule" ] && [ -z "${RESUME_TASK_ID}" ] \
+          if [ "${EVENT_NAME}" = "schedule" ] \
+             && [ "${{ vars.RECOVERY_AI_SCHEDULED_AUTO_RESUME }}" = "true" ] \
+             && [ -z "${RESUME_TASK_ID}" ] \
              && git merge-base --is-ancestor 833043c9e45248eb5ad49a0e35574cfc523f0b6f "${GITHUB_SHA}"; then
             auto_resume_id="$(python - <<'PY'
           import json
@@ -511,7 +513,7 @@ jobs:
               record = recovery.get('tasks', {}).get(task_id, {}) if isinstance(task_id, str) else {}
               interruption = audit.get('interruption_reason') if isinstance(audit, dict) else None
               allowed_interruption_status = {
-                  'resumed_task_failed': {'FAIL', 'TIMEOUT'},
+                  'resumed_task_failed': {'FAIL', 'TIMEOUT', 'STOPPED'},
                   'loop_budget_insufficient_for_task': {'BUDGET_EXHAUSTED'},
                   'stop_requested_before_task': {'STOPPED'},
               }
