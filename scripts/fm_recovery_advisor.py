@@ -36,6 +36,7 @@ _SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
     "required": ["suggested_category", "summary", "checks"],
+    "x-order": ["suggested_category", "summary", "checks"],
     "properties": {
         "suggested_category": {"type": "string", "enum": list(ALLOWED_CATEGORIES)},
         "summary": {"type": "string"},
