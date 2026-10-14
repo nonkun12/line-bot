@@ -16,6 +16,41 @@ def clean(v):
     if not isinstance(r["fingerprint"], str) or not re.fullmatch(r"[0-9a-f]{64}", r["fingerprint"]): raise ValueError("invalid fingerprint")
     return r
 
+def import_state(state_path, db_path, namespace):
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    records = state.get("recovery_rag", []) if isinstance(state, dict) else None
+    if not isinstance(records, list) or len(records) > MAX_RECORDS:
+        raise ValueError("invalid durable RAG history")
+    seen = set()
+    for item in records:
+        r = clean(item)
+        key = (r["task_id"], r["fingerprint"])
+        if key not in seen:
+            record_outcome(db_path, namespace=namespace, **r)
+            seen.add(key)
+    return len(seen)
+
+
+def export_state(db_path, output_path, namespace):
+    with sqlite3.connect(str(db_path), timeout=5) as c:
+        rows = c.execute(
+            "SELECT metadata_json FROM rag_documents WHERE namespace=? AND source='recovery_ai' ORDER BY updated_at DESC, id DESC LIMIT ?",
+            (namespace, MAX_RECORDS),
+        ).fetchall()
+    records = []
+    seen = set()
+    for (raw,) in rows:
+        r = clean(json.loads(raw))
+        key = (r["task_id"], r["fingerprint"])
+        if key not in seen:
+            records.append(r)
+            seen.add(key)
+    output_path.write_text(
+        json.dumps({"schema_version": 1, "records": records}, sort_keys=True) + "\\n",
+        encoding="utf-8",
+    )
+    return len(records)
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--mode", choices=("import", "export"), required=True)
