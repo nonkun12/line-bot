@@ -80,8 +80,27 @@ class RagStore:
         if not isinstance(metadata, dict):
             raise ValueError("metadata must be an object")
 
-        # Only structured metadata is accepted; never log or embed credentials.
+        # Reject obviously sensitive metadata keys before persistence.
+        def has_sensitive_key(value: Any) -> bool:
+            if isinstance(value, dict):
+                for key, nested in value.items():
+                    normalized = str(key).casefold().replace("-", "_")
+                    if any(marker in normalized for marker in (
+                        "token", "secret", "password", "passwd", "authorization",
+                        "api_key", "private_key", "credential",
+                    )):
+                        return True
+                    if has_sensitive_key(nested):
+                        return True
+            elif isinstance(value, list):
+                return any(has_sensitive_key(item) for item in value)
+            return False
+
+        if has_sensitive_key(metadata):
+            raise ValueError("metadata contains a sensitive field name")
         metadata_json = json.dumps(metadata, ensure_ascii=False, sort_keys=True)
+        if len(metadata_json) > 4096:
+            raise ValueError("metadata is too large")
         digest = hashlib.sha256(
             (title + "\n" + content + "\n" + metadata_json).encode("utf-8")
         ).hexdigest()
