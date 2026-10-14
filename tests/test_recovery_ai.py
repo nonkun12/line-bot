@@ -101,3 +101,73 @@ def test_elapsed_seconds_requires_aware_nonnegative_timestamps():
         elapsed_seconds("2026-10-11T00:00:00", "2026-10-11T00:00:01+00:00")
     with pytest.raises(ValueError):
         elapsed_seconds("2026-10-11T00:00:02+00:00", "2026-10-11T00:00:01+00:00")
+
+
+
+def test_resume_archives_fingerprint_history_and_restores_one_bounded_repair(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    for _ in range(3):
+        store.record_failure("task-a", "timeout")
+    held = store.task_status("task-a")
+    old_fingerprints = list(held["fingerprints"])
+    assert held["held"] is True and len(old_fingerprints) == 3
+
+    store.resume_held_task("task-a", cause_fixed=True)
+    resumed = store.task_status("task-a")
+    assert resumed["archived_fingerprints"] == old_fingerprints
+    assert resumed["fingerprints"] == []
+    assert resumed["same_fingerprint_attempts"] == 0
+    assert resumed["resume_count"] == 1
+
+    first = store.record_failure("task-a", "timeout")
+    second = store.record_failure("task-a", "timeout")
+    assert first.action == "REPAIR_ONCE"
+    assert second.action == "HOLD"
+    assert second.reason == "repair_budget_exhausted"
+    after = store.task_status("task-a")
+    assert after["archived_fingerprints"] == old_fingerprints
+    assert after["resume_count"] == 1
+    assert "resumed_at" in after
+    assert after["resume_requires_review"] is True
+
+
+@pytest.mark.parametrize(
+    "category",
+    ["unknown", "security_violation", "invalid_task", "invalid_evidence", "state_persistence_failure"],
+)
+def test_resume_rejects_unknown_or_non_repairable_failures_without_mutating_state(tmp_path, category):
+    store = RecoveryStore(tmp_path / "state.json")
+    if category == "state_persistence_failure":
+        for _ in range(3):
+            store.record_failure("task-a", "timeout")
+        data = json.loads(store.path.read_text(encoding="utf-8"))
+        data["tasks"]["task-a"]["last_category"] = category
+        store.path.write_text(json.dumps(data), encoding="utf-8")
+    else:
+        decision = store.record_failure("task-a", category)
+        assert decision.action == "HOLD"
+    before = store.path.read_bytes()
+    with pytest.raises(ValueError, match="not eligible for resume"):
+        store.resume_held_task("task-a", cause_fixed=True)
+    assert store.path.read_bytes() == before
+    assert store.task_status("task-a")["held"] is True
+
+
+def test_resume_allows_only_allowlisted_repairable_category(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    for _ in range(3):
+        store.record_failure("task-a", "timeout")
+    store.resume_held_task("task-a", cause_fixed=True)
+    assert store.task_status("task-a")["held"] is False
+    assert store.task_status("task-a")["resume_count"] == 1
+
+
+def test_resume_rejects_task_that_is_not_held_and_leaves_state_unchanged(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    store.record_failure("task-a", "timeout")
+    before = store.task_status("task-a")
+    with pytest.raises(ValueError, match="not held"):
+        store.resume_held_task("task-a", cause_fixed=True)
+    with pytest.raises(ValueError, match="not held"):
+        store.resume_held_task("never-seen", cause_fixed=True)
+    assert store.task_status("task-a") == before
