@@ -30,7 +30,11 @@ def test_ai_speaker_anchor_plan_is_idempotent(tmp_path, monkeypatch) -> None:
     target_dir.mkdir()
     target = target_dir / "test_ai_speaker.py"
     target.write_text(
-        "def test_ai_speaker_rejects_empty_transcript() -> None:\n    pass\n",
+        'def test_ai_speaker_rejects_empty_transcript() -> None:\n'
+        '    try:\n'
+        '        raise AssertionError("empty transcript must fail closed")\n'
+        '    except ValueError:\n'
+        '        pass\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
