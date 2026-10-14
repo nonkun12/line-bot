@@ -44,6 +44,8 @@ def is_legacy_anchor_failure_record(task_id: str, record: object) -> bool:
         and record.get("held") is True
         and record.get("last_fingerprint") == LEGACY_ANCHOR_FINGERPRINT
         and record.get("fingerprints") == [LEGACY_ANCHOR_FINGERPRINT]
+        and isinstance(record.get("resume_count", 0), int)
+        and not isinstance(record.get("resume_count", 0), bool)
         and record.get("resume_count", 0) == 0
         and "resume_legacy_migration" not in record
     )
