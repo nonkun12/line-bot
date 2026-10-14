@@ -190,3 +190,19 @@ def test_resume_rejects_task_that_is_not_held_and_leaves_state_unchanged(tmp_pat
     with pytest.raises(ValueError, match="not held"):
         store.resume_held_task("never-seen", cause_fixed=True)
     assert store.task_status("task-a") == before
+
+
+def test_interrupted_resume_is_held_again_and_audited(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    for _ in range(3):
+        store.record_failure("task-a", "timeout")
+    store.resume_held_task("task-a", cause_fixed=True, actor="operator", run_id="987")
+    assert store.task_status("task-a")["held"] is False
+
+    store.hold_interrupted_resume("task-a", reason="signal_interrupted_resume")
+    status = store.task_status("task-a")
+    assert status["held"] is True
+    assert status["consecutive_failures"] >= 1
+    assert status["resume_interruption_reason"] == "signal_interrupted_resume"
+    assert status["resume_actor"] == "operator"
+    assert status["resume_run_id"] == "987"
