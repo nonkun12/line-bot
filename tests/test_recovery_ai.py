@@ -86,6 +86,25 @@ def test_held_task_requires_explicit_cause_fixed_confirmation(tmp_path):
     assert store.task_status("task-a")["held"] is False
     assert store.task_status("task-a")["consecutive_failures"] == 0
     assert store.task_status("task-a")["resume_requires_review"] is True
+    status = store.task_status("task-a")
+    assert status["resume_review_status"] == "audit_only_not_an_approval_gate"
+
+
+def test_resume_attempts_are_capped_and_operator_is_audited(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    for resume_index in range(3):
+        for _ in range(3):
+            store.record_failure("task-a", "timeout")
+        if resume_index < 2:
+            store.resume_held_task("task-a", cause_fixed=True, actor="operator", run_id=str(100 + resume_index))
+        else:
+            with pytest.raises(ValueError, match="resume attempt limit"):
+                store.resume_held_task("task-a", cause_fixed=True, actor="operator", run_id="102")
+    status = store.task_status("task-a")
+    assert status["resume_count"] == 2
+    assert status["resume_actor"] == "operator"
+    assert status["resume_run_id"] == "101"
+    assert status["held"] is True
 
 
 def test_fingerprint_is_stable_and_does_not_include_raw_error_output():
