@@ -8,6 +8,10 @@ from scripts.recovery_ai import (
     RecoveryStore,
     elapsed_seconds,
     failure_fingerprint,
+    is_eligible_for_legacy_anchor_auto_resume,
+    is_legacy_anchor_failure_record,
+    LEGACY_ANCHOR_TASK_ID,
+    LEGACY_ANCHOR_FINGERPRINT,
 )
 
 
@@ -206,3 +210,79 @@ def test_interrupted_resume_is_held_again_and_audited(tmp_path):
     assert status["resume_interruption_reason"] == "signal_interrupted_resume"
     assert status["resume_actor"] == "operator"
     assert status["resume_run_id"] == "987"
+
+
+def _legacy_anchor_record():
+    return {
+        "held": True,
+        "last_category": "unknown",
+        "last_fingerprint": LEGACY_ANCHOR_FINGERPRINT,
+        "fingerprints": [LEGACY_ANCHOR_FINGERPRINT],
+        "resume_count": 0,
+    }
+
+
+def test_legacy_anchor_auto_resume_requires_exact_record_and_unspent_attempt():
+    record = _legacy_anchor_record()
+    assert is_legacy_anchor_failure_record(LEGACY_ANCHOR_TASK_ID, record)
+    assert is_eligible_for_legacy_anchor_auto_resume(
+        LEGACY_ANCHOR_TASK_ID, record,
+        queued_task_ids={LEGACY_ANCHOR_TASK_ID},
+        completed_task_ids=set(),
+        fix_sha_present=True,
+    )
+
+
+@pytest.mark.parametrize("mutation", [
+    {"last_category": "security_violation"},
+    {"last_fingerprint": "0" * 64},
+    {"fingerprints": []},
+    {"resume_count": 1},
+    {"resume_count": False},
+    {"resume_legacy_migration": "already_attempted"},
+    {"held": False},
+])
+def test_legacy_anchor_auto_resume_rejects_mutated_or_retried_record(mutation):
+    record = {**_legacy_anchor_record(), **mutation}
+    assert not is_legacy_anchor_failure_record(LEGACY_ANCHOR_TASK_ID, record)
+    assert not is_eligible_for_legacy_anchor_auto_resume(
+        LEGACY_ANCHOR_TASK_ID, record,
+        queued_task_ids={LEGACY_ANCHOR_TASK_ID},
+        completed_task_ids=set(),
+        fix_sha_present=True,
+    )
+
+
+def test_legacy_anchor_auto_resume_requires_fix_queue_and_incomplete_evidence():
+    record = _legacy_anchor_record()
+    assert not is_eligible_for_legacy_anchor_auto_resume(
+        LEGACY_ANCHOR_TASK_ID, record, queued_task_ids=set(),
+        completed_task_ids=set(), fix_sha_present=True,
+    )
+    assert not is_eligible_for_legacy_anchor_auto_resume(
+        LEGACY_ANCHOR_TASK_ID, record, queued_task_ids={LEGACY_ANCHOR_TASK_ID},
+        completed_task_ids={LEGACY_ANCHOR_TASK_ID}, fix_sha_present=True,
+    )
+    assert not is_eligible_for_legacy_anchor_auto_resume(
+        LEGACY_ANCHOR_TASK_ID, record, queued_task_ids={LEGACY_ANCHOR_TASK_ID},
+        completed_task_ids=set(), fix_sha_present=False,
+    )
+    assert not is_legacy_anchor_failure_record("different-task", record)
+
+
+def test_legacy_anchor_resume_migration_is_audited_and_cannot_be_reused(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    data = {
+        "schema_version": 1,
+        "tasks": {LEGACY_ANCHOR_TASK_ID: _legacy_anchor_record()},
+        "checkpoint": None,
+    }
+    store.path.write_text(json.dumps(data), encoding="utf-8")
+    store.resume_held_task(LEGACY_ANCHOR_TASK_ID, cause_fixed=True, actor="scheduled-auto-resume", run_id="123")
+    status = store.task_status(LEGACY_ANCHOR_TASK_ID)
+    assert status["resume_legacy_migration"] == "known_planner_anchor_failure_to_test_regression"
+    assert status["resume_original_category"] == "unknown"
+    assert status["last_category"] == "test_regression"
+    assert status["resume_count"] == 1
+    assert status["resume_actor"] == "scheduled-auto-resume"
+    assert not is_legacy_anchor_failure_record(LEGACY_ANCHOR_TASK_ID, status)
