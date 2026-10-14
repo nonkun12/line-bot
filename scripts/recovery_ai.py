@@ -263,6 +263,28 @@ class RecoveryStore:
         record["resume_requires_review"] = True
         self._write(data)
 
+    def hold_interrupted_resume(self, task_id: str, *, reason: str) -> None:
+        """Fail closed if an explicitly resumed task is interrupted or fails."""
+        task_id = _safe_id(task_id)
+        allowed_reasons = {
+            "signal_interrupted_resume",
+            "stop_requested_before_task",
+            "loop_budget_insufficient_for_task",
+            "resumed_task_failed",
+        }
+        if reason not in allowed_reasons:
+            raise ValueError("resume interruption reason is not allowlisted")
+        data = self._read()
+        record = data["tasks"].get(task_id)
+        if not isinstance(record, dict) or not isinstance(record.get("resume_count"), int):
+            raise RecoveryStateError("resume audit record missing")
+        record["held"] = True
+        record["consecutive_failures"] = max(int(record.get("consecutive_failures", 0)), 1)
+        record["resume_interrupted_at"] = utc_now()
+        record["resume_interruption_reason"] = reason
+        record["updated_at"] = utc_now()
+        self._write(data)
+
     def task_status(self, task_id: str) -> dict:
         task_id = _safe_id(task_id)
         record = self._read()["tasks"].get(task_id, {})
