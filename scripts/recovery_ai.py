@@ -20,7 +20,8 @@ SCHEMA_VERSION = 1
 HOLD_AFTER_FAILURES = 3
 MAX_TRANSIENT_RETRIES = 2
 MAX_REPAIR_ATTEMPTS_PER_FINGERPRINT = 1
-_RESUME_AUDIT_KEYS = ("archived_fingerprints", "resume_count", "resumed_at", "resume_requires_review")
+MAX_RESUME_ATTEMPTS = 2
+_RESUME_AUDIT_KEYS = ("archived_fingerprints", "resume_count", "resumed_at", "resume_requires_review", "resume_review_status", "resume_actor", "resume_run_id")
 _MAX_ARCHIVED_FINGERPRINTS = 100
 
 TRANSIENT_CATEGORIES = frozenset({"network_transient", "service_unavailable", "rate_limited"})
@@ -219,7 +220,9 @@ class RecoveryStore:
             raise RecoveryStateError("checkpoint is not verified")
         return dict(checkpoint)
 
-    def resume_held_task(self, task_id: str, *, cause_fixed: bool) -> None:
+    def resume_held_task(
+        self, task_id: str, *, cause_fixed: bool, actor: str | None = None, run_id: str | None = None
+    ) -> None:
         task_id = _safe_id(task_id)
         if cause_fixed is not True:
             raise ValueError("explicit confirmation that the cause is fixed is required")
@@ -244,7 +247,16 @@ class RecoveryStore:
         raw_resume_count = record.get("resume_count", 0)
         if isinstance(raw_resume_count, bool) or not isinstance(raw_resume_count, int) or raw_resume_count < 0:
             raise RecoveryStateError("resume count invalid")
+        if raw_resume_count >= MAX_RESUME_ATTEMPTS:
+            raise ValueError(f"resume attempt limit reached ({MAX_RESUME_ATTEMPTS})")
+        if actor is not None and (not actor.strip() or len(actor) > 100 or not actor.isascii()):
+            raise ValueError("resume actor invalid")
+        if run_id is not None and (not run_id.isascii() or not run_id.isdigit() or len(run_id) > 20):
+            raise ValueError("resume workflow run ID invalid")
         record["resume_count"] = raw_resume_count + 1
+        record["resume_actor"] = actor or "unknown"
+        record["resume_run_id"] = run_id or "unknown"
+        record["resume_review_status"] = "audit_only_not_an_approval_gate"
         record["held"] = False
         record["consecutive_failures"] = 0
         record["resumed_at"] = utc_now()
