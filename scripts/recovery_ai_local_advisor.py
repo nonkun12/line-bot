@@ -1,16 +1,20 @@
 """Explicit, advisory-only bridge from deterministic Recovery AI to local fm.
 
-This bridge is opt-in and Mac-only. It never changes RecoveryStore state or executes
-suggestions. The deterministic RecoveryDecision remains authoritative.
+This bridge is opt-in and Mac-only. The decision must come from RecoveryStore;
+the caller cannot supply or override the decision action. It never executes
+suggestions, edits files, merges, or deploys.
 """
 from __future__ import annotations
 
 import argparse
 import json
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Callable, Iterable
 
-from scripts.recovery_ai import REPAIRABLE_CATEGORIES, RecoveryDecision
+from scripts.recovery_ai import (
+    FAILURE_CATEGORIES, REPAIRABLE_CATEGORIES, RecoveryDecision, RecoveryStore,
+)
 from scripts.recovery_ai_fm_advisor import AdvisorError, diagnose
 
 
@@ -30,14 +34,13 @@ def advise_for_decision(
     *,
     advisor: Callable[..., dict[str, str]] = diagnose,
 ) -> LocalAdvisorResult:
-    """Ask fm for investigation ideas only when the existing controller permits repair.
+    """Ask fm for investigation ideas only when the actual decision permits repair.
 
-    The function is opt-in, does not persist state, and never changes the decision.
-    Unsupported actions/categories and advisor failures return a non-actionable status.
+    This function does not persist state or alter the deterministic decision.
+    Unsupported actions/categories and advisor failures return non-actionable status.
     """
     if not isinstance(decision, RecoveryDecision):
         raise TypeError("decision must be a RecoveryDecision")
-
     if decision.action != "REPAIR_ONCE":
         return LocalAdvisorResult(
             "SKIPPED", decision.task_id, decision.action, None,
@@ -55,7 +58,6 @@ def advise_for_decision(
             "UNAVAILABLE", decision.task_id, decision.action, None,
             "local_advisor_unavailable_or_invalid",
         )
-
     if (
         not isinstance(suggestion, dict)
         or set(suggestion) != {"diagnosis", "action", "risk"}
@@ -73,34 +75,65 @@ def advise_for_decision(
     )
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Provide an explicit one-shot local diagnostic entry point."""
-    parser = argparse.ArgumentParser(
-        description="Request a local fm diagnostic suggestion; no repair is executed."
+def record_failure_and_advise(
+    store: RecoveryStore,
+    task_id: str,
+    category: str,
+    failing_tests: Iterable[str] = (),
+    *,
+    transient_attempt: int = 1,
+    advisor: Callable[..., dict[str, str]] = diagnose,
+) -> tuple[RecoveryDecision, LocalAdvisorResult]:
+    """Record one newly observed incident, then advise from the real decision.
+
+    Call exactly once per newly observed incident: recording increments failure
+    counters. State persistence errors propagate and prevent local AI invocation.
+    """
+    if category not in FAILURE_CATEGORIES:
+        category = "unknown"
+    tests = list(failing_tests)
+    decision = store.record_failure(
+        task_id, category, tests, transient_attempt=transient_attempt,
     )
+    result = advise_for_decision(decision, category, tests, advisor=advisor)
+    return decision, result
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Record one fresh incident and optionally request a local diagnostic suggestion."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Record one newly observed failure in RecoveryStore and request an "
+            "advisory-only local fm suggestion if Recovery AI permits one."
+        )
+    )
+    parser.add_argument("--state-file", required=True, help="Recovery state JSON path")
     parser.add_argument("--task-id", required=True, help="Sanitized task identifier")
     parser.add_argument(
-        "--category", required=True, choices=sorted(REPAIRABLE_CATEGORIES),
-        help="Allowlisted failure category",
-    )
-    parser.add_argument(
-        "--decision-action", required=True, choices=["REPAIR_ONCE", "HOLD", "STOP_FAIL_CLOSED", "RETRY"],
-        help="Action already returned by deterministic Recovery AI",
+        "--category", required=True, choices=sorted(FAILURE_CATEGORIES),
+        help="Observed failure category",
     )
     parser.add_argument(
         "--failing-test", action="append", default=[], dest="failing_tests",
         help="Test identifier only; repeat for multiple tests. Never pass logs or secrets.",
     )
-    args = parser.parse_args(argv)
-    decision = RecoveryDecision(
-        action=args.decision_action,
-        reason="caller_supplied_existing_decision",
-        task_id=args.task_id,
-        fingerprint="cli-advisory-only",
-        consecutive_failures=0,
+    parser.add_argument(
+        "--transient-attempt", type=int, default=1,
+        help="Current bounded transient attempt number (default: 1)",
     )
-    result = advise_for_decision(decision, args.category, args.failing_tests)
-    print(json.dumps(asdict(result), ensure_ascii=False, sort_keys=True))
+    args = parser.parse_args(argv)
+    decision, result = record_failure_and_advise(
+        RecoveryStore(Path(args.state_file)),
+        args.task_id,
+        args.category,
+        args.failing_tests,
+        transient_attempt=args.transient_attempt,
+    )
+    print(json.dumps({
+        "decision": asdict(decision),
+        "advisor": asdict(result),
+        "note": "advisory only; no patch, command execution, merge, or deploy",
+    }, ensure_ascii=False, sort_keys=True))
     return 0 if result.status in {"ADVISORY_ONLY", "SKIPPED"} else 2
 
 
