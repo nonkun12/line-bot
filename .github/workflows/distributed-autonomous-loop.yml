@@ -471,10 +471,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ -f /tmp/autonomous-loop-not-run ] || [ -f /tmp/autonomous-loop-held-tasks ]; then
+          if [ -f /tmp/autonomous-loop-not-run ]; then
             echo "No task ran; Recovery AI durable state remains unchanged."
             exit 0
           fi
+          if [ -f /tmp/autonomous-loop-held-tasks ] && grep -q "all_pending_tasks_held" /tmp/autonomous-loop-held-tasks; then
+            echo "All pending tasks are held; Recovery AI durable state remains unchanged."
+            exit 0
+          fi
+          rm -f /tmp/recovery-ai-allow-reheld-persist
           if [ ! -s /tmp/minimal-autonomous-loop.jsonl ] || [ ! -f /tmp/recovery-ai-state.json ]; then
             echo "::error::Recovery AI result/state evidence is missing."
             exit 1
@@ -494,10 +499,38 @@ jobs:
           if any(row.get('failure_reason') == 'recovery_ai_state_persist_failed' for row in rows):
               raise SystemExit('local Recovery AI persistence failed; durable update blocked')
           recovery = json.loads(Path('/tmp/recovery-ai-state.json').read_text(encoding='utf-8'))
+          guard = Path('/tmp/autonomous-loop-held-tasks')
+          if guard.exists():
+              # A retained guard is publishable only for a real failed attempt
+              # whose result and local durable state both prove it was re-held.
+              last = rows[-1]
+              task_id = last.get('task_id')
+              audit = last.get('resume_audit')
+              record = recovery.get('tasks', {}).get(task_id, {}) if isinstance(task_id, str) else {}
+              valid_failure = (
+                  last.get('status') in {'FAIL', 'TIMEOUT'}
+                  and isinstance(audit, dict)
+                  and audit.get('held_after_run') is True
+                  and isinstance(audit.get('resume_count'), int)
+                  and audit.get('resume_count', 0) >= 1
+                  and isinstance(record, dict)
+                  and record.get('held') is True
+                  and record.get('resume_count') == audit.get('resume_count')
+                  and record.get('resume_interruption_reason') == 'resumed_task_failed'
+              )
+              if valid_failure:
+                  Path('/tmp/recovery-ai-allow-reheld-persist').write_text(task_id, encoding='utf-8')
+                    if (not isinstance(recovery, dict) or recovery.get('schema_version') != 1
+                  or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
+              raise SystemExit('invalid local Recovery AI state; durable update blocked')
           if (not isinstance(recovery, dict) or recovery.get('schema_version') != 1
                   or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
               raise SystemExit('invalid local Recovery AI state; durable update blocked')
           PY
+          if [ -f /tmp/autonomous-loop-held-tasks ] && [ ! -f /tmp/recovery-ai-allow-reheld-persist ]; then
+            echo "Resume did not produce verified re-held task evidence; durable state unchanged."
+            exit 0
+          fi
           state_branch="autonomous-loop-state"
           auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
           if ! git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1; then
