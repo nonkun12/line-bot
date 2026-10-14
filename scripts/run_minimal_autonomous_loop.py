@@ -456,6 +456,71 @@ def _handle_signal(signum: int, _frame) -> None:
     raise SystemExit(128 + signum)
 
 
+def should_attempt_bounded_repair(
+    result: dict[str, object],
+    recovery_decision: dict[str, object],
+    *,
+    stop_requested: bool,
+) -> bool:
+    """Allow one automatic repair pass only for a clean, unchanged timeout."""
+    return (
+        not stop_requested
+        and result.get("status") == "TIMEOUT"
+        and result.get("failure_reason") == "task_timeout"
+        and result.get("base_sha") == result.get("produced_sha")
+        and bool(_valid_sha(result.get("base_sha")))
+        and recovery_decision.get("action") == "REPAIR_ONCE"
+    )
+
+
+def build_bounded_repair_task(
+    task: dict[str, object], failure_reason: str
+) -> dict[str, object]:
+    """Add a sanitized repair instruction without changing the task's path allowlist."""
+    if failure_reason != "task_timeout":
+        raise ValueError("automatic repair reason is not allowlisted")
+    instruction = str(task.get("instruction", "")).strip()
+    allowed_paths = task.get("allowed_paths")
+    if not instruction or not isinstance(allowed_paths, list) or not allowed_paths:
+        raise ValueError("automatic repair task is invalid")
+    return {
+        **task,
+        "instruction": (
+            instruction
+            + "\n\nRecovery AI automatic repair attempt (1 of 1): "
+            + "the prior attempt timed out before changing the repository. "
+            + "Inspect the task and its allowed files, make one focused correction "
+            + "to prevent the timeout, and run the required checks. Do not expand "
+            + "the allowed paths. Do not merge, deploy, access secrets, or retry again. "
+            + "If the cause cannot be established safely, stop without changes."
+        ),
+    }
+
+
+def resume_held_task_for_run(
+    task_id: str | None,
+    *,
+    cause_fixed: bool,
+    queued_tasks: list[dict[str, object]],
+    completed: set[str],
+    recovery_store,
+) -> str | None:
+    """Resume one explicitly confirmed held queue task; never resume arbitrary IDs."""
+    if not task_id:
+        if cause_fixed:
+            raise ValueError("cause_fixed confirmation requires a task ID")
+        return None
+    if cause_fixed is not True:
+        raise ValueError("explicit cause_fixed confirmation is required")
+    queued_ids = {str(task.get("id", "")) for task in queued_tasks if isinstance(task, dict)}
+    if task_id not in queued_ids:
+        raise ValueError("resume task ID is not present in the current queue")
+    if task_id in completed:
+        raise ValueError("completed tasks cannot be resumed")
+    recovery_store.resume_held_task(task_id, cause_fixed=True)
+    return task_id
+
+
 def main() -> int:
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
@@ -467,6 +532,8 @@ def main() -> int:
     parser.add_argument("--incident-category", choices=sorted(INCIDENT_CATEGORIES))
     parser.add_argument("--incident-detail", choices=sorted(INCIDENT_DETAILS))
     parser.add_argument("--incident-job-id")
+    parser.add_argument("--resume-task-id")
+    parser.add_argument("--confirm-cause-fixed", action="store_true")
     args = parser.parse_args()
 
     if args.max_tasks < 1 or args.max_tasks > 4:
@@ -492,6 +559,19 @@ def main() -> int:
     # failures cannot be run again automatically on the next scheduled invocation.
     from scripts.recovery_ai import RecoveryStore
     recovery_store = RecoveryStore(args.state.parent / "recovery-ai-state.json")
+    if args.resume_task_id is not None or args.confirm_cause_fixed:
+        if args.incident_category is not None:
+            raise SystemExit("held-task resume is unavailable in incident mode")
+        try:
+            resume_held_task_for_run(
+                args.resume_task_id,
+                cause_fixed=args.confirm_cause_fixed,
+                queued_tasks=queued_tasks,
+                completed=completed,
+                recovery_store=recovery_store,
+            )
+        except (ValueError, RuntimeError) as exc:
+            raise SystemExit(f"held-task resume rejected: {exc}") from exc
     pending_tasks = list(tasks)
     tasks = [
         task for task in pending_tasks
@@ -557,6 +637,28 @@ def main() -> int:
             result["recovery_ai"] = record_loop_outcome(
                 args.state.parent / "recovery-ai-state.json", result
             )
+            recovery_decision = result["recovery_ai"].get("decision", {})
+            if should_attempt_bounded_repair(
+                result,
+                recovery_decision if isinstance(recovery_decision, dict) else {},
+                stop_requested=stopped(args.stop_file),
+            ):
+                prior_failure_reason = str(result.get("failure_reason", ""))
+                repair_task = build_bounded_repair_task(task, prior_failure_reason)
+                repaired = run_task(repair_task, index, args.stop_file)
+                repaired["automatic_repair"] = {
+                    "attempted": True,
+                    "attempt": 1,
+                    "max_attempts": 1,
+                    "trigger": "task_timeout",
+                    "prior_attempt_status": "TIMEOUT",
+                    "prior_failure_reason": prior_failure_reason,
+                    "prior_attempt_sha_unchanged": True,
+                }
+                repaired["recovery_ai"] = record_loop_outcome(
+                    args.state.parent / "recovery-ai-state.json", repaired
+                )
+                result = repaired
         except Exception:
             # Do not report PASS or proceed to another task unless the recovery
             # decision can be durably recorded and read back.
