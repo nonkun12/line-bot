@@ -452,9 +452,17 @@ def run_task(task: dict[str, object], run_index: int, stop_file: Path, summary_d
 
 
 def _handle_signal(signum: int, _frame) -> None:
+    global ACTIVE_RESUME_CONTEXT
     process = ACTIVE_PROCESS
     if process is not None:
         _kill_process_group(process)
+    if ACTIVE_RESUME_CONTEXT is not None:
+        store, task_id = ACTIVE_RESUME_CONTEXT
+        try:
+            store.hold_interrupted_resume(task_id, reason="signal_interrupted_resume")
+        except Exception:
+            pass
+        ACTIVE_RESUME_CONTEXT = None
     raise SystemExit(128 + signum)
 
 
