@@ -248,7 +248,7 @@ jobs:
           RECOVERY_RAG_NAMESPACE: distributed-loop
         run: |
           set -euo pipefail
-          python scripts/recovery_rag_state.py --mode import --state /tmp/autonomous-loop-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
+          python -m scripts.recovery_rag_state --mode import --state /tmp/autonomous-loop-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
 
       - name: Run one bounded autonomous task
         id: run_task
@@ -321,7 +321,7 @@ jobs:
             echo "::error::RAG export evidence is missing."
             exit 1
           fi
-          python scripts/recovery_rag_state.py --mode export --state /tmp/recovery-rag-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
+          python -m scripts.recovery_rag_state --mode export --state /tmp/recovery-rag-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
 
       - name: Publish verified development branch
         id: publish
