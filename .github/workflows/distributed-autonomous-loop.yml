@@ -509,16 +509,23 @@ jobs:
               task_id = last.get('task_id')
               audit = last.get('resume_audit')
               record = recovery.get('tasks', {}).get(task_id, {}) if isinstance(task_id, str) else {}
+              interruption = audit.get('interruption_reason') if isinstance(audit, dict) else None
+              allowed_interruption_status = {
+                  'resumed_task_failed': {'FAIL', 'TIMEOUT'},
+                  'loop_budget_insufficient_for_task': {'BUDGET_EXHAUSTED'},
+                  'stop_requested_before_task': {'STOPPED'},
+              }
               valid_failure = (
-                  last.get('status') in {'FAIL', 'TIMEOUT'}
-                  and isinstance(audit, dict)
+                  isinstance(audit, dict)
+                  and last.get('status') in allowed_interruption_status.get(interruption, set())
                   and audit.get('held_after_run') is True
                   and isinstance(audit.get('resume_count'), int)
+                  and not isinstance(audit.get('resume_count'), bool)
                   and audit.get('resume_count', 0) >= 1
                   and isinstance(record, dict)
                   and record.get('held') is True
                   and record.get('resume_count') == audit.get('resume_count')
-                  and record.get('resume_interruption_reason') == 'resumed_task_failed'
+                  and record.get('resume_interruption_reason') == interruption
               )
               if valid_failure:
                   Path('/tmp/recovery-ai-allow-reheld-persist').write_text(task_id, encoding='utf-8')
