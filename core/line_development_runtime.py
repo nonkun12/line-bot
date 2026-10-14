@@ -251,26 +251,22 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     if task_id == "ai-speaker-empty-transcript-no-brain-call" and chosen == "tests/test_ai_speaker.py":
         target = worker.ROOT / chosen
         text = target.read_text(encoding="utf-8")
-        name = "test_ai_speaker_rejects_empty_transcript_without_brain_call"
-        if f"def {name}(" in text:
+        function_start = text.find("def test_ai_speaker_rejects_empty_transcript(")
+        if function_start < 0:
+            return None, f"existing_test_missing:{chosen}"
+        next_function = text.find("\\ndef ", function_start + 1)
+        function_end = next_function if next_function >= 0 else len(text)
+        existing_test = text[function_start:function_end]
+        if "assert brain.requests == []" in existing_test:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
 
-        anchor = "def test_ai_speaker_rejects_empty_transcript() -> None:\n"
+        # Match a stable body line, not the exact function signature: existing
+        # tests may use annotations or omit them. Strengthen the existing test
+        # instead of inserting a duplicate test function.
+        anchor = '        raise AssertionError("empty transcript must fail closed")\\n'
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
-        addition = (
-            "def test_ai_speaker_rejects_empty_transcript_without_brain_call():\n"
-            "    brain = FakeBrain()\n"
-            "    speaker = AISpeaker(brain)\n"
-            "    try:\n"
-            '        speaker.handle_transcript("  ")\n'
-            "    except ValueError as exc:\n"
-            '        assert str(exc) == "speech transcript must not be empty"\n'
-            "    else:\n"
-            '        raise AssertionError("empty transcript must fail closed")\n'
-            "    assert brain.requests == []\n"
-        )
-        new = addition + "\n\n" + anchor
+        new = anchor + "    assert brain.requests == []\\n"
         if len(anchor) > 1200 or len(new) > 1800:
             return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
         candidate = text.replace(anchor, new, 1)
