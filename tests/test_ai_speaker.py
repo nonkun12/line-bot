@@ -30,3 +30,4 @@ def test_ai_speaker_rejects_empty_transcript() -> None:
         assert str(exc) == "speech transcript must not be empty"
     else:
         raise AssertionError("empty transcript must fail closed")
+    assert brain.requests == []
