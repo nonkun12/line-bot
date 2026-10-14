@@ -2,7 +2,7 @@
 import json
 import subprocess
 
-from scripts.fm_recovery_advisor import advise, sanitize_incident
+from scripts.fm_recovery_advisor import _SCHEMA, advise, sanitize_incident
 
 
 def test_sanitize_accepts_only_allowlisted_incident_metadata():
@@ -81,3 +81,7 @@ def test_timeout_is_bounded_and_fail_closed(monkeypatch):
     result = advise({"task_id": "task-123"}, executable="/fake/fm", timeout=3)
     assert result["status"] == "UNAVAILABLE"
     assert result["reason"] == "fm_timeout"
+
+
+def test_fm_schema_has_required_field_order_extension():
+    assert _SCHEMA["x-order"] == ["suggested_category", "summary", "checks"]
