@@ -521,9 +521,6 @@ jobs:
               )
               if valid_failure:
                   Path('/tmp/recovery-ai-allow-reheld-persist').write_text(task_id, encoding='utf-8')
-                    if (not isinstance(recovery, dict) or recovery.get('schema_version') != 1
-                  or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
-              raise SystemExit('invalid local Recovery AI state; durable update blocked')
           if (not isinstance(recovery, dict) or recovery.get('schema_version') != 1
                   or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
               raise SystemExit('invalid local Recovery AI state; durable update blocked')
