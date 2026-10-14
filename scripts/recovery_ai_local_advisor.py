@@ -5,7 +5,9 @@ suggestions. The deterministic RecoveryDecision remains authoritative.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import argparse
+import json
+from dataclasses import asdict, dataclass
 from typing import Callable, Iterable
 
 from scripts.recovery_ai import REPAIRABLE_CATEGORIES, RecoveryDecision
@@ -54,7 +56,6 @@ def advise_for_decision(
             "local_advisor_unavailable_or_invalid",
         )
 
-    # Do not expose a generic callable's arbitrary return value as trusted data.
     if (
         not isinstance(suggestion, dict)
         or set(suggestion) != {"diagnosis", "action", "risk"}
@@ -70,3 +71,38 @@ def advise_for_decision(
         {key: suggestion[key].strip() for key in ("diagnosis", "action", "risk")},
         "suggestion_is_untrusted_and_requires_independent_review",
     )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Provide an explicit one-shot local diagnostic entry point."""
+    parser = argparse.ArgumentParser(
+        description="Request a local fm diagnostic suggestion; no repair is executed."
+    )
+    parser.add_argument("--task-id", required=True, help="Sanitized task identifier")
+    parser.add_argument(
+        "--category", required=True, choices=sorted(REPAIRABLE_CATEGORIES),
+        help="Allowlisted failure category",
+    )
+    parser.add_argument(
+        "--decision-action", required=True, choices=["REPAIR_ONCE", "HOLD", "STOP_FAIL_CLOSED", "RETRY"],
+        help="Action already returned by deterministic Recovery AI",
+    )
+    parser.add_argument(
+        "--failing-test", action="append", default=[], dest="failing_tests",
+        help="Test identifier only; repeat for multiple tests. Never pass logs or secrets.",
+    )
+    args = parser.parse_args(argv)
+    decision = RecoveryDecision(
+        action=args.decision_action,
+        reason="caller_supplied_existing_decision",
+        task_id=args.task_id,
+        fingerprint="cli-advisory-only",
+        consecutive_failures=0,
+    )
+    result = advise_for_decision(decision, args.category, args.failing_tests)
+    print(json.dumps(asdict(result), ensure_ascii=False, sort_keys=True))
+    return 0 if result.status in {"ADVISORY_ONLY", "SKIPPED"} else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
