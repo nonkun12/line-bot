@@ -75,14 +75,14 @@ def diagnose(
     failing_tests: Iterable[str] = (),
     *,
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
-    executable: str = "fm",
 ) -> dict[str, str]:
     """Return a local diagnostic suggestion; never perform the suggested action."""
     if platform.system() != "Darwin":
         raise AdvisorError("local fm advisor requires macOS; hosted runs must skip it")
     if not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 60:
         raise ValueError("timeout_seconds must be between 1 and 60")
-    binary = shutil.which(executable)
+    # Pin execution to the expected local CLI; callers cannot substitute a program.
+    binary = shutil.which("fm")
     if not binary:
         raise AdvisorError("fm CLI not found")
     payload = {
