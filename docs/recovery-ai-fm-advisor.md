@@ -22,8 +22,11 @@ This is an **optional Mac-only diagnostic helper** for Recovery AI. It calls App
   observed incident**, not as a status check or retry; duplicate invocation can exhaust
   the bounded repair budget and cause a hold.
 - Never pass raw logs, prompts, tracebacks, or secrets; provide identifiers only.
-- The hosted distributed loop must not invoke this Mac-only adapter. Keep
-  `AUTO_APPLY_PATCH=false` and `AUTO_DEPLOY=false`.
+- The distributed-loop outcome adapter now supports opt-in attachment of advice through
+  `RECOVERY_LOCAL_ADVISOR_ENABLED=true`. This is off by default and must only be enabled
+  in a Mac-local environment where Apple's `fm` is available. Hosted GitHub Actions must
+  leave it unset; no workflow secret or cloud model is required.
+- Keep `AUTO_APPLY_PATCH=false` and `AUTO_DEPLOY=false`.
 
 ## Opt-in use on a Mac
 
