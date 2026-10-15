@@ -24,6 +24,36 @@ def read_json(path: Path) -> dict:
     return data
 
 
+def _task_id(task: object) -> str:
+    if not isinstance(task, dict):
+        raise ValueError("task must be an object")
+    task_id = task.get("id")
+    if not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id):
+        raise ValueError("invalid task ID")
+    return task_id
+
+
+def _validate_task(task: object) -> dict:
+    task_id = _task_id(task)
+    instruction, paths = task.get("instruction"), task.get("allowed_paths")
+    if not isinstance(instruction, str) or not instruction.strip() or len(instruction) > 5000:
+        raise ValueError("invalid task instruction")
+    if not isinstance(paths, list) or not paths or len(paths) > 10:
+        raise ValueError("invalid allowed_paths")
+    clean_paths = []
+    for path in paths:
+        if not isinstance(path, str) or not path or path.startswith("/") or "\\" in path:
+            raise ValueError("invalid allowed path")
+        # Reject empty/dot components and traversal in addition to parent traversal.
+        parts = path.split("/")
+        if any(part in {"", ".", ".."} for part in parts):
+            raise ValueError("forbidden allowed path")
+        if any(path.startswith(prefix) for prefix in FORBIDDEN_PREFIXES):
+            raise ValueError("forbidden allowed path")
+        clean_paths.append(path)
+    return {"id": task_id, "instruction": instruction.strip(), "allowed_paths": clean_paths}
+
+
 def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, output_path: Path) -> dict:
     queue = read_json(queue_path)
     catalog = read_json(catalog_path)
@@ -32,50 +62,42 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     candidates = catalog.get("tasks")
     completed = state.get("completed", [])
     cap = catalog.get("max_additions_per_run")
+    max_tasks = queue.get("max_tasks_per_run", 4)
     if not isinstance(existing, list) or not isinstance(candidates, list):
         raise ValueError("queue and catalog tasks must be lists")
     if not isinstance(completed, list) or not all(isinstance(x, str) for x in completed):
         raise ValueError("completed state must be a string list")
     if not isinstance(cap, int) or isinstance(cap, bool) or not 1 <= cap <= 4:
         raise ValueError("catalog cap must be between 1 and 4")
+    if not isinstance(max_tasks, int) or isinstance(max_tasks, bool) or not 1 <= max_tasks <= 4:
+        raise ValueError("max_tasks_per_run must be an integer between 1 and 4")
 
-    seen: set[str] = set()
-    original_ids = {str(t.get("id")) for t in existing if isinstance(t, dict)}
-    normalized = []
-    for task in [*existing, *candidates]:
-        if not isinstance(task, dict):
-            raise ValueError("task must be an object")
-        task_id, instruction, paths = task.get("id"), task.get("instruction"), task.get("allowed_paths")
-        if not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id):
-            raise ValueError("invalid task ID")
-        if task_id in seen:
-            # Queue/catalog overlap is expected; duplicates inside the catalog are rejected.
-            if task_id in original_ids:
-                continue
+    normalized_existing = []
+    original_ids: set[str] = set()
+    for raw_task in existing:
+        task = _validate_task(raw_task)
+        if task["id"] in original_ids:
+            raise ValueError("duplicate task ID in existing queue")
+        original_ids.add(task["id"])
+        normalized_existing.append(task)
+
+    normalized_catalog = []
+    catalog_ids: set[str] = set()
+    for raw_task in candidates:
+        task = _validate_task(raw_task)
+        if task["id"] in catalog_ids:
             raise ValueError("duplicate catalog task ID")
-        if not isinstance(instruction, str) or not instruction.strip() or len(instruction) > 5000:
-            raise ValueError("invalid task instruction")
-        if not isinstance(paths, list) or not paths or len(paths) > 10:
-            raise ValueError("invalid allowed_paths")
-        clean_paths = []
-        for path in paths:
-            if not isinstance(path, str) or not path or path.startswith("/") or "\\" in path:
-                raise ValueError("invalid allowed path")
-            parts = Path(path).parts
-            if ".." in parts or any(path.startswith(prefix) for prefix in FORBIDDEN_PREFIXES):
-                raise ValueError("forbidden allowed path")
-            clean_paths.append(path)
-        seen.add(task_id)
-        normalized.append({"id": task_id, "instruction": instruction.strip(), "allowed_paths": clean_paths})
+        catalog_ids.add(task["id"])
+        normalized_catalog.append(task)
 
-    original_ids = {str(t.get("id")) for t in existing if isinstance(t, dict)}
     completed_ids = set(completed)
-    additions = [t for t in normalized if t["id"] not in original_ids and t["id"] not in completed_ids][:cap]
-    # Keep all existing tasks; add only the bounded next slice from the reviewed catalog.
-    final_ids = {t["id"] for t in normalized if t["id"] in original_ids}
-    final_tasks = [t for t in normalized if t["id"] in final_ids]
-    final_tasks.extend(additions)
-    output = {"version": 1, "max_tasks_per_run": min(4, int(queue.get("max_tasks_per_run", 4))), "tasks": final_tasks}
+    additions = [
+        task for task in normalized_catalog
+        if task["id"] not in original_ids and task["id"] not in completed_ids
+    ][:cap]
+    # Preserve every validated queued task, then append only a bounded catalog slice.
+    final_tasks = normalized_existing + additions
+    output = {"version": 1, "max_tasks_per_run": max_tasks, "tasks": final_tasks}
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {"existing": len(existing), "added": len(additions), "total": len(final_tasks), "added_ids": [t["id"] for t in additions]}
