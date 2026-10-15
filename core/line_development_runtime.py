@@ -199,6 +199,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "router-regression-market-channel-metadata": "tests/test_management_router.py",
     "macos-readiness-audit-no-secret-leak": "tests/test_macos_kanban_obsidian_readiness.py",
     "router-regression-general-request-metadata": "tests/test_management_router.py",
+    "router-regression-general-request-metadata-refresh-20261015": "tests/test_management_router.py",
     "recovery-ai-loop-adapter-durable-state-readback": "tests/test_recovery_ai_loop_adapter.py",
     "recovery-ai-state-isolation": "tests/test_recovery_ai.py",
     "ai-speaker-empty-transcript-no-brain-call": "tests/test_ai_speaker.py",
@@ -1068,7 +1069,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "changes": [{"file": chosen, "old": anchor, "new": new}],
         }, None
 
-    if task_id == "router-regression-general-request-metadata" and chosen == "tests/test_management_router.py":
+    if task_id in {"router-regression-general-request-metadata", "router-regression-general-request-metadata-refresh-20261015"} and chosen == "tests/test_management_router.py":
         target = worker.ROOT / chosen
         text = target.read_text(encoding="utf-8")
         name = "test_router_regression_general_request_keeps_channel_and_request_metadata"
