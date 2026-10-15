@@ -39,7 +39,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     if not isinstance(cap, int) or isinstance(cap, bool) or not 1 <= cap <= 4:
         raise ValueError("catalog cap must be between 1 and 4")
 
-    seen: set[str] = set()
+    seen: set[str] = set()\n    original_ids = {str(t.get("id")) for t in existing if isinstance(t, dict)}
     normalized = []
     for task in [*existing, *candidates]:
         if not isinstance(task, dict):
