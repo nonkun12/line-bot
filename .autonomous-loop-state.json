@@ -20,7 +20,8 @@
     "macos-readiness-audit-no-secret-leak",
     "router-regression-general-request-metadata",
     "recovery-ai-loop-adapter-durable-state-readback",
-    "recovery-ai-state-isolation"
+    "recovery-ai-state-isolation",
+    "ai-speaker-empty-transcript-no-brain-call"
   ],
   "recovery_ai": {
     "checkpoint": null,
