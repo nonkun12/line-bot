@@ -30,7 +30,7 @@ def sanitize_records(records: object) -> list[dict[str, str | None]]:
             continue
         kind = row.get("kind")
         task_id = row.get("task_id")
-        if kind not in _ALLOWED_KINDS:
+        if not isinstance(kind, str) or kind not in _ALLOWED_KINDS:
             continue
         if task_id is not None and (
             not isinstance(task_id, str) or not _TASK_ID.fullmatch(task_id)
@@ -90,8 +90,10 @@ def main() -> int:
         return 0
 
     previous = sanitize_records(state.get("self_improvement_history", []))
+    # Import runs before the task, so the current file already contains prior
+    # durable records plus this run's additions. Do not duplicate the prefix.
     current = sanitize_records(read_jsonl(args.history))
-    merged = (previous + current)[-MAX_RECORDS:]
+    merged = current if args.history.exists() else previous
     state["self_improvement_history"] = merged
     temp = args.state.with_name(args.state.name + ".tmp")
     try:
