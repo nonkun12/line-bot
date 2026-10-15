@@ -77,8 +77,10 @@ def main() -> int:
     if not isinstance(queue, list):
         raise ValueError("candidate queue must be a JSON array")
 
+    # Validate the entire queue before selecting a batch. This catches duplicates
+    # and malformed entries even when they occur after the batch-size boundary.
     seen_queue: set[str] = set()
-    selected = []
+    eligible = []
     for entry in queue:
         if not isinstance(entry, dict):
             raise ValueError("every candidate must be an object")
@@ -88,12 +90,16 @@ def main() -> int:
             raise ValueError(f"duplicate candidate in queue: {word}")
         seen_queue.add(word)
         if word not in existing:
-            selected.append(entry)
-        if len(selected) >= args.batch_size:
-            break
+            eligible.append(entry)
+
+    print(f"DICTIONARY_COUNT={len(existing)}")
+    print(f"CANDIDATE_QUEUE_COUNT={len(queue)}")
+    print(f"ELIGIBLE_CANDIDATES={len(eligible)}")
+    print(f"TARGET_REMAINING={max(0, 1000 - len(existing))}")
+    selected = eligible[:args.batch_size]
 
     if not selected:
-        print("NO_CHANGE: no new reviewed candidates remain")
+        print("NO_CHANGE: queue_exhausted_no_new_reviewed_candidates")
         return 0
 
     lines = source.splitlines()
