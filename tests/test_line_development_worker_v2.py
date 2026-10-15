@@ -354,6 +354,27 @@ def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
     assert "full pytest:" in output
 
 
+def test_run_tests_can_verify_only_allowlisted_target_for_no_change(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_run(cmd, timeout=900, input_text=None):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="1 passed", stderr="")
+
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.setattr(worker, "run", fake_run)
+
+    passed, output = worker.run_tests(["tests/test_ai_speaker.py"], full_suite=False)
+
+    assert passed
+    pytest_call = next(cmd for cmd in calls if cmd[2:] and cmd[2] == "pytest")
+    assert pytest_call == [
+        worker.sys.executable, "-m", "pytest", "-q", "--tb=native",
+        "tests/test_ai_speaker.py",
+    ]
+    assert "targeted pytest:" in output
+
+
 def test_worker_entrypoint_is_executable():
     env = os.environ.copy()
     env.pop("DEV_INSTRUCTION", None)
