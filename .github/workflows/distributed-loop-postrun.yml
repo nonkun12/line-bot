@@ -102,7 +102,20 @@ jobs:
           if conclusion != "success":
               issues.append(f"Loop workflow conclusion is {conclusion}.")
           if queue_empty and tasks:
-              issues.append("Queue-empty report conflicts with task result evidence.")
+              # The source workflow records a synthetic NOT_RUN row (empty task_id,
+              # task_count=0) so the run is auditable. It is not an executed task and
+              # must not conflict with the queue-empty report.
+              synthetic_empty_queue = all(
+                  str(item.get("status", "")) == "NOT_RUN"
+                  and not str(item.get("task_id", "")).strip()
+                  and int(item.get("task_count", 0) or 0) == 0
+                  for item in tasks
+              )
+              if synthetic_empty_queue:
+                  tasks = []
+                  statuses = []
+              else:
+                  issues.append("Queue-empty report conflicts with task result evidence.")
           if not tasks and not queue_empty:
               issues.append("Task result evidence is missing or empty.")
           if any(s not in {"PASS", "NO_CHANGE"} for s in statuses):
