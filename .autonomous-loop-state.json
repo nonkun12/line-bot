@@ -21,7 +21,8 @@
     "router-regression-general-request-metadata",
     "recovery-ai-loop-adapter-durable-state-readback",
     "recovery-ai-state-isolation",
-    "ai-speaker-empty-transcript-no-brain-call"
+    "ai-speaker-empty-transcript-no-brain-call",
+    "loop-deterministic-nochange-focused-test"
   ],
   "recovery_ai": {
     "checkpoint": null,
