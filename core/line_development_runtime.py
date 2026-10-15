@@ -202,6 +202,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "recovery-ai-loop-adapter-durable-state-readback": "tests/test_recovery_ai_loop_adapter.py",
     "recovery-ai-state-isolation": "tests/test_recovery_ai.py",
     "ai-speaker-empty-transcript-no-brain-call": "tests/test_ai_speaker.py",
+    "loop-deterministic-nochange-focused-test": "tests/test_line_development_worker_v2.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -245,6 +246,42 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
     if expected_target is not None and chosen != expected_target:
         return None, "deterministic_target_mismatch"
+
+    if task_id == "loop-deterministic-nochange-focused-test" and chosen == "tests/test_line_development_worker_v2.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        test_name = "def test_run_tests_can_verify_only_allowlisted_target_for_no_change("
+        if test_name in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_worker_entrypoint_is_executable():\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        test = (
+            "def test_run_tests_can_verify_only_allowlisted_target_for_no_change(monkeypatch, tmp_path):\n"
+            "    calls = []\n\n"
+            "    def fake_run(cmd, timeout=900, input_text=None):\n"
+            "        calls.append(cmd)\n"
+            "        return subprocess.CompletedProcess(cmd, 0, stdout='1 passed', stderr='')\n\n"
+            "    monkeypatch.setattr(worker, 'ROOT', tmp_path)\n"
+            "    monkeypatch.setattr(worker, 'run', fake_run)\n"
+            "    passed, output = worker.run_tests(['tests/test_ai_speaker.py'], full_suite=False)\n"
+            "    assert passed\n"
+            "    pytest_call = next(cmd for cmd in calls if cmd[2:] and cmd[2] == 'pytest')\n"
+            "    assert pytest_call == [worker.sys.executable, '-m', 'pytest', '-q', '--tb=native', 'tests/test_ai_speaker.py']\n"
+            "    assert 'targeted pytest:' in output\n\n\n"
+        )
+        if len(anchor) > 1200 or len(test + anchor) > 1800:
+            return None, "deterministic_plan_too_large"
+        candidate = text.replace(anchor, test + anchor, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": test + anchor}],
+        }, None
 
     if task_id == "ai-speaker-empty-transcript-no-brain-call" and chosen == "tests/test_ai_speaker.py":
         target = worker.ROOT / chosen
