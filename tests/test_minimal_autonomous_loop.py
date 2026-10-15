@@ -8,10 +8,11 @@ from scripts import run_minimal_autonomous_loop as loop
 from scripts.run_minimal_autonomous_loop import load_completed, load_tasks, stopped
 
 
-def test_queue_contains_bounded_tasks():
+def test_queue_is_nonempty_and_run_limit_is_bounded():
+    queue_data = json.loads(loop.QUEUE.read_text(encoding="utf-8"))
     tasks = load_tasks()
     assert tasks
-    assert len(tasks) <= 4
+    assert 1 <= queue_data["max_tasks_per_run"] <= 4
     assert all(task["id"] and task["instruction"] and task["allowed_paths"] for task in tasks)
 
 
