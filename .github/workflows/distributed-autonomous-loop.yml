@@ -296,6 +296,14 @@ jobs:
           set -euo pipefail
           python -m scripts.recovery_rag_state --mode import --state /tmp/autonomous-loop-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
 
+      - name: Restore sanitized self-improvement history
+        if: success()
+        run: |
+          set -euo pipefail
+          python scripts/self_improvement_state.py import \
+            --state /tmp/autonomous-loop-state.json \
+            --history /tmp/line-bot-self-improvement.jsonl
+
       - name: Run one bounded autonomous task
         id: run_task
         env:
@@ -488,6 +496,11 @@ jobs:
             echo "::error::Recovery AI result/state evidence is missing."
             exit 1
           fi
+          # Persist only allowlisted signal kinds, safe task IDs, and generic details.
+          # Raw exception text and arbitrary model/user content never enter durable state.
+          python scripts/self_improvement_state.py export \
+            --state /tmp/autonomous-loop-state.json \
+            --history /tmp/line-bot-self-improvement.jsonl
           python - <<'PY'
           import json
           from pathlib import Path
@@ -538,6 +551,20 @@ jobs:
                   or len(rag_payload['records']) > 200):
               raise SystemExit('Recovery RAG export is invalid; durable update blocked')
           data['recovery_rag'] = rag_payload['records']
+          local_state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
+          self_improvement = local_state.get('self_improvement_history', [])
+          if not isinstance(self_improvement, list) or len(self_improvement) > 200:
+              raise SystemExit('sanitized self-improvement history is invalid')
+          for row in self_improvement:
+              if (not isinstance(row, dict)
+                      or row.get('kind') not in {'success', 'repair', 'failure'}
+                      or row.get('detail') not in {
+                          'development reached integration gate',
+                          'development required repair attempts',
+                          'development failure observed',
+                      }):
+                  raise SystemExit('self-improvement history failed schema validation')
+          data['self_improvement_history'] = self_improvement
           data['version'] = 1
           state_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
           PY
@@ -562,7 +589,10 @@ jobs:
           rag_payload = json.loads(Path('/tmp/recovery-rag-state.json').read_text(encoding='utf-8'))
           if durable.get('recovery_rag') != rag_payload.get('records'):
               raise SystemExit('Recovery RAG durable read-back mismatch')
-          print('Recovery AI and RAG durable state read-back verified.')
+          local_state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
+          if durable.get('self_improvement_history') != local_state.get('self_improvement_history'):
+              raise SystemExit('self-improvement durable read-back mismatch')
+          print('Recovery AI, RAG, and sanitized self-improvement durable state read-back verified.')
           PY
 
       - name: Record distributed run result to Google Sheets
