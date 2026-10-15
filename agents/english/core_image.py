@@ -379,7 +379,7 @@ _ENTRIES: dict[str, WordEntry] = {
     "elusive": WordEntry(word="elusive", pronunciation="イルーシブ", core_image="つかもうとしてもすり抜ける → 捉えにくい・見つけにくい", parts="elusive answer / goal は「なかなか得られない答え／目標」。", related=("elude（うまく逃れる）", "elusiveness（捉えにくさ）", "hard to pin down（特定しにくい）"), example="A clear explanation remained elusive.（明確な説明はなかなか得られなかった。）"),
     "volatile": WordEntry(word="volatile", pronunciation="ヴォラタイル", core_image="状態がすぐ変わりやすい → 不安定な・変動の激しい", parts="volatile market / situation は「変動の激しい市場／不安定な状況」。化学では揮発性の意味もある。", related=("volatility（変動性）", "volatilely（不安定に）", "unstable（不安定な）"), example="Investors are cautious in a volatile market.（投資家は変動の激しい市場では慎重になる。）"),
     "erratic": WordEntry(word="erratic", pronunciation="イラティック", core_image="一定の筋道や規則がない → 不規則な・予測しにくい", parts="erratic behavior / performance は「不規則な行動／むらのある成績」。", related=("erratically（不規則に）", "irregular（不規則な）", "unpredictable（予測できない）"), example="The machine's erratic performance delayed the project.（機械の不安定な動作で計画が遅れた。）"),
-    "impartiality": WordEntry(word="impartiality", pronunciation="インパーシャリティ", core_image="一方に偏らない性質 → 公平性・中立性", parts="impartiality of the process は「手続きの公平性」。", related=("impartial（公平な）", "neutrality（中立性）", "fairness（公平さ）"), example="The judge's impartiality was widely respected.（その裁判官の公平性は広く尊重されていた。）"),,
+    "impartiality": WordEntry(word="impartiality", pronunciation="インパーシャリティ", core_image="一方に偏らない性質 → 公平性・中立性", parts="impartiality of the process は「手続きの公平性」。", related=("impartial（公平な）", "neutrality（中立性）", "fairness（公平さ）"), example="The judge's impartiality was widely respected.（その裁判官の公平性は広く尊重されていた。）"),
     "explain": WordEntry(
         word="explain",
         pronunciation="イクスプレイン",
