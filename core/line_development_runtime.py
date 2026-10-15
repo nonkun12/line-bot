@@ -135,20 +135,18 @@ def observe_self_improvement(
     provider-backed observation stage. Do not infer that policy from the ambient
     task ID: unit tests and unrelated callers can run in the same environment.
     """
-    if not allow_external_ai:
-        print(
-            "[SELF-IMPROVEMENT] skipped by caller; external AI disabled",
-            flush=True,
-        )
-        return None
-
     try:
         feedback_engine = SelfImprovementEngine()
         creator_critic = (
             build_creator_critic_loop(max_iterations=1)
-            if _self_improvement_creator_critic_enabled()
+            if allow_external_ai and _self_improvement_creator_critic_enabled()
             else None
         )
+        if not allow_external_ai:
+            print(
+                "[SELF-IMPROVEMENT] external AI disabled; local observation only",
+                flush=True,
+            )
         control_tower = ControlTower(
             feedback_engine=feedback_engine,
             creator_critic=creator_critic,
