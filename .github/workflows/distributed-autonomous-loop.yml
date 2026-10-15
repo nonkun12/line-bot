@@ -314,6 +314,17 @@ jobs:
             --state /tmp/autonomous-loop-state.json \
             --history /tmp/line-bot-self-improvement.jsonl
 
+      - name: Prepare bounded runtime task refill
+        if: success() && env.TRIGGER_MODE == 'normal'
+        run: |
+          set -euo pipefail
+          python -m scripts.autonomous_task_refill \
+            --queue .github/autonomous-loop-tasks.json \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --completed-state /tmp/autonomous-loop-state.json \
+            --output /tmp/autonomous-loop-runtime-queue.json
+          echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
+
       - name: Run one bounded autonomous task
         id: run_task
         env:
