@@ -2,7 +2,7 @@ name: Recovery AI FM Advisor Tests
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feat/recovery-ai-foundation-model-advisor]
     paths:
       - "scripts/recovery_ai.py"
       - "scripts/recovery_ai_fm_advisor.py"
