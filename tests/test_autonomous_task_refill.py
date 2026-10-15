@@ -57,7 +57,17 @@ def test_refill_fails_closed_on_unsafe_path(tmp_path: Path):
         build_queue(queue, catalog, completed, tmp_path / "runtime.json")
 
 
-@pytest.mark.parametrize("path", ["tests//test_example.py", "./tests/test_example.py", "tests/../secret.py"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tests//test_example.py",
+        "./tests/test_example.py",
+        "tests/../secret.py",
+        "C:/secret.py",
+        "c:relative-secret.py",
+        "tests/\\x00bad.py",
+    ],
+)
 def test_refill_rejects_ambiguous_or_traversal_paths(tmp_path: Path, path: str):
     queue, catalog, completed = _inputs(
         tmp_path,
