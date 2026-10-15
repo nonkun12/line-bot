@@ -436,7 +436,7 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
     return True, "applied", touched
 
 
-def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
+def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> tuple[bool, str]:
     outputs: list[str] = []
     for path in touched or []:
         if not path.endswith(".py"):
@@ -465,14 +465,28 @@ def run_tests(touched: list[str] | None = None) -> tuple[bool, str]:
     missing = object()
     task_scope = {name: os.environ.pop(name, missing) for name in task_scoped_names}
     try:
-        tests = run([sys.executable, "-m", "pytest", "-q", "--tb=native"], timeout=900)
+        if full_suite:
+            test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native"]
+            outputs.append("full pytest:")
+        else:
+            paths = list(touched or [])
+            if not paths or any(
+                not isinstance(path, str)
+                or not path.endswith(".py")
+                or Path(path).is_absolute()
+                or ".." in Path(path).parts
+                for path in paths
+            ):
+                return False, "targeted pytest requires safe relative Python test paths"
+            test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native", *paths]
+            outputs.append("targeted pytest:")
+        tests = run(test_cmd, timeout=900)
     finally:
         for name, value in task_scope.items():
             if value is missing:
                 os.environ.pop(name, None)
             else:
                 os.environ[name] = value
-    outputs.append("full pytest:")
     outputs.extend([tests.stdout, tests.stderr])
     return tests.returncode == 0, "\n".join(outputs)[-8000:]
 

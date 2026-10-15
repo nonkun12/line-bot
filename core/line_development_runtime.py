@@ -1250,7 +1250,20 @@ class DevelopmentExecutor:
                 self.state.plan = plan; self.state.touched = touched
                 return AgentResult(task.task_id, True, "guarded change applied", frozenset(touched))
             if task.role is AgentRole.TESTER:
-                passed, output = worker.run_tests(self.state.touched or [])
+                task_id = _autonomous_task_id_for_state(self.state)
+                deterministic_no_change = (
+                    isinstance(self.state.plan, dict)
+                    and self.state.plan.get("source") == "deterministic_autonomous_task"
+                    and self.state.plan.get("no_change") is True
+                    and not self.state.touched
+                )
+                if deterministic_no_change:
+                    target = self.state.chosen
+                    if not _is_deterministic_autonomous_task(task_id, target):
+                        return AgentResult(task.task_id, False, "deterministic no-change target identity mismatch")
+                    passed, output = worker.run_tests([target], full_suite=False)
+                else:
+                    passed, output = worker.run_tests(self.state.touched or [])
                 self.state.tests_passed = passed; self.state.test_output = output
                 return AgentResult(task.task_id, passed, output[-4000:], frozenset(self.state.touched or []))
             if task.role is AgentRole.DEBUGGER:
