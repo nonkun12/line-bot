@@ -57,9 +57,14 @@ class AdvisorValidationTests(unittest.TestCase):
         )
         self.assertEqual(result["risk"], "変更しない")
         args, kwargs = run_mock.call_args
-        self.assertEqual(args[0][0], "/usr/bin/fm")
+        self.assertEqual(args[0], ["/usr/bin/fm", "respond"])
         self.assertNotIn("shell", kwargs)
-        self.assertIn("--no-stream", args[0])
+        # Match the documented CLI surface: prompt is supplied on stdin,
+        # not through flags absent from `fm respond --help`.
+        self.assertNotIn("--no-stream", args[0])
+        self.assertNotIn("--greedy", args[0])
+        self.assertNotIn("--instructions", args[0])
+        self.assertIn("Return only one valid JSON object", kwargs["input"])
         self.assertIn("task-1", kwargs["input"])
         which_mock.assert_called_once_with("fm")
 
