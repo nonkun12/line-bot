@@ -737,6 +737,7 @@ jobs:
           if outcome_json="$(python - <<'PY'
           import json
           import os
+          import sys
           from pathlib import Path
           from scripts.run_minimal_autonomous_loop import classify_final_outcome
 
@@ -752,19 +753,29 @@ jobs:
                       continue
                   if isinstance(row, dict):
                       statuses.append(str(row.get("status") or ""))
-          outcome, reason = classify_final_outcome(
-              statuses,
-              loop_outcome=os.getenv("LOOP_OUTCOME", ""),
-              publish_outcome=os.getenv("PUBLISH_OUTCOME", ""),
-              state_outcome=os.getenv("STATE_OUTCOME", ""),
-              sheets_outcome=os.getenv("SHEETS_OUTCOME", ""),
-              recovery_outcome=os.getenv("RECOVERY_OUTCOME", ""),
-              queue_empty=Path("/tmp/autonomous-loop-not-run").exists(),
-              all_tasks_held=Path("/tmp/autonomous-loop-held-tasks").exists(),
-              requested_tasks=int(os.getenv("REQUESTED_TASKS", "4")),
-              queue_completed=int(os.getenv("QUEUE_COMPLETED", "0")),
-              queue_total=int(os.getenv("QUEUE_TOTAL", "0")),
-          )
+          queue_empty = Path("/tmp/autonomous-loop-not-run").exists()
+          # The loop exits 78 without writing a result row when its queue is empty.
+          # Normalize that explicit sentinel into the classifier's documented evidence.
+          if queue_empty and not statuses:
+              statuses = ["NOT_RUN"]
+          try:
+              outcome, reason = classify_final_outcome(
+                  statuses,
+                  loop_outcome=os.getenv("LOOP_OUTCOME", ""),
+                  publish_outcome=os.getenv("PUBLISH_OUTCOME", ""),
+                  state_outcome=os.getenv("STATE_OUTCOME", ""),
+                  sheets_outcome=os.getenv("SHEETS_OUTCOME", ""),
+                  recovery_outcome=os.getenv("RECOVERY_OUTCOME", ""),
+                  queue_empty=queue_empty,
+                  all_tasks_held=Path("/tmp/autonomous-loop-held-tasks").exists(),
+                  requested_tasks=int(os.getenv("REQUESTED_TASKS", "4")),
+                  queue_completed=int(os.getenv("QUEUE_COMPLETED", "0")),
+                  queue_total=int(os.getenv("QUEUE_TOTAL", "0")),
+              )
+          except Exception as exc:
+              # Do not leak exception messages or environment data into the report.
+              print(f"Final outcome classifier failed: {type(exc).__name__}", file=sys.stderr)
+              raise
           print(json.dumps({"outcome": outcome, "reason": reason}))
           PY
           )"; then
@@ -773,6 +784,7 @@ jobs:
           else
             result="BLOCKED"
             result_reason="final_outcome_classifier_failed"
+            echo "::error::Final outcome classifier failed; result is BLOCKED. See Python error class above."
           fi
           produced_sha="$(git rev-parse HEAD 2>/dev/null || echo "${GITHUB_SHA}")"
           {
