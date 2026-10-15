@@ -148,6 +148,13 @@
       "allowed_paths": [
         "uhip/tests/test_schema_contracts.py"
       ]
+    },
+    {
+      "id": "loop-deterministic-nochange-focused-test",
+      "instruction": "Run the deterministic regression-test plan for task ID loop-deterministic-nochange-focused-test. Only modify tests/test_line_development_worker_v2.py; ensure a focused test verifies full_suite=False runs pytest only for the specified relative Python test file. If behavior is already covered, report NO_CHANGE. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_line_development_worker_v2.py"
+      ]
     }
   ],
   "catalog_source": "reviewed deterministic target allowlist"
