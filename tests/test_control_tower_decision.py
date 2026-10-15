@@ -104,3 +104,27 @@ def test_queue_empty_can_only_be_recorded_as_not_run_without_task() -> None:
     )
 
     assert not decision.execution_eligible({"any-registered-task"})
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"reason_code": []},
+        {"next_action": []},
+        {"gate_status": []},
+        {"evidence_sha": 123},
+        {"task_template_id": []},
+    ],
+)
+def test_malformed_field_types_fail_closed(overrides: dict[str, object]) -> None:
+    fields: dict[str, object] = {
+        "reason_code": "evidence_sufficient",
+        "confidence": 0.5,
+        "priority": 10,
+        "next_action": "OBSERVE_ONLY",
+        "gate_status": "PASS",
+    }
+    fields.update(overrides)
+
+    with pytest.raises(ValueError):
+        ControlTowerDecisionRecord(**fields)  # type: ignore[arg-type]
