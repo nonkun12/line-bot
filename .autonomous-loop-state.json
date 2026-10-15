@@ -58,12 +58,23 @@
   "recovery_rag": [
     {
       "category": "unknown",
+      "fingerprint": "c0aa28ff369621f11fb4d062bc9e51b65297a5b86f8e5ea48b8e47e095ebcb22",
+      "status": "NO_CHANGE",
+      "task_id": "loop-deterministic-nochange-focused-test"
+    },
+    {
+      "category": "unknown",
       "fingerprint": "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56",
       "status": "NO_CHANGE",
       "task_id": "ai-speaker-empty-transcript-no-brain-call"
     }
   ],
   "self_improvement_history": [
+    {
+      "kind": "success",
+      "task_id": null,
+      "detail": "development reached integration gate"
+    },
     {
       "kind": "success",
       "task_id": null,
