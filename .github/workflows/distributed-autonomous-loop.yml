@@ -290,7 +290,7 @@ jobs:
           RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true' && 'ai-speaker-empty-transcript-no-brain-call' || '' }}
         run: |
           set -euo pipefail
-          python scripts/resume_held_task.py \
+          python -m scripts.resume_held_task \
             --state /tmp/autonomous-loop-state.json \
             --recovery-state /tmp/recovery-ai-state.json \
             --queue .github/autonomous-loop-tasks.json \
