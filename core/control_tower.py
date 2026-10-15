@@ -25,6 +25,7 @@ class ControlTowerDecision:
     proposal: ImprovementProposal | None
     duel: tuple[DuelResult, ...] = ()
     approved_task_hash: str | None = None
+    review_error: str | None = None
 
     @property
     def approved_for_pipeline(self) -> bool:
@@ -87,7 +88,12 @@ class ControlTower:
         if approved_hash is None:
             return ControlTowerDecision((), proposal)
         measured["approved_task_hash"] = approved_hash
-        duel = self.creator_critic.run(target, evidence_provider)
+        try:
+            duel = self.creator_critic.run(target, evidence_provider)
+        except Exception as exc:
+            # A provider/rate-limit failure must not erase the local observation.
+            # Record only the exception class; raw provider text may contain sensitive data.
+            return ControlTowerDecision((), proposal, review_error=type(exc).__name__)
         return ControlTowerDecision((), proposal, duel, approved_hash)
 
     def observe(
@@ -120,7 +126,11 @@ class ControlTower:
         if approved_hash is None:
             return ControlTowerDecision(signals, proposal)
         measured["approved_task_hash"] = approved_hash
-        duel = self.creator_critic.run(target, evidence_provider)
+        try:
+            duel = self.creator_critic.run(target, evidence_provider)
+        except Exception as exc:
+            # Fail closed on review failure while preserving the observed signals/proposal.
+            return ControlTowerDecision(signals, proposal, review_error=type(exc).__name__)
         return ControlTowerDecision(signals, proposal, duel, approved_hash)
 
 
