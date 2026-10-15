@@ -1,0 +1,42 @@
+name: Recovery AI FM Advisor Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/recovery_ai.py"
+      - "scripts/recovery_ai_fm_advisor.py"
+      - "scripts/recovery_ai_local_advisor.py"
+      - "scripts/recovery_ai_loop_adapter.py"
+      - "tests/test_recovery_ai_fm_advisor.py"
+      - "tests/test_recovery_ai_local_advisor.py"
+      - "tests/test_recovery_ai_loop_adapter.py"
+      - ".github/workflows/recovery-ai-fm-advisor-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recovery-ai-fm-advisor-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test runner
+        run: python -m pip install pytest
+      - name: Run Recovery AI advisor and loop adapter tests
+        run: >-
+          python -m pytest -q
+          tests/test_recovery_ai_fm_advisor.py
+          tests/test_recovery_ai_local_advisor.py
+          tests/test_recovery_ai_loop_adapter.py
