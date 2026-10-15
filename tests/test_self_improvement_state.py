@@ -47,3 +47,44 @@ def test_sanitizer_fails_closed_on_wrong_container():
         assert "must be a list" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+
+def test_import_export_round_trip_is_sanitized_and_does_not_duplicate(tmp_path):
+    from scripts.self_improvement_state import main
+    import sys
+
+    state = tmp_path / "state.json"
+    history = tmp_path / "history.jsonl"
+    state.write_text(json.dumps({
+        "version": 1,
+        "completed": [],
+        "self_improvement_history": [{
+            "kind": "failure",
+            "task_id": "task-1",
+            "detail": "old token=secret",
+        }],
+    }), encoding="utf-8")
+
+    original_argv = sys.argv
+    try:
+        sys.argv = ["self_improvement_state.py", "import", "--state", str(state), "--history", str(history)]
+        assert main() == 0
+        with history.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps({
+                "kind": "repair",
+                "task_id": "task-2",
+                "detail": "raw exception with private data",
+            }) + "\\n")
+        sys.argv = ["self_improvement_state.py", "export", "--state", str(state), "--history", str(history)]
+        assert main() == 0
+    finally:
+        sys.argv = original_argv
+
+    persisted = json.loads(state.read_text(encoding="utf-8"))["self_improvement_history"]
+    assert persisted == [
+        {"kind": "failure", "task_id": "task-1", "detail": "development failure observed"},
+        {"kind": "repair", "task_id": "task-2", "detail": "development required repair attempts"},
+    ]
+    assert "secret" not in json.dumps(persisted)
+    assert "private data" not in json.dumps(persisted)
