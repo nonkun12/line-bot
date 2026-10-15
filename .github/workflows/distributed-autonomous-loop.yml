@@ -727,13 +727,13 @@ jobs:
           if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
             completed="$(python -c 'import json; from pathlib import Path; print(sum(1 for line in Path("/tmp/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines() if line.strip() and isinstance(json.loads(line), dict) and json.loads(line).get("status") in {"PASS","NO_CHANGE"}))')"
           fi
-          queue_total="$(python -c 'import json; from pathlib import Path; print(len(json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8")).get("tasks", [])))')"
+          queue_total="$(python -c 'from core.line_development_runtime import _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS; print(len(_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS))')"
           state_current_completed="$(python - <<'PY'
           import json
           from pathlib import Path
-          queue = json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8")).get("tasks", [])
+          from core.line_development_runtime import _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
           completed = set(json.loads(Path("/tmp/autonomous-loop-state.json").read_text(encoding="utf-8")).get("completed", []))
-          ids = [task.get("id") for task in queue if isinstance(task, dict)]
+          ids = list(_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS)
           print(sum(1 for task_id in ids if task_id in completed))
           PY
           )"
