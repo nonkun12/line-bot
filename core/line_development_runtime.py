@@ -157,14 +157,22 @@ def observe_self_improvement(
             target_paths=(target_path,),
             control_tower=control_tower,
         )
+        reviewer_enabled = allow_external_ai and _self_improvement_creator_critic_enabled()
+        decisions = getattr(result, "control_tower_decisions", ())
         approved = len(result.approved_proposals)
-        handoff_note = f", approved_handoffs={approved}" if approved else ""
+        review_errors = sum(1 for decision in decisions if decision.review_error is not None)
+        unreviewed = sum(1 for decision in decisions if not decision.duel and decision.review_error is None)
+        reviewer_mode = "creator_critic" if reviewer_enabled else (
+            "local_only_external_ai_disabled" if not allow_external_ai else "disabled_by_config"
+        )
         print(
-            "[SELF-IMPROVEMENT] "
-            f"signals={len(result.new_signals)}, "
-            f"patterns={len(result.analysis.recurring_patterns)}, "
-            f"proposals={len(result.proposals)}"
-            f"{handoff_note}",
+            "[CONTROL-TOWER] "
+            f"status=observed reviewer={reviewer_mode} "
+            f"signals={len(result.new_signals)} "
+            f"patterns={len(result.analysis.recurring_patterns)} "
+            f"proposals={len(result.proposals)} "
+            f"reviewed={sum(1 for decision in decisions if decision.duel)} "
+            f"approved={approved} unreviewed={unreviewed} review_errors={review_errors}",
             flush=True,
         )
         return result
@@ -172,7 +180,7 @@ def observe_self_improvement(
         # Improvement observation must never turn a validated development result
         # into an unrelated deployment failure.
         print(
-            f"[SELF-IMPROVEMENT] observation skipped: {type(exc).__name__}: {exc}",
+            f"[CONTROL-TOWER] status=observation_error error_class={type(exc).__name__}",
             flush=True,
         )
         return None
