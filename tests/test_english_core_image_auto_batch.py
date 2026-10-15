@@ -96,17 +96,17 @@ def test_builder_validates_candidates_after_batch_boundary(tmp_path, monkeypatch
     module_path = tmp_path / "core_image.py"
     queue_path = tmp_path / "candidates.json"
     module_path.write_text(
-        'from dataclasses import dataclass\\n'
-        '@dataclass(frozen=True)\\n'
-        'class WordEntry:\\n'
-        '    word: str\\n'
-        '    pronunciation: str\\n'
-        '    core_image: str\\n'
-        '    parts: str\\n'
-        '    related: tuple[str, ...]\\n'
-        '    example: str\\n'
-        '    note: str = ""\\n'
-        '_ENTRIES: dict[str, WordEntry] = {}\\n',
+        'from dataclasses import dataclass\n'
+        '@dataclass(frozen=True)\n'
+        'class WordEntry:\n'
+        '    word: str\n'
+        '    pronunciation: str\n'
+        '    core_image: str\n'
+        '    parts: str\n'
+        '    related: tuple[str, ...]\n'
+        '    example: str\n'
+        '    note: str = ""\n'
+        '_ENTRIES: dict[str, WordEntry] = {}\n',
         encoding="utf-8",
     )
     # The invalid duplicate is intentionally after batch_size=1.
@@ -135,19 +135,19 @@ def test_builder_reports_dictionary_and_candidate_counts_when_queue_is_exhausted
     module_path = tmp_path / "core_image.py"
     queue_path = tmp_path / "candidates.json"
     module_path.write_text(
-        'from dataclasses import dataclass\\n'
-        '@dataclass(frozen=True)\\n'
-        'class WordEntry:\\n'
-        '    word: str\\n'
-        '    pronunciation: str\\n'
-        '    core_image: str\\n'
-        '    parts: str\\n'
-        '    related: tuple[str, ...]\\n'
-        '    example: str\\n'
-        '    note: str = ""\\n'
-        '_ENTRIES: dict[str, WordEntry] = {\\n'
-        '    "already": WordEntry(word="already", pronunciation="x", core_image="x", parts="x", related=("x", "y"), example="x"),\\n'
-        '}\\n',
+        'from dataclasses import dataclass\n'
+        '@dataclass(frozen=True)\n'
+        'class WordEntry:\n'
+        '    word: str\n'
+        '    pronunciation: str\n'
+        '    core_image: str\n'
+        '    parts: str\n'
+        '    related: tuple[str, ...]\n'
+        '    example: str\n'
+        '    note: str = ""\n'
+        '_ENTRIES: dict[str, WordEntry] = {\n'
+        '    "already": WordEntry(word="already", pronunciation="x", core_image="x", parts="x", related=("x", "y"), example="x"),\n'
+        '}\n',
         encoding="utf-8",
     )
     queue_path.write_text(json.dumps([_candidate("already")], ensure_ascii=False), encoding="utf-8")
