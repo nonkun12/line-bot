@@ -48,6 +48,36 @@ def test_cycle_persists_signals_and_generates_recurring_proposals(tmp_path):
     assert all(proposal.task is not None for proposal in two.proposals)
 
 
+def test_cycle_persists_memory_when_creator_critic_provider_fails(tmp_path):
+    def broken_model(_prompt: str) -> str:
+        raise RuntimeError("provider failure")
+
+    tower = ControlTower(
+        creator_critic=build_creator_critic_loop(model_call=broken_model, max_iterations=1)
+    )
+    path = tmp_path / "self-improvement.jsonl"
+    report = RuntimeReport(
+        (),
+        failed_task_id="tests",
+        error="pytest timeout",
+        rounds=1,
+        repair_attempts=1,
+        integration_ready=False,
+    )
+
+    run_self_improvement_cycle(report, path, target_paths=("tests/test_runtime.py",), control_tower=tower)
+    result = run_self_improvement_cycle(
+        report, path, target_paths=("tests/test_runtime.py",), control_tower=tower
+    )
+
+    assert result.proposals
+    assert len(result.control_tower_decisions) == len(result.proposals)
+    assert all(decision.review_error == "RuntimeError" for decision in result.control_tower_decisions)
+    assert result.approved_proposals == ()
+    assert path.exists()
+    assert "development outcome" in path.read_text(encoding="utf-8") or path.stat().st_size > 0
+
+
 def test_cycle_protected_targets_fail_closed(tmp_path):
     report = RuntimeReport(
         (),
