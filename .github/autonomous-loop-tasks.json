@@ -155,6 +155,13 @@
       "allowed_paths": [
         "tests/test_line_development_worker_v2.py"
       ]
+    },
+    {
+      "id": "router-regression-general-request-metadata-refresh-20261015",
+      "instruction": "tests/test_management_router.py のみに、曖昧な一般依頼の deterministic routing と channel/request metadata 維持を検証する回帰テストを確認・追加してください。既存の同等テストがある場合は NO_CHANGE。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
     }
   ],
   "catalog_source": "reviewed deterministic target allowlist"
