@@ -38,6 +38,30 @@ def test_rebuild_fills_queue_from_only_allowlisted_deterministic_targets():
     "scripts/deploy.py",
     "tests/../../secrets.env",
 ])
+def test_rebuild_excludes_completed_ids_and_keeps_new_eligible_tasks():
+    existing = {"tasks": []}
+    targets = {
+        "already-done": "tests/test_done.py",
+        "new-task": "tests/test_new.py",
+    }
+
+    rebuilt = build_queue(existing, targets, completed_ids={"already-done"})
+
+    assert [task["id"] for task in rebuilt["tasks"]] == ["new-task"]
+
+
+def test_rebuild_returns_empty_queue_when_every_catalog_task_is_completed():
+    targets = {
+        "done-one": "tests/test_one.py",
+        "done-two": "tests/test_two.py",
+    }
+
+    rebuilt = build_queue({"tasks": []}, targets, completed_ids={"done-one", "done-two"})
+
+    assert rebuilt["tasks"] == []
+    assert rebuilt["max_tasks_per_run"] == 4
+
+
 def test_rebuild_rejects_paths_outside_test_allowlist(target):
     with pytest.raises(ValueError):
         build_queue({"tasks": []}, {"unsafe-task": target})
