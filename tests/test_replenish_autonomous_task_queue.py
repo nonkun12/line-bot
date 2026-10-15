@@ -55,3 +55,43 @@ def test_rebuild_rejects_duplicate_existing_ids():
 def test_rebuild_fails_closed_on_empty_catalog():
     with pytest.raises(ValueError, match="empty"):
         build_queue({"tasks": []}, {})
+
+
+
+def test_queue_empty_classifies_as_not_run_not_success():
+    from scripts.run_minimal_autonomous_loop import classify_final_outcome
+
+    outcome, reason = classify_final_outcome(
+        ["NOT_RUN"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        recovery_outcome="success",
+        queue_empty=True,
+        requested_tasks=4,
+        queue_completed=21,
+        queue_total=21,
+    )
+
+    assert (outcome, reason) == ("NOT_RUN", "queue_empty")
+
+
+def test_queue_empty_with_failed_postrun_gate_is_blocked():
+    from scripts.run_minimal_autonomous_loop import classify_final_outcome
+
+    outcome, reason = classify_final_outcome(
+        ["NOT_RUN"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="failure",
+        recovery_outcome="success",
+        queue_empty=True,
+        requested_tasks=4,
+        queue_completed=21,
+        queue_total=21,
+    )
+
+    assert outcome == "BLOCKED"
+    assert "sheets" in reason
