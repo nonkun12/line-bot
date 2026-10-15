@@ -162,3 +162,13 @@ def test_builder_reports_dictionary_and_candidate_counts_when_queue_is_exhausted
     assert "ELIGIBLE_CANDIDATES=0" in output
     assert "TARGET_REMAINING=999" in output
     assert "NO_CHANGE: queue_exhausted_no_new_reviewed_candidates" in output
+
+def test_builder_rejects_batch_size_above_advertised_limit(monkeypatch):
+    builder = _load_builder()
+    monkeypatch.setattr("sys.argv", ["builder", "--batch-size", "26"])
+    try:
+        builder.main()
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("batch sizes above 25 must be rejected")
