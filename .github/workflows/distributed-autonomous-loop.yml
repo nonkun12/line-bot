@@ -300,8 +300,8 @@ jobs:
         if: success() && env.TRIGGER_MODE == 'normal'
         run: |
           set -euo pipefail
-          python scripts/replenish_autonomous_task_queue.py \\
-  --queue .github/autonomous-loop-tasks.json \\
+          python scripts/replenish_autonomous_task_queue.py \
+  --queue .github/autonomous-loop-tasks.json \
   --state /tmp/autonomous-loop-state.json
 
       - name: Run one bounded autonomous task
