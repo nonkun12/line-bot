@@ -66,6 +66,7 @@ def test_refill_fails_closed_on_unsafe_path(tmp_path: Path):
         "C:/secret.py",
         "c:relative-secret.py",
         "tests/\\x00bad.py",
+        "tests/\x00bad.py",
     ],
 )
 def test_refill_rejects_ambiguous_or_traversal_paths(tmp_path: Path, path: str):
@@ -73,7 +74,7 @@ def test_refill_rejects_ambiguous_or_traversal_paths(tmp_path: Path, path: str):
         tmp_path,
         candidates=[{**_task("task-path"), "allowed_paths": [path]}],
     )
-    with pytest.raises(ValueError, match="forbidden"):
+    with pytest.raises(ValueError, match="allowed path"):
         build_queue(queue, catalog, completed, tmp_path / "runtime.json")
 
 
