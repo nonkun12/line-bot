@@ -158,7 +158,7 @@ def observe_self_improvement(
             control_tower=control_tower,
         )
         reviewer_enabled = allow_external_ai and _self_improvement_creator_critic_enabled()
-        decisions = result.control_tower_decisions
+        decisions = getattr(result, "control_tower_decisions", ())
         approved = len(result.approved_proposals)
         review_errors = sum(1 for decision in decisions if decision.review_error is not None)
         unreviewed = sum(1 for decision in decisions if not decision.duel and decision.review_error is None)
