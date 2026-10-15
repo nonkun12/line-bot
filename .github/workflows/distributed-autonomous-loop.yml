@@ -296,6 +296,14 @@ jobs:
           set -euo pipefail
           python -m scripts.recovery_rag_state --mode import --state /tmp/autonomous-loop-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
 
+      - name: Replenish bounded queue from reviewed deterministic catalog
+        if: success() && env.TRIGGER_MODE == 'normal'
+        run: |
+          set -euo pipefail
+          python scripts/replenish_autonomous_task_queue.py \
+            --queue .github/autonomous-loop-tasks.json \
+            --state /tmp/autonomous-loop-state.json
+
       - name: Run one bounded autonomous task
         id: run_task
         env:
@@ -719,13 +727,13 @@ jobs:
           if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
             completed="$(python -c 'import json; from pathlib import Path; print(sum(1 for line in Path("/tmp/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines() if line.strip() and isinstance(json.loads(line), dict) and json.loads(line).get("status") in {"PASS","NO_CHANGE"}))')"
           fi
-          queue_total="$(python -c 'import json; from pathlib import Path; print(len(json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8")).get("tasks", [])))')"
+          queue_total="$(python -c 'from core.line_development_runtime import _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS; print(len(_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS))')"
           state_current_completed="$(python - <<'PY'
           import json
           from pathlib import Path
-          queue = json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8")).get("tasks", [])
+          from core.line_development_runtime import _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
           completed = set(json.loads(Path("/tmp/autonomous-loop-state.json").read_text(encoding="utf-8")).get("completed", []))
-          ids = [task.get("id") for task in queue if isinstance(task, dict)]
+          ids = list(_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS)
           print(sum(1 for task_id in ids if task_id in completed))
           PY
           )"
@@ -734,7 +742,7 @@ jobs:
           export REQUESTED_TASKS="$requested"
           export QUEUE_COMPLETED="$queue_completed"
           export QUEUE_TOTAL="$queue_total"
-          if outcome_json="$(python - <<'PY'
+          if outcome_json="$(python - <<'PY' 2>/tmp/distributed-classifier-error.log
           import json
           import os
           from pathlib import Path
@@ -773,6 +781,10 @@ jobs:
           else
             result="BLOCKED"
             result_reason="final_outcome_classifier_failed"
+            if [ -s /tmp/distributed-classifier-error.log ]; then
+              echo "Classifier diagnostic:" >&2
+              tail -n 20 /tmp/distributed-classifier-error.log >&2
+            fi
           fi
           produced_sha="$(git rev-parse HEAD 2>/dev/null || echo "${GITHUB_SHA}")"
           {

@@ -204,6 +204,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "recovery-ai-loop-adapter-durable-state-readback": "tests/test_recovery_ai_loop_adapter.py",
     "recovery-ai-state-isolation": "tests/test_recovery_ai.py",
     "ai-speaker-empty-transcript-no-brain-call": "tests/test_ai_speaker.py",
+    "distributed-loop-queue-completion-idempotency": "tests/test_replenish_autonomous_task_queue.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -1137,6 +1138,38 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "no_change": False,
             "source": "deterministic_autonomous_task",
             "changes": [{"file": chosen, "old": old, "new": new}],
+        }, None
+
+    if task_id == "distributed-loop-queue-completion-idempotency" and chosen == "tests/test_replenish_autonomous_task_queue.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_rebuild_is_idempotent_after_new_task_is_completed"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = "def test_queue_empty_classifies_as_not_run_not_success():\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "def test_rebuild_is_idempotent_after_new_task_is_completed():\n"
+            '    targets = {"first": "tests/test_first.py", "next": "tests/test_next.py"}\n'
+            '    first = build_queue({"tasks": []}, targets, completed_ids={"first"})\n'
+            '    assert [task["id"] for task in first["tasks"]] == ["next"]\n'
+            '    second = build_queue(first, targets, completed_ids={"first", "next"})\n'
+            '    assert second["tasks"] == []\n'
+        )
+        new = addition + "\n\n" + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
         }, None
 
     return None, None
