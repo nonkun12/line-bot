@@ -296,6 +296,12 @@ jobs:
           set -euo pipefail
           python -m scripts.recovery_rag_state --mode import --state /tmp/autonomous-loop-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
 
+      - name: Replenish bounded queue from reviewed deterministic catalog
+        if: success() && env.TRIGGER_MODE == 'normal'
+        run: |
+          set -euo pipefail
+          python scripts/replenish_autonomous_task_queue.py --queue .github/autonomous-loop-tasks.json
+
       - name: Run one bounded autonomous task
         id: run_task
         env:
@@ -734,7 +740,7 @@ jobs:
           export REQUESTED_TASKS="$requested"
           export QUEUE_COMPLETED="$queue_completed"
           export QUEUE_TOTAL="$queue_total"
-          if outcome_json="$(python - <<'PY'
+          if outcome_json="$(python - <<'PY' 2>/tmp/distributed-classifier-error.log
           import json
           import os
           from pathlib import Path
@@ -773,6 +779,10 @@ jobs:
           else
             result="BLOCKED"
             result_reason="final_outcome_classifier_failed"
+            if [ -s /tmp/distributed-classifier-error.log ]; then
+              echo "Classifier diagnostic:" >&2
+              tail -n 20 /tmp/distributed-classifier-error.log >&2
+            fi
           fi
           produced_sha="$(git rev-parse HEAD 2>/dev/null || echo "${GITHUB_SHA}")"
           {
