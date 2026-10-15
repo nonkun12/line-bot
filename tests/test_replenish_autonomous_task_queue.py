@@ -77,6 +77,14 @@ def test_rebuild_fails_closed_on_empty_catalog():
         build_queue({"tasks": []}, {})
 
 
+def test_rebuild_is_idempotent_after_new_task_is_completed():
+    targets = {"first": "tests/test_first.py", "next": "tests/test_next.py"}
+    first = build_queue({"tasks": []}, targets, completed_ids={"first"})
+    assert [task["id"] for task in first["tasks"]] == ["next"]
+    second = build_queue(first, targets, completed_ids={"first", "next"})
+    assert second["tasks"] == []
+
+
 def test_queue_empty_classifies_as_not_run_not_success():
     from scripts.run_minimal_autonomous_loop import classify_final_outcome
 
