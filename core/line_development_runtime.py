@@ -131,9 +131,9 @@ def observe_self_improvement(
 ) -> SelfImprovementCycleResult | None:
     """Feed eligible development reports into bounded self-improvement.
 
-    Callers executing deterministic queue tasks must explicitly disable this
-    provider-backed observation stage. Do not infer that policy from the ambient
-    task ID: unit tests and unrelated callers can run in the same environment.
+    Deterministic queue tasks disable external AI but still record bounded local
+    signals and deterministic analysis. Do not infer provider policy from the
+    ambient task ID: unrelated callers can run in the same environment.
     """
     try:
         feedback_engine = SelfImprovementEngine()
