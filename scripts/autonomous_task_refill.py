@@ -39,7 +39,8 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     if not isinstance(cap, int) or isinstance(cap, bool) or not 1 <= cap <= 4:
         raise ValueError("catalog cap must be between 1 and 4")
 
-    seen: set[str] = set()\n    original_ids = {str(t.get("id")) for t in existing if isinstance(t, dict)}
+    seen: set[str] = set()
+    original_ids = {str(t.get("id")) for t in existing if isinstance(t, dict)}
     normalized = []
     for task in [*existing, *candidates]:
         if not isinstance(task, dict):
@@ -48,8 +49,10 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         if not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id):
             raise ValueError("invalid task ID")
         if task_id in seen:
-            # Existing queue/catalog overlap is treated as a duplicate, not a second task.
-            continue
+            # Queue/catalog overlap is expected; duplicates inside the catalog are rejected.
+            if task_id in original_ids:
+                continue
+            raise ValueError("duplicate catalog task ID")
         if not isinstance(instruction, str) or not instruction.strip() or len(instruction) > 5000:
             raise ValueError("invalid task instruction")
         if not isinstance(paths, list) or not paths or len(paths) > 10:
