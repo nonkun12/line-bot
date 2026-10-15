@@ -42,7 +42,14 @@ def _validate_task(task: object) -> dict:
         raise ValueError("invalid allowed_paths")
     clean_paths = []
     for path in paths:
-        if not isinstance(path, str) or not path or path.startswith("/") or "\\" in path:
+        if (
+            not isinstance(path, str)
+            or not path
+            or path.startswith("/")
+            or "\\" in path
+            or re.match(r"^[A-Za-z]:", path)
+            or any(ord(char) < 32 for char in path)
+        ):
             raise ValueError("invalid allowed path")
         # Reject empty/dot components and traversal in addition to parent traversal.
         parts = path.split("/")
