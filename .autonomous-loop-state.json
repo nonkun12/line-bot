@@ -28,14 +28,17 @@
     "schema_version": 1,
     "tasks": {
       "ai-speaker-empty-transcript-no-brain-call": {
-        "consecutive_failures": 1,
+        "consecutive_failures": 0,
         "fingerprints": [
           "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56"
         ],
-        "held": true,
+        "held": false,
         "last_category": "unknown",
         "last_fingerprint": "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56",
-        "same_fingerprint_attempts": 1,
+        "last_success_at": "2026-10-15T09:46:29.732098+00:00",
+        "resume_requires_review": true,
+        "resumed_at": "2026-10-15T09:46:25.378291+00:00",
+        "same_fingerprint_attempts": 0,
         "updated_at": "2026-10-13T13:08:26.164696+00:00"
       },
       "loop-test-recovery-state-isolation": {
@@ -50,5 +53,20 @@
         "updated_at": "2026-10-12T15:11:02.566779+00:00"
       }
     }
-  }
+  },
+  "recovery_rag": [
+    {
+      "category": "unknown",
+      "fingerprint": "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56",
+      "status": "NO_CHANGE",
+      "task_id": "ai-speaker-empty-transcript-no-brain-call"
+    }
+  ],
+  "self_improvement_history": [
+    {
+      "kind": "success",
+      "task_id": null,
+      "detail": "development reached integration gate"
+    }
+  ]
 }
