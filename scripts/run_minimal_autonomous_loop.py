@@ -639,7 +639,7 @@ def main() -> int:
             }
 
         with args.results.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(result, ensure_ascii=False) + "\\n")
+            fh.write(json.dumps(result, ensure_ascii=False) + "\n")
 
         if recovery_error:
             print(
