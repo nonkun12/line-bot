@@ -105,6 +105,18 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
         return {"recorded": False, "reason": "no_task_id"}
     store = RecoveryStore(state_path)
     status = str(result.get("status", "")).upper()
+    failure_reason = str(result.get("failure_reason", "")).strip().lower()
+    # A preflight authorization denial or launch-time HEAD race means no task
+    # actually ran. Record it in the loop report, but do not count it as a task
+    # failure or trip Recovery AI's repeated-failure HOLD circuit breaker.
+    if status == "BLOCKED" and (
+        failure_reason.startswith("control_tower_gate:")
+        or failure_reason == "control_tower_head_changed"
+    ):
+        return {
+            "recorded": False,
+            "reason": "preflight_blocked_not_task_failure",
+        }
     run_identity_verified = _has_verified_run_identity(result, status)
     success_like = status in {"PASS", "NO_CHANGE"}
     if success_like and (result.get("exit_code") != 0 or not run_identity_verified):
