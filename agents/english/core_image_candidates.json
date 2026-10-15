@@ -1126,5 +1126,257 @@
       "endure（耐える）"
     ],
     "example": "The system can withstand heavy traffic.（そのシステムは大量のアクセスに耐えられる。）"
+  },
+  {
+    "word": "allow",
+    "pronunciation": "アラウ",
+    "core_image": "通る・行うことを認める → 許可する・可能にする",
+    "parts": "allow someone to do の形で「人が〜するのを認める」。",
+    "related": [
+      "permit（許可する）",
+      "let（〜させる）",
+      "permission（許可）"
+    ],
+    "example": "The rules allow students to use dictionaries.（規則は学生が辞書を使うことを認めている。）"
+  },
+  {
+    "word": "appear",
+    "pronunciation": "アピア",
+    "core_image": "視界や意識の前に現れる → 現れる・〜のように見える",
+    "parts": "appear to be / appear to do は「〜のように見える」。",
+    "related": [
+      "emerge（現れる）",
+      "seem（〜のように見える）",
+      "appearance（外見・出現）"
+    ],
+    "example": "A new problem appeared.（新しい問題が現れた。）"
+  },
+  {
+    "word": "apply",
+    "pronunciation": "アプライ",
+    "core_image": "知識・規則などを対象に当てはめる → 適用する・申し込む",
+    "parts": "apply A to B（AをBに適用する）／apply for（〜に申し込む）。",
+    "related": [
+      "application（申請・応用）",
+      "use（使う）",
+      "implement（実施する）"
+    ],
+    "example": "Apply this rule to the next example.（この規則を次の例に適用してください。）"
+  },
+  {
+    "word": "argue",
+    "pronunciation": "アーギュー",
+    "core_image": "理由を並べて主張を支える → 議論する・主張する",
+    "parts": "argue that ...（〜だと主張する）／argue with someone（人と議論する）。",
+    "related": [
+      "argument（議論・主張）",
+      "claim（主張する）",
+      "debate（討論する）"
+    ],
+    "example": "They argued that the plan was too expensive.（彼らはその計画は高すぎると主張した。）"
+  },
+  {
+    "word": "attend",
+    "pronunciation": "アテンド",
+    "core_image": "その場にいて注意を向ける → 出席する・参加する",
+    "parts": "attend a meeting/class のように、通常 attend の直後に目的語を置く。",
+    "related": [
+      "attendance（出席）",
+      "join（参加する）",
+      "participate（参加する）"
+    ],
+    "example": "I attended the meeting yesterday.（私は昨日その会議に出席した。）"
+  },
+  {
+    "word": "belong",
+    "pronunciation": "ビロング",
+    "core_image": "ある集団・場所の一員や一部である → 所属する・属する",
+    "parts": "belong to + 集団・持ち主・分類。",
+    "related": [
+      "belonging（所属）",
+      "member（構成員）",
+      "ownership（所有）"
+    ],
+    "example": "This book belongs to me.（この本は私のものです。）"
+  },
+  {
+    "word": "challenge",
+    "pronunciation": "チャレンジ",
+    "core_image": "力や正しさを試す課題を突きつける → 挑戦・難題",
+    "parts": "challenge a decision（決定に異議を唱える）など、能力だけでなく判断も対象になる。",
+    "related": [
+      "difficult（難しい）",
+      "test（試す）",
+      "challenging（難易度の高い）"
+    ],
+    "example": "Learning a new language is a challenge.（新しい言語を学ぶことは難題だ。）"
+  },
+  {
+    "word": "contain",
+    "pronunciation": "コンテイン",
+    "core_image": "内側に入れて保つ → 含む・収容する・抑える",
+    "parts": "contain は中に含むこと、内容物や範囲に焦点がある。",
+    "related": [
+      "include（含む）",
+      "hold（入れておく）",
+      "container（容器）"
+    ],
+    "example": "The report contains useful information.（その報告書には役立つ情報が含まれている。）"
+  },
+  {
+    "word": "continue",
+    "pronunciation": "コンティニュー",
+    "core_image": "途切れず先へ進む → 続ける・続く",
+    "parts": "continue doing / continue to do の両方が使われる。",
+    "related": [
+      "continuation（継続）",
+      "remain（そのままでいる）",
+      "proceed（進む）"
+    ],
+    "example": "Please continue reading.（読み続けてください。）"
+  },
+  {
+    "word": "create",
+    "pronunciation": "クリエイト",
+    "core_image": "なかったものを形にする → 作り出す・創造する",
+    "parts": "create は新しいものを生み出すことに焦点がある。",
+    "related": [
+      "creation（創造）",
+      "produce（生産する）",
+      "design（設計する）"
+    ],
+    "example": "The team created a simple tool.（チームは簡単なツールを作った。）"
+  },
+  {
+    "word": "decide",
+    "pronunciation": "ディサイド",
+    "core_image": "選択肢に区切りをつける → 決める・決定する",
+    "parts": "decide to do（〜することを決める）／decide on A（Aに決める）。",
+    "related": [
+      "decision（決定）",
+      "choose（選ぶ）",
+      "determine（決定する）"
+    ],
+    "example": "We decided to start early.（私たちは早く始めることに決めた。）"
+  },
+  {
+    "word": "depend",
+    "pronunciation": "ディペンド",
+    "core_image": "何かを支え・条件として成り立つ → 頼る・〜次第である",
+    "parts": "depend on/upon（〜に頼る・〜次第である）。",
+    "related": [
+      "dependent（依存している）",
+      "rely（頼る）",
+      "independent（独立した）"
+    ],
+    "example": "The result depends on the weather.（結果は天候次第だ。）"
+  },
+  {
+    "word": "encourage",
+    "pronunciation": "エンカレッジ",
+    "core_image": "相手の気持ちを前向きに支える → 励ます・促す",
+    "parts": "encourage someone to do（人に〜するよう促す）。",
+    "related": [
+      "encouragement（励まし）",
+      "support（支援する）",
+      "motivate（動機づける）"
+    ],
+    "example": "My teacher encouraged me to ask questions.（先生は私に質問するよう促した。）"
+  },
+  {
+    "word": "expect",
+    "pronunciation": "イクスペクト",
+    "core_image": "先に起こることを見込む → 予期する・期待する",
+    "parts": "expect to do / expect that ... / expect A from B の形がある。",
+    "related": [
+      "expectation（期待・予想）",
+      "anticipate（予期する）",
+      "predict（予測する）"
+    ],
+    "example": "We expect the train to arrive soon.（列車はまもなく到着すると見込んでいる。）"
+  },
+  {
+    "word": "explain",
+    "pronunciation": "イクスプレイン",
+    "core_image": "わかるように筋道を明らかにする → 説明する",
+    "parts": "explain something to someone（人に物事を説明する）。",
+    "related": [
+      "explanation（説明）",
+      "clarify（明確にする）",
+      "describe（描写する）"
+    ],
+    "example": "Please explain your answer.（答えを説明してください。）"
+  },
+  {
+    "word": "follow",
+    "pronunciation": "フォロー",
+    "core_image": "前にあるものの後を進む → ついて行く・従う・理解する",
+    "parts": "follow instructions（指示に従う）／follow an argument（議論を理解する）。",
+    "related": [
+      "following（次の）",
+      "obey（従う）",
+      "trace（たどる）"
+    ],
+    "example": "Follow the instructions carefully.（指示に注意深く従ってください。）"
+  },
+  {
+    "word": "increase",
+    "pronunciation": "インクリース",
+    "core_image": "量や程度が上向きに大きくなる → 増える・増やす",
+    "parts": "increase in（〜の増加）／increase by（〜分増える）／increase to（〜まで増える）。",
+    "related": [
+      "growth（成長・増加）",
+      "raise（増やす・上げる）",
+      "decrease（減少する）"
+    ],
+    "example": "Sales increased by ten percent.（売上は10パーセント増加した。）"
+  },
+  {
+    "word": "manage",
+    "pronunciation": "マネージ",
+    "core_image": "状況や作業を扱い、うまく運ぶ → 管理する・何とかやり遂げる",
+    "parts": "manage to do（何とか〜する）／manage a team（チームを管理する）。",
+    "related": [
+      "management（管理）",
+      "handle（扱う）",
+      "succeed（成功する）"
+    ],
+    "example": "She managed to finish on time.（彼女は何とか時間内に終えた。）"
+  },
+  {
+    "word": "mean",
+    "pronunciation": "ミーン",
+    "core_image": "言葉や行為が何を指すかを示す → 意味する・意図する",
+    "parts": "mean to do（〜するつもりである）／mean that ...（〜を意味する）。",
+    "related": [
+      "meaning（意味）",
+      "intend（意図する）",
+      "signify（示す）"
+    ],
+    "example": "What does this word mean?（この単語はどういう意味ですか。）"
+  },
+  {
+    "word": "offer",
+    "pronunciation": "オファー",
+    "core_image": "相手が受け取れるものとして差し出す → 提供する・申し出る",
+    "parts": "offer someone something / offer to do（〜すると申し出る）。",
+    "related": [
+      "offer（申し出）",
+      "provide（提供する）",
+      "suggest（提案する）"
+    ],
+    "example": "They offered me a job.（彼らは私に仕事を提示した。）"
+  },
+  {
+    "word": "suggest",
+    "pronunciation": "サジェスト",
+    "core_image": "考えや選択肢を相手の前に差し出す → 提案する・示唆する",
+    "parts": "suggest doing / suggest that ... の形がある。",
+    "related": [
+      "suggestion（提案）",
+      "recommend（勧める）",
+      "imply（示唆する）"
+    ],
+    "example": "I suggest taking a short break.（少し休憩することを提案します。）"
   }
 ]
