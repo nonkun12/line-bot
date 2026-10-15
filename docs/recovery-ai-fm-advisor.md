@@ -42,3 +42,40 @@ The CLI obtains the decision from the deterministic controller; do not run it me
 inspect an existing incident because each invocation records a new failure. It is not
 connected to the hosted loop and requires a real newly observed incident on a Mac.
 Advice must be independently reviewed before any repair work.
+
+
+## Read-only diagnosis of an existing incident
+
+Use `scripts/recovery_ai_mac_diagnostic.py` to inspect an incident already recorded
+by the distributed loop. Unlike `recovery_ai_local_advisor`, this command does **not**
+record a new failure or increment counters. It accepts either a standalone
+RecoveryStore JSON file or the durable `.autonomous-loop-state.json` envelope and
+extracts its `recovery_ai` section in memory only.
+
+From a repository clone, first fetch the durable state branch without changing the
+working tree or pushing anything:
+
+```bash
+git fetch --no-tags origin refs/heads/autonomous-loop-state:refs/remotes/origin/autonomous-loop-state
+git show refs/remotes/origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/autonomous-loop-state.json
+```
+
+The exported file is a local diagnostic copy. Do not commit or upload it; it may contain
+operational state. Then run the read-only diagnostic, replacing `example-task` with an
+existing task ID:
+
+```bash
+python -m scripts.recovery_ai_mac_diagnostic \
+  --state-file /tmp/autonomous-loop-state.json \
+  --task-id example-task
+```
+
+The result reports the incident's `updated_at` value when available. Missing files,
+invalid JSON, or unsupported schemas return `ERROR` with exit code 2. `SKIPPED` means
+the incident is absent, held, not allowlisted, or outside the bounded advisory budget;
+it does not mean the underlying task succeeded.
+
+This diagnostic is not connected to LINE or the hosted distributed loop. It does not
+apply suggestions, run commands, modify state, resume held tasks, patch, merge, or deploy.
+Keep `AUTO_APPLY_PATCH=false` and `AUTO_DEPLOY=false`. The separate
+`recovery_ai_local_advisor` CLI records a new failure, so never use it for a status check.
