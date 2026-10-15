@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pytest
 
 from scripts.replenish_autonomous_task_queue import build_queue
@@ -32,20 +29,13 @@ def test_rebuild_fills_queue_from_only_allowlisted_deterministic_targets():
     assert all(len(task["allowed_paths"]) == 1 for task in rebuilt["tasks"])
 
 
-@pytest.mark.parametrize("target", [
-    "../secrets.env",
-    "/tmp/unsafe.py",
-    "scripts/deploy.py",
-    "tests/../../secrets.env",
-])
 def test_rebuild_excludes_completed_ids_and_keeps_new_eligible_tasks():
-    existing = {"tasks": []}
     targets = {
         "already-done": "tests/test_done.py",
         "new-task": "tests/test_new.py",
     }
 
-    rebuilt = build_queue(existing, targets, completed_ids={"already-done"})
+    rebuilt = build_queue({"tasks": []}, targets, completed_ids={"already-done"})
 
     assert [task["id"] for task in rebuilt["tasks"]] == ["new-task"]
 
@@ -62,6 +52,12 @@ def test_rebuild_returns_empty_queue_when_every_catalog_task_is_completed():
     assert rebuilt["max_tasks_per_run"] == 4
 
 
+@pytest.mark.parametrize("target", [
+    "../secrets.env",
+    "/tmp/unsafe.py",
+    "scripts/deploy.py",
+    "tests/../../secrets.env",
+])
 def test_rebuild_rejects_paths_outside_test_allowlist(target):
     with pytest.raises(ValueError):
         build_queue({"tasks": []}, {"unsafe-task": target})
@@ -79,7 +75,6 @@ def test_rebuild_rejects_duplicate_existing_ids():
 def test_rebuild_fails_closed_on_empty_catalog():
     with pytest.raises(ValueError, match="empty"):
         build_queue({"tasks": []}, {})
-
 
 
 def test_queue_empty_classifies_as_not_run_not_success():
