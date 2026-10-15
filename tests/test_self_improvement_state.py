@@ -75,7 +75,7 @@ def test_import_export_round_trip_is_sanitized_and_does_not_duplicate(tmp_path):
                 "kind": "repair",
                 "task_id": "task-2",
                 "detail": "raw exception with private data",
-            }) + "\\n")
+            }) + "\n")
         sys.argv = ["self_improvement_state.py", "export", "--state", str(state), "--history", str(history)]
         assert main() == 0
     finally:
