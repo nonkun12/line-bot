@@ -89,3 +89,76 @@ def test_builder_rejects_duplicate_queue_entries(tmp_path, monkeypatch):
         assert "duplicate candidate" in str(exc)
     else:
         raise AssertionError("duplicate candidate queue must fail closed")
+
+
+def test_builder_validates_candidates_after_batch_boundary(tmp_path, monkeypatch):
+    builder = _load_builder()
+    module_path = tmp_path / "core_image.py"
+    queue_path = tmp_path / "candidates.json"
+    module_path.write_text(
+        'from dataclasses import dataclass\\n'
+        '@dataclass(frozen=True)\\n'
+        'class WordEntry:\\n'
+        '    word: str\\n'
+        '    pronunciation: str\\n'
+        '    core_image: str\\n'
+        '    parts: str\\n'
+        '    related: tuple[str, ...]\\n'
+        '    example: str\\n'
+        '    note: str = ""\\n'
+        '_ENTRIES: dict[str, WordEntry] = {}\\n',
+        encoding="utf-8",
+    )
+    # The invalid duplicate is intentionally after batch_size=1.
+    queue_path.write_text(
+        json.dumps([_candidate("first"), _candidate("later"), _candidate("later")], ensure_ascii=False),
+        encoding="utf-8",
+    )
+    original = module_path.read_text(encoding="utf-8")
+    monkeypatch.setattr(builder, "MODULE", module_path)
+    monkeypatch.setattr(builder, "QUEUE", queue_path)
+    monkeypatch.setattr("sys.argv", ["builder", "--batch-size", "1"])
+
+    try:
+        builder.main()
+    except ValueError as exc:
+        assert "duplicate candidate" in str(exc)
+    else:
+        raise AssertionError("the entire queue must be validated before selecting a batch")
+    assert module_path.read_text(encoding="utf-8") == original
+
+
+def test_builder_reports_dictionary_and_candidate_counts_when_queue_is_exhausted(
+    tmp_path, monkeypatch, capsys
+):
+    builder = _load_builder()
+    module_path = tmp_path / "core_image.py"
+    queue_path = tmp_path / "candidates.json"
+    module_path.write_text(
+        'from dataclasses import dataclass\\n'
+        '@dataclass(frozen=True)\\n'
+        'class WordEntry:\\n'
+        '    word: str\\n'
+        '    pronunciation: str\\n'
+        '    core_image: str\\n'
+        '    parts: str\\n'
+        '    related: tuple[str, ...]\\n'
+        '    example: str\\n'
+        '    note: str = ""\\n'
+        '_ENTRIES: dict[str, WordEntry] = {\\n'
+        '    "already": WordEntry(word="already", pronunciation="x", core_image="x", parts="x", related=("x", "y"), example="x"),\\n'
+        '}\\n',
+        encoding="utf-8",
+    )
+    queue_path.write_text(json.dumps([_candidate("already")], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(builder, "MODULE", module_path)
+    monkeypatch.setattr(builder, "QUEUE", queue_path)
+    monkeypatch.setattr("sys.argv", ["builder", "--batch-size", "1"])
+
+    assert builder.main() == 0
+    output = capsys.readouterr().out
+    assert "DICTIONARY_COUNT=1" in output
+    assert "CANDIDATE_QUEUE_COUNT=1" in output
+    assert "ELIGIBLE_CANDIDATES=0" in output
+    assert "TARGET_REMAINING=999" in output
+    assert "NO_CHANGE: queue_exhausted_no_new_reviewed_candidates" in output
