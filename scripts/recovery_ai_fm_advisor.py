@@ -91,16 +91,14 @@ def diagnose(
         "failing_tests": _safe_tests(failing_tests),
     }
     prompt = (
-        "Diagnose this sanitized Recovery AI incident metadata. Do not infer "
-        "details not present.\n"
+        _INSTRUCTIONS
+        + "\nDiagnose this sanitized Recovery AI incident metadata. Do not infer "
+        "details not present. Return only the required JSON object.\n"
         + json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     )
     try:
         completed = subprocess.run(
-            [
-                binary, "respond", "--no-stream", "--greedy",
-                "--instructions", _INSTRUCTIONS,
-            ],
+            [binary, "respond"],
             input=prompt,
             capture_output=True,
             text=True,
