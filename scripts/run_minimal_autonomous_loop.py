@@ -507,10 +507,14 @@ def main() -> int:
         queued_tasks = load_tasks()
         tasks = [task for task in queued_tasks if task["id"] not in completed]
 
-    # Freeze the catalog before filtering completed/held tasks. The Control Tower
-    # adapter authorizes exact catalog definitions only; generated model text is
-    # never a source of task IDs, instructions, or allowed paths.
-    registered_catalog = list(tasks)
+    # Snapshot each task definition independently before selection. A shallow
+    # list copy would share mutable task dictionaries (and allowed_paths lists),
+    # allowing an in-memory mutation to alter both the task and its "catalog".
+    # This snapshot detects later mutation; it is not a separately signed catalog.
+    registered_catalog = [
+        {**task, "allowed_paths": list(task["allowed_paths"])}
+        for task in tasks
+    ]
 
     # Recovery state is read before selection so tasks already held after repeated
     # failures cannot be run again automatically on the next scheduled invocation.
