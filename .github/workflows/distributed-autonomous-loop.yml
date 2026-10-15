@@ -371,7 +371,7 @@ jobs:
           exit "$loop_rc"
 
       - name: Export sanitized Recovery RAG history
-        if: success()
+        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
         env:
           RECOVERY_RAG_DB_PATH: /tmp/recovery-rag.sqlite3
           RECOVERY_RAG_NAMESPACE: distributed-loop
