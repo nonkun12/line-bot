@@ -76,16 +76,26 @@ class ControlTowerDecisionRecord:
         elif self.task_template_id is not None:
             raise ValueError("only task selection may name a task template")
 
-    def execution_eligible(self, registered_task_ids: Collection[str]) -> bool:
+    def execution_eligible(
+        self,
+        registered_task_ids: Collection[str],
+        current_head_sha: str,
+    ) -> bool:
         """Return whether policy may consider this task; never executes it.
 
-        Exact membership in the caller's trusted registry is mandatory. A model
-        response or this record alone cannot add a task to that registry.
+        Exact registry membership and an exact match to the observed HEAD are
+        mandatory. Invalid caller inputs fail closed rather than raising.
         """
+        if not isinstance(registered_task_ids, Collection) or isinstance(
+            registered_task_ids, (str, bytes)
+        ):
+            return False
+        if not isinstance(current_head_sha, str) or not _SHA_RE.fullmatch(current_head_sha):
+            return False
         return (
             self.next_action == "SELECT_REGISTERED_TASK"
             and self.gate_status == "PASS"
-            and self.evidence_sha is not None
+            and self.evidence_sha == current_head_sha
             and self.task_template_id is not None
             and self.task_template_id in registered_task_ids
         )
