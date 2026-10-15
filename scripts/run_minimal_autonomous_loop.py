@@ -623,8 +623,23 @@ def main() -> int:
                 "reason": "state_persistence_failed",
             }
 
+        # Control Tower is a post-run observer here, not an execution approver.
+        # Preserve the task result if observation fails; record only a sanitized
+        # failure marker so reviewer/provider errors cannot erase loop evidence.
+        try:
+            from scripts.control_tower_loop_observer import record_loop_observation
+            result["control_tower"] = record_loop_observation(
+                args.state.parent / "control-tower-observations.jsonl", result
+            )
+        except Exception:
+            result["control_tower"] = {
+                "recorded": False,
+                "reason": "observation_or_persistence_failed",
+                "proposal_executable": False,
+            }
+
         with args.results.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(result, ensure_ascii=False) + "\n")
+            fh.write(json.dumps(result, ensure_ascii=False) + "\\n")
 
         if recovery_error:
             print(
