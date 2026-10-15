@@ -456,7 +456,7 @@ def explain_core_image(word: str) -> str:
 
 def handle_core_image_command(message: str) -> str | None:
     """Return a response for an explicit command, or None if not a match."""
-    normalized = re.sub(r"\\s+", " ", str(message or "").strip()).casefold()
+    normalized = re.sub(r"\s+", " ", str(message or "").strip()).casefold()
     # A dedicated smoke-test command must not fall through to the generic
     # vocabulary lesson merely because it contains the word 英単語.
     if normalized in {"英単語コアイメージ テスト", "コアイメージ テスト", "core image test"}:
