@@ -3,10 +3,59 @@
   "max_tasks_per_run": 4,
   "tasks": [
     {
-      "id": "router-regression-general-request-metadata",
-      "instruction": "tests/test_management_router.py に、曖昧な一般依頼を GENERAL に振り分けたとき、routing=deterministic・matched_specialists=[]・routing_priority=null を保ち、channel='line' と metadata.source を失わない回帰テストを1件追加してください。新しい固有のテスト名を使い、既存テストと重複させず、テストファイルのみ変更してください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "id": "ai-speaker-empty-transcript-no-brain-call",
+      "instruction": "tests/test_ai_speaker.py のみに新しい固有名の回帰テストを1件追加してください。空白だけの文字起こしを渡すと AISpeaker.handle_transcript が ValueError('speech transcript must not be empty') を返し、FakeBrain.requests が空のままであることを確認してください。既存テストを変更せず、変更は指定されたテストファイル1つだけにしてください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
       "allowed_paths": [
-        "tests/test_management_router.py"
+        "tests/test_ai_speaker.py"
+      ]
+    },
+    {
+      "id": "hand-sign-uhip-contract-iphone-camera",
+      "instruction": "Run the deterministic regression-test plan registered for task ID hand-sign-uhip-contract-iphone-camera. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "uhip/tests/test_schema_contracts.py"
+      ]
+    },
+    {
+      "id": "hand-sign-uhip-contract-left-hand",
+      "instruction": "Run the deterministic regression-test plan registered for task ID hand-sign-uhip-contract-left-hand. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "uhip/tests/test_schema_contracts.py"
+      ]
+    },
+    {
+      "id": "hand-sign-uhip-contract-negative-confidence",
+      "instruction": "Run the deterministic regression-test plan registered for task ID hand-sign-uhip-contract-negative-confidence. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "uhip/tests/test_schema_contracts.py"
+      ]
+    },
+    {
+      "id": "hand-sign-uhip-contract-phase-start",
+      "instruction": "Run the deterministic regression-test plan registered for task ID hand-sign-uhip-contract-phase-start. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "uhip/tests/test_schema_contracts.py"
+      ]
+    },
+    {
+      "id": "hand-sign-uhip-contract-test",
+      "instruction": "Run the deterministic regression-test plan registered for task ID hand-sign-uhip-contract-test. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "uhip/tests/test_schema_contracts.py"
+      ]
+    },
+    {
+      "id": "hand-sign-uhip-contract-unknown-hand-label",
+      "instruction": "Run the deterministic regression-test plan registered for task ID hand-sign-uhip-contract-unknown-hand-label. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "uhip/tests/test_schema_contracts.py"
+      ]
+    },
+    {
+      "id": "macos-readiness-audit-no-secret-leak",
+      "instruction": "Run the deterministic regression-test plan registered for task ID macos-readiness-audit-no-secret-leak. Only modify tests/test_macos_kanban_obsidian_readiness.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_macos_kanban_obsidian_readiness.py"
       ]
     },
     {
@@ -24,11 +73,82 @@
       ]
     },
     {
-      "id": "ai-speaker-empty-transcript-no-brain-call",
-      "instruction": "tests/test_ai_speaker.py のみに新しい固有名の回帰テストを1件追加してください。空白だけの文字起こしを渡すと AISpeaker.handle_transcript が ValueError('speech transcript must not be empty') を返し、FakeBrain.requests が空のままであることを確認してください。既存テストを変更せず、変更は指定されたテストファイル1つだけにしてください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "id": "router-regression-casefold-english",
+      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-casefold-english. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
       "allowed_paths": [
-        "tests/test_ai_speaker.py"
+        "tests/test_management_router.py"
+      ]
+    },
+    {
+      "id": "router-regression-english-casefold",
+      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-english-casefold. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
+    },
+    {
+      "id": "router-regression-fullwidth-market",
+      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-fullwidth-market. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
+    },
+    {
+      "id": "router-regression-general-request-metadata",
+      "instruction": "tests/test_management_router.py に、曖昧な一般依頼を GENERAL に振り分けたとき、routing=deterministic・matched_specialists=[]・routing_priority=null を保ち、channel='line' と metadata.source を失わない回帰テストを1件追加してください。新しい固有のテスト名を使い、既存テストと重複させず、テストファイルのみ変更してください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
+    },
+    {
+      "id": "router-regression-jobs-market-metadata",
+      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-jobs-market-metadata. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
+    },
+    {
+      "id": "router-regression-market-channel-metadata",
+      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-market-channel-metadata. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
+    },
+    {
+      "id": "router-regression-mixed-specialists",
+      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-mixed-specialists. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
+    },
+    {
+      "id": "router-regression-stock-jobs-priority",
+      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-stock-jobs-priority. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
+    },
+    {
+      "id": "router-regression-whitespace",
+      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-whitespace. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
+    },
+    {
+      "id": "uhip-confidence-boundary-acceptance",
+      "instruction": "Run the deterministic regression-test plan registered for task ID uhip-confidence-boundary-acceptance. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "uhip/tests/test_schema_contracts.py"
+      ]
+    },
+    {
+      "id": "uhip-confidence-out-of-range-rejection",
+      "instruction": "Run the deterministic regression-test plan registered for task ID uhip-confidence-out-of-range-rejection. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "allowed_paths": [
+        "uhip/tests/test_schema_contracts.py"
       ]
     }
-  ]
+  ],
+  "catalog_source": "reviewed deterministic target allowlist"
 }
