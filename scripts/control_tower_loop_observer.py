@@ -87,7 +87,7 @@ def record_loop_observation(
     try:
         with temp_path.open("w", encoding="utf-8") as handle:
             for item in records[-_MAX_HISTORY:]:
-                handle.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\\n")
+                handle.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n")
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_path, history_path)
