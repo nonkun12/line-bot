@@ -66,6 +66,25 @@ def test_control_tower_does_not_run_creator_critic_without_proposal() -> None:
     assert called is False
 
 
+def test_control_tower_preserves_proposal_when_reviewer_raises() -> None:
+    def broken_model(_prompt: str) -> str:
+        raise RuntimeError("provider error may contain sensitive details")
+
+    tower = ControlTower(
+        creator_critic=build_creator_critic_loop(model_call=broken_model, max_iterations=1)
+    )
+    decision = tower.observe(
+        RuntimeReport((), failed_task_id="tester-1", error="pytest failed", rounds=1),
+        objective="reduce autonomous test failures",
+    )
+
+    assert decision.proposal is not None
+    assert decision.review_error == "RuntimeError"
+    assert decision.duel == ()
+    assert decision.approved_for_pipeline is False
+    assert decision.approved_task is None
+
+
 def test_report_evidence_fails_closed_and_accepts_explicit_measurements() -> None:
     failed = RuntimeReport((), failed_task_id="t1", error="boom", rounds=1)
     evidence = _report_evidence(failed, {"accuracy": 0.9})
