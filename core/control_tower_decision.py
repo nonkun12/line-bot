@@ -6,10 +6,10 @@ Callers must independently validate the evidence SHA and registered task ID.
 """
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 import math
 import re
-from collections.abc import Collection
 
 
 VALID_GATE_STATUSES = frozenset({"PASS", "BLOCKED", "NOT_RUN"})
@@ -48,7 +48,7 @@ class ControlTowerDecisionRecord:
     task_template_id: str | None = None
 
     def __post_init__(self) -> None:
-        if self.reason_code not in VALID_REASON_CODES:
+        if not isinstance(self.reason_code, str) or self.reason_code not in VALID_REASON_CODES:
             raise ValueError("reason_code is not allowlisted")
         if isinstance(self.confidence, bool) or not isinstance(self.confidence, (int, float)):
             raise ValueError("confidence must be numeric")
@@ -56,14 +56,16 @@ class ControlTowerDecisionRecord:
             raise ValueError("confidence must be finite and between 0 and 1")
         if isinstance(self.priority, bool) or not isinstance(self.priority, int) or not 0 <= self.priority <= 100:
             raise ValueError("priority must be an integer between 0 and 100")
-        if self.next_action not in VALID_NEXT_ACTIONS:
+        if not isinstance(self.next_action, str) or self.next_action not in VALID_NEXT_ACTIONS:
             raise ValueError("next_action is not allowlisted")
-        if self.gate_status not in VALID_GATE_STATUSES:
+        if not isinstance(self.gate_status, str) or self.gate_status not in VALID_GATE_STATUSES:
             raise ValueError("gate_status is not allowlisted")
-        if self.evidence_sha is not None and not _SHA_RE.fullmatch(self.evidence_sha):
-            raise ValueError("evidence_sha must be a 40-character lowercase SHA")
-        if self.task_template_id is not None and not _TASK_ID_RE.fullmatch(self.task_template_id):
-            raise ValueError("task_template_id is invalid")
+        if self.evidence_sha is not None:
+            if not isinstance(self.evidence_sha, str) or not _SHA_RE.fullmatch(self.evidence_sha):
+                raise ValueError("evidence_sha must be a 40-character lowercase SHA")
+        if self.task_template_id is not None:
+            if not isinstance(self.task_template_id, str) or not _TASK_ID_RE.fullmatch(self.task_template_id):
+                raise ValueError("task_template_id is invalid")
         if self.next_action == "SELECT_REGISTERED_TASK":
             if self.gate_status != "PASS":
                 raise ValueError("task selection requires a PASS gate")
