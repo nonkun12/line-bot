@@ -57,7 +57,8 @@ class ReadOnlyMacDiagnosticTests(unittest.TestCase):
             store.record_failure("task-1", "test_regression")
             advisor = Mock()
             result = diagnose_existing_incident(store, "task-1", advisor=advisor)
-            self.assertEqual(result["reason"], "repair_budget_not_available")
+            self.assertEqual(result["reason"], "incident_held_or_failure_limit")
+            self.assertEqual(result["status"], "SKIPPED")
             advisor.assert_not_called()
 
 
