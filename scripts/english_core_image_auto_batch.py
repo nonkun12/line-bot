@@ -68,8 +68,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch-size", type=int, default=20)
     args = parser.parse_args()
-    if args.batch_size < 1 or args.batch_size > 100:
-        parser.error("--batch-size must be between 1 and 100")
+    if args.batch_size < 1 or args.batch_size > 25:
+        parser.error("--batch-size must be between 1 and 25")
 
     source = MODULE.read_text(encoding="utf-8")
     existing, dict_end_line = load_existing(source)
