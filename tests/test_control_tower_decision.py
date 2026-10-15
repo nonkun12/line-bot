@@ -19,9 +19,9 @@ def test_registered_task_selection_requires_pass_and_evidence() -> None:
         task_template_id="router-regression",
     )
 
-    assert decision.execution_eligible({"router-regression"})
-    assert not decision.execution_eligible({"other-registered-task"})
-    assert not decision.execution_eligible(set())
+    assert decision.execution_eligible({"router-regression"}, VALID_SHA)
+    assert not decision.execution_eligible({"other-registered-task"}, VALID_SHA)
+    assert not decision.execution_eligible(set(), VALID_SHA)
 
 
 @pytest.mark.parametrize(
@@ -103,7 +103,7 @@ def test_queue_empty_can_only_be_recorded_as_not_run_without_task() -> None:
         evidence_sha=VALID_SHA,
     )
 
-    assert not decision.execution_eligible({"any-registered-task"})
+    assert not decision.execution_eligible({"any-registered-task"}, VALID_SHA)
 
 
 @pytest.mark.parametrize(
@@ -128,3 +128,35 @@ def test_malformed_field_types_fail_closed(overrides: dict[str, object]) -> None
 
     with pytest.raises(ValueError):
         ControlTowerDecisionRecord(**fields)  # type: ignore[arg-type]
+
+
+def test_execution_eligibility_requires_exact_current_head_sha() -> None:
+    decision = ControlTowerDecisionRecord(
+        reason_code="evidence_sufficient",
+        confidence=0.9,
+        priority=50,
+        next_action="SELECT_REGISTERED_TASK",
+        gate_status="PASS",
+        evidence_sha=VALID_SHA,
+        task_template_id="safe-template",
+    )
+
+    assert decision.execution_eligible({"safe-template"}, VALID_SHA)
+    assert not decision.execution_eligible({"safe-template"}, "b" * 40)
+    assert not decision.execution_eligible({"safe-template"}, "")
+    assert not decision.execution_eligible({"safe-template"}, None)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("registry", [None, "safe-template", 123])
+def test_execution_eligibility_rejects_malformed_registry(registry: object) -> None:
+    decision = ControlTowerDecisionRecord(
+        reason_code="evidence_sufficient",
+        confidence=0.9,
+        priority=50,
+        next_action="SELECT_REGISTERED_TASK",
+        gate_status="PASS",
+        evidence_sha=VALID_SHA,
+        task_template_id="safe-template",
+    )
+
+    assert not decision.execution_eligible(registry, VALID_SHA)  # type: ignore[arg-type]
