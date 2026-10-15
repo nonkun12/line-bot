@@ -111,10 +111,10 @@ class SelfImprovementHistory:
     def _read_records(self) -> list[dict[str, object]]:
         if not self.path.exists():
             return []
-        try:
-            lines = self.path.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            return []
+        # Never treat an unreadable existing history as empty: append() would
+        # otherwise replace it with a truncated history and silently lose memory.
+        # Propagate I/O errors so callers fail closed before any write occurs.
+        lines = self.path.read_text(encoding="utf-8").splitlines()
         records: list[dict[str, object]] = []
         for line in lines[-self.max_records:]:
             try:
