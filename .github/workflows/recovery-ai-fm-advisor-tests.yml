@@ -8,9 +8,11 @@ on:
       - "scripts/recovery_ai_fm_advisor.py"
       - "scripts/recovery_ai_local_advisor.py"
       - "scripts/recovery_ai_loop_adapter.py"
+      - "scripts/recovery_ai_mac_diagnostic.py"
       - "tests/test_recovery_ai_fm_advisor.py"
       - "tests/test_recovery_ai_local_advisor.py"
       - "tests/test_recovery_ai_loop_adapter.py"
+      - "tests/test_recovery_ai_mac_diagnostic.py"
       - ".github/workflows/recovery-ai-fm-advisor-tests.yml"
   workflow_dispatch:
 
@@ -40,3 +42,4 @@ jobs:
           tests/test_recovery_ai_fm_advisor.py
           tests/test_recovery_ai_local_advisor.py
           tests/test_recovery_ai_loop_adapter.py
+          tests/test_recovery_ai_mac_diagnostic.py
