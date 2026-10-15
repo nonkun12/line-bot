@@ -189,3 +189,39 @@ def test_rag_storage_failure_does_not_change_recovery_ai_decision(tmp_path, monk
 
     assert outcome["decision"]["action"] == "REPAIR_ONCE"
     assert outcome["recovery_rag"] == {"recorded": False, "error": "OSError"}
+
+
+@pytest.mark.parametrize("failure_reason", [
+    "control_tower_gate:task_definition_mismatch",
+    "control_tower_head_changed",
+])
+def test_preflight_blocked_does_not_increment_recovery_failure_streak(tmp_path, failure_reason):
+    path = tmp_path / "recovery.json"
+    store = RecoveryStore(path)
+    store.record_failure("task-a", "timeout")
+    before = store.task_status("task-a")
+
+    outcome = record_loop_outcome(path, {
+        "task_id": "task-a",
+        "status": "BLOCKED",
+        "exit_code": 1,
+        "failure_reason": failure_reason,
+    })
+
+    assert outcome == {
+        "recorded": False,
+        "reason": "preflight_blocked_not_task_failure",
+    }
+    assert store.task_status("task-a") == before
+
+
+def test_real_task_failure_still_increments_recovery_failure_streak(tmp_path):
+    path = tmp_path / "recovery.json"
+    outcome = record_loop_outcome(path, {
+        "task_id": "task-a",
+        "status": "FAIL",
+        "exit_code": 1,
+        "failure_reason": "task_runtime_failed",
+    })
+    assert outcome["recorded"] is True
+    assert outcome["decision"]["consecutive_failures"] == 1

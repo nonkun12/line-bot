@@ -296,11 +296,30 @@ def _deterministic_target_for_task(task: dict[str, object]) -> str | None:
     return expected_target
 
 
-def run_task(task: dict[str, object], run_index: int, stop_file: Path, summary_dir: Path = Path("/tmp")) -> dict[str, object]:
+def run_task(
+    task: dict[str, object],
+    run_index: int,
+    stop_file: Path,
+    summary_dir: Path = Path("/tmp"),
+    *,
+    expected_base_sha: str | None = None,
+) -> dict[str, object]:
     summary = summary_dir / f"minimal-autonomous-{task['id']}.json"
     run_nonce = uuid.uuid4().hex
     start_time = datetime.now(timezone.utc)
     base_sha = _git_head()
+    if expected_base_sha is not None and base_sha != expected_base_sha:
+        return {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "run_index": run_index,
+            "task_id": task["id"],
+            "run_nonce": run_nonce,
+            "status": "BLOCKED",
+            "exit_code": 1,
+            "base_sha": expected_base_sha,
+            "produced_sha": base_sha,
+            "failure_reason": "control_tower_head_changed",
+        }
     env = os.environ.copy()
     if _deterministic_target_for_task(task) is not None:
         # Do not expose provider credentials to deterministic test-only tasks.
@@ -488,6 +507,15 @@ def main() -> int:
         queued_tasks = load_tasks()
         tasks = [task for task in queued_tasks if task["id"] not in completed]
 
+    # Snapshot each task definition independently before selection. A shallow
+    # list copy would share mutable task dictionaries (and allowed_paths lists),
+    # allowing an in-memory mutation to alter both the task and its "catalog".
+    # This snapshot detects later mutation; it is not a separately signed catalog.
+    registered_catalog = [
+        {**task, "allowed_paths": list(task["allowed_paths"])}
+        for task in tasks
+    ]
+
     # Recovery state is read before selection so tasks already held after repeated
     # failures cannot be run again automatically on the next scheduled invocation.
     from scripts.recovery_ai import RecoveryStore
@@ -549,8 +577,38 @@ def main() -> int:
             print(f"MINIMAL_LOOP=STOPPED before task={task['id']}")
             return 1
 
-        print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
-        result = run_task(task, index, args.stop_file)
+        # Control Tower preflight: exact registered definition + current HEAD.
+        # The SHA is passed into run_task and rechecked before process creation
+        # to close the validation/launch race. Failure blocks this run closed.
+        control_tower_head = _git_head()
+        try:
+            from scripts.control_tower_loop_adapter import authorize_registered_task
+            authorized, authorization_reason = authorize_registered_task(
+                task, registered_catalog, control_tower_head
+            )
+        except Exception:
+            authorized, authorization_reason = False, "control_tower_adapter_error"
+
+        if not authorized:
+            result = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "run_index": index,
+                "task_id": task["id"],
+                "status": "BLOCKED",
+                "exit_code": 1,
+                "base_sha": control_tower_head,
+                "produced_sha": _git_head(),
+                "failure_reason": f"control_tower_gate:{authorization_reason}",
+            }
+            print(
+                f"MINIMAL_LOOP=HALT task={task['id']} reason=control_tower_gate",
+                flush=True,
+            )
+        else:
+            print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
+            result = run_task(
+                task, index, args.stop_file, expected_base_sha=control_tower_head
+            )
         recovery_error = False
         try:
             from scripts.recovery_ai_loop_adapter import record_loop_outcome
@@ -567,6 +625,21 @@ def main() -> int:
             result["recovery_ai"] = {
                 "recorded": False,
                 "reason": "state_persistence_failed",
+            }
+
+        # Control Tower is a post-run observer here, not an execution approver.
+        # Preserve the task result if observation fails; record only a sanitized
+        # failure marker so reviewer/provider errors cannot erase loop evidence.
+        try:
+            from scripts.control_tower_loop_observer import record_loop_observation
+            result["control_tower"] = record_loop_observation(
+                args.state.parent / "control-tower-observations.jsonl", result
+            )
+        except Exception:
+            result["control_tower"] = {
+                "recorded": False,
+                "reason": "observation_or_persistence_failed",
+                "proposal_executable": False,
             }
 
         with args.results.open("a", encoding="utf-8") as fh:

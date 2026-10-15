@@ -235,15 +235,15 @@ def test_main_halts_after_first_failure(monkeypatch, tmp_path: Path):
     queue = tmp_path / "queue.json"
     queue.write_text('{"max_tasks_per_run": 3}', encoding="utf-8")
     monkeypatch.setattr(loop, "QUEUE", queue)
-    monkeypatch.setattr(
-        loop,
-        "run_task",
-        lambda task, index, stop_file: {
+    def fake_run_task(task, index, stop_file, *, expected_base_sha=None):
+        assert isinstance(expected_base_sha, str) and len(expected_base_sha) == 40
+        return {
             "task_id": task["id"],
             "status": "FAIL",
             "exit_code": 1,
-        },
-    )
+        }
+
+    monkeypatch.setattr(loop, "run_task", fake_run_task)
     monkeypatch.setattr(loop.sys, "argv", ["loop", "--max-tasks", "2", "--state", str(tmp_path / "loop-state.json"), "--results", str(tmp_path / "results.jsonl")])
     assert loop.main() == 1
     lines = (tmp_path / "results.jsonl").read_text(encoding="utf-8").splitlines()
