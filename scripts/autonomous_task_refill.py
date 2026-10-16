@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 
 TASK_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,99}$")
-FORBIDDEN_PREFIXES = (".github/workflows/", "secrets/", ".env", "config/production")
+ALLOWED_TEST_PATH = re.compile(r"^(tests|uhip/tests)/test_[A-Za-z0-9_]+\.py$")
 
 
 def read_json(path: Path) -> dict:
@@ -42,20 +42,7 @@ def _validate_task(task: object) -> dict:
         raise ValueError("invalid allowed_paths")
     clean_paths = []
     for path in paths:
-        if (
-            not isinstance(path, str)
-            or not path
-            or path.startswith("/")
-            or "\\" in path
-            or re.match(r"^[A-Za-z]:", path)
-            or any(ord(char) < 32 for char in path)
-        ):
-            raise ValueError("invalid allowed path")
-        # Reject empty/dot components and traversal in addition to parent traversal.
-        parts = path.split("/")
-        if any(part in {"", ".", ".."} for part in parts):
-            raise ValueError("forbidden allowed path")
-        if any(path.startswith(prefix) for prefix in FORBIDDEN_PREFIXES):
+        if not isinstance(path, str) or not ALLOWED_TEST_PATH.fullmatch(path):
             raise ValueError("forbidden allowed path")
         clean_paths.append(path)
     return {"id": task_id, "instruction": instruction.strip(), "allowed_paths": clean_paths}
