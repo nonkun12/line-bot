@@ -77,6 +77,7 @@ def test_enqueue_allows_new_job_after_previous_job_is_terminal(monkeypatch):
     monkeypatch.setattr("core.local_review_jobs.get_conn", lambda: conn)
     first = enqueue_local_review("U1", "nonkun12/line-bot", BASE, HEAD)
     conn.execute("UPDATE jobs SET status='failed' WHERE id=?", (first,))
+    conn.commit()
     second = enqueue_local_review("U1", "nonkun12/line-bot", BASE, HEAD)
     assert second != first
     assert conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 2
