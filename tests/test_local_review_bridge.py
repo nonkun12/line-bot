@@ -144,3 +144,12 @@ def test_not_run_completes_as_failure_not_success(client, monkeypatch):
     assert stored["status"] == "NOT_RUN"
     assert stored["base_sha"] == BASE
     assert stored["head_sha"] == HEAD
+
+
+def test_complete_rejects_unhashable_status_without_server_error(client):
+    response = client.post(
+        "/api/local-review/complete",
+        headers=auth(),
+        json={"job_id": 23, "claim_token": "claim-secret", "status": [], "reason": "bad type"},
+    )
+    assert response.status_code == 400
