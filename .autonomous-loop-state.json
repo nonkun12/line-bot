@@ -22,7 +22,9 @@
     "recovery-ai-loop-adapter-durable-state-readback",
     "recovery-ai-state-isolation",
     "ai-speaker-empty-transcript-no-brain-call",
-    "loop-deterministic-nochange-focused-test"
+    "loop-deterministic-nochange-focused-test",
+    "router-general-channel-metadata-regression",
+    "obsidian-bridge-invalid-job-id-regression"
   ],
   "recovery_ai": {
     "checkpoint": null,
