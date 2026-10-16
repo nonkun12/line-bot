@@ -30,6 +30,21 @@ def test_deterministic_target_resolves_when_project_root_is_not_on_sys_path(monk
     assert root_text in loop.sys.path
 
 
+def test_produced_head_rejects_traversal_allowed_paths(monkeypatch):
+    monkeypatch.setattr(loop, "_git_head", lambda: "b" * 40)
+    monkeypatch.setattr(loop, "_git_checked", lambda *args: (0, "tests/test_a.py"))
+    for path in ("../tests/test_a.py", "tests/../core/x.py", "/tmp/x.py", "tests\\\\test_a.py"):
+        assert loop._verify_produced_head("a" * 40, "b" * 40, [path]) == (False, "allowed_paths_invalid")
+
+
+def test_produced_head_requires_exact_file_allowlist(monkeypatch):
+    monkeypatch.setattr(loop, "_git_head", lambda: "b" * 40)
+    monkeypatch.setattr(loop, "_git_checked", lambda *args: (0, "tests/sub/test_a.py"))
+    assert loop._verify_produced_head("a" * 40, "b" * 40, ["tests"]) == (False, "diff_outside_allowed_paths")
+    monkeypatch.setattr(loop, "_git_checked", lambda *args: (0, "tests/test_a.py"))
+    assert loop._verify_produced_head("a" * 40, "b" * 40, ["tests/test_a.py"]) == (True, "")
+
+
 def test_kill_switch_env(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("AUTONOMOUS_LOOP_STOP", "true")
     assert stopped(tmp_path / "missing-stop-file")
