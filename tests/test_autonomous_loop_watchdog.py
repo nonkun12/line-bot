@@ -196,7 +196,9 @@ def test_audit_row_outcome_requires_valid_base_and_produced_shas():
     valid = "a" * 40
     for field in ("base_sha", "produced_sha"):
         for value in ("", "1234", "g" * 40):
-            ok, reason = audit_row_outcome(FakeSheetsClient([HEADERS, _audit_row(base_sha=valid, produced_sha=valid, **{field: value})]), "12345")
+            row_values = {"base_sha": valid, "produced_sha": valid}
+            row_values[field] = value
+            ok, reason = audit_row_outcome(FakeSheetsClient([HEADERS, _audit_row(**row_values)]), "12345")
             assert not ok
             assert "SHA is missing or malformed" in reason
 
