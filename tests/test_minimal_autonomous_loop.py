@@ -301,3 +301,68 @@ def test_produced_head_rejects_rename_from_protected_path_into_allowed_test(monk
 
     assert result == (False, "diff_outside_allowed_paths")
     assert ("diff", "--no-renames", "--name-only", "a" * 40, "b" * 40) in calls
+
+
+def test_main_records_empty_queue_as_not_run(monkeypatch, tmp_path: Path):
+    queue = tmp_path / "queue.json"
+    queue.write_text('{"max_tasks_per_run": 3, "tasks": []}', encoding="utf-8")
+    monkeypatch.setattr(loop, "QUEUE", queue)
+    monkeypatch.setattr(loop, "load_tasks", lambda: [])
+    results = tmp_path / "results.jsonl"
+    state = tmp_path / "loop-state.json"
+    monkeypatch.setattr(
+        loop.sys,
+        "argv",
+        ["loop", "--max-tasks", "2", "--state", str(state), "--results", str(results)],
+    )
+
+    assert loop.main() == loop.EXIT_NOT_RUN
+    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["status"] == "NOT_RUN"
+    assert rows[0]["task_count"] == 0
+    assert rows[0]["exit_code"] == 78
+    assert rows[0]["failure_reason"] == "queue_empty"
+
+
+def test_final_outcome_classifies_empty_queue_without_claiming_completion():
+    outcome, reason = loop.classify_final_outcome(
+        ["NOT_RUN"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        recovery_outcome="success",
+        queue_empty=True,
+    )
+
+    assert (outcome, reason) == ("NOT_RUN", "queue_empty")
+
+
+def test_final_outcome_blocks_empty_queue_when_a_post_run_gate_fails():
+    outcome, reason = loop.classify_final_outcome(
+        ["NOT_RUN"],
+        loop_outcome="success",
+        publish_outcome="failure",
+        state_outcome="success",
+        sheets_outcome="success",
+        recovery_outcome="success",
+        queue_empty=True,
+    )
+
+    assert outcome == "BLOCKED"
+    assert reason == "queue_empty_post_run_gate_failed:publish"
+
+
+def test_final_outcome_blocks_missing_task_evidence():
+    outcome, reason = loop.classify_final_outcome(
+        [],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        recovery_outcome="success",
+    )
+
+    assert (outcome, reason) == ("BLOCKED", "missing_task_evidence")
+
