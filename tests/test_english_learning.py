@@ -155,3 +155,9 @@ def test_ai_tutor_prompt_uses_profile_context(monkeypatch, tmp_path) -> None:
     assert "subject_verb_agreement" in prompt
     assert "have/has drill" in prompt
     assert "he/she/it + has" in prompt
+
+
+
+def test_bare_quiz_answer_is_not_claimed_without_pending_quiz(monkeypatch, tmp_path):
+    monkeypatch.setattr(quiz_state, "DB_PATH", str(tmp_path / "english.sqlite3"))
+    assert not EnglishLearningAgent().can_handle(_request("A"))
