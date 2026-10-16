@@ -83,11 +83,7 @@ def git(repo: Path, *args: str, timeout: int = 15) -> str:
 
 
 def verify_checkout(repo_path: str, payload: dict) -> Path:
-    """Validate the configured repo and fetch only the exact requested commits.
-
-    The user's current branch/worktree is never checked out or reset. The review
-    script itself is loaded from the PR base commit, not from the untrusted PR head.
-    """
+    """Validate configured repo and fetch exact commits without changing checkout."""
     repo = Path(repo_path).expanduser().resolve(strict=True)
     if not repo.is_dir():
         raise WorkerError("configured repository path is not a directory")
@@ -116,7 +112,6 @@ def verify_checkout(repo_path: str, payload: dict) -> Path:
         resolved = git(repo, "rev-parse", "--verify", f"{sha}^{{commit}}")
         if resolved != sha:
             raise WorkerError("requested SHA does not resolve to the exact commit")
-    # Only review a base commit that is an ancestor of the requested head.
     try:
         subprocess.run(
             ["git", "-C", str(repo), "merge-base", "--is-ancestor",
@@ -148,10 +143,33 @@ def request_json(url: str, key: str, method: str, body: dict | None = None) -> d
             raise WorkerError("bridge response must be a JSON object")
         return parsed
     except HTTPError as exc:
-        # Do not print response bodies; they could contain internal data.
         raise WorkerError(f"bridge HTTP status {exc.code}") from exc
     except (URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise WorkerError("bridge request failed or returned invalid JSON") from exc
+
+
+def _completion_with_bounded_fallback(base_url: str, key: str, report_body: dict,
+                                      job_id: int, token: str) -> dict:
+    """Attempt completion once; on rejection, make one NOT_RUN attempt only."""
+    try:
+        completed = request_json(base_url + "/complete", key, "POST", report_body)
+        if completed.get("ok"):
+            return completed
+        raise WorkerError("bridge rejected completion")
+    except WorkerError:
+        fallback = {
+            "job_id": job_id,
+            "claim_token": token,
+            "status": "NOT_RUN",
+            "reason": "review result completion failed; bounded fallback",
+        }
+        try:
+            completed = request_json(base_url + "/complete", key, "POST", fallback)
+            if completed.get("ok"):
+                return completed
+        except WorkerError:
+            pass
+        raise WorkerError("completion and bounded NOT_RUN fallback failed; inspect job status")
 
 
 def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
@@ -189,7 +207,6 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
         with tempfile.TemporaryDirectory(prefix="line-local-review-") as tmp:
             report_path = Path(tmp) / "report.json"
             trusted_script = Path(tmp) / "trusted_local_fm_code_review.py"
-            # Do not execute code from the PR head: a PR could replace this script.
             try:
                 trusted = subprocess.run(
                     ["git", "-C", str(repo), "show",
@@ -201,11 +218,17 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
             if trusted.returncode or not trusted.stdout.strip():
                 raise WorkerError("trusted review script is missing from base commit")
             trusted_script.write_text(trusted.stdout, encoding="utf-8")
+            # Never pass the bridge key or other application secrets to the reviewer/fm.
+            review_env = {
+                name: os.environ[name]
+                for name in ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
+                if name in os.environ
+            }
             try:
                 proc = subprocess.run(
                     [sys.executable, str(trusted_script), "--base", payload["base_sha"],
                      "--head", payload["head_sha"], "--report", str(report_path)],
-                    cwd=repo, check=False, capture_output=True, text=True,
+                    cwd=repo, env=review_env, check=False, capture_output=True, text=True,
                     timeout=LOCAL_REVIEW_TIMEOUT_SECONDS,
                 )
             except subprocess.TimeoutExpired as exc:
@@ -215,7 +238,6 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
             report = json.loads(report_path.read_text(encoding="utf-8"))
             if not isinstance(report, dict):
                 raise WorkerError("local fm report is not an object")
-            # Validate the report's provenance before sending it to the server.
             if (report.get("base") != payload["base_sha"]
                     or report.get("head") != payload["head_sha"]
                     or report.get("status") != "REVIEWED"
@@ -228,15 +250,12 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
                 "status": "REVIEWED", "report": report,
             }
     except (WorkerError, OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
-        # Bounded and sanitized: don't include prompts, diffs, tokens, or raw CLI output.
         report_body = {
             "job_id": job_id, "claim_token": token,
             "status": "NOT_RUN", "reason": str(exc)[:500],
         }
 
-    completed = request_json(base_url + "/complete", key, "POST", report_body)
-    if not completed.get("ok"):
-        raise WorkerError("bridge rejected completion; inspect job status before retrying")
+    completed = _completion_with_bounded_fallback(base_url, key, report_body, job_id, token)
     state = completed.get("status")
     print("REVIEW SUBMITTED: " + str(state))
     return 0 if report_body["status"] == "REVIEWED" and report_body["report"]["verdict"] == "PASS" else 1
