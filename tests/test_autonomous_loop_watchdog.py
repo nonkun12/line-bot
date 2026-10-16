@@ -161,7 +161,7 @@ def test_audit_row_outcome_rejects_queue_empty_even_when_workflow_succeeded():
     )])
     ok, reason = audit_row_outcome(client, "12345")
     assert not ok
-    assert "did not execute a task" in reason
+    assert "did not execute a valid task" in reason
 
 
 def test_audit_row_outcome_rejects_missing_safety_gate_pass():
