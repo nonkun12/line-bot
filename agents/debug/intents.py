@@ -52,7 +52,7 @@ _PYTHON_EXCEPTION_NAMES = [
     "ImportError",
 ]
 
-# "Xxxx" + "Error" / "Exception" という一般的なPython例外命名パターンを
+# General pattern for Python exception names like 'XxxxError' or 'XxxxException'
 # 検出する正規表現。ModuleNotFoundError, ZeroDivisionError,
 # CustomException のような、上のリストに個別に列挙していない例外名にも
 # 対応するための汎用パターン。
