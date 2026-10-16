@@ -29,14 +29,22 @@ class LocalFmCodeReviewTests(unittest.TestCase):
         with self.assertRaises(ReviewError):
             parse_review_output(raw)
 
+    def test_rejects_trailing_garbage_after_json(self):
+        raw = '{"verdict":"FAIL","summary":"Risk","findings":[]} trailing'
+        with self.assertRaises(ReviewError):
+            parse_review_output(raw)
+
     def test_accepts_fenced_json(self):
         raw = ' ```json\n{"verdict":"FAIL","summary":"Risk","findings":[]}\n``` '
         self.assertEqual(parse_review_output(raw)["verdict"], "FAIL")
 
-    def test_prompt_treats_diff_as_untrusted_and_forbids_test_claims(self):
+    def test_prompt_treats_diff_as_untrusted_and_demands_concrete_evidence(self):
         prompt = build_prompt("print('hello')")
         self.assertIn("untrusted source data", prompt)
         self.assertIn("Do not claim tests were run", prompt)
+        self.assertIn("missing keys", prompt)
+        self.assertIn("separate a demonstrated bug from a hypothetical risk", prompt)
+        self.assertIn("no markdown fences", prompt)
 
 
 if __name__ == "__main__":
