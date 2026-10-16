@@ -247,11 +247,25 @@ def _verify_produced_head(base_sha: str, produced_sha: str, allowed_paths: list[
     code, diff = _git_checked("diff", "--name-only", base_sha, produced_sha)
     if code != 0:
         return False, "diff_unavailable"
-    allowed = {str(path).strip().replace("\\", "/").lstrip("./") for path in allowed_paths}
-    if not allowed or any(path.startswith("/") or path == ".." or path.startswith("../") for path in allowed):
+    # Never normalize an untrusted path: normalization can turn traversal into an
+    # apparently safe path. Allowed paths must be literal repository-relative files.
+    allowed = set()
+    for raw_path in allowed_paths:
+        if (
+            not isinstance(raw_path, str)
+            or not raw_path
+            or raw_path != raw_path.strip()
+            or raw_path.startswith("/")
+            or "\\" in raw_path
+            or any(part in {"", ".", ".."} for part in raw_path.split("/"))
+            or (len(raw_path) >= 2 and raw_path[1] == ":")
+        ):
+            return False, "allowed_paths_invalid"
+        allowed.add(raw_path)
+    if not allowed:
         return False, "allowed_paths_invalid"
-    changed = {line.strip() for line in diff.splitlines() if line.strip()}
-    if not all(any(path == target or path.startswith(target.rstrip("/") + "/") for target in allowed) for path in changed):
+    changed = {line for line in diff.splitlines() if line}
+    if not changed.issubset(allowed):
         return False, "diff_outside_allowed_paths"
     return True, ""
 
