@@ -210,7 +210,31 @@ def _communicate_with_timeout(proc, timeout: int) -> tuple[str, str]:
                 os.killpg(proc.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
-            proc.communicate()
+            try:
+                proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired as final_timeout:
+                # Do not wait indefinitely if a descendant escaped the process group
+                # but still holds a pipe open. Close our pipe ends and reap the parent
+                # with bounded waits.
+                for stream in (proc.stdout, proc.stderr):
+                    if stream is not None:
+                        try:
+                            stream.close()
+                        except OSError:
+                            pass
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        proc.kill()
+                    except ProcessLookupError:
+                        pass
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired as reap_timeout:
+                        raise WorkerError(
+                            "local fm timed out; process cleanup exceeded bounded wait"
+                        ) from reap_timeout
         raise WorkerError("local fm review timed out; process group termination attempted") from exc
 
 
