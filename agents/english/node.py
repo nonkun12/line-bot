@@ -7,6 +7,9 @@ from ai_client import generate_chat_completion
 from agents.english.intents import classify_english_mode, is_english_learning_intent
 from core.agents import AgentRequest, AgentResponse
 from agents.english.progress import profile_prompt, record_observation
+from agents.english.core_image import get_core_image_quiz_entries
+from agents.english.quiz import grade_quiz, start_quiz
+import random
 
 
 _MAX_AI_INPUT_CHARS = 2000
@@ -79,13 +82,6 @@ def _ai_tutor_reply(user_text: str, *, user_id: str, mode: str = "tutor") -> str
         return None
 
 
-_WORDS = (
-    ("improve", "改善する・向上させる", "I want to improve my English."),
-    ("schedule", "予定", "Let me check my schedule."),
-    ("recommend", "おすすめする", "Can you recommend a good book?"),
-)
-
-
 def _quiz_answer(text: str) -> str | None:
     value = (text or "").strip().lower()
     match = re.fullmatch(r"(?:answer\s*)?([abc])(?:[.\)\s]+)?", value)
@@ -106,19 +102,6 @@ def _english_sentence(text: str) -> bool:
     return len(words) >= 2 and sum(word in common for word in words) >= 1
 
 
-def _grade_quiz(text: str) -> str | None:
-    answer = _quiz_answer(text)
-    if answer is None:
-        return None
-    if answer == "a":
-        return "✅ 正解！\n\nA. improve = 改善する・向上させる\n\n次は「文法」か「会話」と送って続けましょう。"
-    return (
-        "❌ 惜しい！正解は A. improve です。\n\n"
-        "improve = 改善する・向上させる\n"
-        "もう一度「クイズ」と送ると再挑戦できます。"
-    )
-
-
 class EnglishLearningAgent:
     name = "english_learning"
     description = "English lessons, vocabulary, grammar, conversation, quizzes, review, and follow-up practice."
@@ -131,7 +114,7 @@ class EnglishLearningAgent:
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         original = request.message.strip()
-        quiz_result = _grade_quiz(original)
+        quiz_result = grade_quiz(request.user_id, original)
         mode = classify_english_mode(original)
 
         if quiz_result is not None:
@@ -144,20 +127,17 @@ class EnglishLearningAgent:
             )
             mode = "ai_tutor"
         elif mode == "vocabulary":
-            lines = ["📘 今日の英単語", ""]
-            for word, meaning, example in _WORDS:
-                lines.append(f"• {word} = {meaning}")
-                lines.append(f"  例: {example}")
-            lines.extend(["", "覚えたら「クイズ」と送ってください。"])
+            entries = list(get_core_image_quiz_entries())
+            selected = random.sample(entries, min(3, len(entries)))
+            lines = ["📘 今日の英単語（ローカル辞書から出題）", ""]
+            for entry in selected:
+                lines.append(f"• {entry.word}")
+                lines.append(f"  コアイメージ: {entry.core_image}")
+                lines.append(f"  例: {entry.example}")
+            lines.extend(["", "クイズを始めるには「クイズ」と送ってください。"])
             text = "\n".join(lines)
         elif mode == "quiz":
-            text = (
-                "📝 英単語クイズ\n\n"
-                "次の意味に一番近い英単語は？\n"
-                "「改善する・向上させる」\n\n"
-                "A. improve\nB. schedule\nC. recommend\n\n"
-                "答えは A / B / C で送ってください。"
-            )
+            text = start_quiz(request.user_id)
         elif mode == "grammar":
             if re.search(r"\bi\s+want\s+to\s+\w+", original.lower()):
                 text = (
