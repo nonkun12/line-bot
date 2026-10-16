@@ -216,3 +216,39 @@ def test_timeout_force_kills_process_group_if_graceful_stop_fails(monkeypatch):
 
     assert signals == [(9876, signal.SIGTERM), (9876, signal.SIGKILL)]
     assert proc.calls == 3
+
+
+
+def test_timeout_cleanup_has_bounded_wait_when_pipe_never_closes(monkeypatch):
+    import signal
+    import subprocess
+
+    class FakeProcess:
+        pid = 2468
+        stdout = None
+        stderr = None
+
+        def __init__(self):
+            self.wait_calls = 0
+            self.killed = False
+
+        def communicate(self, timeout=None):
+            raise subprocess.TimeoutExpired("fm", timeout)
+
+        def wait(self, timeout=None):
+            self.wait_calls += 1
+            raise subprocess.TimeoutExpired("fm", timeout)
+
+        def kill(self):
+            self.killed = True
+
+    signals = []
+    monkeypatch.setattr(worker.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+    proc = FakeProcess()
+
+    with pytest.raises(worker.WorkerError, match="bounded wait"):
+        worker._communicate_with_timeout(proc, 10)
+
+    assert signals == [(2468, signal.SIGTERM), (2468, signal.SIGKILL)]
+    assert proc.killed is True
+    assert proc.wait_calls == 2
