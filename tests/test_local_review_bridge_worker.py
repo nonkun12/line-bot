@@ -65,21 +65,47 @@ def test_dry_run_never_claims_job(monkeypatch, tmp_path, capsys):
     assert "no request made" in capsys.readouterr().out
 
 
-def test_checkout_requires_exact_head_sha(monkeypatch, tmp_path):
-    calls = []
+def test_review_fetches_exact_commits_without_checkout_or_reset(monkeypatch, tmp_path):
+    import subprocess
+
+    git_calls = []
+    process_calls = []
 
     def fake_git(repo, *args, timeout=15):
-        calls.append(args)
+        git_calls.append(args)
         if args == ("rev-parse", "--show-toplevel"):
             return str(repo)
-        if args == ("rev-parse", "HEAD"):
-            return "c" * 40
-        raise AssertionError("must stop after mismatched HEAD")
+        if args == ("remote", "get-url", "origin"):
+            return "https://github.com/nonkun12/line-bot.git"
+        if args[:2] == ("rev-parse", "--verify"):
+            return args[2].removesuffix("^{commit}")
+        raise AssertionError(f"unexpected git command: {args}")
+
+    def fake_run(args, **kwargs):
+        process_calls.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
     monkeypatch.setattr(worker, "git", fake_git)
-    with pytest.raises(worker.WorkerError, match="does not exactly match"):
+    monkeypatch.setattr(worker.subprocess, "run", fake_run)
+    repo = worker.verify_checkout(str(tmp_path), payload())
+
+    assert repo == tmp_path.resolve()
+    assert process_calls[0][-4:] == ["origin", BASE, HEAD]
+    assert process_calls[1][-3:] == ["--is-ancestor", BASE, HEAD]
+    assert not any("checkout" in call or "reset" in call for call in process_calls)
+
+
+def test_review_rejects_non_allowlisted_origin_before_fetch(monkeypatch, tmp_path):
+    def fake_git(repo, *args, timeout=15):
+        if args == ("rev-parse", "--show-toplevel"):
+            return str(repo)
+        if args == ("remote", "get-url", "origin"):
+            return "https://attacker.example/other.git"
+        raise AssertionError("must reject origin before fetching")
+
+    monkeypatch.setattr(worker, "git", fake_git)
+    with pytest.raises(worker.WorkerError, match="origin remote"):
         worker.verify_checkout(str(tmp_path), payload())
-    assert len(calls) == 2
 
 
 def test_redirect_handler_never_forwards_authenticated_request():
