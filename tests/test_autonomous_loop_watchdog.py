@@ -1,7 +1,9 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from agents.sheets.autonomous_ledger import HEADERS
 from scripts.check_autonomous_loop_watchdog import (
+    audit_row_outcome,
     expected_slot,
     find_scheduled_run,
     has_audit_row,
@@ -58,7 +60,7 @@ def test_find_scheduled_run_accepts_delayed_run_within_four_hours(monkeypatch):
         "name": "Distributed Autonomous Development Loop",
         "event": "schedule",
         "id": 789,
-        "created_at": "2026-09-22T22:26:00Z",  # 07:26 JST, 2h56 after 04:30 slot
+        "created_at": "2026-09-22T22:26:00Z",
         "status": "completed",
         "conclusion": "failure",
     }
@@ -75,7 +77,7 @@ def test_find_scheduled_run_rejects_run_after_four_hour_window(monkeypatch):
         "name": "Distributed Autonomous Development Loop",
         "event": "schedule",
         "id": 790,
-        "created_at": "2026-09-22T23:31:00Z",  # 08:31 JST, over four hours late
+        "created_at": "2026-09-22T23:31:00Z",
         "status": "completed",
         "conclusion": "success",
     }
@@ -115,9 +117,24 @@ class FakeSheetsClient:
         return self.rows
 
 
-def test_has_audit_row_uses_run_id_header_column_not_column_a():
-    from agents.sheets.autonomous_ledger import HEADERS
+def _audit_row(**overrides):
+    values = {name: "" for name in HEADERS}
+    values.update({
+        "timestamp": "2026-10-16T00:00:00Z",
+        "run_id": "12345",
+        "task_id": "task-example",
+        "base_sha": "a" * 40,
+        "produced_sha": "b" * 40,
+        "tests_result": "PASS",
+        "verification_result": "PASS",
+        "safety_gate_result": "PASS",
+        "blocked_failed_reason": "",
+    })
+    values.update(overrides)
+    return [values[name] for name in HEADERS]
 
+
+def test_has_audit_row_uses_run_id_header_column_not_column_a():
     row = ["2026-10-09T00:00:00Z", "37861561986", "task-a"] + [""] * (len(HEADERS) - 3)
     client = FakeSheetsClient([HEADERS, row])
     assert has_audit_row(client, "37861561986")
@@ -125,9 +142,70 @@ def test_has_audit_row_uses_run_id_header_column_not_column_a():
 
 
 def test_has_audit_row_supports_ledger_starting_in_later_column():
-    from agents.sheets.autonomous_ledger import HEADERS
-
     header = ["", "", ""] + HEADERS
     row = ["", "", "", "2026-10-09T00:00:00Z", "37861561986", "task-a"] + [""] * (len(HEADERS) - 3)
     client = FakeSheetsClient([header, row])
     assert has_audit_row(client, "37861561986")
+
+
+def test_audit_row_outcome_accepts_verified_pass():
+    client = FakeSheetsClient([HEADERS, _audit_row()])
+    assert audit_row_outcome(client, "12345") == (True, "verified_task_passed")
+
+
+def test_audit_row_outcome_rejects_queue_empty_even_when_workflow_succeeded():
+    client = FakeSheetsClient([HEADERS, _audit_row(
+        task_id="NOT_RUN",
+        safety_gate_result="BLOCKED",
+        verification_result="NOT_RUN",
+        tests_result="NOT_RUN",
+        blocked_failed_reason="queue_empty",
+    )])
+    ok, reason = audit_row_outcome(client, "12345")
+    assert not ok
+    assert "did not execute a valid task" in reason
+
+
+def test_audit_row_outcome_rejects_missing_safety_gate_pass():
+    client = FakeSheetsClient([HEADERS, _audit_row(safety_gate_result="BLOCKED")])
+    ok, reason = audit_row_outcome(client, "12345")
+    assert not ok
+    assert "did not pass Safety Gate" in reason
+
+
+def test_audit_row_outcome_rejects_duplicate_run_rows():
+    client = FakeSheetsClient([HEADERS, _audit_row(), _audit_row()])
+    ok, reason = audit_row_outcome(client, "12345")
+    assert not ok
+    assert "Ambiguous Sheets audit rows" in reason
+
+
+def test_audit_row_outcome_rejects_empty_or_skipped_tests():
+    for value in ("", "SKIPPED", "NOT_RUN", "FAIL"):
+        ok, reason = audit_row_outcome(FakeSheetsClient([HEADERS, _audit_row(tests_result=value)]), "12345")
+        assert not ok
+        assert "tests are not successful" in reason
+
+
+def test_audit_row_outcome_rejects_malformed_task_id():
+    for value in ("queue-empty", "bad task id", "../task"):
+        ok, reason = audit_row_outcome(FakeSheetsClient([HEADERS, _audit_row(task_id=value)]), "12345")
+        assert not ok
+        assert "valid task" in reason
+
+
+def test_audit_row_outcome_requires_valid_base_and_produced_shas():
+    valid = "a" * 40
+    for field in ("base_sha", "produced_sha"):
+        for value in ("", "1234", "g" * 40):
+            row_values = {"base_sha": valid, "produced_sha": valid}
+            row_values[field] = value
+            ok, reason = audit_row_outcome(FakeSheetsClient([HEADERS, _audit_row(**row_values)]), "12345")
+            assert not ok
+            assert "SHA is missing or malformed" in reason
+
+
+def test_audit_row_outcome_accepts_no_change_with_valid_shas():
+    sha = "b" * 40
+    client = FakeSheetsClient([HEADERS, _audit_row(tests_result="NO_CHANGE", verification_result="NO_CHANGE", base_sha=sha, produced_sha=sha)])
+    assert audit_row_outcome(client, "12345") == (True, "verified_task_passed")
