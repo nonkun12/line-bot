@@ -301,3 +301,79 @@ def test_produced_head_rejects_rename_from_protected_path_into_allowed_test(monk
 
     assert result == (False, "diff_outside_allowed_paths")
     assert ("diff", "--no-renames", "--name-only", "a" * 40, "b" * 40) in calls
+
+
+
+def test_final_outcome_classifies_success_only_when_all_gates_pass():
+    assert loop.classify_final_outcome(
+        ["PASS"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        recovery_outcome="success",
+    ) == ("COMPLETED", "required_gates_passed")
+
+
+def test_final_outcome_preserves_explicit_queue_empty_as_not_run():
+    assert loop.classify_final_outcome(
+        ["NOT_RUN"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        queue_empty=True,
+    ) == ("NOT_RUN", "queue_empty")
+
+
+def test_final_outcome_blocks_held_queue_without_claiming_completion():
+    assert loop.classify_final_outcome(
+        ["BLOCKED"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        all_tasks_held=True,
+    ) == ("BLOCKED", "all_pending_tasks_held")
+
+
+def test_final_outcome_blocks_held_queue_when_post_run_gate_fails():
+    assert loop.classify_final_outcome(
+        ["BLOCKED"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="failure",
+        sheets_outcome="success",
+        all_tasks_held=True,
+    ) == ("BLOCKED", "held_queue_post_run_gate_failed:state")
+
+
+def test_final_outcome_fails_when_task_status_is_not_successful():
+    assert loop.classify_final_outcome(
+        ["FAIL"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+    ) == ("FAILED", "task_status:FAIL")
+
+
+def test_final_outcome_fails_when_recovery_persistence_gate_fails():
+    assert loop.classify_final_outcome(
+        ["PASS"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        recovery_outcome="failure",
+    ) == ("FAILED", "post_run_gate_failed:recovery_ai_persistence")
+
+
+def test_final_outcome_blocks_missing_task_evidence():
+    assert loop.classify_final_outcome(
+        [],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+    ) == ("BLOCKED", "missing_task_evidence")
