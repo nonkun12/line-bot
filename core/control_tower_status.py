@@ -66,8 +66,10 @@ def build_control_tower_status_reply(
             f"最新Run: #{run.get('run_number', '不明')} / {run.get('name') or '名称未取得'}",
             f"開始: {run.get('created_at') or '未取得'}",
             f"実行イベント: {run.get('event') or '未取得'}",
+            f"対象SHA: {str(run.get('head_sha') or '未取得')[:12]}",
             f"Run URL: {run.get('html_url') or '未取得'}",
             "Task ID／キュー件数: Run概要からは未取得（推測しません）",
+            "注意: Workflow成功だけではタスクPASSを意味しません。実行ログのPASS／NOT_RUNを別途確認してください。",
         ])
 
     patch_setting = os.environ.get("AUTO_APPLY_PATCH", "false").strip().lower()
