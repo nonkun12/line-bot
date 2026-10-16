@@ -118,3 +118,137 @@ def test_redirect_handler_never_forwards_authenticated_request():
     assert handler.redirect_request(
         request, None, 302, "Found", {}, "https://attacker.example/collect"
     ) is None
+
+
+
+def test_review_environment_does_not_include_bridge_secret(monkeypatch):
+    monkeypatch.setenv("PATH", "/usr/bin")
+    monkeypatch.setenv("HOME", "/tmp/home")
+    monkeypatch.setenv("LOCAL_REVIEW_BRIDGE_KEY", "secret-test-value")
+    monkeypatch.setenv("GITHUB_TOKEN", "github-secret")
+    env = worker._review_environment()
+    assert env["PATH"] == "/usr/bin"
+    assert env["HOME"] == "/tmp/home"
+    assert "LOCAL_REVIEW_BRIDGE_KEY" not in env
+    assert "GITHUB_TOKEN" not in env
+
+
+def test_completion_falls_back_to_bounded_not_run_once(monkeypatch):
+    calls = []
+    def fake_request(url, key, method, body):
+        calls.append(body)
+        if len(calls) == 1:
+            raise worker.WorkerError("bridge HTTP status 400")
+        return {"ok": True, "status": "failed"}
+    monkeypatch.setattr(worker, "request_json", fake_request)
+    original = {"job_id": 12, "claim_token": "claim", "status": "REVIEWED", "report": {}}
+    result = worker._completion_with_bounded_fallback(
+        "https://bridge.example", "bridge-key", original, 12, "claim"
+    )
+    assert result["ok"] is True
+    assert len(calls) == 2
+    assert calls[1]["status"] == "NOT_RUN"
+    assert calls[1]["job_id"] == 12
+
+
+
+def test_trusted_script_requires_operator_pinned_digest():
+    source = "print('trusted')"
+    import hashlib
+    digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    worker._verify_trusted_script(source, digest)
+    with pytest.raises(worker.WorkerError, match="missing or invalid"):
+        worker._verify_trusted_script(source, "")
+    with pytest.raises(worker.WorkerError, match="digest mismatch"):
+        worker._verify_trusted_script(source, "0" * 64)
+
+
+
+def test_timeout_terminates_reviewer_process_group(monkeypatch):
+    import signal
+    import subprocess
+
+    class FakeProcess:
+        pid = 4321
+
+        def __init__(self):
+            self.calls = 0
+
+        def communicate(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired("fm", timeout)
+            return ("", "")
+
+    signals = []
+    monkeypatch.setattr(worker.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+    proc = FakeProcess()
+
+    with pytest.raises(worker.WorkerError, match="timed out"):
+        worker._communicate_with_timeout(proc, 10)
+
+    assert signals == [(4321, signal.SIGTERM)]
+    assert proc.calls == 2
+
+
+def test_timeout_force_kills_process_group_if_graceful_stop_fails(monkeypatch):
+    import signal
+    import subprocess
+
+    class FakeProcess:
+        pid = 9876
+
+        def __init__(self):
+            self.calls = 0
+
+        def communicate(self, timeout=None):
+            self.calls += 1
+            if self.calls < 3:
+                raise subprocess.TimeoutExpired("fm", timeout)
+            return ("", "")
+
+    signals = []
+    monkeypatch.setattr(worker.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+    proc = FakeProcess()
+
+    with pytest.raises(worker.WorkerError, match="timed out"):
+        worker._communicate_with_timeout(proc, 10)
+
+    assert signals == [(9876, signal.SIGTERM), (9876, signal.SIGKILL)]
+    assert proc.calls == 3
+
+
+
+def test_timeout_cleanup_has_bounded_wait_when_pipe_never_closes(monkeypatch):
+    import signal
+    import subprocess
+
+    class FakeProcess:
+        pid = 2468
+        stdout = None
+        stderr = None
+
+        def __init__(self):
+            self.wait_calls = 0
+            self.killed = False
+
+        def communicate(self, timeout=None):
+            raise subprocess.TimeoutExpired("fm", timeout)
+
+        def wait(self, timeout=None):
+            self.wait_calls += 1
+            raise subprocess.TimeoutExpired("fm", timeout)
+
+        def kill(self):
+            self.killed = True
+
+    signals = []
+    monkeypatch.setattr(worker.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+    proc = FakeProcess()
+
+    with pytest.raises(worker.WorkerError, match="bounded wait"):
+        worker._communicate_with_timeout(proc, 10)
+
+    assert signals == [(2468, signal.SIGTERM), (2468, signal.SIGKILL)]
+    assert proc.killed is True
+    assert proc.wait_calls == 2

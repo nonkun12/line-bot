@@ -1,6 +1,8 @@
 import json
+import sqlite3
 
 import pytest
+import db
 
 from core.local_review_jobs import (
     REVIEW_JOB_TYPE,
@@ -40,21 +42,46 @@ def test_payload_rejects_invalid_or_untrusted_inputs(repository, base, head):
         build_review_payload(repository, base, head)
 
 
-def test_enqueue_uses_dedicated_job_type_and_single_attempt(monkeypatch):
-    captured = {}
+def _memory_jobs_db():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("""
+        CREATE TABLE jobs(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            job_type TEXT NOT NULL,
+            source TEXT NOT NULL,
+            parent_job_id INTEGER,
+            message TEXT NOT NULL,
+            status TEXT NOT NULL,
+            max_retries INTEGER NOT NULL
+        )
+    """)
+    return conn
 
-    def fake_create_job(user_id, message, **kwargs):
-        captured.update(user_id=user_id, message=message, kwargs=kwargs)
-        return 17
 
-    monkeypatch.setattr("core.local_review_jobs.create_job", fake_create_job)
-    job_id = enqueue_local_review("U1", "nonkun12/line-bot", BASE, HEAD)
+def test_enqueue_creates_dedicated_job_and_deduplicates_active_request(monkeypatch):
+    conn = _memory_jobs_db()
+    monkeypatch.setattr("core.local_review_jobs.get_conn", lambda: conn)
 
-    assert job_id == 17
-    assert captured["kwargs"]["job_type"] == REVIEW_JOB_TYPE
-    assert captured["kwargs"]["source"] == "control_tower"
-    assert captured["kwargs"]["max_retries"] == 1
-    assert json.loads(captured["message"])["head_sha"] == HEAD
+    first = enqueue_local_review("U1", "nonkun12/line-bot", BASE, HEAD)
+    second = enqueue_local_review("U1", "nonkun12/line-bot", BASE, HEAD)
+
+    assert first == second
+    rows = conn.execute(
+        "SELECT user_id, job_type, source, max_retries, status FROM jobs"
+    ).fetchall()
+    assert rows == [("U1", REVIEW_JOB_TYPE, "control_tower", 1, "pending")]
+
+
+def test_enqueue_allows_new_job_after_previous_job_is_terminal(monkeypatch):
+    conn = _memory_jobs_db()
+    monkeypatch.setattr("core.local_review_jobs.get_conn", lambda: conn)
+    first = enqueue_local_review("U1", "nonkun12/line-bot", BASE, HEAD)
+    conn.execute("UPDATE jobs SET status='failed' WHERE id=?", (first,))
+    conn.commit()
+    second = enqueue_local_review("U1", "nonkun12/line-bot", BASE, HEAD)
+    assert second != first
+    assert conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 2
 
 
 def test_enqueue_rejects_missing_user(monkeypatch):
@@ -64,3 +91,43 @@ def test_enqueue_rejects_missing_user(monkeypatch):
     monkeypatch.setattr("core.local_review_jobs.create_job", unexpected_create_job)
     with pytest.raises(ValueError, match="user_id"):
         enqueue_local_review("", "nonkun12/line-bot", BASE, HEAD)
+
+
+
+def test_stale_job_at_retry_limit_becomes_terminal_failed(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    conn.execute("""
+        CREATE TABLE jobs(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            job_type TEXT NOT NULL,
+            source TEXT NOT NULL,
+            parent_job_id INTEGER,
+            message TEXT NOT NULL,
+            status TEXT NOT NULL,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            max_retries INTEGER NOT NULL DEFAULT 1,
+            last_error TEXT,
+            result TEXT,
+            claim_token TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP
+        )
+    """)
+    payload = build_review_payload("nonkun12/line-bot", BASE, HEAD)
+    conn.execute(
+        """INSERT INTO jobs(user_id,job_type,source,message,status,retry_count,
+           max_retries,claim_token,updated_at)
+           VALUES(?,?,?,?, 'running', 1, 1, 'stale-token', datetime('now','-1 day'))""",
+        ("U1", REVIEW_JOB_TYPE, "control_tower", payload),
+    )
+    conn.commit()
+    monkeypatch.setattr(db, "get_conn", lambda: conn)
+
+    claimed = db.claim_pending_job_by_type(REVIEW_JOB_TYPE, stale_after_seconds=900)
+
+    assert claimed is None
+    row = conn.execute(
+        "SELECT status, claim_token, last_error FROM jobs WHERE id=1"
+    ).fetchone()
+    assert row == ("failed", None, "stale job exceeded retry limit")

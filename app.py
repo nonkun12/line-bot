@@ -328,7 +328,9 @@ def _handle_ai_gateway_request(ai_request):
     user_id = str(ai_request.user_id)
 
     # Explicit, allowlisted PR review command. Never route it to general AI.
-    local_review_reply = dispatch_local_review(user_id, message, token=GITHUB_TOKEN)
+    local_review_reply = dispatch_local_review(
+        user_id, message, token=GITHUB_TOKEN, channel=ai_request.channel
+    )
     if local_review_reply is not None:
         return local_review_reply
 

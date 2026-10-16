@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 
-from db import create_job
+from db import create_job, get_conn
 
 REVIEW_JOB_TYPE = "local_code_review"
 REVIEW_SCHEMA_VERSION = 1
@@ -49,13 +49,29 @@ def enqueue_local_review(user_id: str, repository: str, base_sha: str, head_sha:
     if not normalized_user_id or len(normalized_user_id) > 200:
         raise ValueError("user_id must contain 1..200 characters")
     payload = build_review_payload(repository, base_sha, head_sha)
-    job_id = create_job(
-        normalized_user_id,
-        payload,
-        job_type=REVIEW_JOB_TYPE,
-        source="control_tower",
-        max_retries=1,
-    )
+
+    # LINE redelivery/repeated commands should reuse an active identical job.
+    # BEGIN IMMEDIATE serializes the check/insert sequence across SQLite writers.
+    with get_conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        existing = conn.execute(
+            """
+            SELECT id FROM jobs
+            WHERE user_id=? AND job_type=? AND message=? AND status IN ('pending', 'running')
+            ORDER BY id LIMIT 1
+            """,
+            (normalized_user_id, REVIEW_JOB_TYPE, payload),
+        ).fetchone()
+        if existing is not None:
+            return int(existing[0])
+        cursor = conn.execute(
+            """
+            INSERT INTO jobs(user_id, job_type, source, parent_job_id, message, status, max_retries)
+            VALUES (?, ?, 'control_tower', NULL, ?, 'pending', 1)
+            """,
+            (normalized_user_id, REVIEW_JOB_TYPE, payload),
+        )
+        job_id = cursor.lastrowid
     if not isinstance(job_id, int) or isinstance(job_id, bool) or job_id <= 0:
         raise ValueError("failed to create local review job")
     return job_id

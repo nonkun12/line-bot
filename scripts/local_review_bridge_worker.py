@@ -7,9 +7,11 @@ No daemon, polling loop, file edits, commits, merges, or deployments. Without
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -83,11 +85,7 @@ def git(repo: Path, *args: str, timeout: int = 15) -> str:
 
 
 def verify_checkout(repo_path: str, payload: dict) -> Path:
-    """Validate the configured repo and fetch only the exact requested commits.
-
-    The user's current branch/worktree is never checked out or reset. The review
-    script itself is loaded from the PR base commit, not from the untrusted PR head.
-    """
+    """Validate configured repo and fetch exact commits without changing checkout."""
     repo = Path(repo_path).expanduser().resolve(strict=True)
     if not repo.is_dir():
         raise WorkerError("configured repository path is not a directory")
@@ -116,7 +114,6 @@ def verify_checkout(repo_path: str, payload: dict) -> Path:
         resolved = git(repo, "rev-parse", "--verify", f"{sha}^{{commit}}")
         if resolved != sha:
             raise WorkerError("requested SHA does not resolve to the exact commit")
-    # Only review a base commit that is an ancestor of the requested head.
     try:
         subprocess.run(
             ["git", "-C", str(repo), "merge-base", "--is-ancestor",
@@ -148,10 +145,97 @@ def request_json(url: str, key: str, method: str, body: dict | None = None) -> d
             raise WorkerError("bridge response must be a JSON object")
         return parsed
     except HTTPError as exc:
-        # Do not print response bodies; they could contain internal data.
         raise WorkerError(f"bridge HTTP status {exc.code}") from exc
     except (URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise WorkerError("bridge request failed or returned invalid JSON") from exc
+
+
+def _completion_with_bounded_fallback(base_url: str, key: str, report_body: dict,
+                                      job_id: int, token: str) -> dict:
+    """Attempt completion once; on rejection, make one NOT_RUN attempt only."""
+    try:
+        completed = request_json(base_url + "/complete", key, "POST", report_body)
+        if completed.get("ok"):
+            return completed
+        raise WorkerError("bridge rejected completion")
+    except WorkerError:
+        fallback = {
+            "job_id": job_id,
+            "claim_token": token,
+            "status": "NOT_RUN",
+            "reason": "review result completion failed; bounded fallback",
+        }
+        try:
+            completed = request_json(base_url + "/complete", key, "POST", fallback)
+            if completed.get("ok"):
+                return completed
+        except WorkerError:
+            pass
+        raise WorkerError("completion and bounded NOT_RUN fallback failed; inspect job status")
+
+
+def _verify_trusted_script(source: str, expected_sha256: str) -> None:
+    """Require an operator-pinned digest before executing the reviewer script."""
+    expected = str(expected_sha256 or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", expected):
+        raise WorkerError("LOCAL_REVIEW_TRUSTED_SCRIPT_SHA256 is missing or invalid")
+    actual = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    if not __import__("hmac").compare_digest(actual, expected):
+        raise WorkerError("trusted review script digest mismatch")
+
+
+def _review_environment() -> dict[str, str]:
+    """Return only non-secret runtime variables needed by the trusted reviewer."""
+    return {
+        name: os.environ[name]
+        for name in ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
+        if name in os.environ
+    }
+
+
+def _communicate_with_timeout(proc, timeout: int) -> tuple[str, str]:
+    """Collect reviewer output or terminate its entire process group on timeout."""
+    try:
+        return proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        # The reviewer and its child processes share a fresh process group.
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            try:
+                proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired as final_timeout:
+                # Do not wait indefinitely if a descendant escaped the process group
+                # but still holds a pipe open. Close our pipe ends and reap the parent
+                # with bounded waits.
+                for stream in (proc.stdout, proc.stderr):
+                    if stream is not None:
+                        try:
+                            stream.close()
+                        except OSError:
+                            pass
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        proc.kill()
+                    except ProcessLookupError:
+                        pass
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired as reap_timeout:
+                        raise WorkerError(
+                            "local fm timed out; process cleanup exceeded bounded wait"
+                        ) from reap_timeout
+        raise WorkerError("local fm review timed out; process group termination attempted") from exc
 
 
 def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
@@ -189,7 +273,6 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
         with tempfile.TemporaryDirectory(prefix="line-local-review-") as tmp:
             report_path = Path(tmp) / "report.json"
             trusted_script = Path(tmp) / "trusted_local_fm_code_review.py"
-            # Do not execute code from the PR head: a PR could replace this script.
             try:
                 trusted = subprocess.run(
                     ["git", "-C", str(repo), "show",
@@ -200,22 +283,27 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
                 raise WorkerError("could not load trusted review script from base commit") from exc
             if trusted.returncode or not trusted.stdout.strip():
                 raise WorkerError("trusted review script is missing from base commit")
+            _verify_trusted_script(
+                trusted.stdout, os.environ.get("LOCAL_REVIEW_TRUSTED_SCRIPT_SHA256", "")
+            )
             trusted_script.write_text(trusted.stdout, encoding="utf-8")
-            try:
-                proc = subprocess.run(
-                    [sys.executable, str(trusted_script), "--base", payload["base_sha"],
-                     "--head", payload["head_sha"], "--report", str(report_path)],
-                    cwd=repo, check=False, capture_output=True, text=True,
-                    timeout=LOCAL_REVIEW_TIMEOUT_SECONDS,
-                )
-            except subprocess.TimeoutExpired as exc:
-                raise WorkerError("local fm review timed out") from exc
+            # Never pass the bridge key or other application secrets to the reviewer/fm.
+            review_env = _review_environment()
+            proc = subprocess.Popen(
+                [sys.executable, str(trusted_script), "--base", payload["base_sha"],
+                 "--head", payload["head_sha"], "--report", str(report_path)],
+                cwd=repo, env=review_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, start_new_session=True,
+            )
+            stdout, stderr = _communicate_with_timeout(proc, LOCAL_REVIEW_TIMEOUT_SECONDS)
+            proc = subprocess.CompletedProcess(
+                args=proc.args, returncode=proc.returncode, stdout=stdout, stderr=stderr
+            )
             if proc.returncode not in {0, 1} or not report_path.is_file():
                 raise WorkerError("local fm review returned NOT_RUN or no report")
             report = json.loads(report_path.read_text(encoding="utf-8"))
             if not isinstance(report, dict):
                 raise WorkerError("local fm report is not an object")
-            # Validate the report's provenance before sending it to the server.
             if (report.get("base") != payload["base_sha"]
                     or report.get("head") != payload["head_sha"]
                     or report.get("status") != "REVIEWED"
@@ -228,15 +316,12 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
                 "status": "REVIEWED", "report": report,
             }
     except (WorkerError, OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
-        # Bounded and sanitized: don't include prompts, diffs, tokens, or raw CLI output.
         report_body = {
             "job_id": job_id, "claim_token": token,
             "status": "NOT_RUN", "reason": str(exc)[:500],
         }
 
-    completed = request_json(base_url + "/complete", key, "POST", report_body)
-    if not completed.get("ok"):
-        raise WorkerError("bridge rejected completion; inspect job status before retrying")
+    completed = _completion_with_bounded_fallback(base_url, key, report_body, job_id, token)
     state = completed.get("status")
     print("REVIEW SUBMITTED: " + str(state))
     return 0 if report_body["status"] == "REVIEWED" and report_body["report"]["verdict"] == "PASS" else 1

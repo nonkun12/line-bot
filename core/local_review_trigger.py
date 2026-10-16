@@ -42,11 +42,14 @@ def dispatch_local_review(
     *,
     token: str = "",
     get_pr: Callable[[str, int, str], Any] | None = None,
+    channel: str | None = None,
 ) -> str | None:
     """Queue one review for an authorized user; never executes or merges code."""
     pr_number = extract_local_review_pr(message)
     if pr_number is None:
         return None
+    if channel != "line":
+        return "ローカルレビュー依頼はLINEからのみ受け付けます。"
 
     allowed_users = {
         value.strip()

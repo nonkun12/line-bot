@@ -37,13 +37,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          files=()
-          for file in core/local_review_jobs.py core/local_review_trigger.py routes/local_review_bridge.py scripts/local_review_bridge_worker.py scripts/local_fm_code_review.py; do
-            if [[ -f "$file" ]]; then files+=("$file"); fi
+          files=(
+            core/local_review_jobs.py
+            core/local_review_trigger.py
+            routes/local_review_bridge.py
+            scripts/local_review_bridge_worker.py
+            scripts/local_fm_code_review.py
+          )
+          for file in "${files[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              echo "Required review module missing: $file"; exit 1
+            fi
           done
-          if [[ ${#files[@]} -eq 0 ]]; then
-            echo "No local review modules found"; exit 1
-          fi
           python -m py_compile "${files[@]}"
       - name: Run available local review tests
         env:
@@ -51,11 +56,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tests=()
-          for file in tests/test_local_review_jobs.py tests/test_local_review_trigger.py tests/test_local_review_bridge.py tests/test_local_review_bridge_worker.py tests/test_local_fm_code_review.py; do
-            if [[ -f "$file" ]]; then tests+=("$file"); fi
+          tests=(
+            tests/test_local_review_jobs.py
+            tests/test_local_review_trigger.py
+            tests/test_local_review_bridge.py
+            tests/test_local_review_bridge_worker.py
+            tests/test_local_fm_code_review.py
+          )
+          for file in "${tests[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              echo "Required review test missing: $file"; exit 1
+            fi
           done
-          if [[ ${#tests[@]} -eq 0 ]]; then
-            echo "No local review tests found"; exit 1
-          fi
           python -m pytest -q "${tests[@]}"

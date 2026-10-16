@@ -21,3 +21,24 @@ def test_parses_valid_minimal_review():
 def test_rejects_malformed_or_conflicting_review(raw):
     with pytest.raises(ReviewError):
         parse_review_output(raw)
+
+
+
+def test_rejects_summary_over_bridge_limit():
+    raw = '{"verdict":"PASS","summary":"' + ("x" * 4001) + '","findings":[]}'
+    with pytest.raises(ReviewError, match="summary exceeds"):
+        parse_review_output(raw)
+
+
+def test_rejects_too_many_findings():
+    finding = {"severity":"low","file":"x.py","issue":"x","evidence":"x","recommendation":"x"}
+    raw = __import__("json").dumps({"verdict":"FAIL","summary":"reviewed","findings":[finding] * 101})
+    with pytest.raises(ReviewError, match="maximum count"):
+        parse_review_output(raw)
+
+
+def test_rejects_finding_field_over_bridge_limit():
+    finding = {"severity":"low","file":"x.py","issue":"x","evidence":"x" * 4001,"recommendation":"x"}
+    raw = __import__("json").dumps({"verdict":"FAIL","summary":"reviewed","findings":[finding]})
+    with pytest.raises(ReviewError, match="maximum length"):
+        parse_review_output(raw)
