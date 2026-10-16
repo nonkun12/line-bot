@@ -354,6 +354,21 @@ def test_final_outcome_blocks_empty_queue_when_a_post_run_gate_fails():
     assert reason == "queue_empty_post_run_gate_failed:publish"
 
 
+def test_final_outcome_blocks_empty_queue_when_recovery_persistence_fails():
+    outcome, reason = loop.classify_final_outcome(
+        ["NOT_RUN"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        recovery_outcome="failure",
+        queue_empty=True,
+    )
+
+    assert outcome == "BLOCKED"
+    assert reason == "queue_empty_post_run_gate_failed:recovery_ai_persistence"
+
+
 def test_final_outcome_blocks_missing_task_evidence():
     outcome, reason = loop.classify_final_outcome(
         [],
