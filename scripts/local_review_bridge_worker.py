@@ -172,6 +172,15 @@ def _completion_with_bounded_fallback(base_url: str, key: str, report_body: dict
         raise WorkerError("completion and bounded NOT_RUN fallback failed; inspect job status")
 
 
+def _review_environment() -> dict[str, str]:
+    """Return only non-secret runtime variables needed by the trusted reviewer."""
+    return {
+        name: os.environ[name]
+        for name in ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
+        if name in os.environ
+    }
+
+
 def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
     base_url = validate_base_url(base_url)
     if not key or len(key) > 512:
@@ -219,11 +228,7 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
                 raise WorkerError("trusted review script is missing from base commit")
             trusted_script.write_text(trusted.stdout, encoding="utf-8")
             # Never pass the bridge key or other application secrets to the reviewer/fm.
-            review_env = {
-                name: os.environ[name]
-                for name in ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
-                if name in os.environ
-            }
+            review_env = _review_environment()
             try:
                 proc = subprocess.run(
                     [sys.executable, str(trusted_script), "--base", payload["base_sha"],
