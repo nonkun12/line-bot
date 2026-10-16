@@ -229,3 +229,21 @@ def test_active_run_is_not_pending_after_90_minute_grace():
 def test_completed_run_is_never_classified_as_pending():
     slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
     assert not run_is_pending_within_grace({"status": "completed"}, slot, slot)
+
+def test_missing_scheduled_run_is_pending_inside_90_minute_grace():
+    from scripts.check_autonomous_loop_watchdog import missing_run_is_pending_within_grace
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert missing_run_is_pending_within_grace(slot, slot + timedelta(minutes=30))
+    assert missing_run_is_pending_within_grace(slot, slot + timedelta(minutes=90))
+
+
+def test_missing_scheduled_run_is_not_pending_after_90_minute_grace():
+    from scripts.check_autonomous_loop_watchdog import missing_run_is_pending_within_grace
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert not missing_run_is_pending_within_grace(slot, slot + timedelta(minutes=91))
+
+
+def test_missing_scheduled_run_is_not_pending_before_slot():
+    from scripts.check_autonomous_loop_watchdog import missing_run_is_pending_within_grace
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert not missing_run_is_pending_within_grace(slot, slot - timedelta(minutes=1))
