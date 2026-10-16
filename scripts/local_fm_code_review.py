@@ -38,7 +38,7 @@ def parse_review_output(raw: str) -> dict[str, Any]:
         raise ReviewError("review output is not valid JSON") from exc
     if not isinstance(result, dict):
         raise ReviewError("review output must be a JSON object")
-    if result.get("verdict") not in {"PASS", "FAIL"}:
+    if not isinstance(result.get("verdict"), str) or result.get("verdict") not in {"PASS", "FAIL"}:
         raise ReviewError("verdict must be PASS or FAIL")
     if not isinstance(result.get("summary"), str) or not result["summary"].strip():
         raise ReviewError("summary is required")
@@ -48,7 +48,7 @@ def parse_review_output(raw: str) -> dict[str, Any]:
     for item in findings:
         if not isinstance(item, dict):
             raise ReviewError("each finding must be an object")
-        if item.get("severity") not in SEVERITIES:
+        if not isinstance(item.get("severity"), str) or item.get("severity") not in SEVERITIES:
             raise ReviewError("finding severity is invalid")
         for key in ("file", "issue", "evidence", "recommendation"):
             if not isinstance(item.get(key), str) or not item[key].strip():
