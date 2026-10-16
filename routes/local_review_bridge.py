@@ -36,7 +36,7 @@ _SEVERITIES = {"critical", "high", "medium", "low", "info"}
 def _authorized() -> bool:
     expected = os.environ.get("LOCAL_REVIEW_BRIDGE_KEY", "")
     provided = request.headers.get("X-Local-Review-Bridge-Key", "")
-    return bool(expected and provided and hmac.compare_digest(expected, provided))
+    return bool(expected and provided and hmac.compare_digest(expected.encode("utf-8"), provided.encode("utf-8")))
 
 
 def _job_id_valid(value) -> bool:
