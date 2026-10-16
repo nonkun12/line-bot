@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import re
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from ai_client import generate_chat_completion
 from agents.english.intents import classify_english_mode, is_english_learning_intent
 from core.agents import AgentRequest, AgentResponse
 from agents.english.progress import profile_prompt, record_observation
+from agents.english.core_image import _ENTRIES
 
 
 _MAX_AI_INPUT_CHARS = 2000
@@ -79,11 +82,33 @@ def _ai_tutor_reply(user_text: str, *, user_id: str, mode: str = "tutor") -> str
         return None
 
 
-_WORDS = (
-    ("improve", "改善する・向上させる", "I want to improve my English."),
-    ("schedule", "予定", "Let me check my schedule."),
-    ("recommend", "おすすめする", "Can you recommend a good book?"),
-)
+def _japan_today() -> date:
+    """Return today's date in Japan so server timezone cannot freeze the lesson."""
+    return datetime.now(ZoneInfo("Asia/Tokyo")).date()
+
+
+def _daily_words(today: date | None = None):
+    """Pick three reviewed local-dictionary entries, rotating without daily repeats."""
+    entries = [_ENTRIES[word] for word in sorted(_ENTRIES)]
+    if len(entries) < 3:
+        raise RuntimeError("core-image dictionary needs at least three reviewed entries")
+    day = today or _japan_today()
+    start = (day.toordinal() * 3) % len(entries)
+    return [entries[(start + offset) % len(entries)] for offset in range(3)]
+
+
+def _daily_quiz(today: date | None = None):
+    """Return the day's words as choices and the key, keeping quiz aligned with lesson."""
+    day = today or _japan_today()
+    words = _daily_words(day)
+    correct = words[0]
+    choices = [None, None, None]
+    correct_index = day.toordinal() % 3
+    choices[correct_index] = correct
+    remaining = [index for index in range(3) if index != correct_index]
+    for index, entry in zip(remaining, words[1:]):
+        choices[index] = entry
+    return words, choices, "abc"[correct_index]
 
 
 def _quiz_answer(text: str) -> str | None:
@@ -106,18 +131,23 @@ def _english_sentence(text: str) -> bool:
     return len(words) >= 2 and sum(word in common for word in words) >= 1
 
 
-def _grade_quiz(text: str) -> str | None:
+def _grade_quiz(text: str, today: date | None = None) -> str | None:
     answer = _quiz_answer(text)
     if answer is None:
         return None
-    if answer == "a":
-        return "✅ 正解！\n\nA. improve = 改善する・向上させる\n\n次は「文法」か「会話」と送って続けましょう。"
+    words, choices, correct_answer = _daily_quiz(today)
+    correct_entry = choices["abc".index(correct_answer)]
+    if answer == correct_answer:
+        return (
+            f"✅ 正解！\n\n{correct_answer.upper()}. {correct_entry.word}\n"
+            f"コアイメージ：{correct_entry.core_image}\n\n"
+            "次は「単語」で新しい日のコアイメージを学べます。"
+        )
     return (
-        "❌ 惜しい！正解は A. improve です。\n\n"
-        "improve = 改善する・向上させる\n"
-        "もう一度「クイズ」と送ると再挑戦できます。"
+        f"❌ 惜しい！正解は {correct_answer.upper()}. {correct_entry.word} です。\n\n"
+        f"コアイメージ：{correct_entry.core_image}\n"
+        "もう一度「クイズ」と送ると今日の語を復習できます。"
     )
-
 
 class EnglishLearningAgent:
     name = "english_learning"
@@ -144,19 +174,23 @@ class EnglishLearningAgent:
             )
             mode = "ai_tutor"
         elif mode == "vocabulary":
-            lines = ["📘 今日の英単語", ""]
-            for word, meaning, example in _WORDS:
-                lines.append(f"• {word} = {meaning}")
-                lines.append(f"  例: {example}")
-            lines.extend(["", "覚えたら「クイズ」と送ってください。"])
+            lines = ["📘 今日の英単語コアイメージ", ""]
+            for entry in _daily_words():
+                lines.append(f"• {entry.word}（{entry.pronunciation}）")
+                lines.append(f"  コアイメージ：{entry.core_image}")
+                lines.append(f"  用法メモ：{entry.parts}")
+                lines.append(f"  例: {entry.example}")
+                lines.append("")
+            lines.append("覚えたら「クイズ」と送ってください。")
             text = "\n".join(lines)
         elif mode == "quiz":
+            words, choices, _correct_answer = _daily_quiz()
+            target = words[0]
             text = (
-                "📝 英単語クイズ\n\n"
-                "次の意味に一番近い英単語は？\n"
-                "「改善する・向上させる」\n\n"
-                "A. improve\nB. schedule\nC. recommend\n\n"
-                "答えは A / B / C で送ってください。"
+                "📝 英単語クイズ（今日のコアイメージ）\n\n"
+                f"「{target.core_image}」に最も近い英単語は？\n\n"
+                + "\n".join(f"{letter.upper()}. {entry.word}" for letter, entry in zip("abc", choices))
+                + "\n\n答えは A / B / C で送ってください。"
             )
         elif mode == "grammar":
             if re.search(r"\bi\s+want\s+to\s+\w+", original.lower()):
@@ -187,8 +221,8 @@ class EnglishLearningAgent:
         elif mode == "review":
             text = (
                 "🔁 英語復習モードです。\n\n"
-                "今日の復習語: improve / schedule / recommend\n"
-                "まず「improve」を使って英文を1つ作ってください。"
+                "今日の復習語: " + " / ".join(entry.word for entry in _daily_words()) + "\n"
+                "今日のコアイメージから1語選び、英文を1つ作ってください。"
             )
         elif _english_sentence(original):
             ai_text = _ai_tutor_reply(original, user_id=request.user_id, mode="correction")
