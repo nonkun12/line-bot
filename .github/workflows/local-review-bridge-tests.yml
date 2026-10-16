@@ -9,7 +9,6 @@ on:
       - "scripts/local_fm_code_review.py"
       - "tests/test_local_review_bridge.py"
       - "tests/test_local_review_bridge_worker.py"
-      - ".github/workflows/local-review-bridge-tests.yml"
       - "db.py"
       - "app.py"
   workflow_dispatch:
@@ -20,7 +19,7 @@ permissions:
 jobs:
   isolated-bridge-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,8 +27,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install minimal test dependencies
-        run: python -m pip install --disable-pip-version-check Flask pytest
+      - name: Install repository dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
       - name: Compile changed Python modules
         run: |
           python -m py_compile \
