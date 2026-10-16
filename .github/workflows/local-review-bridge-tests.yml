@@ -9,6 +9,7 @@ on:
       - "scripts/local_fm_code_review.py"
       - "tests/test_local_review_bridge.py"
       - "tests/test_local_review_bridge_worker.py"
+      - "tests/test_local_fm_code_review.py"
       - "db.py"
       - "app.py"
   workflow_dispatch:
@@ -39,4 +40,4 @@ jobs:
       - name: Run isolated bridge tests
         env:
           CHAT_DB_PATH: ${{ runner.temp }}/local-review-test.sqlite3
-        run: python -m pytest -q tests/test_local_review_bridge.py tests/test_local_review_bridge_worker.py
+        run: python -m pytest -q tests/test_local_review_bridge.py tests/test_local_review_bridge_worker.py tests/test_local_fm_code_review.py
