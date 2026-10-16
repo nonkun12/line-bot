@@ -118,7 +118,7 @@ def audit_row_outcome(client: GoogleSheetsClient, run_id: str) -> tuple[bool, st
         return False, f"Ambiguous Sheets audit rows for run_id={run_id}"
     values = matching[0]
     task_id = str(values[positions["task_id"]]).strip()
-    if task_id.upper() in INVALID_TASK_IDS or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,99}", task_id):
+    if re.sub(r"[^A-Z0-9]+", "_", task_id.upper()).strip("_") in INVALID_TASK_IDS or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,99}", task_id):
         reason = str(values[positions["blocked_failed_reason"]]).strip() or "invalid_or_missing_task_id"
         return False, f"scheduled workflow did not execute a valid task: run_id={run_id} task_id={task_id or '(empty)'} reason={reason}"
     gate = str(values[positions["safety_gate_result"]]).strip().upper()
