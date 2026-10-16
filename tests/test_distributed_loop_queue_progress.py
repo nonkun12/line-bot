@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
 
-from scripts.distributed_loop_queue_progress import calculate_progress
+from scripts.distributed_loop_queue_progress import calculate_progress, main
 
 
 def test_progress_uses_runtime_queue_and_counts_refill_tasks(tmp_path: Path):
@@ -55,3 +56,24 @@ def test_progress_rejects_state_without_completed_key(tmp_path: Path, state_data
 
     with pytest.raises(ValueError, match="invalid completed state"):
         calculate_progress(queue, state, results)
+
+
+
+@pytest.mark.parametrize("broken_file", ["state", "results"])
+def test_cli_returns_two_for_corrupt_evidence(tmp_path: Path, monkeypatch, capsys, broken_file: str):
+    queue = tmp_path / "queue.json"
+    state = tmp_path / "state.json"
+    results = tmp_path / "results.jsonl"
+    queue.write_text(json.dumps({"tasks": [{"id": "task-1"}]}), encoding="utf-8")
+    state.write_text(json.dumps({"completed": []}), encoding="utf-8")
+    results.write_text("", encoding="utf-8")
+    target = state if broken_file == "state" else results
+    target.write_text("{broken json", encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["distributed_loop_queue_progress", "--queue", str(queue), "--state", str(state), "--results", str(results)],
+    )
+
+    assert main() == 2
+    assert "QUEUE_PROGRESS_BLOCKED" in capsys.readouterr().out
