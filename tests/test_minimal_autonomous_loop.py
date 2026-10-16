@@ -277,3 +277,27 @@ def test_main_rejects_queue_limit(monkeypatch, tmp_path: Path):
         assert "max_tasks_per_run=1" in str(exc)
     else:
         raise AssertionError("expected queue limit rejection")
+
+
+def test_produced_head_rejects_rename_from_protected_path_into_allowed_test(monkeypatch):
+    monkeypatch.setattr(loop, "_git_head", lambda: "b" * 40)
+    calls = []
+
+    def fake_git_checked(*args):
+        calls.append(args)
+        if args[0] == "merge-base":
+            return 0, ""
+        if args[:3] == ("diff", "--no-renames", "--name-only"):
+            # Git reports both sides of a rename when rename detection is disabled.
+            return 0, "core/x.py\\ntests/test_y.py"
+        raise AssertionError(f"unexpected git command: {args!r}")
+
+    monkeypatch.setattr(loop, "_git_checked", fake_git_checked)
+    result = loop._verify_produced_head(
+        "a" * 40,
+        "b" * 40,
+        ["tests/test_y.py"],
+    )
+
+    assert result == (False, "diff_outside_allowed_paths")
+    assert ("diff", "--no-renames", "--name-only", "a" * 40, "b" * 40) in calls
