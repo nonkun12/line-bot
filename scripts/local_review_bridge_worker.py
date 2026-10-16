@@ -144,7 +144,6 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
     if not isinstance(token, str) or not token or len(token) > 256:
         raise WorkerError("invalid claim token")
 
-    payload = validate_payload(job.get("payload"))
     report_body = {
         "job_id": job_id,
         "claim_token": token,
@@ -152,6 +151,7 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
         "reason": "worker failed closed before review",
     }
     try:
+        payload = validate_payload(job.get("payload"))
         repo = verify_checkout(repo_path, payload)
         script = repo / "scripts" / "local_fm_code_review.py"
         if not script.is_file():
