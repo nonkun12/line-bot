@@ -193,6 +193,27 @@ def _review_environment() -> dict[str, str]:
     }
 
 
+def _communicate_with_timeout(proc, timeout: int) -> tuple[str, str]:
+    """Collect reviewer output or terminate its entire process group on timeout."""
+    try:
+        return proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        # The reviewer and its child processes share a fresh process group.
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.communicate()
+        raise WorkerError("local fm review timed out; process group termination attempted") from exc
+
+
 def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
     base_url = validate_base_url(base_url)
     if not key or len(key) > 512:
@@ -250,24 +271,7 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
                 cwd=repo, env=review_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, start_new_session=True,
             )
-            try:
-                stdout, stderr = proc.communicate(timeout=LOCAL_REVIEW_TIMEOUT_SECONDS)
-            except subprocess.TimeoutExpired as exc:
-                # The reviewer and its child processes share a fresh process group.
-                # Terminate the group first, then force-kill it if it does not exit.
-                try:
-                    os.killpg(proc.pid, signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
-                try:
-                    proc.communicate(timeout=5)
-                except subprocess.TimeoutExpired:
-                    try:
-                        os.killpg(proc.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
-                    proc.communicate()
-                raise WorkerError("local fm review timed out; process group terminated") from exc
+            stdout, stderr = _communicate_with_timeout(proc, LOCAL_REVIEW_TIMEOUT_SECONDS)
             proc = subprocess.CompletedProcess(
                 args=proc.args, returncode=proc.returncode, stdout=stdout, stderr=stderr
             )
