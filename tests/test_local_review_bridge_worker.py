@@ -80,3 +80,15 @@ def test_checkout_requires_exact_head_sha(monkeypatch, tmp_path):
     with pytest.raises(worker.WorkerError, match="does not exactly match"):
         worker.verify_checkout(str(tmp_path), payload())
     assert len(calls) == 2
+
+
+def test_redirect_handler_never_forwards_authenticated_request():
+    handler = worker._NoRedirectHandler()
+    request = worker.Request("https://bridge.example/claim", headers={
+        "X-Local-Review-Bridge-Key": "secret-test-value",
+    })
+    # urllib's default redirect handler would create a second request. This
+    # worker must stop instead, so the bridge key cannot follow a redirect.
+    assert handler.redirect_request(
+        request, None, 302, "Found", {}, "https://attacker.example/collect"
+    ) is None
