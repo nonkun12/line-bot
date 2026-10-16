@@ -16,7 +16,7 @@ import tempfile
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 ALLOWED_REPOSITORY = "nonkun12/line-bot"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -27,6 +27,16 @@ LOCAL_REVIEW_TIMEOUT_SECONDS = 150
 
 class WorkerError(RuntimeError):
     pass
+
+
+class _NoRedirectHandler(HTTPRedirectHandler):
+    """Never forward bridge credentials or job data to a redirect target."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_HTTP_OPENER = build_opener(_NoRedirectHandler)
 
 
 def validate_base_url(value: str) -> str:
@@ -106,7 +116,7 @@ def request_json(url: str, key: str, method: str, body: dict | None = None) -> d
         },
     )
     try:
-        with urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as response:
+        with _HTTP_OPENER.open(req, timeout=HTTP_TIMEOUT_SECONDS) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
         if len(raw) > MAX_RESPONSE_BYTES:
             raise WorkerError("bridge response exceeded size limit")
