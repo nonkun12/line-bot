@@ -113,7 +113,7 @@ def _daily_quiz(today: date | None = None):
 
 def _quiz_answer(text: str) -> str | None:
     value = (text or "").strip().lower()
-    match = re.fullmatch(r"(?:answer\\s*)?([abc])(?:[.\\)\\s]+)?", value)
+    match = re.fullmatch(r"(?:answer\s*)?([abc])(?:[.\)\s]+)?", value)
     return match.group(1) if match else None
 
 
@@ -139,13 +139,13 @@ def _grade_quiz(text: str, today: date | None = None) -> str | None:
     correct_entry = choices["abc".index(correct_answer)]
     if answer == correct_answer:
         return (
-            f"✅ 正解！\\n\\n{correct_answer.upper()}. {correct_entry.word}\\n"
-            f"コアイメージ：{correct_entry.core_image}\\n\\n"
+            f"✅ 正解！\n\n{correct_answer.upper()}. {correct_entry.word}\n"
+            f"コアイメージ：{correct_entry.core_image}\n\n"
             "次は「単語」で新しい日のコアイメージを学べます。"
         )
     return (
-        f"❌ 惜しい！正解は {correct_answer.upper()}. {correct_entry.word} です。\\n\\n"
-        f"コアイメージ：{correct_entry.core_image}\\n"
+        f"❌ 惜しい！正解は {correct_answer.upper()}. {correct_entry.word} です。\n\n"
+        f"コアイメージ：{correct_entry.core_image}\n"
         "もう一度「クイズ」と送ると今日の語を復習できます。"
     )
 
@@ -182,15 +182,15 @@ class EnglishLearningAgent:
                 lines.append(f"  例: {entry.example}")
                 lines.append("")
             lines.append("覚えたら「クイズ」と送ってください。")
-            text = "\\n".join(lines)
+            text = "\n".join(lines)
         elif mode == "quiz":
             words, choices, _correct_answer = _daily_quiz()
             target = words[0]
             text = (
-                "📝 今日のコアイメージクイズ\\n\\n"
-                f"「{target.core_image}」に最も近い英単語は？\\n\\n"
-                + "\\n".join(f"{letter.upper()}. {entry.word}" for letter, entry in zip("abc", choices))
-                + "\\n\\n答えは A / B / C で送ってください。"
+                "📝 今日のコアイメージクイズ\n\n"
+                f"「{target.core_image}」に最も近い英単語は？\n\n"
+                + "\n".join(f"{letter.upper()}. {entry.word}" for letter, entry in zip("abc", choices))
+                + "\n\n答えは A / B / C で送ってください。"
             )
         elif mode == "grammar":
             if re.search(r"\bi\s+want\s+to\s+\w+", original.lower()):
@@ -221,8 +221,8 @@ class EnglishLearningAgent:
         elif mode == "review":
             text = (
                 "🔁 英語復習モードです。\n\n"
-                "今日の復習語: improve / schedule / recommend\n"
-                "まず「improve」を使って英文を1つ作ってください。"
+                "今日の復習語: " + " / ".join(entry.word for entry in _daily_words()) + "\n"
+                "今日のコアイメージから1語選び、英文を1つ作ってください。"
             )
         elif _english_sentence(original):
             ai_text = _ai_tutor_reply(original, user_id=request.user_id, mode="correction")
