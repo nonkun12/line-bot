@@ -23,7 +23,8 @@ def test_supervisor_routes_four_specialist_intents():
 
 def test_english_agent_quiz_is_actionable():
     response = EnglishLearningAgent().handle(_request("英語 クイズ"))
-    assert "A. improve" in response.text
+    assert all(f"{letter}. " in response.text for letter in "ABC")
+    assert "答えは A / B / C" in response.text
     assert response.metadata["feature"] == "english_learning"
 
 
