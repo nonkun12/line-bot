@@ -117,19 +117,25 @@ def audit_row_outcome(client: GoogleSheetsClient, run_id: str) -> tuple[bool, st
         return False, f"Ambiguous Sheets audit rows for run_id={run_id}"
     values = matching[0]
     task_id = str(values[positions["task_id"]]).strip()
-    if task_id.upper() in INVALID_TASK_IDS:
-        reason = str(values[positions["blocked_failed_reason"]]).strip() or "queue_empty_or_no_task"
-        return False, f"scheduled workflow did not execute a task: run_id={run_id} task_id={task_id or '(empty)'} reason={reason}"
+    if task_id.upper() in INVALID_TASK_IDS or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,99}", task_id):
+        reason = str(values[positions["blocked_failed_reason"]]).strip() or "invalid_or_missing_task_id"
+        return False, f"scheduled workflow did not execute a valid task: run_id={run_id} task_id={task_id or '(empty)'} reason={reason}"
     gate = str(values[positions["safety_gate_result"]]).strip().upper()
     if gate != "PASS":
         reason = str(values[positions["blocked_failed_reason"]]).strip() or "safety_gate_not_pass"
         return False, f"scheduled task did not pass Safety Gate: run_id={run_id} task_id={task_id} gate={gate or '(empty)'} reason={reason}"
     verification = str(values[positions["verification_result"]]).strip().upper()
-    if verification in {"", "NOT_RUN", "FAIL", "FAILED", "BLOCKED"}:
+    if verification not in {"PASS", "NO_CHANGE"}:
         return False, f"scheduled task verification is not successful: run_id={run_id} task_id={task_id} verification={verification or '(empty)'}"
     tests = str(values[positions["tests_result"]]).strip().upper()
-    if tests in {"NOT_RUN", "FAIL", "FAILED", "BLOCKED"}:
-        return False, f"scheduled task tests are not successful: run_id={run_id} task_id={task_id} tests={tests}"
+    if tests not in {"PASS", "NO_CHANGE"}:
+        return False, f"scheduled task tests are not successful: run_id={run_id} task_id={task_id} tests={tests or '(empty)'}"
+    base_sha = str(values[positions["base_sha"]]).strip()
+    produced_sha = str(values[positions["produced_sha"]]).strip()
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", base_sha):
+        return False, f"scheduled task base SHA is missing or malformed: run_id={run_id} task_id={task_id}"
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", produced_sha):
+        return False, f"scheduled task produced SHA is missing or malformed: run_id={run_id} task_id={task_id}"
     return True, "verified_task_passed"
 
 
