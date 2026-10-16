@@ -52,7 +52,7 @@ def test_rejects_fork_pr(monkeypatch):
             "base": {"sha": BASE, "repo": {"full_name": repo}},
             "head": {"sha": HEAD, "repo": {"full_name": "attacker/fork"}},
         }
-    result = dispatch_local_review("U1", "ローカルレビュー PR #676", get_pr=fake_get_pr)
+    result = dispatch_local_review("U1", "ローカルレビュー PR #676", get_pr=fake_get_pr, channel="line")
     assert "許可されていないリポジトリ" in result
 
 
