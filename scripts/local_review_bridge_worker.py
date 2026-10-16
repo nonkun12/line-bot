@@ -53,7 +53,9 @@ def validate_base_url(value: str) -> str:
 def validate_payload(payload: object) -> dict:
     if not isinstance(payload, dict):
         raise WorkerError("job payload must be an object")
-    if payload.get("schema_version") != 1 or payload.get("kind") != "local_code_review":
+    if (isinstance(payload.get("schema_version"), bool)
+            or payload.get("schema_version") != 1
+            or payload.get("kind") != "local_code_review"):
         raise WorkerError("unsupported job payload")
     if payload.get("repository") != ALLOWED_REPOSITORY:
         raise WorkerError("repository is not allowlisted")
@@ -194,7 +196,7 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
                 "job_id": job_id, "claim_token": token,
                 "status": "REVIEWED", "report": report,
             }
-    except (WorkerError, OSError, ValueError, json.JSONDecodeError) as exc:
+    except (WorkerError, OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         # Bounded and sanitized: don't include prompts, diffs, tokens, or raw CLI output.
         report_body = {
             "job_id": job_id, "claim_token": token,
