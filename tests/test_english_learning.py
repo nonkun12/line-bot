@@ -7,19 +7,64 @@ def _request(message: str) -> AgentRequest:
     return AgentRequest(user_id="test-user", message=message, channel="test", metadata={})
 
 
-def test_quiz_answer_is_routed_and_graded():
+def test_quiz_requires_an_active_question(monkeypatch, tmp_path):
+    from agents.english import progress
+
+    monkeypatch.setattr(progress, "DB_PATH", str(tmp_path / "quiz.db"))
     agent = EnglishLearningAgent()
     assert is_english_learning_intent("A")
     assert classify_english_mode("A") == "quiz_answer"
     response = agent.handle(_request("A"))
     assert response.metadata["mode"] == "quiz_answer"
-    assert "正解" in response.text
+    assert "先に「クイズ」" in response.text
 
 
-def test_wrong_quiz_answer_is_explained():
-    response = EnglishLearningAgent().handle(_request("C"))
-    assert "正解は A" in response.text
+def test_quiz_rotates_words_and_grades_the_actual_option(monkeypatch, tmp_path):
+    from agents.english import progress
+    from agents.english.core_image import get_core_image_quiz_entries
+    import re
 
+    monkeypatch.setattr(progress, "DB_PATH", str(tmp_path / "quiz.db"))
+    entries = list(get_core_image_quiz_entries())
+    agent = EnglishLearningAgent()
+    seen = []
+    for _ in range(3):
+        question = agent.handle(_request("クイズ")).text
+        match = re.search(r"次のコアイメージに合う英単語は？\n(.+?)\n\nA\. (\w+)\nB\. (\w+)\nC\. (\w+)", question, re.S)
+        assert match, question
+        options = {"A": match.group(2), "B": match.group(3), "C": match.group(4)}
+        candidates = {entry.word for entry in entries if entry.core_image == match.group(1)}
+        correct_word = next(word for word in options.values() if word in candidates)
+        assert correct_word in options.values()
+        assert correct_word not in seen[-2:]
+        seen.append(correct_word)
+        answer_label = next(label for label, word in options.items() if word == correct_word)
+        result = agent.handle(_request(answer_label)).text
+        assert "正解！" in result
+        assert correct_word in result
+        assert "コアイメージ：" in result
+    assert len(set(seen)) == 3
+
+
+def test_quiz_wrong_answer_reports_dynamic_correct_option(monkeypatch, tmp_path):
+    from agents.english import progress
+    from agents.english.core_image import get_core_image_quiz_entries
+    import re
+
+    monkeypatch.setattr(progress, "DB_PATH", str(tmp_path / "quiz.db"))
+    entries = list(get_core_image_quiz_entries())
+    agent = EnglishLearningAgent()
+    question = agent.handle(_request("クイズ")).text
+    match = re.search(r"次のコアイメージに合う英単語は？\n(.+?)\n\nA\. (\w+)\nB\. (\w+)\nC\. (\w+)", question, re.S)
+    assert match, question
+    options = {"A": match.group(2), "B": match.group(3), "C": match.group(4)}
+    candidates = {entry.word for entry in entries if entry.core_image == match.group(1)}
+    correct_word = next(word for word in options.values() if word in candidates)
+    correct_label = next(label for label, word in options.items() if word == correct_word)
+    wrong_label = next(label for label in options if label != correct_label)
+    response = agent.handle(_request(wrong_label)).text
+    assert "惜しい" in response
+    assert f"正解は {correct_label}. {correct_word}" in response
 
 def test_common_english_sentence_gets_correction_feedback():
     agent = EnglishLearningAgent()
