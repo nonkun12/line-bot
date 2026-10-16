@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - "routes/local_review_bridge.py"
-      - "core/local_review_jobs.py"
       - "scripts/local_review_bridge_worker.py"
       - "scripts/local_fm_code_review.py"
       - "tests/test_local_review_bridge.py"
