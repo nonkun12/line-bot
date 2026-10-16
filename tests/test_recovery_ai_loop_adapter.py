@@ -15,7 +15,10 @@ def test_verified_pass_is_recorded_and_resets_streak(tmp_path):
         "task_id": "task-a", "status": "PASS", "exit_code": 0, "failure_reason": "",
         "base_sha": "a" * 40, "produced_sha": "b" * 40, "run_nonce": "c" * 32
     })
-    assert result == {"recorded": True, "status": "PASS", "verified": True}
+    # RAG advisory metadata may be added without changing the stable outcome contract.
+    assert result["recorded"] is True
+    assert result["status"] == "PASS"
+    assert result["verified"] is True
     assert store.task_status("task-a")["consecutive_failures"] == 0
 
 
@@ -70,7 +73,10 @@ def test_verified_no_change_is_success_not_a_failure(tmp_path):
         "task_id": "task-a", "status": "NO_CHANGE", "exit_code": 0, "failure_reason": "no_change",
         "base_sha": "a" * 40, "produced_sha": "a" * 40, "run_nonce": "b" * 32
     })
-    assert result == {"recorded": True, "status": "NO_CHANGE", "verified": True}
+    # RAG advisory metadata may be added without changing the stable outcome contract.
+    assert result["recorded"] is True
+    assert result["status"] == "NO_CHANGE"
+    assert result["verified"] is True
     assert store.task_status("task-a")["consecutive_failures"] == 0
 
 
