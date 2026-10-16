@@ -108,7 +108,9 @@ class EnglishLearningAgent:
 
     def can_handle(self, request: AgentRequest) -> bool:
         text = request.message
-        return is_english_learning_intent(text) or (has_pending_quiz(request.user_id) and _quiz_answer(text) is not None) or _english_sentence(text)
+        if _quiz_answer(text) is not None:
+            return has_pending_quiz(request.user_id)
+        return is_english_learning_intent(text) or _english_sentence(text)
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         original = request.message.strip()
