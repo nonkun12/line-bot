@@ -56,8 +56,9 @@ def classify_final_outcome(
                 ("publish", publish_outcome),
                 ("state", state_outcome),
                 ("sheets", sheets_outcome),
+                ("recovery_ai_persistence", recovery_outcome),
             )
-            if outcome != "success"
+            if outcome not in {"success", None}
         ]
         if failed_gates:
             return "BLOCKED", "queue_empty_post_run_gate_failed:" + ",".join(failed_gates)
