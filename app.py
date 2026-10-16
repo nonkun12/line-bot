@@ -76,6 +76,10 @@ from core.gateway import AIGateway
 from core.request_path import run_core_request, extract_core_reply
 from core.management_bridge import should_route_to_management_ai, run_management_request
 from core.line_runtime_audit import record_line_runtime
+from core.control_tower_status import (
+    build_control_tower_status_reply,
+    is_control_tower_status_command,
+)
 from core.self_introduction import handle_self_introduction
 from routes.core_api import core_api_bp
 from routes.obsidian_bridge import obsidian_bridge_bp
@@ -323,6 +327,14 @@ def _handle_ai_gateway_request(ai_request):
     loop_handled, loop_reply = request_distributed_loop(user_id, message)
     if loop_handled:
         return loop_reply
+
+    # Explicit status commands must bypass the general chat model. Report only
+    # read-only GitHub Actions evidence and fail closed when it is unavailable.
+    if is_control_tower_status_command(message):
+        return build_control_tower_status_reply(
+            AI_REPORT_GITHUB_REPO,
+            GITHUB_TOKEN,
+        )
 
     core_image_reply = handle_core_image_command(message)
     if core_image_reply is not None:
