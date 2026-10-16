@@ -289,7 +289,7 @@ def test_produced_head_rejects_rename_from_protected_path_into_allowed_test(monk
             return 0, ""
         if args[:3] == ("diff", "--no-renames", "--name-only"):
             # Git reports both sides of a rename when rename detection is disabled.
-            return 0, "core/x.py\\ntests/test_y.py"
+            return 0, "core/x.py\ntests/test_y.py"
         raise AssertionError(f"unexpected git command: {args!r}")
 
     monkeypatch.setattr(loop, "_git_checked", fake_git_checked)
