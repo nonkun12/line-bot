@@ -176,3 +176,32 @@ def test_audit_row_outcome_rejects_duplicate_run_rows():
     ok, reason = audit_row_outcome(client, "12345")
     assert not ok
     assert "Ambiguous Sheets audit rows" in reason
+
+
+def test_audit_row_outcome_rejects_empty_or_skipped_tests():
+    for value in ("", "SKIPPED", "NOT_RUN", "FAIL"):
+        ok, reason = audit_row_outcome(FakeSheetsClient([HEADERS, _audit_row(tests_result=value)]), "12345")
+        assert not ok
+        assert "tests are not successful" in reason
+
+
+def test_audit_row_outcome_rejects_malformed_task_id():
+    for value in ("queue-empty", "bad task id", "../task"):
+        ok, reason = audit_row_outcome(FakeSheetsClient([HEADERS, _audit_row(task_id=value)]), "12345")
+        assert not ok
+        assert "valid task" in reason
+
+
+def test_audit_row_outcome_requires_valid_base_and_produced_shas():
+    valid = "a" * 40
+    for field in ("base_sha", "produced_sha"):
+        for value in ("", "1234", "g" * 40):
+            ok, reason = audit_row_outcome(FakeSheetsClient([HEADERS, _audit_row(base_sha=valid, produced_sha=valid, **{field: value})]), "12345")
+            assert not ok
+            assert "SHA is missing or malformed" in reason
+
+
+def test_audit_row_outcome_accepts_no_change_with_valid_shas():
+    sha = "b" * 40
+    client = FakeSheetsClient([HEADERS, _audit_row(tests_result="NO_CHANGE", verification_result="NO_CHANGE", base_sha=sha, produced_sha=sha)])
+    assert audit_row_outcome(client, "12345") == (True, "verified_task_passed")
