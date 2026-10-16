@@ -7,6 +7,7 @@ No daemon, polling loop, file edits, commits, merges, or deployments. Without
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -172,6 +173,16 @@ def _completion_with_bounded_fallback(base_url: str, key: str, report_body: dict
         raise WorkerError("completion and bounded NOT_RUN fallback failed; inspect job status")
 
 
+def _verify_trusted_script(source: str, expected_sha256: str) -> None:
+    """Require an operator-pinned digest before executing the reviewer script."""
+    expected = str(expected_sha256 or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", expected):
+        raise WorkerError("LOCAL_REVIEW_TRUSTED_SCRIPT_SHA256 is missing or invalid")
+    actual = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    if not __import__("hmac").compare_digest(actual, expected):
+        raise WorkerError("trusted review script digest mismatch")
+
+
 def _review_environment() -> dict[str, str]:
     """Return only non-secret runtime variables needed by the trusted reviewer."""
     return {
@@ -226,6 +237,9 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
                 raise WorkerError("could not load trusted review script from base commit") from exc
             if trusted.returncode or not trusted.stdout.strip():
                 raise WorkerError("trusted review script is missing from base commit")
+            _verify_trusted_script(
+                trusted.stdout, os.environ.get("LOCAL_REVIEW_TRUSTED_SCRIPT_SHA256", "")
+            )
             trusted_script.write_text(trusted.stdout, encoding="utf-8")
             # Never pass the bridge key or other application secrets to the reviewer/fm.
             review_env = _review_environment()
