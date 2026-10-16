@@ -83,6 +83,7 @@ from core.control_tower_status import (
 from core.self_introduction import handle_self_introduction
 from routes.core_api import core_api_bp
 from routes.obsidian_bridge import obsidian_bridge_bp
+from routes.local_review_bridge import local_review_bridge_bp
 from obsidian_loop_dispatch import dispatch_configuration_status
 from core.obsidian_bridge import enqueue_obsidian_request
 from agents.obsidian.intents import is_obsidian_intent
@@ -102,6 +103,7 @@ from routes.e2e_dashboard import e2e_bp
 app.register_blueprint(e2e_bp)
 app.register_blueprint(core_api_bp)
 app.register_blueprint(obsidian_bridge_bp)
+app.register_blueprint(local_review_bridge_bp)
 
 # Log only non-secret configuration booleans so deployment setup can be checked
 # without exposing token values or running an autonomous task.
