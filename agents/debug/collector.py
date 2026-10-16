@@ -37,7 +37,7 @@ def _has_traceback(text: str) -> bool:
     「さっきのtracebackの件」「traceback機能は利用できません」)は
     Falseとなり、実際にPythonが出力したtraceback形式のみをTrueとする。
     """
-    return _TRACEBACK_MARKER in (text or "")
+    return (text or "").find(_TRACEBACK_MARKER) != -1
 
 
 def _isolate_traceback_block(text: str) -> str:
