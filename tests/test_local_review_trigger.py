@@ -18,7 +18,7 @@ def test_only_explicit_pr_command_is_recognized():
 def test_authorization_fails_closed_when_allowlist_missing(monkeypatch):
     monkeypatch.delenv("LOCAL_REVIEW_ALLOWED_USER_IDS", raising=False)
     called = []
-    result = dispatch_local_review("U1", "ローカルレビュー PR #676", get_pr=lambda *args: called.append(args))
+    result = dispatch_local_review("U1", "ローカルレビュー PR #676", get_pr=lambda *args: called.append(args), channel="line")
     assert "許可された利用者" in result
     assert called == []
 
@@ -39,7 +39,7 @@ def test_authorized_request_enqueues_canonical_sha_pair(monkeypatch):
             "base": {"sha": BASE, "repo": {"full_name": repo}},
             "head": {"sha": HEAD, "repo": {"full_name": repo}},
         }
-    result = dispatch_local_review("U1", "ローカルレビュー PR #676", token="fake", get_pr=fake_get_pr)
+    result = dispatch_local_review("U1", "ローカルレビュー PR #676", token="fake", get_pr=fake_get_pr, channel="line")
     assert "Job 41" in result
     assert captured == {"user": "U1", "repo": "nonkun12/line-bot", "base": BASE, "head": HEAD}
 
@@ -54,3 +54,15 @@ def test_rejects_fork_pr(monkeypatch):
         }
     result = dispatch_local_review("U1", "ローカルレビュー PR #676", get_pr=fake_get_pr)
     assert "許可されていないリポジトリ" in result
+
+
+
+def test_rejects_explicit_review_command_from_non_line_channel(monkeypatch):
+    monkeypatch.setenv("LOCAL_REVIEW_ALLOWED_USER_IDS", "U1")
+    called = []
+    result = dispatch_local_review(
+        "U1", "ローカルレビュー PR #676", channel="internal",
+        get_pr=lambda *args: called.append(args),
+    )
+    assert "LINEからのみ" in result
+    assert called == []
