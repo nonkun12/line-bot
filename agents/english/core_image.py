@@ -380,6 +380,15 @@ _ENTRIES: dict[str, WordEntry] = {
     "volatile": WordEntry(word="volatile", pronunciation="ヴォラタイル", core_image="状態がすぐ変わりやすい → 不安定な・変動の激しい", parts="volatile market / situation は「変動の激しい市場／不安定な状況」。化学では揮発性の意味もある。", related=("volatility（変動性）", "volatilely（不安定に）", "unstable（不安定な）"), example="Investors are cautious in a volatile market.（投資家は変動の激しい市場では慎重になる。）"),
     "erratic": WordEntry(word="erratic", pronunciation="イラティック", core_image="一定の筋道や規則がない → 不規則な・予測しにくい", parts="erratic behavior / performance は「不規則な行動／むらのある成績」。", related=("erratically（不規則に）", "irregular（不規則な）", "unpredictable（予測できない）"), example="The machine's erratic performance delayed the project.（機械の不安定な動作で計画が遅れた。）"),
     "impartiality": WordEntry(word="impartiality", pronunciation="インパーシャリティ", core_image="一方に偏らない性質 → 公平性・中立性", parts="impartiality of the process は「手続きの公平性」。", related=("impartial（公平な）", "neutrality（中立性）", "fairness（公平さ）"), example="The judge's impartiality was widely respected.（その裁判官の公平性は広く尊重されていた。）"),
+    "good": WordEntry(
+        word="good",
+        pronunciation="グッド",
+        core_image="期待にかなう・役に立つ状態 → よい／良いこと",
+        parts="語源の分解ではなく、現代英語の意味の核です。good idea（よい考え）、good at ...（〜が得意）など、表現によって意味が広がります。",
+        related=("well（よく）", "goodness（よさ・善良さ）", "excellent（非常によい）"),
+        example="This is a good idea.（これはよい考えです。）",
+        note="good は文脈により「親切な」「十分な」「健康な」などにもなります。語源を断定せず、まず「期待にかなう／役に立つ」という意味の核から覚えます。",
+    ),
     "explain": WordEntry(
         word="explain",
         pronunciation="イクスプレイン",
