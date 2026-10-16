@@ -83,14 +83,35 @@ def git(repo: Path, *args: str, timeout: int = 15) -> str:
 
 
 def verify_checkout(repo_path: str, payload: dict) -> Path:
+    """Validate the configured repo and fetch only the exact requested commits.
+
+    The user's current branch/worktree is never checked out or reset. The review
+    script itself is loaded from the PR base commit, not from the untrusted PR head.
+    """
     repo = Path(repo_path).expanduser().resolve(strict=True)
     if not repo.is_dir():
         raise WorkerError("configured repository path is not a directory")
     if git(repo, "rev-parse", "--show-toplevel") != str(repo):
         raise WorkerError("configured path is not the repository root")
-    head = git(repo, "rev-parse", "HEAD")
-    if head != payload["head_sha"]:
-        raise WorkerError("checkout HEAD does not exactly match requested head_sha")
+    remote = git(repo, "remote", "get-url", "origin")
+    allowed_remotes = {
+        "https://github.com/nonkun12/line-bot",
+        "https://github.com/nonkun12/line-bot.git",
+        "git@github.com:nonkun12/line-bot.git",
+        "ssh://git@github.com/nonkun12/line-bot.git",
+    }
+    if remote.rstrip("/") not in allowed_remotes:
+        raise WorkerError("origin remote is not the allowlisted repository")
+    try:
+        fetched = subprocess.run(
+            ["git", "-C", str(repo), "fetch", "--no-tags", "origin",
+             payload["base_sha"], payload["head_sha"]],
+            check=False, capture_output=True, text=True, timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise WorkerError("fetch of requested review commits failed or timed out") from exc
+    if fetched.returncode:
+        raise WorkerError("fetch of requested review commits failed")
     for sha in (payload["base_sha"], payload["head_sha"]):
         resolved = git(repo, "rev-parse", "--verify", f"{sha}^{{commit}}")
         if resolved != sha:
@@ -165,14 +186,24 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
     try:
         payload = validate_payload(job.get("payload"))
         repo = verify_checkout(repo_path, payload)
-        script = repo / "scripts" / "local_fm_code_review.py"
-        if not script.is_file():
-            raise WorkerError("local review script is missing")
         with tempfile.TemporaryDirectory(prefix="line-local-review-") as tmp:
             report_path = Path(tmp) / "report.json"
+            trusted_script = Path(tmp) / "trusted_local_fm_code_review.py"
+            # Do not execute code from the PR head: a PR could replace this script.
+            try:
+                trusted = subprocess.run(
+                    ["git", "-C", str(repo), "show",
+                     f"{payload['base_sha']}:scripts/local_fm_code_review.py"],
+                    check=False, capture_output=True, text=True, timeout=15,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise WorkerError("could not load trusted review script from base commit") from exc
+            if trusted.returncode or not trusted.stdout.strip():
+                raise WorkerError("trusted review script is missing from base commit")
+            trusted_script.write_text(trusted.stdout, encoding="utf-8")
             try:
                 proc = subprocess.run(
-                    [sys.executable, str(script), "--base", payload["base_sha"],
+                    [sys.executable, str(trusted_script), "--base", payload["base_sha"],
                      "--head", payload["head_sha"], "--report", str(report_path)],
                     cwd=repo, check=False, capture_output=True, text=True,
                     timeout=LOCAL_REVIEW_TIMEOUT_SECONDS,

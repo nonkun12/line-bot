@@ -76,6 +76,7 @@ from core.gateway import AIGateway
 from core.request_path import run_core_request, extract_core_reply
 from core.management_bridge import should_route_to_management_ai, run_management_request
 from core.line_runtime_audit import record_line_runtime
+from core.local_review_trigger import dispatch_local_review
 from core.control_tower_status import (
     build_control_tower_status_reply,
     is_control_tower_status_command,
@@ -325,6 +326,11 @@ def _core_dynamic_enabled():
 def _handle_ai_gateway_request(ai_request):
     message = str(ai_request.message)
     user_id = str(ai_request.user_id)
+
+    # Explicit, allowlisted PR review command. Never route it to general AI.
+    local_review_reply = dispatch_local_review(user_id, message, token=GITHUB_TOKEN)
+    if local_review_reply is not None:
+        return local_review_reply
 
     loop_handled, loop_reply = request_distributed_loop(user_id, message)
     if loop_handled:

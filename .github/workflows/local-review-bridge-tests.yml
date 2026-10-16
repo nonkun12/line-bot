@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "core/local_review_jobs.py"
+      - "core/local_review_trigger.py"
+      - "tests/test_local_review_trigger.py"
       - "routes/local_review_bridge.py"
       - "scripts/local_review_bridge_worker.py"
       - "scripts/local_fm_code_review.py"
@@ -36,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           files=()
-          for file in core/local_review_jobs.py routes/local_review_bridge.py scripts/local_review_bridge_worker.py scripts/local_fm_code_review.py; do
+          for file in core/local_review_jobs.py core/local_review_trigger.py routes/local_review_bridge.py scripts/local_review_bridge_worker.py scripts/local_fm_code_review.py; do
             if [[ -f "$file" ]]; then files+=("$file"); fi
           done
           if [[ ${#files[@]} -eq 0 ]]; then
@@ -50,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           tests=()
-          for file in tests/test_local_review_jobs.py tests/test_local_review_bridge.py tests/test_local_review_bridge_worker.py tests/test_local_fm_code_review.py; do
+          for file in tests/test_local_review_jobs.py tests/test_local_review_trigger.py tests/test_local_review_bridge.py tests/test_local_review_bridge_worker.py tests/test_local_fm_code_review.py; do
             if [[ -f "$file" ]]; then tests+=("$file"); fi
           done
           if [[ ${#tests[@]} -eq 0 ]]; then
