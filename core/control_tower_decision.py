@@ -100,6 +100,15 @@ class ControlTowerDecisionRecord:
             and self.task_template_id in registered_task_ids
         )
 
+    def is_high_priority(self) -> bool:
+        """Convenience helper: true if priority is considered high.
+
+        A threshold of 80 is used to flag tasks that should be handled
+        preferentially by downstream components.  The value is arbitrary
+        but can be tuned without changing the public API.
+        """
+        return self.priority >= 80
+
 
 __all__ = [
     "ControlTowerDecisionRecord",
