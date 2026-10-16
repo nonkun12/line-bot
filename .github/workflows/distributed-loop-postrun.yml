@@ -99,6 +99,10 @@ jobs:
               for line in original_report.splitlines()
           )
           issues = []
+          # The source report is authoritative for the explicit task outcome too.
+          # A successful workflow conclusion or Sheets artifact must not mask BLOCKED.
+          if "- 結果: **BLOCKED**" in original_report:
+              issues.append("Source workflow final report is BLOCKED; task progress evidence is invalid or the final classifier failed.")
           if conclusion != "success":
               issues.append(f"Loop workflow conclusion is {conclusion}.")
           if queue_empty and tasks:
