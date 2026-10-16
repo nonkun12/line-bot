@@ -78,6 +78,45 @@ def test_refill_rejects_ambiguous_or_traversal_paths(tmp_path: Path, path: str):
         build_queue(queue, catalog, completed, tmp_path / "runtime.json")
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "../tests/test_a.py",
+        "tests/../core/x.py",
+        "core/ai_speaker.py",
+        "scripts/x.py",
+        ".github/autonomous-loop-tasks.json",
+        "tests/helper.py",
+        "tests/test_a.txt",
+        "tests/sub/test_a.py",
+        "tests",
+        "TESTS/test_a.py",
+        "tests/test_a.py ",
+        "tests//test_a.py",
+        "./tests/test_a.py",
+        "uhip/tests/sub/test_a.py",
+    ],
+)
+def test_refill_rejects_every_non_allowlisted_path(tmp_path: Path, path: str):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        candidates=[{**_task("task-path"), "allowed_paths": [path]}],
+    )
+    with pytest.raises(ValueError, match="forbidden allowed path"):
+        build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+
+
+@pytest.mark.parametrize("path", ["tests/test_a.py", "uhip/tests/test_a.py"])
+def test_refill_accepts_only_allowlisted_test_files(tmp_path: Path, path: str):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        candidates=[{**_task("task-path"), "allowed_paths": [path]}],
+    )
+    build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+    result = json.loads((tmp_path / "runtime.json").read_text(encoding="utf-8"))
+    assert result["tasks"][0]["allowed_paths"] == [path]
+
+
 def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):
     queue, catalog, completed = _inputs(
         tmp_path,
