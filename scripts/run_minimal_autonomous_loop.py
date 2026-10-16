@@ -244,7 +244,7 @@ def _verify_produced_head(base_sha: str, produced_sha: str, allowed_paths: list[
     code, _ = _git_checked("merge-base", "--is-ancestor", base_sha, produced_sha)
     if code != 0:
         return False, "produced_not_descendant_of_base"
-    code, diff = _git_checked("diff", "--name-only", base_sha, produced_sha)
+    code, diff = _git_checked("diff", "--no-renames", "--name-only", base_sha, produced_sha)
     if code != 0:
         return False, "diff_unavailable"
     # Never normalize an untrusted path: normalization can turn traversal into an
