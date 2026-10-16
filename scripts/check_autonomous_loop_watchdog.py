@@ -94,6 +94,12 @@ def run_is_pending_within_grace(run: dict, slot: datetime, now: datetime) -> boo
     return timedelta(0) <= elapsed <= timedelta(minutes=90)
 
 
+
+def missing_run_is_pending_within_grace(slot: datetime, now: datetime) -> bool:
+    """Treat a not-yet-visible scheduled run as pending during the first 90 minutes."""
+    elapsed = now.astimezone(JST) - slot.astimezone(JST)
+    return timedelta(0) <= elapsed <= timedelta(minutes=90)
+
 def has_audit_row(client: GoogleSheetsClient, run_id: str) -> bool:
     """Find this run ID under the ledger's run_id header, not a hard-coded column."""
     rows, header_row, start_column = _ledger_rows(client)
@@ -158,7 +164,9 @@ def main() -> int:
     pending = False
 
     if run is None:
-        problems.append(f"distributed scheduled run missing for {slot.isoformat()}")
+        pending = missing_run_is_pending_within_grace(slot, now)
+        if not pending:
+            problems.append(f"distributed scheduled run missing for {slot.isoformat()}")
     else:
         run_id = str(run["id"])
         if run.get("status") in {"queued", "in_progress"}:
