@@ -71,3 +71,16 @@ def test_preserves_market_priority_over_jobs_for_mixed_request() -> None:
     assert decision.specialist is Specialist.MARKET
     assert decision.metadata["matched_specialists"] == ["market", "jobs"]
     assert decision.metadata["routing_priority"] == 4
+
+
+def test_deterministic_routing_preserves_channel_and_metadata() -> None:
+    request = ManagementRequest(
+        "u",
+        "株価を教えて",
+        channel="telegram",
+        metadata={"user_id": "12345"},
+    )
+    decision = route(request)
+    assert decision.specialist is Specialist.STOCKS
+    assert decision.metadata["channel"] == "telegram"
+    assert decision.metadata["request_metadata"]["user_id"] == "12345"
