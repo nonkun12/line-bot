@@ -234,6 +234,22 @@ def claim_pending_job_by_type(job_type, *, stale_after_seconds=900):
     stale_expr = f"-{stale_after_seconds} seconds"
 
     with get_conn() as conn:
+        # A worker that exhausted its bounded retry budget must not remain
+        # "running" forever. Mark it terminal before requeueing eligible jobs.
+        conn.execute(
+            """
+            UPDATE jobs
+            SET status='failed',
+                claim_token=NULL,
+                last_error='stale job exceeded retry limit',
+                updated_at=CURRENT_TIMESTAMP
+            WHERE job_type=?
+              AND status='running'
+              AND updated_at < datetime('now', ?)
+              AND retry_count >= max_retries
+            """,
+            (job_type.strip(), stale_expr),
+        )
         conn.execute(
             """
             UPDATE jobs
