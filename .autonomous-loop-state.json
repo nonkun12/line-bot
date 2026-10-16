@@ -42,6 +42,17 @@
         "same_fingerprint_attempts": 0,
         "updated_at": "2026-10-13T13:08:26.164696+00:00"
       },
+      "ai-speaker-transcript-normalization-regression": {
+        "consecutive_failures": 1,
+        "fingerprints": [
+          "bdf1e7a04d723bd7e63bf2f5ba630e4bcbe51f388a87c3917788907986507fe2"
+        ],
+        "held": true,
+        "last_category": "unknown",
+        "last_fingerprint": "bdf1e7a04d723bd7e63bf2f5ba630e4bcbe51f388a87c3917788907986507fe2",
+        "same_fingerprint_attempts": 1,
+        "updated_at": "2026-10-16T01:05:01.807771+00:00"
+      },
       "loop-test-recovery-state-isolation": {
         "consecutive_failures": 1,
         "fingerprints": [
@@ -69,33 +80,21 @@
   "recovery_rag": [
     {
       "category": "unknown",
-      "fingerprint": "af1646c0e1876f9b6b9a4258f07b6a9146f5abf96678cc214c7a39078da4c546",
+      "fingerprint": "bdf1e7a04d723bd7e63bf2f5ba630e4bcbe51f388a87c3917788907986507fe2",
       "status": "FAIL",
-      "task_id": "router-regression-general-request-metadata-refresh-20261015"
-    },
-    {
-      "category": "invalid_evidence",
-      "fingerprint": "2dbc8be6a89b0b3cf7a414b6e0315c424c11aa10194b11ae979024ba5bd1306b",
-      "status": "FAIL",
-      "task_id": "task-a"
-    },
-    {
-      "category": "timeout",
-      "fingerprint": "dbafb28f4bc38108e37b6e730e2fd22217b9fe10ee31eccff5e5996033ad492b",
-      "status": "TIMEOUT",
-      "task_id": "task-a"
+      "task_id": "ai-speaker-transcript-normalization-regression"
     },
     {
       "category": "unknown",
       "fingerprint": "3910a2759f35ed1eec939e1ef7a38dbce32b1da27617bc284bf303cc61d7cc27",
-      "status": "NO_CHANGE",
+      "status": "FAIL",
       "task_id": "task-a"
     },
     {
       "category": "unknown",
-      "fingerprint": "4a0af154ce6ba0e050b288965baa951e0aa0430d43143a1e9414ac23145d6d45",
-      "status": "FAIL",
-      "task_id": "t1"
+      "fingerprint": "c0aa28ff369621f11fb4d062bc9e51b65297a5b86f8e5ea48b8e47e095ebcb22",
+      "status": "NO_CHANGE",
+      "task_id": "loop-deterministic-nochange-focused-test"
     },
     {
       "category": "unknown",
@@ -105,9 +104,27 @@
     },
     {
       "category": "unknown",
-      "fingerprint": "c0aa28ff369621f11fb4d062bc9e51b65297a5b86f8e5ea48b8e47e095ebcb22",
-      "status": "NO_CHANGE",
-      "task_id": "loop-deterministic-nochange-focused-test"
+      "fingerprint": "4a0af154ce6ba0e050b288965baa951e0aa0430d43143a1e9414ac23145d6d45",
+      "status": "FAIL",
+      "task_id": "t1"
+    },
+    {
+      "category": "timeout",
+      "fingerprint": "dbafb28f4bc38108e37b6e730e2fd22217b9fe10ee31eccff5e5996033ad492b",
+      "status": "TIMEOUT",
+      "task_id": "task-a"
+    },
+    {
+      "category": "invalid_evidence",
+      "fingerprint": "2dbc8be6a89b0b3cf7a414b6e0315c424c11aa10194b11ae979024ba5bd1306b",
+      "status": "FAIL",
+      "task_id": "task-a"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "af1646c0e1876f9b6b9a4258f07b6a9146f5abf96678cc214c7a39078da4c546",
+      "status": "FAIL",
+      "task_id": "router-regression-general-request-metadata-refresh-20261015"
     }
   ],
   "self_improvement_history": [
@@ -120,6 +137,16 @@
       "kind": "success",
       "task_id": null,
       "detail": "development reached integration gate"
+    },
+    {
+      "kind": "repair",
+      "task_id": "debug:1:tester",
+      "detail": "development required repair attempts"
+    },
+    {
+      "kind": "failure",
+      "task_id": "debug:1:tester",
+      "detail": "development failure observed"
     },
     {
       "kind": "repair",
