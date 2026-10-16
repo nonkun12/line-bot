@@ -90,7 +90,7 @@ def test_review_fetches_exact_commits_without_checkout_or_reset(monkeypatch, tmp
     repo = worker.verify_checkout(str(tmp_path), payload())
 
     assert repo == tmp_path.resolve()
-    assert process_calls[0][-4:] == ["origin", BASE, HEAD]
+    assert process_calls[0][-3:] == ["origin", BASE, HEAD]
     assert process_calls[1][-3:] == ["--is-ancestor", BASE, HEAD]
     assert not any("checkout" in call or "reset" in call for call in process_calls)
 
