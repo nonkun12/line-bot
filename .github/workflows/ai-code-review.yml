@@ -1,26 +1,49 @@
-name: AI Code Review
+name: AI Code Review (Fail Closed)
 
 on:
   pull_request:
     types:
       - opened
       - synchronize
+      - reopened
+
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   review:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Get changed files
+      - name: Prepare review input
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          git fetch origin main
-          git diff origin/main...HEAD > diff.txt
+          set -euo pipefail
+          git diff --no-ext-diff --unified=3 "$BASE_SHA...$HEAD_SHA" -- . ':!*.lock' > "$RUNNER_TEMP/review-diff.txt"
+          files="$(git diff --name-only "$BASE_SHA...$HEAD_SHA" | wc -l | tr -d ' ')"
+          lines="$(wc -l < "$RUNNER_TEMP/review-diff.txt" | tr -d ' ')"
+          echo "changed_files=$files" >> "$GITHUB_OUTPUT"
+          echo "diff_lines=$lines" >> "$GITHUB_OUTPUT"
+          echo "Prepared review input: files=$files, diff_lines=$lines"
+          echo "Diff contents are not printed to workflow logs."
 
-      - name: Show diff
+      - name: Require an actual review provider
+        env:
+          REVIEW_PROVIDER: ${{ vars.CODE_REVIEW_PROVIDER }}
         run: |
-          cat diff.txt
+          set -euo pipefail
+          if [ -z "${REVIEW_PROVIDER:-}" ]; then
+            echo "::error::AI review was NOT_RUN: CODE_REVIEW_PROVIDER is not configured. This workflow only prepares a diff and must not report a successful review."
+            exit 1
+          fi
+          echo "::error::Configured review provider '${REVIEW_PROVIDER}' has no implemented adapter. Failing closed rather than claiming a review occurred."
+          exit 1
