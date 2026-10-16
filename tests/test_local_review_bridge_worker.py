@@ -118,3 +118,34 @@ def test_redirect_handler_never_forwards_authenticated_request():
     assert handler.redirect_request(
         request, None, 302, "Found", {}, "https://attacker.example/collect"
     ) is None
+
+
+
+def test_review_environment_does_not_include_bridge_secret(monkeypatch):
+    monkeypatch.setenv("PATH", "/usr/bin")
+    monkeypatch.setenv("HOME", "/tmp/home")
+    monkeypatch.setenv("LOCAL_REVIEW_BRIDGE_KEY", "secret-test-value")
+    monkeypatch.setenv("GITHUB_TOKEN", "github-secret")
+    env = worker._review_environment()
+    assert env["PATH"] == "/usr/bin"
+    assert env["HOME"] == "/tmp/home"
+    assert "LOCAL_REVIEW_BRIDGE_KEY" not in env
+    assert "GITHUB_TOKEN" not in env
+
+
+def test_completion_falls_back_to_bounded_not_run_once(monkeypatch):
+    calls = []
+    def fake_request(url, key, method, body):
+        calls.append(body)
+        if len(calls) == 1:
+            raise worker.WorkerError("bridge HTTP status 400")
+        return {"ok": True, "status": "failed"}
+    monkeypatch.setattr(worker, "request_json", fake_request)
+    original = {"job_id": 12, "claim_token": "claim", "status": "REVIEWED", "report": {}}
+    result = worker._completion_with_bounded_fallback(
+        "https://bridge.example", "bridge-key", original, 12, "claim"
+    )
+    assert result["ok"] is True
+    assert len(calls) == 2
+    assert calls[1]["status"] == "NOT_RUN"
+    assert calls[1]["job_id"] == 12
