@@ -35,3 +35,10 @@ def test_progress_rejects_duplicate_queue_ids(tmp_path: Path):
     queue.write_text(json.dumps({"tasks": [{"id": "task-1"}, {"id": "task-1"}]}), encoding="utf-8")
     with pytest.raises(ValueError, match="duplicate"):
         calculate_progress(queue, tmp_path / "missing-state.json", tmp_path / "missing-results.jsonl")
+
+
+def test_progress_fails_closed_when_durable_state_is_missing(tmp_path: Path):
+    queue = tmp_path / "queue.json"
+    queue.write_text(json.dumps({"tasks": [{"id": "task-1"}]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="missing completed state"):
+        calculate_progress(queue, tmp_path / "missing-state.json", tmp_path / "missing-results.jsonl")
