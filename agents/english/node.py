@@ -187,7 +187,7 @@ class EnglishLearningAgent:
             words, choices, _correct_answer = _daily_quiz()
             target = words[0]
             text = (
-                "📝 今日のコアイメージクイズ\n\n"
+                "📝 英単語クイズ（今日のコアイメージ）\n\n"
                 f"「{target.core_image}」に最も近い英単語は？\n\n"
                 + "\n".join(f"{letter.upper()}. {entry.word}" for letter, entry in zip("abc", choices))
                 + "\n\n答えは A / B / C で送ってください。"
