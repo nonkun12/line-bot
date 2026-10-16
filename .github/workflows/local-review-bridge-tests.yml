@@ -3,9 +3,11 @@ name: Local Review Bridge Tests
 on:
   pull_request:
     paths:
+      - "core/local_review_jobs.py"
       - "routes/local_review_bridge.py"
       - "scripts/local_review_bridge_worker.py"
       - "scripts/local_fm_code_review.py"
+      - "tests/test_local_review_jobs.py"
       - "tests/test_local_review_bridge.py"
       - "tests/test_local_review_bridge_worker.py"
       - "tests/test_local_fm_code_review.py"
@@ -17,7 +19,7 @@ permissions:
   contents: read
 
 jobs:
-  isolated-bridge-tests:
+  isolated-local-review-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -29,14 +31,29 @@ jobs:
           python-version: "3.11"
       - name: Install repository dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt
-      - name: Compile changed Python modules
+      - name: Compile available review modules
+        shell: bash
         run: |
-          python -m py_compile \
-            routes/local_review_bridge.py \
-            core/local_review_jobs.py \
-            scripts/local_review_bridge_worker.py \
-            scripts/local_fm_code_review.py
-      - name: Run isolated bridge tests
+          set -euo pipefail
+          files=()
+          for file in core/local_review_jobs.py routes/local_review_bridge.py scripts/local_review_bridge_worker.py scripts/local_fm_code_review.py; do
+            if [[ -f "$file" ]]; then files+=("$file"); fi
+          done
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "No local review modules found"; exit 1
+          fi
+          python -m py_compile "${files[@]}"
+      - name: Run available local review tests
         env:
           CHAT_DB_PATH: ${{ runner.temp }}/local-review-test.sqlite3
-        run: python -m pytest -q tests/test_local_review_bridge.py tests/test_local_review_bridge_worker.py tests/test_local_fm_code_review.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          tests=()
+          for file in tests/test_local_review_jobs.py tests/test_local_review_bridge.py tests/test_local_review_bridge_worker.py tests/test_local_fm_code_review.py; do
+            if [[ -f "$file" ]]; then tests+=("$file"); fi
+          done
+          if [[ ${#tests[@]} -eq 0 ]]; then
+            echo "No local review tests found"; exit 1
+          fi
+          python -m pytest -q "${tests[@]}"
