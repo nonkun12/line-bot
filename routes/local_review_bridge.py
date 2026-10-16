@@ -48,7 +48,9 @@ def _valid_payload(raw: str):
         payload = json.loads(raw)
         if not isinstance(payload, dict):
             return None
-        if payload.get("schema_version") != 1 or payload.get("kind") != REVIEW_JOB_TYPE:
+        if (isinstance(payload.get("schema_version"), bool)
+                or payload.get("schema_version") != 1
+                or payload.get("kind") != REVIEW_JOB_TYPE):
             return None
         # Reuse the central allowlist/SHA validator, then compare normalized JSON fields.
         canonical = json.loads(
@@ -69,7 +71,8 @@ def _valid_findings(findings) -> bool:
     for finding in findings:
         if not isinstance(finding, dict):
             return False
-        if finding.get("severity") not in _SEVERITIES:
+        severity = finding.get("severity")
+        if not isinstance(severity, str) or severity not in _SEVERITIES:
             return False
         for field in ("file", "issue", "evidence", "recommendation"):
             value = finding.get(field)
@@ -139,7 +142,7 @@ def complete():
         return jsonify({"ok": False, "error": "invalid job_id"}), 400
     if not isinstance(token, str) or not token.strip() or len(token) > 256:
         return jsonify({"ok": False, "error": "invalid claim_token"}), 400
-    if status not in {"REVIEWED", "NOT_RUN"}:
+    if not isinstance(status, str) or status not in {"REVIEWED", "NOT_RUN"}:
         return jsonify({"ok": False, "error": "invalid status"}), 400
 
     job = get_job(job_id)
@@ -167,7 +170,9 @@ def complete():
         report = data.get("report")
         if not isinstance(report, dict):
             return jsonify({"ok": False, "error": "report object required"}), 400
-        if report.get("schema_version") != 1 or report.get("status") != "REVIEWED":
+        if (isinstance(report.get("schema_version"), bool)
+                or report.get("schema_version") != 1
+                or report.get("status") != "REVIEWED"):
             return jsonify({"ok": False, "error": "invalid report schema"}), 400
         if report.get("provider") != "local-fm":
             return jsonify({"ok": False, "error": "invalid provider"}), 400
@@ -176,7 +181,7 @@ def complete():
         verdict = report.get("verdict")
         summary = report.get("summary")
         findings = report.get("findings")
-        if verdict not in {"PASS", "FAIL"}:
+        if not isinstance(verdict, str) or verdict not in {"PASS", "FAIL"}:
             return jsonify({"ok": False, "error": "invalid verdict"}), 400
         if not isinstance(summary, str) or not summary.strip() or len(summary) > _MAX_SUMMARY_CHARS:
             return jsonify({"ok": False, "error": "invalid summary"}), 400
