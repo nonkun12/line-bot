@@ -161,3 +161,58 @@ def test_trusted_script_requires_operator_pinned_digest():
         worker._verify_trusted_script(source, "")
     with pytest.raises(worker.WorkerError, match="digest mismatch"):
         worker._verify_trusted_script(source, "0" * 64)
+
+
+
+def test_timeout_terminates_reviewer_process_group(monkeypatch):
+    import signal
+    import subprocess
+
+    class FakeProcess:
+        pid = 4321
+
+        def __init__(self):
+            self.calls = 0
+
+        def communicate(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired("fm", timeout)
+            return ("", "")
+
+    signals = []
+    monkeypatch.setattr(worker.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+    proc = FakeProcess()
+
+    with pytest.raises(worker.WorkerError, match="timed out"):
+        worker._communicate_with_timeout(proc, 10)
+
+    assert signals == [(4321, signal.SIGTERM)]
+    assert proc.calls == 2
+
+
+def test_timeout_force_kills_process_group_if_graceful_stop_fails(monkeypatch):
+    import signal
+    import subprocess
+
+    class FakeProcess:
+        pid = 9876
+
+        def __init__(self):
+            self.calls = 0
+
+        def communicate(self, timeout=None):
+            self.calls += 1
+            if self.calls < 3:
+                raise subprocess.TimeoutExpired("fm", timeout)
+            return ("", "")
+
+    signals = []
+    monkeypatch.setattr(worker.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+    proc = FakeProcess()
+
+    with pytest.raises(worker.WorkerError, match="timed out"):
+        worker._communicate_with_timeout(proc, 10)
+
+    assert signals == [(9876, signal.SIGTERM), (9876, signal.SIGKILL)]
+    assert proc.calls == 3
