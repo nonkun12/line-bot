@@ -42,3 +42,16 @@ def test_progress_fails_closed_when_durable_state_is_missing(tmp_path: Path):
     queue.write_text(json.dumps({"tasks": [{"id": "task-1"}]}), encoding="utf-8")
     with pytest.raises(ValueError, match="missing completed state"):
         calculate_progress(queue, tmp_path / "missing-state.json", tmp_path / "missing-results.jsonl")
+
+
+
+@pytest.mark.parametrize("state_data", [{}, {"foo": 1}])
+def test_progress_rejects_state_without_completed_key(tmp_path: Path, state_data: dict):
+    queue = tmp_path / "queue.json"
+    state = tmp_path / "state.json"
+    results = tmp_path / "results.jsonl"
+    queue.write_text(json.dumps({"tasks": [{"id": "task-1"}]}), encoding="utf-8")
+    state.write_text(json.dumps(state_data), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid completed state"):
+        calculate_progress(queue, state, results)
