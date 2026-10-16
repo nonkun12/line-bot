@@ -123,6 +123,8 @@ def _audit_row(**overrides):
         "timestamp": "2026-10-16T00:00:00Z",
         "run_id": "12345",
         "task_id": "task-example",
+        "base_sha": "a" * 40,
+        "produced_sha": "b" * 40,
         "tests_result": "PASS",
         "verification_result": "PASS",
         "safety_gate_result": "PASS",
