@@ -2,6 +2,7 @@ import json
 import sqlite3
 
 import pytest
+import db
 
 from core.local_review_jobs import (
     REVIEW_JOB_TYPE,
@@ -90,3 +91,43 @@ def test_enqueue_rejects_missing_user(monkeypatch):
     monkeypatch.setattr("core.local_review_jobs.create_job", unexpected_create_job)
     with pytest.raises(ValueError, match="user_id"):
         enqueue_local_review("", "nonkun12/line-bot", BASE, HEAD)
+
+
+
+def test_stale_job_at_retry_limit_becomes_terminal_failed(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    conn.execute("""
+        CREATE TABLE jobs(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            job_type TEXT NOT NULL,
+            source TEXT NOT NULL,
+            parent_job_id INTEGER,
+            message TEXT NOT NULL,
+            status TEXT NOT NULL,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            max_retries INTEGER NOT NULL DEFAULT 1,
+            last_error TEXT,
+            result TEXT,
+            claim_token TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP
+        )
+    """)
+    payload = build_review_payload("nonkun12/line-bot", BASE, HEAD)
+    conn.execute(
+        """INSERT INTO jobs(user_id,job_type,source,message,status,retry_count,
+           max_retries,claim_token,updated_at)
+           VALUES(?,?,?,?, 'running', 1, 1, 'stale-token', datetime('now','-1 day'))""",
+        ("U1", REVIEW_JOB_TYPE, "control_tower", payload),
+    )
+    conn.commit()
+    monkeypatch.setattr(db, "get_conn", lambda: conn)
+
+    claimed = db.claim_pending_job_by_type(REVIEW_JOB_TYPE, stale_after_seconds=900)
+
+    assert claimed is None
+    row = conn.execute(
+        "SELECT status, claim_token, last_error FROM jobs WHERE id=1"
+    ).fetchone()
+    assert row == ("failed", None, "stale job exceeded retry limit")
