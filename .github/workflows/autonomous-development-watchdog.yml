@@ -6,6 +6,9 @@ on:
     # Check shortly after each of the four distributed-loop slots (Asia/Tokyo).
     - cron: '0 5,11,17,23 * * *'
       timezone: 'Asia/Tokyo'
+    # Recheck each slot about three hours later; active runs past the 90-minute grace fail closed.
+    - cron: '30 1,7,13,19 * * *'
+      timezone: 'Asia/Tokyo'
 
 permissions:
   contents: read
