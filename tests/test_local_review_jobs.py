@@ -1,4 +1,5 @@
 import json
+import sqlite3
 
 import pytest
 
@@ -40,21 +41,45 @@ def test_payload_rejects_invalid_or_untrusted_inputs(repository, base, head):
         build_review_payload(repository, base, head)
 
 
-def test_enqueue_uses_dedicated_job_type_and_single_attempt(monkeypatch):
-    captured = {}
+def _memory_jobs_db():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("""
+        CREATE TABLE jobs(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            job_type TEXT NOT NULL,
+            source TEXT NOT NULL,
+            parent_job_id INTEGER,
+            message TEXT NOT NULL,
+            status TEXT NOT NULL,
+            max_retries INTEGER NOT NULL
+        )
+    """)
+    return conn
 
-    def fake_create_job(user_id, message, **kwargs):
-        captured.update(user_id=user_id, message=message, kwargs=kwargs)
-        return 17
 
-    monkeypatch.setattr("core.local_review_jobs.create_job", fake_create_job)
-    job_id = enqueue_local_review("U1", "nonkun12/line-bot", BASE, HEAD)
+def test_enqueue_creates_dedicated_job_and_deduplicates_active_request(monkeypatch):
+    conn = _memory_jobs_db()
+    monkeypatch.setattr("core.local_review_jobs.get_conn", lambda: conn)
 
-    assert job_id == 17
-    assert captured["kwargs"]["job_type"] == REVIEW_JOB_TYPE
-    assert captured["kwargs"]["source"] == "control_tower"
-    assert captured["kwargs"]["max_retries"] == 1
-    assert json.loads(captured["message"])["head_sha"] == HEAD
+    first = enqueue_local_review("U1", "nonkun12/line-bot", BASE, HEAD)
+    second = enqueue_local_review("U1", "nonkun12/line-bot", BASE, HEAD)
+
+    assert first == second
+    rows = conn.execute(
+        "SELECT user_id, job_type, source, max_retries, status FROM jobs"
+    ).fetchall()
+    assert rows == [("U1", REVIEW_JOB_TYPE, "control_tower", 1, "pending")]
+
+
+def test_enqueue_allows_new_job_after_previous_job_is_terminal(monkeypatch):
+    conn = _memory_jobs_db()
+    monkeypatch.setattr("core.local_review_jobs.get_conn", lambda: conn)
+    first = enqueue_local_review("U1", "nonkun12/line-bot", BASE, HEAD)
+    conn.execute("UPDATE jobs SET status='failed' WHERE id=?", (first,))
+    second = enqueue_local_review("U1", "nonkun12/line-bot", BASE, HEAD)
+    assert second != first
+    assert conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 2
 
 
 def test_enqueue_rejects_missing_user(monkeypatch):
