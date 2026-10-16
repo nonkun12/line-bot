@@ -101,7 +101,7 @@ def audit_row_outcome(client: GoogleSheetsClient, run_id: str) -> tuple[bool, st
     rows, header_row, start_column = _ledger_rows(client)
     width = len(HEADERS)
     positions = {name: HEADERS.index(name) for name in (
-        "run_id", "task_id", "safety_gate_result", "verification_result",
+        "run_id", "task_id", "base_sha", "produced_sha", "safety_gate_result", "verification_result",
         "tests_result", "blocked_failed_reason",
     )}
     matching = []
