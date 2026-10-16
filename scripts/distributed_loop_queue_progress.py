@@ -28,7 +28,11 @@ def calculate_progress(queue_path: Path, state_path: Path, results_path: Path) -
             raise ValueError("duplicate runtime queue task ID")
         queue_ids.add(item["id"])
 
-    state = _read_json(state_path, {"completed": []})
+    # Durable state is required evidence. Silently substituting an empty state
+    # could make a corrupted/missing state file look like valid zero progress.
+    if not state_path.is_file():
+        raise ValueError("missing completed state")
+    state = _read_json(state_path, None)
     if not isinstance(state, dict) or not isinstance(state.get("completed", []), list):
         raise ValueError("invalid completed state")
     completed = state.get("completed", [])
@@ -36,6 +40,8 @@ def calculate_progress(queue_path: Path, state_path: Path, results_path: Path) -
         raise ValueError("invalid completed task ID")
     done_ids = set(completed) & queue_ids
 
+    # Results may be absent if the workflow failed before task execution;
+    # the final-outcome classifier separately marks that run BLOCKED/FAIL.
     if results_path.exists():
         for line in results_path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
