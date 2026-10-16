@@ -66,6 +66,7 @@ def build_control_tower_status_reply(
             f"最新Run: #{run.get('run_number', '不明')} / {run.get('name') or '名称未取得'}",
             f"開始: {run.get('created_at') or '未取得'}",
             f"実行イベント: {run.get('event') or '未取得'}",
+            f"対象SHA: {str(run.get('head_sha') or '未取得')[:12]}",
             f"Run URL: {run.get('html_url') or '未取得'}",
             "Task ID／キュー件数: Run概要からは未取得（推測しません）",
         ])
@@ -75,7 +76,8 @@ def build_control_tower_status_reply(
     lines.extend([
         f"自動パッチ適用: {'有効' if patch_setting in {'1', 'true', 'yes', 'on'} else '無効'}",
         f"自動デプロイ: {'有効' if deploy_setting in {'1', 'true', 'yes', 'on'} else '無効'}",
-        "判定: この報告は読み取り専用。マージ／デプロイは実行しません。",
+        "注意: Workflow成功だけではタスクPASSを意味しません。実行ログのPASS／NOT_RUNを別途確認してください。",
+        "判定: この報告は読み取り専用。マージ／デプロイは実行しません.",
     ])
     return "\n".join(lines)
 
