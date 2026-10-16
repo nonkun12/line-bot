@@ -65,6 +65,14 @@ def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
     return None
 
 
+def run_is_pending_within_grace(run: dict, slot: datetime, now: datetime) -> bool:
+    """Treat active runs as pending only during the first 90 minutes after a slot."""
+    if run.get("status") not in {"queued", "in_progress"}:
+        return False
+    elapsed = now.astimezone(JST) - slot.astimezone(JST)
+    return timedelta(0) <= elapsed <= timedelta(minutes=90)
+
+
 def has_audit_row(client: GoogleSheetsClient, run_id: str) -> bool:
     """Find this run ID under the ledger's run_id header, not a hard-coded column."""
     sheet = _resolved_sheet(client)
@@ -99,12 +107,20 @@ def main() -> int:
     repo = os.environ["GITHUB_REPOSITORY"]
     problems: list[str] = []
     run = find_scheduled_run(repo, slot)
+    pending = False
 
     if run is None:
         problems.append(f"distributed scheduled run missing for {slot.isoformat()}")
     else:
         run_id = str(run["id"])
-        if run.get("status") not in {"queued", "in_progress"}:
+        if run.get("status") in {"queued", "in_progress"}:
+            pending = run_is_pending_within_grace(run, slot, now)
+            if not pending:
+                problems.append(
+                    f"distributed scheduled run still active after grace: "
+                    f"run_id={run_id} status={run.get('status')}"
+                )
+        else:
             if run.get("conclusion") != "success":
                 problems.append(
                     f"distributed scheduled run did not succeed: "
@@ -119,6 +135,7 @@ def main() -> int:
 
     result = {
         "ok": not problems,
+        "pending": pending,
         "expected_slot": slot.isoformat(),
         "run_id": str(run["id"]) if run else None,
         "run_status": run.get("status") if run else None,
