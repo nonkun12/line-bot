@@ -19,6 +19,10 @@ def test_distributed_loop_has_independent_fail_closed_publish_gate():
     assert 'previous["produced_sha"] != current["base_sha"]' in publish
     assert 'rows[0]["base_sha"] != os.environ.get("GITHUB_SHA")' in publish
     assert 'git merge-base --is-ancestor "$GITHUB_SHA" "$head"' in publish
+    assert 'task_by_id = {' in publish
+    assert 'git", "diff", "--no-renames", "--name-only"' in publish
+    assert 'set(diff) - set(allowed)' in publish
+    assert 'task changed paths outside its allowlist' in publish
 
 
 def test_distributed_loop_never_publishes_no_run_or_held_outcomes():
