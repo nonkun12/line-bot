@@ -25,6 +25,7 @@ def test_reports_real_latest_run_and_keeps_status_read_only(monkeypatch):
             "created_at": "2026-10-16T00:00:00Z",
             "event": "workflow_dispatch",
             "html_url": "https://github.com/nonkun12/line-bot/actions/runs/42",
+            "head_sha": "1234567890abcdef",
         }]}
 
     reply = build_control_tower_status_reply(
@@ -32,7 +33,9 @@ def test_reports_real_latest_run_and_keeps_status_read_only(monkeypatch):
     )
     assert "失敗または未合格（failure）" in reply
     assert "最新Run: #42" in reply
+    assert "対象SHA: 1234567890ab" in reply
     assert "Task ID／キュー件数: Run概要からは未取得" in reply
+    assert "Workflow成功だけではタスクPASSを意味しません" in reply
     assert "自動パッチ適用: 無効" in reply
     assert "自動デプロイ: 無効" in reply
     assert "マージ／デプロイは実行しません" in reply
