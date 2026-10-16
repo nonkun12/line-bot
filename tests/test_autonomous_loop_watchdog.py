@@ -5,6 +5,7 @@ from scripts.check_autonomous_loop_watchdog import (
     expected_slot,
     find_scheduled_run,
     has_audit_row,
+    run_is_pending_within_grace,
 )
 
 
@@ -131,3 +132,21 @@ def test_has_audit_row_supports_ledger_starting_in_later_column():
     row = ["", "", "", "2026-10-09T00:00:00Z", "37861561986", "task-a"] + [""] * (len(HEADERS) - 3)
     client = FakeSheetsClient([header, row])
     assert has_audit_row(client, "37861561986")
+
+def test_active_run_is_pending_inside_90_minute_grace():
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    now = slot + timedelta(minutes=30)
+    for status in ("queued", "in_progress"):
+        assert run_is_pending_within_grace({"status": status}, slot, now)
+
+
+def test_active_run_is_not_pending_after_90_minute_grace():
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    now = slot + timedelta(hours=3)
+    for status in ("queued", "in_progress"):
+        assert not run_is_pending_within_grace({"status": status}, slot, now)
+
+
+def test_completed_run_is_never_classified_as_pending():
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert not run_is_pending_within_grace({"status": "completed"}, slot, slot)
