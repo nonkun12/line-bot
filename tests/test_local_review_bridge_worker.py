@@ -149,3 +149,15 @@ def test_completion_falls_back_to_bounded_not_run_once(monkeypatch):
     assert len(calls) == 2
     assert calls[1]["status"] == "NOT_RUN"
     assert calls[1]["job_id"] == 12
+
+
+
+def test_trusted_script_requires_operator_pinned_digest():
+    source = "print('trusted')"
+    import hashlib
+    digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    worker._verify_trusted_script(source, digest)
+    with pytest.raises(worker.WorkerError, match="missing or invalid"):
+        worker._verify_trusted_script(source, "")
+    with pytest.raises(worker.WorkerError, match="digest mismatch"):
+        worker._verify_trusted_script(source, "0" * 64)
