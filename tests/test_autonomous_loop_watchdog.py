@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from agents.sheets.autonomous_ledger import HEADERS
@@ -7,6 +7,7 @@ from scripts.check_autonomous_loop_watchdog import (
     expected_slot,
     find_scheduled_run,
     has_audit_row,
+    run_is_pending_within_grace,
 )
 
 
@@ -209,3 +210,22 @@ def test_audit_row_outcome_accepts_no_change_with_valid_shas():
     sha = "b" * 40
     client = FakeSheetsClient([HEADERS, _audit_row(tests_result="NO_CHANGE", verification_result="NO_CHANGE", base_sha=sha, produced_sha=sha)])
     assert audit_row_outcome(client, "12345") == (True, "verified_task_passed")
+
+
+def test_active_run_is_pending_inside_90_minute_grace():
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    now = slot + timedelta(minutes=30)
+    for status in ("queued", "in_progress"):
+        assert run_is_pending_within_grace({"status": status}, slot, now)
+
+
+def test_active_run_is_not_pending_after_90_minute_grace():
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    now = slot + timedelta(hours=3)
+    for status in ("queued", "in_progress"):
+        assert not run_is_pending_within_grace({"status": status}, slot, now)
+
+
+def test_completed_run_is_never_classified_as_pending():
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert not run_is_pending_within_grace({"status": "completed"}, slot, slot)
