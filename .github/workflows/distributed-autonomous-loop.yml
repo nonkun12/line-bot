@@ -980,6 +980,14 @@ jobs:
             gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/distributed-final-report.txt || true
           fi
 
+          # A BLOCKED report must fail the source workflow too. Otherwise workflow_run
+          # consumers may see conclusion=success and trust the Sheets artifact despite
+          # invalid queue-progress evidence.
+          if [ "${QUEUE_PROGRESS_INVALID:-false}" = "true" ]; then
+            echo "::error::Distributed Loop blocked: queue progress evidence is invalid."
+            exit 1
+          fi
+
       - name: Wake Render before LINE final report
         if: always()
         run: |
