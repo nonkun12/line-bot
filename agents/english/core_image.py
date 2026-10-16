@@ -425,3 +425,8 @@ def handle_core_image_command(message: str) -> str | None:
     """Return a response for an explicit command, or None if not a match."""
     word = extract_core_image_word(message)
     return explain_core_image(word) if word else None
+
+
+def get_core_image_quiz_entries() -> tuple[WordEntry, ...]:
+    """Return reviewed local entries for quiz generation without external API calls."""
+    return tuple(_ENTRIES.values())
