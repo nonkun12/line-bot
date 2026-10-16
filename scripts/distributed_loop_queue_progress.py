@@ -33,9 +33,9 @@ def calculate_progress(queue_path: Path, state_path: Path, results_path: Path) -
     if not state_path.is_file():
         raise ValueError("missing completed state")
     state = _read_json(state_path, None)
-    if not isinstance(state, dict) or not isinstance(state.get("completed", []), list):
+    if not isinstance(state, dict) or "completed" not in state or not isinstance(state.get("completed"), list):
         raise ValueError("invalid completed state")
-    completed = state.get("completed", [])
+    completed = state["completed"]
     if not all(isinstance(task_id, str) for task_id in completed):
         raise ValueError("invalid completed task ID")
     done_ids = set(completed) & queue_ids
