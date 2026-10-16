@@ -271,3 +271,12 @@ def test_common_vocabulary_words_have_core_images():
         assert cue in response
         assert "コアイメージ：" in response
         assert "説明を保留" not in response
+
+
+def test_good_has_reviewed_semantic_core_image():
+    response = handle_core_image_command("コアイメージ good")
+    assert response is not None
+    assert "期待にかなう・役に立つ状態" in response
+    assert "This is a good idea." in response
+    assert "文脈により" in response
+    assert "説明を保留" not in response
