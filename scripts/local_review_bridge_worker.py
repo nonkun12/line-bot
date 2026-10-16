@@ -186,9 +186,6 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
     try:
         payload = validate_payload(job.get("payload"))
         repo = verify_checkout(repo_path, payload)
-        script = repo / "scripts" / "local_fm_code_review.py"
-        if not script.is_file():
-            raise WorkerError("local review script is missing")
         with tempfile.TemporaryDirectory(prefix="line-local-review-") as tmp:
             report_path = Path(tmp) / "report.json"
             trusted_script = Path(tmp) / "trusted_local_fm_code_review.py"
