@@ -112,7 +112,7 @@ class EnglishLearningAgent:
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         original = request.message.strip()
-        quiz_result = grade_pending_quiz(request.user_id, original)
+        quiz_result = (\n            grade_pending_quiz(request.user_id, original)\n            if _quiz_answer(original) is not None and has_pending_quiz(request.user_id)\n            else None\n        )
         mode = classify_english_mode(original)
 
         if quiz_result is not None:
