@@ -7,6 +7,7 @@ from ai_client import generate_chat_completion
 from agents.english.intents import classify_english_mode, is_english_learning_intent
 from core.agents import AgentRequest, AgentResponse
 from agents.english.progress import profile_prompt, record_observation
+from agents.english.quiz_state import create_quiz, grade_pending_quiz, has_pending_quiz, select_daily_words
 
 
 _MAX_AI_INPUT_CHARS = 2000
@@ -79,13 +80,6 @@ def _ai_tutor_reply(user_text: str, *, user_id: str, mode: str = "tutor") -> str
         return None
 
 
-_WORDS = (
-    ("improve", "改善する・向上させる", "I want to improve my English."),
-    ("schedule", "予定", "Let me check my schedule."),
-    ("recommend", "おすすめする", "Can you recommend a good book?"),
-)
-
-
 def _quiz_answer(text: str) -> str | None:
     value = (text or "").strip().lower()
     match = re.fullmatch(r"(?:answer\s*)?([abc])(?:[.\)\s]+)?", value)
@@ -106,19 +100,6 @@ def _english_sentence(text: str) -> bool:
     return len(words) >= 2 and sum(word in common for word in words) >= 1
 
 
-def _grade_quiz(text: str) -> str | None:
-    answer = _quiz_answer(text)
-    if answer is None:
-        return None
-    if answer == "a":
-        return "✅ 正解！\n\nA. improve = 改善する・向上させる\n\n次は「文法」か「会話」と送って続けましょう。"
-    return (
-        "❌ 惜しい！正解は A. improve です。\n\n"
-        "improve = 改善する・向上させる\n"
-        "もう一度「クイズ」と送ると再挑戦できます。"
-    )
-
-
 class EnglishLearningAgent:
     name = "english_learning"
     description = "English lessons, vocabulary, grammar, conversation, quizzes, review, and follow-up practice."
@@ -127,11 +108,17 @@ class EnglishLearningAgent:
 
     def can_handle(self, request: AgentRequest) -> bool:
         text = request.message
-        return is_english_learning_intent(text) or _quiz_answer(text) is not None or _english_sentence(text)
+        if _quiz_answer(text) is not None:
+            return has_pending_quiz(request.user_id)
+        return is_english_learning_intent(text) or _english_sentence(text)
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         original = request.message.strip()
-        quiz_result = _grade_quiz(original)
+        quiz_result = (
+            grade_pending_quiz(request.user_id, original)
+            if _quiz_answer(original) is not None and has_pending_quiz(request.user_id)
+            else None
+        )
         mode = classify_english_mode(original)
 
         if quiz_result is not None:
@@ -144,20 +131,14 @@ class EnglishLearningAgent:
             )
             mode = "ai_tutor"
         elif mode == "vocabulary":
-            lines = ["📘 今日の英単語", ""]
-            for word, meaning, example in _WORDS:
-                lines.append(f"• {word} = {meaning}")
+            lines = ["📘 今日の英単語コアイメージ", ""]
+            for word, core_image, example in select_daily_words(request.user_id, 3):
+                lines.append(f"• {word} — {core_image}")
                 lines.append(f"  例: {example}")
             lines.extend(["", "覚えたら「クイズ」と送ってください。"])
             text = "\n".join(lines)
         elif mode == "quiz":
-            text = (
-                "📝 英単語クイズ\n\n"
-                "次の意味に一番近い英単語は？\n"
-                "「改善する・向上させる」\n\n"
-                "A. improve\nB. schedule\nC. recommend\n\n"
-                "答えは A / B / C で送ってください。"
-            )
+            text = create_quiz(request.user_id)
         elif mode == "grammar":
             if re.search(r"\bi\s+want\s+to\s+\w+", original.lower()):
                 text = (

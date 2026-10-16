@@ -1,24 +1,40 @@
 from agents.english.intents import classify_english_mode, is_english_learning_intent
 from agents.english.node import EnglishLearningAgent
 from core.agents import AgentRequest
+import sqlite3
+from agents.english import quiz_state
 
 
 def _request(message: str) -> AgentRequest:
     return AgentRequest(user_id="test-user", message=message, channel="test", metadata={})
 
 
-def test_quiz_answer_is_routed_and_graded():
+def test_quiz_answer_is_routed_and_graded(monkeypatch, tmp_path):
+    monkeypatch.setattr(quiz_state, "DB_PATH", str(tmp_path / "english.sqlite3"))
     agent = EnglishLearningAgent()
     assert is_english_learning_intent("A")
     assert classify_english_mode("A") == "quiz_answer"
-    response = agent.handle(_request("A"))
+    agent.handle(_request("クイズ"))
+    with sqlite3.connect(quiz_state.DB_PATH) as conn:
+        correct = conn.execute(
+            "SELECT correct_option FROM english_pending_quiz WHERE user_id=?", ("test-user",)
+        ).fetchone()[0]
+    response = agent.handle(_request(correct.upper()))
     assert response.metadata["mode"] == "quiz_answer"
     assert "正解" in response.text
 
 
-def test_wrong_quiz_answer_is_explained():
-    response = EnglishLearningAgent().handle(_request("C"))
-    assert "正解は A" in response.text
+def test_wrong_quiz_answer_is_explained(monkeypatch, tmp_path):
+    monkeypatch.setattr(quiz_state, "DB_PATH", str(tmp_path / "english.sqlite3"))
+    agent = EnglishLearningAgent()
+    agent.handle(_request("クイズ"))
+    with sqlite3.connect(quiz_state.DB_PATH) as conn:
+        correct = conn.execute(
+            "SELECT correct_option FROM english_pending_quiz WHERE user_id=?", ("test-user",)
+        ).fetchone()[0]
+    wrong = next(letter for letter in "abc" if letter != correct)
+    response = agent.handle(_request(wrong.upper()))
+    assert f"正解は {correct.upper()}" in response.text
 
 
 def test_common_english_sentence_gets_correction_feedback():
@@ -139,3 +155,9 @@ def test_ai_tutor_prompt_uses_profile_context(monkeypatch, tmp_path) -> None:
     assert "subject_verb_agreement" in prompt
     assert "have/has drill" in prompt
     assert "he/she/it + has" in prompt
+
+
+
+def test_bare_quiz_answer_is_not_claimed_without_pending_quiz(monkeypatch, tmp_path):
+    monkeypatch.setattr(quiz_state, "DB_PATH", str(tmp_path / "english.sqlite3"))
+    assert not EnglishLearningAgent().can_handle(_request("A"))
