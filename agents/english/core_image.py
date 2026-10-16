@@ -386,12 +386,30 @@ _COMMAND_RE = re.compile(
     r"^(?:コアイメージ|語根|語幹|core\s*image|word\s*root)\s*[:：]?\s+([A-Za-z][A-Za-z'-]{0,63})\s*[?？。！!]*$",
     re.IGNORECASE,
 )
+# Natural-language variants are still explicit requests: they must use this
+# deterministic local dictionary rather than falling through to a general LLM.
+_NATURAL_JA_RE = re.compile(
+    r"^([A-Za-z][A-Za-z'-]{0,63})\s*の\s*(?:コアイメージ|語根|語幹)"
+    r"(?:\s*(?:を\s*)?(?:教えて(?:ください)?|説明して(?:ください)?|"
+    r"は何(?:ですか)?|とは何(?:ですか)?|って何(?:ですか)?))?\s*[?？。！!]*$",
+    re.IGNORECASE,
+)
+_NATURAL_EN_RE = re.compile(
+    r"^(?:(?:what\s+is|explain|tell\s+me)\s+)?(?:the\s+)?"
+    r"(?:core\s*image|word\s+root|root)\s+(?:of\s+)?"
+    r"([A-Za-z][A-Za-z'-]{0,63})\s*[?？。！!]*$",
+    re.IGNORECASE,
+)
 
 
 def extract_core_image_word(message: str) -> str | None:
-    """Return a word only for explicit core-image commands."""
-    match = _COMMAND_RE.fullmatch(str(message or "").strip())
-    return match.group(1).lower() if match else None
+    """Extract explicit core-image requests, including natural phrasing."""
+    value = str(message or "").strip()
+    for pattern in (_COMMAND_RE, _NATURAL_JA_RE, _NATURAL_EN_RE):
+        match = pattern.fullmatch(value)
+        if match:
+            return match.group(1).lower()
+    return None
 
 
 def explain_core_image(word: str) -> str:
@@ -411,7 +429,7 @@ def explain_core_image(word: str) -> str:
     lines = [
         f"🔎 {entry.word}（{entry.pronunciation}）",
         f"コアイメージ：{entry.core_image}",
-        f"語のパーツ：{entry.parts}",
+        f"語のパーツ（または用法メモ）：{entry.parts}",
         "関連語： " + " / ".join(entry.related),
         f"例文：{entry.example}",
     ]
