@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -243,15 +244,33 @@ def run_once(base_url: str, key: str, repo_path: str, *, execute: bool) -> int:
             trusted_script.write_text(trusted.stdout, encoding="utf-8")
             # Never pass the bridge key or other application secrets to the reviewer/fm.
             review_env = _review_environment()
+            proc = subprocess.Popen(
+                [sys.executable, str(trusted_script), "--base", payload["base_sha"],
+                 "--head", payload["head_sha"], "--report", str(report_path)],
+                cwd=repo, env=review_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, start_new_session=True,
+            )
             try:
-                proc = subprocess.run(
-                    [sys.executable, str(trusted_script), "--base", payload["base_sha"],
-                     "--head", payload["head_sha"], "--report", str(report_path)],
-                    cwd=repo, env=review_env, check=False, capture_output=True, text=True,
-                    timeout=LOCAL_REVIEW_TIMEOUT_SECONDS,
-                )
+                stdout, stderr = proc.communicate(timeout=LOCAL_REVIEW_TIMEOUT_SECONDS)
             except subprocess.TimeoutExpired as exc:
-                raise WorkerError("local fm review timed out") from exc
+                # The reviewer and its child processes share a fresh process group.
+                # Terminate the group first, then force-kill it if it does not exit.
+                try:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    proc.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    proc.communicate()
+                raise WorkerError("local fm review timed out; process group terminated") from exc
+            proc = subprocess.CompletedProcess(
+                args=proc.args, returncode=proc.returncode, stdout=stdout, stderr=stderr
+            )
             if proc.returncode not in {0, 1} or not report_path.is_file():
                 raise WorkerError("local fm review returned NOT_RUN or no report")
             report = json.loads(report_path.read_text(encoding="utf-8"))
