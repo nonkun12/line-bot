@@ -56,7 +56,7 @@ def build_control_tower_status_reply(
         if status != "completed":
             state = f"実行中（{status}）"
         elif conclusion == "success":
-            state = "GitHub Actions上は成功"
+            state = "Workflow完了（タスクPASSは未確認）"
         elif conclusion:
             state = f"失敗または未合格（{conclusion}）"
         else:
@@ -66,9 +66,11 @@ def build_control_tower_status_reply(
             f"最新Run: #{run.get('run_number', '不明')} / {run.get('name') or '名称未取得'}",
             f"開始: {run.get('created_at') or '未取得'}",
             f"実行イベント: {run.get('event') or '未取得'}",
+            f"起動時SHA: {str(run.get('head_sha') or '未取得')[:12]}",
             f"Run URL: {run.get('html_url') or '未取得'}",
+            "注意: Workflow完了はタスクPASSの証拠ではありません。実行ログのPASS／NOT_RUNを確認してください。",
             "Task ID／キュー件数: Run概要からは未取得（推測しません）",
-        ])
+            ])
 
     patch_setting = os.environ.get("AUTO_APPLY_PATCH", "false").strip().lower()
     deploy_setting = os.environ.get("AUTO_DEPLOY", "false").strip().lower()

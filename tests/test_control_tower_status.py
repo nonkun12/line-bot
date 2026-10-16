@@ -24,6 +24,7 @@ def test_reports_real_latest_run_and_keeps_status_read_only(monkeypatch):
             "name": "Distributed Autonomous Development Loop",
             "created_at": "2026-10-16T00:00:00Z",
             "event": "workflow_dispatch",
+            "head_sha": "1234567890abcdef",
             "html_url": "https://github.com/nonkun12/line-bot/actions/runs/42",
         }]}
 
@@ -32,7 +33,9 @@ def test_reports_real_latest_run_and_keeps_status_read_only(monkeypatch):
     )
     assert "失敗または未合格（failure）" in reply
     assert "最新Run: #42" in reply
+    assert "起動時SHA: 1234567890ab" in reply
     assert "Task ID／キュー件数: Run概要からは未取得" in reply
+    assert "Workflow完了（タスクPASSは未確認）" not in reply
     assert "自動パッチ適用: 無効" in reply
     assert "自動デプロイ: 無効" in reply
     assert "マージ／デプロイは実行しません" in reply
@@ -51,3 +54,26 @@ def test_missing_repository_fails_closed():
     reply = build_control_tower_status_reply("")
     assert "状態取得不可" in reply
     assert "成功・正常とは判定しません" in reply
+
+
+def test_workflow_success_does_not_claim_task_pass(monkeypatch):
+    monkeypatch.setenv("AUTO_APPLY_PATCH", "false")
+    monkeypatch.setenv("AUTO_DEPLOY", "false")
+
+    def fake_get_json(_url, *, token=""):
+        return {"workflow_runs": [{
+            "status": "completed",
+            "conclusion": "success",
+            "run_number": 43,
+            "name": "Distributed Autonomous Development Loop",
+            "created_at": "2026-10-16T00:00:00Z",
+            "event": "workflow_dispatch",
+            "head_sha": "abcdef1234567890",
+            "html_url": "https://github.com/nonkun12/line-bot/actions/runs/43",
+        }]}
+
+    reply = build_control_tower_status_reply("nonkun12/line-bot", get_json=fake_get_json)
+    assert "Workflow完了（タスクPASSは未確認）" in reply
+    assert "注意: Workflow完了はタスクPASSの証拠ではありません" in reply
+    assert "GitHub Actions上は成功" not in reply
+    assert "起動時SHA: abcdef123456" in reply
