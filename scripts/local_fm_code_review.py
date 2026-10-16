@@ -15,6 +15,9 @@ from typing import Any
 
 MAX_DIFF_CHARS = 35_000
 REVIEW_TIMEOUT_SECONDS = 120
+MAX_SUMMARY_CHARS = 4_000
+MAX_FINDINGS = 100
+MAX_FIELD_CHARS = 4_000
 SEVERITIES = {"critical", "high", "medium", "low", "info"}
 
 
@@ -23,7 +26,7 @@ class ReviewError(RuntimeError):
 
 
 def parse_review_output(raw: str) -> dict[str, Any]:
-    """Parse and validate the reviewer's JSON response; reject vague success."""
+    """Parse and validate review output within the bridge's exact size limits."""
     text = raw.strip()
     if text.startswith("```"):
         lines = text.splitlines()
@@ -40,26 +43,34 @@ def parse_review_output(raw: str) -> dict[str, Any]:
         raise ReviewError("review output must be a JSON object")
     if not isinstance(result.get("verdict"), str) or result.get("verdict") not in {"PASS", "FAIL"}:
         raise ReviewError("verdict must be PASS or FAIL")
-    if not isinstance(result.get("summary"), str) or not result["summary"].strip():
+    summary = result.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
         raise ReviewError("summary is required")
+    if len(summary.strip()) > MAX_SUMMARY_CHARS:
+        raise ReviewError("summary exceeds maximum length")
     findings = result.get("findings")
     if not isinstance(findings, list):
         raise ReviewError("findings must be a list")
+    if len(findings) > MAX_FINDINGS:
+        raise ReviewError("findings exceeds maximum count")
     for item in findings:
         if not isinstance(item, dict):
             raise ReviewError("each finding must be an object")
         if not isinstance(item.get("severity"), str) or item.get("severity") not in SEVERITIES:
             raise ReviewError("finding severity is invalid")
         for key in ("file", "issue", "evidence", "recommendation"):
-            if not isinstance(item.get(key), str) or not item[key].strip():
+            value = item.get(key)
+            if not isinstance(value, str) or not value.strip():
                 raise ReviewError(f"finding field {key} is required")
+            if len(value) > MAX_FIELD_CHARS:
+                raise ReviewError(f"finding field {key} exceeds maximum length")
     if result["verdict"] == "PASS" and any(
         item["severity"] in {"critical", "high"} for item in findings
     ):
         raise ReviewError("PASS cannot contain critical/high findings")
     return {
         "verdict": result["verdict"],
-        "summary": result["summary"].strip(),
+        "summary": summary.strip(),
         "findings": findings,
     }
 
