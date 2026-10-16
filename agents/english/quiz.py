@@ -22,10 +22,17 @@ def _connect() -> sqlite3.Connection:
             correct_option TEXT NOT NULL DEFAULT '',
             options_json TEXT NOT NULL DEFAULT '[]',
             previous_word TEXT NOT NULL DEFAULT '',
+            older_word TEXT NOT NULL DEFAULT '',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
+    try:
+        conn.execute("ALTER TABLE english_quiz_sessions ADD COLUMN older_word TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError as exc:
+        if "duplicate column name" not in str(exc).lower():
+            conn.close()
+            raise
     return conn
 
 
@@ -42,7 +49,7 @@ def start_quiz(user_id: str) -> str:
     key = _user_key(user_id)
     with _connect() as conn:
         row = conn.execute(
-            "SELECT current_word, previous_word FROM english_quiz_sessions WHERE user_id=?",
+            "SELECT current_word, previous_word, older_word FROM english_quiz_sessions WHERE user_id=?",
             (key,),
         ).fetchone()
         avoid = {str(value) for value in row or () if value}
@@ -59,8 +66,8 @@ def start_quiz(user_id: str) -> str:
         conn.execute(
             """
             INSERT INTO english_quiz_sessions
-                (user_id, current_word, correct_option, options_json, previous_word, updated_at)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                (user_id, current_word, correct_option, options_json, previous_word, older_word, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(user_id) DO UPDATE SET
                 current_word=excluded.current_word,
                 correct_option=excluded.correct_option,
@@ -74,6 +81,7 @@ def start_quiz(user_id: str) -> str:
                 json.dumps([{"label": label, "word": entry.word} for label, entry in zip(_LABELS, choices)],
                            ensure_ascii=False),
                 str(row[1] or "") if row else "",
+                str(row[2] or "") if row else "",
             ),
         )
 
@@ -111,7 +119,7 @@ def grade_quiz(user_id: str, answer_text: str) -> str | None:
         conn.execute(
             """
             UPDATE english_quiz_sessions
-            SET previous_word=current_word, current_word='', correct_option='', options_json='[]',
+            SET older_word=previous_word, previous_word=current_word, current_word='', correct_option='', options_json='[]',
                 updated_at=CURRENT_TIMESTAMP
             WHERE user_id=?
             """,
