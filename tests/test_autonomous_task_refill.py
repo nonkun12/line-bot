@@ -41,7 +41,6 @@ def test_refill_adds_only_uncompleted_catalog_tasks_within_cap(tmp_path: Path):
     assert queue.read_text(encoding="utf-8") != output.read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("max_tasks", [0, -1, 5, "4", True, 1.5])
 def test_refill_caps_additions_to_remaining_queue_capacity(tmp_path: Path):
     queue, catalog, completed = _inputs(
         tmp_path,
@@ -70,6 +69,7 @@ def test_refill_rejects_existing_queue_over_limit(tmp_path: Path):
         build_queue(queue, catalog, completed, tmp_path / "runtime.json")
 
 
+@pytest.mark.parametrize("max_tasks", [0, -1, 5, "4", True, 1.5])
 def test_refill_rejects_invalid_runtime_task_limit(tmp_path: Path, max_tasks):
     queue, catalog, completed = _inputs(tmp_path, max_tasks=max_tasks, candidates=[_task("task-new-one")])
     with pytest.raises(ValueError, match="max_tasks_per_run"):
