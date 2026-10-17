@@ -322,6 +322,7 @@ jobs:
             --queue .github/autonomous-loop-tasks.json \
             --catalog .github/autonomous-loop-task-catalog.json \
             --completed-state /tmp/autonomous-loop-state.json \
+            --recovery-state /tmp/recovery-ai-state.json \\
             --output /tmp/autonomous-loop-runtime-queue.json
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
 
