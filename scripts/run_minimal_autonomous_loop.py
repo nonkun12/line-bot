@@ -684,13 +684,30 @@ def main() -> int:
                 "status": "BLOCKED",
                 "task_id": "",
                 "task_count": 0,
-                "exit_code": 79,
+                "exit_code": 80,
                 "failure_reason": "control_tower_selector:unexpected_action",
             }
             with args.results.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record, ensure_ascii=False) + "\n")
             print("MINIMAL_LOOP=BLOCKED reason=control_tower_selector:unexpected_action", flush=True)
-            return 79
+            return 80
+
+        # A non-select decision is valid only when there is nothing executable.
+        # This prevents a malformed/future selector result from being ignored.
+        elif tasks:
+            args.results.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "BLOCKED",
+                "task_id": "",
+                "task_count": 0,
+                "exit_code": 80,
+                "failure_reason": "control_tower_selector:action_task_mismatch",
+            }
+            with args.results.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            print("MINIMAL_LOOP=BLOCKED reason=control_tower_selector:action_task_mismatch", flush=True)
+            return 80
     if pending_tasks and not tasks:
         args.results.parent.mkdir(parents=True, exist_ok=True)
         record = {
@@ -756,6 +773,57 @@ def main() -> int:
         # The SHA is passed into run_task and rechecked before process creation
         # to close the validation/launch race. Failure blocks this run closed.
         control_tower_head = _git_head()
+        if args.incident_category is None and control_tower_head != selection_evidence_sha:
+            result = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "run_index": index,
+                "task_id": task["id"],
+                "status": "BLOCKED",
+                "exit_code": 80,
+                "base_sha": selection_evidence_sha,
+                "produced_sha": control_tower_head,
+                "failure_reason": "control_tower_gate:selection_head_changed",
+            }
+            with args.results.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(result, ensure_ascii=False) + "\n")
+            print(f"MINIMAL_LOOP=BLOCKED task={task['id']} reason=selection_head_changed", flush=True)
+            return 80
+
+        # Re-read HOLD immediately before launch; errors fail closed.
+        try:
+            from scripts.recovery_ai import RecoveryStore
+            latest_hold = RecoveryStore(args.state.parent / "recovery-ai-state.json").task_status(str(task["id"]))
+            if latest_hold.get("held") is not False:
+                result = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "run_index": index,
+                    "task_id": task["id"],
+                    "status": "BLOCKED",
+                    "exit_code": 80,
+                    "base_sha": control_tower_head,
+                    "produced_sha": control_tower_head,
+                    "failure_reason": "recovery_ai_hold_or_status_uncertain",
+                }
+                with args.results.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(result, ensure_ascii=False) + "\n")
+                print(f"MINIMAL_LOOP=BLOCKED task={task['id']} reason=recovery_ai_hold_or_status_uncertain", flush=True)
+                return 80
+        except Exception:
+            result = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "run_index": index,
+                "task_id": task["id"],
+                "status": "BLOCKED",
+                "exit_code": 80,
+                "base_sha": control_tower_head,
+                "produced_sha": control_tower_head,
+                "failure_reason": "recovery_ai_hold_check_failed",
+            }
+            with args.results.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(result, ensure_ascii=False) + "\n")
+            print(f"MINIMAL_LOOP=BLOCKED task={task['id']} reason=recovery_ai_hold_check_failed", flush=True)
+            return 80
+
         try:
             from scripts.control_tower_loop_adapter import authorize_registered_task
             authorized, authorization_reason = authorize_registered_task(
