@@ -157,6 +157,31 @@ def test_refill_skips_held_tasks_and_continues_filling_with_eligible_candidates(
     assert ids == ["task-ready-one", "task-ready-two"]
 
 
+def test_refill_removes_held_task_from_existing_queue_but_keeps_ready_tasks(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        existing=[_task("task-held-existing"), _task("task-ready-existing")],
+        candidates=[_task("task-ready-new")],
+    )
+    recovery = _write(
+        tmp_path / "recovery.json",
+        {
+            "schema_version": 1,
+            "tasks": {"task-held-existing": {"held": True}},
+            "checkpoint": None,
+        },
+    )
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, output, recovery)
+    ids = [task["id"] for task in json.loads(output.read_text(encoding="utf-8"))["tasks"]]
+
+    assert report["held_existing_ids"] == ["task-held-existing"]
+    assert ids == ["task-ready-existing", "task-ready-new"]
+    assert "task-held-existing" not in ids
+
+
+
 @pytest.mark.parametrize(
     "recovery_data",
     [
