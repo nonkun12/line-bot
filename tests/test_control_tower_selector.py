@@ -165,7 +165,7 @@ def test_non_sequence_queue_inputs_fail_closed(bad_queue):
         "A" * 40,
         "a" * 39,
         "a" * 41,
-        "a" * 39 + "\\n",
+        "a" * 39 + "\n",
         "g" + "a" * 39,
     ],
 )
