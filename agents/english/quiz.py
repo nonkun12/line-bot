@@ -37,6 +37,12 @@ def _connect() -> sqlite3.Connection:
 
 
 def _user_key(user_id: str) -> str:
+    """Return a sanitized user key for database lookup.
+
+    The key is limited to 200 characters and defaults to ``"anonymous"``
+    when the input is falsy.  This helper ensures consistent handling of
+    ``None`` or empty strings across the module.
+    """
     return str(user_id or "").strip()[:200] or "anonymous"
 
 
