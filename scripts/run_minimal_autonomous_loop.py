@@ -793,7 +793,7 @@ def main() -> int:
         try:
             from scripts.recovery_ai import RecoveryStore
             latest_hold = RecoveryStore(args.state.parent / "recovery-ai-state.json").task_status(str(task["id"]))
-            if latest_hold.get("held") is not False:
+            if latest_hold.get("held", False) is not False:
                 result = {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "run_index": index,
