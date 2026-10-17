@@ -111,7 +111,8 @@ jobs:
         github.event.pull_request.user.login == 'nonkun12'
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # Four tasks may each use up to 30 minutes; leave bounded post-run headroom.
+    timeout-minutes: 150
     env:
       MAX_TASKS: ${{ github.event_name == 'schedule' && '4' || github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || '4' }}
       TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'normal' }}
@@ -148,25 +149,49 @@ jobs:
       - name: Load durable loop state
         run: |
           set -euo pipefail
-          rm -f /tmp/autonomous-loop-state.json
-          if git ls-remote --exit-code origin refs/heads/autonomous-loop-state >/dev/null 2>&1; then
-            git fetch --quiet origin autonomous-loop-state
-            git show origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/autonomous-loop-state.json
-          else
-            printf '%s\n' '{"version":1,"completed":[]}' > /tmp/autonomous-loop-state.json
-          fi
+          rm -f /tmp/autonomous-loop-state.json /tmp/recovery-ai-state.json
+          set +e
+          git ls-remote --exit-code origin refs/heads/autonomous-loop-state >/dev/null 2>&1
+          state_rc=$?
+          set -e
+          case "$state_rc" in
+            0)
+              git fetch --quiet origin autonomous-loop-state
+              git show origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/autonomous-loop-state.json
+              echo "DURABLE_STATE_EXISTS=true" >> "$GITHUB_ENV"
+              ;;
+            2)
+              # Only a genuinely absent branch may initialize an empty state.
+              printf '%s\\n' '{"version":1,"completed":[]}' > /tmp/autonomous-loop-state.json
+              echo "DURABLE_STATE_EXISTS=false" >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "::error::Cannot reach durable state branch (git ls-remote rc=$state_rc)"
+              exit 1
+              ;;
+          esac
           python -m json.tool /tmp/autonomous-loop-state.json >/dev/null
 
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
           state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
+          if not isinstance(state, dict) or state.get('version') != 1:
+              raise SystemExit('durable loop state is invalid; refusing to run')
+          if not isinstance(state.get('completed'), list) or not all(isinstance(x, str) for x in state['completed']):
+              raise SystemExit('durable completed state is invalid; refusing to run')
+          if os.environ.get('DURABLE_STATE_EXISTS') == 'true' and 'recovery_ai' not in state:
+              raise SystemExit('durable Recovery AI state is missing; refusing to run')
           recovery = state.get('recovery_ai', {'schema_version': 1, 'tasks': {}, 'checkpoint': None})
           if (not isinstance(recovery, dict) or recovery.get('schema_version') != 1
                   or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
               raise SystemExit('durable Recovery AI state is invalid; refusing to run')
+          for task_id, record in recovery['tasks'].items():
+              if not isinstance(task_id, str) or not isinstance(record, dict) or not isinstance(record.get('held'), bool):
+                  raise SystemExit('durable Recovery AI task record is invalid; refusing to run')
           Path('/tmp/recovery-ai-state.json').write_text(
-              json.dumps(recovery, ensure_ascii=False, sort_keys=True) + '\n', encoding='utf-8'
+              json.dumps(recovery, ensure_ascii=False, sort_keys=True) + '\\n', encoding='utf-8'
           )
           PY
 
