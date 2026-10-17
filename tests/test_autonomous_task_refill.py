@@ -42,6 +42,34 @@ def test_refill_adds_only_uncompleted_catalog_tasks_within_cap(tmp_path: Path):
 
 
 @pytest.mark.parametrize("max_tasks", [0, -1, 5, "4", True, 1.5])
+def test_refill_caps_additions_to_remaining_queue_capacity(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        max_tasks=4,
+        existing=[_task("task-existing-one"), _task("task-existing-two"), _task("task-existing-three")],
+        candidates=[_task("task-new-one"), _task("task-new-two")],
+    )
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, output)
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["added"] == 1
+    assert report["total"] == 4
+    assert len(result["tasks"]) == 4
+
+
+def test_refill_rejects_existing_queue_over_limit(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        max_tasks=1,
+        existing=[_task("task-existing-one"), _task("task-existing-two")],
+        candidates=[_task("task-new-one")],
+    )
+    with pytest.raises(ValueError, match="existing queue exceeds max_tasks_per_run"):
+        build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+
+
 def test_refill_rejects_invalid_runtime_task_limit(tmp_path: Path, max_tasks):
     queue, catalog, completed = _inputs(tmp_path, max_tasks=max_tasks, candidates=[_task("task-new-one")])
     with pytest.raises(ValueError, match="max_tasks_per_run"):
