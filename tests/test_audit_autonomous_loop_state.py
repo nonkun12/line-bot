@@ -183,3 +183,15 @@ def test_cli_fails_closed_on_deeply_nested_queue_shape(tmp_path: Path, monkeypat
     output = json.loads(capsys.readouterr().out)
     assert output["status"] == "BLOCKED"
     assert output["reason"] == "invalid_queue_task"
+
+
+def test_cli_returns_not_run_exit_code_for_empty_queue(tmp_path: Path, monkeypatch, capsys):
+    queue, state, recovery = _evidence(tmp_path, [])
+    monkeypatch.setattr("sys.argv", [
+        "audit_autonomous_loop_state", "--queue", str(queue),
+        "--state", str(state), "--recovery", str(recovery),
+    ])
+    assert main() == 78
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "NOT_RUN"
+    assert "empty_queue" in output["warnings"]
