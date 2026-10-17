@@ -793,7 +793,16 @@ def main() -> int:
         try:
             from scripts.recovery_ai import RecoveryStore
             latest_hold = RecoveryStore(args.state.parent / "recovery-ai-state.json").task_status(str(task["id"]))
-            if latest_hold.get("held", False) is not False:
+            # An empty record means this registered task has no recovery history yet.
+            # A non-empty record with missing/invalid held state is ambiguous and blocks.
+            malformed_hold = (
+                not isinstance(latest_hold, dict)
+                or (bool(latest_hold) and (
+                    "held" not in latest_hold
+                    or not isinstance(latest_hold.get("held"), bool)
+                ))
+            )
+            if malformed_hold or latest_hold.get("held", False) is not False:
                 result = {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "run_index": index,
