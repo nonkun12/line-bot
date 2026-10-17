@@ -377,3 +377,27 @@ def test_final_outcome_blocks_missing_task_evidence():
         state_outcome="success",
         sheets_outcome="success",
     ) == ("BLOCKED", "missing_task_evidence")
+
+
+def test_final_outcome_queue_empty_blocks_recovery_persistence_failure():
+    assert loop.classify_final_outcome(
+        ["NOT_RUN"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        recovery_outcome="failure",
+        queue_empty=True,
+    ) == ("BLOCKED", "queue_empty_post_run_gate_failed:recovery_ai_persistence")
+
+
+def test_final_outcome_held_queue_blocks_recovery_persistence_failure():
+    assert loop.classify_final_outcome(
+        ["BLOCKED"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        recovery_outcome="failure",
+        all_tasks_held=True,
+    ) == ("BLOCKED", "held_queue_post_run_gate_failed:recovery_ai_persistence")
