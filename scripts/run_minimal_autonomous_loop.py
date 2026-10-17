@@ -604,13 +604,13 @@ def main() -> int:
                 "status": "BLOCKED",
                 "task_id": "",
                 "task_count": 0,
-                "exit_code": 79,
+                "exit_code": 80,
                 "failure_reason": "control_tower_catalog:catalog_unavailable_or_invalid",
             }
             with args.results.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record, ensure_ascii=False) + "\n")
             print("MINIMAL_LOOP=BLOCKED reason=control_tower_catalog:catalog_unavailable_or_invalid", flush=True)
-            return 79
+            return 80
 
     # Read Recovery AI holds before selecting. Held tasks remain held; this code
     # never clears or overrides Recovery AI state.
@@ -654,13 +654,13 @@ def main() -> int:
                 "status": "BLOCKED",
                 "task_id": "",
                 "task_count": 0,
-                "exit_code": 79,
+                "exit_code": 80,
                 "failure_reason": f"control_tower_selector:{reason}",
             }
             with args.results.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record, ensure_ascii=False) + "\n")
             print(f"MINIMAL_LOOP=BLOCKED reason=control_tower_selector:{reason}", flush=True)
-            return 79
+            return 80
 
         if selection_decision.next_action == "SELECT_REGISTERED_TASK":
             if not tasks or str(tasks[0]["id"]) != selection_decision.task_template_id:
@@ -670,13 +670,13 @@ def main() -> int:
                     "status": "BLOCKED",
                     "task_id": "",
                     "task_count": 0,
-                    "exit_code": 79,
+                    "exit_code": 80,
                     "failure_reason": "control_tower_selector:selection_mismatch",
                 }
                 with args.results.open("a", encoding="utf-8") as fh:
                     fh.write(json.dumps(record, ensure_ascii=False) + "\n")
                 print("MINIMAL_LOOP=BLOCKED reason=control_tower_selector:selection_mismatch", flush=True)
-                return 79
+                return 80
         elif selection_decision.next_action not in {"NOT_RUN", "HOLD"}:
             args.results.parent.mkdir(parents=True, exist_ok=True)
             record = {
