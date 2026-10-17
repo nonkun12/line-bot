@@ -4,7 +4,7 @@ import json
 import pytest
 
 from scripts.recovery_ai import RecoveryStateError, RecoveryStore
-from scripts.recovery_ai_loop_adapter import record_loop_outcome
+from scripts.recovery_ai_loop_adapter import _category, record_loop_outcome
 
 
 def test_verified_pass_is_recorded_and_resets_streak(tmp_path):
@@ -231,3 +231,17 @@ def test_real_task_failure_still_increments_recovery_failure_streak(tmp_path):
     })
     assert outcome["recorded"] is True
     assert outcome["decision"]["consecutive_failures"] == 1
+
+@pytest.mark.parametrize("failure_reason", [
+    "runtime_exception:PermissionError",
+    "runtime_exception:ValueError",
+    "task_runtime_failed",
+])
+def test_runtime_exceptions_remain_unknown_and_do_not_gain_repair_category(failure_reason):
+    # Exception class names are diagnostic only. They are not proof of a transient
+    # failure and must not silently unlock Recovery AI's bounded repair path.
+    assert _category({
+        "status": "FAIL",
+        "failure_reason": failure_reason,
+    }) == "unknown"
+
