@@ -385,3 +385,65 @@ def test_registered_catalog_fails_closed_when_versioned_catalog_is_unavailable(m
     monkeypatch.setattr(loop, "_git_checked", lambda *args: (1, ""))
     with pytest.raises(ValueError, match="catalog unavailable"):
         loop._load_registered_catalog("a" * 40)
+
+
+
+def test_control_tower_head_change_immediately_before_launch_blocks(monkeypatch, tmp_path, capsys):
+    task = _task("launch-head-race")
+    heads = iter(["a" * 40, "a" * 40, "b" * 40])
+    results = _prepare_selector_main(monkeypatch, tmp_path, [task], lambda: next(heads))
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run after HEAD changes"))
+    assert loop.main() == 80
+    assert "selection_head_changed" in capsys.readouterr().out
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[-1])
+    assert row["status"] == "BLOCKED"
+    assert row["failure_reason"] == "control_tower_gate:selection_head_changed"
+
+
+def test_recovery_ai_hold_appearing_before_launch_blocks(monkeypatch, tmp_path, capsys):
+    task = _task("hold-race-task")
+    results = _prepare_selector_main(monkeypatch, tmp_path, [task])
+
+    class _ChangingRecoveryStore:
+        calls = 0
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def task_status(self, _task_id):
+            type(self).calls += 1
+            # Initial selection sees no hold; launch-time recheck sees HOLD.
+            return {"held": type(self).calls >= 2}
+
+    monkeypatch.setattr("scripts.recovery_ai.RecoveryStore", _ChangingRecoveryStore)
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run while held"))
+    assert loop.main() == 80
+    assert "recovery_ai_hold_or_status_uncertain" in capsys.readouterr().out
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[-1])
+    assert row["status"] == "BLOCKED"
+    assert row["failure_reason"] == "recovery_ai_hold_or_status_uncertain"
+
+
+@pytest.mark.parametrize("action", ["NOT_RUN", "HOLD"])
+def test_control_tower_nonselect_action_with_executable_task_blocks(monkeypatch, tmp_path, action, capsys):
+    task = _task("unexpected-nonselect-task")
+    results = _prepare_selector_main(monkeypatch, tmp_path, [task])
+
+    from core.control_tower_decision import ControlTowerDecisionRecord
+    monkeypatch.setattr(
+        "core.control_tower_selector.select_next_task",
+        lambda *a, **k: ControlTowerDecisionRecord(
+            reason_code="no_eligible_task",
+            confidence=1.0,
+            priority=0,
+            next_action=action,
+            gate_status="NOT_RUN" if action == "NOT_RUN" else "BLOCKED",
+            evidence_sha="a" * 40,
+        ),
+    )
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run for nonselect action"))
+    assert loop.main() == 80
+    assert "action_task_mismatch" in capsys.readouterr().out
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[-1])
+    assert row["status"] == "BLOCKED"
+    assert row["failure_reason"] == "control_tower_selector:action_task_mismatch"
