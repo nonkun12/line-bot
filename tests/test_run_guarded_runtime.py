@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from scripts.run_guarded_runtime import guarded_ask
+from scripts.run_guarded_runtime import _write_summary, guarded_ask
 
 
 class _Message:
@@ -86,3 +86,17 @@ def test_guarded_ask_recovers_on_third_attempt_and_uses_stricter_prompt():
     assert json.loads(content) == {"file": "tests/test_management_router.py"}
     assert len(client.completions.calls) == 3
     assert "smallest valid JSON object" in client.completions.calls[2]["messages"][0]["content"]
+
+
+def test_summary_records_only_sanitized_runtime_exception_class(tmp_path, monkeypatch):
+    summary = tmp_path / "summary.json"
+    monkeypatch.setenv("AUTONOMOUS_RUNTIME_ERROR", "PermissionError: private path /secret/token")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "task-a")
+    monkeypatch.setenv("AUTONOMOUS_RUN_NONCE", "c" * 32)
+    monkeypatch.setattr("scripts.run_guarded_runtime._git", lambda *args: "a" * 40)
+
+    _write_summary("FAIL", 1, "b" * 40, summary)
+    payload = json.loads(summary.read_text(encoding="utf-8"))
+
+    assert payload["runtime_error_type"] == "PermissionError"
+    assert "/secret/token" not in summary.read_text(encoding="utf-8")
