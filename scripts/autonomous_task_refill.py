@@ -50,14 +50,16 @@ def _validate_task(task: object) -> dict:
 
 def build_queue(
     queue_path: Path, catalog_path: Path, completed_path: Path, output_path: Path,
-    recovery_path: Path | None = None,
+    recovery_path: Path,
 ) -> dict:
     queue = read_json(queue_path)
     catalog = read_json(catalog_path)
     state = read_json(completed_path)
     existing = queue.get("tasks")
     candidates = catalog.get("tasks")
-    completed = state.get("completed", [])
+    if "completed" not in state:
+        raise ValueError("completed state is missing")
+    completed = state["completed"]
     held_ids: set[str] = set()
     if recovery_path is not None:
         recovery = read_json(recovery_path)
@@ -68,9 +70,9 @@ def build_queue(
         for task_id, record in recovery["tasks"].items():
             if not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id) or not isinstance(record, dict):
                 raise ValueError("invalid Recovery AI task record")
-            if "held" in record and not isinstance(record["held"], bool):
+            if not isinstance(record.get("held"), bool):
                 raise ValueError("invalid Recovery AI held flag")
-            if record.get("held") is True:
+            if record["held"] is True:
                 held_ids.add(task_id)
     cap = catalog.get("max_additions_per_run")
     max_tasks = queue.get("max_tasks_per_run", 4)
@@ -120,7 +122,7 @@ def main() -> int:
     parser.add_argument("--queue", type=Path, required=True)
     parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--completed-state", type=Path, required=True)
-    parser.add_argument("--recovery-state", type=Path)
+    parser.add_argument("--recovery-state", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
