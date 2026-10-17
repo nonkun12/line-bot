@@ -21,7 +21,7 @@ def choose(queue, registered=("task-a", "task-b"), completed=(), held=(), **kwar
 def test_selects_first_registered_noncompleted_nonheld_task_in_queue_order():
     decision = choose(
         ["task-held", "task-done", "task-b", "task-a"],
-        registered=("task-a", "task-b"),
+        registered=("task-a", "task-b", "task-done", "task-held"),
         completed=("task-done",),
         held=("task-held",),
     )
@@ -63,6 +63,47 @@ def test_unregistered_queue_task_fails_closed():
 
     assert decision.reason_code == "policy_blocked"
     assert decision.next_action == "HOLD"
+    assert decision.task_template_id is None
+
+
+@pytest.mark.parametrize("state_name", ["completed", "held"])
+@pytest.mark.parametrize("bad_id", ["task-a ", " task-a"])
+def test_whitespace_in_completed_or_held_ids_fails_closed(state_name, bad_id):
+    decision = choose(["task-a"], **{state_name: (bad_id,)})
+
+    assert decision.reason_code == "invalid_state"
+    assert decision.next_action == "HOLD"
+    assert decision.gate_status == "BLOCKED"
+    assert decision.task_template_id is None
+
+
+@pytest.mark.parametrize(
+    "queue,registered,completed,held",
+    [
+        (["task a"], ("task-a",), (), ()),
+        (["x" * 129], ("task-a",), (), ()),
+        (["タスク"], ("task-a",), (), ()),
+        (["task-a"], ("task-a ",), (), ()),
+        (["task-a"], ("task-a",), ("task-a ",), ()),
+        (["task-a"], ("task-a",), (), ("task-a ",)),
+    ],
+)
+def test_noncanonical_ids_in_any_input_fail_closed(queue, registered, completed, held):
+    decision = choose(queue, registered=registered, completed=completed, held=held)
+
+    assert decision.reason_code == "invalid_state"
+    assert decision.next_action == "HOLD"
+    assert decision.gate_status == "BLOCKED"
+    assert decision.task_template_id is None
+
+
+@pytest.mark.parametrize("state_name", ["completed", "held"])
+def test_unregistered_queue_id_is_blocked_even_if_marked_in_state(state_name):
+    decision = choose(["ghost", "task-a"], **{state_name: ("ghost",)})
+
+    assert decision.reason_code == "policy_blocked"
+    assert decision.next_action == "HOLD"
+    assert decision.gate_status == "BLOCKED"
     assert decision.task_template_id is None
 
 
