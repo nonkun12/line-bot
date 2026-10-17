@@ -13,6 +13,7 @@ _LABELS = ("A", "B", "C")
 
 
 def _connect() -> sqlite3.Connection:
+    """Create or open the quiz sessions table and return a connection."""
     conn = sqlite3.connect(progress.DB_PATH, timeout=10)
     conn.execute(
         """
