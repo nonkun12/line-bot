@@ -179,3 +179,13 @@ def test_refill_fails_closed_when_recovery_state_file_is_missing(tmp_path: Path)
 
     with pytest.raises(ValueError, match="invalid JSON input"):
         build_queue(queue, catalog, completed, tmp_path / "runtime.json", tmp_path / "missing-recovery.json")
+
+
+def test_refill_rejects_recovery_record_without_held_flag(tmp_path: Path):
+    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready")])
+    recovery = _write(
+        tmp_path / "recovery.json",
+        {"schema_version": 1, "tasks": {"task-unknown": {}}, "checkpoint": None},
+    )
+    with pytest.raises(ValueError, match="held flag"):
+        build_queue(queue, catalog, completed, tmp_path / "runtime.json", recovery)
