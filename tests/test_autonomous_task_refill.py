@@ -21,11 +21,12 @@ def _inputs(tmp_path: Path, *, max_tasks=4, existing=None, candidates=None):
     queue = _write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": max_tasks, "tasks": existing or []})
     catalog = _write(tmp_path / "catalog.json", {"version": 1, "max_additions_per_run": 2, "tasks": candidates or []})
     completed = _write(tmp_path / "state.json", {"version": 1, "completed": []})
-    return queue, catalog, completed
+    recovery = _write(tmp_path / "recovery.json", {"schema_version": 1, "tasks": {}, "checkpoint": None})
+    return queue, catalog, completed, recovery
 
 
 def test_refill_adds_only_uncompleted_catalog_tasks_within_cap(tmp_path: Path):
-    queue, catalog, completed = _inputs(
+    queue, catalog, completed, recovery = _inputs(
         tmp_path,
         existing=[_task("task-existing")],
         candidates=[_task("task-new-one"), _task("task-new-two"), _task("task-new-three")],
@@ -33,7 +34,7 @@ def test_refill_adds_only_uncompleted_catalog_tasks_within_cap(tmp_path: Path):
     state = _write(tmp_path / "state.json", {"version": 1, "completed": ["task-new-two"]})
     output = tmp_path / "runtime.json"
 
-    report = build_queue(queue, catalog, state, output)
+    report = build_queue(queue, catalog, state, recovery, output)
     result = json.loads(output.read_text(encoding="utf-8"))
     ids = [task["id"] for task in result["tasks"]]
     assert report["added"] == 2
@@ -41,20 +42,73 @@ def test_refill_adds_only_uncompleted_catalog_tasks_within_cap(tmp_path: Path):
     assert queue.read_text(encoding="utf-8") != output.read_text(encoding="utf-8")
 
 
+def test_refill_caps_additions_by_catalog_cap_not_queue_length(tmp_path: Path):
+    existing = [_task(f"task-existing-{index}") for index in range(23)]
+    candidates = [_task("task-new-one"), _task("task-new-two"), _task("task-new-three")]
+    queue, catalog, completed, recovery = _inputs(
+        tmp_path, max_tasks=4, existing=existing, candidates=candidates
+    )
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, recovery, output)
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["added"] == 2
+    assert report["total"] == 25
+    assert len(result["tasks"]) == 25
+    assert result["max_tasks_per_run"] == 4
+    assert [task["id"] for task in result["tasks"][:23]] == [
+        task["id"] for task in existing
+    ]
+
+
+def test_refill_returns_zero_when_all_catalog_candidates_are_already_queued(tmp_path: Path):
+    existing = [_task("task-existing-one"), _task("task-existing-two")]
+    queue, catalog, completed, recovery = _inputs(
+        tmp_path, existing=existing, candidates=[_task("task-existing-one"), _task("task-existing-two")]
+    )
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, recovery, output)
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["added"] == 0
+    assert report["total"] == 2
+    assert [task["id"] for task in result["tasks"]] == ["task-existing-one", "task-existing-two"]
+
+
+def test_refill_skips_completed_candidate_and_adds_next_eligible(tmp_path: Path):
+    queue, catalog, completed, recovery = _inputs(
+        tmp_path,
+        existing=[_task(f"task-existing-{index}") for index in range(23)],
+        candidates=[_task("task-completed"), _task("task-available")],
+    )
+    state = _write(tmp_path / "state.json", {"version": 1, "completed": ["task-completed"]})
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, state, recovery, output)
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["added"] == 1
+    assert report["added_ids"] == ["task-available"]
+    assert report["total"] == 24
+    assert result["max_tasks_per_run"] == 4
+
+
 @pytest.mark.parametrize("max_tasks", [0, -1, 5, "4", True, 1.5])
 def test_refill_rejects_invalid_runtime_task_limit(tmp_path: Path, max_tasks):
-    queue, catalog, completed = _inputs(tmp_path, max_tasks=max_tasks, candidates=[_task("task-new-one")])
+    queue, catalog, completed, recovery = _inputs(tmp_path, max_tasks=max_tasks, candidates=[_task("task-new-one")])
     with pytest.raises(ValueError, match="max_tasks_per_run"):
-        build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+        build_queue(queue, catalog, completed, recovery, tmp_path / "runtime.json")
 
 
 def test_refill_fails_closed_on_unsafe_path(tmp_path: Path):
-    queue, catalog, completed = _inputs(
+    queue, catalog, completed, recovery = _inputs(
         tmp_path,
         candidates=[{**_task("task-unsafe"), "allowed_paths": ["../secret.txt"]}],
     )
     with pytest.raises(ValueError, match="forbidden"):
-        build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+        build_queue(queue, catalog, completed, recovery, tmp_path / "runtime.json")
 
 
 @pytest.mark.parametrize(
@@ -70,12 +124,12 @@ def test_refill_fails_closed_on_unsafe_path(tmp_path: Path):
     ],
 )
 def test_refill_rejects_ambiguous_or_traversal_paths(tmp_path: Path, path: str):
-    queue, catalog, completed = _inputs(
+    queue, catalog, completed, recovery = _inputs(
         tmp_path,
         candidates=[{**_task("task-path"), "allowed_paths": [path]}],
     )
     with pytest.raises(ValueError, match="allowed path"):
-        build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+        build_queue(queue, catalog, completed, recovery, tmp_path / "runtime.json")
 
 
 @pytest.mark.parametrize(
@@ -98,38 +152,85 @@ def test_refill_rejects_ambiguous_or_traversal_paths(tmp_path: Path, path: str):
     ],
 )
 def test_refill_rejects_every_non_allowlisted_path(tmp_path: Path, path: str):
-    queue, catalog, completed = _inputs(
+    queue, catalog, completed, recovery = _inputs(
         tmp_path,
         candidates=[{**_task("task-path"), "allowed_paths": [path]}],
     )
     with pytest.raises(ValueError, match="forbidden allowed path"):
-        build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+        build_queue(queue, catalog, completed, recovery, tmp_path / "runtime.json")
 
 
 @pytest.mark.parametrize("path", ["tests/test_a.py", "uhip/tests/test_a.py"])
 def test_refill_accepts_only_allowlisted_test_files(tmp_path: Path, path: str):
-    queue, catalog, completed = _inputs(
+    queue, catalog, completed, recovery = _inputs(
         tmp_path,
         candidates=[{**_task("task-path"), "allowed_paths": [path]}],
     )
-    build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+    build_queue(queue, catalog, completed, recovery, tmp_path / "runtime.json")
     result = json.loads((tmp_path / "runtime.json").read_text(encoding="utf-8"))
     assert result["tasks"][0]["allowed_paths"] == [path]
 
 
 def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):
-    queue, catalog, completed = _inputs(
+    queue, catalog, completed, recovery = _inputs(
         tmp_path,
         candidates=[_task("task-same"), _task("task-same")],
     )
     with pytest.raises(ValueError, match="duplicate"):
-        build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+        build_queue(queue, catalog, completed, recovery, tmp_path / "runtime.json")
 
 
 def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):
-    queue, catalog, completed = _inputs(
+    queue, catalog, completed, recovery = _inputs(
         tmp_path,
         existing=[_task("task-same"), _task("task-same")],
     )
     with pytest.raises(ValueError, match="duplicate"):
-        build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+        build_queue(queue, catalog, completed, recovery, tmp_path / "runtime.json")
+
+
+def test_repository_catalog_uses_registered_deterministic_tasks():
+    """Catalog refill must never enqueue tasks without a deterministic handler."""
+    import json
+
+    from core.line_development_runtime import _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
+
+    root = Path(__file__).resolve().parents[1]
+    catalog = json.loads((root / ".github" / "autonomous-loop-task-catalog.json").read_text(encoding="utf-8"))
+    assert isinstance(catalog.get("tasks"), list)
+    assert catalog["tasks"], "catalog must retain useful refill candidates"
+    for task in catalog["tasks"]:
+        assert task["id"] in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS, task["id"]
+        expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS[task["id"]]
+        assert task["allowed_paths"] == [expected_target], task["id"]
+
+
+def test_refill_never_readds_held_catalog_tasks(tmp_path: Path):
+    queue, catalog, completed, recovery = _inputs(
+        tmp_path,
+        candidates=[_task("task-held"), _task("task-safe")],
+    )
+    _write(recovery, {
+        "schema_version": 1,
+        "tasks": {"task-held": {"held": True, "consecutive_failures": 3}},
+        "checkpoint": None,
+    })
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, recovery, output)
+
+    assert report["added_ids"] == ["task-safe"]
+    assert [task["id"] for task in json.loads(output.read_text(encoding="utf-8"))["tasks"]] == ["task-safe"]
+
+
+@pytest.mark.parametrize("recovery_data", [
+    {"schema_version": 2, "tasks": {}, "checkpoint": None},
+    {"schema_version": 1, "tasks": [], "checkpoint": None},
+    {"schema_version": 1, "tasks": {"task-held": {"held": "yes"}}, "checkpoint": None},
+    {"schema_version": 1, "tasks": {"bad id!": {"held": True}}, "checkpoint": None},
+])
+def test_refill_fails_closed_on_invalid_recovery_state(tmp_path: Path, recovery_data: dict):
+    queue, catalog, completed, recovery = _inputs(tmp_path, candidates=[_task("task-safe")])
+    _write(recovery, recovery_data)
+    with pytest.raises(ValueError, match="Recovery AI"):
+        build_queue(queue, catalog, completed, recovery, tmp_path / "runtime.json")

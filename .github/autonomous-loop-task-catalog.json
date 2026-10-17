@@ -3,31 +3,31 @@
   "max_additions_per_run": 4,
   "tasks": [
     {
-      "id": "ai-speaker-transcript-normalization-regression",
-      "instruction": "tests/test_ai_speaker.py のみに、文字起こしの前後空白を含む通常入力の扱いを確認する回帰テストを1件追加してください。既存実装とテストを先に読み、仕様が不明なら変更せず NO_CHANGE と報告。新しい固有のテスト名、ダミーデータのみ。テストファイル1つだけ変更。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "id": "loop-refill-existing-queue-over-run-cap",
+      "instruction": "tests/test_autonomous_task_refill.py に、既存キューが23件・max_tasks_per_runが4件でも補充が停止せず、追加タスクを保持する回帰テストを1件追加してください。既存の同等テストがあれば NO_CHANGE。テストファイルのみ変更。外部通信、シークレット、OS操作、マージ、デプロイは禁止。",
       "allowed_paths": [
-        "tests/test_ai_speaker.py"
+        "tests/test_autonomous_task_refill.py"
       ]
     },
     {
-      "id": "recovery-ai-held-task-isolation-regression",
-      "instruction": "tests/test_recovery_ai.py のみに、held 状態が別 task_id に誤って伝播しないことを検証する回帰テストを1件追加してください。既存テストと実装を先に確認し、重複なら NO_CHANGE。ダミーデータのみ、テストファイル1つだけ変更。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "id": "loop-refill-duplicate-candidates-no-additions",
+      "instruction": "tests/test_autonomous_task_refill.py に、カタログ候補がすべて既存キューにある場合は追加0件となり、既存キューを維持する回帰テストを1件追加してください。同等テストがあれば NO_CHANGE。テストファイルのみ変更。外部通信、シークレット、OS操作、マージ、デプロイは禁止。",
       "allowed_paths": [
-        "tests/test_recovery_ai.py"
+        "tests/test_autonomous_task_refill.py"
       ]
     },
     {
-      "id": "router-general-channel-metadata-regression",
-      "instruction": "tests/test_management_router.py のみに、一般依頼の deterministic routing が channel と metadata を保持する回帰テストを1件追加してください。既存テストと重複する場合は NO_CHANGE。ダミーデータのみ、テストファイル1つだけ変更。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "id": "loop-refill-skips-completed-candidates",
+      "instruction": "tests/test_autonomous_task_refill.py に、完了済み候補を除外し未完了候補のみ補充する回帰テストを1件追加してください。同等テストがあれば NO_CHANGE。テストファイルのみ変更。外部通信、シークレット、OS操作、マージ、デプロイは禁止。",
       "allowed_paths": [
-        "tests/test_management_router.py"
+        "tests/test_autonomous_task_refill.py"
       ]
     },
     {
-      "id": "obsidian-bridge-invalid-job-id-regression",
-      "instruction": "tests/test_obsidian_mac_bridge.py のみに、無効なジョブIDを拒否し副作用を起こさないことを確認する回帰テストを1件追加してください。既存の検証仕様とテストを先に確認し、重複または仕様不明なら NO_CHANGE。ダミーデータのみ、テストファイル1つだけ変更。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "id": "loop-refill-additions-respect-catalog-cap",
+      "instruction": "tests/test_autonomous_task_refill.py に、既存キューが実行上限より長くても補充数はカタログの max_additions_per_run 以下となる回帰テストを1件追加してください。同等テストがあれば NO_CHANGE。テストファイルのみ変更。外部通信、シークレット、OS操作、マージ、デプロイは禁止。",
       "allowed_paths": [
-        "tests/test_obsidian_mac_bridge.py"
+        "tests/test_autonomous_task_refill.py"
       ]
     }
   ]

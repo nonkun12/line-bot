@@ -48,10 +48,25 @@ def _validate_task(task: object) -> dict:
     return {"id": task_id, "instruction": instruction.strip(), "allowed_paths": clean_paths}
 
 
-def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, output_path: Path) -> dict:
+def build_queue(
+    queue_path: Path, catalog_path: Path, completed_path: Path,
+    recovery_path: Path, output_path: Path,
+) -> dict:
     queue = read_json(queue_path)
     catalog = read_json(catalog_path)
     state = read_json(completed_path)
+    recovery = read_json(recovery_path)
+    if recovery.get("schema_version") != 1 or not isinstance(recovery.get("tasks"), dict) or "checkpoint" not in recovery:
+        raise ValueError("Recovery AI state schema is invalid")
+    held_ids: set[str] = set()
+    for task_id, record in recovery["tasks"].items():
+        if not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id) or not isinstance(record, dict):
+            raise ValueError("Recovery AI task record is invalid")
+        held = record.get("held", False)
+        if not isinstance(held, bool):
+            raise ValueError("Recovery AI held flag is invalid")
+        if held:
+            held_ids.add(task_id)
     existing = queue.get("tasks")
     candidates = catalog.get("tasks")
     completed = state.get("completed", [])
@@ -87,7 +102,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     completed_ids = set(completed)
     additions = [
         task for task in normalized_catalog
-        if task["id"] not in original_ids and task["id"] not in completed_ids
+        if task["id"] not in original_ids and task["id"] not in completed_ids and task["id"] not in held_ids
     ][:cap]
     # Preserve every validated queued task, then append only a bounded catalog slice.
     final_tasks = normalized_existing + additions
@@ -102,10 +117,11 @@ def main() -> int:
     parser.add_argument("--queue", type=Path, required=True)
     parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--completed-state", type=Path, required=True)
+    parser.add_argument("--recovery-state", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
-        result = build_queue(args.queue, args.catalog, args.completed_state, args.output)
+        result = build_queue(args.queue, args.catalog, args.completed_state, args.recovery_state, args.output)
     except (ValueError, OSError) as exc:
         print(f"REFILL_BLOCKED: {type(exc).__name__}")
         return 2
