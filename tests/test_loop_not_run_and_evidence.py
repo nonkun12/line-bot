@@ -424,6 +424,27 @@ def test_recovery_ai_hold_appearing_before_launch_blocks(monkeypatch, tmp_path, 
     assert row["failure_reason"] == "recovery_ai_hold_or_status_uncertain"
 
 
+@pytest.mark.parametrize("recovery_record", [{"consecutive_failures": 1}, {"held": "false"}])
+def test_malformed_recovery_state_blocks_before_execution(monkeypatch, tmp_path, recovery_record, capsys):
+    task = _task("malformed-recovery-state")
+    results = _prepare_selector_main(monkeypatch, tmp_path, [task])
+
+    class _MalformedRecoveryStore:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def task_status(self, _task_id):
+            return dict(recovery_record)
+
+    monkeypatch.setattr("scripts.recovery_ai.RecoveryStore", _MalformedRecoveryStore)
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run with ambiguous recovery state"))
+    assert loop.main() == 80
+    assert "recovery_ai_hold_or_status_uncertain" in capsys.readouterr().out
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[-1])
+    assert row["status"] == "BLOCKED"
+    assert row["failure_reason"] == "recovery_ai_hold_or_status_uncertain"
+
+
 @pytest.mark.parametrize("action", ["NOT_RUN", "HOLD"])
 def test_control_tower_nonselect_action_with_executable_task_blocks(monkeypatch, tmp_path, action, capsys):
     task = _task("unexpected-nonselect-task")
