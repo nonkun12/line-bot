@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from scripts.run_guarded_runtime import guarded_ask
+from scripts import run_guarded_runtime as guarded_runtime
+from scripts.run_guarded_runtime import _write_summary, guarded_ask
 
 
 class _Message:
@@ -86,3 +87,61 @@ def test_guarded_ask_recovers_on_third_attempt_and_uses_stricter_prompt():
     assert json.loads(content) == {"file": "tests/test_management_router.py"}
     assert len(client.completions.calls) == 3
     assert "smallest valid JSON object" in client.completions.calls[2]["messages"][0]["content"]
+
+
+def test_summary_records_only_sanitized_runtime_exception_class(tmp_path, monkeypatch):
+    summary = tmp_path / "summary.json"
+    monkeypatch.setenv("AUTONOMOUS_RUNTIME_ERROR", "PermissionError: private path /secret/token")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "task-a")
+    monkeypatch.setenv("AUTONOMOUS_RUN_NONCE", "c" * 32)
+    monkeypatch.setattr("scripts.run_guarded_runtime._git", lambda *args: "a" * 40)
+
+    _write_summary("FAIL", 1, "b" * 40, summary)
+    payload = json.loads(summary.read_text(encoding="utf-8"))
+
+    assert payload["runtime_error_type"] == "PermissionError"
+    assert "/secret/token" not in summary.read_text(encoding="utf-8")
+
+def test_summary_does_not_persist_unrecognized_runtime_error_text(tmp_path, monkeypatch):
+    summary = tmp_path / "summary.json"
+    monkeypatch.setenv("AUTONOMOUS_RUNTIME_ERROR", "private path /secret/token without a class")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "task-a")
+    monkeypatch.setenv("AUTONOMOUS_RUN_NONCE", "c" * 32)
+    monkeypatch.setattr("scripts.run_guarded_runtime._git", lambda *args: "a" * 40)
+
+    _write_summary("FAIL", 1, "b" * 40, summary)
+    content = summary.read_text(encoding="utf-8")
+    payload = json.loads(content)
+
+    assert payload["runtime_error_type"] == ""
+    assert "/secret/token" not in content
+    assert "private path" not in content
+
+def test_main_sanitizes_real_runtime_exception_before_writing_summary(tmp_path, monkeypatch):
+    summary = tmp_path / "summary.json"
+    github_env = tmp_path / "github.env"
+    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(summary))
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "task-a")
+    monkeypatch.setenv("AUTONOMOUS_RUN_NONCE", "d" * 32)
+    monkeypatch.setenv("GITHUB_ENV", str(github_env))
+    monkeypatch.setenv("DEV_INSTRUCTION", "test safely")
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: "a" * 40)
+    monkeypatch.setattr(guarded_runtime, "_augment_instruction_with_history", lambda instruction, path: instruction)
+    monkeypatch.setattr(guarded_runtime, "_augment_with_hermes_advice", lambda instruction, path: instruction)
+
+    def raise_sensitive_exception(_instruction):
+        raise PermissionError("private path /secret/token and sensitive detail")
+
+    monkeypatch.setattr(guarded_runtime.runtime, "execute", raise_sensitive_exception)
+
+    with pytest.raises(PermissionError):
+        guarded_runtime.main()
+
+    content = summary.read_text(encoding="utf-8")
+    payload = json.loads(content)
+    assert payload["status"] == "FAIL"
+    assert payload["runtime_error_type"] == "PermissionError"
+    assert "/secret/token" not in content
+    assert "sensitive detail" not in content
+    assert "BLOCKED" in github_env.read_text(encoding="utf-8")
+

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+
+import pytest
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -424,4 +426,46 @@ def test_final_outcome_held_queue_blocks_empty_recovery_persistence_outcome():
         recovery_outcome="",
         all_tasks_held=True,
     ) == ("BLOCKED", "held_queue_post_run_gate_failed:recovery_ai_persistence")
+
+@pytest.mark.parametrize(
+    ("error_type", "expected_reason"),
+    [
+        ("PermissionError", "runtime_exception:PermissionError"),
+        ("UnlistedSecretError", "task_runtime_failed"),
+    ],
+)
+def test_runtime_exception_evidence_is_allowlisted_and_sanitized(
+    monkeypatch, tmp_path: Path, error_type: str, expected_reason: str
+):
+    task = {
+        "id": "runtime-exception-evidence-test",
+        "instruction": "test",
+        "allowed_paths": ["tests/test_one.py"],
+    }
+    sha = "d" * 40
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
+        summary.write_text(
+            json.dumps({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "FAIL",
+                "exit_code": 1,
+                "base_sha": sha,
+                "produced_sha": sha,
+                "task_id": task["id"],
+                "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+                "runtime_error_type": error_type,
+            }),
+            encoding="utf-8",
+        )
+        return _FakeProcess(env, lambda _: None, returncode=1)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == expected_reason
+    assert "private path /secret/token" not in json.dumps(result)
 

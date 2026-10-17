@@ -458,7 +458,19 @@ def run_task(
         failure_reason = failure_reason or "no_change"
         status = "NO_CHANGE"
     elif exit_code != 0 and not failure_reason:
-        failure_reason = "task_runtime_failed"
+        # Carry forward only the allowlisted exception class emitted by the
+        # guarded runtime. Never persist its raw message, which may contain
+        # paths, prompts, credentials, or user data.
+        error_type = str(payload.get("runtime_error_type", ""))
+        safe_error_types = {
+            "AttributeError", "FileNotFoundError", "IsADirectoryError",
+            "KeyError", "NotADirectoryError", "OSError", "PermissionError",
+            "RuntimeError", "TypeError", "UnicodeDecodeError", "ValueError",
+        }
+        if error_type in safe_error_types:
+            failure_reason = f"runtime_exception:{error_type}"
+        else:
+            failure_reason = "task_runtime_failed"
 
     if exit_code == 0 and not failure_reason:
         verified, reason = _verify_produced_head(base_sha, produced_sha, task["allowed_paths"])
