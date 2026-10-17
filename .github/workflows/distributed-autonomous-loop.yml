@@ -468,7 +468,7 @@ jobs:
               raise SystemExit("duplicate task IDs in run evidence")
 
           # Independently enforce each queued task's exact changed-file allowlist.
-          queue_path = Path(".github/autonomous-loop-tasks.json")
+          queue_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", ".github/autonomous-loop-tasks.json"))
           queue_data = json.loads(queue_path.read_text(encoding="utf-8"))
           queued_tasks = queue_data.get("tasks", [])
           if not isinstance(queued_tasks, list):
