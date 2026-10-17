@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from scripts import run_guarded_runtime as guarded_runtime
 from scripts.run_guarded_runtime import _write_summary, guarded_ask
 
 
@@ -115,4 +116,32 @@ def test_summary_does_not_persist_unrecognized_runtime_error_text(tmp_path, monk
     assert payload["runtime_error_type"] == ""
     assert "/secret/token" not in content
     assert "private path" not in content
+
+def test_main_sanitizes_real_runtime_exception_before_writing_summary(tmp_path, monkeypatch):
+    summary = tmp_path / "summary.json"
+    github_env = tmp_path / "github.env"
+    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(summary))
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "task-a")
+    monkeypatch.setenv("AUTONOMOUS_RUN_NONCE", "d" * 32)
+    monkeypatch.setenv("GITHUB_ENV", str(github_env))
+    monkeypatch.setenv("DEV_INSTRUCTION", "test safely")
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: "a" * 40)
+    monkeypatch.setattr(guarded_runtime, "_augment_instruction_with_history", lambda instruction, path: instruction)
+    monkeypatch.setattr(guarded_runtime, "_augment_with_hermes_advice", lambda instruction, path: instruction)
+
+    def raise_sensitive_exception(_instruction):
+        raise PermissionError("private path /secret/token and sensitive detail")
+
+    monkeypatch.setattr(guarded_runtime.runtime, "execute", raise_sensitive_exception)
+
+    with pytest.raises(PermissionError):
+        guarded_runtime.main()
+
+    content = summary.read_text(encoding="utf-8")
+    payload = json.loads(content)
+    assert payload["status"] == "FAIL"
+    assert payload["runtime_error_type"] == "PermissionError"
+    assert "/secret/token" not in content
+    assert "sensitive detail" not in content
+    assert "BLOCKED" in github_env.read_text(encoding="utf-8")
 
