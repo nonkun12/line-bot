@@ -334,7 +334,7 @@ def test_control_tower_duplicate_queue_ids_block_before_execution(monkeypatch, t
     task = _task("duplicate-task")
     results = _prepare_selector_main(monkeypatch, tmp_path, [task, dict(task)])
     monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run"))
-    assert loop.main() == 79
+    assert loop.main() == 80
     assert "control_tower_selector:duplicate_task" in capsys.readouterr().out
     row = json.loads(results.read_text(encoding="utf-8").splitlines()[0])
     assert row["status"] == "BLOCKED"
@@ -347,7 +347,7 @@ def test_control_tower_head_change_during_selection_blocks_before_execution(monk
     heads = iter(["a" * 40, "b" * 40])
     results = _prepare_selector_main(monkeypatch, tmp_path, [task], lambda: next(heads))
     monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run"))
-    assert loop.main() == 79
+    assert loop.main() == 80
     assert "control_tower_selector:policy_blocked" in capsys.readouterr().out
     row = json.loads(results.read_text(encoding="utf-8").splitlines()[0])
     assert row["status"] == "BLOCKED"
