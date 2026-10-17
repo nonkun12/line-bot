@@ -70,17 +70,17 @@ def select_next_task(
             task_template_id=task_id,
         )
 
-    reason = "task_held" if any(task_id in held for task_id in queued_task_ids) else "queue_empty"
-    if reason == "queue_empty":
-        return ControlTowerDecisionRecord(
-            reason_code=reason,
-            confidence=1.0,
-            priority=0,
-            next_action="NOT_RUN",
-            gate_status="NOT_RUN",
-            evidence_sha=evidence_sha,
-        )
-    return _blocked(reason)
+    remaining = [task_id for task_id in queued_task_ids if task_id not in completed]
+    if remaining and all(task_id in held for task_id in remaining):
+        return _blocked("task_held")
+    return ControlTowerDecisionRecord(
+        reason_code="no_eligible_task",
+        confidence=1.0,
+        priority=0,
+        next_action="NOT_RUN",
+        gate_status="NOT_RUN",
+        evidence_sha=evidence_sha,
+    )
 
 
 def _valid_collection(value: object) -> bool:
