@@ -293,3 +293,55 @@ def test_final_outcome_empty_queue_blocks_when_required_gate_fails(gate, outcome
         f"queue_empty_post_run_gate_failed:{gate}",
     )
 
+
+
+def _prepare_selector_main(monkeypatch, tmp_path, tasks, head_reader=None):
+    queue = tmp_path / "queue.json"
+    queue.write_text(json.dumps({"max_tasks_per_run": 4}), encoding="utf-8")
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps({"version": 1, "completed": []}), encoding="utf-8")
+    results = tmp_path / "results.jsonl"
+    monkeypatch.setattr(loop, "QUEUE", queue)
+    monkeypatch.setattr(loop, "load_tasks", lambda: tasks)
+    monkeypatch.setattr(loop, "_git_head", head_reader or (lambda: "a" * 40))
+
+    class _RecoveryStore:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def task_status(self, _task_id):
+            return {"held": False}
+
+    monkeypatch.setattr("scripts.recovery_ai.RecoveryStore", _RecoveryStore)
+    monkeypatch.setattr(
+        loop.sys,
+        "argv",
+        ["loop", "--max-tasks", "1", "--results", str(results), "--state", str(state),
+         "--stop-file", str(tmp_path / "stop")],
+    )
+    return results
+
+
+def test_control_tower_duplicate_queue_ids_block_before_execution(monkeypatch, tmp_path, capsys):
+    task = _task("duplicate-task")
+    results = _prepare_selector_main(monkeypatch, tmp_path, [task, dict(task)])
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run"))
+    assert loop.main() == 79
+    assert "control_tower_selector:duplicate_task" in capsys.readouterr().out
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[0])
+    assert row["status"] == "BLOCKED"
+    assert row["failure_reason"] == "control_tower_selector:duplicate_task"
+    assert row["task_count"] == 0
+
+
+def test_control_tower_head_change_during_selection_blocks_before_execution(monkeypatch, tmp_path, capsys):
+    task = _task("head-change-task")
+    heads = iter(["a" * 40, "b" * 40])
+    results = _prepare_selector_main(monkeypatch, tmp_path, [task], lambda: next(heads))
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run"))
+    assert loop.main() == 79
+    assert "control_tower_selector:policy_blocked" in capsys.readouterr().out
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[0])
+    assert row["status"] == "BLOCKED"
+    assert row["failure_reason"] == "control_tower_selector:policy_blocked"
+    assert row["task_count"] == 0
