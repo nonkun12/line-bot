@@ -49,6 +49,7 @@ def test_audit_reports_pending_and_held_without_mutating_any_input(tmp_path: Pat
         "task_id": "task-two", "last_category": "timeout", "consecutive_failures": 3
     }]
     assert report["stale_completed_ids"] == ["old-task"]
+    assert "stale_completed_ids" in report["warnings"]
     assert report["writes_attempted"] == 0
     assert {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in (queue, state, recovery)} == before
 
