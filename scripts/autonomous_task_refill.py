@@ -50,7 +50,7 @@ def _validate_task(task: object) -> dict:
 
 def build_queue(
     queue_path: Path, catalog_path: Path, completed_path: Path, output_path: Path,
-    recovery_path: Path,
+    recovery_path: Path | None = None,
 ) -> dict:
     queue = read_json(queue_path)
     catalog = read_json(catalog_path)
