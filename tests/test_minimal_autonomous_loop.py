@@ -250,6 +250,8 @@ def test_main_halts_after_first_failure(monkeypatch, tmp_path: Path):
     queue = tmp_path / "queue.json"
     queue.write_text('{"max_tasks_per_run": 3}', encoding="utf-8")
     monkeypatch.setattr(loop, "QUEUE", queue)
+    # This test uses a synthetic queue; register exactly those fixtures as trusted.
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: loop.load_tasks())
     def fake_run_task(task, index, stop_file, *, expected_base_sha=None):
         assert isinstance(expected_base_sha, str) and len(expected_base_sha) == 40
         return {
