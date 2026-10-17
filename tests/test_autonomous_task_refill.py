@@ -133,3 +133,19 @@ def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):
     )
     with pytest.raises(ValueError, match="duplicate"):
         build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+
+
+def test_repository_catalog_uses_registered_deterministic_tasks():
+    """Catalog refill must never enqueue tasks without a deterministic handler."""
+    import json
+
+    from core.line_development_runtime import _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
+
+    root = Path(__file__).resolve().parents[1]
+    catalog = json.loads((root / ".github" / "autonomous-loop-task-catalog.json").read_text(encoding="utf-8"))
+    assert isinstance(catalog.get("tasks"), list)
+    assert catalog["tasks"], "catalog must retain useful refill candidates"
+    for task in catalog["tasks"]:
+        assert task["id"] in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS, task["id"]
+        expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS[task["id"]]
+        assert task["allowed_paths"] == [expected_target], task["id"]
