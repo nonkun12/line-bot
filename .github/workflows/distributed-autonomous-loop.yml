@@ -162,7 +162,7 @@ jobs:
               ;;
             2)
               # Only a genuinely absent branch may initialize an empty state.
-              printf '%s\\n' '{"version":1,"completed":[]}' > /tmp/autonomous-loop-state.json
+              printf '%s\n' '{"version":1,"completed":[]}' > /tmp/autonomous-loop-state.json
               echo "DURABLE_STATE_EXISTS=false" >> "$GITHUB_ENV"
               ;;
             *)
@@ -191,7 +191,7 @@ jobs:
               if not isinstance(task_id, str) or not isinstance(record, dict) or not isinstance(record.get('held'), bool):
                   raise SystemExit('durable Recovery AI task record is invalid; refusing to run')
           Path('/tmp/recovery-ai-state.json').write_text(
-              json.dumps(recovery, ensure_ascii=False, sort_keys=True) + '\\n', encoding='utf-8'
+              json.dumps(recovery, ensure_ascii=False, sort_keys=True) + '\n', encoding='utf-8'
           )
           PY
 
