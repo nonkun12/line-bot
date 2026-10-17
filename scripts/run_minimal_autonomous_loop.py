@@ -56,6 +56,9 @@ def classify_final_outcome(
                 ("publish", publish_outcome),
                 ("state", state_outcome),
                 ("sheets", sheets_outcome),
+                # Recovery persistence is an additional gate only when it was
+                # actually attempted/reported. Missing is not the same as failure.
+                *([("recovery_ai_persistence", recovery_outcome)] if recovery_outcome is not None else []),
             )
             if outcome != "success"
         ]
@@ -71,6 +74,9 @@ def classify_final_outcome(
                 ("publish", publish_outcome),
                 ("state", state_outcome),
                 ("sheets", sheets_outcome),
+                # Recovery persistence is an additional gate only when it was
+                # actually attempted/reported. Missing is not the same as failure.
+                *([("recovery_ai_persistence", recovery_outcome)] if recovery_outcome is not None else []),
             )
             if outcome != "success"
         ]
