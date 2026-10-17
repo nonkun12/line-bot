@@ -242,6 +242,58 @@ def _git_checked(*args: str) -> tuple[int, str]:
     return completed.returncode, completed.stdout.strip()
 
 
+def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
+    """Load task definitions from version-controlled catalogs at the selection commit.
+
+    The runtime queue is intentionally not a source of trust: it only selects
+    among definitions reviewed into one of the repository catalogs.
+    """
+    if not _valid_sha(evidence_sha):
+        raise ValueError("catalog evidence SHA is invalid")
+    catalog_paths = (
+        ".github/autonomous-loop-tasks.json",
+        ".github/autonomous-loop-task-catalog.json",
+    )
+    definitions: dict[str, dict[str, object]] = {}
+    for path in catalog_paths:
+        code, raw = _git_checked("show", f"{evidence_sha}:{path}")
+        if code != 0:
+            raise ValueError("versioned task catalog unavailable")
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("versioned task catalog is invalid") from exc
+        tasks = payload.get("tasks") if isinstance(payload, dict) else None
+        if not isinstance(tasks, list):
+            raise ValueError("versioned task catalog has no task list")
+        for entry in tasks:
+            if not isinstance(entry, dict):
+                raise ValueError("versioned task definition is invalid")
+            task_id = entry.get("id")
+            instruction = entry.get("instruction")
+            allowed_paths = entry.get("allowed_paths")
+            if (
+                not isinstance(task_id, str)
+                or not task_id.strip()
+                or not isinstance(instruction, str)
+                or not instruction.strip()
+                or not isinstance(allowed_paths, list)
+                or not allowed_paths
+                or not all(isinstance(item, str) and item.strip() for item in allowed_paths)
+            ):
+                raise ValueError("versioned task definition is invalid")
+            normalized = {
+                "id": task_id,
+                "instruction": instruction,
+                "allowed_paths": [item.strip() for item in allowed_paths],
+            }
+            previous = definitions.get(task_id)
+            if previous is not None and previous != normalized:
+                raise ValueError("conflicting versioned task definitions")
+            definitions[task_id] = normalized
+    return list(definitions.values())
+
+
 def _verify_produced_head(base_sha: str, produced_sha: str, allowed_paths: list[str]) -> tuple[bool, str]:
     if not _valid_sha(base_sha) or not _valid_sha(produced_sha):
         return False, "sha_invalid"
@@ -534,12 +586,31 @@ def main() -> int:
         selection_queue_tasks = queued_tasks
         tasks = [task for task in queued_tasks if task["id"] not in completed]
 
-    # Snapshot every registered task definition independently, including entries
-    # already completed or held. This detects in-memory mutation, not a signed catalog.
-    registered_catalog = [
-        {**task, "allowed_paths": list(task["allowed_paths"])}
-        for task in catalog_source_tasks
-    ]
+    # Normal queue entries are authorized only against Git-versioned catalogs
+    # at the same immutable commit used as the selection evidence. Never derive
+    # the trust catalog from the runtime queue itself.
+    if args.incident_category is not None:
+        registered_catalog = [
+            {**task, "allowed_paths": list(task["allowed_paths"])}
+            for task in catalog_source_tasks
+        ]
+    else:
+        try:
+            registered_catalog = _load_registered_catalog(selection_evidence_sha)
+        except Exception:
+            args.results.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "BLOCKED",
+                "task_id": "",
+                "task_count": 0,
+                "exit_code": 79,
+                "failure_reason": "control_tower_catalog:catalog_unavailable_or_invalid",
+            }
+            with args.results.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\\n")
+            print("MINIMAL_LOOP=BLOCKED reason=control_tower_catalog:catalog_unavailable_or_invalid", flush=True)
+            return 79
 
     # Read Recovery AI holds before selecting. Held tasks remain held; this code
     # never clears or overrides Recovery AI state.
