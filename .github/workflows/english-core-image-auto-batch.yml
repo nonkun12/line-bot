@@ -35,6 +35,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install focused test dependency
+        run: python -m pip install --disable-pip-version-check pytest langgraph==1.2.10 langchain-groq groq python-dotenv
       - name: Add next reviewed batch
         env:
           BATCH_SIZE: ${{ inputs.batch_size || '20' }}
@@ -57,7 +59,7 @@ jobs:
             ## Summary
             - Add the next batch from the repository's reviewed local candidate queue.
             - Skip words already present in the dictionary and reject malformed/duplicate candidates.
-            - Run syntax and focused regression tests before proposing changes.
+            - Install the focused test runner explicitly, then run regression tests before proposing changes.
 
             ## Safety
             - No network calls, external/paid APIs, guessed etymologies, auto-merge, or deployment.
