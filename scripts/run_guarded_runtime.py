@@ -170,6 +170,13 @@ def _write_summary(status: str, exit_code: int, start_sha: str, summary_path: Pa
         "runtime": "common_guarded_runtime",
         "task_id": os.environ.get("AUTONOMOUS_TASK_ID", ""),
         "run_nonce": os.environ.get("AUTONOMOUS_RUN_NONCE", ""),
+        # Store only the exception class, never raw exception text which may
+        # contain paths, prompts, or other sensitive runtime details.
+        "runtime_error_type": (
+            os.environ.get("AUTONOMOUS_RUNTIME_ERROR", "").split(":", 1)[0][:80]
+            if os.environ.get("AUTONOMOUS_RUNTIME_ERROR", "")
+            else ""
+        ),
     }
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
