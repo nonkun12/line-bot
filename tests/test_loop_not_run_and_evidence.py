@@ -443,7 +443,13 @@ def test_control_tower_nonselect_action_with_executable_task_blocks(monkeypatch,
     )
     monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run for nonselect action"))
     assert loop.main() == 80
-    assert "action_task_mismatch" in capsys.readouterr().out
+    output = capsys.readouterr().out
     row = json.loads(results.read_text(encoding="utf-8").splitlines()[-1])
     assert row["status"] == "BLOCKED"
-    assert row["failure_reason"] == "control_tower_selector:action_task_mismatch"
+    if action == "NOT_RUN":
+        assert "action_task_mismatch" in output
+        assert row["failure_reason"] == "control_tower_selector:action_task_mismatch"
+    else:
+        # A BLOCKED gate is rejected earlier than action/task consistency checks.
+        assert "control_tower_selector:no_eligible_task" in output
+        assert row["failure_reason"] == "control_tower_selector:no_eligible_task"
