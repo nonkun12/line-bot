@@ -100,3 +100,19 @@ def test_summary_records_only_sanitized_runtime_exception_class(tmp_path, monkey
 
     assert payload["runtime_error_type"] == "PermissionError"
     assert "/secret/token" not in summary.read_text(encoding="utf-8")
+
+def test_summary_does_not_persist_unrecognized_runtime_error_text(tmp_path, monkeypatch):
+    summary = tmp_path / "summary.json"
+    monkeypatch.setenv("AUTONOMOUS_RUNTIME_ERROR", "private path /secret/token without a class")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "task-a")
+    monkeypatch.setenv("AUTONOMOUS_RUN_NONCE", "c" * 32)
+    monkeypatch.setattr("scripts.run_guarded_runtime._git", lambda *args: "a" * 40)
+
+    _write_summary("FAIL", 1, "b" * 40, summary)
+    content = summary.read_text(encoding="utf-8")
+    payload = json.loads(content)
+
+    assert payload["runtime_error_type"] == ""
+    assert "/secret/token" not in content
+    assert "private path" not in content
+
