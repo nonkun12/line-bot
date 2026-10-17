@@ -3,31 +3,31 @@
   "max_additions_per_run": 4,
   "tasks": [
     {
-      "id": "ai-speaker-empty-transcript-no-brain-call",
-      "instruction": "tests/test_ai_speaker.py の既存の空文字起こしテストを確認し、脳処理への呼び出しが発生しないことを保証してください。既に保証済みなら NO_CHANGE。決定論的な登録済み実装だけを使用し、テスト対象以外を変更しない。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "id": "loop-refill-existing-queue-over-run-cap",
+      "instruction": "tests/test_autonomous_task_refill.py に、既存キューが23件・max_tasks_per_runが4件でも補充が停止せず、追加タスクを保持する回帰テストを1件追加してください。既存の同等テストがあれば NO_CHANGE。テストファイルのみ変更。外部通信、シークレット、OS操作、マージ、デプロイは禁止。",
       "allowed_paths": [
-        "tests/test_ai_speaker.py"
+        "tests/test_autonomous_task_refill.py"
       ]
     },
     {
-      "id": "recovery-ai-state-isolation",
-      "instruction": "tests/test_recovery_ai.py でタスクID間のRecovery AI状態分離を確認してください。既に同等の回帰テストがあれば NO_CHANGE。決定論的な登録済み実装だけを使用し、テスト対象以外を変更しない。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "id": "loop-refill-duplicate-candidates-no-additions",
+      "instruction": "tests/test_autonomous_task_refill.py に、カタログ候補がすべて既存キューにある場合は追加0件となり、既存キューを維持する回帰テストを1件追加してください。同等テストがあれば NO_CHANGE。テストファイルのみ変更。外部通信、シークレット、OS操作、マージ、デプロイは禁止。",
       "allowed_paths": [
-        "tests/test_recovery_ai.py"
+        "tests/test_autonomous_task_refill.py"
       ]
     },
     {
-      "id": "router-regression-general-request-metadata-refresh-20261015",
-      "instruction": "tests/test_management_router.py で一般依頼のルーティング時にchannelとmetadataが保持されることを確認してください。既存テストと重複する場合は NO_CHANGE。決定論的な登録済み実装だけを使用し、テスト対象以外を変更しない。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "id": "loop-refill-skips-completed-candidates",
+      "instruction": "tests/test_autonomous_task_refill.py に、完了済み候補を除外し未完了候補のみ補充する回帰テストを1件追加してください。同等テストがあれば NO_CHANGE。テストファイルのみ変更。外部通信、シークレット、OS操作、マージ、デプロイは禁止。",
       "allowed_paths": [
-        "tests/test_management_router.py"
+        "tests/test_autonomous_task_refill.py"
       ]
     },
     {
-      "id": "loop-deterministic-nochange-focused-test",
-      "instruction": "tests/test_line_development_worker_v2.py の許可対象限定テスト実行について、既存の決定論的実装で検証してください。既に同等のテストがあれば NO_CHANGE。決定論的な登録済み実装だけを使用し、テスト対象以外を変更しない。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "id": "loop-refill-additions-respect-catalog-cap",
+      "instruction": "tests/test_autonomous_task_refill.py に、既存キューが実行上限より長くても補充数はカタログの max_additions_per_run 以下となる回帰テストを1件追加してください。同等テストがあれば NO_CHANGE。テストファイルのみ変更。外部通信、シークレット、OS操作、マージ、デプロイは禁止。",
       "allowed_paths": [
-        "tests/test_line_development_worker_v2.py"
+        "tests/test_autonomous_task_refill.py"
       ]
     }
   ]

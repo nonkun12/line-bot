@@ -66,9 +66,6 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     if not isinstance(max_tasks, int) or isinstance(max_tasks, bool) or not 1 <= max_tasks <= 4:
         raise ValueError("max_tasks_per_run must be an integer between 1 and 4")
 
-    if len(existing) > max_tasks:
-        raise ValueError("existing queue exceeds max_tasks_per_run")
-
     normalized_existing = []
     original_ids: set[str] = set()
     for raw_task in existing:
@@ -91,8 +88,8 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     additions = [
         task for task in normalized_catalog
         if task["id"] not in original_ids and task["id"] not in completed_ids
-    ][:min(cap, max_tasks - len(normalized_existing))]
-    # Keep the complete run-local queue within its declared task limit.
+    ][:cap]
+    # Preserve every validated queued task, then append only a bounded catalog slice.
     final_tasks = normalized_existing + additions
     output = {"version": 1, "max_tasks_per_run": max_tasks, "tasks": final_tasks}
     output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -212,6 +212,10 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "recovery-ai-state-isolation": "tests/test_recovery_ai.py",
     "ai-speaker-empty-transcript-no-brain-call": "tests/test_ai_speaker.py",
     "loop-deterministic-nochange-focused-test": "tests/test_line_development_worker_v2.py",
+    "loop-refill-existing-queue-over-run-cap": "tests/test_autonomous_task_refill.py",
+    "loop-refill-duplicate-candidates-no-additions": "tests/test_autonomous_task_refill.py",
+    "loop-refill-skips-completed-candidates": "tests/test_autonomous_task_refill.py",
+    "loop-refill-additions-respect-catalog-cap": "tests/test_autonomous_task_refill.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -1181,6 +1185,102 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "no_change": False,
             "source": "deterministic_autonomous_task",
             "changes": [{"file": chosen, "old": old, "new": new}],
+        }, None
+
+    if task_id == "loop-refill-existing-queue-over-run-cap" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_preserves_queue_larger_than_per_run_cap"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_repository_catalog_uses_registered_deterministic_tasks():\\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = "def test_refill_preserves_queue_larger_than_per_run_cap(tmp_path: Path):\n    existing = [_task(f\"task-existing-{index}\") for index in range(23)]\n    queue, catalog, completed = _inputs(\n        tmp_path, max_tasks=4, existing=existing, candidates=[_task(\"task-refill-new\")]\n    )\n    output = tmp_path / \"runtime.json\"\n    report = build_queue(queue, catalog, completed, output)\n    result = json.loads(output.read_text(encoding=\"utf-8\"))\n    assert report[\"added\"] == 1\n    assert report[\"total\"] == 24\n    assert [task[\"id\"] for task in result[\"tasks\"][:23]] == [task[\"id\"] for task in existing]\n    assert result[\"max_tasks_per_run\"] == 4\n"
+        new = addition + "\\n" + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "loop-refill-duplicate-candidates-no-additions" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_returns_zero_when_all_catalog_candidates_are_already_queued"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_repository_catalog_uses_registered_deterministic_tasks():\\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = "def test_refill_returns_zero_when_all_catalog_candidates_are_already_queued(tmp_path: Path):\n    existing = [_task(\"task-existing\")]\n    queue, catalog, completed = _inputs(\n        tmp_path, existing=existing, candidates=[_task(\"task-existing\")]\n    )\n    output = tmp_path / \"runtime.json\"\n    report = build_queue(queue, catalog, completed, output)\n    result = json.loads(output.read_text(encoding=\"utf-8\"))\n    assert report[\"added\"] == 0\n    assert result[\"tasks\"] == existing\n"
+        new = addition + "\\n" + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "loop-refill-skips-completed-candidates" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_skips_completed_candidate_and_adds_next_eligible"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_repository_catalog_uses_registered_deterministic_tasks():\\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = "def test_refill_skips_completed_candidate_and_adds_next_eligible(tmp_path: Path):\n    queue, catalog, completed = _inputs(\n        tmp_path,\n        existing=[_task(f\"task-existing-{index}\") for index in range(23)],\n        candidates=[_task(\"task-completed\"), _task(\"task-available\")],\n    )\n    state = _write(tmp_path / \"state.json\", {\"version\": 1, \"completed\": [\"task-completed\"]})\n    output = tmp_path / \"runtime.json\"\n    report = build_queue(queue, catalog, state, output)\n    result = json.loads(output.read_text(encoding=\"utf-8\"))\n    assert report[\"added\"] == 1\n    assert report[\"added_ids\"] == [\"task-available\"]\n    assert report[\"total\"] == 24\n"
+        new = addition + "\\n" + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "loop-refill-additions-respect-catalog-cap" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_caps_additions_by_catalog_cap_for_large_queue"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_repository_catalog_uses_registered_deterministic_tasks():\\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = "def test_refill_caps_additions_by_catalog_cap_for_large_queue(tmp_path: Path):\n    existing = [_task(f\"task-existing-{index}\") for index in range(23)]\n    candidates = [_task(f\"task-new-{index}\") for index in range(5)]\n    queue, catalog, completed = _inputs(\n        tmp_path, max_tasks=4, existing=existing, candidates=candidates\n    )\n    output = tmp_path / \"runtime.json\"\n    report = build_queue(queue, catalog, completed, output)\n    result = json.loads(output.read_text(encoding=\"utf-8\"))\n    assert report[\"added\"] == 2\n    assert report[\"added_ids\"] == [\"task-new-0\", \"task-new-1\"]\n    assert report[\"total\"] == 25\n"
+        new = addition + "\\n" + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
         }, None
 
     return None, None

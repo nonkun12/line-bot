@@ -41,32 +41,57 @@ def test_refill_adds_only_uncompleted_catalog_tasks_within_cap(tmp_path: Path):
     assert queue.read_text(encoding="utf-8") != output.read_text(encoding="utf-8")
 
 
-def test_refill_caps_additions_to_remaining_queue_capacity(tmp_path: Path):
+def test_refill_caps_additions_by_catalog_cap_not_queue_length(tmp_path: Path):
+    existing = [_task(f"task-existing-{index}") for index in range(23)]
+    candidates = [_task("task-new-one"), _task("task-new-two"), _task("task-new-three")]
     queue, catalog, completed = _inputs(
-        tmp_path,
-        max_tasks=4,
-        existing=[_task("task-existing-one"), _task("task-existing-two"), _task("task-existing-three")],
-        candidates=[_task("task-new-one"), _task("task-new-two")],
+        tmp_path, max_tasks=4, existing=existing, candidates=candidates
     )
     output = tmp_path / "runtime.json"
 
     report = build_queue(queue, catalog, completed, output)
     result = json.loads(output.read_text(encoding="utf-8"))
 
-    assert report["added"] == 1
-    assert report["total"] == 4
-    assert len(result["tasks"]) == 4
+    assert report["added"] == 2
+    assert report["total"] == 25
+    assert len(result["tasks"]) == 25
+    assert result["max_tasks_per_run"] == 4
+    assert [task["id"] for task in result["tasks"][:23]] == [
+        task["id"] for task in existing
+    ]
 
 
-def test_refill_rejects_existing_queue_over_limit(tmp_path: Path):
+def test_refill_returns_zero_when_all_catalog_candidates_are_already_queued(tmp_path: Path):
+    existing = [_task("task-existing-one"), _task("task-existing-two")]
+    queue, catalog, completed = _inputs(
+        tmp_path, existing=existing, candidates=[_task("task-existing-one"), _task("task-existing-two")]
+    )
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, output)
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["added"] == 0
+    assert report["total"] == 2
+    assert [task["id"] for task in result["tasks"]] == ["task-existing-one", "task-existing-two"]
+
+
+def test_refill_skips_completed_candidate_and_adds_next_eligible(tmp_path: Path):
     queue, catalog, completed = _inputs(
         tmp_path,
-        max_tasks=1,
-        existing=[_task("task-existing-one"), _task("task-existing-two")],
-        candidates=[_task("task-new-one")],
+        existing=[_task(f"task-existing-{index}") for index in range(23)],
+        candidates=[_task("task-completed"), _task("task-available")],
     )
-    with pytest.raises(ValueError, match="existing queue exceeds max_tasks_per_run"):
-        build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+    state = _write(tmp_path / "state.json", {"version": 1, "completed": ["task-completed"]})
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, state, output)
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["added"] == 1
+    assert report["added_ids"] == ["task-available"]
+    assert report["total"] == 24
+    assert result["max_tasks_per_run"] == 4
 
 
 @pytest.mark.parametrize("max_tasks", [0, -1, 5, "4", True, 1.5])
