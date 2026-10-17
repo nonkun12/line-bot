@@ -603,7 +603,7 @@ def main() -> int:
                     fh.write(json.dumps(record, ensure_ascii=False) + "\n")
                 print("MINIMAL_LOOP=BLOCKED reason=control_tower_selector:selection_mismatch", flush=True)
                 return 79
-        elif selection_decision.next_action not in {"NOT_RUN"}:
+        elif selection_decision.next_action not in {"NOT_RUN", "HOLD"}:
             args.results.parent.mkdir(parents=True, exist_ok=True)
             record = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
