@@ -19,6 +19,8 @@ def test_completed_only_queue_records_no_eligible_task_and_returns_78(monkeypatc
     results = tmp_path / "results.jsonl"
     monkeypatch.setattr(loop, "QUEUE", queue)
     monkeypatch.setattr(loop, "load_tasks", lambda: [_task()])
+    # The test queue is synthetic; explicitly provide its reviewed test catalog.
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [_task()])
     monkeypatch.setattr(loop.sys, "argv", ["loop", "--max-tasks", "1", "--results", str(results), "--state", str(state), "--stop-file", str(tmp_path / "stop")])
     monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run"))
     assert loop.main() == 78
