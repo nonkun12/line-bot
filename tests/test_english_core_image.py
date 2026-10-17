@@ -14,6 +14,35 @@ def test_english_command_is_supported():
     assert extract_core_image_word("core image respect") == "respect"
 
 
+def test_natural_japanese_requests_use_the_local_core_image_handler():
+    unknown_requests = (
+        "goodのコアイメージを教えて",
+        "good のコアイメージ",
+        "goodの語根は何ですか？",
+    )
+    for request in unknown_requests:
+        assert extract_core_image_word(request) == "good"
+        response = handle_core_image_command(request)
+        assert response is not None
+        assert "説明を保留" in response
+
+    known_response = handle_core_image_command("inspectのコアイメージ")
+    assert known_response is not None
+    assert "コアイメージ：" in known_response
+    assert "説明を保留" not in known_response
+
+
+def test_natural_english_core_image_requests_are_supported():
+    assert extract_core_image_word("what is the core image of good?") == "good"
+    assert extract_core_image_word("explain word root of inspect") == "inspect"
+    assert "説明を保留" in handle_core_image_command("what is the core image of good?")
+
+
+def test_parts_label_does_not_misrepresent_usage_notes_as_word_parts():
+    response = explain_core_image("inspect")
+    assert "語のパーツ（または用法メモ）：" in response
+
+
 def test_known_word_explains_core_image_and_related_words():
     response = handle_core_image_command("コアイメージ inspect")
     assert response is not None
