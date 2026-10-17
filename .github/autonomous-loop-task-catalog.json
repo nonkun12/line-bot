@@ -17,17 +17,17 @@
       ]
     },
     {
-      "id": "loop-refill-skips-completed-candidates",
-      "instruction": "tests/test_autonomous_task_refill.py に、完了済み候補を除外し未完了候補のみ補充する回帰テストを1件追加してください。同等テストがあれば NO_CHANGE。テストファイルのみ変更。外部通信、シークレット、OS操作、マージ、デプロイは禁止。",
+      "id": "router-regression-jobs-market-metadata",
+      "instruction": "tests/test_management_router.py のみに、求人と市場情報が混在する依頼で既定の優先順位と matched_specialists metadata が保持される回帰テストを1件追加してください。既存テストと重複する場合は NO_CHANGE。ダミーデータのみ、テストファイル1つだけ変更。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
       "allowed_paths": [
-        "tests/test_autonomous_task_refill.py"
+        "tests/test_management_router.py"
       ]
     },
     {
-      "id": "loop-refill-additions-respect-catalog-cap",
-      "instruction": "tests/test_autonomous_task_refill.py に、既存キューが実行上限より長くても補充数はカタログの max_additions_per_run 以下となる回帰テストを1件追加してください。同等テストがあれば NO_CHANGE。テストファイルのみ変更。外部通信、シークレット、OS操作、マージ、デプロイは禁止。",
+      "id": "recovery-ai-loop-adapter-durable-state-readback",
+      "instruction": "tests/test_recovery_ai_loop_adapter.py のみに、Recovery AI の永続状態を保存した後に読み戻した値と task ID の整合性を確認する回帰テストを1件追加してください。既存テストと重複する場合は NO_CHANGE。ダミー状態のみ、テストファイル1つだけ変更。外部通信・シークレット・状態ファイル外への書込み・マージ・デプロイは禁止。",
       "allowed_paths": [
-        "tests/test_autonomous_task_refill.py"
+        "tests/test_recovery_ai_loop_adapter.py"
       ]
     }
   ]
