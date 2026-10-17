@@ -147,3 +147,41 @@ def test_malformed_sha_types_fail_closed(bad_sha):
     assert decision.reason_code == "invalid_state"
     assert decision.next_action == "HOLD"
     assert decision.task_template_id is None
+
+
+@pytest.mark.parametrize("bad_queue", [None, "task-a", b"task-a", {"task-a"}])
+def test_non_sequence_queue_inputs_fail_closed(bad_queue):
+    decision = choose(bad_queue)
+
+    assert decision.reason_code == "invalid_state"
+    assert decision.next_action == "HOLD"
+    assert decision.gate_status == "BLOCKED"
+    assert decision.task_template_id is None
+
+
+@pytest.mark.parametrize(
+    "bad_sha",
+    [
+        "A" * 40,
+        "a" * 39,
+        "a" * 41,
+        "a" * 39 + "\\n",
+        "g" + "a" * 39,
+    ],
+)
+@pytest.mark.parametrize("sha_field", ["evidence_sha", "current_head_sha"])
+def test_noncanonical_sha_boundaries_fail_closed(bad_sha, sha_field):
+    decision = choose(["task-a"], **{sha_field: bad_sha})
+
+    assert decision.reason_code == "invalid_state"
+    assert decision.next_action == "HOLD"
+    assert decision.gate_status == "BLOCKED"
+    assert decision.task_template_id is None
+
+
+def test_empty_queue_still_requires_valid_matching_sha():
+    decision = choose([], evidence_sha="b" * 40)
+
+    assert decision.reason_code == "policy_blocked"
+    assert decision.next_action == "HOLD"
+    assert decision.gate_status == "BLOCKED"
