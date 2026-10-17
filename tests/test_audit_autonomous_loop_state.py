@@ -167,8 +167,11 @@ def test_cli_returns_blocked_for_all_held_tasks(tmp_path: Path, monkeypatch, cap
 
 def test_cli_maps_deeply_nested_json_to_evidence_error(tmp_path: Path, monkeypatch, capsys):
     queue = tmp_path / "queue.json"
-    queue.write_text('{"tasks":' + "[" * 1200 + "0" + "]" * 1200 + "}", encoding="utf-8")
-    state = _write(tmp_path / "state.json", {"version": 1, "completed": []})
+    queue.write_text('{"tasks":' + "[" * 5000 + "0" + "]" * 5000 + "}", encoding="utf-8")
+    state = _write(tmp_path / "state.json", {
+        "version": 1, "completed": [],
+        "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None},
+    })
     recovery = _write(tmp_path / "recovery.json", {
         "schema_version": 1, "tasks": {}, "checkpoint": None
     })
