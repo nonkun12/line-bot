@@ -36,7 +36,12 @@ def select_next_task(
         return _blocked("duplicate_task")
     if not _valid_collection(registered_task_ids) or not _valid_collection(completed_task_ids) or not _valid_collection(held_task_ids):
         return _blocked("invalid_state")
-    if not _SHA_RE.fullmatch(evidence_sha or "") or not _SHA_RE.fullmatch(current_head_sha or ""):
+    if (
+        not isinstance(evidence_sha, str)
+        or not isinstance(current_head_sha, str)
+        or not _SHA_RE.fullmatch(evidence_sha)
+        or not _SHA_RE.fullmatch(current_head_sha)
+    ):
         return _blocked("invalid_state")
     if evidence_sha != current_head_sha:
         return _blocked("policy_blocked")
