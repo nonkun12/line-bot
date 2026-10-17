@@ -157,6 +157,17 @@ def _augment_with_hermes_advice(instruction: str, history_path: Path) -> str:
     return f"{instruction}\n\nUNTRUSTED HERMES ADVISORY:\n{bounded_advice}"
 
 
+def _safe_runtime_error_type(raw: str) -> str:
+    """Return only an allowlisted exception class; never persist arbitrary text."""
+    candidate = str(raw or "").split(":", 1)[0].strip()
+    allowed = {
+        "AttributeError", "FileNotFoundError", "IsADirectoryError",
+        "KeyError", "NotADirectoryError", "OSError", "PermissionError",
+        "RuntimeError", "TypeError", "UnicodeDecodeError", "ValueError",
+    }
+    return candidate if candidate in allowed else ""
+
+
 def _write_summary(status: str, exit_code: int, start_sha: str, summary_path: Path) -> None:
     produced_sha = _git("rev-parse", "HEAD")
     branch = _git("branch", "--show-current")
@@ -172,10 +183,8 @@ def _write_summary(status: str, exit_code: int, start_sha: str, summary_path: Pa
         "run_nonce": os.environ.get("AUTONOMOUS_RUN_NONCE", ""),
         # Store only the exception class, never raw exception text which may
         # contain paths, prompts, or other sensitive runtime details.
-        "runtime_error_type": (
-            os.environ.get("AUTONOMOUS_RUNTIME_ERROR", "").split(":", 1)[0][:80]
-            if os.environ.get("AUTONOMOUS_RUNTIME_ERROR", "")
-            else ""
+        "runtime_error_type": _safe_runtime_error_type(
+            os.environ.get("AUTONOMOUS_RUNTIME_ERROR", "")
         ),
     }
     summary_path.parent.mkdir(parents=True, exist_ok=True)
