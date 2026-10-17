@@ -568,7 +568,10 @@ def main() -> int:
         except Exception:
             selection_decision = None
 
-        if selection_decision is None or selection_decision.next_action == "HOLD":
+        if selection_decision is None or (
+            selection_decision.next_action == "HOLD"
+            and selection_decision.reason_code != "task_held"
+        ):
             reason = (
                 selection_decision.reason_code
                 if selection_decision is not None
