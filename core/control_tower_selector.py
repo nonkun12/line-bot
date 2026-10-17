@@ -58,13 +58,16 @@ def select_next_task(
     registered = set(registered_task_ids)
     completed = set(completed_task_ids)
     held = set(held_task_ids)
+    if any(
+        task_id not in registered and task_id not in completed and task_id not in held
+        for task_id in queued_task_ids
+    ):
+        return _blocked("policy_blocked")
     for task_id in queued_task_ids:
         if task_id in held:
             continue
         if task_id in completed:
             continue
-        if task_id not in registered:
-            return _blocked("policy_blocked")
         return ControlTowerDecisionRecord(
             reason_code="evidence_sufficient",
             confidence=1.0,
