@@ -97,3 +97,12 @@ def test_completed_only_queue_does_not_reselect_completed_task():
     assert decision.reason_code == "no_eligible_task"
     assert decision.next_action == "NOT_RUN"
     assert decision.task_template_id is None
+
+
+@pytest.mark.parametrize("bad_sha", [None, 123, ""])
+def test_malformed_sha_types_fail_closed(bad_sha):
+    decision = choose(["task-a"], evidence_sha=bad_sha)
+
+    assert decision.reason_code == "invalid_state"
+    assert decision.next_action == "HOLD"
+    assert decision.task_template_id is None
