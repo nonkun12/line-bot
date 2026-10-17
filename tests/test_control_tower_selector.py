@@ -94,5 +94,6 @@ def test_malformed_selection_inputs_fail_closed(queue, registered, completed, he
 def test_completed_only_queue_does_not_reselect_completed_task():
     decision = choose(["task-a"], completed=("task-a",))
 
+    assert decision.reason_code == "no_eligible_task"
     assert decision.next_action == "NOT_RUN"
     assert decision.task_template_id is None
