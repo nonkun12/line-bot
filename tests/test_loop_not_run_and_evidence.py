@@ -11,7 +11,7 @@ def _task(task_id="task-1"):
     return {"id": task_id, "instruction": "test", "allowed_paths": ["tests/test_loop_not_run_and_evidence.py"]}
 
 
-def test_empty_queue_records_not_run_and_returns_78(monkeypatch, tmp_path, capsys):
+def test_completed_only_queue_records_no_eligible_task_and_returns_78(monkeypatch, tmp_path, capsys):
     queue = tmp_path / "queue.json"
     queue.write_text(json.dumps({"max_tasks_per_run": 4}), encoding="utf-8")
     state = tmp_path / "state.json"
@@ -25,7 +25,7 @@ def test_empty_queue_records_not_run_and_returns_78(monkeypatch, tmp_path, capsy
     assert "NOT_RUN" in capsys.readouterr().out
     row = json.loads(results.read_text(encoding="utf-8").splitlines()[0])
     assert row["status"] == "NOT_RUN"
-    assert row["failure_reason"] == "queue_empty"
+    assert row["failure_reason"] == "no_eligible_task"
     assert row["task_count"] == 0
     assert row["queue_total"] == 1
     assert row["queue_completed"] == 1

@@ -511,6 +511,9 @@ def main() -> int:
     if args.max_tasks < 1 or args.max_tasks > 4:
         raise SystemExit("--max-tasks must be between 1 and 4")
 
+    # Bind selection to a repository snapshot taken before queue/state reads.
+    # The selector independently re-reads HEAD after those reads and blocks if it moved.
+    selection_evidence_sha = _git_head()
     queue_data = json.loads(QUEUE.read_text(encoding="utf-8"))
     queue_limit = int(queue_data.get("max_tasks_per_run", 3))
     if args.max_tasks > queue_limit:
@@ -521,30 +524,102 @@ def main() -> int:
         if args.max_tasks != 2 or args.incident_detail is None:
             raise SystemExit("Obsidian incident mode requires exactly two tasks and an allowlisted detail")
         tasks = incident_tasks(args.incident_category, args.incident_detail, args.incident_job_id)
+        catalog_source_tasks = list(tasks)
+        selection_queue_tasks = list(tasks)
     else:
         if args.incident_detail is not None or args.incident_job_id is not None:
             raise SystemExit("incident detail/job ID require incident category")
         queued_tasks = load_tasks()
+        catalog_source_tasks = queued_tasks
+        selection_queue_tasks = queued_tasks
         tasks = [task for task in queued_tasks if task["id"] not in completed]
 
-    # Snapshot each task definition independently before selection. A shallow
-    # list copy would share mutable task dictionaries (and allowed_paths lists),
-    # allowing an in-memory mutation to alter both the task and its "catalog".
-    # This snapshot detects later mutation; it is not a separately signed catalog.
+    # Snapshot every registered task definition independently, including entries
+    # already completed or held. This detects in-memory mutation, not a signed catalog.
     registered_catalog = [
         {**task, "allowed_paths": list(task["allowed_paths"])}
-        for task in tasks
+        for task in catalog_source_tasks
     ]
 
-    # Recovery state is read before selection so tasks already held after repeated
-    # failures cannot be run again automatically on the next scheduled invocation.
+    # Read Recovery AI holds before selecting. Held tasks remain held; this code
+    # never clears or overrides Recovery AI state.
     from scripts.recovery_ai import RecoveryStore
     recovery_store = RecoveryStore(args.state.parent / "recovery-ai-state.json")
     pending_tasks = list(tasks)
-    tasks = [
-        task for task in pending_tasks
-        if recovery_store.task_status(str(task["id"])).get("held") is not True
-    ]
+    held_task_ids = {
+        str(task["id"])
+        for task in catalog_source_tasks
+        if recovery_store.task_status(str(task["id"])).get("held") is True
+    }
+    tasks = [task for task in pending_tasks if str(task["id"]) not in held_task_ids]
+
+    selection_decision = None
+    if args.incident_category is None:
+        try:
+            from core.control_tower_selector import select_next_task
+            selection_decision = select_next_task(
+                [str(task["id"]) for task in selection_queue_tasks],
+                [str(task["id"]) for task in registered_catalog],
+                completed,
+                held_task_ids,
+                evidence_sha=selection_evidence_sha,
+                current_head_sha=_git_head(),
+            )
+        except Exception:
+            selection_decision = None
+
+        if selection_decision is None or (
+            selection_decision.next_action == "HOLD"
+            and selection_decision.reason_code != "task_held"
+        ):
+            reason = (
+                selection_decision.reason_code
+                if selection_decision is not None
+                else "selector_error"
+            )
+            args.results.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "BLOCKED",
+                "task_id": "",
+                "task_count": 0,
+                "exit_code": 79,
+                "failure_reason": f"control_tower_selector:{reason}",
+            }
+            with args.results.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            print(f"MINIMAL_LOOP=BLOCKED reason=control_tower_selector:{reason}", flush=True)
+            return 79
+
+        if selection_decision.next_action == "SELECT_REGISTERED_TASK":
+            if not tasks or str(tasks[0]["id"]) != selection_decision.task_template_id:
+                args.results.parent.mkdir(parents=True, exist_ok=True)
+                record = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "status": "BLOCKED",
+                    "task_id": "",
+                    "task_count": 0,
+                    "exit_code": 79,
+                    "failure_reason": "control_tower_selector:selection_mismatch",
+                }
+                with args.results.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+                print("MINIMAL_LOOP=BLOCKED reason=control_tower_selector:selection_mismatch", flush=True)
+                return 79
+        elif selection_decision.next_action not in {"NOT_RUN", "HOLD"}:
+            args.results.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "BLOCKED",
+                "task_id": "",
+                "task_count": 0,
+                "exit_code": 79,
+                "failure_reason": "control_tower_selector:unexpected_action",
+            }
+            with args.results.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            print("MINIMAL_LOOP=BLOCKED reason=control_tower_selector:unexpected_action", flush=True)
+            return 79
     if pending_tasks and not tasks:
         args.results.parent.mkdir(parents=True, exist_ok=True)
         record = {
@@ -574,11 +649,20 @@ def main() -> int:
             "queue_total": len(queued_ids),
             "queue_completed": sum(1 for task_id in queued_ids if task_id in completed),
             "exit_code": EXIT_NOT_RUN,
-            "failure_reason": NOT_RUN_REASON_QUEUE_EMPTY,
+            "failure_reason": (
+                selection_decision.reason_code
+                if selection_decision is not None
+                else NOT_RUN_REASON_QUEUE_EMPTY
+            ),
         }
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-        print(f"MINIMAL_LOOP=NOT_RUN reason={NOT_RUN_REASON_QUEUE_EMPTY} (no task was executed)", flush=True)
+        not_run_reason = (
+            selection_decision.reason_code
+            if selection_decision is not None
+            else NOT_RUN_REASON_QUEUE_EMPTY
+        )
+        print(f"MINIMAL_LOOP=NOT_RUN reason={not_run_reason} (no task was executed)", flush=True)
         return EXIT_NOT_RUN
 
     args.results.parent.mkdir(parents=True, exist_ok=True)
