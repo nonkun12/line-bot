@@ -117,6 +117,8 @@ def audit_queue_state(
         warnings.append("resume_requires_review")
     if completed_duplicates:
         warnings.append("duplicate_completed_ids")
+    if completed_set - queue_set:
+        warnings.append("stale_completed_ids")
     if not queue_ids:
         warnings.append("empty_queue")
     elif pending_count == 0:
