@@ -86,12 +86,16 @@ def build_queue(
         raise ValueError("max_tasks_per_run must be an integer between 1 and 4")
 
     normalized_existing = []
+    held_existing_ids: list[str] = []
     original_ids: set[str] = set()
     for raw_task in existing:
         task = _validate_task(raw_task)
         if task["id"] in original_ids:
             raise ValueError("duplicate task ID in existing queue")
         original_ids.add(task["id"])
+        if task["id"] in held_ids:
+            held_existing_ids.append(task["id"])
+            continue
         normalized_existing.append(task)
 
     normalized_catalog = []
@@ -109,12 +113,18 @@ def build_queue(
         if task["id"] not in original_ids and task["id"] not in completed_ids
         and task["id"] not in held_ids
     ][:cap]
-    # Preserve every validated queued task, then append only a bounded catalog slice.
+    # Keep held tasks in durable Recovery AI state, but never in this run's executable queue.
     final_tasks = normalized_existing + additions
     output = {"version": 1, "max_tasks_per_run": max_tasks, "tasks": final_tasks}
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return {"existing": len(existing), "added": len(additions), "total": len(final_tasks), "added_ids": [t["id"] for t in additions]}
+    return {
+        "existing": len(existing),
+        "held_existing_ids": held_existing_ids,
+        "added": len(additions),
+        "total": len(final_tasks),
+        "added_ids": [t["id"] for t in additions],
+    }
 
 
 def main() -> int:
