@@ -165,7 +165,7 @@ def test_cli_returns_blocked_for_all_held_tasks(tmp_path: Path, monkeypatch, cap
     assert output["held_pending_count"] == 1
 
 
-def test_cli_maps_deeply_nested_json_to_evidence_error(tmp_path: Path, monkeypatch, capsys):
+def test_cli_fails_closed_on_deeply_nested_queue_shape(tmp_path: Path, monkeypatch, capsys):
     queue = tmp_path / "queue.json"
     queue.write_text('{"tasks":' + "[" * 5000 + "0" + "]" * 5000 + "}", encoding="utf-8")
     state = _write(tmp_path / "state.json", {
@@ -182,4 +182,4 @@ def test_cli_maps_deeply_nested_json_to_evidence_error(tmp_path: Path, monkeypat
     assert main() == 2
     output = json.loads(capsys.readouterr().out)
     assert output["status"] == "BLOCKED"
-    assert output["reason"] == "invalid_queue_evidence"
+    assert output["reason"] == "invalid_queue_task"
