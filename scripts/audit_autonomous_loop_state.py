@@ -158,7 +158,11 @@ def main() -> int:
         }, sort_keys=True))
         return 2
     print(json.dumps(report, ensure_ascii=False, sort_keys=True))
-    return 1 if report["status"] == "BLOCKED" else 0
+    if report["status"] == "BLOCKED":
+        return 1
+    if report["status"] == "NOT_RUN":
+        return 78
+    return 0
 
 
 if __name__ == "__main__":
