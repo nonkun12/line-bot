@@ -522,10 +522,15 @@ def run_task(
             status = "NO_CHANGE"
         elif failure_reason == "task_timeout":
             status = "TIMEOUT"
+            exit_code = exit_code or 1
         elif "stop_requested" in failure_reason:
             status = "STOPPED"
+            exit_code = exit_code or 1
         else:
             status = "FAIL"
+            # A rejected or malformed summary is a failed run even when the
+            # underlying subprocess itself exited successfully.
+            exit_code = exit_code or 1
 
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
