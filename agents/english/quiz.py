@@ -33,11 +33,35 @@ def _connect() -> sqlite3.Connection:
         if "duplicate column name" not in str(exc).lower():
             conn.close()
             raise
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS english_vocabulary_batches (
+            user_id TEXT PRIMARY KEY,
+            words_json TEXT NOT NULL,
+            shown_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     return conn
 
 
 def _user_key(user_id: str) -> str:
     return str(user_id or "").strip()[:200] or "anonymous"
+
+
+def record_vocabulary_batch(user_id: str, words: list[str]) -> None:
+    """Persist the exact reviewed words most recently shown to this user."""
+    key = _user_key(user_id)
+    valid = {entry.word for entry in get_core_image_quiz_entries()}
+    batch = list(dict.fromkeys(word for word in words if isinstance(word, str) and word in valid))[:10]
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO english_vocabulary_batches(user_id, words_json, shown_at)
+               VALUES (?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(user_id) DO UPDATE SET
+                 words_json=excluded.words_json, shown_at=CURRENT_TIMESTAMP""",
+            (key, json.dumps(batch, ensure_ascii=False)),
+        )
 
 
 def start_quiz(user_id: str) -> str:
@@ -53,13 +77,35 @@ def start_quiz(user_id: str) -> str:
             (key,),
         ).fetchone()
         avoid = {str(value) for value in row or () if value}
-        pool = [entry for entry in entries if entry.word not in avoid]
-        if len(pool) < 3:
+        batch_row = conn.execute(
+            "SELECT words_json FROM english_vocabulary_batches WHERE user_id=?", (key,)
+        ).fetchone()
+        by_word = {entry.word: entry for entry in entries}
+        batch = []
+        if batch_row:
+            try:
+                stored_words = json.loads(batch_row[0])
+            except (TypeError, ValueError):
+                stored_words = []
+            if isinstance(stored_words, list):
+                batch = [by_word[word] for word in stored_words if isinstance(word, str) and word in by_word]
+        # Prefer the exact words shown in the latest vocabulary batch. After a
+        # learner has exhausted those words, fall back to the reviewed lexicon.
+        pool = [entry for entry in batch if entry.word not in avoid]
+        if not pool:
+            pool = batch
+        if not pool:
+            pool = [entry for entry in entries if entry.word not in avoid]
+        if len(pool) < 1:
             pool = entries
         correct = random.choice(pool)
-        distractors = random.sample(
-            [entry for entry in entries if entry.word != correct.word], 2
-        )
+        distractor_pool = [entry for entry in batch if entry.word != correct.word]
+        if len(distractor_pool) < 2:
+            distractor_pool.extend(
+                entry for entry in entries
+                if entry.word != correct.word and entry not in distractor_pool
+            )
+        distractors = random.sample(distractor_pool, 2)
         choices = [correct, *distractors]
         random.shuffle(choices)
         correct_option = _LABELS[choices.index(correct)]
