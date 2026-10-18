@@ -445,6 +445,27 @@ def test_malformed_recovery_state_blocks_before_execution(monkeypatch, tmp_path,
     assert row["failure_reason"] == "recovery_ai_hold_or_status_uncertain"
 
 
+def test_recovery_state_error_records_blocked_evidence_before_execution(monkeypatch, tmp_path, capsys):
+    task = _task("recovery-store-error")
+    results = _prepare_selector_main(monkeypatch, tmp_path, [task])
+
+    class _BrokenRecoveryStore:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def task_status(self, _task_id):
+            raise ValueError("malformed recovery state")
+
+    monkeypatch.setattr("scripts.recovery_ai.RecoveryStore", _BrokenRecoveryStore)
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run"))
+    assert loop.main() == 80
+    assert "control_tower_recovery_state:unavailable_or_invalid" in capsys.readouterr().out
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[-1])
+    assert row["status"] == "BLOCKED"
+    assert row["task_count"] == 0
+    assert row["failure_reason"] == "control_tower_recovery_state:unavailable_or_invalid"
+
+
 @pytest.mark.parametrize("action", ["NOT_RUN", "HOLD"])
 def test_control_tower_nonselect_action_with_executable_task_blocks(monkeypatch, tmp_path, action, capsys):
     task = _task("unexpected-nonselect-task")
