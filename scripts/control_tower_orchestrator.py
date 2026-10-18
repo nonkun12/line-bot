@@ -33,7 +33,12 @@ def coordinate_outcome(result: object) -> dict[str, Any]:
     task_id = result.get("task_id")
     status = result.get("status")
     exit_code = result.get("exit_code")
-    if not isinstance(task_id, str) or not task_id.strip() or len(task_id) > 100:
+    if (
+        not isinstance(task_id, str)
+        or not task_id
+        or len(task_id) > 100
+        or not all(char.isalnum() or char in "._-" for char in task_id)
+    ):
         return _decision("STOP", "STOP_AND_REPORT", "invalid_task_identity", False)
     if not isinstance(status, str) or status not in _ALLOWED_STATUSES:
         return _decision("STOP", "STOP_AND_REPORT", "invalid_status", False)
