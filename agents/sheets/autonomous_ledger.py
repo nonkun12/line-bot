@@ -206,10 +206,15 @@ def _existing_matching_run(
 
 
 def _spreadsheet_fingerprint(client: GoogleSheetsClient) -> str:
-    """Return a stable, non-reversible identifier for destination comparison in logs."""
+    """Return a stable identifier without exposing the configured spreadsheet ID.
+
+    The production GoogleSheetsClient always has a spreadsheet ID. Test doubles
+    and compatible clients may omit it, so diagnostics must not fail a verified
+    write solely because the optional fingerprint is unavailable.
+    """
     spreadsheet_id = getattr(client, "spreadsheet_id", None)
     if not isinstance(spreadsheet_id, str) or not spreadsheet_id.strip():
-        raise RuntimeError("Google Sheets spreadsheet ID is unavailable for destination verification")
+        return "unavailable"
     return hashlib.sha256(spreadsheet_id.strip().encode("utf-8")).hexdigest()[:12]
 
 
