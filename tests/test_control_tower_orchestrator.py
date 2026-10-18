@@ -13,7 +13,13 @@ def verified_success(status="PASS"):
         "base_sha": base,
         "produced_sha": produced,
         "run_nonce": "c" * 32,
-        "recovery_ai": {"recorded": True, "verified": True, "status": status},
+        "recovery_ai": {
+            "recorded": True, "verified": True, "status": status,
+            "evidence": {
+                "task_id": "task-a", "base_sha": base,
+                "produced_sha": produced, "run_nonce": "c" * 32,
+            },
+        },
         "control_tower": {"recorded": True},
     }
 
@@ -103,3 +109,27 @@ def test_missing_observer_is_reported_as_degraded_but_does_not_rewrite_task_resu
     decision = coordinate_outcome(result)
     assert decision["allow_continue"] is True
     assert decision["observation_degraded"] is True
+
+
+def test_success_without_recovery_run_evidence_fails_closed():
+    result = verified_success()
+    result["recovery_ai"].pop("evidence")
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "recovery_run_evidence_mismatch"
+
+
+def test_success_with_recovery_evidence_from_another_run_fails_closed():
+    result = verified_success()
+    result["recovery_ai"]["evidence"]["run_nonce"] = "d" * 32
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "recovery_run_evidence_mismatch"
+
+
+def test_success_with_recovery_evidence_for_another_task_fails_closed():
+    result = verified_success()
+    result["recovery_ai"]["evidence"]["task_id"] = "task-other"
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "recovery_run_evidence_mismatch"
