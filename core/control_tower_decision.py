@@ -100,6 +100,24 @@ class ControlTowerDecisionRecord:
             and self.task_template_id in registered_task_ids
         )
 
+    def safe_fallback(self) -> "ControlTowerDecisionRecord":
+        """Return a conservative fallback decision.
+
+        This helper produces a minimal‑change fallback that can be used when
+        the original decision is not executable. It lowers priority by one
+        (but never below zero), sets the action to ``HOLD`` and the gate
+        status to ``NOT_RUN``.  The fallback omits evidence and task
+        template identifiers to avoid accidental execution.
+        """
+        new_priority = max(0, self.priority - 1)
+        return ControlTowerDecisionRecord(
+            reason_code=self.reason_code,
+            confidence=self.confidence,
+            priority=new_priority,
+            next_action="HOLD",
+            gate_status="NOT_RUN",
+        )
+
 
 __all__ = [
     "ControlTowerDecisionRecord",
