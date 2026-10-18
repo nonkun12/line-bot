@@ -643,7 +643,7 @@ def main() -> int:
             "failure_reason": "control_tower_recovery_state:unavailable_or_invalid",
         }
         with args.results.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\\n")
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
         print(
             "MINIMAL_LOOP=BLOCKED reason=control_tower_recovery_state:unavailable_or_invalid",
             flush=True,
