@@ -256,13 +256,15 @@ def test_main_rejects_unverified_multi_task_selector_chain(monkeypatch, tmp_path
         ["loop", "--max-tasks", "2", "--state", str(tmp_path / "loop-state.json"),
          "--results", str(tmp_path / "results.jsonl")],
     )
-    try:
-        loop.main()
-    except SystemExit as exc:
-        assert "normal multi-task selector chain is not yet implemented" in str(exc)
-    else:
-        raise AssertionError("expected unverified multi-task selector chain to be rejected")
-    assert not (tmp_path / "results.jsonl").exists()
+    assert loop.main() == 80
+    results = tmp_path / "results.jsonl"
+    assert results.exists()
+    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["status"] == "BLOCKED"
+    assert rows[0]["task_count"] == 0
+    assert rows[0]["exit_code"] == 80
+    assert rows[0]["failure_reason"] == "control_tower_multi_task_reselection_unavailable"
 
 
 def test_main_rejects_queue_limit(monkeypatch, tmp_path: Path):
