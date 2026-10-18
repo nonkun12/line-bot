@@ -908,6 +908,10 @@ def main() -> int:
                 # Preserve an auditable task outcome even if the runtime raises
                 # before it can return its normal evidence object. Never persist
                 # exception text, which could contain paths or secrets.
+                try:
+                    exception_head = _git_head()
+                except Exception:
+                    exception_head = None
                 result = {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "run_index": index,
@@ -915,7 +919,7 @@ def main() -> int:
                     "status": "FAIL",
                     "exit_code": 1,
                     "base_sha": control_tower_head,
-                    "produced_sha": _git_head(),
+                    "produced_sha": exception_head,
                     "run_nonce": uuid.uuid4().hex,
                     "failure_reason": f"task_runtime_exception:process_crash:{type(exc).__name__}",
                 }
