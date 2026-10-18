@@ -23,7 +23,7 @@ MAX_REPAIR_ATTEMPTS_PER_FINGERPRINT = 1
 
 TRANSIENT_CATEGORIES = frozenset({"network_transient", "service_unavailable", "rate_limited"})
 REPAIRABLE_CATEGORIES = frozenset({"test_regression", "timeout", "process_crash"})
-NON_REPAIRABLE_CATEGORIES = frozenset({"invalid_task", "invalid_evidence", "security_violation"})
+NON_REPAIRABLE_CATEGORIES = frozenset({"invalid_task", "invalid_evidence", "security_violation", "post_run_gate_failure"})
 FAILURE_CATEGORIES = (
     TRANSIENT_CATEGORIES | REPAIRABLE_CATEGORIES | NON_REPAIRABLE_CATEGORIES
     | {"state_persistence_failure", "unknown"}
