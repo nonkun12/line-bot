@@ -61,6 +61,14 @@ def coordinate_outcome(result: object) -> dict[str, Any]:
             return _decision("STOP", "STOP_AND_REPORT", "no_change_sha_mismatch", False)
         if recovery.get("verified") is not True or recovery.get("status") != status:
             return _decision("STOP", "STOP_AND_REPORT", "recovery_verification_mismatch", False)
+        expected_evidence = {
+            "task_id": task_id,
+            "base_sha": base_sha,
+            "produced_sha": produced_sha,
+            "run_nonce": run_nonce,
+        }
+        if recovery.get("evidence") != expected_evidence:
+            return _decision("STOP", "STOP_AND_REPORT", "recovery_run_evidence_mismatch", False)
         observation = result.get("control_tower")
         observation_ok = isinstance(observation, dict) and observation.get("recorded") is True
         return {
