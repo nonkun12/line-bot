@@ -921,33 +921,79 @@ def main() -> int:
                 "reason": "state_persistence_failed",
             }
 
-        # Control Tower is a post-run observer here, not an execution approver.
-        # Preserve the task result if observation fails; record only a sanitized
-        # failure marker so reviewer/provider errors cannot erase loop evidence.
+        # One authoritative orchestration decision joins task evidence and
+        # Recovery AI. It may recommend a bounded repair review, but never
+        # executes a repair, clears HOLD, merges, or deploys.
+        try:
+            from scripts.control_tower_orchestrator import coordinate_outcome
+            orchestration = coordinate_outcome(result)
+        except Exception:
+            orchestration = {
+                "phase": "STOP",
+                "next_action": "STOP_AND_REPORT",
+                "reason_code": "orchestrator_error",
+                "allow_continue": False,
+                "repair_executed": False,
+            }
+
+        if result.get("status") in {"PASS", "NO_CHANGE"} and orchestration.get("allow_continue") is not True:
+            # Keep durable Recovery AI aligned with the final fail-closed result.
+            result["status"] = "FAIL"
+            result["exit_code"] = 1
+            result["failure_reason"] = "control_tower_orchestration_invalid_evidence"
+            try:
+                from scripts.recovery_ai_loop_adapter import record_loop_outcome
+                result["recovery_ai"] = record_loop_outcome(
+                    args.state.parent / "recovery-ai-state.json", result
+                )
+            except Exception:
+                recovery_error = True
+                result["recovery_ai"] = {"recorded": False, "reason": "state_persistence_failed"}
+            try:
+                orchestration = coordinate_outcome(result)
+            except Exception:
+                orchestration = {
+                    "phase": "STOP",
+                    "next_action": "STOP_AND_REPORT",
+                    "reason_code": "orchestrator_error",
+                    "allow_continue": False,
+                    "repair_executed": False,
+                }
+
+        # The observer enriches the unified decision with sanitized history;
+        # it cannot override the orchestration result or make a repair executable.
         try:
             from scripts.control_tower_loop_observer import record_loop_observation
-            result["control_tower"] = record_loop_observation(
+            observation = record_loop_observation(
                 args.state.parent / "control-tower-observations.jsonl", result
             )
         except Exception:
-            result["control_tower"] = {
+            observation = {
                 "recorded": False,
                 "reason": "observation_or_persistence_failed",
                 "proposal_executable": False,
             }
+        result["control_tower"] = {**observation, "orchestration": orchestration}
 
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(result, ensure_ascii=False) + "\n")
 
         if recovery_error:
             print(
-                f"MINIMAL_LOOP=HALT task={task['id']} reason=recovery_ai_state_persist_failed",
+                f"MINIMAL_LOOP:HALT task={task['id']} reason=recovery_ai_state_persist_failed",
+                flush=True,
+            )
+            return 1
+
+        if orchestration.get("allow_continue") is not True:
+            print(
+                f"MINIMAL_LOOP:HALT task={task['id']} reason={orchestration.get('reason_code', 'orchestration_blocked')}",
                 flush=True,
             )
             return 1
 
         if result["exit_code"] != 0 or result["status"] not in {"PASS", "NO_CHANGE"}:
-            print(f"MINIMAL_LOOP=HALT task={task['id']} status={result['status']}", flush=True)
+            print(f"MINIMAL_LOOP:HALT task={task['id']} status={result['status']}", flush=True)
             return 1
 
         print(f"MINIMAL_LOOP={result['status']} task={task['id']}", flush=True)
