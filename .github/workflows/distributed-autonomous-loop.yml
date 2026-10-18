@@ -1043,4 +1043,28 @@ jobs:
             /tmp/distributed-sheets-log-result.json
             /tmp/distributed-final-report.txt
           if-no-files-found: ignore
+      - name: Enforce final distributed loop outcome
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="/tmp/distributed-final-report.txt"
+          if [ ! -s "$report" ]; then
+            echo "::error::Final distributed-loop report is missing; workflow cannot be marked successful."
+            exit 1
+          fi
+          outcome="$(sed -n 's/^- 結果: \\*\\*\\([^*]*\\)\\*\\*$/\\1/p' "$report" | head -n 1)"
+          case "$outcome" in
+            COMPLETED|NOT_RUN)
+              echo "Final distributed-loop outcome: $outcome"
+              ;;
+            BLOCKED|FAILED|INCOMPLETE)
+              echo "::error::Distributed-loop outcome is $outcome; final report and notifications have already been attempted."
+              exit 1
+              ;;
+            *)
+              echo "::error::Unrecognized or missing distributed-loop outcome; failing closed."
+              exit 1
+              ;;
+          esac
 
