@@ -238,7 +238,7 @@ def test_summary_identity_mismatch_halts(monkeypatch, tmp_path: Path):
     assert result["failure_reason"] == "summary_identity_mismatch"
 
 
-def test_main_halts_after_first_failure(monkeypatch, tmp_path: Path):
+def test_main_rejects_unverified_multi_task_selector_chain(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(
         loop,
         "load_tasks",
@@ -250,22 +250,19 @@ def test_main_halts_after_first_failure(monkeypatch, tmp_path: Path):
     queue = tmp_path / "queue.json"
     queue.write_text('{"max_tasks_per_run": 3}', encoding="utf-8")
     monkeypatch.setattr(loop, "QUEUE", queue)
-    # This test uses a synthetic queue; register exactly those fixtures as trusted.
-    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: loop.load_tasks())
-    def fake_run_task(task, index, stop_file, *, expected_base_sha=None):
-        assert isinstance(expected_base_sha, str) and len(expected_base_sha) == 40
-        return {
-            "task_id": task["id"],
-            "status": "FAIL",
-            "exit_code": 1,
-        }
-
-    monkeypatch.setattr(loop, "run_task", fake_run_task)
-    monkeypatch.setattr(loop.sys, "argv", ["loop", "--max-tasks", "2", "--state", str(tmp_path / "loop-state.json"), "--results", str(tmp_path / "results.jsonl")])
-    assert loop.main() == 1
-    lines = (tmp_path / "results.jsonl").read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 1
-    assert json.loads(lines[0])["task_id"] == "t1"
+    monkeypatch.setattr(
+        loop.sys,
+        "argv",
+        ["loop", "--max-tasks", "2", "--state", str(tmp_path / "loop-state.json"),
+         "--results", str(tmp_path / "results.jsonl")],
+    )
+    try:
+        loop.main()
+    except SystemExit as exc:
+        assert "normal multi-task selector chain is not yet implemented" in str(exc)
+    else:
+        raise AssertionError("expected unverified multi-task selector chain to be rejected")
+    assert not (tmp_path / "results.jsonl").exists()
 
 
 def test_main_rejects_queue_limit(monkeypatch, tmp_path: Path):
