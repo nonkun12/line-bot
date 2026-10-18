@@ -959,7 +959,7 @@ jobs:
               "sha": os.environ.get("GITHUB_SHA", ""),
           }
           Path("/tmp/distributed-final-outcome.json").write_text(
-              json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\\n",
+              json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
               encoding="utf-8",
           )
           PY
