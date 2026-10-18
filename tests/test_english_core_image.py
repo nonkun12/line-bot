@@ -225,6 +225,16 @@ def test_batch_seven_advanced_nuance_words_have_local_core_images():
         assert "説明を保留" not in response, word
 
 
+def test_explain_has_a_conservative_local_core_image():
+    response = handle_core_image_command("コアイメージ explain")
+    assert response is not None
+    assert "相手がわかる形にする" in response
+    assert "explanation" in response
+    assert "Could you explain why the plan changed?" in response
+    assert "外部API" in response
+    assert "説明を保留" not in response
+
+
 def test_core_image_dictionary_has_no_duplicate_literal_word_keys():
     import ast
     from pathlib import Path
