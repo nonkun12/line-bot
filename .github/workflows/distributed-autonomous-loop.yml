@@ -315,6 +315,14 @@ jobs:
             --state /tmp/autonomous-loop-state.json \
             --history /tmp/line-bot-self-improvement.jsonl
 
+      - name: Restore durable Control Tower observations
+        if: success()
+        run: |
+          set -euo pipefail
+          python -m scripts.control_tower_observation_state import \
+            --state /tmp/autonomous-loop-state.json \
+            --history /tmp/control-tower-observations.jsonl
+
       - name: Prepare bounded runtime task refill
         if: success() && env.TRIGGER_MODE == 'normal'
         run: |
@@ -381,6 +389,35 @@ jobs:
             exit 0
           fi
           exit "$loop_rc"
+
+      - name: Record Control Tower post-run observations
+        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
+        run: |
+          set -euo pipefail
+          if [ -f /tmp/autonomous-loop-not-run ] || [ -f /tmp/autonomous-loop-held-tasks ] || [ ! -s /tmp/minimal-autonomous-loop.jsonl ]; then
+            echo "No task result to observe; preserving prior Control Tower history."
+            exit 0
+          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.control_tower_loop_observer import record_loop_observation
+          results = Path("/tmp/minimal-autonomous-loop.jsonl")
+          history = Path("/tmp/control-tower-observations.jsonl")
+          for line_number, line in enumerate(results.read_text(encoding="utf-8").splitlines(), 1):
+              if not line.strip():
+                  continue
+              try:
+                  outcome = json.loads(line)
+              except json.JSONDecodeError:
+                  raise SystemExit(f"invalid loop result JSON on line {line_number}") from None
+              if not isinstance(outcome, dict):
+                  raise SystemExit(f"invalid loop result row on line {line_number}")
+              record_loop_observation(history, outcome)
+          PY
+          python -m scripts.control_tower_observation_state export \
+            --state /tmp/autonomous-loop-state.json \
+            --history /tmp/control-tower-observations.jsonl
 
       - name: Export sanitized Recovery RAG history
         if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
@@ -678,6 +715,10 @@ jobs:
           data['recovery_rag'] = rag_payload['records']
           local_state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
           self_improvement = local_state.get('self_improvement_history', [])
+          control_tower_observations = local_state.get('control_tower_observations', [])
+          if not isinstance(control_tower_observations, list) or len(control_tower_observations) > 200:
+              raise SystemExit('Control Tower observation history is invalid')
+          data['control_tower_observations'] = control_tower_observations
           if not isinstance(self_improvement, list) or len(self_improvement) > 200:
               raise SystemExit('sanitized self-improvement history is invalid')
           for row in self_improvement:
@@ -717,6 +758,8 @@ jobs:
           local_state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
           if durable.get('self_improvement_history') != local_state.get('self_improvement_history'):
               raise SystemExit('self-improvement durable read-back mismatch')
+          if durable.get('control_tower_observations') != local_state.get('control_tower_observations'):
+              raise SystemExit('Control Tower observation durable read-back mismatch')
           print('Recovery AI, RAG, and sanitized self-improvement durable state read-back verified.')
           PY
 
