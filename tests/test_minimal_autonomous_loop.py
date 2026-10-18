@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+
+import pytest
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -114,6 +116,32 @@ def test_invalid_summary_halts(monkeypatch, tmp_path: Path):
     result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
     assert result["status"] == "FAIL"
     assert result["failure_reason"] == "summary_not_object"
+
+
+@pytest.mark.parametrize("summary_exit_code", [False, 0.0])
+def test_non_integer_zero_summary_exit_code_halts(monkeypatch, tmp_path: Path, summary_exit_code):
+    task = {"id": "invalid-exit-code-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
+    sha = "a" * 40
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
+        summary.write_text(json.dumps({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "PASS",
+            "exit_code": summary_exit_code,
+            "base_sha": sha,
+            "produced_sha": sha,
+            "task_id": task["id"],
+            "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+        }), encoding="utf-8")
+        return _FakeProcess(env, lambda _: None)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+    assert result["status"] == "FAIL"
+    assert result["exit_code"] == 1
+    assert result["failure_reason"] == "summary_exit_code_mismatch"
 
 
 def test_no_change_is_not_pass(monkeypatch, tmp_path: Path):
