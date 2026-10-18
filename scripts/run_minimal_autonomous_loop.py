@@ -586,6 +586,13 @@ def main() -> int:
         selection_queue_tasks = queued_tasks
         tasks = [task for task in queued_tasks if task["id"] not in completed]
 
+        # The selector currently authorizes only the first queued task against
+        # this immutable HEAD snapshot. Until each subsequent task is reselected
+        # and re-authorized against its own current HEAD, refuse multi-task normal
+        # runs rather than executing queue entries under stale selection evidence.
+        if args.max_tasks > 1:
+            raise SystemExit("normal multi-task selector chain is not yet implemented; use --max-tasks 1")
+
     # Normal queue entries are authorized only against Git-versioned catalogs
     # at the same immutable commit used as the selection evidence. Never derive
     # the trust catalog from the runtime queue itself.
