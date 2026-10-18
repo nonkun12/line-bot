@@ -31,6 +31,22 @@ def test_verified_success_requires_all_evidence_and_allows_controlled_continue()
     assert decision["allow_continue"] is True
 
 
+def test_task_identity_with_path_separator_fails_closed():
+    result = verified_success()
+    result["task_id"] = "../task-a"
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "invalid_task_identity"
+
+
+def test_task_identity_with_whitespace_fails_closed():
+    result = verified_success()
+    result["task_id"] = "task a"
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "invalid_task_identity"
+
+
 def test_no_change_requires_identical_shas():
     result = verified_success("NO_CHANGE")
     result["produced_sha"] = "d" * 40
