@@ -66,7 +66,9 @@ def sanitize(records: object) -> list[dict[str, object]]:
             if not isinstance(proposal, dict):
                 raise ValueError("control tower proposal invalid")
             task_hash = proposal.get("task_hash")
-            if not isinstance(task_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", task_hash):
+            if task_hash is not None and (
+                not isinstance(task_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", task_hash)
+            ):
                 raise ValueError("control tower proposal hash invalid")
             safe_proposal = {
                 "task_hash": task_hash,
