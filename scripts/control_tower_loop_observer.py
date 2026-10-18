@@ -38,7 +38,7 @@ def record_loop_observation(
     raw_exit_code = outcome.get("exit_code")
     # bool is an int subclass in Python; never accept False as exit code 0.
     exit_code = raw_exit_code if type(raw_exit_code) is int else None
-    successful = raw_status in {"PASS", "NO_CHANGE"} and exit_code == 0
+    successful = isinstance(raw_status, str) and raw_status in {"PASS", "NO_CHANGE"} and exit_code == 0
     raw_base_sha = outcome.get("base_sha")
     raw_produced_sha = outcome.get("produced_sha")
     base_sha = raw_base_sha.lower() if isinstance(raw_base_sha, str) and _SHA_RE.fullmatch(raw_base_sha) else None
