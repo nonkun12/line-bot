@@ -133,3 +133,84 @@ def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):
     )
     with pytest.raises(ValueError, match="duplicate"):
         build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+
+
+
+def test_refill_skips_held_tasks_and_continues_filling_with_eligible_candidates(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        candidates=[_task("task-held-one"), _task("task-ready-one"), _task("task-ready-two")],
+    )
+    recovery = _write(
+        tmp_path / "recovery.json",
+        {
+            "schema_version": 1,
+            "tasks": {"task-held-one": {"held": True}},
+            "checkpoint": None,
+        },
+    )
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, output, recovery)
+    ids = [task["id"] for task in json.loads(output.read_text(encoding="utf-8"))["tasks"]]
+    assert report["added_ids"] == ["task-ready-one", "task-ready-two"]
+    assert ids == ["task-ready-one", "task-ready-two"]
+
+
+def test_refill_removes_held_task_from_existing_queue_but_keeps_ready_tasks(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        existing=[_task("task-held-existing"), _task("task-ready-existing")],
+        candidates=[_task("task-ready-new")],
+    )
+    recovery = _write(
+        tmp_path / "recovery.json",
+        {
+            "schema_version": 1,
+            "tasks": {"task-held-existing": {"held": True}},
+            "checkpoint": None,
+        },
+    )
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, output, recovery)
+    ids = [task["id"] for task in json.loads(output.read_text(encoding="utf-8"))["tasks"]]
+
+    assert report["held_existing_ids"] == ["task-held-existing"]
+    assert ids == ["task-ready-existing", "task-ready-new"]
+    assert "task-held-existing" not in ids
+
+
+
+@pytest.mark.parametrize(
+    "recovery_data",
+    [
+        {"schema_version": 1, "tasks": {}},
+        {"schema_version": 2, "tasks": {}, "checkpoint": None},
+        {"schema_version": 1, "tasks": {"task-bad": {"held": "false"}}, "checkpoint": None},
+        {"schema_version": 1, "tasks": {"task-bad": []}, "checkpoint": None},
+    ],
+)
+def test_refill_fails_closed_on_invalid_recovery_state(tmp_path: Path, recovery_data):
+    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready")])
+    recovery = _write(tmp_path / "recovery.json", recovery_data)
+
+    with pytest.raises(ValueError, match="Recovery AI|held flag"):
+        build_queue(queue, catalog, completed, tmp_path / "runtime.json", recovery)
+
+
+def test_refill_fails_closed_when_recovery_state_file_is_missing(tmp_path: Path):
+    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready")])
+
+    with pytest.raises(ValueError, match="invalid JSON input"):
+        build_queue(queue, catalog, completed, tmp_path / "runtime.json", tmp_path / "missing-recovery.json")
+
+
+def test_refill_rejects_recovery_record_without_held_flag(tmp_path: Path):
+    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready")])
+    recovery = _write(
+        tmp_path / "recovery.json",
+        {"schema_version": 1, "tasks": {"task-unknown": {}}, "checkpoint": None},
+    )
+    with pytest.raises(ValueError, match="held flag"):
+        build_queue(queue, catalog, completed, tmp_path / "runtime.json", recovery)

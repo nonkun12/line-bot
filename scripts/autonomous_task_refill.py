@@ -48,13 +48,32 @@ def _validate_task(task: object) -> dict:
     return {"id": task_id, "instruction": instruction.strip(), "allowed_paths": clean_paths}
 
 
-def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, output_path: Path) -> dict:
+def build_queue(
+    queue_path: Path, catalog_path: Path, completed_path: Path, output_path: Path,
+    recovery_path: Path | None = None,
+) -> dict:
     queue = read_json(queue_path)
     catalog = read_json(catalog_path)
     state = read_json(completed_path)
     existing = queue.get("tasks")
     candidates = catalog.get("tasks")
-    completed = state.get("completed", [])
+    if "completed" not in state:
+        raise ValueError("completed state is missing")
+    completed = state["completed"]
+    held_ids: set[str] = set()
+    if recovery_path is not None:
+        recovery = read_json(recovery_path)
+        if (recovery.get("schema_version") != 1
+                or not isinstance(recovery.get("tasks"), dict)
+                or "checkpoint" not in recovery):
+            raise ValueError("invalid Recovery AI state")
+        for task_id, record in recovery["tasks"].items():
+            if not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id) or not isinstance(record, dict):
+                raise ValueError("invalid Recovery AI task record")
+            if not isinstance(record.get("held"), bool):
+                raise ValueError("invalid Recovery AI held flag")
+            if record["held"] is True:
+                held_ids.add(task_id)
     cap = catalog.get("max_additions_per_run")
     max_tasks = queue.get("max_tasks_per_run", 4)
     if not isinstance(existing, list) or not isinstance(candidates, list):
@@ -67,12 +86,16 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         raise ValueError("max_tasks_per_run must be an integer between 1 and 4")
 
     normalized_existing = []
+    held_existing_ids: list[str] = []
     original_ids: set[str] = set()
     for raw_task in existing:
         task = _validate_task(raw_task)
         if task["id"] in original_ids:
             raise ValueError("duplicate task ID in existing queue")
         original_ids.add(task["id"])
+        if task["id"] in held_ids:
+            held_existing_ids.append(task["id"])
+            continue
         normalized_existing.append(task)
 
     normalized_catalog = []
@@ -88,13 +111,20 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     additions = [
         task for task in normalized_catalog
         if task["id"] not in original_ids and task["id"] not in completed_ids
+        and task["id"] not in held_ids
     ][:cap]
-    # Preserve every validated queued task, then append only a bounded catalog slice.
+    # Keep held tasks in durable Recovery AI state, but never in this run's executable queue.
     final_tasks = normalized_existing + additions
     output = {"version": 1, "max_tasks_per_run": max_tasks, "tasks": final_tasks}
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return {"existing": len(existing), "added": len(additions), "total": len(final_tasks), "added_ids": [t["id"] for t in additions]}
+    return {
+        "existing": len(existing),
+        "held_existing_ids": held_existing_ids,
+        "added": len(additions),
+        "total": len(final_tasks),
+        "added_ids": [t["id"] for t in additions],
+    }
 
 
 def main() -> int:
@@ -102,10 +132,11 @@ def main() -> int:
     parser.add_argument("--queue", type=Path, required=True)
     parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--completed-state", type=Path, required=True)
+    parser.add_argument("--recovery-state", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
-        result = build_queue(args.queue, args.catalog, args.completed_state, args.output)
+        result = build_queue(args.queue, args.catalog, args.completed_state, args.output, args.recovery_state)
     except (ValueError, OSError) as exc:
         print(f"REFILL_BLOCKED: {type(exc).__name__}")
         return 2
