@@ -53,6 +53,14 @@ def test_sanitizer_bounds_history():
     assert safe[-1]["task_id"] == "task-249"
 
 
+def test_sanitizer_rejects_malformed_record_before_retention_window():
+    rows = [_record(status="UNKNOWN")] + [
+        _record(task_id=f"task-{i}") for i in range(200)
+    ]
+    with pytest.raises(ValueError, match="status invalid"):
+        sanitize(rows)
+
+
 def test_sanitizer_preserves_non_executable_proposal_without_task():
     rows = sanitize([_record(proposal={"task_hash": None, "executable": False, "approval_required": True})])
     assert rows[0]["proposal"] == {
