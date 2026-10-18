@@ -33,6 +33,9 @@ class EnglishLearningProfile:
             return "intermediate"
         return "advanced"
 
+    def __repr__(self) -> str:
+        return f"EnglishLearningProfile(turns={self.turns}, weak_points={self.weak_points})"
+
 
 def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
