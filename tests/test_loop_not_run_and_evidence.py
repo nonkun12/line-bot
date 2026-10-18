@@ -332,6 +332,26 @@ def _prepare_selector_main(monkeypatch, tmp_path, tasks, head_reader=None):
     return results
 
 
+def test_control_tower_multi_task_request_records_blocked_evidence(monkeypatch, tmp_path, capsys):
+    results = _prepare_selector_main(monkeypatch, tmp_path, [_task()])
+    monkeypatch.setattr(
+        loop.sys,
+        "argv",
+        ["loop", "--max-tasks", "2", "--results", str(results),
+         "--state", str(tmp_path / "state.json"), "--stop-file", str(tmp_path / "stop")],
+    )
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run"))
+    assert loop.main() == 80
+    assert "MINIMAL_LOOP=BLOCKED" in capsys.readouterr().out
+    rows = results.read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 1
+    row = json.loads(rows[0])
+    assert row["status"] == "BLOCKED"
+    assert row["task_count"] == 0
+    assert row["exit_code"] == 80
+    assert row["failure_reason"] == "control_tower_multi_task_reselection_unavailable"
+
+
 def test_control_tower_duplicate_queue_ids_block_before_execution(monkeypatch, tmp_path, capsys):
     task = _task("duplicate-task")
     results = _prepare_selector_main(monkeypatch, tmp_path, [task, dict(task)])
