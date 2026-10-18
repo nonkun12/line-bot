@@ -256,3 +256,26 @@ def test_boolean_exit_code_never_resets_recovery_failure_streak(tmp_path, boolea
     assert result_payload["exit_code"] == 1
     assert result_payload["failure_reason"] == "recovery_ai_invalid_evidence"
     assert store.task_status("task-bool")["consecutive_failures"] == before + 1
+
+def test_noncanonical_uppercase_sha_does_not_reset_recovery_failure_streak(tmp_path):
+    path = tmp_path / "recovery.json"
+    store = RecoveryStore(path)
+    store.record_failure("task-sha", "timeout")
+    before = store.task_status("task-sha")["consecutive_failures"]
+
+    result_payload = {
+        "task_id": "task-sha",
+        "status": "PASS",
+        "exit_code": 0,
+        "failure_reason": "",
+        "base_sha": "A" * 40,
+        "produced_sha": "B" * 40,
+        "run_nonce": "c" * 32,
+    }
+    outcome = record_loop_outcome(path, result_payload)
+
+    assert outcome["recorded"] is True
+    assert outcome["status"] == "FAIL"
+    assert result_payload["status"] == "FAIL"
+    assert result_payload["failure_reason"] == "recovery_ai_invalid_evidence"
+    assert store.task_status("task-sha")["consecutive_failures"] == before + 1
