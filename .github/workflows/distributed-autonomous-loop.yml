@@ -159,11 +159,13 @@ jobs:
               git fetch --quiet origin autonomous-loop-state
               git show origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/autonomous-loop-state.json
               echo "DURABLE_STATE_EXISTS=true" >> "$GITHUB_ENV"
+              export DURABLE_STATE_EXISTS=true
               ;;
             2)
               # Only a genuinely absent branch may initialize an empty state.
               printf '%s\n' '{"version":1,"completed":[]}' > /tmp/autonomous-loop-state.json
               echo "DURABLE_STATE_EXISTS=false" >> "$GITHUB_ENV"
+              export DURABLE_STATE_EXISTS=false
               ;;
             *)
               echo "::error::Cannot reach durable state branch (git ls-remote rc=$state_rc)"
