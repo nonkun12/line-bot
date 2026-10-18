@@ -100,28 +100,29 @@ def test_main_authorizes_one_task_then_calls_only_mock_executor(monkeypatch, tmp
     assert records[0]["control_tower"]["proposal_executable"] is False
 
 
-def test_real_repository_queue_catalog_mismatch_blocks_trial():
-    """The current tracked queue must HOLD until its trust registry is reconciled."""
+def test_real_repository_queue_uses_merged_versioned_catalog_and_unknown_id_blocks():
+    """Use the production loader; don't hard-code catalog counts or ignore the queue catalog."""
     from core.control_tower_selector import select_next_task
 
-    root = Path(__file__).resolve().parents[1]
-    queue_data = json.loads((root / ".github/autonomous-loop-tasks.json").read_text(encoding="utf-8"))
-    catalog_data = json.loads((root / ".github/autonomous-loop-task-catalog.json").read_text(encoding="utf-8"))
-    queued_ids = [task["id"] for task in queue_data["tasks"]]
-    registered_ids = [task["id"] for task in catalog_data["tasks"]]
+    head = loop._git_head()
+    assert len(head) == 40
+    queue_tasks = loop.load_tasks()
+    registered_tasks = loop._load_registered_catalog(head)
+    queued_ids = [task["id"] for task in queue_tasks]
+    registered_ids = [task["id"] for task in registered_tasks]
+
+    # The production loader merges both versioned catalogs, including the queue
+    # catalog. All current queued IDs should be represented by that exact loader.
+    assert set(queued_ids).issubset(set(registered_ids))
 
     decision = select_next_task(
-        queued_ids,
+        ["unregistered-trial-injection"],
         registered_ids,
         (),
         (),
-        evidence_sha=HEAD,
-        current_head_sha=HEAD,
+        evidence_sha=head,
+        current_head_sha=head,
     )
-
-    assert len(queued_ids) == 23
-    assert len(registered_ids) == 4
-    assert set(queued_ids).isdisjoint(registered_ids)
     assert decision.reason_code == "policy_blocked"
     assert decision.next_action == "HOLD"
     assert decision.gate_status == "BLOCKED"
