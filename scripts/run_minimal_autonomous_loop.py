@@ -624,11 +624,31 @@ def main() -> int:
     from scripts.recovery_ai import RecoveryStore
     recovery_store = RecoveryStore(args.state.parent / "recovery-ai-state.json")
     pending_tasks = list(tasks)
-    held_task_ids = {
-        str(task["id"])
-        for task in catalog_source_tasks
-        if recovery_store.task_status(str(task["id"])).get("held") is True
-    }
+    try:
+        held_task_ids = {
+            str(task["id"])
+            for task in catalog_source_tasks
+            if recovery_store.task_status(str(task["id"])).get("held") is True
+        }
+    except Exception:
+        # Malformed/unavailable Recovery AI state must produce auditable BLOCKED
+        # evidence rather than crashing without a result row.
+        args.results.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "BLOCKED",
+            "task_id": "",
+            "task_count": 0,
+            "exit_code": 80,
+            "failure_reason": "control_tower_recovery_state:unavailable_or_invalid",
+        }
+        with args.results.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\\n")
+        print(
+            "MINIMAL_LOOP=BLOCKED reason=control_tower_recovery_state:unavailable_or_invalid",
+            flush=True,
+        )
+        return 80
     tasks = [task for task in pending_tasks if str(task["id"]) not in held_task_ids]
 
     selection_decision = None
