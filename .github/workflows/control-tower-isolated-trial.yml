@@ -81,13 +81,13 @@ jobs:
         shell: bash
         run: |
           {
-            echo "## Control Tower isolated one-task trial"
-            echo "- Task ID: `ai-speaker-transcript-normalization-regression`"
-            echo "- Target: `tests/test_ai_speaker.py` only"
+            echo '## Control Tower isolated one-task trial'
+            echo '- Task ID: `ai-speaker-transcript-normalization-regression`'
+            echo '- Target: `tests/test_ai_speaker.py` only'
             echo "- HEAD: `$GITHUB_SHA`"
-            echo "- AUTO_APPLY_PATCH: `false`"
-            echo "- AUTO_DEPLOY: `false`"
-            echo "- Queue/state branch: not read or modified"
-            echo "- Merge/deploy/publish: not performed"
-            echo "- Result: see job status and test step above"
+            echo '- AUTO_APPLY_PATCH: `false`'
+            echo '- AUTO_DEPLOY: `false`'
+            echo '- Queue/state branch: not read or modified'
+            echo '- Merge/deploy/publish: not performed'
+            echo '- Result: see job status and test step above'
           } >> "$GITHUB_STEP_SUMMARY"
