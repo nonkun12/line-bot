@@ -103,12 +103,21 @@ def test_unknown_recovery_action_requires_human_review():
     assert decision["next_action"] == "HOLD_FOR_REVIEW"
 
 
-def test_missing_observer_is_reported_as_degraded_but_does_not_rewrite_task_result():
+def test_missing_observer_record_fails_closed():
     result = verified_success()
     result["control_tower"] = {"recorded": False}
     decision = coordinate_outcome(result)
-    assert decision["allow_continue"] is True
-    assert decision["observation_degraded"] is True
+    assert decision["allow_continue"] is False
+    assert decision["phase"] == "STOP"
+    assert decision["reason_code"] == "control_tower_observation_missing"
+
+
+def test_absent_observer_fails_closed():
+    result = verified_success()
+    result.pop("control_tower")
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "control_tower_observation_missing"
 
 
 def test_success_without_recovery_run_evidence_fails_closed():
