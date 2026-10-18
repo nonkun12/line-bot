@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 
 MAX_RECORDS = 200
+MAX_INPUT_RECORDS = 10_000
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 _TASK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _STATUSES = {"PASS", "NO_CHANGE", "FAIL", "BLOCKED", "NOT_RUN"}
@@ -18,10 +19,10 @@ _SIGNAL_KINDS = {"success", "repair", "failure"}
 
 
 def sanitize(records: object) -> list[dict[str, object]]:
-    if not isinstance(records, list) or len(records) > MAX_RECORDS:
+    if not isinstance(records, list) or len(records) > MAX_INPUT_RECORDS:
         raise ValueError("control tower observations invalid")
     safe = []
-    for row in records:
+    for row in records[-MAX_RECORDS:]:
         if not isinstance(row, dict):
             raise ValueError("control tower observation row invalid")
         task_id = row.get("task_id", "")
@@ -85,7 +86,7 @@ def sanitize(records: object) -> list[dict[str, object]]:
             "signals": safe_signals,
             "proposal": safe_proposal,
         })
-    return safe[-MAX_RECORDS:]
+    return safe
 
 
 def main() -> int:
@@ -116,7 +117,7 @@ def main() -> int:
                 rows.append(json.loads(line))
             except json.JSONDecodeError:
                 raise SystemExit("control tower history malformed") from None
-        records = sanitize(rows[-MAX_RECORDS:])
+        records = sanitize(rows)
     else:
         records = sanitize(state.get("control_tower_observations", []))
     state["control_tower_observations"] = records
