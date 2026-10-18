@@ -51,3 +51,12 @@ def test_sanitizer_bounds_history():
     assert len(safe) == 200
     assert safe[0]["task_id"] == "task-50"
     assert safe[-1]["task_id"] == "task-249"
+
+
+def test_sanitizer_preserves_non_executable_proposal_without_task():
+    rows = sanitize([_record(proposal={"task_hash": None, "executable": False, "approval_required": True})])
+    assert rows[0]["proposal"] == {
+        "task_hash": None,
+        "executable": False,
+        "approval_required": True,
+    }
