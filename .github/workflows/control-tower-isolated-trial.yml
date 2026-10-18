@@ -1,0 +1,93 @@
+name: Control Tower Isolated One-Task Trial
+
+on:
+  push:
+    branches:
+      - trial/control-tower-one-task-isolated
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-tower-isolated-trial
+  cancel-in-progress: false
+
+jobs:
+  isolated-registered-task:
+    name: Run one registered regression task (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AUTO_APPLY_PATCH: 'false'
+      AUTO_DEPLOY: 'false'
+      TRIAL_TASK_ID: ai-speaker-transcript-normalization-regression
+    steps:
+      - name: Checkout trial branch without persistent credentials
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify fixed scope, safety flags, and registered task
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$AUTO_APPLY_PATCH" = "false"
+          test "$AUTO_DEPLOY" = "false"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          task_id = "ai-speaker-transcript-normalization-regression"
+          catalog = json.loads(Path(".github/autonomous-loop-task-catalog.json").read_text(encoding="utf-8"))
+          tasks = catalog.get("tasks", catalog) if isinstance(catalog, dict) else catalog
+          if not isinstance(tasks, list):
+              raise SystemExit("catalog_shape_invalid")
+          matches = [task for task in tasks if isinstance(task, dict) and task.get("id") == task_id]
+          if len(matches) != 1:
+              raise SystemExit("task_not_uniquely_registered")
+          task = matches[0]
+          if task.get("allowed_paths") != ["tests/test_ai_speaker.py"]:
+              raise SystemExit("task_scope_mismatch")
+          instruction = task.get("instruction")
+          if not isinstance(instruction, str) or not instruction.strip():
+              raise SystemExit("task_instruction_missing")
+          print(f"REGISTERED_TASK_VERIFIED={task_id}")
+          print("ALLOWED_PATHS=tests/test_ai_speaker.py")
+          print(f"TRIAL_HEAD_SHA={Path('.git/HEAD').read_text(encoding='utf-8').strip()}")
+          PY
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install project test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+          python -m pip install pytest
+
+      - name: Execute exactly one registered task
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q tests/test_ai_speaker.py
+
+      - name: Record trial evidence
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Control Tower isolated one-task trial"
+            echo "- Task ID: `ai-speaker-transcript-normalization-regression`"
+            echo "- Target: `tests/test_ai_speaker.py` only"
+            echo "- HEAD: `$GITHUB_SHA`"
+            echo "- AUTO_APPLY_PATCH: `false`"
+            echo "- AUTO_DEPLOY: `false`"
+            echo "- Queue/state branch: not read or modified"
+            echo "- Merge/deploy/publish: not performed"
+            echo "- Result: see job status and test step above"
+          } >> "$GITHUB_STEP_SUMMARY"
