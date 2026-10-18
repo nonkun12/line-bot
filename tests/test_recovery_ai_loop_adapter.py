@@ -279,3 +279,28 @@ def test_noncanonical_uppercase_sha_does_not_reset_recovery_failure_streak(tmp_p
     assert result_payload["status"] == "FAIL"
     assert result_payload["failure_reason"] == "recovery_ai_invalid_evidence"
     assert store.task_status("task-sha")["consecutive_failures"] == before + 1
+
+
+def test_verified_success_persists_exact_run_identity(tmp_path):
+    path = tmp_path / "recovery.json"
+    payload = {
+        "task_id": "task-bound", "status": "PASS", "exit_code": 0,
+        "failure_reason": "", "base_sha": "a" * 40,
+        "produced_sha": "b" * 40, "run_nonce": "c" * 32,
+    }
+    outcome = record_loop_outcome(path, payload)
+    expected = {
+        "task_id": "task-bound", "base_sha": "a" * 40,
+        "produced_sha": "b" * 40, "run_nonce": "c" * 32,
+    }
+    assert outcome["evidence"] == expected
+    assert RecoveryStore(path).task_status("task-bound")["last_success_evidence"] == expected
+
+
+def test_recovery_store_rejects_success_evidence_for_another_task(tmp_path):
+    store = RecoveryStore(tmp_path / "recovery.json")
+    with pytest.raises(ValueError, match="task identity mismatch"):
+        store.record_success("task-a", verified=True, evidence={
+            "task_id": "task-b", "base_sha": "a" * 40,
+            "produced_sha": "b" * 40, "run_nonce": "c" * 32,
+        })
