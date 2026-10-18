@@ -1,3 +1,5 @@
+import hashlib
+
 import agents.sheets.autonomous_ledger as ledger
 
 
@@ -8,6 +10,7 @@ LEDGER_RANGE = "AutonomousDevelopment!AE:AU"
 
 class FakeClient:
     def __init__(self, existing=None, response=None, readback=None, titles=None):
+        self.spreadsheet_id = "test-spreadsheet-id"
         self.existing = existing or []
         self.response = response or {
             "updates": {"updatedRows": 1, "updatedRange": f"{SHEET}!AE185:AU185"}
@@ -98,8 +101,10 @@ def test_append_once_accepts_google_table_location_shift(capsys):
     record = make_record()
     client = FakeClient(readback=[record.values()])
     assert ledger.append_once(client, record) is True
+    fingerprint = hashlib.sha256(b"test-spreadsheet-id").hexdigest()[:12]
     assert capsys.readouterr().out.strip() == (
-        f"Google Sheets ledger verified destination: {SHEET}!AE185:AU185"
+        "Google Sheets ledger verified destination: "
+        f"spreadsheet_fingerprint={fingerprint} range={SHEET}!AE185:AU185"
     )
     assert client.appended[0][0] == f"'{SHEET}'!AE:AU"
     assert f"'{SHEET}'!A1:ZZ1000" in client.read_ranges
