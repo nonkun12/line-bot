@@ -8,7 +8,7 @@ from agents.english.intents import classify_english_mode, is_english_learning_in
 from core.agents import AgentRequest, AgentResponse
 from agents.english.progress import profile_prompt, record_observation
 from agents.english.core_image import get_core_image_quiz_entries
-from agents.english.quiz import grade_quiz, start_quiz
+from agents.english.quiz import grade_quiz, record_vocabulary_batch, start_quiz
 import random
 
 
@@ -129,6 +129,7 @@ class EnglishLearningAgent:
         elif mode == "vocabulary":
             entries = list(get_core_image_quiz_entries())
             selected = random.sample(entries, min(3, len(entries)))
+            record_vocabulary_batch(request.user_id, [entry.word for entry in selected])
             lines = ["📘 今日の英単語（ローカル辞書から出題）", ""]
             for entry in selected:
                 lines.append(f"• {entry.word}")

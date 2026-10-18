@@ -184,3 +184,27 @@ def test_ai_tutor_prompt_uses_profile_context(monkeypatch, tmp_path) -> None:
     assert "subject_verb_agreement" in prompt
     assert "have/has drill" in prompt
     assert "he/she/it + has" in prompt
+
+def test_quiz_uses_the_latest_vocabulary_batch(monkeypatch, tmp_path):
+    from agents.english import progress
+    from agents.english.core_image import get_core_image_quiz_entries
+    import re
+
+    monkeypatch.setattr(progress, "DB_PATH", str(tmp_path / "quiz.db"))
+    agent = EnglishLearningAgent()
+    vocabulary = agent.handle(_request("英単語コアイメージ")).text
+    shown_words = set(re.findall(r"^• ([a-z][a-z'-]*)$", vocabulary, re.M))
+    assert len(shown_words) == 3, vocabulary
+
+    question = agent.handle(_request("クイズ")).text
+    match = re.search(
+        r"次のコアイメージに合う英単語は？\n(.+?)\n\nA\. (\w+)\nB\. (\w+)\nC\. (\w+)",
+        question,
+        re.S,
+    )
+    assert match, question
+    options = {match.group(2), match.group(3), match.group(4)}
+    assert options.issubset(shown_words), (shown_words, options, question)
+    entries = {entry.word: entry for entry in get_core_image_quiz_entries()}
+    correct_words = {word for word in options if entries[word].core_image == match.group(1)}
+    assert len(correct_words) == 1, question
