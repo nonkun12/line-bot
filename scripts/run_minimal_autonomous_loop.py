@@ -468,7 +468,7 @@ def run_task(
         failure_reason = failure_reason or "summary_missing_required_key"
     elif not _valid_sha(base_sha) or not _valid_sha(payload.get("produced_sha")):
         failure_reason = failure_reason or "summary_sha_invalid"
-    elif payload.get("exit_code") != exit_code:
+    elif type(payload.get("exit_code")) is not int or payload.get("exit_code") != exit_code:
         failure_reason = failure_reason or "summary_exit_code_mismatch"
     else:
         try:
