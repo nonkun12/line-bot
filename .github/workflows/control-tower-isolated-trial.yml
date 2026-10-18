@@ -56,7 +56,7 @@ jobs:
               raise SystemExit("task_instruction_missing")
           print(f"REGISTERED_TASK_VERIFIED={task_id}")
           print("ALLOWED_PATHS=tests/test_ai_speaker.py")
-          print(f"TRIAL_HEAD_SHA={Path('.git/HEAD').read_text(encoding='utf-8').strip()}")
+          print(f"TRIAL_HEAD_SHA={__import__('subprocess').check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()}")
           PY
 
       - name: Set up Python
@@ -82,11 +82,11 @@ jobs:
         run: |
           {
             echo '## Control Tower isolated one-task trial'
-            echo '- Task ID: `ai-speaker-transcript-normalization-regression`'
-            echo '- Target: `tests/test_ai_speaker.py` only'
-            echo "- HEAD: `$GITHUB_SHA`"
-            echo '- AUTO_APPLY_PATCH: `false`'
-            echo '- AUTO_DEPLOY: `false`'
+            echo '- Task ID: ai-speaker-transcript-normalization-regression'
+            echo '- Target: tests/test_ai_speaker.py only'
+            echo "- HEAD: $GITHUB_SHA"
+            echo "- AUTO_APPLY_PATCH: $AUTO_APPLY_PATCH"
+            echo "- AUTO_DEPLOY: $AUTO_DEPLOY"
             echo '- Queue/state branch: not read or modified'
             echo '- Merge/deploy/publish: not performed'
             echo '- Result: see job status and test step above'
