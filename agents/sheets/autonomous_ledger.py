@@ -253,6 +253,8 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
         raise RuntimeError(
             f"Google Sheets append read-back mismatch for run_id={record.run_id}"
         )
+    # Emit only the verified destination coordinate; never log credentials or row contents.
+    print(f"Google Sheets ledger verified destination: {readback_range}")
     return True
 
 
