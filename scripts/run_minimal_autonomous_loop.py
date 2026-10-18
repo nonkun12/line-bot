@@ -921,9 +921,21 @@ def main() -> int:
                 "reason": "state_persistence_failed",
             }
 
-        # One authoritative orchestration decision joins task evidence and
-        # Recovery AI. It may recommend a bounded repair review, but never
-        # executes a repair, clears HOLD, merges, or deploys.
+        # First persist a sanitized observation, then let the single
+        # orchestrator combine it with the task and Recovery AI evidence.
+        try:
+            from scripts.control_tower_loop_observer import record_loop_observation
+            observation = record_loop_observation(
+                args.state.parent / "control-tower-observations.jsonl", result
+            )
+        except Exception:
+            observation = {
+                "recorded": False,
+                "reason": "observation_or_persistence_failed",
+                "proposal_executable": False,
+            }
+        result["control_tower"] = observation
+
         try:
             from scripts.control_tower_orchestrator import coordinate_outcome
             orchestration = coordinate_outcome(result)
@@ -950,6 +962,17 @@ def main() -> int:
                 recovery_error = True
                 result["recovery_ai"] = {"recorded": False, "reason": "state_persistence_failed"}
             try:
+                observation = record_loop_observation(
+                    args.state.parent / "control-tower-observations.jsonl", result
+                )
+            except Exception:
+                observation = {
+                    "recorded": False,
+                    "reason": "observation_or_persistence_failed",
+                    "proposal_executable": False,
+                }
+            result["control_tower"] = observation
+            try:
                 orchestration = coordinate_outcome(result)
             except Exception:
                 orchestration = {
@@ -960,19 +983,6 @@ def main() -> int:
                     "repair_executed": False,
                 }
 
-        # The observer enriches the unified decision with sanitized history;
-        # it cannot override the orchestration result or make a repair executable.
-        try:
-            from scripts.control_tower_loop_observer import record_loop_observation
-            observation = record_loop_observation(
-                args.state.parent / "control-tower-observations.jsonl", result
-            )
-        except Exception:
-            observation = {
-                "recorded": False,
-                "reason": "observation_or_persistence_failed",
-                "proposal_executable": False,
-            }
         result["control_tower"] = {**observation, "orchestration": orchestration}
 
         with args.results.open("a", encoding="utf-8") as fh:
