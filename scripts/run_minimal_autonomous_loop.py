@@ -900,9 +900,25 @@ def main() -> int:
             )
         else:
             print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
-            result = run_task(
-                task, index, args.stop_file, expected_base_sha=control_tower_head
-            )
+            try:
+                result = run_task(
+                    task, index, args.stop_file, expected_base_sha=control_tower_head
+                )
+            except Exception as exc:
+                # Preserve an auditable task outcome even if the runtime raises
+                # before it can return its normal evidence object. Never persist
+                # exception text, which could contain paths or secrets.
+                result = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "run_index": index,
+                    "task_id": str(task["id"]),
+                    "status": "FAIL",
+                    "exit_code": 1,
+                    "base_sha": control_tower_head,
+                    "produced_sha": _git_head(),
+                    "run_nonce": uuid.uuid4().hex,
+                    "failure_reason": f"task_runtime_exception:process_crash:{type(exc).__name__}",
+                }
         recovery_error = False
         try:
             from scripts.recovery_ai_loop_adapter import record_loop_outcome
