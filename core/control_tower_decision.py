@@ -100,6 +100,16 @@ class ControlTowerDecisionRecord:
             and self.task_template_id in registered_task_ids
         )
 
+    def is_fallback_safe(self) -> bool:
+        """Indicates whether the decision can safely fall back to a HOLD or NOT_RUN.
+
+        This helper is useful for callers that need to decide whether to
+        proceed with a fallback action when the primary task selection is
+        unavailable. It returns ``True`` when the decision explicitly
+        indicates a non‑execution path.
+        """
+        return self.next_action in {"HOLD", "NOT_RUN"}
+
 
 __all__ = [
     "ControlTowerDecisionRecord",
