@@ -231,3 +231,28 @@ def test_real_task_failure_still_increments_recovery_failure_streak(tmp_path):
     })
     assert outcome["recorded"] is True
     assert outcome["decision"]["consecutive_failures"] == 1
+
+@pytest.mark.parametrize("boolean_exit_code", [False, True])
+def test_boolean_exit_code_never_resets_recovery_failure_streak(tmp_path, boolean_exit_code):
+    path = tmp_path / "recovery.json"
+    store = RecoveryStore(path)
+    store.record_failure("task-bool", "timeout")
+    before = store.task_status("task-bool")["consecutive_failures"]
+
+    result_payload = {
+        "task_id": "task-bool",
+        "status": "PASS",
+        "exit_code": boolean_exit_code,
+        "failure_reason": "",
+        "base_sha": "a" * 40,
+        "produced_sha": "b" * 40,
+        "run_nonce": "c" * 32,
+    }
+    outcome = record_loop_outcome(path, result_payload)
+
+    assert outcome["recorded"] is True
+    assert outcome["status"] == "FAIL"
+    assert result_payload["status"] == "FAIL"
+    assert result_payload["exit_code"] == 1
+    assert result_payload["failure_reason"] == "recovery_ai_invalid_evidence"
+    assert store.task_status("task-bool")["consecutive_failures"] == before + 1
