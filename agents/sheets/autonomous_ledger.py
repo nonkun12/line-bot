@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import os
 import re
 
@@ -204,6 +205,14 @@ def _existing_matching_run(
     return False
 
 
+def _spreadsheet_fingerprint(client: GoogleSheetsClient) -> str:
+    """Return a stable, non-reversible identifier for destination comparison in logs."""
+    spreadsheet_id = getattr(client, "spreadsheet_id", None)
+    if not isinstance(spreadsheet_id, str) or not spreadsheet_id.strip():
+        raise RuntimeError("Google Sheets spreadsheet ID is unavailable for destination verification")
+    return hashlib.sha256(spreadsheet_id.strip().encode("utf-8")).hexdigest()[:12]
+
+
 def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
     """Append once to the existing sheet table and verify the actual returned row."""
     try:
@@ -253,8 +262,12 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
         raise RuntimeError(
             f"Google Sheets append read-back mismatch for run_id={record.run_id}"
         )
-    # Emit only the verified destination coordinate; never log credentials or row contents.
-    print(f"Google Sheets ledger verified destination: {readback_range}")
+    # Log a one-way fingerprint so operators can distinguish spreadsheets without exposing IDs.
+    fingerprint = _spreadsheet_fingerprint(client)
+    print(
+        "Google Sheets ledger verified destination: "
+        f"spreadsheet_fingerprint={fingerprint} range={readback_range}"
+    )
     return True
 
 
