@@ -113,7 +113,7 @@ def test_noncanonical_ids_in_any_input_fail_closed(queue, registered, completed,
 def test_unregistered_queue_id_is_blocked_even_if_marked_in_state(state_name):
     decision = choose(["ghost", "task-a"], **{state_name: ("ghost",)})
 
-    assert decision.reason_code == "policy_blocked"
+    assert decision.reason_code == "unregistered_task"
     assert decision.next_action == "HOLD"
     assert decision.gate_status == "BLOCKED"
     assert decision.task_template_id is None
