@@ -945,6 +945,24 @@ jobs:
             echo "::error::Final outcome classifier failed; result is BLOCKED. See Python error class above."
           fi
           produced_sha="$(git rev-parse HEAD 2>/dev/null || echo "${GITHUB_SHA}")"
+          export FINAL_OUTCOME="$result"
+          export FINAL_OUTCOME_REASON="$result_reason"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          payload = {
+              "schema_version": 1,
+              "outcome": os.environ.get("FINAL_OUTCOME", ""),
+              "reason": os.environ.get("FINAL_OUTCOME_REASON", ""),
+              "run_id": os.environ.get("GITHUB_RUN_ID", ""),
+              "sha": os.environ.get("GITHUB_SHA", ""),
+          }
+          Path("/tmp/distributed-final-outcome.json").write_text(
+              json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\\n",
+              encoding="utf-8",
+          )
+          PY
           {
             echo "# 分散Loop 終了報告"
             echo
@@ -1042,37 +1060,12 @@ jobs:
             /tmp/autonomous-*.json
             /tmp/distributed-sheets-log-result.json
             /tmp/distributed-final-report.txt
+            /tmp/distributed-final-outcome.json
           if-no-files-found: ignore
       - name: Enforce final distributed loop outcome
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          report="/tmp/distributed-final-report.txt"
-          if [ ! -s "$report" ]; then
-            echo "::error::Final distributed-loop report is missing; workflow cannot be marked successful."
-            exit 1
-          fi
-          outcome="$(python - <<'PY'
-          from pathlib import Path
-          for line in Path("/tmp/distributed-final-report.txt").read_text(encoding="utf-8").splitlines():
-              prefix = "- 結果: **"
-              if line.startswith(prefix) and line.endswith("**"):
-                  print(line[len(prefix):-2])
-                  break
-          PY
-          )"
-          case "$outcome" in
-            COMPLETED|NOT_RUN)
-              echo "Final distributed-loop outcome: $outcome"
-              ;;
-            BLOCKED|FAILED|INCOMPLETE)
-              echo "::error::Distributed-loop outcome is $outcome; final report and notifications have already been attempted."
-              exit 1
-              ;;
-            *)
-              echo "::error::Unrecognized or missing distributed-loop outcome; failing closed."
-              exit 1
-              ;;
-          esac
+          python -m scripts.enforce_distributed_final_outcome --input /tmp/distributed-final-outcome.json
 
