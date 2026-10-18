@@ -33,8 +33,8 @@ def _category(result: dict[str, Any]) -> str:
 
 def _has_verified_run_identity(result: dict[str, Any], status: str) -> bool:
     """Require fresh per-run identifiers before a success can reset failure state."""
-    base_sha = str(result.get("base_sha", "")).lower()
-    produced_sha = str(result.get("produced_sha", "")).lower()
+    base_sha = str(result.get("base_sha", ""))
+    produced_sha = str(result.get("produced_sha", ""))
     run_nonce = str(result.get("run_nonce", ""))
     if not re.fullmatch(r"[0-9a-f]{40}", base_sha):
         return False
