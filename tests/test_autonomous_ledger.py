@@ -94,10 +94,13 @@ def configure_record_env(monkeypatch, record):
         monkeypatch.setenv(key, value)
 
 
-def test_append_once_accepts_google_table_location_shift():
+def test_append_once_accepts_google_table_location_shift(capsys):
     record = make_record()
     client = FakeClient(readback=[record.values()])
     assert ledger.append_once(client, record) is True
+    assert capsys.readouterr().out.strip() == (
+        f"Google Sheets ledger verified destination: {SHEET}!AE185:AU185"
+    )
     assert client.appended[0][0] == f"'{SHEET}'!AE:AU"
     assert f"'{SHEET}'!A1:ZZ1000" in client.read_ranges
     assert f"{SHEET}!AE185:AU185" in client.read_ranges
@@ -182,7 +185,7 @@ def test_append_once_rejects_wrong_width():
         raise AssertionError("expected RuntimeError")
 
 
-def test_append_once_rejects_readback_mismatch():
+def test_append_once_rejects_readback_mismatch(capsys):
     record = make_record("458")
     wrong = record.values()
     wrong[12] = "PASS"
@@ -193,6 +196,7 @@ def test_append_once_rejects_readback_mismatch():
         assert "read-back mismatch" in str(exc)
     else:
         raise AssertionError("expected RuntimeError")
+    assert capsys.readouterr().out == ""
 
 
 def test_record_autonomous_run_retries_once_after_constructor_failure(monkeypatch):
