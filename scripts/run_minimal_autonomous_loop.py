@@ -591,7 +591,22 @@ def main() -> int:
         # and re-authorized against its own current HEAD, refuse multi-task normal
         # runs rather than executing queue entries under stale selection evidence.
         if args.max_tasks > 1:
-            raise SystemExit("normal multi-task selector chain is not yet implemented; use --max-tasks 1")
+            args.results.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "BLOCKED",
+                "task_id": "",
+                "task_count": 0,
+                "exit_code": 80,
+                "failure_reason": "control_tower_multi_task_reselection_unavailable",
+            }
+            with args.results.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            print(
+                "MINIMAL_LOOP=BLOCKED reason=control_tower_multi_task_reselection_unavailable",
+                flush=True,
+            )
+            return 80
 
     # Normal queue entries are authorized only against Git-versioned catalogs
     # at the same immutable commit used as the selection evidence. Never derive
