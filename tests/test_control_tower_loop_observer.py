@@ -57,6 +57,16 @@ def test_boolean_exit_code_cannot_be_misclassified_as_success(tmp_path: Path) ->
     assert record["observation_count"] > 0
 
 
+
+def test_malformed_status_type_fails_closed_without_crashing(tmp_path: Path) -> None:
+    history = tmp_path / "observations.jsonl"
+
+    record_loop_observation(history, {**outcome(), "status": ["PASS"]})
+    record = json.loads(history.read_text(encoding="utf-8").splitlines()[-1])
+
+    assert record["exit_code"] == 0
+    assert record["observation_count"] > 0
+
 def test_invalid_sha_evidence_is_not_persisted_as_a_valid_fingerprint(tmp_path: Path) -> None:
     history = tmp_path / "observations.jsonl"
 
