@@ -1,7 +1,7 @@
 """Runtime-level Control Tower trial with the task executor fully mocked.
 
-This exercises the real loop selection/preflight path while guaranteeing that no
-subprocess, guarded runtime, queue mutation, merge, or deployment is invoked.
+Exercises the actual selector and registered-task authorization path while
+guaranteeing that no subprocess, guarded runtime, merge, or deployment runs.
 """
 from __future__ import annotations
 
@@ -52,11 +52,8 @@ def test_main_authorizes_one_task_then_calls_only_mock_executor(monkeypatch, tmp
     import scripts.recovery_ai as recovery_ai
     monkeypatch.setattr(recovery_ai, "RecoveryStore", FakeRecoveryStore)
 
-    adapter = types.ModuleType("scripts.control_tower_loop_adapter")
-    adapter.authorize_registered_task = lambda task, catalog, head: (
-        task["id"] == TASK["id"] and catalog[0]["id"] == TASK["id"] and head == HEAD,
-        "ok",
-    )
+    # Only persistence/observation are mocked. The actual Control Tower
+    # authorization adapter and selector remain active in this test.
     recovery_adapter = types.ModuleType("scripts.recovery_ai_loop_adapter")
     recovery_adapter.record_loop_outcome = lambda _path, result: {
         "recorded": True,
@@ -67,7 +64,6 @@ def test_main_authorizes_one_task_then_calls_only_mock_executor(monkeypatch, tmp
         "recorded": True,
         "proposal_executable": False,
     }
-    monkeypatch.setitem(sys.modules, "scripts.control_tower_loop_adapter", adapter)
     monkeypatch.setitem(sys.modules, "scripts.recovery_ai_loop_adapter", recovery_adapter)
     monkeypatch.setitem(sys.modules, "scripts.control_tower_loop_observer", observer)
 
