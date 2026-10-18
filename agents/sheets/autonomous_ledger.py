@@ -224,6 +224,16 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
             f"{type(exc).__name__}: {exc}"
         ) from exc
 
+    # Validate the destination identifier before any append so a logging failure
+    # cannot occur after a successful write and trigger a duplicate retry.
+    try:
+        fingerprint = _spreadsheet_fingerprint(client)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Google Sheets destination identification failed before append: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
     try:
         if _existing_matching_run(client, sheet, record):
             return False
@@ -263,7 +273,6 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
             f"Google Sheets append read-back mismatch for run_id={record.run_id}"
         )
     # Log a one-way fingerprint so operators can distinguish spreadsheets without exposing IDs.
-    fingerprint = _spreadsheet_fingerprint(client)
     print(
         "Google Sheets ledger verified destination: "
         f"spreadsheet_fingerprint={fingerprint} range={readback_range}"
