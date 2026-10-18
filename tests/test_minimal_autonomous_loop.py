@@ -432,3 +432,15 @@ def test_distributed_loop_workflow_legacy_label_uses_one_task_limit():
     workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     assert 'elif [ "${EVENT_NAME}" = "pull_request_target" ]; then\n            # Legacy max4 label remains accepted, but runtime safely supports one normal task.\n            expected="1"' in workflow
     assert 'requested="${MAX_TASKS:-1}"' in workflow
+
+
+def test_distributed_loop_normal_triggers_are_capped_at_one_task():
+    from pathlib import Path
+
+    workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert "description: 'Normal execution is restricted to one task until per-task re-authorization is implemented'" in workflow
+    assert "options:\n          - '1'\n      mode:" in workflow
+    assert "1) ;;" in workflow
+    assert "1|2|3|4) ;;" not in workflow
+    for task_limit in (2, 3, 4):
+        assert f"max_tasks={task_limit}" not in workflow
