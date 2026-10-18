@@ -22,7 +22,10 @@ def sanitize(records: object) -> list[dict[str, object]]:
     if not isinstance(records, list) or len(records) > MAX_INPUT_RECORDS:
         raise ValueError("control tower observations invalid")
     safe = []
-    for row in records[-MAX_RECORDS:]:
+    # Validate every supplied record before applying the retention limit. Otherwise
+    # malformed older entries can be silently ignored when they fall outside the
+    # last MAX_RECORDS records.
+    for row in records:
         if not isinstance(row, dict):
             raise ValueError("control tower observation row invalid")
         task_id = row.get("task_id", "")
@@ -86,7 +89,7 @@ def sanitize(records: object) -> list[dict[str, object]]:
             "signals": safe_signals,
             "proposal": safe_proposal,
         })
-    return safe
+    return safe[-MAX_RECORDS:]
 
 
 def main() -> int:
