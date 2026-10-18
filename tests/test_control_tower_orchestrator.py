@@ -33,6 +33,14 @@ def test_no_change_requires_identical_shas():
     assert decision["reason_code"] == "no_change_sha_mismatch"
 
 
+def test_success_without_recovery_record_fails_closed():
+    result = verified_success()
+    result.pop("recovery_ai")
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "recovery_evidence_missing"
+
+
 def test_success_without_recovery_verification_fails_closed():
     result = verified_success()
     result["recovery_ai"] = {"recorded": True, "verified": False, "status": "PASS"}
@@ -66,6 +74,17 @@ def test_repair_once_is_a_plan_not_a_claim_of_execution():
     assert decision["phase"] == "DIAGNOSE"
     assert decision["next_action"] == "PREPARE_BOUNDED_REPAIR_REVIEW"
     assert decision["repair_executed"] is False
+    assert decision["allow_continue"] is False
+
+
+def test_retry_is_a_plan_not_an_execution_or_permission_to_continue():
+    decision = coordinate_outcome({
+        "task_id": "task-a", "status": "FAIL", "exit_code": 1,
+        "recovery_ai": {"recorded": True, "decision": {"action": "RETRY"}},
+    })
+    assert decision["phase"] == "RECOVER"
+    assert decision["next_action"] == "SCHEDULE_BOUNDED_RETRY"
+    assert decision["retry_executed"] is False
     assert decision["allow_continue"] is False
 
 
