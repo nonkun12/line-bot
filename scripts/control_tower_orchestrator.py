@@ -33,7 +33,12 @@ def coordinate_outcome(result: object) -> dict[str, Any]:
     task_id = result.get("task_id")
     status = result.get("status")
     exit_code = result.get("exit_code")
-    if not isinstance(task_id, str) or not task_id.strip() or len(task_id) > 100:
+    if (
+        not isinstance(task_id, str)
+        or not task_id
+        or len(task_id) > 100
+        or not all(char.isalnum() or char in "._-" for char in task_id)
+    ):
         return _decision("STOP", "STOP_AND_REPORT", "invalid_task_identity", False)
     if not isinstance(status, str) or status not in _ALLOWED_STATUSES:
         return _decision("STOP", "STOP_AND_REPORT", "invalid_status", False)
@@ -61,15 +66,27 @@ def coordinate_outcome(result: object) -> dict[str, Any]:
             return _decision("STOP", "STOP_AND_REPORT", "no_change_sha_mismatch", False)
         if recovery.get("verified") is not True or recovery.get("status") != status:
             return _decision("STOP", "STOP_AND_REPORT", "recovery_verification_mismatch", False)
+        expected_evidence = {
+            "task_id": task_id,
+            "base_sha": base_sha,
+            "produced_sha": produced_sha,
+            "run_nonce": run_nonce,
+        }
+        if recovery.get("evidence") != expected_evidence:
+            return _decision("STOP", "STOP_AND_REPORT", "recovery_run_evidence_mismatch", False)
         observation = result.get("control_tower")
         observation_ok = isinstance(observation, dict) and observation.get("recorded") is True
+        if not observation_ok:
+            return _decision(
+                "STOP", "STOP_AND_REPORT", "control_tower_observation_missing", False, task_id
+            )
         return {
             "phase": "REPORT",
             "next_action": "REPORT_VERIFIED_SUCCESS",
             "reason_code": "verified_success",
             "allow_continue": True,
             "task_id": task_id,
-            "observation_degraded": not observation_ok,
+            "observation_degraded": False,
             "repair_executed": False,
         }
 

@@ -13,7 +13,13 @@ def verified_success(status="PASS"):
         "base_sha": base,
         "produced_sha": produced,
         "run_nonce": "c" * 32,
-        "recovery_ai": {"recorded": True, "verified": True, "status": status},
+        "recovery_ai": {
+            "recorded": True, "verified": True, "status": status,
+            "evidence": {
+                "task_id": "task-a", "base_sha": base,
+                "produced_sha": produced, "run_nonce": "c" * 32,
+            },
+        },
         "control_tower": {"recorded": True},
     }
 
@@ -23,6 +29,22 @@ def test_verified_success_requires_all_evidence_and_allows_controlled_continue()
     assert decision["phase"] == "REPORT"
     assert decision["next_action"] == "REPORT_VERIFIED_SUCCESS"
     assert decision["allow_continue"] is True
+
+
+def test_task_identity_with_path_separator_fails_closed():
+    result = verified_success()
+    result["task_id"] = "../task-a"
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "invalid_task_identity"
+
+
+def test_task_identity_with_whitespace_fails_closed():
+    result = verified_success()
+    result["task_id"] = "task a"
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "invalid_task_identity"
 
 
 def test_no_change_requires_identical_shas():
@@ -97,9 +119,42 @@ def test_unknown_recovery_action_requires_human_review():
     assert decision["next_action"] == "HOLD_FOR_REVIEW"
 
 
-def test_missing_observer_is_reported_as_degraded_but_does_not_rewrite_task_result():
+def test_missing_observer_record_fails_closed():
     result = verified_success()
     result["control_tower"] = {"recorded": False}
     decision = coordinate_outcome(result)
-    assert decision["allow_continue"] is True
-    assert decision["observation_degraded"] is True
+    assert decision["allow_continue"] is False
+    assert decision["phase"] == "STOP"
+    assert decision["reason_code"] == "control_tower_observation_missing"
+
+
+def test_absent_observer_fails_closed():
+    result = verified_success()
+    result.pop("control_tower")
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "control_tower_observation_missing"
+
+
+def test_success_without_recovery_run_evidence_fails_closed():
+    result = verified_success()
+    result["recovery_ai"].pop("evidence")
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "recovery_run_evidence_mismatch"
+
+
+def test_success_with_recovery_evidence_from_another_run_fails_closed():
+    result = verified_success()
+    result["recovery_ai"]["evidence"]["run_nonce"] = "d" * 32
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "recovery_run_evidence_mismatch"
+
+
+def test_success_with_recovery_evidence_for_another_task_fails_closed():
+    result = verified_success()
+    result["recovery_ai"]["evidence"]["task_id"] = "task-other"
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "recovery_run_evidence_mismatch"
