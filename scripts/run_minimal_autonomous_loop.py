@@ -930,6 +930,9 @@ def main() -> int:
                     "merge_deploy_authorized": False,
                 }
             if not rea_gate_valid:
+                # Keep the hard stop, but pass the BLOCKED evidence through the
+                # same Recovery AI and Control Tower persistence path as other
+                # outcomes. Do not execute the task or bypass the final gates.
                 result = {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "run_index": index,
@@ -941,14 +944,12 @@ def main() -> int:
                     "failure_reason": "control_tower_rea:" + str(rea_evidence.get("reason_code", "gate_blocked")),
                     "rea": rea_evidence,
                 }
-                with args.results.open("a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(result, ensure_ascii=False) + "\n")
                 print("MINIMAL_LOOP=BLOCKED reason=control_tower_rea", flush=True)
-                return 80
-            print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
-            result = run_task(
-                task, index, args.stop_file, expected_base_sha=control_tower_head
-            )
+            else:
+                print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
+                result = run_task(
+                    task, index, args.stop_file, expected_base_sha=control_tower_head
+                )
         # Carry the exact preflight REA evidence into the Control Tower decision.
         # This is diagnostic metadata only and grants no execution or repair authority.
         result["rea"] = rea_evidence
