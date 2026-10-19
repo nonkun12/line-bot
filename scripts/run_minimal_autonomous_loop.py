@@ -510,6 +510,21 @@ def run_task(
             failure_reason = "summary_produced_sha_mismatch"
         elif not isinstance(payload.get("rea"), dict):
             failure_reason = "blocked_summary_missing_rea_evidence"
+        else:
+            rea = payload["rea"]
+            # BLOCKED evidence is untrusted child-process output. It must carry
+            # an explicit blocked gate and deny every authority; a dict alone
+            # must never be accepted as evidence of a safe stop.
+            if (
+                rea.get("gate") != "BLOCKED"
+                or not isinstance(rea.get("reason_code"), str)
+                or not rea.get("reason_code").strip()
+                or rea.get("execution_authorized") is not False
+                or rea.get("patch_authorized") is not False
+                or rea.get("hold_clear_authorized") is not False
+                or rea.get("merge_deploy_authorized") is not False
+            ):
+                failure_reason = "blocked_summary_rea_evidence_invalid"
 
     # A zero exit code with an unchanged HEAD is the only valid NO_CHANGE.
     # A failed runtime must never be reclassified as NO_CHANGE merely because
