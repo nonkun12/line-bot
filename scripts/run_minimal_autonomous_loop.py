@@ -563,42 +563,6 @@ def main() -> int:
     if args.max_tasks < 1 or args.max_tasks > 4:
         raise SystemExit("--max-tasks must be between 1 and 4")
 
-    # Bind REA diagnostics and task selection to one immutable repository snapshot.
-    # Incomplete/mismatched evidence or a critical safety finding blocks before selection.
-    selection_evidence_sha = _git_head()
-    try:
-        from scripts.rea_control_tower_adapter import prepare_rea_evidence
-        rea_evidence = prepare_rea_evidence(ROOT, expected_sha=selection_evidence_sha)
-    except Exception:
-        rea_evidence = {
-            "gate": "BLOCKED",
-            "reason_code": "rea_adapter_error",
-            "target_sha": None,
-            "scanner_status": "BLOCKED",
-            "finding_count": 0,
-            "critical_count": 0,
-            "findings": [],
-            "execution_authorized": False,
-            "patch_authorized": False,
-            "hold_clear_authorized": False,
-            "merge_deploy_authorized": False,
-        }
-    if rea_evidence.get("gate") != "PASS":
-        args.results.parent.mkdir(parents=True, exist_ok=True)
-        record = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "status": "BLOCKED",
-            "task_id": "",
-            "task_count": 0,
-            "exit_code": 80,
-            "failure_reason": "control_tower_rea:" + str(rea_evidence.get("reason_code", "gate_blocked")),
-            "rea": rea_evidence,
-        }
-        with args.results.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-        print("MINIMAL_LOOP=BLOCKED reason=control_tower_rea", flush=True)
-        return 80
-
     queue_data = json.loads(QUEUE.read_text(encoding="utf-8"))
     queue_limit = int(queue_data.get("max_tasks_per_run", 3))
     if args.max_tasks > queue_limit:
@@ -932,6 +896,60 @@ def main() -> int:
                 flush=True,
             )
         else:
+            # REA runs only after queue, selector, HEAD, HOLD, and task-catalog gates.
+            # A non-executable/empty queue must preserve its original NOT_RUN semantics.
+                # Bind REA diagnostics and task selection to one immutable repository snapshot.
+                # Incomplete/mismatched evidence or a critical safety finding blocks before selection.
+                selection_evidence_sha = _git_head()
+                try:
+                    from scripts.rea_control_tower_adapter import prepare_rea_evidence
+                    rea_evidence = prepare_rea_evidence(ROOT, expected_sha=selection_evidence_sha)
+                except Exception:
+                    rea_evidence = {
+                        "gate": "BLOCKED",
+                        "reason_code": "rea_adapter_error",
+                        "target_sha": None,
+                        "scanner_status": "BLOCKED",
+                        "finding_count": 0,
+                        "critical_count": 0,
+                        "findings": [],
+                        "execution_authorized": False,
+                        "patch_authorized": False,
+                        "hold_clear_authorized": False,
+                        "merge_deploy_authorized": False,
+                    }
+                if rea_evidence.get("gate") != "PASS":
+                    args.results.parent.mkdir(parents=True, exist_ok=True)
+                    record = {
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "status": "BLOCKED",
+                        "task_id": "",
+                        "task_count": 0,
+                        "exit_code": 80,
+                        "failure_reason": "control_tower_rea:" + str(rea_evidence.get("reason_code", "gate_blocked")),
+                        "rea": rea_evidence,
+                    }
+                    with args.results.open("a", encoding="utf-8") as fh:
+                        fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    print("MINIMAL_LOOP=BLOCKED reason=control_tower_rea", flush=True)
+                    return 80
+            
+            
+            if rea_evidence.get("gate") != "PASS":
+                result = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "run_index": index,
+                    "task_id": task["id"],
+                    "status": "BLOCKED",
+                    "exit_code": 80,
+                    "base_sha": control_tower_head,
+                    "produced_sha": _git_head(),
+                    "failure_reason": "control_tower_rea:" + str(rea_evidence.get("reason_code", "gate_blocked")),
+                }
+                with args.results.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(result, ensure_ascii=False) + "\\n")
+                print("MINIMAL_LOOP=BLOCKED reason=control_tower_rea", flush=True)
+                return 80
             print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
             result = run_task(
                 task, index, args.stop_file, expected_base_sha=control_tower_head
