@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from scripts.rea_control_tower_adapter import rea_evidence_is_valid_pass
+
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _NONCE_RE = re.compile(r"^[0-9a-f]{32}$")
 _ALLOWED_STATUSES = frozenset({
