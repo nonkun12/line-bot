@@ -432,3 +432,19 @@ def test_distributed_loop_workflow_legacy_label_uses_one_task_limit():
     workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     assert 'elif [ "${EVENT_NAME}" = "pull_request_target" ]; then\n            # Legacy max4 label remains accepted, but runtime safely supports one normal task.\n            expected="1"' in workflow
     assert 'requested="${MAX_TASKS:-1}"' in workflow
+
+def test_registered_catalog_rejects_duplicate_identical_task_ids(monkeypatch):
+    catalog = json.dumps({
+        "version": 1,
+        "tasks": [{
+            "id": "duplicate-catalog-task",
+            "instruction": "Run one bounded regression test.",
+            "allowed_paths": ["tests/test_minimal_autonomous_loop.py"],
+        }],
+    })
+    monkeypatch.setattr(loop, "_git_checked", lambda *args: (0, catalog))
+
+    import pytest
+
+    with pytest.raises(ValueError, match="duplicate versioned task ID"):
+        loop._load_registered_catalog("a" * 40)
