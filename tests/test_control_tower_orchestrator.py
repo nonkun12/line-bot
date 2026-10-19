@@ -128,9 +128,12 @@ def test_retry_is_a_plan_not_an_execution_or_permission_to_continue():
     decision = coordinate_outcome({
         "task_id": "task-a", "status": "FAIL", "exit_code": 1,
         "base_sha": "a" * 40,
-        "rea": {"gate": "PASS", "target_sha": "a" * 40, "critical_count": 0, "blocking_count": 0,
+        "rea": {"gate": "PASS", "mode": "OBSERVE_ONLY", "target_sha": "a" * 40,
+                "critical_count": 0, "blocking_count": 0,
                 "execution_authorized": False, "patch_authorized": False,
-                "hold_clear_authorized": False, "merge_deploy_authorized": False},
+                "hold_clear_authorized": False, "merge_deploy_authorized": False,
+                "scanner_status": "PASS", "finding_count": 0,
+                "findings_truncated": False, "findings": []},
         "control_tower": {"recorded": True},
         "recovery_ai": {"recorded": True, "decision": {"action": "RETRY"}},
     })
@@ -144,9 +147,12 @@ def test_unknown_recovery_action_requires_human_review():
     decision = coordinate_outcome({
         "task_id": "task-a", "status": "FAIL", "exit_code": 1,
         "base_sha": "a" * 40,
-        "rea": {"gate": "PASS", "target_sha": "a" * 40, "critical_count": 0, "blocking_count": 0,
+        "rea": {"gate": "PASS", "mode": "OBSERVE_ONLY", "target_sha": "a" * 40,
+                "critical_count": 0, "blocking_count": 0,
                 "execution_authorized": False, "patch_authorized": False,
-                "hold_clear_authorized": False, "merge_deploy_authorized": False},
+                "hold_clear_authorized": False, "merge_deploy_authorized": False,
+                "scanner_status": "PASS", "finding_count": 0,
+                "findings_truncated": False, "findings": []},
         "control_tower": {"recorded": True},
         "recovery_ai": {"recorded": True, "decision": {"action": "RUN_ARBITRARY_COMMAND"}},
     })
