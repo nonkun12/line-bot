@@ -88,6 +88,7 @@ def test_bool_exit_code_is_not_accepted_as_integer_zero():
 def test_blocked_never_resumes_or_clears_hold():
     decision = coordinate_outcome({
         "task_id": "task-a", "status": "BLOCKED", "exit_code": 80,
+        "control_tower": {"recorded": True},
         "recovery_ai": {"recorded": True, "decision": {"action": "REPAIR_ONCE"}},
     })
     assert decision["phase"] == "STOP"
@@ -116,6 +117,7 @@ def test_retry_is_a_plan_not_an_execution_or_permission_to_continue():
         "rea": {"gate": "PASS", "target_sha": "a" * 40, "critical_count": 0,
                 "execution_authorized": False, "patch_authorized": False,
                 "hold_clear_authorized": False, "merge_deploy_authorized": False},
+        "control_tower": {"recorded": True},
         "recovery_ai": {"recorded": True, "decision": {"action": "RETRY"}},
     })
     assert decision["phase"] == "RECOVER"
@@ -131,15 +133,17 @@ def test_unknown_recovery_action_requires_human_review():
         "rea": {"gate": "PASS", "target_sha": "a" * 40, "critical_count": 0,
                 "execution_authorized": False, "patch_authorized": False,
                 "hold_clear_authorized": False, "merge_deploy_authorized": False},
+        "control_tower": {"recorded": True},
         "recovery_ai": {"recorded": True, "decision": {"action": "RUN_ARBITRARY_COMMAND"}},
     })
     assert decision["phase"] == "STOP"
     assert decision["next_action"] == "HOLD_FOR_REVIEW"
 
 
-def test_missing_observer_is_reported_as_degraded_but_does_not_rewrite_task_result():
+def test_missing_observer_persistence_fails_closed():
     result = verified_success()
     result["control_tower"] = {"recorded": False}
     decision = coordinate_outcome(result)
-    assert decision["allow_continue"] is True
-    assert decision["observation_degraded"] is True
+    assert decision["allow_continue"] is False
+    assert decision["phase"] == "STOP"
+    assert decision["reason_code"] == "control_tower_observation_missing"
