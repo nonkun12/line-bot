@@ -20,7 +20,7 @@ ALLOWED_SUFFIXES = frozenset({".py", ".json", ".yml", ".yaml", ".md"})
 MAX_FILE_BYTES = 512 * 1024
 MAX_FILES = 5000
 DANGEROUS_FLAG_RE = re.compile(
-    r"""^\s*(AUTO_APPLY_PATCH|AUTO_DEPLOY)\s*[:=]\s*["']?(true|yes|1)["']?\s*(?:#.*)?$""",
+    r"""^[ \t]*(AUTO_APPLY_PATCH|AUTO_DEPLOY)[ \t]*[:=][ \t]*["\']?(true|yes|1)["\']?[ \t]*(?:#.*)?$""",
     re.IGNORECASE | re.MULTILINE,
 )
 
