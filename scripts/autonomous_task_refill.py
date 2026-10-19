@@ -84,12 +84,13 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         catalog_ids.add(task["id"])
         normalized_catalog.append(task)
 
-    recovery = state.get("recovery_ai", {})
-    if not isinstance(recovery, dict):
-        raise ValueError("Recovery AI state must be an object")
-    recovery_tasks = recovery.get("tasks", {})
-    if not isinstance(recovery_tasks, dict):
-        raise ValueError("Recovery AI tasks state must be an object")
+    if "recovery_ai" not in state:
+        raise ValueError("Recovery AI state is missing")
+    recovery = state["recovery_ai"]
+    if (not isinstance(recovery, dict) or recovery.get("schema_version") != 1
+            or not isinstance(recovery.get("tasks"), dict) or "checkpoint" not in recovery):
+        raise ValueError("Recovery AI state is invalid")
+    recovery_tasks = recovery["tasks"]
     held_ids = set()
     for task_id, recovery_task in recovery_tasks.items():
         if not isinstance(task_id, str) or not isinstance(recovery_task, dict):
