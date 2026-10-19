@@ -30,7 +30,7 @@ def test_refill_adds_only_uncompleted_catalog_tasks_within_cap(tmp_path: Path):
         existing=[_task("task-existing")],
         candidates=[_task("task-new-one"), _task("task-new-two"), _task("task-new-three")],
     )
-    state = _write(tmp_path / "state.json", {"version": 1, "completed": ["task-new-two"]})
+    state = _write(tmp_path / "state.json", {"version": 1, "completed": ["task-new-two"], "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None}})
     output = tmp_path / "runtime.json"
 
     report = build_queue(queue, catalog, state, output)
