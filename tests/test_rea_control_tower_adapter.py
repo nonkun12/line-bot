@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+from unittest.mock import patch
+
+from scripts.rea_control_tower_adapter import prepare_rea_evidence
+
+
+SHA = "a" * 40
+
+
+def report(*, status="PASS", findings=None, target_sha=SHA, complete=True):
+    return {
+        "status": status,
+        "target_sha": target_sha,
+        "complete": complete,
+        "findings": findings or [],
+        "findings_count": len(findings or []),
+    }
+
+
+def finding(severity="HIGH"):
+    return {
+        "finding_id": "a" * 16,
+        "category": "python_syntax",
+        "severity": severity,
+        "evidence": {"path": "scripts/example.py", "line": 12},
+    }
+
+
+def test_rea_report_is_observation_only_and_sha_bound():
+    with patch("scripts.rea_control_tower_adapter.scan_repository", return_value=report(
+        status="FINDINGS", findings=[finding("HIGH")]
+    )):
+        result = prepare_rea_evidence(".", expected_sha=SHA)
+    assert result["gate"] == "PASS"
+    assert result["mode"] == "OBSERVE_ONLY"
+    assert result["finding_count"] == 1
+    assert result["execution_authorized"] is False
+    assert result["patch_authorized"] is False
+    assert result["hold_clear_authorized"] is False
+    assert result["merge_deploy_authorized"] is False
+
+
+def test_critical_finding_blocks_before_task_selection():
+    with patch("scripts.rea_control_tower_adapter.scan_repository", return_value=report(
+        status="FINDINGS", findings=[finding("CRITICAL")]
+    )):
+        result = prepare_rea_evidence(".", expected_sha=SHA)
+    assert result["gate"] == "BLOCKED"
+    assert result["reason_code"] == "rea_critical_finding"
+    assert result["execution_authorized"] is False
+
+
+def test_sha_mismatch_and_incomplete_scan_block():
+    with patch("scripts.rea_control_tower_adapter.scan_repository", return_value=report(target_sha="b" * 40)):
+        mismatch = prepare_rea_evidence(".", expected_sha=SHA)
+    assert mismatch["gate"] == "BLOCKED"
+    assert mismatch["reason_code"] == "rea_sha_mismatch"
+
+    with patch("scripts.rea_control_tower_adapter.scan_repository", return_value=report(complete=False, status="BLOCKED")):
+        incomplete = prepare_rea_evidence(".", expected_sha=SHA)
+    assert incomplete["gate"] == "BLOCKED"
+    assert incomplete["reason_code"] == "rea_scan_incomplete"
+
+
+def test_invalid_expected_sha_blocks_without_scanning():
+    with patch("scripts.rea_control_tower_adapter.scan_repository") as scan:
+        result = prepare_rea_evidence(".", expected_sha="not-a-sha")
+    scan.assert_not_called()
+    assert result["gate"] == "BLOCKED"
+    assert result["reason_code"] == "expected_sha_invalid"
