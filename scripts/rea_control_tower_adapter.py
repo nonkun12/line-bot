@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from scripts.rea_readonly_scanner import ScanBlocked, scan_repository
+from scripts.rea_readonly_scanner import scan_repository
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
