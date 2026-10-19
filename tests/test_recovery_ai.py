@@ -58,7 +58,10 @@ def test_failure_streak_resets_only_after_verified_success(tmp_path):
     store.record_failure("task-a", "timeout")
     with pytest.raises(ValueError):
         store.record_success("task-a", verified=False)
-    store.record_success("task-a", verified=True)
+    store.record_success("task-a", verified=True, evidence={
+        "task_id": "task-a", "base_sha": "a" * 40,
+        "produced_sha": "b" * 40, "run_nonce": "c" * 32,
+    })
     status = store.task_status("task-a")
     assert status["consecutive_failures"] == 0
     assert "last_success_at" in status
