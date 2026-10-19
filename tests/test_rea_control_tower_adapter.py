@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from scripts.rea_control_tower_adapter import prepare_rea_evidence
+from scripts.rea_control_tower_adapter import prepare_rea_evidence, rea_evidence_is_valid_pass
 
 
 SHA = "a" * 40
@@ -75,3 +75,30 @@ def test_invalid_expected_sha_blocks_without_scanning():
     scan.assert_not_called()
     assert result["gate"] == "BLOCKED"
     assert result["reason_code"] == "expected_sha_invalid"
+
+
+
+def test_execution_boundary_requires_complete_sha_bound_non_authorizing_pass():
+    evidence = {
+        "gate": "PASS",
+        "mode": "OBSERVE_ONLY",
+        "target_sha": SHA,
+        "scanner_status": "PASS",
+        "finding_count": 0,
+        "critical_count": 0,
+        "blocking_count": 0,
+        "findings": [],
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "hold_clear_authorized": False,
+        "merge_deploy_authorized": False,
+    }
+    assert rea_evidence_is_valid_pass(evidence, expected_sha=SHA)
+
+    assert not rea_evidence_is_valid_pass({**evidence, "target_sha": "b" * 40}, expected_sha=SHA)
+    assert not rea_evidence_is_valid_pass({**evidence, "blocking_count": 1}, expected_sha=SHA)
+    assert not rea_evidence_is_valid_pass({**evidence, "execution_authorized": True}, expected_sha=SHA)
+    assert not rea_evidence_is_valid_pass(
+        {key: value for key, value in evidence.items() if key != "blocking_count"},
+        expected_sha=SHA,
+    )
