@@ -563,6 +563,9 @@ def main() -> int:
     if args.max_tasks < 1 or args.max_tasks > 4:
         raise SystemExit("--max-tasks must be between 1 and 4")
 
+    # Bind selection to a repository snapshot taken before queue/state reads.
+    # The selector independently re-reads HEAD after those reads and blocks if it moved.
+    selection_evidence_sha = _git_head()
     queue_data = json.loads(QUEUE.read_text(encoding="utf-8"))
     queue_limit = int(queue_data.get("max_tasks_per_run", 3))
     if args.max_tasks > queue_limit:
@@ -605,8 +608,7 @@ def main() -> int:
             )
             return 80
 
-    # Snapshot identity is captured early; REA itself runs only immediately before an authorized launch.
-    selection_evidence_sha = _git_head()
+    # REA itself runs only immediately before an authorized launch.
     rea_evidence: dict[str, object] | None = None
 
     # Normal queue entries are authorized only against Git-versioned catalogs
