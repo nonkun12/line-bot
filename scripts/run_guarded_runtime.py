@@ -157,7 +157,13 @@ def _augment_with_hermes_advice(instruction: str, history_path: Path) -> str:
     return f"{instruction}\n\nUNTRUSTED HERMES ADVISORY:\n{bounded_advice}"
 
 
-def _write_summary(status: str, exit_code: int, start_sha: str, summary_path: Path) -> None:
+def _write_summary(
+    status: str,
+    exit_code: int,
+    start_sha: str,
+    summary_path: Path,
+    rea_evidence: dict[str, object] | None = None,
+) -> None:
     produced_sha = _git("rev-parse", "HEAD")
     branch = _git("branch", "--show-current")
     payload = {
@@ -171,6 +177,8 @@ def _write_summary(status: str, exit_code: int, start_sha: str, summary_path: Pa
         "task_id": os.environ.get("AUTONOMOUS_TASK_ID", ""),
         "run_nonce": os.environ.get("AUTONOMOUS_RUN_NONCE", ""),
     }
+    if rea_evidence is not None:
+        payload["rea"] = rea_evidence
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     github_env = os.environ.get("GITHUB_ENV")
@@ -185,12 +193,49 @@ def main() -> int:
     start_sha = _git("rev-parse", "HEAD")
     if not start_sha:
         return 1
+
+    # Run the shared, read-only REA gate before building an AI instruction or
+    # entering the development runtime. REA is diagnostic only and grants no
+    # task, patch, HOLD-clear, merge, or deploy authority.
+    summary_path = Path(os.environ.get("AUTONOMOUS_SUMMARY_PATH", "/tmp/autonomous_run_summary.json"))
+    rea_gate_valid = False
+    try:
+        from scripts.rea_control_tower_adapter import (
+            prepare_rea_evidence,
+            rea_evidence_is_valid_pass,
+        )
+        rea_evidence = prepare_rea_evidence(ROOT, expected_sha=start_sha)
+        rea_gate_valid = rea_evidence_is_valid_pass(rea_evidence, expected_sha=start_sha)
+    except Exception:
+        rea_evidence = {
+            "gate": "BLOCKED",
+            "reason_code": "rea_adapter_error",
+            "target_sha": None,
+            "scanner_status": "BLOCKED",
+            "finding_count": 0,
+            "critical_count": 0,
+            "blocking_count": 0,
+            "findings": [],
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        }
+
+    if not rea_gate_valid:
+        _write_summary("BLOCKED", 80, start_sha, summary_path, rea_evidence)
+        print(
+            "REA_GATE=BLOCKED reason="
+            + str(rea_evidence.get("reason_code", "gate_blocked"))[:80],
+            flush=True,
+        )
+        return 80
+
     worker.ask = guarded_ask
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
     history_path = Path(os.environ.get("SELF_IMPROVEMENT_HISTORY_PATH", "/tmp/line-bot-self-improvement.jsonl"))
     instruction = _augment_instruction_with_history(instruction, history_path)
     instruction = _augment_with_hermes_advice(instruction, history_path)
-    summary_path = Path(os.environ.get("AUTONOMOUS_SUMMARY_PATH", "/tmp/autonomous_run_summary.json"))
     exit_code = 1
     try:
         exit_code = runtime.execute(instruction)
@@ -199,7 +244,7 @@ def main() -> int:
         os.environ["AUTONOMOUS_RUNTIME_ERROR"] = f"{type(exc).__name__}: {exc}"
         raise
     finally:
-        _write_summary("PASS" if exit_code == 0 else "FAIL", exit_code, start_sha, summary_path)
+        _write_summary("PASS" if exit_code == 0 else "FAIL", exit_code, start_sha, summary_path, rea_evidence)
 
 
 if __name__ == "__main__":
