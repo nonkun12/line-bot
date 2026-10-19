@@ -102,6 +102,7 @@ def test_repair_once_is_a_plan_not_a_claim_of_execution():
         "rea": {"gate": "PASS", "target_sha": "a" * 40, "critical_count": 0,
                 "execution_authorized": False, "patch_authorized": False,
                 "hold_clear_authorized": False, "merge_deploy_authorized": False},
+        "control_tower": {"recorded": True},
         "recovery_ai": {"recorded": True, "decision": {"action": "REPAIR_ONCE"}},
     })
     assert decision["phase"] == "DIAGNOSE"
