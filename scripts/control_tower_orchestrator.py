@@ -60,6 +60,10 @@ def coordinate_outcome(result: object) -> dict[str, Any]:
     ):
         return _decision("STOP", "STOP_AND_REPORT", "rea_evidence_missing_or_invalid", False, task_id)
 
+    observation = result.get("control_tower")
+    if not isinstance(observation, dict) or observation.get("recorded") is not True:
+        return _decision("STOP", "STOP_AND_REPORT", "control_tower_observation_missing", False, task_id)
+
     recovery = result.get("recovery_ai")
     if not isinstance(recovery, dict) or recovery.get("recorded") is not True:
         return _decision("STOP", "STOP_AND_REPORT", "recovery_evidence_missing", False)
