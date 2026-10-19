@@ -635,7 +635,9 @@ def test_rea_adapter_exception_blocks_minimal_loop_task_execution(monkeypatch, t
         ),
     )
 
-    assert loop.main() == 80
+    # The result row keeps the REA-specific exit code, while the shared
+    # post-run orchestration path returns its fail-closed process exit code.
+    assert loop.main() == 1
     rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
     assert len(rows) == 1
     assert rows[0]["status"] == "BLOCKED"
@@ -643,8 +645,10 @@ def test_rea_adapter_exception_blocks_minimal_loop_task_execution(monkeypatch, t
     assert rows[0]["failure_reason"] == "control_tower_rea:rea_adapter_error"
     assert rows[0]["rea"]["reason_code"] == "rea_adapter_error"
     assert rows[0]["rea"]["execution_authorized"] is False
+    # A preflight block is not counted as a task failure, but Control Tower
+    # must still persist the BLOCKED observation for auditability.
     assert not (tmp_path / "recovery-ai-state.json").exists()
-    assert not (tmp_path / "control-tower-observations.jsonl").exists()
+    assert (tmp_path / "control-tower-observations.jsonl").exists()
 
 
 def test_authorization_denial_skips_rea_and_clears_task_evidence(monkeypatch, tmp_path: Path):
