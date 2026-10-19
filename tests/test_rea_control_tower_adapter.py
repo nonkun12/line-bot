@@ -85,6 +85,7 @@ def test_execution_boundary_requires_complete_sha_bound_non_authorizing_pass():
         "target_sha": SHA,
         "scanner_status": "PASS",
         "finding_count": 0,
+        "findings_truncated": False,
         "critical_count": 0,
         "blocking_count": 0,
         "findings": [],
