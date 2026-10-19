@@ -454,3 +454,88 @@ def test_distributed_loop_workflow_legacy_label_uses_one_task_limit():
     workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     assert 'elif [ "${EVENT_NAME}" = "pull_request_target" ]; then\n            # Legacy max4 label remains accepted, but runtime safely supports one normal task.\n            expected="1"' in workflow
     assert 'requested="${MAX_TASKS:-1}"' in workflow
+
+
+
+def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: Path):
+    from types import SimpleNamespace
+
+    sha = "a" * 40
+    task = {
+        "id": "rea-block-regression",
+        "instruction": "must not execute",
+        "allowed_paths": ["tests/test_one.py"],
+    }
+    queue = tmp_path / "queue.json"
+    queue.write_text('{"max_tasks_per_run": 1}', encoding="utf-8")
+    results = tmp_path / "results.jsonl"
+    state = tmp_path / "loop-state.json"
+
+    monkeypatch.setattr(loop, "QUEUE", queue)
+    monkeypatch.setattr(loop, "load_completed", lambda _path: set())
+    monkeypatch.setattr(loop, "load_tasks", lambda: [task])
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [task])
+    monkeypatch.setattr(
+        loop.sys,
+        "argv",
+        [
+            "run_minimal_autonomous_loop",
+            "--max-tasks",
+            "1",
+            "--state",
+            str(state),
+            "--results",
+            str(results),
+        ],
+    )
+
+    from scripts import control_tower_loop_adapter, rea_control_tower_adapter
+    from scripts.recovery_ai import RecoveryStore
+
+    monkeypatch.setattr(RecoveryStore, "task_status", lambda self, _task_id: {})
+    monkeypatch.setattr(
+        "core.control_tower_selector.select_next_task",
+        lambda *args, **kwargs: SimpleNamespace(
+            next_action="SELECT_REGISTERED_TASK",
+            task_template_id=task["id"],
+            reason_code="selected",
+        ),
+    )
+    monkeypatch.setattr(
+        control_tower_loop_adapter,
+        "authorize_registered_task",
+        lambda *_args: (True, "authorized"),
+    )
+    monkeypatch.setattr(
+        rea_control_tower_adapter,
+        "prepare_rea_evidence",
+        lambda _root, expected_sha: {
+            "gate": "BLOCKED",
+            "reason_code": "test_block",
+            "target_sha": expected_sha,
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
+    )
+    monkeypatch.setattr(
+        rea_control_tower_adapter,
+        "rea_evidence_is_valid_pass",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        loop,
+        "run_task",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("run_task must not be called when REA is BLOCKED")
+        ),
+    )
+
+    assert loop.main() == 80
+    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["status"] == "BLOCKED"
+    assert rows[0]["exit_code"] == 80
+    assert rows[0]["failure_reason"] == "control_tower_rea:test_block"
