@@ -501,6 +501,34 @@ def run_task(
             failure_reason = "summary_produced_sha_mismatch"
         elif payload.get("status") == "NO_CHANGE" and produced_sha != base_sha:
             failure_reason = "summary_no_change_but_head_moved"
+    elif payload and exit_code == 80 and not failure_reason:
+        # Exit 80 is BLOCKED only with a fresh identity-bound summary and
+        # matching observed HEAD; never trust the process code alone.
+        if payload.get("status") != "BLOCKED":
+            failure_reason = "summary_status_invalid"
+        elif payload.get("produced_sha") != produced_sha:
+            failure_reason = "summary_produced_sha_mismatch"
+        elif not isinstance(payload.get("rea"), dict):
+            failure_reason = "blocked_summary_missing_rea_evidence"
+        else:
+            rea = payload["rea"]
+            # BLOCKED evidence is untrusted child-process output. It must carry
+            # an explicit blocked gate and deny every authority; a dict alone
+            # must never be accepted as evidence of a safe stop.
+            if (
+                rea.get("gate") != "BLOCKED"
+                or not isinstance(rea.get("reason_code"), str)
+                or not rea.get("reason_code").strip()
+                or rea.get("execution_authorized") is not False
+                or rea.get("patch_authorized") is not False
+                or rea.get("hold_clear_authorized") is not False
+                or rea.get("merge_deploy_authorized") is not False
+            ):
+                failure_reason = "blocked_summary_rea_evidence_invalid"
+            elif payload.get("failure_reason") != f"control_tower_rea:{rea['reason_code']}":
+                # Keep the human/report reason bound to the exact REA evidence.
+                # A child cannot claim a valid block but omit or substitute its reason.
+                failure_reason = "blocked_summary_failure_reason_invalid"
 
     # A zero exit code with an unchanged HEAD is the only valid NO_CHANGE.
     # A failed runtime must never be reclassified as NO_CHANGE merely because
@@ -509,7 +537,7 @@ def run_task(
     if exit_code == 0 and produced_sha == base_sha and _valid_sha(base_sha):
         failure_reason = failure_reason or "no_change"
         status = "NO_CHANGE"
-    elif exit_code != 0 and not failure_reason:
+    elif exit_code != 0 and not failure_reason and exit_code != 80:
         failure_reason = "task_runtime_failed"
 
     if exit_code == 0 and not failure_reason:
@@ -517,7 +545,9 @@ def run_task(
         if not verified:
             failure_reason = reason
 
-    if exit_code != 0 or failure_reason:
+    if exit_code == 80 and not failure_reason and payload.get("status") == "BLOCKED":
+        status = "BLOCKED"
+    elif exit_code != 0 or failure_reason:
         if failure_reason == "no_change" and exit_code == 0:
             status = "NO_CHANGE"
         elif failure_reason == "task_timeout":
@@ -536,7 +566,8 @@ def run_task(
         "exit_code": exit_code,
         "base_sha": base_sha,
         "produced_sha": produced_sha,
-        "failure_reason": failure_reason,
+        "failure_reason": (str(payload.get("failure_reason", "")) if status == "BLOCKED" else failure_reason),
+        **({"rea": payload["rea"]} if status == "BLOCKED" and isinstance(payload.get("rea"), dict) else {}),
     }
 
 
@@ -930,6 +961,9 @@ def main() -> int:
                     "merge_deploy_authorized": False,
                 }
             if not rea_gate_valid:
+                # Keep the hard stop, but pass the BLOCKED evidence through the
+                # same Recovery AI and Control Tower persistence path as other
+                # outcomes. Do not execute the task or bypass the final gates.
                 result = {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "run_index": index,
@@ -941,17 +975,16 @@ def main() -> int:
                     "failure_reason": "control_tower_rea:" + str(rea_evidence.get("reason_code", "gate_blocked")),
                     "rea": rea_evidence,
                 }
-                with args.results.open("a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(result, ensure_ascii=False) + "\n")
                 print("MINIMAL_LOOP=BLOCKED reason=control_tower_rea", flush=True)
-                return 80
-            print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
-            result = run_task(
-                task, index, args.stop_file, expected_base_sha=control_tower_head
-            )
+            else:
+                print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
+                result = run_task(
+                    task, index, args.stop_file, expected_base_sha=control_tower_head
+                )
         # Carry the exact preflight REA evidence into the Control Tower decision.
         # This is diagnostic metadata only and grants no execution or repair authority.
-        result["rea"] = rea_evidence
+        if not isinstance(result.get("rea"), dict):
+            result["rea"] = rea_evidence
         recovery_error = False
         try:
             from scripts.recovery_ai_loop_adapter import record_loop_outcome
@@ -962,9 +995,9 @@ def main() -> int:
             # Do not report PASS or proceed to another task unless the recovery
             # decision can be durably recorded and read back.
             recovery_error = True
-            result["status"] = "FAIL"
-            result["exit_code"] = 1
-            result["failure_reason"] = "recovery_ai_state_persist_failed"
+            # Preserve the underlying outcome, especially REA BLOCKED; the
+            # persistence failure is separate and still forces a hard stop.
+            result["persistence_failure"] = "recovery_ai_state_persist_failed"
             result["recovery_ai"] = {
                 "recorded": False,
                 "reason": "state_persistence_failed",
@@ -984,6 +1017,7 @@ def main() -> int:
                 "proposal_executable": False,
             }
         result["control_tower"] = observation
+        observation_error = not (isinstance(observation, dict) and observation.get("recorded") is True)
 
         try:
             from scripts.control_tower_orchestrator import coordinate_outcome
@@ -1036,6 +1070,13 @@ def main() -> int:
 
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(result, ensure_ascii=False) + "\n")
+
+        if observation_error:
+            print(
+                f"MINIMAL_LOOP:HALT task={task['id']} reason=control_tower_observation_persist_failed",
+                flush=True,
+            )
+            return 1
 
         if recovery_error:
             print(
