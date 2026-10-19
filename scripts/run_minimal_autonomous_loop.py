@@ -287,9 +287,11 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
                 "instruction": instruction,
                 "allowed_paths": [item.strip() for item in allowed_paths],
             }
-            previous = definitions.get(task_id)
-            if previous is not None and previous != normalized:
-                raise ValueError("conflicting versioned task definitions")
+            # A task ID must occur exactly once across all trusted catalogs.
+            # Even byte-for-byte identical duplicates are ambiguous configuration
+            # and must not be silently collapsed into one executable definition.
+            if task_id in definitions:
+                raise ValueError("duplicate versioned task ID")
             definitions[task_id] = normalized
     return list(definitions.values())
 
