@@ -106,11 +106,12 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
     store = RecoveryStore(state_path)
     status = str(result.get("status", "")).upper()
     failure_reason = str(result.get("failure_reason", "")).strip().lower()
-    # A preflight authorization denial or launch-time HEAD race means no task
-    # actually ran. Record it in the loop report, but do not count it as a task
-    # failure or trip Recovery AI's repeated-failure HOLD circuit breaker.
+    # A preflight authorization denial, REA diagnostic block, or launch-time
+    # HEAD race means no task actually ran. Keep it in the loop report, but do
+    # not count it as a task failure or trip Recovery AI's HOLD circuit breaker.
     if status == "BLOCKED" and (
         failure_reason.startswith("control_tower_gate:")
+        or failure_reason.startswith("control_tower_rea:")
         or failure_reason == "control_tower_head_changed"
     ):
         return {

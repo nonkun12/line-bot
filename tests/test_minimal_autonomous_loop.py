@@ -138,6 +138,97 @@ def test_invalid_summary_halts(monkeypatch, tmp_path: Path):
     assert result["failure_reason"] == "summary_not_object"
 
 
+def _write_blocked_summary(env, summary: Path, *, rea: dict[str, object], sha: str) -> None:
+    summary.write_text(
+        json.dumps({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "BLOCKED",
+            "exit_code": 80,
+            "base_sha": sha,
+            "produced_sha": sha,
+            "task_id": "blocked-summary-test",
+            "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+            "failure_reason": "control_tower_rea:test_block",
+            "rea": rea,
+        }),
+        encoding="utf-8",
+    )
+
+
+def test_blocked_summary_requires_authority_denials(monkeypatch, tmp_path: Path):
+    task = {"id": "blocked-summary-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
+    sha = "a" * 40
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
+        _write_blocked_summary(env, summary, rea={
+            "gate": "BLOCKED",
+            "reason_code": "test_block",
+            "execution_authorized": True,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        }, sha=sha)
+        return _FakeProcess(env, lambda _: None, returncode=80)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "blocked_summary_rea_evidence_invalid"
+
+
+def test_valid_blocked_summary_remains_blocked(monkeypatch, tmp_path: Path):
+    task = {"id": "blocked-summary-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
+    sha = "a" * 40
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
+        _write_blocked_summary(env, summary, rea={
+            "gate": "BLOCKED",
+            "reason_code": "test_block",
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        }, sha=sha)
+        return _FakeProcess(env, lambda _: None, returncode=80)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+    assert result["status"] == "BLOCKED"
+    assert result["exit_code"] == 80
+    assert result["failure_reason"] == "control_tower_rea:test_block"
+    assert result["rea"]["execution_authorized"] is False
+
+
+def test_blocked_summary_failure_reason_must_match_rea_evidence(monkeypatch, tmp_path: Path):
+    task = {"id": "blocked-summary-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
+    sha = "a" * 40
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
+        _write_blocked_summary(env, summary, rea={
+            "gate": "BLOCKED",
+            "reason_code": "test_block",
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        }, sha=sha)
+        payload = json.loads(summary.read_text(encoding="utf-8"))
+        payload["failure_reason"] = ""
+        summary.write_text(json.dumps(payload), encoding="utf-8")
+        return _FakeProcess(env, lambda _: None, returncode=80)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "blocked_summary_failure_reason_invalid"
+
+
 def test_no_change_is_not_pass(monkeypatch, tmp_path: Path):
     task = {"id": "no-change-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
     sha = "b" * 40
@@ -490,7 +581,13 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
         ],
     )
 
-    from scripts import control_tower_loop_adapter, rea_control_tower_adapter
+    from scripts import (
+        control_tower_loop_adapter,
+        control_tower_loop_observer,
+        control_tower_orchestrator,
+        rea_control_tower_adapter,
+        recovery_ai_loop_adapter,
+    )
     from scripts.recovery_ai import RecoveryStore
 
     monkeypatch.setattr(RecoveryStore, "task_status", lambda self, _task_id: {})
@@ -525,6 +622,22 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
         "rea_evidence_is_valid_pass",
         lambda *_args, **_kwargs: False,
     )
+    persisted = []
+    monkeypatch.setattr(
+        recovery_ai_loop_adapter,
+        "record_loop_outcome",
+        lambda _path, result: persisted.append(("recovery", result["status"])) or {"recorded": False, "reason": "preflight_blocked_not_task_failure"},
+    )
+    monkeypatch.setattr(
+        control_tower_loop_observer,
+        "record_loop_observation",
+        lambda _path, result: persisted.append(("control_tower", result["status"])) or {"recorded": True, "proposal_executable": False},
+    )
+    monkeypatch.setattr(
+        control_tower_orchestrator,
+        "coordinate_outcome",
+        lambda result: {"phase": "STOP", "next_action": "STOP_AND_REPORT", "reason_code": "rea_blocked", "allow_continue": False, "repair_executed": False},
+    )
     monkeypatch.setattr(
         loop,
         "run_task",
@@ -533,12 +646,16 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
         ),
     )
 
-    assert loop.main() == 80
+    assert loop.main() == 1
     rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
     assert len(rows) == 1
     assert rows[0]["status"] == "BLOCKED"
     assert rows[0]["exit_code"] == 80
     assert rows[0]["failure_reason"] == "control_tower_rea:test_block"
+    assert rows[0]["recovery_ai"] == {"recorded": False, "reason": "preflight_blocked_not_task_failure"}
+    assert rows[0]["control_tower"]["recorded"] is True
+    assert rows[0]["control_tower"]["orchestration"]["allow_continue"] is False
+    assert persisted == [("recovery", "BLOCKED"), ("control_tower", "BLOCKED")]
 
 
 def test_rea_adapter_exception_blocks_minimal_loop_task_execution(monkeypatch, tmp_path: Path):
@@ -609,7 +726,9 @@ def test_rea_adapter_exception_blocks_minimal_loop_task_execution(monkeypatch, t
         ),
     )
 
-    assert loop.main() == 80
+    # The result row keeps the REA-specific exit code, while the shared
+    # post-run orchestration path returns its fail-closed process exit code.
+    assert loop.main() == 1
     rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
     assert len(rows) == 1
     assert rows[0]["status"] == "BLOCKED"
@@ -617,8 +736,10 @@ def test_rea_adapter_exception_blocks_minimal_loop_task_execution(monkeypatch, t
     assert rows[0]["failure_reason"] == "control_tower_rea:rea_adapter_error"
     assert rows[0]["rea"]["reason_code"] == "rea_adapter_error"
     assert rows[0]["rea"]["execution_authorized"] is False
+    # A preflight block is not counted as a task failure, but Control Tower
+    # must still persist the BLOCKED observation for auditability.
     assert not (tmp_path / "recovery-ai-state.json").exists()
-    assert not (tmp_path / "control-tower-observations.jsonl").exists()
+    assert (tmp_path / "control-tower-observations.jsonl").exists()
 
 
 def test_authorization_denial_skips_rea_and_clears_task_evidence(monkeypatch, tmp_path: Path):
