@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from scripts import run_guarded_runtime as guarded_runtime
 from scripts.run_guarded_runtime import guarded_ask
 
 
@@ -86,3 +87,71 @@ def test_guarded_ask_recovers_on_third_attempt_and_uses_stricter_prompt():
     assert json.loads(content) == {"file": "tests/test_management_router.py"}
     assert len(client.completions.calls) == 3
     assert "smallest valid JSON object" in client.completions.calls[2]["messages"][0]["content"]
+
+
+
+def test_common_runtime_rea_block_prevents_development_execution(monkeypatch, tmp_path):
+    sha = "a" * 40
+    rea = {
+        "gate": "BLOCKED",
+        "reason_code": "rea_high_or_critical_finding",
+        "target_sha": sha,
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "hold_clear_authorized": False,
+        "merge_deploy_authorized": False,
+    }
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: sha)
+    monkeypatch.setattr(
+        "scripts.rea_control_tower_adapter.prepare_rea_evidence",
+        lambda root, expected_sha: rea,
+    )
+    monkeypatch.setattr(
+        guarded_runtime.runtime,
+        "execute",
+        lambda instruction: (_ for _ in ()).throw(AssertionError("runtime must not execute")),
+    )
+    summary_path = tmp_path / "summary.json"
+    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(summary_path))
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+
+    assert guarded_runtime.main() == 80
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "BLOCKED"
+    assert summary["exit_code"] == 80
+    assert summary["rea"] == rea
+
+
+def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
+    sha = "b" * 40
+    rea = {
+        "gate": "PASS",
+        "mode": "OBSERVE_ONLY",
+        "target_sha": sha,
+        "critical_count": 0,
+        "blocking_count": 0,
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "hold_clear_authorized": False,
+        "merge_deploy_authorized": False,
+    }
+    monkeypatch.setattr(
+        guarded_runtime,
+        "_git",
+        lambda *args: sha if args == ("rev-parse", "HEAD") else "test-branch",
+    )
+    monkeypatch.setattr(
+        "scripts.rea_control_tower_adapter.prepare_rea_evidence",
+        lambda root, expected_sha: rea,
+    )
+    monkeypatch.setattr(guarded_runtime, "_augment_instruction_with_history", lambda instruction, path: instruction)
+    monkeypatch.setattr(guarded_runtime, "_augment_with_hermes_advice", lambda instruction, path: instruction)
+    monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda instruction: 0)
+    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(tmp_path / "summary.json"))
+    monkeypatch.setenv("DEV_INSTRUCTION", "safe test instruction")
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+
+    assert guarded_runtime.main() == 0
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert summary["status"] == "PASS"
+    assert summary["rea"] == rea
