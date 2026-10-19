@@ -1,4 +1,4 @@
-""""Bind read-only REA evidence to the Control Tower's pre-execution HEAD.
+"""Bind read-only REA evidence to the Control Tower's pre-execution HEAD.
 
 This adapter is diagnostic only. It cannot authorize task IDs, clear HOLD,
 write queues/state, patch files, or merge/deploy.
