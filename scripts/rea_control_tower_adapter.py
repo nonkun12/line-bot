@@ -113,18 +113,30 @@ def rea_evidence_is_valid_pass(evidence: object, *, expected_sha: str) -> bool:
         return False
     if not isinstance(evidence, dict):
         return False
+    findings = evidence.get("findings")
+    finding_count = evidence.get("finding_count")
+    findings_truncated = evidence.get("findings_truncated")
     if (
         evidence.get("gate") != "PASS"
         or evidence.get("mode") != "OBSERVE_ONLY"
         or evidence.get("target_sha") != expected_sha
         or evidence.get("scanner_status") not in {"PASS", "FINDINGS"}
-        or type(evidence.get("finding_count")) is not int
-        or evidence.get("finding_count") < 0
+        or type(finding_count) is not int
+        or finding_count < 0
+        or not isinstance(findings, list)
+        or len(findings) > 100
+        or type(findings_truncated) is not bool
+        or finding_count < len(findings)
+        or (not findings_truncated and finding_count != len(findings))
+        or any(
+            not isinstance(finding, dict)
+            or finding.get("severity") not in {"LOW", "MEDIUM"}
+            for finding in findings
+        )
         or type(evidence.get("critical_count")) is not int
         or evidence.get("critical_count") != 0
         or type(evidence.get("blocking_count")) is not int
         or evidence.get("blocking_count") != 0
-        or not isinstance(evidence.get("findings"), list)
         or evidence.get("execution_authorized") is not False
         or evidence.get("patch_authorized") is not False
         or evidence.get("hold_clear_authorized") is not False
