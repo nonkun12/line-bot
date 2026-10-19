@@ -16,6 +16,28 @@ def test_queue_is_nonempty_and_run_limit_is_bounded():
     assert all(task["id"] and task["instruction"] and task["allowed_paths"] for task in tasks)
 
 
+def test_selection_head_snapshot_precedes_queue_read(monkeypatch):
+    events = []
+
+    class _Queue:
+        def read_text(self, encoding="utf-8"):
+            events.append("queue")
+            return json.dumps({"max_tasks_per_run": 1})
+
+    monkeypatch.setattr(loop, "QUEUE", _Queue())
+    monkeypatch.setattr(loop, "_git_head", lambda: events.append("head") or "a" * 40)
+    monkeypatch.setattr(loop.sys, "argv", ["run_minimal_autonomous_loop", "--max-tasks", "4"])
+
+    try:
+        loop.main()
+    except SystemExit as exc:
+        assert "exceeds queue max_tasks_per_run" in str(exc)
+    else:
+        raise AssertionError("expected run-limit rejection")
+
+    assert events == ["head", "queue"]
+
+
 def test_deterministic_target_resolves_when_project_root_is_not_on_sys_path(monkeypatch):
     root_text = str(loop.ROOT)
     monkeypatch.setattr(loop.sys, "path", [entry for entry in loop.sys.path if entry != root_text])
