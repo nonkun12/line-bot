@@ -525,6 +525,10 @@ def run_task(
                 or rea.get("merge_deploy_authorized") is not False
             ):
                 failure_reason = "blocked_summary_rea_evidence_invalid"
+            elif payload.get("failure_reason") != f"control_tower_rea:{rea['reason_code']}":
+                # Keep the human/report reason bound to the exact REA evidence.
+                # A child cannot claim a valid block but omit or substitute its reason.
+                failure_reason = "blocked_summary_failure_reason_invalid"
 
     # A zero exit code with an unchanged HEAD is the only valid NO_CHANGE.
     # A failed runtime must never be reclassified as NO_CHANGE merely because
