@@ -35,7 +35,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const featureGrid=document.getElementById('featureGrid');
       featureGrid.innerHTML=featureOrder.map(([key,title,baseDetail])=>{
         const f=features[key]||{}, status=f.status||'unknown';
-        return `<div class="system-card"><div class="system-card-title">${icons[key]||'🤖'} ${esc(title)}</div><div class="system-status">${label(status)}</div><div class="system-details">${esc(f.detail||baseDetail)}</div></div>`;
+        const displayStatus = key === 'management_ai' && status === 'online' ? 'configured' : status;
+        const detail = key === 'management_ai' && status === 'online'
+          ? '統合AIの登録を確認済み。実際の稼働・タスク処理成功は実行証拠で別途確認します。'
+          : (f.detail||baseDetail);
+        return `<div class="system-card"><div class="system-card-title">${icons[key]||'🤖'} ${esc(title)}</div><div class="system-status">${label(displayStatus)}</div><div class="system-details">${esc(detail)}</div></div>`;
       }).join('');
       try {
         const lr=await fetch(api('/api/dashboard/loop')); const ld=await lr.json();
@@ -61,10 +65,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       const distributed=d.distributed_ai||{};
       const specialists=distributed.specialists||[];
-      const onlineCount=specialists.filter(x=>x.status==='online').length;
+      const registeredCount=specialists.filter(x=>x.status==='online').length;
       const plannedCount=specialists.filter(x=>x.status==='planned').length;
       const summary=document.getElementById('distributedAiSummary');
-      if(summary) summary.textContent=`分散AI ${onlineCount}稼働 ・ ${plannedCount}開発中`;
+      if(summary) summary.textContent=`分散AI 登録・承認済み ${registeredCount} ・ 開発中 ${plannedCount}（実稼働は別途証拠確認）`;
       const messageSummary=document.getElementById('agentMessageSummary');
       if(messageSummary) messageSummary.textContent=distributed.message_bus
         ? `メッセージバス: 有効 ・ ${esc(distributed.architecture||'統合AI → 分散AI → 結果回収 → 再指示')}`
