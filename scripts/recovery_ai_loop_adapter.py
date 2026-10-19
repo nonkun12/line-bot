@@ -111,6 +111,7 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
     # failure or trip Recovery AI's repeated-failure HOLD circuit breaker.
     if status == "BLOCKED" and (
         failure_reason.startswith("control_tower_gate:")
+        or failure_reason.startswith("control_tower_rea:")
         or failure_reason == "control_tower_head_changed"
     ):
         return {
