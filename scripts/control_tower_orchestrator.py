@@ -63,13 +63,23 @@ def coordinate_outcome(result: object) -> dict[str, Any]:
             return _decision("STOP", "STOP_AND_REPORT", "recovery_verification_mismatch", False)
         observation = result.get("control_tower")
         observation_ok = isinstance(observation, dict) and observation.get("recorded") is True
+        if not observation_ok:
+            # The Control Tower audit trail is part of the safety evidence.
+            # Never advance the queue when its durable observation is missing.
+            return _decision(
+                "STOP",
+                "STOP_AND_REPORT",
+                "control_tower_observation_missing",
+                False,
+                task_id,
+            )
         return {
             "phase": "REPORT",
             "next_action": "REPORT_VERIFIED_SUCCESS",
             "reason_code": "verified_success",
             "allow_continue": True,
             "task_id": task_id,
-            "observation_degraded": not observation_ok,
+            "observation_degraded": False,
             "repair_executed": False,
         }
 
