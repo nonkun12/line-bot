@@ -17,7 +17,7 @@ def candidate(word):
 
 
 def test_refill_plan_is_bounded_and_never_authorizes_runtime_mutation():
-    candidates = [candidate(f"word{i}") for i in range(6)]
+    candidates = [candidate(word) for word in ("alpha", "bravo", "charlie", "delta", "echo", "foxtrot")]
     plan = build_refill_plan(candidates, set(), limit=4, target=1000)
     assert len(plan["tasks"]) == 4
     assert plan["truncated"] is True
