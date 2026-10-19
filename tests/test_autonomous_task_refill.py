@@ -133,3 +133,60 @@ def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):
     )
     with pytest.raises(ValueError, match="duplicate"):
         build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+
+
+
+def test_refill_skips_recovery_ai_held_catalog_tasks(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        candidates=[
+            _task("task-held-one"),
+            _task("task-ready-one"),
+            _task("task-held-two"),
+        ],
+    )
+    state = _write(
+        tmp_path / "state.json",
+        {
+            "version": 1,
+            "completed": [],
+            "recovery_ai": {
+                "schema_version": 1,
+                "tasks": {
+                    "task-held-one": {"held": True},
+                    "task-held-two": {"held": True},
+                    "task-ready-one": {"held": False},
+                },
+                "checkpoint": None,
+            },
+        },
+    )
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, state, output)
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["added_ids"] == ["task-ready-one"]
+    assert [task["id"] for task in result["tasks"]] == ["task-ready-one"]
+
+
+def test_refill_fails_closed_on_invalid_recovery_ai_held_flag(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        candidates=[_task("task-ready-one")],
+    )
+    state = _write(
+        tmp_path / "state.json",
+        {
+            "version": 1,
+            "completed": [],
+            "recovery_ai": {
+                "schema_version": 1,
+                "tasks": {"task-ready-one": {"held": "false"}},
+                "checkpoint": None,
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match="held flag"):
+        build_queue(queue, catalog, state, tmp_path / "runtime.json")
