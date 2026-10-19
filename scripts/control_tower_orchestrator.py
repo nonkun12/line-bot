@@ -47,21 +47,7 @@ def coordinate_outcome(result: object) -> dict[str, Any]:
     # must describe the same base SHA; it remains advisory and cannot grant rights.
     rea = result.get("rea")
     base_sha = result.get("base_sha")
-    if (
-        not isinstance(rea, dict)
-        or rea.get("gate") != "PASS"
-        or not isinstance(base_sha, str)
-        or not _SHA_RE.fullmatch(base_sha)
-        or rea.get("target_sha") != base_sha
-        or type(rea.get("critical_count")) is not int
-        or rea.get("critical_count") != 0
-        or type(rea.get("blocking_count")) is not int
-        or rea.get("blocking_count") != 0
-        or rea.get("execution_authorized") is not False
-        or rea.get("patch_authorized") is not False
-        or rea.get("hold_clear_authorized") is not False
-        or rea.get("merge_deploy_authorized") is not False
-    ):
+    if not rea_evidence_is_valid_pass(rea, expected_sha=base_sha):
         return _decision("STOP", "STOP_AND_REPORT", "rea_evidence_missing_or_invalid", False, task_id)
 
     observation = result.get("control_tower")
