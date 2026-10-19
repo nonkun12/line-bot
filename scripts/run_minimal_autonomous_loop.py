@@ -932,7 +932,7 @@ def main() -> int:
                     "rea": rea_evidence,
                 }
                 with args.results.open("a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(result, ensure_ascii=False) + "\\n")
+                    fh.write(json.dumps(result, ensure_ascii=False) + "\n")
                 print("MINIMAL_LOOP=BLOCKED reason=control_tower_rea", flush=True)
                 return 80
             print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
