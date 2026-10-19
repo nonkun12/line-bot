@@ -122,6 +122,39 @@ def test_common_runtime_rea_block_prevents_development_execution(monkeypatch, tm
     assert summary["rea"] == rea
 
 
+def test_common_runtime_rea_adapter_exception_blocks_development_execution(monkeypatch, tmp_path):
+    sha = "a" * 40
+    rea = {
+        "gate": "BLOCKED",
+        "reason_code": "rea_high_or_critical_finding",
+        "target_sha": sha,
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "hold_clear_authorized": False,
+        "merge_deploy_authorized": False,
+    }
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: sha)
+    monkeypatch.setattr(
+        "scripts.rea_control_tower_adapter.prepare_rea_evidence",
+        lambda root, expected_sha: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    monkeypatch.setattr(
+        guarded_runtime.runtime,
+        "execute",
+        lambda instruction: (_ for _ in ()).throw(AssertionError("runtime must not execute")),
+    )
+    summary_path = tmp_path / "summary.json"
+    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(summary_path))
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+
+    assert guarded_runtime.main() == 80
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "BLOCKED"
+    assert summary["exit_code"] == 80
+    assert summary["rea"]["reason_code"] == "rea_adapter_error"
+    assert summary["rea"]["execution_authorized"] is False
+
+
 def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     sha = "b" * 40
     rea = {
