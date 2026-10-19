@@ -18,7 +18,7 @@ def report(*, status="PASS", findings=None, target_sha=SHA, complete=True):
     }
 
 
-def finding(severity="HIGH"):
+def finding(severity="MEDIUM"):
     return {
         "finding_id": "a" * 16,
         "category": "python_syntax",
@@ -29,26 +29,32 @@ def finding(severity="HIGH"):
 
 def test_rea_report_is_observation_only_and_sha_bound():
     with patch("scripts.rea_control_tower_adapter.scan_repository", return_value=report(
-        status="FINDINGS", findings=[finding("HIGH")]
+        status="FINDINGS", findings=[finding("MEDIUM")]
     )):
         result = prepare_rea_evidence(".", expected_sha=SHA)
     assert result["gate"] == "PASS"
     assert result["mode"] == "OBSERVE_ONLY"
     assert result["finding_count"] == 1
+    assert result["blocking_count"] == 0
     assert result["execution_authorized"] is False
     assert result["patch_authorized"] is False
     assert result["hold_clear_authorized"] is False
     assert result["merge_deploy_authorized"] is False
 
 
-def test_critical_finding_blocks_before_task_selection():
-    with patch("scripts.rea_control_tower_adapter.scan_repository", return_value=report(
-        status="FINDINGS", findings=[finding("CRITICAL")]
-    )):
-        result = prepare_rea_evidence(".", expected_sha=SHA)
-    assert result["gate"] == "BLOCKED"
-    assert result["reason_code"] == "rea_critical_finding"
-    assert result["execution_authorized"] is False
+def test_high_and_critical_findings_block_before_task_launch():
+    for severity in ("HIGH", "CRITICAL"):
+        with patch("scripts.rea_control_tower_adapter.scan_repository", return_value=report(
+            status="FINDINGS", findings=[finding(severity)]
+        )):
+            result = prepare_rea_evidence(".", expected_sha=SHA)
+        assert result["gate"] == "BLOCKED"
+        assert result["reason_code"] == "rea_high_or_critical_finding"
+        assert result["blocking_count"] == 1
+        assert result["execution_authorized"] is False
+        assert result["patch_authorized"] is False
+        assert result["hold_clear_authorized"] is False
+        assert result["merge_deploy_authorized"] is False
 
 
 def test_sha_mismatch_and_incomplete_scan_block():
