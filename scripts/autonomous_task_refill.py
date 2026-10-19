@@ -84,10 +84,28 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         catalog_ids.add(task["id"])
         normalized_catalog.append(task)
 
+    recovery = state.get("recovery_ai", {})
+    if not isinstance(recovery, dict):
+        raise ValueError("Recovery AI state must be an object")
+    recovery_tasks = recovery.get("tasks", {})
+    if not isinstance(recovery_tasks, dict):
+        raise ValueError("Recovery AI tasks state must be an object")
+    held_ids = set()
+    for task_id, recovery_task in recovery_tasks.items():
+        if not isinstance(task_id, str) or not isinstance(recovery_task, dict):
+            raise ValueError("invalid Recovery AI task state")
+        held = recovery_task.get("held", False)
+        if not isinstance(held, bool):
+            raise ValueError("invalid Recovery AI held flag")
+        if held:
+            held_ids.add(task_id)
+
     completed_ids = set(completed)
     additions = [
         task for task in normalized_catalog
-        if task["id"] not in original_ids and task["id"] not in completed_ids
+        if task["id"] not in original_ids
+        and task["id"] not in completed_ids
+        and task["id"] not in held_ids
     ][:cap]
     # Preserve every validated queued task, then append only a bounded catalog slice.
     final_tasks = normalized_existing + additions
