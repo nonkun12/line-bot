@@ -118,7 +118,9 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {
-        "existing": len(eligible_existing),
+        # Keep the original input-count field stable for existing consumers.
+        "existing": len(existing),
+        "retained_existing": len(eligible_existing),
         "skipped_held_ids": skipped_held_ids,
         "added": len(additions),
         "total": len(final_tasks),
