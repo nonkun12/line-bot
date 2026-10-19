@@ -1,4 +1,4 @@
-"""Bind read-only REA evidence to the Control Tower's pre-execution HEAD.
+""""Bind read-only REA evidence to the Control Tower's pre-execution HEAD.
 
 This adapter is diagnostic only. It cannot authorize task IDs, clear HOLD,
 write queues/state, patch files, or merge/deploy.
@@ -12,6 +12,7 @@ from typing import Any
 from scripts.rea_readonly_scanner import scan_repository
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+_BLOCKING_SEVERITIES = frozenset({"HIGH", "CRITICAL"})
 
 
 def prepare_rea_evidence(
@@ -19,7 +20,7 @@ def prepare_rea_evidence(
     *,
     expected_sha: str,
 ) -> dict[str, Any]:
-    """Return a sanitized, SHA-bound diagnostic record; fail closed on uncertainty."""
+    """Return sanitized SHA-bound evidence; block on uncertainty or high severity."""
     if not isinstance(expected_sha, str) or not _SHA_RE.fullmatch(expected_sha):
         return _blocked("expected_sha_invalid")
 
@@ -39,6 +40,7 @@ def prepare_rea_evidence(
         return _blocked("rea_findings_invalid")
     safe_findings: list[dict[str, Any]] = []
     critical_count = 0
+    blocking_count = 0
     for finding in findings:
         if not isinstance(finding, dict):
             return _blocked("rea_finding_invalid")
@@ -60,6 +62,8 @@ def prepare_rea_evidence(
             return _blocked("rea_finding_schema_invalid")
         if severity == "CRITICAL":
             critical_count += 1
+        if severity in _BLOCKING_SEVERITIES:
+            blocking_count += 1
         safe_findings.append({
             "finding_id": finding_id,
             "category": category,
@@ -69,14 +73,15 @@ def prepare_rea_evidence(
             "status": "REVIEW_REQUIRED",
         })
 
-    if critical_count:
+    if blocking_count:
         return {
             "gate": "BLOCKED",
-            "reason_code": "rea_critical_finding",
+            "reason_code": "rea_high_or_critical_finding",
             "target_sha": expected_sha,
             "scanner_status": report["status"],
             "finding_count": len(safe_findings),
             "critical_count": critical_count,
+            "blocking_count": blocking_count,
             "findings_truncated": len(safe_findings) > 100,
             "findings": safe_findings[:100],
             "execution_authorized": False,
@@ -92,6 +97,7 @@ def prepare_rea_evidence(
         "scanner_status": report["status"],
         "finding_count": len(safe_findings),
         "critical_count": 0,
+        "blocking_count": 0,
         "findings_truncated": len(safe_findings) > 100,
         "findings": safe_findings[:100],
         "execution_authorized": False,
@@ -109,6 +115,7 @@ def _blocked(reason_code: str) -> dict[str, Any]:
         "scanner_status": "BLOCKED",
         "finding_count": 0,
         "critical_count": 0,
+        "blocking_count": 0,
         "findings": [],
         "execution_authorized": False,
         "patch_authorized": False,
