@@ -25,7 +25,8 @@ def prepare_rea_evidence(
 
     try:
         report = scan_repository(repo_root)
-    except (ScanBlocked, OSError, RuntimeError):
+    except Exception:
+        # Do not leak filesystem paths, exception text, or environment details.
         return _blocked("rea_scan_incomplete")
 
     if report.get("target_sha") != expected_sha:
