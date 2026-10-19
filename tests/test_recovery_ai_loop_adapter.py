@@ -54,6 +54,26 @@ def test_queue_summary_without_task_id_is_not_recorded(tmp_path):
     }) == {"recorded": False, "reason": "no_task_id"}
 
 
+def test_rea_preflight_block_is_not_counted_as_task_failure(tmp_path):
+    path = tmp_path / "recovery.json"
+    store = RecoveryStore(path)
+    store.record_failure("task-a", "timeout")
+    before = store.task_status("task-a")
+
+    outcome = record_loop_outcome(path, {
+        "task_id": "task-a",
+        "status": "BLOCKED",
+        "exit_code": 80,
+        "failure_reason": "control_tower_rea:dirty_worktree",
+    })
+
+    assert outcome == {
+        "recorded": False,
+        "reason": "preflight_blocked_not_task_failure",
+    }
+    assert store.task_status("task-a") == before
+
+
 def test_success_without_current_run_identity_is_held(tmp_path):
     path = tmp_path / "recovery.json"
     result = record_loop_outcome(path, {
