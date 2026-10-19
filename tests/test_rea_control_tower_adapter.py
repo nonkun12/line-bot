@@ -100,6 +100,10 @@ def test_execution_boundary_requires_complete_sha_bound_non_authorizing_pass():
     assert not rea_evidence_is_valid_pass({**evidence, "blocking_count": 1}, expected_sha=SHA)
     assert not rea_evidence_is_valid_pass({**evidence, "execution_authorized": True}, expected_sha=SHA)
     assert not rea_evidence_is_valid_pass(
+        {**evidence, "findings": [{"severity": "HIGH"}], "finding_count": 1},
+        expected_sha=SHA,
+    )
+    assert not rea_evidence_is_valid_pass(
         {key: value for key, value in evidence.items() if key != "blocking_count"},
         expected_sha=SHA,
     )
