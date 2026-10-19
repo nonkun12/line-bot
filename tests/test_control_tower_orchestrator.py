@@ -10,7 +10,7 @@ def verified_success(status="PASS"):
         "task_id": "task-a",
         "status": status,
         "rea": {
-            "gate": "PASS", "target_sha": base, "critical_count": 0,
+            "gate": "PASS", "target_sha": base, "critical_count": 0, "blocking_count": 0,
             "execution_authorized": False, "patch_authorized": False,
             "hold_clear_authorized": False, "merge_deploy_authorized": False,
             "scanner_status": "PASS", "finding_count": 0, "findings": [],
@@ -52,6 +52,14 @@ def test_rea_cannot_grant_execution_or_hold_clear_authority():
     decision = coordinate_outcome(result)
     assert decision["allow_continue"] is False
     assert decision["reason_code"] == "rea_evidence_missing_or_invalid"
+
+def test_rea_high_or_critical_blocking_count_is_rejected():
+    result = verified_success()
+    result["rea"]["blocking_count"] = 1
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "rea_evidence_missing_or_invalid"
+
 
 def test_no_change_requires_identical_shas():
     result = verified_success("NO_CHANGE")
@@ -99,7 +107,7 @@ def test_repair_once_is_a_plan_not_a_claim_of_execution():
     decision = coordinate_outcome({
         "task_id": "task-a", "status": "FAIL", "exit_code": 1,
         "base_sha": "a" * 40,
-        "rea": {"gate": "PASS", "target_sha": "a" * 40, "critical_count": 0,
+        "rea": {"gate": "PASS", "target_sha": "a" * 40, "critical_count": 0, "blocking_count": 0,
                 "execution_authorized": False, "patch_authorized": False,
                 "hold_clear_authorized": False, "merge_deploy_authorized": False},
         "control_tower": {"recorded": True},
@@ -115,7 +123,7 @@ def test_retry_is_a_plan_not_an_execution_or_permission_to_continue():
     decision = coordinate_outcome({
         "task_id": "task-a", "status": "FAIL", "exit_code": 1,
         "base_sha": "a" * 40,
-        "rea": {"gate": "PASS", "target_sha": "a" * 40, "critical_count": 0,
+        "rea": {"gate": "PASS", "target_sha": "a" * 40, "critical_count": 0, "blocking_count": 0,
                 "execution_authorized": False, "patch_authorized": False,
                 "hold_clear_authorized": False, "merge_deploy_authorized": False},
         "control_tower": {"recorded": True},
@@ -131,7 +139,7 @@ def test_unknown_recovery_action_requires_human_review():
     decision = coordinate_outcome({
         "task_id": "task-a", "status": "FAIL", "exit_code": 1,
         "base_sha": "a" * 40,
-        "rea": {"gate": "PASS", "target_sha": "a" * 40, "critical_count": 0,
+        "rea": {"gate": "PASS", "target_sha": "a" * 40, "critical_count": 0, "blocking_count": 0,
                 "execution_authorized": False, "patch_authorized": False,
                 "hold_clear_authorized": False, "merge_deploy_authorized": False},
         "control_tower": {"recorded": True},
