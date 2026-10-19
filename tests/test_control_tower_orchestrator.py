@@ -167,3 +167,20 @@ def test_missing_observer_persistence_fails_closed():
     assert decision["allow_continue"] is False
     assert decision["phase"] == "STOP"
     assert decision["reason_code"] == "control_tower_observation_missing"
+
+def test_rea_pass_with_incomplete_metadata_is_rejected():
+    result = verified_success()
+    result["rea"].pop("mode")
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "rea_evidence_missing_or_invalid"
+
+
+def test_rea_pass_with_truncated_or_high_severity_findings_is_rejected():
+    result = verified_success()
+    result["rea"]["findings"] = [{"severity": "HIGH"}]
+    result["rea"]["finding_count"] = 1
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "rea_evidence_missing_or_invalid"
+
