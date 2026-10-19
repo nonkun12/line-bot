@@ -7,6 +7,22 @@ def _request(message: str) -> AgentRequest:
     return AgentRequest(user_id="test-user", message=message, channel="test", metadata={})
 
 
+def test_daily_vocabulary_rotates_without_repeats_before_lexicon_exhaustion(monkeypatch, tmp_path):
+    import re
+    from agents.english import quiz_state
+
+    monkeypatch.setattr(quiz_state, "DB_PATH", str(tmp_path / "vocabulary.db"))
+    agent = EnglishLearningAgent()
+    first = agent.handle(_request("単語")).text
+    second = agent.handle(_request("単語")).text
+
+    first_words = set(re.findall(r"^• ([a-z][a-z'-]*)$", first, re.MULTILINE))
+    second_words = set(re.findall(r"^• ([a-z][a-z'-]*)$", second, re.MULTILINE))
+    assert len(first_words) == len(second_words) == 3
+    assert first_words.isdisjoint(second_words)
+    assert "コアイメージ" in first and "コアイメージ" in second
+
+
 def test_quiz_requires_an_active_question(monkeypatch, tmp_path):
     from agents.english import progress
 
