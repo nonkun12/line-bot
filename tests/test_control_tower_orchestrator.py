@@ -97,9 +97,23 @@ def test_unknown_recovery_action_requires_human_review():
     assert decision["next_action"] == "HOLD_FOR_REVIEW"
 
 
-def test_missing_observer_is_reported_as_degraded_but_does_not_rewrite_task_result():
+@pytest.mark.parametrize(
+    "observation",
+    [None, {}, {"recorded": False}, {"recorded": "true"}],
+)
+def test_missing_or_invalid_observer_blocks_success_continuation(observation):
     result = verified_success()
-    result["control_tower"] = {"recorded": False}
+    result["control_tower"] = observation
+    decision = coordinate_outcome(result)
+    assert decision["phase"] == "STOP"
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "control_tower_observation_missing"
+
+
+def test_durable_observer_allows_verified_success_continuation():
+    result = verified_success()
+    result["control_tower"] = {"recorded": True}
     decision = coordinate_outcome(result)
     assert decision["allow_continue"] is True
-    assert decision["observation_degraded"] is True
+    assert decision["reason_code"] == "verified_success"
+    assert decision["observation_degraded"] is False
