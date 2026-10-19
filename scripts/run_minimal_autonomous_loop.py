@@ -250,10 +250,9 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
     """
     if not _valid_sha(evidence_sha):
         raise ValueError("catalog evidence SHA is invalid")
-    catalog_paths = (
-        ".github/autonomous-loop-tasks.json",
-        ".github/autonomous-loop-task-catalog.json",
-    )
+    # Only the separately reviewed task catalog is a trust source.
+    # The runtime queue is untrusted input and must never self-register IDs.
+    catalog_paths = (".github/autonomous-loop-task-catalog.json",)
     definitions: dict[str, dict[str, object]] = {}
     for path in catalog_paths:
         code, raw = _git_checked("show", f"{evidence_sha}:{path}")
@@ -287,9 +286,8 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
                 "instruction": instruction,
                 "allowed_paths": [item.strip() for item in allowed_paths],
             }
-            previous = definitions.get(task_id)
-            if previous is not None and previous != normalized:
-                raise ValueError("conflicting versioned task definitions")
+            if task_id in definitions:
+                raise ValueError("duplicate task ID in trusted catalog")
             definitions[task_id] = normalized
     return list(definitions.values())
 
