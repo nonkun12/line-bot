@@ -608,8 +608,6 @@ def main() -> int:
             )
             return 80
 
-    # REA itself runs only immediately before an authorized launch.
-    rea_evidence: dict[str, object] | None = None
 
     # Normal queue entries are authorized only against Git-versioned catalogs
     # at the same immutable commit used as the selection evidence. Never derive
@@ -800,6 +798,8 @@ def main() -> int:
 
     args.results.parent.mkdir(parents=True, exist_ok=True)
     for index, task in enumerate(tasks, 1):
+        # Evidence belongs to this task only; never carry it across iterations.
+        rea_evidence: dict[str, object] | None = None
         if stopped(args.stop_file):
             result = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
