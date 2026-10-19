@@ -535,7 +535,7 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
     monkeypatch.setattr(
         recovery_ai_loop_adapter,
         "record_loop_outcome",
-        lambda _path, result: persisted.append(("recovery", result["status"])) or {"recorded": True},
+        lambda _path, result: persisted.append(("recovery", result["status"])) or {"recorded": False, "reason": "preflight_blocked_not_task_failure"},
     )
     monkeypatch.setattr(
         control_tower_loop_observer,
@@ -561,7 +561,7 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
     assert rows[0]["status"] == "BLOCKED"
     assert rows[0]["exit_code"] == 80
     assert rows[0]["failure_reason"] == "control_tower_rea:test_block"
-    assert rows[0]["recovery_ai"]["recorded"] is True
+    assert rows[0]["recovery_ai"] == {"recorded": False, "reason": "preflight_blocked_not_task_failure"}
     assert rows[0]["control_tower"]["recorded"] is True
     assert rows[0]["control_tower"]["orchestration"]["allow_continue"] is False
     assert persisted == [("recovery", "BLOCKED"), ("control_tower", "BLOCKED")]
