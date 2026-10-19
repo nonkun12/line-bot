@@ -12,7 +12,6 @@ import hashlib
 import json
 import re
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -80,6 +79,11 @@ def scan_repository(repo_root: str | Path) -> dict[str, Any]:
     target_sha = _git(root, "rev-parse", "HEAD").strip()
     if not re.fullmatch(r"[0-9a-f]{40}", target_sha):
         raise ScanBlocked("target_sha_invalid")
+
+    # A HEAD hash is meaningful evidence only if tracked inputs match that HEAD.
+    # Also reject untracked files so an incomplete checkout cannot look clean.
+    if _git(root, "status", "--porcelain", "--untracked-files=all").strip():
+        raise ScanBlocked("working_tree_not_clean")
 
     entries = _git(root, "ls-files", "-s", "--").splitlines()
     candidates: list[tuple[str, str]] = []
