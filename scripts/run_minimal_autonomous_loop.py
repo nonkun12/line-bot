@@ -904,12 +904,16 @@ def main() -> int:
         else:
             # REA is diagnostic-only and runs after existing selector, HEAD, HOLD,
             # and catalog authorization checks, immediately before task launch.
+            rea_gate_valid = False
             try:
                 from scripts.rea_control_tower_adapter import (
                     prepare_rea_evidence,
                     rea_evidence_is_valid_pass,
                 )
                 rea_evidence = prepare_rea_evidence(ROOT, expected_sha=control_tower_head)
+                rea_gate_valid = rea_evidence_is_valid_pass(
+                    rea_evidence, expected_sha=control_tower_head
+                )
             except Exception:
                 rea_evidence = {
                     "gate": "BLOCKED",
@@ -925,7 +929,7 @@ def main() -> int:
                     "hold_clear_authorized": False,
                     "merge_deploy_authorized": False,
                 }
-            if not rea_evidence_is_valid_pass(rea_evidence, expected_sha=control_tower_head):
+            if not rea_gate_valid:
                 result = {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "run_index": index,
