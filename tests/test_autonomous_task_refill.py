@@ -136,6 +136,36 @@ def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):
 
 
 
+def test_refill_omits_held_existing_queue_entries_without_clearing_hold(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        existing=[_task("task-held-existing")],
+        candidates=[_task("task-ready-new")],
+    )
+    state = _write(
+        tmp_path / "state.json",
+        {
+            "version": 1,
+            "completed": [],
+            "recovery_ai": {
+                "schema_version": 1,
+                "tasks": {"task-held-existing": {"held": True}},
+                "checkpoint": None,
+            },
+        },
+    )
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, state, output)
+    result = json.loads(output.read_text(encoding="utf-8"))
+    persisted_state = json.loads(state.read_text(encoding="utf-8"))
+
+    assert report["skipped_held_ids"] == ["task-held-existing"]
+    assert report["added_ids"] == ["task-ready-new"]
+    assert [task["id"] for task in result["tasks"]] == ["task-ready-new"]
+    assert persisted_state["recovery_ai"]["tasks"]["task-held-existing"]["held"] is True
+
+
 def test_refill_skips_recovery_ai_held_catalog_tasks(tmp_path: Path):
     queue, catalog, completed = _inputs(
         tmp_path,
