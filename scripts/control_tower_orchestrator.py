@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from scripts.rea_control_tower_adapter import rea_evidence_is_valid_pass
+
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _NONCE_RE = re.compile(r"^[0-9a-f]{32}$")
 _ALLOWED_STATUSES = frozenset({
@@ -40,6 +42,17 @@ def coordinate_outcome(result: object) -> dict[str, Any]:
 
     if status in {"BLOCKED", "STOPPED", "NOT_RUN"}:
         return _decision("STOP", "REPORT_BLOCKED", "execution_not_completed", False)
+
+    # REA is a required diagnostic input for every attempted task. Its evidence
+    # must describe the same base SHA; it remains advisory and cannot grant rights.
+    rea = result.get("rea")
+    base_sha = result.get("base_sha")
+    if not rea_evidence_is_valid_pass(rea, expected_sha=base_sha):
+        return _decision("STOP", "STOP_AND_REPORT", "rea_evidence_missing_or_invalid", False, task_id)
+
+    observation = result.get("control_tower")
+    if not isinstance(observation, dict) or observation.get("recorded") is not True:
+        return _decision("STOP", "STOP_AND_REPORT", "control_tower_observation_missing", False, task_id)
 
     recovery = result.get("recovery_ai")
     if not isinstance(recovery, dict) or recovery.get("recorded") is not True:
