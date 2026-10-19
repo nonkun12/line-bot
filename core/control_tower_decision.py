@@ -100,6 +100,11 @@ class ControlTowerDecisionRecord:
             and self.task_template_id in registered_task_ids
         )
 
+    # Helper to determine high priority tasks
+    def is_high_priority(self) -> bool:
+        """Return True if priority is above a threshold (e.g., 80)."""
+        return self.priority >= 80
+
 
 __all__ = [
     "ControlTowerDecisionRecord",
