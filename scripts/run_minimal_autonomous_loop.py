@@ -608,6 +608,7 @@ def main() -> int:
             )
             return 80
 
+
     # Normal queue entries are authorized only against Git-versioned catalogs
     # at the same immutable commit used as the selection evidence. Never derive
     # the trust catalog from the runtime queue itself.
@@ -797,6 +798,8 @@ def main() -> int:
 
     args.results.parent.mkdir(parents=True, exist_ok=True)
     for index, task in enumerate(tasks, 1):
+        # Evidence belongs to this task only; never carry it across iterations.
+        rea_evidence: dict[str, object] | None = None
         if stopped(args.stop_file):
             result = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -899,10 +902,56 @@ def main() -> int:
                 flush=True,
             )
         else:
+            # REA is diagnostic-only and runs after existing selector, HEAD, HOLD,
+            # and catalog authorization checks, immediately before task launch.
+            rea_gate_valid = False
+            try:
+                from scripts.rea_control_tower_adapter import (
+                    prepare_rea_evidence,
+                    rea_evidence_is_valid_pass,
+                )
+                rea_evidence = prepare_rea_evidence(ROOT, expected_sha=control_tower_head)
+                rea_gate_valid = rea_evidence_is_valid_pass(
+                    rea_evidence, expected_sha=control_tower_head
+                )
+            except Exception:
+                rea_evidence = {
+                    "gate": "BLOCKED",
+                    "reason_code": "rea_adapter_error",
+                    "target_sha": None,
+                    "scanner_status": "BLOCKED",
+                    "finding_count": 0,
+                    "critical_count": 0,
+                    "blocking_count": 0,
+                    "findings": [],
+                    "execution_authorized": False,
+                    "patch_authorized": False,
+                    "hold_clear_authorized": False,
+                    "merge_deploy_authorized": False,
+                }
+            if not rea_gate_valid:
+                result = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "run_index": index,
+                    "task_id": task["id"],
+                    "status": "BLOCKED",
+                    "exit_code": 80,
+                    "base_sha": control_tower_head,
+                    "produced_sha": _git_head(),
+                    "failure_reason": "control_tower_rea:" + str(rea_evidence.get("reason_code", "gate_blocked")),
+                    "rea": rea_evidence,
+                }
+                with args.results.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(result, ensure_ascii=False) + "\n")
+                print("MINIMAL_LOOP=BLOCKED reason=control_tower_rea", flush=True)
+                return 80
             print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
             result = run_task(
                 task, index, args.stop_file, expected_base_sha=control_tower_head
             )
+        # Carry the exact preflight REA evidence into the Control Tower decision.
+        # This is diagnostic metadata only and grants no execution or repair authority.
+        result["rea"] = rea_evidence
         recovery_error = False
         try:
             from scripts.recovery_ai_loop_adapter import record_loop_outcome
