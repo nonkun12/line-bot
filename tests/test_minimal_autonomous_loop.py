@@ -203,6 +203,32 @@ def test_valid_blocked_summary_remains_blocked(monkeypatch, tmp_path: Path):
     assert result["rea"]["execution_authorized"] is False
 
 
+def test_blocked_summary_failure_reason_must_match_rea_evidence(monkeypatch, tmp_path: Path):
+    task = {"id": "blocked-summary-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
+    sha = "a" * 40
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
+        _write_blocked_summary(env, summary, rea={
+            "gate": "BLOCKED",
+            "reason_code": "test_block",
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        }, sha=sha)
+        payload = json.loads(summary.read_text(encoding="utf-8"))
+        payload["failure_reason"] = ""
+        summary.write_text(json.dumps(payload), encoding="utf-8")
+        return _FakeProcess(env, lambda _: None, returncode=80)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "blocked_summary_failure_reason_invalid"
+
+
 def test_no_change_is_not_pass(monkeypatch, tmp_path: Path):
     task = {"id": "no-change-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
     sha = "b" * 40
