@@ -539,3 +539,160 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
     assert rows[0]["status"] == "BLOCKED"
     assert rows[0]["exit_code"] == 80
     assert rows[0]["failure_reason"] == "control_tower_rea:test_block"
+
+
+def test_rea_adapter_exception_blocks_minimal_loop_task_execution(monkeypatch, tmp_path: Path):
+    from types import SimpleNamespace
+
+    sha = "a" * 40
+    task = {
+        "id": "rea-block-regression",
+        "instruction": "must not execute",
+        "allowed_paths": ["tests/test_one.py"],
+    }
+    queue = tmp_path / "queue.json"
+    queue.write_text('{"max_tasks_per_run": 1}', encoding="utf-8")
+    results = tmp_path / "results.jsonl"
+    state = tmp_path / "loop-state.json"
+
+    monkeypatch.setattr(loop, "QUEUE", queue)
+    monkeypatch.setattr(loop, "load_completed", lambda _path: set())
+    monkeypatch.setattr(loop, "load_tasks", lambda: [task])
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [task])
+    monkeypatch.setattr(
+        loop.sys,
+        "argv",
+        [
+            "run_minimal_autonomous_loop",
+            "--max-tasks",
+            "1",
+            "--state",
+            str(state),
+            "--results",
+            str(results),
+        ],
+    )
+
+    from scripts import control_tower_loop_adapter, rea_control_tower_adapter
+    from scripts.recovery_ai import RecoveryStore
+
+    monkeypatch.setattr(RecoveryStore, "task_status", lambda self, _task_id: {})
+    monkeypatch.setattr(
+        "core.control_tower_selector.select_next_task",
+        lambda *args, **kwargs: SimpleNamespace(
+            next_action="SELECT_REGISTERED_TASK",
+            task_template_id=task["id"],
+            reason_code="selected",
+        ),
+    )
+    monkeypatch.setattr(
+        control_tower_loop_adapter,
+        "authorize_registered_task",
+        lambda *_args: (True, "authorized"),
+    )
+    monkeypatch.setattr(
+        rea_control_tower_adapter,
+        "prepare_rea_evidence",
+        lambda _root, expected_sha: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    monkeypatch.setattr(
+        rea_control_tower_adapter,
+        "rea_evidence_is_valid_pass",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        loop,
+        "run_task",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("run_task must not be called when REA is BLOCKED")
+        ),
+    )
+
+    assert loop.main() == 80
+    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["status"] == "BLOCKED"
+    assert rows[0]["exit_code"] == 80
+    assert rows[0]["failure_reason"] == "control_tower_rea:rea_adapter_error"
+    assert rows[0]["rea"]["reason_code"] == "rea_adapter_error"
+    assert rows[0]["rea"]["execution_authorized"] is False
+    assert not (tmp_path / "recovery-ai-state.json").exists()
+    assert not (tmp_path / "control-tower-observations.jsonl").exists()
+
+
+def test_authorization_denial_skips_rea_and_clears_task_evidence(monkeypatch, tmp_path: Path):
+    from types import SimpleNamespace
+
+    sha = "a" * 40
+    task = {
+        "id": "rea-block-regression",
+        "instruction": "must not execute",
+        "allowed_paths": ["tests/test_one.py"],
+    }
+    queue = tmp_path / "queue.json"
+    queue.write_text('{"max_tasks_per_run": 1}', encoding="utf-8")
+    results = tmp_path / "results.jsonl"
+    state = tmp_path / "loop-state.json"
+
+    monkeypatch.setattr(loop, "QUEUE", queue)
+    monkeypatch.setattr(loop, "load_completed", lambda _path: set())
+    monkeypatch.setattr(loop, "load_tasks", lambda: [task])
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [task])
+    monkeypatch.setattr(
+        loop.sys,
+        "argv",
+        [
+            "run_minimal_autonomous_loop",
+            "--max-tasks",
+            "1",
+            "--state",
+            str(state),
+            "--results",
+            str(results),
+        ],
+    )
+
+    from scripts import control_tower_loop_adapter, rea_control_tower_adapter
+    from scripts.recovery_ai import RecoveryStore
+
+    monkeypatch.setattr(RecoveryStore, "task_status", lambda self, _task_id: {})
+    monkeypatch.setattr(
+        "core.control_tower_selector.select_next_task",
+        lambda *args, **kwargs: SimpleNamespace(
+            next_action="SELECT_REGISTERED_TASK",
+            task_template_id=task["id"],
+            reason_code="selected",
+        ),
+    )
+    monkeypatch.setattr(
+        control_tower_loop_adapter,
+        "authorize_registered_task",
+        lambda *_args: (False, "authorization_denied"),
+    )
+    rea_calls = []
+    monkeypatch.setattr(
+        rea_control_tower_adapter,
+        "prepare_rea_evidence",
+        lambda _root, expected_sha: rea_calls.append(expected_sha),
+    )
+    monkeypatch.setattr(
+        rea_control_tower_adapter,
+        "rea_evidence_is_valid_pass",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        loop,
+        "run_task",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("run_task must not be called when REA is BLOCKED")
+        ),
+    )
+
+    assert loop.main() == 1
+    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["failure_reason"] == "control_tower_gate:authorization_denied"
+    assert rows[0].get("rea") is None
+    assert rea_calls == []
