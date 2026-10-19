@@ -102,18 +102,28 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
             held_ids.add(task_id)
 
     completed_ids = set(completed)
+    # HOLD remains durable in Recovery AI; omit held tasks from this run-local
+    # queue so stale held entries cannot occupy the bounded execution window.
+    eligible_existing = [task for task in normalized_existing if task["id"] not in held_ids]
+    skipped_held_ids = sorted(original_ids.intersection(held_ids))
     additions = [
         task for task in normalized_catalog
         if task["id"] not in original_ids
         and task["id"] not in completed_ids
         and task["id"] not in held_ids
     ][:cap]
-    # Preserve every validated queued task, then append only a bounded catalog slice.
-    final_tasks = normalized_existing + additions
+    # Preserve eligible queued tasks, then append only a bounded catalog slice.
+    final_tasks = eligible_existing + additions
     output = {"version": 1, "max_tasks_per_run": max_tasks, "tasks": final_tasks}
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return {"existing": len(existing), "added": len(additions), "total": len(final_tasks), "added_ids": [t["id"] for t in additions]}
+    return {
+        "existing": len(eligible_existing),
+        "skipped_held_ids": skipped_held_ids,
+        "added": len(additions),
+        "total": len(final_tasks),
+        "added_ids": [t["id"] for t in additions],
+    }
 
 
 def main() -> int:
