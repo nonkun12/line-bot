@@ -8,6 +8,77 @@ from scripts import run_minimal_autonomous_loop as loop
 from scripts.run_minimal_autonomous_loop import load_completed, load_tasks, stopped
 
 
+def test_registered_catalog_never_reads_runtime_queue(monkeypatch):
+    sha = "a" * 40
+    catalog = {
+        "version": 1,
+        "tasks": [{
+            "id": "trusted-task",
+            "instruction": "Run a focused regression test.",
+            "allowed_paths": ["tests/test_example.py"],
+        }],
+    }
+    calls = []
+
+    def fake_git_checked(*args):
+        calls.append(args)
+        assert args == ("show", f"{sha}:.github/autonomous-loop-task-catalog.json")
+        return 0, json.dumps(catalog)
+
+    monkeypatch.setattr(loop, "_git_checked", fake_git_checked)
+    registered = loop._load_registered_catalog(sha)
+
+    assert [task["id"] for task in registered] == ["trusted-task"]
+    assert len(calls) == 1
+    assert ".github/autonomous-loop-tasks.json" not in repr(calls)
+
+
+def test_registered_catalog_rejects_duplicate_ids_even_when_definitions_match(monkeypatch):
+    sha = "b" * 40
+    task = {
+        "id": "duplicate-task",
+        "instruction": "Run a focused regression test.",
+        "allowed_paths": ["tests/test_example.py"],
+    }
+    catalog = {"version": 1, "tasks": [task, dict(task)]}
+    monkeypatch.setattr(loop, "_git_checked", lambda *args: (0, json.dumps(catalog)))
+
+    try:
+        loop._load_registered_catalog(sha)
+    except ValueError as exc:
+        assert "duplicate task ID" in str(exc)
+    else:
+        raise AssertionError("duplicate trusted catalog ID must fail closed")
+
+
+def test_queue_only_task_remains_blocked_by_control_tower(monkeypatch):
+    from core.control_tower_selector import select_next_task
+
+    sha = "c" * 40
+    catalog = {
+        "version": 1,
+        "tasks": [{
+            "id": "trusted-task",
+            "instruction": "Run a focused regression test.",
+            "allowed_paths": ["tests/test_example.py"],
+        }],
+    }
+    monkeypatch.setattr(loop, "_git_checked", lambda *args: (0, json.dumps(catalog)))
+    registered = loop._load_registered_catalog(sha)
+    decision = select_next_task(
+        ["queue-only-task"],
+        {task["id"] for task in registered},
+        set(),
+        set(),
+        evidence_sha=sha,
+        current_head_sha=sha,
+    )
+
+    assert decision.gate_status == "BLOCKED"
+    assert decision.reason_code == "policy_blocked"
+    assert decision.next_action == "HOLD"
+
+
 def test_queue_is_nonempty_and_run_limit_is_bounded():
     queue_data = json.loads(loop.QUEUE.read_text(encoding="utf-8"))
     tasks = load_tasks()
