@@ -490,7 +490,13 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
         ],
     )
 
-    from scripts import control_tower_loop_adapter, rea_control_tower_adapter
+    from scripts import (
+        control_tower_loop_adapter,
+        control_tower_loop_observer,
+        control_tower_orchestrator,
+        rea_control_tower_adapter,
+        recovery_ai_loop_adapter,
+    )
     from scripts.recovery_ai import RecoveryStore
 
     monkeypatch.setattr(RecoveryStore, "task_status", lambda self, _task_id: {})
@@ -525,6 +531,22 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
         "rea_evidence_is_valid_pass",
         lambda *_args, **_kwargs: False,
     )
+    persisted = []
+    monkeypatch.setattr(
+        recovery_ai_loop_adapter,
+        "record_loop_outcome",
+        lambda _path, result: persisted.append(("recovery", result["status"])) or {"recorded": True},
+    )
+    monkeypatch.setattr(
+        control_tower_loop_observer,
+        "record_loop_observation",
+        lambda _path, result: persisted.append(("control_tower", result["status"])) or {"recorded": True, "proposal_executable": False},
+    )
+    monkeypatch.setattr(
+        control_tower_orchestrator,
+        "coordinate_outcome",
+        lambda result: {"phase": "STOP", "next_action": "STOP_AND_REPORT", "reason_code": "rea_blocked", "allow_continue": False, "repair_executed": False},
+    )
     monkeypatch.setattr(
         loop,
         "run_task",
@@ -533,12 +555,16 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
         ),
     )
 
-    assert loop.main() == 80
+    assert loop.main() == 1
     rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
     assert len(rows) == 1
     assert rows[0]["status"] == "BLOCKED"
     assert rows[0]["exit_code"] == 80
     assert rows[0]["failure_reason"] == "control_tower_rea:test_block"
+    assert rows[0]["recovery_ai"]["recorded"] is True
+    assert rows[0]["control_tower"]["recorded"] is True
+    assert rows[0]["control_tower"]["orchestration"]["allow_continue"] is False
+    assert persisted == [("recovery", "BLOCKED"), ("control_tower", "BLOCKED")]
 
 
 def test_rea_adapter_exception_blocks_minimal_loop_task_execution(monkeypatch, tmp_path: Path):
