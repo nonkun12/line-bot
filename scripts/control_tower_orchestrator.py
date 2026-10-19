@@ -53,6 +53,8 @@ def coordinate_outcome(result: object) -> dict[str, Any]:
         or rea.get("target_sha") != base_sha
         or type(rea.get("critical_count")) is not int
         or rea.get("critical_count") != 0
+        or type(rea.get("blocking_count")) is not int
+        or rea.get("blocking_count") != 0
         or rea.get("execution_authorized") is not False
         or rea.get("patch_authorized") is not False
         or rea.get("hold_clear_authorized") is not False
