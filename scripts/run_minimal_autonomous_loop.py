@@ -547,7 +547,7 @@ def run_task(
         "exit_code": exit_code,
         "base_sha": base_sha,
         "produced_sha": produced_sha,
-        "failure_reason": failure_reason,
+        "failure_reason": (str(payload.get("failure_reason", "")) if status == "BLOCKED" else failure_reason),
         **({"rea": payload["rea"]} if status == "BLOCKED" and isinstance(payload.get("rea"), dict) else {}),
     }
 
