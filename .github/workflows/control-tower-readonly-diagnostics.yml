@@ -1,0 +1,155 @@
+name: Control Tower Read-only Diagnostics
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+  issues: write
+
+concurrency:
+  group: control-tower-readonly-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        github.event.comment.body == '/control-tower-diagnose' &&
+        (
+          github.event.comment.author_association == 'OWNER' ||
+          github.event.comment.author_association == 'MEMBER' ||
+          github.event.comment.author_association == 'COLLABORATOR'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted default branch only
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Read durable state without modifying it
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin refs/heads/autonomous-loop-state:refs/remotes/origin/autonomous-loop-state
+          git show origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/autonomous-loop-state.json
+          python -m json.tool /tmp/autonomous-loop-state.json >/dev/null
+
+      - name: Build read-only evidence report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/control-tower-diagnostic.md
+          import json
+          import subprocess
+          from pathlib import Path
+
+          def read(path):
+              value = json.loads(Path(path).read_text(encoding="utf-8"))
+              if not isinstance(value, dict):
+                  raise SystemExit(f"Invalid object: {path}")
+              return value
+
+          queue = read(".github/autonomous-loop-tasks.json")
+          catalog = read(".github/autonomous-loop-task-catalog.json")
+          state = read("/tmp/autonomous-loop-state.json")
+          queued = queue.get("tasks")
+          registered = catalog.get("tasks")
+          if not isinstance(queued, list) or not isinstance(registered, list):
+              raise SystemExit("Queue/catalog tasks are not lists")
+
+          def ids(rows):
+              result = []
+              for row in rows:
+                  if not isinstance(row, dict) or not isinstance(row.get("id"), str):
+                      raise SystemExit("Invalid task entry; refusing to infer IDs")
+                  result.append(row["id"])
+              if len(result) != len(set(result)):
+                  raise SystemExit("Duplicate task IDs; refusing to infer queue safety")
+              return set(result)
+
+          queue_ids, catalog_ids = ids(queued), ids(registered)
+          held = state.get("recovery_ai", {}).get("tasks", {})
+          if not isinstance(held, dict):
+              raise SystemExit("Recovery AI task state is invalid")
+          held_ids = sorted(task_id for task_id, item in held.items()
+                            if isinstance(item, dict) and item.get("held") is True)
+          queue_only = sorted(queue_ids - catalog_ids)
+          catalog_only = sorted(catalog_ids - queue_ids)
+          overlap = sorted(queue_ids & catalog_ids)
+          print("# 統括AI 読み取り専用診断")
+          print()
+          print("- 実行モード: READ-ONLY（タスク実行・状態変更・HOLD解除なし）")
+          print(f"- Queue IDs: {len(queue_ids)}")
+          print(f"- Catalog IDs: {len(catalog_ids)}")
+          print(f"- Exact ID overlap: {len(overlap)}")
+          print(f"- Queue-only IDs: {len(queue_only)}")
+          print(f"- Catalog-only IDs: {len(catalog_only)}")
+          print(f"- Durable Recovery AI held tasks: {len(held_ids)}")
+          print()
+          print("## キューにあってカタログにないID")
+          print("\n".join(f"- `{x}`" for x in queue_only) or "- なし")
+          print()
+          print("## カタログにあってキューにないID")
+          print("\n".join(f"- `{x}`" for x in catalog_only) or "- なし")
+          print()
+          print("## 永続状態でHOLD中のTask ID")
+          print("\n".join(f"- `{x}`" for x in held_ids) or "- なし")
+          print()
+          print("## 判定")
+          if queue_only or catalog_only or not overlap:
+              print("**BLOCKED** — exact task registry mismatch. Do not execute, alias, auto-register, or release HOLD.")
+          elif held_ids:
+              print("**BLOCKED** — at least one durable task is held. Keep normal execution stopped pending evidence-based review.")
+          else:
+              print("Registry IDs match and no durable HOLD flag was found; this report alone does not authorize task execution.")
+          print()
+          print("## PR #733 checks")
+          try:
+              pr = json.loads(subprocess.check_output(
+                  ["gh", "pr", "view", "733", "--repo", __import__("os").environ["GH_REPOSITORY"],
+                   "--json", "url,state,isDraft,headRefOid"], text=True, stderr=subprocess.DEVNULL))
+              print(f"- PR: {pr.get('url', 'URL unavailable')}")
+              print(f"- State: {pr.get('state', 'unknown')}; draft: {pr.get('isDraft', 'unknown')}")
+              sha = pr.get("headRefOid")
+              if not isinstance(sha, str) or len(sha) != 40:
+                  print("- Checks: UNVERIFIED (PR head SHA unavailable)")
+              else:
+                  checks = json.loads(subprocess.check_output(
+                      ["gh", "api", f"repos/{__import__('os').environ['GH_REPOSITORY']}/commits/{sha}/check-runs"],
+                      text=True, stderr=subprocess.DEVNULL)).get("check_runs", [])
+                  if not checks:
+                      print("- Checks: UNVERIFIED (no check runs returned)")
+                  else:
+                      for check in checks:
+                          print(f"- {check.get('name', 'unnamed')}: status={check.get('status', 'unknown')}, conclusion={check.get('conclusion') or 'PENDING'}")
+                      pytest = [c for c in checks if "pytest" in c.get("name", "").lower() or "test" in c.get("name", "").lower()]
+                      print(f"- Pytest/test evidence: {'present; inspect exact check above' if pytest else 'UNVERIFIED (no pytest/test check name returned)'}")
+          except Exception:
+              print("- PR #733 checks: UNVERIFIED (GitHub API read failed; no assumption of success)")
+          print()
+          print("This workflow is diagnostic only. It never writes queue/catalog/state, runs a development task, changes labels, resumes held work, merges, or deploys.")
+          PY
+          cat /tmp/control-tower-diagnostic.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post report to requesting PR
+        if: github.event_name == 'issue_comment' && github.event.issue.pull_request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/control-tower-diagnostic.md
