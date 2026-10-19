@@ -501,6 +501,15 @@ def run_task(
             failure_reason = "summary_produced_sha_mismatch"
         elif payload.get("status") == "NO_CHANGE" and produced_sha != base_sha:
             failure_reason = "summary_no_change_but_head_moved"
+    elif payload and exit_code == 80 and not failure_reason:
+        # Exit 80 is BLOCKED only with a fresh identity-bound summary and
+        # matching observed HEAD; never trust the process code alone.
+        if payload.get("status") != "BLOCKED":
+            failure_reason = "summary_status_invalid"
+        elif payload.get("produced_sha") != produced_sha:
+            failure_reason = "summary_produced_sha_mismatch"
+        elif not isinstance(payload.get("rea"), dict):
+            failure_reason = "blocked_summary_missing_rea_evidence"
 
     # A zero exit code with an unchanged HEAD is the only valid NO_CHANGE.
     # A failed runtime must never be reclassified as NO_CHANGE merely because
@@ -509,7 +518,7 @@ def run_task(
     if exit_code == 0 and produced_sha == base_sha and _valid_sha(base_sha):
         failure_reason = failure_reason or "no_change"
         status = "NO_CHANGE"
-    elif exit_code != 0 and not failure_reason:
+    elif exit_code != 0 and not failure_reason and exit_code != 80:
         failure_reason = "task_runtime_failed"
 
     if exit_code == 0 and not failure_reason:
@@ -517,7 +526,9 @@ def run_task(
         if not verified:
             failure_reason = reason
 
-    if exit_code != 0 or failure_reason:
+    if exit_code == 80 and not failure_reason and payload.get("status") == "BLOCKED":
+        status = "BLOCKED"
+    elif exit_code != 0 or failure_reason:
         if failure_reason == "no_change" and exit_code == 0:
             status = "NO_CHANGE"
         elif failure_reason == "task_timeout":
@@ -537,6 +548,7 @@ def run_task(
         "base_sha": base_sha,
         "produced_sha": produced_sha,
         "failure_reason": failure_reason,
+        **({"rea": payload["rea"]} if status == "BLOCKED" and isinstance(payload.get("rea"), dict) else {}),
     }
 
 
@@ -952,7 +964,8 @@ def main() -> int:
                 )
         # Carry the exact preflight REA evidence into the Control Tower decision.
         # This is diagnostic metadata only and grants no execution or repair authority.
-        result["rea"] = rea_evidence
+        if not isinstance(result.get("rea"), dict):
+            result["rea"] = rea_evidence
         recovery_error = False
         try:
             from scripts.recovery_ai_loop_adapter import record_loop_outcome
@@ -963,9 +976,9 @@ def main() -> int:
             # Do not report PASS or proceed to another task unless the recovery
             # decision can be durably recorded and read back.
             recovery_error = True
-            result["status"] = "FAIL"
-            result["exit_code"] = 1
-            result["failure_reason"] = "recovery_ai_state_persist_failed"
+            # Preserve the underlying outcome, especially REA BLOCKED; the
+            # persistence failure is separate and still forces a hard stop.
+            result["persistence_failure"] = "recovery_ai_state_persist_failed"
             result["recovery_ai"] = {
                 "recorded": False,
                 "reason": "state_persistence_failed",
@@ -985,6 +998,7 @@ def main() -> int:
                 "proposal_executable": False,
             }
         result["control_tower"] = observation
+        observation_error = not (isinstance(observation, dict) and observation.get("recorded") is True)
 
         try:
             from scripts.control_tower_orchestrator import coordinate_outcome
@@ -1037,6 +1051,13 @@ def main() -> int:
 
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(result, ensure_ascii=False) + "\n")
+
+        if observation_error:
+            print(
+                f"MINIMAL_LOOP:HALT task={task['id']} reason=control_tower_observation_persist_failed",
+                flush=True,
+            )
+            return 1
 
         if recovery_error:
             print(
