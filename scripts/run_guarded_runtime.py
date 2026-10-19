@@ -198,9 +198,14 @@ def main() -> int:
     # entering the development runtime. REA is diagnostic only and grants no
     # task, patch, HOLD-clear, merge, or deploy authority.
     summary_path = Path(os.environ.get("AUTONOMOUS_SUMMARY_PATH", "/tmp/autonomous_run_summary.json"))
+    rea_gate_valid = False
     try:
-        from scripts.rea_control_tower_adapter import prepare_rea_evidence
+        from scripts.rea_control_tower_adapter import (
+            prepare_rea_evidence,
+            rea_evidence_is_valid_pass,
+        )
         rea_evidence = prepare_rea_evidence(ROOT, expected_sha=start_sha)
+        rea_gate_valid = rea_evidence_is_valid_pass(rea_evidence, expected_sha=start_sha)
     except Exception:
         rea_evidence = {
             "gate": "BLOCKED",
@@ -217,7 +222,7 @@ def main() -> int:
             "merge_deploy_authorized": False,
         }
 
-    if rea_evidence.get("gate") != "PASS":
+    if not rea_gate_valid:
         _write_summary("BLOCKED", 80, start_sha, summary_path, rea_evidence)
         print(
             "REA_GATE=BLOCKED reason="
