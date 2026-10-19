@@ -107,6 +107,33 @@ def prepare_rea_evidence(
     }
 
 
+def rea_evidence_is_valid_pass(evidence: object, *, expected_sha: str) -> bool:
+    """Validate a PASS record at each execution boundary; never grant authority."""
+    if not isinstance(expected_sha, str) or not _SHA_RE.fullmatch(expected_sha):
+        return False
+    if not isinstance(evidence, dict):
+        return False
+    if (
+        evidence.get("gate") != "PASS"
+        or evidence.get("mode") != "OBSERVE_ONLY"
+        or evidence.get("target_sha") != expected_sha
+        or evidence.get("scanner_status") not in {"PASS", "FINDINGS"}
+        or type(evidence.get("finding_count")) is not int
+        or evidence.get("finding_count") < 0
+        or type(evidence.get("critical_count")) is not int
+        or evidence.get("critical_count") != 0
+        or type(evidence.get("blocking_count")) is not int
+        or evidence.get("blocking_count") != 0
+        or not isinstance(evidence.get("findings"), list)
+        or evidence.get("execution_authorized") is not False
+        or evidence.get("patch_authorized") is not False
+        or evidence.get("hold_clear_authorized") is not False
+        or evidence.get("merge_deploy_authorized") is not False
+    ):
+        return False
+    return True
+
+
 def _blocked(reason_code: str) -> dict[str, Any]:
     return {
         "gate": "BLOCKED",
@@ -124,4 +151,4 @@ def _blocked(reason_code: str) -> dict[str, Any]:
     }
 
 
-__all__ = ["prepare_rea_evidence"]
+__all__ = ["prepare_rea_evidence", "rea_evidence_is_valid_pass"]
