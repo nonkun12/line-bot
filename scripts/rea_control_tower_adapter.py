@@ -9,7 +9,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from scripts.rea_readonly_scanner import ALLOWED_ROOTS, scan_repository
+from scripts.rea_readonly_scanner import ALLOWED_ROOTS, ALLOWED_SUFFIXES, scan_repository
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _FINDING_ID_RE = re.compile(r"^[0-9a-f]{16}$")
@@ -53,6 +53,7 @@ def prepare_rea_evidence(
     if not isinstance(findings, list):
         return _blocked("rea_findings_invalid")
     safe_findings: list[dict[str, Any]] = []
+    seen_finding_ids: set[str] = set()
     critical_count = 0
     blocking_count = 0
     for finding in findings:
@@ -71,10 +72,12 @@ def prepare_rea_evidence(
             or not isinstance(category, str) or not _CATEGORY_RE.fullmatch(category)
             or not isinstance(severity, str)
             or severity not in {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
-            or (line is not None and (type(line) is not int or line < 1))
+            or (line is not None and (type(line) is not int or line < 1 or line > 10_000_000))
             or not isinstance(finding_id, str) or not _FINDING_ID_RE.fullmatch(finding_id)
+            or finding_id in seen_finding_ids
         ):
             return _blocked("rea_finding_schema_invalid")
+        seen_finding_ids.add(finding_id)
         if severity == "CRITICAL":
             critical_count += 1
         if severity in _BLOCKING_SEVERITIES:
@@ -114,13 +117,24 @@ def prepare_rea_evidence(
 
 def _safe_path(path: str) -> bool:
     """Accept only normalized repository-relative paths in scanner allowlisted roots."""
-    if not path or "\\" in path or path.startswith("/") or "\x00" in path:
+    if (
+        not path
+        or len(path) > 512
+        or "\\" in path
+        or path.startswith("/")
+        or any(ord(char) < 32 or ord(char) == 127 for char in path)
+        or "\x00" in path
+    ):
         return False
     parsed = PurePosixPath(path)
     if parsed.is_absolute() or any(part in {"", ".", ".."} for part in path.split("/")):
         return False
     normalized = parsed.as_posix()
-    return normalized == path and any(path.startswith(root) for root in ALLOWED_ROOTS)
+    return (
+        normalized == path
+        and any(path.startswith(root) for root in ALLOWED_ROOTS)
+        and Path(path).suffix.lower() in ALLOWED_SUFFIXES
+    )
 
 
 def rea_evidence_is_valid_pass(evidence: object, *, expected_sha: str) -> bool:
@@ -159,12 +173,14 @@ def rea_evidence_is_valid_pass(evidence: object, *, expected_sha: str) -> bool:
     ):
         return False
 
+    seen_finding_ids: set[str] = set()
     for finding in findings:
         if not isinstance(finding, dict) or set(finding) != _FINDING_FIELDS:
             return False
         if (
             not isinstance(finding.get("finding_id"), str)
             or not _FINDING_ID_RE.fullmatch(finding["finding_id"])
+            or finding["finding_id"] in seen_finding_ids
             or not isinstance(finding.get("category"), str)
             or not _CATEGORY_RE.fullmatch(finding["category"])
             or not isinstance(finding.get("severity"), str)
@@ -172,10 +188,11 @@ def rea_evidence_is_valid_pass(evidence: object, *, expected_sha: str) -> bool:
             or not isinstance(finding.get("path"), str)
             or not _safe_path(finding["path"])
             or (finding.get("line") is not None
-                and (type(finding["line"]) is not int or finding["line"] < 1))
+                and (type(finding["line"]) is not int or finding["line"] < 1 or finding["line"] > 10_000_000))
             or finding.get("status") != "REVIEW_REQUIRED"
         ):
             return False
+        seen_finding_ids.add(finding["finding_id"])
     return True
 
 
