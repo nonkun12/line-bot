@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+
+import pytest
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -114,6 +116,32 @@ def test_invalid_summary_halts(monkeypatch, tmp_path: Path):
     result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
     assert result["status"] == "FAIL"
     assert result["failure_reason"] == "summary_not_object"
+
+
+@pytest.mark.parametrize("summary_exit_code", [False, 0.0])
+def test_non_integer_zero_summary_exit_code_halts(monkeypatch, tmp_path: Path, summary_exit_code):
+    task = {"id": "invalid-exit-code-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
+    sha = "a" * 40
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
+        summary.write_text(json.dumps({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "PASS",
+            "exit_code": summary_exit_code,
+            "base_sha": sha,
+            "produced_sha": sha,
+            "task_id": task["id"],
+            "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+        }), encoding="utf-8")
+        return _FakeProcess(env, lambda _: None)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+    assert result["status"] == "FAIL"
+    assert result["exit_code"] == 1
+    assert result["failure_reason"] == "summary_exit_code_mismatch"
 
 
 def test_no_change_is_not_pass(monkeypatch, tmp_path: Path):
@@ -236,6 +264,47 @@ def test_summary_identity_mismatch_halts(monkeypatch, tmp_path: Path):
     result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
     assert result["status"] == "FAIL"
     assert result["failure_reason"] == "summary_identity_mismatch"
+
+
+def test_run_task_exception_is_recorded_as_failed_outcome(monkeypatch, tmp_path: Path):
+    from types import SimpleNamespace
+    from core import control_tower_selector
+    from scripts import control_tower_loop_adapter
+    from scripts.recovery_ai import RecoveryStore
+
+    task = {"id": "exception-task", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
+    queue = tmp_path / "queue.json"
+    queue.write_text(json.dumps({"max_tasks_per_run": 1, "tasks": [task]}), encoding="utf-8")
+    results = tmp_path / "results.jsonl"
+    state = tmp_path / "loop-state.json"
+    monkeypatch.setattr(loop, "QUEUE", queue)
+    monkeypatch.setattr(loop, "load_tasks", lambda: [task])
+    monkeypatch.setattr(loop, "load_completed", lambda _path: set())
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [task])
+    monkeypatch.setattr(loop, "_git_head", lambda: "a" * 40)
+    monkeypatch.setattr(
+        control_tower_selector,
+        "select_next_task",
+        lambda *args, **kwargs: SimpleNamespace(
+            next_action="SELECT_REGISTERED_TASK", task_template_id="exception-task", reason_code="selected"
+        ),
+    )
+    monkeypatch.setattr(control_tower_loop_adapter, "authorize_registered_task", lambda *args: (True, "authorized"))
+    monkeypatch.setattr(loop, "run_task", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("do not persist this secret")))
+    monkeypatch.setattr(loop.sys, "argv", [
+        "run_minimal_autonomous_loop.py", "--max-tasks", "1",
+        "--state", str(state), "--results", str(results),
+    ])
+
+    assert loop.main() == 1
+    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["task_id"] == "exception-task"
+    assert rows[0]["status"] == "FAIL"
+    assert rows[0]["failure_reason"] == "task_runtime_exception:process_crash:RuntimeError"
+    assert "secret" not in results.read_text(encoding="utf-8")
+    recovery = RecoveryStore(tmp_path / "recovery-ai-state.json").task_status("exception-task")
+    assert recovery["consecutive_failures"] == 1
 
 
 def test_main_rejects_unverified_multi_task_selector_chain(monkeypatch, tmp_path: Path):

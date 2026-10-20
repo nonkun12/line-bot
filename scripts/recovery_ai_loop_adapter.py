@@ -119,7 +119,8 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
         }
     run_identity_verified = _has_verified_run_identity(result, status)
     success_like = status in {"PASS", "NO_CHANGE"}
-    if success_like and (result.get("exit_code") != 0 or not run_identity_verified):
+    valid_zero_exit = type(result.get("exit_code")) is int and result.get("exit_code") == 0
+    if success_like and (not valid_zero_exit or not run_identity_verified):
         decision = store.record_failure(task_id, "invalid_evidence", ())
         # Invalid run identity must invalidate the task result itself; logging a
         # HOLD decision while leaving status=PASS could falsely complete a task.
@@ -132,7 +133,7 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
         )
 
     verified_success = (
-        result.get("exit_code") == 0
+        valid_zero_exit
         and run_identity_verified
         and (
             (status == "PASS" and not result.get("failure_reason"))

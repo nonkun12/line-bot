@@ -54,6 +54,22 @@ def test_queue_summary_without_task_id_is_not_recorded(tmp_path):
     }) == {"recorded": False, "reason": "no_task_id"}
 
 
+@pytest.mark.parametrize("exit_code", [False, 0.0])
+def test_success_with_non_integer_zero_exit_is_held(tmp_path, exit_code):
+    path = tmp_path / "recovery.json"
+    payload = {
+        "task_id": "task-a", "status": "PASS", "exit_code": exit_code,
+        "failure_reason": "", "base_sha": "a" * 40,
+        "produced_sha": "b" * 40, "run_nonce": "c" * 32,
+    }
+    outcome = record_loop_outcome(path, payload)
+    assert outcome["recorded"] is True
+    assert outcome["decision"]["action"] == "HOLD"
+    assert payload["status"] == "FAIL"
+    assert payload["exit_code"] == 1
+    assert RecoveryStore(path).task_status("task-a")["held"] is True
+
+
 def test_success_without_current_run_identity_is_held(tmp_path):
     path = tmp_path / "recovery.json"
     result = record_loop_outcome(path, {

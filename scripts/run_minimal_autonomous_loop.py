@@ -467,7 +467,7 @@ def run_task(
         failure_reason = failure_reason or "summary_missing_required_key"
     elif not _valid_sha(base_sha) or not _valid_sha(payload.get("produced_sha")):
         failure_reason = failure_reason or "summary_sha_invalid"
-    elif payload.get("exit_code") != exit_code:
+    elif type(payload.get("exit_code")) is not int or payload.get("exit_code") != exit_code:
         failure_reason = failure_reason or "summary_exit_code_mismatch"
     else:
         try:
@@ -521,10 +521,15 @@ def run_task(
             status = "NO_CHANGE"
         elif failure_reason == "task_timeout":
             status = "TIMEOUT"
+            exit_code = exit_code or 1
         elif "stop_requested" in failure_reason:
             status = "STOPPED"
+            exit_code = exit_code or 1
         else:
             status = "FAIL"
+            # A rejected or malformed summary is a failed run even when the
+            # underlying subprocess itself exited successfully.
+            exit_code = exit_code or 1
 
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -899,9 +904,29 @@ def main() -> int:
             )
         else:
             print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
-            result = run_task(
-                task, index, args.stop_file, expected_base_sha=control_tower_head
-            )
+            try:
+                result = run_task(
+                    task, index, args.stop_file, expected_base_sha=control_tower_head
+                )
+            except Exception as exc:
+                # Preserve an auditable task outcome even if the runtime raises
+                # before it can return its normal evidence object. Never persist
+                # exception text, which could contain paths or secrets.
+                try:
+                    exception_head = _git_head()
+                except Exception:
+                    exception_head = None
+                result = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "run_index": index,
+                    "task_id": str(task["id"]),
+                    "status": "FAIL",
+                    "exit_code": 1,
+                    "base_sha": control_tower_head,
+                    "produced_sha": exception_head,
+                    "run_nonce": uuid.uuid4().hex,
+                    "failure_reason": f"task_runtime_exception:process_crash:{type(exc).__name__}",
+                }
         recovery_error = False
         try:
             from scripts.recovery_ai_loop_adapter import record_loop_outcome

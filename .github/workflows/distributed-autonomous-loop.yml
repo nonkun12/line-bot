@@ -454,8 +454,8 @@ jobs:
                   value = row.get(key)
                   if not isinstance(value, str) or len(value) != 40 or any(c not in "0123456789abcdef" for c in value.lower()):
                       raise SystemExit(f"invalid {key} on line {number}")
-              if row.get("exit_code") != 0:
-                  raise SystemExit(f"nonzero task exit code on line {number}")
+              if type(row.get("exit_code")) is not int or row.get("exit_code") != 0:
+                  raise SystemExit(f"invalid or nonzero task exit code on line {number}")
               rows.append(row)
 
           try:
@@ -608,9 +608,11 @@ jobs:
 
       - name: Persist Recovery AI durable state
         id: persist_recovery_ai
-        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
+        if: ${{ always() && !cancelled() && steps.run_task.conclusion != 'skipped' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          STATE_OUTCOME: ${{ steps.persist_state.outcome }}
         run: |
           set -euo pipefail
           if [ -f /tmp/autonomous-loop-not-run ] || [ -f /tmp/autonomous-loop-held-tasks ]; then
@@ -621,6 +623,27 @@ jobs:
             echo "::error::Recovery AI result/state evidence is missing."
             exit 1
           fi
+          # A task PASS is not sufficient if publication or completed-state
+          # persistence failed. Hold the task before exporting Recovery AI state.
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from scripts.recovery_ai import RecoveryStore
+
+          publish_outcome = os.environ.get("PUBLISH_OUTCOME", "")
+          state_outcome = os.environ.get("STATE_OUTCOME", "")
+          if publish_outcome != "success" or state_outcome != "success":
+              rows = [json.loads(line) for line in Path("/tmp/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+              store = RecoveryStore(Path("/tmp/recovery-ai-state.json"))
+              for row in rows:
+                  if not isinstance(row, dict) or row.get("status") not in {"PASS", "NO_CHANGE"}:
+                      continue
+                  task_id = row.get("task_id")
+                  if not isinstance(task_id, str) or not task_id:
+                      raise SystemExit("post-run gate failed without a valid task ID; refusing durable state update")
+                  store.record_failure(task_id, "post_run_gate_failure")
+          PY
           # Persist only allowlisted signal kinds, safe task IDs, and generic details.
           # Raw exception text and arbitrary model/user content never enter durable state.
           python scripts/self_improvement_state.py export \

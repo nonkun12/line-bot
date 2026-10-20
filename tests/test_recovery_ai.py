@@ -46,6 +46,14 @@ def test_non_repairable_failure_holds_immediately(tmp_path):
     assert decision.requires_human is True
 
 
+def test_post_run_gate_failure_holds_immediately(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    decision = store.record_failure("task-a", "post_run_gate_failure")
+    assert decision.action == "HOLD"
+    assert decision.requires_human is True
+    assert store.task_status("task-a")["held"] is True
+
+
 def test_corrupt_state_fails_closed(tmp_path):
     path = tmp_path / "state.json"
     path.write_text("{broken", encoding="utf-8")
