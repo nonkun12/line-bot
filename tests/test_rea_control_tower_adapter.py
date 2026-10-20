@@ -188,48 +188,87 @@ def test_prepare_rea_evidence_non_object_report_returns_blocked(bad_report):
 
 
 
-def test_independent_publish_gate_requires_valid_rea_and_explicit_orchestrator_allow():
-    row = {
+def _valid_publish_row():
+    return {
+        "task_id": "task-a",
+        "status": "PASS",
+        "exit_code": 0,
+        "base_sha": SHA,
+        "produced_sha": "b" * 40,
         "rea": pass_evidence(),
-        "control_tower": {"orchestration": {"allow_continue": True}},
+        "control_tower": {
+            "recorded": True,
+            "orchestration": {
+                "phase": "REPORT",
+                "next_action": "REPORT_VERIFIED_SUCCESS",
+                "reason_code": "verified_success",
+                "allow_continue": True,
+                "task_id": "task-a",
+                "repair_executed": False,
+            },
+        },
     }
-    assert publish_row_has_valid_gates(row, expected_sha=SHA)
+
+
+def test_independent_publish_gate_requires_complete_exact_run_evidence():
+    assert publish_row_has_valid_gates(_valid_publish_row(), expected_sha=SHA)
 
 
 @pytest.mark.parametrize("mutate", [
     "missing_rea",
     "invalid_rea",
     "missing_control_tower",
+    "observation_not_recorded",
     "missing_orchestration",
     "orchestration_false",
     "orchestration_truthy_non_bool",
+    "wrong_reason",
+    "wrong_task_id",
+    "wrong_phase",
+    "missing_run_identity",
+    "base_sha_mismatch",
+    "no_change_sha_mismatch",
+    "boolean_exit_code",
+    "invalid_status",
 ])
 def test_independent_publish_gate_fails_closed(mutate):
-    row = {
-        "rea": pass_evidence(),
-        "control_tower": {"orchestration": {"allow_continue": True}},
-    }
+    row = _valid_publish_row()
     if mutate == "missing_rea":
         row.pop("rea")
     elif mutate == "invalid_rea":
-        row["rea"] = pass_evidence()
-        row["rea"]["target_sha"] = "b" * 40
+        row["rea"]["target_sha"] = "c" * 40
     elif mutate == "missing_control_tower":
         row.pop("control_tower")
+    elif mutate == "observation_not_recorded":
+        row["control_tower"]["recorded"] = False
     elif mutate == "missing_orchestration":
-        row["control_tower"] = {}
+        row["control_tower"].pop("orchestration")
     elif mutate == "orchestration_false":
         row["control_tower"]["orchestration"]["allow_continue"] = False
     elif mutate == "orchestration_truthy_non_bool":
         row["control_tower"]["orchestration"]["allow_continue"] = 1
+    elif mutate == "wrong_reason":
+        row["control_tower"]["orchestration"]["reason_code"] = "unknown"
+    elif mutate == "wrong_task_id":
+        row["control_tower"]["orchestration"]["task_id"] = "task-b"
+    elif mutate == "wrong_phase":
+        row["control_tower"]["orchestration"]["phase"] = "RECOVER"
+    elif mutate == "missing_run_identity":
+        row.pop("produced_sha")
+    elif mutate == "base_sha_mismatch":
+        row["base_sha"] = "c" * 40
+    elif mutate == "no_change_sha_mismatch":
+        row["status"] = "NO_CHANGE"
+    elif mutate == "boolean_exit_code":
+        row["exit_code"] = False
+    elif mutate == "invalid_status":
+        row["status"] = "SUCCESS"
     assert not publish_row_has_valid_gates(row, expected_sha=SHA)
 
 
 def test_independent_publish_gate_rejects_non_object_rows():
     assert not publish_row_has_valid_gates(None, expected_sha=SHA)
     assert not publish_row_has_valid_gates([], expected_sha=SHA)
-
-
 
 def test_duplicate_finding_ids_fail_closed():
     first = safe_finding(1)
