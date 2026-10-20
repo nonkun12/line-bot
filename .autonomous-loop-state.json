@@ -26,7 +26,8 @@
     "router-general-channel-metadata-regression",
     "obsidian-bridge-invalid-job-id-regression",
     "control-tower-recovery-evidence-identity-mismatch",
-    "control-tower-run-identity-invalid-sha-regression-v2"
+    "control-tower-run-identity-invalid-sha-regression-v2",
+    "distributed-loop-queue-progress-empty-queue-regression-v2"
   ],
   "recovery_ai": {
     "checkpoint": null,
