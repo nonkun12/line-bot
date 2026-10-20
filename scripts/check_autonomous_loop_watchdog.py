@@ -52,9 +52,10 @@ def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
         + quote(repo, safe="/")
         + f"/actions/workflows/{workflow}/runs?event=schedule&per_page=20"
     )
-    # GitHub Actions can delay scheduled workflows substantially. Allow up to
-    # four hours of lateness (still less than the six-hour slot interval).
-    window_end = slot + timedelta(minutes=240)
+    # GitHub Actions may delay scheduled workflows by more than four hours.
+    # Allow up to 5h30m, while keeping the window strictly shorter than the
+    # six-hour cadence so a delayed run cannot be attributed to the next slot.
+    window_end = slot + timedelta(minutes=330)
     window_start = slot - timedelta(minutes=10)
     for run in data.get("workflow_runs", []):
         if run.get("name") != "Distributed Autonomous Development Loop" or run.get("event") != "schedule":
