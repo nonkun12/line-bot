@@ -309,6 +309,44 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
     return list(definitions.values())
 
 
+def reselect_registered_task(
+    queued_tasks: list[dict[str, object]],
+    registered_catalog: list[dict[str, object]],
+    completed_task_ids: set[str],
+    held_task_ids: set[str],
+    *,
+    expected_task_id: str,
+    evidence_sha: str,
+    current_head_sha: str,
+) -> tuple[dict[str, object] | None, str]:
+    """Revalidate one task against a fresh queue, catalog, state, and HEAD."""
+    from core.control_tower_selector import select_next_task
+
+    decision = select_next_task(
+        [str(task.get("id", "")) for task in queued_tasks],
+        [str(task.get("id", "")) for task in registered_catalog],
+        completed_task_ids,
+        held_task_ids,
+        evidence_sha=evidence_sha,
+        current_head_sha=current_head_sha,
+    )
+    if decision.next_action != "SELECT_REGISTERED_TASK":
+        return None, str(decision.reason_code)
+    if decision.task_template_id != expected_task_id:
+        return None, "selection_mismatch"
+    queued = next(
+        (task for task in queued_tasks if str(task.get("id", "")) == expected_task_id),
+        None,
+    )
+    registered = next(
+        (task for task in registered_catalog if str(task.get("id", "")) == expected_task_id),
+        None,
+    )
+    if queued is None or registered is None or queued != registered:
+        return None, "definition_mismatch"
+    return queued, ""
+
+
 def _verify_produced_head(base_sha: str, produced_sha: str, allowed_paths: list[str]) -> tuple[bool, str]:
     if not _valid_sha(base_sha) or not _valid_sha(produced_sha):
         return False, "sha_invalid"
@@ -871,36 +909,17 @@ def main() -> int:
                     record = refreshed_store.task_status(str(registered_task["id"]))
                     if recovery_record_blocks_task(record):
                         refreshed_held.add(str(registered_task["id"]))
-                from core.control_tower_selector import select_next_task
-                fresh_decision = select_next_task(
-                    [str(item["id"]) for item in refreshed_queue],
-                    [str(item["id"]) for item in refreshed_catalog],
+                fresh_task, reselection_reason = reselect_registered_task(
+                    refreshed_queue,
+                    refreshed_catalog,
                     refreshed_completed,
                     refreshed_held,
+                    expected_task_id=str(task["id"]),
                     evidence_sha=task_selection_sha,
                     current_head_sha=_git_head(),
                 )
-                if (
-                    fresh_decision.next_action != "SELECT_REGISTERED_TASK"
-                    or fresh_decision.task_template_id != str(task["id"])
-                ):
-                    raise ValueError(
-                        "reselection_denied:" + str(fresh_decision.reason_code)
-                    )
-                fresh_task = next(
-                    (item for item in refreshed_queue if str(item["id"]) == fresh_decision.task_template_id),
-                    None,
-                )
-                registered_task = next(
-                    (item for item in refreshed_catalog if str(item["id"]) == fresh_decision.task_template_id),
-                    None,
-                )
-                if (
-                    fresh_task is None
-                    or registered_task is None
-                    or fresh_task != registered_task
-                ):
-                    raise ValueError("reselection_definition_mismatch")
+                if fresh_task is None:
+                    raise ValueError("reselection_denied:" + reselection_reason)
                 task = fresh_task
                 registered_catalog = refreshed_catalog
                 completed = refreshed_completed
