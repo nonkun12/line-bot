@@ -433,7 +433,7 @@ jobs:
           import os
           import subprocess
           from pathlib import Path
-          from scripts.rea_control_tower_adapter import rea_evidence_is_valid_pass
+          from scripts.rea_control_tower_adapter import publish_row_has_valid_gates
 
           path = Path("/tmp/minimal-autonomous-loop.jsonl")
           rows = []
@@ -460,12 +460,8 @@ jobs:
 
               # Independent second-line checks: the in-process loop decision is
               # not sufficient evidence for publishing a development branch.
-              if not rea_evidence_is_valid_pass(row.get("rea"), expected_sha=row["base_sha"]):
-                  raise SystemExit(f"missing or invalid REA evidence on line {number}")
-              control_tower = row.get("control_tower")
-              orchestration = control_tower.get("orchestration") if isinstance(control_tower, dict) else None
-              if not isinstance(orchestration, dict) or orchestration.get("allow_continue") is not True:
-                  raise SystemExit(f"Control Tower did not explicitly allow continuation on line {number}")
+              if not publish_row_has_valid_gates(row, expected_sha=row["base_sha"]):
+                  raise SystemExit(f"missing, invalid, or non-allowing REA/Control Tower evidence on line {number}")
               rows.append(row)
 
           try:
