@@ -137,6 +137,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
+          DEVELOPMENT_OUTCOME: ${{ steps.development.outcome }}
+          AUTONOMOUS_START_SHA: ${{ env.AUTONOMOUS_START_SHA }}
           BRANCH: line-dev/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -157,7 +159,12 @@ jobs:
 
           Multi-agent runtime: Manager → Implementer → Tester → Reviewer → Repairer(if needed) → Integrator
 
-          Guarded tests and integration gate: PASS
+          Guarded tests and integration gate: NOT_ASSERTED_BY_WORKER (verify GitHub checks for the exact produced SHA).
+          Runtime outcome: ${DEVELOPMENT_OUTCOME:-unknown}
+          Starting SHA: ${AUTONOMOUS_START_SHA:-unknown}
+          Produced SHA: $(git rev-parse HEAD)
+          Changed files since start:
+          $(git diff --name-only "${AUTONOMOUS_START_SHA}...HEAD" 2>/dev/null || echo "(diff unavailable)")
           Created directly by GitHub Actions.
           EOF
           gh pr create --repo "${GITHUB_REPOSITORY}" --head "${BRANCH}" --base main --title "feat: LINE development request" --body-file /tmp/pr_body.md >/tmp/pr_url.txt
@@ -182,8 +189,12 @@ jobs:
           export AUTONOMOUS_AGENT="DistributedDevelopmentRuntime"
           export AUTONOMOUS_TASK_ID="on-demand-line-development"
           if [ "${{ steps.development.outcome }}" = "success" ]; then
-            export AUTONOMOUS_TESTS_RESULT="PASS"
-            export AUTONOMOUS_SAFETY_GATE_RESULT="PASS"
+            if [ "${{ steps.development.outputs.test_only }}" = "true" ]; then
+              export AUTONOMOUS_TESTS_RESULT="PASS"
+            else
+              export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
+            fi
+            export AUTONOMOUS_SAFETY_GATE_RESULT="NOT_ASSERTED"
           else
             export AUTONOMOUS_TESTS_RESULT="FAIL"
             export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
@@ -223,7 +234,7 @@ jobs:
                   message = fh.read()
           except OSError:
               message = "⚠️ 終了報告生成失敗\\n" f"指示: {instruction}\\n" f"実行結果: {run_url}\\n" f"Outcome: {outcome}"
-          request = urllib.request.Request(webhook, data=json.dumps({"text": text}).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
+          request = urllib.request.Request(webhook, data=json.dumps({"text": message}).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
           with urllib.request.urlopen(request, timeout=20) as response:
               print(f"SLACK_NOTIFICATION=HTTP_{response.status}")
           PY
