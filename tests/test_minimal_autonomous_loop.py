@@ -817,3 +817,128 @@ def test_authorization_denial_skips_rea_and_clears_task_evidence(monkeypatch, tm
     assert rows[0]["failure_reason"] == "control_tower_gate:authorization_denied"
     assert rows[0].get("rea") is None
     assert rea_calls == []
+
+
+def test_orchestrator_gates_successful_loop_on_exact_evidence(monkeypatch, tmp_path: Path):
+    from types import SimpleNamespace
+
+    from scripts import (
+        control_tower_loop_adapter,
+        control_tower_loop_observer,
+        rea_control_tower_adapter,
+        recovery_ai_loop_adapter,
+    )
+    from scripts.recovery_ai import RecoveryStore
+
+    sha = "a" * 40
+    nonce = "c" * 32
+    task = {
+        "id": "integration-success",
+        "instruction": "test-only integration fixture",
+        "allowed_paths": ["tests/test_one.py"],
+    }
+    queue = tmp_path / "queue.json"
+    queue.write_text('{"max_tasks_per_run": 1}', encoding="utf-8")
+    results = tmp_path / "results.jsonl"
+    state = tmp_path / "loop-state.json"
+
+    monkeypatch.setattr(loop, "QUEUE", queue)
+    monkeypatch.setattr(loop, "load_completed", lambda _path: set())
+    monkeypatch.setattr(loop, "load_tasks", lambda: [task])
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [task])
+    monkeypatch.setattr(
+        loop.sys,
+        "argv",
+        [
+            "run_minimal_autonomous_loop",
+            "--max-tasks",
+            "1",
+            "--state",
+            str(state),
+            "--results",
+            str(results),
+        ],
+    )
+    monkeypatch.setattr(RecoveryStore, "task_status", lambda self, _task_id: {})
+    monkeypatch.setattr(
+        "core.control_tower_selector.select_next_task",
+        lambda *args, **kwargs: SimpleNamespace(
+            next_action="SELECT_REGISTERED_TASK",
+            task_template_id=task["id"],
+            reason_code="selected",
+        ),
+    )
+    monkeypatch.setattr(
+        control_tower_loop_adapter,
+        "authorize_registered_task",
+        lambda *_args: (True, "authorized"),
+    )
+    rea = {
+        "gate": "PASS",
+        "mode": "OBSERVE_ONLY",
+        "target_sha": sha,
+        "critical_count": 0,
+        "blocking_count": 0,
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "hold_clear_authorized": False,
+        "merge_deploy_authorized": False,
+        "scanner_status": "PASS",
+        "finding_count": 0,
+        "findings_truncated": False,
+        "findings": [],
+    }
+    monkeypatch.setattr(
+        rea_control_tower_adapter,
+        "prepare_rea_evidence",
+        lambda _root, expected_sha: {**rea, "target_sha": expected_sha},
+    )
+    monkeypatch.setattr(
+        loop,
+        "run_task",
+        lambda *_args, **_kwargs: {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "run_index": 1,
+            "task_id": task["id"],
+            "run_nonce": nonce,
+            "status": "NO_CHANGE",
+            "exit_code": 0,
+            "base_sha": sha,
+            "produced_sha": sha,
+            "failure_reason": "no_change",
+        },
+    )
+    recovery_evidence = {
+        "task_id": task["id"],
+        "base_sha": sha,
+        "produced_sha": sha,
+        "run_nonce": nonce,
+    }
+    monkeypatch.setattr(
+        recovery_ai_loop_adapter,
+        "record_loop_outcome",
+        lambda _path, result: {
+            "recorded": True,
+            "verified": True,
+            "status": result["status"],
+            "evidence": recovery_evidence,
+        },
+    )
+    monkeypatch.setattr(
+        control_tower_loop_observer,
+        "record_loop_observation",
+        lambda _path, result: {
+            "recorded": True,
+            "observed_status": result["status"],
+            "proposal_executable": False,
+        },
+    )
+
+    assert loop.main() == 0
+    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["rea"] == rea
+    assert rows[0]["recovery_ai"]["evidence"] == recovery_evidence
+    assert rows[0]["control_tower"]["orchestration"]["reason_code"] == "verified_success"
+    assert rows[0]["control_tower"]["orchestration"]["allow_continue"] is True
