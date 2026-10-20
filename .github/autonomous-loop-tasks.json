@@ -3,31 +3,31 @@
   "max_tasks_per_run": 4,
   "tasks": [
     {
-      "id": "ai-speaker-transcript-normalization-regression",
-      "instruction": "tests/test_ai_speaker.py のみに、文字起こしの前後空白を含む通常入力の扱いを確認する回帰テストを1件追加してください。既存実装とテストを先に読み、仕様が不明なら変更せず NO_CHANGE と報告。新しい固有のテスト名、ダミーデータのみ。テストファイル1つだけ変更。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "id": "ai-speaker-empty-transcript-no-brain-call",
+      "instruction": "tests/test_ai_speaker.py のみに、空の文字起こしで脳処理を呼び出さず fail-closed になる回帰テストを追加してください。既存の deterministic plan とテストを確認し、重複なら NO_CHANGE。許可されたテストファイル1つだけ変更。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
       "allowed_paths": [
         "tests/test_ai_speaker.py"
       ]
     },
     {
-      "id": "recovery-ai-held-task-isolation-regression",
-      "instruction": "tests/test_recovery_ai.py のみに、held 状態が別 task_id に誤って伝播しないことを検証する回帰テストを1件追加してください。既存テストと実装を先に確認し、重複なら NO_CHANGE。ダミーデータのみ、テストファイル1つだけ変更。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "id": "recovery-ai-state-isolation",
+      "instruction": "tests/test_recovery_ai.py のみに、Recovery AI の held 状態が別 task_id に伝播しないことを確認する回帰テストを追加してください。既存の deterministic plan とテストを確認し、重複なら NO_CHANGE。許可されたテストファイル1つだけ変更。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
       "allowed_paths": [
         "tests/test_recovery_ai.py"
       ]
     },
     {
-      "id": "router-general-channel-metadata-regression",
-      "instruction": "tests/test_management_router.py のみに、一般依頼の deterministic routing が channel と metadata を保持する回帰テストを1件追加してください。既存テストと重複する場合は NO_CHANGE。ダミーデータのみ、テストファイル1つだけ変更。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "id": "router-regression-general-request-metadata",
+      "instruction": "tests/test_management_router.py のみに、一般依頼の deterministic routing が channel と request metadata を保持する回帰テストを追加してください。既存の deterministic plan とテストを確認し、重複なら NO_CHANGE。許可されたテストファイル1つだけ変更。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
       "allowed_paths": [
         "tests/test_management_router.py"
       ]
     },
     {
-      "id": "obsidian-bridge-invalid-job-id-regression",
-      "instruction": "tests/test_obsidian_mac_bridge.py のみに、無効なジョブIDを拒否し副作用を起こさないことを確認する回帰テストを1件追加してください。既存の検証仕様とテストを先に確認し、重複または仕様不明なら NO_CHANGE。ダミーデータのみ、テストファイル1つだけ変更。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "id": "recovery-ai-loop-adapter-durable-state-readback",
+      "instruction": "tests/test_recovery_ai_loop_adapter.py のみに、保存した失敗状態が新しい store の readback 後も保持されることを確認する回帰テストを追加してください。既存の deterministic plan とテストを確認し、重複なら NO_CHANGE。許可されたテストファイル1つだけ変更。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
       "allowed_paths": [
-        "tests/test_obsidian_mac_bridge.py"
+        "tests/test_recovery_ai_loop_adapter.py"
       ]
     }
   ],
