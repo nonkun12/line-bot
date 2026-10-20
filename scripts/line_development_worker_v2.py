@@ -225,11 +225,10 @@ def parse_plan(text: str) -> dict:
 
 
 def context_for(path: str) -> str:
-    """Keep the full file for small over-limit cases; otherwise retain both ends."""
+    """Keep context within the character budget while retaining both file ends."""
     target = ROOT / path
     content = target.read_text(encoding="utf-8")
-    # A small overflow should not silently hide the final test/function in a file.
-    if len(content) <= MAX_FILE_CHARS + 4096:
+    if len(content) <= MAX_FILE_CHARS:
         return content
 
     marker = "\n...[middle omitted; context bounded]...\n"
