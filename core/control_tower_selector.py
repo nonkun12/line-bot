@@ -62,7 +62,9 @@ def select_next_task(
     # Validate the whole queue before selecting anything. Completed/held status
     # must never be used to excuse a queue entry absent from the registry.
     if any(task_id not in registered for task_id in queued_task_ids):
-        return _blocked("policy_blocked")
+        # Keep the fail-closed behavior, but distinguish registry drift from a
+        # stale/mismatched HEAD so Recovery AI can route the right repair.
+        return _blocked("unregistered_task")
 
     for task_id in queued_task_ids:
         if task_id in held or task_id in completed:
