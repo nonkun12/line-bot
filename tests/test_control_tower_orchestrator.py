@@ -225,3 +225,20 @@ def test_recovery_evidence_identity_mismatch_fails_closed(field, value):
     decision = coordinate_outcome(result)
     assert decision["allow_continue"] is False
     assert decision["reason_code"] == "recovery_run_evidence_mismatch"
+
+# New regression test for invalid base_sha and produced_sha handling
+@pytest.mark.parametrize(
+    "base_sha,produced_sha,expected_reason",
+    [
+        ("f" * 40, "b" * 40, "rea_evidence_missing_or_invalid"),  # invalid base_sha
+        ("a" * 40, "short", "run_identity_invalid"),  # produced_sha too short
+        ("a" * 40, "B" * 40, "run_identity_invalid"),  # produced_sha uppercase
+    ],
+)
+def test_invalid_sha_handling(base_sha, produced_sha, expected_reason):
+    result = verified_success()
+    result["base_sha"] = base_sha
+    result["produced_sha"] = produced_sha
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == expected_reason
