@@ -15,9 +15,8 @@ on:
       - 'tox.ini'
       - '.github/workflows/pytest.yml'
 
+  # Stacked feature-branch PRs must also run the full suite.
   pull_request:
-    branches:
-      - main
 
 
 jobs:

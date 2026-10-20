@@ -91,6 +91,7 @@ from app_development import extract_app_development_request, dispatch_app_develo
 from line_development import extract_development_instruction, dispatch_development_workflow
 from slack_command import register_slack_command
 from distributed_loop_trigger import request_distributed_loop
+from recovery_review_trigger import request_recovery_resume_review
 from agents.english.core_image import handle_core_image_command
 
 app = Flask(__name__)
@@ -323,6 +324,10 @@ def _core_dynamic_enabled():
 def _handle_ai_gateway_request(ai_request):
     message = str(ai_request.message)
     user_id = str(ai_request.user_id)
+
+    review_handled, review_reply = request_recovery_resume_review(user_id, message)
+    if review_handled:
+        return review_reply
 
     loop_handled, loop_reply = request_distributed_loop(user_id, message)
     if loop_handled:
