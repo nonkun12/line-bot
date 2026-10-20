@@ -414,3 +414,26 @@ def test_build_plan_system_prompt_constrains_to_selected_file_and_diff_markers(m
     assert 'return {"no_change":true}' in sys_prompt
     user_prompt = recorded["prompt"]
     assert f"Selected file (ONLY editable file):\n{chosen}" in user_prompt
+
+
+def test_context_for_preserves_complete_file_with_small_size_overflow(monkeypatch, tmp_path):
+    content = "HEAD-MARKER\\n" + ("x" * (worker.MAX_FILE_CHARS + 100)) + "\\nTAIL-MARKER\\n"
+    target = tmp_path / "sample.py"
+    target.write_text(content, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    assert worker.context_for("sample.py") == content
+
+
+def test_context_for_keeps_both_ends_when_file_is_far_over_limit(monkeypatch, tmp_path):
+    content = "HEAD-MARKER\\n" + ("x" * (worker.MAX_FILE_CHARS + 10000)) + "\\nTAIL-MARKER\\n"
+    target = tmp_path / "sample.py"
+    target.write_text(content, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    context = worker.context_for("sample.py")
+
+    assert len(context) <= worker.MAX_FILE_CHARS
+    assert context.startswith("HEAD-MARKER\\n")
+    assert "middle omitted; context bounded" in context
+    assert context.endswith("TAIL-MARKER\\n")
