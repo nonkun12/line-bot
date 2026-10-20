@@ -21,6 +21,15 @@ class WordEntry:
 
 
 _ENTRIES: dict[str, WordEntry] = {
+    "great": WordEntry(
+        word="great",
+        pronunciation="グレイト",
+        core_image="基準を大きく上回る／規模が大きい → すばらしい・大きな・重要な",
+        parts="語源・語根の分解はここでは扱いません。まず現代英語の意味と使い方を覚える項目です。",
+        related=("excellent（非常に優れた）", "wonderful（すばらしい）", "large（大きい）"),
+        example="You did a great job.（よくやったね。）",
+        note="great は人・物への高い評価だけでなく、great size / great importance のように「大きな・重要な」にも使います。",
+    ),
     "inspect": WordEntry(
         word="inspect",
         pronunciation="インスペクト",
@@ -389,9 +398,19 @@ _COMMAND_RE = re.compile(
 
 
 def extract_core_image_word(message: str) -> str | None:
-    """Return a word only for explicit core-image commands."""
-    match = _COMMAND_RE.fullmatch(str(message or "").strip())
-    return match.group(1).lower() if match else None
+    """Return a word for explicit core-image commands in either word order."""
+    value = str(message or "").strip()
+    match = _COMMAND_RE.fullmatch(value)
+    if match:
+        return match.group(1).lower()
+
+    # Also accept the natural LINE phrasing "great コアイメージ".
+    reversed_match = re.fullmatch(
+        r"([A-Za-z][A-Za-z'-]{0,63})\s+(?:コアイメージ|語根|語幹|core\s*image|word\s*root)\s*[:：]?[?？。！!]*",
+        value,
+        re.IGNORECASE,
+    )
+    return reversed_match.group(1).lower() if reversed_match else None
 
 
 def explain_core_image(word: str) -> str:
