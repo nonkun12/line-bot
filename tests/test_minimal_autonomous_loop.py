@@ -613,11 +613,11 @@ def test_final_outcome_held_queue_blocks_empty_recovery_persistence_outcome():
         all_tasks_held=True,
     ) == ("BLOCKED", "held_queue_post_run_gate_failed:recovery_ai_persistence")
 
-def test_distributed_loop_workflow_legacy_label_uses_one_task_limit():
+def test_distributed_loop_workflow_owner_max4_label_uses_four_task_limit():
     from pathlib import Path
 
     workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
-    assert 'elif [ "${EVENT_NAME}" = "pull_request_target" ]; then\n            # Legacy max4 label remains accepted, but runtime safely supports one normal task.\n            expected="1"' in workflow
+    assert 'elif [ "${EVENT_NAME}" = "pull_request_target" ]; then\n            # Only the repository owner can request the bounded four-task path.\n            expected="4"' in workflow
     assert 'requested="${MAX_TASKS:-1}"' in workflow
 
 
