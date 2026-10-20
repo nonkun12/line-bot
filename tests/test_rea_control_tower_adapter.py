@@ -195,7 +195,15 @@ def _valid_publish_row():
         "exit_code": 0,
         "base_sha": SHA,
         "produced_sha": "b" * 40,
+        "run_nonce": "d" * 32,
         "rea": pass_evidence(),
+        "recovery_ai": {
+            "recorded": True, "verified": True, "status": "PASS",
+            "evidence": {
+                "task_id": "task-a", "base_sha": SHA,
+                "produced_sha": "b" * 40, "run_nonce": "d" * 32,
+            },
+        },
         "control_tower": {
             "recorded": True,
             "orchestration": {
@@ -217,6 +225,10 @@ def test_independent_publish_gate_requires_complete_exact_run_evidence():
 @pytest.mark.parametrize("mutate", [
     "missing_rea",
     "invalid_rea",
+    "missing_recovery_evidence",
+    "mismatched_recovery_evidence",
+    "recovery_not_verified",
+    "invalid_nonce",
     "missing_control_tower",
     "observation_not_recorded",
     "missing_orchestration",
@@ -237,6 +249,14 @@ def test_independent_publish_gate_fails_closed(mutate):
         row.pop("rea")
     elif mutate == "invalid_rea":
         row["rea"]["target_sha"] = "c" * 40
+    elif mutate == "missing_recovery_evidence":
+        row.pop("recovery_ai")
+    elif mutate == "mismatched_recovery_evidence":
+        row["recovery_ai"]["evidence"]["task_id"] = "task-b"
+    elif mutate == "recovery_not_verified":
+        row["recovery_ai"]["verified"] = False
+    elif mutate == "invalid_nonce":
+        row["run_nonce"] = "not-a-nonce"
     elif mutate == "missing_control_tower":
         row.pop("control_tower")
     elif mutate == "observation_not_recorded":
