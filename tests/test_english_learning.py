@@ -266,3 +266,20 @@ def test_vocabulary_rotation_is_independent_per_user(monkeypatch, tmp_path):
     assert user_a_second.isdisjoint(user_a_first)
     assert user_b_second.isdisjoint(user_b_first)
     assert user_a_second == user_b_second
+
+
+
+def test_interesting_core_image_command_returns_english_explanation():
+    from agents.english.core_image import handle_core_image_command
+
+    response = handle_core_image_command("interesting コアイメージ")
+    assert response is not None
+    assert "🔎 interesting（インタレスティング）" in response
+    assert "コアイメージ：心や注意を引きつける" in response
+    assert "This book is interesting." in response
+    assert "ブランド" not in response
+
+
+def test_core_image_command_is_classified_as_english_learning_intent():
+    assert is_english_learning_intent("interesting コアイメージ")
+    assert is_english_learning_intent("コアイメージ interesting")
