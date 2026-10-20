@@ -29,6 +29,27 @@
       "allowed_paths": [
         "tests/test_recovery_ai_loop_adapter.py"
       ]
+    },
+    {
+      "id": "english-core-image-rotation-user-isolation",
+      "instruction": "tests/test_english_learning.py のみに、新しい固有名の回帰テストを1件追加してください。テンポラリSQLite DBを使い、同じユーザーの「単語」2回目は1回目の3語と重複しないこと、別ユーザーの初回履歴は独立しており最初のユーザーの履歴に影響されないことを検証してください。外部API、実データベースへの書き込み、既存テスト変更は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_english_learning.py"
+      ]
+    },
+    {
+      "id": "control-tower-recovery-evidence-identity-mismatch",
+      "instruction": "tests/test_control_tower_orchestrator.py のみに、新しい固有名の回帰テストを1件追加してください。成功結果の recovery_ai.evidence の task_id または base_sha または produced_sha がトップレベルの実行証跡と一致しない場合、coordinate_outcome() が allow_continue=false と reason_code=recovery_run_evidence_mismatch を返すことを、パラメータ化して検証してください。既存テストを変更せず、外部通信・シークレット・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_control_tower_orchestrator.py"
+      ]
+    },
+    {
+      "id": "control-tower-run-identity-invalid-sha-regression",
+      "instruction": "tests/test_control_tower_orchestrator.py のみに、新しい固有名の回帰テストを1件追加してください。status=PASS の結果に不正な base_sha または produced_sha（短いSHA、大文字SHA、非文字列）がある場合、coordinate_outcome() が fail-closed で reason_code=run_identity_invalid と allow_continue=false を返すことをパラメータ化して検証してください。既存テストを変更せず、外部通信・シークレット・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_control_tower_orchestrator.py"
+      ]
     }
   ]
 }
