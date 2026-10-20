@@ -136,11 +136,15 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                 for run in runs[:5 if status_kind == "status" else 1]:
                     number = run.get("run_number", "?")
                     state = run.get("conclusion") if run.get("status") == "completed" else run.get("status", "unknown")
+                    event = str(run.get("event") or "unknown")
+                    if state == "skipped":
+                        state = "SKIPPED（起動条件不一致・タスク未実行）"
                     title = str(run.get("display_title") or "分散Loop")[:100]
                     sha = str(run.get("head_sha") or "")
                     created = str(run.get("created_at") or "")
                     url = str(run.get("html_url") or "")
                     lines.append(f"Run #{number}: {state} / {title}")
+                    lines.append(f"イベント: {event}")
                     if created:
                         lines.append(f"開始: {created}")
                     if sha:
