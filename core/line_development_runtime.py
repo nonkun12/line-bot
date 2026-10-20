@@ -209,6 +209,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "router-regression-general-request-metadata": "tests/test_management_router.py",
     "router-regression-general-request-metadata-refresh-20261015": "tests/test_management_router.py",
     "recovery-ai-loop-adapter-durable-state-readback": "tests/test_recovery_ai_loop_adapter.py",
+    "control-tower-recovery-evidence-identity-mismatch": "tests/test_control_tower_orchestrator.py",
     "recovery-ai-state-isolation": "tests/test_recovery_ai.py",
     "ai-speaker-empty-transcript-no-brain-call": "tests/test_ai_speaker.py",
     "distributed-loop-queue-progress-empty-queue-regression": "tests/test_distributed_loop_queue_progress.py",
@@ -1219,6 +1220,44 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "no_change": False,
             "source": "deterministic_autonomous_task",
             "changes": [{"file": chosen, "old": old, "new": new}],
+        }, None
+
+    if task_id == "control-tower-recovery-evidence-identity-mismatch" and chosen == "tests/test_control_tower_orchestrator.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_recovery_evidence_task_sha_identity_mismatch_fails_closed"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_recovery_success_must_match_exact_run_evidence():\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+        addition = (
+            "@pytest.mark.parametrize(\"field,value\", [\\n"
+            "    (\"task_id\", \"task-b\"),\\n"
+            "    (\"base_sha\", \"d\" * 40),\\n"
+            "    (\"produced_sha\", \"e\" * 40),\\n"
+            "])\\n"
+            "def test_recovery_evidence_task_sha_identity_mismatch_fails_closed(field, value):\\n"
+            "    result = verified_success()\\n"
+            "    result[\"recovery_ai\"][\"evidence\"][field] = value\\n"
+            "    decision = coordinate_outcome(result)\\n"
+            "    assert decision[\"allow_continue\"] is False\\n"
+            "    assert decision[\"reason_code\"] == \"recovery_run_evidence_mismatch\"\\n"
+            "\\n\\n"
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
         }, None
 
     return None, None
