@@ -893,7 +893,9 @@ jobs:
             queue_completed="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["queue_completed"])' "$progress_json")"
             export QUEUE_PROGRESS_INVALID=false
           else
-            echo "::error::Queue progress evidence invalid; final outcome will be BLOCKED."
+            # The progress CLI emits only a safe exception class, never raw exception text or paths.
+            progress_diagnostic="${progress_json:-QUEUE_PROGRESS_BLOCKED: no diagnostic emitted}"
+            echo "::error::Queue progress evidence invalid (${progress_diagnostic}); final outcome will be BLOCKED."
             queue_total=0
             queue_completed=0
             export QUEUE_PROGRESS_INVALID=true
