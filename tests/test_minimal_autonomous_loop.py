@@ -432,3 +432,37 @@ def test_distributed_loop_workflow_legacy_label_uses_one_task_limit():
     workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     assert 'elif [ "${EVENT_NAME}" = "pull_request_target" ]; then\n            # Legacy max4 label remains accepted, but runtime safely supports one normal task.\n            expected="1"' in workflow
     assert 'requested="${MAX_TASKS:-1}"' in workflow
+
+
+
+def test_registered_catalog_never_trusts_runtime_queue(monkeypatch):
+    evidence_sha = "a" * 40
+    calls = []
+
+    def fake_git_checked(*args):
+        calls.append(args)
+        path = args[-1]
+        if path == f"{evidence_sha}:.github/autonomous-loop-task-catalog.json":
+            return 0, json.dumps({
+                "tasks": [{
+                    "id": "trusted-task",
+                    "instruction": "Reviewed instruction",
+                    "allowed_paths": ["tests/test_minimal_autonomous_loop.py"],
+                }]
+            })
+        if path == f"{evidence_sha}:.github/autonomous-loop-tasks.json":
+            return 0, json.dumps({
+                "tasks": [{
+                    "id": "queue-only-task",
+                    "instruction": "Queue supplied instruction",
+                    "allowed_paths": ["tests/test_minimal_autonomous_loop.py"],
+                }]
+            })
+        return 1, ""
+
+    monkeypatch.setattr(loop, "_git_checked", fake_git_checked)
+    registered = loop._load_registered_catalog(evidence_sha)
+
+    assert [task["id"] for task in registered] == ["trusted-task"]
+    assert len(calls) == 1
+    assert calls[0][-1] == f"{evidence_sha}:.github/autonomous-loop-task-catalog.json"
