@@ -97,7 +97,10 @@ def test_accepts_valid_100_item_truncated_pass():
     ("category", "../escape"), ("path", None), ("path", "../scripts/example.py"),
     ("path", "/etc/passwd"), ("path", "scripts\\example.py"),
     ("path", "docs/example.py"), ("path", "scripts/../../outside.py"),
+    ("path", "scripts/unsafe.exe"), ("path", "scripts/bad\x1b.py"),
+    ("path", "scripts/" + "a" * 510 + ".py"),
     ("line", True), ("line", 0), ("line", -1), ("line", "12"),
+    ("line", 10**30),
     ("status", None), ("severity", "HIGH"),
 ])
 def test_malformed_finding_fields_fail_closed(field, value):
@@ -225,3 +228,18 @@ def test_independent_publish_gate_fails_closed(mutate):
 def test_independent_publish_gate_rejects_non_object_rows():
     assert not publish_row_has_valid_gates(None, expected_sha=SHA)
     assert not publish_row_has_valid_gates([], expected_sha=SHA)
+
+
+
+def test_duplicate_finding_ids_fail_closed():
+    first = safe_finding(1)
+    second = safe_finding(1)
+    assert not rea_evidence_is_valid_pass(pass_evidence([first, second]), expected_sha=SHA)
+
+
+def test_prepare_rea_evidence_duplicate_finding_ids_block():
+    with patch("scripts.rea_control_tower_adapter.scan_repository",
+               return_value=report(status="FINDINGS", findings=[finding(), finding()])):
+        result = prepare_rea_evidence(".", expected_sha=SHA)
+    assert result["gate"] == "BLOCKED"
+    assert result["reason_code"] == "rea_finding_schema_invalid"
