@@ -661,29 +661,6 @@ def main() -> int:
         selection_queue_tasks = queued_tasks
         tasks = [task for task in queued_tasks if task["id"] not in completed]
 
-        # The selector currently authorizes only the first queued task against
-        # this immutable HEAD snapshot. Until each subsequent task is reselected
-        # and re-authorized against its own current HEAD, refuse multi-task normal
-        # runs rather than executing queue entries under stale selection evidence.
-        if args.max_tasks > 1:
-            args.results.parent.mkdir(parents=True, exist_ok=True)
-            record = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "status": "BLOCKED",
-                "task_id": "",
-                "task_count": 0,
-                "exit_code": 80,
-                "failure_reason": "control_tower_multi_task_reselection_unavailable",
-            }
-            with args.results.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-            print(
-                "MINIMAL_LOOP=BLOCKED reason=control_tower_multi_task_reselection_unavailable",
-                flush=True,
-            )
-            return 80
-
-
     # Normal queue entries are authorized only against Git-versioned catalogs
     # at the same immutable commit used as the selection evidence. Never derive
     # the trust catalog from the runtime queue itself.
@@ -876,6 +853,82 @@ def main() -> int:
 
     args.results.parent.mkdir(parents=True, exist_ok=True)
     for index, task in enumerate(tasks, 1):
+        # Each later task gets a fresh selection snapshot. Re-read all mutable
+        # scheduling/state inputs and bind the decision to the new repository HEAD.
+        task_selection_sha = selection_evidence_sha
+        if index > 1 and args.incident_category is None:
+            task_selection_sha = _git_head()
+            try:
+                if not _valid_sha(task_selection_sha):
+                    raise ValueError("current HEAD is invalid")
+                refreshed_queue = load_tasks()
+                refreshed_completed = load_completed(args.state) | completed
+                refreshed_catalog = _load_registered_catalog(task_selection_sha)
+                from scripts.recovery_ai import RecoveryStore
+                refreshed_store = RecoveryStore(args.state.parent / "recovery-ai-state.json")
+                refreshed_held: set[str] = set()
+                for registered_task in refreshed_catalog:
+                    record = refreshed_store.task_status(str(registered_task["id"]))
+                    if recovery_record_blocks_task(record):
+                        refreshed_held.add(str(registered_task["id"]))
+                from core.control_tower_selector import select_next_task
+                fresh_decision = select_next_task(
+                    [str(item["id"]) for item in refreshed_queue],
+                    [str(item["id"]) for item in refreshed_catalog],
+                    refreshed_completed,
+                    refreshed_held,
+                    evidence_sha=task_selection_sha,
+                    current_head_sha=_git_head(),
+                )
+                if (
+                    fresh_decision.next_action != "SELECT_REGISTERED_TASK"
+                    or fresh_decision.task_template_id != str(task["id"])
+                ):
+                    raise ValueError(
+                        "reselection_denied:" + str(fresh_decision.reason_code)
+                    )
+                fresh_task = next(
+                    (item for item in refreshed_queue if str(item["id"]) == fresh_decision.task_template_id),
+                    None,
+                )
+                registered_task = next(
+                    (item for item in refreshed_catalog if str(item["id"]) == fresh_decision.task_template_id),
+                    None,
+                )
+                if (
+                    fresh_task is None
+                    or registered_task is None
+                    or fresh_task != registered_task
+                ):
+                    raise ValueError("reselection_definition_mismatch")
+                task = fresh_task
+                registered_catalog = refreshed_catalog
+                completed = refreshed_completed
+            except Exception as exc:
+                current_head = _git_head()
+                reason = str(exc)
+                if not reason.startswith("reselection_denied:"):
+                    reason = "reselection_state_unavailable_or_invalid"
+                else:
+                    reason = reason.removeprefix("reselection_denied:")
+                result = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "run_index": index,
+                    "task_id": str(task["id"]),
+                    "status": "BLOCKED",
+                    "exit_code": 80,
+                    "base_sha": task_selection_sha,
+                    "produced_sha": current_head,
+                    "failure_reason": "control_tower_reselection:" + reason,
+                }
+                with args.results.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(result, ensure_ascii=False) + "\n")
+                print(
+                    f"MINIMAL_LOOP=BLOCKED task={task['id']} reason=control_tower_reselection:{reason}",
+                    flush=True,
+                )
+                return 80
+
         # Evidence belongs to this task only; never carry it across iterations.
         rea_evidence: dict[str, object] | None = None
         if stopped(args.stop_file):
@@ -896,14 +949,14 @@ def main() -> int:
         # The SHA is passed into run_task and rechecked before process creation
         # to close the validation/launch race. Failure blocks this run closed.
         control_tower_head = _git_head()
-        if args.incident_category is None and control_tower_head != selection_evidence_sha:
+        if args.incident_category is None and control_tower_head != task_selection_sha:
             result = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "run_index": index,
                 "task_id": task["id"],
                 "status": "BLOCKED",
                 "exit_code": 80,
-                "base_sha": selection_evidence_sha,
+                "base_sha": task_selection_sha,
                 "produced_sha": control_tower_head,
                 "failure_reason": "control_tower_gate:selection_head_changed",
             }
@@ -1141,6 +1194,7 @@ def main() -> int:
             return 1
 
         print(f"MINIMAL_LOOP={result['status']} task={task['id']}", flush=True)
+        completed.add(str(task["id"]))
 
     print("MINIMAL_LOOP=COMPLETE", flush=True)
     return 0
