@@ -317,3 +317,28 @@ def test_refill_fails_closed_on_invalid_resume_review_flag(tmp_path: Path):
         build_queue(queue, catalog, state, tmp_path / "runtime.json")
 
     assert not (tmp_path / "runtime.json").exists()
+
+
+def test_refill_drops_completed_existing_entries_and_refills_with_new_work(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        existing=[_task("task-completed")],
+        candidates=[_task("task-completed"), _task("task-next")],
+    )
+    state = _write(
+        tmp_path / "state.json",
+        {
+            "version": 1,
+            "completed": ["task-completed"],
+            "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None},
+        },
+    )
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, state, output)
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["skipped_completed_ids"] == ["task-completed"]
+    assert report["retained_existing"] == 0
+    assert report["added_ids"] == ["task-next"]
+    assert [task["id"] for task in result["tasks"]] == ["task-next"]
