@@ -165,10 +165,14 @@ class EnglishLearningAgent:
                     "送ってくれた英文を、自然さ・文法・より良い表現の3点で添削します。"
                 )
         elif mode == "review":
+            entries = list(get_core_image_quiz_entries())
+            selected = random.sample(entries, min(3, len(entries)))
+            words = " / ".join(entry.word for entry in selected)
+            first_word = selected[0].word if selected else "英単語"
             text = (
                 "🔁 英語復習モードです。\n\n"
-                "今日の復習語: improve / schedule / recommend\n"
-                "まず「improve」を使って英文を1つ作ってください。"
+                f"今回の復習語: {words}\n"
+                f"まず「{first_word}」を使って英文を1つ作ってください。"
             )
         elif _english_sentence(original):
             ai_text = _ai_tutor_reply(original, user_id=request.user_id, mode="correction")
