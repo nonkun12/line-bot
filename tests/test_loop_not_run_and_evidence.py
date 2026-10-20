@@ -332,24 +332,63 @@ def _prepare_selector_main(monkeypatch, tmp_path, tasks, head_reader=None):
     return results
 
 
-def test_control_tower_multi_task_request_records_blocked_evidence(monkeypatch, tmp_path, capsys):
-    results = _prepare_selector_main(monkeypatch, tmp_path, [_task()])
+def test_control_tower_reselects_second_task_against_new_head(monkeypatch, tmp_path, capsys):
+    tasks = [_task("task-1"), _task("task-2")]
+    head = {"sha": "a" * 40}
+    results = _prepare_selector_main(monkeypatch, tmp_path, tasks, head_reader=lambda: head["sha"])
     monkeypatch.setattr(
         loop.sys,
         "argv",
         ["loop", "--max-tasks", "2", "--results", str(results),
          "--state", str(tmp_path / "state.json"), "--stop-file", str(tmp_path / "stop")],
     )
-    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run"))
-    assert loop.main() == 80
-    assert "MINIMAL_LOOP=BLOCKED" in capsys.readouterr().out
-    rows = results.read_text(encoding="utf-8").splitlines()
-    assert len(rows) == 1
-    row = json.loads(rows[0])
-    assert row["status"] == "BLOCKED"
-    assert row["task_count"] == 0
-    assert row["exit_code"] == 80
-    assert row["failure_reason"] == "control_tower_multi_task_reselection_unavailable"
+    monkeypatch.setattr(
+        "scripts.control_tower_loop_adapter.authorize_registered_task",
+        lambda task, catalog, sha: (True, "authorized"),
+    )
+    monkeypatch.setattr(
+        "scripts.rea_control_tower_adapter.prepare_rea_evidence",
+        lambda _root, expected_sha: {"gate": "PASS", "target_sha": expected_sha},
+    )
+    monkeypatch.setattr(
+        "scripts.rea_control_tower_adapter.rea_evidence_is_valid_pass",
+        lambda evidence, expected_sha: evidence.get("gate") == "PASS" and evidence.get("target_sha") == expected_sha,
+    )
+    monkeypatch.setattr(
+        "scripts.recovery_ai_loop_adapter.record_loop_outcome",
+        lambda _path, result: {"recorded": True, "task_id": result["task_id"]},
+    )
+    monkeypatch.setattr(
+        "scripts.control_tower_loop_observer.record_loop_observation",
+        lambda _path, result: {"recorded": True, "task_id": result["task_id"], "proposal_executable": False},
+    )
+    monkeypatch.setattr(
+        "scripts.control_tower_orchestrator.coordinate_outcome",
+        lambda _result: {"phase": "CONTINUE", "next_action": "CONTINUE", "reason_code": "test_pass", "allow_continue": True, "repair_executed": False},
+    )
+
+    def fake_run_task(task, index, _stop_file, *, expected_base_sha=None):
+        if index == 1:
+            head["sha"] = "b" * 40
+            return {
+                "timestamp": "2026-10-21T00:00:00+00:00",
+                "run_index": index, "task_id": task["id"], "status": "PASS", "exit_code": 0,
+                "base_sha": expected_base_sha, "produced_sha": head["sha"], "failure_reason": "",
+            }
+        return {
+            "timestamp": "2026-10-21T00:00:01+00:00",
+            "run_index": index, "task_id": task["id"], "status": "NO_CHANGE", "exit_code": 0,
+            "base_sha": expected_base_sha, "produced_sha": head["sha"], "failure_reason": "no_change",
+        }
+
+    monkeypatch.setattr(loop, "run_task", fake_run_task)
+    assert loop.main() == 0
+    assert "MINIMAL_LOOP=COMPLETE" in capsys.readouterr().out
+    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
+    assert [row["task_id"] for row in rows] == ["task-1", "task-2"]
+    assert [row["base_sha"] for row in rows] == ["a" * 40, "b" * 40]
+    assert [row["produced_sha"] for row in rows] == ["b" * 40, "b" * 40]
+    assert [row["rea"]["target_sha"] for row in rows] == ["a" * 40, "b" * 40]
 
 
 def test_control_tower_duplicate_queue_ids_block_before_execution(monkeypatch, tmp_path, capsys):
