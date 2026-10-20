@@ -408,8 +408,15 @@ def test_queue_progress_empty_queue_plan_is_deterministic(monkeypatch, tmp_path)
     path = tmp_path / target
     path.parent.mkdir(parents=True)
     path.write_text(
-        "from pathlib import Path\nimport json\nfrom scripts.distributed_loop_queue_progress import calculate_progress\n\n"
-        "def test_progress_uses_runtime_queue_and_counts_refill_tasks(tmp_path: Path):\n    pass\n",
+        chr(10).join([
+            "from pathlib import Path",
+            "import json",
+            "from scripts.distributed_loop_queue_progress import calculate_progress",
+            "",
+            "def test_progress_uses_runtime_queue_and_counts_refill_tasks(tmp_path: Path):",
+            "    pass",
+            "",
+        ]),
         encoding="utf-8",
     )
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
