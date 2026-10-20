@@ -245,6 +245,21 @@ class RecoveryStore:
         record["resume_requires_review"] = True
         self._write(data)
 
+    def confirm_resume_review(self, task_id: str, *, reviewed: bool) -> None:
+        """Acknowledge the required post-resume review before a held task can run."""
+        task_id = _safe_id(task_id)
+        if reviewed is not True:
+            raise ValueError("explicit resume review confirmation is required")
+        data = self._read()
+        record = data["tasks"].get(task_id)
+        if not isinstance(record, dict) or record.get("held") is not False:
+            raise ValueError("task must be explicitly resumed before review")
+        if record.get("resume_requires_review") is not True:
+            raise ValueError("task has no pending resume review")
+        record["resume_requires_review"] = False
+        record["resume_reviewed_at"] = utc_now()
+        self._write(data)
+
     def task_status(self, task_id: str) -> dict:
         task_id = _safe_id(task_id)
         record = self._read()["tasks"].get(task_id, {})
