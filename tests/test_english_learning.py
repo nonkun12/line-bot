@@ -71,7 +71,9 @@ def test_core_image_command_accepts_word_before_or_after_command():
 
     assert extract_core_image_word("コアイメージ great") == "great"
     assert extract_core_image_word("great コアイメージ") == "great"
+    assert extract_core_image_word("inspect コアイメージ") == "inspect"
     assert "コアイメージ：" in handle_core_image_command("great コアイメージ")
+    assert "🔎 inspect" in handle_core_image_command("inspect コアイメージ")
 
 
 def test_great_has_a_reviewed_local_core_image():
