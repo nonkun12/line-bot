@@ -197,22 +197,43 @@ def rea_evidence_is_valid_pass(evidence: object, *, expected_sha: str) -> bool:
 
 
 def publish_row_has_valid_gates(row: object, *, expected_sha: str) -> bool:
-    """Validate the independent publish boundary's REA and Control Tower evidence."""
+    """Independently validate the exact successful run before branch publication."""
     if not isinstance(row, dict):
         return False
-    if not rea_evidence_is_valid_pass(row.get("rea"), expected_sha=expected_sha):
+    task_id = row.get("task_id")
+    base_sha = row.get("base_sha")
+    produced_sha = row.get("produced_sha")
+    status = row.get("status")
+    exit_code = row.get("exit_code")
+    if (
+        not isinstance(task_id, str)
+        or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", task_id)
+        or status not in {"PASS", "NO_CHANGE"}
+        or type(exit_code) is not int
+        or exit_code != 0
+        or not isinstance(base_sha, str)
+        or not _SHA_RE.fullmatch(base_sha)
+        or base_sha != expected_sha
+        or not isinstance(produced_sha, str)
+        or not _SHA_RE.fullmatch(produced_sha)
+        or (status == "NO_CHANGE" and produced_sha != base_sha)
+    ):
+        return False
+    if not rea_evidence_is_valid_pass(row.get("rea"), expected_sha=base_sha):
         return False
     control_tower = row.get("control_tower")
-    orchestration = (
-        control_tower.get("orchestration")
-        if isinstance(control_tower, dict)
-        else None
-    )
+    if not isinstance(control_tower, dict) or control_tower.get("recorded") is not True:
+        return False
+    orchestration = control_tower.get("orchestration")
     return (
         isinstance(orchestration, dict)
+        and orchestration.get("phase") == "REPORT"
+        and orchestration.get("next_action") == "REPORT_VERIFIED_SUCCESS"
+        and orchestration.get("reason_code") == "verified_success"
         and orchestration.get("allow_continue") is True
+        and orchestration.get("task_id") == task_id
+        and orchestration.get("repair_executed") is False
     )
-
 
 def _blocked(reason_code: str) -> dict[str, Any]:
     return {
