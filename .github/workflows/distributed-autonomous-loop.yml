@@ -885,16 +885,182 @@ jobs:
           if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
             completed="$(python -c 'import json; from pathlib import Path; print(sum(1 for line in Path("/tmp/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines() if line.strip() and isinstance(json.loads(line), dict) and json.loads(line).get("status") in {"PASS","NO_CHANGE"}))')"
           fi
-          if progress_json="$(python -m scripts.distributed_loop_queue_progress \
+          progress_output_file=/tmp/distributed-loop-queue-progress.out
+          rm -f "$progress_output_file"
+          if python -m scripts.distributed_loop_queue_progress \
             --queue "${AUTONOMOUS_LOOP_TASK_QUEUE:-.github/autonomous-loop-tasks.json}" \
             --state /tmp/autonomous-loop-state.json \
-            --results /tmp/minimal-autonomous-loop.jsonl)"; then
+            --results /tmp/minimal-autonomous-loop.jsonl >"$progress_output_file" 2>&1; then
+            progress_json="$(cat "$progress_output_file")"
             queue_total="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["queue_total"])' "$progress_json")"
             queue_completed="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["queue_completed"])' "$progress_json")"
             export QUEUE_PROGRESS_INVALID=false
           else
-            # The progress CLI emits only a safe exception class, never raw exception text or paths.
-            progress_diagnostic="${progress_json:-QUEUE_PROGRESS_BLOCKED: no diagnostic emitted}"
+            # Extract only the CLI's allowlisted exception class. Never echo raw stderr,
+            # arbitrary exception messages, file paths, or queue contents into the report.
+            progress_diagnostic="$(grep -E '^QUEUE_PROGRESS_BLOCKED: [A-Za-z][A-Za-z0-9_]*
+          export REQUESTED_TASKS="$requested"
+          export QUEUE_COMPLETED="$queue_completed"
+          export QUEUE_TOTAL="$queue_total"
+          if outcome_json="$(python - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+          from scripts.run_minimal_autonomous_loop import classify_final_outcome
+
+          statuses = []
+          path = Path("/tmp/minimal-autonomous-loop.jsonl")
+          if path.exists():
+              for line in path.read_text(encoding="utf-8").splitlines():
+                  if not line.strip():
+                      continue
+                  try:
+                      row = json.loads(line)
+                  except json.JSONDecodeError:
+                      continue
+                  if isinstance(row, dict):
+                      statuses.append(str(row.get("status") or ""))
+          queue_empty = Path("/tmp/autonomous-loop-not-run").exists()
+          # The loop exits 78 without writing a result row when its queue is empty.
+          # Normalize that explicit sentinel into the classifier's documented evidence.
+          if queue_empty and not statuses:
+              statuses = ["NOT_RUN"]
+          try:
+              if os.getenv("QUEUE_PROGRESS_INVALID", "").lower() == "true":
+                  outcome, reason = "BLOCKED", "queue_progress_evidence_invalid"
+              else:
+                  outcome, reason = classify_final_outcome(
+                      statuses,
+                      loop_outcome=os.getenv("LOOP_OUTCOME", ""),
+                      publish_outcome=os.getenv("PUBLISH_OUTCOME", ""),
+                      state_outcome=os.getenv("STATE_OUTCOME", ""),
+                      sheets_outcome=os.getenv("SHEETS_OUTCOME", ""),
+                      recovery_outcome=os.getenv("RECOVERY_OUTCOME", ""),
+                      queue_empty=queue_empty,
+                      all_tasks_held=Path("/tmp/autonomous-loop-held-tasks").exists(),
+                      requested_tasks=int(os.getenv("REQUESTED_TASKS", "4")),
+                      queue_completed=int(os.getenv("QUEUE_COMPLETED", "0")),
+                      queue_total=int(os.getenv("QUEUE_TOTAL", "0")),
+                  )
+          except Exception as exc:
+              # Do not leak exception messages or environment data into the report.
+              print(f"Final outcome classifier failed: {type(exc).__name__}", file=sys.stderr)
+              raise
+          print(json.dumps({"outcome": outcome, "reason": reason}))
+          PY
+          )"; then
+            result="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["outcome"])' "$outcome_json")"
+            result_reason="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["reason"])' "$outcome_json")"
+          else
+            result="BLOCKED"
+            result_reason="final_outcome_classifier_failed"
+            echo "::error::Final outcome classifier failed; result is BLOCKED. See Python error class above."
+          fi
+          produced_sha="$(git rev-parse HEAD 2>/dev/null || echo "${GITHUB_SHA}")"
+          {
+            echo "# 分散Loop 終了報告"
+            echo
+            echo "- 結果: **$result**"
+            echo "- 結果理由: $result_reason"
+            echo "- 今回の実行タスク: ${completed}/${requested}"
+            echo "- キュー進捗: ${queue_completed}/${queue_total}"
+            echo "- 最終SHA: ${produced_sha}"
+            echo "- Task実行: ${LOOP_OUTCOME:-not_run}"
+            echo "- Publish: ${PUBLISH_OUTCOME:-not_run}"
+            echo "- State: ${STATE_OUTCOME:-not_run}"
+            echo "- Recovery AI state: ${RECOVERY_OUTCOME:-not_run}"
+            echo "- Sheets: ${SHEETS_OUTCOME:-not_run}"
+            echo "- Job: ${JOB_STATUS:-unknown}"
+            echo "- Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo "### Task別結果"
+            if [ "$result" = "NOT_RUN" ]; then
+              echo "(NOT_RUN: タスクは1件も実行されていません。理由: ${result_reason}。キューは ${queue_completed}/${queue_total} で、未完了Taskがありません。タスクの補充が必要です。)"
+            elif [ "$result" = "BLOCKED" ] && [ -f /tmp/autonomous-loop-held-tasks ]; then
+              echo "(BLOCKED: 未完了Taskはすべて安全上の保留状態です。自動再実行せず、人による原因修正と再開確認が必要です。)"
+            fi
+            if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
+              cat /tmp/minimal-autonomous-loop.jsonl
+            elif [ "$result" = "NOT_RUN" ]; then
+              :
+            else
+              echo "(結果なし: Task結果ファイルが生成されませんでした。)"
+            fi
+          } | tee /tmp/distributed-final-report.txt >> "$GITHUB_STEP_SUMMARY"
+
+          if { [ "${GITHUB_EVENT_NAME}" = "issue_comment" ] || [ "${GITHUB_EVENT_NAME}" = "pull_request_target" ]; } && [ -n "${PR_NUMBER:-}" ] && command -v gh >/dev/null 2>&1; then
+            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/distributed-final-report.txt || true
+          fi
+
+          # A BLOCKED report must fail the source workflow too. Otherwise workflow_run
+          # consumers may see conclusion=success and trust the Sheets artifact despite
+          # invalid queue-progress evidence.
+          if [ "${QUEUE_PROGRESS_INVALID:-false}" = "true" ]; then
+            echo "::error::Distributed Loop blocked: queue progress evidence is invalid."
+            exit 1
+          fi
+
+      - name: Wake Render before LINE final report
+        if: always()
+        run: |
+          set -euo pipefail
+          # Free Render instances may need time to wake after inactivity.
+          # Retry only the harmless health check; do not repeat the task or push request.
+          if ! curl --fail-with-body --silent --show-error --retry 2 --retry-delay 3 --retry-all-errors --max-time 30 \
+            "https://line-bot-yvea.onrender.com/health"; then
+            echo "::warning::Render health warm-up failed; continuing to the single LINE push attempt."
+          fi
+      - name: Notify LINE of distributed loop final report
+        if: always()
+        env:
+          LINE_INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
+          DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${LINE_INTERNAL_PUSH_KEY:-}" ] || [ -z "${DISTRIBUTED_LOOP_LINE_USER_ID:-}" ]; then
+            echo "LINE success notification skipped: required GitHub secrets are not configured."
+            exit 0
+          fi
+          # Every completed distributed-loop run must send its final report to LINE,
+          # including queue-exhausted runs, so LINE remains the authoritative user-facing status.
+          if [ -s /tmp/distributed-final-report.txt ]; then
+            message="$(cat /tmp/distributed-final-report.txt)"
+          else
+            message="⚠️ 分散Loop終了報告を生成できませんでした。Run #${{ github.run_number }}"
+          fi
+          export MESSAGE="$message"
+          payload="$(python - <<'PY'
+          import json, os
+          print(json.dumps({'user_id': os.environ['DISTRIBUTED_LOOP_LINE_USER_ID'], 'message': os.environ['MESSAGE']}, ensure_ascii=False))
+          PY
+          )"
+          curl --fail-with-body --silent --show-error --max-time 30 \
+            -X POST "https://line-bot-yvea.onrender.com/internal/push" \
+            -H "Content-Type: application/json" \
+            -H "x-internal-key: ${LINE_INTERNAL_PUSH_KEY}" \
+            --data "$payload"
+      - name: Upload durable run evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimal-autonomous-loop-${{ github.run_id }}
+          retention-days: 30
+          path: |
+            /tmp/minimal-autonomous-loop.jsonl
+            /tmp/autonomous-loop-state.json
+            /tmp/recovery-ai-state.json
+            /tmp/recovery-ai-state-readback.json
+            /tmp/autonomous-*.json
+            /tmp/distributed-sheets-log-result.json
+            /tmp/distributed-final-report.txt
+          if-no-files-found: ignore
+
+ "$progress_output_file" | tail -n 1 || true)"
+            if [ -z "$progress_diagnostic" ]; then
+              progress_diagnostic="QUEUE_PROGRESS_BLOCKED: no diagnostic emitted"
+            fi
             echo "::error::Queue progress evidence invalid (${progress_diagnostic}); final outcome will be BLOCKED."
             queue_total=0
             queue_completed=0
