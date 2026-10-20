@@ -7,7 +7,7 @@ from ai_client import generate_chat_completion
 from agents.english.intents import classify_english_mode, is_english_learning_intent
 from core.agents import AgentRequest, AgentResponse
 from agents.english.progress import profile_prompt, record_observation
-from agents.english.core_image import get_core_image_quiz_entries
+from agents.english.quiz_state import select_daily_words
 from agents.english.quiz import grade_quiz, start_quiz
 import random
 
@@ -127,13 +127,11 @@ class EnglishLearningAgent:
             )
             mode = "ai_tutor"
         elif mode == "vocabulary":
-            entries = list(get_core_image_quiz_entries())
-            selected = random.sample(entries, min(3, len(entries)))
-            lines = ["📘 今日の英単語（ローカル辞書から出題）", ""]
-            for entry in selected:
-                lines.append(f"• {entry.word}")
-                lines.append(f"  コアイメージ: {entry.core_image}")
-                lines.append(f"  例: {entry.example}")
+            lines = ["📘 今日の英単語コアイメージ（確認済みローカル辞書）", ""]
+            for word, core_image, example in select_daily_words(request.user_id, 3):
+                lines.append(f"• {word}")
+                lines.append(f"  コアイメージ: {core_image}")
+                lines.append(f"  例: {example}")
             lines.extend(["", "クイズを始めるには「クイズ」と送ってください。"])
             text = "\n".join(lines)
         elif mode == "quiz":
@@ -165,10 +163,9 @@ class EnglishLearningAgent:
                     "送ってくれた英文を、自然さ・文法・より良い表現の3点で添削します。"
                 )
         elif mode == "review":
-            entries = list(get_core_image_quiz_entries())
-            selected = random.sample(entries, min(3, len(entries)))
-            words = " / ".join(entry.word for entry in selected)
-            first_word = selected[0].word if selected else "英単語"
+            selected = select_daily_words(request.user_id, 3)
+            words = " / ".join(word for word, _, _ in selected)
+            first_word = selected[0][0] if selected else "英単語"
             text = (
                 "🔁 英語復習モードです。\n\n"
                 f"今回の復習語: {words}\n"
