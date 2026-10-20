@@ -102,10 +102,15 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
             held_ids.add(task_id)
 
     completed_ids = set(completed)
-    # HOLD remains durable in Recovery AI; omit held tasks from this run-local
-    # queue so stale held entries cannot occupy the bounded execution window.
-    eligible_existing = [task for task in normalized_existing if task["id"] not in held_ids]
+    # Completed queue entries must not occupy the bounded window. In particular,
+    # a queue containing only completed IDs must not suppress eligible catalog
+    # additions while being reported as retained work.
+    eligible_existing = [
+        task for task in normalized_existing
+        if task["id"] not in held_ids and task["id"] not in completed_ids
+    ]
     skipped_held_ids = sorted(original_ids.intersection(held_ids))
+    skipped_completed_ids = sorted(original_ids.intersection(completed_ids))
     additions = [
         task for task in normalized_catalog
         if task["id"] not in original_ids
@@ -122,6 +127,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         "existing": len(existing),
         "retained_existing": len(eligible_existing),
         "skipped_held_ids": skipped_held_ids,
+        "skipped_completed_ids": skipped_completed_ids,
         "added": len(additions),
         "total": len(final_tasks),
         "added_ids": [t["id"] for t in additions],
