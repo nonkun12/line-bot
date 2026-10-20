@@ -92,25 +92,34 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         raise ValueError("Recovery AI state is invalid")
     recovery_tasks = recovery["tasks"]
     held_ids = set()
+    review_required_ids = set()
     for task_id, recovery_task in recovery_tasks.items():
         if not isinstance(task_id, str) or not isinstance(recovery_task, dict):
             raise ValueError("invalid Recovery AI task state")
         held = recovery_task.get("held", False)
+        review_required = recovery_task.get("resume_requires_review", False)
         if not isinstance(held, bool):
             raise ValueError("invalid Recovery AI held flag")
+        if not isinstance(review_required, bool):
+            raise ValueError("invalid Recovery AI resume review flag")
         if held:
             held_ids.add(task_id)
+        if review_required:
+            review_required_ids.add(task_id)
 
     completed_ids = set(completed)
-    # HOLD remains durable in Recovery AI; omit held tasks from this run-local
-    # queue so stale held entries cannot occupy the bounded execution window.
-    eligible_existing = [task for task in normalized_existing if task["id"] not in held_ids]
+    # HOLD and post-resume review requirements both remain authoritative in
+    # Recovery AI. A resumed task is not eligible until explicit review clears
+    # resume_requires_review; queue refill must not reintroduce it prematurely.
+    ineligible_ids = held_ids | review_required_ids
+    eligible_existing = [task for task in normalized_existing if task["id"] not in ineligible_ids]
     skipped_held_ids = sorted(original_ids.intersection(held_ids))
+    skipped_review_ids = sorted(original_ids.intersection(review_required_ids))
     additions = [
         task for task in normalized_catalog
         if task["id"] not in original_ids
         and task["id"] not in completed_ids
-        and task["id"] not in held_ids
+        and task["id"] not in ineligible_ids
     ][:cap]
     # Preserve eligible queued tasks, then append only a bounded catalog slice.
     final_tasks = eligible_existing + additions
@@ -122,6 +131,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         "existing": len(existing),
         "retained_existing": len(eligible_existing),
         "skipped_held_ids": skipped_held_ids,
+        "skipped_review_ids": skipped_review_ids,
         "added": len(additions),
         "total": len(final_tasks),
         "added_ids": [t["id"] for t in additions],
