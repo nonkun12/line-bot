@@ -4,7 +4,11 @@ from unittest.mock import patch
 
 import pytest
 
-from scripts.rea_control_tower_adapter import prepare_rea_evidence, rea_evidence_is_valid_pass
+from scripts.rea_control_tower_adapter import (
+    prepare_rea_evidence,
+    publish_row_has_valid_gates,
+    rea_evidence_is_valid_pass,
+)
 
 SHA = "a" * 40
 
@@ -178,3 +182,46 @@ def test_prepare_rea_evidence_non_object_report_returns_blocked(bad_report):
         result = prepare_rea_evidence(".", expected_sha=SHA)
     assert result["gate"] == "BLOCKED"
     assert result["reason_code"] == "rea_report_invalid"
+
+
+
+def test_independent_publish_gate_requires_valid_rea_and_explicit_orchestrator_allow():
+    row = {
+        "rea": pass_evidence(),
+        "control_tower": {"orchestration": {"allow_continue": True}},
+    }
+    assert publish_row_has_valid_gates(row, expected_sha=SHA)
+
+
+@pytest.mark.parametrize("mutate", [
+    "missing_rea",
+    "invalid_rea",
+    "missing_control_tower",
+    "missing_orchestration",
+    "orchestration_false",
+    "orchestration_truthy_non_bool",
+])
+def test_independent_publish_gate_fails_closed(mutate):
+    row = {
+        "rea": pass_evidence(),
+        "control_tower": {"orchestration": {"allow_continue": True}},
+    }
+    if mutate == "missing_rea":
+        row.pop("rea")
+    elif mutate == "invalid_rea":
+        row["rea"] = pass_evidence()
+        row["rea"]["target_sha"] = "b" * 40
+    elif mutate == "missing_control_tower":
+        row.pop("control_tower")
+    elif mutate == "missing_orchestration":
+        row["control_tower"] = {}
+    elif mutate == "orchestration_false":
+        row["control_tower"]["orchestration"]["allow_continue"] = False
+    elif mutate == "orchestration_truthy_non_bool":
+        row["control_tower"]["orchestration"]["allow_continue"] = 1
+    assert not publish_row_has_valid_gates(row, expected_sha=SHA)
+
+
+def test_independent_publish_gate_rejects_non_object_rows():
+    assert not publish_row_has_valid_gates(None, expected_sha=SHA)
+    assert not publish_row_has_valid_gates([], expected_sha=SHA)
