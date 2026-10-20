@@ -52,6 +52,13 @@
       ]
     },
     {
+      "id": "control-tower-run-identity-invalid-sha-regression-v2",
+      "instruction": "tests/test_control_tower_orchestrator.py のみに、新しい固有名の回帰テストを1件追加してください。status=PASS の verified_success() を使い、base_sha と produced_sha の不正値をパラメータ化して fail-closed を検証してください。現行の検証順序では、base_sha が不正な場合は REA の同一SHA検証が先に働くため reason_code=rea_evidence_missing_or_invalid、base_sha が正常で produced_sha が短いSHAまたは大文字SHAの場合は reason_code=run_identity_invalid を期待してください。すべて allow_continue=false を確認してください。既存テストの変更禁止。外部通信・シークレット・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_control_tower_orchestrator.py"
+      ]
+    },
+    {
       "id": "english-core-image-rotation-user-isolation-v2",
       "instruction": "tests/test_english_learning.py のみに、新しい固有名の回帰テストを1件追加してください。テンポラリSQLite DBを使い、user-A の初回「単語」3語、user-B の初回3語、user-A の2回目3語、user-B の2回目3語を取得してください。各ユーザーの初回は履歴が独立しているため同じ3語になってよい（むしろ両ユーザーの初回セットが等しいことを確認）。各ユーザー内では2回目が自身の初回3語と重複せず、両ユーザーの2回目も等しいことを確認してください。別ユーザー間の初回セットを互いにdisjointとする誤った条件は禁止。_request が user_id を固定する場合は AgentRequest を直接構築してユーザーIDを指定してください。外部API・実DB書き込み・既存テスト変更は禁止。マージ・デプロイは禁止。",
       "allowed_paths": [
