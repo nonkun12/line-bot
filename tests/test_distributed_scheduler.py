@@ -8,15 +8,24 @@ from core.multi_agent import AgentResult, AgentRole, AgentTask
 
 
 class RecordingExecutor:
-    def __init__(self, role: AgentRole, *, delay: float = 0.0) -> None:
+    def __init__(
+        self,
+        role: AgentRole,
+        *,
+        delay: float = 0.0,
+        barrier: threading.Barrier | None = None,
+    ) -> None:
         self.role = role
         self.delay = delay
+        self.barrier = barrier
         self.calls: list[str] = []
         self._lock = threading.Lock()
 
     def execute(self, task: AgentTask) -> AgentResult:
         with self._lock:
             self.calls.append(task.task_id)
+        if self.barrier is not None:
+            self.barrier.wait(timeout=3)
         if self.delay:
             time.sleep(self.delay)
         return AgentResult(task.task_id, True, f"{self.role.value} completed")
@@ -53,8 +62,9 @@ def test_scheduler_reuses_dependency_and_resource_batching() -> None:
 
 
 def test_scheduler_executes_independent_tasks_concurrently_when_explicitly_enabled() -> None:
-    first = RecordingExecutor(AgentRole.MANAGER, delay=0.08)
-    second = RecordingExecutor(AgentRole.TESTER, delay=0.08)
+    start_barrier = threading.Barrier(2)
+    first = RecordingExecutor(AgentRole.MANAGER, barrier=start_barrier)
+    second = RecordingExecutor(AgentRole.TESTER, barrier=start_barrier)
     scheduler = DistributedTaskScheduler(
         {AgentRole.MANAGER: first, AgentRole.TESTER: second}, max_workers=2
     )
@@ -63,12 +73,9 @@ def test_scheduler_executes_independent_tasks_concurrently_when_explicitly_enabl
         task("b", AgentRole.TESTER, resources=("b.py",)),
     )
 
-    started = time.perf_counter()
     run = scheduler.run(tasks)
-    elapsed = time.perf_counter() - started
 
     assert run.success
-    assert elapsed < 0.14
     assert first.calls == ["a"]
     assert second.calls == ["b"]
 
