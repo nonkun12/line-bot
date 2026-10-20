@@ -80,6 +80,19 @@ def test_task_identity_rejects_path_separators_and_whitespace():
         assert decision["reason_code"] == "invalid_task_identity"
 
 
+@pytest.mark.parametrize("field,value", [
+    ("task_id", "task-b"),
+    ("base_sha", "d" * 40),
+    ("produced_sha", "e" * 40),
+])
+def test_recovery_evidence_task_sha_identity_mismatch_fails_closed(field, value):
+    result = verified_success()
+    result["recovery_ai"]["evidence"][field] = value
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "recovery_run_evidence_mismatch"
+
+
 def test_recovery_success_must_match_exact_run_evidence():
     result = verified_success()
     result["recovery_ai"]["evidence"]["run_nonce"] = "d" * 32
