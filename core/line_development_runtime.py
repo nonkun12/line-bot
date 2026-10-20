@@ -264,19 +264,22 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         name = "test_empty_runtime_queue_reports_zero_progress_for_not_run_v2"
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
-        anchor = "def test_progress_uses_runtime_queue_and_counts_refill_tasks(tmp_path: Path):\n"
+        newline = chr(10)
+        anchor = "def test_progress_uses_runtime_queue_and_counts_refill_tasks(tmp_path: Path):" + newline
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
-        addition = (
-            "def test_empty_runtime_queue_reports_zero_progress_for_not_run_v2(tmp_path: Path):\n"
-            "    queue = tmp_path / \"runtime-queue.json\"\n"
-            "    state = tmp_path / \"state.json\"\n"
-            "    results = tmp_path / \"results.jsonl\"\n"
-            "    queue.write_text(json.dumps({\"tasks\": []}), encoding=\"utf-8\")\n"
-            "    state.write_text(json.dumps({\"completed\": [\"prior-task\"]}), encoding=\"utf-8\")\n"
-            "    results.write_text(json.dumps({\"task_id\": \"\", \"status\": \"NOT_RUN\", \"failure_reason\": \"queue_empty\"}) + \"\n\", encoding=\"utf-8\")\n"
-            "    assert calculate_progress(queue, state, results) == {\"queue_total\": 0, \"queue_completed\": 0}\n\n\n"
-        )
+        addition = newline.join([
+            "def test_empty_runtime_queue_reports_zero_progress_for_not_run_v2(tmp_path: Path):",
+            "    queue = tmp_path / \"runtime-queue.json\"",
+            "    state = tmp_path / \"state.json\"",
+            "    results = tmp_path / \"results.jsonl\"",
+            "    queue.write_text(json.dumps({\"tasks\": []}), encoding=\"utf-8\")",
+            "    state.write_text(json.dumps({\"completed\": [\"prior-task\"]}), encoding=\"utf-8\")",
+            "    results.write_text(json.dumps({\"task_id\": \"\", \"status\": \"NOT_RUN\", \"failure_reason\": \"queue_empty\"}), encoding=\"utf-8\")",
+            "    assert calculate_progress(queue, state, results) == {\"queue_total\": 0, \"queue_completed\": 0}",
+            "",
+            "",
+        ]) + newline
         new = addition + anchor
         if len(anchor) > 1200 or len(new) > 1800:
             return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
