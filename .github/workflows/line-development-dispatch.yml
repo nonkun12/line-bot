@@ -157,7 +157,12 @@ jobs:
 
           Multi-agent runtime: Manager → Implementer → Tester → Reviewer → Repairer(if needed) → Integrator
 
-          Guarded tests and integration gate: PASS
+          Guarded tests and integration gate: NOT_ASSERTED_BY_WORKER (verify GitHub checks for the exact produced SHA).
+          Runtime outcome: ${DEVELOPMENT_OUTCOME:-unknown}
+          Starting SHA: ${AUTONOMOUS_START_SHA:-unknown}
+          Produced SHA: $(git rev-parse HEAD)
+          Changed files since start:
+          $(git diff --name-only "${AUTONOMOUS_START_SHA}...HEAD" 2>/dev/null || echo "(diff unavailable)")
           Created directly by GitHub Actions.
           EOF
           gh pr create --repo "${GITHUB_REPOSITORY}" --head "${BRANCH}" --base main --title "feat: LINE development request" --body-file /tmp/pr_body.md >/tmp/pr_url.txt
