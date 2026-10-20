@@ -385,20 +385,23 @@ def test_registered_catalog_is_loaded_from_versioned_catalogs_not_runtime_queue(
         "allowed_paths": ["tests/test_loop_not_run_and_evidence.py"],
     }
     payloads = {
-        ".github/autonomous-loop-tasks.json": json.dumps({"tasks": [trusted_task]}),
-        ".github/autonomous-loop-task-catalog.json": json.dumps({"tasks": []}),
+        ".github/autonomous-loop-tasks.json": json.dumps({"tasks": [queue_task]}),
+        ".github/autonomous-loop-task-catalog.json": json.dumps({"tasks": [trusted_task]}),
     }
+    requested_paths = []
 
     def fake_git_checked(*args):
         assert args[0] == "show"
         revision, path = args[1].split(":", 1)
         assert revision == "a" * 40
+        requested_paths.append(path)
         return (0, payloads[path])
 
     monkeypatch.setattr(loop, "_git_checked", fake_git_checked)
     catalog = loop._load_registered_catalog("a" * 40)
     assert catalog == [trusted_task]
     assert queue_task["id"] not in {entry["id"] for entry in catalog}
+    assert requested_paths == [".github/autonomous-loop-task-catalog.json"]
 
 
 def test_registered_catalog_fails_closed_when_versioned_catalog_is_unavailable(monkeypatch):
