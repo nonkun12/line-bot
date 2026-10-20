@@ -210,6 +210,20 @@ def load_completed(state_file: Path) -> set[str]:
     return {item.strip() for item in completed}
 
 
+def recovery_record_blocks_task(record: dict) -> bool:
+    """Fail closed for held tasks or resumed tasks awaiting explicit review."""
+    if not isinstance(record, dict):
+        raise ValueError("recovery record must be an object")
+    if not record:
+        return False
+    if "held" not in record or not isinstance(record.get("held"), bool):
+        raise ValueError("recovery hold state is ambiguous")
+    review = record.get("resume_requires_review", False)
+    if not isinstance(review, bool):
+        raise ValueError("recovery resume-review state is ambiguous")
+    return record["held"] is True or review is True
+
+
 def stopped(stop_file: Path) -> bool:
     raw = os.environ.get("AUTONOMOUS_LOOP_STOP", "").strip()
     if raw and raw.casefold() not in {"0", "false", "no", "off"}:
@@ -676,17 +690,9 @@ def main() -> int:
         for catalog_task in catalog_source_tasks:
             catalog_task_id = str(catalog_task["id"])
             recovery_record = recovery_store.task_status(catalog_task_id)
-            held_value = recovery_record.get("held", False)
-            review_value = recovery_record.get("resume_requires_review", False)
-            if (
-                not isinstance(held_value, bool)
-                or not isinstance(review_value, bool)
-                or (recovery_record and "held" not in recovery_record)
-            ):
-                raise ValueError("recovery hold/review state is ambiguous")
             # A resumed task remains ineligible until a separate explicit
             # review acknowledgement clears resume_requires_review.
-            if held_value is True or review_value is True:
+            if recovery_record_blocks_task(recovery_record):
                 held_task_ids.add(catalog_task_id)
     except Exception:
         # Malformed/unavailable Recovery AI state must produce auditable BLOCKED
@@ -882,19 +888,11 @@ def main() -> int:
             latest_hold = RecoveryStore(args.state.parent / "recovery-ai-state.json").task_status(str(task["id"]))
             # An empty record means this registered task has no recovery history yet.
             # A non-empty record with missing/invalid held state is ambiguous and blocks.
-            malformed_hold = (
-                not isinstance(latest_hold, dict)
-                or (bool(latest_hold) and (
-                    "held" not in latest_hold
-                    or not isinstance(latest_hold.get("held"), bool)
-                    or not isinstance(latest_hold.get("resume_requires_review", False), bool)
-                ))
-            )
-            if (
-                malformed_hold
-                or latest_hold.get("held", False) is not False
-                or latest_hold.get("resume_requires_review", False) is not False
-            ):
+            try:
+                task_still_blocked = recovery_record_blocks_task(latest_hold)
+            except ValueError:
+                task_still_blocked = True
+            if task_still_blocked:
                 result = {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "run_index": index,
