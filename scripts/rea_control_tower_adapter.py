@@ -221,6 +221,24 @@ def publish_row_has_valid_gates(row: object, *, expected_sha: str) -> bool:
         return False
     if not rea_evidence_is_valid_pass(row.get("rea"), expected_sha=base_sha):
         return False
+    run_nonce = row.get("run_nonce")
+    recovery = row.get("recovery_ai")
+    expected_recovery_evidence = {
+        "task_id": task_id,
+        "base_sha": base_sha,
+        "produced_sha": produced_sha,
+        "run_nonce": run_nonce,
+    }
+    if (
+        not isinstance(run_nonce, str)
+        or not re.fullmatch(r"[0-9a-f]{32}", run_nonce)
+        or not isinstance(recovery, dict)
+        or recovery.get("recorded") is not True
+        or recovery.get("verified") is not True
+        or recovery.get("status") != status
+        or recovery.get("evidence") != expected_recovery_evidence
+    ):
+        return False
     control_tower = row.get("control_tower")
     if not isinstance(control_tower, dict) or control_tower.get("recorded") is not True:
         return False
