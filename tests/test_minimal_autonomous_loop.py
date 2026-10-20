@@ -43,6 +43,28 @@ def test_queue_is_nonempty_and_run_limit_is_bounded():
     assert all(task["id"] and task["instruction"] and task["allowed_paths"] for task in tasks)
 
 
+def test_control_tower_kill_switch_blocks_before_queue_or_task_launch(monkeypatch, tmp_path: Path):
+    results = tmp_path / "results.jsonl"
+    events = []
+
+    class _Queue:
+        def read_text(self, encoding="utf-8"):
+            events.append("queue")
+            raise AssertionError("queue must not be read while kill switch is enabled")
+
+    monkeypatch.setattr(loop, "QUEUE", _Queue())
+    monkeypatch.setattr(loop, "_git_head", lambda: events.append("head") or "a" * 40)
+    monkeypatch.setenv("CONTROL_TOWER_KILL_SWITCH", "true")
+    monkeypatch.setattr(loop.sys, "argv", ["run_minimal_autonomous_loop", "--results", str(results)])
+
+    assert loop.main() == 80
+    assert events == []
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[-1])
+    assert row["status"] == "BLOCKED"
+    assert row["failure_reason"] == "control_tower_kill_switch_enabled"
+    assert row["control_tower"]["orchestration"]["allow_continue"] is False
+
+
 def test_selection_head_snapshot_precedes_queue_read(monkeypatch):
     events = []
 
