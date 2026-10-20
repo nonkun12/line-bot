@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from scripts.control_tower_orchestrator import coordinate_outcome
 
 
@@ -207,3 +209,19 @@ def test_rea_pass_with_truncated_or_high_severity_findings_is_rejected():
     assert decision["allow_continue"] is False
     assert decision["reason_code"] == "rea_evidence_missing_or_invalid"
 
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("task_id", "task-b"),
+        ("base_sha", "f" * 40),
+        ("produced_sha", "e" * 40),
+    ],
+)
+def test_recovery_evidence_identity_mismatch_fails_closed(field, value):
+    result = verified_success()
+    result["recovery_ai"]["evidence"][field] = value
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "recovery_run_evidence_mismatch"
