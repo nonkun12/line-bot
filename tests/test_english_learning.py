@@ -66,6 +66,23 @@ def test_quiz_wrong_answer_reports_dynamic_correct_option(monkeypatch, tmp_path)
     assert "惜しい" in response
     assert f"正解は {correct_label}. {correct_word}" in response
 
+def test_core_image_command_accepts_word_before_or_after_command():
+    from agents.english.core_image import extract_core_image_word, handle_core_image_command
+
+    assert extract_core_image_word("コアイメージ great") == "great"
+    assert extract_core_image_word("great コアイメージ") == "great"
+    assert "コアイメージ：" in handle_core_image_command("great コアイメージ")
+
+
+def test_great_has_a_reviewed_local_core_image():
+    from agents.english.core_image import explain_core_image
+
+    response = explain_core_image("great")
+    assert "基準を大きく上回る" in response
+    assert "You did a great job." in response
+    assert "無料ローカル解説" in response
+
+
 def test_common_english_sentence_gets_correction_feedback():
     agent = EnglishLearningAgent()
     request = _request("I am busy today.")
