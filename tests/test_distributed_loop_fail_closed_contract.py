@@ -25,5 +25,7 @@ def test_publish_gate_uses_the_same_runtime_queue_as_task_execution():
 
 def test_queue_progress_failure_reports_only_safe_diagnostic_class():
     workflow = (ROOT / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
-    assert 'progress_diagnostic="${progress_json:-QUEUE_PROGRESS_BLOCKED: no diagnostic emitted}"' in workflow
+    assert 'progress_output_file=/tmp/distributed-loop-queue-progress.out' in workflow
+    assert '>"$progress_output_file" 2>&1' in workflow
+    assert "grep -E '^QUEUE_PROGRESS_BLOCKED: [A-Za-z][A-Za-z0-9_]*" in workflow
     assert 'Queue progress evidence invalid (${progress_diagnostic})' in workflow
