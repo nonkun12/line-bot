@@ -42,6 +42,8 @@ def prepare_rea_evidence(
         # Do not leak filesystem paths, exception text, or environment details.
         return _blocked("rea_scan_incomplete")
 
+    if not isinstance(report, dict):
+        return _blocked("rea_report_invalid")
     if report.get("target_sha") != expected_sha:
         return _blocked("rea_sha_mismatch")
     if report.get("complete") is not True or report.get("status") == "BLOCKED":
@@ -67,6 +69,7 @@ def prepare_rea_evidence(
         if (
             not isinstance(path, str) or not _safe_path(path)
             or not isinstance(category, str) or not _CATEGORY_RE.fullmatch(category)
+            or not isinstance(severity, str)
             or severity not in {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
             or (line is not None and (type(line) is not int or line < 1))
             or not isinstance(finding_id, str) or not _FINDING_ID_RE.fullmatch(finding_id)
@@ -86,7 +89,7 @@ def prepare_rea_evidence(
         })
 
     scanner_status = report.get("status")
-    if scanner_status not in {"PASS", "FINDINGS"}:
+    if not isinstance(scanner_status, str) or scanner_status not in {"PASS", "FINDINGS"}:
         return _blocked("rea_scanner_status_invalid")
     if scanner_status != ("FINDINGS" if safe_findings else "PASS"):
         return _blocked("rea_scanner_status_inconsistent")
@@ -135,6 +138,7 @@ def rea_evidence_is_valid_pass(evidence: object, *, expected_sha: str) -> bool:
         evidence.get("gate") != "PASS"
         or evidence.get("mode") != "OBSERVE_ONLY"
         or evidence.get("target_sha") != expected_sha
+        or not isinstance(scanner_status, str)
         or scanner_status not in {"PASS", "FINDINGS"}
         or type(finding_count) is not int
         or finding_count < 0
@@ -163,6 +167,7 @@ def rea_evidence_is_valid_pass(evidence: object, *, expected_sha: str) -> bool:
             or not _FINDING_ID_RE.fullmatch(finding["finding_id"])
             or not isinstance(finding.get("category"), str)
             or not _CATEGORY_RE.fullmatch(finding["category"])
+            or not isinstance(finding.get("severity"), str)
             or finding.get("severity") not in _SAFE_SEVERITIES
             or not isinstance(finding.get("path"), str)
             or not _safe_path(finding["path"])
