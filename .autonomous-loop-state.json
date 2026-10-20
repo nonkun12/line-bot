@@ -24,7 +24,8 @@
     "ai-speaker-empty-transcript-no-brain-call",
     "loop-deterministic-nochange-focused-test",
     "router-general-channel-metadata-regression",
-    "obsidian-bridge-invalid-job-id-regression"
+    "obsidian-bridge-invalid-job-id-regression",
+    "control-tower-recovery-evidence-identity-mismatch"
   ],
   "recovery_ai": {
     "checkpoint": null,
