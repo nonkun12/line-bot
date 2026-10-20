@@ -1,3 +1,4 @@
+import pytest
 from __future__ import annotations
 
 import json
@@ -6,6 +7,31 @@ from pathlib import Path
 
 from scripts import run_minimal_autonomous_loop as loop
 from scripts.run_minimal_autonomous_loop import load_completed, load_tasks, stopped
+
+
+@pytest.mark.parametrize("record,blocked", [
+    ({}, False),
+    ({"held": False}, False),
+    ({"held": True}, True),
+    ({"held": False, "resume_requires_review": True}, True),
+    ({"held": False, "resume_requires_review": False}, False),
+])
+def test_recovery_review_gate_blocks_only_held_or_unreviewed_resumed_tasks(record, blocked):
+    from scripts.run_minimal_autonomous_loop import recovery_record_blocks_task
+
+    assert recovery_record_blocks_task(record) is blocked
+
+
+@pytest.mark.parametrize("record", [
+    {"held": "false"},
+    {"resume_requires_review": True},
+    {"held": False, "resume_requires_review": "false"},
+])
+def test_recovery_review_gate_fails_closed_on_ambiguous_state(record):
+    from scripts.run_minimal_autonomous_loop import recovery_record_blocks_task
+
+    with pytest.raises(ValueError):
+        recovery_record_blocks_task(record)
 
 
 def test_queue_is_nonempty_and_run_limit_is_bounded():
