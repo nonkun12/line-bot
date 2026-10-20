@@ -157,7 +157,9 @@ jobs:
 
           Multi-agent runtime: Manager → Implementer → Tester → Reviewer → Repairer(if needed) → Integrator
 
-          Guarded tests and integration gate: PASS
+          Runtime outcome: ${{ steps.development.outcome }}
+          Exact-HEAD test evidence: NOT VERIFIED by this PR-creation step.
+          Do not interpret runtime completion as a passing test suite.
           Created directly by GitHub Actions.
           EOF
           gh pr create --repo "${GITHUB_REPOSITORY}" --head "${BRANCH}" --base main --title "feat: LINE development request" --body-file /tmp/pr_body.md >/tmp/pr_url.txt
@@ -181,14 +183,10 @@ jobs:
           export AUTONOMOUS_SOURCE="on-demand"
           export AUTONOMOUS_AGENT="DistributedDevelopmentRuntime"
           export AUTONOMOUS_TASK_ID="on-demand-line-development"
-          if [ "${{ steps.development.outcome }}" = "success" ]; then
-            export AUTONOMOUS_TESTS_RESULT="PASS"
-            export AUTONOMOUS_SAFETY_GATE_RESULT="PASS"
-          else
-            export AUTONOMOUS_TESTS_RESULT="FAIL"
-            export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
-            export AUTONOMOUS_BLOCKED_FAILED_REASON="development_runtime_failed"
-          fi
+          # Runtime exit status alone is not exact-SHA test evidence.
+          export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
+          export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
+          export AUTONOMOUS_BLOCKED_FAILED_REASON="exact_sha_test_evidence_not_verified"
           export AUTONOMOUS_VERIFICATION_RESULT="NOT_RUN"
           export AUTONOMOUS_MERGE_RESULT="NOT_AUTO_MERGED"
           export AUTONOMOUS_NEXT_ACTION="review_pr"
@@ -213,7 +211,7 @@ jobs:
           webhook = os.environ.get("SLACK_WEBHOOK_URL", "").strip()
           if not webhook:
               print("SLACK_NOTIFICATION=SKIPPED (SLACK_WEBHOOK_URL is not configured)")
-              raise SystemExit(1)
+              raise SystemExit(0)
           outcome = os.environ.get("DEVELOPMENT_OUTCOME", "unknown")
           instruction = os.environ.get("DEV_INSTRUCTION", "")
           run_url = os.environ.get("RUN_URL", "")
@@ -223,7 +221,7 @@ jobs:
                   message = fh.read()
           except OSError:
               message = "⚠️ 終了報告生成失敗\\n" f"指示: {instruction}\\n" f"実行結果: {run_url}\\n" f"Outcome: {outcome}"
-          request = urllib.request.Request(webhook, data=json.dumps({"text": text}).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
+          request = urllib.request.Request(webhook, data=json.dumps({"text": message}).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
           with urllib.request.urlopen(request, timeout=20) as response:
               print(f"SLACK_NOTIFICATION=HTTP_{response.status}")
           PY
@@ -249,7 +247,7 @@ jobs:
           if outcome == "success" and test_only:
               message = "✅ 本線E2Eテストが完了しました。\n" f"指示: {instruction}\n" "E2E専用経路でpytestを実行し、成功しました。\n" f"実行結果: {run_url}"
           elif outcome == "success":
-              message = "✅ 自動開発が完了しました。\n" f"指示: {instruction}\n" "Manager → Implementer → Tester → Reviewer → Integrator を実行しました。\n" f"実行結果: {run_url}"
+              message = "⚠️ 自動開発ランタイムは終了しましたが、テスト合格は未確認です。\n" f"指示: {instruction}\n" "PRと対象HEADのテスト証拠を確認するまで、合格・マージ可能とは扱いません。\n" f"実行結果: {run_url}"
           else:
               message = "❌ 自動開発が失敗しました。\n" f"指示: {instruction}\n" f"失敗地点: GitHub Actions（{outcome}）\n" f"詳細: {run_url}"
           payload = json.dumps({"user_id": os.environ["DEV_USER_ID"], "message": message}).encode("utf-8")

@@ -10,87 +10,10 @@
       ]
     },
     {
-      "id": "hand-sign-uhip-contract-iphone-camera",
-      "instruction": "Run the deterministic regression-test plan registered for task ID hand-sign-uhip-contract-iphone-camera. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "uhip/tests/test_schema_contracts.py"
-      ]
-    },
-    {
-      "id": "hand-sign-uhip-contract-left-hand",
-      "instruction": "Run the deterministic regression-test plan registered for task ID hand-sign-uhip-contract-left-hand. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "uhip/tests/test_schema_contracts.py"
-      ]
-    },
-    {
-      "id": "hand-sign-uhip-contract-negative-confidence",
-      "instruction": "Run the deterministic regression-test plan registered for task ID hand-sign-uhip-contract-negative-confidence. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "uhip/tests/test_schema_contracts.py"
-      ]
-    },
-    {
-      "id": "hand-sign-uhip-contract-phase-start",
-      "instruction": "Run the deterministic regression-test plan registered for task ID hand-sign-uhip-contract-phase-start. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "uhip/tests/test_schema_contracts.py"
-      ]
-    },
-    {
-      "id": "hand-sign-uhip-contract-test",
-      "instruction": "Run the deterministic regression-test plan registered for task ID hand-sign-uhip-contract-test. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "uhip/tests/test_schema_contracts.py"
-      ]
-    },
-    {
-      "id": "hand-sign-uhip-contract-unknown-hand-label",
-      "instruction": "Run the deterministic regression-test plan registered for task ID hand-sign-uhip-contract-unknown-hand-label. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "uhip/tests/test_schema_contracts.py"
-      ]
-    },
-    {
-      "id": "macos-readiness-audit-no-secret-leak",
-      "instruction": "Run the deterministic regression-test plan registered for task ID macos-readiness-audit-no-secret-leak. Only modify tests/test_macos_kanban_obsidian_readiness.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "tests/test_macos_kanban_obsidian_readiness.py"
-      ]
-    },
-    {
-      "id": "recovery-ai-loop-adapter-durable-state-readback",
-      "instruction": "tests/test_recovery_ai_loop_adapter.py のみに、新しい固有名の回帰テストを1件追加してください。ダミーの task_id と失敗結果 (status=FAIL, exit_code=1, failure_reason=task_timeout) を record_loop_outcome() に渡し、決定が REPAIR_ONCE であること、同じ state path を使った新しい RecoveryStore インスタンスで状態を読み直せること、consecutive_failures=1・last_category=timeout・same_fingerprint_attempts=1 が保存されていることを確認してください。生の例外文やシークレットは使わず、既存テストを変更せず、変更は指定されたテストファイル1つだけにしてください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
-      "allowed_paths": [
-        "tests/test_recovery_ai_loop_adapter.py"
-      ]
-    },
-    {
       "id": "recovery-ai-state-isolation",
       "instruction": "tests/test_recovery_ai.py のみに、新しい固有名の回帰テストを1件追加してください。RecoveryStore に異なる task_id の timeout 失敗を同じ state file へ記録し、fingerprint と failure state が task_id ごとに分離され、両方の初回判断が REPAIR_ONCE になることを検証してください。既存テストを変更せず、外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
       "allowed_paths": [
         "tests/test_recovery_ai.py"
-      ]
-    },
-    {
-      "id": "router-regression-casefold-english",
-      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-casefold-english. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "tests/test_management_router.py"
-      ]
-    },
-    {
-      "id": "router-regression-english-casefold",
-      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-english-casefold. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "tests/test_management_router.py"
-      ]
-    },
-    {
-      "id": "router-regression-fullwidth-market",
-      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-fullwidth-market. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "tests/test_management_router.py"
       ]
     },
     {
@@ -101,66 +24,10 @@
       ]
     },
     {
-      "id": "router-regression-jobs-market-metadata",
-      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-jobs-market-metadata. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
+      "id": "recovery-ai-loop-adapter-durable-state-readback",
+      "instruction": "tests/test_recovery_ai_loop_adapter.py のみに、新しい固有名の回帰テストを1件追加してください。ダミーの task_id と失敗結果 (status=FAIL, exit_code=1, failure_reason=task_timeout) を record_loop_outcome() に渡し、決定が REPAIR_ONCE であること、同じ state path を使った新しい RecoveryStore インスタンスで状態を読み直せること、consecutive_failures=1・last_category=timeout・same_fingerprint_attempts=1 が保存されていることを確認してください。生の例外文やシークレットは使わず、既存テストを変更せず、変更は指定されたテストファイル1つだけにしてください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
       "allowed_paths": [
-        "tests/test_management_router.py"
-      ]
-    },
-    {
-      "id": "router-regression-market-channel-metadata",
-      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-market-channel-metadata. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "tests/test_management_router.py"
-      ]
-    },
-    {
-      "id": "router-regression-mixed-specialists",
-      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-mixed-specialists. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "tests/test_management_router.py"
-      ]
-    },
-    {
-      "id": "router-regression-stock-jobs-priority",
-      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-stock-jobs-priority. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "tests/test_management_router.py"
-      ]
-    },
-    {
-      "id": "router-regression-whitespace",
-      "instruction": "Run the deterministic regression-test plan registered for task ID router-regression-whitespace. Only modify tests/test_management_router.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "tests/test_management_router.py"
-      ]
-    },
-    {
-      "id": "uhip-confidence-boundary-acceptance",
-      "instruction": "Run the deterministic regression-test plan registered for task ID uhip-confidence-boundary-acceptance. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "uhip/tests/test_schema_contracts.py"
-      ]
-    },
-    {
-      "id": "uhip-confidence-out-of-range-rejection",
-      "instruction": "Run the deterministic regression-test plan registered for task ID uhip-confidence-out-of-range-rejection. Only modify uhip/tests/test_schema_contracts.py; add one focused test if missing. If behavior is already covered, report NO_CHANGE. Use dummy data only. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "uhip/tests/test_schema_contracts.py"
-      ]
-    },
-    {
-      "id": "loop-deterministic-nochange-focused-test",
-      "instruction": "Run the deterministic regression-test plan for task ID loop-deterministic-nochange-focused-test. Only modify tests/test_line_development_worker_v2.py; ensure a focused test verifies full_suite=False runs pytest only for the specified relative Python test file. If behavior is already covered, report NO_CHANGE. No external communication, secrets, OS actions, merge, or deploy.",
-      "allowed_paths": [
-        "tests/test_line_development_worker_v2.py"
-      ]
-    },
-    {
-      "id": "router-regression-general-request-metadata-refresh-20261015",
-      "instruction": "tests/test_management_router.py のみに、曖昧な一般依頼の deterministic routing と channel/request metadata 維持を検証する回帰テストを確認・追加してください。既存の同等テストがある場合は NO_CHANGE。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
-      "allowed_paths": [
-        "tests/test_management_router.py"
+        "tests/test_recovery_ai_loop_adapter.py"
       ]
     }
   ],

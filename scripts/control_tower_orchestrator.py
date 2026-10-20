@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from scripts.rea_control_tower_adapter import rea_evidence_is_valid_pass
+
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _NONCE_RE = re.compile(r"^[0-9a-f]{32}$")
 _ALLOWED_STATUSES = frozenset({
@@ -33,13 +35,29 @@ def coordinate_outcome(result: object) -> dict[str, Any]:
     task_id = result.get("task_id")
     status = result.get("status")
     exit_code = result.get("exit_code")
-    if not isinstance(task_id, str) or not task_id.strip() or len(task_id) > 100:
+    if (
+        not isinstance(task_id, str)
+        or not task_id
+        or len(task_id) > 100
+        or not all(char.isalnum() or char in "._-" for char in task_id)
+    ):
         return _decision("STOP", "STOP_AND_REPORT", "invalid_task_identity", False)
     if not isinstance(status, str) or status not in _ALLOWED_STATUSES:
         return _decision("STOP", "STOP_AND_REPORT", "invalid_status", False)
 
     if status in {"BLOCKED", "STOPPED", "NOT_RUN"}:
         return _decision("STOP", "REPORT_BLOCKED", "execution_not_completed", False)
+
+    # REA is a required diagnostic input for every attempted task. Its evidence
+    # must describe the same base SHA; it remains advisory and cannot grant rights.
+    rea = result.get("rea")
+    base_sha = result.get("base_sha")
+    if not rea_evidence_is_valid_pass(rea, expected_sha=base_sha):
+        return _decision("STOP", "STOP_AND_REPORT", "rea_evidence_missing_or_invalid", False, task_id)
+
+    observation = result.get("control_tower")
+    if not isinstance(observation, dict) or observation.get("recorded") is not True:
+        return _decision("STOP", "STOP_AND_REPORT", "control_tower_observation_missing", False, task_id)
 
     recovery = result.get("recovery_ai")
     if not isinstance(recovery, dict) or recovery.get("recorded") is not True:
@@ -61,25 +79,23 @@ def coordinate_outcome(result: object) -> dict[str, Any]:
             return _decision("STOP", "STOP_AND_REPORT", "no_change_sha_mismatch", False)
         if recovery.get("verified") is not True or recovery.get("status") != status:
             return _decision("STOP", "STOP_AND_REPORT", "recovery_verification_mismatch", False)
+        expected_evidence = {
+            "task_id": task_id,
+            "base_sha": base_sha,
+            "produced_sha": produced_sha,
+            "run_nonce": run_nonce,
+        }
+        if recovery.get("evidence") != expected_evidence:
+            return _decision("STOP", "STOP_AND_REPORT", "recovery_run_evidence_mismatch", False)
         observation = result.get("control_tower")
         observation_ok = isinstance(observation, dict) and observation.get("recorded") is True
-        if not observation_ok:
-            # The Control Tower audit trail is part of the safety evidence.
-            # Never advance the queue when its durable observation is missing.
-            return _decision(
-                "STOP",
-                "STOP_AND_REPORT",
-                "control_tower_observation_missing",
-                False,
-                task_id,
-            )
         return {
             "phase": "REPORT",
             "next_action": "REPORT_VERIFIED_SUCCESS",
             "reason_code": "verified_success",
             "allow_continue": True,
             "task_id": task_id,
-            "observation_degraded": False,
+            "observation_degraded": not observation_ok,
             "repair_executed": False,
         }
 

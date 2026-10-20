@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from scripts.control_tower_orchestrator import coordinate_outcome
 
 
@@ -11,11 +9,25 @@ def verified_success(status="PASS"):
     return {
         "task_id": "task-a",
         "status": status,
+        "rea": {
+            "gate": "PASS", "mode": "OBSERVE_ONLY", "target_sha": base,
+            "critical_count": 0, "blocking_count": 0,
+            "execution_authorized": False, "patch_authorized": False,
+            "hold_clear_authorized": False, "merge_deploy_authorized": False,
+            "scanner_status": "PASS", "finding_count": 0,
+            "findings_truncated": False, "findings": [],
+        },
         "exit_code": 0,
         "base_sha": base,
         "produced_sha": produced,
         "run_nonce": "c" * 32,
-        "recovery_ai": {"recorded": True, "verified": True, "status": status},
+        "recovery_ai": {
+            "recorded": True, "verified": True, "status": status,
+            "evidence": {
+                "task_id": "task-a", "base_sha": base,
+                "produced_sha": produced, "run_nonce": "c" * 32,
+            },
+        },
         "control_tower": {"recorded": True},
     }
 
@@ -25,6 +37,53 @@ def test_verified_success_requires_all_evidence_and_allows_controlled_continue()
     assert decision["phase"] == "REPORT"
     assert decision["next_action"] == "REPORT_VERIFIED_SUCCESS"
     assert decision["allow_continue"] is True
+
+
+
+def test_rea_evidence_is_required_and_must_match_base_sha():
+    result = verified_success()
+    result.pop("rea")
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "rea_evidence_missing_or_invalid"
+
+    result = verified_success()
+    result["rea"]["target_sha"] = "f" * 40
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "rea_evidence_missing_or_invalid"
+
+
+def test_rea_cannot_grant_execution_or_hold_clear_authority():
+    result = verified_success()
+    result["rea"]["execution_authorized"] = True
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "rea_evidence_missing_or_invalid"
+
+def test_rea_high_or_critical_blocking_count_is_rejected():
+    result = verified_success()
+    result["rea"]["blocking_count"] = 1
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "rea_evidence_missing_or_invalid"
+
+
+def test_task_identity_rejects_path_separators_and_whitespace():
+    for task_id in ("../task-a", "task a"):
+        result = verified_success()
+        result["task_id"] = task_id
+        decision = coordinate_outcome(result)
+        assert decision["allow_continue"] is False
+        assert decision["reason_code"] == "invalid_task_identity"
+
+
+def test_recovery_success_must_match_exact_run_evidence():
+    result = verified_success()
+    result["recovery_ai"]["evidence"]["run_nonce"] = "d" * 32
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "recovery_run_evidence_mismatch"
 
 
 def test_no_change_requires_identical_shas():
@@ -62,6 +121,7 @@ def test_bool_exit_code_is_not_accepted_as_integer_zero():
 def test_blocked_never_resumes_or_clears_hold():
     decision = coordinate_outcome({
         "task_id": "task-a", "status": "BLOCKED", "exit_code": 80,
+        "control_tower": {"recorded": True},
         "recovery_ai": {"recorded": True, "decision": {"action": "REPAIR_ONCE"}},
     })
     assert decision["phase"] == "STOP"
@@ -71,6 +131,14 @@ def test_blocked_never_resumes_or_clears_hold():
 def test_repair_once_is_a_plan_not_a_claim_of_execution():
     decision = coordinate_outcome({
         "task_id": "task-a", "status": "FAIL", "exit_code": 1,
+        "base_sha": "a" * 40,
+        "rea": {"gate": "PASS", "mode": "OBSERVE_ONLY", "target_sha": "a" * 40,
+                "critical_count": 0, "blocking_count": 0,
+                "execution_authorized": False, "patch_authorized": False,
+                "hold_clear_authorized": False, "merge_deploy_authorized": False,
+                "scanner_status": "PASS", "finding_count": 0,
+                "findings_truncated": False, "findings": []},
+        "control_tower": {"recorded": True},
         "recovery_ai": {"recorded": True, "decision": {"action": "REPAIR_ONCE"}},
     })
     assert decision["phase"] == "DIAGNOSE"
@@ -82,6 +150,14 @@ def test_repair_once_is_a_plan_not_a_claim_of_execution():
 def test_retry_is_a_plan_not_an_execution_or_permission_to_continue():
     decision = coordinate_outcome({
         "task_id": "task-a", "status": "FAIL", "exit_code": 1,
+        "base_sha": "a" * 40,
+        "rea": {"gate": "PASS", "mode": "OBSERVE_ONLY", "target_sha": "a" * 40,
+                "critical_count": 0, "blocking_count": 0,
+                "execution_authorized": False, "patch_authorized": False,
+                "hold_clear_authorized": False, "merge_deploy_authorized": False,
+                "scanner_status": "PASS", "finding_count": 0,
+                "findings_truncated": False, "findings": []},
+        "control_tower": {"recorded": True},
         "recovery_ai": {"recorded": True, "decision": {"action": "RETRY"}},
     })
     assert decision["phase"] == "RECOVER"
@@ -93,29 +169,41 @@ def test_retry_is_a_plan_not_an_execution_or_permission_to_continue():
 def test_unknown_recovery_action_requires_human_review():
     decision = coordinate_outcome({
         "task_id": "task-a", "status": "FAIL", "exit_code": 1,
+        "base_sha": "a" * 40,
+        "rea": {"gate": "PASS", "mode": "OBSERVE_ONLY", "target_sha": "a" * 40,
+                "critical_count": 0, "blocking_count": 0,
+                "execution_authorized": False, "patch_authorized": False,
+                "hold_clear_authorized": False, "merge_deploy_authorized": False,
+                "scanner_status": "PASS", "finding_count": 0,
+                "findings_truncated": False, "findings": []},
+        "control_tower": {"recorded": True},
         "recovery_ai": {"recorded": True, "decision": {"action": "RUN_ARBITRARY_COMMAND"}},
     })
     assert decision["phase"] == "STOP"
     assert decision["next_action"] == "HOLD_FOR_REVIEW"
 
 
-@pytest.mark.parametrize(
-    "observation",
-    [None, {}, {"recorded": False}, {"recorded": "true"}],
-)
-def test_missing_or_invalid_observer_blocks_success_continuation(observation):
+def test_missing_observer_persistence_fails_closed():
     result = verified_success()
-    result["control_tower"] = observation
+    result["control_tower"] = {"recorded": False}
     decision = coordinate_outcome(result)
-    assert decision["phase"] == "STOP"
     assert decision["allow_continue"] is False
+    assert decision["phase"] == "STOP"
     assert decision["reason_code"] == "control_tower_observation_missing"
 
-
-def test_durable_observer_allows_verified_success_continuation():
+def test_rea_pass_with_incomplete_metadata_is_rejected():
     result = verified_success()
-    result["control_tower"] = {"recorded": True}
+    result["rea"].pop("mode")
     decision = coordinate_outcome(result)
-    assert decision["allow_continue"] is True
-    assert decision["reason_code"] == "verified_success"
-    assert decision["observation_degraded"] is False
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "rea_evidence_missing_or_invalid"
+
+
+def test_rea_pass_with_truncated_or_high_severity_findings_is_rejected():
+    result = verified_success()
+    result["rea"]["findings"] = [{"severity": "HIGH"}]
+    result["rea"]["finding_count"] = 1
+    decision = coordinate_outcome(result)
+    assert decision["allow_continue"] is False
+    assert decision["reason_code"] == "rea_evidence_missing_or_invalid"
+

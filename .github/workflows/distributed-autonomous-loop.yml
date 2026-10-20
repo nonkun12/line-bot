@@ -120,6 +120,9 @@ jobs:
       INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_job_id || '' }}
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
+      # Set repository Actions variable CONTROL_TOWER_KILL_SWITCH=true to stop
+      # before queue reads/task launch; this never bypasses safety gates.
+      CONTROL_TOWER_KILL_SWITCH: ${{ vars.CONTROL_TOWER_KILL_SWITCH || 'false' }}
       SELF_IMPROVEMENT_POLICY_ENFORCED: 'true'
       # Hosted loop must not call an unverified cloud Hermes provider.
       HERMES_ADVISOR_ENABLED: 'false'
@@ -433,6 +436,7 @@ jobs:
           import os
           import subprocess
           from pathlib import Path
+          from scripts.rea_control_tower_adapter import publish_row_has_valid_gates
 
           path = Path("/tmp/minimal-autonomous-loop.jsonl")
           rows = []
@@ -456,6 +460,11 @@ jobs:
                       raise SystemExit(f"invalid {key} on line {number}")
               if row.get("exit_code") != 0:
                   raise SystemExit(f"nonzero task exit code on line {number}")
+
+              # Independent second-line checks: the in-process loop decision is
+              # not sufficient evidence for publishing a development branch.
+              if not publish_row_has_valid_gates(row, expected_sha=row["base_sha"]):
+                  raise SystemExit(f"missing, invalid, or non-allowing REA/Recovery AI/Control Tower evidence on line {number}")
               rows.append(row)
 
           try:

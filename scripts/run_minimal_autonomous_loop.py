@@ -210,6 +210,20 @@ def load_completed(state_file: Path) -> set[str]:
     return {item.strip() for item in completed}
 
 
+def recovery_record_blocks_task(record: dict) -> bool:
+    """Fail closed for held tasks or resumed tasks awaiting explicit review."""
+    if not isinstance(record, dict):
+        raise ValueError("recovery record must be an object")
+    if not record:
+        return False
+    if "held" not in record or not isinstance(record.get("held"), bool):
+        raise ValueError("recovery hold state is ambiguous")
+    review = record.get("resume_requires_review", False)
+    if not isinstance(review, bool):
+        raise ValueError("recovery resume-review state is ambiguous")
+    return record["held"] is True or review is True
+
+
 def stopped(stop_file: Path) -> bool:
     raw = os.environ.get("AUTONOMOUS_LOOP_STOP", "").strip()
     if raw and raw.casefold() not in {"0", "false", "no", "off"}:
@@ -250,8 +264,9 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
     """
     if not _valid_sha(evidence_sha):
         raise ValueError("catalog evidence SHA is invalid")
+    # The runtime queue is mutable scheduling input, not a trust source.
+    # Only the separately reviewed catalog may register executable task IDs.
     catalog_paths = (
-        ".github/autonomous-loop-tasks.json",
         ".github/autonomous-loop-task-catalog.json",
     )
     definitions: dict[str, dict[str, object]] = {}
@@ -501,6 +516,34 @@ def run_task(
             failure_reason = "summary_produced_sha_mismatch"
         elif payload.get("status") == "NO_CHANGE" and produced_sha != base_sha:
             failure_reason = "summary_no_change_but_head_moved"
+    elif payload and exit_code == 80 and not failure_reason:
+        # Exit 80 is BLOCKED only with a fresh identity-bound summary and
+        # matching observed HEAD; never trust the process code alone.
+        if payload.get("status") != "BLOCKED":
+            failure_reason = "summary_status_invalid"
+        elif payload.get("produced_sha") != produced_sha:
+            failure_reason = "summary_produced_sha_mismatch"
+        elif not isinstance(payload.get("rea"), dict):
+            failure_reason = "blocked_summary_missing_rea_evidence"
+        else:
+            rea = payload["rea"]
+            # BLOCKED evidence is untrusted child-process output. It must carry
+            # an explicit blocked gate and deny every authority; a dict alone
+            # must never be accepted as evidence of a safe stop.
+            if (
+                rea.get("gate") != "BLOCKED"
+                or not isinstance(rea.get("reason_code"), str)
+                or not rea.get("reason_code").strip()
+                or rea.get("execution_authorized") is not False
+                or rea.get("patch_authorized") is not False
+                or rea.get("hold_clear_authorized") is not False
+                or rea.get("merge_deploy_authorized") is not False
+            ):
+                failure_reason = "blocked_summary_rea_evidence_invalid"
+            elif payload.get("failure_reason") != f"control_tower_rea:{rea['reason_code']}":
+                # Keep the human/report reason bound to the exact REA evidence.
+                # A child cannot claim a valid block but omit or substitute its reason.
+                failure_reason = "blocked_summary_failure_reason_invalid"
 
     # A zero exit code with an unchanged HEAD is the only valid NO_CHANGE.
     # A failed runtime must never be reclassified as NO_CHANGE merely because
@@ -509,7 +552,7 @@ def run_task(
     if exit_code == 0 and produced_sha == base_sha and _valid_sha(base_sha):
         failure_reason = failure_reason or "no_change"
         status = "NO_CHANGE"
-    elif exit_code != 0 and not failure_reason:
+    elif exit_code != 0 and not failure_reason and exit_code != 80:
         failure_reason = "task_runtime_failed"
 
     if exit_code == 0 and not failure_reason:
@@ -517,7 +560,9 @@ def run_task(
         if not verified:
             failure_reason = reason
 
-    if exit_code != 0 or failure_reason:
+    if exit_code == 80 and not failure_reason and payload.get("status") == "BLOCKED":
+        status = "BLOCKED"
+    elif exit_code != 0 or failure_reason:
         if failure_reason == "no_change" and exit_code == 0:
             status = "NO_CHANGE"
         elif failure_reason == "task_timeout":
@@ -536,7 +581,8 @@ def run_task(
         "exit_code": exit_code,
         "base_sha": base_sha,
         "produced_sha": produced_sha,
-        "failure_reason": failure_reason,
+        "failure_reason": (str(payload.get("failure_reason", "")) if status == "BLOCKED" else failure_reason),
+        **({"rea": payload["rea"]} if status == "BLOCKED" and isinstance(payload.get("rea"), dict) else {}),
     }
 
 
@@ -562,6 +608,35 @@ def main() -> int:
 
     if args.max_tasks < 1 or args.max_tasks > 4:
         raise SystemExit("--max-tasks must be between 1 and 4")
+
+    # Emergency stop: never bypass the Control Tower into an unguarded legacy
+    # path. When enabled, stop before reading the queue or launching any task.
+    # GitHub Actions exposes this through the CONTROL_TOWER_KILL_SWITCH variable.
+    kill_switch = os.environ.get("CONTROL_TOWER_KILL_SWITCH", "false").strip().lower()
+    if kill_switch in {"1", "true", "yes", "on"}:
+        args.results.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "BLOCKED",
+            "task_id": "",
+            "exit_code": 80,
+            "failure_reason": "control_tower_kill_switch_enabled",
+            "control_tower": {
+                "recorded": False,
+                "proposal_executable": False,
+                "orchestration": {
+                    "phase": "STOP",
+                    "next_action": "STOP_AND_REPORT",
+                    "reason_code": "control_tower_kill_switch_enabled",
+                    "allow_continue": False,
+                    "repair_executed": False,
+                },
+            },
+        }
+        with args.results.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        print("MINIMAL_LOOP=BLOCKED reason=control_tower_kill_switch_enabled", flush=True)
+        return 80
 
     # Bind selection to a repository snapshot taken before queue/state reads.
     # The selector independently re-reads HEAD after those reads and blocks if it moved.
@@ -608,6 +683,7 @@ def main() -> int:
             )
             return 80
 
+
     # Normal queue entries are authorized only against Git-versioned catalogs
     # at the same immutable commit used as the selection evidence. Never derive
     # the trust catalog from the runtime queue itself.
@@ -640,11 +716,14 @@ def main() -> int:
     recovery_store = RecoveryStore(args.state.parent / "recovery-ai-state.json")
     pending_tasks = list(tasks)
     try:
-        held_task_ids = {
-            str(task["id"])
-            for task in catalog_source_tasks
-            if recovery_store.task_status(str(task["id"])).get("held") is True
-        }
+        held_task_ids = set()
+        for catalog_task in catalog_source_tasks:
+            catalog_task_id = str(catalog_task["id"])
+            recovery_record = recovery_store.task_status(catalog_task_id)
+            # A resumed task remains ineligible until a separate explicit
+            # review acknowledgement clears resume_requires_review.
+            if recovery_record_blocks_task(recovery_record):
+                held_task_ids.add(catalog_task_id)
     except Exception:
         # Malformed/unavailable Recovery AI state must produce auditable BLOCKED
         # evidence rather than crashing without a result row.
@@ -797,6 +876,8 @@ def main() -> int:
 
     args.results.parent.mkdir(parents=True, exist_ok=True)
     for index, task in enumerate(tasks, 1):
+        # Evidence belongs to this task only; never carry it across iterations.
+        rea_evidence: dict[str, object] | None = None
         if stopped(args.stop_file):
             result = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -837,14 +918,11 @@ def main() -> int:
             latest_hold = RecoveryStore(args.state.parent / "recovery-ai-state.json").task_status(str(task["id"]))
             # An empty record means this registered task has no recovery history yet.
             # A non-empty record with missing/invalid held state is ambiguous and blocks.
-            malformed_hold = (
-                not isinstance(latest_hold, dict)
-                or (bool(latest_hold) and (
-                    "held" not in latest_hold
-                    or not isinstance(latest_hold.get("held"), bool)
-                ))
-            )
-            if malformed_hold or latest_hold.get("held", False) is not False:
+            try:
+                task_still_blocked = recovery_record_blocks_task(latest_hold)
+            except ValueError:
+                task_still_blocked = True
+            if task_still_blocked:
                 result = {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "run_index": index,
@@ -899,10 +977,58 @@ def main() -> int:
                 flush=True,
             )
         else:
-            print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
-            result = run_task(
-                task, index, args.stop_file, expected_base_sha=control_tower_head
-            )
+            # REA is diagnostic-only and runs after existing selector, HEAD, HOLD,
+            # and catalog authorization checks, immediately before task launch.
+            rea_gate_valid = False
+            try:
+                from scripts.rea_control_tower_adapter import (
+                    prepare_rea_evidence,
+                    rea_evidence_is_valid_pass,
+                )
+                rea_evidence = prepare_rea_evidence(ROOT, expected_sha=control_tower_head)
+                rea_gate_valid = rea_evidence_is_valid_pass(
+                    rea_evidence, expected_sha=control_tower_head
+                )
+            except Exception:
+                rea_evidence = {
+                    "gate": "BLOCKED",
+                    "reason_code": "rea_adapter_error",
+                    "target_sha": None,
+                    "scanner_status": "BLOCKED",
+                    "finding_count": 0,
+                    "critical_count": 0,
+                    "blocking_count": 0,
+                    "findings": [],
+                    "execution_authorized": False,
+                    "patch_authorized": False,
+                    "hold_clear_authorized": False,
+                    "merge_deploy_authorized": False,
+                }
+            if not rea_gate_valid:
+                # Keep the hard stop, but pass the BLOCKED evidence through the
+                # same Recovery AI and Control Tower persistence path as other
+                # outcomes. Do not execute the task or bypass the final gates.
+                result = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "run_index": index,
+                    "task_id": task["id"],
+                    "status": "BLOCKED",
+                    "exit_code": 80,
+                    "base_sha": control_tower_head,
+                    "produced_sha": _git_head(),
+                    "failure_reason": "control_tower_rea:" + str(rea_evidence.get("reason_code", "gate_blocked")),
+                    "rea": rea_evidence,
+                }
+                print("MINIMAL_LOOP=BLOCKED reason=control_tower_rea", flush=True)
+            else:
+                print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
+                result = run_task(
+                    task, index, args.stop_file, expected_base_sha=control_tower_head
+                )
+        # Carry the exact preflight REA evidence into the Control Tower decision.
+        # This is diagnostic metadata only and grants no execution or repair authority.
+        if not isinstance(result.get("rea"), dict):
+            result["rea"] = rea_evidence
         recovery_error = False
         try:
             from scripts.recovery_ai_loop_adapter import record_loop_outcome
@@ -913,9 +1039,9 @@ def main() -> int:
             # Do not report PASS or proceed to another task unless the recovery
             # decision can be durably recorded and read back.
             recovery_error = True
-            result["status"] = "FAIL"
-            result["exit_code"] = 1
-            result["failure_reason"] = "recovery_ai_state_persist_failed"
+            # Preserve the underlying outcome, especially REA BLOCKED; the
+            # persistence failure is separate and still forces a hard stop.
+            result["persistence_failure"] = "recovery_ai_state_persist_failed"
             result["recovery_ai"] = {
                 "recorded": False,
                 "reason": "state_persistence_failed",
@@ -935,6 +1061,7 @@ def main() -> int:
                 "proposal_executable": False,
             }
         result["control_tower"] = observation
+        observation_error = not (isinstance(observation, dict) and observation.get("recorded") is True)
 
         try:
             from scripts.control_tower_orchestrator import coordinate_outcome
@@ -987,6 +1114,13 @@ def main() -> int:
 
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(result, ensure_ascii=False) + "\n")
+
+        if observation_error:
+            print(
+                f"MINIMAL_LOOP:HALT task={task['id']} reason=control_tower_observation_persist_failed",
+                flush=True,
+            )
+            return 1
 
         if recovery_error:
             print(

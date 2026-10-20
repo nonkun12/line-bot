@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import tempfile
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -171,21 +172,38 @@ class RecoveryStore:
         self._write(data)
         return RecoveryDecision(action, reason, task_id, fingerprint, count, delay, human)
 
-    def record_success(self, task_id: str, *, verified: bool) -> None:
-        """Reset consecutive failures only after the caller supplies verified success."""
+    def record_success(
+        self, task_id: str, *, verified: bool, evidence: dict | None = None
+    ) -> None:
+        """Persist verified success and its exact per-run identity atomically."""
         task_id = _safe_id(task_id)
         if verified is not True:
             raise ValueError("only verified success may reset failure counters")
+        if not isinstance(evidence, dict) or set(evidence) != {
+            "task_id", "base_sha", "produced_sha", "run_nonce"
+        }:
+            raise ValueError("verified success evidence missing or invalid")
+        if evidence.get("task_id") != task_id:
+            raise ValueError("verified success task identity mismatch")
+        if not isinstance(evidence.get("base_sha"), str) or not re.fullmatch(r"[0-9a-f]{40}", evidence["base_sha"]):
+            raise ValueError("verified success base SHA invalid")
+        if not isinstance(evidence.get("produced_sha"), str) or not re.fullmatch(r"[0-9a-f]{40}", evidence["produced_sha"]):
+            raise ValueError("verified success produced SHA invalid")
+        if not isinstance(evidence.get("run_nonce"), str) or not re.fullmatch(r"[0-9a-f]{32}", evidence["run_nonce"]):
+            raise ValueError("verified success nonce invalid")
         data = self._read()
         record = data["tasks"].get(task_id)
+        if record is None:
+            record = {"consecutive_failures": 0, "same_fingerprint_attempts": 0, "held": False}
+            data["tasks"][task_id] = record
         if not isinstance(record, dict):
-            # A first-time success need not create a failure record.
-            return
+            raise RecoveryStateError("task recovery record invalid")
         if record.get("held") is True:
             raise ValueError("held task requires explicit resume before success can reset state")
         record["consecutive_failures"] = 0
         record["same_fingerprint_attempts"] = 0
         record["last_success_at"] = utc_now()
+        record["last_success_evidence"] = dict(evidence)
         self._write(data)
 
     def save_checkpoint(self, task_id: str, checkpoint_id: str, *, verified: bool) -> None:
@@ -225,6 +243,21 @@ class RecoveryStore:
         record["consecutive_failures"] = 0
         record["resumed_at"] = utc_now()
         record["resume_requires_review"] = True
+        self._write(data)
+
+    def confirm_resume_review(self, task_id: str, *, reviewed: bool) -> None:
+        """Acknowledge the required post-resume review before a held task can run."""
+        task_id = _safe_id(task_id)
+        if reviewed is not True:
+            raise ValueError("explicit resume review confirmation is required")
+        data = self._read()
+        record = data["tasks"].get(task_id)
+        if not isinstance(record, dict) or record.get("held") is not False:
+            raise ValueError("task must be explicitly resumed before review")
+        if record.get("resume_requires_review") is not True:
+            raise ValueError("task has no pending resume review")
+        record["resume_requires_review"] = False
+        record["resume_reviewed_at"] = utc_now()
         self._write(data)
 
     def task_status(self, task_id: str) -> dict:
