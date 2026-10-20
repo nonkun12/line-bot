@@ -251,7 +251,6 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
     if not _valid_sha(evidence_sha):
         raise ValueError("catalog evidence SHA is invalid")
     catalog_paths = (
-        ".github/autonomous-loop-tasks.json",
         ".github/autonomous-loop-task-catalog.json",
     )
     definitions: dict[str, dict[str, object]] = {}
