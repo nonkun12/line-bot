@@ -1233,18 +1233,18 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         if count != 1:
             return None, f"anchor_count_{chosen}:{count}"
         addition = (
-            "@pytest.mark.parametrize(\"field,value\", [\\n"
-            "    (\"task_id\", \"task-b\"),\\n"
-            "    (\"base_sha\", \"d\" * 40),\\n"
-            "    (\"produced_sha\", \"e\" * 40),\\n"
-            "])\\n"
-            "def test_recovery_evidence_task_sha_identity_mismatch_fails_closed(field, value):\\n"
-            "    result = verified_success()\\n"
-            "    result[\"recovery_ai\"][\"evidence\"][field] = value\\n"
-            "    decision = coordinate_outcome(result)\\n"
-            "    assert decision[\"allow_continue\"] is False\\n"
-            "    assert decision[\"reason_code\"] == \"recovery_run_evidence_mismatch\"\\n"
-            "\\n\\n"
+            "@pytest.mark.parametrize(\"field,value\", [\n"
+            "    (\"task_id\", \"task-b\"),\n"
+            "    (\"base_sha\", \"d\" * 40),\n"
+            "    (\"produced_sha\", \"e\" * 40),\n"
+            "])\n"
+            "def test_recovery_evidence_task_sha_identity_mismatch_fails_closed(field, value):\n"
+            "    result = verified_success()\n"
+            "    result[\"recovery_ai\"][\"evidence\"][field] = value\n"
+            "    decision = coordinate_outcome(result)\n"
+            "    assert decision[\"allow_continue\"] is False\n"
+            "    assert decision[\"reason_code\"] == \"recovery_run_evidence_mismatch\"\n"
+            "\n\n"
         )
         new = addition + anchor
         if len(anchor) > 1200 or len(new) > 1800:
