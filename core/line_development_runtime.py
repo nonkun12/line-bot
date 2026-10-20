@@ -211,6 +211,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "recovery-ai-loop-adapter-durable-state-readback": "tests/test_recovery_ai_loop_adapter.py",
     "recovery-ai-state-isolation": "tests/test_recovery_ai.py",
     "ai-speaker-empty-transcript-no-brain-call": "tests/test_ai_speaker.py",
+    "distributed-loop-queue-progress-empty-queue-regression": "tests/test_distributed_loop_queue_progress.py",
     "loop-deterministic-nochange-focused-test": "tests/test_line_development_worker_v2.py",
 }
 

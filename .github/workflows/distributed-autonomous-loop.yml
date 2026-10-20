@@ -885,16 +885,22 @@ jobs:
           if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
             completed="$(python -c 'import json; from pathlib import Path; print(sum(1 for line in Path("/tmp/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines() if line.strip() and isinstance(json.loads(line), dict) and json.loads(line).get("status") in {"PASS","NO_CHANGE"}))')"
           fi
-          if progress_json="$(python -m scripts.distributed_loop_queue_progress \
+          progress_output_file=/tmp/distributed-loop-queue-progress.out
+          rm -f "$progress_output_file"
+          if python -m scripts.distributed_loop_queue_progress \
             --queue "${AUTONOMOUS_LOOP_TASK_QUEUE:-.github/autonomous-loop-tasks.json}" \
             --state /tmp/autonomous-loop-state.json \
-            --results /tmp/minimal-autonomous-loop.jsonl)"; then
+            --results /tmp/minimal-autonomous-loop.jsonl >"$progress_output_file" 2>&1; then
+            progress_json="$(cat "$progress_output_file")"
             queue_total="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["queue_total"])' "$progress_json")"
             queue_completed="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["queue_completed"])' "$progress_json")"
             export QUEUE_PROGRESS_INVALID=false
           else
-            # The progress CLI emits only a safe exception class, never raw exception text or paths.
-            progress_diagnostic="${progress_json:-QUEUE_PROGRESS_BLOCKED: no diagnostic emitted}"
+            # Extract only the CLI allowlisted exception class; never echo raw stderr, paths, or queue data.
+            progress_diagnostic="$(grep -E '^QUEUE_PROGRESS_BLOCKED: [A-Za-z][A-Za-z0-9_]*$' "$progress_output_file" | tail -n 1 || true)"
+            if [ -z "$progress_diagnostic" ]; then
+              progress_diagnostic="QUEUE_PROGRESS_BLOCKED: no diagnostic emitted"
+            fi
             echo "::error::Queue progress evidence invalid (${progress_diagnostic}); final outcome will be BLOCKED."
             queue_total=0
             queue_completed=0
