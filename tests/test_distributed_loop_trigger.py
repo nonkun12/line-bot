@@ -275,6 +275,38 @@ def test_status_command_labels_skipped_as_not_run_and_shows_event(monkeypatch):
     assert "Run #88" in reply
 
 
+def test_result_command_does_not_mislabel_latest_skipped_run(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _Client([{
+        "run_number": 89,
+        "event": "issue_comment",
+        "status": "completed",
+        "conclusion": "skipped",
+        "display_title": "non-command comment",
+        "head_sha": "e" * 40,
+        "created_at": "2026-10-20T06:03:58Z",
+        "html_url": "https://github.com/nonkun12/line-bot/actions/runs/89",
+    }, {
+        "run_number": 88,
+        "event": "workflow_dispatch",
+        "status": "completed",
+        "conclusion": "success",
+        "display_title": "previous actual run",
+        "head_sha": "f" * 40,
+        "created_at": "2026-10-20T05:00:00Z",
+        "html_url": "https://github.com/nonkun12/line-bot/actions/runs/88",
+    }])
+    from unittest.mock import patch
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = trigger.request_distributed_loop("u1", "分散Loopの結果")
+    assert handled is True
+    assert "Run #89" in reply
+    assert "SKIPPED（起動条件不一致・タスク未実行）" in reply
+    assert "イベント: issue_comment" in reply
+    assert "Run #88" not in reply
+
+
 def test_result_command_reports_latest_completed_run(monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
     monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
