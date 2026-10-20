@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       max_tasks:
-        description: 'Manual run task limit (1-4; normal execution currently supports one task)'
+        description: 'Manual run task limit (1-4; each task is reselected and reauthorized against current HEAD)'
         required: false
         default: '1'
         type: choice
