@@ -111,10 +111,11 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     # HOLD and post-resume review requirements both remain authoritative in
     # Recovery AI. A resumed task is not eligible until explicit review clears
     # resume_requires_review; queue refill must not reintroduce it prematurely.
-    ineligible_ids = held_ids | review_required_ids
+    ineligible_ids = held_ids | review_required_ids | completed_ids
     eligible_existing = [task for task in normalized_existing if task["id"] not in ineligible_ids]
     skipped_held_ids = sorted(original_ids.intersection(held_ids))
     skipped_review_ids = sorted(original_ids.intersection(review_required_ids))
+    skipped_completed_ids = sorted(original_ids.intersection(completed_ids))
     additions = [
         task for task in normalized_catalog
         if task["id"] not in original_ids
@@ -132,6 +133,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         "retained_existing": len(eligible_existing),
         "skipped_held_ids": skipped_held_ids,
         "skipped_review_ids": skipped_review_ids,
+        "skipped_completed_ids": skipped_completed_ids,
         "added": len(additions),
         "total": len(final_tasks),
         "added_ids": [t["id"] for t in additions],
