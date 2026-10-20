@@ -406,7 +406,7 @@ def extract_core_image_word(message: str) -> str | None:
 
     # Also accept the natural LINE phrasing "great コアイメージ".
     reversed_match = re.fullmatch(
-        r"([A-Za-z][A-Za-z'-]{0,63})\\s+(?:コアイメージ|語根|語幹|core\\s*image|word\\s*root)\\s*[:：]?[?？。！!]*",
+        r"([A-Za-z][A-Za-z'-]{0,63})\s+(?:コアイメージ|語根|語幹|core\s*image|word\s*root)\s*[:：]?[?？。！!]*",
         value,
         re.IGNORECASE,
     )
