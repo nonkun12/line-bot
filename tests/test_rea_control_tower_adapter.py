@@ -107,3 +107,74 @@ def test_execution_boundary_requires_complete_sha_bound_non_authorizing_pass():
         {key: value for key, value in evidence.items() if key != "blocking_count"},
         expected_sha=SHA,
     )
+
+
+
+def test_execution_boundary_rejects_malformed_finding_schema_and_paths():
+    base = {
+        "gate": "PASS",
+        "mode": "OBSERVE_ONLY",
+        "target_sha": SHA,
+        "scanner_status": "FINDINGS",
+        "finding_count": 1,
+        "critical_count": 0,
+        "blocking_count": 0,
+        "findings_truncated": False,
+        "findings": [{
+            "finding_id": "a" * 16,
+            "category": "python_syntax",
+            "severity": "MEDIUM",
+            "path": "scripts/example.py",
+            "line": 12,
+            "status": "REVIEW_REQUIRED",
+        }],
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "hold_clear_authorized": False,
+        "merge_deploy_authorized": False,
+    }
+    assert rea_evidence_is_valid_pass(base, expected_sha=SHA)
+
+    bad_findings = [
+        {**base["findings"][0], "finding_id": ""},
+        {**base["findings"][0], "category": ""},
+        {**base["findings"][0], "path": "../outside.py"},
+        {**base["findings"][0], "path": "/tmp/outside.py"},
+        {**base["findings"][0], "path": "scripts\\\\outside.py"},
+        {**base["findings"][0], "line": True},
+        {**base["findings"][0], "status": "PASS"},
+        {**base["findings"][0], "unexpected": "value"},
+    ]
+    for bad in bad_findings:
+        assert not rea_evidence_is_valid_pass(
+            {**base, "findings": [bad]}, expected_sha=SHA
+        )
+
+
+def test_execution_boundary_rejects_inconsistent_counts_and_unknown_fields():
+    base = {
+        "gate": "PASS",
+        "mode": "OBSERVE_ONLY",
+        "target_sha": SHA,
+        "scanner_status": "PASS",
+        "finding_count": 0,
+        "critical_count": 0,
+        "blocking_count": 0,
+        "findings_truncated": False,
+        "findings": [],
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "hold_clear_authorized": False,
+        "merge_deploy_authorized": False,
+    }
+    assert rea_evidence_is_valid_pass(base, expected_sha=SHA)
+    assert not rea_evidence_is_valid_pass({**base, "unexpected": 1}, expected_sha=SHA)
+    assert not rea_evidence_is_valid_pass({**base, "finding_count": 1}, expected_sha=SHA)
+    assert not rea_evidence_is_valid_pass({**base, "scanner_status": "FINDINGS"}, expected_sha=SHA)
+    assert not rea_evidence_is_valid_pass(
+        {**base, "finding_count": 101, "findings_truncated": True}, expected_sha=SHA
+    )
+    assert not rea_evidence_is_valid_pass(
+        {**base, "finding_count": 101, "findings_truncated": True,
+         "findings": [base["findings"]] * 100}, expected_sha=SHA
+    )
