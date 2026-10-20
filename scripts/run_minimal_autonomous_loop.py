@@ -672,11 +672,22 @@ def main() -> int:
     recovery_store = RecoveryStore(args.state.parent / "recovery-ai-state.json")
     pending_tasks = list(tasks)
     try:
-        held_task_ids = {
-            str(task["id"])
-            for task in catalog_source_tasks
-            if recovery_store.task_status(str(task["id"])).get("held") is True
-        }
+        held_task_ids = set()
+        for catalog_task in catalog_source_tasks:
+            catalog_task_id = str(catalog_task["id"])
+            recovery_record = recovery_store.task_status(catalog_task_id)
+            held_value = recovery_record.get("held", False)
+            review_value = recovery_record.get("resume_requires_review", False)
+            if (
+                not isinstance(held_value, bool)
+                or not isinstance(review_value, bool)
+                or (recovery_record and "held" not in recovery_record)
+            ):
+                raise ValueError("recovery hold/review state is ambiguous")
+            # A resumed task remains ineligible until a separate explicit
+            # review acknowledgement clears resume_requires_review.
+            if held_value is True or review_value is True:
+                held_task_ids.add(catalog_task_id)
     except Exception:
         # Malformed/unavailable Recovery AI state must produce auditable BLOCKED
         # evidence rather than crashing without a result row.
@@ -876,9 +887,14 @@ def main() -> int:
                 or (bool(latest_hold) and (
                     "held" not in latest_hold
                     or not isinstance(latest_hold.get("held"), bool)
+                    or not isinstance(latest_hold.get("resume_requires_review", False), bool)
                 ))
             )
-            if malformed_hold or latest_hold.get("held", False) is not False:
+            if (
+                malformed_hold
+                or latest_hold.get("held", False) is not False
+                or latest_hold.get("resume_requires_review", False) is not False
+            ):
                 result = {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "run_index": index,
