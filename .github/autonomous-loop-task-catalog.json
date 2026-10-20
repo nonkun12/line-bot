@@ -71,6 +71,13 @@
       "allowed_paths": [
         "tests/test_distributed_loop_queue_progress.py"
       ]
+    },
+    {
+      "id": "distributed-loop-queue-progress-empty-queue-regression-v2",
+      "instruction": "tests/test_distributed_loop_queue_progress.py のみに、新しい固有名の回帰テストを1件追加してください。空の runtime queue（tasks=[]）、completed が空ではない有効な durable state、status=NOT_RUN の結果行を与え、calculate_progress が queue_total=0・queue_completed=0 を返すことを確認してください。これはキュー空の正当な NOT_RUN 証跡であり、状態ファイルの欠落・破損を許容する変更は禁止です。既存テストを変更せず、変更は指定されたテストファイル1つだけにしてください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_queue_progress.py"
+      ]
     }
   ]
 }
