@@ -461,7 +461,7 @@ jobs:
               # Independent second-line checks: the in-process loop decision is
               # not sufficient evidence for publishing a development branch.
               if not publish_row_has_valid_gates(row, expected_sha=row["base_sha"]):
-                  raise SystemExit(f"missing, invalid, or non-allowing REA/Control Tower evidence on line {number}")
+                  raise SystemExit(f"missing, invalid, or non-allowing REA/Recovery AI/Control Tower evidence on line {number}")
               rows.append(row)
 
           try:
