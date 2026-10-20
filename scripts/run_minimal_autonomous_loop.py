@@ -609,6 +609,35 @@ def main() -> int:
     if args.max_tasks < 1 or args.max_tasks > 4:
         raise SystemExit("--max-tasks must be between 1 and 4")
 
+    # Emergency stop: never bypass the Control Tower into an unguarded legacy
+    # path. When enabled, stop before reading the queue or launching any task.
+    # GitHub Actions exposes this through the CONTROL_TOWER_KILL_SWITCH variable.
+    kill_switch = os.environ.get("CONTROL_TOWER_KILL_SWITCH", "false").strip().lower()
+    if kill_switch in {"1", "true", "yes", "on"}:
+        args.results.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "BLOCKED",
+            "task_id": "",
+            "exit_code": 80,
+            "failure_reason": "control_tower_kill_switch_enabled",
+            "control_tower": {
+                "recorded": False,
+                "proposal_executable": False,
+                "orchestration": {
+                    "phase": "STOP",
+                    "next_action": "STOP_AND_REPORT",
+                    "reason_code": "control_tower_kill_switch_enabled",
+                    "allow_continue": False,
+                    "repair_executed": False,
+                },
+            },
+        }
+        with args.results.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\\n")
+        print("MINIMAL_LOOP=BLOCKED reason=control_tower_kill_switch_enabled", flush=True)
+        return 80
+
     # Bind selection to a repository snapshot taken before queue/state reads.
     # The selector independently re-reads HEAD after those reads and blocks if it moved.
     selection_evidence_sha = _git_head()
