@@ -197,3 +197,21 @@ def test_review_uses_rotating_local_dictionary_words(monkeypatch):
     assert f"今回の復習語: {expected}" in response.text
     assert f"まず「{selected[0].word}」" in response.text
     assert "今日の復習語: improve / schedule / recommend" not in response.text
+
+
+
+def test_vocabulary_rotates_per_user_without_repeating_until_exhausted(monkeypatch, tmp_path):
+    from agents.english import quiz_state
+    import re
+
+    monkeypatch.setattr(quiz_state, "DB_PATH", str(tmp_path / "word-history.sqlite3"))
+    agent = EnglishLearningAgent()
+    first = agent.handle(_request("単語")).text
+    second = agent.handle(_request("単語")).text
+    words_first = set(re.findall(r"^• ([a-z]+)$", first, re.M))
+    words_second = set(re.findall(r"^• ([a-z]+)$", second, re.M))
+
+    assert len(words_first) == 3
+    assert len(words_second) == 3
+    assert words_first.isdisjoint(words_second)
+    assert "確認済みローカル辞書" in first
