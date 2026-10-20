@@ -30,6 +30,8 @@ def prepare_rea_evidence(
         # Do not leak filesystem paths, exception text, or environment details.
         return _blocked("rea_scan_incomplete")
 
+    if not isinstance(report, dict):
+        return _blocked("rea_report_invalid")
     if report.get("target_sha") != expected_sha:
         return _blocked("rea_sha_mismatch")
     if report.get("complete") is not True or report.get("status") == "BLOCKED":
@@ -54,9 +56,15 @@ def prepare_rea_evidence(
         finding_id = finding.get("finding_id")
         if (
             not isinstance(path, str) or not path
-            or not isinstance(category, str) or not category
-            or severity not in {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
-            or (line is not None and (type(line) is not int or line < 1))
+            or path.startswith("/")
+            or "\\" in path
+            or any(part in {"", ".", ".."} for part in path.split("/"))
+            or any(ord(char) < 32 or ord(char) == 127 for char in path)
+            or not path.startswith((".github/workflows/", "core/", "scripts/", "tests/", "docs/rea/"))
+            or len(path) > 512
+            or not isinstance(category, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", category)
+            or not isinstance(severity, str) or severity not in {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
+            or (line is not None and (type(line) is not int or line < 1 or line > 10_000_000))
             or not isinstance(finding_id, str) or not re.fullmatch(r"[0-9a-f]{16}", finding_id)
         ):
             return _blocked("rea_finding_schema_invalid")
@@ -72,6 +80,12 @@ def prepare_rea_evidence(
             "line": line,
             "status": "REVIEW_REQUIRED",
         })
+
+    if len({item["finding_id"] for item in safe_findings}) != len(safe_findings):
+        return _blocked("rea_duplicate_finding_id")
+
+    severity_rank = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+    safe_findings.sort(key=lambda item: (severity_rank[item["severity"]], item["finding_id"]))
 
     if blocking_count:
         return {
