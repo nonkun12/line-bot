@@ -85,7 +85,7 @@ class ReadonlyScannerTests(unittest.TestCase):
             scan_repository(self.root)
 
     def test_git_index_paths_preserve_newlines_and_unicode(self) -> None:
-        self._write("scripts/日本語\nname.py", "VALUE = 2\\n")
+        self._write("scripts/日本語\nname.py", "VALUE = 2\n")
         self._commit()
         report = scan_repository(self.root)
         self.assertEqual(report["status"], "PASS")
