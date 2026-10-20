@@ -249,7 +249,7 @@ def test_status_command_reports_latest_runs(monkeypatch):
         handled, reply = trigger.request_distributed_loop("u1", "統括AIの状況")
     assert handled is True
     assert "Run #86" in reply
-    assert "success" in reply
+    assert "WORKFLOW_SUCCESS（タスクPASSは未確認）" in reply
     assert "a" * 12 in reply
 
 
@@ -331,7 +331,7 @@ def test_result_command_reports_latest_completed_run(monkeypatch):
         handled, reply = trigger.request_distributed_loop("u1", "分散Loopの結果")
     assert handled is True
     assert "Run #86" in reply
-    assert "failure" in reply
+    assert "FAIL（ワークフロー失敗）" in reply
 
 def test_status_command_labels_skipped_runs_as_not_executed(monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")

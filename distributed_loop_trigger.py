@@ -94,6 +94,28 @@ def _allowed_users() -> set[str]:
     }
 
 
+def _display_run_state(run: dict[str, object]) -> str:
+    """Describe workflow-level state without falsely claiming task PASS."""
+    status = run.get("status")
+    if status != "completed":
+        return str(status or "unknown").upper()
+    conclusion = run.get("conclusion")
+    if not isinstance(conclusion, str):
+        return "UNKNOWN"
+    labels = {
+        "success": "WORKFLOW_SUCCESS（タスクPASSは未確認）",
+        "failure": "FAIL（ワークフロー失敗）",
+        "skipped": "SKIPPED（起動条件不一致・タスク未実行）",
+        "cancelled": "CANCELLED（中断）",
+        "timed_out": "TIMEOUT",
+        "action_required": "ACTION_REQUIRED",
+        "neutral": "NEUTRAL（タスク結果未確定）",
+        "stale": "STALE（結果未確定）",
+        "startup_failure": "STARTUP_FAILURE",
+    }
+    return labels.get(conclusion, conclusion.upper())
+
+
 def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
     command = _normalize_command(message)
     status_kind = None
@@ -135,10 +157,8 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                 lines = ["統括AI／分散Loop 状況" if status_kind == "status" else "分散Loop 最新結果"]
                 for run in runs[:5 if status_kind == "status" else 1]:
                     number = run.get("run_number", "?")
-                    state = run.get("conclusion") if run.get("status") == "completed" else run.get("status", "unknown")
+                    state = _display_run_state(run)
                     event = str(run.get("event") or "unknown")
-                    if state == "skipped":
-                        state = "SKIPPED（起動条件不一致・タスク未実行）"
                     title = str(run.get("display_title") or "分散Loop")[:100]
                     sha = str(run.get("head_sha") or "")
                     created = str(run.get("created_at") or "")
