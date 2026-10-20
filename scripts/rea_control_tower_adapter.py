@@ -179,6 +179,24 @@ def rea_evidence_is_valid_pass(evidence: object, *, expected_sha: str) -> bool:
     return True
 
 
+def publish_row_has_valid_gates(row: object, *, expected_sha: str) -> bool:
+    """Validate the independent publish boundary's REA and Control Tower evidence."""
+    if not isinstance(row, dict):
+        return False
+    if not rea_evidence_is_valid_pass(row.get("rea"), expected_sha=expected_sha):
+        return False
+    control_tower = row.get("control_tower")
+    orchestration = (
+        control_tower.get("orchestration")
+        if isinstance(control_tower, dict)
+        else None
+    )
+    return (
+        isinstance(orchestration, dict)
+        and orchestration.get("allow_continue") is True
+    )
+
+
 def _blocked(reason_code: str) -> dict[str, Any]:
     return {
         "gate": "BLOCKED",
@@ -197,4 +215,8 @@ def _blocked(reason_code: str) -> dict[str, Any]:
     }
 
 
-__all__ = ["prepare_rea_evidence", "rea_evidence_is_valid_pass"]
+__all__ = [
+    "prepare_rea_evidence",
+    "rea_evidence_is_valid_pass",
+    "publish_row_has_valid_gates",
+]
