@@ -56,6 +56,18 @@
         "same_fingerprint_attempts": 1,
         "updated_at": "2026-10-16T01:05:01.807771+00:00"
       },
+      "control-tower-recovery-evidence-identity-mismatch": {
+        "consecutive_failures": 0,
+        "held": false,
+        "last_success_at": "2026-10-20T12:12:26.380275+00:00",
+        "last_success_evidence": {
+          "base_sha": "8c96514985fbbcfbf21bea3e1796f8854af7cc6b",
+          "produced_sha": "cd5e3ca4da2b92b6e83a99545f4395a1df10d647",
+          "run_nonce": "ec98ad41afda4a5d9e633eba53f0108c",
+          "task_id": "control-tower-recovery-evidence-identity-mismatch"
+        },
+        "same_fingerprint_attempts": 0
+      },
       "english-core-image-rotation-user-isolation": {
         "consecutive_failures": 1,
         "fingerprints": [
@@ -105,27 +117,9 @@
   "recovery_rag": [
     {
       "category": "unknown",
-      "fingerprint": "9cf09eae3d9f6d98ff618df02d25da07d446d6dd6e2baa7d5ef0c0844ae9539b",
-      "status": "FAIL",
-      "task_id": "english-core-image-rotation-user-isolation"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "0b4ab352cd37a1149f848fae77dc1b3701d946e61e458651f4b8a8ce999efe07",
+      "fingerprint": "b679edd8461a75f28442afcd069a64f8e3c2ba884edf3b8b7d66a172c3a61434",
       "status": "PASS",
-      "task_id": "task-bound"
-    },
-    {
-      "category": "invalid_evidence",
-      "fingerprint": "b58fc9bffaebb257427c04c5b1df51610c66c7b98c6a72e2b9e31f610a771363",
-      "status": "FAIL",
-      "task_id": "task-sha"
-    },
-    {
-      "category": "invalid_evidence",
-      "fingerprint": "eb830e24eb8f9a1aaead8cc3f642de43663b42d71a67872b63b00a7f4596d798",
-      "status": "FAIL",
-      "task_id": "task-bool"
+      "task_id": "control-tower-recovery-evidence-identity-mismatch"
     },
     {
       "category": "unknown",
@@ -135,51 +129,9 @@
     },
     {
       "category": "unknown",
-      "fingerprint": "4e3b2f3fa0cc168be35c286a2d71a3d3c7b3ad9564f95c74932e434bf1168550",
-      "status": "FAIL",
-      "task_id": "recovery-ai-held-task-isolation-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "af1646c0e1876f9b6b9a4258f07b6a9146f5abf96678cc214c7a39078da4c546",
-      "status": "FAIL",
-      "task_id": "router-regression-general-request-metadata-refresh-20261015"
-    },
-    {
-      "category": "invalid_evidence",
-      "fingerprint": "2dbc8be6a89b0b3cf7a414b6e0315c424c11aa10194b11ae979024ba5bd1306b",
-      "status": "FAIL",
-      "task_id": "task-a"
-    },
-    {
-      "category": "timeout",
-      "fingerprint": "dbafb28f4bc38108e37b6e730e2fd22217b9fe10ee31eccff5e5996033ad492b",
-      "status": "TIMEOUT",
-      "task_id": "task-a"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "4a0af154ce6ba0e050b288965baa951e0aa0430d43143a1e9414ac23145d6d45",
-      "status": "FAIL",
-      "task_id": "t1"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56",
+      "fingerprint": "bb1df3836771dd9d3536d1d5954e326e2ed714e560383e14680f9d0fe27b9c0c",
       "status": "NO_CHANGE",
-      "task_id": "ai-speaker-empty-transcript-no-brain-call"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "c0aa28ff369621f11fb4d062bc9e51b65297a5b86f8e5ea48b8e47e095ebcb22",
-      "status": "NO_CHANGE",
-      "task_id": "loop-deterministic-nochange-focused-test"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "bdf1e7a04d723bd7e63bf2f5ba630e4bcbe51f388a87c3917788907986507fe2",
-      "status": "FAIL",
-      "task_id": "ai-speaker-transcript-normalization-regression"
+      "task_id": "obsidian-bridge-invalid-job-id-regression"
     },
     {
       "category": "unknown",
@@ -189,9 +141,75 @@
     },
     {
       "category": "unknown",
-      "fingerprint": "bb1df3836771dd9d3536d1d5954e326e2ed714e560383e14680f9d0fe27b9c0c",
+      "fingerprint": "bdf1e7a04d723bd7e63bf2f5ba630e4bcbe51f388a87c3917788907986507fe2",
+      "status": "FAIL",
+      "task_id": "ai-speaker-transcript-normalization-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "c0aa28ff369621f11fb4d062bc9e51b65297a5b86f8e5ea48b8e47e095ebcb22",
       "status": "NO_CHANGE",
-      "task_id": "obsidian-bridge-invalid-job-id-regression"
+      "task_id": "loop-deterministic-nochange-focused-test"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56",
+      "status": "NO_CHANGE",
+      "task_id": "ai-speaker-empty-transcript-no-brain-call"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "4a0af154ce6ba0e050b288965baa951e0aa0430d43143a1e9414ac23145d6d45",
+      "status": "FAIL",
+      "task_id": "t1"
+    },
+    {
+      "category": "timeout",
+      "fingerprint": "dbafb28f4bc38108e37b6e730e2fd22217b9fe10ee31eccff5e5996033ad492b",
+      "status": "TIMEOUT",
+      "task_id": "task-a"
+    },
+    {
+      "category": "invalid_evidence",
+      "fingerprint": "2dbc8be6a89b0b3cf7a414b6e0315c424c11aa10194b11ae979024ba5bd1306b",
+      "status": "FAIL",
+      "task_id": "task-a"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "af1646c0e1876f9b6b9a4258f07b6a9146f5abf96678cc214c7a39078da4c546",
+      "status": "FAIL",
+      "task_id": "router-regression-general-request-metadata-refresh-20261015"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "4e3b2f3fa0cc168be35c286a2d71a3d3c7b3ad9564f95c74932e434bf1168550",
+      "status": "FAIL",
+      "task_id": "recovery-ai-held-task-isolation-regression"
+    },
+    {
+      "category": "invalid_evidence",
+      "fingerprint": "eb830e24eb8f9a1aaead8cc3f642de43663b42d71a67872b63b00a7f4596d798",
+      "status": "FAIL",
+      "task_id": "task-bool"
+    },
+    {
+      "category": "invalid_evidence",
+      "fingerprint": "b58fc9bffaebb257427c04c5b1df51610c66c7b98c6a72e2b9e31f610a771363",
+      "status": "FAIL",
+      "task_id": "task-sha"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "0b4ab352cd37a1149f848fae77dc1b3701d946e61e458651f4b8a8ce999efe07",
+      "status": "PASS",
+      "task_id": "task-bound"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "9cf09eae3d9f6d98ff618df02d25da07d446d6dd6e2baa7d5ef0c0844ae9539b",
+      "status": "FAIL",
+      "task_id": "english-core-image-rotation-user-isolation"
     }
   ],
   "self_improvement_history": [
@@ -254,6 +272,11 @@
       "kind": "failure",
       "task_id": "refactor:2:test:1:retest:tester",
       "detail": "development failure observed"
+    },
+    {
+      "kind": "success",
+      "task_id": null,
+      "detail": "development reached integration gate"
     }
   ]
 }
