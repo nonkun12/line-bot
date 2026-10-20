@@ -617,7 +617,7 @@ def test_distributed_loop_workflow_owner_max4_label_uses_four_task_limit():
     from pathlib import Path
 
     workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
-    assert 'elif [ "${EVENT_NAME}" = "pull_request_target" ]; then\n            # Only the repository owner can request the bounded four-task path.\n            expected="4"' in workflow
+    assert 'elif [ "${EVENT_NAME}" = "pull_request_target" ]; then\n            # The owner-only distributed-loop-max4 label requests a bounded four-task run.\n            expected="4"' in workflow
     assert 'requested="${MAX_TASKS:-1}"' in workflow
 
 
