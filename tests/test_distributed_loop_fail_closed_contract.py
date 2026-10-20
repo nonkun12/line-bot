@@ -21,3 +21,9 @@ def test_publish_gate_uses_the_same_runtime_queue_as_task_execution():
     workflow = (ROOT / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     assert 'queue_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", ".github/autonomous-loop-tasks.json"))' in workflow
 
+
+
+def test_queue_progress_failure_reports_only_safe_diagnostic_class():
+    workflow = (ROOT / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert 'progress_diagnostic="${progress_json:-QUEUE_PROGRESS_BLOCKED: no diagnostic emitted}"' in workflow
+    assert 'Queue progress evidence invalid (${progress_diagnostic})' in workflow
