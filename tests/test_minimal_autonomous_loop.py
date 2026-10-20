@@ -969,3 +969,32 @@ def test_orchestrator_gates_successful_loop_on_exact_evidence(monkeypatch, tmp_p
     assert rows[0]["recovery_ai"]["evidence"] == recovery_evidence
     assert rows[0]["control_tower"]["orchestration"]["reason_code"] == "verified_success"
     assert rows[0]["control_tower"]["orchestration"]["allow_continue"] is True
+
+
+
+def test_registered_catalog_never_trusts_queue_entries(monkeypatch):
+    sha = "a" * 40
+    queue_only_id = "queue-only-unreviewed-task"
+    reviewed_id = "reviewed-catalog-task"
+    catalog = {
+        "version": 1,
+        "tasks": [{
+            "id": reviewed_id,
+            "instruction": "Use dummy data and change one test only.",
+            "allowed_paths": ["tests/test_example.py"],
+        }],
+    }
+    calls = []
+
+    def fake_git_checked(*args):
+        calls.append(args)
+        assert args[0] == "show"
+        assert args[1] == f"{sha}:.github/autonomous-loop-task-catalog.json"
+        return 0, json.dumps(catalog)
+
+    monkeypatch.setattr(loop, "_git_checked", fake_git_checked)
+    registered = loop._load_registered_catalog(sha)
+
+    assert [task["id"] for task in registered] == [reviewed_id]
+    assert queue_only_id not in {task["id"] for task in registered}
+    assert len(calls) == 1
