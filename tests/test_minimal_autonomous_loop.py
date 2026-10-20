@@ -238,7 +238,7 @@ def test_summary_identity_mismatch_halts(monkeypatch, tmp_path: Path):
     assert result["failure_reason"] == "summary_identity_mismatch"
 
 
-def test_main_halts_after_first_failure(monkeypatch, tmp_path: Path):
+def test_main_rejects_unverified_multi_task_selector_chain(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(
         loop,
         "load_tasks",
@@ -250,20 +250,21 @@ def test_main_halts_after_first_failure(monkeypatch, tmp_path: Path):
     queue = tmp_path / "queue.json"
     queue.write_text('{"max_tasks_per_run": 3}', encoding="utf-8")
     monkeypatch.setattr(loop, "QUEUE", queue)
-    def fake_run_task(task, index, stop_file, *, expected_base_sha=None):
-        assert isinstance(expected_base_sha, str) and len(expected_base_sha) == 40
-        return {
-            "task_id": task["id"],
-            "status": "FAIL",
-            "exit_code": 1,
-        }
-
-    monkeypatch.setattr(loop, "run_task", fake_run_task)
-    monkeypatch.setattr(loop.sys, "argv", ["loop", "--max-tasks", "2", "--state", str(tmp_path / "loop-state.json"), "--results", str(tmp_path / "results.jsonl")])
-    assert loop.main() == 1
-    lines = (tmp_path / "results.jsonl").read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 1
-    assert json.loads(lines[0])["task_id"] == "t1"
+    monkeypatch.setattr(
+        loop.sys,
+        "argv",
+        ["loop", "--max-tasks", "2", "--state", str(tmp_path / "loop-state.json"),
+         "--results", str(tmp_path / "results.jsonl")],
+    )
+    assert loop.main() == 80
+    results = tmp_path / "results.jsonl"
+    assert results.exists()
+    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["status"] == "BLOCKED"
+    assert rows[0]["task_count"] == 0
+    assert rows[0]["exit_code"] == 80
+    assert rows[0]["failure_reason"] == "control_tower_multi_task_reselection_unavailable"
 
 
 def test_main_rejects_queue_limit(monkeypatch, tmp_path: Path):
@@ -425,3 +426,43 @@ def test_final_outcome_held_queue_blocks_empty_recovery_persistence_outcome():
         all_tasks_held=True,
     ) == ("BLOCKED", "held_queue_post_run_gate_failed:recovery_ai_persistence")
 
+def test_distributed_loop_workflow_legacy_label_uses_one_task_limit():
+    from pathlib import Path
+
+    workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert 'elif [ "${EVENT_NAME}" = "pull_request_target" ]; then\n            # Legacy max4 label remains accepted, but runtime safely supports one normal task.\n            expected="1"' in workflow
+    assert 'requested="${MAX_TASKS:-1}"' in workflow
+
+
+
+def test_registered_catalog_never_trusts_runtime_queue(monkeypatch):
+    evidence_sha = "a" * 40
+    calls = []
+
+    def fake_git_checked(*args):
+        calls.append(args)
+        path = args[-1]
+        if path == f"{evidence_sha}:.github/autonomous-loop-task-catalog.json":
+            return 0, json.dumps({
+                "tasks": [{
+                    "id": "trusted-task",
+                    "instruction": "Reviewed instruction",
+                    "allowed_paths": ["tests/test_minimal_autonomous_loop.py"],
+                }]
+            })
+        if path == f"{evidence_sha}:.github/autonomous-loop-tasks.json":
+            return 0, json.dumps({
+                "tasks": [{
+                    "id": "queue-only-task",
+                    "instruction": "Queue supplied instruction",
+                    "allowed_paths": ["tests/test_minimal_autonomous_loop.py"],
+                }]
+            })
+        return 1, ""
+
+    monkeypatch.setattr(loop, "_git_checked", fake_git_checked)
+    registered = loop._load_registered_catalog(evidence_sha)
+
+    assert [task["id"] for task in registered] == ["trusted-task"]
+    assert len(calls) == 1
+    assert calls[0][-1] == f"{evidence_sha}:.github/autonomous-loop-task-catalog.json"

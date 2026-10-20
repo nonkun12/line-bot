@@ -11,7 +11,7 @@ def _task(task_id="task-1"):
     return {"id": task_id, "instruction": "test", "allowed_paths": ["tests/test_loop_not_run_and_evidence.py"]}
 
 
-def test_empty_queue_records_not_run_and_returns_78(monkeypatch, tmp_path, capsys):
+def test_completed_only_queue_records_no_eligible_task_and_returns_78(monkeypatch, tmp_path, capsys):
     queue = tmp_path / "queue.json"
     queue.write_text(json.dumps({"max_tasks_per_run": 4}), encoding="utf-8")
     state = tmp_path / "state.json"
@@ -19,13 +19,15 @@ def test_empty_queue_records_not_run_and_returns_78(monkeypatch, tmp_path, capsy
     results = tmp_path / "results.jsonl"
     monkeypatch.setattr(loop, "QUEUE", queue)
     monkeypatch.setattr(loop, "load_tasks", lambda: [_task()])
+    # The test queue is synthetic; explicitly provide its reviewed test catalog.
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [_task()])
     monkeypatch.setattr(loop.sys, "argv", ["loop", "--max-tasks", "1", "--results", str(results), "--state", str(state), "--stop-file", str(tmp_path / "stop")])
     monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run"))
     assert loop.main() == 78
     assert "NOT_RUN" in capsys.readouterr().out
     row = json.loads(results.read_text(encoding="utf-8").splitlines()[0])
     assert row["status"] == "NOT_RUN"
-    assert row["failure_reason"] == "queue_empty"
+    assert row["failure_reason"] == "no_eligible_task"
     assert row["task_count"] == 0
     assert row["queue_total"] == 1
     assert row["queue_completed"] == 1
@@ -293,3 +295,226 @@ def test_final_outcome_empty_queue_blocks_when_required_gate_fails(gate, outcome
         f"queue_empty_post_run_gate_failed:{gate}",
     )
 
+
+
+def _prepare_selector_main(monkeypatch, tmp_path, tasks, head_reader=None):
+    queue = tmp_path / "queue.json"
+    queue.write_text(json.dumps({"max_tasks_per_run": 4}), encoding="utf-8")
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps({"version": 1, "completed": []}), encoding="utf-8")
+    results = tmp_path / "results.jsonl"
+    monkeypatch.setattr(loop, "QUEUE", queue)
+    monkeypatch.setattr(loop, "load_tasks", lambda: tasks)
+    monkeypatch.setattr(
+        loop,
+        "_load_registered_catalog",
+        lambda _sha: [
+            {**task, "allowed_paths": list(task["allowed_paths"])}
+            for task in tasks
+        ],
+    )
+    monkeypatch.setattr(loop, "_git_head", head_reader or (lambda: "a" * 40))
+
+    class _RecoveryStore:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def task_status(self, _task_id):
+            return {"held": False}
+
+    monkeypatch.setattr("scripts.recovery_ai.RecoveryStore", _RecoveryStore)
+    monkeypatch.setattr(
+        loop.sys,
+        "argv",
+        ["loop", "--max-tasks", "1", "--results", str(results), "--state", str(state),
+         "--stop-file", str(tmp_path / "stop")],
+    )
+    return results
+
+
+def test_control_tower_multi_task_request_records_blocked_evidence(monkeypatch, tmp_path, capsys):
+    results = _prepare_selector_main(monkeypatch, tmp_path, [_task()])
+    monkeypatch.setattr(
+        loop.sys,
+        "argv",
+        ["loop", "--max-tasks", "2", "--results", str(results),
+         "--state", str(tmp_path / "state.json"), "--stop-file", str(tmp_path / "stop")],
+    )
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run"))
+    assert loop.main() == 80
+    assert "MINIMAL_LOOP=BLOCKED" in capsys.readouterr().out
+    rows = results.read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 1
+    row = json.loads(rows[0])
+    assert row["status"] == "BLOCKED"
+    assert row["task_count"] == 0
+    assert row["exit_code"] == 80
+    assert row["failure_reason"] == "control_tower_multi_task_reselection_unavailable"
+
+
+def test_control_tower_duplicate_queue_ids_block_before_execution(monkeypatch, tmp_path, capsys):
+    task = _task("duplicate-task")
+    results = _prepare_selector_main(monkeypatch, tmp_path, [task, dict(task)])
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run"))
+    assert loop.main() == 80
+    assert "control_tower_selector:duplicate_task" in capsys.readouterr().out
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[0])
+    assert row["status"] == "BLOCKED"
+    assert row["failure_reason"] == "control_tower_selector:duplicate_task"
+    assert row["task_count"] == 0
+
+
+def test_control_tower_head_change_during_selection_blocks_before_execution(monkeypatch, tmp_path, capsys):
+    task = _task("head-change-task")
+    heads = iter(["a" * 40, "b" * 40])
+    results = _prepare_selector_main(monkeypatch, tmp_path, [task], lambda: next(heads))
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run"))
+    assert loop.main() == 80
+    assert "control_tower_selector:policy_blocked" in capsys.readouterr().out
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[0])
+    assert row["status"] == "BLOCKED"
+    assert row["failure_reason"] == "control_tower_selector:policy_blocked"
+    assert row["task_count"] == 0
+
+
+def test_registered_catalog_is_loaded_from_versioned_catalogs_not_runtime_queue(monkeypatch):
+    queue_task = _task("queue-only-injected-task")
+    trusted_task = {
+        "id": "catalog-task",
+        "instruction": "reviewed instruction",
+        "allowed_paths": ["tests/test_loop_not_run_and_evidence.py"],
+    }
+    payloads = {
+        # The runtime queue is deliberately untrusted; only the reviewed catalog
+        # may register a task for Control Tower authorization.
+        ".github/autonomous-loop-task-catalog.json": json.dumps({"tasks": [trusted_task]}),
+    }
+
+    def fake_git_checked(*args):
+        assert args[0] == "show"
+        revision, path = args[1].split(":", 1)
+        assert revision == "a" * 40
+        if path not in payloads:
+            return (1, "")
+        return (0, payloads[path])
+
+    monkeypatch.setattr(loop, "_git_checked", fake_git_checked)
+    catalog = loop._load_registered_catalog("a" * 40)
+    assert catalog == [trusted_task]
+    assert queue_task["id"] not in {entry["id"] for entry in catalog}
+
+
+def test_registered_catalog_fails_closed_when_versioned_catalog_is_unavailable(monkeypatch):
+    monkeypatch.setattr(loop, "_git_checked", lambda *args: (1, ""))
+    with pytest.raises(ValueError, match="catalog unavailable"):
+        loop._load_registered_catalog("a" * 40)
+
+
+
+def test_control_tower_head_change_immediately_before_launch_blocks(monkeypatch, tmp_path, capsys):
+    task = _task("launch-head-race")
+    heads = iter(["a" * 40, "a" * 40, "b" * 40])
+    results = _prepare_selector_main(monkeypatch, tmp_path, [task], lambda: next(heads))
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run after HEAD changes"))
+    assert loop.main() == 80
+    assert "selection_head_changed" in capsys.readouterr().out
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[-1])
+    assert row["status"] == "BLOCKED"
+    assert row["failure_reason"] == "control_tower_gate:selection_head_changed"
+
+
+def test_recovery_ai_hold_appearing_before_launch_blocks(monkeypatch, tmp_path, capsys):
+    task = _task("hold-race-task")
+    results = _prepare_selector_main(monkeypatch, tmp_path, [task])
+
+    class _ChangingRecoveryStore:
+        calls = 0
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def task_status(self, _task_id):
+            type(self).calls += 1
+            # Initial selection sees no hold; launch-time recheck sees HOLD.
+            return {"held": type(self).calls >= 2}
+
+    monkeypatch.setattr("scripts.recovery_ai.RecoveryStore", _ChangingRecoveryStore)
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run while held"))
+    assert loop.main() == 80
+    assert "recovery_ai_hold_or_status_uncertain" in capsys.readouterr().out
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[-1])
+    assert row["status"] == "BLOCKED"
+    assert row["failure_reason"] == "recovery_ai_hold_or_status_uncertain"
+
+
+@pytest.mark.parametrize("recovery_record", [{"consecutive_failures": 1}, {"held": "false"}])
+def test_malformed_recovery_state_blocks_before_execution(monkeypatch, tmp_path, recovery_record, capsys):
+    task = _task("malformed-recovery-state")
+    results = _prepare_selector_main(monkeypatch, tmp_path, [task])
+
+    class _MalformedRecoveryStore:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def task_status(self, _task_id):
+            return dict(recovery_record)
+
+    monkeypatch.setattr("scripts.recovery_ai.RecoveryStore", _MalformedRecoveryStore)
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run with ambiguous recovery state"))
+    assert loop.main() == 80
+    assert "recovery_ai_hold_or_status_uncertain" in capsys.readouterr().out
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[-1])
+    assert row["status"] == "BLOCKED"
+    assert row["failure_reason"] == "recovery_ai_hold_or_status_uncertain"
+
+
+def test_recovery_state_error_records_blocked_evidence_before_execution(monkeypatch, tmp_path, capsys):
+    task = _task("recovery-store-error")
+    results = _prepare_selector_main(monkeypatch, tmp_path, [task])
+
+    class _BrokenRecoveryStore:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def task_status(self, _task_id):
+            raise ValueError("malformed recovery state")
+
+    monkeypatch.setattr("scripts.recovery_ai.RecoveryStore", _BrokenRecoveryStore)
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run"))
+    assert loop.main() == 80
+    assert "control_tower_recovery_state:unavailable_or_invalid" in capsys.readouterr().out
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[-1])
+    assert row["status"] == "BLOCKED"
+    assert row["task_count"] == 0
+    assert row["failure_reason"] == "control_tower_recovery_state:unavailable_or_invalid"
+
+
+@pytest.mark.parametrize("action", ["NOT_RUN", "HOLD"])
+def test_control_tower_nonselect_action_with_executable_task_blocks(monkeypatch, tmp_path, action, capsys):
+    task = _task("unexpected-nonselect-task")
+    results = _prepare_selector_main(monkeypatch, tmp_path, [task])
+
+    from core.control_tower_decision import ControlTowerDecisionRecord
+    monkeypatch.setattr(
+        "core.control_tower_selector.select_next_task",
+        lambda *a, **k: ControlTowerDecisionRecord(
+            reason_code="no_eligible_task",
+            confidence=1.0,
+            priority=0,
+            next_action=action,
+            gate_status="NOT_RUN" if action == "NOT_RUN" else "BLOCKED",
+            evidence_sha="a" * 40,
+        ),
+    )
+    monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run for nonselect action"))
+    assert loop.main() == 80
+    output = capsys.readouterr().out
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[-1])
+    assert row["status"] == "BLOCKED"
+    if action == "NOT_RUN":
+        assert "action_task_mismatch" in output
+        assert row["failure_reason"] == "control_tower_selector:action_task_mismatch"
+    else:
+        # A BLOCKED gate is rejected earlier than action/task consistency checks.
+        assert "control_tower_selector:no_eligible_task" in output
+        assert row["failure_reason"] == "control_tower_selector:no_eligible_task"

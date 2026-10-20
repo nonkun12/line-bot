@@ -242,6 +242,57 @@ def _git_checked(*args: str) -> tuple[int, str]:
     return completed.returncode, completed.stdout.strip()
 
 
+def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
+    """Load task definitions from version-controlled catalogs at the selection commit.
+
+    The runtime queue is intentionally not a source of trust: it only selects
+    among definitions reviewed into one of the repository catalogs.
+    """
+    if not _valid_sha(evidence_sha):
+        raise ValueError("catalog evidence SHA is invalid")
+    catalog_paths = (
+        ".github/autonomous-loop-task-catalog.json",
+    )
+    definitions: dict[str, dict[str, object]] = {}
+    for path in catalog_paths:
+        code, raw = _git_checked("show", f"{evidence_sha}:{path}")
+        if code != 0:
+            raise ValueError("versioned task catalog unavailable")
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("versioned task catalog is invalid") from exc
+        tasks = payload.get("tasks") if isinstance(payload, dict) else None
+        if not isinstance(tasks, list):
+            raise ValueError("versioned task catalog has no task list")
+        for entry in tasks:
+            if not isinstance(entry, dict):
+                raise ValueError("versioned task definition is invalid")
+            task_id = entry.get("id")
+            instruction = entry.get("instruction")
+            allowed_paths = entry.get("allowed_paths")
+            if (
+                not isinstance(task_id, str)
+                or not task_id.strip()
+                or not isinstance(instruction, str)
+                or not instruction.strip()
+                or not isinstance(allowed_paths, list)
+                or not allowed_paths
+                or not all(isinstance(item, str) and item.strip() for item in allowed_paths)
+            ):
+                raise ValueError("versioned task definition is invalid")
+            normalized = {
+                "id": task_id,
+                "instruction": instruction,
+                "allowed_paths": [item.strip() for item in allowed_paths],
+            }
+            previous = definitions.get(task_id)
+            if previous is not None and previous != normalized:
+                raise ValueError("conflicting versioned task definitions")
+            definitions[task_id] = normalized
+    return list(definitions.values())
+
+
 def _verify_produced_head(base_sha: str, produced_sha: str, allowed_paths: list[str]) -> tuple[bool, str]:
     if not _valid_sha(base_sha) or not _valid_sha(produced_sha):
         return False, "sha_invalid"
@@ -511,6 +562,9 @@ def main() -> int:
     if args.max_tasks < 1 or args.max_tasks > 4:
         raise SystemExit("--max-tasks must be between 1 and 4")
 
+    # Bind selection to a repository snapshot taken before queue/state reads.
+    # The selector independently re-reads HEAD after those reads and blocks if it moved.
+    selection_evidence_sha = _git_head()
     queue_data = json.loads(QUEUE.read_text(encoding="utf-8"))
     queue_limit = int(queue_data.get("max_tasks_per_run", 3))
     if args.max_tasks > queue_limit:
@@ -521,30 +575,180 @@ def main() -> int:
         if args.max_tasks != 2 or args.incident_detail is None:
             raise SystemExit("Obsidian incident mode requires exactly two tasks and an allowlisted detail")
         tasks = incident_tasks(args.incident_category, args.incident_detail, args.incident_job_id)
+        catalog_source_tasks = list(tasks)
+        selection_queue_tasks = list(tasks)
     else:
         if args.incident_detail is not None or args.incident_job_id is not None:
             raise SystemExit("incident detail/job ID require incident category")
         queued_tasks = load_tasks()
+        catalog_source_tasks = queued_tasks
+        selection_queue_tasks = queued_tasks
         tasks = [task for task in queued_tasks if task["id"] not in completed]
 
-    # Snapshot each task definition independently before selection. A shallow
-    # list copy would share mutable task dictionaries (and allowed_paths lists),
-    # allowing an in-memory mutation to alter both the task and its "catalog".
-    # This snapshot detects later mutation; it is not a separately signed catalog.
-    registered_catalog = [
-        {**task, "allowed_paths": list(task["allowed_paths"])}
-        for task in tasks
-    ]
+        # The selector currently authorizes only the first queued task against
+        # this immutable HEAD snapshot. Until each subsequent task is reselected
+        # and re-authorized against its own current HEAD, refuse multi-task normal
+        # runs rather than executing queue entries under stale selection evidence.
+        if args.max_tasks > 1:
+            args.results.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "BLOCKED",
+                "task_id": "",
+                "task_count": 0,
+                "exit_code": 80,
+                "failure_reason": "control_tower_multi_task_reselection_unavailable",
+            }
+            with args.results.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            print(
+                "MINIMAL_LOOP=BLOCKED reason=control_tower_multi_task_reselection_unavailable",
+                flush=True,
+            )
+            return 80
 
-    # Recovery state is read before selection so tasks already held after repeated
-    # failures cannot be run again automatically on the next scheduled invocation.
+    # Normal queue entries are authorized only against Git-versioned catalogs
+    # at the same immutable commit used as the selection evidence. Never derive
+    # the trust catalog from the runtime queue itself.
+    if args.incident_category is not None:
+        registered_catalog = [
+            {**task, "allowed_paths": list(task["allowed_paths"])}
+            for task in catalog_source_tasks
+        ]
+    else:
+        try:
+            registered_catalog = _load_registered_catalog(selection_evidence_sha)
+        except Exception:
+            args.results.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "BLOCKED",
+                "task_id": "",
+                "task_count": 0,
+                "exit_code": 80,
+                "failure_reason": "control_tower_catalog:catalog_unavailable_or_invalid",
+            }
+            with args.results.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            print("MINIMAL_LOOP=BLOCKED reason=control_tower_catalog:catalog_unavailable_or_invalid", flush=True)
+            return 80
+
+    # Read Recovery AI holds before selecting. Held tasks remain held; this code
+    # never clears or overrides Recovery AI state.
     from scripts.recovery_ai import RecoveryStore
     recovery_store = RecoveryStore(args.state.parent / "recovery-ai-state.json")
     pending_tasks = list(tasks)
-    tasks = [
-        task for task in pending_tasks
-        if recovery_store.task_status(str(task["id"])).get("held") is not True
-    ]
+    try:
+        held_task_ids = {
+            str(task["id"])
+            for task in catalog_source_tasks
+            if recovery_store.task_status(str(task["id"])).get("held") is True
+        }
+    except Exception:
+        # Malformed/unavailable Recovery AI state must produce auditable BLOCKED
+        # evidence rather than crashing without a result row.
+        args.results.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "BLOCKED",
+            "task_id": "",
+            "task_count": 0,
+            "exit_code": 80,
+            "failure_reason": "control_tower_recovery_state:unavailable_or_invalid",
+        }
+        with args.results.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        print(
+            "MINIMAL_LOOP=BLOCKED reason=control_tower_recovery_state:unavailable_or_invalid",
+            flush=True,
+        )
+        return 80
+    tasks = [task for task in pending_tasks if str(task["id"]) not in held_task_ids]
+
+    selection_decision = None
+    if args.incident_category is None:
+        try:
+            from core.control_tower_selector import select_next_task
+            selection_decision = select_next_task(
+                [str(task["id"]) for task in selection_queue_tasks],
+                [str(task["id"]) for task in registered_catalog],
+                completed,
+                held_task_ids,
+                evidence_sha=selection_evidence_sha,
+                current_head_sha=_git_head(),
+            )
+        except Exception:
+            selection_decision = None
+
+        if selection_decision is None or (
+            selection_decision.next_action == "HOLD"
+            and selection_decision.reason_code != "task_held"
+        ):
+            reason = (
+                selection_decision.reason_code
+                if selection_decision is not None
+                else "selector_error"
+            )
+            args.results.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "BLOCKED",
+                "task_id": "",
+                "task_count": 0,
+                "exit_code": 80,
+                "failure_reason": f"control_tower_selector:{reason}",
+            }
+            with args.results.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            print(f"MINIMAL_LOOP=BLOCKED reason=control_tower_selector:{reason}", flush=True)
+            return 80
+
+        if selection_decision.next_action == "SELECT_REGISTERED_TASK":
+            if not tasks or str(tasks[0]["id"]) != selection_decision.task_template_id:
+                args.results.parent.mkdir(parents=True, exist_ok=True)
+                record = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "status": "BLOCKED",
+                    "task_id": "",
+                    "task_count": 0,
+                    "exit_code": 80,
+                    "failure_reason": "control_tower_selector:selection_mismatch",
+                }
+                with args.results.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+                print("MINIMAL_LOOP=BLOCKED reason=control_tower_selector:selection_mismatch", flush=True)
+                return 80
+        elif selection_decision.next_action not in {"NOT_RUN", "HOLD"}:
+            args.results.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "BLOCKED",
+                "task_id": "",
+                "task_count": 0,
+                "exit_code": 80,
+                "failure_reason": "control_tower_selector:unexpected_action",
+            }
+            with args.results.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            print("MINIMAL_LOOP=BLOCKED reason=control_tower_selector:unexpected_action", flush=True)
+            return 80
+
+        # A non-select decision is valid only when there is nothing executable.
+        # This prevents a malformed/future selector result from being ignored.
+        elif tasks:
+            args.results.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "BLOCKED",
+                "task_id": "",
+                "task_count": 0,
+                "exit_code": 80,
+                "failure_reason": "control_tower_selector:action_task_mismatch",
+            }
+            with args.results.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            print("MINIMAL_LOOP=BLOCKED reason=control_tower_selector:action_task_mismatch", flush=True)
+            return 80
     if pending_tasks and not tasks:
         args.results.parent.mkdir(parents=True, exist_ok=True)
         record = {
@@ -574,11 +778,20 @@ def main() -> int:
             "queue_total": len(queued_ids),
             "queue_completed": sum(1 for task_id in queued_ids if task_id in completed),
             "exit_code": EXIT_NOT_RUN,
-            "failure_reason": NOT_RUN_REASON_QUEUE_EMPTY,
+            "failure_reason": (
+                selection_decision.reason_code
+                if selection_decision is not None
+                else NOT_RUN_REASON_QUEUE_EMPTY
+            ),
         }
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-        print(f"MINIMAL_LOOP=NOT_RUN reason={NOT_RUN_REASON_QUEUE_EMPTY} (no task was executed)", flush=True)
+        not_run_reason = (
+            selection_decision.reason_code
+            if selection_decision is not None
+            else NOT_RUN_REASON_QUEUE_EMPTY
+        )
+        print(f"MINIMAL_LOOP=NOT_RUN reason={not_run_reason} (no task was executed)", flush=True)
         return EXIT_NOT_RUN
 
     args.results.parent.mkdir(parents=True, exist_ok=True)
@@ -601,6 +814,66 @@ def main() -> int:
         # The SHA is passed into run_task and rechecked before process creation
         # to close the validation/launch race. Failure blocks this run closed.
         control_tower_head = _git_head()
+        if args.incident_category is None and control_tower_head != selection_evidence_sha:
+            result = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "run_index": index,
+                "task_id": task["id"],
+                "status": "BLOCKED",
+                "exit_code": 80,
+                "base_sha": selection_evidence_sha,
+                "produced_sha": control_tower_head,
+                "failure_reason": "control_tower_gate:selection_head_changed",
+            }
+            with args.results.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(result, ensure_ascii=False) + "\n")
+            print(f"MINIMAL_LOOP=BLOCKED task={task['id']} reason=selection_head_changed", flush=True)
+            return 80
+
+        # Re-read HOLD immediately before launch; errors fail closed.
+        try:
+            from scripts.recovery_ai import RecoveryStore
+            latest_hold = RecoveryStore(args.state.parent / "recovery-ai-state.json").task_status(str(task["id"]))
+            # An empty record means this registered task has no recovery history yet.
+            # A non-empty record with missing/invalid held state is ambiguous and blocks.
+            malformed_hold = (
+                not isinstance(latest_hold, dict)
+                or (bool(latest_hold) and (
+                    "held" not in latest_hold
+                    or not isinstance(latest_hold.get("held"), bool)
+                ))
+            )
+            if malformed_hold or latest_hold.get("held", False) is not False:
+                result = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "run_index": index,
+                    "task_id": task["id"],
+                    "status": "BLOCKED",
+                    "exit_code": 80,
+                    "base_sha": control_tower_head,
+                    "produced_sha": control_tower_head,
+                    "failure_reason": "recovery_ai_hold_or_status_uncertain",
+                }
+                with args.results.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(result, ensure_ascii=False) + "\n")
+                print(f"MINIMAL_LOOP=BLOCKED task={task['id']} reason=recovery_ai_hold_or_status_uncertain", flush=True)
+                return 80
+        except Exception:
+            result = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "run_index": index,
+                "task_id": task["id"],
+                "status": "BLOCKED",
+                "exit_code": 80,
+                "base_sha": control_tower_head,
+                "produced_sha": control_tower_head,
+                "failure_reason": "recovery_ai_hold_check_failed",
+            }
+            with args.results.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(result, ensure_ascii=False) + "\n")
+            print(f"MINIMAL_LOOP=BLOCKED task={task['id']} reason=recovery_ai_hold_check_failed", flush=True)
+            return 80
+
         try:
             from scripts.control_tower_loop_adapter import authorize_registered_task
             authorized, authorization_reason = authorize_registered_task(

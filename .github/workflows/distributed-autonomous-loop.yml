@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       max_tasks:
-        description: 'Manual run task limit (1-4; fail-closed)'
+        description: 'Manual run task limit (1-4; normal execution currently supports one task)'
         required: false
-        default: '4'
+        default: '1'
         type: choice
         options:
           - '1'
@@ -113,7 +113,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || '4' }}
+      MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || '1' }}
       TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'normal' }}
       INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_category || '' }}
       INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_detail || '' }}
@@ -200,7 +200,7 @@ jobs:
           expected="${REQUESTED_TASK_LIMIT}"
           if [ "${EVENT_NAME}" = "issue_comment" ]; then
             case "${COMMENT_BODY}" in
-              "/distributed-loop") expected="4" ;;
+              "/distributed-loop") expected="1" ;;
               "/distributed-loop max_tasks=1") expected="1" ;;
               "/distributed-loop max_tasks=2") expected="2" ;;
               "/distributed-loop max_tasks=3") expected="3" ;;
@@ -209,12 +209,13 @@ jobs:
               *) echo "::error::Unexpected issue-comment trigger"; exit 1 ;;
             esac
           elif [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
-            expected="${DISPATCH_INPUT:-4}"
+            expected="${DISPATCH_INPUT:-1}"
             if [ -n "${RESUME_TASK_ID}" ]; then expected="1"; fi
           elif [ "${EVENT_NAME}" = "schedule" ]; then
             expected="1"
           elif [ "${EVENT_NAME}" = "pull_request_target" ]; then
-            expected="4"
+            # Legacy max4 label remains accepted, but runtime safely supports one normal task.
+            expected="1"
           fi
           if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
             case "${TRIGGER_MODE}" in
@@ -868,7 +869,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e
-          requested="${MAX_TASKS:-4}"
+          requested="${MAX_TASKS:-1}"
           completed=0
           if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
             completed="$(python -c 'import json; from pathlib import Path; print(sum(1 for line in Path("/tmp/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines() if line.strip() and isinstance(json.loads(line), dict) and json.loads(line).get("status") in {"PASS","NO_CHANGE"}))')"
