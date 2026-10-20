@@ -104,6 +104,18 @@
         "same_fingerprint_attempts": 1,
         "updated_at": "2026-10-20T13:34:44.742799+00:00"
       },
+      "distributed-loop-queue-progress-empty-queue-regression-v2": {
+        "consecutive_failures": 0,
+        "held": false,
+        "last_success_at": "2026-10-20T13:49:56.496150+00:00",
+        "last_success_evidence": {
+          "base_sha": "e49a02c4da82003f19e5fa7ecc9f8b14354c879d",
+          "produced_sha": "e12d39729714bc63eb02a37e230ebc51b420a30d",
+          "run_nonce": "68747d3cb3284ba0bea5868a5905ec6e",
+          "task_id": "distributed-loop-queue-progress-empty-queue-regression-v2"
+        },
+        "same_fingerprint_attempts": 0
+      },
       "english-core-image-rotation-user-isolation": {
         "consecutive_failures": 1,
         "fingerprints": [
@@ -164,15 +176,9 @@
   "recovery_rag": [
     {
       "category": "unknown",
-      "fingerprint": "fffd1235f764e30ecbe85c43085ade7bec773d8c84ce4936dcd1a71ed3228a7c",
-      "status": "FAIL",
-      "task_id": "distributed-loop-queue-progress-empty-queue-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "5004af39f5086b8a79a5447fac043d434595d7cefeaaf7dfcbd3e6a3c187ffce",
+      "fingerprint": "2fa4371f14403f4174abf9f9669fe4f3979d6cc6dd579b8edf3b87dc4683dfc0",
       "status": "PASS",
-      "task_id": "control-tower-run-identity-invalid-sha-regression-v2"
+      "task_id": "distributed-loop-queue-progress-empty-queue-regression-v2"
     },
     {
       "category": "unknown",
@@ -182,93 +188,9 @@
     },
     {
       "category": "unknown",
-      "fingerprint": "b679edd8461a75f28442afcd069a64f8e3c2ba884edf3b8b7d66a172c3a61434",
-      "status": "PASS",
-      "task_id": "control-tower-recovery-evidence-identity-mismatch"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "bb1df3836771dd9d3536d1d5954e326e2ed714e560383e14680f9d0fe27b9c0c",
-      "status": "NO_CHANGE",
-      "task_id": "obsidian-bridge-invalid-job-id-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "06f9f463d0d816bceb89934028b5239f928347b1e579ab63d3c274091b9cb90a",
-      "status": "PASS",
-      "task_id": "router-general-channel-metadata-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "bdf1e7a04d723bd7e63bf2f5ba630e4bcbe51f388a87c3917788907986507fe2",
+      "fingerprint": "8c54a6c11ea10cae349a53cd6aeafe488ea5c819d25c73a1fa1f05fbd4c4aa15",
       "status": "FAIL",
-      "task_id": "ai-speaker-transcript-normalization-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "c0aa28ff369621f11fb4d062bc9e51b65297a5b86f8e5ea48b8e47e095ebcb22",
-      "status": "NO_CHANGE",
-      "task_id": "loop-deterministic-nochange-focused-test"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56",
-      "status": "NO_CHANGE",
-      "task_id": "ai-speaker-empty-transcript-no-brain-call"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "4a0af154ce6ba0e050b288965baa951e0aa0430d43143a1e9414ac23145d6d45",
-      "status": "FAIL",
-      "task_id": "t1"
-    },
-    {
-      "category": "timeout",
-      "fingerprint": "dbafb28f4bc38108e37b6e730e2fd22217b9fe10ee31eccff5e5996033ad492b",
-      "status": "TIMEOUT",
-      "task_id": "task-a"
-    },
-    {
-      "category": "invalid_evidence",
-      "fingerprint": "2dbc8be6a89b0b3cf7a414b6e0315c424c11aa10194b11ae979024ba5bd1306b",
-      "status": "FAIL",
-      "task_id": "task-a"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "af1646c0e1876f9b6b9a4258f07b6a9146f5abf96678cc214c7a39078da4c546",
-      "status": "FAIL",
-      "task_id": "router-regression-general-request-metadata-refresh-20261015"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "4e3b2f3fa0cc168be35c286a2d71a3d3c7b3ad9564f95c74932e434bf1168550",
-      "status": "FAIL",
-      "task_id": "recovery-ai-held-task-isolation-regression"
-    },
-    {
-      "category": "invalid_evidence",
-      "fingerprint": "eb830e24eb8f9a1aaead8cc3f642de43663b42d71a67872b63b00a7f4596d798",
-      "status": "FAIL",
-      "task_id": "task-bool"
-    },
-    {
-      "category": "invalid_evidence",
-      "fingerprint": "b58fc9bffaebb257427c04c5b1df51610c66c7b98c6a72e2b9e31f610a771363",
-      "status": "FAIL",
-      "task_id": "task-sha"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "0b4ab352cd37a1149f848fae77dc1b3701d946e61e458651f4b8a8ce999efe07",
-      "status": "PASS",
-      "task_id": "task-bound"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "9cf09eae3d9f6d98ff618df02d25da07d446d6dd6e2baa7d5ef0c0844ae9539b",
-      "status": "FAIL",
-      "task_id": "english-core-image-rotation-user-isolation"
+      "task_id": "english-core-image-rotation-user-isolation-v2"
     },
     {
       "category": "unknown",
@@ -278,9 +200,105 @@
     },
     {
       "category": "unknown",
-      "fingerprint": "8c54a6c11ea10cae349a53cd6aeafe488ea5c819d25c73a1fa1f05fbd4c4aa15",
+      "fingerprint": "9cf09eae3d9f6d98ff618df02d25da07d446d6dd6e2baa7d5ef0c0844ae9539b",
       "status": "FAIL",
-      "task_id": "english-core-image-rotation-user-isolation-v2"
+      "task_id": "english-core-image-rotation-user-isolation"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "0b4ab352cd37a1149f848fae77dc1b3701d946e61e458651f4b8a8ce999efe07",
+      "status": "PASS",
+      "task_id": "task-bound"
+    },
+    {
+      "category": "invalid_evidence",
+      "fingerprint": "b58fc9bffaebb257427c04c5b1df51610c66c7b98c6a72e2b9e31f610a771363",
+      "status": "FAIL",
+      "task_id": "task-sha"
+    },
+    {
+      "category": "invalid_evidence",
+      "fingerprint": "eb830e24eb8f9a1aaead8cc3f642de43663b42d71a67872b63b00a7f4596d798",
+      "status": "FAIL",
+      "task_id": "task-bool"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "4e3b2f3fa0cc168be35c286a2d71a3d3c7b3ad9564f95c74932e434bf1168550",
+      "status": "FAIL",
+      "task_id": "recovery-ai-held-task-isolation-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "af1646c0e1876f9b6b9a4258f07b6a9146f5abf96678cc214c7a39078da4c546",
+      "status": "FAIL",
+      "task_id": "router-regression-general-request-metadata-refresh-20261015"
+    },
+    {
+      "category": "invalid_evidence",
+      "fingerprint": "2dbc8be6a89b0b3cf7a414b6e0315c424c11aa10194b11ae979024ba5bd1306b",
+      "status": "FAIL",
+      "task_id": "task-a"
+    },
+    {
+      "category": "timeout",
+      "fingerprint": "dbafb28f4bc38108e37b6e730e2fd22217b9fe10ee31eccff5e5996033ad492b",
+      "status": "TIMEOUT",
+      "task_id": "task-a"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "4a0af154ce6ba0e050b288965baa951e0aa0430d43143a1e9414ac23145d6d45",
+      "status": "FAIL",
+      "task_id": "t1"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56",
+      "status": "NO_CHANGE",
+      "task_id": "ai-speaker-empty-transcript-no-brain-call"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "c0aa28ff369621f11fb4d062bc9e51b65297a5b86f8e5ea48b8e47e095ebcb22",
+      "status": "NO_CHANGE",
+      "task_id": "loop-deterministic-nochange-focused-test"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "bdf1e7a04d723bd7e63bf2f5ba630e4bcbe51f388a87c3917788907986507fe2",
+      "status": "FAIL",
+      "task_id": "ai-speaker-transcript-normalization-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "06f9f463d0d816bceb89934028b5239f928347b1e579ab63d3c274091b9cb90a",
+      "status": "PASS",
+      "task_id": "router-general-channel-metadata-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "bb1df3836771dd9d3536d1d5954e326e2ed714e560383e14680f9d0fe27b9c0c",
+      "status": "NO_CHANGE",
+      "task_id": "obsidian-bridge-invalid-job-id-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "b679edd8461a75f28442afcd069a64f8e3c2ba884edf3b8b7d66a172c3a61434",
+      "status": "PASS",
+      "task_id": "control-tower-recovery-evidence-identity-mismatch"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "5004af39f5086b8a79a5447fac043d434595d7cefeaaf7dfcbd3e6a3c187ffce",
+      "status": "PASS",
+      "task_id": "control-tower-run-identity-invalid-sha-regression-v2"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "fffd1235f764e30ecbe85c43085ade7bec773d8c84ce4936dcd1a71ed3228a7c",
+      "status": "FAIL",
+      "task_id": "distributed-loop-queue-progress-empty-queue-regression"
     }
   ],
   "self_improvement_history": [
@@ -373,6 +391,11 @@
       "kind": "failure",
       "task_id": "implementer",
       "detail": "development failure observed"
+    },
+    {
+      "kind": "success",
+      "task_id": null,
+      "detail": "development reached integration gate"
     }
   ]
 }
