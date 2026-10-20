@@ -58,7 +58,10 @@ def test_failure_streak_resets_only_after_verified_success(tmp_path):
     store.record_failure("task-a", "timeout")
     with pytest.raises(ValueError):
         store.record_success("task-a", verified=False)
-    store.record_success("task-a", verified=True)
+    store.record_success("task-a", verified=True, evidence={
+        "task_id": "task-a", "base_sha": "a" * 40,
+        "produced_sha": "b" * 40, "run_nonce": "c" * 32,
+    })
     status = store.task_status("task-a")
     assert status["consecutive_failures"] == 0
     assert "last_success_at" in status
@@ -86,6 +89,32 @@ def test_held_task_requires_explicit_cause_fixed_confirmation(tmp_path):
     assert store.task_status("task-a")["held"] is False
     assert store.task_status("task-a")["consecutive_failures"] == 0
     assert store.task_status("task-a")["resume_requires_review"] is True
+
+
+def test_resumed_task_requires_explicit_review_acknowledgement(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    for _ in range(3):
+        store.record_failure("task-review", "timeout")
+    store.resume_held_task("task-review", cause_fixed=True)
+    assert store.task_status("task-review")["resume_requires_review"] is True
+
+    with pytest.raises(ValueError, match="explicit resume review"):
+        store.confirm_resume_review("task-review", reviewed=False)
+
+    store.confirm_resume_review("task-review", reviewed=True)
+    status = store.task_status("task-review")
+    assert status["resume_requires_review"] is False
+    assert "resume_reviewed_at" in status
+
+
+def test_resume_review_cannot_be_confirmed_for_unresumed_or_unflagged_task(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    with pytest.raises(ValueError, match="explicitly resumed"):
+        store.confirm_resume_review("task-new", reviewed=True)
+
+    store.record_failure("task-review", "timeout")
+    with pytest.raises(ValueError, match="no pending resume review"):
+        store.confirm_resume_review("task-review", reviewed=True)
 
 
 def test_fingerprint_is_stable_and_does_not_include_raw_error_output():

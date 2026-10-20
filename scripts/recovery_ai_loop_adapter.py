@@ -111,6 +111,7 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
     # failure or trip Recovery AI's repeated-failure HOLD circuit breaker.
     if status == "BLOCKED" and (
         failure_reason.startswith("control_tower_gate:")
+        or failure_reason.startswith("control_tower_rea:")
         or failure_reason == "control_tower_head_changed"
     ):
         return {
@@ -141,9 +142,18 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
         )
     )
     if verified_success:
-        store.record_success(task_id, verified=True)
+        evidence = {
+            "task_id": task_id,
+            "base_sha": result["base_sha"],
+            "produced_sha": result["produced_sha"],
+            "run_nonce": result["run_nonce"],
+        }
+        store.record_success(task_id, verified=True, evidence=evidence)
+        persisted = store.task_status(task_id).get("last_success_evidence")
+        if persisted != evidence:
+            raise RuntimeError("recovery_ai_persisted_evidence_mismatch")
         return _attach_rag_advisory(
-            {"recorded": True, "status": status, "verified": True},
+            {"recorded": True, "status": status, "verified": True, "evidence": persisted},
             task_id=task_id, status=status, category="unknown",
         )
     category = _category(result)
