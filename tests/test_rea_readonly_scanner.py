@@ -84,6 +84,21 @@ class ReadonlyScannerTests(unittest.TestCase):
         with self.assertRaises(ScanBlocked):
             scan_repository(self.root)
 
+    def test_git_index_paths_preserve_newlines_and_unicode(self) -> None:
+        self._write("scripts/日本語\nname.py", "VALUE = 2\n")
+        self._commit()
+        report = scan_repository(self.root)
+        self.assertEqual(report["status"], "PASS")
+        self.assertGreaterEqual(report["files_scanned"], 4)
+
+    def test_assume_unchanged_index_flag_blocks_scan(self) -> None:
+        subprocess.run(
+            ["git", "update-index", "--assume-unchanged", "scripts/good.py"],
+            cwd=self.root, check=True,
+        )
+        with self.assertRaises(ScanBlocked):
+            scan_repository(self.root)
+
     def test_symlink_is_not_followed(self) -> None:
         outside = self.root.parent / "rea-outside-secret.txt"
         outside.write_text("private marker", encoding="utf-8")
