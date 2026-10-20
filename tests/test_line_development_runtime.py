@@ -403,6 +403,24 @@ def test_negative_confidence_plan_preserves_existing_test_body_and_is_syntax_saf
     ) < candidate.index("def test_adapter_schema_rejects_unknown_risk():")
 
 
+def test_queue_progress_empty_queue_plan_is_deterministic(monkeypatch, tmp_path):
+    target = "tests/test_distributed_loop_queue_progress.py"
+    path = tmp_path / target
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "from pathlib import Path\\nimport json\\nfrom scripts.distributed_loop_queue_progress import calculate_progress\\n\\n"
+        "def test_progress_uses_runtime_queue_and_counts_refill_tasks(tmp_path: Path):\\n    pass\\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        target, "distributed-loop-queue-progress-empty-queue-regression-v2"
+    )
+    assert err is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert "test_empty_runtime_queue_reports_zero_progress_for_not_run_v2" in plan["changes"][0]["new"]
+
 def test_deterministic_autonomous_test_plan_no_change_when_test_present(monkeypatch, tmp_path):
     target = tmp_path / "uhip" / "tests" / "test_schema_contracts.py"
     target.parent.mkdir(parents=True, exist_ok=True)
