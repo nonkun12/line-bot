@@ -225,8 +225,17 @@ def parse_plan(text: str) -> dict:
 
 
 def context_for(path: str) -> str:
+    """Keep context within the character budget while retaining both file ends."""
     target = ROOT / path
-    return target.read_text(encoding="utf-8")[:MAX_FILE_CHARS]
+    content = target.read_text(encoding="utf-8")
+    if len(content) <= MAX_FILE_CHARS:
+        return content
+
+    marker = "\n...[middle omitted; context bounded]...\n"
+    budget = MAX_FILE_CHARS - len(marker)
+    head_size = budget // 2
+    tail_size = budget - head_size
+    return content[:head_size] + marker + content[-tail_size:]
 
 
 def repair_anchor_plan(
