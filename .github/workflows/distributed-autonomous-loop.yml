@@ -120,6 +120,9 @@ jobs:
       INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_job_id || '' }}
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
+      # Set repository Actions variable CONTROL_TOWER_KILL_SWITCH=true to stop
+      # before queue reads/task launch; this never bypasses safety gates.
+      CONTROL_TOWER_KILL_SWITCH: ${{ vars.CONTROL_TOWER_KILL_SWITCH || 'false' }}
       SELF_IMPROVEMENT_POLICY_ENFORCED: 'true'
       # Hosted loop must not call an unverified cloud Hermes provider.
       HERMES_ADVISOR_ENABLED: 'false'
