@@ -137,6 +137,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
+          DEVELOPMENT_OUTCOME: ${{ steps.development.outcome }}
+          AUTONOMOUS_START_SHA: ${{ env.AUTONOMOUS_START_SHA }}
           BRANCH: line-dev/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -187,8 +189,12 @@ jobs:
           export AUTONOMOUS_AGENT="DistributedDevelopmentRuntime"
           export AUTONOMOUS_TASK_ID="on-demand-line-development"
           if [ "${{ steps.development.outcome }}" = "success" ]; then
-            export AUTONOMOUS_TESTS_RESULT="PASS"
-            export AUTONOMOUS_SAFETY_GATE_RESULT="PASS"
+            if [ "${{ steps.development.outputs.test_only }}" = "true" ]; then
+              export AUTONOMOUS_TESTS_RESULT="PASS"
+            else
+              export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
+            fi
+            export AUTONOMOUS_SAFETY_GATE_RESULT="NOT_ASSERTED"
           else
             export AUTONOMOUS_TESTS_RESULT="FAIL"
             export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
@@ -228,7 +234,7 @@ jobs:
                   message = fh.read()
           except OSError:
               message = "⚠️ 終了報告生成失敗\\n" f"指示: {instruction}\\n" f"実行結果: {run_url}\\n" f"Outcome: {outcome}"
-          request = urllib.request.Request(webhook, data=json.dumps({"text": text}).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
+          request = urllib.request.Request(webhook, data=json.dumps({"text": message}).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
           with urllib.request.urlopen(request, timeout=20) as response:
               print(f"SLACK_NOTIFICATION=HTTP_{response.status}")
           PY
