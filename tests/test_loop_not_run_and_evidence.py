@@ -385,14 +385,17 @@ def test_registered_catalog_is_loaded_from_versioned_catalogs_not_runtime_queue(
         "allowed_paths": ["tests/test_loop_not_run_and_evidence.py"],
     }
     payloads = {
-        ".github/autonomous-loop-tasks.json": json.dumps({"tasks": [trusted_task]}),
-        ".github/autonomous-loop-task-catalog.json": json.dumps({"tasks": []}),
+        # The runtime queue is deliberately untrusted; only the reviewed catalog
+        # may register a task for Control Tower authorization.
+        ".github/autonomous-loop-task-catalog.json": json.dumps({"tasks": [trusted_task]}),
     }
 
     def fake_git_checked(*args):
         assert args[0] == "show"
         revision, path = args[1].split(":", 1)
         assert revision == "a" * 40
+        if path not in payloads:
+            return (1, "")
         return (0, payloads[path])
 
     monkeypatch.setattr(loop, "_git_checked", fake_git_checked)
