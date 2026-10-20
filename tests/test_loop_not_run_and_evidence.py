@@ -459,10 +459,10 @@ def test_malformed_recovery_state_blocks_before_execution(monkeypatch, tmp_path,
     monkeypatch.setattr("scripts.recovery_ai.RecoveryStore", _MalformedRecoveryStore)
     monkeypatch.setattr(loop, "run_task", lambda *a, **k: pytest.fail("must not run with ambiguous recovery state"))
     assert loop.main() == 80
-    assert "recovery_ai_hold_or_status_uncertain" in capsys.readouterr().out
+    assert "control_tower_recovery_state:unavailable_or_invalid" in capsys.readouterr().out
     row = json.loads(results.read_text(encoding="utf-8").splitlines()[-1])
     assert row["status"] == "BLOCKED"
-    assert row["failure_reason"] == "recovery_ai_hold_or_status_uncertain"
+    assert row["failure_reason"] == "control_tower_recovery_state:unavailable_or_invalid"
 
 
 def test_recovery_state_error_records_blocked_evidence_before_execution(monkeypatch, tmp_path, capsys):
