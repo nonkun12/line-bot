@@ -34,8 +34,7 @@ def generate_fix_suggestion(error_info: dict) -> str:
 tracebackと発生時刻を確認してから、修正対象を特定してください。
 """
 
-    result = f"""
-【AI Debug Agent 修正提案】
+    result = f"""【AI Debug Agent 修正提案】
 
 ■ 対象ファイル
 {file}
