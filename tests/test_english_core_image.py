@@ -241,3 +241,42 @@ def test_core_image_dictionary_has_no_duplicate_literal_word_keys():
     assert len(keys) == len(set(keys))
     assert len(keys) >= 100
 
+
+
+
+def test_line_smoke_test_command_returns_core_image_not_vocabulary_list():
+    response = handle_core_image_command("英単語コアイメージ テスト")
+    assert response is not None
+    assert "コアイメージ機能テスト" in response
+    assert "コアイメージ：" in response
+    assert "説明する" in response
+    assert "今日の英単語" not in response
+
+
+def test_explain_is_a_reviewed_core_image_word():
+    response = handle_core_image_command("コアイメージ explain")
+    assert response is not None
+    assert "複雑なことを平らに広げて見せる" in response
+    assert "例文" in response
+    assert "説明を保留" not in response
+
+
+def test_common_vocabulary_words_have_core_images():
+    for word, cue in {
+        "improve": "改善する",
+        "schedule": "予定",
+        "recommend": "おすすめする",
+    }.items():
+        response = explain_core_image(word)
+        assert cue in response
+        assert "コアイメージ：" in response
+        assert "説明を保留" not in response
+
+
+def test_good_has_reviewed_semantic_core_image():
+    response = handle_core_image_command("コアイメージ good")
+    assert response is not None
+    assert "期待にかなう・役に立つ状態" in response
+    assert "This is a good idea." in response
+    assert "文脈により" in response
+    assert "説明を保留" not in response

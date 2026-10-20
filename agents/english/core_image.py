@@ -389,6 +389,48 @@ _ENTRIES: dict[str, WordEntry] = {
     "volatile": WordEntry(word="volatile", pronunciation="ヴォラタイル", core_image="状態がすぐ変わりやすい → 不安定な・変動の激しい", parts="volatile market / situation は「変動の激しい市場／不安定な状況」。化学では揮発性の意味もある。", related=("volatility（変動性）", "volatilely（不安定に）", "unstable（不安定な）"), example="Investors are cautious in a volatile market.（投資家は変動の激しい市場では慎重になる。）"),
     "erratic": WordEntry(word="erratic", pronunciation="イラティック", core_image="一定の筋道や規則がない → 不規則な・予測しにくい", parts="erratic behavior / performance は「不規則な行動／むらのある成績」。", related=("erratically（不規則に）", "irregular（不規則な）", "unpredictable（予測できない）"), example="The machine's erratic performance delayed the project.（機械の不安定な動作で計画が遅れた。）"),
     "impartiality": WordEntry(word="impartiality", pronunciation="インパーシャリティ", core_image="一方に偏らない性質 → 公平性・中立性", parts="impartiality of the process は「手続きの公平性」。", related=("impartial（公平な）", "neutrality（中立性）", "fairness（公平さ）"), example="The judge's impartiality was widely respected.（その裁判官の公平性は広く尊重されていた。）"),
+    "good": WordEntry(
+        word="good",
+        pronunciation="グッド",
+        core_image="期待にかなう・役に立つ状態 → よい／良いこと",
+        parts="語源の分解ではなく、現代英語の意味の核です。good idea（よい考え）、good at ...（〜が得意）など、表現によって意味が広がります。",
+        related=("well（よく）", "goodness（よさ・善良さ）", "excellent（非常によい）"),
+        example="This is a good idea.（これはよい考えです。）",
+        note="good は文脈により「親切な」「十分な」「健康な」などにもなります。語源を断定せず、まず「期待にかなう／役に立つ」という意味の核から覚えます。",
+    ),
+    "explain": WordEntry(
+        word="explain",
+        pronunciation="イクスプレイン",
+        core_image="複雑なことを平らに広げて見せる → 説明する・解き明かす",
+        parts="explain は「説明する」。現代英語の意味を覚えるためのイメージで、語源の断定ではありません。",
+        related=("explanation（説明）", "clear（明確な）", "describe（描写する）"),
+        example="Could you explain this rule?（この規則を説明してもらえますか。）",
+        note="ここでの「平らに広げて見せる」は記憶用のコアイメージです。",
+    ),
+    "improve": WordEntry(
+        word="improve",
+        pronunciation="インプルーヴ",
+        core_image="今よりよい状態へ進める → 改善する・向上させる",
+        parts="improve / improvement を一緒に覚えると、動詞と名詞のつながりが分かります。",
+        related=("improvement（改善）", "better（よりよい）", "develop（発展させる）"),
+        example="I want to improve my English.（英語を上達させたいです。）",
+    ),
+    "schedule": WordEntry(
+        word="schedule",
+        pronunciation="スケジュール",
+        core_image="行動を時間の上に並べる → 予定・日程／予定を組む",
+        parts="schedule a meeting は「会議を予定に入れる」。名詞と動詞の両方で使います。",
+        related=("scheduled（予定された）", "reschedule（予定を変更する）", "timetable（時間表）"),
+        example="Let me check my schedule.（予定を確認させてください。）",
+    ),
+    "recommend": WordEntry(
+        word="recommend",
+        pronunciation="レコメンド",
+        core_image="よい選択肢として人に示す → おすすめする・推薦する",
+        parts="recommend a book は「本をおすすめする」。recommend that ... の形にも注意します。",
+        related=("recommendation（推薦）", "suggest（提案する）", "advice（助言）"),
+        example="Can you recommend a good book?（よい本をおすすめしてくれますか。）",
+    ),
 }
 
 _COMMAND_RE = re.compile(
@@ -442,6 +484,11 @@ def explain_core_image(word: str) -> str:
 
 def handle_core_image_command(message: str) -> str | None:
     """Return a response for an explicit command, or None if not a match."""
+    normalized = re.sub(r"\s+", " ", str(message or "").strip()).casefold()
+    # A dedicated smoke-test command must not fall through to the generic
+    # vocabulary lesson merely because it contains the word 英単語.
+    if normalized in {"英単語コアイメージ テスト", "コアイメージ テスト", "core image test"}:
+        return "🧪 コアイメージ機能テスト\n\n" + explain_core_image("explain")
     word = extract_core_image_word(message)
     return explain_core_image(word) if word else None
 
