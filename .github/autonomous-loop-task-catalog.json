@@ -78,6 +78,20 @@
       "allowed_paths": [
         "tests/test_distributed_loop_queue_progress.py"
       ]
+    },
+    {
+      "id": "refill-all-catalog-candidates-ineligible-regression",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。runtime queue に既存タスクがあり、その task_id は completed に含まれ、catalog の候補も completed・held・resume_requires_review のいずれかで全件不適格なケースを作ってください。build_queue() が不適格タスクを1件も出力せず total=0・added=0 を返し、該当する skipped_completed_ids / skipped_held_ids / skipped_review_ids を正しく報告することを確認してください。Recovery AI state は有効な schema_version=1 にし、欠落・破損を許容するテストにしないでください。既存テスト変更禁止。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "english-core-image-unknown-word-safe-fallback",
+      "instruction": "tests/test_english_learning.py のみに、新しい固有名の回帰テストを1件追加してください。ローカル辞書に存在しない架空語 'florpt' を「コアイメージ」コマンドで要求した場合、未確認の意味・語源・語根を捏造せず、確かな無料ローカル辞書説明がない旨を返し、一般的な雑談応答（例: vibing / brainstorm / pixels など）へフォールスルーしないことを確認してください。既存の great・improve・schedule・recommend のテストと重複させず、新しい固有名のテスト関数を使ってください。既存テスト変更禁止。外部API・実DB書き込み・シークレット参照は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_english_learning.py"
+      ]
     }
   ]
 }
