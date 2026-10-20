@@ -400,34 +400,59 @@ def test_summary_identity_mismatch_halts(monkeypatch, tmp_path: Path):
     assert result["failure_reason"] == "summary_identity_mismatch"
 
 
-def test_main_rejects_unverified_multi_task_selector_chain(monkeypatch, tmp_path: Path):
-    monkeypatch.setattr(
-        loop,
-        "load_tasks",
-        lambda: [
-            {"id": "t1", "instruction": "one", "allowed_paths": ["tests/test_one.py"]},
-            {"id": "t2", "instruction": "two", "allowed_paths": ["tests/test_two.py"]},
-        ],
+def test_reselection_uses_fresh_head_and_registered_definition():
+    queued = [
+        {"id": "t1", "instruction": "one", "allowed_paths": ["tests/test_one.py"]},
+        {"id": "t2", "instruction": "two", "allowed_paths": ["tests/test_two.py"]},
+    ]
+    selected, reason = loop.reselect_registered_task(
+        queued,
+        list(queued),
+        {"t1"},
+        set(),
+        expected_task_id="t2",
+        evidence_sha="b" * 40,
+        current_head_sha="b" * 40,
     )
-    queue = tmp_path / "queue.json"
-    queue.write_text('{"max_tasks_per_run": 3}', encoding="utf-8")
-    monkeypatch.setattr(loop, "QUEUE", queue)
-    monkeypatch.setattr(
-        loop.sys,
-        "argv",
-        ["loop", "--max-tasks", "2", "--state", str(tmp_path / "loop-state.json"),
-         "--results", str(tmp_path / "results.jsonl")],
-    )
-    assert loop.main() == 80
-    results = tmp_path / "results.jsonl"
-    assert results.exists()
-    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
-    assert len(rows) == 1
-    assert rows[0]["status"] == "BLOCKED"
-    assert rows[0]["task_count"] == 0
-    assert rows[0]["exit_code"] == 80
-    assert rows[0]["failure_reason"] == "control_tower_multi_task_reselection_unavailable"
+    assert selected == queued[1]
+    assert reason == ""
 
+
+def test_reselection_blocks_when_head_changes_between_tasks():
+    queued = [{"id": "t2", "instruction": "two", "allowed_paths": ["tests/test_two.py"]}]
+    selected, reason = loop.reselect_registered_task(
+        queued, list(queued), set(), set(),
+        expected_task_id="t2",
+        evidence_sha="b" * 40,
+        current_head_sha="c" * 40,
+    )
+    assert selected is None
+    assert reason == "policy_blocked"
+
+
+def test_reselection_blocks_if_recovery_hold_appears_between_tasks():
+    queued = [{"id": "t2", "instruction": "two", "allowed_paths": ["tests/test_two.py"]}]
+    selected, reason = loop.reselect_registered_task(
+        queued, list(queued), set(), {"t2"},
+        expected_task_id="t2",
+        evidence_sha="b" * 40,
+        current_head_sha="b" * 40,
+    )
+    assert selected is None
+    assert reason == "task_held"
+
+
+def test_reselection_blocks_if_queue_definition_differs_from_catalog():
+    queued = [{"id": "t2", "instruction": "unreviewed", "allowed_paths": ["tests/test_two.py"]}]
+    catalog = [{"id": "t2", "instruction": "reviewed", "allowed_paths": ["tests/test_two.py"]}]
+    selected, reason = loop.reselect_registered_task(
+        queued, catalog, set(), set(),
+        expected_task_id="t2",
+        evidence_sha="b" * 40,
+        current_head_sha="b" * 40,
+    )
+    assert selected is None
+    assert reason == "definition_mismatch"
 
 def test_main_rejects_queue_limit(monkeypatch, tmp_path: Path):
     queue = tmp_path / "queue.json"
