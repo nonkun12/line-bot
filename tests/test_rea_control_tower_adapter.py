@@ -136,3 +136,45 @@ def test_bad_sha_aggregates_and_authority_flags_fail_closed():
     assert not rea_evidence_is_valid_pass({**evidence, "execution_authorized": True}, expected_sha=SHA)
     assert not rea_evidence_is_valid_pass({k: v for k, v in evidence.items() if k != "blocking_count"}, expected_sha=SHA)
     assert not rea_evidence_is_valid_pass(evidence, expected_sha="bad-sha")
+
+
+@pytest.mark.parametrize("bad_value", [[], {}, None, ["HIGH"]])
+def test_prepare_rea_evidence_malformed_severity_returns_blocked_not_exception(bad_value):
+    malformed = finding()
+    malformed["severity"] = bad_value
+    with patch("scripts.rea_control_tower_adapter.scan_repository",
+               return_value=report(status="FINDINGS", findings=[malformed])):
+        result = prepare_rea_evidence(".", expected_sha=SHA)
+    assert result["gate"] == "BLOCKED"
+    assert result["reason_code"] == "rea_finding_schema_invalid"
+
+
+@pytest.mark.parametrize("bad_value", [[], {}, None, ["PASS"]])
+def test_prepare_rea_evidence_malformed_scanner_status_returns_blocked_not_exception(bad_value):
+    with patch("scripts.rea_control_tower_adapter.scan_repository",
+               return_value=report(status=bad_value)):
+        result = prepare_rea_evidence(".", expected_sha=SHA)
+    assert result["gate"] == "BLOCKED"
+    assert result["reason_code"] == "rea_scanner_status_invalid"
+
+
+@pytest.mark.parametrize("bad_value", [[], {}, None, ["PASS"]])
+def test_pass_validator_malformed_scanner_status_returns_false_not_exception(bad_value):
+    evidence = pass_evidence()
+    evidence["scanner_status"] = bad_value
+    assert not rea_evidence_is_valid_pass(evidence, expected_sha=SHA)
+
+
+@pytest.mark.parametrize("bad_value", [[], {}, None, ["MEDIUM"]])
+def test_pass_validator_malformed_severity_returns_false_not_exception(bad_value):
+    item = safe_finding()
+    item["severity"] = bad_value
+    assert not rea_evidence_is_valid_pass(pass_evidence([item]), expected_sha=SHA)
+
+
+@pytest.mark.parametrize("bad_report", [[], None, "not-an-object"])
+def test_prepare_rea_evidence_non_object_report_returns_blocked(bad_report):
+    with patch("scripts.rea_control_tower_adapter.scan_repository", return_value=bad_report):
+        result = prepare_rea_evidence(".", expected_sha=SHA)
+    assert result["gate"] == "BLOCKED"
+    assert result["reason_code"] == "rea_report_invalid"
