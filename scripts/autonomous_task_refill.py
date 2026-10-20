@@ -84,17 +84,48 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         catalog_ids.add(task["id"])
         normalized_catalog.append(task)
 
+    if "recovery_ai" not in state:
+        raise ValueError("Recovery AI state is missing")
+    recovery = state["recovery_ai"]
+    if (not isinstance(recovery, dict) or recovery.get("schema_version") != 1
+            or not isinstance(recovery.get("tasks"), dict) or "checkpoint" not in recovery):
+        raise ValueError("Recovery AI state is invalid")
+    recovery_tasks = recovery["tasks"]
+    held_ids = set()
+    for task_id, recovery_task in recovery_tasks.items():
+        if not isinstance(task_id, str) or not isinstance(recovery_task, dict):
+            raise ValueError("invalid Recovery AI task state")
+        held = recovery_task.get("held", False)
+        if not isinstance(held, bool):
+            raise ValueError("invalid Recovery AI held flag")
+        if held:
+            held_ids.add(task_id)
+
     completed_ids = set(completed)
+    # HOLD remains durable in Recovery AI; omit held tasks from this run-local
+    # queue so stale held entries cannot occupy the bounded execution window.
+    eligible_existing = [task for task in normalized_existing if task["id"] not in held_ids]
+    skipped_held_ids = sorted(original_ids.intersection(held_ids))
     additions = [
         task for task in normalized_catalog
-        if task["id"] not in original_ids and task["id"] not in completed_ids
+        if task["id"] not in original_ids
+        and task["id"] not in completed_ids
+        and task["id"] not in held_ids
     ][:cap]
-    # Preserve every validated queued task, then append only a bounded catalog slice.
-    final_tasks = normalized_existing + additions
+    # Preserve eligible queued tasks, then append only a bounded catalog slice.
+    final_tasks = eligible_existing + additions
     output = {"version": 1, "max_tasks_per_run": max_tasks, "tasks": final_tasks}
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return {"existing": len(existing), "added": len(additions), "total": len(final_tasks), "added_ids": [t["id"] for t in additions]}
+    return {
+        # Keep the original input-count field stable for existing consumers.
+        "existing": len(existing),
+        "retained_existing": len(eligible_existing),
+        "skipped_held_ids": skipped_held_ids,
+        "added": len(additions),
+        "total": len(final_tasks),
+        "added_ids": [t["id"] for t in additions],
+    }
 
 
 def main() -> int:

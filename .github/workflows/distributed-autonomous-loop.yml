@@ -164,7 +164,9 @@ jobs:
           import json
           from pathlib import Path
           state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
-          recovery = state.get('recovery_ai', {'schema_version': 1, 'tasks': {}, 'checkpoint': None})
+          if 'recovery_ai' not in state:
+              raise SystemExit('durable Recovery AI state is missing; refusing to run')
+          recovery = state['recovery_ai']
           if (not isinstance(recovery, dict) or recovery.get('schema_version') != 1
                   or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
               raise SystemExit('durable Recovery AI state is invalid; refusing to run')
