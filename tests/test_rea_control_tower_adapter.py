@@ -178,3 +178,33 @@ def test_execution_boundary_rejects_inconsistent_counts_and_unknown_fields():
         {**base, "finding_count": 101, "findings_truncated": True,
          "findings": [base["findings"]] * 100}, expected_sha=SHA
     )
+
+
+
+def test_execution_boundary_accepts_well_formed_truncated_record():
+    finding_record = {
+        "finding_id": "a" * 16,
+        "category": "python_syntax",
+        "severity": "MEDIUM",
+        "path": "scripts/example.py",
+        "line": 12,
+        "status": "REVIEW_REQUIRED",
+    }
+    evidence = {
+        "gate": "PASS",
+        "mode": "OBSERVE_ONLY",
+        "target_sha": SHA,
+        "scanner_status": "FINDINGS",
+        "finding_count": 101,
+        "critical_count": 0,
+        "blocking_count": 0,
+        "findings_truncated": True,
+        "findings": [finding_record.copy() for _ in range(100)],
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "hold_clear_authorized": False,
+        "merge_deploy_authorized": False,
+    }
+    assert rea_evidence_is_valid_pass(evidence, expected_sha=SHA)
+    malformed = {**evidence, "findings": [{**finding_record, "severity": []}] + evidence["findings"][1:]}
+    assert not rea_evidence_is_valid_pass(malformed, expected_sha=SHA)

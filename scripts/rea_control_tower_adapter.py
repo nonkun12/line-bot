@@ -167,6 +167,7 @@ def rea_evidence_is_valid_pass(evidence: object, *, expected_sha: str) -> bool:
             or not re.fullmatch(r"[0-9a-f]{16}", finding_id)
             or not isinstance(category, str)
             or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", category)
+            or not isinstance(severity, str)
             or severity not in {"LOW", "MEDIUM"}
             or not isinstance(path, str)
             or not path
