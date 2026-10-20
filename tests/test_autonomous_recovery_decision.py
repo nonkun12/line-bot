@@ -41,6 +41,16 @@ def test_empty_queue_is_not_treated_as_failure_to_retry():
     assert result.action == RecoveryAction.NO_ACTION
 
 
+def test_exhausted_queue_alias_is_classified_as_empty():
+    result = decide_recovery(
+        run_status="completed",
+        run_conclusion="success",
+        task_id="QUEUE_EXHAUSTED_NO_TASKS",
+    )
+    assert result.classification == RecoveryClass.QUEUE_EMPTY
+    assert result.action == RecoveryAction.NO_ACTION
+
+
 def test_not_run_is_not_retried():
     result = decide_recovery(run_status="completed", run_conclusion="success", task_id="NOT_RUN")
     assert result.classification == RecoveryClass.NOT_RUN
