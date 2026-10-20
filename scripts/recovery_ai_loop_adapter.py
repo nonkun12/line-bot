@@ -33,8 +33,8 @@ def _category(result: dict[str, Any]) -> str:
 
 def _has_verified_run_identity(result: dict[str, Any], status: str) -> bool:
     """Require fresh per-run identifiers before a success can reset failure state."""
-    base_sha = str(result.get("base_sha", "")).lower()
-    produced_sha = str(result.get("produced_sha", "")).lower()
+    base_sha = str(result.get("base_sha", ""))
+    produced_sha = str(result.get("produced_sha", ""))
     run_nonce = str(result.get("run_nonce", ""))
     if not re.fullmatch(r"[0-9a-f]{40}", base_sha):
         return False
@@ -119,7 +119,7 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
         }
     run_identity_verified = _has_verified_run_identity(result, status)
     success_like = status in {"PASS", "NO_CHANGE"}
-    if success_like and (result.get("exit_code") != 0 or not run_identity_verified):
+    if success_like and (type(result.get("exit_code")) is not int or result.get("exit_code") != 0 or not run_identity_verified):
         decision = store.record_failure(task_id, "invalid_evidence", ())
         # Invalid run identity must invalidate the task result itself; logging a
         # HOLD decision while leaving status=PASS could falsely complete a task.
@@ -132,7 +132,8 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
         )
 
     verified_success = (
-        result.get("exit_code") == 0
+        type(result.get("exit_code")) is int
+        and result.get("exit_code") == 0
         and run_identity_verified
         and (
             (status == "PASS" and not result.get("failure_reason"))
