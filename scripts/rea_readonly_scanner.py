@@ -85,9 +85,24 @@ def scan_repository(repo_root: str | Path) -> dict[str, Any]:
     if _git(root, "status", "--porcelain", "--untracked-files=all").strip():
         raise ScanBlocked("working_tree_not_clean")
 
-    entries = _git(root, "ls-files", "-s", "--").splitlines()
+    # The -v index listing exposes assume-unchanged (lowercase tags) and
+    # skip-worktree (S) flags. Either can conceal worktree changes from status.
+    index_flags = _git(root, "ls-files", "-v", "-z", "--")
+    for record in index_flags.split("\0"):
+        if not record:
+            continue
+        if len(record) < 3 or record[1] != " ":
+            raise ScanBlocked("git_index_flag_entry_invalid")
+        tag = record[0]
+        if tag.islower() or tag == "S":
+            raise ScanBlocked("git_index_flags_unsafe")
+
+    # -z preserves filenames without Git's quoted-path display format.
+    entries = _git(root, "ls-files", "-s", "-z", "--").split("\0")
     candidates: list[tuple[str, str]] = []
     for entry in entries:
+        if not entry:
+            continue
         if "\t" not in entry:
             raise ScanBlocked("git_index_entry_invalid")
         metadata, path = entry.split("\t", 1)
@@ -210,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         report = scan_repository(args.repo_root)
-    except (ScanBlocked, OSError, subprocess.TimeoutExpired):
+    except Exception:
         print(json.dumps({
             "schema_version": 1,
             "scanner": "rea-readonly-mvp",
