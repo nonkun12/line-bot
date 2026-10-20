@@ -184,3 +184,16 @@ def test_ai_tutor_prompt_uses_profile_context(monkeypatch, tmp_path) -> None:
     assert "subject_verb_agreement" in prompt
     assert "have/has drill" in prompt
     assert "he/she/it + has" in prompt
+
+
+def test_review_uses_rotating_local_dictionary_words(monkeypatch):
+    from agents.english.core_image import get_core_image_quiz_entries
+
+    entries = list(get_core_image_quiz_entries())
+    selected = entries[:3]
+    monkeypatch.setattr("agents.english.node.random.sample", lambda population, count: selected[:count])
+    response = EnglishLearningAgent().handle(_request("復習"))
+    expected = " / ".join(entry.word for entry in selected)
+    assert f"今回の復習語: {expected}" in response.text
+    assert f"まず「{selected[0].word}」" in response.text
+    assert "今日の復習語: improve / schedule / recommend" not in response.text
