@@ -80,7 +80,7 @@ def test_great_has_a_reviewed_local_core_image():
     response = explain_core_image("great")
     assert "基準を大きく上回る" in response
     assert "You did a great job." in response
-    assert "無料ローカル解説" in response
+    assert "無料のローカル解説" in response
 
 
 def test_common_english_sentence_gets_correction_feedback():
