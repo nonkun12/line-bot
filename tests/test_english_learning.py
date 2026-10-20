@@ -190,10 +190,28 @@ def test_review_uses_rotating_local_dictionary_words(monkeypatch):
     from agents.english.core_image import get_core_image_quiz_entries
 
     entries = list(get_core_image_quiz_entries())
-    selected = entries[:3]
-    monkeypatch.setattr("agents.english.node.random.sample", lambda population, count: selected[:count])
+    selected = [(entry.word, entry.core_image, entry.example) for entry in entries[:3]]
+    monkeypatch.setattr("agents.english.node.select_daily_words", lambda user_id, limit: selected[:limit])
     response = EnglishLearningAgent().handle(_request("復習"))
-    expected = " / ".join(entry.word for entry in selected)
+    expected = " / ".join(word for word, _, _ in selected)
     assert f"今回の復習語: {expected}" in response.text
-    assert f"まず「{selected[0].word}」" in response.text
+    assert f"まず「{selected[0][0]}」" in response.text
     assert "今日の復習語: improve / schedule / recommend" not in response.text
+
+
+
+def test_vocabulary_rotates_per_user_without_repeating_until_exhausted(monkeypatch, tmp_path):
+    from agents.english import quiz_state
+    import re
+
+    monkeypatch.setattr(quiz_state, "DB_PATH", str(tmp_path / "word-history.sqlite3"))
+    agent = EnglishLearningAgent()
+    first = agent.handle(_request("単語")).text
+    second = agent.handle(_request("単語")).text
+    words_first = set(re.findall(r"^• ([a-z]+)$", first, re.M))
+    words_second = set(re.findall(r"^• ([a-z]+)$", second, re.M))
+
+    assert len(words_first) == 3
+    assert len(words_second) == 3
+    assert words_first.isdisjoint(words_second)
+    assert "確認済みローカル辞書" in first
