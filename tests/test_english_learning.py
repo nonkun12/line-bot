@@ -215,3 +215,35 @@ def test_vocabulary_rotates_per_user_without_repeating_until_exhausted(monkeypat
     assert len(words_second) == 3
     assert words_first.isdisjoint(words_second)
     assert "確認済みローカル辞書" in first
+
+
+def test_vocabulary_rotation_is_independent_per_user(monkeypatch, tmp_path):
+    import re
+
+    from core.agents import AgentRequest
+    from agents.english import quiz_state
+
+    monkeypatch.setattr(quiz_state, "DB_PATH", str(tmp_path / "user-isolation.sqlite3"))
+    agent = EnglishLearningAgent()
+
+    def words_for(user_id):
+        request = AgentRequest(
+            user_id=user_id,
+            message="単語",
+            channel="test",
+            metadata={},
+        )
+        response = agent.handle(request).text
+        return set(re.findall(r"^• ([a-z]+)$", response, re.M))
+
+    user_a_first = words_for("user-a")
+    user_b_first = words_for("user-b")
+    user_a_second = words_for("user-a")
+    user_b_second = words_for("user-b")
+
+    assert len(user_a_first) == len(user_b_first) == 3
+    assert user_a_first == user_b_first
+    assert len(user_a_second) == len(user_b_second) == 3
+    assert user_a_second.isdisjoint(user_a_first)
+    assert user_b_second.isdisjoint(user_b_first)
+    assert user_a_second == user_b_second
