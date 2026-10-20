@@ -1,0 +1,97 @@
+name: Recovery AI Resume Review Confirmation
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: "Exact task ID awaiting post-resume review"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: distributed-autonomous-loop
+  cancel-in-progress: false
+
+jobs:
+  confirm-resume-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted workflow code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Validate exact task ID
+        env:
+          TASK_ID: ${{ inputs.task_id }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TASK_ID" =~ ^[A-Za-z0-9._-]{1,100}$ ]]; then
+            echo "::error::Invalid task ID; no state was changed."
+            exit 1
+          fi
+
+      - name: Load durable state branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          state_branch="autonomous-loop-state"
+          if ! git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1; then
+            echo "::error::Durable state branch is missing; review confirmation blocked."
+            exit 1
+          fi
+          git fetch --quiet origin "$state_branch"
+          rm -rf /tmp/recovery-review-state
+          git worktree add --detach /tmp/recovery-review-state "origin/$state_branch"
+          if [ ! -s /tmp/recovery-review-state/.autonomous-loop-state.json ]; then
+            echo "::error::Durable state file is missing; review confirmation blocked."
+            exit 1
+          fi
+
+      - name: Confirm and verify review in durable state
+        env:
+          TASK_ID: ${{ inputs.task_id }}
+        run: |
+          set -euo pipefail
+          python scripts/confirm_recovery_resume_review.py \
+            --state-file /tmp/recovery-review-state/.autonomous-loop-state.json \
+            --task-id "$TASK_ID"
+
+      - name: Commit verified state update
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TASK_ID: ${{ inputs.task_id }}
+        run: |
+          set -euo pipefail
+          git -C /tmp/recovery-review-state config user.name "github-actions[bot]"
+          git -C /tmp/recovery-review-state config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C /tmp/recovery-review-state add .autonomous-loop-state.json
+          if git -C /tmp/recovery-review-state diff --cached --quiet; then
+            echo "::error::No durable state change was produced; refusing success."
+            exit 1
+          fi
+          git -C /tmp/recovery-review-state commit -m "chore(recovery): confirm reviewed resume for $TASK_ID"
+          auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          git -C /tmp/recovery-review-state push "$auth_url" HEAD:refs/heads/autonomous-loop-state
+          git fetch --quiet origin autonomous-loop-state
+          git show "origin/autonomous-loop-state:.autonomous-loop-state.json" > /tmp/recovery-review-readback.json
+          python - "$TASK_ID" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          task_id = sys.argv[1]
+          data = json.loads(Path("/tmp/recovery-review-readback.json").read_text(encoding="utf-8"))
+          record = data.get("recovery_ai", {}).get("tasks", {}).get(task_id)
+          if (not isinstance(record, dict) or record.get("held") is not False
+                  or record.get("resume_requires_review") is not False
+                  or not isinstance(record.get("resume_reviewed_at"), str)
+                  or not record["resume_reviewed_at"]):
+              raise SystemExit("durable review confirmation read-back failed")
+          print("Durable Recovery AI resume-review confirmation verified.")
+          PY
