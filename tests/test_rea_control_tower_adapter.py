@@ -199,7 +199,7 @@ def test_execution_boundary_accepts_well_formed_truncated_record():
         "critical_count": 0,
         "blocking_count": 0,
         "findings_truncated": True,
-        "findings": [finding_record.copy() for _ in range(100)],
+        "findings": [{**finding_record, "finding_id": f"{index:016x}"} for index in range(100)],
         "execution_authorized": False,
         "patch_authorized": False,
         "hold_clear_authorized": False,
