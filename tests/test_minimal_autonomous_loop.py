@@ -1176,3 +1176,69 @@ def test_registered_catalog_rejects_boolean_policy_values(monkeypatch, policy):
 
     with pytest.raises(ValueError, match="auto test refill policy is invalid"):
         loop._load_registered_catalog(sha)
+
+
+
+def test_auto_refill_task_passes_catalog_registration_and_control_tower_selection(monkeypatch, tmp_path: Path):
+    from scripts.autonomous_task_proposals import build_proposals
+
+    sha = "e" * 40
+    target = tmp_path / "tests" / "test_auto_target.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("def test_placeholder():\\n    assert True\\n", encoding="utf-8")
+    issues_path = tmp_path / "issues.json"
+    issues_path.write_text("[]", encoding="utf-8")
+    queue_path = tmp_path / "queue.json"
+    queue_path.write_text(
+        json.dumps({"version": 1, "max_tasks_per_run": 4, "tasks": []}),
+        encoding="utf-8",
+    )
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps({
+            "completed": [],
+            "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None},
+        }),
+        encoding="utf-8",
+    )
+    catalog = {
+        "version": 1,
+        "auto_test_refill": {
+            "enabled": True,
+            "max_tasks_per_run": 1,
+            "allowed_roots": ["tests", "uhip/tests"],
+        },
+        "tasks": [],
+    }
+
+    result = build_proposals(
+        issues_path, queue_path, state_path, tmp_path / "proposals.json",
+        enable_auto_refill=True, repo_root=tmp_path,
+    )
+    monkeypatch.setattr(loop, "ROOT", tmp_path)
+    monkeypatch.setattr(loop, "QUEUE", queue_path)
+    monkeypatch.setattr(
+        loop,
+        "_git_checked",
+        lambda *args: (0, json.dumps(catalog))
+        if args == ("show", f"{sha}:.github/autonomous-loop-task-catalog.json")
+        else (1, ""),
+    )
+
+    queued = loop.load_tasks()
+    registered = loop._load_registered_catalog(sha)
+    selected, reason = loop.reselect_registered_task(
+        queued,
+        registered,
+        set(),
+        set(),
+        expected_task_id=queued[0]["id"],
+        evidence_sha=sha,
+        current_head_sha=sha,
+    )
+
+    assert result["auto_queued_count"] == 1
+    assert len(queued) == 1
+    assert selected == queued[0]
+    assert reason == ""
+    assert selected["allowed_paths"] == ["tests/test_auto_target.py"]
