@@ -846,17 +846,17 @@ def test_three_new_refill_seed_plans_are_syntax_safe_and_bounded(tmp_path, monke
     cases = [
         (
             "refill-rejects-nonobject-recovery-task-map",
-            "def test_refill_fails_closed_on_invalid_recovery_ai_schema(tmp_path: Path):\n",
+            "def test_refill_fails_closed_on_invalid_recovery_ai_schema(tmp_path: Path)",
             "test_refill_fails_closed_on_nonobject_recovery_task_map",
         ),
         (
             "refill-rejects-boolean-catalog-addition-cap",
-            "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):\n",
+            "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path)",
             "test_refill_rejects_boolean_catalog_addition_cap",
         ),
         (
             "refill-rejects-non-ascii-task-id",
-            "def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):\n",
+            "def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path)",
             "test_refill_rejects_non_ascii_task_id",
         ),
     ]
@@ -865,7 +865,7 @@ def test_three_new_refill_seed_plans_are_syntax_safe_and_bounded(tmp_path, monke
     monkeypatch.setattr(worker, "ROOT", tmp_path)
 
     for task_id, anchor, expected_name in cases:
-        original = anchor + "    pass\n"
+        original = anchor + "\n    pass\n"
         target.write_text(original, encoding="utf-8")
         plan, err = runtime._deterministic_autonomous_test_plan(chosen, task_id)
 
