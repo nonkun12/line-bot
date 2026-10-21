@@ -27,6 +27,7 @@ VALID_REASON_CODES = frozenset({
     "duplicate_task",
     "invalid_state",
     "policy_blocked",
+    "unregistered_task",
     "test_failure",
     "retry_budget_exhausted",
     "recurring_failure",
