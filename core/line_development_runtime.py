@@ -218,6 +218,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "refill-rejects-malformed-completed-state": "tests/test_autonomous_task_refill.py",
     "refill-rejects-malformed-recovery-task-entry": "tests/test_autonomous_task_refill.py",
     "refill-rejects-non-ascii-task-id": "tests/test_autonomous_task_refill.py",
+    "refill-all-catalog-candidates-ineligible-regression": "tests/test_autonomous_task_refill.py",
     "refill-rejects-boolean-catalog-addition-cap": "tests/test_autonomous_task_refill.py",
     "refill-rejects-nonobject-recovery-task-map": "tests/test_autonomous_task_refill.py",
 }
@@ -1459,6 +1460,14 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "source": "deterministic_autonomous_task",
             "changes": [{"file": chosen, "old": old, "new": new}],
         }, None
+
+    if task_id == "refill-all-catalog-candidates-ineligible-regression" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_reports_catalog_exhaustion_by_durable_state"
+        if f"def {name}(" not in text:
+            return None, "required_regression_test_missing"
+        return {"no_change": True, "source": "deterministic_autonomous_task"}, None
 
     return None, None
 
