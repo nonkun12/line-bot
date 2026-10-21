@@ -42,3 +42,58 @@ def test_rejects_non_allowlisted_paths(tmp_path, path):
 def test_fails_closed_on_missing_recovery_state(tmp_path):
     with pytest.raises(ValueError, match="Recovery AI state"):
         run(tmp_path, [issue()], {"completed": []})
+
+
+def test_explicitly_approved_test_only_issue_enters_bounded_runtime_queue(tmp_path):
+    issues = [issue("approved-task", labels=("autonomous-task-approved",))]
+    ip = write(tmp_path / "issues.json", issues)
+    qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
+    sp = write(tmp_path / "state.json", state())
+    result = build_proposals(ip, qp, sp, tmp_path / "proposals.json")
+
+    queue_after = json.loads(qp.read_text(encoding="utf-8"))
+    assert result["status"] == "QUEUED_APPROVED"
+    assert result["approved_task_ids"] == ["approved-task"]
+    assert result["proposal_count"] == 0
+    assert [task["id"] for task in queue_after["tasks"]] == ["approved-task"]
+    assert queue_after["tasks"][0]["allowed_paths"] == ["tests/test_example.py"]
+
+
+def test_candidate_only_issue_never_enters_executable_queue(tmp_path):
+    ip = write(tmp_path / "issues.json", [issue("candidate-task")])
+    qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
+    sp = write(tmp_path / "state.json", state())
+    result = build_proposals(ip, qp, sp, tmp_path / "proposals.json")
+
+    assert result["status"] == "REVIEW_REQUIRED"
+    assert result["proposal_count"] == 1
+    assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
+
+
+def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):
+    existing = {"id": "already-queued", "instruction": "Existing task", "allowed_paths": ["tests/test_existing.py"]}
+    issues = [issue("approved-one", labels=("autonomous-task-approved",)),
+              issue("approved-two", labels=("autonomous-task-approved",))]
+    ip = write(tmp_path / "issues.json", issues)
+    qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 1, "tasks": [existing]})
+    sp = write(tmp_path / "state.json", state())
+    result = build_proposals(ip, qp, sp, tmp_path / "proposals.json")
+
+    queue_after = json.loads(qp.read_text(encoding="utf-8"))
+    assert result["approved_count"] == 0
+    assert [task["id"] for task in queue_after["tasks"]] == ["already-queued"]
+
+
+def test_approved_task_is_not_requeued_when_completed_or_held(tmp_path):
+    issues = [issue("already-done", labels=("autonomous-task-approved",)),
+              issue("held-task", labels=("autonomous-task-approved",))]
+    ip = write(tmp_path / "issues.json", issues)
+    qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
+    sp = write(tmp_path / "state.json", state(
+        completed=["already-done"],
+        tasks={"held-task": {"held": True}},
+    ))
+    result = build_proposals(ip, qp, sp, tmp_path / "proposals.json")
+
+    assert result["approved_count"] == 0
+    assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
