@@ -130,6 +130,18 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     output = {"version": 1, "max_tasks_per_run": max_tasks, "tasks": final_tasks}
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    catalog_ids_set = {task["id"] for task in normalized_catalog}
+    skipped_catalog_held_ids = sorted(catalog_ids_set.intersection(held_ids))
+    skipped_catalog_review_ids = sorted(catalog_ids_set.intersection(review_required_ids))
+    skipped_catalog_completed_ids = sorted(catalog_ids_set.intersection(completed_ids))
+    skipped_catalog_already_queued_ids = sorted(catalog_ids_set.intersection(original_ids))
+    eligible_catalog_ids = sorted(
+        catalog_ids_set
+        - original_ids
+        - completed_ids
+        - held_ids
+        - review_required_ids
+    )
     return {
         # Keep the original input-count field stable for existing consumers.
         "existing": len(existing),
@@ -137,6 +149,14 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         "skipped_held_ids": skipped_held_ids,
         "skipped_review_ids": skipped_review_ids,
         "skipped_completed_ids": skipped_completed_ids,
+        # Explain catalog exhaustion separately from the legacy queue fields.
+        "skipped_catalog_held_ids": skipped_catalog_held_ids,
+        "skipped_catalog_review_ids": skipped_catalog_review_ids,
+        "skipped_catalog_completed_ids": skipped_catalog_completed_ids,
+        "skipped_catalog_already_queued_ids": skipped_catalog_already_queued_ids,
+        "eligible_catalog_count": len(eligible_catalog_ids),
+        "eligible_catalog_ids": eligible_catalog_ids,
+        "exhaustion_reason": "no_eligible_catalog_tasks" if not eligible_catalog_ids else None,
         "added": len(additions),
         "total": len(final_tasks),
         "added_ids": [t["id"] for t in additions],
