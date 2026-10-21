@@ -60,10 +60,20 @@ def _spec(body: str) -> dict | None:
     return {"id": task_id, "instruction": instruction.strip(), "allowed_paths": paths}
 
 
-def _auto_test_task(repo_root: Path, excluded: set[str]) -> dict | None:
+def _auto_test_task(
+    repo_root: Path,
+    excluded: set[str],
+    blocked_target_prefixes: set[str],
+) -> dict | None:
     """Select one reviewed test target and fingerprint its current contents."""
     root = repo_root.resolve()
     for relative in AUTO_TEST_TARGETS:
+        stem = re.sub(r"[^a-z0-9-]+", "-", Path(relative).stem.lower()).strip("-")
+        task_prefix = f"auto-test-{stem}-"
+        # A changed file fingerprint must not let a new task ID bypass a held
+        # or post-resume-review task for the same target file.
+        if task_prefix in blocked_target_prefixes:
+            continue
         candidate = (root / relative).resolve()
         if not candidate.is_relative_to(root) or not TEST_PATH.fullmatch(relative):
             continue
@@ -72,8 +82,7 @@ def _auto_test_task(repo_root: Path, excluded: set[str]) -> dict | None:
         except OSError:
             continue
         fingerprint = hashlib.sha256(content).hexdigest()
-        stem = re.sub(r"[^a-z0-9-]+", "-", Path(relative).stem.lower()).strip("-")
-        task_id = f"auto-test-{stem}-{fingerprint[:12]}"
+        task_id = f"{task_prefix}{fingerprint[:12]}"
         if task_id in excluded:
             continue
         instruction = (
@@ -119,6 +128,7 @@ def build_proposals(
 
     excluded = {x.get("id") for x in queued if isinstance(x, dict) and isinstance(x.get("id"), str)} | set(completed)
     recovery_tasks = recovery["tasks"]
+    blocked_auto_target_prefixes: set[str] = set()
     for task_id, record in recovery_tasks.items():
         if not isinstance(task_id, str) or not isinstance(record, dict):
             raise ValueError("Recovery AI task record is invalid")
@@ -128,6 +138,11 @@ def build_proposals(
             raise ValueError("Recovery AI task flags are invalid")
         if held or resume_requires_review:
             excluded.add(task_id)
+            for relative in AUTO_TEST_TARGETS:
+                stem = re.sub(r"[^a-z0-9-]+", "-", Path(relative).stem.lower()).strip("-")
+                prefix = f"auto-test-{stem}-"
+                if task_id.startswith(prefix):
+                    blocked_auto_target_prefixes.add(prefix)
 
     proposals = []
     approved_tasks = []
@@ -177,7 +192,11 @@ def build_proposals(
     # At most one test-only task is added, and only from the fixed target list.
     auto_task = None
     if enable_auto_refill and not queued and not approved_tasks and queue_capacity > 0:
-        auto_task = _auto_test_task(repo_root or Path.cwd(), excluded | seen)
+        auto_task = _auto_test_task(
+            repo_root or Path.cwd(),
+            excluded | seen,
+            blocked_auto_target_prefixes,
+        )
         if auto_task is not None:
             approved_tasks.append(auto_task)
 
