@@ -53,55 +53,67 @@ def _spec(body: str) -> dict | None:
     return {"id": task_id, "instruction": instruction.strip(), "allowed_paths": paths}
 
 
+def _auto_test_task_for_path(repo_root: Path, path: Path) -> dict | None:
+    """Build one catalog definition from a real, repository-contained test file."""
+    root = repo_root.resolve()
+    try:
+        candidate = path.resolve()
+        relative = candidate.relative_to(root).as_posix()
+    except (OSError, ValueError):
+        return None
+    if not TEST_PATH.fullmatch(relative):
+        return None
+    path_slug = re.sub(r"[^a-z0-9-]+", "-", relative.lower()).strip("-")
+    task_prefix = f"auto-test-{path_slug}-"
+    try:
+        target_content = candidate.read_bytes()
+    except OSError:
+        return None
+    fingerprint = hashlib.sha256(target_content).hexdigest()
+    task_id = f"{task_prefix}{fingerprint[:12]}"
+    instruction = (
+        f"Review existing tests in {relative} and read related implementation files "
+        "for context, but edit only this one allowed test file. Add exactly one focused, "
+        "non-duplicate regression test for a concrete uncovered edge case. Use dummy or "
+        "temporary data only. If no clear uncovered behavior can be tested without guessing, "
+        "make no change and report NO_CHANGE. Do not change implementation, configuration, "
+        "workflow, dependency, or secret files. No network/external service access, no secrets, "
+        "no OS/UI actions, no merge, and no deploy. Run the narrow test and report its evidence."
+    )
+    return {"id": task_id, "instruction": instruction, "allowed_paths": [relative]}
+
+
+def build_auto_test_catalog(repo_root: Path) -> list[dict]:
+    """Return trusted, deterministic registrations for discovered test files."""
+    root = repo_root.resolve()
+    paths = sorted(
+        [*root.glob("tests/test_*.py"), *root.glob("uhip/tests/test_*.py")],
+        key=lambda path: path.as_posix(),
+    )
+    definitions = []
+    seen_ids = set()
+    for path in paths:
+        task = _auto_test_task_for_path(root, path)
+        if task is None:
+            continue
+        if task["id"] in seen_ids:
+            raise ValueError("duplicate generated auto-test task ID")
+        seen_ids.add(task["id"])
+        definitions.append(task)
+    return definitions
+
+
 def _auto_test_task(
     repo_root: Path,
     excluded: set[str],
     blocked_target_prefixes: set[str],
 ) -> dict | None:
-    """Select one existing test file from the strict test-only path allowlist."""
-    root = repo_root.resolve()
-    candidates = sorted(
-        [*root.glob("tests/test_*.py"), *root.glob("uhip/tests/test_*.py")],
-        key=lambda path: path.as_posix(),
-    )
-    for path in candidates:
-        try:
-            candidate = path.resolve()
-            relative = candidate.relative_to(root).as_posix()
-        except (OSError, ValueError):
+    """Select one discovered test task while preserving completion and HOLD state."""
+    for task in build_auto_test_catalog(repo_root):
+        task_prefix = task["id"].rsplit("-", 1)[0] + "-"
+        if task_prefix in blocked_target_prefixes or task["id"] in excluded:
             continue
-        if not TEST_PATH.fullmatch(relative):
-            continue
-        stem = re.sub(r"[^a-z0-9-]+", "-", candidate.stem.lower()).strip("-")
-        task_prefix = f"auto-test-{stem}-"
-        # A changed fingerprint must not let a new ID bypass a held or
-        # post-resume-review task for the same test target.
-        if task_prefix in blocked_target_prefixes:
-            continue
-        try:
-            target_content = candidate.read_bytes()
-        except OSError:
-            continue
-        fingerprint = hashlib.sha256(target_content).hexdigest()
-        task_id = f"{task_prefix}{fingerprint[:12]}"
-        if task_id in excluded:
-            continue
-        instruction = (
-            f"Review existing tests in {relative} and read related implementation files "
-            "for context, but edit only this one allowed test file. Add exactly one focused, "
-            "non-duplicate regression test for a concrete uncovered edge case. Use dummy or "
-            "temporary data only. If no clear uncovered behavior can be tested without guessing, "
-            "make no change and report NO_CHANGE. Do not change implementation, configuration, "
-            "workflow, dependency, or secret files. No network/external service access, no secrets, "
-            "no OS/UI actions, no merge, and no deploy. Run the narrow test and report its evidence."
-        )
-        return {
-            "id": task_id,
-            "instruction": instruction,
-            "allowed_paths": [relative],
-            "source": "bounded_auto_test_refill",
-            "target_fingerprint": fingerprint,
-        }
+        return task
     return None
 
 
