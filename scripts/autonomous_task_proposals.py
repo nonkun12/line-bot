@@ -77,10 +77,12 @@ def _auto_test_task_for_path(repo_root: Path, path: Path) -> dict | None:
         return None
     instruction = (
         f"Review existing tests in {relative} and read related implementation files "
-        "for context, but edit only this one allowed test file. Add exactly one focused, "
-        "non-duplicate regression test for a concrete uncovered edge case. Use dummy or "
-        "temporary data only. If no clear uncovered behavior can be tested without guessing, "
-        "make no change and report NO_CHANGE. Do not change implementation, configuration, "
+        "for context, but edit only this one allowed test file. Append exactly one focused, "
+        "non-duplicate regression test for a concrete uncovered edge case. Do not edit, delete, "
+        "rename, or reformat any existing line. Do not repair an existing failing test; report "
+        "the failure and return NO_CHANGE instead. Use dummy or temporary data only. If no clear "
+        "uncovered behavior can be tested without guessing, make no change and report NO_CHANGE. "
+        "Do not change implementation, configuration, "
         "workflow, dependency, or secret files. No network/external service access, no secrets, "
         "no OS/UI actions, no merge, and no deploy. Run the narrow test and report its evidence."
     )
@@ -105,6 +107,26 @@ def build_auto_test_catalog(repo_root: Path) -> list[dict]:
         seen_ids.add(task["id"])
         definitions.append(task)
     return definitions
+
+
+def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
+    """Require one additive test function and prohibit edits to existing lines."""
+    if not isinstance(diff_text, str) or not diff_text.strip():
+        return False, "empty_diff"
+    removed_lines = [
+        line for line in diff_text.splitlines()
+        if line.startswith("-") and not line.startswith("---")
+    ]
+    if removed_lines:
+        return False, "existing_lines_modified"
+    added_tests = re.findall(
+        r"^\+\s*(?:async\s+)?def\s+(test_[A-Za-z0-9_]+)\s*\(",
+        diff_text,
+        flags=re.MULTILINE,
+    )
+    if len(added_tests) != 1:
+        return False, "expected_exactly_one_new_test_function"
+    return True, "ok"
 
 
 def _auto_test_task(
