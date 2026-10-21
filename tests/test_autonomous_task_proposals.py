@@ -202,3 +202,24 @@ def test_auto_refill_does_not_bypass_hold_when_target_fingerprint_changes(tmp_pa
     assert result["auto_queued_count"] == 1
     assert len(queued) == 1
     assert queued[0]["allowed_paths"] == ["tests/test_autonomous_task_refill.py"]
+
+
+
+def test_auto_refill_reports_exhaustion_when_only_target_is_held(tmp_path):
+    target = tmp_path / "tests" / "test_autonomous_task_proposals.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("held target\\n", encoding="utf-8")
+    ip = write(tmp_path / "issues.json", [])
+    qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
+    sp = write(tmp_path / "state.json", state(tasks={
+        "auto-test-test-autonomous-task-proposals-deadbeef1234": {"held": True},
+    }))
+
+    result = build_proposals(
+        ip, qp, sp, tmp_path / "proposals.json",
+        enable_auto_refill=True, repo_root=tmp_path,
+    )
+
+    assert result["status"] == "AUTO_REFILL_EXHAUSTED"
+    assert result["reason"] == "no_eligible_test_target"
+    assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
