@@ -1,7 +1,7 @@
-"""Generate review-only task proposals from explicitly trusted issue backlog.
+"""Generate reviewed task proposals and queue only explicitly approved issues.
 
-Proposals never enter the executable queue automatically. An issue must be
-owner-reviewed and approved through the existing reviewed catalog workflow.
+Candidate-only issues remain review-only. An explicit approval label is required
+before a validated test-only task can enter the bounded run-local queue.
 """
 from __future__ import annotations
 
@@ -69,10 +69,14 @@ def build_proposals(issues_path: Path, queue_path: Path, state_path: Path, outpu
     for task_id, record in recovery_tasks.items():
         if not isinstance(task_id, str) or not isinstance(record, dict):
             raise ValueError("Recovery AI task record is invalid")
-        if record.get("held", False) is True or record.get("resume_requires_review", False) is True:
-            excluded.add(task_id)
-        elif type(record.get("held", False)) is not bool or type(record.get("resume_requires_review", False)) is not bool:
+        held = record.get("held", False)
+        resume_requires_review = record.get("resume_requires_review", False)
+        # Validate both flags before interpreting either one; a true flag must
+        # not mask a malformed sibling flag in untrusted durable state.
+        if type(held) is not bool or type(resume_requires_review) is not bool:
             raise ValueError("Recovery AI task flags are invalid")
+        if held or resume_requires_review:
+            excluded.add(task_id)
 
     proposals = []
     approved_tasks = []
