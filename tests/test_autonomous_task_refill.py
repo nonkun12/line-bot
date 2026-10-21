@@ -238,6 +238,31 @@ def test_refill_fails_closed_on_invalid_recovery_ai_schema(tmp_path: Path):
     assert not (tmp_path / "runtime.json").exists()
 
 
+def test_refill_fails_closed_on_malformed_recovery_ai_task_entry(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        candidates=[_task("task-ready-one")],
+    )
+    state = _write(
+        tmp_path / "state.json",
+        {
+            "version": 1,
+            "completed": [],
+            "recovery_ai": {
+                "schema_version": 1,
+                "tasks": {"task-bad": "not-an-object"},
+                "checkpoint": None,
+            },
+        },
+    )
+    output = tmp_path / "runtime.json"
+
+    with pytest.raises(ValueError, match="invalid Recovery AI task state"):
+        build_queue(queue, catalog, state, output)
+
+    assert not output.exists()
+
+
 def test_refill_fails_closed_on_invalid_recovery_ai_held_flag(tmp_path: Path):
     queue, catalog, completed = _inputs(
         tmp_path,
