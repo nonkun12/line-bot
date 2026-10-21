@@ -1045,3 +1045,61 @@ def test_registered_catalog_never_trusts_queue_entries(monkeypatch):
     assert [task["id"] for task in registered] == [reviewed_id]
     assert queue_only_id not in {task["id"] for task in registered}
     assert len(calls) == 1
+
+
+
+def test_registered_catalog_expands_only_reviewed_test_only_refill_policy(monkeypatch, tmp_path: Path):
+    sha = "b" * 40
+    target = tmp_path / "tests" / "test_auto_target.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("def test_placeholder():\\n    assert True\\n", encoding="utf-8")
+    catalog = {
+        "version": 1,
+        "max_additions_per_run": 4,
+        "auto_test_refill": {
+            "enabled": True,
+            "max_tasks_per_run": 1,
+            "allowed_roots": ["tests", "uhip/tests"],
+        },
+        "tasks": [{
+            "id": "reviewed-catalog-task",
+            "instruction": "Use dummy data and change one test only.",
+            "allowed_paths": ["tests/test_example.py"],
+        }],
+    }
+
+    def fake_git_checked(*args):
+        assert args == ("show", f"{sha}:.github/autonomous-loop-task-catalog.json")
+        return 0, json.dumps(catalog)
+
+    monkeypatch.setattr(loop, "ROOT", tmp_path)
+    monkeypatch.setattr(loop, "_git_checked", fake_git_checked)
+    registered = loop._load_registered_catalog(sha)
+
+    from scripts.autonomous_task_proposals import build_auto_test_catalog
+    expected = build_auto_test_catalog(tmp_path)
+    generated = [item for item in registered if item["id"].startswith("auto-test-")]
+    assert generated == expected
+    assert len(generated) == 1
+    assert generated[0]["allowed_paths"] == ["tests/test_auto_target.py"]
+
+
+def test_registered_catalog_rejects_broadened_auto_test_policy(monkeypatch):
+    sha = "c" * 40
+    catalog = {
+        "version": 1,
+        "auto_test_refill": {
+            "enabled": True,
+            "max_tasks_per_run": 4,
+            "allowed_roots": ["."],
+        },
+        "tasks": [],
+    }
+
+    monkeypatch.setattr(
+        loop,
+        "_git_checked",
+        lambda *_args: (0, json.dumps(catalog)),
+    )
+    with pytest.raises(ValueError, match="auto test refill policy is invalid"):
+        loop._load_registered_catalog(sha)
