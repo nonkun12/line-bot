@@ -172,6 +172,12 @@ jobs:
                   or recovery.get('schema_version') != 1
                   or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
               raise SystemExit('durable Recovery AI state is invalid; refusing to run')
+          # Keep the run-local state and Recovery AI snapshot identical, including
+          # first-run defaults when the durable state branch has no file yet.
+          state['recovery_ai'] = recovery
+          Path('/tmp/autonomous-loop-state.json').write_text(
+              json.dumps(state, ensure_ascii=False, sort_keys=True) + '\n', encoding='utf-8'
+          )
           Path('/tmp/recovery-ai-state.json').write_text(
               json.dumps(recovery, ensure_ascii=False, sort_keys=True) + '\n', encoding='utf-8'
           )
@@ -332,6 +338,53 @@ jobs:
             --completed-state /tmp/autonomous-loop-state.json \
             --output /tmp/autonomous-loop-runtime-queue.json
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
+
+      - name: Audit queue and durable state before execution
+        if: success() && env.TRIGGER_MODE == 'normal'
+        run: |
+          set -euo pipefail
+          set +e
+          python -m scripts.audit_autonomous_loop_state \
+            --queue /tmp/autonomous-loop-runtime-queue.json \
+            --state /tmp/autonomous-loop-state.json \
+            --recovery /tmp/recovery-ai-state.json > /tmp/autonomous-loop-audit.json
+          audit_exit=$?
+          set -e
+          python - "$audit_exit" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          try:
+              exit_code = int(sys.argv[1])
+              report = json.loads(Path('/tmp/autonomous-loop-audit.json').read_text(encoding='utf-8'))
+              if not isinstance(report, dict) or not isinstance(report.get('status'), str):
+                  raise ValueError('audit report shape invalid')
+          except Exception as exc:
+              print(f'Queue/state audit evidence invalid: {type(exc).__name__}')
+              raise SystemExit(1)
+
+          status = report['status']
+          if status == 'BLOCKED':
+              # A well-formed all-held queue is handed to the loop runner so it
+              # can emit the standard BLOCKED report. Invalid evidence stops here.
+              if exit_code == 1 and report.get('all_pending_held') is True:
+                  print('Queue/state audit: all pending tasks are held; runner will report BLOCKED.')
+                  raise SystemExit(0)
+              print('::error::Queue/state audit BLOCKED; refusing to execute with invalid evidence.')
+              raise SystemExit(1)
+          if status == 'NOT_RUN':
+              if exit_code != 78:
+                  print('::error::Queue/state audit NOT_RUN exit-code mismatch.')
+                  raise SystemExit(1)
+              print('Queue/state audit: NOT_RUN (empty queue); runner will emit the final status.')
+              raise SystemExit(0)
+          if status in {'OK', 'WARN', 'COMPLETED'} and exit_code == 0:
+              print(f'Queue/state audit: {status}')
+              raise SystemExit(0)
+          print('::error::Queue/state audit status/exit-code contract mismatch.')
+          raise SystemExit(1)
+          PY
 
       - name: Run one bounded autonomous task
         id: run_task
