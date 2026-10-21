@@ -345,7 +345,7 @@ jobs:
             --queue /tmp/autonomous-loop-runtime-queue.json \
             --state /tmp/autonomous-loop-state.json \
             --output /tmp/autonomous-loop-task-proposals.json
-          echo "Task proposals are review-only; they are never added to the executable queue automatically."
+          echo "Candidate-only proposals are review-only; explicitly approved issues may enter the bounded run-local queue after validation."
           cat /tmp/autonomous-loop-task-proposals.json >> "$GITHUB_STEP_SUMMARY"
           echo "TASK_PROPOSALS_PATH=/tmp/autonomous-loop-task-proposals.json" >> "$GITHUB_ENV"
 
