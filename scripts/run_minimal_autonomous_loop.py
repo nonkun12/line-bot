@@ -228,11 +228,10 @@ def recovery_record_blocks_task(record: dict) -> bool:
 
 def load_held_task_ids(recovery_store: object) -> set[str]:
     """Read every durable Recovery AI hold, including tasks absent from the queue."""
-    read_state = getattr(recovery_store, "_read", None)
-    if not callable(read_state):
+    read_statuses = getattr(recovery_store, "all_task_statuses", None)
+    if not callable(read_statuses):
         raise ValueError("Recovery AI state reader is unavailable")
-    recovery_data = read_state()
-    recovery_tasks = recovery_data.get("tasks") if isinstance(recovery_data, dict) else None
+    recovery_tasks = read_statuses()
     if not isinstance(recovery_tasks, dict):
         raise ValueError("recovery task state is invalid")
     held_ids: set[str] = set()
