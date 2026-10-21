@@ -210,6 +210,21 @@ def test_refill_fails_closed_when_recovery_ai_state_is_missing(tmp_path: Path):
     assert not (tmp_path / "runtime.json").exists()
 
 
+@pytest.mark.parametrize("schema_version", [True, 1.0, "1", 2])
+def test_refill_fails_closed_on_non_integer_or_unsupported_recovery_ai_schema(tmp_path: Path, schema_version):
+    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready-one")])
+    state = _write(
+        tmp_path / "state.json",
+        {"version": 1, "completed": [], "recovery_ai": {"schema_version": schema_version, "tasks": {}, "checkpoint": None}},
+    )
+    output = tmp_path / "runtime.json"
+
+    with pytest.raises(ValueError, match="Recovery AI state is invalid"):
+        build_queue(queue, catalog, state, output)
+
+    assert not output.exists()
+
+
 def test_refill_fails_closed_on_invalid_recovery_ai_schema(tmp_path: Path):
     queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready-one")])
     state = _write(
