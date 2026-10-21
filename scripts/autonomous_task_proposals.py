@@ -63,7 +63,9 @@ def _auto_test_task_for_path(repo_root: Path, path: Path) -> dict | None:
         return None
     if not TEST_PATH.fullmatch(relative):
         return None
-    path_slug = re.sub(r"[^a-z0-9-]+", "-", relative.lower()).strip("-")
+    path_slug = re.sub(
+        r"[^a-z0-9-]+", "-", Path(relative).with_suffix("").as_posix().lower()
+    ).strip("-")
     task_prefix = f"auto-test-{path_slug}-"
     try:
         target_content = candidate.read_bytes()
