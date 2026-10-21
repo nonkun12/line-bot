@@ -28,6 +28,8 @@ def is_english_learning_intent(text: str) -> bool:
     lowered = (text or "").strip().lower()
     if re.fullmatch(r"(?:answer\s*)?[abc](?:[.\)\s]+)?", lowered):
         return True
+    if re.fullmatch(r"(?:コアイメージ|語根|語幹|core\s*image|word\s*root)\s*[:：]?\s+[a-z][a-z\'-]{0,63}\s*[?？。！!]*|[a-z][a-z\'-]{0,63}\s+(?:コアイメージ|語根|語幹|core\s*image|word\s*root)\s*[:：]?[?？。！!]*", lowered, re.IGNORECASE):
+        return True
     return any(
         k in lowered
         for k in (

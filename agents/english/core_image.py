@@ -389,6 +389,15 @@ _ENTRIES: dict[str, WordEntry] = {
     "volatile": WordEntry(word="volatile", pronunciation="ヴォラタイル", core_image="状態がすぐ変わりやすい → 不安定な・変動の激しい", parts="volatile market / situation は「変動の激しい市場／不安定な状況」。化学では揮発性の意味もある。", related=("volatility（変動性）", "volatilely（不安定に）", "unstable（不安定な）"), example="Investors are cautious in a volatile market.（投資家は変動の激しい市場では慎重になる。）"),
     "erratic": WordEntry(word="erratic", pronunciation="イラティック", core_image="一定の筋道や規則がない → 不規則な・予測しにくい", parts="erratic behavior / performance は「不規則な行動／むらのある成績」。", related=("erratically（不規則に）", "irregular（不規則な）", "unpredictable（予測できない）"), example="The machine's erratic performance delayed the project.（機械の不安定な動作で計画が遅れた。）"),
     "impartiality": WordEntry(word="impartiality", pronunciation="インパーシャリティ", core_image="一方に偏らない性質 → 公平性・中立性", parts="impartiality of the process は「手続きの公平性」。", related=("impartial（公平な）", "neutrality（中立性）", "fairness（公平さ）"), example="The judge's impartiality was widely respected.（その裁判官の公平性は広く尊重されていた。）"),
+    "interesting": WordEntry(
+        word="interesting",
+        pronunciation="インタレスティング",
+        core_image="心や注意を引きつける → 興味深い・関心を引く",
+        parts="interest（興味・関心）に -ing が付いた形。ここでは現代英語の意味と使い方を中心に説明します。",
+        related=("interest（興味・関心）", "interested（興味を持っている）", "interesting（興味を引く）"),
+        example="This book is interesting.（この本は興味深い。）",
+        note="interesting は、物事が興味を引き起こす側。人が興味を感じている状態は interested を使います。",
+    ),
 }
 
 _COMMAND_RE = re.compile(
