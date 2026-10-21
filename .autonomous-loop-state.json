@@ -29,7 +29,8 @@
     "control-tower-run-identity-invalid-sha-regression-v2",
     "distributed-loop-queue-progress-empty-queue-regression-v2",
     "english-core-image-unknown-word-safe-fallback",
-    "self-improvement-history-malformed-jsonl-regression"
+    "self-improvement-history-malformed-jsonl-regression",
+    "refill-rejects-malformed-completed-state"
   ],
   "recovery_ai": {
     "checkpoint": null,
