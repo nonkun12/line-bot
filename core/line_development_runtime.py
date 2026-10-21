@@ -215,6 +215,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "distributed-loop-queue-progress-empty-queue-regression-v2": "tests/test_distributed_loop_queue_progress.py",
     "loop-deterministic-nochange-focused-test": "tests/test_line_development_worker_v2.py",
     "self-improvement-history-malformed-jsonl-regression": "tests/test_self_improvement_state.py",
+    "refill-rejects-malformed-completed-state": "tests/test_autonomous_task_refill.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -258,6 +259,41 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
     if expected_target is not None and chosen != expected_target:
         return None, "deterministic_target_mismatch"
+
+    if task_id == "refill-rejects-malformed-completed-state" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_fails_closed_on_non_string_completed_state"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_refill_fails_closed_when_recovery_ai_state_is_missing(tmp_path: Path):\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            "def test_refill_fails_closed_on_non_string_completed_state(tmp_path: Path):",
+            "    queue, catalog, completed = _inputs(tmp_path, candidates=[_task(\\"task-ready-one\\")])",
+            "    state = _write(tmp_path / \\"state.json\\", {\\"version\\": 1, \\"completed\\": [\\"task-done\\", 7], \\"recovery_ai\\": {\\"schema_version\\": 1, \\"tasks\\": {}, \\"checkpoint\\": None}})",
+            "    output = tmp_path / \\"runtime.json\\"",
+            "    with pytest.raises(ValueError, match=\\"completed state must be a string list\\"):",
+            "        build_queue(queue, catalog, state, output)",
+            "    assert not output.exists()",
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
 
     if task_id == "self-improvement-history-malformed-jsonl-regression" and chosen == "tests/test_self_improvement_state.py":
         target = worker.ROOT / chosen
