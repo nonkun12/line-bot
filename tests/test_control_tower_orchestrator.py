@@ -71,8 +71,8 @@ def test_rea_high_or_critical_blocking_count_is_rejected():
     assert decision["reason_code"] == "rea_evidence_missing_or_invalid"
 
 
-def test_task_identity_rejects_path_separators_and_whitespace():
-    for task_id in ("../task-a", "task a"):
+def test_task_identity_rejects_path_separators_whitespace_and_non_ascii():
+    for task_id in ("../task-a", "task a", "タスク-a", "ｔａｓｋ-a"):
         result = verified_success()
         result["task_id"] = task_id
         decision = coordinate_outcome(result)
