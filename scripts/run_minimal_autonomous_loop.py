@@ -31,6 +31,7 @@ ACTIVE_PROCESS: subprocess.Popen[str] | None = None
 EXIT_NOT_RUN = 78
 NOT_RUN_REASON_QUEUE_EMPTY = "queue_empty"
 VALID_RUNTIME_STATUSES = frozenset({"PASS", "NO_CHANGE"})
+AUTO_TASK_ID_RE = re.compile(r"^(auto-test-[a-z0-9-]+)-([0-9a-f]{12})$")
 
 def classify_final_outcome(
     task_statuses: list[str],
@@ -348,11 +349,28 @@ def reselect_registered_task(
     """Revalidate one task against a fresh queue, catalog, state, and HEAD."""
     from core.control_tower_selector import select_next_task
 
+    # A changed file fingerprint creates a new auto-test ID. Preserve HOLD
+    # across that ID change by treating every current fingerprint for the same
+    # test target as held whenever an earlier fingerprint is held/review-required.
+    effective_held_ids = set(held_task_ids)
+    held_auto_prefixes = {
+        match.group(1)
+        for task_id in held_task_ids
+        if isinstance(task_id, str)
+        for match in [AUTO_TASK_ID_RE.fullmatch(task_id)]
+        if match is not None
+    }
+    for task in queued_tasks:
+        task_id = str(task.get("id", "")) if isinstance(task, dict) else ""
+        match = AUTO_TASK_ID_RE.fullmatch(task_id)
+        if match is not None and match.group(1) in held_auto_prefixes:
+            effective_held_ids.add(task_id)
+
     decision = select_next_task(
         [str(task.get("id", "")) for task in queued_tasks],
         [str(task.get("id", "")) for task in registered_catalog],
         completed_task_ids,
-        held_task_ids,
+        effective_held_ids,
         evidence_sha=evidence_sha,
         current_head_sha=current_head_sha,
     )
