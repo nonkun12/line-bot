@@ -94,3 +94,56 @@ def test_safe_environment_excludes_provider_secrets(monkeypatch):
     env = advisor._safe_environment()
     assert "GROQ_API_KEY" not in env
     assert env["HERMES_HOME"] == "/tmp/hermes-home"
+
+
+
+def test_hermes_advisor_disabled_records_status_and_keeps_instruction(monkeypatch, tmp_path):
+    from scripts import run_guarded_runtime as guarded_runtime
+
+    monkeypatch.delenv("HERMES_ADVISOR_ENABLED", raising=False)
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+    history_path = tmp_path / "history.jsonl"
+
+    result = guarded_runtime._augment_with_hermes_advice("original task", history_path)
+
+    assert result == "original task"
+    assert __import__("os").environ["HERMES_ADVISOR_INVOKED"] == "false"
+    assert __import__("os").environ["HERMES_ADVISOR_USED"] == "false"
+    assert __import__("os").environ["HERMES_ADVISOR_REASON"] == "disabled"
+    assert __import__("os").environ["HERMES_ADVISORY_EXCERPT"] == ""
+
+
+def test_hermes_advisor_enabled_records_success_without_exposing_advice(monkeypatch, tmp_path):
+    from scripts import run_guarded_runtime as guarded_runtime
+
+    monkeypatch.setenv("HERMES_ADVISOR_ENABLED", "true")
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+    monkeypatch.setattr(guarded_runtime.SelfImprovementHistory, "load", lambda self: [])
+    monkeypatch.setattr(guarded_runtime, "run_hermes_advisor", lambda prompt: "review-only suggestion")
+    history_path = tmp_path / "history.jsonl"
+
+    result = guarded_runtime._augment_with_hermes_advice("original task", history_path)
+
+    assert "UNTRUSTED HERMES ADVISORY:" in result
+    assert "review-only suggestion" in result
+    assert __import__("os").environ["HERMES_ADVISOR_INVOKED"] == "true"
+    assert __import__("os").environ["HERMES_ADVISOR_USED"] == "true"
+    assert __import__("os").environ["HERMES_ADVISOR_REASON"] == "advice_appended_to_development_instruction"
+    assert __import__("os").environ["HERMES_ADVISORY_EXCERPT"] == ""
+
+
+def test_hermes_advisor_enabled_but_unavailable_records_not_used(monkeypatch, tmp_path):
+    from scripts import run_guarded_runtime as guarded_runtime
+
+    monkeypatch.setenv("HERMES_ADVISOR_ENABLED", "true")
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+    monkeypatch.setattr(guarded_runtime.SelfImprovementHistory, "load", lambda self: [])
+    monkeypatch.setattr(guarded_runtime, "run_hermes_advisor", lambda prompt: None)
+    history_path = tmp_path / "history.jsonl"
+
+    result = guarded_runtime._augment_with_hermes_advice("original task", history_path)
+
+    assert result == "original task"
+    assert __import__("os").environ["HERMES_ADVISOR_INVOKED"] == "true"
+    assert __import__("os").environ["HERMES_ADVISOR_USED"] == "false"
+    assert __import__("os").environ["HERMES_ADVISOR_REASON"] == "no_advice_returned"
