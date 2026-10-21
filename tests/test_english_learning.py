@@ -280,6 +280,16 @@ def test_interesting_core_image_command_returns_english_explanation():
     assert "ブランド" not in response
 
 
+def test_unknown_core_image_word_fails_closed_without_guessing():
+    from agents.english.core_image import handle_core_image_command
+
+    response = handle_core_image_command("florpt コアイメージ")
+    assert response is not None
+    assert "無料ローカル辞書に確かな解説がありません" in response
+    assert "語源や語根を推測で断定しない" in response
+    assert "ブランド" not in response
+
+
 def test_core_image_command_is_classified_as_english_learning_intent():
     assert is_english_learning_intent("interesting コアイメージ")
     assert is_english_learning_intent("コアイメージ interesting")

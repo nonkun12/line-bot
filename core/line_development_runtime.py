@@ -212,6 +212,9 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "control-tower-recovery-evidence-identity-mismatch": "tests/test_control_tower_orchestrator.py",
     "control-tower-run-identity-invalid-sha-regression": "tests/test_control_tower_orchestrator.py",
     "control-tower-run-identity-invalid-sha-regression-v2": "tests/test_control_tower_orchestrator.py",
+    "english-core-image-rotation-user-isolation": "tests/test_english_learning.py",
+    "english-core-image-rotation-user-isolation-v2": "tests/test_english_learning.py",
+    "english-core-image-unknown-word-safe-fallback": "tests/test_english_learning.py",
     "recovery-ai-state-isolation": "tests/test_recovery_ai.py",
     "ai-speaker-empty-transcript-no-brain-call": "tests/test_ai_speaker.py",
     "distributed-loop-queue-progress-empty-queue-regression": "tests/test_distributed_loop_queue_progress.py",
@@ -280,6 +283,49 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         if f"def {required_test}(" not in text:
             return None, f"required_regression_test_missing:{required_test}"
         return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+    english_core_image_regressions = {
+        "english-core-image-rotation-user-isolation": "test_vocabulary_rotation_is_independent_per_user",
+        "english-core-image-rotation-user-isolation-v2": "test_vocabulary_rotation_is_independent_per_user",
+        "english-core-image-unknown-word-safe-fallback": "test_unknown_core_image_word_fails_closed_without_guessing",
+    }
+    if task_id in english_core_image_regressions and chosen == "tests/test_english_learning.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        required_test = english_core_image_regressions[task_id]
+        if f"def {required_test}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        if task_id != "english-core-image-unknown-word-safe-fallback":
+            return None, f"required_regression_test_missing:{required_test}"
+        anchor = "def test_core_image_command_is_classified_as_english_learning_intent():"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            "def test_unknown_core_image_word_fails_closed_without_guessing():",
+            "    from agents.english.core_image import handle_core_image_command",
+            "",
+            '    response = handle_core_image_command("florpt コアイメージ")',
+            '    assert response is not None',
+            '    assert "無料ローカル辞書に確かな解説がありません" in response',
+            '    assert "語源や語根を推測で断定しない" in response',
+            '    assert "ブランド" not in response',
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
 
     if task_id == "refill-rejects-malformed-completed-state" and chosen == "tests/test_autonomous_task_refill.py":
         target = worker.ROOT / chosen
