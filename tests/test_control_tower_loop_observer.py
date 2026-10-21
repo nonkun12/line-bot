@@ -45,6 +45,40 @@ def test_observer_records_failed_loop_without_raw_error(tmp_path: Path) -> None:
     assert all("raw exception" not in signal["detail"] for signal in record["signals"])
 
 
+
+def test_boolean_exit_code_cannot_be_misclassified_as_success(tmp_path: Path) -> None:
+    history = tmp_path / "observations.jsonl"
+
+    record_loop_observation(history, outcome("PASS", False))
+    record = json.loads(history.read_text(encoding="utf-8").splitlines()[-1])
+
+    assert record["status"] == "PASS"
+    assert record["exit_code"] is None
+    assert record["observation_count"] > 0
+
+
+
+def test_malformed_status_type_fails_closed_without_crashing(tmp_path: Path) -> None:
+    history = tmp_path / "observations.jsonl"
+
+    record_loop_observation(history, {**outcome(), "status": ["PASS"]})
+    record = json.loads(history.read_text(encoding="utf-8").splitlines()[-1])
+
+    assert record["exit_code"] == 0
+    assert record["observation_count"] > 0
+
+def test_invalid_sha_evidence_is_not_persisted_as_a_valid_fingerprint(tmp_path: Path) -> None:
+    history = tmp_path / "observations.jsonl"
+
+    record_loop_observation(
+        history,
+        {**outcome(), "base_sha": "not-a-sha", "produced_sha": "g" * 40},
+    )
+    record = json.loads(history.read_text(encoding="utf-8").splitlines()[-1])
+
+    assert record["base_sha"] is None
+    assert record["produced_sha"] is None
+
 def test_malformed_history_fails_closed_and_preserves_original(tmp_path: Path) -> None:
     history = tmp_path / "observations.jsonl"
     history.write_text("{not-json}\n", encoding="utf-8")

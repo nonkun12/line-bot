@@ -18,6 +18,7 @@ from core.control_tower import ControlTower, task_hash
 
 _MAX_HISTORY = 200
 _SAFE_ID = re.compile(r"[^a-zA-Z0-9._-]")
+_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
 def _safe_text(value: object, limit: int = 120) -> str:
@@ -32,8 +33,16 @@ def record_loop_observation(
 ) -> dict[str, Any]:
     """Append one sanitized observation, retaining at most 200 records."""
     task_id = _SAFE_ID.sub("_", _safe_text(outcome.get("task_id"), 128))
-    status = _safe_text(outcome.get("status"), 24).upper()
-    successful = status in {"PASS", "NO_CHANGE"} and outcome.get("exit_code") == 0
+    raw_status = outcome.get("status")
+    status = _safe_text(raw_status, 24).upper()
+    raw_exit_code = outcome.get("exit_code")
+    # bool is an int subclass in Python; never accept False as exit code 0.
+    exit_code = raw_exit_code if type(raw_exit_code) is int else None
+    successful = isinstance(raw_status, str) and raw_status in {"PASS", "NO_CHANGE"} and exit_code == 0
+    raw_base_sha = outcome.get("base_sha")
+    raw_produced_sha = outcome.get("produced_sha")
+    base_sha = raw_base_sha.lower() if isinstance(raw_base_sha, str) and _SHA_RE.fullmatch(raw_base_sha) else None
+    produced_sha = raw_produced_sha.lower() if isinstance(raw_produced_sha, str) and _SHA_RE.fullmatch(raw_produced_sha) else None
     report = RuntimeReport(
         completed=(),
         failed_task_id=None if successful else (task_id or "unknown_task"),
@@ -50,9 +59,9 @@ def record_loop_observation(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "task_id": task_id,
         "status": status,
-        "exit_code": outcome.get("exit_code"),
-        "base_sha": _safe_text(outcome.get("base_sha"), 40),
-        "produced_sha": _safe_text(outcome.get("produced_sha"), 40),
+        "exit_code": exit_code,
+        "base_sha": base_sha,
+        "produced_sha": produced_sha,
         "observation_count": len(decision.signals),
         "signals": [
             {
