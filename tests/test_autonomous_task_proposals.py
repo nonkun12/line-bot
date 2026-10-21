@@ -109,7 +109,7 @@ def test_approved_task_is_not_requeued_when_completed_or_held(tmp_path):
 
 
 
-def test_auto_refill_queues_one_test_only_task_when_queue_is_empty(tmp_path):
+def test_auto_refill_queues_one_test_only_task_when_queue_is_empty(tmp_path, monkeypatch):
     from hashlib import sha256
 
     target = tmp_path / "tests" / "test_autonomous_task_proposals.py"
@@ -133,6 +133,14 @@ def test_auto_refill_queues_one_test_only_task_when_queue_is_empty(tmp_path):
     assert queued[0]["id"].endswith(expected_fingerprint)
     assert queued[0]["allowed_paths"] == ["tests/test_autonomous_task_proposals.py"]
     assert "NO_CHANGE" in queued[0]["instruction"]
+
+    # Verify the generated task can be consumed by the real loop queue loader.
+    from scripts import run_minimal_autonomous_loop as loop_runner
+    monkeypatch.setattr(loop_runner, "QUEUE", qp)
+    loaded = loop_runner.load_tasks()
+    assert len(loaded) == 1
+    assert loaded[0]["id"] == queued[0]["id"]
+    assert loaded[0]["allowed_paths"] == ["tests/test_autonomous_task_proposals.py"]
 
 
 def test_auto_refill_skips_completed_fingerprint_and_selects_next_fixed_target(tmp_path):
