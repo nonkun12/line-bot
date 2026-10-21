@@ -382,3 +382,45 @@ def test_refill_drops_completed_existing_entries_and_refills_with_new_work(tmp_p
     assert report["retained_existing"] == 0
     assert report["added_ids"] == ["task-next"]
     assert [task["id"] for task in result["tasks"]] == ["task-next"]
+
+
+def test_refill_reports_catalog_exhaustion_by_durable_state(tmp_path: Path):
+    queue, catalog, _ = _inputs(
+        tmp_path,
+        existing=[_task("task-done")],
+        candidates=[
+            _task("task-done"),
+            _task("task-held"),
+            _task("task-review"),
+        ],
+    )
+    state = _write(
+        tmp_path / "state.json",
+        {
+            "version": 1,
+            "completed": ["task-done"],
+            "recovery_ai": {
+                "schema_version": 1,
+                "tasks": {
+                    "task-held": {"held": True},
+                    "task-review": {"resume_requires_review": True},
+                },
+                "checkpoint": None,
+            },
+        },
+    )
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, state, output)
+
+    assert report["added"] == 0
+    assert report["total"] == 0
+    assert report["eligible_catalog_count"] == 0
+    assert report["eligible_catalog_ids"] == []
+    assert report["exhaustion_reason"] == "no_eligible_catalog_tasks"
+    assert report["skipped_catalog_completed_ids"] == ["task-done"]
+    assert report["skipped_catalog_held_ids"] == ["task-held"]
+    assert report["skipped_catalog_review_ids"] == ["task-review"]
+    assert report["skipped_catalog_already_queued_ids"] == ["task-done"]
+    assert json.loads(output.read_text(encoding="utf-8"))["tasks"] == []
+
