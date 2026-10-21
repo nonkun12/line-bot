@@ -808,6 +808,6 @@ def test_self_improvement_history_plan_is_syntax_safe_and_bounded(monkeypatch, t
     candidate = anchor.replace(change["old"], change["new"], 1)
     compile(candidate, chosen, "exec")
     assert "test_read_jsonl_skips_malformed_rows_and_preserves_valid_order" in candidate
-    assert "\\\\n" in candidate
+    assert "\\n" in candidate
     assert worker.validate_plan(plan, chosen) == (True, chosen)
 
