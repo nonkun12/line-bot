@@ -306,6 +306,32 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
             if previous is not None and previous != normalized:
                 raise ValueError("conflicting versioned task definitions")
             definitions[task_id] = normalized
+
+    # Dynamic tasks are executable only when the reviewed versioned catalog
+    # explicitly enables the narrow test-only refill policy. The helper builds
+    # the exact same IDs, instructions, and one-file allowlists as the queue
+    # producer; queue contents alone never register a task.
+    auto_policy = payload.get("auto_test_refill") if isinstance(payload, dict) else None
+    if auto_policy is not None:
+        expected_policy = {
+            "enabled": True,
+            "max_tasks_per_run": 1,
+            "allowed_roots": ["tests", "uhip/tests"],
+        }
+        if auto_policy != expected_policy:
+            raise ValueError("auto test refill policy is invalid")
+        from scripts.autonomous_task_proposals import build_auto_test_catalog
+
+        for entry in build_auto_test_catalog(ROOT):
+            normalized = {
+                "id": entry["id"],
+                "instruction": entry["instruction"],
+                "allowed_paths": list(entry["allowed_paths"]),
+            }
+            previous = definitions.get(normalized["id"])
+            if previous is not None and previous != normalized:
+                raise ValueError("conflicting versioned task definitions")
+            definitions[normalized["id"]] = normalized
     return list(definitions.values())
 
 
