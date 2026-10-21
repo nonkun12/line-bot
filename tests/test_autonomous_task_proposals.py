@@ -231,3 +231,48 @@ def test_auto_refill_reports_exhaustion_when_only_target_is_held(tmp_path):
     assert result["status"] == "AUTO_REFILL_EXHAUSTED"
     assert result["reason"] == "no_eligible_test_target"
     assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
+
+
+
+def test_auto_test_diff_accepts_one_additive_regression_test():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -20,0 +21,3 @@
++def test_new_regression_case():
++    value = parse_value("safe")
++    assert value == "safe"
+"""
+    assert validate_auto_test_diff(diff) == (True, "ok")
+
+
+def test_auto_test_diff_rejects_changes_to_existing_test_lines():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -20,2 +20,2 @@
+-def test_existing_behavior():
+-    assert False
++def test_existing_behavior():
++    assert True
+"""
+    assert validate_auto_test_diff(diff) == (False, "existing_lines_modified")
+
+
+def test_auto_test_diff_rejects_zero_or_multiple_new_test_functions():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    assert validate_auto_test_diff("+value = 1\\n+assert value == 1\\n") == (
+        False, "expected_exactly_one_new_test_function"
+    )
+    diff = """+++ b/tests/test_example.py
++def test_one():
++    assert True
++def test_two():
++    assert True
+"""
+    assert validate_auto_test_diff(diff) == (
+        False, "expected_exactly_one_new_test_function"
+    )
