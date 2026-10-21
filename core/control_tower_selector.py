@@ -1,73 +1,95 @@
-"""Deterministic, fail-closed next-task selection for the Control Tower.
+"""Deterministic, fail-closed selector for registered autonomous-loop tasks.
 
-This module only returns a decision record. It never executes a task, mutates
-queues/state, approves model output, or grants merge/deploy rights.
+This selector emits a non-authoritative decision record only. It does not
+execute tasks, clear Recovery AI holds, mutate repositories, or authorize
+publishing. Callers must re-read state and verify HEAD before launch.
 """
 from __future__ import annotations
 
-import re
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection
 
-from core.control_tower_decision import ControlTowerDecisionRecord
+from .control_tower_decision import ControlTowerDecisionRecord
 
-_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
-_TASK_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
+
+def _decision(
+    reason: str,
+    *,
+    action: str = "HOLD",
+    gate: str = "BLOCKED",
+) -> ControlTowerDecisionRecord:
+    return ControlTowerDecisionRecord(
+        reason_code=reason,
+        confidence=1.0 if reason == "queue_empty" else 0.0,
+        priority=0,
+        next_action=action,
+        gate_status=gate,
+    )
+
+
+def _valid_ids(value: object) -> bool:
+    return isinstance(value, (list, tuple)) and all(
+        isinstance(item, str) and bool(item.strip()) and item == item.strip()
+        for item in value
+    )
 
 
 def select_next_task(
-    queued_task_ids: Sequence[str],
-    registered_task_ids: Collection[str],
+    queued_task_ids: list[str],
+    registered_task_ids: list[str],
     completed_task_ids: Collection[str],
     held_task_ids: Collection[str],
     *,
     evidence_sha: str,
     current_head_sha: str,
 ) -> ControlTowerDecisionRecord:
-    """Select the first eligible registered queue item, or fail closed.
+    """Choose the first registered queued task that is neither completed nor held.
 
-    Queue order is preserved. Every ID in every supplied state collection must
-    use the canonical task-ID format. Every queued ID must be registered,
-    including IDs already marked completed or held. Evidence must match HEAD.
+    Malformed state, duplicate queue entries, stale evidence, or ambiguous
+    collection types result in HOLD/BLOCKED. An empty queue is explicitly
+    NOT_RUN, never PASS. Unknown queued IDs are never selected.
     """
-    if not isinstance(queued_task_ids, Sequence) or isinstance(queued_task_ids, (str, bytes)):
-        return _blocked("invalid_state")
-    if not _valid_collection(registered_task_ids) or not _valid_collection(completed_task_ids) or not _valid_collection(held_task_ids):
-        return _blocked("invalid_state")
-    if any(not _valid_task_id(item) for item in queued_task_ids):
-        return _blocked("invalid_state")
-    if len(set(queued_task_ids)) != len(queued_task_ids):
-        return _blocked("duplicate_task")
     if (
-        not isinstance(evidence_sha, str)
+        not _valid_ids(queued_task_ids)
+        or not _valid_ids(registered_task_ids)
+        or not isinstance(completed_task_ids, Collection)
+        or isinstance(completed_task_ids, (str, bytes))
+        or not isinstance(held_task_ids, Collection)
+        or isinstance(held_task_ids, (str, bytes))
+        or not all(isinstance(item, str) and item and item == item.strip() for item in completed_task_ids)
+        or not all(isinstance(item, str) and item and item == item.strip() for item in held_task_ids)
+        or not isinstance(evidence_sha, str)
         or not isinstance(current_head_sha, str)
-        or not _SHA_RE.fullmatch(evidence_sha)
-        or not _SHA_RE.fullmatch(current_head_sha)
+        or len(evidence_sha) != 40
+        or len(current_head_sha) != 40
+        or any(ch not in "0123456789abcdef" for ch in evidence_sha)
+        or any(ch not in "0123456789abcdef" for ch in current_head_sha)
     ):
-        return _blocked("invalid_state")
+        return _decision("invalid_state")
+
     if evidence_sha != current_head_sha:
-        return _blocked("policy_blocked")
+        return _decision("policy_blocked")
+
     if not queued_task_ids:
-        return ControlTowerDecisionRecord(
-            reason_code="queue_empty",
-            confidence=1.0,
-            priority=0,
-            next_action="NOT_RUN",
-            gate_status="NOT_RUN",
-            evidence_sha=evidence_sha,
-        )
+        return _decision("queue_empty", action="NOT_RUN", gate="NOT_RUN")
+
+    if len(set(queued_task_ids)) != len(queued_task_ids):
+        return _decision("duplicate_task")
 
     registered = set(registered_task_ids)
     completed = set(completed_task_ids)
     held = set(held_task_ids)
-    # Validate the whole queue before selecting anything. Completed/held status
-    # must never be used to excuse a queue entry absent from the registry.
-    if any(task_id not in registered for task_id in queued_task_ids):
-        # Keep the fail-closed behavior, but distinguish registry drift from a
-        # stale/mismatched HEAD so Recovery AI can route the right repair.
-        return _blocked("unregistered_task")
 
-    for task_id in queued_task_ids:
-        if task_id in held or task_id in completed:
+    # A completed ID reappearing in the queue is stale/duplicate state. Stop
+    # instead of silently trusting mutable queue state.
+    if any(task_id in completed for task_id in queued_task_ids):
+        return _decision("duplicate_task")
+
+    registered_in_queue = [task_id for task_id in queued_task_ids if task_id in registered]
+    if not registered_in_queue:
+        return _decision("unregistered_task")
+
+    for task_id in registered_in_queue:
+        if task_id in held:
             continue
         return ControlTowerDecisionRecord(
             reason_code="evidence_sufficient",
@@ -79,39 +101,7 @@ def select_next_task(
             task_template_id=task_id,
         )
 
-    remaining = [task_id for task_id in queued_task_ids if task_id not in completed]
-    if remaining and all(task_id in held for task_id in remaining):
-        return _blocked("task_held")
-    return ControlTowerDecisionRecord(
-        reason_code="no_eligible_task",
-        confidence=1.0,
-        priority=0,
-        next_action="NOT_RUN",
-        gate_status="NOT_RUN",
-        evidence_sha=evidence_sha,
-    )
-
-
-def _valid_task_id(value: object) -> bool:
-    return isinstance(value, str) and _TASK_ID_RE.fullmatch(value) is not None
-
-
-def _valid_collection(value: object) -> bool:
-    return (
-        isinstance(value, Collection)
-        and not isinstance(value, (str, bytes, Mapping))
-        and all(_valid_task_id(item) for item in value)
-    )
-
-
-def _blocked(reason: str) -> ControlTowerDecisionRecord:
-    return ControlTowerDecisionRecord(
-        reason_code=reason,
-        confidence=0.0,
-        priority=0,
-        next_action="HOLD",
-        gate_status="BLOCKED",
-    )
+    return _decision("task_held")
 
 
 __all__ = ["select_next_task"]
