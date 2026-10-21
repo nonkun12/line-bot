@@ -268,21 +268,24 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         anchor = "def test_sanitizer_discards_raw_error_text_and_unknown_fields():\n"
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
-        addition = (
-            "def test_read_jsonl_skips_malformed_rows_and_preserves_valid_order(tmp_path):\n"
-            "    from scripts.self_improvement_state import read_jsonl\n"
-            "    history = tmp_path / \"history.jsonl\"\n"
-            "    history.write_text(\n"
-            "        '{\\\"kind\\\": \\\"success\\\", \\\"task_id\\\": \\\"task-a\\\"}\n'\n"
-            "        '{malformed json}\n'\n"
-            "        '{\\\"kind\\\": \\\"failure\\\", \\\"task_id\\\": \\\"task-b\\\"}\n',\n"
-            "        encoding=\\\"utf-8\\\",\n"
-            "    )\n"
-            "    assert read_jsonl(history) == [\n"
-            "        {\\\"kind\\\": \\\"success\\\", \\\"task_id\\\": \\\"task-a\\\"},\n"
-            "        {\\\"kind\\\": \\\"failure\\\", \\\"task_id\\\": \\\"task-b\\\"},\n"
-            "    ]\n\n\n"
-        )
+        newline = chr(10)
+        addition = newline.join([
+            "def test_read_jsonl_skips_malformed_rows_and_preserves_valid_order(tmp_path):",
+            "    from scripts.self_improvement_state import read_jsonl",
+            "    history = tmp_path / \"history.jsonl\"",
+            "    history.write_text(",
+            "        '{\"kind\": \"success\", \"task_id\": \"task-a\"}\\n'",
+            "        '{malformed json}\\n'",
+            "        '{\"kind\": \"failure\", \"task_id\": \"task-b\"}\\n',",
+            "        encoding=\"utf-8\",",
+            "    )",
+            "    assert read_jsonl(history) == [",
+            "        {\"kind\": \"success\", \"task_id\": \"task-a\"},",
+            "        {\"kind\": \"failure\", \"task_id\": \"task-b\"},",
+            "    ]",
+            "",
+            "",
+        ]) + newline
         new = addition + anchor
         if len(anchor) > 1200 or len(new) > 1800:
             return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
