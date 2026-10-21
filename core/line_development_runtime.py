@@ -209,6 +209,9 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "router-regression-general-request-metadata": "tests/test_management_router.py",
     "router-regression-general-request-metadata-refresh-20261015": "tests/test_management_router.py",
     "recovery-ai-loop-adapter-durable-state-readback": "tests/test_recovery_ai_loop_adapter.py",
+    "control-tower-recovery-evidence-identity-mismatch": "tests/test_control_tower_orchestrator.py",
+    "control-tower-run-identity-invalid-sha-regression": "tests/test_control_tower_orchestrator.py",
+    "control-tower-run-identity-invalid-sha-regression-v2": "tests/test_control_tower_orchestrator.py",
     "recovery-ai-state-isolation": "tests/test_recovery_ai.py",
     "ai-speaker-empty-transcript-no-brain-call": "tests/test_ai_speaker.py",
     "distributed-loop-queue-progress-empty-queue-regression": "tests/test_distributed_loop_queue_progress.py",
@@ -264,6 +267,19 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
     if expected_target is not None and chosen != expected_target:
         return None, "deterministic_target_mismatch"
+
+    control_tower_regressions = {
+        "control-tower-recovery-evidence-identity-mismatch": "test_recovery_evidence_identity_mismatch_fails_closed",
+        "control-tower-run-identity-invalid-sha-regression": "test_invalid_sha_format_fails_closed",
+        "control-tower-run-identity-invalid-sha-regression-v2": "test_invalid_sha_format_fails_closed",
+    }
+    if task_id in control_tower_regressions and chosen == "tests/test_control_tower_orchestrator.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        required_test = control_tower_regressions[task_id]
+        if f"def {required_test}(" not in text:
+            return None, f"required_regression_test_missing:{required_test}"
+        return {"no_change": True, "source": "deterministic_autonomous_task"}, None
 
     if task_id == "refill-rejects-malformed-completed-state" and chosen == "tests/test_autonomous_task_refill.py":
         target = worker.ROOT / chosen
