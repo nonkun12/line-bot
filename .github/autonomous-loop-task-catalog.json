@@ -99,6 +99,13 @@
       "allowed_paths": [
         "tests/test_self_improvement_state.py"
       ]
+    },
+    {
+      "id": "refill-rejects-malformed-completed-state",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。completed state に文字列以外の値が混在する場合、build_queue() が ValueError で fail-closed になり、runtime queue 出力ファイルを作成しないことを確認してください。Recovery AI state は有効な schema_version=1 とし、既存テスト変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
     }
   ]
 }

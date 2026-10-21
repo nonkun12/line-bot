@@ -785,6 +785,33 @@ def test_ai_speaker_empty_transcript_plan_is_idempotent_after_assertion(monkeypa
     assert plan == {"no_change": True, "source": "deterministic_autonomous_task"}
 
 
+def test_refill_malformed_completed_state_plan_is_syntax_safe_and_bounded(monkeypatch, tmp_path):
+    chosen = "tests/test_autonomous_task_refill.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    anchor = "def test_refill_fails_closed_when_recovery_ai_state_is_missing(tmp_path: Path):\n    pass\n"
+    target.write_text(anchor, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen, "refill-rejects-malformed-completed-state"
+    )
+
+    assert err is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert plan["no_change"] is False
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    candidate = anchor.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert "test_refill_fails_closed_on_non_string_completed_state" in candidate
+    assert "completed state must be a string list" in candidate
+    assert worker.validate_plan(plan, chosen) == (True, chosen)
+
+
 def test_self_improvement_history_plan_is_syntax_safe_and_bounded(monkeypatch, tmp_path):
     chosen = "tests/test_self_improvement_state.py"
     target = tmp_path / chosen
