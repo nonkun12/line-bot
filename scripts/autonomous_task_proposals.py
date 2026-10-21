@@ -75,7 +75,12 @@ def build_proposals(issues_path: Path, queue_path: Path, state_path: Path, outpu
             raise ValueError("Recovery AI task flags are invalid")
 
     proposals = []
+    approved_tasks = []
     seen = set()
+    max_tasks = queue.get("max_tasks_per_run", 4)
+    if type(max_tasks) is not int or not 1 <= max_tasks <= 4:
+        raise ValueError("invalid runtime task limit")
+    queue_capacity = max(0, max_tasks - len(queued))
     for issue in issues[:100]:
         if not isinstance(issue, dict):
             raise ValueError("issue record is invalid")
@@ -83,8 +88,13 @@ def build_proposals(issues_path: Path, queue_path: Path, state_path: Path, outpu
         if not isinstance(labels, list):
             raise ValueError("issue labels are invalid")
         label_names = {label.get("name") for label in labels if isinstance(label, dict)}
-        # Only explicitly tagged issue specs from the trusted backlog are considered.
-        if "autonomous-task-candidate" not in label_names or issue.get("state") != "open":
+        if issue.get("state") != "open":
+            continue
+        # Approval is a separate, explicit human action. Candidate-only issues
+        # remain review-only and can never enter the executable queue.
+        approved = "autonomous-task-approved" in label_names
+        candidate = "autonomous-task-candidate" in label_names
+        if not approved and not candidate:
             continue
         spec = _spec(issue.get("body", ""))
         if spec is None:
@@ -95,23 +105,44 @@ def build_proposals(issues_path: Path, queue_path: Path, state_path: Path, outpu
         if type(number) is not int or number < 1:
             continue
         seen.add(spec["id"])
+        fingerprint = hashlib.sha256(
+            json.dumps(spec, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+        if approved:
+            if len(approved_tasks) < min(4, queue_capacity):
+                approved_tasks.append({**spec, "source_issue": number, "proposal_fingerprint": fingerprint})
+                excluded.add(spec["id"])
+            continue
         proposals.append({
             **spec,
             "source_issue": number,
             "status": "REVIEW_REQUIRED",
-            "proposal_fingerprint": hashlib.sha256(
-                json.dumps(spec, sort_keys=True, ensure_ascii=False).encode("utf-8")
-            ).hexdigest(),
+            "proposal_fingerprint": fingerprint,
         })
         if len(proposals) >= 4:
             break
 
+    if approved_tasks:
+        updated_queue = dict(queue)
+        updated_queue["tasks"] = [*queued, *approved_tasks]
+        queue_path.write_text(json.dumps(updated_queue, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    if approved_tasks and proposals:
+        status = "QUEUED_APPROVED_AND_REVIEW_REQUIRED"
+    elif approved_tasks:
+        status = "QUEUED_APPROVED"
+    elif proposals:
+        status = "REVIEW_REQUIRED"
+    else:
+        status = "NO_TRUSTED_CANDIDATES"
     result = {
         "version": 1,
-        "status": "REVIEW_REQUIRED" if proposals else "NO_TRUSTED_CANDIDATES",
+        "status": status,
+        "approved_count": len(approved_tasks),
+        "approved_task_ids": [task["id"] for task in approved_tasks],
         "proposal_count": len(proposals),
         "proposals": proposals,
-        "reason": None if proposals else "no_open_labeled_issue_with_valid_test_only_spec",
+        "reason": None if approved_tasks or proposals else "no_open_labeled_issue_with_valid_test_only_spec",
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
