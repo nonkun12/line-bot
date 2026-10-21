@@ -319,8 +319,8 @@ def _prepare_selector_main(monkeypatch, tmp_path, tasks, head_reader=None):
         def __init__(self, *_args, **_kwargs):
             pass
 
-        def _read(self):
-            return {"schema_version": 1, "tasks": {}, "checkpoint": None}
+        def all_task_statuses(self):
+            return {}
 
         def task_status(self, _task_id):
             return {"held": False}
@@ -475,8 +475,8 @@ def test_recovery_ai_hold_appearing_before_launch_blocks(monkeypatch, tmp_path, 
         def __init__(self, *_args, **_kwargs):
             pass
 
-        def _read(self):
-            return {"schema_version": 1, "tasks": {}, "checkpoint": None}
+        def all_task_statuses(self):
+            return {}
 
         def task_status(self, _task_id):
             type(self).calls += 1
@@ -501,8 +501,8 @@ def test_malformed_recovery_state_blocks_before_execution(monkeypatch, tmp_path,
         def __init__(self, *_args, **_kwargs):
             pass
 
-        def _read(self):
-            return {"schema_version": 1, "tasks": {}, "checkpoint": None}
+        def all_task_statuses(self):
+            return {}
 
         def task_status(self, _task_id):
             return dict(recovery_record)
@@ -524,8 +524,8 @@ def test_recovery_state_error_records_blocked_evidence_before_execution(monkeypa
         def __init__(self, *_args, **_kwargs):
             pass
 
-        def _read(self):
-            return {"schema_version": 1, "tasks": {}, "checkpoint": None}
+        def all_task_statuses(self):
+            return {}
 
         def task_status(self, _task_id):
             raise ValueError("malformed recovery state")
