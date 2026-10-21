@@ -1103,3 +1103,26 @@ def test_registered_catalog_rejects_broadened_auto_test_policy(monkeypatch):
     )
     with pytest.raises(ValueError, match="auto test refill policy is invalid"):
         loop._load_registered_catalog(sha)
+
+
+
+def test_reselection_preserves_hold_across_auto_task_fingerprint_change():
+    queued = [{
+        "id": "auto-test-tests-test-example-abcdef123456",
+        "instruction": "current fingerprint task",
+        "allowed_paths": ["tests/test_example.py"],
+    }]
+    old_held_id = "auto-test-tests-test-example-deadbeef1234"
+
+    selected, reason = loop.reselect_registered_task(
+        queued,
+        list(queued),
+        set(),
+        {old_held_id},
+        expected_task_id=queued[0]["id"],
+        evidence_sha="b" * 40,
+        current_head_sha="b" * 40,
+    )
+
+    assert selected is None
+    assert reason == "task_held"
