@@ -1126,3 +1126,36 @@ def test_reselection_preserves_hold_across_auto_task_fingerprint_change():
 
     assert selected is None
     assert reason == "task_held"
+
+
+
+def test_load_held_task_ids_includes_records_absent_from_current_queue():
+    class FakeRecoveryStore:
+        def _read(self):
+            return {
+                "schema_version": 1,
+                "tasks": {
+                    "auto-test-tests-test-example-deadbeef1234": {"held": True},
+                    "other-resumed-task": {"held": False, "resume_requires_review": True},
+                    "normal-task": {"held": False, "resume_requires_review": False},
+                },
+                "checkpoint": None,
+            }
+
+    assert loop.load_held_task_ids(FakeRecoveryStore()) == {
+        "auto-test-tests-test-example-deadbeef1234",
+        "other-resumed-task",
+    }
+
+
+def test_load_held_task_ids_fails_closed_on_malformed_nonqueued_record():
+    class FakeRecoveryStore:
+        def _read(self):
+            return {
+                "schema_version": 1,
+                "tasks": {"old-task": {"held": "unknown"}},
+                "checkpoint": None,
+            }
+
+    with pytest.raises(ValueError, match="recovery hold state is ambiguous"):
+        loop.load_held_task_ids(FakeRecoveryStore())
