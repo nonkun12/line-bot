@@ -113,6 +113,27 @@
       "allowed_paths": [
         "tests/test_autonomous_task_refill.py"
       ]
+    },
+    {
+      "id": "refill-rejects-nonobject-recovery-task-map",
+      "instruction": "tests/test_autonomous_task_refill.py のみに新しい固有名の回帰テストを1件追加してください。Recovery AI state の schema_version は整数1で有効だが、tasks が辞書ではなくリストの場合に build_queue() が ValueError('Recovery AI state is invalid') で fail-closed になり、runtime queue を作成しないことを検証。既存テスト変更禁止、外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "refill-rejects-boolean-catalog-addition-cap",
+      "instruction": "tests/test_autonomous_task_refill.py のみに新しい固有名の回帰テストを1件追加してください。catalog の max_additions_per_run が bool True の場合、整数との等価性で受理せず ValueError('catalog cap must be between 1 and 4') で fail-closed になり、runtime queue を作成しないことを検証。既存テスト変更禁止、外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "refill-rejects-non-ascii-task-id",
+      "instruction": "tests/test_autonomous_task_refill.py のみに新しい固有名の回帰テストを1件追加してください。カタログ候補IDに日本語や非ASCII文字を含む値を指定した場合、allowlist 検証で ValueError('invalid task ID') となり、runtime queue を作成しないことを検証。既存テスト変更禁止、外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
     }
   ]
 }

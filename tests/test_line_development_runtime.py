@@ -838,3 +838,45 @@ def test_self_improvement_history_plan_is_syntax_safe_and_bounded(monkeypatch, t
     assert "\\n" in candidate
     assert worker.validate_plan(plan, chosen) == (True, chosen)
 
+
+
+
+def test_three_new_refill_seed_plans_are_syntax_safe_and_bounded(tmp_path, monkeypatch):
+    chosen = "tests/test_autonomous_task_refill.py"
+    cases = [
+        (
+            "refill-rejects-nonobject-recovery-task-map",
+            "def test_refill_fails_closed_on_invalid_recovery_ai_schema(tmp_path: Path):",
+            "test_refill_fails_closed_on_nonobject_recovery_task_map",
+        ),
+        (
+            "refill-rejects-boolean-catalog-addition-cap",
+            "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):",
+            "test_refill_rejects_boolean_catalog_addition_cap",
+        ),
+        (
+            "refill-rejects-non-ascii-task-id",
+            "def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):",
+            "test_refill_rejects_non_ascii_task_id",
+        ),
+    ]
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    for task_id, anchor, expected_name in cases:
+        original = anchor + "\n    pass\n"
+        target.write_text(original, encoding="utf-8")
+        plan, err = runtime._deterministic_autonomous_test_plan(chosen, task_id)
+
+        assert err is None, task_id
+        assert plan is not None, task_id
+        assert plan["no_change"] is False, task_id
+        change = plan["changes"][0]
+        assert change["file"] == chosen
+        assert len(change["old"]) <= 1200
+        assert len(change["new"]) <= 1800
+        candidate = original.replace(change["old"], change["new"], 1)
+        compile(candidate, chosen, "exec")
+        assert expected_name in candidate
+        assert worker.validate_plan(plan, chosen) == (True, chosen)
