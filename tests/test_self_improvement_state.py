@@ -3,6 +3,21 @@ import json
 from scripts.self_improvement_state import MAX_RECORDS, sanitize_records
 
 
+def test_read_jsonl_skips_malformed_rows_and_preserves_valid_order(tmp_path):
+    from scripts.self_improvement_state import read_jsonl
+    history = tmp_path / "history.jsonl"
+    history.write_text(
+        '{"kind": "success", "task_id": "task-a"}\n'
+        '{malformed json}\n'
+        '{"kind": "failure", "task_id": "task-b"}\n',
+        encoding="utf-8",
+    )
+    assert read_jsonl(history) == [
+        {"kind": "success", "task_id": "task-a"},
+        {"kind": "failure", "task_id": "task-b"},
+    ]
+
+
 def test_sanitizer_discards_raw_error_text_and_unknown_fields():
     rows = sanitize_records([
         {
