@@ -136,6 +136,13 @@ def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):
         build_queue(queue, catalog, completed, tmp_path / "runtime.json")
 
 
+def test_refill_rejects_non_ascii_task_id(tmp_path: Path):
+    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("タスク-a")])
+    output = tmp_path / "runtime.json"
+    with pytest.raises(ValueError, match="invalid task ID"):
+        build_queue(queue, catalog, completed, output)
+    assert not output.exists()
+
 def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):
     queue, catalog, completed = _inputs(
         tmp_path,
