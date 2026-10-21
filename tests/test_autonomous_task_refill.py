@@ -225,6 +225,22 @@ def test_refill_fails_closed_on_non_integer_or_unsupported_recovery_ai_schema(tm
     assert not output.exists()
 
 
+def test_refill_fails_closed_on_nonobject_recovery_task_map(tmp_path: Path):
+    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready-one")])
+    state = _write(tmp_path / "state.json", {
+        "version": 1,
+        "completed": [],
+        "recovery_ai": {
+            "schema_version": 1,
+            "tasks": [],
+            "checkpoint": None,
+        },
+    })
+    output = tmp_path / "runtime.json"
+    with pytest.raises(ValueError, match="Recovery AI state is invalid"):
+        build_queue(queue, catalog, state, output)
+    assert not output.exists()
+
 def test_refill_fails_closed_on_invalid_recovery_ai_schema(tmp_path: Path):
     queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready-one")])
     state = _write(
