@@ -117,6 +117,16 @@ def test_refill_accepts_only_allowlisted_test_files(tmp_path: Path, path: str):
     assert result["tasks"][0]["allowed_paths"] == [path]
 
 
+def test_refill_rejects_boolean_catalog_addition_cap(tmp_path: Path):
+    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready-one")])
+    catalog_data = json.loads(catalog.read_text(encoding="utf-8"))
+    catalog_data["max_additions_per_run"] = True
+    catalog.write_text(json.dumps(catalog_data), encoding="utf-8")
+    output = tmp_path / "runtime.json"
+    with pytest.raises(ValueError, match="catalog cap must be between 1 and 4"):
+        build_queue(queue, catalog, completed, output)
+    assert not output.exists()
+
 def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):
     queue, catalog, completed = _inputs(
         tmp_path,
