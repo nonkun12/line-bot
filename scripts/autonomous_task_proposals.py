@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 
 TASK_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,99}$")
-TEST_PATH = re.compile(r"^(tests|uhip/tests)/test_[A-Za-z0-9_]+\\.py$")
+TEST_PATH = re.compile(r"^(tests|uhip/tests)/test_[A-Za-z0-9_]+\.py$")
 SPEC_MARKER = "<!-- autonomous-task-spec -->"
 
 
