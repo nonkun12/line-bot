@@ -790,7 +790,7 @@ def test_self_improvement_history_plan_is_syntax_safe_and_bounded(monkeypatch, t
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
     anchor = "def test_sanitizer_discards_raw_error_text_and_unknown_fields():\n"
-    target.write_text(anchor, encoding="utf-8")
+    target.write_text(anchor + "    pass\n", encoding="utf-8")
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
 
     plan, err = runtime._deterministic_autonomous_test_plan(
