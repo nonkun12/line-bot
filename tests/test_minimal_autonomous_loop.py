@@ -1242,3 +1242,30 @@ def test_auto_refill_task_passes_catalog_registration_and_control_tower_selectio
     assert selected == queued[0]
     assert reason == ""
     assert selected["allowed_paths"] == ["tests/test_auto_target.py"]
+
+
+
+def test_reselection_rejects_auto_task_mixed_with_other_queue_items():
+    dynamic = {
+        "id": "auto-test-tests-test-example-abcdef123456",
+        "instruction": "fallback test only",
+        "allowed_paths": ["tests/test_example.py"],
+    }
+    curated = {
+        "id": "reviewed-catalog-task",
+        "instruction": "curated task",
+        "allowed_paths": ["tests/test_curated.py"],
+    }
+
+    selected, reason = loop.reselect_registered_task(
+        [dynamic, curated],
+        [dynamic, curated],
+        set(),
+        set(),
+        expected_task_id=dynamic["id"],
+        evidence_sha="f" * 40,
+        current_head_sha="f" * 40,
+    )
+
+    assert selected is None
+    assert reason == "auto_test_queue_policy_violation"
