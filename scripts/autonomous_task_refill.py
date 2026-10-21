@@ -87,8 +87,11 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     if "recovery_ai" not in state:
         raise ValueError("Recovery AI state is missing")
     recovery = state["recovery_ai"]
-    if (not isinstance(recovery, dict) or recovery.get("schema_version") != 1
-            or not isinstance(recovery.get("tasks"), dict) or "checkpoint" not in recovery):
+    if (not isinstance(recovery, dict)
+            or type(recovery.get("schema_version")) is not int
+            or recovery.get("schema_version") != 1
+            or not isinstance(recovery.get("tasks"), dict)
+            or "checkpoint" not in recovery):
         raise ValueError("Recovery AI state is invalid")
     recovery_tasks = recovery["tasks"]
     held_ids = set()
