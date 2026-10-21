@@ -39,7 +39,7 @@ def coordinate_outcome(result: object) -> dict[str, Any]:
         not isinstance(task_id, str)
         or not task_id
         or len(task_id) > 100
-        or not all(char.isalnum() or char in "._-" for char in task_id)
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", task_id)
     ):
         return _decision("STOP", "STOP_AND_REPORT", "invalid_task_identity", False)
     if not isinstance(status, str) or status not in _ALLOWED_STATUSES:
