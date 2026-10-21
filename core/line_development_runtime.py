@@ -348,7 +348,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         name = "test_refill_fails_closed_on_nonobject_recovery_task_map"
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
-        anchor = "def test_refill_fails_closed_on_invalid_recovery_ai_schema(tmp_path: Path):\n"
+        anchor = "def test_refill_fails_closed_on_invalid_recovery_ai_schema(tmp_path: Path)"
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
         newline = chr(10)
@@ -391,7 +391,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         name = "test_refill_rejects_boolean_catalog_addition_cap"
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
-        anchor = "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):\n"
+        anchor = "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path)"
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
         newline = chr(10)
@@ -428,7 +428,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         name = "test_refill_rejects_non_ascii_task_id"
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
-        anchor = "def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):\n"
+        anchor = "def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path)"
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
         newline = chr(10)
