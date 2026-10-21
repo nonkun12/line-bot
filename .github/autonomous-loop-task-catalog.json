@@ -92,6 +92,13 @@
       "allowed_paths": [
         "tests/test_english_learning.py"
       ]
+    },
+    {
+      "id": "self-improvement-history-malformed-jsonl-regression",
+      "instruction": "tests/test_self_improvement_state.py のみに、新しい固有名の回帰テストを1件追加してください。JSONLの履歴に有効行・不正JSON行・有効行が混在しても、不正行だけをスキップし、有効行の順序を維持して read_jsonl() が返すことを確認してください。既存テストと重複する場合は NO_CHANGE。テストファイルのみ変更。外部通信、シークレット、OS操作、マージ、デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_self_improvement_state.py"
+      ]
     }
   ]
 }

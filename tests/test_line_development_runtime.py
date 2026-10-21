@@ -783,3 +783,31 @@ def test_ai_speaker_empty_transcript_plan_is_idempotent_after_assertion(monkeypa
 
     assert err is None
     assert plan == {"no_change": True, "source": "deterministic_autonomous_task"}
+
+
+def test_self_improvement_history_plan_is_syntax_safe_and_bounded(monkeypatch, tmp_path):
+    chosen = "tests/test_self_improvement_state.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    anchor = "def test_sanitizer_discards_raw_error_text_and_unknown_fields():\n    pass\n"
+    target.write_text(anchor, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen, "self-improvement-history-malformed-jsonl-regression"
+    )
+
+    assert err is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert plan["no_change"] is False
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    candidate = anchor.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert "test_read_jsonl_skips_malformed_rows_and_preserves_valid_order" in candidate
+    assert "\\n" in candidate
+    assert worker.validate_plan(plan, chosen) == (True, chosen)
+
