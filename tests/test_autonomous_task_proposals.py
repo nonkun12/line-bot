@@ -44,6 +44,15 @@ def test_fails_closed_on_missing_recovery_state(tmp_path):
         run(tmp_path, [issue()], {"completed": []})
 
 
+def test_fails_closed_when_true_recovery_flag_masks_malformed_sibling(tmp_path):
+    with pytest.raises(ValueError, match="Recovery AI task flags"):
+        run(
+            tmp_path,
+            [issue("new-task", labels=("autonomous-task-approved",))],
+            state(tasks={"held-task": {"held": True, "resume_requires_review": "invalid"}}),
+        )
+
+
 def test_explicitly_approved_test_only_issue_enters_bounded_runtime_queue(tmp_path):
     issues = [issue("approved-task", labels=("autonomous-task-approved",))]
     ip = write(tmp_path / "issues.json", issues)
