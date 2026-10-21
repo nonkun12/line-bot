@@ -1,7 +1,7 @@
 """Generate reviewed task proposals and bounded, test-only autonomous fallback work.
 
 Issue-derived tasks require an explicit approval label. When the curated queue is
-empty, one deterministic test-only task may be queued from a fixed path allowlist.
+empty, one deterministic test-only task may be queued from discovered test files only.
 The target-content fingerprint prevents repeating an unchanged NO_CHANGE task;
 all generated work remains bounded and cannot edit production source.
 """
@@ -214,6 +214,8 @@ def build_proposals(
         status = "QUEUED_APPROVED"
     elif proposals:
         status = "REVIEW_REQUIRED"
+    elif enable_auto_refill and not queued and not approved_tasks:
+        status = "AUTO_REFILL_EXHAUSTED"
     else:
         status = "NO_TRUSTED_CANDIDATES"
     result = {
@@ -225,7 +227,11 @@ def build_proposals(
         "auto_queued_task_ids": [auto_task["id"]] if auto_task is not None else [],
         "proposal_count": len(proposals),
         "proposals": proposals,
-        "reason": None if approved_tasks or proposals else "no_open_labeled_issue_with_valid_test_only_spec",
+        "reason": (
+            "no_eligible_test_target"
+            if enable_auto_refill and auto_task is None and not queued and not approved_tasks
+            else (None if approved_tasks or proposals else "no_open_labeled_issue_with_valid_test_only_spec")
+        ),
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
