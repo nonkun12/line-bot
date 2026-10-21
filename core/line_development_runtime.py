@@ -269,19 +269,19 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
         addition = (
-            "def test_read_jsonl_skips_malformed_rows_and_preserves_valid_order(tmp_path):\\n"
-            "    from scripts.self_improvement_state import read_jsonl\\n"
-            "    history = tmp_path / \"history.jsonl\"\\n"
-            "    history.write_text(\\n"
-            "        '{\\\"kind\\\": \\\"success\\\", \\\"task_id\\\": \\\"task-a\\\"}\\n'\\n"
-            "        '{malformed json}\\n'\\n"
-            "        '{\\\"kind\\\": \\\"failure\\\", \\\"task_id\\\": \\\"task-b\\\"}\\n',\\n"
-            "        encoding=\\\"utf-8\\\",\\n"
-            "    )\\n"
-            "    assert read_jsonl(history) == [\\n"
-            "        {\\\"kind\\\": \\\"success\\\", \\\"task_id\\\": \\\"task-a\\\"},\\n"
-            "        {\\\"kind\\\": \\\"failure\\\", \\\"task_id\\\": \\\"task-b\\\"},\\n"
-            "    ]\\n\\n\\n"
+            "def test_read_jsonl_skips_malformed_rows_and_preserves_valid_order(tmp_path):\n"
+            "    from scripts.self_improvement_state import read_jsonl\n"
+            "    history = tmp_path / \"history.jsonl\"\n"
+            "    history.write_text(\n"
+            "        '{\\\"kind\\\": \\\"success\\\", \\\"task_id\\\": \\\"task-a\\\"}\n'\n"
+            "        '{malformed json}\n'\n"
+            "        '{\\\"kind\\\": \\\"failure\\\", \\\"task_id\\\": \\\"task-b\\\"}\n',\n"
+            "        encoding=\\\"utf-8\\\",\n"
+            "    )\n"
+            "    assert read_jsonl(history) == [\n"
+            "        {\\\"kind\\\": \\\"success\\\", \\\"task_id\\\": \\\"task-a\\\"},\n"
+            "        {\\\"kind\\\": \\\"failure\\\", \\\"task_id\\\": \\\"task-b\\\"},\n"
+            "    ]\n\n\n"
         )
         new = addition + anchor
         if len(anchor) > 1200 or len(new) > 1800:
