@@ -167,7 +167,9 @@ jobs:
           if 'recovery_ai' not in state:
               raise SystemExit('durable Recovery AI state is missing; refusing to run')
           recovery = state['recovery_ai']
-          if (not isinstance(recovery, dict) or recovery.get('schema_version') != 1
+          if (not isinstance(recovery, dict)
+                  or type(recovery.get('schema_version')) is not int
+                  or recovery.get('schema_version') != 1
                   or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
               raise SystemExit('durable Recovery AI state is invalid; refusing to run')
           Path('/tmp/recovery-ai-state.json').write_text(
@@ -652,7 +654,9 @@ jobs:
           if any(row.get('failure_reason') == 'recovery_ai_state_persist_failed' for row in rows):
               raise SystemExit('local Recovery AI persistence failed; durable update blocked')
           recovery = json.loads(Path('/tmp/recovery-ai-state.json').read_text(encoding='utf-8'))
-          if (not isinstance(recovery, dict) or recovery.get('schema_version') != 1
+          if (not isinstance(recovery, dict)
+                  or type(recovery.get('schema_version')) is not int
+                  or recovery.get('schema_version') != 1
                   or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
               raise SystemExit('invalid local Recovery AI state; durable update blocked')
           PY
@@ -677,7 +681,9 @@ jobs:
           if not isinstance(data, dict) or not isinstance(data.get('completed', []), list):
               raise SystemExit('durable loop state is invalid')
           recovery = json.loads(recovery_path.read_text(encoding='utf-8'))
-          if (not isinstance(recovery, dict) or recovery.get('schema_version') != 1
+          if (not isinstance(recovery, dict)
+                  or type(recovery.get('schema_version')) is not int
+                  or recovery.get('schema_version') != 1
                   or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
               raise SystemExit('Recovery AI schema is invalid')
           data['recovery_ai'] = recovery
