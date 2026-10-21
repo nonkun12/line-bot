@@ -200,6 +200,15 @@ def test_refill_skips_recovery_ai_held_catalog_tasks(tmp_path: Path):
     assert [task["id"] for task in result["tasks"]] == ["task-ready-one"]
 
 
+def test_refill_fails_closed_on_non_string_completed_state(tmp_path: Path):
+    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready-one")])
+    state = _write(tmp_path / "state.json", {"version": 1, "completed": ["task-done", 7], "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None}})
+    output = tmp_path / "runtime.json"
+    with pytest.raises(ValueError, match="completed state must be a string list"):
+        build_queue(queue, catalog, state, output)
+    assert not output.exists()
+
+
 def test_refill_fails_closed_when_recovery_ai_state_is_missing(tmp_path: Path):
     queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready-one")])
     state = _write(tmp_path / "state.json", {"version": 1, "completed": []})
