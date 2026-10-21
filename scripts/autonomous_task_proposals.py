@@ -16,14 +16,7 @@ from pathlib import Path
 TASK_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,99}$")
 TEST_PATH = re.compile(r"^(tests|uhip/tests)/test_[A-Za-z0-9_]+\.py$")
 SPEC_MARKER = "<!-- autonomous-task-spec -->"
-AUTO_TEST_TARGETS = (
-    "tests/test_autonomous_task_proposals.py",
-    "tests/test_autonomous_task_refill.py",
-    "tests/test_distributed_loop_queue_progress.py",
-    "tests/test_control_tower_orchestrator.py",
-    "tests/test_english_learning.py",
-    "tests/test_recovery_ai.py",
-)
+AUTO_TASK_ID = re.compile(r"^(auto-test-[a-z0-9-]+)-([0-9a-f]{12})$")
 
 
 def _object(path: Path):
@@ -65,29 +58,37 @@ def _auto_test_task(
     excluded: set[str],
     blocked_target_prefixes: set[str],
 ) -> dict | None:
-    """Select one reviewed test target and fingerprint its current contents."""
+    """Select one existing test file from the strict test-only path allowlist."""
     root = repo_root.resolve()
-    for relative in AUTO_TEST_TARGETS:
-        stem = re.sub(r"[^a-z0-9-]+", "-", Path(relative).stem.lower()).strip("-")
+    candidates = sorted(
+        [*root.glob("tests/test_*.py"), *root.glob("uhip/tests/test_*.py")],
+        key=lambda path: path.as_posix(),
+    )
+    for path in candidates:
+        try:
+            candidate = path.resolve()
+            relative = candidate.relative_to(root).as_posix()
+        except (OSError, ValueError):
+            continue
+        if not TEST_PATH.fullmatch(relative):
+            continue
+        stem = re.sub(r"[^a-z0-9-]+", "-", candidate.stem.lower()).strip("-")
         task_prefix = f"auto-test-{stem}-"
-        # A changed file fingerprint must not let a new task ID bypass a held
-        # or post-resume-review task for the same target file.
+        # A changed fingerprint must not let a new ID bypass a held or
+        # post-resume-review task for the same test target.
         if task_prefix in blocked_target_prefixes:
             continue
-        candidate = (root / relative).resolve()
-        if not candidate.is_relative_to(root) or not TEST_PATH.fullmatch(relative):
-            continue
         try:
-            content = candidate.read_bytes()
+            target_content = candidate.read_bytes()
         except OSError:
             continue
-        fingerprint = hashlib.sha256(content).hexdigest()
+        fingerprint = hashlib.sha256(target_content).hexdigest()
         task_id = f"{task_prefix}{fingerprint[:12]}"
         if task_id in excluded:
             continue
         instruction = (
-            f"Review the existing tests in {relative} and read related implementation files "
-            "for context, but edit only the single allowed test file. Add exactly one focused, "
+            f"Review existing tests in {relative} and read related implementation files "
+            "for context, but edit only this one allowed test file. Add exactly one focused, "
             "non-duplicate regression test for a concrete uncovered edge case. Use dummy or "
             "temporary data only. If no clear uncovered behavior can be tested without guessing, "
             "make no change and report NO_CHANGE. Do not change implementation, configuration, "
@@ -138,11 +139,9 @@ def build_proposals(
             raise ValueError("Recovery AI task flags are invalid")
         if held or resume_requires_review:
             excluded.add(task_id)
-            for relative in AUTO_TEST_TARGETS:
-                stem = re.sub(r"[^a-z0-9-]+", "-", Path(relative).stem.lower()).strip("-")
-                prefix = f"auto-test-{stem}-"
-                if task_id.startswith(prefix):
-                    blocked_auto_target_prefixes.add(prefix)
+            match = AUTO_TASK_ID.fullmatch(task_id)
+            if match:
+                blocked_auto_target_prefixes.add(match.group(1) + "-")
 
     proposals = []
     approved_tasks = []
