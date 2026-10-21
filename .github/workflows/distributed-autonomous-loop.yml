@@ -881,6 +881,10 @@ jobs:
           STATE_OUTCOME: ${{ steps.persist_state.outcome }}
           RECOVERY_OUTCOME: ${{ steps.persist_recovery_ai.outcome }}
           SHEETS_OUTCOME: ${{ steps.sheets.outcome }}
+          HERMES_ENABLED: ${{ env.HERMES_ADVISOR_ENABLED || 'false' }}
+          HERMES_INVOKED: ${{ env.HERMES_ADVISOR_INVOKED || 'false' }}
+          HERMES_USED: ${{ env.HERMES_ADVISOR_USED || 'false' }}
+          HERMES_REASON: ${{ env.HERMES_ADVISOR_REASON || 'not_recorded' }}
           JOB_STATUS: ${{ job.status }}
           PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event_name == 'pull_request_target' && github.event.pull_request.number || '' }}
           GH_TOKEN: ${{ github.token }}
@@ -984,6 +988,7 @@ jobs:
             echo "- State: ${STATE_OUTCOME:-not_run}"
             echo "- Recovery AI state: ${RECOVERY_OUTCOME:-not_run}"
             echo "- Sheets: ${SHEETS_OUTCOME:-not_run}"
+            echo "- Hermes advisor: enabled=${HERMES_ENABLED:-false}, invoked=${HERMES_INVOKED:-false}, used=${HERMES_USED:-false}, reason=${HERMES_REASON:-not_recorded}"
             echo "- Job: ${JOB_STATUS:-unknown}"
             echo "- Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo
