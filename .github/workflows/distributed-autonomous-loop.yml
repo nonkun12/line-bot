@@ -333,7 +333,7 @@ jobs:
             --output /tmp/autonomous-loop-runtime-queue.json
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
 
-      - name: Generate review-only task proposals when catalog is exhausted
+      - name: Generate proposals and refill one bounded test-only task when queue is empty
         if: success() && env.TRIGGER_MODE == 'normal'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -344,8 +344,9 @@ jobs:
             --issues /tmp/autonomous-loop-open-issues.json \
             --queue /tmp/autonomous-loop-runtime-queue.json \
             --state /tmp/autonomous-loop-state.json \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --enable-auto-refill \
             --output /tmp/autonomous-loop-task-proposals.json
-          echo "Candidate-only proposals are review-only; explicitly approved issues may enter the bounded run-local queue after validation."
           cat /tmp/autonomous-loop-task-proposals.json >> "$GITHUB_STEP_SUMMARY"
           echo "TASK_PROPOSALS_PATH=/tmp/autonomous-loop-task-proposals.json" >> "$GITHUB_ENV"
 
