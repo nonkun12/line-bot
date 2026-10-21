@@ -217,6 +217,9 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "self-improvement-history-malformed-jsonl-regression": "tests/test_self_improvement_state.py",
     "refill-rejects-malformed-completed-state": "tests/test_autonomous_task_refill.py",
     "refill-rejects-malformed-recovery-task-entry": "tests/test_autonomous_task_refill.py",
+    "refill-rejects-non-ascii-task-id": "tests/test_autonomous_task_refill.py",
+    "refill-rejects-boolean-catalog-addition-cap": "tests/test_autonomous_task_refill.py",
+    "refill-rejects-nonobject-recovery-task-map": "tests/test_autonomous_task_refill.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -322,6 +325,120 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             '    with pytest.raises(ValueError, match="invalid Recovery AI task state"):',
             '        build_queue(queue, catalog, state, output)',
             '    assert not output.exists()',
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "refill-rejects-nonobject-recovery-task-map" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_fails_closed_on_nonobject_recovery_task_map"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_refill_fails_closed_on_invalid_recovery_ai_schema(tmp_path: Path):\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            "def test_refill_fails_closed_on_nonobject_recovery_task_map(tmp_path: Path):",
+            "    queue, catalog, completed = _inputs(tmp_path, candidates=[_task(\"task-ready-one\")])",
+            "    state = _write(tmp_path / \"state.json\", {",
+            "        \"version\": 1,",
+            "        \"completed\": [],",
+            "        \"recovery_ai\": {",
+            "            \"schema_version\": 1,",
+            "            \"tasks\": [],",
+            "            \"checkpoint\": None,",
+            "        },",
+            "    })",
+            "    output = tmp_path / \"runtime.json\"",
+            "    with pytest.raises(ValueError, match=\"Recovery AI state is invalid\"):",
+            "        build_queue(queue, catalog, state, output)",
+            "    assert not output.exists()"
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "refill-rejects-boolean-catalog-addition-cap" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_rejects_boolean_catalog_addition_cap"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            "def test_refill_rejects_boolean_catalog_addition_cap(tmp_path: Path):",
+            "    queue, catalog, completed = _inputs(tmp_path, candidates=[_task(\"task-ready-one\")])",
+            "    catalog_data = json.loads(catalog.read_text(encoding=\"utf-8\"))",
+            "    catalog_data[\"max_additions_per_run\"] = True",
+            "    catalog.write_text(json.dumps(catalog_data), encoding=\"utf-8\")",
+            "    output = tmp_path / \"runtime.json\"",
+            "    with pytest.raises(ValueError, match=\"catalog cap must be between 1 and 4\"):",
+            "        build_queue(queue, catalog, completed, output)",
+            "    assert not output.exists()"
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "refill-rejects-non-ascii-task-id" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_rejects_non_ascii_task_id"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            "def test_refill_rejects_non_ascii_task_id(tmp_path: Path):",
+            "    queue, catalog, completed = _inputs(tmp_path, candidates=[_task(\"タスク-a\")])",
+            "    output = tmp_path / \"runtime.json\"",
+            "    with pytest.raises(ValueError, match=\"invalid task ID\"):",
+            "        build_queue(queue, catalog, completed, output)",
+            "    assert not output.exists()"
             "",
             "",
         ]) + newline
