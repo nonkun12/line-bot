@@ -302,7 +302,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         name = "test_refill_fails_closed_on_malformed_recovery_ai_task_entry"
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
-        anchor = "def test_refill_fails_closed_on_invalid_recovery_ai_held_flag(tmp_path: Path):\\n"
+        anchor = "def test_refill_fails_closed_on_invalid_recovery_ai_held_flag(tmp_path: Path):\n"
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
         newline = chr(10)
