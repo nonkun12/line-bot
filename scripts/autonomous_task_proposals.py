@@ -73,6 +73,8 @@ def _auto_test_task_for_path(repo_root: Path, path: Path) -> dict | None:
         return None
     fingerprint = hashlib.sha256(target_content).hexdigest()
     task_id = f"{task_prefix}{fingerprint[:12]}"
+    if not TASK_ID.fullmatch(task_id):
+        return None
     instruction = (
         f"Review existing tests in {relative} and read related implementation files "
         "for context, but edit only this one allowed test file. Add exactly one focused, "
