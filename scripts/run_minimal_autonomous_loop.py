@@ -776,13 +776,20 @@ def main() -> int:
     pending_tasks = list(tasks)
     try:
         held_task_ids = set()
-        for catalog_task in catalog_source_tasks:
-            catalog_task_id = str(catalog_task["id"])
-            recovery_record = recovery_store.task_status(catalog_task_id)
+        # Read all durable Recovery AI task records, not only IDs already in
+        # the mutable queue. This preserves HOLD across a generated task's
+        # content-fingerprint change and protects against queue tampering.
+        recovery_data = recovery_store._read()
+        recovery_tasks = recovery_data.get("tasks")
+        if not isinstance(recovery_tasks, dict):
+            raise ValueError("recovery task state is invalid")
+        for recovery_task_id, recovery_record in recovery_tasks.items():
+            if not isinstance(recovery_task_id, str):
+                raise ValueError("recovery task ID is invalid")
             # A resumed task remains ineligible until a separate explicit
             # review acknowledgement clears resume_requires_review.
             if recovery_record_blocks_task(recovery_record):
-                held_task_ids.add(catalog_task_id)
+                held_task_ids.add(recovery_task_id)
     except Exception:
         # Malformed/unavailable Recovery AI state must produce auditable BLOCKED
         # evidence rather than crashing without a result row.
