@@ -30,7 +30,8 @@
     "distributed-loop-queue-progress-empty-queue-regression-v2",
     "english-core-image-unknown-word-safe-fallback",
     "self-improvement-history-malformed-jsonl-regression",
-    "refill-rejects-malformed-completed-state"
+    "refill-rejects-malformed-completed-state",
+    "refill-rejects-malformed-recovery-task-entry"
   ],
   "recovery_ai": {
     "checkpoint": null,
