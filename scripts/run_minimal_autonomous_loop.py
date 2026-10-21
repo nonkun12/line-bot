@@ -225,6 +225,24 @@ def recovery_record_blocks_task(record: dict) -> bool:
     return record["held"] is True or review is True
 
 
+def load_held_task_ids(recovery_store: object) -> set[str]:
+    """Read every durable Recovery AI hold, including tasks absent from the queue."""
+    read_state = getattr(recovery_store, "_read", None)
+    if not callable(read_state):
+        raise ValueError("Recovery AI state reader is unavailable")
+    recovery_data = read_state()
+    recovery_tasks = recovery_data.get("tasks") if isinstance(recovery_data, dict) else None
+    if not isinstance(recovery_tasks, dict):
+        raise ValueError("recovery task state is invalid")
+    held_ids: set[str] = set()
+    for task_id, record in recovery_tasks.items():
+        if not isinstance(task_id, str):
+            raise ValueError("recovery task ID is invalid")
+        if recovery_record_blocks_task(record):
+            held_ids.add(task_id)
+    return held_ids
+
+
 def stopped(stop_file: Path) -> bool:
     raw = os.environ.get("AUTONOMOUS_LOOP_STOP", "").strip()
     if raw and raw.casefold() not in {"0", "false", "no", "off"}:
@@ -775,21 +793,9 @@ def main() -> int:
     recovery_store = RecoveryStore(args.state.parent / "recovery-ai-state.json")
     pending_tasks = list(tasks)
     try:
-        held_task_ids = set()
-        # Read all durable Recovery AI task records, not only IDs already in
-        # the mutable queue. This preserves HOLD across a generated task's
-        # content-fingerprint change and protects against queue tampering.
-        recovery_data = recovery_store._read()
-        recovery_tasks = recovery_data.get("tasks")
-        if not isinstance(recovery_tasks, dict):
-            raise ValueError("recovery task state is invalid")
-        for recovery_task_id, recovery_record in recovery_tasks.items():
-            if not isinstance(recovery_task_id, str):
-                raise ValueError("recovery task ID is invalid")
-            # A resumed task remains ineligible until a separate explicit
-            # review acknowledgement clears resume_requires_review.
-            if recovery_record_blocks_task(recovery_record):
-                held_task_ids.add(recovery_task_id)
+        # This includes held IDs not present in the mutable queue, preserving
+        # HOLD across generated-task fingerprint changes.
+        held_task_ids = load_held_task_ids(recovery_store)
     except Exception:
         # Malformed/unavailable Recovery AI state must produce auditable BLOCKED
         # evidence rather than crashing without a result row.
