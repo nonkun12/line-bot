@@ -106,6 +106,13 @@
       "allowed_paths": [
         "tests/test_autonomous_task_refill.py"
       ]
+    },
+    {
+      "id": "refill-rejects-malformed-recovery-task-entry",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。Recovery AI state の schema_version は有効な整数 1 とし、tasks の要素値がオブジェクトではなく文字列の場合、build_queue() が ValueError(\"invalid Recovery AI task state\") で fail-closed になり、runtime queue 出力ファイルを作成しないことを検証してください。既存テストを変更せず、変更は指定テストファイル1つだけ。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
     }
   ]
 }
