@@ -286,9 +286,12 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
                 "instruction": instruction,
                 "allowed_paths": [item.strip() for item in allowed_paths],
             }
-            previous = definitions.get(task_id)
-            if previous is not None and previous != normalized:
-                raise ValueError("conflicting versioned task definitions")
+            # Task IDs must be globally unique across both trusted catalogs.
+            # Even identical duplicate definitions are rejected: accepting them
+            # makes the registry ambiguous and the adapter correctly refuses to
+            # authorize a task with more than one matching entry.
+            if task_id in definitions:
+                raise ValueError("duplicate versioned task ID")
             definitions[task_id] = normalized
     return list(definitions.values())
 

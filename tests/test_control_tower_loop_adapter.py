@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import json
+
+import pytest
+
+from scripts import run_minimal_autonomous_loop as loop
 from scripts.control_tower_loop_adapter import authorize_registered_task
 
 
@@ -88,3 +93,37 @@ def test_rejects_task_id_that_decision_contract_cannot_represent() -> None:
         False,
         "decision_contract_rejected",
     )
+
+
+@pytest.mark.parametrize(
+    "second_instruction",
+    [
+        "Run a bounded deterministic regression test.",
+        "Run an unreviewed instruction.",
+    ],
+)
+def test_catalog_loader_rejects_any_duplicate_id_across_catalogs(
+    monkeypatch, second_instruction: str
+) -> None:
+    first = {
+        "id": "duplicate-task",
+        "instruction": "Run a bounded deterministic regression test.",
+        "allowed_paths": ["tests/test_control_tower_loop_adapter.py"],
+    }
+    second = {**first, "instruction": second_instruction}
+    payloads = {
+        ".github/autonomous-loop-tasks.json": json.dumps({"tasks": [first]}),
+        ".github/autonomous-loop-task-catalog.json": json.dumps({"tasks": [second]}),
+    }
+
+    def fake_git_checked(*args: str) -> tuple[int, str]:
+        ref_path = args[-1]
+        for path, payload in payloads.items():
+            if ref_path.endswith(path):
+                return 0, payload
+        return 1, ""
+
+    monkeypatch.setattr(loop, "_git_checked", fake_git_checked)
+
+    with pytest.raises(ValueError, match="duplicate versioned task ID"):
+        loop._load_registered_catalog(VALID_SHA)
