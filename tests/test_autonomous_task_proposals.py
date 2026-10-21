@@ -106,3 +106,128 @@ def test_approved_task_is_not_requeued_when_completed_or_held(tmp_path):
 
     assert result["approved_count"] == 0
     assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
+
+
+
+def test_auto_refill_queues_one_test_only_task_when_queue_is_empty(tmp_path, monkeypatch):
+    from hashlib import sha256
+
+    target = tmp_path / "tests" / "test_autonomous_task_proposals.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("def test_existing_behavior():\\n    assert True\\n", encoding="utf-8")
+    ip = write(tmp_path / "issues.json", [issue("review-only")])
+    qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
+    sp = write(tmp_path / "state.json", state())
+
+    result = build_proposals(
+        ip, qp, sp, tmp_path / "proposals.json",
+        enable_auto_refill=True, repo_root=tmp_path,
+    )
+
+    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]
+    expected_fingerprint = sha256(target.read_bytes()).hexdigest()[:12]
+    assert result["status"] == "AUTO_QUEUED_AND_REVIEW_REQUIRED"
+    assert result["auto_queued_count"] == 1
+    assert result["proposal_count"] == 1
+    assert len(queued) == 1
+    assert queued[0]["id"].endswith(expected_fingerprint)
+    assert queued[0]["allowed_paths"] == ["tests/test_autonomous_task_proposals.py"]
+    assert "NO_CHANGE" in queued[0]["instruction"]
+
+    # Verify the generated task can be consumed by the real loop queue loader.
+    from scripts import run_minimal_autonomous_loop as loop_runner
+    monkeypatch.setattr(loop_runner, "QUEUE", qp)
+    loaded = loop_runner.load_tasks()
+    assert len(loaded) == 1
+    assert loaded[0]["id"] == queued[0]["id"]
+    assert loaded[0]["allowed_paths"] == ["tests/test_autonomous_task_proposals.py"]
+
+
+def test_auto_refill_skips_completed_fingerprint_and_selects_next_fixed_target(tmp_path):
+    first = tmp_path / "tests" / "test_autonomous_task_proposals.py"
+    second = tmp_path / "tests" / "test_autonomous_task_refill.py"
+    first.parent.mkdir(parents=True)
+    first.write_text("first target\\n", encoding="utf-8")
+    second.write_text("second target\\n", encoding="utf-8")
+    first_id = (
+        "auto-test-tests-test-autonomous-task-proposals-"
+        + __import__("hashlib").sha256(first.read_bytes()).hexdigest()[:12]
+    )
+    ip = write(tmp_path / "issues.json", [])
+    qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
+    sp = write(tmp_path / "state.json", state(completed=[first_id]))
+
+    result = build_proposals(
+        ip, qp, sp, tmp_path / "proposals.json",
+        enable_auto_refill=True, repo_root=tmp_path,
+    )
+
+    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]
+    assert result["auto_queued_count"] == 1
+    assert len(queued) == 1
+    assert queued[0]["allowed_paths"] == ["tests/test_autonomous_task_refill.py"]
+    assert queued[0]["id"].endswith(__import__("hashlib").sha256(second.read_bytes()).hexdigest()[:12])
+
+
+def test_auto_refill_never_appends_when_curated_queue_is_not_empty(tmp_path):
+    target = tmp_path / "tests" / "test_autonomous_task_proposals.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("target\\n", encoding="utf-8")
+    existing = {"id": "curated-task", "instruction": "Do the curated task.", "allowed_paths": ["tests/test_autonomous_task_proposals.py"]}
+    ip = write(tmp_path / "issues.json", [])
+    qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": [existing]})
+    sp = write(tmp_path / "state.json", state())
+
+    result = build_proposals(
+        ip, qp, sp, tmp_path / "proposals.json",
+        enable_auto_refill=True, repo_root=tmp_path,
+    )
+
+    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]
+    assert result["auto_queued_count"] == 0
+    assert [task["id"] for task in queued] == ["curated-task"]
+
+
+
+def test_auto_refill_does_not_bypass_hold_when_target_fingerprint_changes(tmp_path):
+    first = tmp_path / "tests" / "test_autonomous_task_proposals.py"
+    second = tmp_path / "tests" / "test_autonomous_task_refill.py"
+    first.parent.mkdir(parents=True)
+    first.write_text("target changed after held attempt\\n", encoding="utf-8")
+    second.write_text("safe next target\\n", encoding="utf-8")
+    ip = write(tmp_path / "issues.json", [])
+    qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
+    sp = write(tmp_path / "state.json", state(tasks={
+        "auto-test-tests-test-autonomous-task-proposals-deadbeef1234": {"held": True},
+    }))
+
+    result = build_proposals(
+        ip, qp, sp, tmp_path / "proposals.json",
+        enable_auto_refill=True, repo_root=tmp_path,
+    )
+
+    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]
+    assert result["auto_queued_count"] == 1
+    assert len(queued) == 1
+    assert queued[0]["allowed_paths"] == ["tests/test_autonomous_task_refill.py"]
+
+
+
+def test_auto_refill_reports_exhaustion_when_only_target_is_held(tmp_path):
+    target = tmp_path / "tests" / "test_autonomous_task_proposals.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("held target\\n", encoding="utf-8")
+    ip = write(tmp_path / "issues.json", [])
+    qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
+    sp = write(tmp_path / "state.json", state(tasks={
+        "auto-test-tests-test-autonomous-task-proposals-deadbeef1234": {"held": True},
+    }))
+
+    result = build_proposals(
+        ip, qp, sp, tmp_path / "proposals.json",
+        enable_auto_refill=True, repo_root=tmp_path,
+    )
+
+    assert result["status"] == "AUTO_REFILL_EXHAUSTED"
+    assert result["reason"] == "no_eligible_test_target"
+    assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
