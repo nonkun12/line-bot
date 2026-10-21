@@ -31,7 +31,10 @@
     "english-core-image-unknown-word-safe-fallback",
     "self-improvement-history-malformed-jsonl-regression",
     "refill-rejects-malformed-completed-state",
-    "refill-rejects-malformed-recovery-task-entry"
+    "refill-rejects-malformed-recovery-task-entry",
+    "refill-rejects-nonobject-recovery-task-map",
+    "refill-rejects-boolean-catalog-addition-cap",
+    "refill-rejects-non-ascii-task-id"
   ],
   "recovery_ai": {
     "checkpoint": null,
