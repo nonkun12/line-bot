@@ -1,10 +1,6 @@
 name: Distributed Autonomous Development Loop
 
 on:
-  # Temporary one-shot runtime acceptance on this isolated feature branch only.
-  push:
-    branches:
-      - feat/loop-auto-test-task-refill
   workflow_dispatch:
     inputs:
       max_tasks:
@@ -90,11 +86,6 @@ concurrency:
 jobs:
   minimal-loop:
     if: >-
-      (
-        github.event_name == 'push' &&
-        github.ref == 'refs/heads/feat/loop-auto-test-task-refill' &&
-        github.event.head_commit.message == 'runtime-acceptance-auto-test'
-      ) ||
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (
