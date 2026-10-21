@@ -332,12 +332,18 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
     # producer; queue contents alone never register a task.
     auto_policy = payload.get("auto_test_refill") if isinstance(payload, dict) else None
     if auto_policy is not None:
-        expected_policy = {
-            "enabled": True,
-            "max_tasks_per_run": 1,
-            "allowed_roots": ["tests", "uhip/tests"],
-        }
-        if auto_policy != expected_policy:
+        policy_valid = (
+            isinstance(auto_policy, dict)
+            and set(auto_policy) == {"enabled", "max_tasks_per_run", "allowed_roots"}
+            and type(auto_policy.get("enabled")) is bool
+            and auto_policy.get("enabled") is True
+            and type(auto_policy.get("max_tasks_per_run")) is int
+            and auto_policy.get("max_tasks_per_run") == 1
+            and type(auto_policy.get("allowed_roots")) is list
+            and auto_policy.get("allowed_roots") == ["tests", "uhip/tests"]
+            and all(type(root) is str for root in auto_policy.get("allowed_roots", []))
+        )
+        if not policy_valid:
             raise ValueError("auto test refill policy is invalid")
         from scripts.autonomous_task_proposals import build_auto_test_catalog
 
