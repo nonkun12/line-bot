@@ -813,6 +813,13 @@ def main() -> int:
         # This includes held IDs not present in the mutable queue, preserving
         # HOLD across generated-task fingerprint changes.
         held_task_ids = load_held_task_ids(recovery_store)
+        # Also query each queued task independently so a changing/uncertain
+        # Recovery AI record is checked again immediately before selection.
+        for catalog_task in catalog_source_tasks:
+            catalog_task_id = str(catalog_task["id"])
+            recovery_record = recovery_store.task_status(catalog_task_id)
+            if recovery_record_blocks_task(recovery_record):
+                held_task_ids.add(catalog_task_id)
     except Exception:
         # Malformed/unavailable Recovery AI state must produce auditable BLOCKED
         # evidence rather than crashing without a result row.
