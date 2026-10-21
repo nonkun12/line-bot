@@ -1159,3 +1159,20 @@ def test_load_held_task_ids_fails_closed_on_malformed_nonqueued_record():
 
     with pytest.raises(ValueError, match="recovery hold state is ambiguous"):
         loop.load_held_task_ids(FakeRecoveryStore())
+
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {"enabled": 1, "max_tasks_per_run": 1, "allowed_roots": ["tests", "uhip/tests"]},
+        {"enabled": True, "max_tasks_per_run": True, "allowed_roots": ["tests", "uhip/tests"]},
+    ],
+)
+def test_registered_catalog_rejects_boolean_policy_values(monkeypatch, policy):
+    sha = "d" * 40
+    catalog = {"version": 1, "auto_test_refill": policy, "tasks": []}
+    monkeypatch.setattr(loop, "_git_checked", lambda *_args: (0, json.dumps(catalog)))
+
+    with pytest.raises(ValueError, match="auto test refill policy is invalid"):
+        loop._load_registered_catalog(sha)
