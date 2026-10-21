@@ -339,7 +339,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh api --paginate "repos/${GITHUB_REPOSITORY}/issues?state=open&per_page=100" > /tmp/autonomous-loop-open-issues.json
+          gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&per_page=100" > /tmp/autonomous-loop-open-issues.json
           python -m scripts.autonomous_task_proposals \
             --issues /tmp/autonomous-loop-open-issues.json \
             --queue /tmp/autonomous-loop-runtime-queue.json \
