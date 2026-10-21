@@ -333,6 +333,22 @@ jobs:
             --output /tmp/autonomous-loop-runtime-queue.json
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
 
+      - name: Generate review-only task proposals when catalog is exhausted
+        if: success() && env.TRIGGER_MODE == 'normal'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/issues?state=open&per_page=100" > /tmp/autonomous-loop-open-issues.json
+          python -m scripts.autonomous_task_proposals \
+            --issues /tmp/autonomous-loop-open-issues.json \
+            --queue /tmp/autonomous-loop-runtime-queue.json \
+            --state /tmp/autonomous-loop-state.json \
+            --output /tmp/autonomous-loop-task-proposals.json
+          echo "Task proposals are review-only; they are never added to the executable queue automatically."
+          cat /tmp/autonomous-loop-task-proposals.json >> "$GITHUB_STEP_SUMMARY"
+          echo "TASK_PROPOSALS_PATH=/tmp/autonomous-loop-task-proposals.json" >> "$GITHUB_ENV"
+
       - name: Run one bounded autonomous task
         id: run_task
         env:
