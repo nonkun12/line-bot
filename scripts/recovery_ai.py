@@ -268,6 +268,17 @@ class RecoveryStore:
         # Return a copy, not a mutable reference to internal state.
         return dict(record)
 
+    def all_task_statuses(self) -> dict[str, dict]:
+        """Return validated copies of every task record, including held tasks off-queue."""
+        tasks = self._read()["tasks"]
+        result: dict[str, dict] = {}
+        for task_id, record in tasks.items():
+            _safe_id(task_id)
+            if not isinstance(record, dict):
+                raise RecoveryStateError("task recovery record invalid")
+            result[task_id] = dict(record)
+        return result
+
 
 def elapsed_seconds(started_at: str, resumed_at: str) -> float:
     """Calculate recovery duration from timezone-aware ISO timestamps."""
