@@ -28,7 +28,8 @@
     "control-tower-recovery-evidence-identity-mismatch",
     "control-tower-run-identity-invalid-sha-regression-v2",
     "distributed-loop-queue-progress-empty-queue-regression-v2",
-    "english-core-image-unknown-word-safe-fallback"
+    "english-core-image-unknown-word-safe-fallback",
+    "self-improvement-history-malformed-jsonl-regression"
   ],
   "recovery_ai": {
     "checkpoint": null,
