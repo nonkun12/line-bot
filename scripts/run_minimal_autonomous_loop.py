@@ -374,6 +374,16 @@ def reselect_registered_task(
     """Revalidate one task against a fresh queue, catalog, state, and HEAD."""
     from core.control_tower_selector import select_next_task
 
+    dynamic_ids = [
+        str(task.get("id", ""))
+        for task in queued_tasks
+        if isinstance(task, dict) and AUTO_TASK_ID_RE.fullmatch(str(task.get("id", "")))
+    ]
+    # The reviewed policy allows a single fallback task only when the curated
+    # queue is empty. Do not trust a mutable queue to widen that policy.
+    if dynamic_ids and (len(dynamic_ids) != 1 or len(queued_tasks) != 1):
+        return None, "auto_test_queue_policy_violation"
+
     # A changed file fingerprint creates a new auto-test ID. Preserve HOLD
     # across that ID change by treating every current fingerprint for the same
     # test target as held whenever an earlier fingerprint is held/review-required.
