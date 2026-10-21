@@ -846,17 +846,17 @@ def test_three_new_refill_seed_plans_are_syntax_safe_and_bounded(tmp_path, monke
     cases = [
         (
             "refill-rejects-nonobject-recovery-task-map",
-            "def test_refill_fails_closed_on_invalid_recovery_ai_schema(tmp_path: Path)",
+            "def test_refill_fails_closed_on_invalid_recovery_ai_schema(tmp_path: Path):",
             "test_refill_fails_closed_on_nonobject_recovery_task_map",
         ),
         (
             "refill-rejects-boolean-catalog-addition-cap",
-            "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path)",
+            "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):",
             "test_refill_rejects_boolean_catalog_addition_cap",
         ),
         (
             "refill-rejects-non-ascii-task-id",
-            "def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path)",
+            "def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):",
             "test_refill_rejects_non_ascii_task_id",
         ),
     ]
