@@ -273,7 +273,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         addition = newline.join([
             "def test_refill_fails_closed_on_non_string_completed_state(tmp_path: Path):",
             '    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready-one")])',
-            "    state = _write(tmp_path / \\"state.json\\", {\\"version\\": 1, \\"completed\\": [\\"task-done\\", 7], \\"recovery_ai\\": {\\"schema_version\\": 1, \\"tasks\\": {}, \\"checkpoint\\": None}})",
+            '    state = _write(tmp_path / "state.json", {"version": 1, "completed": ["task-done", 7], "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None}})',
             '    output = tmp_path / "runtime.json"',
             '    with pytest.raises(ValueError, match="completed state must be a string list"):',
             "        build_queue(queue, catalog, state, output)",
