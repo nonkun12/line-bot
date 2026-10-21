@@ -150,7 +150,7 @@ def test_auto_refill_skips_completed_fingerprint_and_selects_next_fixed_target(t
     first.write_text("first target\\n", encoding="utf-8")
     second.write_text("second target\\n", encoding="utf-8")
     first_id = (
-        "auto-test-test-autonomous-task-proposals-"
+        "auto-test-tests-test-autonomous-task-proposals-"
         + __import__("hashlib").sha256(first.read_bytes()).hexdigest()[:12]
     )
     ip = write(tmp_path / "issues.json", [])
@@ -198,7 +198,7 @@ def test_auto_refill_does_not_bypass_hold_when_target_fingerprint_changes(tmp_pa
     ip = write(tmp_path / "issues.json", [])
     qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
     sp = write(tmp_path / "state.json", state(tasks={
-        "auto-test-test-autonomous-task-proposals-deadbeef1234": {"held": True},
+        "auto-test-tests-test-autonomous-task-proposals-deadbeef1234": {"held": True},
     }))
 
     result = build_proposals(
@@ -220,7 +220,7 @@ def test_auto_refill_reports_exhaustion_when_only_target_is_held(tmp_path):
     ip = write(tmp_path / "issues.json", [])
     qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
     sp = write(tmp_path / "state.json", state(tasks={
-        "auto-test-test-autonomous-task-proposals-deadbeef1234": {"held": True},
+        "auto-test-tests-test-autonomous-task-proposals-deadbeef1234": {"held": True},
     }))
 
     result = build_proposals(
