@@ -257,6 +257,18 @@ def test_auto_test_diff_rejects_pass_only_test():
     assert validate_auto_test_diff(diff) == (False, "assertion_required")
 
 
+def test_auto_test_diff_rejects_trivial_assertions():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    for assertion in ("assert True", "assert 1 == 1", "assert value == value"):
+        diff = (
+            "+++ b/tests/test_example.py\\n"
+            "+def test_fake_pass():\\n"
+            f"+    {assertion}\\n"
+        )
+        assert validate_auto_test_diff(diff) == (False, "behavioral_assertion_required")
+
+
 def test_auto_test_diff_rejects_skip_or_xfail():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
