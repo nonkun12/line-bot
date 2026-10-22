@@ -469,11 +469,11 @@ def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp
             return subprocess.CompletedProcess(command, 0, stdout=diff, stderr="")
         if command[1:3] == ["-m", "py_compile"]:
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
-        if command[:3] == ["/usr/bin/unshare", "--net", "--"]:
-            assert command[3:8] == ["/usr/bin/sudo", "-n", "-u", "nobody", "--"]
-            assert command[8:10] == ["/usr/bin/env", "-i"]
-            assert command[10] == "PATH=/usr/bin:/bin"
-            assert command[14:17] == [worker.sys.executable, "-m", "pytest"]
+        if command[:4] == ["/usr/bin/bwrap", "--die-with-parent", "--unshare-net", "--unshare-pid"]:
+            assert command[4:7] == ["--ro-bind", "/", "/"]
+            assert command[11:16] == ["--tmpfs", "/tmp", "--chmod", "1777", "/tmp"]
+            assert command[30:35] == ["--uid", "65534", "--gid", "65534", "--"]
+            assert command[35:38] == [worker.sys.executable, "-m", "pytest"]
             assert "no:cacheprovider" in command
             assert not any("TOKEN=" in item or "API_KEY=" in item for item in command)
             observed.append(dict(env or {}))
@@ -494,23 +494,45 @@ def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp
 
 
 
-def test_linux_auto_test_sandbox_can_drop_to_unprivileged_uid():
+def test_linux_auto_test_sandbox_is_read_only_and_unprivileged():
     if not sys.platform.startswith("linux"):
         return
-    result = subprocess.run(
-        [
-            "/usr/bin/unshare", "--net", "--",
-            "/usr/bin/sudo", "-n", "-u", "nobody", "--",
-            "/usr/bin/env", "-i", "PATH=/usr/bin:/bin",
-            "/usr/bin/id", "-u",
-        ],
+    prefix = [
+        "/usr/bin/bwrap",
+        "--die-with-parent",
+        "--unshare-net",
+        "--unshare-pid",
+        "--ro-bind", "/", "/",
+        "--dev", "/dev",
+        "--proc", "/proc",
+        "--tmpfs", "/tmp",
+        "--chmod", "1777", "/tmp",
+        "--chdir", str(worker.ROOT),
+        "--setenv", "HOME", "/tmp",
+        "--setenv", "PATH", "/usr/bin:/bin",
+        "--uid", "65534",
+        "--gid", "65534",
+        "--",
+    ]
+    identity = subprocess.run(
+        [*prefix, "/usr/bin/id", "-u"],
         text=True,
         capture_output=True,
         timeout=15,
     )
-    assert result.returncode == 0, (
-        "auto-test sandbox prerequisites unavailable; execution must fail closed: "
-        + result.stderr[-1000:]
+    assert identity.returncode == 0, (
+        "bubblewrap sandbox unavailable; generated test execution must fail closed: "
+        + identity.stderr[-1000:]
     )
-    assert result.stdout.strip().isdigit()
-    assert result.stdout.strip() != str(os.getuid())
+    assert identity.stdout.strip() == "65534"
+
+    writable = subprocess.run(
+        [*prefix, "/usr/bin/test", "-w", str(worker.ROOT)],
+        text=True,
+        capture_output=True,
+        timeout=15,
+    )
+    assert writable.returncode == 1, (
+        "generated test sandbox unexpectedly has write access to the checkout: "
+        + writable.stderr[-1000:]
+    )
