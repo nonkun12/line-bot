@@ -517,6 +517,9 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
                 return False, "targeted pytest requires safe relative Python test paths"
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native", *paths]
             outputs.append("targeted pytest:")
+        if auto_test_task:
+            # No pytest cache writes into the read-only checkout.
+            test_cmd[4:4] = ["-p", "no:cacheprovider"]
         test_env = None
         if auto_test_task:
             # Do not inherit home-directory or Python path overrides. The
@@ -536,19 +539,15 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             if not sys.platform.startswith("linux"):
                 return False, "auto_test_requires_linux_isolation"
             test_cmd = [
-                "unshare", "--net", "--",
-                "sudo", "-n", "-u", "nobody", "--",
-                "env", "-i",
-                f"PATH={test_env.get('PATH', '/usr/bin:/bin')}",
+                "/usr/bin/unshare", "--net", "--",
+                "/usr/bin/sudo", "-n", "-u", "nobody", "--",
+                "/usr/bin/env", "-i",
+                "PATH=/usr/bin:/bin",
                 "LANG=C.UTF-8",
                 "PYTHONDONTWRITEBYTECODE=1",
                 "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
                 *test_cmd,
             ]
-            # Prevent pytest from trying to write its cache into the read-only
-            # checkout when executing as nobody.
-            test_cmd.insert(-len(paths) if not full_suite and paths else len(test_cmd), "-p")
-            test_cmd.insert(-len(paths) - 1 if not full_suite and paths else len(test_cmd), "no:cacheprovider")
         tests = run(test_cmd, timeout=900, env=test_env)
     finally:
         for name, value in task_scope.items():
