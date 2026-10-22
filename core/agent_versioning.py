@@ -40,6 +40,8 @@ class AgentVersion:
             errors.append("lifecycle must be an AgentLifecycle")
         return tuple(errors)
 
+    def __str__(self)->str: return f"{self.agent_name}@{self.version}"
+
 
 class AgentVersionRegistry:
     """In-memory version history governed by the shared lifecycle model."""
