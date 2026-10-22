@@ -172,7 +172,9 @@ def build_proposals(
 
     excluded = {x.get("id") for x in queued if isinstance(x, dict) and isinstance(x.get("id"), str)} | set(completed)
     recovery_tasks = recovery["tasks"]
+    blocked_task_ids: set[str] = set()
     blocked_auto_target_prefixes: set[str] = set()
+    pruned_task_ids: list[str] = []
     for task_id, record in recovery_tasks.items():
         if not isinstance(task_id, str) or not isinstance(record, dict):
             raise ValueError("Recovery AI task record is invalid")
@@ -182,6 +184,7 @@ def build_proposals(
             raise ValueError("Recovery AI task flags are invalid")
         if held or resume_requires_review:
             excluded.add(task_id)
+            blocked_task_ids.add(task_id)
             match = AUTO_TASK_ID.fullmatch(task_id)
             if match:
                 blocked_auto_target_prefixes.add(match.group(1) + "-")
@@ -199,9 +202,25 @@ def build_proposals(
             # do not spin on the same file fingerprint next schedule.
             if task_id not in completed:
                 excluded.add(task_id)
+                blocked_task_ids.add(task_id)
                 match = AUTO_TASK_ID.fullmatch(task_id)
                 if match:
                     blocked_auto_target_prefixes.add(match.group(1) + "-")
+
+    active_queue = []
+    for item in queued:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            raise ValueError("queued task is invalid")
+        task_id = item["id"]
+        match = AUTO_TASK_ID.fullmatch(task_id)
+        blocked_by_prefix = match is not None and match.group(1) + "-" in blocked_auto_target_prefixes
+        if task_id in completed or task_id in blocked_task_ids or blocked_by_prefix:
+            pruned_task_ids.append(task_id)
+            continue
+        active_queue.append(item)
+    if pruned_task_ids:
+        queue["tasks"] = active_queue
+        queued = active_queue
 
     proposals = []
     approved_tasks = []
@@ -248,7 +267,7 @@ def build_proposals(
             break
 
     # Never inject fallback work ahead of an existing curated/approved queue.
-    # At most one test-only task is added, and only from the fixed target list.
+    # At most one test-only task is added from discovered, strictly allowlisted files.
     auto_task = None
     if enable_auto_refill and not queued and not approved_tasks and queue_capacity > 0:
         auto_task = _auto_test_task(
@@ -259,7 +278,7 @@ def build_proposals(
         if auto_task is not None:
             approved_tasks.append(auto_task)
 
-    if approved_tasks:
+    if approved_tasks or pruned_task_ids:
         updated_queue = dict(queue)
         updated_queue["tasks"] = [*queued, *approved_tasks]
         queue_path.write_text(json.dumps(updated_queue, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -285,6 +304,7 @@ def build_proposals(
         "approved_task_ids": [task["id"] for task in approved_tasks] if auto_task is None else [],
         "auto_queued_count": 1 if auto_task is not None else 0,
         "auto_queued_task_ids": [auto_task["id"]] if auto_task is not None else [],
+        "pruned_task_ids": pruned_task_ids,
         "proposal_count": len(proposals),
         "proposals": proposals,
         "reason": (
