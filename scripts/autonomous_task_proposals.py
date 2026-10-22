@@ -128,14 +128,14 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
     code = [line for line in added if line.strip()]
     added_source = "\n".join(line[1:] for line in added)
     unsafe_pattern = re.compile(
-        r"(?i)(?:\\bos\\.environ\\b|\\bos\\.getenv\\s*\\(|"
-        r"\\b(?:GROQ_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN)\\b|"
-        r"\\brequests\\.(?:get|post|put|patch|delete|request)\\s*\\(|"
-        r"\\burllib\\.request\\b|"
-        r"\\bhttpx\\.(?:get|post|put|patch|delete|request)\\s*\\(|"
-        r"\\bsocket\\.(?:socket|create_connection)\\s*\\(|"
-        r"https?://|\\bsubprocess\\.(?:run|Popen|call|check_output)\\s*\\(|"
-        r"\\beval\\s*\\(|\\bexec\\s*\\()"
+        r"(?i)(?:\bos\.environ\b|\bos\.getenv\s*\(|"
+        r"\b(?:GROQ_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN)\b|"
+        r"\brequests\.(?:get|post|put|patch|delete|request)\s*\(|"
+        r"\burllib\.request\b|"
+        r"\bhttpx\.(?:get|post|put|patch|delete|request)\s*\(|"
+        r"\bsocket\.(?:socket|create_connection)\s*\(|"
+        r"https?://|\bsubprocess\.(?:run|Popen|call|check_output)\s*\(|"
+        r"\beval\s*\(|\bexec\s*\()"
     )
     if unsafe_pattern.search(added_source):
         return False, "unsafe_test_construct"
