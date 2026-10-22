@@ -586,3 +586,34 @@ def test_linux_auto_test_sandbox_is_read_only_and_networkless(tmp_path):
             timeout=30,
             env=docker_env,
         )
+
+
+
+def test_auto_test_worker_rejects_zero_exit_when_pytest_skips(monkeypatch, tmp_path):
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "auto-test-tests-test_example-deadbeef1234")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.setattr(worker.sys, "platform", "linux")
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,3 @@
++def test_safe():
++    actual = len("safe")
++    assert actual == 4
+"""
+
+    def fake_run(command, timeout=900, input_text=None, env=None):
+        if command[:4] == ["git", "diff", "--no-ext-diff", "--unified=0"]:
+            return subprocess.CompletedProcess(command, 0, stdout=diff, stderr="")
+        if command[1:3] == ["-m", "py_compile"]:
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        if command[:3] == ["/usr/bin/docker", "image", "inspect"]:
+            return subprocess.CompletedProcess(command, 0, stdout="image exists", stderr="")
+        if command[:3] == ["/usr/bin/docker", "run", "--rm"]:
+            return subprocess.CompletedProcess(command, 0, stdout="1 skipped in 0.01s", stderr="")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    passed, output = worker.run_tests(["tests/test_example.py"], full_suite=False)
+
+    assert not passed
+    assert "auto_test_runtime_result_rejected" in output
