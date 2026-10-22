@@ -620,23 +620,23 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
     if auto_test_task:
         # A pytest exit code of 0 can still mean that every test was skipped.
         # Require an explicit passing-test count and reject skip/fail/error summaries.
-        summary = "\\n".join([tests.stdout or "", tests.stderr or ""])
+        summary = "\n".join([tests.stdout or "", tests.stderr or ""])
         count = lambda label: sum(
             int(match.group(1))
-            for match in re.finditer(rf"(?<![A-Za-z0-9_])(\\d+)\\s+{label}\\b", summary)
+            for match in re.finditer(rf"(?<![A-Za-z0-9_])(\d+)\s+{label}\b", summary)
         )
         passed_count = count("passed")
         skipped_count = count("skipped")
         failed_count = count("failed") + count("error") + count("errors")
         if tests.returncode != 0:
-            return False, "\\n".join(outputs)[-8000:]
+            return False, "\n".join(outputs)[-8000:]
         if passed_count < 1 or skipped_count or failed_count:
             outputs.append(
                 "auto_test_pytest_result_rejected:"
                 f"passed={passed_count},skipped={skipped_count},failed_or_errors={failed_count}"
             )
-            return False, "\\n".join(outputs)[-8000:]
-    return tests.returncode == 0, "\\n".join(outputs)[-8000:]
+            return False, "\n".join(outputs)[-8000:]
+    return tests.returncode == 0, "\n".join(outputs)[-8000:]
 
 
 def has_python_compile_failure(output: str) -> bool:
