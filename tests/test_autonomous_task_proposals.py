@@ -290,17 +290,17 @@ def test_auto_test_diff_rejects_imports_and_host_access():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
     unsafe_bodies = [
-        "+    import os\\n+    assert os.name\\n",
-        "+    assert os.environ.get('TOKEN') is None\\n",
-        "+    open('/etc/passwd').read()\\n",
-        "+    __import__('os')\\n",
+        "+    import os\n+    assert os.name\n",
+        "+    assert os.environ.get('TOKEN') is None\n",
+        "+    open('/etc/passwd').read()\n",
+        "+    __import__('os')\n",
     ]
     for body in unsafe_bodies:
         diff = (
-            "--- a/tests/test_example.py\\n"
-            "+++ b/tests/test_example.py\\n"
-            "@@ -20,0 +21,3 @@\\n"
-            "+def test_new_case():\\n"
+            "--- a/tests/test_example.py\n"
+            "+++ b/tests/test_example.py\n"
+            "@@ -20,0 +21,3 @@\n"
+            "+def test_new_case():\n"
             + body
         )
         valid, _reason = validate_auto_test_diff(diff)
@@ -511,3 +511,25 @@ def test_auto_test_diff_rejects_absolute_paths_and_home_lookup():
 """
     assert validate_auto_test_diff(absolute_path) == (False, "host_access_rejected")
     assert validate_auto_test_diff(home_lookup) == (False, "host_access_rejected")
+
+
+
+def test_auto_test_diff_rejects_reflection_and_dunder_bypasses():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    unsafe_bodies = [
+        "+    getattr(__builtins__, 'ev' + 'al')('1')\n",
+        "+    getattr(__builtins__, 'op' + 'en')('.env')\n",
+        "+    assert getattr(__builtins__, '__name__')\n",
+        "+    assert 'get' + 'attr' == 'getattr'\n",
+    ]
+    for body in unsafe_bodies:
+        diff = (
+            "--- a/tests/test_example.py\n"
+            "+++ b/tests/test_example.py\n"
+            "@@ -20,0 +21,3 @@\n"
+            "+def test_reflection_bypass():\n"
+            + body
+        )
+        valid, _reason = validate_auto_test_diff(diff)
+        assert not valid, "reflective or dunder bypass was accepted"
