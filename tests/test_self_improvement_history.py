@@ -78,12 +78,18 @@ def test_history_redacts_signal_details_before_persisting(tmp_path):
     path = tmp_path / "history.jsonl"
     secret = "token=sk-example-secret"
     store = SelfImprovementHistory(path)
-    store.append([ImprovementSignal("failure", "task-1", secret)])
+    store.append([
+        ImprovementSignal("failure", "task-1", secret),
+        ImprovementSignal("failure", "sk-example-secret", "ordinary-looking detail"),
+    ])
 
     persisted = path.read_text(encoding="utf-8")
     assert secret not in persisted
     assert "sk-example-secret" not in persisted
-    assert json.loads(persisted)["detail"] == "development failure observed"
+    rows = [json.loads(line) for line in persisted.splitlines()]
+    assert rows[0]["detail"] == "development failure observed"
+    assert rows[1]["task_id"] is None
+    assert "sk-example-secret" not in persisted
 
 
 def test_history_redacts_legacy_records_and_cycle_memory_on_next_write(tmp_path):
