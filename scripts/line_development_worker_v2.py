@@ -9,8 +9,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import traceback
 from functools import lru_cache
 from pathlib import Path
@@ -491,16 +493,22 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             env=docker_env,
         )
         if image_check.returncode != 0:
-            image_build = run(
-                [
-                    "/usr/bin/docker", "build",
-                    "--file", "scripts/auto_test_sandbox.Dockerfile",
-                    "--tag", sandbox_image,
-                    ".",
-                ],
-                timeout=900,
-                env=docker_env,
-            )
+            with tempfile.TemporaryDirectory(prefix="auto-test-sandbox-build-") as context:
+                context_dir = Path(context)
+                shutil.copyfile(ROOT / "requirements.txt", context_dir / "requirements.txt")
+                shutil.copyfile(
+                    ROOT / "scripts/auto_test_sandbox.Dockerfile",
+                    context_dir / "Dockerfile",
+                )
+                image_build = run(
+                    [
+                        "/usr/bin/docker", "build",
+                        "--tag", sandbox_image,
+                        str(context_dir),
+                    ],
+                    timeout=900,
+                    env=docker_env,
+                )
             if image_build.returncode != 0:
                 return False, (
                     "auto_test_sandbox_image_build_failed\n"
