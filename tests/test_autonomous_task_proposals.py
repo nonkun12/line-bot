@@ -632,8 +632,8 @@ def test_auto_test_diff_rejects_unreachable_or_tautological_assertions():
         ["def test_nested_helper():", "    def check():", "        assert parse_value('x')"],
     )
     for lines in bodies:
-        added = "".join("+" + line + "\\n" for line in lines)
-        diff = "--- a/tests/test_example.py\\n+++ b/tests/test_example.py\\n@@ -1,0 +2,5 @@\\n" + added
+        added = "".join("+" + line + "\n" for line in lines)
+        diff = "--- a/tests/test_example.py\n+++ b/tests/test_example.py\n@@ -1,0 +2,5 @@\n" + added
         valid, reason = validate_auto_test_diff(diff)
         assert not valid, (lines, reason)
 
