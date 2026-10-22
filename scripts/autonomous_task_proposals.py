@@ -119,12 +119,17 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
     ]
     if removed_lines:
         return False, "existing_lines_modified"
-    added_tests = re.findall(
-        r"^\+\s*(?:async\s+)?def\s+(test_[A-Za-z0-9_]+)\s*\(",
+    added_functions = re.findall(
+        r"^\+\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
         diff_text,
         flags=re.MULTILINE,
     )
-    if len(added_tests) != 1:
+    added_classes = re.findall(
+        r"^\+\s*class\s+[A-Za-z_][A-Za-z0-9_]*",
+        diff_text,
+        flags=re.MULTILINE,
+    )
+    if len(added_functions) != 1 or not added_functions[0].startswith("test_") or added_classes:
         return False, "expected_exactly_one_new_test_function"
     return True, "ok"
 
