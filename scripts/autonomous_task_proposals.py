@@ -151,8 +151,8 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
     if not tree.body[0].name.startswith("test_"):
         return False, "expected_exactly_one_new_test_function"
 
-    # A syntactically valid test is not sufficient evidence: reject empty tests,
-    # unconditional skips/xfails, and assertions that are plainly tautological.
+    # Require a direct, reachable check in the test body. Nested assertions are
+    # not evidence: they may be hidden in dead branches or never-called helpers.
     test_function = tree.body[0]
     if any(
         isinstance(node, ast.Call)
@@ -163,23 +163,49 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         for node in ast.walk(test_function)
     ):
         return False, "test_skip_or_xfail_rejected"
-    assertions = [node for node in ast.walk(test_function) if isinstance(node, ast.Assert)]
-    if not assertions:
+
+    def _trivial_assertion(expr: ast.expr) -> bool:
+        if isinstance(expr, ast.Constant):
+            return bool(expr.value) or expr.value is None or expr.value == 0 or expr.value == ""
+        if isinstance(expr, ast.BoolOp) and isinstance(expr.op, ast.Or):
+            return any(
+                isinstance(value, ast.Constant) and bool(value.value)
+                for value in expr.values
+            )
+        if isinstance(expr, ast.Compare):
+            operands = [expr.left, *expr.comparators]
+            if len(expr.ops) == 1 and isinstance(expr.ops[0], (ast.Eq, ast.Is)):
+                if ast.dump(operands[0], include_attributes=False) == ast.dump(operands[1], include_attributes=False):
+                    return True
+                if all(isinstance(item, ast.Constant) for item in operands):
+                    try:
+                        return bool(eval(compile(ast.Expression(expr), "<validator>", "eval"), {"__builtins__": {}}, {}))
+                    except Exception:
+                        return False
+        return False
+
+    direct_checks = []
+    for statement in test_function.body:
+        if isinstance(statement, (ast.Return, ast.Raise)):
+            return False, "test_exits_before_assertion"
+        if isinstance(statement, ast.Assert):
+            direct_checks.append(("assert", statement.test))
+        elif isinstance(statement, ast.With):
+            is_raises = bool(statement.items) and all(
+                isinstance(item.context_expr, ast.Call)
+                and isinstance(item.context_expr.func, ast.Attribute)
+                and isinstance(item.context_expr.func.value, ast.Name)
+                and item.context_expr.func.value.id == "pytest"
+                and item.context_expr.func.attr == "raises"
+                for item in statement.items
+            )
+            if is_raises:
+                direct_checks.append(("raises", None))
+
+    if not direct_checks:
         return False, "test_has_no_assertion"
-    for assertion in assertions:
-        test_expr = assertion.test
-        if isinstance(test_expr, ast.Constant) and test_expr.value is True:
-            return False, "test_assertion_is_trivial"
-        if (
-            isinstance(test_expr, ast.Compare)
-            and len(test_expr.ops) == 1
-            and isinstance(test_expr.ops[0], (ast.Eq, ast.Is))
-            and isinstance(test_expr.left, ast.Constant)
-            and len(test_expr.comparators) == 1
-            and isinstance(test_expr.comparators[0], ast.Constant)
-            and test_expr.left.value == test_expr.comparators[0].value
-        ):
-            return False, "test_assertion_is_trivial"
+    if any(kind == "assert" and _trivial_assertion(expr) for kind, expr in direct_checks):
+        return False, "test_assertion_is_trivial"
 
     forbidden_names = {
         "os", "sys", "subprocess", "socket", "requests", "urllib", "httpx",
