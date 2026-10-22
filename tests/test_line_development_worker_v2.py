@@ -357,7 +357,7 @@ def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
 def test_run_tests_can_verify_only_allowlisted_target_for_no_change(monkeypatch, tmp_path):
     calls = []
 
-    def fake_run(cmd, timeout=900, input_text=None):
+    def fake_run(cmd, timeout=900, input_text=None, env=None):
         calls.append(cmd)
         return subprocess.CompletedProcess(cmd, 0, stdout="1 passed", stderr="")
 
