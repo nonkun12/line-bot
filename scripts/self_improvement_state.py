@@ -44,6 +44,46 @@ def sanitize_records(records: object) -> list[dict[str, str | None]]:
     return safe[-MAX_RECORDS:]
 
 
+def sanitize_history_records(records: object) -> list[dict[str, object]]:
+    """Sanitize legacy JSONL records before reuse or artifact publication."""
+    if not isinstance(records, list):
+        raise ValueError("self-improvement history must be a list")
+    safe: list[dict[str, object]] = []
+    for row in records:
+        if not isinstance(row, dict):
+            continue
+        if row.get("record_type") == "cycle_memory":
+            outcome = row.get("outcome")
+            if outcome not in {"PASS", "FAIL", "BLOCKED"}:
+                continue
+            raw_paths = row.get("target_path", "")
+            paths = raw_paths.split(",") if isinstance(raw_paths, str) else []
+            safe_paths = [
+                part.strip() for part in paths
+                if part.strip()
+                and _TASK_ID.fullmatch(part.strip())
+                and "/" not in part.strip()
+            ]
+            improvements = row.get("improvements", [])
+            count = len(improvements) if isinstance(improvements, list) else 0
+            safe.append({
+                "record_type": "cycle_memory",
+                "outcome": outcome,
+                "cause": {
+                    "PASS": "development gate passed",
+                    "FAIL": "development gate failed",
+                    "BLOCKED": "development gate blocked",
+                }[outcome],
+                "improvements": ["improvement proposal recorded"] * min(count, 3),
+                "next_action": "review outcome before execution",
+                "target_path": ", ".join(safe_paths)[:1200],
+                "recurring_patterns": [],
+            })
+        else:
+            safe.extend(sanitize_records([row]))
+    return safe[-MAX_RECORDS:]
+
+
 def read_jsonl(path: Path) -> list[dict[str, object]]:
     if not path.exists():
         return []
@@ -58,7 +98,7 @@ def read_jsonl(path: Path) -> list[dict[str, object]]:
     return rows
 
 
-def atomic_write_jsonl(path: Path, rows: list[dict[str, str | None]]) -> None:
+def atomic_write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(path.name + ".tmp")
     try:
@@ -74,11 +114,21 @@ def atomic_write_jsonl(path: Path, rows: list[dict[str, str | None]]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=("import", "export"))
-    parser.add_argument("--state", type=Path, required=True)
+    parser.add_argument("mode", choices=("import", "export", "sanitize"))
+    parser.add_argument("--state", type=Path)
     parser.add_argument("--history", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
+    if args.mode == "sanitize":
+        rows = sanitize_history_records(read_jsonl(args.history))
+        output = args.output or args.history
+        atomic_write_jsonl(output, rows)
+        print(f"SELF_IMPROVEMENT_HISTORY_SANITIZED={len(rows)}")
+        return 0
+
+    if args.state is None:
+        parser.error("--state is required for import/export")
     state = json.loads(args.state.read_text(encoding="utf-8"))
     if not isinstance(state, dict):
         raise SystemExit("durable state must be an object")
