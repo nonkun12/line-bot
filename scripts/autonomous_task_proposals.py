@@ -154,14 +154,6 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
     # Require observable test evidence; a zero exit code from pass/skip/xfail
     # is not proof that the proposed regression case exercised behavior.
     nodes = list(ast.walk(tree))
-    if not any(isinstance(node, ast.Assert) for node in nodes):
-        return False, "assertion_required"
-    for node in nodes:
-        if isinstance(node, ast.Call):
-            if isinstance(node.func, ast.Attribute) and node.func.attr in {"skip", "skipif", "xfail"}:
-                return False, "skip_or_xfail_rejected"
-            if isinstance(node.func, ast.Name) and node.func.id in {"skip", "skipif", "xfail"}:
-                return False, "skip_or_xfail_rejected"
 
     forbidden_names = {
         "os", "sys", "subprocess", "socket", "requests", "urllib", "httpx",
@@ -213,6 +205,16 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
             return False, "host_access_rejected"
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in forbidden_names:
             return False, "host_access_rejected"
+    # Check safety violations first so unsafe host/network access remains the
+    # primary diagnostic even when the malicious sample lacks an assertion.
+    for node in nodes:
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute) and node.func.attr in {"skip", "skipif", "xfail"}:
+                return False, "skip_or_xfail_rejected"
+            if isinstance(node.func, ast.Name) and node.func.id in {"skip", "skipif", "xfail"}:
+                return False, "skip_or_xfail_rejected"
+    if not any(isinstance(node, ast.Assert) for node in nodes):
+        return False, "assertion_required"
     return True, "ok"
 
 
