@@ -307,9 +307,11 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         return bool(args) and _looks_like_exception_type(args[0])
 
     def _raises_context(statement: ast.With) -> bool:
+        # The diff-only validator cannot know whether a module-scope context
+        # manager is an alias for pytest.raises. Reject call-based context managers
+        # in generated tests rather than leave an alias-based false-PASS path.
         return bool(statement.items) and any(
             isinstance(item.context_expr, ast.Call)
-            and _raises_callable(item.context_expr.func, item.context_expr.args)
             for item in statement.items
         )
 
