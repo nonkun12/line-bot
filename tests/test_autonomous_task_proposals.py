@@ -276,3 +276,33 @@ def test_auto_test_diff_rejects_zero_or_multiple_new_test_functions():
     assert validate_auto_test_diff(diff) == (
         False, "expected_exactly_one_new_test_function"
     )
+
+
+
+def test_auto_refill_skips_successful_but_uncompleted_target_until_review(tmp_path):
+    from scripts.autonomous_task_proposals import build_auto_test_catalog
+
+    first = tmp_path / "tests" / "test_autonomous_task_proposals.py"
+    second = tmp_path / "tests" / "test_autonomous_task_refill.py"
+    first.parent.mkdir(parents=True)
+    first.write_text("first target\\n", encoding="utf-8")
+    second.write_text("second target\\n", encoding="utf-8")
+    first_id = build_auto_test_catalog(tmp_path)[0]["id"]
+    ip = write(tmp_path / "issues.json", [])
+    qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
+    sp = write(tmp_path / "state.json", state(tasks={
+        first_id: {
+            "held": False,
+            "last_success_evidence": {"task_id": first_id, "status": "PASS"},
+        }
+    }))
+
+    result = build_proposals(
+        ip, qp, sp, tmp_path / "proposals.json",
+        enable_auto_refill=True, repo_root=tmp_path,
+    )
+
+    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]
+    assert result["auto_queued_count"] == 1
+    assert queued[0]["allowed_paths"] == ["tests/test_autonomous_task_refill.py"]
+    assert queued[0]["id"] != first_id
