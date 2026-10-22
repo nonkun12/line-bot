@@ -114,7 +114,7 @@ def test_auto_refill_queues_one_test_only_task_when_queue_is_empty(tmp_path, mon
 
     target = tmp_path / "tests" / "test_autonomous_task_proposals.py"
     target.parent.mkdir(parents=True)
-    target.write_text("def test_existing_behavior():\\n    assert True\\n", encoding="utf-8")
+    target.write_text("def test_existing_behavior():\n    assert True\n", encoding="utf-8")
     ip = write(tmp_path / "issues.json", [issue("review-only")])
     qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
     sp = write(tmp_path / "state.json", state())
@@ -147,8 +147,8 @@ def test_auto_refill_skips_completed_fingerprint_and_selects_next_fixed_target(t
     first = tmp_path / "tests" / "test_autonomous_task_proposals.py"
     second = tmp_path / "tests" / "test_autonomous_task_refill.py"
     first.parent.mkdir(parents=True)
-    first.write_text("first target\\n", encoding="utf-8")
-    second.write_text("second target\\n", encoding="utf-8")
+    first.write_text("first target\n", encoding="utf-8")
+    second.write_text("second target\n", encoding="utf-8")
     first_id = (
         "auto-test-tests-test-autonomous-task-proposals-"
         + __import__("hashlib").sha256(first.read_bytes()).hexdigest()[:12]
@@ -172,7 +172,7 @@ def test_auto_refill_skips_completed_fingerprint_and_selects_next_fixed_target(t
 def test_auto_refill_never_appends_when_curated_queue_is_not_empty(tmp_path):
     target = tmp_path / "tests" / "test_autonomous_task_proposals.py"
     target.parent.mkdir(parents=True)
-    target.write_text("target\\n", encoding="utf-8")
+    target.write_text("target\n", encoding="utf-8")
     existing = {"id": "curated-task", "instruction": "Do the curated task.", "allowed_paths": ["tests/test_autonomous_task_proposals.py"]}
     ip = write(tmp_path / "issues.json", [])
     qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": [existing]})
@@ -193,8 +193,8 @@ def test_auto_refill_does_not_bypass_hold_when_target_fingerprint_changes(tmp_pa
     first = tmp_path / "tests" / "test_autonomous_task_proposals.py"
     second = tmp_path / "tests" / "test_autonomous_task_refill.py"
     first.parent.mkdir(parents=True)
-    first.write_text("target changed after held attempt\\n", encoding="utf-8")
-    second.write_text("safe next target\\n", encoding="utf-8")
+    first.write_text("target changed after held attempt\n", encoding="utf-8")
+    second.write_text("safe next target\n", encoding="utf-8")
     ip = write(tmp_path / "issues.json", [])
     qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
     sp = write(tmp_path / "state.json", state(tasks={
@@ -216,7 +216,7 @@ def test_auto_refill_does_not_bypass_hold_when_target_fingerprint_changes(tmp_pa
 def test_auto_refill_reports_exhaustion_when_only_target_is_held(tmp_path):
     target = tmp_path / "tests" / "test_autonomous_task_proposals.py"
     target.parent.mkdir(parents=True)
-    target.write_text("held target\\n", encoding="utf-8")
+    target.write_text("held target\n", encoding="utf-8")
     ip = write(tmp_path / "issues.json", [])
     qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
     sp = write(tmp_path / "state.json", state(tasks={
@@ -292,8 +292,8 @@ def test_auto_refill_skips_successful_but_uncompleted_target_until_review(tmp_pa
     first = tmp_path / "tests" / "test_autonomous_task_proposals.py"
     second = tmp_path / "tests" / "test_autonomous_task_refill.py"
     first.parent.mkdir(parents=True)
-    first.write_text("first target\\n", encoding="utf-8")
-    second.write_text("second target\\n", encoding="utf-8")
+    first.write_text("first target\n", encoding="utf-8")
+    second.write_text("second target\n", encoding="utf-8")
     first_id = build_auto_test_catalog(tmp_path)[0]["id"]
     ip = write(tmp_path / "issues.json", [])
     qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
@@ -319,7 +319,7 @@ def test_auto_refill_skips_successful_but_uncompleted_target_until_review(tmp_pa
 def test_auto_refill_prunes_held_curated_task_before_fallback(tmp_path):
     target = tmp_path / "tests" / "test_autonomous_task_proposals.py"
     target.parent.mkdir(parents=True)
-    target.write_text("target test content\\n", encoding="utf-8")
+    target.write_text("target test content\n", encoding="utf-8")
     held_task = {
         "id": "curated-held-task",
         "instruction": "held curated task",
@@ -344,7 +344,7 @@ def test_auto_refill_prunes_held_curated_task_before_fallback(tmp_path):
 def test_auto_refill_prunes_successful_but_uncompleted_curated_task(tmp_path):
     target = tmp_path / "tests" / "test_autonomous_task_proposals.py"
     target.parent.mkdir(parents=True)
-    target.write_text("target test content\\n", encoding="utf-8")
+    target.write_text("target test content\n", encoding="utf-8")
     task_id = "curated-success-not-completed"
     task = {
         "id": task_id,
@@ -377,16 +377,16 @@ def test_auto_test_diff_rejects_module_level_additions():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
     for extra in (
-        "+import os\\n",
-        "+secret = read_secret()\\n",
-        "+def helper():\\n+    return True\\n",
+        "+import os\n",
+        "+secret = read_secret()\n",
+        "+def helper():\n+    return True\n",
     ):
         diff = (
-            "--- a/tests/test_example.py\\n"
-            "+++ b/tests/test_example.py\\n"
-            "@@ -20,0 +21,4 @@\\n"
-            "+def test_new_case():\\n"
-            "+    assert True\\n"
+            "--- a/tests/test_example.py\n"
+            "+++ b/tests/test_example.py\n"
+            "@@ -20,0 +21,4 @@\n"
+            "+def test_new_case():\n"
+            "+    assert True\n"
             + extra
         )
         valid, reason = validate_auto_test_diff(diff)
