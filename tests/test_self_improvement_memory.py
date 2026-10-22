@@ -23,7 +23,7 @@ def test_cycle_memory_persists_outcome_cause_improvement_and_next_action(tmp_pat
     assert len(memories) == 1
     memory = memories[0]
     assert memory.outcome == "FAIL"
-    assert "pytest gate failed" in memory.cause
+    assert memory.cause == "development gate failed"
     assert memory.improvements
     assert "review" in memory.next_action
     assert memory.target_path == "tests/example.py"
@@ -77,7 +77,7 @@ def test_cycle_memory_feeds_next_instruction_without_recurring_pattern(tmp_path)
 
     assert augmented.startswith("next safe task\n\n")
     assert "prior outcome=PASS" in augmented
-    assert "next_action=continue next loop" in augmented
+    assert "next_action=review outcome before execution" in augmented
 
 
 def test_cycle_memory_is_written_as_one_json_record_per_line(tmp_path):
