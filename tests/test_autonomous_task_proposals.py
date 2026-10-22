@@ -468,3 +468,21 @@ def test_auto_test_diff_rejects_imports_and_host_access():
         valid, reason = validate_auto_test_diff(diff)
         assert not valid
         assert reason in {"imports_rejected", "host_access_rejected"}
+
+
+
+def test_auto_test_diff_rejects_absolute_paths_and_home_lookup():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    absolute_path = """+++ b/tests/test_example.py
++def test_absolute_path():
++    path = Path("/etc/passwd")
++    assert path
+"""
+    home_lookup = """+++ b/tests/test_example.py
++def test_home_lookup():
++    path = Path.home()
++    assert path
+"""
+    assert validate_auto_test_diff(absolute_path) == (False, "host_access_rejected")
+    assert validate_auto_test_diff(home_lookup) == (False, "host_access_rejected")
