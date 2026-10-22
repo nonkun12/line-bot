@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -18,6 +19,13 @@ from .self_improvement import ImprovementSignal
 _DEFAULT_MAX_RECORDS = 200
 _MAX_MAX_RECORDS = 200
 _MAX_MEMORY_TEXT = 1200
+_SAFE_TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
+_SAFE_RELATIVE_PATH = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$")
+_SAFE_SIGNAL_DETAILS = {
+    "success": "development reached integration gate",
+    "repair": "development required repair attempts",
+    "failure": "development failure observed",
+}
 
 
 @dataclass(frozen=True)
@@ -58,7 +66,17 @@ class SelfImprovementHistory:
         for signal in signals:
             if not isinstance(signal, ImprovementSignal):
                 raise TypeError("history entries must be ImprovementSignal")
-            records.append(asdict(signal))
+            if signal.kind not in _SAFE_SIGNAL_DETAILS:
+                raise ValueError("unsupported self-improvement signal kind")
+            task_id = signal.task_id
+            if task_id is not None and not _SAFE_TASK_ID.fullmatch(task_id):
+                task_id = None
+            # Do not persist report.error or any model/user-controlled detail.
+            records.append({
+                "kind": signal.kind,
+                "task_id": task_id,
+                "detail": _SAFE_SIGNAL_DETAILS[signal.kind],
+            })
         self._atomic_write(records)
 
     def append_memory(self, memory: SelfImprovementMemoryRecord) -> None:
@@ -66,7 +84,33 @@ class SelfImprovementHistory:
         if not isinstance(memory, SelfImprovementMemoryRecord):
             raise TypeError("memory must be SelfImprovementMemoryRecord")
         records = self._read_records()
-        records.append({"record_type": "cycle_memory", **asdict(memory)})
+        target_paths = [
+            part.strip()
+            for part in memory.target_path.split(",")
+            if part.strip()
+        ]
+        safe_target_path = ", ".join(
+            path for path in target_paths
+            if _SAFE_RELATIVE_PATH.fullmatch(path)
+            and all(part not in {".", ".."} for part in path.split("/"))
+        )[:_MAX_MEMORY_TEXT]
+        # Free-form error/proposal text can contain credentials or prompt content.
+        # Keep only bounded categorical metadata in durable history.
+        records.append({
+            "record_type": "cycle_memory",
+            "outcome": memory.outcome,
+            "cause": {
+                "PASS": "development gate passed",
+                "FAIL": "development gate failed",
+                "BLOCKED": "development gate blocked",
+            }[memory.outcome],
+            "improvements": ["improvement proposal recorded"] * min(len(memory.improvements), 3),
+            "next_action": "review outcome before execution",
+            "target_path": safe_target_path,
+            # Pattern keys can contain raw exception messages; discard until a
+            # dedicated non-sensitive pattern identifier is used.
+            "recurring_patterns": [],
+        })
         self._atomic_write(records)
 
     def load(self) -> tuple[ImprovementSignal, ...]:
