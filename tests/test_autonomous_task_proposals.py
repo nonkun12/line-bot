@@ -623,19 +623,19 @@ def test_auto_test_diff_rejects_unreachable_or_tautological_assertions():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
     bodies = (
-        "def test_dead_branch():\\n    if False:\\n        assert parse_value('x')\\n",
-        "def test_after_return():\\n    return\\n    assert parse_value('x')\\n",
-        "def test_swallowed_assertion():\\n    try:\\n        assert parse_value('x')\\n    except BaseException:\\n        pass\\n",
-        "def test_same_variable():\\n    value = parse_value('x')\\n    assert value == value\\n",
-        "def test_or_true():\\n    value = parse_value('x')\\n    assert value == 'y' or True\\n",
-        "def test_constant_truthy():\\n    assert 1\\n",
-        "def test_nested_helper():\\n    def check():\\n        assert parse_value('x')\\n",
+        ["def test_dead_branch():", "    if False:", "        assert parse_value('x')"],
+        ["def test_after_return():", "    return", "    assert parse_value('x')"],
+        ["def test_swallowed_assertion():", "    try:", "        assert parse_value('x')", "    except BaseException:", "        pass"],
+        ["def test_same_variable():", "    value = parse_value('x')", "    assert value == value"],
+        ["def test_or_true():", "    value = parse_value('x')", "    assert value == 'y' or True"],
+        ["def test_constant_truthy():", "    assert 1"],
+        ["def test_nested_helper():", "    def check():", "        assert parse_value('x')"],
     )
-    for body in bodies:
-        added = "".join("+" + line + "\\n" for line in body.splitlines())
+    for lines in bodies:
+        added = "".join("+" + line + "\\n" for line in lines)
         diff = "--- a/tests/test_example.py\\n+++ b/tests/test_example.py\\n@@ -1,0 +2,5 @@\\n" + added
         valid, reason = validate_auto_test_diff(diff)
-        assert not valid, (body, reason)
+        assert not valid, (lines, reason)
 
 
 def test_auto_test_diff_accepts_pytest_raises_as_a_check():
@@ -643,7 +643,7 @@ def test_auto_test_diff_accepts_pytest_raises_as_a_check():
 
     diff = """--- a/tests/test_example.py
 +++ b/tests/test_example.py
-@@ -1,0 +2,2 @@
+@@ -1,0 +2,3 @@
 +def test_invalid_input_raises():
 +    with pytest.raises(ValueError):
 +        parse_value("")
