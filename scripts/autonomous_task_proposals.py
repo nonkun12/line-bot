@@ -234,12 +234,8 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         if is_constant_truth(expression):
             return False
         if isinstance(expression, ast.BoolOp):
-            # Reject expressions that can pass without evaluating a real check.
-            if isinstance(expression.op, ast.Or) and any(
-                is_constant_truth(value) and bool(ast.literal_eval(value))
-                for value in expression.values
-            ):
-                return False
+            # Compound boolean expressions can short-circuit around the real check.
+            return False
         if isinstance(expression, ast.Compare):
             operands = [expression.left, *expression.comparators]
             if any(
