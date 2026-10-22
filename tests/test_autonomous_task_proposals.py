@@ -264,27 +264,48 @@ def test_auto_test_diff_rejects_changes_to_existing_test_lines():
 def test_auto_test_diff_rejects_zero_or_multiple_new_test_functions():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
-    assert validate_auto_test_diff("+value = 1\\n+assert value == 1\\n") == (
-        False, "expected_exactly_one_new_test_function"
-    )
+    assert validate_auto_test_diff("+value = 1\\n+assert value == 1\\n")[0] is False
     diff = """+++ b/tests/test_example.py
 +def test_one():
 +    assert True
 +def test_two():
 +    assert True
 """
-    assert validate_auto_test_diff(diff) == (
-        False, "expected_exactly_one_new_test_function"
-    )
+    valid, reason = validate_auto_test_diff(diff)
+    assert not valid
+    assert reason in {"module_level_addition_rejected", "expected_exactly_one_new_test_function"}
+
     helper_diff = """+++ b/tests/test_example.py
 +def test_one():
 +    assert True
 +def helper():
 +    return True
 """
-    assert validate_auto_test_diff(helper_diff) == (
-        False, "expected_exactly_one_new_test_function"
-    )
+    valid, reason = validate_auto_test_diff(helper_diff)
+    assert not valid
+    assert reason in {"module_level_addition_rejected", "expected_exactly_one_new_test_function"}
+
+
+def test_auto_test_diff_rejects_imports_and_host_access():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    unsafe_bodies = [
+        "+    import os\\n+    assert os.name\\n",
+        "+    assert os.environ.get('TOKEN') is None\\n",
+        "+    open('/etc/passwd').read()\\n",
+        "+    __import__('os')\\n",
+    ]
+    for body in unsafe_bodies:
+        diff = (
+            "--- a/tests/test_example.py\\n"
+            "+++ b/tests/test_example.py\\n"
+            "@@ -20,0 +21,3 @@\\n"
+            "+def test_new_case():\\n"
+            + body
+        )
+        valid, reason = validate_auto_test_diff(diff)
+        assert not valid
+        assert reason in {"imports_rejected", "host_access_rejected"}
 
 
 def test_auto_refill_skips_successful_but_uncompleted_target_until_review(tmp_path):
