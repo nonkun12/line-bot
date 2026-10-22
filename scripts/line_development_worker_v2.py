@@ -519,11 +519,10 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             outputs.append("targeted pytest:")
         test_env = None
         if auto_test_task:
-            safe_names = {
-                "PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "TEMP", "TMP",
-                "VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME", "SYSTEMROOT", "WINDIR",
-                "CI",
-            }
+            # Do not inherit home-directory or Python path overrides. The
+            # child runs from the repository root with the active interpreter;
+            # pytest's own temporary directory can default to /tmp.
+            safe_names = {"PATH", "LANG", "LC_ALL", "SYSTEMROOT", "WINDIR", "CI"}
             test_env = {
                 key: value for key, value in os.environ.items()
                 if key in safe_names and not key.startswith(("ACTIONS_", "GITHUB_", "GH_"))
