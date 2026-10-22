@@ -262,9 +262,9 @@ def test_auto_test_diff_rejects_trivial_assertions():
 
     for assertion in ("assert True", "assert 1 == 1", "assert value == value"):
         diff = (
-            "+++ b/tests/test_example.py\\n"
-            "+def test_fake_pass():\\n"
-            f"+    {assertion}\\n"
+            "+++ b/tests/test_example.py\n"
+            "+def test_fake_pass():\n"
+            f"+    {assertion}\n"
         )
         assert validate_auto_test_diff(diff) == (False, "behavioral_assertion_required")
 
@@ -580,13 +580,13 @@ def test_auto_refill_does_not_repeat_completed_target_after_fingerprint_changes(
     first = tmp_path / "tests" / "test_first.py"
     second = tmp_path / "tests" / "test_second.py"
     first.parent.mkdir(parents=True)
-    first.write_text("def test_original_first():\\n    assert True\\n", encoding="utf-8")
-    second.write_text("def test_original_second():\\n    assert True\\n", encoding="utf-8")
+    first.write_text("def test_original_first():\n    assert True\n", encoding="utf-8")
+    second.write_text("def test_original_second():\n    assert True\n", encoding="utf-8")
     completed_id = build_auto_test_catalog(tmp_path)[0]["id"]
 
     # Simulate the first target changing after its earlier task was completed.
     first.write_text(
-        "def test_original_first():\\n    assert True\\n\\ndef test_generated_regression():\\n    assert 1 == 1\\n",
+        "def test_original_first():\n    assert True\n\ndef test_generated_regression():\n    assert 1 == 1\n",
         encoding="utf-8",
     )
     ip = write(tmp_path / "issues.json", [])
