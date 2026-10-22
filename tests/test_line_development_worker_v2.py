@@ -469,16 +469,14 @@ def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp
             return subprocess.CompletedProcess(command, 0, stdout=diff, stderr="")
         if command[1:3] == ["-m", "py_compile"]:
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
-        if command[:3] == ["/usr/bin/bwrap", "--die-with-parent", "--unshare-pid"]:
-            assert command[3:6] == ["--ro-bind", "/", "/"]
-            assert command[10:15] == ["--tmpfs", "/tmp", "--chmod", "1777", "/tmp"]
-            assert command[32:37] == ["--uid", "65534", "--gid", "65534", "--"]
-            assert command[37:40] == [
-                worker.sys.executable, "scripts/auto_test_sandbox.py", "--"
-            ]
-            assert command[40:43] == [worker.sys.executable, "-m", "pytest"]
+        if command[:3] == ["/usr/bin/docker", "run", "--rm"]:
+            assert command[3:5] == ["--network", "none"]
+            assert "--read-only" in command
+            assert command[command.index("--user") + 1] == "65534:65534"
+            assert command[command.index("--volume") + 1].endswith(":/workspace:ro")
+            assert "line-bot-auto-test-sandbox:latest" in command
+            assert "python" in command and "-m" in command and "pytest" in command
             assert "no:cacheprovider" in command
-            assert "AUTONOMOUS_TEST_SANDBOX" in command
             assert not any("TOKEN=" in item or "API_KEY=" in item for item in command)
             observed.append(dict(env or {}))
             return subprocess.CompletedProcess(command, 0, stdout="1 passed", stderr="")
@@ -498,62 +496,43 @@ def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp
 
 
 
-def test_linux_auto_test_sandbox_is_read_only_and_unprivileged():
+def test_linux_auto_test_sandbox_is_read_only_and_networkless():
     if not sys.platform.startswith("linux"):
         return
-    prefix = [
-        "/usr/bin/bwrap",
-        "--die-with-parent",
-        "--unshare-pid",
-        "--ro-bind", "/", "/",
-        "--dev", "/dev",
-        "--proc", "/proc",
-        "--tmpfs", "/tmp",
-        "--chmod", "1777", "/tmp",
-        "--chdir", str(worker.ROOT),
-        "--setenv", "HOME", "/tmp",
-        "--setenv", "PATH", "/usr/bin:/bin",
-        "--setenv", "AUTONOMOUS_TEST_SANDBOX", "1",
-        "--uid", "65534",
-        "--gid", "65534",
-        "--",
-    ]
-    identity = subprocess.run(
-        [*prefix, "/usr/bin/id", "-u"],
-        text=True,
-        capture_output=True,
-        timeout=15,
+    probe = (
+        "import os, socket\\n"
+        "assert os.getuid() == 65534\\n"
+        "assert not os.access('/workspace', os.W_OK)\\n"
+        "open('/tmp/sandbox-probe', 'w').close()\\n"
+        "sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\\n"
+        "sock.settimeout(1)\\n"
+        "try:\\n"
+        "    sock.connect(('1.1.1.1', 80))\\n"
+        "except OSError:\\n"
+        "    print('sandbox_ok')\\n"
+        "else:\\n"
+        "    raise SystemExit('network reachable')\\n"
     )
-    assert identity.returncode == 0, (
-        "bubblewrap sandbox unavailable; generated test execution must fail closed: "
-        + identity.stderr[-1000:]
-    )
-    assert identity.stdout.strip() == "65534"
-
-    writable = subprocess.run(
-        [*prefix, "/usr/bin/test", "-w", str(worker.ROOT)],
-        text=True,
-        capture_output=True,
-        timeout=15,
-    )
-    assert writable.returncode == 1, (
-        "generated test sandbox unexpectedly has write access to the checkout: "
-        + writable.stderr[-1000:]
-    )
-
-    network = subprocess.run(
+    result = subprocess.run(
         [
-            *prefix,
-            sys.executable,
-            "scripts/auto_test_sandbox.py",
-            "--",
-            sys.executable,
-            "-c",
-            "import socket; socket.socket(socket.AF_INET, socket.SOCK_STREAM)",
+            "/usr/bin/docker", "run", "--rm", "--pull=missing",
+            "--network", "none",
+            "--read-only",
+            "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=64m,mode=1777",
+            "--user", "65534:65534",
+            "--workdir", "/workspace",
+            "--volume", f"{worker.ROOT}:/workspace:ro",
+            "--env", "HOME=/tmp",
+            "--env", "PATH=/usr/local/bin:/usr/bin:/bin",
+            "python:3.13-slim",
+            "python", "-c", probe,
         ],
         text=True,
         capture_output=True,
-        timeout=15,
+        timeout=120,
     )
-    assert network.returncode != 0
-    assert "Operation not permitted" in network.stderr or "PermissionError" in network.stderr
+    assert result.returncode == 0, (
+        "Docker sandbox unavailable or isolation failed; generated test execution "
+        "must fail closed: " + result.stderr[-1500:]
+    )
+    assert "sandbox_ok" in result.stdout
