@@ -165,6 +165,10 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         "cwd", "expanduser", "__globals__", "__builtins__", "__subclasses__", "__dict__",
         "__class__", "__base__", "__mro__", "__getattribute__", "__getattr__", "__code__",
         "__closure__", "__self__", "__func__", "__reduce__", "__reduce_ex__",
+        # Reflection helpers and dynamic code execution are forbidden even when
+        # reached through an alias such as an existing builtins import.
+        "getattr", "setattr", "delattr", "eval", "exec", "compile", "__import__",
+        "breakpoint", "input", "help", "vars", "globals", "locals",
         # Generated tests are not permitted to read/write repository or host files.
         "open", "read_text", "read_bytes", "write_text", "write_bytes", "readlink",
         "iterdir", "glob", "rglob", "resolve", "absolute", "relative_to", "with_name",
