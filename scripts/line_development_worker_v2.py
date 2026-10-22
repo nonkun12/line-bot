@@ -24,6 +24,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
+from scripts.autonomous_task_proposals import validate_auto_test_diff
 
 ROOT = _ROOT
 MODEL = os.environ.get("DEV_AI_MODEL", "openai/gpt-oss-20b")
@@ -56,8 +57,16 @@ _TEST_INSTRUCTION_PATTERN = re.compile(r"(?:workflow|connection)[\s_-]*test", re
 _TEST_INSTRUCTION_EXACT = {"開発接続テスト", "接続テスト", "動作確認", "疎通確認", "LINE自動開発テスト"}
 
 
-def run(cmd: list[str], timeout: int = 900, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=ROOT, text=True, input=input_text, capture_output=True, timeout=timeout)
+def run(
+    cmd: list[str],
+    timeout: int = 900,
+    input_text: str | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        cmd, cwd=ROOT, text=True, input=input_text, capture_output=True,
+        timeout=timeout, env=env,
+    )
 
 
 def is_protected(path: str) -> bool:
@@ -447,6 +456,25 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
 
 def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> tuple[bool, str]:
     outputs: list[str] = []
+    auto_test_task = os.environ.get("AUTONOMOUS_TASK_ID", "").startswith("auto-test-")
+    if auto_test_task:
+        paths = list(touched or [])
+        if (
+            len(paths) != 1
+            or not re.fullmatch(r"(?:tests|uhip/tests)/test_[A-Za-z0-9_]+\.py", paths[0])
+        ):
+            return False, "auto_test_target_path_rejected"
+        diff_result = run(
+            ["git", "diff", "--no-ext-diff", "--unified=0", "HEAD", "--", paths[0]],
+            timeout=30,
+        )
+        if diff_result.returncode != 0:
+            return False, "auto_test_diff_inspection_failed"
+        valid_diff, diff_reason = validate_auto_test_diff(diff_result.stdout)
+        if not valid_diff:
+            return False, f"auto_test_pre_execution_rejected:{diff_reason}"
+        # Generated tests run with a minimal allowlisted environment, not the
+        # worker's provider credentials or GitHub Actions token.
     for path in touched or []:
         if not path.endswith(".py"):
             continue
@@ -489,7 +517,20 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
                 return False, "targeted pytest requires safe relative Python test paths"
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native", *paths]
             outputs.append("targeted pytest:")
-        tests = run(test_cmd, timeout=900)
+        test_env = None
+        if auto_test_task:
+            safe_names = {
+                "PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "TEMP", "TMP",
+                "VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME", "SYSTEMROOT", "WINDIR",
+                "CI",
+            }
+            test_env = {
+                key: value for key, value in os.environ.items()
+                if key in safe_names and not key.startswith(("ACTIONS_", "GITHUB_", "GH_"))
+            }
+            test_env["PYTHONDONTWRITEBYTECODE"] = "1"
+            test_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+        tests = run(test_cmd, timeout=900, env=test_env)
     finally:
         for name, value in task_scope.items():
             if value is missing:
@@ -667,7 +708,10 @@ def main() -> int:
         if not applied:
             print("Apply failed:", detail, flush=True)
             return 1
-        passed, output = run_tests(touched)
+        passed, output = run_tests(
+            touched,
+            full_suite=not os.environ.get("AUTONOMOUS_TASK_ID", "").startswith("auto-test-"),
+        )
         print(output, flush=True)
         if not passed and has_python_compile_failure(output):
             restore(touched)
@@ -691,7 +735,10 @@ def main() -> int:
             if not applied:
                 restore(touched)
                 break
-            passed, output = run_tests(touched)
+            passed, output = run_tests(
+                touched,
+                full_suite=not os.environ.get("AUTONOMOUS_TASK_ID", "").startswith("auto-test-"),
+            )
             print(output, flush=True)
         if not passed:
             restore(touched)
