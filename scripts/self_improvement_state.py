@@ -14,6 +14,7 @@ from pathlib import Path
 MAX_RECORDS = 200
 _ALLOWED_KINDS = {"success", "repair", "failure"}
 _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
+_SENSITIVE_TASK_ID = re.compile(r"(?i)^(?:sk-[a-z0-9_-]{8,}|gh[pousr]_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,})$")
 _SAFE_RELATIVE_PATH = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$")
 _SAFE_DETAIL = {
     "success": "development reached integration gate",
@@ -34,7 +35,7 @@ def sanitize_records(records: object) -> list[dict[str, str | None]]:
         if not isinstance(kind, str) or kind not in _ALLOWED_KINDS:
             continue
         if task_id is not None and (
-            not isinstance(task_id, str) or not _TASK_ID.fullmatch(task_id)
+            not isinstance(task_id, str) or not _TASK_ID.fullmatch(task_id) or _SENSITIVE_TASK_ID.fullmatch(task_id)
         ):
             task_id = None
         safe.append({
