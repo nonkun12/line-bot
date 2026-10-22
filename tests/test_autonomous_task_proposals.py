@@ -371,3 +371,28 @@ def test_auto_refill_prunes_successful_but_uncompleted_curated_task(tmp_path):
     assert result["auto_queued_count"] == 1
     assert len(queued) == 1
     assert queued[0]["id"].startswith("auto-test-")
+
+
+
+def test_auto_test_diff_rejects_module_level_additions():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    for extra in (
+        "+import os\\n",
+        "+secret = read_secret()\\n",
+        "+def helper():\\n+    return True\\n",
+    ):
+        diff = (
+            "--- a/tests/test_example.py\\n"
+            "+++ b/tests/test_example.py\\n"
+            "@@ -20,0 +21,4 @@\\n"
+            "+def test_new_case():\\n"
+            "+    assert True\\n"
+            + extra
+        )
+        valid, reason = validate_auto_test_diff(diff)
+        assert not valid
+        assert reason in {
+            "module_level_addition_rejected",
+            "expected_exactly_one_new_test_function",
+        }
