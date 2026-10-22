@@ -471,9 +471,15 @@ def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp
         if command[1:3] == ["-m", "py_compile"]:
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
         if command[:3] == ["/usr/bin/docker", "run", "--rm"]:
-            assert command[3:5] == ["--network", "none"]
+            assert command[3:5] == ["--init", "--network"] or command[3:5] == ["--network", "none"]
+            assert "--network" in command and command[command.index("--network") + 1] == "none"
             assert "--read-only" in command
             assert command[command.index("--user") + 1] == "65534:65534"
+            assert command[command.index("--pids-limit") + 1] == "64"
+            assert command[command.index("--memory") + 1] == "1g"
+            assert command[command.index("--cpus") + 1] == "1"
+            assert command[command.index("--cap-drop") + 1] == "ALL"
+            assert command[command.index("--security-opt") + 1] == "no-new-privileges"
             assert command[command.index("--volume") + 1].endswith(":/workspace:ro")
             assert "line-bot-auto-test-sandbox:latest" in command
             assert "python" in command and "-m" in command and "pytest" in command
@@ -541,11 +547,16 @@ def test_linux_auto_test_sandbox_is_read_only_and_networkless(tmp_path):
     try:
         result = subprocess.run(
             [
-                "/usr/bin/docker", "run", "--rm",
+                "/usr/bin/docker", "run", "--rm", "--init",
                 "--network", "none",
                 "--read-only",
                 "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=64m,mode=1777",
                 "--user", "65534:65534",
+                "--pids-limit", "64",
+                "--memory", "1g",
+                "--cpus", "1",
+                "--cap-drop", "ALL",
+                "--security-opt", "no-new-privileges",
                 "--workdir", "/workspace",
                 "--volume", f"{worker.ROOT}:/workspace:ro",
                 "--env", "HOME=/tmp",
