@@ -585,3 +585,12 @@ def test_linux_auto_test_sandbox_is_read_only_and_networkless(tmp_path):
             timeout=30,
             env=docker_env,
         )
+
+
+def test_auto_test_result_requires_real_passes_and_rejects_skips():
+    assert worker.auto_test_result_passed(0, "1 passed in 0.01s")
+    assert not worker.auto_test_result_passed(0, "1 skipped in 0.01s")
+    assert not worker.auto_test_result_passed(0, "1 passed, 1 skipped in 0.01s")
+    assert not worker.auto_test_result_passed(0, "no tests ran")
+    assert not worker.auto_test_result_passed(1, "1 passed, 1 failed")
+    assert not worker.auto_test_result_passed(0, "1 passed, 1 error")
