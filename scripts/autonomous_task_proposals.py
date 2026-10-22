@@ -126,8 +126,18 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         if line.startswith("+") and not line.startswith("+++")
     ]
     code = [line for line in added if line.strip()]
-    if not code or not re.fullmatch(
-        r"(?:async\s+)?def\s+test_[A-Za-z0-9_]+\s*\(.*", code[0].strip()
+    added_function_names = re.findall(
+        r"^(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
+        "\n".join(code),
+        flags=re.MULTILINE,
+    )
+    if (
+        len(added_function_names) != 1
+        or not added_function_names[0].startswith("test_")
+        or not code
+        or not re.fullmatch(
+            r"(?:async\s+)?def\s+test_[A-Za-z0-9_]+\s*\(.*", code[0].strip()
+        )
     ):
         return False, "expected_exactly_one_new_test_function"
     if any(not line[:1].isspace() for line in code[1:]):
