@@ -532,20 +532,29 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             }
             test_env["PYTHONDONTWRITEBYTECODE"] = "1"
             test_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
-            # Generated Python runs with no network and a different, unprivileged
-            # UID. The repository is readable but not writable to that UID, and
-            # the clean environment prevents inherited credentials from leaking.
-            # Missing sudo/unshare support is a hard failure, never a fallback.
+            # Bubblewrap provides a read-only root, a private /tmp, a new PID
+            # namespace, no network, and an unprivileged UID. Missing sandbox
+            # support is a hard failure; never execute model-authored tests bare.
             if not sys.platform.startswith("linux"):
                 return False, "auto_test_requires_linux_isolation"
             test_cmd = [
-                "/usr/bin/unshare", "--net", "--",
-                "/usr/bin/sudo", "-n", "-u", "nobody", "--",
-                "/usr/bin/env", "-i",
-                "PATH=/usr/bin:/bin",
-                "LANG=C.UTF-8",
-                "PYTHONDONTWRITEBYTECODE=1",
-                "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
+                "/usr/bin/bwrap",
+                "--die-with-parent",
+                "--unshare-net",
+                "--unshare-pid",
+                "--ro-bind", "/", "/",
+                "--dev", "/dev",
+                "--proc", "/proc",
+                "--tmpfs", "/tmp",
+                "--chmod", "1777", "/tmp",
+                "--chdir", str(ROOT),
+                "--setenv", "HOME", "/tmp",
+                "--setenv", "PATH", "/usr/bin:/bin",
+                "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
+                "--setenv", "PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1",
+                "--uid", "65534",
+                "--gid", "65534",
+                "--",
                 *test_cmd,
             ]
         tests = run(test_cmd, timeout=900, env=test_env)
