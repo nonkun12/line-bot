@@ -155,12 +155,16 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         "os", "sys", "subprocess", "socket", "requests", "urllib", "httpx",
         "http", "aiohttp", "ftplib", "smtplib", "websocket", "shutil", "pathlib",
         "importlib", "ctypes", "builtins", "eval", "exec", "compile", "open",
-        "__import__", "GROQ_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GITHUB_TOKEN",
+        "__import__", "getattr", "setattr", "delattr", "globals", "locals", "vars",
+        "dir", "type", "object", "memoryview", "breakpoint", "input", "help",
+        "GROQ_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GITHUB_TOKEN",
     }
     forbidden_attributes = {
         "environ", "getenv", "system", "popen", "spawn", "execv", "execve",
         "urlopen", "create_connection", "unlink", "rmtree", "remove", "home",
         "cwd", "expanduser", "__globals__", "__builtins__", "__subclasses__", "__dict__",
+        "__class__", "__base__", "__mro__", "__getattribute__", "__getattr__", "__code__",
+        "__closure__", "__self__", "__func__", "__reduce__", "__reduce_ex__",
     }
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -168,7 +172,15 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         if isinstance(node, ast.Name) and node.id in forbidden_names:
             return False, "host_access_rejected"
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if re.match(r"^(?:/|~[\\/])", node.value):
+            if (
+                re.match(r"^(?:/|~[\\/])", node.value)
+                or "__" in node.value
+                or node.value.lower() in {
+                    "getattr", "setattr", "delattr", "globals", "locals", "vars",
+                    "eval", "exec", "open", "compile", "environ", "getenv",
+                    "system", "popen", "import", "os", "sys", "builtins",
+                }
+            ):
                 return False, "host_access_rejected"
         if isinstance(node, ast.Attribute) and node.attr in forbidden_attributes:
             return False, "host_access_rejected"
