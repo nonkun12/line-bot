@@ -226,20 +226,36 @@ def recovery_record_blocks_task(record: dict) -> bool:
     return record["held"] is True or review is True
 
 
-def load_held_task_ids(recovery_store: object) -> set[str]:
-    """Read every durable Recovery AI hold, including tasks absent from the queue."""
+def load_held_task_ids(
+    recovery_store: object,
+    completed_task_ids: set[str] | None = None,
+) -> set[str]:
+    """Read durable holds and successes that never reached completed state."""
     read_statuses = getattr(recovery_store, "all_task_statuses", None)
     if not callable(read_statuses):
         raise ValueError("Recovery AI state reader is unavailable")
     recovery_tasks = read_statuses()
     if not isinstance(recovery_tasks, dict):
         raise ValueError("recovery task state is invalid")
+    completed = completed_task_ids or set()
     held_ids: set[str] = set()
     for task_id, record in recovery_tasks.items():
         if not isinstance(task_id, str):
             raise ValueError("recovery task ID is invalid")
         if recovery_record_blocks_task(record):
             held_ids.add(task_id)
+        success_evidence = record.get("last_success_evidence") if isinstance(record, dict) else None
+        if success_evidence is not None:
+            if (
+                not isinstance(success_evidence, dict)
+                or success_evidence.get("task_id") != task_id
+                or success_evidence.get("status") not in {"PASS", "NO_CHANGE"}
+            ):
+                raise ValueError("recovery success evidence is invalid")
+            if task_id not in completed:
+                # Execution succeeded, but durable completion/publication did
+                # not. Require review rather than re-running an identical task.
+                held_ids.add(task_id)
     return held_ids
 
 
@@ -811,7 +827,7 @@ def main() -> int:
     try:
         # This includes held IDs not present in the mutable queue, preserving
         # HOLD across generated-task fingerprint changes.
-        held_task_ids = load_held_task_ids(recovery_store)
+        held_task_ids = load_held_task_ids(recovery_store, set(completed))
         # Also query each queued task independently so a changing/uncertain
         # Recovery AI record is checked again immediately before selection.
         for catalog_task in catalog_source_tasks:
