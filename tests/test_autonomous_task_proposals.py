@@ -290,10 +290,10 @@ def test_auto_test_diff_rejects_imports_and_host_access():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
     unsafe_bodies = [
-        "+    import os\\n+    assert os.name\\n",
-        "+    assert os.environ.get('TOKEN') is None\\n",
-        "+    open('/etc/passwd').read()\\n",
-        "+    __import__('os')\\n",
+        "+    import os\n+    assert os.name\n",
+        "+    assert os.environ.get('TOKEN') is None\n",
+        "+    open('/etc/passwd').read()\n",
+        "+    __import__('os')\n",
     ]
     for body in unsafe_bodies:
         diff = (
