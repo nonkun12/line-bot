@@ -20,6 +20,7 @@ _DEFAULT_MAX_RECORDS = 200
 _MAX_MAX_RECORDS = 200
 _MAX_MEMORY_TEXT = 1200
 _SAFE_TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
+_SENSITIVE_TASK_ID = re.compile(r"(?i)^(?:sk-[a-z0-9_-]{8,}|gh[pousr]_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,})$")
 _SAFE_RELATIVE_PATH = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$")
 _SAFE_SIGNAL_DETAILS = {
     "success": "development reached integration gate",
@@ -69,7 +70,10 @@ class SelfImprovementHistory:
             if signal.kind not in _SAFE_SIGNAL_DETAILS:
                 raise ValueError("unsupported self-improvement signal kind")
             task_id = signal.task_id
-            if task_id is not None and not _SAFE_TASK_ID.fullmatch(task_id):
+            if task_id is not None and (
+                not _SAFE_TASK_ID.fullmatch(task_id)
+                or _SENSITIVE_TASK_ID.fullmatch(task_id)
+            ):
                 task_id = None
             # Do not persist report.error or any model/user-controlled detail.
             records.append({
@@ -232,7 +236,11 @@ def _sanitize_history_record(record: dict[str, object]) -> dict[str, object] | N
     if not isinstance(kind, str) or kind not in _SAFE_SIGNAL_DETAILS:
         return None
     task_id = record.get("task_id")
-    if not isinstance(task_id, str) or not _SAFE_TASK_ID.fullmatch(task_id):
+    if (
+        not isinstance(task_id, str)
+        or not _SAFE_TASK_ID.fullmatch(task_id)
+        or _SENSITIVE_TASK_ID.fullmatch(task_id)
+    ):
         task_id = None
     return {
         "kind": kind,
