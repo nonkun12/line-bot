@@ -614,10 +614,10 @@ def test_auto_test_diff_rejects_skip_bypasses_and_unreachable_assertions():
     )
     for statement in rejected_calls:
         diff = (
-            "+++ b/tests/test_example.py\\n"
-            "+def test_fake():\\n"
-            "+    assert value == 'expected'\\n"
-            f"+    {statement}\\n"
+            "+++ b/tests/test_example.py\n"
+            "+def test_fake():\n"
+            "+    assert value == 'expected'\n"
+            f"+    {statement}\n"
         )
         assert validate_auto_test_diff(diff) == (False, "skip_or_xfail_rejected")
 
@@ -625,15 +625,15 @@ def test_auto_test_diff_rejects_skip_bypasses_and_unreachable_assertions():
         "assert 1 == 1 or flag",
         "assert True or check()",
         "assert 'a' == 'a' or parse()",
-        "if False:\\n        assert value == 'expected'",
-        "return\\n    assert value == 'expected'",
-        "try:\\n        assert value == 'expected'\\n    except AssertionError:\\n        pass",
-        "for _ in []:\\n        assert value == 'expected'",
+        "if False:\n        assert value == 'expected'",
+        "return\n    assert value == 'expected'",
+        "try:\n        assert value == 'expected'\n    except AssertionError:\n        pass",
+        "for _ in []:\n        assert value == 'expected'",
         "assert len([]) == 0",
     )
     for assertion in bypass_assertions:
-        body = "\\n".join("+" + line for line in assertion.splitlines())
-        diff = "+++ b/tests/test_example.py\\n+def test_fake():\\n" + body + "\\n"
+        body = "\n".join("+" + line for line in assertion.splitlines())
+        diff = "+++ b/tests/test_example.py\n+def test_fake():\n" + body + "\n"
         valid, reason = validate_auto_test_diff(diff)
         assert not valid, assertion
         assert reason in {"assertion_required", "behavioral_assertion_required"}, (assertion, reason)
