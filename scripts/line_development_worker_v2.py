@@ -476,6 +476,14 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
         valid_diff, diff_reason = validate_auto_test_diff(diff_result.stdout)
         if not valid_diff:
             return False, f"auto_test_pre_execution_rejected:{diff_reason}"
+        function_match = re.search(
+            r"^\\+\\s*(?:async\\s+)?def\\s+(test_[A-Za-z0-9_]+)\\s*\\(",
+            diff_result.stdout,
+            flags=re.MULTILINE,
+        )
+        if function_match is None:
+            return False, "auto_test_function_name_missing"
+        auto_test_function = function_match.group(1)
         # Build the trusted test image lazily, after validation and without
         # passing provider/GitHub credentials to the Docker client or build.
         if not sys.platform.startswith("linux"):
@@ -574,7 +582,11 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             test_env["PYTHONDONTWRITEBYTECODE"] = "1"
             test_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
             test_env["DOCKER_CONFIG"] = "/tmp/auto-test-docker-config"
-            paths = [] if full_suite else list(touched or [])
+            # Execute only the newly-added function, not every existing test
+            # in the file; this avoids unrelated integration-test side effects.
+            paths = [f"{touched[0]}::{auto_test_function}"] if auto_test_task else (
+                [] if full_suite else list(touched or [])
+            )
             test_cmd = [
                 "/usr/bin/docker", "run", "--rm", "--init",
                 "--network", "none",
