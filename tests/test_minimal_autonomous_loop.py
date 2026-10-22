@@ -1052,7 +1052,7 @@ def test_registered_catalog_expands_only_reviewed_test_only_refill_policy(monkey
     sha = "b" * 40
     target = tmp_path / "tests" / "test_auto_target.py"
     target.parent.mkdir(parents=True)
-    target.write_text("def test_placeholder():\\n    assert True\\n", encoding="utf-8")
+    target.write_text("def test_placeholder():\n    assert True\n", encoding="utf-8")
     catalog = {
         "version": 1,
         "max_additions_per_run": 4,
@@ -1192,7 +1192,7 @@ def test_auto_refill_task_passes_catalog_registration_and_control_tower_selectio
     sha = "e" * 40
     target = tmp_path / "tests" / "test_auto_target.py"
     target.parent.mkdir(parents=True)
-    target.write_text("def test_placeholder():\\n    assert True\\n", encoding="utf-8")
+    target.write_text("def test_placeholder():\n    assert True\n", encoding="utf-8")
     issues_path = tmp_path / "issues.json"
     issues_path.write_text("[]", encoding="utf-8")
     queue_path = tmp_path / "queue.json"
