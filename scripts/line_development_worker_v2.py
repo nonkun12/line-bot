@@ -617,26 +617,29 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             else:
                 os.environ[name] = value
     outputs.extend([tests.stdout, tests.stderr])
-    if auto_test_task:
-        # A pytest exit code of 0 can still mean that every test was skipped.
-        # Require an explicit passing-test count and reject skip/fail/error summaries.
-        summary = "\n".join([tests.stdout or "", tests.stderr or ""])
-        count = lambda label: sum(
-            int(match.group(1))
-            for match in re.finditer(rf"(?<![A-Za-z0-9_])(\d+)\s+{label}\b", summary)
-        )
-        passed_count = count("passed")
-        skipped_count = count("skipped")
-        failed_count = count("failed") + count("error") + count("errors")
-        if tests.returncode != 0:
-            return False, "\n".join(outputs)[-8000:]
-        if passed_count < 1 or skipped_count or failed_count:
-            outputs.append(
-                "auto_test_pytest_result_rejected:"
-                f"passed={passed_count},skipped={skipped_count},failed_or_errors={failed_count}"
-            )
-            return False, "\n".join(outputs)[-8000:]
+    if auto_test_task and not auto_test_result_passed(tests.returncode, (tests.stdout or "") + "\n" + (tests.stderr or "")):
+        outputs.append("auto_test_pytest_result_rejected")
+        return False, "\n".join(outputs)[-8000:]
     return tests.returncode == 0, "\n".join(outputs)[-8000:]
+
+
+def auto_test_result_passed(returncode: int, output: str) -> bool:
+    """Require real passing tests; pytest exit code 0 alone also permits all-skipped runs."""
+    if returncode != 0:
+        return False
+
+    def count(label: str) -> int:
+        return sum(
+            int(match.group(1))
+            for match in re.finditer(
+                rf"(?<![A-Za-z0-9_])(\\d+)\\s+{label}\\b", str(output or "")
+            )
+        )
+
+    passed = count("passed")
+    skipped = count("skipped")
+    failed = count("failed") + count("error") + count("errors")
+    return passed >= 1 and skipped == 0 and failed == 0
 
 
 def has_python_compile_failure(output: str) -> bool:
