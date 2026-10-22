@@ -617,3 +617,35 @@ def test_auto_test_diff_accepts_assertion_on_computed_behavior():
 """
     assert validate_auto_test_diff(diff) == (True, "ok")
 
+
+
+def test_auto_test_diff_rejects_unreachable_or_tautological_assertions():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    bodies = (
+        "def test_dead_branch():\\n    if False:\\n        assert parse_value('x')\\n",
+        "def test_after_return():\\n    return\\n    assert parse_value('x')\\n",
+        "def test_swallowed_assertion():\\n    try:\\n        assert parse_value('x')\\n    except BaseException:\\n        pass\\n",
+        "def test_same_variable():\\n    value = parse_value('x')\\n    assert value == value\\n",
+        "def test_or_true():\\n    value = parse_value('x')\\n    assert value == 'y' or True\\n",
+        "def test_constant_truthy():\\n    assert 1\\n",
+        "def test_nested_helper():\\n    def check():\\n        assert parse_value('x')\\n",
+    )
+    for body in bodies:
+        added = "".join("+" + line + "\\n" for line in body.splitlines())
+        diff = "--- a/tests/test_example.py\\n+++ b/tests/test_example.py\\n@@ -1,0 +2,5 @@\\n" + added
+        valid, reason = validate_auto_test_diff(diff)
+        assert not valid, (body, reason)
+
+
+def test_auto_test_diff_accepts_pytest_raises_as_a_check():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,2 @@
++def test_invalid_input_raises():
++    with pytest.raises(ValueError):
++        parse_value("")
+"""
+    assert validate_auto_test_diff(diff) == (True, "ok")
