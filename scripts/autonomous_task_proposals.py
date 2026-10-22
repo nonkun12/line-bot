@@ -130,16 +130,12 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         r"(?:async\s+)?def\s+test_[A-Za-z0-9_]+\s*\(.*", code[0].strip()
     ):
         return False, "expected_exactly_one_new_test_function"
-    if any(not line[:1].isspace() for line in code[1:]):
-        return False, "module_level_addition_rejected"
     if any(re.match(r"\s*class\s+", line) for line in code):
         return False, "expected_exactly_one_new_test_function"
-    if any(
-        re.match(r"\s*(?:async\s+)?def\s+", line)
-        and not re.match(r"\s{4,}(?:async\s+)?def\s+", line)
-        for line in code[1:]
-    ):
+    if any(re.match(r"\s*(?:async\s+)?def\s+", line) for line in code[1:]):
         return False, "expected_exactly_one_new_test_function"
+    if any(not line[:1].isspace() for line in code[1:]):
+        return False, "module_level_addition_rejected"
     return True, "ok"
 
 
