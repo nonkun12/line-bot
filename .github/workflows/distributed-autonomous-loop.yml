@@ -455,8 +455,10 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import re
           import subprocess
           from pathlib import Path
+          from scripts.autonomous_task_proposals import validate_auto_test_diff
           from scripts.rea_control_tower_adapter import publish_row_has_valid_gates
 
           path = Path("/tmp/minimal-autonomous-loop.jsonl")
@@ -527,6 +529,26 @@ jobs:
                   raise SystemExit(
                       f"task changed paths outside its allowlist: {row['task_id']}: {unexpected}"
                   )
+
+              # Auto-refill tasks may append one new regression test only.
+              # Existing test behavior must not be rewritten to make CI green.
+              if row["task_id"].startswith("auto-test-") and row["produced_sha"] != row["base_sha"]:
+                  if len(allowed) != 1 or not re.fullmatch(
+                      r"(tests|uhip/tests)/test_[A-Za-z0-9_]+\.py", allowed[0]
+                  ):
+                      raise SystemExit(f"auto-test task has invalid target path: {row['task_id']}")
+                  patch = subprocess.run(
+                      [
+                          "git", "diff", "--no-ext-diff", "--unified=0",
+                          row["base_sha"], row["produced_sha"], "--", allowed[0],
+                      ],
+                      check=True, capture_output=True, text=True,
+                  ).stdout
+                  valid_auto_diff, auto_diff_reason = validate_auto_test_diff(patch)
+                  if not valid_auto_diff:
+                      raise SystemExit(
+                          f"auto-test diff rejected for {row['task_id']}: {auto_diff_reason}"
+                      )
 
           head_result = subprocess.run(
               ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
