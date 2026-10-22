@@ -632,6 +632,6 @@ def test_auto_test_diff_rejects_skip_bypasses_and_unreachable_assertions():
         "assert len([]) == 0": "behavioral_assertion_required",
     }
     for assertion, expected_reason in bypass_assertions.items():
-        body = "\n".join("+" + line for line in assertion.splitlines())
+        assertion_lines = assertion.splitlines()\n        body = "\n".join("+" + (("    " if index == 0 else "") + line) for index, line in enumerate(assertion_lines))
         diff = "+++ b/tests/test_example.py\n+def test_fake():\n" + body + "\n"
         assert validate_auto_test_diff(diff) == (False, expected_reason), assertion
