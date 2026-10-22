@@ -442,3 +442,45 @@ def test_context_for_keeps_both_ends_when_file_is_far_over_limit(monkeypatch, tm
     assert context.startswith("HEAD-MARKER\n")
     assert "middle omitted; context bounded" in context
     assert context.endswith("TAIL-MARKER\n")
+
+
+
+def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp_path):
+    secret_names = (
+        "GROQ_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN", "GH_TOKEN",
+        "ACTIONS_RUNTIME_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+    )
+    for name in secret_names:
+        monkeypatch.setenv(name, "must-not-leak")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "auto-test-tests-test_example-deadbeef1234")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    observed = []
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,2 @@
++def test_safe():
++    assert True
+"""
+
+    def fake_run(command, timeout=900, input_text=None, env=None):
+        if command[:4] == ["git", "diff", "--no-ext-diff", "--unified=0"]:
+            return subprocess.CompletedProcess(command, 0, stdout=diff, stderr="")
+        if command[1:3] == ["-m", "py_compile"]:
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        if command[1:4] == ["-m", "pytest", "-q"]:
+            observed.append(dict(env or {}))
+            return subprocess.CompletedProcess(command, 0, stdout="1 passed", stderr="")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    passed, output = worker.run_tests(["tests/test_example.py"], full_suite=False)
+
+    assert passed, output
+    assert len(observed) == 1
+    child_env = observed[0]
+    assert all(name not in child_env for name in secret_names)
+    assert not any(name.startswith(("ACTIONS_", "GITHUB_", "GH_")) for name in child_env)
+    assert child_env.get("PATH")
+    assert child_env.get("PYTHONDONTWRITEBYTECODE") == "1"
+    assert child_env.get("PYTEST_DISABLE_PLUGIN_AUTOLOAD") == "1"
