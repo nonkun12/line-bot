@@ -579,7 +579,7 @@ def test_auto_test_diff_rejects_test_without_assertion():
         "+def test_returns_without_checking():\n+    value = parse_value('x')\n",
     ):
         diff = "--- a/tests/test_example.py\n+++ b/tests/test_example.py\n@@ -1,0 +2,2 @@\n" + body
-        assert validate_auto_test_diff(diff) == (False, "test_has_no_assertion")
+        assert validate_auto_test_diff(diff) == (False, "pytest_raises_unapproved_behavior_rejected")
 
 
 def test_auto_test_diff_rejects_unconditional_skip_or_xfail():
@@ -651,7 +651,7 @@ def test_auto_test_diff_rejects_pytest_raises_without_independent_assertion():
     assert validate_auto_test_diff(diff) == (False, "test_has_no_assertion")
 
 
-def test_auto_test_diff_allows_raises_with_independent_behavior_assertion():
+def test_auto_test_diff_rejects_raises_even_with_independent_behavior_assertion():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
     diff = """--- a/tests/test_example.py
@@ -662,7 +662,7 @@ def test_auto_test_diff_allows_raises_with_independent_behavior_assertion():
 +        parse_value("")
 +    assert parse_value("safe") == "safe"
 """
-    assert validate_auto_test_diff(diff) == (True, "ok")
+    assert validate_auto_test_diff(diff) == (False, "pytest_raises_unapproved_behavior_rejected")
 
 
 
@@ -806,7 +806,7 @@ def test_auto_test_diff_accepts_functional_raises_with_behavior_assertion():
 +    pytest.raises(ValueError, parse_value, "")
 +    assert parse_value("safe") == "safe"
 +"""
-    assert validate_auto_test_diff(diff) == (True, "ok")
+    assert validate_auto_test_diff(diff) == (False, "pytest_raises_unapproved_behavior_rejected")
 
 
 def test_auto_test_diff_rejects_public_helper_with_unrelated_assertion():
@@ -822,7 +822,24 @@ def test_auto_test_diff_rejects_public_helper_with_unrelated_assertion():
 +"""
     assert validate_auto_test_diff(diff) == (
         False,
-        "pytest_raises_requires_matching_behavior_assertion",
+        "pytest_raises_unapproved_behavior_rejected",
+    )
+
+
+def test_auto_test_diff_rejects_same_public_helper_with_different_arguments():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,4 @@
++def test_public_helper_different_arguments():
++    with pytest.raises(Exception):
++        boom("bad")
++    assert boom("safe") == "safe"
++"""
+    assert validate_auto_test_diff(diff) == (
+        False,
+        "pytest_raises_unapproved_behavior_rejected",
     )
 
 
