@@ -529,10 +529,26 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             }
             test_env["PYTHONDONTWRITEBYTECODE"] = "1"
             test_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
-            # GitHub-hosted Linux runners must provide an unprivileged network
-            # namespace. If isolation is unavailable, fail closed rather than
-            # execute model-authored code with network access.
-            test_cmd = ["unshare", "--net", "--", *test_cmd]
+            # Generated Python runs with no network and a different, unprivileged
+            # UID. The repository is readable but not writable to that UID, and
+            # the clean environment prevents inherited credentials from leaking.
+            # Missing sudo/unshare support is a hard failure, never a fallback.
+            if not sys.platform.startswith("linux"):
+                return False, "auto_test_requires_linux_isolation"
+            test_cmd = [
+                "unshare", "--net", "--",
+                "sudo", "-n", "-u", "nobody", "--",
+                "env", "-i",
+                f"PATH={test_env.get('PATH', '/usr/bin:/bin')}",
+                "LANG=C.UTF-8",
+                "PYTHONDONTWRITEBYTECODE=1",
+                "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
+                *test_cmd,
+            ]
+            # Prevent pytest from trying to write its cache into the read-only
+            # checkout when executing as nobody.
+            test_cmd.insert(-len(paths) if not full_suite and paths else len(test_cmd), "-p")
+            test_cmd.insert(-len(paths) - 1 if not full_suite and paths else len(test_cmd), "no:cacheprovider")
         tests = run(test_cmd, timeout=900, env=test_env)
     finally:
         for name, value in task_scope.items():
