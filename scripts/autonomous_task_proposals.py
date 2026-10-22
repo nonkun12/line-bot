@@ -177,6 +177,9 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         "exists", "is_file", "is_dir", "is_symlink", "samefile", "read", "write",
         "get", "post", "put", "patch", "delete", "request", "connect", "create_connection",
         "send", "recv", "execute", "executemany", "commit", "rollback",
+        # Process-launch APIs can be reached through an existing aliased import.
+        "run", "Popen", "call", "check_call", "check_output", "fork", "spawn",
+        "execv", "execve", "execvp", "execvpe", "startfile", "kill", "killpg",
     }
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
