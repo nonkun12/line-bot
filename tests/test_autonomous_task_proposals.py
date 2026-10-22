@@ -691,3 +691,19 @@ def test_auto_test_diff_allows_ordinary_methods_and_strings():
 +    assert text == 'ok'
 """
     assert validate_auto_test_diff(diff) == (True, "ok")
+
+
+def test_auto_test_diff_rejects_synthetic_raise_inside_pytest_raises():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,3 @@
++def test_fake_exception_is_not_behavior():
++    with pytest.raises(Exception):
++        raise Exception("synthetic")
+"""
+    assert validate_auto_test_diff(diff) == (
+        False,
+        "synthetic_raise_inside_pytest_raises_rejected",
+    )
