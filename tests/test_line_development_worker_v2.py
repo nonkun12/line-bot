@@ -500,18 +500,18 @@ def test_linux_auto_test_sandbox_is_read_only_and_networkless():
     if not sys.platform.startswith("linux"):
         return
     probe = (
-        "import os, socket\\n"
-        "assert os.getuid() == 65534\\n"
-        "assert not os.access('/workspace', os.W_OK)\\n"
-        "open('/tmp/sandbox-probe', 'w').close()\\n"
-        "sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\\n"
-        "sock.settimeout(1)\\n"
-        "try:\\n"
-        "    sock.connect(('1.1.1.1', 80))\\n"
-        "except OSError:\\n"
-        "    print('sandbox_ok')\\n"
-        "else:\\n"
-        "    raise SystemExit('network reachable')\\n"
+        "import os, socket\n"
+        "assert os.getuid() == 65534\n"
+        "assert not os.access('/workspace', os.W_OK)\n"
+        "open('/tmp/sandbox-probe', 'w').close()\n"
+        "sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
+        "sock.settimeout(1)\n"
+        "try:\n"
+        "    sock.connect(('1.1.1.1', 80))\n"
+        "except OSError:\n"
+        "    print('sandbox_ok')\n"
+        "else:\n"
+        "    raise SystemExit('network reachable')\n"
     )
     result = subprocess.run(
         [
