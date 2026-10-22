@@ -462,7 +462,7 @@ def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp
 +++ b/tests/test_example.py
 @@ -1,0 +2,2 @@
 +def test_safe():
-+    assert True
++    assert "safe".upper() == "SAFE"
 """
 
     def fake_run(command, timeout=900, input_text=None, env=None):
