@@ -276,6 +276,15 @@ def test_auto_test_diff_rejects_zero_or_multiple_new_test_functions():
     assert validate_auto_test_diff(diff) == (
         False, "expected_exactly_one_new_test_function"
     )
+    helper_diff = """+++ b/tests/test_example.py
++def test_one():
++    assert True
++def helper():
++    return True
+"""
+    assert validate_auto_test_diff(helper_diff) == (
+        False, "expected_exactly_one_new_test_function"
+    )
 
 
 def test_auto_refill_skips_successful_but_uncompleted_target_until_review(tmp_path):
