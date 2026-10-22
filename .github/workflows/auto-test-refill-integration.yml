@@ -37,9 +37,10 @@ jobs:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
-      - name: Checkout tested revision
+      - name: Checkout exact PR head (or dispatched ref)
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Set up Python
