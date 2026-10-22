@@ -473,8 +473,41 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
         valid_diff, diff_reason = validate_auto_test_diff(diff_result.stdout)
         if not valid_diff:
             return False, f"auto_test_pre_execution_rejected:{diff_reason}"
-        # Generated tests run with a minimal allowlisted environment, not the
-        # worker's provider credentials or GitHub Actions token.
+        # Build the trusted test image lazily, after validation and without
+        # passing provider/GitHub credentials to the Docker client or build.
+        if not sys.platform.startswith("linux"):
+            return False, "auto_test_requires_linux_container_isolation"
+        sandbox_image = "line-bot-auto-test-sandbox:latest"
+        docker_env = {
+            "PATH": "/usr/local/bin:/usr/bin:/bin",
+            "HOME": "/tmp",
+            "DOCKER_CONFIG": "/tmp/auto-test-docker-config",
+            "DOCKER_BUILDKIT": "1",
+        }
+        image_check = run(
+            ["/usr/bin/docker", "image", "inspect", sandbox_image],
+            timeout=30,
+            env=docker_env,
+        )
+        if image_check.returncode != 0:
+            image_build = run(
+                [
+                    "/usr/bin/docker", "build",
+                    "--file", "scripts/auto_test_sandbox.Dockerfile",
+                    "--tag", sandbox_image,
+                    ".",
+                ],
+                timeout=900,
+                env=docker_env,
+            )
+            if image_build.returncode != 0:
+                return False, (
+                    "auto_test_sandbox_image_build_failed\\n"
+                    + image_build.stdout[-3000:] + image_build.stderr[-3000:]
+                )
+        # The Docker daemon creates a separate PID/mount/network environment.
+        # The checkout is read-only, /tmp is ephemeral, and UID 65534 has no
+        # access to the host process environment or Docker socket.
     for path in touched or []:
         if not path.endswith(".py"):
             continue
@@ -532,33 +565,24 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             }
             test_env["PYTHONDONTWRITEBYTECODE"] = "1"
             test_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
-            # Bubblewrap provides a read-only root, a private /tmp, a new PID
-            # namespace, no network, and an unprivileged UID. Missing sandbox
-            # support is a hard failure; never execute model-authored tests bare.
-            if not sys.platform.startswith("linux"):
-                return False, "auto_test_requires_linux_isolation"
+            test_env["DOCKER_CONFIG"] = "/tmp/auto-test-docker-config"
+            paths = [] if full_suite else list(touched or [])
             test_cmd = [
-                "/usr/bin/bwrap",
-                "--die-with-parent",
-                "--unshare-pid",
-                "--ro-bind", "/", "/",
-                "--dev", "/dev",
-                "--proc", "/proc",
-                "--tmpfs", "/tmp",
-                "--chmod", "1777", "/tmp",
-                "--chdir", str(ROOT),
-                "--setenv", "HOME", "/tmp",
-                "--setenv", "PATH", "/usr/bin:/bin",
-                "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
-                "--setenv", "PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1",
-                "--setenv", "AUTONOMOUS_TEST_SANDBOX", "1",
-                "--uid", "65534",
-                "--gid", "65534",
-                "--",
-                sys.executable,
-                "scripts/auto_test_sandbox.py",
-                "--",
-                *test_cmd,
+                "/usr/bin/docker", "run", "--rm",
+                "--network", "none",
+                "--read-only",
+                "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=1g",
+                "--user", "65534:65534",
+                "--workdir", "/workspace",
+                "--volume", f"{ROOT}:/workspace:ro",
+                "--env", "HOME=/tmp",
+                "--env", "PATH=/usr/local/bin:/usr/bin:/bin",
+                "--env", "PYTHONDONTWRITEBYTECODE=1",
+                "--env", "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
+                "line-bot-auto-test-sandbox:latest",
+                "python", "-m", "pytest", "-q", "--tb=native",
+                "-p", "no:cacheprovider",
+                *paths,
             ]
         tests = run(test_cmd, timeout=900, env=test_env)
     finally:
