@@ -784,11 +784,11 @@ def test_auto_test_diff_rejects_functional_raises_helper_false_pass():
         "raises(Exception, _boom)",
     ):
         diff = (
-            "--- a/tests/test_example.py\\n+++ b/tests/test_example.py\\n"
-            "@@ -1,0 +2,3 @@\\n"
-            "+def test_functional_raises_fake_helper():\\n"
-            "+    " + raises_call + "\\n"
-            "+    assert parse_value('safe') == 'safe'\\n"
+            "--- a/tests/test_example.py\n+++ b/tests/test_example.py\n"
+            "@@ -1,0 +2,3 @@\n"
+            "+def test_functional_raises_fake_helper():\n"
+            "+    " + raises_call + "\n"
+            "+    assert parse_value('safe') == 'safe'\n"
         )
         assert validate_auto_test_diff(diff) == (
             False,
