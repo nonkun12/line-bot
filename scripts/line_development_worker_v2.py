@@ -632,7 +632,7 @@ def auto_test_result_passed(returncode: int, output: str) -> bool:
         return sum(
             int(match.group(1))
             for match in re.finditer(
-                rf"(?<![A-Za-z0-9_])(\\d+)\\s+{label}\\b", str(output or "")
+                rf"(?<![A-Za-z0-9_])(\d+)\s+{label}\b", str(output or "")
             )
         )
 
