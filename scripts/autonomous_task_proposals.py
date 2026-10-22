@@ -250,9 +250,10 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
                 return False
         # Literal-only calls such as len([]) are not behavior checks.
         for part in ast.walk(expression):
-            if isinstance(part, ast.Call) and all(
+            call_args = [*part.args, *(kw.value for kw in part.keywords)] if isinstance(part, ast.Call) else []
+            if isinstance(part, ast.Call) and call_args and all(
                 isinstance(arg, (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set))
-                for arg in [*part.args, *(kw.value for kw in part.keywords)]
+                for arg in call_args
             ):
                 return False
         return any(isinstance(part, (ast.Name, ast.Call, ast.Attribute, ast.Subscript)) for part in ast.walk(expression))
