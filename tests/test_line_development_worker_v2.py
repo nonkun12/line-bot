@@ -4,6 +4,8 @@ import shutil
 import subprocess
 import sys
 
+import pytest
+
 import scripts.line_development_worker_v2 as worker
 
 
@@ -506,7 +508,7 @@ def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp
 
 def test_linux_auto_test_sandbox_is_read_only_and_networkless(tmp_path):
     if not sys.platform.startswith("linux"):
-        return
+        pytest.skip("Docker isolation integration test requires Linux")
     context_dir = tmp_path / "sandbox-image-context"
     context_dir.mkdir()
     shutil.copyfile(worker.ROOT / "requirements.txt", context_dir / "requirements.txt")
