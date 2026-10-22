@@ -27,6 +27,11 @@ def test_sanitizer_discards_raw_error_text_and_unknown_fields():
             "task_id": None,
             "detail": "development required repair attempts",
         },
+        {
+            "kind": "failure",
+            "task_id": None,
+            "detail": "development failure observed",
+        },
     ]
     assert "super-secret" not in json.dumps(rows)
     assert "private input" not in json.dumps(rows)
