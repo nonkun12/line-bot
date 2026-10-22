@@ -170,17 +170,16 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         # reached through an alias such as an existing builtins import.
         "getattr", "setattr", "delattr", "eval", "exec", "compile", "__import__",
         "breakpoint", "input", "help", "vars", "globals", "locals",
-        # Generated tests are not permitted to read/write repository or host files.
+        # Concrete host filesystem and process/network APIs only. Generic method
+        # names such as get/replace/run/call/send are intentionally not blocked.
         "open", "read_text", "read_bytes", "write_text", "write_bytes", "readlink",
         "iterdir", "glob", "rglob", "resolve", "absolute", "relative_to", "with_name",
         "with_suffix", "mkdir", "touch", "stat", "lstat", "chmod", "chown", "rename",
-        "replace", "symlink_to", "hardlink_to", "walk", "listdir", "scandir", "access",
-        "exists", "is_file", "is_dir", "is_symlink", "samefile", "read", "write",
-        "get", "post", "put", "patch", "delete", "request", "connect", "create_connection",
-        "send", "recv", "execute", "executemany", "commit", "rollback",
-        # Process-launch APIs can be reached through an existing aliased import.
-        "run", "Popen", "call", "check_call", "check_output", "fork", "spawn",
-        "execv", "execve", "execvp", "execvpe", "startfile", "kill", "killpg",
+        "symlink_to", "hardlink_to", "walk", "listdir", "scandir", "access",
+        "exists", "is_file", "is_dir", "is_symlink", "samefile",
+        "urlopen", "create_connection", "connect", "recv", "sendall",
+        "Popen", "check_call", "check_output", "fork", "execvp", "execvpe",
+        "startfile", "kill", "killpg",
     }
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -188,15 +187,14 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         if isinstance(node, ast.Name) and node.id in forbidden_names:
             return False, "host_access_rejected"
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if (
-                re.match(r"^(?:/|~[\\/])", node.value)
-                or "__" in node.value
-                or node.value.lower() in {
-                    "getattr", "setattr", "delattr", "globals", "locals", "vars",
-                    "eval", "exec", "open", "compile", "environ", "getenv",
-                    "system", "popen", "import", "os", "sys", "builtins",
-                }
-            ):
+            # Reject absolute/home paths and exact dynamic-code/secret access names;
+            # ordinary data strings (including "os", "replace", and "__init__")
+            # must remain valid test inputs.
+            if re.match(r"^(?:/|~[\\/])", node.value) or node.value.lower() in {
+                "getattr", "setattr", "delattr", "globals", "locals", "vars",
+                "eval", "exec", "open", "compile", "environ", "getenv",
+                "system", "popen", "__import__", "__builtins__",
+            }:
                 return False, "host_access_rejected"
         if isinstance(node, ast.Attribute) and node.attr in forbidden_attributes:
             return False, "host_access_rejected"
@@ -205,33 +203,72 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
     # Require a direct, reachable check in the test body. Nested assertions are
     # not evidence: they may be hidden in dead branches or never-called helpers.
     test_function = tree.body[0]
-    if any(
-        isinstance(node, ast.Call)
-        and (
-            (isinstance(node.func, ast.Name) and node.func.id in {"skip", "skipif", "xfail"})
-            or (isinstance(node.func, ast.Attribute) and node.func.attr in {"skip", "skipif", "xfail"})
-        )
-        for node in ast.walk(test_function)
-    ):
-        return False, "test_skip_or_xfail_rejected"
+    # Reject skip/xfail through direct calls, simple aliases, exception classes,
+    # and pytest's request marker API. Runtime pytest result counts must also be
+    # checked by the worker; AST checks alone cannot prove a test actually ran.
+    skip_names = {"skip", "skipif", "xfail"}
+    for node in ast.walk(test_function):
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            value = node.value
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if isinstance(value, ast.Attribute) and value.attr in skip_names:
+                skip_names.update(t.id for t in targets if isinstance(t, ast.Name))
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id in skip_names:
+                return False, "test_skip_or_xfail_rejected"
+            if isinstance(func, ast.Attribute) and func.attr in skip_names:
+                return False, "test_skip_or_xfail_rejected"
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr in {"applymarker", "add_marker"}
+                and any(
+                    isinstance(child, ast.Attribute) and child.attr in {"xfail", "skip", "skipif"}
+                    for child in ast.walk(node)
+                )
+            ):
+                return False, "test_skip_or_xfail_rejected"
+        if isinstance(node, ast.Raise):
+            exc = node.exc
+            if isinstance(exc, ast.Call):
+                exc = exc.func
+            if isinstance(exc, ast.Name) and exc.id in {"SkipTest", "Skipped"}:
+                return False, "test_skip_or_xfail_rejected"
+            if isinstance(exc, ast.Attribute) and (
+                exc.attr in {"SkipTest", "Skipped"}
+                or (exc.attr == "Exception" and isinstance(exc.value, ast.Attribute)
+                    and exc.value.attr == "skip")
+            ):
+                return False, "test_skip_or_xfail_rejected"
 
-    def _trivial_assertion(expr: ast.expr) -> bool:
+    def _constant_expression(expr: ast.expr) -> bool:
         if isinstance(expr, ast.Constant):
             return True
-        if isinstance(expr, ast.BoolOp) and isinstance(expr.op, ast.Or):
-            return any(
-                isinstance(value, ast.Constant) and bool(value.value)
-                for value in expr.values
+        if isinstance(expr, ast.UnaryOp):
+            return _constant_expression(expr.operand)
+        if isinstance(expr, ast.BinOp):
+            return _constant_expression(expr.left) and _constant_expression(expr.right)
+        if isinstance(expr, ast.BoolOp):
+            return all(_constant_expression(value) for value in expr.values)
+        if isinstance(expr, ast.Compare):
+            return _constant_expression(expr.left) and all(
+                _constant_expression(value) for value in expr.comparators
             )
+        return False
+
+    def _trivial_assertion(expr: ast.expr) -> bool:
+        # Literal/operator-only expressions are independent of the code under test.
+        if _constant_expression(expr):
+            return True
+        if isinstance(expr, ast.BoolOp) and isinstance(expr.op, ast.Or):
+            if any(_constant_expression(value) and isinstance(value, ast.Constant)
+                   and bool(value.value) for value in expr.values):
+                return True
         if isinstance(expr, ast.Compare):
             operands = [expr.left, *expr.comparators]
             if len(expr.ops) == 1 and isinstance(expr.ops[0], (ast.Eq, ast.Is)):
                 if ast.dump(operands[0], include_attributes=False) == ast.dump(operands[1], include_attributes=False):
                     return True
-                if all(isinstance(item, ast.Constant) for item in operands):
-                    left, right = operands[0].value, operands[1].value
-                    if type(left) is type(right) and expr.ops[0].__class__ in (ast.Eq, ast.Is):
-                        return left == right
         return False
 
     direct_checks = []
