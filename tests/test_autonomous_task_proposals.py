@@ -503,6 +503,8 @@ def test_auto_test_diff_rejects_reflection_and_dunder_bypasses():
         "+    b.eval('1')\n",
         "+    b.getattr(__builtins__, 'ev' + 'al')('1')\n",
         "+    b.__import__('os')\n",
+        "+    sp.run(['id'])\n",
+        "+    sp.check_output(['id'])\n",
     ]
     for body in unsafe_bodies:
         diff = (
