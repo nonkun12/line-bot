@@ -284,19 +284,32 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
     if nested_helpers:
         return False, "nested_helper_definition_rejected"
 
-    def _raises_callable(expr: ast.expr) -> bool:
-        # Recognize both pytest.raises and an existing imported/assigned alias.
+    def _looks_like_exception_type(expr: ast.expr) -> bool:
+        # Module-scope aliases such as pt.raises or expect are outside this diff.
+        # Exception-class arguments provide an alias-independent signal; when
+        # uncertain, reject the generated test conservatively.
         return (
-            isinstance(expr, ast.Attribute)
-            and expr.attr == "raises"
-            and isinstance(expr.value, ast.Name)
-            and expr.value.id == "pytest"
-        ) or (isinstance(expr, ast.Name) and expr.id == "raises")
+            isinstance(expr, ast.Name)
+            and (
+                expr.id in {"Exception", "BaseException", "AssertionError"}
+                or expr.id.endswith(("Error", "Exception"))
+            )
+        )
+
+    def _raises_callable(expr: ast.expr, args: list[ast.expr] | None = None) -> bool:
+        if isinstance(expr, ast.Attribute) and expr.attr in {"raises", "assertRaises"}:
+            return True
+        if isinstance(expr, ast.Name) and expr.id in {"raises", "expect", "assertRaises"}:
+            return True
+        # The imported callable's alias is not visible in a diff containing only
+        # the new test function. Treat exception-type arguments as a signal that
+        # the call may be an aliased raises helper and reject it conservatively.
+        return bool(args) and _looks_like_exception_type(args[0])
 
     def _raises_context(statement: ast.With) -> bool:
-        return bool(statement.items) and all(
+        return bool(statement.items) and any(
             isinstance(item.context_expr, ast.Call)
-            and _raises_callable(item.context_expr.func)
+            and _raises_callable(item.context_expr.func, item.context_expr.args)
             for item in statement.items
         )
 
@@ -304,8 +317,8 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         return (
             isinstance(statement, ast.Expr)
             and isinstance(statement.value, ast.Call)
-            and _raises_callable(statement.value.func)
             and len(statement.value.args) >= 2
+            and _raises_callable(statement.value.func, statement.value.args)
         )
 
     direct_checks = []
