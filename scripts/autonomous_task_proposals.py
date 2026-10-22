@@ -143,19 +143,23 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
 
     forbidden_names = {
         "os", "sys", "subprocess", "socket", "requests", "urllib", "httpx",
-        "shutil", "pathlib", "importlib", "ctypes", "builtins", "eval", "exec",
-        "compile", "open", "__import__",
+        "http", "aiohttp", "ftplib", "smtplib", "websocket", "shutil", "pathlib",
+        "importlib", "ctypes", "builtins", "eval", "exec", "compile", "open",
+        "__import__", "GROQ_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GITHUB_TOKEN",
     }
     forbidden_attributes = {
         "environ", "getenv", "system", "popen", "spawn", "execv", "execve",
-        "urlopen", "create_connection", "unlink", "rmtree", "remove",
-        "__globals__", "__builtins__", "__subclasses__", "__dict__",
+        "urlopen", "create_connection", "unlink", "rmtree", "remove", "home",
+        "cwd", "expanduser", "__globals__", "__builtins__", "__subclasses__", "__dict__",
     }
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             return False, "imports_rejected"
         if isinstance(node, ast.Name) and node.id in forbidden_names:
             return False, "host_access_rejected"
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if re.match(r"^(?:/|~[\\/])", node.value):
+                return False, "host_access_rejected"
         if isinstance(node, ast.Attribute) and node.attr in forbidden_attributes:
             return False, "host_access_rejected"
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in forbidden_names:
