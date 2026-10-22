@@ -110,26 +110,35 @@ def build_auto_test_catalog(repo_root: Path) -> list[dict]:
 
 
 def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
-    """Require one additive test function and prohibit edits to existing lines."""
+    """Allow only one appended test function, never edits or module-level code."""
     if not isinstance(diff_text, str) or not diff_text.strip():
         return False, "empty_diff"
-    removed_lines = [
-        line for line in diff_text.splitlines()
-        if line.startswith("-") and not line.startswith("---")
-    ]
-    if removed_lines:
+    lines = diff_text.splitlines()
+    if any(line.startswith("-") and not line.startswith("---") for line in lines):
         return False, "existing_lines_modified"
-    added_functions = re.findall(
-        r"^\+\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
-        diff_text,
-        flags=re.MULTILINE,
-    )
-    added_classes = re.findall(
-        r"^\+\s*class\s+[A-Za-z_][A-Za-z0-9_]*",
-        diff_text,
-        flags=re.MULTILINE,
-    )
-    if len(added_functions) != 1 or not added_functions[0].startswith("test_") or added_classes:
+
+    # A generated task may append one function and its indented body only.
+    # Reject added imports, assignments, helper functions, decorators, classes,
+    # and executable statements at module scope.
+    added = [
+        line[1:]
+        for line in lines
+        if line.startswith("+") and not line.startswith("+++")
+    ]
+    code = [line for line in added if line.strip()]
+    if not code or not re.fullmatch(
+        r"(?:async\s+)?def\s+test_[A-Za-z0-9_]+\s*\(.*", code[0].strip()
+    ):
+        return False, "expected_exactly_one_new_test_function"
+    if any(not line[:1].isspace() for line in code[1:]):
+        return False, "module_level_addition_rejected"
+    if any(re.match(r"\s*class\s+", line) for line in code):
+        return False, "expected_exactly_one_new_test_function"
+    if any(
+        re.match(r"\s*(?:async\s+)?def\s+", line)
+        and not re.match(r"\s{4,}(?:async\s+)?def\s+", line)
+        for line in code[1:]
+    ):
         return False, "expected_exactly_one_new_test_function"
     return True, "ok"
 
