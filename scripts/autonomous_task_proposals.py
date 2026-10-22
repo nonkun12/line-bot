@@ -289,6 +289,19 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
                 for item in statement.items
             )
             if is_raises:
+                # A synthetic raise can make pytest.raises pass without exercising
+                # any existing behavior. Require a call in the context and reject
+                # explicit raises; pytest itself verifies that the called behavior
+                # raises the expected exception at runtime.
+                body_nodes = [
+                    child
+                    for statement_in_context in statement.body
+                    for child in ast.walk(statement_in_context)
+                ]
+                if any(isinstance(child, ast.Raise) for child in body_nodes):
+                    return False, "synthetic_raise_inside_pytest_raises_rejected"
+                if not any(isinstance(child, ast.Call) for child in body_nodes):
+                    return False, "pytest_raises_requires_behavior_call"
                 direct_checks.append(("raises", None))
 
     if not direct_checks:
