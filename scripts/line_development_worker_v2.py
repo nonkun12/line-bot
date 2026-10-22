@@ -502,7 +502,7 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             )
             if image_build.returncode != 0:
                 return False, (
-                    "auto_test_sandbox_image_build_failed\\n"
+                    "auto_test_sandbox_image_build_failed\n"
                     + image_build.stdout[-3000:] + image_build.stderr[-3000:]
                 )
         # The Docker daemon creates a separate PID/mount/network environment.
