@@ -8,6 +8,7 @@ all generated work remains bounded and cannot edit production source.
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import re
@@ -110,45 +111,53 @@ def build_auto_test_catalog(repo_root: Path) -> list[dict]:
 
 
 def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
-    """Allow only one appended test function, never edits or module-level code."""
+    """Allow one additive test function with no imports or risky host access."""
     if not isinstance(diff_text, str) or not diff_text.strip():
         return False, "empty_diff"
     lines = diff_text.splitlines()
     if any(line.startswith("-") and not line.startswith("---") for line in lines):
         return False, "existing_lines_modified"
 
-    # A generated task may append one function and its indented body only.
-    # Reject added imports, assignments, helper functions, decorators, classes,
-    # and executable statements at module scope.
     added = [
         line[1:]
         for line in lines
         if line.startswith("+") and not line.startswith("+++")
     ]
     code = [line for line in added if line.strip()]
-    added_source = "\n".join(line[1:] for line in added)
-    unsafe_pattern = re.compile(
-        r"(?i)(?:\bos\.environ\b|\bos\.getenv\s*\(|"
-        r"\b(?:GROQ_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN)\b|"
-        r"\brequests\.(?:get|post|put|patch|delete|request)\s*\(|"
-        r"\burllib\.request\b|"
-        r"\bhttpx\.(?:get|post|put|patch|delete|request)\s*\(|"
-        r"\bsocket\.(?:socket|create_connection)\s*\(|"
-        r"https?://|\bsubprocess\.(?:run|Popen|call|check_output)\s*\(|"
-        r"\beval\s*\(|\bexec\s*\()"
-    )
-    if unsafe_pattern.search(added_source):
-        return False, "unsafe_test_construct"
     if not code or not re.fullmatch(
         r"(?:async\s+)?def\s+test_[A-Za-z0-9_]+\s*\(.*", code[0].strip()
     ):
         return False, "expected_exactly_one_new_test_function"
-    if any(re.match(r"\s*class\s+", line) for line in code):
-        return False, "expected_exactly_one_new_test_function"
-    if any(re.match(r"\s*(?:async\s+)?def\s+", line) for line in code[1:]):
-        return False, "expected_exactly_one_new_test_function"
     if any(not line[:1].isspace() for line in code[1:]):
         return False, "module_level_addition_rejected"
+    try:
+        tree = ast.parse("\n".join(added))
+    except SyntaxError:
+        return False, "invalid_added_test_syntax"
+    if len(tree.body) != 1 or not isinstance(tree.body[0], (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return False, "expected_exactly_one_new_test_function"
+    if not tree.body[0].name.startswith("test_"):
+        return False, "expected_exactly_one_new_test_function"
+
+    forbidden_names = {
+        "os", "sys", "subprocess", "socket", "requests", "urllib", "httpx",
+        "shutil", "pathlib", "importlib", "ctypes", "builtins", "eval", "exec",
+        "compile", "open", "__import__",
+    }
+    forbidden_attributes = {
+        "environ", "getenv", "system", "popen", "spawn", "execv", "execve",
+        "urlopen", "create_connection", "unlink", "rmtree", "remove",
+        "__globals__", "__builtins__", "__subclasses__", "__dict__",
+    }
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            return False, "imports_rejected"
+        if isinstance(node, ast.Name) and node.id in forbidden_names:
+            return False, "host_access_rejected"
+        if isinstance(node, ast.Attribute) and node.attr in forbidden_attributes:
+            return False, "host_access_rejected"
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in forbidden_names:
+            return False, "host_access_rejected"
     return True, "ok"
 
 
