@@ -181,6 +181,23 @@ def build_proposals(
             if match:
                 blocked_auto_target_prefixes.add(match.group(1) + "-")
 
+        success_evidence = record.get("last_success_evidence")
+        if success_evidence is not None:
+            if (
+                not isinstance(success_evidence, dict)
+                or success_evidence.get("task_id") != task_id
+                or success_evidence.get("status") not in {"PASS", "NO_CHANGE"}
+            ):
+                raise ValueError("Recovery AI success evidence is invalid")
+            # A successful execution that never reached the durable completed
+            # list (for example, because publishing was rejected) needs review;
+            # do not spin on the same file fingerprint next schedule.
+            if task_id not in completed:
+                excluded.add(task_id)
+                match = AUTO_TASK_ID.fullmatch(task_id)
+                if match:
+                    blocked_auto_target_prefixes.add(match.group(1) + "-")
+
     proposals = []
     approved_tasks = []
     seen = set()
