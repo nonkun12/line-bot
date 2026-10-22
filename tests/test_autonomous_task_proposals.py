@@ -314,3 +314,60 @@ def test_auto_refill_skips_successful_but_uncompleted_target_until_review(tmp_pa
     assert result["auto_queued_count"] == 1
     assert queued[0]["allowed_paths"] == ["tests/test_autonomous_task_refill.py"]
     assert queued[0]["id"] != first_id
+
+
+
+def test_auto_refill_prunes_held_curated_task_before_fallback(tmp_path):
+    target = tmp_path / "tests" / "test_autonomous_task_proposals.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("target test content\\n", encoding="utf-8")
+    held_task = {
+        "id": "curated-held-task",
+        "instruction": "held curated task",
+        "allowed_paths": ["tests/test_autonomous_task_proposals.py"],
+    }
+    ip = write(tmp_path / "issues.json", [])
+    qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": [held_task]})
+    sp = write(tmp_path / "state.json", state(tasks={"curated-held-task": {"held": True}}))
+
+    result = build_proposals(
+        ip, qp, sp, tmp_path / "proposals.json",
+        enable_auto_refill=True, repo_root=tmp_path,
+    )
+
+    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]
+    assert result["pruned_task_ids"] == ["curated-held-task"]
+    assert result["auto_queued_count"] == 1
+    assert len(queued) == 1
+    assert queued[0]["id"].startswith("auto-test-")
+
+
+def test_auto_refill_prunes_successful_but_uncompleted_curated_task(tmp_path):
+    target = tmp_path / "tests" / "test_autonomous_task_proposals.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("target test content\\n", encoding="utf-8")
+    task_id = "curated-success-not-completed"
+    task = {
+        "id": task_id,
+        "instruction": "previously successful curated task",
+        "allowed_paths": ["tests/test_autonomous_task_proposals.py"],
+    }
+    ip = write(tmp_path / "issues.json", [])
+    qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": [task]})
+    sp = write(tmp_path / "state.json", state(tasks={
+        task_id: {
+            "held": False,
+            "last_success_evidence": {"task_id": task_id, "status": "PASS"},
+        }
+    }))
+
+    result = build_proposals(
+        ip, qp, sp, tmp_path / "proposals.json",
+        enable_auto_refill=True, repo_root=tmp_path,
+    )
+
+    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]
+    assert result["pruned_task_ids"] == [task_id]
+    assert result["auto_queued_count"] == 1
+    assert len(queued) == 1
+    assert queued[0]["id"].startswith("auto-test-")
