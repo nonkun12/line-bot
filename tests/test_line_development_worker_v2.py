@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -496,9 +497,33 @@ def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp
 
 
 
-def test_linux_auto_test_sandbox_is_read_only_and_networkless():
+def test_linux_auto_test_sandbox_is_read_only_and_networkless(tmp_path):
     if not sys.platform.startswith("linux"):
         return
+    context_dir = tmp_path / "sandbox-image-context"
+    context_dir.mkdir()
+    shutil.copyfile(worker.ROOT / "requirements.txt", context_dir / "requirements.txt")
+    shutil.copyfile(
+        worker.ROOT / "scripts/auto_test_sandbox.Dockerfile",
+        context_dir / "Dockerfile",
+    )
+    image = f"line-bot-auto-test-sandbox-ci:{os.getpid()}"
+    docker_env = {
+        "PATH": "/usr/local/bin:/usr/bin:/bin",
+        "HOME": "/tmp",
+        "DOCKER_CONFIG": "/tmp/auto-test-docker-config",
+        "DOCKER_BUILDKIT": "1",
+    }
+    build = subprocess.run(
+        ["/usr/bin/docker", "build", "--tag", image, str(context_dir)],
+        text=True,
+        capture_output=True,
+        timeout=900,
+        env=docker_env,
+    )
+    assert build.returncode == 0, (
+        "auto-test sandbox image build failed: " + build.stderr[-2000:]
+    )
     probe = (
         "import os, socket\n"
         "assert os.getuid() == 65534\n"
@@ -513,26 +538,38 @@ def test_linux_auto_test_sandbox_is_read_only_and_networkless():
         "else:\n"
         "    raise SystemExit('network reachable')\n"
     )
-    result = subprocess.run(
-        [
-            "/usr/bin/docker", "run", "--rm", "--pull=missing",
-            "--network", "none",
-            "--read-only",
-            "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=64m,mode=1777",
-            "--user", "65534:65534",
-            "--workdir", "/workspace",
-            "--volume", f"{worker.ROOT}:/workspace:ro",
-            "--env", "HOME=/tmp",
-            "--env", "PATH=/usr/local/bin:/usr/bin:/bin",
-            "python:3.13-slim",
-            "python", "-c", probe,
-        ],
-        text=True,
-        capture_output=True,
-        timeout=120,
-    )
-    assert result.returncode == 0, (
-        "Docker sandbox unavailable or isolation failed; generated test execution "
-        "must fail closed: " + result.stderr[-1500:]
-    )
-    assert "sandbox_ok" in result.stdout
+    try:
+        result = subprocess.run(
+            [
+                "/usr/bin/docker", "run", "--rm",
+                "--network", "none",
+                "--read-only",
+                "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=64m,mode=1777",
+                "--user", "65534:65534",
+                "--workdir", "/workspace",
+                "--volume", f"{worker.ROOT}:/workspace:ro",
+                "--env", "HOME=/tmp",
+                "--env", "PATH=/usr/local/bin:/usr/bin:/bin",
+                "--env", "PYTHONDONTWRITEBYTECODE=1",
+                "--env", "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
+                image,
+                "python", "-c", probe,
+            ],
+            text=True,
+            capture_output=True,
+            timeout=30,
+            env=docker_env,
+        )
+        assert result.returncode == 0, (
+            "Docker sandbox unavailable or isolation failed; generated test execution "
+            "must fail closed: " + result.stderr[-1500:]
+        )
+        assert "sandbox_ok" in result.stdout
+    finally:
+        subprocess.run(
+            ["/usr/bin/docker", "image", "rm", "-f", image],
+            text=True,
+            capture_output=True,
+            timeout=30,
+            env=docker_env,
+        )
