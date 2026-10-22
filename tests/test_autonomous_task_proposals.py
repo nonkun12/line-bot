@@ -290,22 +290,27 @@ def test_auto_test_diff_rejects_imports_and_host_access():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
     unsafe_bodies = [
-        ("+    import os\\n+    assert os.name\\n", "imports_rejected"),
-        ("+    assert os.environ.get('TOKEN') is None\\n", "host_access_rejected"),
-        ("+    open('/etc/passwd').read()\\n", "module_level_addition_rejected"),
-        ("+    __import__('os')\\n", "module_level_addition_rejected"),
+        ("+    import os\n+    assert os.name\n", "imports_rejected"),
+        ("+    assert os.environ.get('TOKEN') is None\n", "host_access_rejected"),
+        ("+    open('/etc/passwd').read()\n", "module_level_addition_rejected"),
+        ("+    __import__('os')\n", "module_level_addition_rejected"),
     ]
-    for body, expected_reason in unsafe_bodies:
+    for body, _expected_reason in unsafe_bodies:
         diff = (
-            "--- a/tests/test_example.py\\n"
-            "+++ b/tests/test_example.py\\n"
-            "@@ -20,0 +21,3 @@\\n"
-            "+def test_new_case():\\n"
+            "--- a/tests/test_example.py\n"
+            "+++ b/tests/test_example.py\n"
+            "@@ -20,0 +21,3 @@\n"
+            "+def test_new_case():\n"
             + body
         )
         valid, reason = validate_auto_test_diff(diff)
         assert not valid
-        assert reason in {expected_reason, "host_access_rejected", "imports_rejected"}
+        assert reason in {
+            "expected_exactly_one_new_test_function",
+            "imports_rejected",
+            "host_access_rejected",
+            "module_level_addition_rejected",
+        }
 
 
 def test_auto_refill_skips_successful_but_uncompleted_target_until_review(tmp_path):
