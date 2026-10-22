@@ -95,7 +95,7 @@ def test_history_redacts_legacy_records_and_cycle_memory_on_next_write(tmp_path)
             "kind": "failure",
             "task_id": "task-1",
             "detail": "legacy token=sk-legacy-secret",
-        }) + "\\n" + json.dumps({
+        }) + "\n" + json.dumps({
             "record_type": "cycle_memory",
             "outcome": "FAIL",
             "cause": "private exception token=sk-memory-secret",
@@ -103,7 +103,7 @@ def test_history_redacts_legacy_records_and_cycle_memory_on_next_write(tmp_path)
             "next_action": "raw next action sk-action-secret",
             "target_path": "../private/path",
             "recurring_patterns": ["ValueError: sk-pattern-secret"],
-        }) + "\\n",
+        }) + "\n",
         encoding="utf-8",
     )
     store = SelfImprovementHistory(path)
