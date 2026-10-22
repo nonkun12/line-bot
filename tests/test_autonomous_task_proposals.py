@@ -569,3 +569,125 @@ def test_auto_refill_does_not_repeat_completed_target_after_fingerprint_changes(
     queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]
     assert result["auto_queued_count"] == 1
     assert queued[0]["allowed_paths"] == ["tests/test_second.py"]
+
+
+def test_auto_test_diff_rejects_test_without_assertion():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    for body in (
+        "+def test_empty():\n+    pass\n",
+        "+def test_returns_without_checking():\n+    value = parse_value('x')\n",
+    ):
+        diff = "--- a/tests/test_example.py\n+++ b/tests/test_example.py\n@@ -1,0 +2,2 @@\n" + body
+        assert validate_auto_test_diff(diff) == (False, "test_has_no_assertion")
+
+
+def test_auto_test_diff_rejects_unconditional_skip_or_xfail():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    for body in (
+        "+def test_skipped():\n+    pytest.skip('not now')\n+    assert False\n",
+        "+def test_xfailed():\n+    pytest.xfail('not now')\n+    assert False\n",
+        "+def test_skip_alias():\n+    skip('not now')\n+    assert False\n",
+    ):
+        diff = "--- a/tests/test_example.py\n+++ b/tests/test_example.py\n@@ -1,0 +2,3 @@\n" + body
+        assert validate_auto_test_diff(diff) == (False, "test_skip_or_xfail_rejected")
+
+
+def test_auto_test_diff_rejects_trivial_assertions():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    for assertion in ("assert True", "assert 1 == 1", "assert 'same' == 'same'"):
+        diff = (
+            "--- a/tests/test_example.py\n+++ b/tests/test_example.py\n"
+            "@@ -1,0 +2,2 @@\n+def test_trivial():\n+    " + assertion + "\n"
+        )
+        assert validate_auto_test_diff(diff) == (False, "test_assertion_is_trivial")
+
+
+def test_auto_test_diff_accepts_assertion_on_computed_behavior():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,3 @@
++def test_computed_behavior():
++    value = parse_value("safe")
++    assert value == "safe"
+"""
+    assert validate_auto_test_diff(diff) == (True, "ok")
+
+
+
+def test_auto_test_diff_rejects_unreachable_or_tautological_assertions():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    bodies = (
+        ["def test_dead_branch():", "    if False:", "        assert parse_value('x')"],
+        ["def test_after_return():", "    return", "    assert parse_value('x')"],
+        ["def test_swallowed_assertion():", "    try:", "        assert parse_value('x')", "    except BaseException:", "        pass"],
+        ["def test_same_variable():", "    value = parse_value('x')", "    assert value == value"],
+        ["def test_or_true():", "    value = parse_value('x')", "    assert value == 'y' or True"],
+        ["def test_constant_truthy():", "    assert 1"],
+        ["def test_nested_helper():", "    def check():", "        assert parse_value('x')"],
+    )
+    for lines in bodies:
+        added = "".join("+" + line + "\n" for line in lines)
+        diff = "--- a/tests/test_example.py\n+++ b/tests/test_example.py\n@@ -1,0 +2,5 @@\n" + added
+        valid, reason = validate_auto_test_diff(diff)
+        assert not valid, (lines, reason)
+
+
+def test_auto_test_diff_accepts_pytest_raises_as_a_check():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,3 @@
++def test_invalid_input_raises():
++    with pytest.raises(ValueError):
++        parse_value("")
+"""
+    assert validate_auto_test_diff(diff) == (True, "ok")
+
+
+
+def test_auto_test_diff_rejects_skip_aliases_exceptions_and_markers():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    bodies = [
+        "def test_alias():\n    skip = pytest.skip\n    skip('skip')\n    assert parse_value('x')",
+        "def test_skip_exception():\n    raise pytest.skip.Exception('skip')\n    assert parse_value('x')",
+        "def test_unittest_skip():\n    raise SkipTest('skip')\n    assert parse_value('x')",
+        "def test_xfail_marker(request):\n    request.applymarker(pytest.mark.xfail)\n    assert parse_value('x')",
+    ]
+    for body in bodies:
+        added = "\n".join("+" + line for line in body.splitlines())
+        diff = "--- a/tests/test_example.py\n+++ b/tests/test_example.py\n@@ -1,0 +2,5 @@\n" + added + "\n"
+        valid, reason = validate_auto_test_diff(diff)
+        assert not valid, (body, reason)
+
+
+def test_auto_test_diff_rejects_constant_expression_assertions():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    for assertion in ("assert not False", "assert 1 != 2", "assert 1 + 1 == 2"):
+        diff = (
+            "--- a/tests/test_example.py\n+++ b/tests/test_example.py\n"
+            "@@ -1,0 +2,2 @@\n+def test_constant():\n+    " + assertion + "\n"
+        )
+        assert validate_auto_test_diff(diff) == (False, "test_assertion_is_trivial")
+
+
+def test_auto_test_diff_allows_ordinary_methods_and_strings():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,4 @@
++def test_normal_values():
++    value = {'os': 'safe', '__init__': 'data'}.get('os')
++    text = value.replace('safe', 'ok')
++    assert text == 'ok'
+"""
+    assert validate_auto_test_diff(diff) == (True, "ok")

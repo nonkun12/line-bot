@@ -617,7 +617,19 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             else:
                 os.environ[name] = value
     outputs.extend([tests.stdout, tests.stderr])
-    return tests.returncode == 0, "\n".join(outputs)[-8000:]
+    if tests.returncode != 0:
+        return False, "\n".join(outputs)[-8000:]
+    if auto_test_task:
+        # One generated test function must actually PASS. Pytest exits 0 for
+        # skipped and xfailed tests, so the process exit code alone is not proof.
+        summary = str(tests.stdout or "") + "\n" + str(tests.stderr or "")
+        if not re.search(r"(?m)^1 passed(?:\s+in\s+\S+)?\s*$", summary):
+            outputs.append("auto_test_runtime_result_rejected:expected_exactly_one_passed_test")
+            return False, "\n".join(outputs)[-8000:]
+        if re.search(r"(?i)\b(?:skipped|xfailed|xpassed|failed|errors?)\b", summary):
+            outputs.append("auto_test_runtime_result_rejected:non_pass_result_present")
+            return False, "\n".join(outputs)[-8000:]
+    return True, "\n".join(outputs)[-8000:]
 
 
 def has_python_compile_failure(output: str) -> bool:
