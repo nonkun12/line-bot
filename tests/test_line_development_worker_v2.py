@@ -450,7 +450,8 @@ def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp
         "GROQ_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN", "GH_TOKEN",
         "ACTIONS_RUNTIME_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
     )
-    for name in secret_names:
+    unsafe_runtime_names = ("HOME", "PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "TMPDIR")
+    for name in (*secret_names, *unsafe_runtime_names):
         monkeypatch.setenv(name, "must-not-leak")
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "auto-test-tests-test_example-deadbeef1234")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
@@ -480,7 +481,7 @@ def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp
     assert passed, output
     assert len(observed) == 1
     child_env = observed[0]
-    assert all(name not in child_env for name in secret_names)
+    assert all(name not in child_env for name in (*secret_names, *unsafe_runtime_names))
     assert not any(name.startswith(("ACTIONS_", "GITHUB_", "GH_")) for name in child_env)
     assert child_env.get("PATH")
     assert child_env.get("PYTHONDONTWRITEBYTECODE") == "1"
