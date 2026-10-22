@@ -104,7 +104,8 @@ def test_augment_instruction_with_history_adds_only_recurring_untrusted_evidence
 
     assert result.startswith("make one safe improvement")
     assert "UNTRUSTED historical self-improvement evidence" in result
-    assert "pytest timeout" in result
+    assert "development failure observed" in result
+    assert "pytest timeout" not in result
     assert "count=2" in result
     assert len(result) <= guarded_runtime.worker.MAX_INSTRUCTION_LENGTH
 

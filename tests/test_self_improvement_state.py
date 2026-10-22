@@ -13,6 +13,7 @@ def test_sanitizer_discards_raw_error_text_and_unknown_fields():
         },
         {"kind": "repair", "task_id": "../secrets", "detail": "raw error"},
         {"kind": "provider-call", "task_id": "safe", "detail": "unknown kind"},
+        {"kind": "failure", "task_id": "sk-example-secret", "detail": "ordinary detail"},
     ])
 
     assert rows == [
@@ -26,9 +27,16 @@ def test_sanitizer_discards_raw_error_text_and_unknown_fields():
             "task_id": None,
             "detail": "development required repair attempts",
         },
+        {
+            "kind": "failure",
+            "task_id": None,
+            "detail": "development failure observed",
+        },
     ]
     assert "super-secret" not in json.dumps(rows)
     assert "private input" not in json.dumps(rows)
+    assert rows[2]["task_id"] is None
+    assert "sk-example-secret" not in json.dumps(rows)
 
 
 def test_sanitizer_bounds_history_to_latest_200():
@@ -88,3 +96,47 @@ def test_import_export_round_trip_is_sanitized_and_does_not_duplicate(tmp_path):
     ]
     assert "secret" not in json.dumps(persisted)
     assert "private data" not in json.dumps(persisted)
+
+
+
+def test_sanitize_legacy_jsonl_removes_free_form_memory_fields(tmp_path):
+    from scripts.self_improvement_state import main
+    import sys
+
+    history = tmp_path / "legacy.jsonl"
+    output = tmp_path / "sanitized.jsonl"
+    history.write_text(
+        json.dumps({
+            "kind": "failure",
+            "task_id": "task-1",
+            "detail": "token=sk-raw-secret",
+        }) + "\n" + json.dumps({
+            "record_type": "cycle_memory",
+            "outcome": "FAIL",
+            "cause": "private error token=sk-memory-secret",
+            "improvements": ["prompt sk-prompt-secret"],
+            "next_action": "do unsafe thing",
+            "target_path": "../secrets",
+            "recurring_patterns": ["ValueError sk-pattern-secret"],
+        }) + "\n",
+        encoding="utf-8",
+    )
+
+    original_argv = sys.argv
+    try:
+        sys.argv = [
+            "self_improvement_state.py", "sanitize",
+            "--history", str(history), "--output", str(output),
+        ]
+        assert main() == 0
+    finally:
+        sys.argv = original_argv
+
+    rendered = output.read_text(encoding="utf-8")
+    for secret in ("sk-raw-secret", "sk-memory-secret", "sk-prompt-secret", "sk-pattern-secret"):
+        assert secret not in rendered
+    rows = [json.loads(line) for line in rendered.splitlines()]
+    assert rows[0]["detail"] == "development failure observed"
+    assert rows[1]["cause"] == "development gate failed"
+    assert rows[1]["target_path"] == ""
+    assert rows[1]["recurring_patterns"] == []

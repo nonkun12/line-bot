@@ -42,8 +42,8 @@ def test_cycle_persists_signals_and_generates_recurring_proposals(tmp_path):
     assert two.analysis.has_recurring_pattern
     assert len(two.proposals) == 2
     assert {proposal.title for proposal in two.proposals} == {
-        "Investigate recurring failure: development required <n> repair attempt(s)",
-        "Investigate recurring failure: pytest timeout",
+        "Investigate recurring failure: development required repair attempts",
+        "Investigate recurring failure: development failure observed",
     }
     assert all(proposal.task is not None for proposal in two.proposals)
 

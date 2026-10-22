@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass
+import re
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Iterable
@@ -18,6 +19,14 @@ from .self_improvement import ImprovementSignal
 _DEFAULT_MAX_RECORDS = 200
 _MAX_MAX_RECORDS = 200
 _MAX_MEMORY_TEXT = 1200
+_SAFE_TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
+_SENSITIVE_TASK_ID = re.compile(r"(?i)^(?:sk-[a-z0-9_-]{8,}|gh[pousr]_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,})$")
+_SAFE_RELATIVE_PATH = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$")
+_SAFE_SIGNAL_DETAILS = {
+    "success": "development reached integration gate",
+    "repair": "development required repair attempts",
+    "failure": "development failure observed",
+}
 
 
 @dataclass(frozen=True)
@@ -58,7 +67,20 @@ class SelfImprovementHistory:
         for signal in signals:
             if not isinstance(signal, ImprovementSignal):
                 raise TypeError("history entries must be ImprovementSignal")
-            records.append(asdict(signal))
+            if signal.kind not in _SAFE_SIGNAL_DETAILS:
+                raise ValueError("unsupported self-improvement signal kind")
+            task_id = signal.task_id
+            if task_id is not None and (
+                not _SAFE_TASK_ID.fullmatch(task_id)
+                or _SENSITIVE_TASK_ID.fullmatch(task_id)
+            ):
+                task_id = None
+            # Do not persist report.error or any model/user-controlled detail.
+            records.append({
+                "kind": signal.kind,
+                "task_id": task_id,
+                "detail": _SAFE_SIGNAL_DETAILS[signal.kind],
+            })
         self._atomic_write(records)
 
     def append_memory(self, memory: SelfImprovementMemoryRecord) -> None:
@@ -66,7 +88,33 @@ class SelfImprovementHistory:
         if not isinstance(memory, SelfImprovementMemoryRecord):
             raise TypeError("memory must be SelfImprovementMemoryRecord")
         records = self._read_records()
-        records.append({"record_type": "cycle_memory", **asdict(memory)})
+        target_paths = [
+            part.strip()
+            for part in memory.target_path.split(",")
+            if part.strip()
+        ]
+        safe_target_path = ", ".join(
+            path for path in target_paths
+            if _SAFE_RELATIVE_PATH.fullmatch(path)
+            and all(part not in {".", ".."} for part in path.split("/"))
+        )[:_MAX_MEMORY_TEXT]
+        # Free-form error/proposal text can contain credentials or prompt content.
+        # Keep only bounded categorical metadata in durable history.
+        records.append({
+            "record_type": "cycle_memory",
+            "outcome": memory.outcome,
+            "cause": {
+                "PASS": "development gate passed",
+                "FAIL": "development gate failed",
+                "BLOCKED": "development gate blocked",
+            }[memory.outcome],
+            "improvements": ["improvement proposal recorded"] * min(len(memory.improvements), 3),
+            "next_action": "review outcome before execution",
+            "target_path": safe_target_path,
+            # Pattern keys can contain raw exception messages; discard until a
+            # dedicated non-sensitive pattern identifier is used.
+            "recurring_patterns": [],
+        })
         self._atomic_write(records)
 
     def load(self) -> tuple[ImprovementSignal, ...]:
@@ -126,7 +174,12 @@ class SelfImprovementHistory:
         return records[-self.max_records:]
 
     def _atomic_write(self, records: list[dict[str, object]]) -> None:
-        records = records[-self.max_records:]
+        # Re-sanitize every existing record as well as new entries. This also
+        # removes sensitive data left by versions that wrote raw errors.
+        records = [
+            safe for record in records
+            if (safe := _sanitize_history_record(record)) is not None
+        ][-self.max_records:]
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temp_name = None
         try:
@@ -148,6 +201,52 @@ class SelfImprovementHistory:
                     os.unlink(temp_name)
                 except OSError:
                     pass
+
+
+def _sanitize_history_record(record: dict[str, object]) -> dict[str, object] | None:
+    if record.get("record_type") == "cycle_memory":
+        outcome = record.get("outcome")
+        if outcome not in {"PASS", "FAIL", "BLOCKED"}:
+            return None
+        raw_paths = record.get("target_path", "")
+        paths = raw_paths.split(",") if isinstance(raw_paths, str) else []
+        safe_paths = [
+            part.strip() for part in paths
+            if part.strip()
+            and _SAFE_RELATIVE_PATH.fullmatch(part.strip())
+            and all(segment not in {".", ".."} for segment in part.strip().split("/"))
+        ]
+        improvements = record.get("improvements", [])
+        count = len(improvements) if isinstance(improvements, (list, tuple)) else 0
+        return {
+            "record_type": "cycle_memory",
+            "outcome": outcome,
+            "cause": {
+                "PASS": "development gate passed",
+                "FAIL": "development gate failed",
+                "BLOCKED": "development gate blocked",
+            }[outcome],
+            "improvements": ["improvement proposal recorded"] * min(count, 3),
+            "next_action": "review outcome before execution",
+            "target_path": ", ".join(safe_paths)[:_MAX_MEMORY_TEXT],
+            "recurring_patterns": [],
+        }
+
+    kind = record.get("kind")
+    if not isinstance(kind, str) or kind not in _SAFE_SIGNAL_DETAILS:
+        return None
+    task_id = record.get("task_id")
+    if (
+        not isinstance(task_id, str)
+        or not _SAFE_TASK_ID.fullmatch(task_id)
+        or _SENSITIVE_TASK_ID.fullmatch(task_id)
+    ):
+        task_id = None
+    return {
+        "kind": kind,
+        "task_id": task_id,
+        "detail": _SAFE_SIGNAL_DETAILS[kind],
+    }
 
 
 __all__ = ["SelfImprovementHistory", "SelfImprovementMemoryRecord"]

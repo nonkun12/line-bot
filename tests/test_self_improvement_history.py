@@ -15,8 +15,8 @@ def test_history_round_trips_and_is_bounded(tmp_path):
     )
 
     assert store.load() == (
-        ImprovementSignal("repair", "a", "second"),
-        ImprovementSignal("failure", "b", "third"),
+        ImprovementSignal("repair", "a", "development required repair attempts"),
+        ImprovementSignal("failure", "b", "development failure observed"),
     )
 
 
@@ -69,3 +69,58 @@ def test_unreadable_history_fails_closed_without_overwriting(monkeypatch, tmp_pa
 
     # Verify through the saved original reader: no destructive rewrite occurred.
     assert original_read_text(path, encoding="utf-8") == original
+
+
+
+def test_history_redacts_signal_details_before_persisting(tmp_path):
+    import json
+
+    path = tmp_path / "history.jsonl"
+    secret = "token=sk-example-secret"
+    store = SelfImprovementHistory(path)
+    store.append([
+        ImprovementSignal("failure", "task-1", secret),
+        ImprovementSignal("failure", "sk-example-secret", "ordinary-looking detail"),
+    ])
+
+    persisted = path.read_text(encoding="utf-8")
+    assert secret not in persisted
+    assert "sk-example-secret" not in persisted
+    rows = [json.loads(line) for line in persisted.splitlines()]
+    assert rows[0]["detail"] == "development failure observed"
+    assert rows[1]["task_id"] is None
+    assert "sk-example-secret" not in persisted
+
+
+def test_history_redacts_legacy_records_and_cycle_memory_on_next_write(tmp_path):
+    import json
+
+    path = tmp_path / "history.jsonl"
+    path.write_text(
+        json.dumps({
+            "kind": "failure",
+            "task_id": "task-1",
+            "detail": "legacy token=sk-legacy-secret",
+        }) + "\n" + json.dumps({
+            "record_type": "cycle_memory",
+            "outcome": "FAIL",
+            "cause": "private exception token=sk-memory-secret",
+            "improvements": ["raw prompt sk-prompt-secret"],
+            "next_action": "raw next action sk-action-secret",
+            "target_path": "../private/path",
+            "recurring_patterns": ["ValueError: sk-pattern-secret"],
+        }) + "\n",
+        encoding="utf-8",
+    )
+    store = SelfImprovementHistory(path)
+    store.append([ImprovementSignal("repair", "task-2", "safe-looking detail")])
+
+    persisted = path.read_text(encoding="utf-8")
+    for secret in ("sk-legacy-secret", "sk-memory-secret", "sk-prompt-secret", "sk-action-secret", "sk-pattern-secret"):
+        assert secret not in persisted
+    rows = [json.loads(line) for line in persisted.splitlines()]
+    assert rows[0]["detail"] == "development failure observed"
+    assert rows[1]["cause"] == "development gate failed"
+    assert rows[1]["target_path"] == ""
+    assert rows[1]["recurring_patterns"] == []
+    assert rows[2]["detail"] == "development required repair attempts"

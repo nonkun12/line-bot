@@ -129,6 +129,12 @@ jobs:
           path: ${{ runner.temp }}/self-improvement-state
           run-id: ${{ steps.previous_autonomous_run.outputs.run_id }}
           github-token: ${{ github.token }}
+      - name: Sanitize restored self-improvement history
+        if: steps.previous_autonomous_run.outputs.run_id != ''
+        run: |
+          python scripts/self_improvement_state.py sanitize \
+            --history "${{ runner.temp }}/self-improvement-state/self-improvement.jsonl"
+
       - name: Record autonomous starting commit
         run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
@@ -245,12 +251,19 @@ jobs:
           echo "AUTONOMOUS_RESULT=pr-created" >> "$GITHUB_ENV"
           echo "AUTONOMOUS_PR_URL=${PR_URL}" >> "$GITHUB_ENV"
 
+      - name: Prepare sanitized self-improvement artifact
+        if: always()
+        run: |
+          python scripts/self_improvement_state.py sanitize \
+            --history "${{ runner.temp }}/self-improvement-state/self-improvement.jsonl" \
+            --output "${{ runner.temp }}/self-improvement-artifact/self-improvement.jsonl"
+
       - name: Persist self-improvement history
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: autonomous-self-improvement-state
-          path: ${{ runner.temp }}/self-improvement-state/self-improvement.jsonl
+          path: ${{ runner.temp }}/self-improvement-artifact/self-improvement.jsonl
           if-no-files-found: warn
           retention-days: 7
       - name: Record autonomous development result to Google Sheets
