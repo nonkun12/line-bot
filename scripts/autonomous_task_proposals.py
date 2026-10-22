@@ -165,6 +165,14 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         "cwd", "expanduser", "__globals__", "__builtins__", "__subclasses__", "__dict__",
         "__class__", "__base__", "__mro__", "__getattribute__", "__getattr__", "__code__",
         "__closure__", "__self__", "__func__", "__reduce__", "__reduce_ex__",
+        # Generated tests are not permitted to read/write repository or host files.
+        "open", "read_text", "read_bytes", "write_text", "write_bytes", "readlink",
+        "iterdir", "glob", "rglob", "resolve", "absolute", "relative_to", "with_name",
+        "with_suffix", "mkdir", "touch", "stat", "lstat", "chmod", "chown", "rename",
+        "replace", "symlink_to", "hardlink_to", "walk", "listdir", "scandir", "access",
+        "exists", "is_file", "is_dir", "is_symlink", "samefile", "read", "write",
+        "get", "post", "put", "patch", "delete", "request", "connect", "create_connection",
+        "send", "recv", "execute", "executemany", "commit", "rollback",
     }
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
