@@ -483,6 +483,7 @@ def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp
             assert command[command.index("--volume") + 1].endswith(":/workspace:ro")
             assert "line-bot-auto-test-sandbox:latest" in command
             assert "python" in command and "-m" in command and "pytest" in command
+            assert "tests/test_example.py::test_safe" in command
             assert "no:cacheprovider" in command
             assert not any("TOKEN=" in item or "API_KEY=" in item for item in command)
             observed.append(dict(env or {}))
