@@ -41,6 +41,7 @@ PROTECTED_PATHS = {
     "scripts/line_development_worker.py",
     "scripts/line_development_worker_safe.py",
     "scripts/line_development_worker_v2.py",
+    "scripts/auto_test_sandbox.Dockerfile",
     "core/line_development_runtime.py",
     "scripts/run_minimal_autonomous_loop.py",
     "scripts/run_guarded_runtime.py",
