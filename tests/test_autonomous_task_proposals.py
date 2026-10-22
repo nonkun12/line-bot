@@ -807,3 +807,36 @@ def test_auto_test_diff_accepts_functional_raises_with_behavior_assertion():
 +    assert parse_value("safe") == "safe"
 +"""
     assert validate_auto_test_diff(diff) == (True, "ok")
+
+
+def test_auto_test_diff_rejects_public_helper_with_unrelated_assertion():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,4 @@
++def test_public_helper_fake_exception_and_unrelated_assertion():
++    with pytest.raises(Exception):
++        boom()
++    assert parse_value("safe") == "safe"
++"""
+    assert validate_auto_test_diff(diff) == (
+        False,
+        "pytest_raises_requires_matching_behavior_assertion",
+    )
+
+
+def test_auto_test_diff_rejects_functional_raises_unrelated_assertion():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,3 @@
++def test_functional_raises_unrelated_assertion():
++    pytest.raises(Exception, boom)
++    assert parse_value("safe") == "safe"
++"""
+    assert validate_auto_test_diff(diff) == (
+        False,
+        "pytest_raises_requires_matching_behavior_assertion",
+    )
