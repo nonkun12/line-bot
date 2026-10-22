@@ -264,7 +264,7 @@ def test_auto_test_diff_rejects_changes_to_existing_test_lines():
 def test_auto_test_diff_rejects_zero_or_multiple_new_test_functions():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
-    assert validate_auto_test_diff("+value = 1\\n+assert value == 1\\n")[0] is False
+    assert validate_auto_test_diff("+value = 1\n+assert value == 1\n")[0] is False
     diff = """+++ b/tests/test_example.py
 +def test_one():
 +    assert True
@@ -297,10 +297,10 @@ def test_auto_test_diff_rejects_imports_and_host_access():
     ]
     for body in unsafe_bodies:
         diff = (
-            "--- a/tests/test_example.py\\n"
-            "+++ b/tests/test_example.py\\n"
-            "@@ -20,0 +21,3 @@\\n"
-            "+def test_new_case():\\n"
+            "--- a/tests/test_example.py\n"
+            "+++ b/tests/test_example.py\n"
+            "@@ -20,0 +21,3 @@\n"
+            "+def test_new_case():\n"
             + body
         )
         valid, reason = validate_auto_test_diff(diff)
