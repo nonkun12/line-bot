@@ -413,20 +413,25 @@ def test_auto_test_diff_rejects_network_or_secret_access():
 def test_auto_refill_policy_requires_exact_versioned_opt_in():
     from scripts.autonomous_task_proposals import auto_test_refill_policy_enabled
 
-    assert auto_test_refill_policy_enabled({
+    base = {
+        "version": 1,
+        "tasks": [],
         "auto_test_refill": {
             "enabled": True,
             "max_tasks_per_run": 1,
             "allowed_roots": ["tests", "uhip/tests"],
-        }
-    })
+        },
+    }
+    assert auto_test_refill_policy_enabled(base)
     invalid_policies = [
-        {},
-        {"auto_test_refill": {"enabled": False, "max_tasks_per_run": 1, "allowed_roots": ["tests", "uhip/tests"]}},
-        {"auto_test_refill": {"enabled": True, "max_tasks_per_run": 2, "allowed_roots": ["tests", "uhip/tests"]}},
-        {"auto_test_refill": {"enabled": True, "max_tasks_per_run": True, "allowed_roots": ["tests", "uhip/tests"]}},
-        {"auto_test_refill": {"enabled": True, "max_tasks_per_run": 1, "allowed_roots": ["tests"]}},
-        {"auto_test_refill": {"enabled": True, "max_tasks_per_run": 1, "allowed_roots": ["tests", "uhip/tests", ".github"]}},
+        {**base, "version": True},
+        {**base, "version": 2},
+        {**base, "tasks": {}},
+        {**base, "auto_test_refill": {"enabled": False, "max_tasks_per_run": 1, "allowed_roots": ["tests", "uhip/tests"]}},
+        {**base, "auto_test_refill": {"enabled": True, "max_tasks_per_run": 2, "allowed_roots": ["tests", "uhip/tests"]}},
+        {**base, "auto_test_refill": {"enabled": True, "max_tasks_per_run": True, "allowed_roots": ["tests", "uhip/tests"]}},
+        {**base, "auto_test_refill": {"enabled": True, "max_tasks_per_run": 1, "allowed_roots": ["tests"]}},
+        {**base, "auto_test_refill": {"enabled": True, "max_tasks_per_run": 1, "allowed_roots": ["tests", "uhip/tests", ".github"]}},
     ]
     assert all(not auto_test_refill_policy_enabled(item) for item in invalid_policies)
 
