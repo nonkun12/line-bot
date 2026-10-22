@@ -477,7 +477,7 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
         if not valid_diff:
             return False, f"auto_test_pre_execution_rejected:{diff_reason}"
         function_match = re.search(
-            r"^\\+\\s*(?:async\\s+)?def\\s+(test_[A-Za-z0-9_]+)\\s*\\(",
+            r"^\+\s*(?:async\s+)?def\s+(test_[A-Za-z0-9_]+)\s*\(",
             diff_result.stdout,
             flags=re.MULTILINE,
         )
