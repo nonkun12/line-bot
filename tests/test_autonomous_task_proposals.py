@@ -414,6 +414,8 @@ def test_auto_test_diff_rejects_module_level_additions():
         assert reason in {
             "module_level_addition_rejected",
             "expected_exactly_one_new_test_function",
+            "imports_rejected",
+            "host_access_rejected",
         }
 
 
