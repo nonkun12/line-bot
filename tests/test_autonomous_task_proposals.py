@@ -579,7 +579,7 @@ def test_auto_test_diff_rejects_test_without_assertion():
         "+def test_returns_without_checking():\n+    value = parse_value('x')\n",
     ):
         diff = "--- a/tests/test_example.py\n+++ b/tests/test_example.py\n@@ -1,0 +2,2 @@\n" + body
-        assert validate_auto_test_diff(diff) == (False, "pytest_raises_unapproved_behavior_rejected")
+        assert validate_auto_test_diff(diff) == (False, "test_has_no_assertion")
 
 
 def test_auto_test_diff_rejects_unconditional_skip_or_xfail():
@@ -855,5 +855,5 @@ def test_auto_test_diff_rejects_functional_raises_unrelated_assertion():
 +"""
     assert validate_auto_test_diff(diff) == (
         False,
-        "pytest_raises_requires_matching_behavior_assertion",
+        "pytest_raises_unapproved_behavior_rejected",
     )
