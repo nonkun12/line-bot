@@ -271,6 +271,58 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
                     return True
         return False
 
+    # A nested helper can manufacture an exception and fool pytest.raises.
+    # Since this validator only receives the added diff, it cannot inspect helper
+    # implementations elsewhere in the module; reject helpers declared in the test
+    # and private helper call targets, and always require an independent assertion.
+    nested_helpers = {
+        node.name
+        for node in ast.walk(test_function)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node is not test_function
+    }
+    if nested_helpers:
+        return False, "nested_helper_definition_rejected"
+
+    def _looks_like_exception_type(expr: ast.expr) -> bool:
+        # Module-scope aliases such as pt.raises or expect are outside this diff.
+        # Exception-class arguments provide an alias-independent signal; when
+        # uncertain, reject the generated test conservatively.
+        return (
+            isinstance(expr, ast.Name)
+            and (
+                expr.id in {"Exception", "BaseException", "AssertionError"}
+                or expr.id.endswith(("Error", "Exception"))
+            )
+        )
+
+    def _raises_callable(expr: ast.expr, args: list[ast.expr] | None = None) -> bool:
+        if isinstance(expr, ast.Attribute) and expr.attr in {"raises", "assertRaises"}:
+            return True
+        if isinstance(expr, ast.Name) and expr.id in {"raises", "expect", "assertRaises"}:
+            return True
+        # The imported callable's alias is not visible in a diff containing only
+        # the new test function. Treat exception-type arguments as a signal that
+        # the call may be an aliased raises helper and reject it conservatively.
+        return bool(args) and _looks_like_exception_type(args[0])
+
+    def _raises_context(statement: ast.With) -> bool:
+        # The diff-only validator cannot know whether a module-scope context
+        # manager is an alias for pytest.raises. Reject call-based context managers
+        # in generated tests rather than leave an alias-based false-PASS path.
+        return bool(statement.items) and any(
+            isinstance(item.context_expr, ast.Call)
+            for item in statement.items
+        )
+
+    def _functional_raises(statement: ast.stmt) -> bool:
+        return (
+            isinstance(statement, ast.Expr)
+            and isinstance(statement.value, ast.Call)
+            and len(statement.value.args) >= 2
+            and _raises_callable(statement.value.func, statement.value.args)
+        )
+
     direct_checks = []
     for statement in test_function.body:
         if isinstance(statement, (ast.Return, ast.Raise)):
@@ -279,17 +331,46 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
             continue
         if isinstance(statement, ast.Assert):
             direct_checks.append(("assert", statement.test))
-        elif isinstance(statement, ast.With):
-            is_raises = bool(statement.items) and all(
-                isinstance(item.context_expr, ast.Call)
-                and isinstance(item.context_expr.func, ast.Attribute)
-                and isinstance(item.context_expr.func.value, ast.Name)
-                and item.context_expr.func.value.id == "pytest"
-                and item.context_expr.func.attr == "raises"
-                for item in statement.items
-            )
-            if is_raises:
-                direct_checks.append(("raises", None))
+            continue
+
+        if isinstance(statement, ast.With) and _raises_context(statement):
+            # Explicit raises in the context are synthetic and never count as
+            # evidence that the behavior under test raised.
+            body_nodes = [
+                child
+                for statement_in_context in statement.body
+                for child in ast.walk(statement_in_context)
+            ]
+            if any(isinstance(child, ast.Raise) for child in body_nodes):
+                return False, "synthetic_raise_inside_pytest_raises_rejected"
+            calls = [node for node in body_nodes if isinstance(node, ast.Call)]
+            if not calls:
+                return False, "pytest_raises_requires_behavior_call"
+            if any(
+                isinstance(call.func, ast.Name)
+                and (call.func.id.startswith("_") or call.func.id in nested_helpers)
+                for call in calls
+            ):
+                return False, "pytest_raises_helper_call_rejected"
+            # This diff-only validator cannot prove the called public function is
+            # an approved production behavior rather than a synthetic helper.
+            # Fail closed until generated-test targets can be checked against an
+            # explicit trusted callable allowlist.
+            return False, "pytest_raises_unapproved_behavior_rejected"
+
+        if _functional_raises(statement):
+            call = statement.value
+            # Functional form: raises(ExpectedError, callable, *args, **kwargs).
+            # Reject private/local helper targets because their implementation is
+            # not visible to this diff-only validator.
+            target = call.args[1]
+            if isinstance(target, ast.Name) and (
+                target.id.startswith("_") or target.id in nested_helpers
+            ):
+                return False, "pytest_raises_helper_call_rejected"
+            # Functional-form pytest.raises has the same provenance problem:
+            # a matching function name is not proof of approved behavior.
+            return False, "pytest_raises_unapproved_behavior_rejected"
 
     if not direct_checks:
         return False, "test_has_no_assertion"
