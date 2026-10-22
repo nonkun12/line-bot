@@ -469,8 +469,13 @@ def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp
             return subprocess.CompletedProcess(command, 0, stdout=diff, stderr="")
         if command[1:3] == ["-m", "py_compile"]:
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
-        if command[:3] == ["unshare", "--net", "--"]:
-            assert command[3:6] == [worker.sys.executable, "-m", "pytest"]
+        if command[:3] == ["/usr/bin/unshare", "--net", "--"]:
+            assert command[3:8] == ["/usr/bin/sudo", "-n", "-u", "nobody", "--"]
+            assert command[8:10] == ["/usr/bin/env", "-i"]
+            assert command[10] == "PATH=/usr/bin:/bin"
+            assert command[14:17] == [worker.sys.executable, "-m", "pytest"]
+            assert "no:cacheprovider" in command
+            assert not any("TOKEN=" in item or "API_KEY=" in item for item in command)
             observed.append(dict(env or {}))
             return subprocess.CompletedProcess(command, 0, stdout="1 passed", stderr="")
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
