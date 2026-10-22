@@ -648,7 +648,7 @@ def test_auto_test_diff_rejects_pytest_raises_without_independent_assertion():
 +    with pytest.raises(ValueError):
 +        parse_value("")
 """
-    assert validate_auto_test_diff(diff) == (False, "test_has_no_assertion")
+    assert validate_auto_test_diff(diff) == (False, "pytest_raises_unapproved_behavior_rejected")
 
 
 def test_auto_test_diff_rejects_raises_even_with_independent_behavior_assertion():
@@ -796,7 +796,7 @@ def test_auto_test_diff_rejects_functional_raises_helper_false_pass():
         )
 
 
-def test_auto_test_diff_accepts_functional_raises_with_behavior_assertion():
+def test_auto_test_diff_rejects_functional_raises_without_trusted_allowlist():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
     diff = """--- a/tests/test_example.py
