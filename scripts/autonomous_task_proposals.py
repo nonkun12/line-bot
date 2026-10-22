@@ -205,38 +205,56 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
             return False, "host_access_rejected"
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in forbidden_names:
             return False, "host_access_rejected"
-    # Check safety violations first so unsafe host/network access remains the
-    # primary diagnostic even when the malicious sample lacks an assertion.
+    # Reject known pytest/unittest skip and expected-failure escape hatches.
+    # A zero pytest exit code is insufficient because a skipped-only run exits 0.
+    forbidden_skip_calls = {"skip", "skipif", "xfail", "importorskip", "SkipTest", "skipTest", "exit", "fail"}
     for node in nodes:
         if isinstance(node, ast.Call):
-            if isinstance(node.func, ast.Attribute) and node.func.attr in {"skip", "skipif", "xfail"}:
+            name = node.func.id if isinstance(node.func, ast.Name) else (
+                node.func.attr if isinstance(node.func, ast.Attribute) else ""
+            )
+            if name in forbidden_skip_calls:
                 return False, "skip_or_xfail_rejected"
-            if isinstance(node.func, ast.Name) and node.func.id in {"skip", "skipif", "xfail"}:
-                return False, "skip_or_xfail_rejected"
-    assertions = [node for node in nodes if isinstance(node, ast.Assert)]
+
+    function = tree.body[0]
+    # Only direct assertions count. Nested assertions may be unreachable or swallowed.
+    assertions = [node for node in function.body if isinstance(node, ast.Assert)]
     if not assertions:
         return False, "assertion_required"
 
-    # A syntactically present assertion is not enough: reject constant-only
-    # assertions (for example, assert True or assert 1 == 1) and direct
-    # self-comparisons (assert value == value). At least one assertion must
-    # inspect a runtime value or call behavior under test.
+    def is_constant_truth(expression: ast.expr) -> bool:
+        try:
+            ast.literal_eval(expression)
+            return True
+        except (ValueError, TypeError, SyntaxError):
+            return False
+
     def is_behavioral_assertion(assertion: ast.Assert) -> bool:
         expression = assertion.test
-        if isinstance(expression, ast.Constant):
+        if is_constant_truth(expression):
             return False
+        if isinstance(expression, ast.BoolOp):
+            # Reject expressions that can pass without evaluating a real check.
+            if isinstance(expression.op, ast.Or) and any(
+                is_constant_truth(value) and bool(ast.literal_eval(value))
+                for value in expression.values
+            ):
+                return False
         if isinstance(expression, ast.Compare):
             operands = [expression.left, *expression.comparators]
             if any(
-                ast.dump(left, include_attributes=False)
-                == ast.dump(right, include_attributes=False)
+                ast.dump(left, include_attributes=False) == ast.dump(right, include_attributes=False)
                 for left, right in zip(operands, operands[1:])
             ):
                 return False
-        return any(
-            isinstance(part, (ast.Name, ast.Call, ast.Attribute, ast.Subscript))
-            for part in ast.walk(expression)
-        )
+        # Literal-only calls such as len([]) are not behavior checks.
+        for part in ast.walk(expression):
+            if isinstance(part, ast.Call) and all(
+                isinstance(arg, (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set))
+                for arg in [*part.args, *(kw.value for kw in part.keywords)]
+            ):
+                return False
+        return any(isinstance(part, (ast.Name, ast.Call, ast.Attribute, ast.Subscript)) for part in ast.walk(expression))
 
     if not any(is_behavioral_assertion(assertion) for assertion in assertions):
         return False, "behavioral_assertion_required"
