@@ -14,6 +14,7 @@ from pathlib import Path
 MAX_RECORDS = 200
 _ALLOWED_KINDS = {"success", "repair", "failure"}
 _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
+_SAFE_RELATIVE_PATH = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$")
 _SAFE_DETAIL = {
     "success": "development reached integration gate",
     "repair": "development required repair attempts",
@@ -61,8 +62,8 @@ def sanitize_history_records(records: object) -> list[dict[str, object]]:
             safe_paths = [
                 part.strip() for part in paths
                 if part.strip()
-                and _TASK_ID.fullmatch(part.strip())
-                and "/" not in part.strip()
+                and _SAFE_RELATIVE_PATH.fullmatch(part.strip())
+                and all(segment not in {".", ".."} for segment in part.strip().split("/"))
             ]
             improvements = row.get("improvements", [])
             count = len(improvements) if isinstance(improvements, list) else 0
