@@ -243,7 +243,12 @@ def build_proposals(
     excluded = {x.get("id") for x in queued if isinstance(x, dict) and isinstance(x.get("id"), str)} | set(completed)
     recovery_tasks = recovery["tasks"]
     blocked_task_ids: set[str] = set()
-    blocked_auto_target_prefixes: set[str] = set()
+    blocked_auto_target_prefixes: set[str] = {
+        match.group(1) + "-"
+        for task_id in completed
+        if isinstance(task_id, str)
+        and (match := AUTO_TASK_ID.fullmatch(task_id)) is not None
+    }
     pruned_task_ids: list[str] = []
     for task_id, record in recovery_tasks.items():
         if not isinstance(task_id, str) or not isinstance(record, dict):
