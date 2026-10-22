@@ -879,20 +879,22 @@ def test_auto_test_diff_rejects_pytest_raises_module_alias_false_pass():
 def test_auto_test_diff_rejects_raises_callable_alias_false_pass():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
-    for call in (
-        'with expect(ValueError):\n        _boom()',
-        'expect(Exception, _boom)',
-    ):
-        body = (
-            "def test_aliased_raises_fake_helper():\n"
-            + "".join("    " + line + "\n" for line in call.split("\n"))
-            + '    assert parse_value("safe") == "safe"\n'
-        )
-        diff = (
-            "--- a/tests/test_example.py\n+++ b/tests/test_example.py\n"
-            "@@ -1,0 +2,4 @@\n"
-            + "".join("+" + line for line in body.splitlines(keepends=True))
-        )
+    context_diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,4 @@
++def test_aliased_raises_fake_helper():
++    with expect(ValueError):
++        _boom()
++    assert parse_value("safe") == "safe"
+"""
+    functional_diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,3 @@
++def test_aliased_functional_raises_fake_helper():
++    expect(Exception, _boom)
++    assert parse_value("safe") == "safe"
+"""
+    for diff in (context_diff, functional_diff):
         assert validate_auto_test_diff(diff) == (
             False,
             "pytest_raises_helper_call_rejected",
