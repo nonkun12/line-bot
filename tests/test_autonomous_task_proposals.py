@@ -539,3 +539,33 @@ def test_auto_test_diff_rejects_relative_filesystem_access():
         valid, reason = validate_auto_test_diff(diff)
         assert not valid, f"filesystem method accepted: {body!r}"
         assert reason == "host_access_rejected"
+
+
+
+def test_auto_refill_does_not_repeat_completed_target_after_fingerprint_changes(tmp_path):
+    from scripts.autonomous_task_proposals import build_auto_test_catalog
+
+    first = tmp_path / "tests" / "test_first.py"
+    second = tmp_path / "tests" / "test_second.py"
+    first.parent.mkdir(parents=True)
+    first.write_text("def test_original_first():\\n    assert True\\n", encoding="utf-8")
+    second.write_text("def test_original_second():\\n    assert True\\n", encoding="utf-8")
+    completed_id = build_auto_test_catalog(tmp_path)[0]["id"]
+
+    # Simulate the first target changing after its earlier task was completed.
+    first.write_text(
+        "def test_original_first():\\n    assert True\\n\\ndef test_generated_regression():\\n    assert 1 == 1\\n",
+        encoding="utf-8",
+    )
+    ip = write(tmp_path / "issues.json", [])
+    qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
+    sp = write(tmp_path / "state.json", state(tasks={}, completed=[completed_id]))
+
+    result = build_proposals(
+        ip, qp, sp, tmp_path / "proposals.json",
+        enable_auto_refill=True, repo_root=tmp_path,
+    )
+
+    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]
+    assert result["auto_queued_count"] == 1
+    assert queued[0]["allowed_paths"] == ["tests/test_second.py"]
