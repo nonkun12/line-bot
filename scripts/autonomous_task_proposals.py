@@ -349,7 +349,12 @@ def build_proposals(
 
 def auto_test_refill_policy_enabled(catalog: object) -> bool:
     """Require the repository's versioned catalog to opt into exactly one safe task."""
-    if not isinstance(catalog, dict):
+    if (
+        not isinstance(catalog, dict)
+        or type(catalog.get("version")) is not int
+        or catalog.get("version") != 1
+        or not isinstance(catalog.get("tasks"), list)
+    ):
         return False
     policy = catalog.get("auto_test_refill")
     if not isinstance(policy, dict):
