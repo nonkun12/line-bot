@@ -336,6 +336,21 @@ def build_proposals(
     return result
 
 
+def auto_test_refill_policy_enabled(catalog: object) -> bool:
+    """Require the repository's versioned catalog to opt into exactly one safe task."""
+    if not isinstance(catalog, dict):
+        return False
+    policy = catalog.get("auto_test_refill")
+    if not isinstance(policy, dict):
+        return False
+    return (
+        policy.get("enabled") is True
+        and type(policy.get("max_tasks_per_run")) is int
+        and policy.get("max_tasks_per_run") == 1
+        and policy.get("allowed_roots") == ["tests", "uhip/tests"]
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--issues", type=Path, required=True)
@@ -343,9 +358,16 @@ def main() -> int:
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
+    parser.add_argument("--catalog", type=Path)
     parser.add_argument("--enable-auto-refill", action="store_true")
     args = parser.parse_args()
     try:
+        if args.enable_auto_refill:
+            if args.catalog is None:
+                raise ValueError("versioned auto-refill catalog is required")
+            catalog = _object(args.catalog)
+            if not auto_test_refill_policy_enabled(catalog):
+                raise ValueError("versioned auto-refill policy is not enabled")
         result = build_proposals(
             args.issues, args.queue, args.state, args.output,
             enable_auto_refill=args.enable_auto_refill,
