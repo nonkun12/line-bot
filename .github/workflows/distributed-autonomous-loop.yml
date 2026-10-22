@@ -344,6 +344,7 @@ jobs:
             --issues /tmp/autonomous-loop-open-issues.json \
             --queue /tmp/autonomous-loop-runtime-queue.json \
             --state /tmp/autonomous-loop-state.json \
+            --catalog .github/autonomous-loop-task-catalog.json \
             --repo-root "$GITHUB_WORKSPACE" \
             --enable-auto-refill \
             --output /tmp/autonomous-loop-task-proposals.json
