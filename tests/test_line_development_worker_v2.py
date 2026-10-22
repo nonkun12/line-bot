@@ -338,7 +338,7 @@ def test_apply_plan_changes_one_exact_anchor(tmp_path, monkeypatch):
 def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
     calls = []
 
-    def fake_run(cmd, timeout=900, input_text=None):
+    def fake_run(cmd, timeout=900, input_text=None, env=None):
         calls.append(cmd)
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
