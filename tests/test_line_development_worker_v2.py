@@ -469,12 +469,16 @@ def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp
             return subprocess.CompletedProcess(command, 0, stdout=diff, stderr="")
         if command[1:3] == ["-m", "py_compile"]:
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
-        if command[:4] == ["/usr/bin/bwrap", "--die-with-parent", "--unshare-net", "--unshare-pid"]:
-            assert command[4:7] == ["--ro-bind", "/", "/"]
-            assert command[11:16] == ["--tmpfs", "/tmp", "--chmod", "1777", "/tmp"]
-            assert command[30:35] == ["--uid", "65534", "--gid", "65534", "--"]
-            assert command[35:38] == [worker.sys.executable, "-m", "pytest"]
+        if command[:3] == ["/usr/bin/bwrap", "--die-with-parent", "--unshare-pid"]:
+            assert command[3:6] == ["--ro-bind", "/", "/"]
+            assert command[10:15] == ["--tmpfs", "/tmp", "--chmod", "1777", "/tmp"]
+            assert command[32:37] == ["--uid", "65534", "--gid", "65534", "--"]
+            assert command[37:40] == [
+                worker.sys.executable, "scripts/auto_test_sandbox.py", "--"
+            ]
+            assert command[40:43] == [worker.sys.executable, "-m", "pytest"]
             assert "no:cacheprovider" in command
+            assert "AUTONOMOUS_TEST_SANDBOX" in command
             assert not any("TOKEN=" in item or "API_KEY=" in item for item in command)
             observed.append(dict(env or {}))
             return subprocess.CompletedProcess(command, 0, stdout="1 passed", stderr="")
@@ -500,7 +504,6 @@ def test_linux_auto_test_sandbox_is_read_only_and_unprivileged():
     prefix = [
         "/usr/bin/bwrap",
         "--die-with-parent",
-        "--unshare-net",
         "--unshare-pid",
         "--ro-bind", "/", "/",
         "--dev", "/dev",
@@ -510,6 +513,7 @@ def test_linux_auto_test_sandbox_is_read_only_and_unprivileged():
         "--chdir", str(worker.ROOT),
         "--setenv", "HOME", "/tmp",
         "--setenv", "PATH", "/usr/bin:/bin",
+        "--setenv", "AUTONOMOUS_TEST_SANDBOX", "1",
         "--uid", "65534",
         "--gid", "65534",
         "--",
@@ -536,3 +540,20 @@ def test_linux_auto_test_sandbox_is_read_only_and_unprivileged():
         "generated test sandbox unexpectedly has write access to the checkout: "
         + writable.stderr[-1000:]
     )
+
+    network = subprocess.run(
+        [
+            *prefix,
+            sys.executable,
+            "scripts/auto_test_sandbox.py",
+            "--",
+            sys.executable,
+            "-c",
+            "import socket; socket.socket(socket.AF_INET, socket.SOCK_STREAM)",
+        ],
+        text=True,
+        capture_output=True,
+        timeout=15,
+    )
+    assert network.returncode != 0
+    assert "Operation not permitted" in network.stderr or "PermissionError" in network.stderr
