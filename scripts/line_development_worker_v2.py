@@ -577,11 +577,16 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             test_env["DOCKER_CONFIG"] = "/tmp/auto-test-docker-config"
             paths = [] if full_suite else list(touched or [])
             test_cmd = [
-                "/usr/bin/docker", "run", "--rm",
+                "/usr/bin/docker", "run", "--rm", "--init",
                 "--network", "none",
                 "--read-only",
                 "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=1g",
                 "--user", "65534:65534",
+                "--pids-limit", "64",
+                "--memory", "1g",
+                "--cpus", "1",
+                "--cap-drop", "ALL",
+                "--security-opt", "no-new-privileges",
                 "--workdir", "/workspace",
                 "--volume", f"{ROOT}:/workspace:ro",
                 "--env", "HOME=/tmp",
