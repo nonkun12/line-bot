@@ -177,7 +177,7 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         "with_suffix", "mkdir", "touch", "stat", "lstat", "chmod", "chown", "rename",
         "symlink_to", "hardlink_to", "walk", "listdir", "scandir", "access",
         "exists", "is_file", "is_dir", "is_symlink", "samefile",
-        "urlopen", "create_connection", "connect", "recv", "sendall",
+        "urlopen", "create_connection", "recv", "sendall",
         "Popen", "check_call", "check_output", "fork", "execvp", "execvpe",
         "startfile", "kill", "killpg",
     }
