@@ -218,7 +218,12 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
 
     function = tree.body[0]
     # Only direct assertions count. Nested assertions may be unreachable or swallowed.
-    assertions = [node for node in function.body if isinstance(node, ast.Assert)]
+    assertions = []
+    for statement in function.body:
+        if isinstance(statement, (ast.Return, ast.Raise)):
+            break
+        if isinstance(statement, ast.Assert):
+            assertions.append(statement)
     if not assertions:
         return False, "assertion_required"
 
