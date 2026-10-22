@@ -15,8 +15,8 @@ def test_history_round_trips_and_is_bounded(tmp_path):
     )
 
     assert store.load() == (
-        ImprovementSignal("repair", "a", "second"),
-        ImprovementSignal("failure", "b", "third"),
+        ImprovementSignal("repair", "a", "development required repair attempts"),
+        ImprovementSignal("failure", "b", "development failure observed"),
     )
 
 
