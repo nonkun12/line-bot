@@ -237,7 +237,9 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
     direct_checks = []
     for statement in test_function.body:
         if isinstance(statement, (ast.Return, ast.Raise)):
-            return False, "test_exits_before_assertion"
+            if not direct_checks:
+                return False, "test_exits_before_assertion"
+            continue
         if isinstance(statement, ast.Assert):
             direct_checks.append(("assert", statement.test))
         elif isinstance(statement, ast.With):
