@@ -540,7 +540,6 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             test_cmd = [
                 "/usr/bin/bwrap",
                 "--die-with-parent",
-                "--unshare-net",
                 "--unshare-pid",
                 "--ro-bind", "/", "/",
                 "--dev", "/dev",
@@ -552,8 +551,12 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
                 "--setenv", "PATH", "/usr/bin:/bin",
                 "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
                 "--setenv", "PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1",
+                "--setenv", "AUTONOMOUS_TEST_SANDBOX", "1",
                 "--uid", "65534",
                 "--gid", "65534",
+                "--",
+                sys.executable,
+                "scripts/auto_test_sandbox.py",
                 "--",
                 *test_cmd,
             ]
