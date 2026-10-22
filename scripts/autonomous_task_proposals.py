@@ -151,6 +151,57 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
     if not tree.body[0].name.startswith("test_"):
         return False, "expected_exactly_one_new_test_function"
 
+
+    forbidden_names = {
+        "os", "sys", "subprocess", "socket", "requests", "urllib", "httpx",
+        "http", "aiohttp", "ftplib", "smtplib", "websocket", "shutil", "pathlib",
+        "importlib", "ctypes", "builtins", "eval", "exec", "compile", "open",
+        "__import__", "__builtins__", "getattr", "setattr", "delattr", "globals", "locals", "vars",
+        "dir", "type", "object", "memoryview", "breakpoint", "input", "help",
+        "GROQ_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GITHUB_TOKEN",
+    }
+    forbidden_attributes = {
+        "environ", "getenv", "system", "popen", "spawn", "execv", "execve",
+        "urlopen", "create_connection", "unlink", "rmtree", "remove", "home",
+        "cwd", "expanduser", "__globals__", "__builtins__", "__subclasses__", "__dict__",
+        "__class__", "__base__", "__mro__", "__getattribute__", "__getattr__", "__code__",
+        "__closure__", "__self__", "__func__", "__reduce__", "__reduce_ex__",
+        # Reflection helpers and dynamic code execution are forbidden even when
+        # reached through an alias such as an existing builtins import.
+        "getattr", "setattr", "delattr", "eval", "exec", "compile", "__import__",
+        "breakpoint", "input", "help", "vars", "globals", "locals",
+        # Generated tests are not permitted to read/write repository or host files.
+        "open", "read_text", "read_bytes", "write_text", "write_bytes", "readlink",
+        "iterdir", "glob", "rglob", "resolve", "absolute", "relative_to", "with_name",
+        "with_suffix", "mkdir", "touch", "stat", "lstat", "chmod", "chown", "rename",
+        "replace", "symlink_to", "hardlink_to", "walk", "listdir", "scandir", "access",
+        "exists", "is_file", "is_dir", "is_symlink", "samefile", "read", "write",
+        "get", "post", "put", "patch", "delete", "request", "connect", "create_connection",
+        "send", "recv", "execute", "executemany", "commit", "rollback",
+        # Process-launch APIs can be reached through an existing aliased import.
+        "run", "Popen", "call", "check_call", "check_output", "fork", "spawn",
+        "execv", "execve", "execvp", "execvpe", "startfile", "kill", "killpg",
+    }
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            return False, "imports_rejected"
+        if isinstance(node, ast.Name) and node.id in forbidden_names:
+            return False, "host_access_rejected"
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if (
+                re.match(r"^(?:/|~[\\/])", node.value)
+                or "__" in node.value
+                or node.value.lower() in {
+                    "getattr", "setattr", "delattr", "globals", "locals", "vars",
+                    "eval", "exec", "open", "compile", "environ", "getenv",
+                    "system", "popen", "import", "os", "sys", "builtins",
+                }
+            ):
+                return False, "host_access_rejected"
+        if isinstance(node, ast.Attribute) and node.attr in forbidden_attributes:
+            return False, "host_access_rejected"
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in forbidden_names:
+            return False, "host_access_rejected"
     # Require a direct, reachable check in the test body. Nested assertions are
     # not evidence: they may be hidden in dead branches or never-called helpers.
     test_function = tree.body[0]
@@ -206,56 +257,6 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
     if any(kind == "assert" and _trivial_assertion(expr) for kind, expr in direct_checks):
         return False, "test_assertion_is_trivial"
 
-    forbidden_names = {
-        "os", "sys", "subprocess", "socket", "requests", "urllib", "httpx",
-        "http", "aiohttp", "ftplib", "smtplib", "websocket", "shutil", "pathlib",
-        "importlib", "ctypes", "builtins", "eval", "exec", "compile", "open",
-        "__import__", "__builtins__", "getattr", "setattr", "delattr", "globals", "locals", "vars",
-        "dir", "type", "object", "memoryview", "breakpoint", "input", "help",
-        "GROQ_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GITHUB_TOKEN",
-    }
-    forbidden_attributes = {
-        "environ", "getenv", "system", "popen", "spawn", "execv", "execve",
-        "urlopen", "create_connection", "unlink", "rmtree", "remove", "home",
-        "cwd", "expanduser", "__globals__", "__builtins__", "__subclasses__", "__dict__",
-        "__class__", "__base__", "__mro__", "__getattribute__", "__getattr__", "__code__",
-        "__closure__", "__self__", "__func__", "__reduce__", "__reduce_ex__",
-        # Reflection helpers and dynamic code execution are forbidden even when
-        # reached through an alias such as an existing builtins import.
-        "getattr", "setattr", "delattr", "eval", "exec", "compile", "__import__",
-        "breakpoint", "input", "help", "vars", "globals", "locals",
-        # Generated tests are not permitted to read/write repository or host files.
-        "open", "read_text", "read_bytes", "write_text", "write_bytes", "readlink",
-        "iterdir", "glob", "rglob", "resolve", "absolute", "relative_to", "with_name",
-        "with_suffix", "mkdir", "touch", "stat", "lstat", "chmod", "chown", "rename",
-        "replace", "symlink_to", "hardlink_to", "walk", "listdir", "scandir", "access",
-        "exists", "is_file", "is_dir", "is_symlink", "samefile", "read", "write",
-        "get", "post", "put", "patch", "delete", "request", "connect", "create_connection",
-        "send", "recv", "execute", "executemany", "commit", "rollback",
-        # Process-launch APIs can be reached through an existing aliased import.
-        "run", "Popen", "call", "check_call", "check_output", "fork", "spawn",
-        "execv", "execve", "execvp", "execvpe", "startfile", "kill", "killpg",
-    }
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            return False, "imports_rejected"
-        if isinstance(node, ast.Name) and node.id in forbidden_names:
-            return False, "host_access_rejected"
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if (
-                re.match(r"^(?:/|~[\\/])", node.value)
-                or "__" in node.value
-                or node.value.lower() in {
-                    "getattr", "setattr", "delattr", "globals", "locals", "vars",
-                    "eval", "exec", "open", "compile", "environ", "getenv",
-                    "system", "popen", "import", "os", "sys", "builtins",
-                }
-            ):
-                return False, "host_access_rejected"
-        if isinstance(node, ast.Attribute) and node.attr in forbidden_attributes:
-            return False, "host_access_rejected"
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in forbidden_names:
-            return False, "host_access_rejected"
     return True, "ok"
 
 
