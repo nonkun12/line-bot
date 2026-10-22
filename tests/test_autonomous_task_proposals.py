@@ -721,3 +721,89 @@ def test_auto_test_diff_rejects_synthetic_raise_inside_pytest_raises():
         False,
         "synthetic_raise_inside_pytest_raises_rejected",
     )
+
+
+def test_auto_test_diff_rejects_private_helper_false_pass_with_independent_assertion():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,5 @@
++def test_fake_helper_exception_and_unrelated_assertion():
++    with pytest.raises(Exception):
++        _boom()
++    assert parse_value("safe") == "safe"
++"""
+    assert validate_auto_test_diff(diff) == (
+        False,
+        "pytest_raises_helper_call_rejected",
+    )
+
+
+def test_auto_test_diff_rejects_nested_helper_false_pass():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,6 @@
++def test_fake_nested_helper():
++    def _boom():
++        raise Exception("synthetic")
++    with pytest.raises(Exception):
++        _boom()
++    assert parse_value("safe") == "safe"
++"""
+    assert validate_auto_test_diff(diff) == (
+        False,
+        "nested_helper_definition_rejected",
+    )
+
+
+def test_auto_test_diff_recognizes_raises_alias_and_rejects_fake_helper():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,5 @@
++def test_raises_alias_fake_helper():
++    with raises(Exception):
++        _boom()
++    assert parse_value("safe") == "safe"
++"""
+    assert validate_auto_test_diff(diff) == (
+        False,
+        "pytest_raises_helper_call_rejected",
+    )
+
+
+def test_auto_test_diff_rejects_functional_raises_helper_false_pass():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    for raises_call in (
+        "pytest.raises(Exception, _boom)",
+        "raises(Exception, _boom)",
+    ):
+        diff = (
+            "--- a/tests/test_example.py\\n+++ b/tests/test_example.py\\n"
+            "@@ -1,0 +2,3 @@\\n"
+            "+def test_functional_raises_fake_helper():\\n"
+            "+    " + raises_call + "\\n"
+            "+    assert parse_value('safe') == 'safe'\\n"
+        )
+        assert validate_auto_test_diff(diff) == (
+            False,
+            "pytest_raises_helper_call_rejected",
+        )
+
+
+def test_auto_test_diff_accepts_functional_raises_with_behavior_assertion():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,3 @@
++def test_functional_raises_and_normal_behavior():
++    pytest.raises(ValueError, parse_value, "")
++    assert parse_value("safe") == "safe"
++"""
+    assert validate_auto_test_diff(diff) == (True, "ok")
