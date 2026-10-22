@@ -13,6 +13,7 @@ def test_sanitizer_discards_raw_error_text_and_unknown_fields():
         },
         {"kind": "repair", "task_id": "../secrets", "detail": "raw error"},
         {"kind": "provider-call", "task_id": "safe", "detail": "unknown kind"},
+        {"kind": "failure", "task_id": "sk-example-secret", "detail": "ordinary detail"},
     ])
 
     assert rows == [
@@ -29,6 +30,8 @@ def test_sanitizer_discards_raw_error_text_and_unknown_fields():
     ]
     assert "super-secret" not in json.dumps(rows)
     assert "private input" not in json.dumps(rows)
+    assert rows[2]["task_id"] is None
+    assert "sk-example-secret" not in json.dumps(rows)
 
 
 def test_sanitizer_bounds_history_to_latest_200():
