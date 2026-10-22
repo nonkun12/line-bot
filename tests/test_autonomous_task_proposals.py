@@ -662,8 +662,8 @@ def test_auto_test_diff_rejects_skip_aliases_exceptions_and_markers():
         "def test_xfail_marker(request):\n    request.applymarker(pytest.mark.xfail)\n    assert parse_value('x')",
     ]
     for body in bodies:
-        added = "\\n".join("+" + line for line in body.splitlines())
-        diff = "--- a/tests/test_example.py\\n+++ b/tests/test_example.py\\n@@ -1,0 +2,5 @@\\n" + added + "\\n"
+        added = "\n".join("+" + line for line in body.splitlines())
+        diff = "--- a/tests/test_example.py\n+++ b/tests/test_example.py\n@@ -1,0 +2,5 @@\n" + added + "\n"
         valid, reason = validate_auto_test_diff(diff)
         assert not valid, (body, reason)
 
@@ -673,8 +673,8 @@ def test_auto_test_diff_rejects_constant_expression_assertions():
 
     for assertion in ("assert not False", "assert 1 != 2", "assert 1 + 1 == 2"):
         diff = (
-            "--- a/tests/test_example.py\\n+++ b/tests/test_example.py\\n"
-            "@@ -1,0 +2,2 @@\\n+def test_constant():\\n+    " + assertion + "\\n"
+            "--- a/tests/test_example.py\n+++ b/tests/test_example.py\n"
+            "@@ -1,0 +2,2 @@\n+def test_constant():\n+    " + assertion + "\n"
         )
         assert validate_auto_test_diff(diff) == (False, "test_assertion_is_trivial")
 
