@@ -261,7 +261,7 @@ def test_auto_test_diff_rejects_skip_or_xfail():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
     for escape in ("pytest.skip('not really tested')", "pytest.xfail('fake pass')"):
-        diff = "+++ b/tests/test_example.py\\n+def test_fake():\\n+    assert 1 == 1\\n+    " + escape + "\\n"
+        diff = "+++ b/tests/test_example.py\n+def test_fake():\n+    assert 1 == 1\n+    " + escape + "\n"
         valid, reason = validate_auto_test_diff(diff)
         assert not valid
         assert reason == "skip_or_xfail_rejected"
