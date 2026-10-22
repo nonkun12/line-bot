@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Iterable
@@ -170,7 +170,12 @@ class SelfImprovementHistory:
         return records[-self.max_records:]
 
     def _atomic_write(self, records: list[dict[str, object]]) -> None:
-        records = records[-self.max_records:]
+        # Re-sanitize every existing record as well as new entries. This also
+        # removes sensitive data left by versions that wrote raw errors.
+        records = [
+            safe for record in records
+            if (safe := _sanitize_history_record(record)) is not None
+        ][-self.max_records:]
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temp_name = None
         try:
@@ -192,6 +197,48 @@ class SelfImprovementHistory:
                     os.unlink(temp_name)
                 except OSError:
                     pass
+
+
+def _sanitize_history_record(record: dict[str, object]) -> dict[str, object] | None:
+    if record.get("record_type") == "cycle_memory":
+        outcome = record.get("outcome")
+        if outcome not in {"PASS", "FAIL", "BLOCKED"}:
+            return None
+        raw_paths = record.get("target_path", "")
+        paths = raw_paths.split(",") if isinstance(raw_paths, str) else []
+        safe_paths = [
+            part.strip() for part in paths
+            if part.strip()
+            and _SAFE_RELATIVE_PATH.fullmatch(part.strip())
+            and all(segment not in {".", ".."} for segment in part.strip().split("/"))
+        ]
+        improvements = record.get("improvements", [])
+        count = len(improvements) if isinstance(improvements, (list, tuple)) else 0
+        return {
+            "record_type": "cycle_memory",
+            "outcome": outcome,
+            "cause": {
+                "PASS": "development gate passed",
+                "FAIL": "development gate failed",
+                "BLOCKED": "development gate blocked",
+            }[outcome],
+            "improvements": ["improvement proposal recorded"] * min(count, 3),
+            "next_action": "review outcome before execution",
+            "target_path": ", ".join(safe_paths)[:_MAX_MEMORY_TEXT],
+            "recurring_patterns": [],
+        }
+
+    kind = record.get("kind")
+    if not isinstance(kind, str) or kind not in _SAFE_SIGNAL_DETAILS:
+        return None
+    task_id = record.get("task_id")
+    if not isinstance(task_id, str) or not _SAFE_TASK_ID.fullmatch(task_id):
+        task_id = None
+    return {
+        "kind": kind,
+        "task_id": task_id,
+        "detail": _SAFE_SIGNAL_DETAILS[kind],
+    }
 
 
 __all__ = ["SelfImprovementHistory", "SelfImprovementMemoryRecord"]
