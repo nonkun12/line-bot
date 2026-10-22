@@ -50,7 +50,18 @@ def run_self_improvement_cycle(
     history = SelfImprovementHistory(history_path, max_records=max_history)
     previous = history.load()
     engine = SelfImprovementEngine(max_signals=max_history)
-    new_signals = engine.observe(report)
+    observed_signals = engine.observe(report)
+    # Keep diagnostic text out of both persisted history and proposal analysis.
+    # Stable categorical details still allow recurring patterns to be detected.
+    safe_details = {
+        "success": "development reached integration gate",
+        "repair": "development required repair attempts",
+        "failure": "development failure observed",
+    }
+    new_signals = tuple(
+        ImprovementSignal(signal.kind, signal.task_id, safe_details[signal.kind])
+        for signal in observed_signals
+    )
 
     if new_signals:
         history.append(new_signals)
