@@ -213,8 +213,33 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
                 return False, "skip_or_xfail_rejected"
             if isinstance(node.func, ast.Name) and node.func.id in {"skip", "skipif", "xfail"}:
                 return False, "skip_or_xfail_rejected"
-    if not any(isinstance(node, ast.Assert) for node in nodes):
+    assertions = [node for node in nodes if isinstance(node, ast.Assert)]
+    if not assertions:
         return False, "assertion_required"
+
+    # A syntactically present assertion is not enough: reject constant-only
+    # assertions (for example, assert True or assert 1 == 1) and direct
+    # self-comparisons (assert value == value). At least one assertion must
+    # inspect a runtime value or call behavior under test.
+    def is_behavioral_assertion(assertion: ast.Assert) -> bool:
+        expression = assertion.test
+        if isinstance(expression, ast.Constant):
+            return False
+        if isinstance(expression, ast.Compare):
+            operands = [expression.left, *expression.comparators]
+            if any(
+                ast.dump(left, include_attributes=False)
+                == ast.dump(right, include_attributes=False)
+                for left, right in zip(operands, operands[1:])
+            ):
+                return False
+        return any(
+            isinstance(part, (ast.Name, ast.Call, ast.Attribute, ast.Subscript))
+            for part in ast.walk(expression)
+        )
+
+    if not any(is_behavioral_assertion(assertion) for assertion in assertions):
+        return False, "behavioral_assertion_required"
     return True, "ok"
 
 
