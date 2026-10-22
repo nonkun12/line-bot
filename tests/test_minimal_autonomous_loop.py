@@ -1136,11 +1136,26 @@ def test_load_held_task_ids_includes_records_absent_from_current_queue():
                 "auto-test-tests-test-example-deadbeef1234": {"held": True},
                 "other-resumed-task": {"held": False, "resume_requires_review": True},
                 "normal-task": {"held": False, "resume_requires_review": False},
+                "successful-but-uncompleted": {
+                    "held": False,
+                    "last_success_evidence": {
+                        "task_id": "successful-but-uncompleted",
+                        "status": "PASS",
+                    },
+                },
+                "completed-success": {
+                    "held": False,
+                    "last_success_evidence": {
+                        "task_id": "completed-success",
+                        "status": "NO_CHANGE",
+                    },
+                },
             }
 
-    assert loop.load_held_task_ids(FakeRecoveryStore()) == {
+    assert loop.load_held_task_ids(FakeRecoveryStore(), {"completed-success"}) == {
         "auto-test-tests-test-example-deadbeef1234",
         "other-resumed-task",
+        "successful-but-uncompleted",
     }
 
 
@@ -1261,3 +1276,18 @@ def test_reselection_rejects_auto_task_mixed_with_other_queue_items():
 
     assert selected is None
     assert reason == "auto_test_queue_policy_violation"
+
+
+
+def test_load_held_task_ids_fails_closed_on_malformed_success_evidence():
+    class FakeRecoveryStore:
+        def all_task_statuses(self):
+            return {
+                "task-with-bad-success": {
+                    "held": False,
+                    "last_success_evidence": {"task_id": "different-task", "status": "PASS"},
+                }
+            }
+
+    with pytest.raises(ValueError, match="recovery success evidence is invalid"):
+        loop.load_held_task_ids(FakeRecoveryStore(), set())
