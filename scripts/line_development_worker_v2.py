@@ -530,6 +530,10 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             }
             test_env["PYTHONDONTWRITEBYTECODE"] = "1"
             test_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+            # GitHub-hosted Linux runners must provide an unprivileged network
+            # namespace. If isolation is unavailable, fail closed rather than
+            # execute model-authored code with network access.
+            test_cmd = ["unshare", "--net", "--", *test_cmd]
         tests = run(test_cmd, timeout=900, env=test_env)
     finally:
         for name, value in task_scope.items():
