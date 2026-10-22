@@ -491,3 +491,26 @@ def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp
     assert child_env.get("PATH")
     assert child_env.get("PYTHONDONTWRITEBYTECODE") == "1"
     assert child_env.get("PYTEST_DISABLE_PLUGIN_AUTOLOAD") == "1"
+
+
+
+def test_linux_auto_test_sandbox_can_drop_to_unprivileged_uid():
+    if not sys.platform.startswith("linux"):
+        return
+    result = subprocess.run(
+        [
+            "/usr/bin/unshare", "--net", "--",
+            "/usr/bin/sudo", "-n", "-u", "nobody", "--",
+            "/usr/bin/env", "-i", "PATH=/usr/bin:/bin",
+            "/usr/bin/id", "-u",
+        ],
+        text=True,
+        capture_output=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, (
+        "auto-test sandbox prerequisites unavailable; execution must fail closed: "
+        + result.stderr[-1000:]
+    )
+    assert result.stdout.strip().isdigit()
+    assert result.stdout.strip() != str(os.getuid())
