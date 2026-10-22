@@ -151,6 +151,36 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
     if not tree.body[0].name.startswith("test_"):
         return False, "expected_exactly_one_new_test_function"
 
+    # A syntactically valid test is not sufficient evidence: reject empty tests,
+    # unconditional skips/xfails, and assertions that are plainly tautological.
+    test_function = tree.body[0]
+    if any(
+        isinstance(node, ast.Call)
+        and (
+            (isinstance(node.func, ast.Name) and node.func.id in {"skip", "skipif", "xfail"})
+            or (isinstance(node.func, ast.Attribute) and node.func.attr in {"skip", "skipif", "xfail"})
+        )
+        for node in ast.walk(test_function)
+    ):
+        return False, "test_skip_or_xfail_rejected"
+    assertions = [node for node in ast.walk(test_function) if isinstance(node, ast.Assert)]
+    if not assertions:
+        return False, "test_has_no_assertion"
+    for assertion in assertions:
+        test_expr = assertion.test
+        if isinstance(test_expr, ast.Constant) and test_expr.value is True:
+            return False, "test_assertion_is_trivial"
+        if (
+            isinstance(test_expr, ast.Compare)
+            and len(test_expr.ops) == 1
+            and isinstance(test_expr.ops[0], (ast.Eq, ast.Is))
+            and isinstance(test_expr.left, ast.Constant)
+            and len(test_expr.comparators) == 1
+            and isinstance(test_expr.comparators[0], ast.Constant)
+            and test_expr.left.value == test_expr.comparators[0].value
+        ):
+            return False, "test_assertion_is_trivial"
+
     forbidden_names = {
         "os", "sys", "subprocess", "socket", "requests", "urllib", "httpx",
         "http", "aiohttp", "ftplib", "smtplib", "websocket", "shutil", "pathlib",
