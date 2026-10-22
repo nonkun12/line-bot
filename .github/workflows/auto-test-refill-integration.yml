@@ -62,6 +62,18 @@ jobs:
         run: |
           python -m pytest -q             tests/test_line_development_worker_v2.py::test_linux_auto_test_sandbox_is_read_only_and_networkless
 
+      - name: Exercise identity-bound completion evidence
+        run: |
+          python -m pytest -q \
+            tests/test_minimal_autonomous_loop.py::test_summary_identity_mismatch_halts \
+            tests/test_minimal_autonomous_loop.py::test_final_outcome_fails_when_recovery_persistence_gate_fails \
+            tests/test_recovery_ai_loop_adapter.py::test_verified_success_persists_exact_run_identity \
+            tests/test_recovery_ai_loop_adapter.py::test_state_write_failure_fails_closed_and_preserves_previous_state \
+            tests/test_control_tower_loop_observer.py::test_observer_persists_sanitized_non_executable_proposal \
+            tests/test_control_tower_orchestrator.py::test_verified_success_requires_all_evidence_and_allows_controlled_continue \
+            tests/test_control_tower_orchestrator.py::test_success_without_recovery_record_fails_closed \
+            tests/test_rea_control_tower_adapter.py::test_independent_publish_gate_requires_complete_exact_run_evidence
+
       - name: Report safety invariants
         if: always()
         run: |
