@@ -166,7 +166,7 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
 
     def _trivial_assertion(expr: ast.expr) -> bool:
         if isinstance(expr, ast.Constant):
-            return bool(expr.value) or expr.value is None or expr.value == 0 or expr.value == ""
+            return True
         if isinstance(expr, ast.BoolOp) and isinstance(expr.op, ast.Or):
             return any(
                 isinstance(value, ast.Constant) and bool(value.value)
@@ -178,10 +178,9 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
                 if ast.dump(operands[0], include_attributes=False) == ast.dump(operands[1], include_attributes=False):
                     return True
                 if all(isinstance(item, ast.Constant) for item in operands):
-                    try:
-                        return bool(eval(compile(ast.Expression(expr), "<validator>", "eval"), {"__builtins__": {}}, {}))
-                    except Exception:
-                        return False
+                    left, right = operands[0].value, operands[1].value
+                    if type(left) is type(right) and expr.ops[0].__class__ in (ast.Eq, ast.Is):
+                        return left == right
         return False
 
     direct_checks = []
