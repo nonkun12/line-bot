@@ -564,9 +564,8 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             test_cmd[4:4] = ["-p", "no:cacheprovider"]
         test_env = None
         if auto_test_task:
-            # Do not inherit home-directory or Python path overrides. The
-            # child runs from the repository root with the active interpreter;
-            # pytest's own temporary directory can default to /tmp.
+            # The Docker client receives a minimal environment. The test
+            # process receives only explicit container --env values below.
             safe_names = {"PATH", "LANG", "LC_ALL", "SYSTEMROOT", "WINDIR", "CI"}
             test_env = {
                 key: value for key, value in os.environ.items()
