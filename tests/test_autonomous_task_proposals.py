@@ -638,7 +638,7 @@ def test_auto_test_diff_rejects_unreachable_or_tautological_assertions():
         assert not valid, (lines, reason)
 
 
-def test_auto_test_diff_accepts_pytest_raises_as_a_check():
+def test_auto_test_diff_rejects_pytest_raises_without_independent_assertion():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
     diff = """--- a/tests/test_example.py
@@ -647,6 +647,20 @@ def test_auto_test_diff_accepts_pytest_raises_as_a_check():
 +def test_invalid_input_raises():
 +    with pytest.raises(ValueError):
 +        parse_value("")
+"""
+    assert validate_auto_test_diff(diff) == (False, "test_has_no_assertion")
+
+
+def test_auto_test_diff_allows_raises_with_independent_behavior_assertion():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,4 @@
++def test_invalid_input_and_normal_behavior():
++    with pytest.raises(ValueError):
++        parse_value("")
++    assert parse_value("safe") == "safe"
 """
     assert validate_auto_test_diff(diff) == (True, "ok")
 
