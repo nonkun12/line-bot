@@ -899,3 +899,20 @@ def test_auto_test_diff_rejects_raises_callable_alias_false_pass():
             False,
             "pytest_raises_helper_call_rejected",
         )
+
+
+def test_auto_test_diff_rejects_opaque_context_manager_alias_false_pass():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,4 @@
++def test_opaque_context_manager_fake_exception():
++    with guard_context(build_exception_type()):
++        raise Exception("synthetic")
++    assert parse_value("safe") == "safe"
+"""
+    assert validate_auto_test_diff(diff) == (
+        False,
+        "synthetic_raise_inside_pytest_raises_rejected",
+    )
