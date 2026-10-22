@@ -518,17 +518,17 @@ def test_auto_test_diff_rejects_relative_filesystem_access():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
     unsafe_bodies = [
-        "+    Path('.env').read_text()\\n",
-        "+    Path('../.git/config').read_text()\\n",
-        "+    Path('secrets').iterdir()\\n",
-        "+    Path('result.txt').write_text('x')\\n",
+        "+    Path('.env').read_text()\n",
+        "+    Path('../.git/config').read_text()\n",
+        "+    Path('secrets').iterdir()\n",
+        "+    Path('result.txt').write_text('x')\n",
     ]
     for body in unsafe_bodies:
         diff = (
-            "--- a/tests/test_example.py\\n"
-            "+++ b/tests/test_example.py\\n"
-            "@@ -20,0 +21,3 @@\\n"
-            "+def test_filesystem_bypass():\\n"
+            "--- a/tests/test_example.py\n"
+            "+++ b/tests/test_example.py\n"
+            "@@ -20,0 +21,3 @@\n"
+            "+def test_filesystem_bypass():\n"
             + body
         )
         valid, reason = validate_auto_test_diff(diff)
