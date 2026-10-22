@@ -302,7 +302,10 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
                     return False, "synthetic_raise_inside_pytest_raises_rejected"
                 if not any(isinstance(child, ast.Call) for child in body_nodes):
                     return False, "pytest_raises_requires_behavior_call"
-                direct_checks.append(("raises", None))
+                # A call can still be a locally defined synthetic helper. Do not
+                # let pytest.raises alone count as evidence: require an independent
+                # assertion against observed behavior in the same test.
+                continue
 
     if not direct_checks:
         return False, "test_has_no_assertion"
