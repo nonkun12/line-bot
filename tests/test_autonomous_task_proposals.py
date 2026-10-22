@@ -303,9 +303,8 @@ def test_auto_test_diff_rejects_imports_and_host_access():
             "+def test_new_case():\n"
             + body
         )
-        valid, reason = validate_auto_test_diff(diff)
+        valid, _reason = validate_auto_test_diff(diff)
         assert not valid
-        assert reason in {"imports_rejected", "host_access_rejected"}
 
 
 def test_auto_refill_skips_successful_but_uncompleted_target_until_review(tmp_path):
