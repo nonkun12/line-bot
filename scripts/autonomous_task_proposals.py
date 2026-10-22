@@ -155,7 +155,7 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         "os", "sys", "subprocess", "socket", "requests", "urllib", "httpx",
         "http", "aiohttp", "ftplib", "smtplib", "websocket", "shutil", "pathlib",
         "importlib", "ctypes", "builtins", "eval", "exec", "compile", "open",
-        "__import__", "getattr", "setattr", "delattr", "globals", "locals", "vars",
+        "__import__", "__builtins__", "getattr", "setattr", "delattr", "globals", "locals", "vars",
         "dir", "type", "object", "memoryview", "breakpoint", "input", "help",
         "GROQ_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GITHUB_TOKEN",
     }
