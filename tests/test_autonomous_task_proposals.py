@@ -231,3 +231,77 @@ def test_auto_refill_reports_exhaustion_when_only_target_is_held(tmp_path):
     assert result["status"] == "AUTO_REFILL_EXHAUSTED"
     assert result["reason"] == "no_eligible_test_target"
     assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
+
+
+
+def test_auto_test_diff_accepts_one_additive_regression_test():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -20,0 +21,3 @@
++def test_new_regression_case():
++    value = parse_value("safe")
++    assert value == "safe"
+"""
+    assert validate_auto_test_diff(diff) == (True, "ok")
+
+
+def test_auto_test_diff_rejects_changes_to_existing_test_lines():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -20,2 +20,2 @@
+-def test_existing_behavior():
+-    assert False
++def test_existing_behavior():
++    assert True
+"""
+    assert validate_auto_test_diff(diff) == (False, "existing_lines_modified")
+
+
+def test_auto_test_diff_rejects_zero_or_multiple_new_test_functions():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    assert validate_auto_test_diff("+value = 1\\n+assert value == 1\\n") == (
+        False, "expected_exactly_one_new_test_function"
+    )
+    diff = """+++ b/tests/test_example.py
++def test_one():
++    assert True
++def test_two():
++    assert True
+"""
+    assert validate_auto_test_diff(diff) == (
+        False, "expected_exactly_one_new_test_function"
+    )
+
+
+def test_auto_refill_skips_successful_but_uncompleted_target_until_review(tmp_path):
+    from scripts.autonomous_task_proposals import build_auto_test_catalog
+
+    first = tmp_path / "tests" / "test_autonomous_task_proposals.py"
+    second = tmp_path / "tests" / "test_autonomous_task_refill.py"
+    first.parent.mkdir(parents=True)
+    first.write_text("first target\\n", encoding="utf-8")
+    second.write_text("second target\\n", encoding="utf-8")
+    first_id = build_auto_test_catalog(tmp_path)[0]["id"]
+    ip = write(tmp_path / "issues.json", [])
+    qp = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
+    sp = write(tmp_path / "state.json", state(tasks={
+        first_id: {
+            "held": False,
+            "last_success_evidence": {"task_id": first_id, "status": "PASS"},
+        }
+    }))
+
+    result = build_proposals(
+        ip, qp, sp, tmp_path / "proposals.json",
+        enable_auto_refill=True, repo_root=tmp_path,
+    )
+
+    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]
+    assert result["auto_queued_count"] == 1
+    assert queued[0]["allowed_paths"] == ["tests/test_autonomous_task_refill.py"]
+    assert queued[0]["id"] != first_id
