@@ -309,6 +309,7 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         )
 
     direct_checks = []
+    raises_targets = []
     for statement in test_function.body:
         if isinstance(statement, (ast.Return, ast.Raise)):
             if not direct_checks:
@@ -337,8 +338,7 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
                 for call in calls
             ):
                 return False, "pytest_raises_helper_call_rejected"
-            # pytest.raises is only an exception expectation; it is not an
-            # independent assertion about application behavior.
+            raises_targets.extend(ast.dump(call.func, include_attributes=False) for call in calls)
             continue
 
         if _functional_raises(statement):
@@ -351,12 +351,26 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
                 target.id.startswith("_") or target.id in nested_helpers
             ):
                 return False, "pytest_raises_helper_call_rejected"
+            raises_targets.append(ast.dump(target, include_attributes=False))
             continue
 
     if not direct_checks:
         return False, "test_has_no_assertion"
     if any(kind == "assert" and _trivial_assertion(expr) for kind, expr in direct_checks):
         return False, "test_assertion_is_trivial"
+
+    if raises_targets:
+        # Tie the exception expectation to the same callable exercised by an
+        # independent assertion. An unrelated passing assertion must not mask a
+        # fake exception raised by a different helper.
+        asserted_callables = {
+            ast.dump(node.func, include_attributes=False)
+            for _, expr in direct_checks
+            for node in ast.walk(expr)
+            if isinstance(node, ast.Call)
+        }
+        if not asserted_callables.intersection(raises_targets):
+            return False, "pytest_raises_requires_matching_behavior_assertion"
 
     return True, "ok"
 
