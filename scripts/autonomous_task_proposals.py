@@ -271,6 +271,43 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
                     return True
         return False
 
+    # A nested helper can manufacture an exception and fool pytest.raises.
+    # Since this validator only receives the added diff, it cannot inspect helper
+    # implementations elsewhere in the module; reject helpers declared in the test
+    # and private helper call targets, and always require an independent assertion.
+    nested_helpers = {
+        node.name
+        for node in ast.walk(test_function)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node is not test_function
+    }
+    if nested_helpers:
+        return False, "nested_helper_definition_rejected"
+
+    def _raises_callable(expr: ast.expr) -> bool:
+        # Recognize both pytest.raises and an existing imported/assigned alias.
+        return (
+            isinstance(expr, ast.Attribute)
+            and expr.attr == "raises"
+            and isinstance(expr.value, ast.Name)
+            and expr.value.id == "pytest"
+        ) or (isinstance(expr, ast.Name) and expr.id == "raises")
+
+    def _raises_context(statement: ast.With) -> bool:
+        return bool(statement.items) and all(
+            isinstance(item.context_expr, ast.Call)
+            and _raises_callable(item.context_expr.func)
+            for item in statement.items
+        )
+
+    def _functional_raises(statement: ast.stmt) -> bool:
+        return (
+            isinstance(statement, ast.Expr)
+            and isinstance(statement.value, ast.Call)
+            and _raises_callable(statement.value.func)
+            and len(statement.value.args) >= 2
+        )
+
     direct_checks = []
     for statement in test_function.body:
         if isinstance(statement, (ast.Return, ast.Raise)):
@@ -279,33 +316,42 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
             continue
         if isinstance(statement, ast.Assert):
             direct_checks.append(("assert", statement.test))
-        elif isinstance(statement, ast.With):
-            is_raises = bool(statement.items) and all(
-                isinstance(item.context_expr, ast.Call)
-                and isinstance(item.context_expr.func, ast.Attribute)
-                and isinstance(item.context_expr.func.value, ast.Name)
-                and item.context_expr.func.value.id == "pytest"
-                and item.context_expr.func.attr == "raises"
-                for item in statement.items
-            )
-            if is_raises:
-                # A synthetic raise can make pytest.raises pass without exercising
-                # any existing behavior. Require a call in the context and reject
-                # explicit raises; pytest itself verifies that the called behavior
-                # raises the expected exception at runtime.
-                body_nodes = [
-                    child
-                    for statement_in_context in statement.body
-                    for child in ast.walk(statement_in_context)
-                ]
-                if any(isinstance(child, ast.Raise) for child in body_nodes):
-                    return False, "synthetic_raise_inside_pytest_raises_rejected"
-                if not any(isinstance(child, ast.Call) for child in body_nodes):
-                    return False, "pytest_raises_requires_behavior_call"
-                # A call can still be a locally defined synthetic helper. Do not
-                # let pytest.raises alone count as evidence: require an independent
-                # assertion against observed behavior in the same test.
-                continue
+            continue
+
+        if isinstance(statement, ast.With) and _raises_context(statement):
+            # Explicit raises in the context are synthetic and never count as
+            # evidence that the behavior under test raised.
+            body_nodes = [
+                child
+                for statement_in_context in statement.body
+                for child in ast.walk(statement_in_context)
+            ]
+            if any(isinstance(child, ast.Raise) for child in body_nodes):
+                return False, "synthetic_raise_inside_pytest_raises_rejected"
+            calls = [node for node in body_nodes if isinstance(node, ast.Call)]
+            if not calls:
+                return False, "pytest_raises_requires_behavior_call"
+            if any(
+                isinstance(call.func, ast.Name)
+                and (call.func.id.startswith("_") or call.func.id in nested_helpers)
+                for call in calls
+            ):
+                return False, "pytest_raises_helper_call_rejected"
+            # pytest.raises is only an exception expectation; it is not an
+            # independent assertion about application behavior.
+            continue
+
+        if _functional_raises(statement):
+            call = statement.value
+            # Functional form: raises(ExpectedError, callable, *args, **kwargs).
+            # Reject private/local helper targets because their implementation is
+            # not visible to this diff-only validator.
+            target = call.args[1]
+            if isinstance(target, ast.Name) and (
+                target.id.startswith("_") or target.id in nested_helpers
+            ):
+                return False, "pytest_raises_helper_call_rejected"
+            continue
 
     if not direct_checks:
         return False, "test_has_no_assertion"
