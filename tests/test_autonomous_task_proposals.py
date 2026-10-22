@@ -519,6 +519,7 @@ def test_auto_test_diff_rejects_reflection_and_dunder_bypasses():
     unsafe_bodies = [
         "+    getattr(__builtins__, 'ev' + 'al')('1')\n",
         "+    getattr(__builtins__, 'op' + 'en')('.env')\n",
+        "+    __builtins__['open']('.env')\n",
         "+    assert getattr(__builtins__, '__name__')\n",
         "+    assert 'get' + 'attr' == 'getattr'\n",
     ]
