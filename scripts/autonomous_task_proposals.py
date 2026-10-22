@@ -151,6 +151,18 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
     if not tree.body[0].name.startswith("test_"):
         return False, "expected_exactly_one_new_test_function"
 
+    # Require observable test evidence; a zero exit code from pass/skip/xfail
+    # is not proof that the proposed regression case exercised behavior.
+    nodes = list(ast.walk(tree))
+    if not any(isinstance(node, ast.Assert) for node in nodes):
+        return False, "assertion_required"
+    for node in nodes:
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute) and node.func.attr in {"skip", "skipif", "xfail"}:
+                return False, "skip_or_xfail_rejected"
+            if isinstance(node.func, ast.Name) and node.func.id in {"skip", "skipif", "xfail"}:
+                return False, "skip_or_xfail_rejected"
+
     forbidden_names = {
         "os", "sys", "subprocess", "socket", "requests", "urllib", "httpx",
         "http", "aiohttp", "ftplib", "smtplib", "websocket", "shutil", "pathlib",
