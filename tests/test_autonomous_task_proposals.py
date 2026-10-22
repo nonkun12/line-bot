@@ -290,21 +290,20 @@ def test_auto_test_diff_rejects_imports_and_host_access():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
     unsafe_bodies = [
-        "+    import os\n+    assert os.name\n",
-        "+    assert os.environ.get('TOKEN') is None\n",
-        "+    open('/etc/passwd').read()\n",
-        "+    __import__('os')\n",
+        ("+    import os\\n+    assert os.name\\n", "imports_rejected"),
+        ("+    assert os.environ.get('TOKEN') is None\\n", "host_access_rejected"),
+        ("+    open('/etc/passwd').read()\\n", "host_access_rejected"),
+        ("+    __import__('os')\\n", "host_access_rejected"),
     ]
-    for body in unsafe_bodies:
+    for body, expected_reason in unsafe_bodies:
         diff = (
-            "--- a/tests/test_example.py\n"
-            "+++ b/tests/test_example.py\n"
-            "@@ -20,0 +21,3 @@\n"
-            "+def test_new_case():\n"
+            "--- a/tests/test_example.py\\n"
+            "+++ b/tests/test_example.py\\n"
+            "@@ -20,0 +21,3 @@\\n"
+            "+def test_new_case():\\n"
             + body
         )
-        valid, _reason = validate_auto_test_diff(diff)
-        assert not valid, "unsafe generated test body was accepted"
+        assert validate_auto_test_diff(diff) == (False, expected_reason)
 
 
 def test_auto_refill_skips_successful_but_uncompleted_target_until_review(tmp_path):
