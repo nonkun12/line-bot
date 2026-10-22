@@ -73,6 +73,9 @@ class AgentVersionRegistry:
     def history(self, agent_name: str) -> tuple[AgentVersion, ...]:
         return tuple(self._history.get(str(agent_name).strip(), ()))
 
+    def agents(self) -> list[str]:
+        return list(self._history.keys())
+
     def rollback_target(self, agent_name: str) -> AgentVersion | None:
         history = self._history.get(str(agent_name).strip(), ())
         current_indexes = [
