@@ -102,7 +102,7 @@ def test_sanitize_legacy_jsonl_removes_free_form_memory_fields(tmp_path):
             "kind": "failure",
             "task_id": "task-1",
             "detail": "token=sk-raw-secret",
-        }) + "\\n" + json.dumps({
+        }) + "\n" + json.dumps({
             "record_type": "cycle_memory",
             "outcome": "FAIL",
             "cause": "private error token=sk-memory-secret",
@@ -110,7 +110,7 @@ def test_sanitize_legacy_jsonl_removes_free_form_memory_fields(tmp_path):
             "next_action": "do unsafe thing",
             "target_path": "../secrets",
             "recurring_patterns": ["ValueError sk-pattern-secret"],
-        }) + "\\n",
+        }) + "\n",
         encoding="utf-8",
     )
 
