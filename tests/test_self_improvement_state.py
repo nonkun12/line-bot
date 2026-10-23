@@ -294,3 +294,63 @@ def test_loop_cycle_memory_does_not_record_unverified_success(tmp_path):
         history, results, catalog, publish_outcome="failure", state_outcome="success"
     ) == 0
     assert history.read_text(encoding="utf-8") == ""
+
+
+def test_workflow_durable_validator_accepts_success_and_cycle_memory_round_trip(tmp_path):
+    from scripts.self_improvement_state import (
+        append_cycle_memory,
+        append_loop_results,
+        main,
+        validate_durable_history,
+    )
+    import sys
+
+    history = tmp_path / "history.jsonl"
+    results = tmp_path / "results.jsonl"
+    catalog = tmp_path / "catalog.json"
+    state = tmp_path / "state.json"
+    catalog.write_text(json.dumps({"tasks": [{"id": "catalog-task-1"}]}), encoding="utf-8")
+    results.write_text(json.dumps({
+        "status": "PASS", "task_id": "catalog-task-1", "failure_reason": ""
+    }) + "\\n", encoding="utf-8")
+    state.write_text(json.dumps({"version": 1, "completed": []}), encoding="utf-8")
+
+    assert append_loop_results(
+        history, results, catalog, publish_outcome="success", state_outcome="success"
+    ) == 1
+    assert append_cycle_memory(
+        history, results, catalog, publish_outcome="success", state_outcome="success"
+    ) == 1
+
+    original_argv = sys.argv
+    try:
+        sys.argv = [
+            "self_improvement_state.py", "export",
+            "--state", str(state), "--history", str(history),
+        ]
+        assert main() == 0
+    finally:
+        sys.argv = original_argv
+
+    durable = json.loads(state.read_text(encoding="utf-8"))["self_improvement_history"]
+    validated = validate_durable_history(durable)
+    assert validated[0] == {
+        "kind": "success",
+        "task_id": "catalog-task-1",
+        "detail": "task passed or verified no-change",
+    }
+    assert validated[1]["record_type"] == "cycle_memory"
+    assert validated[1]["outcome"] == "PASS"
+
+
+def test_workflow_durable_validator_rejects_malformed_cycle_memory_and_signal_rows():
+    import pytest
+    from scripts.self_improvement_state import validate_durable_history
+
+    valid_memory = sanitize_records([{"record_type": "cycle_memory", "outcome": "PASS"}])[0]
+    with pytest.raises(ValueError, match="cycle memory"):
+        validate_durable_history([{**valid_memory, "unexpected": "field"}])
+    with pytest.raises(ValueError, match="signal detail"):
+        validate_durable_history([{
+            "kind": "success", "task_id": "task-1", "detail": "old or raw detail"
+        }])
