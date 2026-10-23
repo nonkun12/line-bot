@@ -150,9 +150,64 @@ def append_loop_results(
     return len(additions)
 
 
+
+def append_cycle_memory(
+    history_path: Path,
+    results_path: Path,
+    catalog_path: Path,
+    *,
+    publish_outcome: str,
+    state_outcome: str,
+) -> int:
+    """Create one privacy-filtered memory from the latest eligible loop outcome."""
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    tasks = catalog.get("tasks") if isinstance(catalog, dict) else None
+    if not isinstance(tasks, list):
+        raise ValueError("task catalog must contain a tasks list")
+    registered_ids = {
+        task.get("id") for task in tasks
+        if isinstance(task, dict) and isinstance(task.get("id"), str)
+        and _TASK_ID.fullmatch(task["id"])
+    }
+    gates_passed = publish_outcome == "success" and state_outcome == "success"
+    outcome = None
+    for row in read_jsonl(results_path):
+        task_id, status, reason = row.get("task_id"), row.get("status"), row.get("failure_reason")
+        if not isinstance(task_id, str) or task_id not in registered_ids:
+            continue
+        if status in {"PASS", "NO_CHANGE"}:
+            if gates_passed:
+                outcome = "PASS"
+        elif status in {"FAIL", "TIMEOUT"}:
+            if not (isinstance(reason, str) and reason.startswith((
+                "summary_", "produced_head_", "blocked_summary_",
+                "control_tower_rea:", "run_identity_", "rea_evidence_",
+            ))):
+                outcome = "FAIL"
+        elif status == "BLOCKED":
+            outcome = "BLOCKED"
+    if outcome is None:
+        return 0
+    current = sanitize_records(read_jsonl(history_path))
+    # Avoid duplicate identical memory when a workflow step is retried.
+    if current and current[-1].get("record_type") == "cycle_memory" and current[-1].get("outcome") == outcome:
+        return 0
+    memory = {
+        "record_type": "cycle_memory",
+        "outcome": outcome,
+        "cause": _MEMORY_CAUSE[outcome],
+        "improvements": _MEMORY_IMPROVEMENTS[outcome],
+        "next_action": _MEMORY_NEXT_ACTION[outcome],
+        "target_path": "",
+        "recurring_patterns": [],
+    }
+    atomic_write_jsonl(history_path, sanitize_records(current + [memory]))
+    return 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=("import", "export", "append-loop-results"))
+    parser.add_argument("mode", choices=("import", "export", "append-loop-results", "append-cycle-memory"))
     parser.add_argument("--state", type=Path)
     parser.add_argument("--history", type=Path, required=True)
     parser.add_argument("--results", type=Path)
@@ -161,6 +216,16 @@ def main() -> int:
     parser.add_argument("--state-outcome", default="")
     args = parser.parse_args()
 
+    if args.mode == "append-cycle-memory":
+        if args.results is None or args.catalog is None:
+            raise SystemExit("--results and --catalog are required for append-cycle-memory")
+        count = append_cycle_memory(
+            args.history, args.results, args.catalog,
+            publish_outcome=args.publish_outcome,
+            state_outcome=args.state_outcome,
+        )
+        print(f"SELF_IMPROVEMENT_CYCLE_MEMORY_APPENDED={count}")
+        return 0
     if args.mode == "append-loop-results":
         if args.results is None or args.catalog is None:
             raise SystemExit("--results and --catalog are required for append-loop-results")
