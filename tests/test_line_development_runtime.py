@@ -910,7 +910,7 @@ def test_four_reviewed_refill_tasks_have_deterministic_bounded_plans(tmp_path, m
         (
             "proposal-generator-conflicting-catalog-definitions-regression",
             "tests/test_autonomous_task_proposals.py",
-            "def test_build_proposals_rejects_boolean_runtime_task_limit(tmp_path, limit):",
+            "def test_approved_task_is_not_requeued_when_completed_or_held(tmp_path):",
             "test_conflicting_duplicate_catalog_definitions_fail_closed",
         ),
     ]
@@ -921,6 +921,12 @@ def test_four_reviewed_refill_tasks_have_deterministic_bounded_plans(tmp_path, m
         target.parent.mkdir(parents=True, exist_ok=True)
         anchor = anchor_line + "\n"
         original = anchor + "    pass\n"
+        if task_id == "proposal-generator-conflicting-catalog-definitions-regression":
+            original += (
+                "\n@pytest.mark.parametrize(\"limit\", [True, False])\n"
+                "def test_build_proposals_rejects_boolean_runtime_task_limit(tmp_path, limit):\n"
+                "    pass\n"
+            )
         target.write_text(original, encoding="utf-8")
 
         plan, err = runtime._deterministic_autonomous_test_plan(chosen, task_id)
@@ -937,6 +943,11 @@ def test_four_reviewed_refill_tasks_have_deterministic_bounded_plans(tmp_path, m
         compile(candidate, chosen, "exec")
         assert expected_name in candidate
         assert worker.validate_plan(plan, chosen) == (True, chosen)
+        if task_id == "proposal-generator-conflicting-catalog-definitions-regression":
+            decorator = '@pytest.mark.parametrize("limit", [True, False])\n'
+            decorated_test = "def test_build_proposals_rejects_boolean_runtime_task_limit(tmp_path, limit):\n"
+            assert decorator + decorated_test in candidate
+            assert candidate.index(f"def {expected_name}(") < candidate.index(decorator)
         if task_id == "queue-progress-ignores-unrelated-pass-results-regression":
             assert r'+ "\n" +' in change["new"]
             assert r'+ "\n", encoding="utf-8")' in change["new"]
