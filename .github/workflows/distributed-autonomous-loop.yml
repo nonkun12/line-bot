@@ -344,8 +344,9 @@ jobs:
             --issues /tmp/autonomous-loop-open-issues.json \
             --queue /tmp/autonomous-loop-runtime-queue.json \
             --state /tmp/autonomous-loop-state.json \
-            --output /tmp/autonomous-loop-task-proposals.json
-          echo "Candidate-only proposals are review-only; explicitly approved issues may enter the bounded run-local queue after validation."
+            --output /tmp/autonomous-loop-task-proposals.json \
+            --catalog .github/autonomous-loop-task-catalog.json
+          echo "Candidate-only proposals are review-only; approved issue tasks are queued only when their full spec exactly matches the versioned registered catalog."
           cat /tmp/autonomous-loop-task-proposals.json >> "$GITHUB_STEP_SUMMARY"
           echo "TASK_PROPOSALS_PATH=/tmp/autonomous-loop-task-proposals.json" >> "$GITHUB_ENV"
 
