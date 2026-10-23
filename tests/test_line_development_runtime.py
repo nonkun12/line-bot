@@ -887,6 +887,58 @@ def test_three_new_refill_seed_plans_are_syntax_safe_and_bounded(tmp_path, monke
         assert worker.validate_plan(plan, chosen) == (True, chosen)
 
 
+def test_four_reviewed_refill_tasks_have_deterministic_bounded_plans(tmp_path, monkeypatch):
+    cases = [
+        (
+            "distributed-loop-dispatch-duplicate-active-run-guard-regression",
+            "tests/test_distributed_loop_trigger.py",
+            "def test_dispatch_acknowledges_only_after_run_is_visible(monkeypatch):",
+            "test_dispatch_does_not_post_when_run_is_already_active_distributed_loop",
+        ),
+        (
+            "proposal-generator-resume-review-exclusion-regression",
+            "tests/test_autonomous_task_proposals.py",
+            "def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):",
+            "test_approved_registered_task_is_not_queued_when_resume_requires_review",
+        ),
+        (
+            "queue-progress-ignores-unrelated-pass-results-regression",
+            "tests/test_distributed_loop_queue_progress.py",
+            "def test_progress_rejects_duplicate_queue_ids(tmp_path: Path):",
+            "test_progress_ignores_pass_and_no_change_results_outside_runtime_queue",
+        ),
+        (
+            "proposal-generator-conflicting-catalog-definitions-regression",
+            "tests/test_autonomous_task_proposals.py",
+            "def test_build_proposals_rejects_boolean_runtime_task_limit(tmp_path, limit):",
+            "test_conflicting_duplicate_catalog_definitions_fail_closed",
+        ),
+    ]
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    for task_id, chosen, anchor_line, expected_name in cases:
+        target = tmp_path / chosen
+        target.parent.mkdir(parents=True, exist_ok=True)
+        anchor = anchor_line + "\n"
+        original = anchor + "    pass\n"
+        target.write_text(original, encoding="utf-8")
+
+        plan, err = runtime._deterministic_autonomous_test_plan(chosen, task_id)
+
+        assert err is None, task_id
+        assert plan is not None, task_id
+        assert plan["no_change"] is False, task_id
+        change = plan["changes"][0]
+        assert change["file"] == chosen
+        assert change["old"] == anchor
+        assert len(change["old"]) <= 1200
+        assert len(change["new"]) <= 1800
+        candidate = original.replace(change["old"], change["new"], 1)
+        compile(candidate, chosen, "exec")
+        assert expected_name in candidate
+        assert worker.validate_plan(plan, chosen) == (True, chosen)
+
+
 def test_refill_regression_task_builds_one_bounded_deterministic_change(monkeypatch, tmp_path):
     chosen = "tests/test_autonomous_task_refill.py"
     target = tmp_path / chosen
