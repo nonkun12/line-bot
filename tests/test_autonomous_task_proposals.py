@@ -132,3 +132,12 @@ def test_build_proposals_rejects_boolean_runtime_task_limit(tmp_path, limit):
     catalog_path = write(tmp_path / "catalog.json", {"version": 1, "tasks": []})
     with pytest.raises(ValueError, match="invalid runtime task limit"):
         build_proposals(issues_path, queue_path, state_path, tmp_path / "proposals.json", catalog_path)
+
+
+def test_build_proposals_rejects_boolean_max_tasks_per_run(tmp_path):
+    issues_path = write(tmp_path / "issues.json", [issue()])
+    queue_path = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": True, "tasks": []})
+    state_path = write(tmp_path / "state.json", state())
+    catalog_path = write(tmp_path / "catalog.json", {"version": 1, "tasks": []})
+    with pytest.raises(ValueError, match="invalid runtime task limit"):
+        build_proposals(issues_path, queue_path, state_path, tmp_path / "proposals.json", catalog_path)
