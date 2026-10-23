@@ -47,7 +47,7 @@ def sanitize_records(records: object) -> list[dict[str, object]]:
             continue
         if row.get("record_type") == "cycle_memory":
             outcome = row.get("outcome")
-            if outcome not in _MEMORY_OUTCOMES:
+            if not isinstance(outcome, str) or outcome not in _MEMORY_OUTCOMES:
                 continue
             # Do not persist free text from model output, exceptions, or paths.
             # Generic bounded fields retain useful outcome context across runs.
