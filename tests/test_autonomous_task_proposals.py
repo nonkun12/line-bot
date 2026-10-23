@@ -147,3 +147,49 @@ def test_approved_issue_is_not_starved_by_four_earlier_candidates(tmp_path):
     assert result["approved_task_ids"] == ["approved-after-candidates"]
     assert result["proposal_count"] == 4
     assert [task["id"] for task in queue_after["tasks"]] == ["approved-after-candidates"]
+
+
+def test_more_than_four_candidates_do_not_hide_later_approved_issue(tmp_path):
+    candidates = [
+        issue(f"candidate-extra-{i}", labels=("autonomous-task-candidate",))
+        for i in range(6)
+    ]
+    approved = issue("approved-after-six-candidates", labels=("autonomous-task-approved",))
+    result, qp = run(
+        tmp_path,
+        [*candidates, approved],
+        state(),
+        registered_tasks=[registered("approved-after-six-candidates")],
+    )
+    queue_after = json.loads(qp.read_text(encoding="utf-8"))
+    assert result["proposal_count"] == 4
+    assert result["approved_count"] == 1
+    assert result["approved_task_ids"] == ["approved-after-six-candidates"]
+    assert [task["id"] for task in queue_after["tasks"]] == ["approved-after-six-candidates"]
+
+
+def test_unregistered_approved_issue_after_four_candidates_is_rejected(tmp_path):
+    candidates = [
+        issue(f"candidate-before-rejection-{i}", labels=("autonomous-task-candidate",))
+        for i in range(4)
+    ]
+    approved = issue(
+        "unregistered-after-candidates",
+        labels=("autonomous-task-approved",),
+    )
+    result, qp = run(
+        tmp_path,
+        [*candidates, approved],
+        state(),
+        registered_tasks=[
+            registered(
+                "unregistered-after-candidates",
+                instruction="This does not match the issue instruction.",
+            )
+        ],
+    )
+    queue_after = json.loads(qp.read_text(encoding="utf-8"))
+    assert result["proposal_count"] == 4
+    assert result["approved_count"] == 0
+    assert result["rejected_approved_count"] == 1
+    assert queue_after["tasks"] == []
