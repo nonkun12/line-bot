@@ -101,8 +101,8 @@ def test_loop_results_are_mapped_to_registered_task_ids_and_sanitized(tmp_path):
         {"id": "catalog-task-1"}, {"id": "catalog-task-2"},
         {"id": "catalog-task-3"}, {"id": "catalog-task-5"},
     ]}), encoding="utf-8")
-    history.write_text(json.dumps({"kind": "repair", "task_id": "task-1", "detail": "raw token=secret"}) + "\\n", encoding="utf-8")
-    results.write_text("\\n".join([
+    history.write_text(json.dumps({"kind": "repair", "task_id": "task-1", "detail": "raw token=secret"}) + "\n", encoding="utf-8")
+    results.write_text("\n".join([
         json.dumps({"status": "PASS", "task_id": "catalog-task-1", "failure_reason": "must not persist secret=abc"}),
         json.dumps({"status": "NO_CHANGE", "task_id": "catalog-task-2"}),
         json.dumps({"status": "FAIL", "task_id": "catalog-task-3", "failure_reason": "private traceback"}),
@@ -110,7 +110,7 @@ def test_loop_results_are_mapped_to_registered_task_ids_and_sanitized(tmp_path):
         json.dumps({"status": "BLOCKED", "task_id": "catalog-task-4"}),
         json.dumps({"status": "PASS", "task_id": "../unsafe"}),
         json.dumps({"status": "FAIL", "task_id": "catalog-task-999"}),
-    ]) + "\\n", encoding="utf-8")
+    ]) + "\n", encoding="utf-8")
 
     assert append_loop_results(
         history, results, catalog, publish_outcome="success", state_outcome="success"
@@ -135,7 +135,7 @@ def test_loop_success_is_not_learned_when_publish_or_state_persistence_fails(tmp
     results = tmp_path / "results.jsonl"
     catalog = tmp_path / "catalog.json"
     history.write_text("", encoding="utf-8")
-    results.write_text(json.dumps({"status": "PASS", "task_id": "catalog-task-1"}) + "\\n", encoding="utf-8")
+    results.write_text(json.dumps({"status": "PASS", "task_id": "catalog-task-1"}) + "\n", encoding="utf-8")
     catalog.write_text(json.dumps({"tasks": [{"id": "catalog-task-1"}]}), encoding="utf-8")
 
     assert append_loop_results(
@@ -159,7 +159,7 @@ def test_loop_harness_evidence_failures_do_not_train_task_priority(tmp_path):
     results.write_text(json.dumps({
         "status": "FAIL", "task_id": "catalog-task-1",
         "failure_reason": "produced_head_outside_allowed_paths",
-    }) + "\\n", encoding="utf-8")
+    }) + "\n", encoding="utf-8")
     catalog.write_text(json.dumps({"tasks": [{"id": "catalog-task-1"}]}), encoding="utf-8")
 
     assert append_loop_results(
