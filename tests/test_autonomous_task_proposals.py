@@ -622,6 +622,8 @@ def test_auto_test_diff_rejects_skip_bypasses_and_unreachable_assertions():
         assert validate_auto_test_diff(diff) == (False, "skip_or_xfail_rejected")
 
     bypass_assertions = {
+        "pass": "assertion_required",
+        '"docstring only"': "assertion_required",
         "assert 1 == 1 or flag": "behavioral_assertion_required",
         "assert True or check()": "behavioral_assertion_required",
         "assert 'a' == 'a' or parse()": "behavioral_assertion_required",
