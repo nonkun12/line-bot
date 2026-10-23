@@ -1722,7 +1722,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             '    results = tmp_path / "results.jsonl"',
             '    queue.write_text(json.dumps({"tasks": [{"id": "task-in-queue"}]}), encoding="utf-8")',
             '    state.write_text(json.dumps({"completed": []}), encoding="utf-8")',
-            '    results.write_text(json.dumps({"task_id": "task-outside-queue-pass", "status": "PASS"}) + "\n" + json.dumps({"task_id": "task-outside-queue-no-change", "status": "NO_CHANGE"}) + "\\n", encoding="utf-8")',
+            '    results.write_text(json.dumps({"task_id": "task-outside-queue-pass", "status": "PASS"}) + "\\n" + json.dumps({"task_id": "task-outside-queue-no-change", "status": "NO_CHANGE"}) + "\\n", encoding="utf-8")',
             '    assert calculate_progress(queue, state, results) == {"queue_total": 1, "queue_completed": 0}',
             "",
             "",
