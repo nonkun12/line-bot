@@ -184,3 +184,47 @@ def test_append_loop_results_cli_requires_results_file(tmp_path):
             raise AssertionError("expected missing-results rejection")
     finally:
         sys.argv = original_argv
+
+
+def test_cycle_memory_survives_durable_export_and_next_run_import_without_free_text(tmp_path):
+    import sys
+    from core.self_improvement_history import SelfImprovementHistory, SelfImprovementMemoryRecord
+    from scripts.self_improvement_state import main
+
+    state = tmp_path / "state.json"
+    first_history = tmp_path / "first-run.jsonl"
+    second_history = tmp_path / "next-run.jsonl"
+    state.write_text(json.dumps({"version": 1, "self_improvement_history": []}), encoding="utf-8")
+    store = SelfImprovementHistory(first_history)
+    store.append_memory(SelfImprovementMemoryRecord(
+        outcome="FAIL",
+        cause="token=super-secret traceback with private prompt",
+        improvements=("model output includes private input",),
+        next_action="run arbitrary shell command",
+        target_path="secrets/customer-data.json",
+        recurring_patterns=("private failure details",),
+    ))
+
+    original_argv = sys.argv
+    try:
+        sys.argv = ["self_improvement_state.py", "export", "--state", str(state), "--history", str(first_history)]
+        assert main() == 0
+        sys.argv = ["self_improvement_state.py", "import", "--state", str(state), "--history", str(second_history)]
+        assert main() == 0
+    finally:
+        sys.argv = original_argv
+
+    restored = SelfImprovementHistory(second_history).load_memory(limit=3)
+    assert len(restored) == 1
+    assert restored[0].outcome == "FAIL"
+    assert restored[0].cause == "development cycle failed"
+    assert restored[0].improvements == ("review recurring development failure",)
+    assert restored[0].next_action == "review failure evidence before another attempt"
+    assert restored[0].target_path == ""
+    assert restored[0].recurring_patterns == ()
+
+    durable_text = state.read_text(encoding="utf-8")
+    assert "super-secret" not in durable_text
+    assert "private prompt" not in durable_text
+    assert "customer-data" not in durable_text
+    assert "arbitrary shell" not in durable_text
