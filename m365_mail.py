@@ -52,13 +52,13 @@ class _VisibleTextParser(HTMLParser):
         if tag.casefold() in {"script", "style", "head", "title", "svg"}:
             self._skip_depth += 1
         elif tag.casefold() in {"br", "p", "div", "li"} and not self._skip_depth:
-            self.parts.append("\\n")
+            self.parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
         if tag.casefold() in {"script", "style", "head", "title", "svg"} and self._skip_depth:
             self._skip_depth -= 1
         elif tag.casefold() in {"p", "div", "li"} and not self._skip_depth:
-            self.parts.append("\\n")
+            self.parts.append("\n")
 
     def handle_data(self, data: str) -> None:
         if not self._skip_depth:
@@ -75,7 +75,7 @@ def _plain_body(message: dict[str, Any]) -> str:
         parser.feed(content[:20000])
         content = "".join(parser.parts)
     # Normalize whitespace without changing the command's wording.
-    return re.sub(r"[\\t\\r ]+", " ", content).strip()
+    return re.sub(r"[\t\r ]+", " ", content).strip()
 
 
 def _claim_message(message_id: str, sender: str) -> bool:
