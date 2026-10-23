@@ -214,6 +214,18 @@
         "same_fingerprint_attempts": 1,
         "updated_at": "2026-10-20T21:27:10.913816+00:00"
       },
+      "refill-preserves-catalog-order-within-addition-cap": {
+        "consecutive_failures": 0,
+        "held": false,
+        "last_success_at": "2026-10-23T05:22:49.572689+00:00",
+        "last_success_evidence": {
+          "base_sha": "3fe33b9ea42386f42ae6f883496e37b667310d86",
+          "produced_sha": "94417230028ccdec6cbc25a8bd5ead8b28a9677b",
+          "run_nonce": "ccebe422c23d49c9ba374eee2b87d5bb",
+          "task_id": "refill-preserves-catalog-order-within-addition-cap"
+        },
+        "same_fingerprint_attempts": 0
+      },
       "refill-rejects-boolean-catalog-addition-cap": {
         "consecutive_failures": 0,
         "held": false,
@@ -302,177 +314,9 @@
   "recovery_rag": [
     {
       "category": "unknown",
-      "fingerprint": "cc315a00e4df8bdc20f33844f0d7a97857edfb366d38f4c42811ba2c5e5cf79f",
-      "status": "FAIL",
-      "task_id": "loop-refill-empty-catalog-next-safe-test-20261023"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "b6935c1fdbe94fc322bfe75608287d3998ece59d11f52294f31909bce150ba9c",
+      "fingerprint": "2c10843e4e28d8f0e34089598892d8df9604e583f26a9f165b5ec6970e1be090",
       "status": "PASS",
-      "task_id": "refill-rejects-non-ascii-task-id"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "301b7b29a654f1d47ef3b2c90faf6c1f99236afe5e7edc95173e6f71a8dd9f1e",
-      "status": "PASS",
-      "task_id": "refill-rejects-boolean-catalog-addition-cap"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "1631449032b9e7658b04bbe7e1c22ea70c1d2aeeef1e72b3f4df46e8fb9d3e02",
-      "status": "PASS",
-      "task_id": "refill-rejects-nonobject-recovery-task-map"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "02faeea08cc46dc69b939f59b9c66c5c4e3f29596329015d12f2b0f2464f2bcf",
-      "status": "PASS",
-      "task_id": "refill-rejects-malformed-completed-state"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "fe114954a700183221c521e36fead9c3a1e648c9111e04ce226bdd1749bd5e52",
-      "status": "NO_CHANGE",
-      "task_id": "english-core-image-unknown-word-safe-fallback"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "fffd1235f764e30ecbe85c43085ade7bec773d8c84ce4936dcd1a71ed3228a7c",
-      "status": "FAIL",
-      "task_id": "distributed-loop-queue-progress-empty-queue-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "5004af39f5086b8a79a5447fac043d434595d7cefeaaf7dfcbd3e6a3c187ffce",
-      "status": "PASS",
-      "task_id": "control-tower-run-identity-invalid-sha-regression-v2"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "b679edd8461a75f28442afcd069a64f8e3c2ba884edf3b8b7d66a172c3a61434",
-      "status": "PASS",
-      "task_id": "control-tower-recovery-evidence-identity-mismatch"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "bb1df3836771dd9d3536d1d5954e326e2ed714e560383e14680f9d0fe27b9c0c",
-      "status": "NO_CHANGE",
-      "task_id": "obsidian-bridge-invalid-job-id-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "06f9f463d0d816bceb89934028b5239f928347b1e579ab63d3c274091b9cb90a",
-      "status": "PASS",
-      "task_id": "router-general-channel-metadata-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "bdf1e7a04d723bd7e63bf2f5ba630e4bcbe51f388a87c3917788907986507fe2",
-      "status": "FAIL",
-      "task_id": "ai-speaker-transcript-normalization-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "c0aa28ff369621f11fb4d062bc9e51b65297a5b86f8e5ea48b8e47e095ebcb22",
-      "status": "NO_CHANGE",
-      "task_id": "loop-deterministic-nochange-focused-test"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56",
-      "status": "NO_CHANGE",
-      "task_id": "ai-speaker-empty-transcript-no-brain-call"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "4a0af154ce6ba0e050b288965baa951e0aa0430d43143a1e9414ac23145d6d45",
-      "status": "FAIL",
-      "task_id": "t1"
-    },
-    {
-      "category": "timeout",
-      "fingerprint": "dbafb28f4bc38108e37b6e730e2fd22217b9fe10ee31eccff5e5996033ad492b",
-      "status": "TIMEOUT",
-      "task_id": "task-a"
-    },
-    {
-      "category": "invalid_evidence",
-      "fingerprint": "2dbc8be6a89b0b3cf7a414b6e0315c424c11aa10194b11ae979024ba5bd1306b",
-      "status": "FAIL",
-      "task_id": "task-a"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "af1646c0e1876f9b6b9a4258f07b6a9146f5abf96678cc214c7a39078da4c546",
-      "status": "FAIL",
-      "task_id": "router-regression-general-request-metadata-refresh-20261015"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "4e3b2f3fa0cc168be35c286a2d71a3d3c7b3ad9564f95c74932e434bf1168550",
-      "status": "FAIL",
-      "task_id": "recovery-ai-held-task-isolation-regression"
-    },
-    {
-      "category": "invalid_evidence",
-      "fingerprint": "eb830e24eb8f9a1aaead8cc3f642de43663b42d71a67872b63b00a7f4596d798",
-      "status": "FAIL",
-      "task_id": "task-bool"
-    },
-    {
-      "category": "invalid_evidence",
-      "fingerprint": "b58fc9bffaebb257427c04c5b1df51610c66c7b98c6a72e2b9e31f610a771363",
-      "status": "FAIL",
-      "task_id": "task-sha"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "0b4ab352cd37a1149f848fae77dc1b3701d946e61e458651f4b8a8ce999efe07",
-      "status": "PASS",
-      "task_id": "task-bound"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "9cf09eae3d9f6d98ff618df02d25da07d446d6dd6e2baa7d5ef0c0844ae9539b",
-      "status": "FAIL",
-      "task_id": "english-core-image-rotation-user-isolation"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "b0ccf643008e0a2a3aae07e46c8b91cb7f88dcbc8385d2247c0e75a945b473d8",
-      "status": "FAIL",
-      "task_id": "control-tower-run-identity-invalid-sha-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "8c54a6c11ea10cae349a53cd6aeafe488ea5c819d25c73a1fa1f05fbd4c4aa15",
-      "status": "FAIL",
-      "task_id": "english-core-image-rotation-user-isolation-v2"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "2fa4371f14403f4174abf9f9669fe4f3979d6cc6dd579b8edf3b87dc4683dfc0",
-      "status": "PASS",
-      "task_id": "distributed-loop-queue-progress-empty-queue-regression-v2"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "542eb65964eec1c7c0f7b748e89036800c94cd291589a71be61f8f6135715cf8",
-      "status": "FAIL",
-      "task_id": "refill-all-catalog-candidates-ineligible-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "b40300a0a3eac984744813966cedd9918d798943a6b1a580ac353316be4370de",
-      "status": "PASS",
-      "task_id": "self-improvement-history-malformed-jsonl-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "bb7cd53bd3d9df849b1559380b866d3d4664b26f75ed6781d2b34b753e3e26a8",
-      "status": "NO_CHANGE",
-      "task_id": "refill-rejects-malformed-recovery-task-entry"
+      "task_id": "refill-preserves-catalog-order-within-addition-cap"
     },
     {
       "category": "unknown",
@@ -485,6 +329,180 @@
       "fingerprint": "577de9138558ad640e796623733539130e47a3e4a5ec1aa260641dd5d9208a1e",
       "status": "PASS",
       "task_id": "auto-test-tests-test-agent-communication-one-shot-8e144779c60c"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "bb7cd53bd3d9df849b1559380b866d3d4664b26f75ed6781d2b34b753e3e26a8",
+      "status": "NO_CHANGE",
+      "task_id": "refill-rejects-malformed-recovery-task-entry"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "b40300a0a3eac984744813966cedd9918d798943a6b1a580ac353316be4370de",
+      "status": "PASS",
+      "task_id": "self-improvement-history-malformed-jsonl-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "542eb65964eec1c7c0f7b748e89036800c94cd291589a71be61f8f6135715cf8",
+      "status": "FAIL",
+      "task_id": "refill-all-catalog-candidates-ineligible-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "2fa4371f14403f4174abf9f9669fe4f3979d6cc6dd579b8edf3b87dc4683dfc0",
+      "status": "PASS",
+      "task_id": "distributed-loop-queue-progress-empty-queue-regression-v2"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "8c54a6c11ea10cae349a53cd6aeafe488ea5c819d25c73a1fa1f05fbd4c4aa15",
+      "status": "FAIL",
+      "task_id": "english-core-image-rotation-user-isolation-v2"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "b0ccf643008e0a2a3aae07e46c8b91cb7f88dcbc8385d2247c0e75a945b473d8",
+      "status": "FAIL",
+      "task_id": "control-tower-run-identity-invalid-sha-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "9cf09eae3d9f6d98ff618df02d25da07d446d6dd6e2baa7d5ef0c0844ae9539b",
+      "status": "FAIL",
+      "task_id": "english-core-image-rotation-user-isolation"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "0b4ab352cd37a1149f848fae77dc1b3701d946e61e458651f4b8a8ce999efe07",
+      "status": "PASS",
+      "task_id": "task-bound"
+    },
+    {
+      "category": "invalid_evidence",
+      "fingerprint": "b58fc9bffaebb257427c04c5b1df51610c66c7b98c6a72e2b9e31f610a771363",
+      "status": "FAIL",
+      "task_id": "task-sha"
+    },
+    {
+      "category": "invalid_evidence",
+      "fingerprint": "eb830e24eb8f9a1aaead8cc3f642de43663b42d71a67872b63b00a7f4596d798",
+      "status": "FAIL",
+      "task_id": "task-bool"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "4e3b2f3fa0cc168be35c286a2d71a3d3c7b3ad9564f95c74932e434bf1168550",
+      "status": "FAIL",
+      "task_id": "recovery-ai-held-task-isolation-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "af1646c0e1876f9b6b9a4258f07b6a9146f5abf96678cc214c7a39078da4c546",
+      "status": "FAIL",
+      "task_id": "router-regression-general-request-metadata-refresh-20261015"
+    },
+    {
+      "category": "invalid_evidence",
+      "fingerprint": "2dbc8be6a89b0b3cf7a414b6e0315c424c11aa10194b11ae979024ba5bd1306b",
+      "status": "FAIL",
+      "task_id": "task-a"
+    },
+    {
+      "category": "timeout",
+      "fingerprint": "dbafb28f4bc38108e37b6e730e2fd22217b9fe10ee31eccff5e5996033ad492b",
+      "status": "TIMEOUT",
+      "task_id": "task-a"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "4a0af154ce6ba0e050b288965baa951e0aa0430d43143a1e9414ac23145d6d45",
+      "status": "FAIL",
+      "task_id": "t1"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56",
+      "status": "NO_CHANGE",
+      "task_id": "ai-speaker-empty-transcript-no-brain-call"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "c0aa28ff369621f11fb4d062bc9e51b65297a5b86f8e5ea48b8e47e095ebcb22",
+      "status": "NO_CHANGE",
+      "task_id": "loop-deterministic-nochange-focused-test"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "bdf1e7a04d723bd7e63bf2f5ba630e4bcbe51f388a87c3917788907986507fe2",
+      "status": "FAIL",
+      "task_id": "ai-speaker-transcript-normalization-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "06f9f463d0d816bceb89934028b5239f928347b1e579ab63d3c274091b9cb90a",
+      "status": "PASS",
+      "task_id": "router-general-channel-metadata-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "bb1df3836771dd9d3536d1d5954e326e2ed714e560383e14680f9d0fe27b9c0c",
+      "status": "NO_CHANGE",
+      "task_id": "obsidian-bridge-invalid-job-id-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "b679edd8461a75f28442afcd069a64f8e3c2ba884edf3b8b7d66a172c3a61434",
+      "status": "PASS",
+      "task_id": "control-tower-recovery-evidence-identity-mismatch"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "5004af39f5086b8a79a5447fac043d434595d7cefeaaf7dfcbd3e6a3c187ffce",
+      "status": "PASS",
+      "task_id": "control-tower-run-identity-invalid-sha-regression-v2"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "fffd1235f764e30ecbe85c43085ade7bec773d8c84ce4936dcd1a71ed3228a7c",
+      "status": "FAIL",
+      "task_id": "distributed-loop-queue-progress-empty-queue-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "fe114954a700183221c521e36fead9c3a1e648c9111e04ce226bdd1749bd5e52",
+      "status": "NO_CHANGE",
+      "task_id": "english-core-image-unknown-word-safe-fallback"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "02faeea08cc46dc69b939f59b9c66c5c4e3f29596329015d12f2b0f2464f2bcf",
+      "status": "PASS",
+      "task_id": "refill-rejects-malformed-completed-state"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "1631449032b9e7658b04bbe7e1c22ea70c1d2aeeef1e72b3f4df46e8fb9d3e02",
+      "status": "PASS",
+      "task_id": "refill-rejects-nonobject-recovery-task-map"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "301b7b29a654f1d47ef3b2c90faf6c1f99236afe5e7edc95173e6f71a8dd9f1e",
+      "status": "PASS",
+      "task_id": "refill-rejects-boolean-catalog-addition-cap"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "b6935c1fdbe94fc322bfe75608287d3998ece59d11f52294f31909bce150ba9c",
+      "status": "PASS",
+      "task_id": "refill-rejects-non-ascii-task-id"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "cc315a00e4df8bdc20f33844f0d7a97857edfb366d38f4c42811ba2c5e5cf79f",
+      "status": "FAIL",
+      "task_id": "loop-refill-empty-catalog-next-safe-test-20261023"
     }
   ],
   "self_improvement_history": [
@@ -637,6 +655,11 @@
       "kind": "failure",
       "task_id": "implementer",
       "detail": "development failure observed"
+    },
+    {
+      "kind": "success",
+      "task_id": null,
+      "detail": "development reached integration gate"
     }
   ]
 }
