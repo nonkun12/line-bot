@@ -50,12 +50,40 @@ def _spec(body: str) -> dict | None:
     return {"id": task_id, "instruction": instruction.strip(), "allowed_paths": paths}
 
 
-def build_proposals(issues_path: Path, queue_path: Path, state_path: Path, output_path: Path) -> dict:
+def build_proposals(
+    issues_path: Path, queue_path: Path, state_path: Path, output_path: Path, catalog_path: Path
+) -> dict:
     issues = _object(issues_path)
     queue = _object(queue_path)
     state = _object(state_path)
+    catalog = _object(catalog_path)
     if not isinstance(issues, list) or not isinstance(queue, dict) or not isinstance(state, dict):
         raise ValueError("invalid proposal input schema")
+    catalog_tasks = catalog.get("tasks") if isinstance(catalog, dict) else None
+    if not isinstance(catalog_tasks, list):
+        raise ValueError("invalid registered task catalog")
+    registered = {}
+    for entry in catalog_tasks:
+        if not isinstance(entry, dict):
+            raise ValueError("invalid registered task definition")
+        task_id = entry.get("id")
+        instruction = entry.get("instruction")
+        allowed_paths = entry.get("allowed_paths")
+        if (
+            not isinstance(task_id, str) or not task_id.strip()
+            or not isinstance(instruction, str) or not instruction.strip()
+            or not isinstance(allowed_paths, list) or not allowed_paths
+            or not all(isinstance(path, str) and path.strip() for path in allowed_paths)
+        ):
+            raise ValueError("invalid registered task definition")
+        normalized = {
+            "id": task_id,
+            "instruction": instruction.strip(),
+            "allowed_paths": [path.strip() for path in allowed_paths],
+        }
+        if task_id in registered and registered[task_id] != normalized:
+            raise ValueError("conflicting registered task definitions")
+        registered[task_id] = normalized
     queued = queue.get("tasks")
     completed = state.get("completed", [])
     recovery = state.get("recovery_ai")
@@ -80,6 +108,7 @@ def build_proposals(issues_path: Path, queue_path: Path, state_path: Path, outpu
 
     proposals = []
     approved_tasks = []
+    rejected_approved_tasks = []
     seen = set()
     max_tasks = queue.get("max_tasks_per_run", 4)
     if type(max_tasks) is not int or not 1 <= max_tasks <= 4:
@@ -113,6 +142,15 @@ def build_proposals(issues_path: Path, queue_path: Path, state_path: Path, outpu
             json.dumps(spec, sort_keys=True, ensure_ascii=False).encode("utf-8")
         ).hexdigest()
         if approved:
+            # Approval is necessary but not sufficient: the issue spec must
+            # exactly match a separately reviewed, immutable-SHA catalog entry.
+            if registered.get(spec["id"]) != spec:
+                rejected_approved_tasks.append({
+                    "id": spec["id"],
+                    "source_issue": number,
+                    "reason": "not_in_registered_catalog_or_spec_mismatch",
+                })
+                continue
             if len(approved_tasks) < min(4, queue_capacity):
                 approved_tasks.append({**spec, "source_issue": number, "proposal_fingerprint": fingerprint})
                 excluded.add(spec["id"])
@@ -137,6 +175,8 @@ def build_proposals(issues_path: Path, queue_path: Path, state_path: Path, outpu
         status = "QUEUED_APPROVED"
     elif proposals:
         status = "REVIEW_REQUIRED"
+    elif rejected_approved_tasks:
+        status = "APPROVED_TASKS_REJECTED_UNREGISTERED"
     else:
         status = "NO_TRUSTED_CANDIDATES"
     result = {
@@ -146,7 +186,14 @@ def build_proposals(issues_path: Path, queue_path: Path, state_path: Path, outpu
         "approved_task_ids": [task["id"] for task in approved_tasks],
         "proposal_count": len(proposals),
         "proposals": proposals,
-        "reason": None if approved_tasks or proposals else "no_open_labeled_issue_with_valid_test_only_spec",
+        "rejected_approved_count": len(rejected_approved_tasks),
+        "rejected_approved_tasks": rejected_approved_tasks,
+        "reason": (
+            None if approved_tasks or proposals
+            else "approved_issue_task_not_registered_or_spec_mismatch"
+            if rejected_approved_tasks
+            else "no_open_labeled_issue_with_valid_test_only_spec"
+        ),
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -159,13 +206,19 @@ def main() -> int:
     parser.add_argument("--queue", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--catalog", type=Path, required=True)
     args = parser.parse_args()
     try:
-        result = build_proposals(args.issues, args.queue, args.state, args.output)
+        result = build_proposals(args.issues, args.queue, args.state, args.output, args.catalog)
     except (ValueError, OSError) as exc:
         print("TASK_PROPOSALS_BLOCKED: " + type(exc).__name__)
         return 2
-    print(json.dumps({k: result[k] for k in ("status", "proposal_count", "reason")}, sort_keys=True))
+    print(json.dumps({
+        k: result[k] for k in (
+            "status", "approved_count", "proposal_count",
+            "rejected_approved_count", "reason"
+        )
+    }, sort_keys=True))
     return 0
 
 

@@ -148,6 +148,13 @@
       "allowed_paths": [
         "tests/test_autonomous_task_refill.py"
       ]
+    },
+    {
+      "id": "proposal-generator-rejects-boolean-runtime-limit",
+      "instruction": "Add a focused regression test in tests/test_autonomous_task_proposals.py proving build_proposals rejects a boolean max_tasks_per_run value (true/false) with ValueError instead of treating bool as an integer. Reuse existing test helpers where practical. Do not change production code. Run the focused test and report its result.",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ]
     }
   ]
 }
