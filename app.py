@@ -41,6 +41,8 @@ from db import (
     load_history,
     create_processed_event,
     is_processed_event,
+    get_pending_line_notification,
+    delete_pending_line_notification,
 )
 from reminders import (
     handle_daily_reminder,
@@ -90,6 +92,7 @@ from routes.voice_api import voice_api_bp
 from app_development import extract_app_development_request, dispatch_app_development_workflow
 from line_development import extract_development_instruction, dispatch_development_workflow
 from slack_command import register_slack_command
+from m365_mail import register_m365_mail_route
 from distributed_loop_trigger import request_distributed_loop
 from recovery_review_trigger import request_recovery_resume_review
 from agents.english.core_image import handle_core_image_command
@@ -417,6 +420,7 @@ def _gateway_reply(user_id, message):
 
 register_internal_ask_route(app, INTERNAL_PUSH_KEY, _gateway_reply)
 register_slack_command(app)
+register_m365_mail_route(app)
 
 
 @app.route("/callback", methods=["POST"])
@@ -484,6 +488,22 @@ _user_processing_locks = {}
 _user_processing_lock = threading.Lock()
 
 
+def _reply_with_pending_notification(event, user_id, reply):
+    """Deliver one deferred report via a LINE reply and consume it only after success."""
+    pending = get_pending_line_notification(str(user_id))
+    if pending is None:
+        _line_reply(event.reply_token, reply)
+        return
+    prefix = (
+        "📬 前回の分散Loop終了報告（無料枠の安全制限で送信を保留していました）\n"
+        f"{pending['message']}\n\n"
+        "―― 今回の返信 ――\n"
+    )
+    _line_reply(event.reply_token, prefix + str(reply or ""))
+    # Preserve the record if LINE rejects the reply so a later message can retry.
+    delete_pending_line_notification(pending["id"])
+
+
 def _process_and_reply(event, user_id, text):
     print("[LOG] _process_and_reply called")
     with _user_processing_lock:
@@ -497,7 +517,7 @@ def _process_and_reply(event, user_id, text):
             path = "/stock-dashboard" if command == "株式ダッシュボード" else "/dashboard"
             dashboard_url = _build_dashboard_url(user_id, path)
             label = "株式投資ダッシュボード" if command == "株式ダッシュボード" else "ダッシュボード"
-            _line_reply(event.reply_token, f"{label}はこちらです。\n{dashboard_url}")
+            _reply_with_pending_notification(event, user_id, f"{label}はこちらです。\n{dashboard_url}")
             return
         status = "PASS"
         route = "core-gateway"
@@ -517,7 +537,7 @@ def _process_and_reply(event, user_id, text):
             reply = "AIサービスで一時的な問題が発生しました。少し時間を置いてもう一度お試しください。"
         record_line_runtime(user_message=str(text), reply=reply, status=status, route=route)
         try:
-            _line_reply(event.reply_token, reply)
+            _reply_with_pending_notification(event, user_id, reply)
         except Exception:
             print("[LOG] LINE reply failed; falling back to push")
             _line_push(user_id, reply)

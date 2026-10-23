@@ -134,3 +134,78 @@ def test_slack_ai_command_uses_shared_gateway_and_posts_result(monkeypatch):
         "response_url": "https://hooks.slack.com/commands/test",
         "text": "Slack reply: AI NEWSとトヨタの株価",
     }
+
+
+
+def test_slack_loop_command_uses_guarded_distributed_loop(monkeypatch):
+    app = Flask(__name__)
+    slack_command.register_slack_command(app)
+    monkeypatch.setenv("SLACK_SIGNING_SECRET", "test-secret")
+    monkeypatch.setenv("SLACK_DEV_ALLOWED_USER_IDS", "U123")
+
+    captured = {}
+    posted = {}
+
+    class ImmediateThread:
+        def __init__(self, target, args, **kwargs):
+            self.target = target
+            self.args = args
+
+        def start(self):
+            self.target(*self.args)
+
+    monkeypatch.setattr(slack_command.threading, "Thread", ImmediateThread)
+
+    def fake_loop(user_id, message, *, authorized=False):
+        captured.update(user_id=user_id, message=message, authorized=authorized)
+        return True, "分散Loopを起動しました。Run #86"
+
+    monkeypatch.setattr(slack_command, "request_distributed_loop", fake_loop)
+    monkeypatch.setattr(
+        slack_command,
+        "_post_slack_response",
+        lambda response_url, text: posted.update(response_url=response_url, text=text),
+    )
+    body = (
+        b"user_id=U123&command=%2Floop&text=%E5%88%86%E6%95%A3Loop%E3%82%921%E5%9B%9E%E3%80%81"
+        b"%E5%AE%89%E5%85%A8%E7%A2%BA%E8%AA%8D%E4%BB%98%E3%81%8D%E3%81%A7%E5%AE%9F%E8%A1%8C"
+        b"&response_url=https%3A%2F%2Fhooks.slack.com%2Fcommands%2Ftest"
+    )
+    response = app.test_client().post(
+        "/slack/command",
+        data=body,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            **_signed_headers(body, "test-secret"),
+        },
+    )
+
+    assert response.status_code == 200
+    assert "安全条件を確認" in response.get_json()["text"]
+    assert captured == {
+        "user_id": "U123",
+        "message": "分散Loopを1回、安全確認付きで実行",
+        "authorized": True,
+    }
+    assert posted == {
+        "response_url": "https://hooks.slack.com/commands/test",
+        "text": "分散Loopを起動しました。Run #86",
+    }
+
+
+def test_slack_loop_command_rejects_user_without_allowlist(monkeypatch):
+    app = Flask(__name__)
+    slack_command.register_slack_command(app)
+    monkeypatch.setenv("SLACK_SIGNING_SECRET", "test-secret")
+    monkeypatch.setenv("SLACK_DEV_ALLOWED_USER_IDS", "U_ALLOWED")
+    body = b"user_id=U123&command=%2Floop&text=%E7%B5%B1%E6%8B%ACAI%E3%81%AE%E7%8A%B6%E6%B3%81"
+    response = app.test_client().post(
+        "/slack/command",
+        data=body,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            **_signed_headers(body, "test-secret"),
+        },
+    )
+    assert response.status_code == 403
+    assert "操作権限がありません" in response.get_json()["text"]
