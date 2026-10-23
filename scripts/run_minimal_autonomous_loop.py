@@ -309,6 +309,47 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
     return list(definitions.values())
 
 
+def registry_preflight(
+    queued_tasks: list[dict[str, object]],
+    registered_catalog: list[dict[str, object]],
+) -> dict[str, object]:
+    """Report queue/catalog mismatches before any task dispatch or Recovery AI read."""
+    registered_by_id = {
+        str(task.get("id", "")): task
+        for task in registered_catalog
+        if isinstance(task, dict) and isinstance(task.get("id"), str)
+    }
+    seen: set[str] = set()
+    rejected: list[dict[str, str]] = []
+    for task in queued_tasks:
+        task_id = task.get("id")
+        if not isinstance(task_id, str) or not task_id.strip():
+            rejected.append({"id": "<invalid>", "reason": "invalid_queue_task"})
+            continue
+        if task_id in seen:
+            rejected.append({"id": task_id, "reason": "duplicate_task"})
+            continue
+        seen.add(task_id)
+        registered = registered_by_id.get(task_id)
+        if registered is None:
+            rejected.append({"id": task_id, "reason": "unregistered_task"})
+        elif task != registered:
+            rejected.append({"id": task_id, "reason": "definition_mismatch"})
+
+    return {
+        "status": "BLOCKED" if rejected else "PASS",
+        "queue_count": len(queued_tasks),
+        "registered_count": len(registered_by_id),
+        "rejected_tasks": rejected,
+        "remediation": (
+            "Register the exact task ID, instruction, and allowed_paths in "
+            ".github/autonomous-loop-task-catalog.json through a reviewed change, "
+            "or remove the stale task from the runtime queue. Do not bypass registry validation."
+            if rejected else None
+        ),
+    }
+
+
 def reselect_registered_task(
     queued_tasks: list[dict[str, object]],
     registered_catalog: list[dict[str, object]],
@@ -724,6 +765,39 @@ def main() -> int:
                 fh.write(json.dumps(record, ensure_ascii=False) + "\n")
             print("MINIMAL_LOOP=BLOCKED reason=control_tower_catalog:catalog_unavailable_or_invalid", flush=True)
             return 80
+
+    # Fail early with an actionable report instead of letting the selector
+    # return an opaque unregistered_task after further runtime setup.
+    preflight = registry_preflight(selection_queue_tasks, registered_catalog)
+    if preflight["status"] != "PASS":
+        first_reason = preflight["rejected_tasks"][0]["reason"]
+        # Preserve the selector's public reason-code namespace for existing reports.
+        # The attached preflight payload carries the additional actionable detail.
+        reason = f"control_tower_selector:{first_reason}"
+        args.results.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "BLOCKED",
+            "task_id": "",
+            "task_count": 0,
+            "exit_code": 80,
+            "failure_reason": reason,
+            "registry_preflight": {
+                **preflight,
+                "evidence_sha": selection_evidence_sha,
+            },
+        }
+        with args.results.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        print(
+            "MINIMAL_LOOP=BLOCKED "
+            f"reason={reason} queue_count={preflight['queue_count']} "
+            f"registered_count={preflight['registered_count']} "
+            f"rejected={json.dumps(preflight['rejected_tasks'], ensure_ascii=False, sort_keys=True)}",
+            flush=True,
+        )
+        print(f"remediation={preflight['remediation']}", flush=True)
+        return 80
 
     # Read Recovery AI holds before selecting. Held tasks remain held; this code
     # never clears or overrides Recovery AI state.
