@@ -771,7 +771,9 @@ def main() -> int:
     preflight = registry_preflight(selection_queue_tasks, registered_catalog)
     if preflight["status"] != "PASS":
         first_reason = preflight["rejected_tasks"][0]["reason"]
-        reason = f"control_tower_preflight:{first_reason}"
+        # Preserve the selector's public reason-code namespace for existing reports.
+        # The attached preflight payload carries the additional actionable detail.
+        reason = f"control_tower_selector:{first_reason}"
         args.results.parent.mkdir(parents=True, exist_ok=True)
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
