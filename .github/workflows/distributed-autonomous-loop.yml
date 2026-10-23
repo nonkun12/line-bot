@@ -728,18 +728,13 @@ jobs:
               raise SystemExit('Recovery RAG export is invalid; durable update blocked')
           data['recovery_rag'] = rag_payload['records']
           local_state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
-          self_improvement = local_state.get('self_improvement_history', [])
-          if not isinstance(self_improvement, list) or len(self_improvement) > 200:
-              raise SystemExit('sanitized self-improvement history is invalid')
-          for row in self_improvement:
-              if (not isinstance(row, dict)
-                      or row.get('kind') not in {'success', 'repair', 'failure'}
-                      or row.get('detail') not in {
-                          'development reached integration gate',
-                          'development required repair attempts',
-                          'development failure observed',
-                      }):
-                  raise SystemExit('self-improvement history failed schema validation')
+          from scripts.self_improvement_state import validate_durable_history
+          try:
+              self_improvement = validate_durable_history(
+                  local_state.get('self_improvement_history', [])
+              )
+          except ValueError as exc:
+              raise SystemExit(f'self-improvement history failed schema validation: {exc}') from exc
           data['self_improvement_history'] = self_improvement
           data['version'] = 1
           state_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
