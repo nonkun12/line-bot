@@ -1747,7 +1747,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         name = "test_conflicting_duplicate_catalog_definitions_fail_closed"
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
-        anchor = "def test_build_proposals_rejects_boolean_runtime_task_limit(tmp_path, limit):" + chr(10)
+        anchor = "def test_approved_task_is_not_requeued_when_completed_or_held(tmp_path):" + chr(10)
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
         newline = chr(10)
