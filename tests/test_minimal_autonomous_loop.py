@@ -111,7 +111,7 @@ def test_unregistered_queue_task_writes_actionable_block_before_recovery_read(mo
     assert loop.main() == 80
     row = json.loads(results.read_text(encoding="utf-8").splitlines()[-1])
     output = capsys.readouterr().out
-    assert row["failure_reason"] == "control_tower_preflight:unregistered_task"
+    assert row["failure_reason"] == "control_tower_selector:unregistered_task"
     assert row["registry_preflight"]["queue_count"] == 1
     assert row["registry_preflight"]["registered_count"] == 1
     assert row["registry_preflight"]["rejected_tasks"] == [
