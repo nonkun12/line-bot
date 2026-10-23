@@ -1604,7 +1604,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "",
             "",
         ]) + "\n"
-        new = addition + "\\n" + anchor
+        new = addition + "\n" + anchor
         if len(anchor) > 1200 or len(new) > 1800:
             return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
         candidate = text.replace(anchor, new, 1)
