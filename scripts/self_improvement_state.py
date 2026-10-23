@@ -51,7 +51,13 @@ def sanitize_records(records: object) -> list[dict[str, object]]:
                 continue
             # Do not persist free text from model output, exceptions, or paths.
             # Generic bounded fields retain useful outcome context across runs.
-            safe.append({
+            cycle_id = row.get("cycle_id")
+            if "cycle_id" in row and (
+                not isinstance(cycle_id, str)
+                or not re.fullmatch(r"[0-9]{1,20}", cycle_id)
+            ):
+                continue
+            safe_memory = {
                 "record_type": "cycle_memory",
                 "outcome": outcome,
                 "cause": _MEMORY_CAUSE[outcome],
@@ -59,7 +65,10 @@ def sanitize_records(records: object) -> list[dict[str, object]]:
                 "next_action": _MEMORY_NEXT_ACTION[outcome],
                 "target_path": "",
                 "recurring_patterns": [],
-            })
+            }
+            if cycle_id is not None:
+                safe_memory["cycle_id"] = cycle_id
+            safe.append(safe_memory)
             continue
         kind = row.get("kind")
         task_id = row.get("task_id")
@@ -95,12 +104,13 @@ def validate_durable_history(records: object) -> list[dict[str, object]]:
         "record_type", "outcome", "cause", "improvements",
         "next_action", "target_path", "recurring_patterns",
     }
+    memory_fields_with_cycle_id = memory_fields | {"cycle_id"}
     for row in records:
         if not isinstance(row, dict):
             raise ValueError("self-improvement history row must be an object")
         if row.get("record_type") == "cycle_memory":
             outcome = row.get("outcome")
-            if set(row) != memory_fields or not isinstance(outcome, str) or outcome not in _MEMORY_OUTCOMES:
+            if set(row) not in (memory_fields, memory_fields_with_cycle_id) or not isinstance(outcome, str) or outcome not in _MEMORY_OUTCOMES:
                 raise ValueError("cycle memory schema is invalid")
             expected = {
                 "record_type": "cycle_memory",
@@ -111,6 +121,11 @@ def validate_durable_history(records: object) -> list[dict[str, object]]:
                 "target_path": "",
                 "recurring_patterns": [],
             }
+            if "cycle_id" in row:
+                cycle_id = row.get("cycle_id")
+                if not isinstance(cycle_id, str) or not re.fullmatch(r"[0-9]{1,20}", cycle_id):
+                    raise ValueError("cycle memory ID is invalid")
+                expected["cycle_id"] = cycle_id
             if row != expected:
                 raise ValueError("cycle memory fields are invalid")
             validated.append(expected)
@@ -212,8 +227,11 @@ def append_cycle_memory(
     *,
     publish_outcome: str,
     state_outcome: str,
+    cycle_id: str,
 ) -> int:
-    """Create one privacy-filtered memory from the latest eligible loop outcome."""
+    """Create one privacy-filtered memory, idempotent for a single workflow run."""
+    if not isinstance(cycle_id, str) or not re.fullmatch(r"[0-9]{1,20}", cycle_id):
+        raise ValueError("invalid cycle ID")
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     tasks = catalog.get("tasks") if isinstance(catalog, dict) else None
     if not isinstance(tasks, list):
@@ -243,11 +261,16 @@ def append_cycle_memory(
     if outcome is None:
         return 0
     current = sanitize_records(read_jsonl(history_path))
-    # Avoid duplicate identical memory when a workflow step is retried.
-    if current and current[-1].get("record_type") == "cycle_memory" and current[-1].get("outcome") == outcome:
+    # Retries for the same workflow run are idempotent; separate runs with the
+    # same outcome are distinct observations and must both inform the feedback loop.
+    if any(
+        row.get("record_type") == "cycle_memory" and row.get("cycle_id") == cycle_id
+        for row in current
+    ):
         return 0
     memory = {
         "record_type": "cycle_memory",
+        "cycle_id": cycle_id,
         "outcome": outcome,
         "cause": _MEMORY_CAUSE[outcome],
         "improvements": _MEMORY_IMPROVEMENTS[outcome],
@@ -268,6 +291,7 @@ def main() -> int:
     parser.add_argument("--catalog", type=Path)
     parser.add_argument("--publish-outcome", default="")
     parser.add_argument("--state-outcome", default="")
+    parser.add_argument("--cycle-id", default="")
     args = parser.parse_args()
 
     if args.mode == "append-cycle-memory":
@@ -277,6 +301,7 @@ def main() -> int:
             args.history, args.results, args.catalog,
             publish_outcome=args.publish_outcome,
             state_outcome=args.state_outcome,
+            cycle_id=args.cycle_id,
         )
         print(f"SELF_IMPROVEMENT_CYCLE_MEMORY_APPENDED={count}")
         return 0
