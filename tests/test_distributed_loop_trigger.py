@@ -186,6 +186,21 @@ class _Client:
         return _Response(204)
 
 
+def test_dispatch_does_not_post_when_run_is_already_active_distributed_loop(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _Client([])
+    active = _Response(200, {"workflow_runs": [{"run_number": 90, "status": "in_progress"}]})
+    empty = _Response(200, {"workflow_runs": []})
+    from unittest.mock import patch
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        with patch.object(client, "get", side_effect=[active, empty]):
+            with patch.object(client, "post", side_effect=AssertionError("active run must suppress dispatch")):
+                handled, reply = request_distributed_loop("u1", "分散Loopを4回、安全確認付きで実行")
+    assert handled is True
+    assert "すでに実行中" in reply
+
+
 def test_dispatch_acknowledges_only_after_run_is_visible(monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
     monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
