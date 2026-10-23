@@ -104,6 +104,18 @@ def test_approved_issue_spec_must_exactly_match_registered_definition(tmp_path):
     assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
 
 
+def test_approved_registered_task_is_not_queued_when_resume_requires_review(tmp_path):
+    task_id = "resume-review-task"
+    result, queue_path = run(
+        tmp_path,
+        [issue(task_id, labels=("autonomous-task-approved",))],
+        state(tasks={task_id: {"held": False, "resume_requires_review": True}}),
+        registered_tasks=[registered(task_id)],
+    )
+    assert result["approved_count"] == 0
+    assert json.loads(queue_path.read_text(encoding="utf-8"))["tasks"] == []
+
+
 def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):
     existing = {"id": "already-queued", "instruction": "Existing task", "allowed_paths": ["tests/test_existing.py"]}
     issues = [issue("approved-one", labels=("autonomous-task-approved",)),
