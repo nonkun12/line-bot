@@ -246,3 +246,51 @@ def test_sanitizer_drops_malformed_cycle_memory_outcomes():
         "recurring_patterns": [],
     }]
     assert "secret" not in json.dumps(rows)
+
+
+def test_loop_outcome_creates_sanitized_cycle_memory_for_next_run(tmp_path):
+    from core.self_improvement_history import SelfImprovementHistory
+    from scripts.self_improvement_state import append_cycle_memory
+
+    history = tmp_path / "history.jsonl"
+    results = tmp_path / "results.jsonl"
+    catalog = tmp_path / "catalog.json"
+    catalog.write_text(json.dumps({"tasks": [{"id": "catalog-task-1"}]}), encoding="utf-8")
+    results.write_text(json.dumps({
+        "status": "PASS",
+        "task_id": "catalog-task-1",
+        "failure_reason": "token=never-persist-this",
+    }) + "\\n", encoding="utf-8")
+    history.write_text("", encoding="utf-8")
+
+    assert append_cycle_memory(
+        history, results, catalog, publish_outcome="success", state_outcome="success"
+    ) == 1
+    memory = SelfImprovementHistory(history).load_memory(limit=3)
+    assert len(memory) == 1
+    assert memory[0].outcome == "PASS"
+    assert memory[0].cause == "development gate passed"
+    assert memory[0].target_path == ""
+    assert "never-persist-this" not in history.read_text(encoding="utf-8")
+
+    # Re-running the same persistence step must not duplicate the latest memory.
+    assert append_cycle_memory(
+        history, results, catalog, publish_outcome="success", state_outcome="success"
+    ) == 0
+    assert len(SelfImprovementHistory(history).load_memory(limit=3)) == 1
+
+
+def test_loop_cycle_memory_does_not_record_unverified_success(tmp_path):
+    from scripts.self_improvement_state import append_cycle_memory
+
+    history = tmp_path / "history.jsonl"
+    results = tmp_path / "results.jsonl"
+    catalog = tmp_path / "catalog.json"
+    history.write_text("", encoding="utf-8")
+    catalog.write_text(json.dumps({"tasks": [{"id": "catalog-task-1"}]}), encoding="utf-8")
+    results.write_text(json.dumps({"status": "PASS", "task_id": "catalog-task-1"}) + "\\n", encoding="utf-8")
+
+    assert append_cycle_memory(
+        history, results, catalog, publish_outcome="failure", state_outcome="success"
+    ) == 0
+    assert history.read_text(encoding="utf-8") == ""
