@@ -58,11 +58,6 @@ def test_nightly_autonomous_worker_is_manual_only():
     trigger_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
     assert "workflow_dispatch:" in trigger_block
     assert "schedule:" not in trigger_block
-    assert "cron: '0 4 * * *'" in schedule_block
-    assert "cron: '0 16 * * *'" in schedule_block
-    assert "cron: '0 22 * * *'" in schedule_block
-    assert "timezone: 'Asia/Tokyo'" in schedule_block
-
 
 def test_autonomous_workflow_has_final_safety_gate_before_pr_creation():
     text = WORKFLOW.read_text(encoding="utf-8")
