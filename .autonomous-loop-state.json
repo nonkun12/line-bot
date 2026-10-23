@@ -35,7 +35,8 @@
     "refill-rejects-nonobject-recovery-task-map",
     "refill-rejects-boolean-catalog-addition-cap",
     "refill-rejects-non-ascii-task-id",
-    "refill-preserves-catalog-order-within-addition-cap"
+    "refill-preserves-catalog-order-within-addition-cap",
+    "proposal-generator-rejects-boolean-runtime-limit"
   ],
   "recovery_ai": {
     "checkpoint": null,
