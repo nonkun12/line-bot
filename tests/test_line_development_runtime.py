@@ -910,7 +910,7 @@ def test_four_reviewed_refill_tasks_have_deterministic_bounded_plans(tmp_path, m
         (
             "proposal-generator-conflicting-catalog-definitions-regression",
             "tests/test_autonomous_task_proposals.py",
-            "def test_build_proposals_rejects_boolean_runtime_task_limit(tmp_path, limit):",
+            "def test_fails_closed_on_missing_recovery_state(tmp_path):",
             "test_conflicting_duplicate_catalog_definitions_fail_closed",
         ),
     ]
