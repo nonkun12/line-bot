@@ -228,3 +228,21 @@ def test_cycle_memory_survives_durable_export_and_next_run_import_without_free_t
     assert "private prompt" not in durable_text
     assert "customer-data" not in durable_text
     assert "arbitrary shell" not in durable_text
+
+
+def test_sanitizer_drops_malformed_cycle_memory_outcomes():
+    rows = sanitize_records([
+        {"record_type": "cycle_memory", "outcome": ["FAIL"], "cause": "secret"},
+        {"record_type": "cycle_memory", "outcome": "UNKNOWN", "cause": "secret"},
+        {"record_type": "cycle_memory", "outcome": "BLOCKED", "cause": "token=secret"},
+    ])
+    assert rows == [{
+        "record_type": "cycle_memory",
+        "outcome": "BLOCKED",
+        "cause": "development cycle blocked",
+        "improvements": ["resolve safety or evidence block before retry"],
+        "next_action": "require evidence and safety review before resume",
+        "target_path": "",
+        "recurring_patterns": [],
+    }]
+    assert "secret" not in json.dumps(rows)
