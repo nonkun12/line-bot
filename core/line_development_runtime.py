@@ -225,6 +225,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "refill-rejects-malformed-recovery-task-entry": "tests/test_autonomous_task_refill.py",
     "refill-rejects-non-ascii-task-id": "tests/test_autonomous_task_refill.py",
     "refill-all-catalog-candidates-ineligible-regression": "tests/test_autonomous_task_refill.py",
+    "loop-refill-empty-catalog-next-safe-test-20261023": "tests/test_autonomous_task_refill.py",
     "refill-rejects-boolean-catalog-addition-cap": "tests/test_autonomous_task_refill.py",
     "refill-rejects-nonobject-recovery-task-map": "tests/test_autonomous_task_refill.py",
 }
@@ -1521,6 +1522,59 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "no_change": False,
             "source": "deterministic_autonomous_task",
             "changes": [{"file": chosen, "old": old, "new": new}],
+        }, None
+
+    if task_id == "loop-refill-empty-catalog-next-safe-test-20261023" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_selects_only_incomplete_unheld_unreviewed_catalog_tasks_within_cap"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_refill_reports_catalog_exhaustion_by_durable_state(tmp_path: Path):\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = "\n".join([
+            f"def {name}(tmp_path: Path):",
+            "    queue, catalog, _ = _inputs(",
+            "        tmp_path,",
+            "        max_tasks=2,",
+            '        existing=[_task("task-existing")],',
+            '        candidates=[_task("task-done"), _task("task-held"), _task("task-review"), _task("task-ready-one"), _task("task-ready-two")],',
+            "    )",
+            "    state = _write(",
+            '        tmp_path / "state.json",',
+            "        {",
+            '            "version": 1,',
+            '            "completed": ["task-done"],',
+            '            "recovery_ai": {"schema_version": 1, "tasks": {',
+            '                "task-held": {"held": True},',
+            '                "task-review": {"resume_requires_review": True},',
+            '            }, "checkpoint": None},',
+            "        },",
+            "    )",
+            '    output = tmp_path / "runtime.json"',
+            "    report = build_queue(queue, catalog, state, output)",
+            '    result = json.loads(output.read_text(encoding="utf-8"))',
+            '    assert [task["id"] for task in result["tasks"]] == ["task-existing", "task-ready-one"]',
+            '    assert report["added_ids"] == ["task-ready-one"]',
+            '    assert report["skipped_catalog_completed_ids"] == ["task-done"]',
+            '    assert report["skipped_catalog_held_ids"] == ["task-held"]',
+            '    assert report["skipped_catalog_review_ids"] == ["task-review"]',
+            "",
+            "",
+        ]) + "\n"
+        new = addition + "\n" + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
         }, None
 
     if task_id == "refill-all-catalog-candidates-ineligible-regression" and chosen == "tests/test_autonomous_task_refill.py":

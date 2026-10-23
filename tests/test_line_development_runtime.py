@@ -880,3 +880,33 @@ def test_three_new_refill_seed_plans_are_syntax_safe_and_bounded(tmp_path, monke
         compile(candidate, chosen, "exec")
         assert expected_name in candidate
         assert worker.validate_plan(plan, chosen) == (True, chosen)
+
+
+def test_refill_regression_task_builds_one_bounded_deterministic_change(monkeypatch, tmp_path):
+    chosen = "tests/test_autonomous_task_refill.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        chr(10).join([
+            "def test_refill_reports_catalog_exhaustion_by_durable_state(tmp_path: Path):",
+            "    pass",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen, "loop-refill-empty-catalog-next-safe-test-20261023"
+    )
+
+    assert err is None
+    assert plan is not None
+    assert plan["no_change"] is False
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert len(plan["changes"]) == 1
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    compile(target.read_text(encoding="utf-8").replace(change["old"], change["new"], 1), chosen, "exec")
