@@ -15,7 +15,7 @@ MAX_RECORDS = 200
 _ALLOWED_KINDS = {"success", "repair", "failure"}
 _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
 _SAFE_DETAIL = {
-    "success": "development reached integration gate",
+    "success": "task passed or verified no-change",
     "repair": "development required repair attempts",
     "failure": "development failure observed",
 }
@@ -72,20 +72,48 @@ def atomic_write_jsonl(path: Path, rows: list[dict[str, str | None]]) -> None:
             temp.unlink()
 
 
-def append_loop_results(history_path: Path, results_path: Path) -> int:
-    """Map exact loop outcomes to their registered task IDs without persisting raw details."""
+def append_loop_results(
+    history_path: Path,
+    results_path: Path,
+    catalog_path: Path,
+    *,
+    publish_outcome: str,
+    state_outcome: str,
+) -> int:
+    """Persist only registered task outcomes supported by the workflow gates."""
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    tasks = catalog.get("tasks") if isinstance(catalog, dict) else None
+    if not isinstance(tasks, list):
+        raise ValueError("task catalog must contain a tasks list")
+    registered_ids = {
+        task.get("id") for task in tasks
+        if isinstance(task, dict) and isinstance(task.get("id"), str)
+        and _TASK_ID.fullmatch(task["id"])
+    }
+    gates_passed = publish_outcome == "success" and state_outcome == "success"
     additions: list[dict[str, str | None]] = []
     for row in read_jsonl(results_path):
         task_id = row.get("task_id")
         status = row.get("status")
-        if not isinstance(task_id, str) or not _TASK_ID.fullmatch(task_id):
+        reason = row.get("failure_reason")
+        if not isinstance(task_id, str) or task_id not in registered_ids:
             continue
         if status in {"PASS", "NO_CHANGE"}:
+            # A task-level PASS is not durable success unless publication and
+            # completion-state persistence both succeeded.
+            if not gates_passed:
+                continue
             kind = "success"
-        elif status == "FAIL":
+        elif status in {"FAIL", "TIMEOUT"}:
+            # Harness/evidence failures must not train the task-quality scorer.
+            if isinstance(reason, str) and reason.startswith((
+                "summary_", "produced_head_", "blocked_summary_",
+                "control_tower_rea:", "run_identity_", "rea_evidence_",
+            )):
+                continue
             kind = "failure"
         else:
-            # BLOCKED/NOT_RUN/STOPPED are not evidence of a task execution failure.
+            # BLOCKED/NOT_RUN/STOPPED are not evidence of task-quality failure.
             continue
         additions.append({"kind": kind, "task_id": task_id, "detail": _SAFE_DETAIL[kind]})
     merged = sanitize_records(read_jsonl(history_path) + additions)
@@ -99,12 +127,19 @@ def main() -> int:
     parser.add_argument("--state", type=Path)
     parser.add_argument("--history", type=Path, required=True)
     parser.add_argument("--results", type=Path)
+    parser.add_argument("--catalog", type=Path)
+    parser.add_argument("--publish-outcome", default="")
+    parser.add_argument("--state-outcome", default="")
     args = parser.parse_args()
 
     if args.mode == "append-loop-results":
-        if args.results is None:
-            raise SystemExit("--results is required for append-loop-results")
-        count = append_loop_results(args.history, args.results)
+        if args.results is None or args.catalog is None:
+            raise SystemExit("--results and --catalog are required for append-loop-results")
+        count = append_loop_results(
+            args.history, args.results, args.catalog,
+            publish_outcome=args.publish_outcome,
+            state_outcome=args.state_outcome,
+        )
         print(f"SELF_IMPROVEMENT_LOOP_RESULTS_APPENDED={count}")
         return 0
     if args.state is None:
