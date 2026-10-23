@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from collections import Counter
 from pathlib import Path
 
 TASK_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,99}$")
@@ -48,7 +49,34 @@ def _validate_task(task: object) -> dict:
     return {"id": task_id, "instruction": instruction.strip(), "allowed_paths": clean_paths}
 
 
-def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, output_path: Path) -> dict:
+def _history_priority(history_path: Path | None, registered_ids: set[str]) -> tuple[dict[str, int], dict[str, dict[str, int]]]:
+    """Score sanitized feedback for registered task IDs only."""
+    counts: dict[str, Counter[str]] = {}
+    if history_path is None or not history_path.exists():
+        return {}, {}
+    try:
+        lines = history_path.read_text(encoding="utf-8").splitlines()[-200:]
+    except OSError:
+        return {}, {}
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(row, dict):
+            continue
+        task_id, kind = row.get("task_id"), row.get("kind")
+        if not isinstance(task_id, str) or task_id not in registered_ids:
+            continue
+        if not isinstance(kind, str) or kind not in {"success", "repair", "failure"}:
+            continue
+        counts.setdefault(task_id, Counter())[kind] += 1
+    details = {task_id: dict(counter) for task_id, counter in counts.items()}
+    scores = {task_id: counter.get("failure", 0) * 3 + counter.get("repair", 0) - counter.get("success", 0) for task_id, counter in counts.items()}
+    return scores, details
+
+
+def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, output_path: Path, history_path: Path | None = None) -> dict:
     queue = read_json(queue_path)
     catalog = read_json(catalog_path)
     state = read_json(completed_path)
@@ -119,12 +147,17 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     skipped_held_ids = sorted(original_ids.intersection(held_ids))
     skipped_review_ids = sorted(original_ids.intersection(review_required_ids))
     skipped_completed_ids = sorted(original_ids.intersection(completed_ids))
-    additions = [
+    priority_scores, history_counts = _history_priority(history_path, catalog_ids)
+    eligible_additions = [
         task for task in normalized_catalog
         if task["id"] not in original_ids
         and task["id"] not in completed_ids
         and task["id"] not in ineligible_ids
-    ][:cap]
+    ]
+    # Stable sort: recurring failures first; ties preserve reviewed catalog order.
+    catalog_order = {task["id"]: index for index, task in enumerate(normalized_catalog)}
+    eligible_additions.sort(key=lambda task: (-priority_scores.get(task["id"], 0), catalog_order[task["id"]]))
+    additions = eligible_additions[:cap]
     # Preserve eligible queued tasks, then append only a bounded catalog slice.
     final_tasks = eligible_existing + additions
     output = {"version": 1, "max_tasks_per_run": max_tasks, "tasks": final_tasks}
@@ -160,6 +193,9 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         "added": len(additions),
         "total": len(final_tasks),
         "added_ids": [t["id"] for t in additions],
+        "feedback_priority_scores": {task["id"]: priority_scores.get(task["id"], 0) for task in additions},
+        "feedback_signal_counts": {task["id"]: history_counts.get(task["id"], {}) for task in additions},
+        "feedback_policy": "failure*3+repair-success; registered catalog IDs only",
     }
 
 
@@ -169,9 +205,10 @@ def main() -> int:
     parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--completed-state", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--history", type=Path, default=None)
     args = parser.parse_args()
     try:
-        result = build_queue(args.queue, args.catalog, args.completed_state, args.output)
+        result = build_queue(args.queue, args.catalog, args.completed_state, args.output, args.history)
     except (ValueError, OSError) as exc:
         print(f"REFILL_BLOCKED: {type(exc).__name__}")
         return 2
