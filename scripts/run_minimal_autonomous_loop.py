@@ -796,6 +796,7 @@ def main() -> int:
             f"rejected={json.dumps(preflight['rejected_tasks'], ensure_ascii=False, sort_keys=True)}",
             flush=True,
         )
+        print(f"remediation={preflight['remediation']}", flush=True)
         return 80
 
     # Read Recovery AI holds before selecting. Held tasks remain held; this code
