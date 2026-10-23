@@ -134,6 +134,13 @@
       "allowed_paths": [
         "tests/test_autonomous_task_refill.py"
       ]
+    },
+    {
+      "id": "loop-refill-empty-catalog-next-safe-test-20261023",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、カタログに未完了かつHOLD/再レビュー対象外の有効なテスト専用タスクがある場合に補充される回帰テストを1件追加してください。既存テストと重複しないテスト名を使い、build_queueの実際の契約に沿って検証してください。変更は指定ファイル1つだけ。外部通信・秘密情報・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
     }
   ]
 }
