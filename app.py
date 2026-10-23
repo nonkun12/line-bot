@@ -41,6 +41,8 @@ from db import (
     load_history,
     create_processed_event,
     is_processed_event,
+    get_pending_line_notification,
+    delete_pending_line_notification,
 )
 from reminders import (
     handle_daily_reminder,
@@ -484,6 +486,22 @@ _user_processing_locks = {}
 _user_processing_lock = threading.Lock()
 
 
+def _reply_with_pending_notification(event, user_id, reply):
+    """Deliver one deferred report via a LINE reply and consume it only after success."""
+    pending = get_pending_line_notification(str(user_id))
+    if pending is None:
+        _line_reply(event.reply_token, reply)
+        return
+    prefix = (
+        "📬 前回の分散Loop終了報告（無料枠の安全制限で送信を保留していました）\\n"
+        f"{pending['message']}\\n\\n"
+        "―― 今回の返信 ――\\n"
+    )
+    _line_reply(event.reply_token, prefix + str(reply or ""))
+    # Preserve the record if LINE rejects the reply so a later message can retry.
+    delete_pending_line_notification(pending["id"])
+
+
 def _process_and_reply(event, user_id, text):
     print("[LOG] _process_and_reply called")
     with _user_processing_lock:
@@ -517,7 +535,7 @@ def _process_and_reply(event, user_id, text):
             reply = "AIサービスで一時的な問題が発生しました。少し時間を置いてもう一度お試しください。"
         record_line_runtime(user_message=str(text), reply=reply, status=status, route=route)
         try:
-            _line_reply(event.reply_token, reply)
+            _reply_with_pending_notification(event, user_id, reply)
         except Exception:
             print("[LOG] LINE reply failed; falling back to push")
             _line_push(user_id, reply)
