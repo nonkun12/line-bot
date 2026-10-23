@@ -663,7 +663,8 @@ jobs:
             --results /tmp/minimal-autonomous-loop.jsonl \
             --catalog .github/autonomous-loop-task-catalog.json \
             --publish-outcome "${PUBLISH_OUTCOME:-}" \
-            --state-outcome "${STATE_OUTCOME:-}"
+            --state-outcome "${STATE_OUTCOME:-}" \
+            --cycle-id "${GITHUB_RUN_ID}"
           python scripts/self_improvement_state.py append-cycle-memory \
             --history /tmp/line-bot-self-improvement.jsonl \
             --results /tmp/minimal-autonomous-loop.jsonl \
