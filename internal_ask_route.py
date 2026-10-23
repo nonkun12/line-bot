@@ -83,9 +83,9 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         data = request.get_json(silent=True) or {}
         user_id = data.get("user_id")
         message = data.get("message")
-        notification_source = data.get("source", "internal_push")
+        notification_source = data.get("source", "distributed_loop")
         if not isinstance(notification_source, str) or not notification_source.strip():
-            notification_source = "internal_push"
+            notification_source = "distributed_loop"
         if not isinstance(user_id, str) or not user_id.strip() or not isinstance(message, str) or not message.strip():
             return jsonify({"ok": False, "error": "user_id and message are required"}), 400
         user_id = user_id.strip()
