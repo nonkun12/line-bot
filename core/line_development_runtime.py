@@ -224,6 +224,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "refill-rejects-malformed-completed-state": "tests/test_autonomous_task_refill.py",
     "refill-rejects-malformed-recovery-task-entry": "tests/test_autonomous_task_refill.py",
     "refill-rejects-non-ascii-task-id": "tests/test_autonomous_task_refill.py",
+    "refill-preserves-catalog-order-within-addition-cap": "tests/test_autonomous_task_refill.py",
     "refill-all-catalog-candidates-ineligible-regression": "tests/test_autonomous_task_refill.py",
     "loop-refill-empty-catalog-next-safe-test-20261023": "tests/test_autonomous_task_refill.py",
     "refill-rejects-boolean-catalog-addition-cap": "tests/test_autonomous_task_refill.py",
@@ -469,6 +470,42 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "    with pytest.raises(ValueError, match=\"catalog cap must be between 1 and 4\"):",
             "        build_queue(queue, catalog, completed, output)",
             "    assert not output.exists()"
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "refill-preserves-catalog-order-within-addition-cap" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_preserves_catalog_order_within_addition_cap"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_refill_reports_catalog_exhaustion_by_durable_state(tmp_path: Path):"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            "def test_refill_preserves_catalog_order_within_addition_cap(tmp_path: Path):",
+            "    queue, catalog, completed = _inputs(tmp_path, candidates=[_task(\"task-zeta\"), _task(\"task-alpha\"), _task(\"task-middle\")])",
+            "    output = tmp_path / \"runtime.json\"",
+            "    report = build_queue(queue, catalog, completed, output)",
+            "    result = json.loads(output.read_text(encoding=\"utf-8\"))",
+            "    assert report[\"added_ids\"] == [\"task-zeta\", \"task-alpha\"]",
+            "    assert report[\"eligible_catalog_ids\"] == [\"task-alpha\", \"task-middle\", \"task-zeta\"]",
+            "    assert [task[\"id\"] for task in result[\"tasks\"]] == [\"task-zeta\", \"task-alpha\"]",
             "",
             "",
         ]) + newline
