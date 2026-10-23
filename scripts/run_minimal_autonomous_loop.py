@@ -786,7 +786,7 @@ def main() -> int:
             },
         }
         with args.results.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\\n")
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
         print(
             "MINIMAL_LOOP=BLOCKED "
             f"reason={reason} queue_count={preflight['queue_count']} "
