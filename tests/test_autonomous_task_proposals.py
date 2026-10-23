@@ -132,3 +132,18 @@ def test_build_proposals_rejects_boolean_runtime_task_limit(tmp_path, limit):
     catalog_path = write(tmp_path / "catalog.json", {"version": 1, "tasks": []})
     with pytest.raises(ValueError, match="invalid runtime task limit"):
         build_proposals(issues_path, queue_path, state_path, tmp_path / "proposals.json", catalog_path)
+
+def test_approved_issue_is_not_starved_by_four_earlier_candidates(tmp_path):
+    candidates = [issue(f"candidate-{i}", labels=("autonomous-task-candidate",)) for i in range(4)]
+    approved = issue("approved-after-candidates", labels=("autonomous-task-approved",))
+    result, qp = run(
+        tmp_path,
+        [*candidates, approved],
+        state(),
+        registered_tasks=[registered("approved-after-candidates")],
+    )
+    queue_after = json.loads(qp.read_text(encoding="utf-8"))
+    assert result["approved_count"] == 1
+    assert result["approved_task_ids"] == ["approved-after-candidates"]
+    assert result["proposal_count"] == 4
+    assert [task["id"] for task in queue_after["tasks"]] == ["approved-after-candidates"]
