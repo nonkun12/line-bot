@@ -229,6 +229,10 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "loop-refill-empty-catalog-next-safe-test-20261023": "tests/test_autonomous_task_refill.py",
     "refill-rejects-boolean-catalog-addition-cap": "tests/test_autonomous_task_refill.py",
     "refill-rejects-nonobject-recovery-task-map": "tests/test_autonomous_task_refill.py",
+    "distributed-loop-dispatch-duplicate-active-run-guard-regression": "tests/test_distributed_loop_trigger.py",
+    "proposal-generator-resume-review-exclusion-regression": "tests/test_autonomous_task_proposals.py",
+    "queue-progress-ignores-unrelated-pass-results-regression": "tests/test_distributed_loop_queue_progress.py",
+    "proposal-generator-conflicting-catalog-definitions-regression": "tests/test_autonomous_task_proposals.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -1621,6 +1625,162 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         if f"def {name}(" not in text:
             return None, "required_regression_test_missing"
         return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+    if task_id == "distributed-loop-dispatch-duplicate-active-run-guard-regression" and chosen == "tests/test_distributed_loop_trigger.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_dispatch_does_not_post_when_run_is_already_active_distributed_loop"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_dispatch_acknowledges_only_after_run_is_visible(monkeypatch):" + chr(10)
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            f"def {name}(monkeypatch):",
+            '    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")',
+            '    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")',
+            "    client = _Client([])",
+            '    active = _Response(200, {"workflow_runs": [{"run_number": 90, "status": "in_progress"}]})',
+            '    empty = _Response(200, {"workflow_runs": []})',
+            "    from unittest.mock import patch",
+            '    with patch.object(trigger.httpx, "Client", return_value=client):',
+            '        with patch.object(client, "get", side_effect=[active, empty]):',
+            '            with patch.object(client, "post", side_effect=AssertionError("active run must suppress dispatch")):',
+            '                handled, reply = request_distributed_loop("u1", "分散Loopを4回、安全確認付きで実行")',
+            "    assert handled is True",
+            '    assert "すでに実行中" in reply',
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "proposal-generator-resume-review-exclusion-regression" and chosen == "tests/test_autonomous_task_proposals.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_approved_registered_task_is_not_queued_when_resume_requires_review"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):" + chr(10)
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            f"def {name}(tmp_path):",
+            '    task_id = "resume-review-task"',
+            "    result, queue_path = run(",
+            "        tmp_path,",
+            '        [issue(task_id, labels=("autonomous-task-approved",))],',
+            '        state(tasks={task_id: {"held": False, "resume_requires_review": True}}),',
+            "        registered_tasks=[registered(task_id)],",
+            "    )",
+            '    assert result["approved_count"] == 0',
+            '    assert json.loads(queue_path.read_text(encoding="utf-8"))["tasks"] == []',
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "queue-progress-ignores-unrelated-pass-results-regression" and chosen == "tests/test_distributed_loop_queue_progress.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_progress_ignores_pass_and_no_change_results_outside_runtime_queue"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_progress_rejects_duplicate_queue_ids(tmp_path: Path):" + chr(10)
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            f"def {name}(tmp_path: Path):",
+            '    queue = tmp_path / "runtime-queue.json"',
+            '    state = tmp_path / "state.json"',
+            '    results = tmp_path / "results.jsonl"',
+            '    queue.write_text(json.dumps({"tasks": [{"id": "task-in-queue"}]}), encoding="utf-8")',
+            '    state.write_text(json.dumps({"completed": []}), encoding="utf-8")',
+            '    results.write_text(json.dumps({"task_id": "task-outside-queue-pass", "status": "PASS"}) + "\\n" + json.dumps({"task_id": "task-outside-queue-no-change", "status": "NO_CHANGE"}) + "\\n", encoding="utf-8")',
+            '    assert calculate_progress(queue, state, results) == {"queue_total": 1, "queue_completed": 0}',
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "proposal-generator-conflicting-catalog-definitions-regression" and chosen == "tests/test_autonomous_task_proposals.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_conflicting_duplicate_catalog_definitions_fail_closed"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_build_proposals_rejects_boolean_runtime_task_limit(tmp_path, limit):" + chr(10)
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            f"def {name}(tmp_path):",
+            '    queue_path = tmp_path / "queue.json"',
+            '    with pytest.raises(ValueError, match="conflicting registered task definitions"):',
+            "        run(",
+            "            tmp_path,",
+            '            [issue("conflicting-catalog-task", labels=("autonomous-task-approved",))],',
+            "            state(),",
+            "            registered_tasks=[",
+            '                registered("conflicting-catalog-task"),',
+            '                registered("conflicting-catalog-task", instruction="Different reviewed instruction."),',
+            "            ],",
+            "        )",
+            '    assert json.loads(queue_path.read_text(encoding="utf-8"))["tasks"] == []',
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
 
     return None, None
 
