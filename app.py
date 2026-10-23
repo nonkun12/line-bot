@@ -493,9 +493,9 @@ def _reply_with_pending_notification(event, user_id, reply):
         _line_reply(event.reply_token, reply)
         return
     prefix = (
-        "📬 前回の分散Loop終了報告（無料枠の安全制限で送信を保留していました）\\n"
-        f"{pending['message']}\\n\\n"
-        "―― 今回の返信 ――\\n"
+        "📬 前回の分散Loop終了報告（無料枠の安全制限で送信を保留していました）\n"
+        f"{pending['message']}\n\n"
+        "―― 今回の返信 ――\n"
     )
     _line_reply(event.reply_token, prefix + str(reply or ""))
     # Preserve the record if LINE rejects the reply so a later message can retry.
@@ -515,7 +515,7 @@ def _process_and_reply(event, user_id, text):
             path = "/stock-dashboard" if command == "株式ダッシュボード" else "/dashboard"
             dashboard_url = _build_dashboard_url(user_id, path)
             label = "株式投資ダッシュボード" if command == "株式ダッシュボード" else "ダッシュボード"
-            _line_reply(event.reply_token, f"{label}はこちらです。\n{dashboard_url}")
+            _reply_with_pending_notification(event, user_id, f"{label}はこちらです。\n{dashboard_url}")
             return
         status = "PASS"
         route = "core-gateway"
