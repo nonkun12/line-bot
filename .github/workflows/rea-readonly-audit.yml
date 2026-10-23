@@ -40,6 +40,7 @@ jobs:
         id: scan
         shell: bash
         run: |
+          set +e
           set -u
           python -m scripts.rea_readonly_scanner --repo-root . > rea-report.json
           rc=$?
