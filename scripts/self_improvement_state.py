@@ -77,6 +77,60 @@ def sanitize_records(records: object) -> list[dict[str, object]]:
     return safe[-MAX_RECORDS:]
 
 
+
+def validate_durable_history(records: object) -> list[dict[str, object]]:
+    """Strictly validate the persisted schema shared with the workflow.
+
+    Unlike sanitize_records(), this rejects unexpected/malformed rows instead
+    of silently dropping them; workflow persistence must fail closed.
+    """
+    if not isinstance(records, list):
+        raise ValueError("self-improvement history must be a list")
+    if len(records) > MAX_RECORDS:
+        raise ValueError("self-improvement history exceeds the record limit")
+
+    validated: list[dict[str, object]] = []
+    signal_fields = {"kind", "task_id", "detail"}
+    memory_fields = {
+        "record_type", "outcome", "cause", "improvements",
+        "next_action", "target_path", "recurring_patterns",
+    }
+    for row in records:
+        if not isinstance(row, dict):
+            raise ValueError("self-improvement history row must be an object")
+        if row.get("record_type") == "cycle_memory":
+            outcome = row.get("outcome")
+            if set(row) != memory_fields or not isinstance(outcome, str) or outcome not in _MEMORY_OUTCOMES:
+                raise ValueError("cycle memory schema is invalid")
+            expected = {
+                "record_type": "cycle_memory",
+                "outcome": outcome,
+                "cause": _MEMORY_CAUSE[outcome],
+                "improvements": _MEMORY_IMPROVEMENTS[outcome],
+                "next_action": _MEMORY_NEXT_ACTION[outcome],
+                "target_path": "",
+                "recurring_patterns": [],
+            }
+            if row != expected:
+                raise ValueError("cycle memory fields are invalid")
+            validated.append(expected)
+            continue
+
+        if set(row) != signal_fields:
+            raise ValueError("self-improvement signal schema is invalid")
+        kind, task_id, detail = row.get("kind"), row.get("task_id"), row.get("detail")
+        if not isinstance(kind, str) or kind not in _ALLOWED_KINDS:
+            raise ValueError("self-improvement signal kind is invalid")
+        if task_id is not None and (
+            not isinstance(task_id, str) or not _TASK_ID.fullmatch(task_id)
+        ):
+            raise ValueError("self-improvement task ID is invalid")
+        if detail != _SAFE_DETAIL[kind]:
+            raise ValueError("self-improvement signal detail is invalid")
+        validated.append({"kind": kind, "task_id": task_id, "detail": detail})
+    return validated
+
+
 def read_jsonl(path: Path) -> list[dict[str, object]]:
     if not path.exists():
         return []
