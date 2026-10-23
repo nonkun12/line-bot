@@ -64,7 +64,7 @@ def register_m365_mail_route(app) -> None:
     def m365_notifications():
         # Microsoft Graph validates a webhook by supplying validationToken.
         validation_token = request.args.get("validationToken")
-        if request.method == "GET" and validation_token is not None:
+        if validation_token is not None:
             if len(validation_token) > 2048:
                 return "invalid validation token", 400
             from flask import Response
