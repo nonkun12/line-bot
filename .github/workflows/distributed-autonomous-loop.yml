@@ -664,6 +664,12 @@ jobs:
             --catalog .github/autonomous-loop-task-catalog.json \
             --publish-outcome "${PUBLISH_OUTCOME:-}" \
             --state-outcome "${STATE_OUTCOME:-}"
+          python scripts/self_improvement_state.py append-cycle-memory \
+            --history /tmp/line-bot-self-improvement.jsonl \
+            --results /tmp/minimal-autonomous-loop.jsonl \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --publish-outcome "${PUBLISH_OUTCOME:-}" \
+            --state-outcome "${STATE_OUTCOME:-}"
           python scripts/self_improvement_state.py export \
             --state /tmp/autonomous-loop-state.json \
             --history /tmp/line-bot-self-improvement.jsonl
