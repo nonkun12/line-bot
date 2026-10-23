@@ -92,6 +92,7 @@ from routes.voice_api import voice_api_bp
 from app_development import extract_app_development_request, dispatch_app_development_workflow
 from line_development import extract_development_instruction, dispatch_development_workflow
 from slack_command import register_slack_command
+from m365_mail import register_m365_mail_route
 from distributed_loop_trigger import request_distributed_loop
 from recovery_review_trigger import request_recovery_resume_review
 from agents.english.core_image import handle_core_image_command
@@ -419,6 +420,7 @@ def _gateway_reply(user_id, message):
 
 register_internal_ask_route(app, INTERNAL_PUSH_KEY, _gateway_reply)
 register_slack_command(app)
+register_m365_mail_route(app)
 
 
 @app.route("/callback", methods=["POST"])
