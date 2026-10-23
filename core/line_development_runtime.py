@@ -161,6 +161,17 @@ def observe_self_improvement(
         decisions = getattr(result, "control_tower_decisions", ())
         approved = len(result.approved_proposals)
         review_errors = sum(1 for decision in decisions if decision.review_error is not None)
+        review_error_classes: dict[str, int] = {}
+        for decision in decisions:
+            if decision.review_error is None:
+                continue
+            error_class = decision.review_error
+            if not isinstance(error_class, str) or not error_class.isidentifier():
+                error_class = "UnknownError"
+            review_error_classes[error_class] = review_error_classes.get(error_class, 0) + 1
+        review_error_summary = ",".join(
+            f"{name}:{count}" for name, count in sorted(review_error_classes.items())
+        ) or "none"
         unreviewed = sum(1 for decision in decisions if not decision.duel and decision.review_error is None)
         reviewer_mode = "creator_critic" if reviewer_enabled else (
             "local_only_external_ai_disabled" if not allow_external_ai else "disabled_by_config"
@@ -172,7 +183,8 @@ def observe_self_improvement(
             f"patterns={len(result.analysis.recurring_patterns)} "
             f"proposals={len(result.proposals)} "
             f"reviewed={sum(1 for decision in decisions if decision.duel)} "
-            f"approved={approved} unreviewed={unreviewed} review_errors={review_errors}",
+            f"approved={approved} unreviewed={unreviewed} review_errors={review_errors} "
+            f"review_error_classes={review_error_summary}",
             flush=True,
         )
         return result
