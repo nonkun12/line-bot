@@ -42,10 +42,14 @@ jobs:
         run: |
           set +e
           set -u
-          python -m scripts.rea_readonly_scanner --repo-root . > rea-report.json
+          report_path="$RUNNER_TEMP/rea-report.json"
+          python -m scripts.rea_readonly_scanner --repo-root . > "$report_path"
           rc=$?
+          cp "$report_path" rea-report.json
           echo "scanner_rc=$rc" >> "$GITHUB_OUTPUT"
           echo "Scanner exit code: $rc"
+          echo "Metadata-only report:"
+          cat rea-report.json
         continue-on-error: true
 
       - name: Preserve metadata-only report
