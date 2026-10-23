@@ -11,7 +11,7 @@ def test_trigger_recognizes_loop_command_aliases(monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
     monkeypatch.delenv("GITHUB_ACTIONS_DISPATCH_TOKEN", raising=False)
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-    for command in ("分散ループ開始", "分散Loop開始", "分散AIループ開始", "分散AI Loop開始"):
+    for command in ("分散ループ開始", "分散Loop開始", "分散AIループ開始", "分散AI Loop開始", "分散AI 回して"):
         handled, reply = request_distributed_loop("u1", command)
         assert handled is True
         assert "認証未設定" in reply
@@ -353,3 +353,12 @@ def test_status_command_labels_skipped_runs_as_not_executed(monkeypatch):
     assert "SKIPPED（起動条件不一致・タスク未実行）" in reply
     assert "Run #496" in reply
     assert "PASS" not in reply
+
+
+def test_natural_distributed_ai_run_command_is_bounded_to_one_task():
+    from distributed_loop_trigger import _requested_max_tasks
+
+    assert _requested_max_tasks("分散AI 回して") == 1
+    # LINE whitespace normalization allows transport spacing variants only.
+    assert _requested_max_tasks("分散AI回して") == 1
+    assert _requested_max_tasks("分散AI を回して") is None

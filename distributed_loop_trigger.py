@@ -18,6 +18,7 @@ TRIGGER_PHRASES = frozenset(
         "分散Loop開始",
         "分散AIループ開始",
         "分散AI Loop開始",
+        "分散AI 回して",
         "distributed loop start",
         "分散ループを起動",
         "分散Loopを起動",
