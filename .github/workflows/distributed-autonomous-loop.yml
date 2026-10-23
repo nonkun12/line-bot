@@ -1030,6 +1030,40 @@ jobs:
             exit 1
           fi
 
+      - name: Notify Slack of distributed loop final report
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+            echo "Slack notification skipped: SLACK_WEBHOOK_URL secret is not configured."
+            exit 0
+          fi
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          report_path = Path("/tmp/distributed-final-report.txt")
+          report = report_path.read_text(encoding="utf-8") if report_path.exists() else "⚠️ 分散Loop終了報告を生成できませんでした。"
+          # Keep the Slack payload bounded; the full report remains in the workflow artifact/summary.
+          if len(report) > 3500:
+              report = report[:3500] + "\\n…（省略。完全版はGitHub Actionsの実行結果を確認してください）"
+          text = report + "\\n\\n実行ログ: " + os.environ["RUN_URL"]
+          Path("/tmp/distributed-slack-payload.json").write_text(
+              json.dumps({"text": text}, ensure_ascii=False), encoding="utf-8"
+          )
+          PY
+          if ! curl --fail-with-body --silent --show-error --max-time 20 \\
+            -X POST "$SLACK_WEBHOOK_URL" \\
+            -H "Content-Type: application/json" \\
+            --data-binary @/tmp/distributed-slack-payload.json; then
+            echo "::warning::Slack notification failed; continuing without changing task outcome."
+          else
+            echo "Slack final report delivered."
+          fi
+
       - name: Wake Render before LINE final report
         if: always()
         run: |
