@@ -1530,10 +1530,10 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         name = "test_refill_selects_only_incomplete_unheld_unreviewed_catalog_tasks_within_cap"
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
-        anchor = "def test_refill_reports_catalog_exhaustion_by_durable_state(tmp_path: Path):\\n"
+        anchor = "def test_refill_reports_catalog_exhaustion_by_durable_state(tmp_path: Path):\n"
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
-        addition = "\\n".join([
+        addition = "\n".join([
             f"def {name}(tmp_path: Path):",
             "    queue, catalog, _ = _inputs(",
             "        tmp_path,",
@@ -1562,8 +1562,8 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             '    assert report["skipped_catalog_review_ids"] == ["task-review"]',
             "",
             "",
-        ]) + "\\n"
-        new = addition + "\\n" + anchor
+        ]) + "\n"
+        new = addition + "\n" + anchor
         if len(anchor) > 1200 or len(new) > 1800:
             return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
         candidate = text.replace(anchor, new, 1)
