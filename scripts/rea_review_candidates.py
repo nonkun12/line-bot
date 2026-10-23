@@ -35,7 +35,7 @@ def build_review_candidates(report: object, *, expected_sha: str) -> dict[str, A
     }
     if not isinstance(expected_sha, str) or not _SHA_RE.fullmatch(expected_sha):
         return blocked
-    if not isinstance(report, dict) or report.get("schema_version") != 1:
+    if not isinstance(report, dict) or type(report.get("schema_version")) is not int or report.get("schema_version") != 1:
         return blocked
     if report.get("target_sha") != expected_sha:
         return blocked
@@ -49,7 +49,7 @@ def build_review_candidates(report: object, *, expected_sha: str) -> dict[str, A
         return blocked
     if status == "FINDINGS" and not findings:
         return blocked
-    if report.get("findings_count") != len(findings):
+    if type(report.get("findings_count")) is not int or report.get("findings_count") != len(findings):
         return blocked
 
     candidates: list[dict[str, Any]] = []
