@@ -859,6 +859,11 @@ def test_three_new_refill_seed_plans_are_syntax_safe_and_bounded(tmp_path, monke
             "def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):",
             "test_refill_rejects_non_ascii_task_id",
         ),
+        (
+            "refill-preserves-catalog-order-within-addition-cap",
+            "def test_refill_reports_catalog_exhaustion_by_durable_state(tmp_path: Path):",
+            "test_refill_preserves_catalog_order_within_addition_cap",
+        ),
     ]
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)

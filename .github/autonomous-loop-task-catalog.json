@@ -141,6 +141,13 @@
       "allowed_paths": [
         "tests/test_autonomous_task_refill.py"
       ]
+    },
+    {
+      "id": "refill-preserves-catalog-order-within-addition-cap",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。catalog に task-zeta・task-alpha・task-middle の順で未完了候補がある場合、追加上限2件を守りつつ runtime queue の追加順は catalog 順を維持し、診断用 eligible_catalog_ids はソートされた一覧を返すことを確認してください。既存テスト変更禁止。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
     }
   ]
 }
