@@ -1,0 +1,88 @@
+name: Auto-test refill integration gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/auto-test-refill-integration.yml"
+      - ".github/workflows/distributed-autonomous-loop.yml"
+      - ".github/autonomous-loop-task-catalog.json"
+      - "scripts/autonomous_task_proposals.py"
+      - "scripts/line_development_worker_v2.py"
+      - "scripts/run_minimal_autonomous_loop.py"
+      - "scripts/recovery_ai.py"
+      - "core/control_tower_selector.py"
+      - "core/control_tower_orchestrator.py"
+      - "scripts/rea_control_tower_adapter.py"
+      - "tests/test_minimal_autonomous_loop.py"
+      - "tests/test_line_development_worker_v2.py"
+      - "tests/test_autonomous_task_proposals.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: auto-test-refill-integration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  policy-to-sandbox:
+    name: Refill policy and sandbox integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      AUTO_APPLY_PATCH: "false"
+      AUTO_DEPLOY: "false"
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact PR head (or dispatched ref)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install project test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pytest
+
+      - name: Exercise proposal-to-registration-to-selection path
+        run: |
+          python -m pytest -q             tests/test_minimal_autonomous_loop.py::test_auto_refill_task_passes_catalog_registration_and_control_tower_selection             tests/test_minimal_autonomous_loop.py::test_registered_catalog_expands_only_reviewed_test_only_refill_policy             tests/test_minimal_autonomous_loop.py::test_reselection_rejects_auto_task_mixed_with_other_queue_items
+
+      - name: Exercise real Docker sandbox isolation
+        run: |
+          python -m pytest -q             tests/test_line_development_worker_v2.py::test_linux_auto_test_sandbox_is_read_only_and_networkless
+
+      - name: Exercise identity-bound completion evidence
+        run: |
+          python -m pytest -q \
+            tests/test_minimal_autonomous_loop.py::test_summary_identity_mismatch_halts \
+            tests/test_minimal_autonomous_loop.py::test_final_outcome_fails_when_recovery_persistence_gate_fails \
+            tests/test_recovery_ai_loop_adapter.py::test_verified_success_persists_exact_run_identity \
+            tests/test_recovery_ai_loop_adapter.py::test_state_write_failure_fails_closed_and_preserves_previous_state \
+            tests/test_control_tower_loop_observer.py::test_observer_persists_sanitized_non_executable_proposal \
+            tests/test_control_tower_orchestrator.py::test_verified_success_requires_all_evidence_and_allows_controlled_continue \
+            tests/test_control_tower_orchestrator.py::test_success_without_recovery_record_fails_closed \
+            tests/test_rea_control_tower_adapter.py::test_independent_publish_gate_requires_complete_exact_run_evidence
+
+      - name: Report safety invariants
+        if: always()
+        run: |
+          echo "AUTO_APPLY_PATCH=$AUTO_APPLY_PATCH"
+          echo "AUTO_DEPLOY=$AUTO_DEPLOY"
+          test "$AUTO_APPLY_PATCH" = "false"
+          test "$AUTO_DEPLOY" = "false"

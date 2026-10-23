@@ -1,6 +1,11 @@
 {
   "version": 1,
   "max_additions_per_run": 4,
+  "auto_test_refill": {
+    "enabled": true,
+    "max_tasks_per_run": 1,
+    "allowed_roots": ["tests", "uhip/tests"]
+  },
   "tasks": [
     {
       "id": "ai-speaker-empty-transcript-no-brain-call",

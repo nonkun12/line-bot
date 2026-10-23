@@ -1045,3 +1045,249 @@ def test_registered_catalog_never_trusts_queue_entries(monkeypatch):
     assert [task["id"] for task in registered] == [reviewed_id]
     assert queue_only_id not in {task["id"] for task in registered}
     assert len(calls) == 1
+
+
+
+def test_registered_catalog_expands_only_reviewed_test_only_refill_policy(monkeypatch, tmp_path: Path):
+    sha = "b" * 40
+    target = tmp_path / "tests" / "test_auto_target.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("def test_placeholder():\n    assert True\n", encoding="utf-8")
+    catalog = {
+        "version": 1,
+        "max_additions_per_run": 4,
+        "auto_test_refill": {
+            "enabled": True,
+            "max_tasks_per_run": 1,
+            "allowed_roots": ["tests", "uhip/tests"],
+        },
+        "tasks": [{
+            "id": "reviewed-catalog-task",
+            "instruction": "Use dummy data and change one test only.",
+            "allowed_paths": ["tests/test_example.py"],
+        }],
+    }
+
+    def fake_git_checked(*args):
+        assert args == ("show", f"{sha}:.github/autonomous-loop-task-catalog.json")
+        return 0, json.dumps(catalog)
+
+    monkeypatch.setattr(loop, "ROOT", tmp_path)
+    monkeypatch.setattr(loop, "_git_checked", fake_git_checked)
+    registered = loop._load_registered_catalog(sha)
+
+    from scripts.autonomous_task_proposals import build_auto_test_catalog
+    expected = build_auto_test_catalog(tmp_path)
+    generated = [item for item in registered if item["id"].startswith("auto-test-")]
+    assert generated == expected
+    assert len(generated) == 1
+    assert generated[0]["allowed_paths"] == ["tests/test_auto_target.py"]
+
+
+def test_registered_catalog_rejects_broadened_auto_test_policy(monkeypatch):
+    sha = "c" * 40
+    catalog = {
+        "version": 1,
+        "auto_test_refill": {
+            "enabled": True,
+            "max_tasks_per_run": 4,
+            "allowed_roots": ["."],
+        },
+        "tasks": [],
+    }
+
+    monkeypatch.setattr(
+        loop,
+        "_git_checked",
+        lambda *_args: (0, json.dumps(catalog)),
+    )
+    with pytest.raises(ValueError, match="auto test refill policy is invalid"):
+        loop._load_registered_catalog(sha)
+
+
+
+def test_reselection_preserves_hold_across_auto_task_fingerprint_change():
+    queued = [{
+        "id": "auto-test-tests-test-example-abcdef123456",
+        "instruction": "current fingerprint task",
+        "allowed_paths": ["tests/test_example.py"],
+    }]
+    old_held_id = "auto-test-tests-test-example-deadbeef1234"
+
+    selected, reason = loop.reselect_registered_task(
+        queued,
+        list(queued),
+        set(),
+        {old_held_id},
+        expected_task_id=queued[0]["id"],
+        evidence_sha="b" * 40,
+        current_head_sha="b" * 40,
+    )
+
+    assert selected is None
+    assert reason == "task_held"
+
+
+
+def test_load_held_task_ids_includes_records_absent_from_current_queue():
+    class FakeRecoveryStore:
+        def all_task_statuses(self):
+            return {
+                "auto-test-tests-test-example-deadbeef1234": {"held": True},
+                "other-resumed-task": {"held": False, "resume_requires_review": True},
+                "normal-task": {"held": False, "resume_requires_review": False},
+                "successful-but-uncompleted": {
+                    "held": False,
+                    "last_success_evidence": {
+                        "task_id": "successful-but-uncompleted",
+                        "status": "PASS",
+                    },
+                },
+                "completed-success": {
+                    "held": False,
+                    "last_success_evidence": {
+                        "task_id": "completed-success",
+                        "status": "NO_CHANGE",
+                    },
+                },
+            }
+
+    assert loop.load_held_task_ids(FakeRecoveryStore(), {"completed-success"}) == {
+        "auto-test-tests-test-example-deadbeef1234",
+        "other-resumed-task",
+        "successful-but-uncompleted",
+    }
+
+
+def test_load_held_task_ids_fails_closed_on_malformed_nonqueued_record():
+    class FakeRecoveryStore:
+        def all_task_statuses(self):
+            return {"old-task": {"held": "unknown"}}
+
+    with pytest.raises(ValueError, match="recovery hold state is ambiguous"):
+        loop.load_held_task_ids(FakeRecoveryStore())
+
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {"enabled": 1, "max_tasks_per_run": 1, "allowed_roots": ["tests", "uhip/tests"]},
+        {"enabled": True, "max_tasks_per_run": True, "allowed_roots": ["tests", "uhip/tests"]},
+    ],
+)
+def test_registered_catalog_rejects_boolean_policy_values(monkeypatch, policy):
+    sha = "d" * 40
+    catalog = {"version": 1, "auto_test_refill": policy, "tasks": []}
+    monkeypatch.setattr(loop, "_git_checked", lambda *_args: (0, json.dumps(catalog)))
+
+    with pytest.raises(ValueError, match="auto test refill policy is invalid"):
+        loop._load_registered_catalog(sha)
+
+
+
+def test_auto_refill_task_passes_catalog_registration_and_control_tower_selection(monkeypatch, tmp_path: Path):
+    from scripts.autonomous_task_proposals import build_proposals
+
+    sha = "e" * 40
+    target = tmp_path / "tests" / "test_auto_target.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("def test_placeholder():\n    assert True\n", encoding="utf-8")
+    issues_path = tmp_path / "issues.json"
+    issues_path.write_text("[]", encoding="utf-8")
+    queue_path = tmp_path / "queue.json"
+    queue_path.write_text(
+        json.dumps({"version": 1, "max_tasks_per_run": 4, "tasks": []}),
+        encoding="utf-8",
+    )
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps({
+            "completed": [],
+            "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None},
+        }),
+        encoding="utf-8",
+    )
+    catalog = {
+        "version": 1,
+        "auto_test_refill": {
+            "enabled": True,
+            "max_tasks_per_run": 1,
+            "allowed_roots": ["tests", "uhip/tests"],
+        },
+        "tasks": [],
+    }
+
+    result = build_proposals(
+        issues_path, queue_path, state_path, tmp_path / "proposals.json",
+        enable_auto_refill=True, repo_root=tmp_path,
+    )
+    monkeypatch.setattr(loop, "ROOT", tmp_path)
+    monkeypatch.setattr(loop, "QUEUE", queue_path)
+    monkeypatch.setattr(
+        loop,
+        "_git_checked",
+        lambda *args: (0, json.dumps(catalog))
+        if args == ("show", f"{sha}:.github/autonomous-loop-task-catalog.json")
+        else (1, ""),
+    )
+
+    queued = loop.load_tasks()
+    registered = loop._load_registered_catalog(sha)
+    selected, reason = loop.reselect_registered_task(
+        queued,
+        registered,
+        set(),
+        set(),
+        expected_task_id=queued[0]["id"],
+        evidence_sha=sha,
+        current_head_sha=sha,
+    )
+
+    assert result["auto_queued_count"] == 1
+    assert len(queued) == 1
+    assert selected == queued[0]
+    assert reason == ""
+    assert selected["allowed_paths"] == ["tests/test_auto_target.py"]
+
+
+
+def test_reselection_rejects_auto_task_mixed_with_other_queue_items():
+    dynamic = {
+        "id": "auto-test-tests-test-example-abcdef123456",
+        "instruction": "fallback test only",
+        "allowed_paths": ["tests/test_example.py"],
+    }
+    curated = {
+        "id": "reviewed-catalog-task",
+        "instruction": "curated task",
+        "allowed_paths": ["tests/test_curated.py"],
+    }
+
+    selected, reason = loop.reselect_registered_task(
+        [dynamic, curated],
+        [dynamic, curated],
+        set(),
+        set(),
+        expected_task_id=dynamic["id"],
+        evidence_sha="f" * 40,
+        current_head_sha="f" * 40,
+    )
+
+    assert selected is None
+    assert reason == "auto_test_queue_policy_violation"
+
+
+
+def test_load_held_task_ids_fails_closed_on_malformed_success_evidence():
+    class FakeRecoveryStore:
+        def all_task_statuses(self):
+            return {
+                "task-with-bad-success": {
+                    "held": False,
+                    "last_success_evidence": {"task_id": "different-task", "status": "PASS"},
+                }
+            }
+
+    with pytest.raises(ValueError, match="recovery success evidence is invalid"):
+        loop.load_held_task_ids(FakeRecoveryStore(), set())

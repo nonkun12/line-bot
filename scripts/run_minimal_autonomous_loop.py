@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -31,6 +32,7 @@ ACTIVE_PROCESS: subprocess.Popen[str] | None = None
 EXIT_NOT_RUN = 78
 NOT_RUN_REASON_QUEUE_EMPTY = "queue_empty"
 VALID_RUNTIME_STATUSES = frozenset({"PASS", "NO_CHANGE"})
+AUTO_TASK_ID_RE = re.compile(r"^(auto-test-[a-z0-9-]+)-([0-9a-f]{12})$")
 
 def classify_final_outcome(
     task_statuses: list[str],
@@ -224,6 +226,39 @@ def recovery_record_blocks_task(record: dict) -> bool:
     return record["held"] is True or review is True
 
 
+def load_held_task_ids(
+    recovery_store: object,
+    completed_task_ids: set[str] | None = None,
+) -> set[str]:
+    """Read durable holds and successes that never reached completed state."""
+    read_statuses = getattr(recovery_store, "all_task_statuses", None)
+    if not callable(read_statuses):
+        raise ValueError("Recovery AI state reader is unavailable")
+    recovery_tasks = read_statuses()
+    if not isinstance(recovery_tasks, dict):
+        raise ValueError("recovery task state is invalid")
+    completed = completed_task_ids or set()
+    held_ids: set[str] = set()
+    for task_id, record in recovery_tasks.items():
+        if not isinstance(task_id, str):
+            raise ValueError("recovery task ID is invalid")
+        if recovery_record_blocks_task(record):
+            held_ids.add(task_id)
+        success_evidence = record.get("last_success_evidence") if isinstance(record, dict) else None
+        if success_evidence is not None:
+            if (
+                not isinstance(success_evidence, dict)
+                or success_evidence.get("task_id") != task_id
+                or success_evidence.get("status") not in {"PASS", "NO_CHANGE"}
+            ):
+                raise ValueError("recovery success evidence is invalid")
+            if task_id not in completed:
+                # Execution succeeded, but durable completion/publication did
+                # not. Require review rather than re-running an identical task.
+                held_ids.add(task_id)
+    return held_ids
+
+
 def stopped(stop_file: Path) -> bool:
     raw = os.environ.get("AUTONOMOUS_LOOP_STOP", "").strip()
     if raw and raw.casefold() not in {"0", "false", "no", "off"}:
@@ -306,6 +341,38 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
             if previous is not None and previous != normalized:
                 raise ValueError("conflicting versioned task definitions")
             definitions[task_id] = normalized
+
+    # Dynamic tasks are executable only when the reviewed versioned catalog
+    # explicitly enables the narrow test-only refill policy. The helper builds
+    # the exact same IDs, instructions, and one-file allowlists as the queue
+    # producer; queue contents alone never register a task.
+    auto_policy = payload.get("auto_test_refill") if isinstance(payload, dict) else None
+    if auto_policy is not None:
+        policy_valid = (
+            isinstance(auto_policy, dict)
+            and set(auto_policy) == {"enabled", "max_tasks_per_run", "allowed_roots"}
+            and type(auto_policy.get("enabled")) is bool
+            and auto_policy.get("enabled") is True
+            and type(auto_policy.get("max_tasks_per_run")) is int
+            and auto_policy.get("max_tasks_per_run") == 1
+            and type(auto_policy.get("allowed_roots")) is list
+            and auto_policy.get("allowed_roots") == ["tests", "uhip/tests"]
+            and all(type(root) is str for root in auto_policy.get("allowed_roots", []))
+        )
+        if not policy_valid:
+            raise ValueError("auto test refill policy is invalid")
+        from scripts.autonomous_task_proposals import build_auto_test_catalog
+
+        for entry in build_auto_test_catalog(ROOT):
+            normalized = {
+                "id": entry["id"],
+                "instruction": entry["instruction"],
+                "allowed_paths": list(entry["allowed_paths"]),
+            }
+            previous = definitions.get(normalized["id"])
+            if previous is not None and previous != normalized:
+                raise ValueError("conflicting versioned task definitions")
+            definitions[normalized["id"]] = normalized
     return list(definitions.values())
 
 
@@ -322,11 +389,38 @@ def reselect_registered_task(
     """Revalidate one task against a fresh queue, catalog, state, and HEAD."""
     from core.control_tower_selector import select_next_task
 
+    dynamic_ids = [
+        str(task.get("id", ""))
+        for task in queued_tasks
+        if isinstance(task, dict) and AUTO_TASK_ID_RE.fullmatch(str(task.get("id", "")))
+    ]
+    # The reviewed policy allows a single fallback task only when the curated
+    # queue is empty. Do not trust a mutable queue to widen that policy.
+    if dynamic_ids and (len(dynamic_ids) != 1 or len(queued_tasks) != 1):
+        return None, "auto_test_queue_policy_violation"
+
+    # A changed file fingerprint creates a new auto-test ID. Preserve HOLD
+    # across that ID change by treating every current fingerprint for the same
+    # test target as held whenever an earlier fingerprint is held/review-required.
+    effective_held_ids = set(held_task_ids)
+    held_auto_prefixes = {
+        match.group(1)
+        for task_id in held_task_ids
+        if isinstance(task_id, str)
+        for match in [AUTO_TASK_ID_RE.fullmatch(task_id)]
+        if match is not None
+    }
+    for task in queued_tasks:
+        task_id = str(task.get("id", "")) if isinstance(task, dict) else ""
+        match = AUTO_TASK_ID_RE.fullmatch(task_id)
+        if match is not None and match.group(1) in held_auto_prefixes:
+            effective_held_ids.add(task_id)
+
     decision = select_next_task(
         [str(task.get("id", "")) for task in queued_tasks],
         [str(task.get("id", "")) for task in registered_catalog],
         completed_task_ids,
-        held_task_ids,
+        effective_held_ids,
         evidence_sha=evidence_sha,
         current_head_sha=current_head_sha,
     )
@@ -731,12 +825,14 @@ def main() -> int:
     recovery_store = RecoveryStore(args.state.parent / "recovery-ai-state.json")
     pending_tasks = list(tasks)
     try:
-        held_task_ids = set()
+        # This includes held IDs not present in the mutable queue, preserving
+        # HOLD across generated-task fingerprint changes.
+        held_task_ids = load_held_task_ids(recovery_store, set(completed))
+        # Also query each queued task independently so a changing/uncertain
+        # Recovery AI record is checked again immediately before selection.
         for catalog_task in catalog_source_tasks:
             catalog_task_id = str(catalog_task["id"])
             recovery_record = recovery_store.task_status(catalog_task_id)
-            # A resumed task remains ineligible until a separate explicit
-            # review acknowledgement clears resume_requires_review.
             if recovery_record_blocks_task(recovery_record):
                 held_task_ids.add(catalog_task_id)
     except Exception:

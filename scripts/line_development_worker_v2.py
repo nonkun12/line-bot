@@ -9,8 +9,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import traceback
 from functools import lru_cache
 from pathlib import Path
@@ -24,6 +26,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
+from scripts.autonomous_task_proposals import validate_auto_test_diff
 
 ROOT = _ROOT
 MODEL = os.environ.get("DEV_AI_MODEL", "openai/gpt-oss-20b")
@@ -40,6 +43,7 @@ PROTECTED_PATHS = {
     "scripts/line_development_worker.py",
     "scripts/line_development_worker_safe.py",
     "scripts/line_development_worker_v2.py",
+    "scripts/auto_test_sandbox.Dockerfile",
     "core/line_development_runtime.py",
     "scripts/run_minimal_autonomous_loop.py",
     "scripts/run_guarded_runtime.py",
@@ -56,8 +60,16 @@ _TEST_INSTRUCTION_PATTERN = re.compile(r"(?:workflow|connection)[\s_-]*test", re
 _TEST_INSTRUCTION_EXACT = {"開発接続テスト", "接続テスト", "動作確認", "疎通確認", "LINE自動開発テスト"}
 
 
-def run(cmd: list[str], timeout: int = 900, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=ROOT, text=True, input=input_text, capture_output=True, timeout=timeout)
+def run(
+    cmd: list[str],
+    timeout: int = 900,
+    input_text: str | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        cmd, cwd=ROOT, text=True, input=input_text, capture_output=True,
+        timeout=timeout, env=env,
+    )
 
 
 def is_protected(path: str) -> bool:
@@ -447,6 +459,72 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
 
 def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> tuple[bool, str]:
     outputs: list[str] = []
+    auto_test_task = os.environ.get("AUTONOMOUS_TASK_ID", "").startswith("auto-test-")
+    if auto_test_task:
+        paths = list(touched or [])
+        if (
+            len(paths) != 1
+            or not re.fullmatch(r"(?:tests|uhip/tests)/test_[A-Za-z0-9_]+\.py", paths[0])
+        ):
+            return False, "auto_test_target_path_rejected"
+        diff_result = run(
+            ["git", "diff", "--no-ext-diff", "--unified=0", "HEAD", "--", paths[0]],
+            timeout=30,
+        )
+        if diff_result.returncode != 0:
+            return False, "auto_test_diff_inspection_failed"
+        valid_diff, diff_reason = validate_auto_test_diff(diff_result.stdout)
+        if not valid_diff:
+            return False, f"auto_test_pre_execution_rejected:{diff_reason}"
+        function_match = re.search(
+            r"^\+\s*(?:async\s+)?def\s+(test_[A-Za-z0-9_]+)\s*\(",
+            diff_result.stdout,
+            flags=re.MULTILINE,
+        )
+        if function_match is None:
+            return False, "auto_test_function_name_missing"
+        auto_test_function = function_match.group(1)
+        # Build the trusted test image lazily, after validation and without
+        # passing provider/GitHub credentials to the Docker client or build.
+        if not sys.platform.startswith("linux"):
+            return False, "auto_test_requires_linux_container_isolation"
+        sandbox_image = "line-bot-auto-test-sandbox:latest"
+        docker_env = {
+            "PATH": "/usr/local/bin:/usr/bin:/bin",
+            "HOME": "/tmp",
+            "DOCKER_CONFIG": "/tmp/auto-test-docker-config",
+            "DOCKER_BUILDKIT": "1",
+        }
+        image_check = run(
+            ["/usr/bin/docker", "image", "inspect", sandbox_image],
+            timeout=30,
+            env=docker_env,
+        )
+        if image_check.returncode != 0:
+            with tempfile.TemporaryDirectory(prefix="auto-test-sandbox-build-") as context:
+                context_dir = Path(context)
+                shutil.copyfile(ROOT / "requirements.txt", context_dir / "requirements.txt")
+                shutil.copyfile(
+                    ROOT / "scripts/auto_test_sandbox.Dockerfile",
+                    context_dir / "Dockerfile",
+                )
+                image_build = run(
+                    [
+                        "/usr/bin/docker", "build",
+                        "--tag", sandbox_image,
+                        str(context_dir),
+                    ],
+                    timeout=900,
+                    env=docker_env,
+                )
+            if image_build.returncode != 0:
+                return False, (
+                    "auto_test_sandbox_image_build_failed\n"
+                    + image_build.stdout[-3000:] + image_build.stderr[-3000:]
+                )
+        # The Docker daemon creates a separate PID/mount/network environment.
+        # The checkout is read-only, /tmp is ephemeral, and UID 65534 has no
+        # access to the host process environment or Docker socket.
     for path in touched or []:
         if not path.endswith(".py"):
             continue
@@ -489,7 +567,49 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
                 return False, "targeted pytest requires safe relative Python test paths"
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native", *paths]
             outputs.append("targeted pytest:")
-        tests = run(test_cmd, timeout=900)
+        if auto_test_task:
+            # No pytest cache writes into the read-only checkout.
+            test_cmd[4:4] = ["-p", "no:cacheprovider"]
+        test_env = None
+        if auto_test_task:
+            # The Docker client receives a minimal environment. The test
+            # process receives only explicit container --env values below.
+            safe_names = {"PATH", "LANG", "LC_ALL", "SYSTEMROOT", "WINDIR", "CI"}
+            test_env = {
+                key: value for key, value in os.environ.items()
+                if key in safe_names and not key.startswith(("ACTIONS_", "GITHUB_", "GH_"))
+            }
+            test_env["PYTHONDONTWRITEBYTECODE"] = "1"
+            test_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+            test_env["DOCKER_CONFIG"] = "/tmp/auto-test-docker-config"
+            # Execute only the newly-added function, not every existing test
+            # in the file; this avoids unrelated integration-test side effects.
+            paths = [f"{touched[0]}::{auto_test_function}"] if auto_test_task else (
+                [] if full_suite else list(touched or [])
+            )
+            test_cmd = [
+                "/usr/bin/docker", "run", "--rm", "--init",
+                "--network", "none",
+                "--read-only",
+                "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=1g",
+                "--user", "65534:65534",
+                "--pids-limit", "64",
+                "--memory", "1g",
+                "--cpus", "1",
+                "--cap-drop", "ALL",
+                "--security-opt", "no-new-privileges",
+                "--workdir", "/workspace",
+                "--volume", f"{ROOT}:/workspace:ro",
+                "--env", "HOME=/tmp",
+                "--env", "PATH=/usr/local/bin:/usr/bin:/bin",
+                "--env", "PYTHONDONTWRITEBYTECODE=1",
+                "--env", "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
+                "line-bot-auto-test-sandbox:latest",
+                "python", "-m", "pytest", "-q", "--tb=native",
+                "-p", "no:cacheprovider",
+                *paths,
+            ]
+        tests = run(test_cmd, timeout=900, env=test_env)
     finally:
         for name, value in task_scope.items():
             if value is missing:
@@ -497,7 +617,29 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             else:
                 os.environ[name] = value
     outputs.extend([tests.stdout, tests.stderr])
+    if auto_test_task and not auto_test_result_passed(tests.returncode, (tests.stdout or "") + "\n" + (tests.stderr or "")):
+        outputs.append("auto_test_pytest_result_rejected")
+        return False, "\n".join(outputs)[-8000:]
     return tests.returncode == 0, "\n".join(outputs)[-8000:]
+
+
+def auto_test_result_passed(returncode: int, output: str) -> bool:
+    """Require real passing tests; pytest exit code 0 alone also permits all-skipped runs."""
+    if returncode != 0:
+        return False
+
+    def count(label: str) -> int:
+        return sum(
+            int(match.group(1))
+            for match in re.finditer(
+                rf"(?<![A-Za-z0-9_])(\d+)\s+{label}\b", str(output or "")
+            )
+        )
+
+    passed = count("passed")
+    skipped = count("skipped")
+    failed = count("failed") + count("error") + count("errors")
+    return passed >= 1 and skipped == 0 and failed == 0
 
 
 def has_python_compile_failure(output: str) -> bool:
@@ -667,7 +809,10 @@ def main() -> int:
         if not applied:
             print("Apply failed:", detail, flush=True)
             return 1
-        passed, output = run_tests(touched)
+        passed, output = run_tests(
+            touched,
+            full_suite=not os.environ.get("AUTONOMOUS_TASK_ID", "").startswith("auto-test-"),
+        )
         print(output, flush=True)
         if not passed and has_python_compile_failure(output):
             restore(touched)
@@ -691,7 +836,10 @@ def main() -> int:
             if not applied:
                 restore(touched)
                 break
-            passed, output = run_tests(touched)
+            passed, output = run_tests(
+                touched,
+                full_suite=not os.environ.get("AUTONOMOUS_TASK_ID", "").startswith("auto-test-"),
+            )
             print(output, flush=True)
         if not passed:
             restore(touched)

@@ -1,7 +1,10 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
+
+import pytest
 
 import scripts.line_development_worker_v2 as worker
 
@@ -338,7 +341,7 @@ def test_apply_plan_changes_one_exact_anchor(tmp_path, monkeypatch):
 def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
     calls = []
 
-    def fake_run(cmd, timeout=900, input_text=None):
+    def fake_run(cmd, timeout=900, input_text=None, env=None):
         calls.append(cmd)
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
@@ -357,7 +360,7 @@ def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
 def test_run_tests_can_verify_only_allowlisted_target_for_no_change(monkeypatch, tmp_path):
     calls = []
 
-    def fake_run(cmd, timeout=900, input_text=None):
+    def fake_run(cmd, timeout=900, input_text=None, env=None):
         calls.append(cmd)
         return subprocess.CompletedProcess(cmd, 0, stdout="1 passed", stderr="")
 
@@ -442,3 +445,154 @@ def test_context_for_keeps_both_ends_when_file_is_far_over_limit(monkeypatch, tm
     assert context.startswith("HEAD-MARKER\n")
     assert "middle omitted; context bounded" in context
     assert context.endswith("TAIL-MARKER\n")
+
+
+
+def test_auto_test_pytest_receives_only_allowlisted_environment(monkeypatch, tmp_path):
+    secret_names = (
+        "GROQ_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN", "GH_TOKEN",
+        "ACTIONS_RUNTIME_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+    )
+    unsafe_runtime_names = ("HOME", "PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "TMPDIR")
+    for name in (*secret_names, *unsafe_runtime_names):
+        monkeypatch.setenv(name, "must-not-leak")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "auto-test-tests-test_example-deadbeef1234")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    observed = []
+
+    diff = """--- a/tests/test_example.py
++++ b/tests/test_example.py
+@@ -1,0 +2,2 @@
++def test_safe():
++    assert "safe".upper() == "SAFE"
+"""
+
+    def fake_run(command, timeout=900, input_text=None, env=None):
+        if command[:4] == ["git", "diff", "--no-ext-diff", "--unified=0"]:
+            return subprocess.CompletedProcess(command, 0, stdout=diff, stderr="")
+        if command[1:3] == ["-m", "py_compile"]:
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        if command[:3] == ["/usr/bin/docker", "run", "--rm"]:
+            assert command[3:5] == ["--init", "--network"] or command[3:5] == ["--network", "none"]
+            assert "--network" in command and command[command.index("--network") + 1] == "none"
+            assert "--read-only" in command
+            assert command[command.index("--user") + 1] == "65534:65534"
+            assert command[command.index("--pids-limit") + 1] == "64"
+            assert command[command.index("--memory") + 1] == "1g"
+            assert command[command.index("--cpus") + 1] == "1"
+            assert command[command.index("--cap-drop") + 1] == "ALL"
+            assert command[command.index("--security-opt") + 1] == "no-new-privileges"
+            assert command[command.index("--volume") + 1].endswith(":/workspace:ro")
+            assert "line-bot-auto-test-sandbox:latest" in command
+            assert "python" in command and "-m" in command and "pytest" in command
+            assert "tests/test_example.py::test_safe" in command
+            assert "no:cacheprovider" in command
+            assert not any("TOKEN=" in item or "API_KEY=" in item for item in command)
+            observed.append(dict(env or {}))
+            return subprocess.CompletedProcess(command, 0, stdout="1 passed", stderr="")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    passed, output = worker.run_tests(["tests/test_example.py"], full_suite=False)
+
+    assert passed, output
+    assert len(observed) == 1
+    child_env = observed[0]
+    assert all(name not in child_env for name in (*secret_names, *unsafe_runtime_names))
+    assert not any(name.startswith(("ACTIONS_", "GITHUB_", "GH_")) for name in child_env)
+    assert child_env.get("PATH")
+    assert child_env.get("PYTHONDONTWRITEBYTECODE") == "1"
+    assert child_env.get("PYTEST_DISABLE_PLUGIN_AUTOLOAD") == "1"
+
+
+
+def test_linux_auto_test_sandbox_is_read_only_and_networkless(tmp_path):
+    if not sys.platform.startswith("linux"):
+        pytest.skip("Docker isolation integration test requires Linux")
+    context_dir = tmp_path / "sandbox-image-context"
+    context_dir.mkdir()
+    shutil.copyfile(worker.ROOT / "requirements.txt", context_dir / "requirements.txt")
+    shutil.copyfile(
+        worker.ROOT / "scripts/auto_test_sandbox.Dockerfile",
+        context_dir / "Dockerfile",
+    )
+    image = f"line-bot-auto-test-sandbox-ci:{os.getpid()}"
+    docker_env = {
+        "PATH": "/usr/local/bin:/usr/bin:/bin",
+        "HOME": "/tmp",
+        "DOCKER_CONFIG": "/tmp/auto-test-docker-config",
+        "DOCKER_BUILDKIT": "1",
+    }
+    build = subprocess.run(
+        ["/usr/bin/docker", "build", "--tag", image, str(context_dir)],
+        text=True,
+        capture_output=True,
+        timeout=900,
+        env=docker_env,
+    )
+    assert build.returncode == 0, (
+        "auto-test sandbox image build failed: " + build.stderr[-2000:]
+    )
+    probe = (
+        "import os, socket\n"
+        "assert os.getuid() == 65534\n"
+        "assert not os.access('/workspace', os.W_OK)\n"
+        "open('/tmp/sandbox-probe', 'w').close()\n"
+        "sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
+        "sock.settimeout(1)\n"
+        "try:\n"
+        "    sock.connect(('1.1.1.1', 80))\n"
+        "except OSError:\n"
+        "    print('sandbox_ok')\n"
+        "else:\n"
+        "    raise SystemExit('network reachable')\n"
+    )
+    try:
+        result = subprocess.run(
+            [
+                "/usr/bin/docker", "run", "--rm", "--init",
+                "--network", "none",
+                "--read-only",
+                "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=64m,mode=1777",
+                "--user", "65534:65534",
+                "--pids-limit", "64",
+                "--memory", "1g",
+                "--cpus", "1",
+                "--cap-drop", "ALL",
+                "--security-opt", "no-new-privileges",
+                "--workdir", "/workspace",
+                "--volume", f"{worker.ROOT}:/workspace:ro",
+                "--env", "HOME=/tmp",
+                "--env", "PATH=/usr/local/bin:/usr/bin:/bin",
+                "--env", "PYTHONDONTWRITEBYTECODE=1",
+                "--env", "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
+                image,
+                "python", "-c", probe,
+            ],
+            text=True,
+            capture_output=True,
+            timeout=30,
+            env=docker_env,
+        )
+        assert result.returncode == 0, (
+            "Docker sandbox unavailable or isolation failed; generated test execution "
+            "must fail closed: " + result.stderr[-1500:]
+        )
+        assert "sandbox_ok" in result.stdout
+    finally:
+        subprocess.run(
+            ["/usr/bin/docker", "image", "rm", "-f", image],
+            text=True,
+            capture_output=True,
+            timeout=30,
+            env=docker_env,
+        )
+
+
+def test_auto_test_result_requires_real_passes_and_rejects_skips():
+    assert worker.auto_test_result_passed(0, "1 passed in 0.01s")
+    assert not worker.auto_test_result_passed(0, "1 skipped in 0.01s")
+    assert not worker.auto_test_result_passed(0, "1 passed, 1 skipped in 0.01s")
+    assert not worker.auto_test_result_passed(0, "no tests ran")
+    assert not worker.auto_test_result_passed(1, "1 passed, 1 failed")
+    assert not worker.auto_test_result_passed(0, "1 passed, 1 error")
