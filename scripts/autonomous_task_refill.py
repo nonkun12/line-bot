@@ -56,7 +56,7 @@ def _history_priority(history_path: Path | None, registered_ids: set[str]) -> tu
         return {}, {}
     try:
         lines = history_path.read_text(encoding="utf-8").splitlines()[-200:]
-    except OSError:
+    except (OSError, UnicodeError):
         return {}, {}
     for line in lines:
         try:
