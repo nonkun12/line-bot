@@ -312,7 +312,7 @@ def test_workflow_durable_validator_accepts_success_and_cycle_memory_round_trip(
     catalog.write_text(json.dumps({"tasks": [{"id": "catalog-task-1"}]}), encoding="utf-8")
     results.write_text(json.dumps({
         "status": "PASS", "task_id": "catalog-task-1", "failure_reason": ""
-    }) + "\\n", encoding="utf-8")
+    }) + "\n", encoding="utf-8")
     state.write_text(json.dumps({"version": 1, "completed": []}), encoding="utf-8")
 
     assert append_loop_results(
