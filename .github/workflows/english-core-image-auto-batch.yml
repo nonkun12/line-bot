@@ -35,6 +35,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install test runner
+        run: python -m pip install --disable-pip-version-check pytest
       - name: Add next reviewed batch
         env:
           BATCH_SIZE: ${{ inputs.batch_size || '20' }}
