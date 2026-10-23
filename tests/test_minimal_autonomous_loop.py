@@ -43,6 +43,85 @@ def test_queue_is_nonempty_and_run_limit_is_bounded():
     assert all(task["id"] and task["instruction"] and task["allowed_paths"] for task in tasks)
 
 
+def test_registry_preflight_reports_queue_catalog_counts_and_unregistered_ids():
+    registered = [{"id": "known-task", "instruction": "test", "allowed_paths": ["tests/test_known.py"]}]
+    queued = [
+        {"id": "known-task", "instruction": "test", "allowed_paths": ["tests/test_known.py"]},
+        {"id": "ghost-task", "instruction": "test", "allowed_paths": ["tests/test_ghost.py"]},
+    ]
+
+    result = loop.registry_preflight(queued, registered)
+
+    assert result["status"] == "BLOCKED"
+    assert result["queue_count"] == 2
+    assert result["registered_count"] == 1
+    assert result["rejected_tasks"] == [{"id": "ghost-task", "reason": "unregistered_task"}]
+    assert "reviewed change" in result["remediation"]
+    assert "Do not bypass registry validation" in result["remediation"]
+
+
+def test_registry_preflight_rejects_duplicate_and_definition_mismatch():
+    registered = [{"id": "known-task", "instruction": "trusted", "allowed_paths": ["tests/test_known.py"]}]
+    queued = [
+        {"id": "known-task", "instruction": "untrusted", "allowed_paths": ["tests/test_known.py"]},
+        {"id": "known-task", "instruction": "trusted", "allowed_paths": ["tests/test_known.py"]},
+    ]
+
+    result = loop.registry_preflight(queued, registered)
+
+    assert result["status"] == "BLOCKED"
+    assert result["rejected_tasks"] == [
+        {"id": "known-task", "reason": "definition_mismatch"},
+        {"id": "known-task", "reason": "duplicate_task"},
+    ]
+
+
+def test_registry_preflight_passes_exact_registered_queue():
+    task = {"id": "known-task", "instruction": "trusted", "allowed_paths": ["tests/test_known.py"]}
+    result = loop.registry_preflight([task], [task])
+
+    assert result == {
+        "status": "PASS",
+        "queue_count": 1,
+        "registered_count": 1,
+        "rejected_tasks": [],
+        "remediation": None,
+    }
+
+
+def test_unregistered_queue_task_writes_actionable_block_before_recovery_read(monkeypatch, tmp_path: Path, capsys):
+    queued = {"id": "ghost-task", "instruction": "unregistered", "allowed_paths": ["tests/test_ghost.py"]}
+    registered = {"id": "known-task", "instruction": "trusted", "allowed_paths": ["tests/test_known.py"]}
+    results = tmp_path / "results.jsonl"
+
+    class _Queue:
+        def read_text(self, encoding="utf-8"):
+            return json.dumps({"max_tasks_per_run": 1, "tasks": [queued]})
+
+    monkeypatch.setattr(loop, "QUEUE", _Queue())
+    monkeypatch.setattr(loop, "_git_head", lambda: "a" * 40)
+    monkeypatch.setattr(loop, "load_completed", lambda _path: set())
+    monkeypatch.setattr(loop, "load_tasks", lambda: [queued])
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [registered])
+    monkeypatch.setattr(loop.sys, "argv", [
+        "run_minimal_autonomous_loop", "--results", str(results), "--state", str(tmp_path / "state.json")
+    ])
+    monkeypatch.delenv("CONTROL_TOWER_KILL_SWITCH", raising=False)
+
+    assert loop.main() == 80
+    row = json.loads(results.read_text(encoding="utf-8").splitlines()[-1])
+    output = capsys.readouterr().out
+    assert row["failure_reason"] == "control_tower_preflight:unregistered_task"
+    assert row["registry_preflight"]["queue_count"] == 1
+    assert row["registry_preflight"]["registered_count"] == 1
+    assert row["registry_preflight"]["rejected_tasks"] == [
+        {"id": "ghost-task", "reason": "unregistered_task"}
+    ]
+    assert "reviewed change" in row["registry_preflight"]["remediation"]
+    assert "queue_count=1 registered_count=1" in output
+    assert "ghost-task" in output
+
+
 def test_control_tower_kill_switch_blocks_before_queue_or_task_launch(monkeypatch, tmp_path: Path):
     results = tmp_path / "results.jsonl"
     events = []
