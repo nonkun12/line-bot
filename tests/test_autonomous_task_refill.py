@@ -424,3 +424,116 @@ def test_refill_reports_catalog_exhaustion_by_durable_state(tmp_path: Path):
     assert report["skipped_catalog_already_queued_ids"] == ["task-done"]
     assert json.loads(output.read_text(encoding="utf-8"))["tasks"] == []
 
+
+
+def test_refill_prioritizes_repeated_failures_from_registered_sanitized_history(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        candidates=[_task("task-alpha"), _task("task-beta"), _task("task-gamma")],
+    )
+    history = tmp_path / "history.jsonl"
+    history.write_text("\n".join([
+        json.dumps({"kind": "success", "task_id": "task-alpha", "detail": "secret should never be copied"}),
+        json.dumps({"kind": "failure", "task_id": "task-beta", "detail": "raw token=secret"}),
+        json.dumps({"kind": "failure", "task_id": "task-beta", "detail": "another raw exception"}),
+        json.dumps({"kind": "repair", "task_id": "task-gamma"}),
+        json.dumps({"kind": "failure", "task_id": "task-unknown", "detail": "must be ignored"}),
+        "{malformed json",
+    ]) + "\n", encoding="utf-8")
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, output, history)
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["added_ids"] == ["task-beta", "task-gamma"]
+    assert report["feedback_priority_scores"] == {"task-beta": 6, "task-gamma": 1}
+    assert report["feedback_signal_counts"] == {
+        "task-beta": {"failure": 2},
+        "task-gamma": {"repair": 1},
+    }
+    assert "secret" not in json.dumps(result)
+    assert "task-unknown" not in json.dumps(report)
+
+
+def test_refill_ignores_malformed_or_unregistered_history_and_preserves_catalog_order(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        candidates=[_task("task-alpha"), _task("task-beta")],
+    )
+    history = tmp_path / "history.jsonl"
+    history.write_text("\n".join([
+        json.dumps({"kind": "failure", "task_id": "task-not-registered"}),
+        json.dumps({"kind": "unknown-kind", "task_id": "task-alpha"}),
+        "{not json",
+    ]) + "\n", encoding="utf-8")
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, output, history)
+
+    assert report["added_ids"] == ["task-alpha", "task-beta"]
+    assert report["feedback_priority_scores"] == {"task-alpha": 0, "task-beta": 0}
+    assert report["feedback_policy"] == "failure*3+repair-success; registered catalog IDs only"
+
+
+
+def test_history_priority_never_bypasses_hold_completed_or_resume_review(tmp_path: Path):
+    queue, catalog, _ = _inputs(
+        tmp_path,
+        candidates=[
+            _task("task-held-high"),
+            _task("task-completed-high"),
+            _task("task-review-high"),
+            _task("task-ready-low"),
+        ],
+    )
+    state = _write(
+        tmp_path / "state.json",
+        {
+            "version": 1,
+            "completed": ["task-completed-high"],
+            "recovery_ai": {
+                "schema_version": 1,
+                "tasks": {
+                    "task-held-high": {"held": True},
+                    "task-review-high": {"resume_requires_review": True},
+                },
+                "checkpoint": None,
+            },
+        },
+    )
+    history = tmp_path / "history.jsonl"
+    history.write_text("\n".join([
+        json.dumps({"kind": "failure", "task_id": "task-held-high"}) ,
+        json.dumps({"kind": "failure", "task_id": "task-held-high"}),
+        json.dumps({"kind": "failure", "task_id": "task-completed-high"}),
+        json.dumps({"kind": "failure", "task_id": "task-review-high"}),
+        json.dumps({"kind": "success", "task_id": "task-ready-low"}),
+    ]) + "\n", encoding="utf-8")
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, state, output, history)
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert [task["id"] for task in result["tasks"]] == ["task-ready-low"]
+    assert report["added_ids"] == ["task-ready-low"]
+    # Real JSONL newlines are required: this verifies the success signal is read
+    # and changes the priority score rather than silently parsing a malformed line.
+    assert report["feedback_priority_scores"] == {"task-ready-low": -1}
+    assert report["skipped_catalog_held_ids"] == ["task-held-high"]
+    assert report["skipped_catalog_completed_ids"] == ["task-completed-high"]
+    assert report["skipped_catalog_review_ids"] == ["task-review-high"]
+
+
+def test_refill_ignores_history_with_invalid_utf8_without_exposing_content(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        candidates=[_task("task-alpha"), _task("task-beta")],
+    )
+    history = tmp_path / "history.jsonl"
+    history.write_bytes(b"\xff\xfe\xfa")
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, output, history)
+
+    assert report["added_ids"] == ["task-alpha", "task-beta"]
+    assert report["feedback_priority_scores"] == {"task-alpha": 0, "task-beta": 0}

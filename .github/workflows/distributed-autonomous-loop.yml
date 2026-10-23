@@ -330,7 +330,8 @@ jobs:
             --queue .github/autonomous-loop-tasks.json \
             --catalog .github/autonomous-loop-task-catalog.json \
             --completed-state /tmp/autonomous-loop-state.json \
-            --output /tmp/autonomous-loop-runtime-queue.json
+            --output /tmp/autonomous-loop-runtime-queue.json \
+            --history /tmp/line-bot-self-improvement.jsonl
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
 
       - name: Generate review-only task proposals when catalog is exhausted
@@ -641,6 +642,8 @@ jobs:
         if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          STATE_OUTCOME: ${{ steps.persist_state.outcome }}
         run: |
           set -euo pipefail
           if [ -f /tmp/autonomous-loop-not-run ] || [ -f /tmp/autonomous-loop-held-tasks ]; then
@@ -653,6 +656,21 @@ jobs:
           fi
           # Persist only allowlisted signal kinds, safe task IDs, and generic details.
           # Raw exception text and arbitrary model/user content never enter durable state.
+          # Map verified loop outcomes to exact registered task IDs before durable export.
+          # Only generic allowlisted details are persisted; raw failure text is discarded.
+          python scripts/self_improvement_state.py append-loop-results \
+            --history /tmp/line-bot-self-improvement.jsonl \
+            --results /tmp/minimal-autonomous-loop.jsonl \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --publish-outcome "${PUBLISH_OUTCOME:-}" \
+            --state-outcome "${STATE_OUTCOME:-}"
+          python scripts/self_improvement_state.py append-cycle-memory \
+            --history /tmp/line-bot-self-improvement.jsonl \
+            --results /tmp/minimal-autonomous-loop.jsonl \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --publish-outcome "${PUBLISH_OUTCOME:-}" \
+            --state-outcome "${STATE_OUTCOME:-}" \
+            --cycle-id "${GITHUB_RUN_ID}"
           python scripts/self_improvement_state.py export \
             --state /tmp/autonomous-loop-state.json \
             --history /tmp/line-bot-self-improvement.jsonl
@@ -711,18 +729,13 @@ jobs:
               raise SystemExit('Recovery RAG export is invalid; durable update blocked')
           data['recovery_rag'] = rag_payload['records']
           local_state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
-          self_improvement = local_state.get('self_improvement_history', [])
-          if not isinstance(self_improvement, list) or len(self_improvement) > 200:
-              raise SystemExit('sanitized self-improvement history is invalid')
-          for row in self_improvement:
-              if (not isinstance(row, dict)
-                      or row.get('kind') not in {'success', 'repair', 'failure'}
-                      or row.get('detail') not in {
-                          'development reached integration gate',
-                          'development required repair attempts',
-                          'development failure observed',
-                      }):
-                  raise SystemExit('self-improvement history failed schema validation')
+          from scripts.self_improvement_state import validate_durable_history
+          try:
+              self_improvement = validate_durable_history(
+                  local_state.get('self_improvement_history', [])
+              )
+          except ValueError as exc:
+              raise SystemExit(f'self-improvement history failed schema validation: {exc}') from exc
           data['self_improvement_history'] = self_improvement
           data['version'] = 1
           state_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
