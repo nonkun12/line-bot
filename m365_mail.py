@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hmac
 import os
+from html.parser import HTMLParser
 import re
 import sqlite3
 from typing import Any
@@ -39,13 +40,42 @@ def _graph_config() -> tuple[str, str, str, str] | None:
     return values if all(values) else None
 
 
+class _VisibleTextParser(HTMLParser):
+    """Extract visible text only; ignore active and hidden-content elements."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.casefold() in {"script", "style", "head", "title", "svg"}:
+            self._skip_depth += 1
+        elif tag.casefold() in {"br", "p", "div", "li"} and not self._skip_depth:
+            self.parts.append("\\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() in {"script", "style", "head", "title", "svg"} and self._skip_depth:
+            self._skip_depth -= 1
+        elif tag.casefold() in {"p", "div", "li"} and not self._skip_depth:
+            self.parts.append("\\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self._skip_depth:
+            self.parts.append(data)
+
+
 def _plain_body(message: dict[str, Any]) -> str:
     body = message.get("body")
     if not isinstance(body, dict) or not isinstance(body.get("content"), str):
         return ""
+    content = body["content"]
     if str(body.get("contentType", "")).casefold() == "html":
-        return ""
-    return body["content"].strip()
+        parser = _VisibleTextParser()
+        parser.feed(content[:20000])
+        content = "".join(parser.parts)
+    # Normalize whitespace without changing the command's wording.
+    return re.sub(r"[\\t\\r ]+", " ", content).strip()
 
 
 def _claim_message(message_id: str, sender: str) -> bool:
