@@ -34,7 +34,8 @@
     "refill-rejects-malformed-recovery-task-entry",
     "refill-rejects-nonobject-recovery-task-map",
     "refill-rejects-boolean-catalog-addition-cap",
-    "refill-rejects-non-ascii-task-id"
+    "refill-rejects-non-ascii-task-id",
+    "refill-preserves-catalog-order-within-addition-cap"
   ],
   "recovery_ai": {
     "checkpoint": null,
