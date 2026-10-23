@@ -502,13 +502,13 @@ def test_history_priority_never_bypasses_hold_completed_or_resume_review(tmp_pat
         },
     )
     history = tmp_path / "history.jsonl"
-    history.write_text("\\n".join([
+    history.write_text("\n".join([
         json.dumps({"kind": "failure", "task_id": "task-held-high"}) ,
         json.dumps({"kind": "failure", "task_id": "task-held-high"}),
         json.dumps({"kind": "failure", "task_id": "task-completed-high"}),
         json.dumps({"kind": "failure", "task_id": "task-review-high"}),
         json.dumps({"kind": "success", "task_id": "task-ready-low"}),
-    ]) + "\\n", encoding="utf-8")
+    ]) + "\n", encoding="utf-8")
     output = tmp_path / "runtime.json"
 
     report = build_queue(queue, catalog, state, output, history)
@@ -527,7 +527,7 @@ def test_refill_ignores_history_with_invalid_utf8_without_exposing_content(tmp_p
         candidates=[_task("task-alpha"), _task("task-beta")],
     )
     history = tmp_path / "history.jsonl"
-    history.write_bytes(b"\\xff\\xfe\\xfa")
+    history.write_bytes(b"\xff\xfe\xfa")
     output = tmp_path / "runtime.json"
 
     report = build_queue(queue, catalog, completed, output, history)
