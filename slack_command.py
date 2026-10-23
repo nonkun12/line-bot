@@ -13,6 +13,7 @@ from flask import request
 
 from core.gateway import AIRequest
 from line_development import dispatch_development_workflow
+from distributed_loop_trigger import request_distributed_loop
 
 _MAX_BODY_AGE = 300
 _SLACK_RESPONSE_TIMEOUT = 8.0
@@ -89,6 +90,21 @@ def _dispatch_in_background(instruction: str, user_id: str) -> None:
         print(f"[slack /dev] background dispatch result: {reply}", flush=True)
 
 
+def _handle_loop_in_background(message: str, user_id: str, response_url: str) -> None:
+    """Dispatch only allowlisted, safety-confirmed loop commands from an authorized Slack user."""
+    try:
+        handled, text = request_distributed_loop(user_id, message, authorized=True)
+        if not handled:
+            text = (
+                "コマンドを認識できません。例: /loop 分散Loopを1回、安全確認付きで実行\n"
+                "状態確認: /loop 統括AIの状況"
+            )
+    except Exception as exc:
+        print(f"[slack /loop] dispatch failed: {type(exc).__name__}", flush=True)
+        text = "分散Loopの要求処理に失敗しました。安全のため再実行していません。"
+    _post_slack_response(response_url, text)
+
+
 def _handle_ai_in_background(app, message: str, user_id: str, response_url: str) -> None:
     """Run the same channel-neutral AI Gateway used by LINE and post the final reply."""
     try:
@@ -146,6 +162,29 @@ def register_slack_command(app):
             return {
                 "response_type": "ephemeral",
                 "text": "🔎 AI検索を受け付けました。結果をこのチャンネルへ返します。",
+            }, 200
+
+        if command == "/loop":
+            if not _is_authorized_slack_user(user_id):
+                return {
+                    "response_type": "ephemeral",
+                    "text": "このSlackユーザーには分散Loop操作権限がありません。",
+                }, 403
+            if not text:
+                return {
+                    "response_type": "ephemeral",
+                    "text": "使い方: /loop 分散Loopを1回、安全確認付きで実行\n状態確認: /loop 統括AIの状況",
+                }, 400
+            thread = threading.Thread(
+                target=_handle_loop_in_background,
+                args=(text, user_id, response_url),
+                name="slack-loop-request",
+                daemon=True,
+            )
+            thread.start()
+            return {
+                "response_type": "ephemeral",
+                "text": "🛡️ 分散Loop要求を受け付けました。権限と安全条件を確認して結果を返します。",
             }, 200
 
         if not _is_authorized_slack_user(user_id):
