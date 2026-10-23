@@ -1,8 +1,8 @@
 """Import/export a bounded, sanitized self-improvement history in loop state.
 
 Only allowlisted signal kinds, conservative task identifiers, and fixed generic
-details are persisted. Raw exceptions, prompts, model output, and user content
-are intentionally discarded before durable storage.
+details are persisted. Cycle memory is preserved using categorical fields only;
+raw exceptions, paths, prompts, model output, and user content are discarded.
 """
 from __future__ import annotations
 
@@ -19,14 +19,47 @@ _SAFE_DETAIL = {
     "repair": "development required repair attempts",
     "failure": "development failure observed",
 }
+_MEMORY_OUTCOMES = {"PASS", "FAIL", "BLOCKED"}
+_MEMORY_CAUSE = {
+    "PASS": "development gate passed",
+    "FAIL": "development cycle failed",
+    "BLOCKED": "development cycle blocked",
+}
+_MEMORY_IMPROVEMENTS = {
+    "PASS": ["retain verified outcome for next cycle"],
+    "FAIL": ["review recurring development failure"],
+    "BLOCKED": ["resolve safety or evidence block before retry"],
+}
+_MEMORY_NEXT_ACTION = {
+    "PASS": "continue bounded development loop after review",
+    "FAIL": "review failure evidence before another attempt",
+    "BLOCKED": "require evidence and safety review before resume",
+}
 
 
-def sanitize_records(records: object) -> list[dict[str, str | None]]:
+def sanitize_records(records: object) -> list[dict[str, object]]:
+    """Keep safe task feedback and privacy-filtered cycle memory records."""
     if not isinstance(records, list):
         raise ValueError("self-improvement history must be a list")
-    safe: list[dict[str, str | None]] = []
+    safe: list[dict[str, object]] = []
     for row in records:
         if not isinstance(row, dict):
+            continue
+        if row.get("record_type") == "cycle_memory":
+            outcome = row.get("outcome")
+            if outcome not in _MEMORY_OUTCOMES:
+                continue
+            # Do not persist free text from model output, exceptions, or paths.
+            # Generic bounded fields retain useful outcome context across runs.
+            safe.append({
+                "record_type": "cycle_memory",
+                "outcome": outcome,
+                "cause": _MEMORY_CAUSE[outcome],
+                "improvements": _MEMORY_IMPROVEMENTS[outcome],
+                "next_action": _MEMORY_NEXT_ACTION[outcome],
+                "target_path": "",
+                "recurring_patterns": [],
+            })
             continue
         kind = row.get("kind")
         task_id = row.get("task_id")
@@ -58,7 +91,7 @@ def read_jsonl(path: Path) -> list[dict[str, object]]:
     return rows
 
 
-def atomic_write_jsonl(path: Path, rows: list[dict[str, str | None]]) -> None:
+def atomic_write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(path.name + ".tmp")
     try:
@@ -91,7 +124,7 @@ def append_loop_results(
         and _TASK_ID.fullmatch(task["id"])
     }
     gates_passed = publish_outcome == "success" and state_outcome == "success"
-    additions: list[dict[str, str | None]] = []
+    additions: list[dict[str, object]] = []
     for row in read_jsonl(results_path):
         task_id = row.get("task_id")
         status = row.get("status")
@@ -99,13 +132,10 @@ def append_loop_results(
         if not isinstance(task_id, str) or task_id not in registered_ids:
             continue
         if status in {"PASS", "NO_CHANGE"}:
-            # A task-level PASS is not durable success unless publication and
-            # completion-state persistence both succeeded.
             if not gates_passed:
                 continue
             kind = "success"
         elif status in {"FAIL", "TIMEOUT"}:
-            # Harness/evidence failures must not train the task-quality scorer.
             if isinstance(reason, str) and reason.startswith((
                 "summary_", "produced_head_", "blocked_summary_",
                 "control_tower_rea:", "run_identity_", "rea_evidence_",
@@ -113,7 +143,6 @@ def append_loop_results(
                 continue
             kind = "failure"
         else:
-            # BLOCKED/NOT_RUN/STOPPED are not evidence of task-quality failure.
             continue
         additions.append({"kind": kind, "task_id": task_id, "detail": _SAFE_DETAIL[kind]})
     merged = sanitize_records(read_jsonl(history_path) + additions)
@@ -156,8 +185,6 @@ def main() -> int:
         return 0
 
     previous = sanitize_records(state.get("self_improvement_history", []))
-    # Import runs before the task, so the current file already contains prior
-    # durable records plus this run's additions. Do not duplicate the prefix.
     current = sanitize_records(read_jsonl(args.history))
     merged = current if args.history.exists() else previous
     state["self_improvement_history"] = merged
