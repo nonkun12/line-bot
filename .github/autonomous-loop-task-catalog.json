@@ -134,6 +134,13 @@
       "allowed_paths": [
         "tests/test_autonomous_task_refill.py"
       ]
+    },
+    {
+      "id": "control-tower-priority-bounds-regression-20261023",
+      "instruction": "tests/test_control_tower_decision.py のみに、新しい固有名のパラメータ化回帰テストを追加してください。ControlTowerDecisionRecord の priority に True、-1、101、1.0、\"1\"、None を渡す各ケースが ValueError で拒否されることを検証してください。既存テストと重複させず、テストファイル以外は変更禁止。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_control_tower_decision.py"
+      ]
     }
   ]
 }
