@@ -72,12 +72,43 @@ def atomic_write_jsonl(path: Path, rows: list[dict[str, str | None]]) -> None:
             temp.unlink()
 
 
+def append_loop_results(history_path: Path, results_path: Path) -> int:
+    """Map exact loop outcomes to their registered task IDs without persisting raw details."""
+    additions: list[dict[str, str | None]] = []
+    for row in read_jsonl(results_path):
+        task_id = row.get("task_id")
+        status = row.get("status")
+        if not isinstance(task_id, str) or not _TASK_ID.fullmatch(task_id):
+            continue
+        if status in {"PASS", "NO_CHANGE"}:
+            kind = "success"
+        elif status == "FAIL":
+            kind = "failure"
+        else:
+            # BLOCKED/NOT_RUN/STOPPED are not evidence of a task execution failure.
+            continue
+        additions.append({"kind": kind, "task_id": task_id, "detail": _SAFE_DETAIL[kind]})
+    merged = sanitize_records(read_jsonl(history_path) + additions)
+    atomic_write_jsonl(history_path, merged)
+    return len(additions)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=("import", "export"))
-    parser.add_argument("--state", type=Path, required=True)
+    parser.add_argument("mode", choices=("import", "export", "append-loop-results"))
+    parser.add_argument("--state", type=Path)
     parser.add_argument("--history", type=Path, required=True)
+    parser.add_argument("--results", type=Path)
     args = parser.parse_args()
+
+    if args.mode == "append-loop-results":
+        if args.results is None:
+            raise SystemExit("--results is required for append-loop-results")
+        count = append_loop_results(args.history, args.results)
+        print(f"SELF_IMPROVEMENT_LOOP_RESULTS_APPENDED={count}")
+        return 0
+    if args.state is None:
+        raise SystemExit("--state is required for import/export")
 
     state = json.loads(args.state.read_text(encoding="utf-8"))
     if not isinstance(state, dict):
