@@ -887,7 +887,11 @@ def test_refill_regression_task_builds_one_bounded_deterministic_change(monkeypa
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
-        "def test_refill_reports_catalog_exhaustion_by_durable_state(tmp_path: Path):\\n    pass\\n",
+        chr(10).join([
+            "def test_refill_reports_catalog_exhaustion_by_durable_state(tmp_path: Path):",
+            "    pass",
+            "",
+        ]),
         encoding="utf-8",
     )
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
