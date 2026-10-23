@@ -1604,7 +1604,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "",
             "",
         ]) + "\n"
-        new = addition + "\n" + anchor
+        new = addition + "\\n" + anchor
         if len(anchor) > 1200 or len(new) > 1800:
             return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
         candidate = text.replace(anchor, new, 1)
@@ -1722,7 +1722,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             '    results = tmp_path / "results.jsonl"',
             '    queue.write_text(json.dumps({"tasks": [{"id": "task-in-queue"}]}), encoding="utf-8")',
             '    state.write_text(json.dumps({"completed": []}), encoding="utf-8")',
-            '    results.write_text(json.dumps({"task_id": "task-outside-queue-pass", "status": "PASS"}) + "\n" + json.dumps({"task_id": "task-outside-queue-no-change", "status": "NO_CHANGE"}) + "\n", encoding="utf-8")',
+            '    results.write_text(json.dumps({"task_id": "task-outside-queue-pass", "status": "PASS"}) + "\n" + json.dumps({"task_id": "task-outside-queue-no-change", "status": "NO_CHANGE"}) + "\\n", encoding="utf-8")',
             '    assert calculate_progress(queue, state, results) == {"queue_total": 1, "queue_completed": 0}',
             "",
             "",
