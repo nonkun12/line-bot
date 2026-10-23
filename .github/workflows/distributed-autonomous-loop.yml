@@ -69,10 +69,9 @@ on:
   pull_request_target:
     types: [labeled]
   schedule:
-    # Same four daily fire times, expressed as one cron entry.
+    # GitHub Actions cron is UTC: these map to 04:30, 10:30, 16:30, 22:30 Asia/Tokyo.
     # Changing the cron expression also reactivates a deactivated scheduled workflow.
-    - cron: '30 4,10,16,22 * * *'
-      timezone: 'Asia/Tokyo'
+    - cron: '30 1,7,13,19 * * *'
 
 permissions:
   contents: write
