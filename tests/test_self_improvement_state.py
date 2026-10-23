@@ -260,7 +260,7 @@ def test_loop_outcome_creates_sanitized_cycle_memory_for_next_run(tmp_path):
         "status": "PASS",
         "task_id": "catalog-task-1",
         "failure_reason": "token=never-persist-this",
-    }) + "\\n", encoding="utf-8")
+    }) + "\n", encoding="utf-8")
     history.write_text("", encoding="utf-8")
 
     assert append_cycle_memory(
@@ -288,7 +288,7 @@ def test_loop_cycle_memory_does_not_record_unverified_success(tmp_path):
     catalog = tmp_path / "catalog.json"
     history.write_text("", encoding="utf-8")
     catalog.write_text(json.dumps({"tasks": [{"id": "catalog-task-1"}]}), encoding="utf-8")
-    results.write_text(json.dumps({"status": "PASS", "task_id": "catalog-task-1"}) + "\\n", encoding="utf-8")
+    results.write_text(json.dumps({"status": "PASS", "task_id": "catalog-task-1"}) + "\n", encoding="utf-8")
 
     assert append_cycle_memory(
         history, results, catalog, publish_outcome="failure", state_outcome="success"
