@@ -38,7 +38,8 @@
     "refill-preserves-catalog-order-within-addition-cap",
     "proposal-generator-rejects-boolean-runtime-limit",
     "distributed-loop-dispatch-duplicate-active-run-guard-regression",
-    "proposal-generator-resume-review-exclusion-regression"
+    "proposal-generator-resume-review-exclusion-regression",
+    "queue-progress-ignores-unrelated-pass-results-regression"
   ],
   "recovery_ai": {
     "checkpoint": null,
