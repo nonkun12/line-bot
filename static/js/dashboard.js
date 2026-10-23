@@ -35,14 +35,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const featureGrid=document.getElementById('featureGrid');
       featureGrid.innerHTML=featureOrder.map(([key,title,baseDetail])=>{
         const f=features[key]||{}, status=f.status||'unknown';
-        return `<div class="system-card"><div class="system-card-title">${icons[key]||'🤖'} ${esc(title)}</div><div class="system-status">${label(status)}</div><div class="system-details">${esc(f.detail||baseDetail)}</div></div>`;
+        const displayStatus = key === 'management_ai' && status === 'online' ? 'configured' : status;
+        const detail = key === 'management_ai' && status === 'online'
+          ? '統合AIの登録を確認済み。実際の稼働・タスク処理成功は実行証拠で別途確認します。'
+          : (f.detail||baseDetail);
+        return `<div class="system-card"><div class="system-card-title">${icons[key]||'🤖'} ${esc(title)}</div><div class="system-status">${label(displayStatus)}</div><div class="system-details">${esc(detail)}</div></div>`;
       }).join('');
       try {
         const lr=await fetch(api('/api/dashboard/loop')); const ld=await lr.json();
         const l=ld.loop||{}, s=ld.safety||{}, h=ld.hand_sign||{};
         const cards=[
-          ['🔄 Loop','🟢 自動運転設定済み',`1日 ${l.frequency_per_day||4}回 ・ ${(l.schedule_jst||[]).join(' / ')} JST`],
-          ['🛡️ Safety Gate',s.fail_closed||l.fail_closed?'🟢 FAIL_CLOSED 有効':'⚪ 未確認',`Auto Merge: ${s.auto_merge?'有':'無'} ・ Auto Deploy: ${s.auto_deploy?'有':'無'}`],
+          ['🔄 Loop',l.last_run&&l.last_run.status==='ok'&&l.last_run.runs&&l.last_run.runs.length?'🟢 実行履歴取得済み':'🟡 設定あり・実稼働未確認',`予定: 1日 ${l.frequency_per_day||4}回 ・ ${(l.schedule_jst||[]).join(' / ')} JST ・ 手動実行は最大 ${l.max_tasks_per_run||1} タスク`],
+          ['🛡️ Safety Gate',s.fail_closed||l.fail_closed?'🟢 FAIL_CLOSED 有効':'⚪ 未確認',`Auto Apply Patch: ${l.auto_apply_patch?'有':'無'} ・ Auto Merge: ${s.auto_merge?'有':'無'} ・ Auto Deploy: ${s.auto_deploy?'有':'無'}`],
+          ['🧭 REA診断','🟡 実行証拠未確認','REAの実行結果・SHA一致・検出件数は、このダッシュボードAPIでは未取得。未確認をPASS扱いしません。'],
           ['📋 Sheets監査',l.sheets_audit?'🟢 有効':'⚪ 未確認',`Runtime telemetry: ${esc(l.runtime_telemetry||'unknown')}`],
           ['🧭 Hermes Adviser',s.hermes_role==='adviser'?'🟢 Adviser':'⚪ 未確認',s.hermes_is_auxiliary?'補助系統・Loop本体とは分離':'状態確認要'],
           ['✋ Hand Sign',h.camera_smoke_test==='implemented'?'🟢 Camera準備済み':'🔵 開発中',`Upload: ${h.camera_upload?'有':'無'} ・ Storage: ${h.camera_storage?'有':'無'}`],
@@ -53,17 +58,17 @@ document.addEventListener('DOMContentLoaded', () => {
               : '未取得のRunを成功扱いしません'],
         ];
         document.getElementById('loopGrid').innerHTML=cards.map(x=>'<div class="system-card"><div class="system-card-title">'+x[0]+'</div><div class="system-status">'+x[1]+'</div><div class="system-details">'+esc(x[2])+'</div></div>').join('');
-        document.getElementById('loopSummary').textContent=`自動Loop ${l.frequency_per_day||4}回/日 ・ 安全設定確認済み`;
+        document.getElementById('loopSummary').textContent=`Loop設定: ${l.frequency_per_day||4}回/日 ・ 実行実績は取得できた証拠のみ表示`;
       } catch(e) {
         document.getElementById('loopSummary').textContent='状態取得失敗';
         document.getElementById('loopGrid').innerHTML='<div class="system-details">Loop状態を取得できません。未確認の稼働を断定しません。</div>';
       }
       const distributed=d.distributed_ai||{};
       const specialists=distributed.specialists||[];
-      const onlineCount=specialists.filter(x=>x.status==='online').length;
+      const registeredCount=specialists.filter(x=>x.status==='online').length;
       const plannedCount=specialists.filter(x=>x.status==='planned').length;
       const summary=document.getElementById('distributedAiSummary');
-      if(summary) summary.textContent=`分散AI ${onlineCount}稼働 ・ ${plannedCount}開発中`;
+      if(summary) summary.textContent=`分散AI 登録・承認済み ${registeredCount} ・ 開発中 ${plannedCount}（実稼働は別途証拠確認）`;
       const messageSummary=document.getElementById('agentMessageSummary');
       if(messageSummary) messageSummary.textContent=distributed.message_bus
         ? `メッセージバス: 有効 ・ ${esc(distributed.architecture||'統合AI → 分散AI → 結果回収 → 再指示')}`
