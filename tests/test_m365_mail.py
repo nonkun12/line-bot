@@ -54,3 +54,16 @@ def test_invalid_notification_payload_is_rejected_when_configured(monkeypatch):
     response = _client().post("/m365/notifications", json={"notValue": []})
     assert response.status_code == 400
     assert response.get_json()["ok"] is False
+
+
+
+def test_html_email_body_extracts_visible_text_but_ignores_script():
+    text = m365_mail._plain_body(
+        {
+            "body": {
+                "contentType": "html",
+                "content": "<html><body><p>分散Loopを1回、安全確認付きで実行</p><script>分散Loop開始</script></body></html>",
+            }
+        }
+    )
+    assert text == "分散Loopを1回、安全確認付きで実行"
