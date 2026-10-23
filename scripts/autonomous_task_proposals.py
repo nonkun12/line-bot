@@ -155,14 +155,15 @@ def build_proposals(
                 approved_tasks.append({**spec, "source_issue": number, "proposal_fingerprint": fingerprint})
                 excluded.add(spec["id"])
             continue
-        proposals.append({
-            **spec,
-            "source_issue": number,
-            "status": "REVIEW_REQUIRED",
-            "proposal_fingerprint": fingerprint,
-        })
-        if len(proposals) >= 4:
-            break
+        if len(proposals) < 4:
+            proposals.append({
+                **spec,
+                "source_issue": number,
+                "status": "REVIEW_REQUIRED",
+                "proposal_fingerprint": fingerprint,
+            })
+        # Keep scanning after the proposal display limit so later explicitly
+        # approved, catalog-matched tasks are not starved by earlier candidates.
 
     if approved_tasks:
         updated_queue = dict(queue)
