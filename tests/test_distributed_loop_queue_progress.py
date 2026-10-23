@@ -31,6 +31,16 @@ def test_progress_does_not_double_count_run_task_already_in_state(tmp_path: Path
     assert calculate_progress(queue, state, results) == {"queue_total": 1, "queue_completed": 1}
 
 
+def test_progress_ignores_pass_and_no_change_results_outside_runtime_queue(tmp_path: Path):
+    queue = tmp_path / "runtime-queue.json"
+    state = tmp_path / "state.json"
+    results = tmp_path / "results.jsonl"
+    queue.write_text(json.dumps({"tasks": [{"id": "task-in-queue"}]}), encoding="utf-8")
+    state.write_text(json.dumps({"completed": []}), encoding="utf-8")
+    results.write_text(json.dumps({"task_id": "task-outside-queue-pass", "status": "PASS"}) + "\n" + json.dumps({"task_id": "task-outside-queue-no-change", "status": "NO_CHANGE"}) + "\n", encoding="utf-8")
+    assert calculate_progress(queue, state, results) == {"queue_total": 1, "queue_completed": 0}
+
+
 def test_progress_rejects_duplicate_queue_ids(tmp_path: Path):
     queue = tmp_path / "queue.json"
     queue.write_text(json.dumps({"tasks": [{"id": "task-1"}, {"id": "task-1"}]}), encoding="utf-8")
