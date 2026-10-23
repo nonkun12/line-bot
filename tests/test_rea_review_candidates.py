@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
-
 from scripts.rea_review_candidates import build_review_candidates
 
 
@@ -93,3 +91,15 @@ def test_inconsistent_report_count_or_status_blocks_entire_report():
 def test_bad_expected_sha_and_non_object_report_fail_closed():
     assert build_review_candidates({}, expected_sha="not-a-sha")["status"] == "BLOCKED"
     assert build_review_candidates([], expected_sha=SHA)["status"] == "BLOCKED"
+
+
+def test_boolean_schema_version_and_count_are_not_accepted_as_integers():
+    bad_schema = _report()
+    bad_schema["schema_version"] = True
+    bad_count = _report()
+    bad_count["findings_count"] = True
+
+    for report in (bad_schema, bad_count):
+        result = build_review_candidates(report, expected_sha=SHA)
+        assert result["status"] == "BLOCKED"
+        assert result["candidate_count"] == 0
