@@ -1,0 +1,98 @@
+name: Autonomous Loop Safety Contract
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/distributed-autonomous-loop.yml"
+      - ".github/workflows/autonomous-safety-contract.yml"
+      - ".github/autonomous-loop-tasks.json"
+      - "scripts/run_minimal_autonomous_loop.py"
+      - "tests/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autonomous-safety-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  safety-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify fail-closed safety invariants
+        shell: python
+        run: |
+          from pathlib import Path
+          import json
+          import sys
+
+          workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+          runner_path = Path("scripts/run_minimal_autonomous_loop.py")
+          queue_path = Path(".github/autonomous-loop-tasks.json")
+
+          required_workflow = {
+              "patch application disabled": "AUTO_APPLY_PATCH: 'false'",
+              "deployment disabled": "AUTO_DEPLOY: 'false'",
+              "concurrent loop runs serialized": "cancel-in-progress: false",
+              "remote stop switch checked": "REMOTE_KILL_SWITCH=ON",
+              "bounded job timeout": "timeout-minutes: 40",
+              "persistent checkout credentials disabled": "persist-credentials: false",
+          }
+          errors = [f"missing invariant: {name}" for name, token in required_workflow.items() if token not in workflow]
+
+          if not runner_path.is_file():
+              errors.append("autonomous loop runner is missing")
+          else:
+              runner = runner_path.read_text(encoding="utf-8")
+              for name, token in {
+                  "local kill switch": "AUTONOMOUS_LOOP_STOP",
+                  "allowed path validation": "diff_outside_allowed_paths",
+                  "base/produced SHA validation": "produced_sha_head_mismatch",
+              }.items():
+                  if token not in runner:
+                      errors.append(f"runner invariant missing: {name}")
+
+          try:
+              queue = json.loads(queue_path.read_text(encoding="utf-8"))
+              tasks = queue.get("tasks")
+              if not isinstance(tasks, list):
+                  errors.append("task queue must contain a list")
+              else:
+                  ids = []
+                  for index, task in enumerate(tasks):
+                      if not isinstance(task, dict):
+                          errors.append(f"task {index} must be an object")
+                          continue
+                      task_id = task.get("id")
+                      if not isinstance(task_id, str) or not task_id.strip():
+                          errors.append(f"task {index} has no valid ID")
+                      else:
+                          ids.append(task_id)
+                      paths = task.get("allowed_paths")
+                      if not isinstance(paths, list) or not paths or not all(isinstance(p, str) and p.strip() for p in paths):
+                          errors.append(f"task {task_id!r} has no valid allowed_paths")
+                  if len(ids) != len(set(ids)):
+                      errors.append("task IDs must be unique")
+              limit = queue.get("max_tasks_per_run")
+              if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 4:
+                  errors.append("max_tasks_per_run must be an integer from 1 to 4")
+          except (OSError, ValueError, AttributeError) as exc:
+              errors.append(f"task queue cannot be safely parsed: {type(exc).__name__}")
+
+          if errors:
+              print("SAFETY CONTRACT: BLOCKED")
+              for error in errors:
+                  print(f" - {error}")
+              sys.exit(1)
+
+          print("SAFETY CONTRACT: PASS")
+          print(f"Validated {len(tasks)} queued task(s); task cap is {limit}.")
+          print("This static contract check does not authorize merges or deployments.")
