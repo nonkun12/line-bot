@@ -330,7 +330,8 @@ jobs:
             --queue .github/autonomous-loop-tasks.json \
             --catalog .github/autonomous-loop-task-catalog.json \
             --completed-state /tmp/autonomous-loop-state.json \
-            --output /tmp/autonomous-loop-runtime-queue.json
+            --output /tmp/autonomous-loop-runtime-queue.json \
+            --history /tmp/line-bot-self-improvement.jsonl
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
 
       - name: Generate review-only task proposals when catalog is exhausted
