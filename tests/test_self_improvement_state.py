@@ -264,7 +264,8 @@ def test_loop_outcome_creates_sanitized_cycle_memory_for_next_run(tmp_path):
     history.write_text("", encoding="utf-8")
 
     assert append_cycle_memory(
-        history, results, catalog, publish_outcome="success", state_outcome="success"
+        history, results, catalog, publish_outcome="success", state_outcome="success",
+        cycle_id="90001",
     ) == 1
     memory = SelfImprovementHistory(history).load_memory(limit=3)
     assert len(memory) == 1
@@ -273,11 +274,60 @@ def test_loop_outcome_creates_sanitized_cycle_memory_for_next_run(tmp_path):
     assert memory[0].target_path == ""
     assert "never-persist-this" not in history.read_text(encoding="utf-8")
 
-    # Re-running the same persistence step must not duplicate the latest memory.
+    # Re-running the same persistence step for the same run must be idempotent.
     assert append_cycle_memory(
-        history, results, catalog, publish_outcome="success", state_outcome="success"
+        history, results, catalog, publish_outcome="success", state_outcome="success",
+        cycle_id="90001",
     ) == 0
     assert len(SelfImprovementHistory(history).load_memory(limit=3)) == 1
+
+    # The identical outcome from a new workflow run is a separate observation.
+    assert append_cycle_memory(
+        history, results, catalog, publish_outcome="success", state_outcome="success",
+        cycle_id="90002",
+    ) == 1
+    memories = SelfImprovementHistory(history).load_memory(limit=3)
+    assert [row.outcome for row in memories] == ["PASS", "PASS"]
+    rows = [json.loads(line) for line in history.read_text(encoding="utf-8").splitlines()]
+    assert [row["cycle_id"] for row in rows if row.get("record_type") == "cycle_memory"] == [
+        "90001", "90002"
+    ]
+
+
+def test_same_outcome_in_different_runs_is_kept_as_distinct_memory(tmp_path):
+    from core.self_improvement_history import SelfImprovementHistory
+    from scripts.self_improvement_state import append_cycle_memory
+
+    history = tmp_path / "history.jsonl"
+    results = tmp_path / "results.jsonl"
+    catalog = tmp_path / "catalog.json"
+    catalog.write_text(json.dumps({"tasks": [{"id": "catalog-task-1"}]}), encoding="utf-8")
+    results.write_text(json.dumps({
+        "status": "FAIL",
+        "task_id": "catalog-task-1",
+        "failure_reason": "task_timeout",
+    }) + "\n", encoding="utf-8")
+    history.write_text("", encoding="utf-8")
+
+    assert append_cycle_memory(
+        history, results, catalog, publish_outcome="failure", state_outcome="failure",
+        cycle_id="91001",
+    ) == 1
+    assert append_cycle_memory(
+        history, results, catalog, publish_outcome="failure", state_outcome="failure",
+        cycle_id="91001",
+    ) == 0
+    assert append_cycle_memory(
+        history, results, catalog, publish_outcome="failure", state_outcome="failure",
+        cycle_id="91002",
+    ) == 1
+
+    memories = SelfImprovementHistory(history).load_memory(limit=5)
+    assert [record.outcome for record in memories] == ["FAIL", "FAIL"]
+    rows = [json.loads(line) for line in history.read_text(encoding="utf-8").splitlines()]
+    assert [row["cycle_id"] for row in rows if row.get("record_type") == "cycle_memory"] == [
+        "91001", "91002"
+    ]
 
 
 def test_loop_cycle_memory_does_not_record_unverified_success(tmp_path):
@@ -291,7 +341,8 @@ def test_loop_cycle_memory_does_not_record_unverified_success(tmp_path):
     results.write_text(json.dumps({"status": "PASS", "task_id": "catalog-task-1"}) + "\n", encoding="utf-8")
 
     assert append_cycle_memory(
-        history, results, catalog, publish_outcome="failure", state_outcome="success"
+        history, results, catalog, publish_outcome="failure", state_outcome="success",
+        cycle_id="92001",
     ) == 0
     assert history.read_text(encoding="utf-8") == ""
 
@@ -319,7 +370,8 @@ def test_workflow_durable_validator_accepts_success_and_cycle_memory_round_trip(
         history, results, catalog, publish_outcome="success", state_outcome="success"
     ) == 1
     assert append_cycle_memory(
-        history, results, catalog, publish_outcome="success", state_outcome="success"
+        history, results, catalog, publish_outcome="success", state_outcome="success",
+        cycle_id="93001",
     ) == 1
 
     original_argv = sys.argv
@@ -341,6 +393,7 @@ def test_workflow_durable_validator_accepts_success_and_cycle_memory_round_trip(
     }
     assert validated[1]["record_type"] == "cycle_memory"
     assert validated[1]["outcome"] == "PASS"
+    assert validated[1]["cycle_id"] == "93001"
 
 
 def test_workflow_durable_validator_rejects_malformed_cycle_memory_and_signal_rows():
@@ -354,3 +407,6 @@ def test_workflow_durable_validator_rejects_malformed_cycle_memory_and_signal_ro
         validate_durable_history([{
             "kind": "success", "task_id": "task-1", "detail": "old or raw detail"
         }])
+    with pytest.raises(ValueError, match="cycle memory ID"):
+        validate_durable_history([{**valid_memory, "cycle_id": "not-a-run-id"}])
+
