@@ -155,6 +155,34 @@
       "allowed_paths": [
         "tests/test_autonomous_task_proposals.py"
       ]
+    },
+    {
+      "id": "distributed-loop-dispatch-duplicate-active-run-guard-regression",
+      "instruction": "tests/test_distributed_loop_trigger.py のみに、新しい固有名の回帰テストを1件追加してください。許可済みユーザー・テスト用GitHubトークンを設定し、GitHub Actions の workflow runs 取得が status=in_progress（または queued）の既存実行を1件返すようにモックしてください。request_distributed_loop() が「すでに実行中」を返し、dispatch の POST を呼ばないことを確認してください。実ネットワークを使わず、既存テストと重複させず、このテストファイルだけ変更してください。外部通信、シークレット参照、OS操作、マージ、デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_trigger.py"
+      ]
+    },
+    {
+      "id": "proposal-generator-resume-review-exclusion-regression",
+      "instruction": "tests/test_autonomous_task_proposals.py のみに、新しい固有名の回帰テストを1件追加してください。autonomous-task-approved ラベル付きIssueのID・instruction・allowed_pathsが登録済みカタログと完全一致していても、Recovery AI state で同じ task_id の held=false・resume_requires_review=true の場合は approved_count=0 でruntime queueに入らないことを確認してください。既存の completed/held テストを変更せず、durable stateのレビュー要求も変更しないでください。外部通信、シークレット参照、OS操作、マージ、デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ]
+    },
+    {
+      "id": "queue-progress-ignores-unrelated-pass-results-regression",
+      "instruction": "tests/test_distributed_loop_queue_progress.py のみに、新しい固有名の回帰テストを1件追加してください。runtime queueに task-in-queue のみがあり、durable completed が空で、results JSONL に task-outside-queue の status=PASS と task-in-queue とは異なるNO_CHANGE行がある場合、キュー進捗は queue_total=1・queue_completed=0 のままであることを確認してください。queue外のPASS/NO_CHANGE証跡が進捗を水増ししないことが目的です。既存テスト変更禁止。外部通信、シークレット参照、OS操作、マージ、デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_queue_progress.py"
+      ]
+    },
+    {
+      "id": "proposal-generator-conflicting-catalog-definitions-regression",
+      "instruction": "tests/test_autonomous_task_proposals.py のみに、新しい固有名の回帰テストを1件追加してください。登録済みカタログ内に同じtask IDで異なるinstructionまたはallowed_pathsを持つ定義が重複した場合、build_proposals() が ValueError('conflicting registered task definitions') で fail-closed になり、runtime queueが変更されないことを確認してください。既存テストを変更せず、このテストファイルだけ変更してください。外部通信、シークレット参照、OS操作、マージ、デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ]
     }
   ]
 }
