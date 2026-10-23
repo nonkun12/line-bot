@@ -120,6 +120,8 @@ def test_unregistered_queue_task_writes_actionable_block_before_recovery_read(mo
     assert "reviewed change" in row["registry_preflight"]["remediation"]
     assert "queue_count=1 registered_count=1" in output
     assert "ghost-task" in output
+    assert "remediation=" in output
+    assert "Do not bypass registry validation" in output
 
 
 def test_control_tower_kill_switch_blocks_before_queue_or_task_launch(monkeypatch, tmp_path: Path):
