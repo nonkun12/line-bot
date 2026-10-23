@@ -516,6 +516,9 @@ def test_history_priority_never_bypasses_hold_completed_or_resume_review(tmp_pat
 
     assert [task["id"] for task in result["tasks"]] == ["task-ready-low"]
     assert report["added_ids"] == ["task-ready-low"]
+    # Real JSONL newlines are required: this verifies the success signal is read
+    # and changes the priority score rather than silently parsing a malformed line.
+    assert report["feedback_priority_scores"] == {"task-ready-low": -1}
     assert report["skipped_catalog_held_ids"] == ["task-held-high"]
     assert report["skipped_catalog_completed_ids"] == ["task-completed-high"]
     assert report["skipped_catalog_review_ids"] == ["task-review-high"]
