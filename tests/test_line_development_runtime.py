@@ -938,8 +938,8 @@ def test_four_reviewed_refill_tasks_have_deterministic_bounded_plans(tmp_path, m
         assert expected_name in candidate
         assert worker.validate_plan(plan, chosen) == (True, chosen)
         if task_id == "queue-progress-ignores-unrelated-pass-results-regression":
-            assert r'+ "\\n" +' in change["new"]
-            assert r'+ "\\n", encoding="utf-8")' in change["new"]
+            assert r'+ "\n" +' in change["new"]
+            assert r'+ "\n", encoding="utf-8")' in change["new"]
 
 
 def test_refill_regression_task_builds_one_bounded_deterministic_change(monkeypatch, tmp_path):
