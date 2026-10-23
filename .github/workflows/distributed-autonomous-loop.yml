@@ -1062,7 +1062,7 @@ jobs:
           export MESSAGE="$message"
           payload="$(python - <<'PY'
           import json, os
-          print(json.dumps({'user_id': os.environ['DISTRIBUTED_LOOP_LINE_USER_ID'], 'message': os.environ['MESSAGE']}, ensure_ascii=False))
+          print(json.dumps({'user_id': os.environ['DISTRIBUTED_LOOP_LINE_USER_ID'], 'message': os.environ['MESSAGE'], 'source': 'distributed_loop'}, ensure_ascii=False))
           PY
           )"
           curl --fail-with-body --silent --show-error --max-time 30 \
