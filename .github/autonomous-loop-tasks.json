@@ -29,6 +29,13 @@
       "allowed_paths": [
         "tests/test_recovery_ai_loop_adapter.py"
       ]
+    },
+    {
+      "id": "router-regression-general-line-source-metadata-recheck",
+      "instruction": "tests/test_management_router.py のみに、新しい固有名の回帰テストを1件追加してください。ManagementRequest の曖昧な一般依頼に channel='line' と metadata={'source':'distributed-loop-recheck'} を渡し、結果 specialist=GENERAL、metadata.routing='deterministic'、matched_specialists=[]、routing_priority=null、metadata.channel='line'、metadata.request_metadata.source='distributed-loop-recheck' を確認してください。既存テストと重複しないことを確認し、指定ファイル以外は変更しないでください。外部通信、シークレット参照、OS操作、マージ、デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
     }
   ],
   "catalog_source": "reviewed deterministic target allowlist"
