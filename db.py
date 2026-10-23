@@ -58,6 +58,19 @@ def init_db():
         ON approvals(user_id)
         """)
         conn.execute("""
+        CREATE TABLE IF NOT EXISTS pending_line_notifications(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            message TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'distributed_loop',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_pending_line_notifications_user_id
+        ON pending_line_notifications(user_id, id)
+        """)
+        conn.execute("""
         CREATE TABLE IF NOT EXISTS jobs(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL,
@@ -666,3 +679,55 @@ def list_processed_events(limit=100):
     except Exception as e:
         print("DB LIST_PROCESSED_EVENTS ERROR:", e)
         return []
+
+
+
+def enqueue_pending_line_notification(user_id, message, source="distributed_loop"):
+    """Persist a notification that could not be pushed because LINE quota guard blocked it."""
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise ValueError("user_id is required")
+    if not isinstance(message, str) or not message.strip():
+        raise ValueError("message is required")
+    if not isinstance(source, str) or not source.strip():
+        raise ValueError("source is required")
+    with get_conn() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO pending_line_notifications(user_id, message, source)
+            VALUES (?, ?, ?)
+            """,
+            (user_id.strip(), message.strip()[:25000], source.strip()[:80]),
+        )
+        return cursor.lastrowid
+
+
+def get_pending_line_notification(user_id):
+    """Read the oldest pending notification without consuming it."""
+    if not isinstance(user_id, str) or not user_id.strip():
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT id, message, source, created_at
+            FROM pending_line_notifications
+            WHERE user_id=?
+            ORDER BY id
+            LIMIT 1
+            """,
+            (user_id.strip(),),
+        ).fetchone()
+    if row is None:
+        return None
+    return {"id": row[0], "message": row[1], "source": row[2], "created_at": row[3]}
+
+
+def delete_pending_line_notification(notification_id):
+    """Delete a deferred notification only after it was delivered in a LINE reply."""
+    if not isinstance(notification_id, int) or isinstance(notification_id, bool) or notification_id <= 0:
+        raise ValueError("notification_id must be a positive integer")
+    with get_conn() as conn:
+        cursor = conn.execute(
+            "DELETE FROM pending_line_notifications WHERE id=?",
+            (notification_id,),
+        )
+        return cursor.rowcount == 1
