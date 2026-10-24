@@ -269,6 +269,18 @@ def test_auto_test_diff_rejects_trivial_assertions():
         assert validate_auto_test_diff(diff) == (False, "behavioral_assertion_required")
 
 
+def test_auto_test_diff_rejects_truthy_module_metadata_as_evidence():
+    from scripts.autonomous_task_proposals import validate_auto_test_diff
+
+    for expression in ("__name__", "__file__", "__package__", "__spec__"):
+        diff = (
+            "+++ b/tests/test_example.py\n"
+            "+def test_fake_pass():\n"
+            f"+    assert {expression}\n"
+        )
+        assert validate_auto_test_diff(diff) == (False, "host_access_rejected")
+
+
 def test_auto_test_diff_rejects_skip_or_xfail():
     from scripts.autonomous_task_proposals import validate_auto_test_diff
 
