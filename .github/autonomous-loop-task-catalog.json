@@ -206,6 +206,13 @@
       ]
     },
     {
+      "id": "queue-progress-excludes-not-run-results-regression-v2",
+      "instruction": "tests/test_distributed_loop_queue_progress.py のみに、新しい固有名の回帰テストを1件追加してください。runtime queue に task-1 があり、durable completed state は空で、results JSONL に task_id=task-1/status=NOT_RUN/failure_reason=queue_empty の行がある場合、calculate_progress() が queue_total=1, queue_completed=0 を返すことを検証してください。既存テストを変更せず、テストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_queue_progress.py"
+      ]
+    },
+    {
       "id": "control-tower-decision-malformed-evidence-sha",
       "instruction": "tests/test_control_tower_decision.py のみに、新しい固有名の回帰テストを1件追加してください。ControlTowerDecisionRecord の evidence_sha に短いSHA・40文字の大文字SHA・非文字列を与えると ValueError で拒否されることをパラメータ化して検証してください。通常の OBSERVE_ONLY / PASS の他のフィールドは有効値を使い、既存テストを変更せずテストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
       "allowed_paths": [
@@ -231,13 +238,6 @@
       "instruction": "tests/test_autonomous_task_proposals.py のみに、新しい固有名の回帰テストを1件追加してください。issues JSON配列に null または文字列の issue record が含まれる場合、build_proposals() が ValueError('issue record is invalid') で fail-closed になり、queue JSONが変更されないことを検証してください。既存テストを変更せずテストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
       "allowed_paths": [
         "tests/test_autonomous_task_proposals.py"
-      ]
-    },
-    {
-      "id": "queue-progress-excludes-not-run-results-regression-v2",
-      "instruction": "tests/test_distributed_loop_queue_progress.py のみに、新しい固有名の回帰テストを1件追加してください。runtime queue に task-1 があり、durable completed state は空で、results JSONL に task_id=task-1/status=NOT_RUN/failure_reason=queue_empty の行がある場合、calculate_progress() が queue_total=1, queue_completed=0 を返すことを検証してください。既存テストを変更せず、テストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
-      "allowed_paths": [
-        "tests/test_distributed_loop_queue_progress.py"
       ]
     }
   ]
