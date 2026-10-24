@@ -108,3 +108,16 @@ def test_local_model_call_fails_closed_without_endpoint(monkeypatch):
         assert str(exc) == "CREATOR_CRITIC_BASE_URL is required for local model execution"
     else:
         raise AssertionError("missing endpoint must fail closed")
+
+
+
+def test_local_model_call_rejects_non_loopback_endpoint(monkeypatch):
+    monkeypatch.setenv("CREATOR_CRITIC_BASE_URL", "https://api.example.com/v1")
+    monkeypatch.setenv("CREATOR_CRITIC_MODEL", "remote-model")
+
+    try:
+        openai_compatible_model_call("do not send this externally")
+    except RuntimeError as exc:
+        assert str(exc) == "local model endpoint must use a loopback URL"
+    else:
+        raise AssertionError("non-loopback endpoint must be rejected")
