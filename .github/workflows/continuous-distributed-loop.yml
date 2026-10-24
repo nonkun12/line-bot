@@ -74,29 +74,37 @@ jobs:
               stop("invalid_evidence_" + type(exc).__name__)
               raise SystemExit(0)
 
-          if len(rows) != 1 or not isinstance(rows[0], dict):
+          if not isinstance(rows, list) or not 1 <= len(rows) <= 4:
               stop("unexpected_task_result_count")
               raise SystemExit(0)
-          row = rows[0]
-          task_id = row.get("task_id")
-          if row.get("status") != "PASS":
-              stop("task_status_not_PASS")
-              raise SystemExit(0)
-          if type(row.get("exit_code")) is not int or row["exit_code"] != 0:
-              stop("task_exit_code_not_zero")
-              raise SystemExit(0)
-          if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", task_id):
-              stop("missing_or_invalid_task_id")
+          task_ids = []
+          for row in rows:
+              if not isinstance(row, dict):
+                  stop("invalid_task_result_row")
+                  raise SystemExit(0)
+              task_id = row.get("task_id")
+              if row.get("status") != "PASS":
+                  stop("task_status_not_PASS")
+                  raise SystemExit(0)
+              if type(row.get("exit_code")) is not int or row["exit_code"] != 0:
+                  stop("task_exit_code_not_zero")
+                  raise SystemExit(0)
+              if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", task_id):
+                  stop("missing_or_invalid_task_id")
+                  raise SystemExit(0)
+              task_ids.append(task_id)
+          if len(task_ids) != len(set(task_ids)):
+              stop("duplicate_task_ids")
               raise SystemExit(0)
           completed = state.get("completed") if isinstance(state, dict) else None
-          if not isinstance(completed, list) or task_id not in completed:
+          if not isinstance(completed, list) or any(task_id not in completed for task_id in task_ids):
               stop("durable_completion_not_confirmed")
               raise SystemExit(0)
 
           with open(environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
-              out.write("continue=true\n")
-              out.write("task_id=" + task_id + "\n")
-          print("CONTINUATION_ALLOWED task_id=" + task_id)
+              out.write("continue=true\\n")
+              out.write("task_id=" + task_ids[-1] + "\\n")
+          print("CONTINUATION_ALLOWED verified_tasks=" + str(len(task_ids)))
           PY
 
       - name: Avoid duplicate dispatch while another loop is queued or running
