@@ -69,14 +69,19 @@ def test_local_openai_compatible_call_uses_configured_endpoint_without_network(m
         def read(self):
             return json.dumps({"choices": [{"message": {"content": "local output"}}]}).encode()
 
-    def fake_urlopen(request, timeout):
-        captured["url"] = request.full_url
-        captured["body"] = json.loads(request.data.decode())
-        captured["headers"] = dict(request.header_items())
-        captured["timeout"] = timeout
-        return FakeResponse()
+    class FakeOpener:
+        def open(self, request, timeout):
+            captured["url"] = request.full_url
+            captured["body"] = json.loads(request.data.decode())
+            captured["headers"] = dict(request.header_items())
+            captured["timeout"] = timeout
+            return FakeResponse()
 
-    monkeypatch.setattr(runtime, "urlopen", fake_urlopen)
+    def fake_build_opener(handler):
+        assert isinstance(handler, runtime._RejectRedirects)
+        return FakeOpener()
+
+    monkeypatch.setattr(runtime, "build_opener", fake_build_opener)
     monkeypatch.setenv("CREATOR_CRITIC_BASE_URL", "http://127.0.0.1:8081/v1/")
     monkeypatch.setenv("CREATOR_CRITIC_MODEL", "local-bonsai-model")
     monkeypatch.setenv("CREATOR_CRITIC_API_KEY", "")
