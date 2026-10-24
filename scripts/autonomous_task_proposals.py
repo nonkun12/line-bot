@@ -110,6 +110,10 @@ def build_proposals(
     approved_tasks = []
     rejected_approved_tasks = []
     seen = set()
+    labeled_open_issue_count = 0
+    invalid_spec_count = 0
+    excluded_task_count = 0
+    invalid_issue_number_count = 0
     max_tasks = queue.get("max_tasks_per_run", 4)
     if type(max_tasks) is not int or not 1 <= max_tasks <= 4:
         raise ValueError("invalid runtime task limit")
@@ -129,13 +133,17 @@ def build_proposals(
         candidate = "autonomous-task-candidate" in label_names
         if not approved and not candidate:
             continue
+        labeled_open_issue_count += 1
         spec = _spec(issue.get("body", ""))
         if spec is None:
+            invalid_spec_count += 1
             continue
         if spec["id"] in excluded or spec["id"] in seen:
+            excluded_task_count += 1
             continue
         number = issue.get("number")
         if type(number) is not int or number < 1:
+            invalid_issue_number_count += 1
             continue
         seen.add(spec["id"])
         fingerprint = hashlib.sha256(
@@ -188,10 +196,22 @@ def build_proposals(
         "proposals": proposals,
         "rejected_approved_count": len(rejected_approved_tasks),
         "rejected_approved_tasks": rejected_approved_tasks,
+        "diagnostics": {
+            "labeled_open_issue_count": labeled_open_issue_count,
+            "invalid_spec_count": invalid_spec_count,
+            "excluded_task_count": excluded_task_count,
+            "invalid_issue_number_count": invalid_issue_number_count,
+        },
         "reason": (
             None if approved_tasks or proposals
             else "approved_issue_task_not_registered_or_spec_mismatch"
             if rejected_approved_tasks
+            else "all_candidates_excluded"
+            if labeled_open_issue_count > 0 and excluded_task_count > 0 and invalid_spec_count == 0 and invalid_issue_number_count == 0
+            else "no_valid_test_only_spec"
+            if labeled_open_issue_count > 0 and invalid_spec_count > 0
+            else "invalid_candidate_issue_number"
+            if labeled_open_issue_count > 0 and invalid_issue_number_count > 0
             else "no_open_labeled_issue_with_valid_test_only_spec"
         ),
     }

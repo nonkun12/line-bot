@@ -46,7 +46,13 @@ def test_skips_completed_held_and_unlabeled_issues(tmp_path):
     result, _ = run(tmp_path, [issue("done"), issue("held"), issue("untrusted", labels=())],
                     state(completed=["done"], tasks={"held": {"held": True}}))
     assert result["proposal_count"] == 0
-    assert result["reason"] == "no_open_labeled_issue_with_valid_test_only_spec"
+    assert result["reason"] == "all_candidates_excluded"
+    assert result["diagnostics"] == {
+        "labeled_open_issue_count": 2,
+        "invalid_spec_count": 0,
+        "excluded_task_count": 2,
+        "invalid_issue_number_count": 0,
+    }
 
 
 @pytest.mark.parametrize("path", ["../secret.env", "app.py", "tests/test_*.py"])
@@ -132,3 +138,33 @@ def test_build_proposals_rejects_boolean_runtime_task_limit(tmp_path, limit):
     catalog_path = write(tmp_path / "catalog.json", {"version": 1, "tasks": []})
     with pytest.raises(ValueError, match="invalid runtime task limit"):
         build_proposals(issues_path, queue_path, state_path, tmp_path / "proposals.json", catalog_path)
+
+
+
+def test_reports_why_labeled_candidates_were_rejected(tmp_path):
+    invalid = issue("invalid-task")
+    invalid["body"] = "missing autonomous task spec markers"
+    result, qp = run(tmp_path, [invalid], state())
+    assert result["status"] == "NO_TRUSTED_CANDIDATES"
+    assert result["reason"] == "no_valid_test_only_spec"
+    assert result["diagnostics"] == {
+        "labeled_open_issue_count": 1,
+        "invalid_spec_count": 1,
+        "excluded_task_count": 0,
+        "invalid_issue_number_count": 0,
+    }
+    assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
+
+
+def test_distinguishes_candidates_excluded_by_durable_state(tmp_path):
+    result, qp = run(
+        tmp_path,
+        [issue("already-done", labels=("autonomous-task-approved",))],
+        state(completed=["already-done"]),
+        registered_tasks=[registered("already-done")],
+    )
+    assert result["status"] == "NO_TRUSTED_CANDIDATES"
+    assert result["reason"] == "all_candidates_excluded"
+    assert result["diagnostics"]["excluded_task_count"] == 1
+    assert result["diagnostics"]["invalid_spec_count"] == 0
+    assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
