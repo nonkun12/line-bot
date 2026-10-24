@@ -970,3 +970,40 @@ def test_refill_regression_task_builds_one_bounded_deterministic_change(monkeypa
     assert len(change["old"]) <= 1200
     assert len(change["new"]) <= 1800
     compile(target.read_text(encoding="utf-8").replace(change["old"], change["new"], 1), chosen, "exec")
+
+
+def test_priority_boundary_task_uses_deterministic_registered_target(monkeypatch, tmp_path):
+    chosen = "tests/test_control_tower_decision.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "def test_priority_rejects_bool_float_and_out_of_range_values():\\n    pass\\n\\n"
+        "def test_priority_accepts_integer_boundaries():\\n    pass\\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    assert runtime._DETERMINISTIC_AUTONOMOUS_TASK_TARGETS[
+        "control-tower-decision-priority-type-boundaries"
+    ] == chosen
+    plan, error = runtime._deterministic_autonomous_test_plan(
+        chosen, "control-tower-decision-priority-type-boundaries"
+    )
+
+    assert error is None
+    assert plan == {"no_change": True, "source": "deterministic_autonomous_task"}
+
+
+def test_priority_boundary_task_fails_closed_when_regression_tests_missing(monkeypatch, tmp_path):
+    chosen = "tests/test_control_tower_decision.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("def test_existing_case():\\n    pass\\n", encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, error = runtime._deterministic_autonomous_test_plan(
+        chosen, "control-tower-decision-priority-type-boundaries"
+    )
+
+    assert plan is None
+    assert error == "required_regression_test_missing:priority_boundaries"
