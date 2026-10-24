@@ -279,6 +279,38 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     if expected_target is not None and chosen != expected_target:
         return None, "deterministic_target_mismatch"
 
+    if task_id == "continuous-loop-not-run-does-not-continue-regression" and chosen == "tests/test_continuous_distributed_loop_workflow.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_continuation_gate_stops_when_task_is_not_run"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_continuation_gate_stops_if_any_task_fails(tmp_path):"
+        addition = (
+            "def test_continuation_gate_stops_when_task_is_not_run(tmp_path):\n"
+            "    result, output = _run_gate(\n"
+            "        tmp_path, [_row(\"queue-empty-task\", status=\"NOT_RUN\")], [\"queue-empty-task\"]\n"
+            "    )\n"
+            "    assert result.returncode == 0\n"
+            "    assert output.splitlines() == [\"continue=false\"]\n"
+            "    assert \"CONTINUATION_STOP=task_status_not_successful\" in result.stdout\n"
+            "\n\n"
+        )
+        if text.count(anchor) != 1:
+            return None, "deterministic_anchor_not_unique:continuation_not_run"
+        new = text.replace(anchor, addition + anchor, 1)
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        try:
+            compile(new, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": addition + anchor}],
+        }, None
+
     priority_boundary_regression = "control-tower-decision-priority-type-boundaries"
     if priority_boundary_regression == task_id and chosen == "tests/test_control_tower_decision.py":
         target = worker.ROOT / chosen
