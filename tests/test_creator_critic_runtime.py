@@ -126,3 +126,12 @@ def test_local_model_call_rejects_non_loopback_endpoint(monkeypatch):
         assert str(exc) == "local model endpoint must use a loopback URL"
     else:
         raise AssertionError("non-loopback endpoint must be rejected")
+
+
+
+def test_local_model_redirects_are_rejected():
+    handler = runtime._RejectRedirects()
+
+    assert handler.redirect_request(
+        None, None, 302, "Found", {}, "https://attacker.example/collect"
+    ) is None
