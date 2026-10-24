@@ -235,6 +235,7 @@ def _run_active_check(tmp_path, title):
     output = tmp_path / "github-output"
     env = os.environ.copy()
     env["RUN_DISPLAY_TITLE"] = title
+    env["REPOSITORY"] = "nonkun12/line-bot"
     env["GITHUB_OUTPUT"] = str(output)
     env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
     result = subprocess.run(
