@@ -10,7 +10,7 @@ import json
 import os
 from typing import Callable
 from urllib.error import URLError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 from urllib.parse import urlparse
 
 from groq import Groq
@@ -18,6 +18,13 @@ from groq import Groq
 from .creator_critic import CriticAgent, CreatorAgent, CreatorCriticLoop, ModelCall
 
 DEFAULT_MODEL = "openai/gpt-oss-20b"
+
+
+class _RejectRedirects(HTTPRedirectHandler):
+    """Prevent a loopback endpoint from redirecting prompts to another host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def groq_model_call(
@@ -97,7 +104,8 @@ def openai_compatible_model_call(
         headers["Authorization"] = f"Bearer {token.strip()}"
     request = Request(f"{endpoint}/chat/completions", data=request_body, headers=headers, method="POST")
     try:
-        with urlopen(request, timeout=timeout) as response:
+        opener = build_opener(_RejectRedirects)
+        with opener.open(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (URLError, TimeoutError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         # Avoid echoing endpoint details or response bodies into durable logs.
