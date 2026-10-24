@@ -38,7 +38,7 @@ def test_refill_adds_only_uncompleted_catalog_tasks_within_cap(tmp_path: Path):
     ids = [task["id"] for task in result["tasks"]]
     assert report["added"] == 2
     assert ids == ["task-existing", "task-new-one", "task-new-three"]
-    assert queue.read_text(encoding="utf-8") == queue_before
+    assert queue.read_text(encoding="utf-8") != output.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("max_tasks", [0, -1, 5, "4", True, 1.5])
@@ -588,4 +588,4 @@ def test_refill_selects_exactly_four_new_catalog_tasks_when_older_tasks_are_comp
         ],
         strict=True,
     ))
-    assert queue.read_text(encoding="utf-8") != output.read_text(encoding="utf-8")
+    assert queue.read_text(encoding="utf-8") == queue_before
