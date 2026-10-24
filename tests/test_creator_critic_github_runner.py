@@ -36,6 +36,24 @@ class CreatorCriticGitHubRunnerTests(unittest.TestCase):
         self.assertIn("MUST materially revise the previous proposal", second_creator_prompt)
         self.assertIn("Changes from previous round", second_creator_prompt)
 
+    def test_changed_proposal_requires_review_not_auto_pass(self):
+        creator_round = 0
+
+        def fake_generate(messages, max_tokens):
+            nonlocal creator_round
+            if "Creator AI" in messages[0]["content"]:
+                creator_round += 1
+                if creator_round == 1:
+                    return "Add structured logs and a focused unit test for queue refill failures."
+                return "Changes from previous round: add a deterministic regression test that proves queue refill resumes after an empty batch; document expected state transitions."
+            return "Verdict: HOLD. Main concern: missing runtime evidence. Missing evidence: a reproducible queue trace. Next safe action: add a fixture-based test."
+
+        report = run_discussion(fake_generate, "Improve reliability", rounds=2)
+
+        self.assertEqual(report["feedback_adaptation_status"], "TEXT_CHANGED_REVIEW_REQUIRED")
+        self.assertLess(report["creator_proposal_similarity"], 0.80)
+        self.assertEqual(report["improvement_effectiveness"], "NOT_MEASURED")
+
     def test_rejects_rounds_outside_limit(self):
         with self.assertRaises(ValueError):
             run_discussion(lambda messages, tokens: "ok", "objective", rounds=4)
