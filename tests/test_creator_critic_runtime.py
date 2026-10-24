@@ -78,7 +78,7 @@ def test_local_openai_compatible_call_uses_configured_endpoint_without_network(m
             return FakeResponse()
 
     def fake_build_opener(handler):
-        assert isinstance(handler, runtime._RejectRedirects)
+        assert handler is runtime._RejectRedirects
         return FakeOpener()
 
     monkeypatch.setattr(runtime, "build_opener", fake_build_opener)
