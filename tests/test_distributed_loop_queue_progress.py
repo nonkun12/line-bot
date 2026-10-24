@@ -9,6 +9,16 @@ import pytest
 from scripts.distributed_loop_queue_progress import calculate_progress, main
 
 
+def test_progress_does_not_count_not_run_result_as_completion(tmp_path: Path):
+    queue = tmp_path / "runtime-queue.json"
+    state = tmp_path / "state.json"
+    results = tmp_path / "results.jsonl"
+    queue.write_text(json.dumps({"tasks": [{"id": "task-1"}]}), encoding="utf-8")
+    state.write_text(json.dumps({"completed": []}), encoding="utf-8")
+    results.write_text(json.dumps({"task_id": "task-1", "status": "NOT_RUN", "failure_reason": "queue_empty"}) + "\n", encoding="utf-8")
+    assert calculate_progress(queue, state, results) == {"queue_total": 1, "queue_completed": 0}
+
+
 def test_progress_uses_runtime_queue_and_counts_refill_tasks(tmp_path: Path):
     queue = tmp_path / "runtime-queue.json"
     state = tmp_path / "state.json"
