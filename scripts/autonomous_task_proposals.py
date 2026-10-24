@@ -162,6 +162,8 @@ def validate_auto_test_diff(diff_text: str) -> tuple[bool, str]:
         "__import__", "__builtins__", "getattr", "setattr", "delattr", "globals", "locals", "vars",
         "dir", "type", "object", "memoryview", "breakpoint", "input", "help",
         "GROQ_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GITHUB_TOKEN",
+        # Module metadata is truthy without exercising application behavior.
+        "__name__", "__file__", "__package__", "__spec__", "__loader__", "__cached__", "__doc__", "__annotations__",
     }
     forbidden_attributes = {
         "environ", "getenv", "system", "popen", "spawn", "execv", "execve",
