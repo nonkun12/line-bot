@@ -73,13 +73,13 @@ jobs:
           import subprocess
           from dataclasses import asdict
           from pathlib import Path
-          from core.control_tower import ControlTower
+          from core.rea_control_tower_bridge import rea_result_to_control_tower_decision
 
           expected_sha = subprocess.run(
               ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
           ).stdout.strip()
           candidates = json.loads(Path("rea-candidates.json").read_text(encoding="utf-8"))
-          decision = ControlTower.evaluate_rea_review_candidates(candidates, expected_sha=expected_sha)
+          decision = rea_result_to_control_tower_decision(candidates, expected_sha=expected_sha)
           print(json.dumps(asdict(decision), sort_keys=True))
           PY
           bridge_rc=$?
