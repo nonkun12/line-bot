@@ -445,6 +445,27 @@ def test_context_for_keeps_both_ends_when_file_is_far_over_limit(monkeypatch, tm
 
 
 
+def test_repair_invalid_old_new_plan_accepts_validation_error(monkeypatch):
+    captured = {}
+
+    def fake_ask(client, system, prompt, max_tokens):
+        captured["prompt"] = prompt
+        return json.dumps({"no_change": True})
+
+    monkeypatch.setattr(worker, "ask", fake_ask)
+    result = worker.repair_invalid_old_new_plan(
+        FakeClient([]),
+        "instruction",
+        "app.py",
+        "current context",
+        {"malformed": True},
+        "invalid_old_new",
+    )
+
+    assert result == {"no_change": True}
+    assert "Validation error:\ninvalid_old_new" in captured["prompt"]
+
+
 def test_validate_plan_with_bounded_repairs_recovers_invalid_old_new_once(monkeypatch):
     chosen = "tests/test_management_router.py"
     rejected = {
