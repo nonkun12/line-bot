@@ -69,6 +69,15 @@ def test_continuation_gate_accepts_one_verified_pass(tmp_path):
     assert "CONTINUATION_ALLOWED verified_tasks=1" in result.stdout
 
 
+def test_continuation_gate_accepts_verified_no_change(tmp_path):
+    result, output = _run_gate(
+        tmp_path, [_row("task-no-change", status="NO_CHANGE")], ["task-no-change"]
+    )
+    assert result.returncode == 0
+    assert output.splitlines() == ["continue=true", "task_id=task-no-change"]
+    assert "CONTINUATION_ALLOWED verified_tasks=1" in result.stdout
+
+
 def test_continuation_gate_accepts_four_verified_passes(tmp_path):
     ids = ["task-one", "task-two", "task-three", "task-four"]
     result, output = _run_gate(
@@ -84,7 +93,7 @@ def test_continuation_gate_stops_if_any_task_fails(tmp_path):
     result, output = _run_gate(tmp_path, rows, ["task-one", "task-two"])
     assert result.returncode == 0
     assert "continue=false" in output.splitlines()
-    assert "CONTINUATION_STOP=task_status_not_PASS" in result.stdout
+    assert "CONTINUATION_STOP=task_status_not_successful" in result.stdout
 
 
 def test_continuation_gate_rejects_boolean_exit_code(tmp_path):
