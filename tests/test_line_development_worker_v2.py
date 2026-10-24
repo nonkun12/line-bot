@@ -442,3 +442,72 @@ def test_context_for_keeps_both_ends_when_file_is_far_over_limit(monkeypatch, tm
     assert context.startswith("HEAD-MARKER\n")
     assert "middle omitted; context bounded" in context
     assert context.endswith("TAIL-MARKER\n")
+
+
+
+def test_validate_plan_with_bounded_repairs_recovers_invalid_old_new_once(monkeypatch):
+    chosen = "tests/test_management_router.py"
+    rejected = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": None, "new": "replacement"}],
+    }
+    repaired = {
+        "no_change": False,
+        "changes": [
+            {
+                "file": chosen,
+                "old": "def target():\\n    old\\n",
+                "new": "def target():\\n    new\\n",
+            }
+        ],
+    }
+    calls = []
+    monkeypatch.setattr(
+        worker,
+        "repair_invalid_old_new_plan",
+        lambda *args: calls.append("repair") or repaired,
+    )
+
+    plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+        FakeClient([]),
+        "テストを最小修正",
+        chosen,
+        rejected,
+        "def target():\\n    old\\n",
+    )
+
+    assert ok
+    assert detail == chosen
+    assert plan == repaired
+    assert calls == ["repair"]
+
+
+def test_validate_plan_with_bounded_repairs_rejects_unsafe_invalid_old_new_repair(monkeypatch):
+    chosen = "tests/test_management_router.py"
+    rejected = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": None, "new": "replacement"}],
+    }
+    unsafe = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "old", "new": "new"}],
+    }
+    calls = []
+    monkeypatch.setattr(
+        worker,
+        "repair_invalid_old_new_plan",
+        lambda *args: calls.append("repair") or unsafe,
+    )
+
+    plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+        FakeClient([]),
+        "テストを最小修正",
+        chosen,
+        rejected,
+        "def target():\\n    old\\n",
+    )
+
+    assert not ok
+    assert detail == "change_outside_selected_file"
+    assert plan == rejected
+    assert calls == ["repair"]

@@ -160,3 +160,28 @@ def test_execution_eligibility_rejects_malformed_registry(registry: object) -> N
     )
 
     assert not decision.execution_eligible(registry, VALID_SHA)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("priority", [True, False, 1.0, 99.0, -1, 101])
+def test_priority_rejects_bool_float_and_out_of_range_values(priority: object) -> None:
+    with pytest.raises(ValueError, match="priority must be an integer between 0 and 100"):
+        ControlTowerDecisionRecord(
+            reason_code="evidence_sufficient",
+            confidence=0.5,
+            priority=priority,  # type: ignore[arg-type]
+            next_action="OBSERVE_ONLY",
+            gate_status="PASS",
+        )
+
+
+@pytest.mark.parametrize("priority", [0, 100])
+def test_priority_accepts_integer_boundaries(priority: int) -> None:
+    decision = ControlTowerDecisionRecord(
+        reason_code="evidence_sufficient",
+        confidence=0.5,
+        priority=priority,
+        next_action="OBSERVE_ONLY",
+        gate_status="PASS",
+    )
+
+    assert decision.priority == priority
