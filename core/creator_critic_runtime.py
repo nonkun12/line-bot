@@ -11,6 +11,7 @@ import os
 from typing import Callable
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+from urllib.parse import urlparse
 
 from groq import Groq
 
@@ -72,6 +73,16 @@ def openai_compatible_model_call(
     endpoint = (base_url or os.environ.get("CREATOR_CRITIC_BASE_URL") or "").strip().rstrip("/")
     if not endpoint:
         raise RuntimeError("CREATOR_CRITIC_BASE_URL is required for local model execution")
+    parsed_endpoint = urlparse(endpoint)
+    if (
+        parsed_endpoint.scheme not in {"http", "https"}
+        or parsed_endpoint.hostname not in {"localhost", "127.0.0.1", "::1"}
+        or parsed_endpoint.username is not None
+        or parsed_endpoint.password is not None
+        or parsed_endpoint.query
+        or parsed_endpoint.fragment
+    ):
+        raise RuntimeError("local model endpoint must use a loopback URL")
     active_model = (model or os.environ.get("CREATOR_CRITIC_MODEL") or "").strip()
     if not active_model:
         raise RuntimeError("CREATOR_CRITIC_MODEL is required for local model execution")
