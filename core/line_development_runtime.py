@@ -212,6 +212,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "control-tower-recovery-evidence-identity-mismatch": "tests/test_control_tower_orchestrator.py",
     "control-tower-run-identity-invalid-sha-regression": "tests/test_control_tower_orchestrator.py",
     "control-tower-run-identity-invalid-sha-regression-v2": "tests/test_control_tower_orchestrator.py",
+    "control-tower-decision-priority-type-boundaries": "tests/test_control_tower_decision.py",
     "english-core-image-rotation-user-isolation": "tests/test_english_learning.py",
     "english-core-image-rotation-user-isolation-v2": "tests/test_english_learning.py",
     "english-core-image-unknown-word-safe-fallback": "tests/test_english_learning.py",
@@ -276,6 +277,18 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
     if expected_target is not None and chosen != expected_target:
         return None, "deterministic_target_mismatch"
+
+    priority_boundary_regression = "control-tower-decision-priority-type-boundaries"
+    if priority_boundary_regression == task_id and chosen == "tests/test_control_tower_decision.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        required_tests = (
+            "test_priority_rejects_bool_float_and_out_of_range_values",
+            "test_priority_accepts_integer_boundaries",
+        )
+        if all(f"def {name}(" in text for name in required_tests):
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        return None, "required_regression_test_missing:priority_boundaries"
 
     control_tower_regressions = {
         "control-tower-recovery-evidence-identity-mismatch": "test_recovery_evidence_identity_mismatch_fails_closed",
