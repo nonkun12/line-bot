@@ -1,6 +1,11 @@
 name: GitHub-hosted Creator-Critic discussion
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/creator-critic-github.yml"
+      - "scripts/run_creator_critic_github.py"
+      - "tests/test_creator_critic_github_runner.py"
   workflow_dispatch:
     inputs:
       rounds:
