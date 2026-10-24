@@ -59,3 +59,4 @@ def test_adapter_discovers_model_and_calls_chat_completions():
     body = json.loads(requests[1].data.decode("utf-8"))
     assert body["model"] == "bonsai-test"
     assert body["messages"][0]["content"] == "evaluate this proposal"
+    assert body["enable_thinking"] is False
