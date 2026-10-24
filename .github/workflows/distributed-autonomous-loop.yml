@@ -636,6 +636,10 @@ jobs:
             git -C /tmp/autonomous-state-worktree commit -m "chore: record autonomous loop completion"
             git -C /tmp/autonomous-state-worktree push "$auth_url" HEAD:refs/heads/$state_branch
           fi
+          # The post-run verifier consumes this artifact copy, not the worktree.
+          # Refresh it after the durable completion write so evidence and state agree.
+          cp /tmp/autonomous-state-worktree/.autonomous-loop-state.json /tmp/autonomous-loop-state.json
+          python -m json.tool /tmp/autonomous-loop-state.json >/dev/null
 
       - name: Persist Recovery AI durable state
         id: persist_recovery_ai
