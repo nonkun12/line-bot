@@ -1,6 +1,6 @@
 name: Continuous Distributed Loop
 
-# Continue only after one real task passed and durable completion state
+# Continue only after a task has a successful runtime status and durable completion state
 # confirms it. Empty queues, HOLD/FAIL, missing evidence, and kill switch
 # all stop the chain. Each individual loop remains bounded to one task.
 on:
@@ -40,7 +40,7 @@ jobs:
           test -s evidence/minimal-autonomous-loop.jsonl
           test -s evidence/autonomous-loop-state.json
 
-      - name: Require PASS plus durable completion evidence
+      - name: Require successful task status plus durable completion evidence
         id: gate
         if: always()
         env:
@@ -83,8 +83,8 @@ jobs:
                   stop("invalid_task_result_row")
                   raise SystemExit(0)
               task_id = row.get("task_id")
-              if row.get("status") != "PASS":
-                  stop("task_status_not_PASS")
+              if row.get("status") not in {"PASS", "NO_CHANGE"}:
+                  stop("task_status_not_successful")
                   raise SystemExit(0)
               if type(row.get("exit_code")) is not int or row["exit_code"] != 0:
                   stop("task_exit_code_not_zero")
@@ -138,4 +138,4 @@ jobs:
       - name: Explain why continuation stopped
         if: always() && steps.gate.outputs.continue != 'true'
         run: |
-          echo "No follow-up loop was dispatched. This is intentional unless a real task PASS and durable completion evidence are both present."
+          echo "No follow-up loop was dispatched. This is intentional unless a successful task evidence (PASS or NO_CHANGE) and durable completion evidence are both present."
