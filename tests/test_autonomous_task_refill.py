@@ -384,6 +384,16 @@ def test_refill_drops_completed_existing_entries_and_refills_with_new_work(tmp_p
     assert [task["id"] for task in result["tasks"]] == ["task-next"]
 
 
+def test_refill_preserves_catalog_order_within_addition_cap(tmp_path: Path):
+    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-zeta"), _task("task-alpha"), _task("task-middle")])
+    output = tmp_path / "runtime.json"
+    report = build_queue(queue, catalog, completed, output)
+    result = json.loads(output.read_text(encoding="utf-8"))
+    assert report["added_ids"] == ["task-zeta", "task-alpha"]
+    assert report["eligible_catalog_ids"] == ["task-alpha", "task-middle", "task-zeta"]
+    assert [task["id"] for task in result["tasks"]] == ["task-zeta", "task-alpha"]
+
+
 def test_refill_reports_catalog_exhaustion_by_durable_state(tmp_path: Path):
     queue, catalog, _ = _inputs(
         tmp_path,
