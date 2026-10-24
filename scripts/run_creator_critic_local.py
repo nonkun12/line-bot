@@ -66,6 +66,7 @@ class OpenAICompatibleLocalModel:
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2,
             "max_tokens": 700,
+            "enable_thinking": False,
         }).encode("utf-8")
         request = urllib.request.Request(
             f"{self.base_url}/chat/completions",
@@ -79,11 +80,24 @@ class OpenAICompatibleLocalModel:
         except (urllib.error.URLError, TimeoutError) as exc:
             raise RuntimeError(f"Local model request failed: {exc}") from exc
         try:
-            content = payload["choices"][0]["message"]["content"]
+            choice = payload["choices"][0]
+            message = choice["message"]
+            content = message.get("content")
         except (KeyError, IndexError, TypeError) as exc:
             raise RuntimeError("Local model response lacks choices[0].message.content") from exc
+        if isinstance(content, list):
+            content = "".join(
+                part.get("text", "") for part in content
+                if isinstance(part, dict) and isinstance(part.get("text"), str)
+            )
         if not isinstance(content, str) or not content.strip():
-            raise RuntimeError("Local model returned empty content")
+            finish_reason = choice.get("finish_reason", "unknown") if isinstance(choice, dict) else "unknown"
+            message_keys = sorted(message.keys()) if isinstance(message, dict) else []
+            raise RuntimeError(
+                "Local model returned empty content "
+                f"(finish_reason={finish_reason}, message_keys={message_keys}); "
+                "thinking was disabled for this request, so check the MLX server response format"
+            )
         return content.strip()
 
 
