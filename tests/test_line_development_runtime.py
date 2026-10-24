@@ -590,6 +590,28 @@ def test_new_distributed_queue_tasks_have_deterministic_plans(monkeypatch, tmp_p
             "secret-canary-never-logged",
             'report["project_writes"] == 0',
         ),
+
+        (
+            "proposal-generator-closed-approved-issue-regression",
+            "tests/test_autonomous_task_proposals.py",
+            "def test_fails_closed_on_missing_recovery_state(tmp_path):\n    pass\n",
+            "test_closed_approved_issue_never_enters_runtime_queue",
+            "closed-approved-task",
+        ),
+        (
+            "proposal-generator-invalid-labels-fail-closed-regression",
+            "tests/test_autonomous_task_proposals.py",
+            "def test_fails_closed_on_missing_recovery_state(tmp_path):\n    pass\n",
+            "test_non_list_issue_labels_fail_closed",
+            "issue labels are invalid",
+        ),
+        (
+            "proposal-generator-boolean-issue-number-regression",
+            "tests/test_autonomous_task_proposals.py",
+            "def test_fails_closed_on_missing_recovery_state(tmp_path):\n    pass\n",
+            "test_boolean_issue_number_is_rejected",
+            "invalid_issue_number_count",
+        ),
     ]
 
     for task_id, chosen, original, expected_one, expected_two in cases:
