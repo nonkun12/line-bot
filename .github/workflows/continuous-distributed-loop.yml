@@ -113,8 +113,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
+          RUN_DISPLAY_TITLE: ${{ github.event.workflow_run.display_title }}
         run: |
           set -euo pipefail
+          depth="$(python - <<'PY'
+          import os, re, sys
+          title = os.environ.get("RUN_DISPLAY_TITLE", "")
+          match = re.search(r"continuation_depth=(\d+)", title)
+          if not match:
+              print("Cannot determine continuation depth from source run title; fail closed.", file=sys.stderr)
+              raise SystemExit(1)
+          print(int(match.group(1)))
+          PY
+          )"
+          if [ "$depth" -ge 3 ]; then
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            echo "CONTINUATION_STOP=bounded_depth_limit"
+            exit 0
+          fi
           active="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=20" \
             --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length')"
           if [ "$active" -gt 0 ]; then
@@ -122,6 +138,7 @@ jobs:
             echo "CONTINUATION_STOP=another_loop_is_active"
           else
             echo "dispatch=true" >> "$GITHUB_OUTPUT"
+            echo "next_depth=$((depth + 1))" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Dispatch the next bounded loop
@@ -132,7 +149,9 @@ jobs:
         run: |
           set -euo pipefail
           gh workflow run distributed-autonomous-loop.yml \
-            --repo "$REPOSITORY" --ref main -f max_tasks=1
+            --repo "$REPOSITORY" --ref main \
+            -f max_tasks=1 \
+            -f continuation_depth="${{ steps.active.outputs.next_depth }}"
           echo "CONTINUATION_DISPATCHED max_tasks=1"
 
       - name: Explain why continuation stopped

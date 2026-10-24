@@ -6,7 +6,7 @@ on:
     types: [completed]
 
 permissions:
-  actions: write
+  actions: read
   contents: read
   issues: write
 
@@ -236,23 +236,3 @@ jobs:
             -H "Content-Type: application/json" \
             -H "x-internal-key: ${LINE_INTERNAL_PUSH_KEY}" \
             --data "$payload"
-
-      # Continue autonomously only after independent post-run verification confirms
-      # a successful, evidence-backed task. HOLD/failure/empty queue never re-dispatches.
-      - name: Automatically continue the verified distributed loop
-        if: >-
-          steps.verify.outputs.issues == '0' &&
-          steps.verify.outputs.queue_empty != 'true' &&
-          github.event.workflow_run.conclusion == 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
-        run: |
-          set -euo pipefail
-          gh workflow run distributed-autonomous-loop.yml \
-            --repo "$REPOSITORY" \
-            --ref main \
-            -f max_tasks=1 \
-            -f mode=normal
-          echo "Verified run $SOURCE_RUN_ID passed; queued the next bounded task." >> "$GITHUB_STEP_SUMMARY"
