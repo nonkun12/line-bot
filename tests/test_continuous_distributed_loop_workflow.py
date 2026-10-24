@@ -122,3 +122,52 @@ def test_continuation_gate_rejects_more_than_four_results(tmp_path):
     assert result.returncode == 0
     assert "continue=false" in output
     assert "CONTINUATION_STOP=unexpected_task_result_count" in result.stdout
+
+
+
+def test_continuation_gate_rejects_empty_result_file(tmp_path):
+    result, output = _run_gate(tmp_path, [], [])
+    assert result.returncode == 0
+    assert output.splitlines() == ["continue=false"]
+    assert "CONTINUATION_STOP=unexpected_task_result_count" in result.stdout
+
+
+def test_continuation_gate_rejects_non_object_row(tmp_path):
+    result, output = _run_gate(tmp_path, ["not-an-object"], [])
+    assert result.returncode == 0
+    assert output.splitlines() == ["continue=false"]
+    assert "CONTINUATION_STOP=invalid_task_result_row" in result.stdout
+
+
+def test_continuation_gate_rejects_invalid_task_id(tmp_path):
+    result, output = _run_gate(
+        tmp_path, [_row("../unsafe")], ["../unsafe"]
+    )
+    assert result.returncode == 0
+    assert output.splitlines() == ["continue=false"]
+    assert "CONTINUATION_STOP=missing_or_invalid_task_id" in result.stdout
+
+
+def test_continuation_gate_rejects_malformed_durable_state(tmp_path):
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    (evidence / "minimal-autonomous-loop.jsonl").write_text(
+        json.dumps(_row("task-one")) + "\\n", encoding="utf-8"
+    )
+    (evidence / "autonomous-loop-state.json").write_text(
+        json.dumps({"completed": "task-one"}), encoding="utf-8"
+    )
+    output = tmp_path / "github-output"
+    env = os.environ.copy()
+    env["GITHUB_OUTPUT"] = str(output)
+    result = subprocess.run(
+        [sys.executable, "-c", _gate_script()],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert output.read_text(encoding="utf-8").splitlines() == ["continue=false"]
+    assert "CONTINUATION_STOP=durable_completion_not_confirmed" in result.stdout
