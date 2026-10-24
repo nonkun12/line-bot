@@ -537,3 +537,54 @@ def test_refill_ignores_history_with_invalid_utf8_without_exposing_content(tmp_p
 
     assert report["added_ids"] == ["task-alpha", "task-beta"]
     assert report["feedback_priority_scores"] == {"task-alpha": 0, "task-beta": 0}
+
+
+def test_refill_selects_exactly_four_new_catalog_tasks_when_older_tasks_are_completed(tmp_path: Path):
+    repo_root = Path(__file__).resolve().parents[1]
+    catalog = repo_root / ".github" / "autonomous-loop-task-catalog.json"
+    catalog_data = json.loads(catalog.read_text(encoding="utf-8"))
+    expected_ids = [
+        "control-tower-decision-malformed-evidence-sha",
+        "control-tower-decision-priority-type-boundaries",
+        "task-refill-feedback-history-skips-malformed-lines",
+        "proposal-generator-fails-closed-on-malformed-issue-record",
+    ]
+    assert catalog_data["max_additions_per_run"] == 4
+    assert [task["id"] for task in catalog_data["tasks"][-4:]] == expected_ids
+
+    queue = _write(
+        tmp_path / "queue.json",
+        {"version": 1, "max_tasks_per_run": 4, "tasks": []},
+    )
+    completed = _write(
+        tmp_path / "state.json",
+        {
+            "version": 1,
+            "completed": [
+                task["id"]
+                for task in catalog_data["tasks"]
+                if task["id"] not in expected_ids
+            ],
+            "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None},
+        },
+    )
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, output)
+    runtime = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["added"] == 4
+    assert report["added_ids"] == expected_ids
+    assert report["total"] == 4
+    assert [task["id"] for task in runtime["tasks"]] == expected_ids
+    assert all(task["allowed_paths"] == [f"tests/{name}"] for task, name in zip(
+        runtime["tasks"],
+        [
+            "test_control_tower_decision.py",
+            "test_control_tower_decision.py",
+            "test_autonomous_task_refill.py",
+            "test_autonomous_task_proposals.py",
+        ],
+        strict=True,
+    ))
+    assert queue.read_text(encoding="utf-8") != output.read_text(encoding="utf-8")
