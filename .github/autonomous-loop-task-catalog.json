@@ -186,7 +186,7 @@
     },
     {
       "id": "recovery-rag-context-never-echoes-raw-instruction",
-      "instruction": "tests/test_recovery_rag.py のみに、新しい固有名の回帰テストを1件追加してください。テンポラリSQLite DBに allowlist 済みの過去結果を記録し、build_task_context() の instruction に一意なマーカー 'RAW-INSTRUCTION-MUST-NOT-LEAK-7f2c' を含めた場合、返却された履歴コンテキストにそのマーカーや生の instruction 全文が含まれず、コンテキスト長が1600文字以下であることを確認してください。既存テストを変更せず、外部通信・実DB書き込み・シークレット参照・OS操作は禁止。変更は指定されたテストファイル1つだけ。マージ・デプロイは禁止。",
+      "instruction": "tests/test_recovery_rag.py のみに、新しい固有名の回帰テストを1件追加してください。テンポラリSQLite DBに allowlist 済みの過去結果を記録し、build_task_context() の instruction に一意なマーカー 'RAW-INSTRUCTION-MUST-NOT-LEAK-7f2c' を含めた場合、返却された履歴コンテキストにそのマーカーや生の instruction 全文が含まれず、コンテキスト長が1600文字以下であることを確認してください。既存テストを変更せず、外部通信・実DB書き込み・シークレット参照・OS操作は禁止。変更は指定されたテストファイル1つだけ。マージ・デプロイは禁止。 既存テストや既存fixtureは変更しないでください。fingerprintを新規作成する場合はSHA-256の小文字16進64文字（[0-9a-f]{64}）のみを使い、g-zなどの無効文字を含めないこと。変更後は対象テストを単独実行し、続けて関連テスト全体を実行し、失敗した場合は修復関数の例外も含めて原因を報告し、無理に再試行・成功扱いしないこと。",
       "allowed_paths": [
         "tests/test_recovery_rag.py"
       ]
