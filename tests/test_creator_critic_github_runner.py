@@ -28,6 +28,10 @@ class CreatorCriticGitHubRunnerTests(unittest.TestCase):
         self.assertIn("Never output a bare verdict", calls[1][0][0]["content"])
         self.assertIn("Missing evidence", calls[1][0][0]["content"])
         self.assertIn("Next safe action", calls[1][0][0]["content"])
+        second_creator_prompt = calls[2][0][1]["content"]
+        self.assertIn("Critic feedback: REVIEW: evidence is missing.", second_creator_prompt)
+        self.assertIn("MUST materially revise the previous proposal", second_creator_prompt)
+        self.assertIn("Changes from previous round", second_creator_prompt)
 
     def test_rejects_rounds_outside_limit(self):
         with self.assertRaises(ValueError):
