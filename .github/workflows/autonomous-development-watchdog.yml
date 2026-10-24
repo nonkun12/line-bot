@@ -103,6 +103,7 @@ jobs:
                       print(f"LINE_NOTIFICATION=HTTP_{response.status}")
               except Exception as exc:
                   print(f"LINE_NOTIFICATION=ERROR_{type(exc).__name__}")
+          PY
 
       - name: Upload watchdog result
         if: always()
