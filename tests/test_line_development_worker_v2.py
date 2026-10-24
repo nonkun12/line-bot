@@ -532,3 +532,11 @@ def test_validate_plan_with_bounded_repairs_rejects_unsafe_invalid_old_new_repai
     assert detail == "change_outside_selected_file"
     assert plan == rejected
     assert calls == ["repair"]
+
+
+def test_not_run_queue_regression_task_uses_deterministic_target():
+    from core.line_development_runtime import _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
+
+    assert _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS[
+        "continuous-loop-not-run-does-not-continue-regression"
+    ] == "tests/test_continuous_distributed_loop_workflow.py"

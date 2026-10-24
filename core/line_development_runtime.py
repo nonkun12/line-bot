@@ -220,6 +220,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "ai-speaker-empty-transcript-no-brain-call": "tests/test_ai_speaker.py",
     "distributed-loop-queue-progress-empty-queue-regression": "tests/test_distributed_loop_queue_progress.py",
     "distributed-loop-queue-progress-empty-queue-regression-v2": "tests/test_distributed_loop_queue_progress.py",
+    "continuous-loop-not-run-does-not-continue-regression": "tests/test_continuous_distributed_loop_workflow.py",
     "loop-deterministic-nochange-focused-test": "tests/test_line_development_worker_v2.py",
     "self-improvement-history-malformed-jsonl-regression": "tests/test_self_improvement_state.py",
     "refill-rejects-malformed-completed-state": "tests/test_autonomous_task_refill.py",
