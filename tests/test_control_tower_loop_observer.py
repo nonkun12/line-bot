@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+import scripts.control_tower_loop_observer as observer
+from core.creator_critic_runtime import build_creator_critic_loop
 from scripts.control_tower_loop_observer import record_loop_observation
 
 
@@ -64,3 +66,51 @@ def test_history_is_bounded_to_200_records(tmp_path: Path) -> None:
     assert len(records) == 200
     assert records[0]["task_id"] == "task-5"
     assert records[-1]["task_id"] == "task-204"
+
+
+
+def test_observer_uses_creator_critic_only_with_explicit_local_endpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    history = tmp_path / "observations.jsonl"
+    calls: list[str] = []
+
+    def fake_model(prompt: str) -> str:
+        calls.append(prompt)
+        if "CREATOR" in prompt:
+            return "Add one deterministic regression test."
+        return "Verdict: HOLD. Main concern: failed runtime evidence. Missing evidence: passing tests. Next safe action: run focused tests."
+
+    monkeypatch.setenv("CREATOR_CRITIC_BASE_URL", "http://127.0.0.1:8081/v1")
+    monkeypatch.setenv("CREATOR_CRITIC_MODEL", "local-test-model")
+    monkeypatch.setattr(
+        observer,
+        "build_creator_critic_loop",
+        lambda max_iterations=1: build_creator_critic_loop(
+            model_call=fake_model, max_iterations=max_iterations
+        ),
+    )
+
+    record_loop_observation(history, outcome("FAIL", 1))
+    record = json.loads(history.read_text(encoding="utf-8").splitlines()[-1])
+
+    assert len(calls) == 2
+    assert record["creator_critic"]["configured"] is True
+    assert record["creator_critic"]["rounds"] == 1
+    assert record["creator_critic"]["passed"] is False
+    assert record["creator_critic"]["approved_for_execution"] is False
+    assert record["creator_critic"]["review_error"] is None
+
+
+def test_observer_keeps_model_disabled_without_local_endpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    history = tmp_path / "observations.jsonl"
+    monkeypatch.delenv("CREATOR_CRITIC_BASE_URL", raising=False)
+
+    record_loop_observation(history, outcome("FAIL", 1))
+    record = json.loads(history.read_text(encoding="utf-8").splitlines()[-1])
+
+    assert record["creator_critic"]["configured"] is False
+    assert record["creator_critic"]["rounds"] == 0
+    assert record["creator_critic"]["approved_for_execution"] is False
