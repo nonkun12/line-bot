@@ -37,7 +37,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: github-hosted-creator-critic
+  group: github-hosted-creator-critic-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
