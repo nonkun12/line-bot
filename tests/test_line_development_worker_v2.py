@@ -551,3 +551,20 @@ def test_not_run_queue_regression_task_uses_deterministic_target():
     assert plan is not None
     assert plan["source"] == "deterministic_autonomous_task"
     assert plan["no_change"] is True
+
+def test_queue_progress_not_run_task_uses_deterministic_target():
+    from core.line_development_runtime import _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
+
+    task_id = "queue-progress-excludes-not-run-results-regression"
+    target = "tests/test_distributed_loop_queue_progress.py"
+    assert _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS[task_id] == target
+
+    from core.line_development_runtime import _deterministic_autonomous_test_plan
+
+    plan, error = _deterministic_autonomous_test_plan(target, task_id)
+    assert error is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert plan["no_change"] is False
+    assert "test_progress_does_not_count_not_run_result_as_completion" in plan["changes"][0]["new"]
+
