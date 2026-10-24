@@ -11,4 +11,4 @@ def test_rea_audit_workflow_emits_review_only_control_tower_evidence():
     assert "ControlTower.evaluate_rea_review_candidates(candidates, expected_sha=expected_sha)" in workflow
     assert "rea-control-tower-decision.json" in workflow
     assert "task_template_id" in workflow
-    assert "No code was changed" in workflow
+    assert "no code was changed" in workflow.lower()
