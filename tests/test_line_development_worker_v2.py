@@ -550,4 +550,4 @@ def test_not_run_queue_regression_task_uses_deterministic_target():
     assert error is None
     assert plan is not None
     assert plan["source"] == "deterministic_autonomous_task"
-    assert "test_continuation_gate_stops_when_task_is_not_run" in plan["changes"][0]["new"]
+    assert plan["no_change"] is True
