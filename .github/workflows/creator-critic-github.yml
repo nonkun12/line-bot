@@ -13,6 +13,11 @@ on:
       - "tests/test_creator_critic_github_runner.py"
       - "tests/test_creator_critic_loop_advisory.py"
       - "tests/test_creator_critic_loop_workflow_integration.py"
+      - "core/creator_critic.py"
+      - "core/creator_critic_runtime.py"
+      - "scripts/control_tower_loop_observer.py"
+      - "tests/test_creator_critic_runtime.py"
+      - "tests/test_control_tower_loop_observer.py"
   pull_request:
     paths:
       - ".github/workflows/creator-critic-github.yml"
@@ -22,6 +27,11 @@ on:
       - "tests/test_creator_critic_github_runner.py"
       - "tests/test_creator_critic_loop_advisory.py"
       - "tests/test_creator_critic_loop_workflow_integration.py"
+      - "core/creator_critic.py"
+      - "core/creator_critic_runtime.py"
+      - "scripts/control_tower_loop_observer.py"
+      - "tests/test_creator_critic_runtime.py"
+      - "tests/test_control_tower_loop_observer.py"
   workflow_dispatch:
     inputs:
       rounds:
