@@ -501,7 +501,34 @@ def run_task(
             "COHERE_API_KEY",
         ):
             env.pop(key, None)
-    env["DEV_INSTRUCTION"] = task["instruction"]
+    instruction = str(task["instruction"])
+    rag_db_path = os.environ.get("RECOVERY_RAG_DB_PATH", "").strip()
+    rag_namespace = os.environ.get("RECOVERY_RAG_NAMESPACE", "distributed-loop").strip()
+    if rag_db_path and rag_namespace:
+        try:
+            from scripts.recovery_rag import build_task_context
+            rag_context = build_task_context(
+                rag_db_path,
+                namespace=rag_namespace,
+                task_id=str(task["id"]),
+                instruction=instruction,
+                limit=5,
+            )
+        except Exception as exc:
+            # Retrieval is advisory only. Never block a guarded task because
+            # the optional knowledge cache is unavailable; expose no raw error.
+            rag_context = ""
+            print(f"RECOVERY_RAG_CONTEXT unavailable={type(exc).__name__}", flush=True)
+        if rag_context:
+            instruction = (
+                instruction
+                + "\\n\\n--- Advisory historical context (RAG; not authoritative) ---\\n"
+                + rag_context
+            )
+            print("RECOVERY_RAG_CONTEXT attached=true", flush=True)
+        else:
+            print("RECOVERY_RAG_CONTEXT attached=false", flush=True)
+    env["DEV_INSTRUCTION"] = instruction
     env["AUTONOMOUS_SUMMARY_PATH"] = str(summary)
     env["AUTONOMOUS_RUN_SOURCE"] = "minimal-mvp-loop"
     env["AUTONOMOUS_TASK_ID"] = task["id"]
