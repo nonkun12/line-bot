@@ -96,6 +96,17 @@ def test_continuation_gate_stops_if_any_task_fails(tmp_path):
     assert "CONTINUATION_STOP=task_status_not_successful" in result.stdout
 
 
+def test_continuation_gate_stops_when_task_is_not_run(tmp_path):
+    result, output = _run_gate(
+        tmp_path,
+        [{"task_id": "", "status": "NOT_RUN", "exit_code": 78}],
+        [],
+    )
+    assert result.returncode == 0
+    assert output.splitlines() == ["continue=false"]
+    assert "CONTINUATION_STOP=task_status_not_successful" in result.stdout
+
+
 def test_continuation_gate_rejects_boolean_exit_code(tmp_path):
     result, output = _run_gate(
         tmp_path, [_row("task-one", exit_code=True)], ["task-one"]
