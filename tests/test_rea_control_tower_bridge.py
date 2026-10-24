@@ -61,3 +61,41 @@ def test_no_rea_result_can_select_registered_task():
         adapter = build_review_candidates(report(status), expected_sha=SHA)
         decision = rea_result_to_control_tower_decision(adapter, expected_sha=SHA)
         assert decision.next_action != "SELECT_REGISTERED_TASK"
+
+
+def test_bridge_rejects_boolean_candidate_count_and_non_list_candidates():
+    adapter = build_review_candidates(report(), expected_sha=SHA)
+    bad_count = dict(adapter)
+    bad_count["candidate_count"] = True
+    bad_candidates = dict(adapter)
+    bad_candidates["candidates"] = None
+
+    for invalid in (bad_count, bad_candidates):
+        decision = rea_result_to_control_tower_decision(invalid, expected_sha=SHA)
+        assert decision.reason_code == "invalid_state"
+        assert decision.gate_status == "BLOCKED"
+        assert decision.next_action == "HOLD"
+
+
+def test_bridge_rejects_candidate_with_wrong_review_status_or_execution_action():
+    adapter = build_review_candidates(report(), expected_sha=SHA)
+    bad_status = {**adapter, "candidates": [dict(adapter["candidates"][0], status="APPROVED")]}
+    bad_action = {**adapter, "candidates": [dict(adapter["candidates"][0], next_action="SELECT_REGISTERED_TASK")]}
+
+    for invalid in (bad_status, bad_action):
+        decision = rea_result_to_control_tower_decision(invalid, expected_sha=SHA)
+        assert decision.gate_status == "BLOCKED"
+        assert decision.next_action == "HOLD"
+        assert decision.task_template_id is None
+
+
+def test_bridge_rejects_missing_capability_flags_and_invalid_expected_sha():
+    adapter = build_review_candidates(report("PASS"), expected_sha=SHA)
+    missing_flag = {**adapter, "capabilities": {"read_only": True}}
+    invalid_sha = rea_result_to_control_tower_decision(adapter, expected_sha="A" * 40)
+
+    blocked = rea_result_to_control_tower_decision(missing_flag, expected_sha=SHA)
+    assert blocked.gate_status == "BLOCKED"
+    assert blocked.next_action == "HOLD"
+    assert invalid_sha.gate_status == "BLOCKED"
+    assert invalid_sha.next_action == "HOLD"
