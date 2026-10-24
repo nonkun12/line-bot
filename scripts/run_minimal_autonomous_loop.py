@@ -522,7 +522,7 @@ def run_task(
         if rag_context:
             instruction = (
                 instruction
-                + "\\n\\n--- Advisory historical context (RAG; not authoritative) ---\\n"
+                + "\n\n--- Advisory historical context (RAG; not authoritative) ---\n"
                 + rag_context
             )
             print("RECOVERY_RAG_CONTEXT attached=true", flush=True)
