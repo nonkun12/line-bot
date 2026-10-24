@@ -6,6 +6,7 @@ def test_rea_audit_workflow_emits_review_only_control_tower_evidence():
 
     assert "permissions:\n  contents: read" in workflow
     assert "persist-credentials: false" in workflow
+    assert "pip install --disable-pip-version-check -r requirements.txt" in workflow
     assert "python -m scripts.rea_readonly_scanner --repo-root ." in workflow
     assert "python -m scripts.rea_review_candidates rea-report.json --expected-sha" in workflow
     assert "rea_result_to_control_tower_decision(candidates, expected_sha=expected_sha)" in workflow
