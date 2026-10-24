@@ -192,6 +192,13 @@
       ]
     },
     {
+      "id": "continuous-loop-not-run-does-not-continue-regression",
+      "instruction": "tests/test_continuous_distributed_loop_workflow.py のみに、新しい固有名の回帰テストを1件追加してください。runtime result が status=NOT_RUN・exit_code=78・failure_reason=queue_empty の場合、continuation gate が CONTINUATION_STOP=task_status_not_successful として停止し、continue=true を出力しないことを検証してください。既存テストやworkflow本体を変更せず、テストファイル1つだけ変更してください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_continuous_distributed_loop_workflow.py"
+      ]
+    },
+    {
       "id": "control-tower-decision-malformed-evidence-sha",
       "instruction": "tests/test_control_tower_decision.py のみに、新しい固有名の回帰テストを1件追加してください。ControlTowerDecisionRecord の evidence_sha に短いSHA・40文字の大文字SHA・非文字列を与えると ValueError で拒否されることをパラメータ化して検証してください。通常の OBSERVE_ONLY / PASS の他のフィールドは有効値を使い、既存テストを変更せずテストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
       "allowed_paths": [
@@ -217,13 +224,6 @@
       "instruction": "tests/test_autonomous_task_proposals.py のみに、新しい固有名の回帰テストを1件追加してください。issues JSON配列に null または文字列の issue record が含まれる場合、build_proposals() が ValueError('issue record is invalid') で fail-closed になり、queue JSONが変更されないことを検証してください。既存テストを変更せずテストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
       "allowed_paths": [
         "tests/test_autonomous_task_proposals.py"
-      ]
-    },
-    {
-      "id": "continuous-loop-not-run-does-not-continue-regression",
-      "instruction": "tests/test_continuous_distributed_loop_workflow.py のみに、新しい固有名の回帰テストを1件追加してください。runtime result が status=NOT_RUN・exit_code=78・failure_reason=queue_empty の場合、continuation gate が CONTINUATION_STOP=task_status_not_successful として停止し、continue=true を出力しないことを検証してください。既存テストやworkflow本体を変更せず、テストファイル1つだけ変更してください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
-      "allowed_paths": [
-        "tests/test_continuous_distributed_loop_workflow.py"
       ]
     }
   ]
