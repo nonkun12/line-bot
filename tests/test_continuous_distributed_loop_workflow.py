@@ -194,6 +194,11 @@ def test_distributed_loop_continuation_depth_is_bounded_and_propagated():
     assert 'if [ "$depth" -ge 3 ]; then' in continuation
     assert '-f continuation_depth="${{ steps.active.outputs.next_depth }}"' in continuation
     assert "CONTINUATION_STOP=bounded_depth_limit" in continuation
+    # The bounded chain must have a scheduled fallback, so a depth cap is not
+    # a permanent manual-resume requirement.
+    assert "cron: '30 4,10,16,22 * * *'" in source
+    assert 'timezone: "Asia/Tokyo"' in source
+    assert "group: distributed-autonomous-loop" in source
 
 
 def test_distributed_loop_continuation_still_requires_existing_evidence_gate():
