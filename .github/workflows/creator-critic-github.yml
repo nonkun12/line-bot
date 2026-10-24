@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - "feat/local-bonsai-creator-critic-20261024"
+      - "fix/creator-critic-evidence-status-20261024"
     paths:
       - ".github/workflows/creator-critic-github.yml"
       - "scripts/run_creator_critic_github.py"
