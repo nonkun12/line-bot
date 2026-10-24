@@ -60,7 +60,12 @@ def run_discussion(
                     f"Objective: {objective}\nRound: {index}\n"
                     f"Previous proposal: {proposal or '(none)'}\n"
                     f"Critic feedback: {critique or '(none)'}\n"
-                    "Return a concise proposal, validation steps, and risks."
+                    "If this is round 1, propose one small, testable improvement. "
+                    "If this is a later round, you MUST materially revise the previous proposal "
+                    "to address the Critic's specific concerns; do not repeat the same proposal. "
+                    "State 'Changes from previous round' and identify each concern addressed. "
+                    "If evidence is still missing, narrow the proposal to a safe verification step "
+                    "that can produce that evidence. Return a concise proposal, validation steps, and risks."
                 ),
             },
         ]
