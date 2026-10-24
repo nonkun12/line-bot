@@ -15,7 +15,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Mapping
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -34,8 +34,9 @@ class OpenAICompatibleLocalModel:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
-        if not self.base_url.startswith(("http://127.0.0.1", "http://localhost", "http://[::1]")):
-            raise ValueError("For safety, the local runner only permits loopback HTTP endpoints")
+        parsed = urlsplit(self.base_url)
+        if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"} or parsed.username or parsed.password:
+            raise ValueError("For safety, the local runner only permits plain HTTP loopback endpoints")
 
     def _request_json(self, path: str) -> dict:
         request = urllib.request.Request(
@@ -171,7 +172,7 @@ def main() -> int:
         print(f'Overall: {"PASS" if report["overall_passed"] else "HOLD"} '
               "(no source changes, no merge, no deploy)")
         return 0 if report["overall_passed"] else 2
-    except (ValueError, RuntimeError, OSError, urllib.error.URLError) as exc:
+    except (ValueError, argparse.ArgumentTypeError, RuntimeError, OSError, urllib.error.URLError) as exc:
         print(f"CREATOR_CRITIC_HOLD: {exc}", file=sys.stderr)
         return 2
 
