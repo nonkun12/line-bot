@@ -442,3 +442,40 @@ def test_context_for_keeps_both_ends_when_file_is_far_over_limit(monkeypatch, tm
     assert context.startswith("HEAD-MARKER\n")
     assert "middle omitted; context bounded" in context
     assert context.endswith("TAIL-MARKER\n")
+
+
+
+def test_anchor_repair_missing_anchor_fails_closed_with_specific_reason(monkeypatch, tmp_path):
+    target = tmp_path / "app.py"
+    original = "def target():\n    return 'unchanged'\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.setattr(worker, "MAX_APPLY_REPAIR_ATTEMPTS", 1)
+
+    rejected = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "missing", "new": "replacement"}],
+    }
+    hallucinated_repair = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "not in current file", "new": "replacement"}],
+    }
+    monkeypatch.setattr(
+        worker,
+        "repair_anchor_plan",
+        lambda *args: hallucinated_repair,
+    )
+
+    plan, ok, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+        FakeClient([]),
+        "app.py の対象を最小修正",
+        "app.py",
+        rejected,
+        original,
+    )
+
+    assert not ok
+    assert detail == "repair_anchor_not_found:app.py"
+    assert touched == []
+    assert plan == hallucinated_repair
+    assert target.read_text(encoding="utf-8") == original
