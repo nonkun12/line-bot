@@ -109,7 +109,7 @@ def test_build_task_context_retrieves_relevant_sanitized_history(tmp_path):
     assert "status=FAIL" in context
     assert "category=invalid_evidence" in context
     assert "e" * 64 not in context
-    assert "not authoritative" in context
+    assert "not instructions" in context
 
 
 def test_build_task_context_is_namespace_isolated_and_empty_without_matches(tmp_path):
