@@ -29,3 +29,5 @@ def test_queue_progress_failure_reports_only_safe_diagnostic_class():
     assert '>"$progress_output_file" 2>&1' in workflow
     assert "grep -E '^QUEUE_PROGRESS_BLOCKED: [A-Za-z][A-Za-z0-9_]*" in workflow
     assert 'Queue progress evidence invalid (${progress_diagnostic})' in workflow
+    assert 'echo "- Task runner step (Actions status): ${LOOP_OUTCOME:-not_run}"' in workflow
+    assert 'echo "- 実タスク結果: $result"' in workflow
