@@ -152,7 +152,7 @@ def test_continuation_gate_rejects_malformed_durable_state(tmp_path):
     evidence = tmp_path / "evidence"
     evidence.mkdir()
     (evidence / "minimal-autonomous-loop.jsonl").write_text(
-        json.dumps(_row("task-one")) + "\\n", encoding="utf-8"
+        json.dumps(_row("task-one")) + "\n", encoding="utf-8"
     )
     (evidence / "autonomous-loop-state.json").write_text(
         json.dumps({"completed": "task-one"}), encoding="utf-8"
