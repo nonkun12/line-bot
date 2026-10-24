@@ -298,17 +298,18 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         )
         if text.count(anchor) != 1:
             return None, "deterministic_anchor_not_unique:continuation_not_run"
-        new = text.replace(anchor, addition + anchor, 1)
-        if len(anchor) > 1200 or len(new) > 1800:
-            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        replacement = addition + anchor
+        if len(anchor) > 1200 or len(replacement) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(replacement)}"
+        candidate = text.replace(anchor, replacement, 1)
         try:
-            compile(new, chosen, "exec")
+            compile(candidate, chosen, "exec")
         except (SyntaxError, IndentationError) as exc:
             return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
         return {
             "no_change": False,
             "source": "deterministic_autonomous_task",
-            "changes": [{"file": chosen, "old": anchor, "new": addition + anchor}],
+            "changes": [{"file": chosen, "old": anchor, "new": replacement}],
         }, None
 
     priority_boundary_regression = "control-tower-decision-priority-type-boundaries"
