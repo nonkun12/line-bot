@@ -29,7 +29,10 @@ ROOT = _ROOT
 MODEL = os.environ.get("DEV_AI_MODEL", "openai/gpt-oss-20b")
 MAX_FILES = 1
 MAX_FILE_CHARS = 12000
-MAX_RESPONSE_TOKENS = 4096
+# Leave headroom under Groq's 8,000 TPM free/on-demand limit: the limit counts
+# prompt plus requested completion tokens, so 4,096 can push otherwise valid
+# autonomous tasks over the provider ceiling before generation begins.
+MAX_RESPONSE_TOKENS = 3500
 MAX_INSTRUCTION_LENGTH = 2000
 MAX_REPAIR_ATTEMPTS = 1
 MAX_APPLY_REPAIR_ATTEMPTS = 2
