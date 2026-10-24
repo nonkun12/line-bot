@@ -13,7 +13,11 @@ class CreatorCriticGitHubRunnerTests(unittest.TestCase):
 
         report = run_discussion(fake_generate, "Improve reliability", rounds=2)
         self.assertEqual(report["status"], "DISCUSSION_ONLY")
-        self.assertEqual(report["evidence_status"], "NOT_MEASURED")
+        self.assertEqual(report["evidence_status"], "RUNTIME_MEASURED")
+        self.assertEqual(report["improvement_effectiveness"], "NOT_MEASURED")
+        self.assertEqual(report["execution_metrics"]["turn_count"], 4)
+        self.assertEqual(report["execution_metrics"]["non_empty_turn_count"], 4)
+        self.assertGreaterEqual(report["execution_metrics"]["elapsed_seconds"], 0)
         self.assertFalse(report["source_changes"])
         self.assertFalse(report["merge_or_deploy"])
         self.assertEqual(len(report["transcript"]), 4)
