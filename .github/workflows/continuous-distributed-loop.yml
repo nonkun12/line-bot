@@ -1,0 +1,141 @@
+name: Continuous Distributed Loop
+
+# Continue only after a task has a successful runtime status and durable completion state
+# confirms it. Empty queues, HOLD/FAIL, missing evidence, and kill switch
+# all stop the chain. Each individual loop remains bounded to one task.
+on:
+  workflow_run:
+    workflows: ["Distributed Autonomous Development Loop"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: continuous-distributed-loop
+  cancel-in-progress: false
+
+jobs:
+  continue-after-verified-pass:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      vars.CONTROL_TOWER_KILL_SWITCH != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download source-run evidence
+        id: evidence
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          gh run download "$SOURCE_RUN_ID" --repo "$REPOSITORY" \
+            --name "minimal-autonomous-loop-$SOURCE_RUN_ID" --dir evidence
+          test -s evidence/minimal-autonomous-loop.jsonl
+          test -s evidence/autonomous-loop-state.json
+
+      - name: Require successful task status plus durable completion evidence
+        id: gate
+        if: always()
+        env:
+          EVIDENCE_DOWNLOAD_OUTCOME: ${{ steps.evidence.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "$EVIDENCE_DOWNLOAD_OUTCOME" != "success" ]; then
+            echo "continue=false" >> "$GITHUB_OUTPUT"
+            echo "CONTINUATION_STOP=missing_or_unreadable_artifact"
+            exit 0
+          fi
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+          from os import environ
+
+          def stop(reason):
+              with open(environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+                  out.write("continue=false\n")
+              print("CONTINUATION_STOP=" + reason)
+
+          try:
+              rows = [
+                  json.loads(line)
+                  for line in Path("evidence/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines()
+                  if line.strip()
+              ]
+              state = json.loads(Path("evidence/autonomous-loop-state.json").read_text(encoding="utf-8"))
+          except (OSError, json.JSONDecodeError) as exc:
+              stop("invalid_evidence_" + type(exc).__name__)
+              raise SystemExit(0)
+
+          if not isinstance(rows, list) or not 1 <= len(rows) <= 4:
+              stop("unexpected_task_result_count")
+              raise SystemExit(0)
+          task_ids = []
+          for row in rows:
+              if not isinstance(row, dict):
+                  stop("invalid_task_result_row")
+                  raise SystemExit(0)
+              task_id = row.get("task_id")
+              if row.get("status") not in {"PASS", "NO_CHANGE"}:
+                  stop("task_status_not_successful")
+                  raise SystemExit(0)
+              if type(row.get("exit_code")) is not int or row["exit_code"] != 0:
+                  stop("task_exit_code_not_zero")
+                  raise SystemExit(0)
+              if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", task_id):
+                  stop("missing_or_invalid_task_id")
+                  raise SystemExit(0)
+              task_ids.append(task_id)
+          if len(task_ids) != len(set(task_ids)):
+              stop("duplicate_task_ids")
+              raise SystemExit(0)
+          completed = state.get("completed") if isinstance(state, dict) else None
+          if not isinstance(completed, list) or any(task_id not in completed for task_id in task_ids):
+              stop("durable_completion_not_confirmed")
+              raise SystemExit(0)
+
+          with open(environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write("continue=true\n")
+              out.write("task_id=" + task_ids[-1] + "\n")
+          print("CONTINUATION_ALLOWED verified_tasks=" + str(len(task_ids)))
+          PY
+
+      - name: Avoid duplicate dispatch while another loop is queued or running
+        id: active
+        if: steps.gate.outputs.continue == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          active="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=20" \
+            --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length')"
+          if [ "$active" -gt 0 ]; then
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            echo "CONTINUATION_STOP=another_loop_is_active"
+          else
+            echo "dispatch=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dispatch the next bounded loop
+        if: steps.gate.outputs.continue == 'true' && steps.active.outputs.dispatch == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh workflow run distributed-autonomous-loop.yml \
+            --repo "$REPOSITORY" --ref main -f max_tasks=1
+          echo "CONTINUATION_DISPATCHED max_tasks=1"
+
+      - name: Explain why continuation stopped
+        if: always() && steps.gate.outputs.continue != 'true'
+        run: |
+          echo "No follow-up loop was dispatched. This is intentional unless a successful task evidence (PASS or NO_CHANGE) and durable completion evidence are both present."
