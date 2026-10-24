@@ -8,7 +8,7 @@ def test_rea_audit_workflow_emits_review_only_control_tower_evidence():
     assert "persist-credentials: false" in workflow
     assert "python -m scripts.rea_readonly_scanner --repo-root ." in workflow
     assert "python -m scripts.rea_review_candidates rea-report.json --expected-sha" in workflow
-    assert "ControlTower.evaluate_rea_review_candidates(candidates, expected_sha=expected_sha)" in workflow
+    assert "rea_result_to_control_tower_decision(candidates, expected_sha=expected_sha)" in workflow
     assert "rea-control-tower-decision.json" in workflow
     assert "task_template_id" in workflow
     assert "no code was changed" in workflow.lower()
