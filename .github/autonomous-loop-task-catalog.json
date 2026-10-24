@@ -183,6 +183,34 @@
       "allowed_paths": [
         "tests/test_autonomous_task_proposals.py"
       ]
+    },
+    {
+      "id": "control-tower-decision-malformed-evidence-sha",
+      "instruction": "tests/test_control_tower_decision.py のみに、新しい固有名の回帰テストを1件追加してください。ControlTowerDecisionRecord の evidence_sha に短いSHA・40文字の大文字SHA・非文字列を与えると ValueError で拒否されることをパラメータ化して検証してください。通常の OBSERVE_ONLY / PASS の他のフィールドは有効値を使い、既存テストを変更せずテストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_control_tower_decision.py"
+      ]
+    },
+    {
+      "id": "control-tower-decision-priority-type-boundaries",
+      "instruction": "tests/test_control_tower_decision.py のみに、新しい固有名の回帰テストを1件追加してください。ControlTowerDecisionRecord の priority が bool・float・負数・100超の場合に ValueError となり、整数0と100は受理されることを検証してください。新しい固有名のテスト関数を使い、既存テストを変更せずテストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_control_tower_decision.py"
+      ]
+    },
+    {
+      "id": "task-refill-feedback-history-skips-malformed-lines",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。履歴JSONLに不正JSON行・登録済み候補タスクの有効な failure 行・未知タスクIDの failure 行を混在させ、build_queue() が不正行と未知IDを無視し、登録済み候補だけに feedback score 3 を付けてキューに追加することを検証してください。既存テスト変更禁止。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "proposal-generator-fails-closed-on-malformed-issue-record",
+      "instruction": "tests/test_autonomous_task_proposals.py のみに、新しい固有名の回帰テストを1件追加してください。issues JSON配列に null または文字列の issue record が含まれる場合、build_proposals() が ValueError('issue record is invalid') で fail-closed になり、queue JSONが変更されないことを検証してください。既存テストを変更せずテストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ]
     }
   ]
 }
