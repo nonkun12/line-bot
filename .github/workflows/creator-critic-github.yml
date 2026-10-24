@@ -1,6 +1,13 @@
 name: GitHub-hosted Creator-Critic discussion
 
 on:
+  push:
+    branches:
+      - "feat/local-bonsai-creator-critic-20261024"
+    paths:
+      - ".github/workflows/creator-critic-github.yml"
+      - "scripts/run_creator_critic_github.py"
+      - "tests/test_creator_critic_github_runner.py"
   pull_request:
     paths:
       - ".github/workflows/creator-critic-github.yml"
