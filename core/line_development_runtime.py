@@ -221,6 +221,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "distributed-loop-queue-progress-empty-queue-regression": "tests/test_distributed_loop_queue_progress.py",
     "distributed-loop-queue-progress-empty-queue-regression-v2": "tests/test_distributed_loop_queue_progress.py",
     "queue-progress-excludes-not-run-results-regression": "tests/test_distributed_loop_queue_progress.py",
+    "queue-progress-excludes-not-run-results-regression-v2": "tests/test_distributed_loop_queue_progress.py",
     "continuous-loop-not-run-does-not-continue-regression": "tests/test_continuous_distributed_loop_workflow.py",
     "loop-deterministic-nochange-focused-test": "tests/test_line_development_worker_v2.py",
     "self-improvement-history-malformed-jsonl-regression": "tests/test_self_improvement_state.py",
@@ -686,7 +687,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "changes": [{"file": chosen, "old": anchor, "new": new}],
         }, None
 
-    if task_id == "queue-progress-excludes-not-run-results-regression" and chosen == "tests/test_distributed_loop_queue_progress.py":
+    if task_id in {"queue-progress-excludes-not-run-results-regression", "queue-progress-excludes-not-run-results-regression-v2"} and chosen == "tests/test_distributed_loop_queue_progress.py":
         target = worker.ROOT / chosen
         text = target.read_text(encoding="utf-8")
         name = "test_progress_does_not_count_not_run_result_as_completion"
