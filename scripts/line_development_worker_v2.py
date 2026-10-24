@@ -261,7 +261,6 @@ Do not broaden the requested change. If a unique safe anchor cannot be identifie
         f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}"
         f"\n\nCurrent file context:\n{context}"
         f"\n\nApply error:\n{anchor_error}"
-        f"\n\nValidation error:\n{validation_error}"
         f"\n\nRejected plan:\n{rejected}"
     )
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
@@ -560,6 +559,7 @@ the requested change. If a safe exact replacement cannot be identified, return {
     prompt = (
         f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}"
         f"\n\nCurrent file context:\n{context}"
+        f"\n\nValidation error:\n{validation_error}"
         f"\n\nRejected plan:\n{rejected}"
     )
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
