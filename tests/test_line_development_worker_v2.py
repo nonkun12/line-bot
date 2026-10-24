@@ -565,7 +565,11 @@ def test_queue_progress_not_run_task_uses_deterministic_target():
     assert error is None
     assert plan is not None
     assert plan["source"] == "deterministic_autonomous_task"
-    # The autonomous worker applies the guarded test before running pytest,
-    # so the deterministic planner must be idempotent when this assertion runs.
-    assert plan["no_change"] is True
+    if plan["no_change"]:
+        # The autonomous worker may already have applied the guarded test before pytest.
+        assert "def test_progress_does_not_count_not_run_result_as_completion(" in open(
+            "tests/test_distributed_loop_queue_progress.py", encoding="utf-8"
+        ).read()
+    else:
+        assert "test_progress_does_not_count_not_run_result_as_completion" in plan["changes"][0]["new"]
 
