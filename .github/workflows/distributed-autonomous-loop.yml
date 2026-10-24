@@ -767,6 +767,28 @@ jobs:
           print('Recovery AI, RAG, and sanitized self-improvement durable state read-back verified.')
           PY
 
+      - name: Advisory Creator-Critic review for failed or repaired tasks
+        id: creator_critic
+        if: always()
+        continue-on-error: true
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          python -m scripts.run_creator_critic_loop_advisory \
+            --results /tmp/minimal-autonomous-loop.jsonl \
+            --output artifacts/creator-critic-github/latest.json
+
+      - name: Upload advisory Creator-Critic transcript
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: creator-critic-loop-advisory-${{ github.run_id }}
+          path: artifacts/creator-critic-github/
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Record distributed run result to Google Sheets
         id: sheets
         if: always()
