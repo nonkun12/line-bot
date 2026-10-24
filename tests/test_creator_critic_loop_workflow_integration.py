@@ -67,12 +67,12 @@ class CreatorCriticLoopWorkflowIntegrationTests(unittest.TestCase):
         )
 
         self.assertEqual(rc, 0)
-        self.assertEqual(len(calls), 2, "failure should install dependencies and invoke one-round inference")
+        self.assertEqual(len(calls), 2, "failure should install dependencies and invoke two-round inference")
         self.assertEqual(tuple(calls[0][0][-2:]), DEPENDENCIES)
         self.assertEqual(calls[0][2]["env"]["CMAKE_ARGS"], "-DGGML_NATIVE=OFF")
         inference = calls[1][0]
         self.assertIn("--rounds", inference)
-        self.assertEqual(inference[inference.index("--rounds") + 1], "1")
+        self.assertEqual(inference[inference.index("--rounds") + 1], "2")
         objective = inference[inference.index("--objective") + 1]
         self.assertIn("status=FAIL", objective)
         self.assertIn("<untrusted_loop_observation>", objective)
