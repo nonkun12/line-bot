@@ -29,3 +29,11 @@ def test_queue_progress_failure_reports_only_safe_diagnostic_class():
     assert '>"$progress_output_file" 2>&1' in workflow
     assert "grep -E '^QUEUE_PROGRESS_BLOCKED: [A-Za-z][A-Za-z0-9_]*" in workflow
     assert 'Queue progress evidence invalid (${progress_diagnostic})' in workflow
+
+
+def test_scheduled_loop_requests_four_bounded_tasks_and_validates_the_same_limit():
+    workflow = (ROOT / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert "github.event_name == 'schedule' && '4' || github.event_name == 'workflow_dispatch'" in workflow
+    assert 'elif [ "${EVENT_NAME}" = "schedule" ]; then\n            expected="4"' in workflow
+    assert "AUTO_APPLY_PATCH: 'false'" in workflow
+    assert "AUTO_DEPLOY: 'false'" in workflow
