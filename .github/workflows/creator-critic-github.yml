@@ -63,6 +63,23 @@ jobs:
             --rounds "$DISCUSSION_ROUNDS" \
             --output artifacts/creator-critic-github/latest.json
 
+      - name: Print actual Creator-Critic transcript for verification
+        if: success()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("artifacts/creator-critic-github/latest.json")
+          report = json.loads(path.read_text(encoding="utf-8"))
+          print("=== CREATOR_CRITIC_TRANSCRIPT_BEGIN ===")
+          print(json.dumps(report, ensure_ascii=False, indent=2))
+          print("=== CREATOR_CRITIC_TRANSCRIPT_END ===")
+          assert report.get("status") == "DISCUSSION_ONLY"
+          assert report.get("evidence_status") == "NOT_MEASURED"
+          assert len(report.get("transcript", [])) == report.get("rounds", 0) * 2
+          assert all(item.get("content", "").strip() for item in report["transcript"])
+          PY
+
       - name: Upload discussion transcript
         if: always()
         uses: actions/upload-artifact@v4
