@@ -180,3 +180,14 @@ def test_continuation_gate_rejects_malformed_durable_state(tmp_path):
     assert result.returncode == 0
     assert output.read_text(encoding="utf-8").splitlines() == ["continue=false"]
     assert "CONTINUATION_STOP=durable_completion_not_confirmed" in result.stdout
+
+
+def test_only_continuous_workflow_owns_automatic_dispatch():
+    root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    continuous = (root / "continuous-distributed-loop.yml").read_text(encoding="utf-8")
+    postrun = (root / "distributed-loop-postrun.yml").read_text(encoding="utf-8")
+
+    assert "gh workflow run distributed-autonomous-loop.yml" in continuous
+    assert "continuation_depth=" in continuous
+    assert "gh workflow run distributed-autonomous-loop.yml" not in postrun
+    assert "Automatically continue the verified distributed loop" not in postrun
