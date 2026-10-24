@@ -54,6 +54,7 @@ jobs:
           fi
           python - <<'PY'
           import json
+          import re
           from pathlib import Path
           from os import environ
 
@@ -81,8 +82,8 @@ jobs:
           if row.get("status") != "PASS":
               stop("task_status_not_PASS")
               raise SystemExit(0)
-          if not isinstance(task_id, str) or not task_id.strip():
-              stop("missing_task_id")
+          if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", task_id):
+              stop("missing_or_invalid_task_id")
               raise SystemExit(0)
           if type(row.get("task_count")) is not int or row["task_count"] < 1:
               stop("invalid_task_count")
