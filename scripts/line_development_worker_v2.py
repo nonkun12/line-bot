@@ -261,6 +261,7 @@ Do not broaden the requested change. If a unique safe anchor cannot be identifie
         f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}"
         f"\n\nCurrent file context:\n{context}"
         f"\n\nApply error:\n{anchor_error}"
+        f"\n\nValidation error:\n{validation_error}"
         f"\n\nRejected plan:\n{rejected}"
     )
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
@@ -287,34 +288,6 @@ If the requested change cannot be expressed as a small safe search/replace, retu
         f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}"
         f"\n\nCurrent file context:\n{context}"
         f"\n\nSize validation error:\n{size_error}"
-        f"\n\nRejected plan:\n{rejected}"
-    )
-    return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
-
-
-def repair_invalid_old_new_plan(
-    client: Groq,
-    instruction: str,
-    chosen: str,
-    context: str,
-    rejected_plan: dict,
-    validation_error: str,
-) -> dict:
-    """Request one schema-correct replacement plan; validation remains authoritative."""
-    rejected = json.dumps(rejected_plan, ensure_ascii=False)
-    system = '''Repair ONE malformed JSON search/replace plan. Return JSON only.
-Return exactly one of:
-{"no_change": true}
-or
-{"no_change": false, "changes": [{"file": "<selected file>", "old": "<exact existing text>", "new": "<replacement text>"}]}
-The change must target only the selected file and the smallest relevant code region.
-"old" and "new" must both be strings; old must be non-empty and an exact substring of current context.
-Do not return unified diffs, markdown fences, extra keys, or explanations.
-If a safe exact replacement cannot be formed from the supplied context, return {"no_change": true}.'''
-    prompt = (
-        f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}"
-        f"\n\nCurrent file context:\n{context}"
-        f"\n\nValidation error:\n{validation_error}"
         f"\n\nRejected plan:\n{rejected}"
     )
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
@@ -574,7 +547,7 @@ def build_plan(client: Groq, instruction: str, chosen: str, context: str, test_o
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
 
 
-def repair_invalid_old_new_plan(client: Groq, instruction: str, chosen: str, context: str, rejected_plan: dict) -> dict:
+def repair_invalid_old_new_plan(client: Groq, instruction: str, chosen: str, context: str, rejected_plan: dict, validation_error: str = "") -> dict:
     """Perform one bounded repair when the model omitted or malformed old/new fields."""
     rejected = json.dumps(rejected_plan, ensure_ascii=False)
     system = '''Repair ONE rejected JSON search/replace plan. Return JSON only.
