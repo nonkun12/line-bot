@@ -132,3 +132,15 @@ def test_build_proposals_rejects_boolean_runtime_task_limit(tmp_path, limit):
     catalog_path = write(tmp_path / "catalog.json", {"version": 1, "tasks": []})
     with pytest.raises(ValueError, match="invalid runtime task limit"):
         build_proposals(issues_path, queue_path, state_path, tmp_path / "proposals.json", catalog_path)
+
+
+def test_fails_closed_on_invalid_issue_record(tmp_path):
+    initial_queue = {"version": 1, "max_tasks_per_run": 4, "tasks": [{"id": "existing"}]}
+    write(tmp_path / "queue.json", initial_queue)
+    write(tmp_path / "issues.json", [None, "invalid"])
+    write(tmp_path / "state.json", state())
+    write(tmp_path / "catalog.json", {"version": 1, "tasks": []})
+    with pytest.raises(ValueError, match="issue record is invalid"):
+        build_proposals(tmp_path / "issues.json", tmp_path / "queue.json", tmp_path / "state.json", tmp_path / "proposals.json", tmp_path / "catalog.json")
+    queue_after = json.loads((tmp_path / "queue.json").read_text(encoding="utf-8"))
+    assert queue_after == initial_queue
