@@ -464,7 +464,7 @@ def test_validate_plan_with_bounded_repairs_recovers_invalid_old_new_once(monkey
     calls = []
     monkeypatch.setattr(
         worker,
-        "repair_invalid_old_new_plan",
+        "repair_invalid_fields_plan",
         lambda *args: calls.append("repair") or repaired,
     )
 
@@ -495,7 +495,7 @@ def test_validate_plan_with_bounded_repairs_rejects_unsafe_invalid_old_new_repai
     calls = []
     monkeypatch.setattr(
         worker,
-        "repair_invalid_old_new_plan",
+        "repair_invalid_fields_plan",
         lambda *args: calls.append("repair") or unsafe,
     )
 
