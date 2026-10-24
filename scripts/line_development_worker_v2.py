@@ -329,16 +329,6 @@ def validate_plan_with_bounded_repairs(
 ) -> tuple[dict, bool, str]:
     """Validate a plan and perform only the existing bounded validation repairs."""
     ok, detail = validate_plan(plan, chosen)
-    # The repair helper already exists; invoke it when the model omits or
-    # malforms old/new fields instead of immediately escalating to HOLD.
-    # Keep this to one retry and re-run the full validator before accepting it.
-    if not ok and detail == "invalid_old_new":
-        repair_plan = repair_invalid_old_new_plan(
-            client, instruction, chosen, context, plan
-        )
-        ok, detail = validate_plan(repair_plan, chosen)
-        if ok:
-            plan = repair_plan
     if not ok and detail == "invalid_old_new":
         repair_plan = repair_invalid_old_new_plan(client, instruction, chosen, context, plan, detail)
         ok, detail = validate_plan(repair_plan, chosen)
