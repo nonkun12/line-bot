@@ -8,8 +8,10 @@ It records discussion only: no source edits, commits, PRs, merges, or deploys.
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -102,6 +104,17 @@ def run_discussion(
             raise RuntimeError(f"Critic returned empty content in round {index}")
         transcript.append({"role": "critic", "round": str(index), "content": critique})
 
+    creator_proposals = [item["content"] for item in transcript if item["role"] == "creator"]
+    if len(creator_proposals) >= 2:
+        normalize = lambda value: re.sub(r"\W+", " ", value.casefold()).strip()
+        similarity = difflib.SequenceMatcher(
+            None, normalize(creator_proposals[-2]), normalize(creator_proposals[-1])
+        ).ratio()
+        adaptation_status = "NOT_ADAPTED" if similarity >= 0.80 else "TEXT_CHANGED_REVIEW_REQUIRED"
+    else:
+        similarity = None
+        adaptation_status = "NOT_ASSESSED_SINGLE_ROUND"
+
     return {
         "schema_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -113,6 +126,8 @@ def run_discussion(
         "status": "DISCUSSION_ONLY",
         "evidence_status": "RUNTIME_MEASURED",
         "improvement_effectiveness": "NOT_MEASURED",
+        "feedback_adaptation_status": adaptation_status,
+        "creator_proposal_similarity": round(similarity, 4) if similarity is not None else None,
         "execution_metrics": {
             "elapsed_seconds": round(time.monotonic() - started, 3),
             "turn_count": len(transcript),
@@ -125,7 +140,9 @@ def run_discussion(
         "transcript": transcript,
         "note": (
             "Runtime metrics record measured execution time and non-empty turns only. "
-            "This artifact is not a test result, code review approval, measured improvement, or implementation PASS."
+            "Proposal similarity is a deterministic text-overlap signal, not proof of semantic adaptation. "
+            "TEXT_CHANGED_REVIEW_REQUIRED still needs human/evidence review. This artifact is not a test result, "
+            "code review approval, measured improvement, or implementation PASS."
         ),
     }
 
