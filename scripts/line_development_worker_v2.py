@@ -344,8 +344,16 @@ def apply_plan_with_bounded_anchor_repair(
             return repair_plan, False, repair_detail, []
         target = ROOT / chosen
         old_value = repair_plan["changes"][0]["old"]
-        if target.read_text(encoding="utf-8").count(old_value) != 1:
-            detail = f"anchor_count_{chosen}:{target.read_text(encoding='utf-8').count(old_value)}"
+        anchor_count = target.read_text(encoding="utf-8").count(old_value)
+        if anchor_count != 1:
+            # Distinguish a hallucinated/missing anchor from an ambiguous one.
+            # Both remain fail-closed; the explicit reason improves recovery
+            # diagnostics and prevents treating "not found" as a test failure.
+            detail = (
+                f"repair_anchor_not_found:{chosen}"
+                if anchor_count == 0
+                else f"anchor_count_{chosen}:{anchor_count}"
+            )
             continue
         applied, apply_detail, touched = apply_plan(repair_plan)
         if applied:
