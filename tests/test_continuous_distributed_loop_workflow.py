@@ -65,7 +65,7 @@ def test_continuation_gate_accepts_one_verified_pass(tmp_path):
         tmp_path, [_row("task-one")], ["task-one"]
     )
     assert result.returncode == 0
-    assert "continue=true" in output
+    assert output.splitlines() == ["continue=true", "task_id=task-one"]
     assert "CONTINUATION_ALLOWED verified_tasks=1" in result.stdout
 
 
@@ -75,7 +75,7 @@ def test_continuation_gate_accepts_four_verified_passes(tmp_path):
         tmp_path, [_row(task_id) for task_id in ids], ids
     )
     assert result.returncode == 0
-    assert "continue=true" in output
+    assert output.splitlines() == ["continue=true", "task_id=task-four"]
     assert "CONTINUATION_ALLOWED verified_tasks=4" in result.stdout
 
 
@@ -83,7 +83,7 @@ def test_continuation_gate_stops_if_any_task_fails(tmp_path):
     rows = [_row("task-one"), _row("task-two", status="FAIL")]
     result, output = _run_gate(tmp_path, rows, ["task-one", "task-two"])
     assert result.returncode == 0
-    assert "continue=false" in output
+    assert "continue=false" in output.splitlines()
     assert "CONTINUATION_STOP=task_status_not_PASS" in result.stdout
 
 
