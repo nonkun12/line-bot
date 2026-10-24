@@ -1,0 +1,161 @@
+name: REA Read-only Repository Audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 03:30 Japan time (UTC 18:30 on the previous day).
+    - cron: '30 18 * * *'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'core/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'uhip/tests/**'
+      - 'docs/rea/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - 'core/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'uhip/tests/**'
+      - 'docs/rea/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rea-readonly-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  read-only-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Run deterministic read-only REA scan
+        id: scan
+        shell: bash
+        run: |
+          set +e
+          report_path="$RUNNER_TEMP/rea-report.json"
+          python -m scripts.rea_readonly_scanner --repo-root . > "$report_path"
+          rc=$?
+          cp "$report_path" rea-report.json
+          echo "scanner_rc=$rc" >> "$GITHUB_OUTPUT"
+          echo "Scanner exit code: $rc"
+          cat rea-report.json
+        continue-on-error: true
+
+      - name: Install project dependencies for Control Tower bridge
+        if: always()
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+        continue-on-error: true
+
+      - name: Build review-only candidates and Control Tower decision
+        id: bridge
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          expected_sha="$(git rev-parse HEAD)"
+          python -m scripts.rea_review_candidates rea-report.json --expected-sha "$expected_sha" > rea-candidates.json
+          adapter_rc=$?
+          python - <<'PY' > rea-control-tower-decision.json
+          import json
+          import subprocess
+          from dataclasses import asdict
+          from pathlib import Path
+          from core.rea_control_tower_bridge import rea_result_to_control_tower_decision
+
+          expected_sha = subprocess.run(
+              ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+          ).stdout.strip()
+          candidates = json.loads(Path("rea-candidates.json").read_text(encoding="utf-8"))
+          decision = rea_result_to_control_tower_decision(candidates, expected_sha=expected_sha)
+          print(json.dumps(asdict(decision), sort_keys=True))
+          PY
+          bridge_rc=$?
+          echo "adapter_rc=$adapter_rc" >> "$GITHUB_OUTPUT"
+          echo "bridge_rc=$bridge_rc" >> "$GITHUB_OUTPUT"
+          echo "Adapter exit code: $adapter_rc"
+          echo "Control Tower bridge exit code: $bridge_rc"
+        continue-on-error: true
+
+      - name: Preserve metadata-only evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea-readonly-evidence-${{ github.run_id }}
+          path: |
+            rea-report.json
+            rea-candidates.json
+            rea-control-tower-decision.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Gate on Control Tower evidence
+        if: always()
+        env:
+          BRIDGE_OUTCOME: ${{ steps.bridge.outcome }}
+          BRIDGE_EXIT_CODE: ${{ steps.bridge.outputs.bridge_rc }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("rea-control-tower-decision.json")
+          if os.environ.get("BRIDGE_OUTCOME") != "success" or os.environ.get("BRIDGE_EXIT_CODE") != "0" or not path.is_file():
+              raise SystemExit("REA_CONTROL_TOWER_BLOCKED: bridge evidence unavailable")
+          try:
+              decision = json.loads(path.read_text(encoding="utf-8"))
+          except (OSError, ValueError):
+              raise SystemExit("REA_CONTROL_TOWER_BLOCKED: decision JSON invalid")
+          print("CONTROL_TOWER_DECISION=" + json.dumps(decision, sort_keys=True))
+          if decision.get("next_action") != "OBSERVE_ONLY":
+              raise SystemExit("REA_CONTROL_TOWER_BLOCKED: non-observational action rejected")
+          if decision.get("gate_status") not in {"PASS", "NOT_RUN", "BLOCKED"}:
+              raise SystemExit("REA_CONTROL_TOWER_BLOCKED: unknown gate status")
+          if decision.get("task_template_id") is not None:
+              raise SystemExit("REA_CONTROL_TOWER_BLOCKED: task selection is forbidden")
+          PY
+
+      - name: Gate on scan evidence
+        if: always()
+        env:
+          SCANNER_OUTCOME: ${{ steps.scan.outcome }}
+          SCANNER_EXIT_CODE: ${{ steps.scan.outputs.scanner_rc }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("rea-report.json")
+          if os.environ.get("SCANNER_OUTCOME") != "success" or not path.is_file():
+              raise SystemExit("REA_BLOCKED: scanner did not produce a trustworthy report")
+          try:
+              report = json.loads(path.read_text(encoding="utf-8"))
+          except (OSError, ValueError):
+              raise SystemExit("REA_BLOCKED: report is missing or invalid")
+          status = report.get("status")
+          complete = report.get("complete") is True
+          count = report.get("findings_count")
+          target_sha = report.get("target_sha", "unknown")
+          print(f"REA_STATUS={status} COMPLETE={complete} FINDINGS={count} TARGET_SHA={target_sha}")
+          if os.environ.get("SCANNER_EXIT_CODE") != "0" or status != "PASS" or not complete:
+              raise SystemExit("REA_GATE_FAILED: inspect the uploaded metadata-only artifact; no code was changed")
+          PY
