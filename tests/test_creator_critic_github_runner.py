@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from scripts.run_creator_critic_github import run_discussion
 
@@ -39,6 +40,18 @@ class CreatorCriticGitHubRunnerTests(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "Critic returned empty"):
             run_discussion(fake_generate, "objective", rounds=1)
+
+
+    def test_workflow_assertions_match_runner_evidence_contract(self):
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github"
+            / "workflows"
+            / "creator-critic-github.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn('assert report.get("evidence_status") == "RUNTIME_MEASURED"', workflow)
+        self.assertIn('assert report.get("improvement_effectiveness") == "NOT_MEASURED"', workflow)
+        self.assertIn('assert len(report.get("transcript", [])) == report.get("rounds", 0) * 2', workflow)
 
 
 if __name__ == "__main__":
