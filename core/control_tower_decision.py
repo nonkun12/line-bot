@@ -102,6 +102,16 @@ class ControlTowerDecisionRecord:
             and self.task_template_id in registered_task_ids
         )
 
+    @staticmethod
+    def fallback(reason_code: str = "no_eligible_task") -> "ControlTowerDecisionRecord":
+        return ControlTowerDecisionRecord(
+            reason_code=reason_code,
+            confidence=0.0,
+            priority=0,
+            next_action="NOT_RUN",
+            gate_status="NOT_RUN",
+        )
+
 
 __all__ = [
     "ControlTowerDecisionRecord",
