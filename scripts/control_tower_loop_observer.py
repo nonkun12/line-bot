@@ -15,6 +15,7 @@ from typing import Any
 
 from core.agent_runtime import RuntimeReport
 from core.control_tower import ControlTower, task_hash
+from core.creator_critic_runtime import build_creator_critic_loop
 
 _MAX_HISTORY = 200
 _SAFE_ID = re.compile(r"[^a-zA-Z0-9._-]")
@@ -43,7 +44,14 @@ def record_loop_observation(
         integration_ready=successful,
     )
 
-    tower = ControlTower()
+    # Real-model review is strictly opt-in. Local runners may configure a local
+    # OpenAI-compatible endpoint; CI stays model-disabled unless explicitly set.
+    creator_critic = (
+        build_creator_critic_loop(max_iterations=1)
+        if os.environ.get("CREATOR_CRITIC_BASE_URL", "").strip()
+        else None
+    )
+    tower = ControlTower(creator_critic=creator_critic)
     decision = tower.observe(report)
     proposal = decision.proposal
     record: dict[str, Any] = {
@@ -62,6 +70,17 @@ def record_loop_observation(
             }
             for signal in decision.signals[:8]
         ],
+        "creator_critic": {
+            "configured": creator_critic is not None,
+            "rounds": len(decision.duel),
+            "review_error": decision.review_error,
+            "passed": decision.approved_for_pipeline,
+            "approved_for_execution": False,
+            "feedback": [
+                _safe_text(item.evaluation.feedback, 500)
+                for item in decision.duel[:1]
+            ],
+        },
         "proposal": None if proposal is None else {
             "title": _safe_text(proposal.title, 200),
             "rationale": _safe_text(proposal.rationale, 240),
