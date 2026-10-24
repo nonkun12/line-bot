@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""Run a bounded Creator <-> Critic discussion on a GitHub-hosted CPU runner.
+
+The runner downloads a public GGUF model and performs inference locally on the
+ephemeral Actions VM. It does not use the user's Mac or a paid inference API.
+It records discussion only: no source edits, commits, PRs, merges, or deploys.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable
+
+MODEL_REPO = "bartowski/Qwen2.5-1.5B-Instruct-GGUF"
+MODEL_FILE = "Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
+DEFAULT_OBJECTIVE = (
+    "Identify one small, testable reliability improvement for the LINE AI Secretary "
+    "autonomous development loop. Give a concrete proposal and state what evidence "
+    "would be needed before implementation."
+)
+
+
+def run_discussion(
+    generate: Callable[[list[dict[str, str]], int], str],
+    objective: str,
+    rounds: int = 2,
+) -> dict:
+    """Run alternating bounded turns; an empty model answer is a hard failure."""
+    if not 1 <= rounds <= 3:
+        raise ValueError("rounds must be between 1 and 3")
+    if not objective.strip():
+        raise ValueError("objective must not be empty")
+
+    transcript: list[dict[str, str]] = []
+    proposal = ""
+    critique = ""
+    for index in range(1, rounds + 1):
+        creator_messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are Creator AI. Suggest one small, reversible software "
+                    "reliability improvement. Do not claim tests ran or invent evidence. "
+                    "Never request automatic merge or deployment."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Objective: {objective}\nRound: {index}\n"
+                    f"Previous proposal: {proposal or '(none)'}\n"
+                    f"Critic feedback: {critique or '(none)'}\n"
+                    "Return a concise proposal, validation steps, and risks."
+                ),
+            },
+        ]
+        proposal = generate(creator_messages, 320).strip()
+        if not proposal:
+            raise RuntimeError(f"Creator returned empty content in round {index}")
+        transcript.append({"role": "creator", "round": str(index), "content": proposal})
+
+        critic_messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an independent Critic AI. Challenge assumptions, inspect "
+                    "missing evidence, and flag safety risks. Do not say tests passed "
+                    "unless actual test output is provided. End with HOLD or REVIEW."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Objective: {objective}\nCreator proposal:\n{proposal}",
+            },
+        ]
+        critique = generate(critic_messages, 320).strip()
+        if not critique:
+            raise RuntimeError(f"Critic returned empty content in round {index}")
+        transcript.append({"role": "critic", "round": str(index), "content": critique})
+
+    return {
+        "schema_version": 1,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "runtime": "github-actions-hosted-cpu",
+        "model_repo": MODEL_REPO,
+        "model_file": MODEL_FILE,
+        "objective": objective,
+        "rounds": rounds,
+        "status": "DISCUSSION_ONLY",
+        "evidence_status": "NOT_MEASURED",
+        "source_changes": False,
+        "merge_or_deploy": False,
+        "transcript": transcript,
+        "note": (
+            "This artifact proves only that the model produced a discussion. "
+            "It is not a test result, code review approval, or implementation PASS."
+        ),
+    }
+
+
+def _load_model():
+    try:
+        from huggingface_hub import hf_hub_download
+        from llama_cpp import Llama
+    except ImportError as exc:
+        raise RuntimeError(
+            "Missing runtime dependencies; install llama-cpp-python and huggingface_hub"
+        ) from exc
+    model_path = hf_hub_download(repo_id=MODEL_REPO, filename=MODEL_FILE)
+    return Llama(
+        model_path=model_path,
+        n_ctx=4096,
+        n_threads=max(1, min(4, os.cpu_count() or 1)),
+        verbose=False,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--objective", default=DEFAULT_OBJECTIVE)
+    parser.add_argument("--rounds", type=int, default=2)
+    parser.add_argument("--output", default="artifacts/creator-critic-github/latest.json")
+    args = parser.parse_args(argv)
+
+    try:
+        model = _load_model()
+
+        def generate(messages: list[dict[str, str]], max_tokens: int) -> str:
+            result = model.create_chat_completion(
+                messages=messages,
+                temperature=0.2,
+                max_tokens=max_tokens,
+            )
+            choices = result.get("choices", [])
+            if not choices or not isinstance(choices[0], dict):
+                return ""
+            message = choices[0].get("message", {})
+            content = message.get("content", "") if isinstance(message, dict) else ""
+            return content if isinstance(content, str) else ""
+
+        report = run_discussion(generate, args.objective, args.rounds)
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps({
+            "status": report["status"],
+            "evidence_status": report["evidence_status"],
+            "turns": len(report["transcript"]),
+            "output": str(output),
+        }, ensure_ascii=False))
+        return 0
+    except Exception as exc:
+        print(f"CREATOR_CRITIC_HOLD: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

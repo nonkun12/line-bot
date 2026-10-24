@@ -1,0 +1,39 @@
+import unittest
+
+from scripts.run_creator_critic_github import run_discussion
+
+
+class CreatorCriticGitHubRunnerTests(unittest.TestCase):
+    def test_runs_bounded_creator_critic_turns(self):
+        calls = []
+
+        def fake_generate(messages, max_tokens):
+            calls.append((messages, max_tokens))
+            return "Proposal with explicit validation." if messages[0]["role"] == "system" and "Creator AI" in messages[0]["content"] else "REVIEW: evidence is missing."
+
+        report = run_discussion(fake_generate, "Improve reliability", rounds=2)
+        self.assertEqual(report["status"], "DISCUSSION_ONLY")
+        self.assertEqual(report["evidence_status"], "NOT_MEASURED")
+        self.assertFalse(report["source_changes"])
+        self.assertFalse(report["merge_or_deploy"])
+        self.assertEqual(len(report["transcript"]), 4)
+        self.assertEqual(len(calls), 4)
+
+    def test_rejects_rounds_outside_limit(self):
+        with self.assertRaises(ValueError):
+            run_discussion(lambda messages, tokens: "ok", "objective", rounds=4)
+
+    def test_empty_creator_response_fails_closed(self):
+        with self.assertRaisesRegex(RuntimeError, "Creator returned empty"):
+            run_discussion(lambda messages, tokens: "", "objective", rounds=1)
+
+    def test_empty_critic_response_fails_closed(self):
+        def fake_generate(messages, tokens):
+            return "proposal" if "Creator AI" in messages[0]["content"] else ""
+
+        with self.assertRaisesRegex(RuntimeError, "Critic returned empty"):
+            run_discussion(fake_generate, "objective", rounds=1)
+
+
+if __name__ == "__main__":
+    unittest.main()
