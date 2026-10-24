@@ -1,4 +1,5 @@
 name: Distributed Autonomous Development Loop
+run-name: Distributed Loop (continuation_depth=${{ inputs.continuation_depth || '0' }})
 
 on:
   workflow_dispatch:
@@ -13,6 +14,16 @@ on:
           - '2'
           - '3'
           - '4'
+      continuation_depth:
+        description: 'Internal bounded continuation depth (0-3)'
+        required: false
+        default: '0'
+        type: choice
+        options:
+          - '0'
+          - '1'
+          - '2'
+          - '3'
       mode:
         description: 'Run mode'
         required: false
