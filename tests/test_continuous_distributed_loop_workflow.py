@@ -226,11 +226,11 @@ def _continuation_active_script():
     return textwrap.dedent(match.group(1))
 
 
-def _run_active_check(tmp_path, title):
+def _run_active_check(tmp_path, title, *, active_count=0):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     gh = fake_bin / "gh"
-    gh.write_text("#!/bin/sh\nprintf '0\\n'\n", encoding="utf-8")
+    gh.write_text(f"#!/bin/sh\nprintf '%s\\n' '{active_count}'\n", encoding="utf-8")
     gh.chmod(0o755)
     output = tmp_path / "github-output"
     env = os.environ.copy()
@@ -275,3 +275,15 @@ def test_continuation_depth_missing_fails_closed(tmp_path):
     assert result.returncode != 0
     assert output == ""
     assert "fail closed" in result.stderr
+
+
+def test_continuation_stops_when_another_loop_is_queued_or_running(tmp_path):
+    result, output = _run_active_check(
+        tmp_path,
+        "Distributed Loop (continuation_depth=0)",
+        active_count=1,
+    )
+    assert result.returncode == 0, result.stderr
+    assert output.splitlines() == ["dispatch=false"]
+    assert "CONTINUATION_STOP=another_loop_is_active" in result.stdout
+    assert "next_depth=" not in output
