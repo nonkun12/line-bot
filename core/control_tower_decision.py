@@ -102,6 +102,16 @@ class ControlTowerDecisionRecord:
             and self.task_template_id in registered_task_ids
         )
 
+    def is_fallback(self) -> bool:
+        """Return True if this decision represents a safe fallback.
+
+        A fallback occurs when the decision does not select a registered
+        task.  This method is intentionally simple and does not perform any
+        external validation; it merely reflects the internal state of the
+        record.
+        """
+        return self.next_action != "SELECT_REGISTERED_TASK"
+
 
 __all__ = [
     "ControlTowerDecisionRecord",
