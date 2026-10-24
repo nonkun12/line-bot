@@ -3,12 +3,10 @@ name: Autonomous Development Watchdog
 on:
   workflow_dispatch:
   schedule:
-    # Check shortly after each of the four distributed-loop slots (Asia/Tokyo).
-    - cron: '0 5,11,17,23 * * *'
-      timezone: 'Asia/Tokyo'
+    # GitHub Actions cron is UTC. Check 5 minutes after each JST slot (04:30, 10:30, 16:30, 22:30).
+    - cron: '35 1,7,13,19 * * *'
     # Recheck each slot about three hours later; active runs past the 90-minute grace fail closed.
-    - cron: '30 1,7,13,19 * * *'
-      timezone: 'Asia/Tokyo'
+    - cron: '35 4,10,16,22 * * *'
 
 permissions:
   contents: read
@@ -105,6 +103,7 @@ jobs:
                       print(f"LINE_NOTIFICATION=HTTP_{response.status}")
               except Exception as exc:
                   print(f"LINE_NOTIFICATION=ERROR_{type(exc).__name__}")
+          PY
 
       - name: Upload watchdog result
         if: always()
