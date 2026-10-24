@@ -50,14 +50,12 @@ jobs:
         shell: bash
         run: |
           set +e
-          set -u
           report_path="$RUNNER_TEMP/rea-report.json"
           python -m scripts.rea_readonly_scanner --repo-root . > "$report_path"
           rc=$?
           cp "$report_path" rea-report.json
           echo "scanner_rc=$rc" >> "$GITHUB_OUTPUT"
           echo "Scanner exit code: $rc"
-          echo "Metadata-only report:"
           cat rea-report.json
         continue-on-error: true
 
@@ -72,11 +70,12 @@ jobs:
           adapter_rc=$?
           python - <<'PY' > rea-control-tower-decision.json
           import json
+          import subprocess
           from dataclasses import asdict
           from pathlib import Path
           from core.control_tower import ControlTower
 
-          expected_sha = __import__("subprocess").run(
+          expected_sha = subprocess.run(
               ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
           ).stdout.strip()
           candidates = json.loads(Path("rea-candidates.json").read_text(encoding="utf-8"))
@@ -90,11 +89,11 @@ jobs:
           echo "Control Tower bridge exit code: $bridge_rc"
         continue-on-error: true
 
-      - name: Preserve metadata-only report
+      - name: Preserve metadata-only evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rea-readonly-report-${{ github.run_id }}
+          name: rea-readonly-evidence-${{ github.run_id }}
           path: |
             rea-report.json
             rea-candidates.json
@@ -128,99 +127,6 @@ jobs:
           if decision.get("task_template_id") is not None:
               raise SystemExit("REA_CONTROL_TOWER_BLOCKED: task selection is forbidden")
           PY
-
-      - name: Gate on scan evidence
-        if: always()
-        env:
-          SCANNER_OUTCOME: ${{ steps.scan.outcome }}
-          SCANNER_EXIT_CODE: ${{ steps.scan.outputs.scanner_rc }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          path = Path("rea-report.json")
-          if os.environ.get("SCANNER_OUTCOME") != "success" or not path.is_file():
-              raise SystemExit("REA_BLOCKED: scanner did not produce a trustworthy report")
-          try:
-              report = json.loads(path.read_text(encoding="utf-8"))
-          except (OSError, ValueError):
-              raise SystemExit("REA_BLOCKED: report is missing or invalid")
-          status = report.get("status")
-          complete = report.get("complete") is True
-          count = report.get("findings_count")
-          target_sha = report.get("target_sha", "unknown")
-          print(f"REA_STATUS={status} COMPLETE={complete} FINDINGS={count} TARGET_SHA={target_sha}")
-          if os.environ.get("SCANNER_EXIT_CODE") != "0" or status != "PASS" or not complete:
-              raise SystemExit("REA_GATE_FAILED: inspect the uploaded metadata-only artifact; no code was changed")
-          PY
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rea-readonly-report-${{ github.run_id }}
-          path: rea-report.json
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Gate on scan evidence
-        if: always()
-        env:
-          SCANNER_OUTCOME: ${{ steps.scan.outcome }}
-          SCANNER_EXIT_CODE: ${{ steps.scan.outputs.scanner_rc }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          path = Path("rea-report.json")
-          if os.environ.get("SCANNER_OUTCOME") != "success" or not path.is_file():
-              raise SystemExit("REA_BLOCKED: scanner did not produce a trustworthy report")
-          try:
-              report = json.loads(path.read_text(encoding="utf-8"))
-          except (OSError, ValueError):
-              raise SystemExit("REA_BLOCKED: report is missing or invalid")
-          status = report.get("status")
-          complete = report.get("complete") is True
-          count = report.get("findings_count")
-          target_sha = report.get("target_sha", "unknown")
-          print(f"REA_STATUS={status} COMPLETE={complete} FINDINGS={count} TARGET_SHA={target_sha}")
-          if os.environ.get("SCANNER_EXIT_CODE") != "0" or status != "PASS" or not complete:
-              raise SystemExit("REA_GATE_FAILED: inspect the uploaded metadata-only artifact; no code was changed")
-          PY
-        if: always()
-        env:
-          SCANNER_OUTCOME: ${{ steps.scan.outcome }}
-          SCANNER_EXIT_CODE: ${{ steps.scan.outputs.scanner_rc }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          path = Path("rea-report.json")
-          if os.environ.get("SCANNER_OUTCOME") != "success" or not path.is_file():
-              raise SystemExit("REA_BLOCKED: scanner did not produce a trustworthy report")
-          try:
-              report = json.loads(path.read_text(encoding="utf-8"))
-          except (OSError, ValueError):
-              raise SystemExit("REA_BLOCKED: report is missing or invalid")
-          status = report.get("status")
-          complete = report.get("complete") is True
-          count = report.get("findings_count")
-          target_sha = report.get("target_sha", "unknown")
-          print(f"REA_STATUS={status} COMPLETE={complete} FINDINGS={count} TARGET_SHA={target_sha}")
-          if os.environ.get("SCANNER_EXIT_CODE") != "0" or status != "PASS" or not complete:
-              raise SystemExit("REA_GATE_FAILED: inspect the uploaded metadata-only artifact; no code was changed")
-          PY
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rea-readonly-report-${{ github.run_id }}
-          path: rea-report.json
-          if-no-files-found: error
-          retention-days: 14
 
       - name: Gate on scan evidence
         if: always()
