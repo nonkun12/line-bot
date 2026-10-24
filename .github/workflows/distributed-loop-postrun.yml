@@ -6,7 +6,7 @@ on:
     types: [completed]
 
 permissions:
-  actions: read
+  actions: write
   contents: read
   issues: write
 
@@ -54,6 +54,7 @@ jobs:
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_DISPLAY_TITLE: ${{ github.event.workflow_run.display_title }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -147,9 +148,18 @@ jobs:
           Path("postrun-report.md").write_text("\n".join(report) + "\n", encoding="utf-8")
           Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text("\n".join(report) + "\n", encoding="utf-8")
           Path("postrun-findings.json").write_text(json.dumps(issues, ensure_ascii=False) + "\n", encoding="utf-8")
+          safe_to_continue = (
+              conclusion == "success"
+              and not queue_empty
+              and bool(tasks)
+              and all(status in {"PASS", "NO_CHANGE"} for status in statuses)
+              and sheets_result in {"RECORDED", "ALREADY_RECORDED"}
+              and not issues
+          )
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
               out.write(f"issues={len(issues)}\n")
               out.write(f"queue_empty={'true' if queue_empty else 'false'}\n")
+              out.write(f"safe_to_continue={'true' if safe_to_continue else 'false'}\n")
           print("\n".join(report))
           PY
 
@@ -187,6 +197,37 @@ jobs:
             echo "::warning::Could not create issue (label may be unavailable or token lacks permission)."
             exit 0
           }
+
+      - name: Continue bounded loop only after verified successful task evidence
+        if: steps.verify.outputs.safe_to_continue == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RUN_DISPLAY_TITLE: ${{ github.event.workflow_run.display_title }}
+        run: |
+          set -euo pipefail
+          depth="$(python - <<'PY'
+          import os, re, sys
+          title = os.environ.get("RUN_DISPLAY_TITLE", "")
+          match = re.search(r"continuation_depth=(\\d+)", title)
+          if not match:
+              print("Cannot determine continuation depth from source run title; fail closed.", file=sys.stderr)
+              raise SystemExit(1)
+          print(int(match.group(1)))
+          PY
+          )"
+          if [ "$depth" -ge 3 ]; then
+            echo "Bounded continuation limit reached (depth=$depth); scheduled runs will resume later."
+            exit 0
+          fi
+          next_depth=$((depth + 1))
+          gh workflow run distributed-autonomous-loop.yml \
+            --repo "$REPOSITORY" \
+            --ref "$DEFAULT_BRANCH" \
+            -f max_tasks=1 \
+            -f continuation_depth="$next_depth"
+          echo "Dispatched next bounded run at depth=$next_depth."
 
       - name: Always report the completed Loop to LINE when credentials are configured
         env:
