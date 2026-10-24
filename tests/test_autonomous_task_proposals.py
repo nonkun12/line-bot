@@ -46,7 +46,13 @@ def test_skips_completed_held_and_unlabeled_issues(tmp_path):
     result, _ = run(tmp_path, [issue("done"), issue("held"), issue("untrusted", labels=())],
                     state(completed=["done"], tasks={"held": {"held": True}}))
     assert result["proposal_count"] == 0
-    assert result["reason"] == "no_open_labeled_issue_with_valid_test_only_spec"
+    assert result["reason"] == "all_candidates_excluded"
+    assert result["diagnostics"] == {
+        "labeled_open_issue_count": 2,
+        "invalid_spec_count": 0,
+        "excluded_task_count": 2,
+        "invalid_issue_number_count": 0,
+    }
 
 
 @pytest.mark.parametrize("path", ["../secret.env", "app.py", "tests/test_*.py"])
