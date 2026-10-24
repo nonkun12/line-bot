@@ -292,7 +292,7 @@ If the requested change cannot be expressed as a small safe search/replace, retu
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
 
 
-def repair_invalid_fields_plan(
+def repair_invalid_old_new_plan(
     client: Groq,
     instruction: str,
     chosen: str,
@@ -340,7 +340,7 @@ def validate_plan_with_bounded_repairs(
         if ok:
             plan = repair_plan
     if not ok and detail == "invalid_old_new":
-        repair_plan = repair_invalid_fields_plan(client, instruction, chosen, context, plan, detail)
+        repair_plan = repair_invalid_old_new_plan(client, instruction, chosen, context, plan, detail)
         ok, detail = validate_plan(repair_plan, chosen)
         if ok:
             plan = repair_plan
