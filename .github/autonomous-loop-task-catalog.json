@@ -193,7 +193,7 @@
     },
     {
       "id": "control-tower-decision-priority-type-boundaries",
-      "instruction": "tests/test_control_tower_decision.py のみに、新しい固有名の回帰テストを1件追加してください。ControlTowerDecisionRecord の priority が bool・float・負数・100超の場合に ValueError となり、整数0と100は受理されることを検証してください。新しい固有名のテスト関数を使い、既存テストを変更せずテストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "instruction": "tests/test_control_tower_decision.py のみに、新しい固有名の回帰テストを1件追加してください。ControlTowerDecisionRecord の priority が bool・float・負数・100超の場合に ValueError となり、整数0と100は受理されることを検証してください。無効値ごとに pytest.raises(ValueError) で例外を明示的に捕捉し、無効値をそのまま生成関数へ渡して未捕捉例外でテストを失敗させないでください。整数0と100は例外なしで構築できることを確認してください。新しい固有名のテスト関数を使い、既存テストを変更せずテストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
       "allowed_paths": [
         "tests/test_control_tower_decision.py"
       ]
