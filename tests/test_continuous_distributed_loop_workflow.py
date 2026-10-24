@@ -180,3 +180,28 @@ def test_continuation_gate_rejects_malformed_durable_state(tmp_path):
     assert result.returncode == 0
     assert output.read_text(encoding="utf-8").splitlines() == ["continue=false"]
     assert "CONTINUATION_STOP=durable_completion_not_confirmed" in result.stdout
+
+
+def test_distributed_loop_continuation_depth_is_bounded_and_propagated():
+    root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    source = (root / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    continuation = (root / "continuous-distributed-loop.yml").read_text(encoding="utf-8")
+
+    assert "run-name: Distributed Loop (continuation_depth=${{ inputs.continuation_depth || '0' }})" in source
+    assert "continuation_depth:" in source
+    assert "options:" in source
+    assert 'match = re.search(r"continuation_depth=(\\d+)", title)' in continuation
+    assert 'if [ "$depth" -ge 3 ]; then' in continuation
+    assert '-f continuation_depth="${{ steps.active.outputs.next_depth }}"' in continuation
+    assert "CONTINUATION_STOP=bounded_depth_limit" in continuation
+
+
+def test_distributed_loop_continuation_still_requires_existing_evidence_gate():
+    root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    continuation = (root / "continuous-distributed-loop.yml").read_text(encoding="utf-8")
+
+    assert "steps.gate.outputs.continue == 'true'" in continuation
+    assert "steps.active.outputs.dispatch == 'true'" in continuation
+    assert "durable_completion_not_confirmed" in continuation
+    assert "task_status_not_successful" in continuation
+    assert "another_loop_is_active" in continuation
