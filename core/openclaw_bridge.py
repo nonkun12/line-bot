@@ -45,8 +45,9 @@ def enqueue_openclaw_request(user_id: str, message: str) -> int:
     if not is_openclaw_intent(message):
         raise OpenClawBridgeError("explicit OpenClaw prefix is required")
     task = normalize_openclaw_message(message)
-    if not os.environ.get("OPENCLAW_BRIDGE_KEY", "").strip():
-        raise OpenClawBridgeError("OpenClaw Mac bridge is not configured")
+    bridge_key = os.environ.get("OPENCLAW_BRIDGE_KEY", "").strip()
+    if len(bridge_key) < 24:
+        raise OpenClawBridgeError("OpenClaw Mac bridge key must be at least 24 characters")
     job_id = create_job(user, task, job_type=OPENCLAW_JOB_TYPE, source="line", max_retries=3)
     if not isinstance(job_id, int) or job_id <= 0:
         raise OpenClawBridgeError("failed to create OpenClaw job")
