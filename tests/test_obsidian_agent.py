@@ -182,6 +182,7 @@ def test_idea_card_links_only_existing_notes_with_matching_evidence(tmp_path, mo
     assert "一致語:" in saved
     assert "[[unrelated]]" not in saved
     assert "まだ検索していません" not in saved
+    assert "- related_notes_status: searched" in saved
 
 
 def test_idea_card_marks_related_note_search_complete_when_no_match(tmp_path, monkeypatch):
@@ -192,4 +193,5 @@ def test_idea_card_marks_related_note_search_complete_when_no_match(tmp_path, mo
     saved = (tmp_path / result["agent_results"]["obsidian"]["path"]).read_text(encoding="utf-8")
 
     assert "検索済み: 関連候補は見つかりませんでした" in saved
+    assert "- related_notes_status: searched" in saved
     assert "[[unrelated]]" not in saved
