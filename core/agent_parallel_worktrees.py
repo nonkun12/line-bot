@@ -135,7 +135,7 @@ class IsolatedParallelBatchRunner:
                     worktree,
                 )
             return IsolatedTaskOutcome(task, result, worktree)
-        except (OSError, RuntimeError, TypeError, ValueError, WorktreeError) as exc:
+        except Exception as exc:
             return IsolatedTaskOutcome(
                 task,
                 AgentResult(task.task_id, False, f"{type(exc).__name__}: {exc}"),
