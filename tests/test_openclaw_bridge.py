@@ -53,13 +53,22 @@ def test_enqueue_creates_typed_job(monkeypatch):
 
 
 def test_claim_requires_auth(monkeypatch):
-    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "secret")
+    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "s" * 32)
     response = make_app().test_client().post("/api/openclaw/claim", json={})
     assert response.status_code == 401
 
 
+def test_claim_rejects_weak_server_key(monkeypatch):
+    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "weak")
+    response = make_app().test_client().post(
+        "/api/openclaw/claim", json={},
+        headers={"X-OpenClaw-Bridge-Key": "weak"},
+    )
+    assert response.status_code == 401
+
+
 def test_claim_returns_bounded_job(monkeypatch):
-    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "secret")
+    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "s" * 32)
     monkeypatch.setattr(routes, "claim_pending_job_by_type", lambda kind: {
         "id": 4, "user_id": "U1", "message": "run tests", "claim_token": "opaque",
         "internal_field": "must not leak",
@@ -75,7 +84,7 @@ def test_claim_returns_bounded_job(monkeypatch):
 
 
 def test_complete_rejects_wrong_job_type(monkeypatch):
-    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "secret")
+    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "s" * 32)
     monkeypatch.setattr(routes, "get_job", lambda job_id: {"job_type": "obsidian", "status": "running"})
     response = make_app().test_client().post(
         "/api/openclaw/complete",
@@ -86,7 +95,7 @@ def test_complete_rejects_wrong_job_type(monkeypatch):
 
 
 def test_complete_rejects_claim_mismatch(monkeypatch):
-    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "secret")
+    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "s" * 32)
     monkeypatch.setattr(routes, "get_job", lambda job_id: {
         "job_type": "openclaw", "status": "running", "claim_token": "different",
     })
@@ -99,7 +108,7 @@ def test_complete_rejects_claim_mismatch(monkeypatch):
 
 
 def test_complete_rejects_non_boolean_success(monkeypatch):
-    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "secret")
+    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "s" * 32)
     response = make_app().test_client().post(
         "/api/openclaw/complete",
         json={"job_id": 4, "claim_token": "opaque", "success": "yes"},
