@@ -28,8 +28,20 @@ def test_run_openclaw_uses_argument_array(monkeypatch):
         return subprocess.CompletedProcess(args, 0, stdout="completed", stderr="")
     monkeypatch.setattr(worker.subprocess, "run", fake_run)
     assert worker.run_openclaw("inspect repository", 60) == "completed"
-    assert captured["args"] == ["/usr/local/bin/openclaw", "agent", "--message", "inspect repository"]
+    assert captured["args"] == ["/usr/local/bin/openclaw", "agent", "--agent", "main", "--message", "inspect repository"]
     assert "shell" not in captured["kwargs"]
+
+
+def test_run_openclaw_supports_configured_agent_id(monkeypatch):
+    monkeypatch.setenv("OPENCLAW_AGENT_ID", "developer")
+    monkeypatch.setattr(worker.shutil, "which", lambda name: "/usr/local/bin/openclaw")
+    captured = {}
+    def fake_run(args, **kwargs):
+        captured["args"] = args
+        return subprocess.CompletedProcess(args, 0, stdout="ok", stderr="")
+    monkeypatch.setattr(worker.subprocess, "run", fake_run)
+    assert worker.run_openclaw("inspect", 60) == "ok"
+    assert captured["args"][3] == "developer"
 
 
 def test_run_openclaw_timeout_is_propagated(monkeypatch):
