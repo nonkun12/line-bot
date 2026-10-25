@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from scripts import test_agent_model_handoff as handoff
 
 
