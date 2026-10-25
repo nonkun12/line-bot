@@ -1078,6 +1078,14 @@ jobs:
             exit 1
           fi
 
+          # A successful housekeeping/publish path must not turn a blocked task run
+          # into a successful workflow conclusion. Only completed work or an explicit
+          # no-work NOT_RUN outcome may conclude successfully.
+          if [ "$result" != "COMPLETED" ] && [ "$result" != "NOT_RUN" ]; then
+            echo "::error::Distributed Loop task outcome is $result ($result_reason); failing source workflow."
+            exit 1
+          fi
+
       - name: Wake Render before LINE final report
         if: always()
         run: |
