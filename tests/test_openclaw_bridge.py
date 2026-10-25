@@ -75,7 +75,7 @@ def test_claim_returns_bounded_job(monkeypatch):
     })
     response = make_app().test_client().post(
         "/api/openclaw/claim", json={},
-        headers={"X-OpenClaw-Bridge-Key": "secret"},
+        headers={"X-OpenClaw-Bridge-Key": "s" * 32},
     )
     assert response.status_code == 200
     assert response.get_json()["job"] == {
@@ -89,7 +89,7 @@ def test_complete_rejects_wrong_job_type(monkeypatch):
     response = make_app().test_client().post(
         "/api/openclaw/complete",
         json={"job_id": 4, "claim_token": "opaque", "success": True},
-        headers={"X-OpenClaw-Bridge-Key": "secret"},
+        headers={"X-OpenClaw-Bridge-Key": "s" * 32},
     )
     assert response.status_code == 404
 
@@ -102,7 +102,7 @@ def test_complete_rejects_claim_mismatch(monkeypatch):
     response = make_app().test_client().post(
         "/api/openclaw/complete",
         json={"job_id": 4, "claim_token": "opaque", "success": True},
-        headers={"X-OpenClaw-Bridge-Key": "secret"},
+        headers={"X-OpenClaw-Bridge-Key": "s" * 32},
     )
     assert response.status_code == 409
 
@@ -112,6 +112,6 @@ def test_complete_rejects_non_boolean_success(monkeypatch):
     response = make_app().test_client().post(
         "/api/openclaw/complete",
         json={"job_id": 4, "claim_token": "opaque", "success": "yes"},
-        headers={"X-OpenClaw-Bridge-Key": "secret"},
+        headers={"X-OpenClaw-Bridge-Key": "s" * 32},
     )
     assert response.status_code == 400
