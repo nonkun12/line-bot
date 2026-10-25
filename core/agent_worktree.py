@@ -91,7 +91,9 @@ class IsolatedWorktreeManager:
         resolved = worktree.path.resolve()
         if resolved.parent != self.worktree_root or resolved != self.worktree_root / task_id:
             raise WorktreeError("registered worktree path escaped configured root")
-        self._git(self.repository, "worktree", "remove", "--force", str(resolved))
+        # Never discard worker edits implicitly. Git refuses to remove a dirty
+        # worktree without --force; callers must inspect/preserve changes first.
+        self._git(self.repository, "worktree", "remove", str(resolved))
         del self._created[task_id]
 
     @property
