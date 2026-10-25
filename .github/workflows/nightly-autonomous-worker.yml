@@ -131,15 +131,23 @@ jobs:
             echo "AUTONOMOUS_RESULT=no-changes" >> "$GITHUB_ENV"
             exit 0
           fi
-          if git ls-remote --exit-code origin "refs/heads/${AUTONOMOUS_BRANCH}" >/dev/null 2>&1; then
-            echo "Autonomous branch already exists: ${AUTONOMOUS_BRANCH}"
-            exit 1
-          fi
-          PR_URL="$(gh pr create \
+          # The branch is pushed by the preceding step. On a rerun it may already
+          # exist, so reuse it and create a PR only when one is not already open.
+          PR_URL="$(gh pr list \
             --base main \
             --head "${AUTONOMOUS_BRANCH}" \
-            --title "chore: autonomous development loop ${{ github.run_id }}" \
-            --body "Autonomous development result. Review, safety gates, and current-HEAD CI are required before merge. This workflow does not merge automatically.")"
+            --state open \
+            --json url \
+            --jq '.[0].url // empty')"
+          if [ -z "$PR_URL" ]; then
+            PR_URL="$(gh pr create \
+              --base main \
+              --head "${AUTONOMOUS_BRANCH}" \
+              --title "chore: autonomous development loop ${{ github.run_id }}" \
+              --body "Autonomous development result. Review, safety gates, and current-HEAD CI are required before merge. This workflow does not merge automatically.")"
+          else
+            echo "Autonomous PR already exists: ${PR_URL}"
+          fi
           echo "AUTONOMOUS_RESULT=pr-created" >> "$GITHUB_ENV"
           echo "AUTONOMOUS_PR_URL=${PR_URL}" >> "$GITHUB_ENV"
 
