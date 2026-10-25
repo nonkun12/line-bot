@@ -28,7 +28,7 @@ def test_explicit_capture_creates_stable_card_with_development_ideas():
     assert card["focus"] == focus
     assert card["execution_approval"] == "pending"
     assert len(card["proposals"]) == 5
-    assert "~~~text\\n" + focus + "\\n~~~" in card["markdown"]
+    assert "~~~text\n" + focus + "\n~~~" in card["markdown"]
     assert "発展案（自動生成・未検証）" in card["markdown"]
     assert "- execution_approval: pending" in card["markdown"]
 
