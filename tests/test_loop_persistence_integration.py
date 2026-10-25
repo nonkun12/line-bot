@@ -53,8 +53,8 @@ def test_synthetic_success_persists_both_adapters_before_final_classification(tm
         [outcome["status"]],
         loop_outcome="success",
         publish_outcome="success",
-        state_outcome="success",
+        state_outcome="success" if observation["recorded"] else "failure",
         sheets_outcome="success",
-        recovery_outcome="success" if recovery["verified"] and observation["recorded"] else "failure",
+        recovery_outcome="success" if recovery["verified"] else "failure",
     )
     assert final_status == ("COMPLETED", "required_gates_passed")
