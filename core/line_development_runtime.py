@@ -237,6 +237,9 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "proposal-generator-resume-review-exclusion-regression": "tests/test_autonomous_task_proposals.py",
     "queue-progress-ignores-unrelated-pass-results-regression": "tests/test_distributed_loop_queue_progress.py",
     "proposal-generator-conflicting-catalog-definitions-regression": "tests/test_autonomous_task_proposals.py",
+    "proposal-generator-closed-approved-issue-regression": "tests/test_autonomous_task_proposals.py",
+    "proposal-generator-invalid-labels-fail-closed-regression": "tests/test_autonomous_task_proposals.py",
+    "proposal-generator-boolean-issue-number-regression": "tests/test_autonomous_task_proposals.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -1866,6 +1869,97 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "source": "deterministic_autonomous_task",
             "changes": [{"file": chosen, "old": anchor, "new": new}],
         }, None
+
+
+    if task_id == "proposal-generator-closed-approved-issue-regression" and chosen == "tests/test_autonomous_task_proposals.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_closed_approved_issue_never_enters_runtime_queue"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_fails_closed_on_missing_recovery_state(tmp_path):" + chr(10)
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            f"def {name}(tmp_path):",
+            '    closed = issue("closed-approved-task", labels=("autonomous-task-approved",))',
+            '    closed["state"] = "closed"',
+            '    result, queue_path = run(tmp_path, [closed], state(), registered_tasks=[registered("closed-approved-task")])',
+            '    assert result["approved_count"] == 0',
+            '    assert json.loads(queue_path.read_text(encoding="utf-8"))["tasks"] == []',
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {"no_change": False, "source": "deterministic_autonomous_task", "changes": [{"file": chosen, "old": anchor, "new": new}]}, None
+
+    if task_id == "proposal-generator-invalid-labels-fail-closed-regression" and chosen == "tests/test_autonomous_task_proposals.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_non_list_issue_labels_fail_closed"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_fails_closed_on_missing_recovery_state(tmp_path):" + chr(10)
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            f"def {name}(tmp_path):",
+            '    malformed = issue("malformed-labels")',
+            '    malformed["labels"] = "autonomous-task-candidate"',
+            '    with pytest.raises(ValueError, match="issue labels are invalid"):',
+            '        run(tmp_path, [malformed], state())',
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {"no_change": False, "source": "deterministic_autonomous_task", "changes": [{"file": chosen, "old": anchor, "new": new}]}, None
+
+    if task_id == "proposal-generator-boolean-issue-number-regression" and chosen == "tests/test_autonomous_task_proposals.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_boolean_issue_number_is_rejected"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_fails_closed_on_missing_recovery_state(tmp_path):" + chr(10)
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            f"def {name}(tmp_path):",
+            '    malformed = issue("boolean-issue-number")',
+            '    malformed["number"] = True',
+            '    result, queue_path = run(tmp_path, [malformed], state())',
+            '    assert result["proposal_count"] == 0',
+            '    assert result["diagnostics"]["invalid_issue_number_count"] == 1',
+            '    assert json.loads(queue_path.read_text(encoding="utf-8"))["tasks"] == []',
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {"no_change": False, "source": "deterministic_autonomous_task", "changes": [{"file": chosen, "old": anchor, "new": new}]}, None
 
     return None, None
 
