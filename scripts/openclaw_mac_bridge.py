@@ -79,7 +79,7 @@ def run_openclaw(message: str, timeout_seconds: int, job_id: int = 1) -> str:
     )
     completed = subprocess.run(
         [binary, "agent", "exec", "--cwd", workspace, "--timeout", str(timeout_seconds),
-         "--json", "--message", prompt],
+         "--json", prompt],
         capture_output=True,
         text=True,
         timeout=timeout_seconds + 30,
@@ -92,11 +92,28 @@ def run_openclaw(message: str, timeout_seconds: int, job_id: int = 1) -> str:
         envelope = json.loads((completed.stdout or "").strip())
     except (json.JSONDecodeError, TypeError):
         raise RuntimeError("openclaw agent returned invalid JSON") from None
-    if not isinstance(envelope, dict) or envelope.get("ok") is not True:
-        raise RuntimeError("openclaw agent reported an unsuccessful run")
+    if not isinstance(envelope, dict):
+        raise RuntimeError("openclaw agent returned an invalid response envelope")
     output = envelope.get("final")
     if not isinstance(output, str) or not output.strip():
         raise RuntimeError("openclaw agent returned an empty response")
+    # OpenClaw may produce a final answer but set ok=false when temporary sandbox
+    # cleanup fails (for example EACCES while removing skills/). Accept only this
+    # explicit cleanup-only case and surface a safe warning; other failures stay failures.
+    error = envelope.get("error")
+    cleanup_only = (
+        envelope.get("ok") is False
+        and isinstance(error, dict)
+        and error.get("kind") == "cleanup"
+    )
+    if envelope.get("ok") is not True and not cleanup_only:
+        raise RuntimeError("openclaw agent reported an unsuccessful run")
+    if cleanup_only:
+        output = (
+            "（警告：OpenClawの一時領域の後片付けでエラーが発生しました。"
+            "応答内容は取得できましたが、後片付けの問題は別途確認が必要です。）\n"
+            + output.strip()
+        )
     return output.strip()[:MAX_REPLY_CHARS]
 
 
