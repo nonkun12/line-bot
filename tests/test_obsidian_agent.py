@@ -96,3 +96,48 @@ def test_line_note_natural_record_command_appends_to_default_note(tmp_path, monk
     assert result["agent_results"]["obsidian"]["operation"] == "append"
     target = tmp_path / "LINE-Inbox.md"
     assert target.read_text(encoding="utf-8") == "MCPとObsidianの実保存テスト"
+
+
+def test_explicit_idea_is_routed_and_saved_as_new_card(tmp_path, monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+    from graph.supervisor import supervisor_node
+
+    message = "アイデア: LINEから発展案を自動生成する"
+    state = supervisor_node({
+        "user_id": "test-user",
+        "raw_message": message,
+        "channel": "test",
+        "metadata": {},
+        "agent_results": {},
+    })
+    assert state["intent"] == "obsidian"
+    assert state["next_agent"] == "obsidian"
+
+    result = obsidian_agent_node(_state(message, tmp_path))
+    metadata = result["agent_results"]["obsidian"]
+    assert metadata["success"] is True
+    assert metadata["operation"] == "create"
+    note = tmp_path / metadata["path"]
+    assert note.is_file()
+    saved = note.read_text(encoding="utf-8")
+    assert "原案（原文・変更禁止）" in saved
+    assert "LINEから発展案を自動生成する" in saved
+    assert "発展案（自動生成・未検証）" in saved
+    assert "- execution_approval: pending" in saved
+
+
+def test_repeated_idea_capture_is_idempotent(tmp_path, monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+    message = "アイデア: 同じ入力の重複保存を防ぐ"
+    first = obsidian_agent_node(_state(message, tmp_path))
+    first_meta = first["agent_results"]["obsidian"]
+    assert first_meta["success"] is True
+    note = tmp_path / first_meta["path"]
+    original_contents = note.read_text(encoding="utf-8")
+
+    second = obsidian_agent_node(_state(message, tmp_path))
+    second_meta = second["agent_results"]["obsidian"]
+    assert second_meta["success"] is True
+    assert second_meta["duplicate"] is True
+    assert note.read_text(encoding="utf-8") == original_contents
+    assert len(list((tmp_path / "Ideas" / "Inbox").glob("IDEA-*.md"))) == 1
