@@ -85,27 +85,28 @@ def run_openclaw(message: str, timeout_seconds: int, job_id: int = 1) -> str:
         timeout=timeout_seconds + 30,
         check=False,
     )
-    if completed.returncode != 0:
-        # Do not forward local stderr; it may contain paths or configuration details.
-        raise RuntimeError("openclaw agent exited unsuccessfully")
+    # Parse the JSON even on a nonzero exit: OpenClaw can emit a valid final
+    # answer and then fail while cleaning up its temporary sandbox. Only that
+    # explicit cleanup-only envelope may be accepted despite a nonzero exit.
     try:
         envelope = json.loads((completed.stdout or "").strip())
     except (json.JSONDecodeError, TypeError):
-        raise RuntimeError("openclaw agent returned invalid JSON") from None
+        raise RuntimeError("openclaw agent exited unsuccessfully or returned invalid JSON") from None
     if not isinstance(envelope, dict):
         raise RuntimeError("openclaw agent returned an invalid response envelope")
     output = envelope.get("final")
     if not isinstance(output, str) or not output.strip():
         raise RuntimeError("openclaw agent returned an empty response")
-    # OpenClaw may produce a final answer but set ok=false when temporary sandbox
-    # cleanup fails (for example EACCES while removing skills/). Accept only this
-    # explicit cleanup-only case and surface a safe warning; other failures stay failures.
     error = envelope.get("error")
     cleanup_only = (
         envelope.get("ok") is False
         and isinstance(error, dict)
         and error.get("kind") == "cleanup"
     )
+    if completed.returncode != 0 and not cleanup_only:
+        # Do not forward local stderr; it may contain paths or configuration details.
+        raise RuntimeError("openclaw agent exited unsuccessfully")
+    # Never accept arbitrary failures merely because a final field exists.
     if envelope.get("ok") is not True and not cleanup_only:
         raise RuntimeError("openclaw agent reported an unsuccessful run")
     if cleanup_only:
