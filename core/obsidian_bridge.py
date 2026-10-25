@@ -19,7 +19,9 @@ MAX_OBSIDIAN_MESSAGE_CHARS = 4000
 def enqueue_obsidian_request(user_id: str, message: str) -> int:
     """Queue one explicit Obsidian request for the Mac bridge."""
     normalized_user_id = str(user_id or "").strip()
-    raw_message = str(message or "").strip()
+    raw_input = str(message or "")
+    idea_capture = parse_idea_command(raw_input) is not None
+    raw_message = raw_input if idea_capture else raw_input.strip()
     if not normalized_user_id:
         raise ObsidianError("user_id is required")
     if len(normalized_user_id) > 200:
@@ -31,7 +33,6 @@ def enqueue_obsidian_request(user_id: str, message: str) -> int:
     normalized_message = normalize_obsidian_command(raw_message)
     if normalized_message is None:
         raise ObsidianError("only explicit Obsidian commands may be queued")
-    idea_capture = parse_idea_command(raw_message) is not None
     if len(normalized_message) > MAX_OBSIDIAN_MESSAGE_CHARS and not idea_capture:
         raise ObsidianError("Obsidian message exceeds 4000 characters")
     if not is_obsidian_intent(raw_message):
