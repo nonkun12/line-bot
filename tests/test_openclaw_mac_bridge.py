@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 
 import pytest
@@ -19,36 +20,57 @@ def test_server_url_requires_strong_key():
         worker.validate_config("https://example.test/api/openclaw", "short")
 
 
-def test_run_openclaw_uses_argument_array(monkeypatch):
+def test_resolve_workspace_requires_existing_directory(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCLAW_WORKSPACE_DIR", str(tmp_path))
+    assert worker.resolve_workspace() == str(tmp_path.resolve())
+    monkeypatch.setenv("OPENCLAW_WORKSPACE_DIR", str(tmp_path / "missing"))
+    with pytest.raises(ValueError):
+        worker.resolve_workspace()
+
+
+def test_run_openclaw_uses_exec_and_explicit_workspace(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCLAW_WORKSPACE_DIR", str(tmp_path))
     monkeypatch.setattr(worker.shutil, "which", lambda name: "/usr/local/bin/openclaw")
     captured = {}
+
     def fake_run(args, **kwargs):
         captured["args"] = args
         captured["kwargs"] = kwargs
-        return subprocess.CompletedProcess(args, 0, stdout="completed", stderr="")
+        return subprocess.CompletedProcess(
+            args, 0, stdout=json.dumps({"ok": True, "final": "completed"}), stderr=""
+        )
+
     monkeypatch.setattr(worker.subprocess, "run", fake_run)
     assert worker.run_openclaw("inspect repository", 60, job_id=42) == "completed"
-    assert captured["args"] == ["/usr/local/bin/openclaw", "agent", "--agent", "main", "--session-key", "agent:main:line-openclaw-job-42", "--message", "inspect repository"]
+    args = captured["args"]
+    assert args[:5] == ["/usr/local/bin/openclaw", "agent", "exec", "--cwd", str(tmp_path)]
+    assert args[5:9] == ["--timeout", "60", "--json", "--message"]
+    assert "Do not merge, push, deploy" in args[-1]
+    assert "inspect repository" in args[-1]
+    assert captured["kwargs"]["timeout"] == 90
     assert "shell" not in captured["kwargs"]
 
 
-def test_run_openclaw_supports_configured_agent_id(monkeypatch):
-    monkeypatch.setenv("OPENCLAW_AGENT_ID", "developer")
+def test_run_openclaw_rejects_unsuccessful_json(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCLAW_WORKSPACE_DIR", str(tmp_path))
     monkeypatch.setattr(worker.shutil, "which", lambda name: "/usr/local/bin/openclaw")
-    captured = {}
-    def fake_run(args, **kwargs):
-        captured["args"] = args
-        return subprocess.CompletedProcess(args, 0, stdout="ok", stderr="")
-    monkeypatch.setattr(worker.subprocess, "run", fake_run)
-    assert worker.run_openclaw("inspect", 60, job_id=43) == "ok"
-    assert captured["args"][3] == "developer"
-    assert captured["args"][5] == "agent:developer:line-openclaw-job-43"
+    monkeypatch.setattr(
+        worker.subprocess, "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(
+            args, 0, stdout=json.dumps({"ok": False, "final": "partial"}), stderr=""
+        ),
+    )
+    with pytest.raises(RuntimeError, match="unsuccessful"):
+        worker.run_openclaw("inspect", 60)
 
 
-def test_run_openclaw_timeout_is_propagated(monkeypatch):
+def test_run_openclaw_timeout_is_propagated(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCLAW_WORKSPACE_DIR", str(tmp_path))
     monkeypatch.setattr(worker.shutil, "which", lambda name: "/usr/local/bin/openclaw")
+
     def fake_run(args, **kwargs):
         raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+
     monkeypatch.setattr(worker.subprocess, "run", fake_run)
     with pytest.raises(subprocess.TimeoutExpired):
         worker.run_openclaw("inspect repository", 60, job_id=44)
