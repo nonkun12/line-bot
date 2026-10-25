@@ -55,6 +55,22 @@ def test_progress_fails_closed_when_durable_state_is_missing(tmp_path: Path):
         calculate_progress(queue, tmp_path / "missing-state.json", tmp_path / "missing-results.jsonl")
 
 
+@pytest.mark.parametrize("invalid_id", [None, "", 123])
+def test_progress_rejects_invalid_task_id(tmp_path: Path, invalid_id):
+    queue = tmp_path / "queue.json"
+    state = tmp_path / "state.json"
+    results = tmp_path / "results.jsonl"
+    queue.write_text(json.dumps({"tasks": [{"id": "task-1"}, {"id": invalid_id}]}), encoding="utf-8")
+    state.write_text(json.dumps({"completed": []}), encoding="utf-8")
+    results.write_text("", encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid runtime queue task ID"):
+        calculate_progress(queue, state, results)
+    queue = tmp_path / "queue.json"
+    queue.write_text(json.dumps({"tasks": [{"id": "task-1"}]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="missing completed state"):
+        calculate_progress(queue, tmp_path / "missing-state.json", tmp_path / "missing-results.jsonl")
+
+
 
 @pytest.mark.parametrize("state_data", [{}, {"foo": 1}])
 def test_progress_rejects_state_without_completed_key(tmp_path: Path, state_data: dict):
