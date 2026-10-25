@@ -126,12 +126,15 @@ class AgentCoordinationStore:
         now: datetime | None = None,
     ) -> CoordinationEvent:
         self._validate(task_id, worker_id, event_type, payload)
+        if event_type == "TASK_CLAIMED":
+            raise ValueError("use claim_task() to create a task lease")
+        instant = now or _now()
+        _iso(instant)  # Reject naive timestamps before lease comparisons.
         lock = self._locked()
         try:
             events = self._read_unlocked()
-            if event_type != "TASK_CLAIMED":
-                self._assert_owner(events, task_id, worker_id, now or _now())
-            event = CoordinationEvent(task_id, event_type, worker_id, _iso(now or _now()), None, payload)
+            self._assert_owner(events, task_id, worker_id, instant)
+            event = CoordinationEvent(task_id, event_type, worker_id, _iso(instant), None, payload)
             self._append_unlocked(event)
             return event
         finally:
