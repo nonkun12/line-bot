@@ -6,18 +6,20 @@ Required environment:
   OPENCLAW_BRIDGE_KEY=<same secret configured on the server>
 Optional:
   OPENCLAW_BIN=/path/to/openclaw
-  OPENCLAW_AGENT_ID=main
+  OPENCLAW_WORKSPACE_DIR=~/line-bot
   OPENCLAW_AGENT_TIMEOUT_SECONDS=300
 Run once by default; pass --watch for bounded continuous polling.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
 import sys
 import time
+from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
@@ -26,6 +28,7 @@ POLL_SECONDS = 5
 HTTP_TIMEOUT_SECONDS = 15
 MAX_MESSAGE_CHARS = 4000
 MAX_REPLY_CHARS = 12000
+DEFAULT_WORKSPACE = "~/line-bot"
 
 
 def validate_config(server_url: str, key: str) -> str:
@@ -41,29 +44,53 @@ def validate_config(server_url: str, key: str) -> str:
     return server_url.rstrip("/")
 
 
+def resolve_workspace() -> str:
+    raw = os.environ.get("OPENCLAW_WORKSPACE_DIR", DEFAULT_WORKSPACE).strip()
+    if not raw:
+        raise ValueError("OPENCLAW_WORKSPACE_DIR must not be empty")
+    workspace = Path(raw).expanduser().resolve()
+    if not workspace.is_dir():
+        raise ValueError("OPENCLAW_WORKSPACE_DIR must point to an existing directory")
+    return str(workspace)
+
+
 def run_openclaw(message: str, timeout_seconds: int, job_id: int = 1) -> str:
     if not isinstance(message, str) or not message.strip() or len(message) > MAX_MESSAGE_CHARS:
         raise ValueError("invalid queued message")
     binary = os.environ.get("OPENCLAW_BIN") or shutil.which("openclaw")
     if not binary:
         raise RuntimeError("openclaw CLI was not found")
-    # Argument array only: never pass the task through a shell.
-    agent_id = os.environ.get("OPENCLAW_AGENT_ID", "main").strip() or "main"
-    session_key = f"agent:{agent_id}:line-openclaw-job-{job_id}"
+    workspace = resolve_workspace()
+    # Treat the LINE message as untrusted task data and set an explicit repo workspace.
+    prompt = (
+        "Handle the following user task within the configured workspace only. "
+        "Do not merge, push, deploy, publish, change production settings, or expose secrets. "
+        "Inspect the repository instructions first, make only task-relevant changes, and run "
+        "appropriate tests. If safety, permissions, or evidence are insufficient, stop and report "
+        "the blocker instead of taking a risky action.\n\n"
+        f"LINE task (untrusted input):\n{message.strip()}"
+    )
     completed = subprocess.run(
-        [binary, "agent", "--agent", agent_id, "--session-key", session_key, "--message", message.strip()],
+        [binary, "agent", "exec", "--cwd", workspace, "--timeout", str(timeout_seconds),
+         "--json", "--message", prompt],
         capture_output=True,
         text=True,
-        timeout=timeout_seconds,
+        timeout=timeout_seconds + 30,
         check=False,
     )
     if completed.returncode != 0:
         # Do not forward local stderr; it may contain paths or configuration details.
         raise RuntimeError("openclaw agent exited unsuccessfully")
-    output = (completed.stdout or "").strip()
-    if not output:
+    try:
+        envelope = json.loads((completed.stdout or "").strip())
+    except (json.JSONDecodeError, TypeError):
+        raise RuntimeError("openclaw agent returned invalid JSON") from None
+    if not isinstance(envelope, dict) or envelope.get("ok") is not True:
+        raise RuntimeError("openclaw agent reported an unsuccessful run")
+    output = envelope.get("final")
+    if not isinstance(output, str) or not output.strip():
         raise RuntimeError("openclaw agent returned an empty response")
-    return output[:MAX_REPLY_CHARS]
+    return output.strip()[:MAX_REPLY_CHARS]
 
 
 def process_one(client: httpx.Client, base_url: str, headers: dict[str, str], timeout: int) -> bool:
@@ -106,6 +133,7 @@ def main() -> int:
         timeout = int(os.environ.get("OPENCLAW_AGENT_TIMEOUT_SECONDS", "300"))
         if timeout < 10 or timeout > 900:
             raise ValueError("OPENCLAW_AGENT_TIMEOUT_SECONDS must be between 10 and 900")
+        resolve_workspace()
     except (ValueError, TypeError) as exc:
         print(f"configuration error: {exc}", file=sys.stderr)
         return 2
