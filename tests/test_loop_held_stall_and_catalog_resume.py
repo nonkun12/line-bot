@@ -131,3 +131,50 @@ def test_main_records_blocked_when_runtime_queue_is_empty_and_catalog_tasks_are_
     assert record["held_pending_count"] == 2
     assert record["eligible_pending_count"] == 0
     assert "MINIMAL_LOOP=BLOCKED reason=all_pending_tasks_held" in capsys.readouterr().out
+
+
+def test_main_records_queue_catalog_mismatch_without_raising(tmp_path, monkeypatch, capsys):
+    """Held runtime entries must not crash when an eligible catalog task is absent."""
+    import sys
+
+    queue_path = tmp_path / "queue.json"
+    queue_path.write_text(
+        json.dumps({"tasks": [_task("held-a")], "max_tasks_per_run": 3}),
+        encoding="utf-8",
+    )
+    results_path = tmp_path / "results.jsonl"
+    state_path = tmp_path / "state.json"
+    recovery_path = tmp_path / "recovery-ai-state.json"
+    RecoveryStore(recovery_path).record_failure("held-a", "unknown")
+    catalog = [_task("held-a"), _task("eligible-missing-from-queue")]
+
+    monkeypatch.setattr(loop, "QUEUE", queue_path)
+    monkeypatch.setattr(loop, "_git_head", lambda: "a" * 40)
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: catalog)
+    monkeypatch.setattr(loop.signal, "signal", lambda *_args: None)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["run_minimal_autonomous_loop.py", "--results", str(results_path), "--state", str(state_path)],
+    )
+
+    import core.control_tower_selector as selector
+    monkeypatch.setattr(
+        selector,
+        "select_next_task",
+        lambda *_args, **_kwargs: SimpleNamespace(next_action="NOT_RUN", reason_code="queue_empty"),
+    )
+
+    exit_code = loop.main()
+
+    assert exit_code == 79
+    lines = results_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["status"] == "BLOCKED"
+    assert record["failure_reason"] == "runtime_queue_held_but_catalog_has_eligible_tasks"
+    assert record["held_pending_count"] == 1
+    assert record["eligible_pending_count"] == 1
+    output = capsys.readouterr().out
+    assert "MINIMAL_LOOP=BLOCKED" in output
+    assert "eligible_pending=1" in output
