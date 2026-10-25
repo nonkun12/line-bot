@@ -96,7 +96,7 @@ def test_progress_does_not_count_foreign_task_result_as_completion(tmp_path: Pat
     queue.write_text(json.dumps({"tasks": [{"id": "task-1"}]}), encoding="utf-8")
     state.write_text(json.dumps({"completed": []}), encoding="utf-8")
     results.write_text(
-        json.dumps({"task_id": "foreign-task", "status": status}) + "\\n",
+        json.dumps({"task_id": "foreign-task", "status": status}) + "\n",
         encoding="utf-8",
     )
 
