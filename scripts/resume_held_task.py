@@ -49,8 +49,14 @@ def resume_task(
     queue_path: Path,
     task_id: str,
     cause_fixed: bool,
+    catalog_path: Path | None = None,
 ) -> dict:
-    """Unhold one pending queue task only when cause-fixed confirmation is explicit."""
+    """Unhold one pending task only when cause-fixed confirmation is explicit.
+
+    A held catalog-only task may have been removed from the runtime queue. Permit
+    an exact-one-match lookup in the reviewed catalog, while retaining explicit
+    cause-fixed confirmation and the post-resume review gate.
+    """
     task_id = _safe_id(task_id)
     if cause_fixed is not True:
         raise ValueError("explicit confirmation that the cause is fixed is required")
@@ -67,6 +73,14 @@ def resume_task(
         task for task in tasks
         if isinstance(task, dict) and task.get("id") == task_id
     ]
+    if not matches and catalog_path is not None:
+        catalog_tasks = _read_json(catalog_path).get("tasks")
+        if not isinstance(catalog_tasks, list):
+            raise ValueError("task catalog is invalid")
+        matches = [
+            task for task in catalog_tasks
+            if isinstance(task, dict) and task.get("id") == task_id
+        ]
     if len(matches) != 1:
         raise ValueError("task ID must match exactly one queued task")
     if task_id in state["completed"]:
@@ -105,6 +119,7 @@ def main() -> int:
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--recovery-state", type=Path, required=True)
     parser.add_argument("--queue", type=Path, required=True)
+    parser.add_argument("--catalog", type=Path, default=None)
     parser.add_argument("--task-id", required=True)
     parser.add_argument("--cause-fixed", action="store_true")
     args = parser.parse_args()
@@ -114,6 +129,7 @@ def main() -> int:
         queue_path=args.queue,
         task_id=args.task_id,
         cause_fixed=args.cause_fixed,
+        catalog_path=args.catalog,
     )
     print(
         "RESUME_APPROVED "
