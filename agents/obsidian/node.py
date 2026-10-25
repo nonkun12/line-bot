@@ -45,6 +45,28 @@ def obsidian_agent_node(state: AgentState) -> AgentState:
     message = normalize_obsidian_command(raw_message) or raw_message
     vault = ObsidianVault.from_env()
     if vault is None:
+        if parse_idea_command(raw_message) is not None:
+            # Cloud-side capture queues the compact original command. Only the
+            # authenticated Mac-local Bridge can write the actual vault.
+            try:
+                from core.obsidian_bridge import enqueue_obsidian_request
+
+                job_id = enqueue_obsidian_request(str(state.get("user_id", "") or ""), raw_message)
+            except (ObsidianError, OSError):
+                return _response(
+                    state,
+                    "アイデアの受付に失敗しました。原案はこのメッセージ内に残っています。Bridge設定を確認してください。",
+                    success=False,
+                    reason="bridge_queue_failed",
+                )
+            return _response(
+                state,
+                f"アイデアを受付しました（ID: {job_id}）。Obsidianへの保存はMac側Bridgeの処理待ちです。",
+                success=True,
+                operation="queued",
+                status="pending",
+                job_id=job_id,
+            )
         return _response(
             state,
             "Obsidian連携は未設定です。ローカル実行環境でOBSIDIAN_VAULT_PATHを設定してください。",
