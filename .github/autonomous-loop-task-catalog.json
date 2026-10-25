@@ -260,6 +260,34 @@
       "allowed_paths": [
         "tests/test_distributed_loop_queue_progress.py"
       ]
+    },
+    {
+      "id": "proposal-generator-approved-queue-capacity-diagnostic-20261025",
+      "instruction": "tests/test_autonomous_task_proposals.py のみに新しい固有名の回帰テストを1件追加してください。queue の max_tasks_per_run と既存 tasks により queue_capacity=0 で、登録済みカタログと完全一致する autonomous-task-approved Issue が存在する場合、build_proposals() がその Issue を「信頼できる候補なし」と誤診断しないことを確認してください。現行契約を確認して、妥当な status/reason/diagnostics を明示的に検証し、既存テストを変更せずこのファイルだけ変更してください。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ]
+    },
+    {
+      "id": "continuous-loop-empty-queue-report-reason-regression-20261025",
+      "instruction": "tests/test_continuous_distributed_loop_workflow.py のみに新しい固有名の回帰テストを1件追加してください。queue_empty の実行結果が workflow process success と混同されず、最終レポートで status=NOT_RUN・task_count=0 として記録されることを検証してください。既存テストと重複しないテスト名を使い、現行関数・fixtureの契約に沿ってください。変更は指定テストファイル1つだけ。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_continuous_distributed_loop_workflow.py"
+      ]
+    },
+    {
+      "id": "recovery-rag-invalid-history-record-sanitization-regression-20261025",
+      "instruction": "tests/test_recovery_rag.py のみに新しい固有名の回帰テストを1件追加してください。テンポラリSQLite DBを使い、履歴の不正な型・不正な fingerprint を持つレコードが検索コンテキストに混入せず、build_task_context() が秘密や生のinstructionを返さないことを検証してください。現行スキーマと既存fixtureに合わせ、既存テストを変更せずこのファイルだけ変更してください。外部通信・実DB書き込み・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_recovery_rag.py"
+      ]
+    },
+    {
+      "id": "control-tower-blocks-missing-task-result-evidence-20261025",
+      "instruction": "tests/test_control_tower_orchestrator.py のみに新しい固有名の回帰テストを1件追加してください。実行結果が成功扱いでも、task_id が欠落または空でトップレベル実行証跡と照合できない場合、coordinate_outcome() が fail-closed で allow_continue=false を返すことを検証してください。現行の reason_code 契約を読み、既存テストと重複させず、変更はこのテストファイルだけにしてください。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_control_tower_orchestrator.py"
+      ]
     }
   ]
 }
