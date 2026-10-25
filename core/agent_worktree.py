@@ -37,6 +37,10 @@ class IsolatedWorktreeManager:
     def __init__(self, repository: str | Path, worktree_root: str | Path) -> None:
         self.repository = Path(repository).expanduser().resolve()
         self.worktree_root = Path(worktree_root).expanduser().resolve()
+        if (self.worktree_root == self.repository
+                or self.worktree_root.is_relative_to(self.repository)
+                or self.repository.is_relative_to(self.worktree_root)):
+            raise WorktreeError("repository and worktree root must be separate, non-overlapping paths")
         self._created: dict[str, IsolatedWorktree] = {}
 
     @staticmethod
