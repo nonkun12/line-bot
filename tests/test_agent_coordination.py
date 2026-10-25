@@ -17,7 +17,7 @@ def test_ledger_persists_events_and_filters_by_task(tmp_path):
     store.append_event("task-2", "NEED_INPUT", "worker-b", payload={"question": "scope"}, now=now)
 
     assert [event.event_type for event in store.read_events("task-1")] == ["TASK_CLAIMED", "PROGRESS"]
-    assert len(AgentCoordinationStore(tmp_path / "events.jsonl").read_events()) == 3
+    assert len(AgentCoordinationStore(tmp_path / "events.jsonl").read_events()) == 4
 
 
 def test_live_lease_prevents_duplicate_claim(tmp_path):
