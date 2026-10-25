@@ -48,6 +48,7 @@ def obsidian_agent_node(state: AgentState) -> AgentState:
         if parse_idea_command(raw_message) is not None:
             # Cloud-side capture queues the compact original command. Only the
             # authenticated Mac-local Bridge can write the actual vault.
+            assert_specialist_capability("obsidian", "obsidian_write")
             try:
                 from core.obsidian_bridge import enqueue_obsidian_request
 
