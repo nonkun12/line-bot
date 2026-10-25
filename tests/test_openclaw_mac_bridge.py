@@ -23,6 +23,7 @@ def test_server_url_requires_strong_key():
 @pytest.mark.parametrize("url", [
     "https://user:pass@example.test/api/openclaw",
     "https://example.test/other",
+    "https://example.test/prefix/api/openclaw",
     "https://example.test/api/openclaw?token=secret",
 ])
 def test_server_url_rejects_credentials_query_and_wrong_path(url):
