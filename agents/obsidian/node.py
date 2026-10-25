@@ -72,9 +72,9 @@ def _attach_related_notes(content: str, candidates: list[tuple[str, list[str]]])
     """Replace the pending placeholder with evidence-backed links or a clear no-match."""
     marker = "- まだ検索していません。実在するノートとの照合後にのみリンクを追加します。"
     if not candidates:
-        replacement = "- 検索済み: 関連候補は見つかりませんでした（自動統合・リンク追加なし）。"
+        replacement = "- 検索済み: 関連候補は見つかりませんでした（最大200件を検索。自動統合・リンク追加なし）。"
     else:
-        lines = ["- 検索済み: 以下は本文中の一致語に基づく候補です（意味的関連の確定ではありません）。"]
+        lines = ["- 検索済み: 以下は最大200件のノート本文中の一致語に基づく候補です（意味的関連の確定ではありません）。"]
         for path, hits in candidates:
             link = path[:-3] if path.lower().endswith(".md") else path
             evidence = "、".join(hits)
