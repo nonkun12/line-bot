@@ -20,7 +20,12 @@ _MAX_ERROR_CHARS = 1000
 def _authorized() -> bool:
     expected = os.environ.get("OPENCLAW_BRIDGE_KEY", "")
     provided = request.headers.get("X-OpenClaw-Bridge-Key", "")
-    return bool(expected and provided and hmac.compare_digest(expected, provided))
+    # Enforce the same minimum strength on the API as on the enqueue path.
+    return bool(
+        len(expected) >= 24
+        and provided
+        and hmac.compare_digest(expected, provided)
+    )
 
 
 @openclaw_bridge_bp.route("/claim", methods=["POST"])
