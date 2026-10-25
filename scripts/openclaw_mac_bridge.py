@@ -41,15 +41,17 @@ def validate_config(server_url: str, key: str) -> str:
     return server_url.rstrip("/")
 
 
-def run_openclaw(message: str, timeout_seconds: int) -> str:
+def run_openclaw(message: str, timeout_seconds: int, job_id: int = 1) -> str:
     if not isinstance(message, str) or not message.strip() or len(message) > MAX_MESSAGE_CHARS:
         raise ValueError("invalid queued message")
     binary = os.environ.get("OPENCLAW_BIN") or shutil.which("openclaw")
     if not binary:
         raise RuntimeError("openclaw CLI was not found")
     # Argument array only: never pass the task through a shell.
+    agent_id = os.environ.get("OPENCLAW_AGENT_ID", "main").strip() or "main"
+    session_key = f"agent:{agent_id}:line-openclaw-job-{job_id}"
     completed = subprocess.run(
-        [binary, "agent", "--agent", os.environ.get("OPENCLAW_AGENT_ID", "main"), "--message", message.strip()],
+        [binary, "agent", "--agent", agent_id, "--session-key", session_key, "--message", message.strip()],
         capture_output=True,
         text=True,
         timeout=timeout_seconds,
@@ -77,7 +79,7 @@ def process_one(client: httpx.Client, base_url: str, headers: dict[str, str], ti
     if not isinstance(token, str) or not token or not isinstance(message, str):
         raise RuntimeError("server returned an invalid job payload")
     try:
-        reply = run_openclaw(message, timeout)
+        reply = run_openclaw(message, timeout, job_id=job_id)
         result = {"job_id": job_id, "claim_token": token, "success": True, "reply": reply}
     except subprocess.TimeoutExpired:
         result = {"job_id": job_id, "claim_token": token, "success": False,
