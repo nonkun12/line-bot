@@ -80,9 +80,11 @@ on:
   pull_request_target:
     types: [labeled]
   schedule:
-    # Same four daily fire times, expressed as one cron entry.
-    # Changing the cron expression also reactivates a deactivated scheduled workflow.
-    - cron: '30 4,10,16,22 * * *'
+    # Night-focused runs (Japan time); daytime work is manual/on-demand.
+    # Keep a gap before overnight-development.yml starts at 03:30 JST.
+    - cron: '30 22,0 * * *'
+      timezone: 'Asia/Tokyo'
+    - cron: '0 2 * * *'
       timezone: 'Asia/Tokyo'
 
 permissions:
