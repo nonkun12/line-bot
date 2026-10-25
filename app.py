@@ -83,6 +83,8 @@ from core.control_tower_status import (
 from core.self_introduction import handle_self_introduction
 from routes.core_api import core_api_bp
 from routes.obsidian_bridge import obsidian_bridge_bp
+from routes.openclaw_bridge import openclaw_bridge_bp
+from core.openclaw_bridge import enqueue_openclaw_request, is_openclaw_intent
 from obsidian_loop_dispatch import dispatch_configuration_status
 from core.obsidian_bridge import enqueue_obsidian_request
 from agents.obsidian.intents import is_obsidian_intent
@@ -103,6 +105,7 @@ from routes.e2e_dashboard import e2e_bp
 app.register_blueprint(e2e_bp)
 app.register_blueprint(core_api_bp)
 app.register_blueprint(obsidian_bridge_bp)
+app.register_blueprint(openclaw_bridge_bp)
 
 # Log only non-secret configuration booleans so deployment setup can be checked
 # without exposing token values or running an autonomous task.
@@ -344,6 +347,15 @@ def _handle_ai_gateway_request(ai_request):
     core_image_reply = handle_core_image_command(message)
     if core_image_reply is not None:
         return core_image_reply
+
+    # Route only explicitly prefixed OpenClaw tasks to the authenticated Mac queue.
+    # This is opt-in; ordinary chat cannot trigger local execution.
+    if is_openclaw_intent(message):
+        try:
+            job_id = enqueue_openclaw_request(user_id, message)
+            return f"OpenClawへの依頼を受け付けました。Mac側ワーカーの実行待ちです。（Job {job_id}）"
+        except Exception:
+            return "OpenClawへの依頼を受け付けられませんでした。ブリッジ設定を確認してください。"
 
     # Route only explicit Obsidian commands to the authenticated Mac approval queue.
     # Never fall through to a cloud agent that cannot access the local vault.
