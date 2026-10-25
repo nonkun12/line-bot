@@ -236,7 +236,7 @@ def test_actual_parent_child_path_collision_fails_batch_closed(repository):
 
     class Executor:
         def execute_in_worktree(self, item: AgentTask, path: Path) -> AgentResult:
-            if item.task_id == "parent-path":
+            if item.task_id == "a-parent-path":
                 (path / "shared").write_text("file", encoding="utf-8")
             else:
                 nested = path / "shared"
@@ -249,12 +249,12 @@ def test_actual_parent_child_path_collision_fails_batch_closed(repository):
         base_ref=commit, max_workers=2,
     )
     report = runner.run([
-        task("parent-path", frozenset({"src/a.py"})),
-        task("child-path", frozenset({"src/b.py"})),
+        task("a-parent-path", frozenset({"src/a.py"})),
+        task("z-child-path", frozenset({"src/b.py"})),
     ])
 
     assert not report.success
-    assert report.failed_task_id == "child-path"
+    assert report.failed_task_id == "z-child-path"
     assert "actual changed-path conflict with parent-path: shared/child.txt" in (report.error or "")
-    assert (root / "parent-path" / "shared").is_file()
-    assert (root / "child-path" / "shared" / "child.txt").is_file()
+    assert (root / "a-parent-path" / "shared").is_file()
+    assert (root / "z-child-path" / "shared" / "child.txt").is_file()
