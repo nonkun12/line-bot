@@ -229,3 +229,32 @@ def test_changed_path_parser_handles_newlines_in_untracked_filename(repository):
     changed = IsolatedParallelBatchRunner._changed_paths(repo)
 
     assert changed == (unusual_name,)
+
+
+def test_actual_parent_child_path_collision_fails_batch_closed(repository):
+    repo, commit, root = repository
+
+    class Executor:
+        def execute_in_worktree(self, item: AgentTask, path: Path) -> AgentResult:
+            if item.task_id == "parent-path":
+                (path / "shared").write_text("file", encoding="utf-8")
+            else:
+                nested = path / "shared"
+                nested.mkdir()
+                (nested / "child.txt").write_text("child", encoding="utf-8")
+            return AgentResult(item.task_id, True, "done")
+
+    runner = IsolatedParallelBatchRunner(
+        IsolatedWorktreeManager(repo, root), Executor(), AcceptGate(),
+        base_ref=commit, max_workers=2,
+    )
+    report = runner.run([
+        task("parent-path", frozenset({"src/a.py"})),
+        task("child-path", frozenset({"src/b.py"})),
+    ])
+
+    assert not report.success
+    assert report.failed_task_id == "child-path"
+    assert "actual changed-path conflict with parent-path: shared/child.txt" in (report.error or "")
+    assert (root / "parent-path" / "shared").is_file()
+    assert (root / "child-path" / "shared" / "child.txt").is_file()
