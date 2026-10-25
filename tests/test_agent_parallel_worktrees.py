@@ -258,3 +258,31 @@ def test_actual_parent_child_path_collision_fails_batch_closed(repository):
     assert "actual changed-path conflict with a-parent-path: shared/child.txt" in (report.error or "")
     assert (root / "a-parent-path" / "shared").is_file()
     assert (root / "z-child-path" / "shared" / "child.txt").is_file()
+
+
+def test_dependency_batch_with_unintegrated_changes_stops_stale_followup(repository):
+    repo, commit, root = repository
+    calls: list[str] = []
+
+    class Executor:
+        def execute_in_worktree(self, item: AgentTask, path: Path) -> AgentResult:
+            calls.append(item.task_id)
+            (path / "implementation.txt").write_text(item.task_id, encoding="utf-8")
+            return AgentResult(item.task_id, True, "done")
+
+    runner = IsolatedParallelBatchRunner(
+        IsolatedWorktreeManager(repo, root), Executor(), AcceptGate(),
+        base_ref=commit, max_workers=2,
+    )
+    report = runner.run([
+        task("phase-one", frozenset({"src/a.py"})),
+        task("phase-two", frozenset({"src/b.py"}), ("phase-one",)),
+    ])
+
+    assert not report.success
+    assert report.failed_task_id is None
+    assert "unintegrated changes" in (report.error or "")
+    assert calls == ["phase-one"]
+    assert report.batches_completed == 1
+    assert (root / "phase-one" / "implementation.txt").exists()
+    assert not (root / "phase-two").exists()
