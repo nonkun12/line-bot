@@ -168,9 +168,17 @@ def build_idea_card(focus: str, *, source: str = "LINE", created_at: datetime | 
             f"- 新規性の目安: {idea.novelty}/5",
             f"- 安全境界: {idea.safety_boundary}", "",
         ])
+    related_ideas = [idea for idea in proposals if idea.style in {"reframe", "recombine"}]
+    lines.extend(["## 関連アイデア候補（自動生成・未検証）", ""])
+    for idea in related_ideas:
+        lines.extend([
+            f"- **{idea.title}** — {idea.rationale}",
+            f"  - 次の検討: {idea.next_step}",
+        ])
+    lines.append("")
     lines.extend([
         "## 関連ノート候補", "",
-        "- まだ検索していません。保存時に既存ノートを検索し、実在するパスだけを候補にします。", "",
+        "- まだ検索していません。実在するノートとの照合後にのみリンクを追加します。", "",
         "## 次の検証", "",
         "- 最小の検証を1つ選び、成功条件と失敗条件を明記する。",
         "- 実装タスク化は提案のみ。明示承認なしに実行・マージ・デプロイしない。", "",
