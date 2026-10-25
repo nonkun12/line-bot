@@ -9,6 +9,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+import subprocess
 from threading import Lock
 from typing import Protocol, Sequence
 
@@ -34,6 +35,7 @@ class IsolatedTaskOutcome:
     result: AgentResult
     worktree: IsolatedWorktree | None
     error: str | None = None
+    changed_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -103,6 +105,35 @@ class IsolatedParallelBatchRunner:
                             error=f"{type(exc).__name__}: {exc}",
                         )
                     batch_outcomes.append(outcome)
+            # Detect undeclared overlapping edits from the actual Git status, not
+            # only the resource names supplied by task planners.
+            owners: dict[str, str] = {}
+            collision: tuple[str, str, str] | None = None
+            for item in batch_outcomes:
+                if not item.result.success or item.error:
+                    continue
+                for path in item.changed_paths:
+                    prior = owners.get(path)
+                    if prior is not None and prior != item.task.task_id:
+                        collision = (prior, item.task.task_id, path)
+                        break
+                    owners[path] = item.task.task_id
+                if collision:
+                    break
+            if collision:
+                first, second, path = collision
+                second_item = next(item for item in batch_outcomes if item.task.task_id == second)
+                batch_outcomes = [
+                    IsolatedTaskOutcome(
+                        item.task,
+                        AgentResult(item.task.task_id, False, f"actual changed-path conflict with {first}: {path}")
+                        if item.task.task_id == second else item.result,
+                        item.worktree,
+                        f"actual changed-path conflict with {first}: {path}" if item.task.task_id == second else item.error,
+                        item.changed_paths,
+                    )
+                    for item in batch_outcomes
+                ]
             outcomes.extend(batch_outcomes)
             failed = next((item for item in batch_outcomes if not item.result.success or item.error), None)
             if failed is not None:
@@ -114,6 +145,35 @@ class IsolatedParallelBatchRunner:
                 )
             completed_batches += 1
         return IsolatedBatchReport(tuple(outcomes), batches_completed=completed_batches)
+
+    @staticmethod
+    def _changed_paths(worktree_path: Path) -> tuple[str, ...]:
+        result = subprocess.run(
+            ["git", "-C", str(worktree_path), "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+            check=True,
+            capture_output=True,
+            timeout=15,
+        )
+        fields = result.stdout.split(b"\\0")
+        paths: set[str] = set()
+        index = 0
+        while index < len(fields):
+            field = fields[index]
+            index += 1
+            if not field:
+                continue
+            if len(field) < 4 or field[2:3] != b" ":
+                raise ValueError("could not safely parse Git worktree status")
+            status = field[:2]
+            path = field[3:].decode("utf-8", errors="strict")
+            paths.add(path)
+            # Porcelain v1 -z emits a second NUL-delimited path for rename/copy.
+            if b"R" in status or b"C" in status:
+                if index >= len(fields) or not fields[index]:
+                    raise ValueError("incomplete rename/copy entry in Git status")
+                paths.add(fields[index].decode("utf-8", errors="strict"))
+                index += 1
+        return tuple(sorted(paths))
 
     def _execute_one(self, task: AgentTask) -> IsolatedTaskOutcome:
         worktree: IsolatedWorktree | None = None
@@ -134,7 +194,8 @@ class IsolatedParallelBatchRunner:
                     AgentResult(task.task_id, False, "worktree safety gate rejected actual changes"),
                     worktree,
                 )
-            return IsolatedTaskOutcome(task, result, worktree)
+            changed_paths = self._changed_paths(worktree.path)
+            return IsolatedTaskOutcome(task, result, worktree, changed_paths=changed_paths)
         except Exception as exc:
             return IsolatedTaskOutcome(
                 task,
