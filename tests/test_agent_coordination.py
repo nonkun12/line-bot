@@ -13,6 +13,7 @@ def test_ledger_persists_events_and_filters_by_task(tmp_path):
     now = datetime(2026, 10, 25, 12, 0, tzinfo=timezone.utc)
     store.claim_task("task-1", "worker-a", lease_seconds=60, now=now)
     store.append_event("task-1", "PROGRESS", "worker-a", payload={"step": "inspect"}, now=now)
+    store.claim_task("task-2", "worker-b", lease_seconds=60, now=now)
     store.append_event("task-2", "NEED_INPUT", "worker-b", payload={"question": "scope"}, now=now)
 
     assert [event.event_type for event in store.read_events("task-1")] == ["TASK_CLAIMED", "PROGRESS"]
