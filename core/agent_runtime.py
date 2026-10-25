@@ -285,10 +285,14 @@ class MultiAgentRuntime:
             for item in isolated_report.outcomes
             if item.result.success and item.error is None
         )
+        report_error = isolated_report.error
+        if not isolated_report.success and report_error is None and isolated_report.failed_task_id is None:
+            report_error = "isolated runner reported failure without a failure reason"
+
         return RuntimeReport(
             completed,
             failed_task_id=isolated_report.failed_task_id,
-            error=isolated_report.error,
+            error=report_error,
             rounds=1 if isolated_report.success and tasks else 0,
             integration_ready=False,
         )
