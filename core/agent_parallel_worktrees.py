@@ -13,7 +13,7 @@ import subprocess
 from threading import Lock
 from typing import Protocol, Sequence
 
-from .agent_worktree import IsolatedWorktree, IsolatedWorktreeManager, WorktreeError
+from .agent_worktree import IsolatedWorktree, IsolatedWorktreeManager
 from .multi_agent import AgentResult, AgentTask, plan_batches
 
 
@@ -122,7 +122,6 @@ class IsolatedParallelBatchRunner:
                     break
             if collision:
                 first, second, path = collision
-                second_item = next(item for item in batch_outcomes if item.task.task_id == second)
                 batch_outcomes = [
                     IsolatedTaskOutcome(
                         item.task,
