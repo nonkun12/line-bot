@@ -22,6 +22,8 @@ class AgentVersion:
     metadata: dict[str, str] = field(default_factory=dict)
 
     def validate(self) -> tuple[str, ...]:
+        """Return a tuple of validation error messages, empty if valid."""
+        errors: list[str] = []
         errors: list[str] = []
         if not self.agent_name.strip():
             errors.append("agent_name is required")
