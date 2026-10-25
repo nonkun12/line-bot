@@ -115,3 +115,24 @@ def test_complete_rejects_non_boolean_success(monkeypatch):
         headers={"X-OpenClaw-Bridge-Key": "s" * 32},
     )
     assert response.status_code == 400
+
+
+def test_complete_failure_notifies_line_without_leaking_error(monkeypatch):
+    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "s" * 32)
+    monkeypatch.setattr(routes, "get_job", lambda job_id: {
+        "job_type": "openclaw", "status": "running", "claim_token": "opaque", "user_id": "U1",
+    })
+    monkeypatch.setattr(routes, "complete_claimed_job", lambda *a, **kw: True)
+    import app as app_module
+    pushed = []
+    monkeypatch.setattr(app_module, "_line_push", lambda user_id, message: pushed.append((user_id, message)))
+    response = make_app().test_client().post(
+        "/api/openclaw/complete",
+        json={"job_id": 4, "claim_token": "opaque", "success": False,
+              "error": "secret local path /Users/private/config"},
+        headers={"X-OpenClaw-Bridge-Key": "s" * 32},
+    )
+    assert response.status_code == 200
+    assert response.get_json()["status"] == "failed"
+    assert pushed == [("U1", "OpenClawの処理に失敗しました。時間をおいて再試行してください。")]
+    assert "private" not in pushed[0][1]
