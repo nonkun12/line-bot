@@ -994,15 +994,38 @@ def main() -> int:
         blocked_pending, eligible_pending = pending_registered_task_state(
             registered_catalog, completed, recovery_store
         )
-        record = held_stall_record(
-            registered_catalog, completed, blocked_pending, eligible_pending
-        )
+        if blocked_pending and not eligible_pending:
+            record = held_stall_record(
+                registered_catalog, completed, blocked_pending, eligible_pending
+            )
+            failure_reason = "all_pending_tasks_held"
+        else:
+            # Runtime queue tasks are held, but the reviewed catalog still has
+            # eligible tasks. Record the refill/queue mismatch instead of
+            # raising from held_stall_record or silently claiming the catalog is held.
+            failure_reason = "runtime_queue_held_but_catalog_has_eligible_tasks"
+            record = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "BLOCKED",
+                "task_id": "",
+                "task_count": 0,
+                "queue_total": len(registered_catalog),
+                "queue_completed": sum(
+                    1 for task in registered_catalog
+                    if str(task.get("id", "")) in completed
+                ),
+                "held_pending_count": len(blocked_pending),
+                "eligible_pending_count": len(eligible_pending),
+                "exit_code": 79,
+                "failure_reason": failure_reason,
+            }
         args.results.parent.mkdir(parents=True, exist_ok=True)
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
         print(
-            "MINIMAL_LOOP=BLOCKED reason=all_pending_tasks_held "
-            f"held_pending={len(blocked_pending)} eligible_pending=0 (no task was executed)",
+            f"MINIMAL_LOOP=BLOCKED reason={failure_reason} "
+            f"held_pending={len(blocked_pending)} eligible_pending={len(eligible_pending)} "
+            "(no task was executed)",
             flush=True,
         )
         return 79
