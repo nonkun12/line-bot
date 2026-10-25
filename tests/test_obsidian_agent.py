@@ -141,3 +141,22 @@ def test_repeated_idea_capture_is_idempotent(tmp_path, monkeypatch):
     assert second_meta["duplicate"] is True
     assert note.read_text(encoding="utf-8") == original_contents
     assert len(list((tmp_path / "Ideas" / "Inbox").glob("IDEA-*.md"))) == 1
+
+
+def test_idea_capture_queues_when_cloud_has_no_vault(tmp_path, monkeypatch):
+    monkeypatch.delenv("OBSIDIAN_VAULT_PATH", raising=False)
+    captured = {}
+
+    def fake_enqueue(user_id, message):
+        captured.update(user_id=user_id, message=message)
+        return 51
+
+    monkeypatch.setattr("core.obsidian_bridge.enqueue_obsidian_request", fake_enqueue)
+    result = obsidian_agent_node(_state("アイデア: Mac側で安全に保存する", tmp_path))
+    metadata = result["agent_results"]["obsidian"]
+
+    assert metadata["success"] is True
+    assert metadata["operation"] == "queued"
+    assert metadata["status"] == "pending"
+    assert metadata["job_id"] == 51
+    assert captured["message"] == "アイデア: Mac側で安全に保存する"
