@@ -1004,7 +1004,7 @@ def main() -> int:
                 "failure_reason": "all_pending_tasks_held",
             }
             with args.results.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(record, ensure_ascii=False) + "\\n")
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
             print(
                 "MINIMAL_LOOP=BLOCKED reason=all_pending_tasks_held "
                 f"held_pending={len(blocked_pending)} eligible_pending=0 (queue empty; no task was executed)",
