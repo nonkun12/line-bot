@@ -246,6 +246,13 @@
       "allowed_paths": [
         "tests/test_autonomous_task_refill.py"
       ]
+    },
+    {
+      "id": "distributed-loop-progress-invalid-task-id-20261025",
+      "instruction": "tests/test_distributed_loop_queue_progress.py のみに、新しい固有名の回帰テストを1件追加してください。runtime queue の task entry が id 欠落・空文字・文字列以外の場合、calculate_progress() が ValueError('invalid runtime queue task ID') で fail-closed になることを一つの parameterized test で検証してください。既存テストを変更せず、変更は指定されたテストファイル1つだけにしてください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_queue_progress.py"
+      ]
     }
   ]
 }
