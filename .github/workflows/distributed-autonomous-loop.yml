@@ -418,6 +418,45 @@ jobs:
           fi
           exit "$loop_rc"
 
+      - name: Record Control Tower observation (pilot, non-authoritative)
+        if: ${{ always() && steps.run_task.outcome != 'skipped' }}
+        run: |
+          set -euo pipefail
+          # Observation-only pilot: this cannot authorize tasks or change loop outcomes.
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from scripts.control_tower_loop_observer import record_loop_observation
+
+          results = Path("/tmp/minimal-autonomous-loop.jsonl")
+          history = Path("/tmp/control-tower-observations.jsonl")
+          rows = []
+          if results.is_file():
+              for line in results.read_text(encoding="utf-8").splitlines():
+                  if line.strip():
+                      value = json.loads(line)
+                      if not isinstance(value, dict):
+                          raise SystemExit("invalid loop result row")
+                      rows.append(value)
+          if not rows:
+              rows = [{
+                  "task_id": "no-task-result",
+                  "status": "NOT_RUN",
+                  "exit_code": 78,
+                  "base_sha": os.environ.get("GITHUB_SHA", ""),
+                  "produced_sha": os.environ.get("GITHUB_SHA", ""),
+              }]
+          try:
+              for row in rows:
+                  record_loop_observation(history, row)
+              print(f"Control Tower observation pilot recorded {len(rows)} row(s).")
+          except Exception as exc:
+              # Do not mask the authoritative loop outcome; preserve only error class.
+              print(f"::warning::Control Tower observation pilot failed: {type(exc).__name__}")
+              raise SystemExit(0)
+          PY
+
       - name: Export sanitized Recovery RAG history
         if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
         env:
@@ -1132,5 +1171,6 @@ jobs:
             /tmp/autonomous-*.json
             /tmp/distributed-sheets-log-result.json
             /tmp/distributed-final-report.txt
+            /tmp/control-tower-observations.jsonl
           if-no-files-found: ignore
 
