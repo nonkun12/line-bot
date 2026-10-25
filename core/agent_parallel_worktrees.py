@@ -113,9 +113,21 @@ class IsolatedParallelBatchRunner:
                 if not item.result.success or item.error:
                     continue
                 for path in item.changed_paths:
-                    prior = owners.get(path)
-                    if prior is not None and prior != item.task.task_id:
-                        collision = (prior, item.task.task_id, path)
+                    prior = next(
+                        (
+                            (owner, prior_path)
+                            for prior_path, owner in owners.items()
+                            if owner != item.task.task_id
+                            and (
+                                path == prior_path
+                                or path.startswith(prior_path + "/")
+                                or prior_path.startswith(path + "/")
+                            )
+                        ),
+                        None,
+                    )
+                    if prior is not None:
+                        collision = (prior[0], item.task.task_id, path)
                         break
                     owners[path] = item.task.task_id
                 if collision:
