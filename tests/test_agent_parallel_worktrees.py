@@ -164,3 +164,28 @@ def test_bad_executor_result_fails_closed(repository):
     assert report.failed_task_id == "bad-result"
     assert "AgentResult" in (report.error or "")
     assert (root / "bad-result").is_dir()
+
+
+
+def test_actual_changed_path_collision_fails_batch_closed(repository):
+    repo, commit, root = repository
+
+    class Executor:
+        def execute_in_worktree(self, item: AgentTask, path: Path) -> AgentResult:
+            (path / "shared.txt").write_text(item.task_id, encoding="utf-8")
+            return AgentResult(item.task_id, True, "done")
+
+    runner = IsolatedParallelBatchRunner(
+        IsolatedWorktreeManager(repo, root), Executor(), AcceptGate(),
+        base_ref=commit, max_workers=2,
+    )
+    report = runner.run([
+        task("collision-a", frozenset({"src/a.py"})),
+        task("collision-b", frozenset({"src/b.py"})),
+    ])
+
+    assert not report.success
+    assert report.failed_task_id == "collision-b"
+    assert "actual changed-path conflict with collision-a: shared.txt" in (report.error or "")
+    assert (root / "collision-a" / "shared.txt").exists()
+    assert (root / "collision-b" / "shared.txt").exists()
