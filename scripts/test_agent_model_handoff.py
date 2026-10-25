@@ -67,9 +67,12 @@ def model_reply(base_url: str, model: str, role: str, task: str,
         timeout=timeout,
     )
     choices = result.get("choices")
-    if not isinstance(choices, list) or not choices:
-        raise ValueError(f"{role}: model response has no choices")
-    content = choices[0].get("message", {}).get("content")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        raise ValueError(f"{role}: model response has no usable choices")
+    message = choices[0].get("message")
+    if not isinstance(message, dict):
+        raise ValueError(f"{role}: model response has no message object")
+    content = message.get("content")
     if not isinstance(content, str):
         raise ValueError(f"{role}: model response has no text content")
     decoded = json.loads(content)
@@ -106,7 +109,24 @@ def run_test(base_url: str, ledger_path: Path, timeout: int) -> dict[str, Any]:
             payload={"correlation_id": correlation_id, "to": recipient, "stage": "model_call_started"},
             now=now,
         )
-        reply = model_reply(base_url, model, role, task, previous, correlation_id, timeout)
+        try:
+            reply = model_reply(base_url, model, role, task, previous, correlation_id, timeout)
+        except Exception as exc:
+            # Preserve the failed handoff in the durable ledger before surfacing
+            # the error to the caller; never leave a silent in-progress claim.
+            store.append_event(
+                task_id, "BLOCKED", role,
+                payload={
+                    "correlation_id": correlation_id,
+                    "to": recipient,
+                    "error_type": type(exc).__name__,
+                    "reason": str(exc)[:1000],
+                    "merge_authorized": False,
+                    "deploy_authorized": False,
+                },
+                now=datetime.now(timezone.utc),
+            )
+            raise
         payload = {
             "correlation_id": correlation_id, "to": recipient,
             "message": reply["message"], "evidence": reply["evidence"],
@@ -125,6 +145,26 @@ def run_test(base_url: str, ledger_path: Path, timeout: int) -> dict[str, Any]:
         raise AssertionError("Persisted handoff chain did not match the expected role order")
     if len(outputs) != 4:
         raise AssertionError("Expected exactly four model calls")
+    # This scenario deliberately provides no execution/test evidence. The reviewer
+    # must therefore HOLD; model-generated optimism must never turn this into PASS.
+    reviewer_decision = outputs[-1]["decision"].strip().upper()
+    if reviewer_decision != "HOLD":
+        reviewer_task_id = f"{correlation_id}:reviewer"
+        store.append_event(
+            reviewer_task_id, "BLOCKED", "reviewer",
+            payload={
+                "correlation_id": correlation_id,
+                "reason": "Reviewer approval is unsupported without execution/test evidence",
+                "received_decision": outputs[-1]["decision"][:100],
+                "merge_authorized": False,
+                "deploy_authorized": False,
+            },
+            now=datetime.now(timezone.utc),
+        )
+        raise AssertionError(
+            "Reviewer must return HOLD when execution evidence is absent; "
+            f"received {outputs[-1]['decision']!r}"
+        )
     return {
         "status": "PASS", "mode": "live-model-calls", "model": model,
         "correlation_id": correlation_id, "model_calls": len(outputs),
