@@ -41,7 +41,8 @@
     "proposal-generator-resume-review-exclusion-regression",
     "queue-progress-ignores-unrelated-pass-results-regression",
     "proposal-generator-fails-closed-on-malformed-issue-record",
-    "queue-progress-excludes-not-run-results-regression-v2"
+    "queue-progress-excludes-not-run-results-regression-v2",
+    "refill-exhaustion-input-immutability-20261025"
   ],
   "recovery_ai": {
     "checkpoint": null,
