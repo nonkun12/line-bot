@@ -67,3 +67,31 @@ def test_catalog_resume_rejects_completed_task(tmp_path):
     catalog.write_text(json.dumps({"tasks": [_task("catalog-task")]}), encoding="utf-8")
     with pytest.raises(ValueError, match="completed tasks cannot be resumed"):
         resume_task(state_path=state, recovery_path=recovery, queue_path=queue, task_id="catalog-task", cause_fixed=True, catalog_path=catalog)
+
+
+
+def test_held_stall_record_is_auditable_and_not_a_completion():
+    record = loop.held_stall_record(
+        [_task("done"), _task("held-a"), _task("held-b")],
+        {"done"},
+        ["held-a", "held-b"],
+        [],
+    )
+    assert record["status"] == "BLOCKED"
+    assert record["failure_reason"] == "all_pending_tasks_held"
+    assert record["queue_total"] == 3
+    assert record["queue_completed"] == 1
+    assert record["held_pending_count"] == 2
+    assert record["eligible_pending_count"] == 0
+    assert record["task_count"] == 0
+    assert record["exit_code"] == 79
+
+
+def test_held_stall_record_rejects_eligible_task():
+    with pytest.raises(ValueError, match="no eligible tasks"):
+        loop.held_stall_record(
+            [_task("held"), _task("free")],
+            set(),
+            ["held"],
+            ["free"],
+        )
