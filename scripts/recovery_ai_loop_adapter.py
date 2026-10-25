@@ -24,10 +24,16 @@ def _category(result: dict[str, Any]) -> str:
         return "security_violation"
     if any(token in reason for token in ("evidence", "summary_missing", "summary_invalid")):
         return "invalid_evidence"
+    if any(token in reason for token in ("summary_stale", "diff_unavailable", "produced_not_descendant_of_base", "summary_missing", "summary_invalid", "evidence")):
+        return "invalid_evidence"
     if status == "FAIL" and any(token in reason for token in ("pytest", "test_regression")):
         return "test_regression"
-    if any(token in reason for token in ("crash", "process")):
+    if any(token in reason for token in ("task_runtime_failed", "crash", "process")):
         return "process_crash"
+    if any(token in reason for token in ("network_transient", "connection_reset", "temporary_network", "service_unavailable")):
+        return "network_transient"
+    if "rate_limit" in reason or "rate_limited" in reason:
+        return "rate_limited"
     return "unknown"
 
 
@@ -118,6 +124,9 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
             "recorded": False,
             "reason": "preflight_blocked_not_task_failure",
         }
+    # An operator stop is not evidence of a code defect; preserve the existing streak.
+    if status == "STOPPED" and failure_reason == "stop_requested_during_task":
+        return {"recorded": False, "reason": "operator_stop_not_task_failure"}
     run_identity_verified = _has_verified_run_identity(result, status)
     success_like = status in {"PASS", "NO_CHANGE"}
     if success_like and (type(result.get("exit_code")) is not int or result.get("exit_code") != 0 or not run_identity_verified):
