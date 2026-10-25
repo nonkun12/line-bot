@@ -70,6 +70,10 @@ def complete():
     if job.get("status") != "running" or job.get("claim_token") != token:
         return jsonify({"ok": False, "error": "claim mismatch"}), 409
     stored = reply.strip() if isinstance(reply, str) and reply.strip() else None
+    # Always notify the LINE user when the worker reports a failure; do not expose
+    # raw local errors or stderr through the chat channel.
+    notification = stored if stored else (None if success else
+        "OpenClawの処理に失敗しました。時間をおいて再試行してください。")
     try:
         updated = complete_claimed_job(job_id, token, success=success, result=stored,
                                        last_error=(error[:_MAX_ERROR_CHARS] if error else None))
@@ -78,12 +82,12 @@ def complete():
         return jsonify({"ok": False, "error": "bridge unavailable"}), 503
     if not updated:
         return jsonify({"ok": False, "error": "claim mismatch"}), 409
-    if stored:
+    if notification:
         try:
             # Import lazily to avoid the app/routes import cycle at startup.
             from app import _line_push
-            _line_push(job["user_id"], stored)
+            _line_push(job["user_id"], notification)
         except Exception:
             current_app.logger.exception("OPENCLAW BRIDGE LINE PUSH ERROR")
-            return jsonify({"ok": True, "status": "completed", "push_warning": True}), 200
+            return jsonify({"ok": True, "status": "completed" if success else "failed", "push_warning": True}), 200
     return jsonify({"ok": True, "status": "completed" if success else "failed"}), 200
