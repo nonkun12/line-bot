@@ -161,3 +161,38 @@ def test_run_openclaw_timeout_is_propagated(monkeypatch, tmp_path):
     monkeypatch.setattr(worker.subprocess, "run", fake_run)
     with pytest.raises(subprocess.TimeoutExpired):
         worker.run_openclaw("inspect repository", 60, job_id=44)
+
+
+def test_run_openclaw_accepts_cleanup_only_error_with_nonzero_exit(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCLAW_WORKSPACE_DIR", str(tmp_path))
+    monkeypatch.setattr(worker.shutil, "which", lambda name: "/usr/local/bin/openclaw")
+    monkeypatch.setattr(
+        worker.subprocess, "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(
+            args, 1, stdout=json.dumps({
+                "ok": False,
+                "final": "LINE_BRIDGE_OK",
+                "error": {"kind": "cleanup", "message": "permission denied"},
+            }), stderr="private local path"
+        ),
+    )
+    reply = worker.run_openclaw("test", 60)
+    assert "LINE_BRIDGE_OK" in reply
+    assert "後片付けでエラー" in reply
+
+
+def test_run_openclaw_rejects_nonzero_exit_for_non_cleanup_error(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCLAW_WORKSPACE_DIR", str(tmp_path))
+    monkeypatch.setattr(worker.shutil, "which", lambda name: "/usr/local/bin/openclaw")
+    monkeypatch.setattr(
+        worker.subprocess, "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(
+            args, 1, stdout=json.dumps({
+                "ok": False,
+                "final": "partial",
+                "error": {"kind": "model", "message": "failed"},
+            }), stderr=""
+        ),
+    )
+    with pytest.raises(RuntimeError, match="unsuccessful"):
+        worker.run_openclaw("test", 60)
