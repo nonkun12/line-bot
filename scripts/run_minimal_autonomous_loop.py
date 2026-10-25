@@ -244,6 +244,31 @@ def pending_registered_task_state(
     return blocked, eligible
 
 
+def held_stall_record(
+    registered_catalog: list[dict[str, object]],
+    completed_task_ids: set[str],
+    blocked_pending: list[str],
+    eligible_pending: list[str],
+) -> dict[str, object]:
+    """Build an auditable BLOCKED record when no incomplete task is eligible."""
+    if not blocked_pending or eligible_pending:
+        raise ValueError("held stall requires blocked pending tasks and no eligible tasks")
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status": "BLOCKED",
+        "task_id": "",
+        "task_count": 0,
+        "queue_total": len(registered_catalog),
+        "queue_completed": sum(
+            1 for task in registered_catalog if str(task.get("id", "")) in completed_task_ids
+        ),
+        "held_pending_count": len(blocked_pending),
+        "eligible_pending_count": len(eligible_pending),
+        "exit_code": 79,
+        "failure_reason": "all_pending_tasks_held",
+    }
+
+
 def stopped(stop_file: Path) -> bool:
     raw = os.environ.get("AUTONOMOUS_LOOP_STOP", "").strip()
     if raw and raw.casefold() not in {"0", "false", "no", "off"}:
@@ -966,20 +991,20 @@ def main() -> int:
             print("MINIMAL_LOOP=BLOCKED reason=control_tower_selector:action_task_mismatch", flush=True)
             return 80
     if pending_tasks and not tasks:
+        blocked_pending, eligible_pending = pending_registered_task_state(
+            registered_catalog, completed, recovery_store
+        )
+        record = held_stall_record(
+            registered_catalog, completed, blocked_pending, eligible_pending
+        )
         args.results.parent.mkdir(parents=True, exist_ok=True)
-        record = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "status": "BLOCKED",
-            "task_id": "",
-            "task_count": 0,
-            "queue_total": len(queued_tasks) if queued_tasks else len(pending_tasks),
-            "queue_completed": sum(1 for task in queued_tasks if task["id"] in completed),
-            "exit_code": 79,
-            "failure_reason": "all_pending_tasks_held",
-        }
         with args.results.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-        print("MINIMAL_LOOP=BLOCKED reason=all_pending_tasks_held", flush=True)
+            fh.write(json.dumps(record, ensure_ascii=False) + "\\n")
+        print(
+            "MINIMAL_LOOP=BLOCKED reason=all_pending_tasks_held "
+            f"held_pending={len(blocked_pending)} eligible_pending=0 (no task was executed)",
+            flush=True,
+        )
         return 79
     tasks = tasks[: args.max_tasks]
 
