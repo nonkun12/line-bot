@@ -132,6 +132,8 @@ def test_internal_push_valid_input_still_returns_200_regression(client, valid_he
 def test_internal_push_skips_when_free_quota_reserve_would_be_breached(client, valid_headers, capture_messaging_api, monkeypatch):
     _CapturingMessagingApi.total_usage = 180
     monkeypatch.setattr(app, "save_message", lambda *a, **k: None)
+    deferred = []
+    monkeypatch.setattr(internal_ask_route, "enqueue_pending_line_notification", lambda user_id, message, source: deferred.append((user_id, message, source)) or 41)
 
     resp = client.post(
         "/internal/push",
@@ -147,13 +149,16 @@ def test_internal_push_skips_when_free_quota_reserve_would_be_breached(client, v
         "usage": 180,
         "safe_limit": 200,
         "reserve": 20,
+        "deferred": True,
     }
+    assert deferred == [(USER_ID, "test", "distributed_loop")]
     assert not any(kind == "push" for kind, _ in capture_messaging_api)
 
 
 def test_internal_push_fails_closed_when_quota_api_is_unavailable(client, valid_headers, capture_messaging_api, monkeypatch):
     _CapturingMessagingApi.quota_error = RuntimeError("quota API unavailable")
     monkeypatch.setattr(app, "save_message", lambda *a, **k: None)
+    monkeypatch.setattr(internal_ask_route, "enqueue_pending_line_notification", lambda *args, **kwargs: 42)
 
     resp = client.post(
         "/internal/push",
@@ -166,6 +171,7 @@ def test_internal_push_fails_closed_when_quota_api_is_unavailable(client, valid_
         "ok": True,
         "sent": False,
         "reason": "quota_check_failed:RuntimeError",
+        "deferred": True,
     }
     assert not any(kind == "push" for kind, _ in capture_messaging_api)
 
@@ -173,6 +179,7 @@ def test_internal_push_fails_closed_when_quota_api_is_unavailable(client, valid_
 def test_internal_push_skips_when_quota_is_not_limited(client, valid_headers, capture_messaging_api, monkeypatch):
     _CapturingMessagingApi.quota_type = "none"
     monkeypatch.setattr(app, "save_message", lambda *a, **k: None)
+    monkeypatch.setattr(internal_ask_route, "enqueue_pending_line_notification", lambda *args, **kwargs: 43)
 
     resp = client.post(
         "/internal/push",
@@ -185,5 +192,6 @@ def test_internal_push_skips_when_quota_is_not_limited(client, valid_headers, ca
         "ok": True,
         "sent": False,
         "reason": "quota_unavailable_or_unbounded",
+        "deferred": True,
     }
     assert not any(kind == "push" for kind, _ in capture_messaging_api)

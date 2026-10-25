@@ -10,6 +10,7 @@ import httpx
 from config import configuration
 from linebot.v3.messaging import ApiClient, MessagingApi, PushMessageRequest
 from e2e_status import StepTimer
+from db import enqueue_pending_line_notification
 
 
 def _make_dashboard_url(user_id: str) -> str:
@@ -82,6 +83,9 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         data = request.get_json(silent=True) or {}
         user_id = data.get("user_id")
         message = data.get("message")
+        notification_source = data.get("source", "distributed_loop")
+        if not isinstance(notification_source, str) or not notification_source.strip():
+            notification_source = "distributed_loop"
         if not isinstance(user_id, str) or not user_id.strip() or not isinstance(message, str) or not message.strip():
             return jsonify({"ok": False, "error": "user_id and message are required"}), 400
         user_id = user_id.strip()
@@ -108,18 +112,30 @@ def register_internal_ask_route(app, internal_push_key, generate_reply_func):
         data = request.get_json(silent=True) or {}
         user_id = data.get("user_id")
         message = data.get("message")
+        notification_source = data.get("source", "distributed_loop")
+        if not isinstance(notification_source, str) or not notification_source.strip():
+            notification_source = "distributed_loop"
         if not isinstance(user_id, str) or not user_id.strip() or not isinstance(message, str) or not message.strip():
             return jsonify({"ok": False, "error": "user_id and message are required"}), 400
         try:
             result = _line_push_direct(user_id.strip(), message.strip())
             if not result.get("sent"):
+                # Preserve the report. The LINE quota guard intentionally blocks
+                # push messages near the free-tier limit; the next inbound LINE
+                # message can deliver this report via its reply token instead.
+                notification_id = enqueue_pending_line_notification(
+                    user_id.strip(),
+                    message.strip(),
+                    source=notification_source.strip()[:80],
+                )
                 app.logger.warning(
-                    "INTERNAL PUSH SKIPPED by free-quota guard: reason=%s usage=%s safe_limit=%s",
+                    "INTERNAL PUSH DEFERRED for next LINE reply: reason=%s usage=%s safe_limit=%s notification_id=%s",
                     result.get("reason", "unknown"),
                     result.get("usage", "unknown"),
                     result.get("safe_limit", "unknown"),
+                    notification_id,
                 )
-                return jsonify({"ok": True, **result}), 200
+                return jsonify({"ok": True, **result, "deferred": True}), 200
             return jsonify({"ok": True, **result}), 200
         except Exception as exc:
             app.logger.exception("INTERNAL PUSH ERROR")

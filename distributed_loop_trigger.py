@@ -117,7 +117,7 @@ def _display_run_state(run: dict[str, object]) -> str:
     return labels.get(conclusion, conclusion.upper())
 
 
-def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
+def request_distributed_loop(user_id: str, message: str, *, authorized: bool = False) -> Tuple[bool, str]:
     command = _normalize_command(message)
     status_kind = None
     if command in {"統括AIの状況", "統括AI状況", "分散Loopの状況", "分散ループの状況"}:
@@ -128,7 +128,7 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
     max_tasks = _requested_max_tasks(message)
     if max_tasks is None and status_kind is None:
         return False, ""
-    if not user_id or user_id not in _allowed_users():
+    if not user_id or (not authorized and user_id not in _allowed_users()):
         return True, "分散Loop起動は許可されていません（このLINEユーザーには統括AIの操作権限がありません）。"
     token = os.environ.get("GITHUB_ACTIONS_DISPATCH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if not token:

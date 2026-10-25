@@ -6,6 +6,10 @@ def _isolate_mcp_save_guard(monkeypatch, tmp_path):
     monkeypatch.setenv("MCP_HTTP_READY_CHECK", "false")
     import db
     monkeypatch.setattr(db, "DB", str(tmp_path / "chat.db"))
+    # The application may have initialized its default database before the
+    # temporary test database is selected. Create the complete schema for each
+    # isolated test DB so deferred LINE notification lookups behave realistically.
+    db.init_db()
 
 
 class FakeNotesMcp:
