@@ -7,6 +7,10 @@ boundaries, not by making ideation conservative.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+from datetime import datetime, timezone
+import re
+
 from .multi_agent import AgentRole, AgentTask
 
 _MAX_IDEAS = 5
@@ -115,6 +119,9 @@ def parse_idea_command(message: str) -> str | None:
     if not match:
         return None
     focus = match.group("focus")
+    # Consume only one conventional separator space; preserve the remaining payload verbatim.
+    if focus.startswith(" "):
+        focus = focus[1:]
     if not focus.strip() or len(focus) > _MAX_CAPTURE_CHARS:
         return None
     return focus
@@ -136,6 +143,9 @@ def build_idea_card(focus: str, *, source: str = "LINE", created_at: datetime | 
     stamp = timestamp.isoformat(timespec="seconds")
     proposals = IdeaAgent().propose(focus, context=("Obsidian", "free/local-first", "fail-closed safety"))
     title = " ".join(focus.split())[:80].replace("#", "＃") or "アイデア"
+    tilde_runs = [len(match.group(0)) for match in re.finditer(r"~+", focus)]
+    fence = "~" * max(3, max(tilde_runs, default=0) + 1)
+    original_block = f"{fence}text\\n{focus}\\n{fence}"
     lines = [
         f"# {title}", "",
         f"- idea_id: {identifier}",
@@ -146,7 +156,7 @@ def build_idea_card(focus: str, *, source: str = "LINE", created_at: datetime | 
         "- related_notes_status: pending_search",
         "- execution_approval: pending", "",
         "## 原案（原文・変更禁止）", "",
-        "~~~text", focus, "~~~", "",
+        original_block, "",
         "## 発展案（自動生成・未検証）", "",
     ]
     for index, idea in enumerate(proposals, start=1):
@@ -175,6 +185,7 @@ def build_idea_card(focus: str, *, source: str = "LINE", created_at: datetime | 
         "source": source,
         "created_at": stamp,
         "markdown": markdown,
+        "original_block": original_block,
         "proposals": proposals,
         "execution_approval": "pending",
     }
