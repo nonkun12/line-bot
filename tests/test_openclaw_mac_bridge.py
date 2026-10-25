@@ -27,8 +27,8 @@ def test_run_openclaw_uses_argument_array(monkeypatch):
         captured["kwargs"] = kwargs
         return subprocess.CompletedProcess(args, 0, stdout="completed", stderr="")
     monkeypatch.setattr(worker.subprocess, "run", fake_run)
-    assert worker.run_openclaw("inspect repository", 60) == "completed"
-    assert captured["args"] == ["/usr/local/bin/openclaw", "agent", "--agent", "main", "--message", "inspect repository"]
+    assert worker.run_openclaw("inspect repository", 60, job_id=42) == "completed"
+    assert captured["args"] == ["/usr/local/bin/openclaw", "agent", "--agent", "main", "--session-key", "agent:main:line-openclaw-job-42", "--message", "inspect repository"]
     assert "shell" not in captured["kwargs"]
 
 
@@ -40,8 +40,9 @@ def test_run_openclaw_supports_configured_agent_id(monkeypatch):
         captured["args"] = args
         return subprocess.CompletedProcess(args, 0, stdout="ok", stderr="")
     monkeypatch.setattr(worker.subprocess, "run", fake_run)
-    assert worker.run_openclaw("inspect", 60) == "ok"
+    assert worker.run_openclaw("inspect", 60, job_id=43) == "ok"
     assert captured["args"][3] == "developer"
+    assert captured["args"][5] == "agent:developer:line-openclaw-job-43"
 
 
 def test_run_openclaw_timeout_is_propagated(monkeypatch):
@@ -50,4 +51,4 @@ def test_run_openclaw_timeout_is_propagated(monkeypatch):
         raise subprocess.TimeoutExpired(args, kwargs["timeout"])
     monkeypatch.setattr(worker.subprocess, "run", fake_run)
     with pytest.raises(subprocess.TimeoutExpired):
-        worker.run_openclaw("inspect repository", 60)
+        worker.run_openclaw("inspect repository", 60, job_id=44)
