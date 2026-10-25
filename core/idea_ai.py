@@ -97,14 +97,8 @@ class IdeaAgent:
         return tuple(ideas)
 
 
-__all__ = ["Idea", "IdeaAgent"]
-
-
 # The capture layer below deliberately stays separate from task execution.
 # Stable IDs and the existing IdeaAgent make retries deterministic and ideas reviewable.
-import hashlib
-from datetime import datetime, timezone
-import re
 
 _IDEA_COMMAND_RE = re.compile(r"^\s*アイデア\s*[:：](?P<focus>[\s\S]*)$")
 _MAX_CAPTURE_CHARS = 4_000
