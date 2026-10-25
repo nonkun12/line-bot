@@ -110,3 +110,18 @@ def test_rejects_worktree_root_overlapping_primary_checkout(repository, tmp_path
 
     with pytest.raises(WorktreeError, match="separate, non-overlapping"):
         IsolatedWorktreeManager(repo, tmp_path)
+
+
+
+def test_remove_refuses_to_discard_dirty_worktree(repository, tmp_path):
+    repo, commit = repository
+    manager = IsolatedWorktreeManager(repo, tmp_path / "workers")
+    worktree = manager.create("task-dirty", commit)
+    edited = worktree.path / "README.md"
+    edited.write_text("unreviewed worker changes\\n", encoding="utf-8")
+
+    with pytest.raises(WorktreeError, match="git worktree remove failed"):
+        manager.remove("task-dirty")
+
+    assert edited.read_text(encoding="utf-8") == "unreviewed worker changes\\n"
+    assert manager.active == (worktree,)
