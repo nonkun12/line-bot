@@ -199,3 +199,23 @@ def test_execute_local_job_uses_same_safe_path_contract(tmp_path, monkeypatch):
     assert "上書き" in result["reply"]
     assert target.read_text(encoding="utf-8") == "existing"
     assert ObsidianVault(vault).read_note("notes/todo.md") == "existing"
+
+
+def test_execute_local_job_saves_idea_card_from_original_command(tmp_path, monkeypatch):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.delenv("OBSIDIAN_VAULT_PATH", raising=False)
+    original = "アイデア: Bonsaiで発展案をローカル生成する"
+
+    result = execute_local_job(
+        {"id": 3, "user_id": "U1", "message": original, "claim_token": "token"},
+        str(vault),
+    )
+
+    assert result["success"] is True
+    assert "保存しました" in result["reply"]
+    idea_files = list((vault / "Ideas" / "Inbox").glob("IDEA-*.md"))
+    assert len(idea_files) == 1
+    saved = idea_files[0].read_text(encoding="utf-8")
+    assert original.split(": ", 1)[1] in saved
+    assert "関連アイデア候補（自動生成・未検証）" in saved
