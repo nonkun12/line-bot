@@ -117,6 +117,16 @@ def test_refill_accepts_only_allowlisted_test_files(tmp_path: Path, path: str):
     assert result["tasks"][0]["allowed_paths"] == [path]
 
 
+def test_refill_rejects_boolean_catalog_addition_cap(tmp_path: Path):
+    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready-one")])
+    catalog_data = json.loads(catalog.read_text(encoding="utf-8"))
+    catalog_data["max_additions_per_run"] = True
+    catalog.write_text(json.dumps(catalog_data), encoding="utf-8")
+    output = tmp_path / "runtime.json"
+    with pytest.raises(ValueError, match="catalog cap must be between 1 and 4"):
+        build_queue(queue, catalog, completed, output)
+    assert not output.exists()
+
 def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):
     queue, catalog, completed = _inputs(
         tmp_path,
@@ -125,6 +135,13 @@ def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):
     with pytest.raises(ValueError, match="duplicate"):
         build_queue(queue, catalog, completed, tmp_path / "runtime.json")
 
+
+def test_refill_rejects_non_ascii_task_id(tmp_path: Path):
+    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("タスク-a")])
+    output = tmp_path / "runtime.json"
+    with pytest.raises(ValueError, match="invalid task ID"):
+        build_queue(queue, catalog, completed, output)
+    assert not output.exists()
 
 def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):
     queue, catalog, completed = _inputs(
@@ -224,6 +241,22 @@ def test_refill_fails_closed_on_non_integer_or_unsupported_recovery_ai_schema(tm
 
     assert not output.exists()
 
+
+def test_refill_fails_closed_on_nonobject_recovery_task_map(tmp_path: Path):
+    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready-one")])
+    state = _write(tmp_path / "state.json", {
+        "version": 1,
+        "completed": [],
+        "recovery_ai": {
+            "schema_version": 1,
+            "tasks": [],
+            "checkpoint": None,
+        },
+    })
+    output = tmp_path / "runtime.json"
+    with pytest.raises(ValueError, match="Recovery AI state is invalid"):
+        build_queue(queue, catalog, state, output)
+    assert not output.exists()
 
 def test_refill_fails_closed_on_invalid_recovery_ai_schema(tmp_path: Path):
     queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready-one")])
