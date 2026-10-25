@@ -56,7 +56,7 @@ def test_find_scheduled_run_uses_distributed_workflow_and_schedule_event(monkeyp
     )
 
 
-def test_find_scheduled_run_accepts_delayed_run_within_four_hours(monkeypatch):
+def test_find_scheduled_run_accepts_delayed_run_within_five_and_half_hours(monkeypatch):
     scheduled = {
         "name": "Distributed Autonomous Development Loop",
         "event": "schedule",
@@ -73,12 +73,12 @@ def test_find_scheduled_run_accepts_delayed_run_within_four_hours(monkeypatch):
     assert find_scheduled_run("nonkun12/line-bot", slot) == scheduled
 
 
-def test_find_scheduled_run_rejects_run_after_four_hour_window(monkeypatch):
+def test_find_scheduled_run_rejects_run_after_five_and_half_hour_window(monkeypatch):
     too_late = {
         "name": "Distributed Autonomous Development Loop",
         "event": "schedule",
         "id": 790,
-        "created_at": "2026-09-22T23:31:00Z",
+        "created_at": "2026-09-23T01:01:00Z",
         "status": "completed",
         "conclusion": "success",
     }
