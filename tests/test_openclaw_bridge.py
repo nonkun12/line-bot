@@ -32,6 +32,12 @@ def test_enqueue_requires_bridge_key(monkeypatch):
         core.enqueue_openclaw_request("U1", "OpenClaw: run tests")
 
 
+def test_enqueue_rejects_short_bridge_key(monkeypatch):
+    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "too-short")
+    with pytest.raises(core.OpenClawBridgeError):
+        core.enqueue_openclaw_request("U1", "OpenClaw: run tests")
+
+
 def test_enqueue_creates_typed_job(monkeypatch):
     monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "x" * 32)
     calls = {}
