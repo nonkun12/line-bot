@@ -106,7 +106,7 @@ import hashlib
 from datetime import datetime, timezone
 import re
 
-_IDEA_COMMAND_RE = re.compile(r"^\s*アイデア\s*[:：]\s*(?P<focus>[\s\S]+?)\s*$")
+_IDEA_COMMAND_RE = re.compile(r"^\s*アイデア\s*[:：](?P<focus>[\s\S]*)$")
 _MAX_CAPTURE_CHARS = 4_000
 _MAX_CARD_CHARS = 20_000
 
@@ -145,7 +145,7 @@ def build_idea_card(focus: str, *, source: str = "LINE", created_at: datetime | 
     title = " ".join(focus.split())[:80].replace("#", "＃") or "アイデア"
     tilde_runs = [len(match.group(0)) for match in re.finditer(r"~+", focus)]
     fence = "~" * max(3, max(tilde_runs, default=0) + 1)
-    original_block = f"{fence}text\\n{focus}\\n{fence}"
+    original_block = f"{fence}text\n{focus}\n{fence}"
     lines = [
         f"# {title}", "",
         f"- idea_id: {identifier}",
