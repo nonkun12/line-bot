@@ -255,6 +255,6 @@ def test_actual_parent_child_path_collision_fails_batch_closed(repository):
 
     assert not report.success
     assert report.failed_task_id == "z-child-path"
-    assert "actual changed-path conflict with parent-path: shared/child.txt" in (report.error or "")
+    assert "actual changed-path conflict with a-parent-path: shared/child.txt" in (report.error or "")
     assert (root / "a-parent-path" / "shared").is_file()
     assert (root / "z-child-path" / "shared" / "child.txt").is_file()
