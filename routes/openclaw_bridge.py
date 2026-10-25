@@ -75,13 +75,9 @@ def complete():
         return jsonify({"ok": False, "error": "claim mismatch"}), 409
     if stored:
         try:
-            push = current_app.config.get("OPENCLAW_LINE_PUSH")
-            if callable(push):
-                push(job["user_id"], stored)
-            else:
-                line_push = current_app.view_functions.get("_openclaw_line_push")
-                if callable(line_push):
-                    line_push(job["user_id"], stored)
+            # Import lazily to avoid the app/routes import cycle at startup.
+            from app import _line_push
+            _line_push(job["user_id"], stored)
         except Exception:
             current_app.logger.exception("OPENCLAW BRIDGE LINE PUSH ERROR")
             return jsonify({"ok": True, "status": "completed", "push_warning": True}), 200
