@@ -155,6 +155,20 @@ class IsolatedParallelBatchRunner:
                     batches_completed=completed_batches,
                 )
             completed_batches += 1
+            # Every task starts from the same immutable base ref. Until a
+            # separately reviewed integration mechanism exists, a later
+            # dependency batch must not run against stale source after an
+            # earlier batch produced edits.
+            if completed_batches < len(batches) and any(item.changed_paths for item in batch_outcomes):
+                return IsolatedBatchReport(
+                    tuple(outcomes),
+                    failed_task_id=None,
+                    error=(
+                        "dependency batch produced unintegrated changes; "
+                        "refusing to run later tasks from stale base_ref"
+                    ),
+                    batches_completed=completed_batches,
+                )
         return IsolatedBatchReport(tuple(outcomes), batches_completed=completed_batches)
 
     @staticmethod
