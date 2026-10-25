@@ -5,7 +5,7 @@ call external services, or exercise the production task subprocess.
 """
 import json
 
-from core.control_tower_loop_observer import record_loop_observation
+from scripts.control_tower_loop_observer import record_loop_observation
 from scripts.recovery_ai import RecoveryStore
 from scripts.recovery_ai_loop_adapter import record_loop_outcome
 from scripts.run_minimal_autonomous_loop import classify_final_outcome
