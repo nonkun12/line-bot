@@ -160,3 +160,36 @@ def test_idea_capture_queues_when_cloud_has_no_vault(tmp_path, monkeypatch):
     assert metadata["status"] == "pending"
     assert metadata["job_id"] == 51
     assert captured["message"] == "アイデア: Mac側で安全に保存する"
+
+
+def test_idea_card_links_only_existing_notes_with_matching_evidence(tmp_path, monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+    (tmp_path / "Projects").mkdir()
+    (tmp_path / "Projects" / "idea-workflow.md").write_text(
+        "# 発展案の自動生成\nLINEから発展案を自動生成し、検証する。", encoding="utf-8"
+    )
+    (tmp_path / "unrelated.md").write_text(
+        "# 園芸メモ\nトマトとバジルの育て方。", encoding="utf-8"
+    )
+
+    message = "アイデア: LINEから発展案を自動生成する"
+    result = obsidian_agent_node(_state(message, tmp_path))
+    metadata = result["agent_results"]["obsidian"]
+    saved = (tmp_path / metadata["path"]).read_text(encoding="utf-8")
+
+    assert metadata["success"] is True
+    assert "[[Projects/idea-workflow]]" in saved
+    assert "一致語:" in saved
+    assert "[[unrelated]]" not in saved
+    assert "まだ検索していません" not in saved
+
+
+def test_idea_card_marks_related_note_search_complete_when_no_match(tmp_path, monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+    (tmp_path / "unrelated.md").write_text("星空観測と園芸。", encoding="utf-8")
+
+    result = obsidian_agent_node(_state("アイデア: LINEから発展案を自動生成する", tmp_path))
+    saved = (tmp_path / result["agent_results"]["obsidian"]["path"]).read_text(encoding="utf-8")
+
+    assert "検索済み: 関連候補は見つかりませんでした" in saved
+    assert "[[unrelated]]" not in saved
