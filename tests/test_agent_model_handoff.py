@@ -35,3 +35,26 @@ def test_live_handoff_runner_records_four_model_roles(monkeypatch, tmp_path):
     assert len({call[2] for call in calls}) == 1
     assert report["roles"][-1]["decision"] == "HOLD"
     assert report["safety"] == {"code_execution": False, "merge": False, "deploy": False}
+
+
+
+def test_handoff_fails_closed_when_reviewer_passes_without_evidence(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        handoff,
+        "request_json",
+        lambda url, timeout: {"data": [{"id": "local-test-model"}]},
+    )
+
+    def fake_model_reply(base_url, model, role, task, prior_message, correlation_id, timeout):
+        return {
+            "message": f"{role} received the task",
+            "evidence": "no execution evidence supplied",
+            "next_action": "handoff",
+            "decision": "PASS" if role == "reviewer" else "CONTINUE",
+        }
+
+    monkeypatch.setattr(handoff, "model_reply", fake_model_reply)
+    import pytest
+
+    with pytest.raises(AssertionError, match="Reviewer must return HOLD"):
+        handoff.run_test("http://127.0.0.1:8081/v1", tmp_path / "events.jsonl", 2)
