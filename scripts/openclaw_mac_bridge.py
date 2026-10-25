@@ -37,7 +37,14 @@ def validate_config(server_url: str, key: str) -> str:
         parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
     ):
         raise ValueError("server URL must use HTTPS (HTTP is allowed only for loopback)")
-    if not parsed.netloc or parsed.query or parsed.fragment:
+    if (
+        not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or not parsed.path.rstrip("/").endswith("/api/openclaw")
+    ):
         raise ValueError("invalid bridge server URL")
     if not key or len(key) < 24:
         raise ValueError("bridge key must be configured and at least 24 characters")
@@ -97,13 +104,24 @@ def process_one(client: httpx.Client, base_url: str, headers: dict[str, str], ti
     response = client.post(f"{base_url}/claim", headers=headers, json={})
     response.raise_for_status()
     payload = response.json()
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        raise RuntimeError("server returned an invalid claim response")
     job = payload.get("job")
-    if not isinstance(job, dict):
+    if job is None:
         return False
+    if not isinstance(job, dict):
+        raise RuntimeError("server returned an invalid job payload")
     job_id, token, message = job.get("id"), job.get("claim_token"), job.get("message")
     if not isinstance(job_id, int) or isinstance(job_id, bool) or job_id <= 0:
         raise RuntimeError("server returned an invalid job id")
-    if not isinstance(token, str) or not token or not isinstance(message, str):
+    if (
+        not isinstance(token, str)
+        or not token.strip()
+        or len(token) > 512
+        or not isinstance(message, str)
+        or not message.strip()
+        or len(message) > MAX_MESSAGE_CHARS
+    ):
         raise RuntimeError("server returned an invalid job payload")
     try:
         reply = run_openclaw(message, timeout, job_id=job_id)
