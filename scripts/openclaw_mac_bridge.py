@@ -43,7 +43,7 @@ def validate_config(server_url: str, key: str) -> str:
         or parsed.password is not None
         or parsed.query
         or parsed.fragment
-        or not parsed.path.rstrip("/").endswith("/api/openclaw")
+        or parsed.path.rstrip("/") != "/api/openclaw"
     ):
         raise ValueError("invalid bridge server URL")
     if not key or len(key) < 24:
