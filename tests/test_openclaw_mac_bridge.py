@@ -20,6 +20,16 @@ def test_server_url_requires_strong_key():
         worker.validate_config("https://example.test/api/openclaw", "short")
 
 
+@pytest.mark.parametrize("url", [
+    "https://user:pass@example.test/api/openclaw",
+    "https://example.test/other",
+    "https://example.test/api/openclaw?token=secret",
+])
+def test_server_url_rejects_credentials_query_and_wrong_path(url):
+    with pytest.raises(ValueError):
+        worker.validate_config(url, "x" * 24)
+
+
 def test_resolve_workspace_requires_existing_directory(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENCLAW_WORKSPACE_DIR", str(tmp_path))
     assert worker.resolve_workspace() == str(tmp_path.resolve())
@@ -49,6 +59,44 @@ def test_run_openclaw_uses_exec_and_explicit_workspace(monkeypatch, tmp_path):
     assert "inspect repository" in args[-1]
     assert captured["kwargs"]["timeout"] == 90
     assert "shell" not in captured["kwargs"]
+
+
+def test_process_one_rejects_invalid_claim_envelope(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return {"ok": False, "job": {"id": 1}}
+
+    class FakeClient:
+        def post(self, *args, **kwargs):
+            return FakeResponse()
+
+    with pytest.raises(RuntimeError, match="invalid claim response"):
+        worker.process_one(FakeClient(), "https://example.test/api/openclaw", {}, 60)
+
+
+def test_process_one_rejects_oversized_queued_message(monkeypatch):
+    class FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return self.payload
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = 0
+        def post(self, *args, **kwargs):
+            self.calls += 1
+            return FakeResponse({
+                "ok": True,
+                "job": {"id": 1, "claim_token": "opaque", "message": "x" * (worker.MAX_MESSAGE_CHARS + 1)},
+            })
+
+    with pytest.raises(RuntimeError, match="invalid job payload"):
+        worker.process_one(FakeClient(), "https://example.test/api/openclaw", {}, 60)
 
 
 def test_run_openclaw_rejects_unsuccessful_json(monkeypatch, tmp_path):
