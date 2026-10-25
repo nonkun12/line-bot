@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 
 from agents.obsidian.intents import is_obsidian_intent, normalize_obsidian_command
+from core.idea_ai import parse_idea_command
 from core.specialist_gate import assert_agent_approved, assert_specialist_capability
 from core.obsidian import ObsidianError, ObsidianVault
 from graph.state import AgentState
@@ -74,6 +75,25 @@ def obsidian_agent_node(state: AgentState) -> AgentState:
 
             mode = save_match.group("mode")
             if mode in {"保存", "記録"} and vault.exists(path):
+                # Explicit idea retries use a stable content-derived ID. Treat an exact
+                # original already present in that card as an idempotent success; never
+                # rewrite it or generalize this exception to ordinary Obsidian notes.
+                original_idea = parse_idea_command(raw_message)
+                if original_idea is not None and path.startswith("Ideas/Inbox/IDEA-"):
+                    try:
+                        existing = vault.read_note(path)
+                    except (ObsidianError, OSError):
+                        existing = ""
+                    original_marker = "~~~text\\n" + original_idea + "\\n~~~"
+                    if original_marker in existing:
+                        return _response(
+                            state,
+                            f"アイデアは既に保存済みです（重複保存を防止）: {path}",
+                            success=True,
+                            operation="duplicate",
+                            path=path,
+                            duplicate=True,
+                        )
                 return _response(
                     state,
                     "既存ノートの上書きは安全のため拒否しました。追記する場合は「Obsidianに追記 path.md: 内容」を使ってください。",
