@@ -67,9 +67,12 @@ def model_reply(base_url: str, model: str, role: str, task: str,
         timeout=timeout,
     )
     choices = result.get("choices")
-    if not isinstance(choices, list) or not choices:
-        raise ValueError(f"{role}: model response has no choices")
-    content = choices[0].get("message", {}).get("content")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        raise ValueError(f"{role}: model response has no usable choices")
+    message = choices[0].get("message")
+    if not isinstance(message, dict):
+        raise ValueError(f"{role}: model response has no message object")
+    content = message.get("content")
     if not isinstance(content, str):
         raise ValueError(f"{role}: model response has no text content")
     decoded = json.loads(content)
