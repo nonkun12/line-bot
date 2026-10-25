@@ -5,6 +5,8 @@ import os
 import re
 import unicodedata
 
+from core.idea_ai import idea_command_to_obsidian_command
+
 
 _OPERATION_RE = re.compile(
     r"^obsidian\s*(?:に|へ)\s*(?:保存|記録|追記|追加)\b",
@@ -53,6 +55,11 @@ def _default_note_path() -> str:
 
 def normalize_obsidian_command(raw_message: str) -> str | None:
     """Normalize explicit and natural Obsidian commands to a safe bounded form."""
+    # Check idea capture before NFKC normalization so the original payload is preserved.
+    idea_command = idea_command_to_obsidian_command(raw_message or "")
+    if idea_command is not None:
+        return idea_command
+
     text = unicodedata.normalize("NFKC", (raw_message or "").strip())
     if not text:
         return None
