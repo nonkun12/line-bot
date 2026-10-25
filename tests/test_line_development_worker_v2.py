@@ -573,3 +573,9 @@ def test_queue_progress_not_run_task_uses_deterministic_target():
     else:
         assert "test_progress_does_not_count_not_run_result_as_completion" in plan["changes"][0]["new"]
 
+
+
+def test_default_completion_budget_preserves_groq_free_tpm_headroom():
+    # The Groq free/on-demand TPM ceiling includes both prompt and completion.
+    # Keep enough headroom that a ~4.8k-token prompt is not rejected at 8k TPM.
+    assert worker.MAX_RESPONSE_TOKENS == 2500
