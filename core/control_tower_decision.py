@@ -32,6 +32,7 @@ VALID_REASON_CODES = frozenset({
     "retry_budget_exhausted",
     "recurring_failure",
     "no_eligible_task",
+    "rea_findings_review_required",
 })
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _TASK_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")

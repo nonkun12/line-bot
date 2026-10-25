@@ -12,6 +12,7 @@ import json
 from typing import Mapping
 
 from .agent_runtime import RuntimeReport
+from .control_tower_decision import ControlTowerDecisionRecord
 from .creator_critic import DuelResult, CreatorCriticLoop
 from .multi_agent import AgentTask
 from .self_improvement import ImprovementProposal, ImprovementSignal, SelfImprovementEngine
@@ -56,6 +57,19 @@ class ControlTower:
     ) -> None:
         self.feedback_engine = feedback_engine or SelfImprovementEngine()
         self.creator_critic = creator_critic
+
+    @staticmethod
+    def evaluate_rea_review_candidates(
+        result: object, *, expected_sha: str
+    ) -> ControlTowerDecisionRecord:
+        """Translate validated REA candidates into a non-authoritative decision record.
+
+        This is a reporting/triage entry point only. It cannot select tasks or
+        alter queue, HOLD, repository, merge, or deployment state.
+        """
+        from .rea_control_tower_bridge import rea_result_to_control_tower_decision
+
+        return rea_result_to_control_tower_decision(result, expected_sha=expected_sha)
 
     def evaluate_proposal(
         self,
