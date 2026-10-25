@@ -116,3 +116,28 @@ def test_unsupported_reviewer_pass_is_recorded_as_blocked(monkeypatch, tmp_path)
     assert blocked[0].payload["received_decision"] == "PASS"
     assert blocked[0].payload["merge_authorized"] is False
     assert blocked[0].payload["deploy_authorized"] is False
+
+
+
+@pytest.mark.parametrize(
+    "model_response",
+    [
+        {"choices": [{}]},
+        {"choices": [None]},
+        {"choices": [{"message": None}]},
+        {"choices": [{"message": {"content": 123}}]},
+    ],
+)
+def test_malformed_model_response_is_rejected(monkeypatch, model_response):
+    monkeypatch.setattr(handoff, "post_json", lambda *args, **kwargs: model_response)
+
+    with pytest.raises(ValueError):
+        handoff.model_reply(
+            "http://127.0.0.1:8081/v1",
+            "local-test-model",
+            "coordinator",
+            "bounded test",
+            "",
+            "test-correlation",
+            2,
+        )
