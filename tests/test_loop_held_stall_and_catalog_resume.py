@@ -1,5 +1,6 @@
-"""Regression tests for held catalog tasks hidden by an empty runtime queue."""
+""""Regression tests for held catalog tasks hidden by an empty runtime queue."""
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -69,7 +70,6 @@ def test_catalog_resume_rejects_completed_task(tmp_path):
         resume_task(state_path=state, recovery_path=recovery, queue_path=queue, task_id="catalog-task", cause_fixed=True, catalog_path=catalog)
 
 
-
 def test_held_stall_record_is_auditable_and_not_a_completion():
     record = loop.held_stall_record(
         [_task("done"), _task("held-a"), _task("held-b")],
@@ -95,3 +95,39 @@ def test_held_stall_record_rejects_eligible_task():
             ["held"],
             ["free"],
         )
+
+
+def test_main_records_blocked_when_runtime_queue_is_empty_and_catalog_tasks_are_held(tmp_path, monkeypatch, capsys):
+    """Exercise main's real empty-queue branch; it must not report NOT_RUN as green."""
+    import sys
+
+    queue_path = tmp_path / "queue.json"
+    queue_path.write_text(json.dumps({"tasks": [], "max_tasks_per_run": 3}), encoding="utf-8")
+    results_path = tmp_path / "results.jsonl"
+    state_path = tmp_path / "state.json"
+    recovery_path = tmp_path / "recovery-ai-state.json"
+    store = RecoveryStore(recovery_path)
+    catalog = [_task("held-a"), _task("held-b")]
+    for task in catalog:
+        store.record_failure(task["id"], "unknown")
+
+    monkeypatch.setattr(loop, "QUEUE", queue_path)
+    monkeypatch.setattr(loop, "_git_head", lambda: "a" * 40)
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: catalog)
+    monkeypatch.setattr(loop.signal, "signal", lambda *_args: None)
+    monkeypatch.setattr(sys, "argv", ["run_minimal_autonomous_loop.py", "--results", str(results_path), "--state", str(state_path)])
+
+    import core.control_tower_selector as selector
+    monkeypatch.setattr(selector, "select_next_task", lambda *_args, **_kwargs: SimpleNamespace(next_action="NOT_RUN", reason_code="queue_empty"))
+
+    exit_code = loop.main()
+
+    assert exit_code == 79
+    lines = results_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["status"] == "BLOCKED"
+    assert record["failure_reason"] == "all_pending_tasks_held"
+    assert record["held_pending_count"] == 2
+    assert record["eligible_pending_count"] == 0
+    assert "MINIMAL_LOOP=BLOCKED reason=all_pending_tasks_held" in capsys.readouterr().out
