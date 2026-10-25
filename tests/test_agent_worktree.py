@@ -58,7 +58,9 @@ def test_remove_only_removes_registered_worktree(repository, tmp_path):
 
     assert not worktree.path.exists()
     assert manager.active == ()
-    assert "worktree" in git(repo, "worktree", "list")
+    listing = git(repo, "worktree", "list")
+    assert str(repo) in listing
+    assert str(worktree.path) not in listing
 
 
 @pytest.mark.parametrize("task_id", ["../escape", "nested/task", "", ".", "..", "a" * 81])
