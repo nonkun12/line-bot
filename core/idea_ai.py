@@ -160,7 +160,14 @@ def build_idea_card(focus: str, *, source: str = "LINE", created_at: datetime | 
             f"- 次の一歩: {idea.next_step}",
             f"- 期待する効果: {idea.positive_impact}",
             f"- 新規性の目安: {idea.novelty}/5",
-            f"- 安全境界: {idea.safety_boundary}", "",
+            f"- 安全境界: {idea.safety_boundary}",
+            "- 初期評価（ヒューリスティック・未検証）:",
+            f"  - 価値: {idea.positive_impact}",
+            f"  - 実現可能性: { {'reframe': '高', 'recombine': '中', 'specialize': '高', 'architecture-leap': '低〜中', 'constraint': '高'}.get(idea.style, '未評価') }",
+            f"  - コスト目安: { {'reframe': '低', 'recombine': '低〜中', 'specialize': '低〜中', 'architecture-leap': '中', 'constraint': '低'}.get(idea.style, '未評価') }",
+            f"  - 検証可能性: { {'reframe': '高', 'recombine': '高', 'specialize': '高', 'architecture-leap': '中', 'constraint': '高'}.get(idea.style, '未評価') }",
+            "  - リスク: 実験前に既存機能・権限・費用への影響を確認する。",
+            "",
         ])
     related_ideas = [idea for idea in proposals if idea.style in {"reframe", "recombine"}]
     lines.extend(["## 関連アイデア候補（自動生成・未検証）", ""])
