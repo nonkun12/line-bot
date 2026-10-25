@@ -999,7 +999,7 @@ def main() -> int:
         )
         args.results.parent.mkdir(parents=True, exist_ok=True)
         with args.results.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\\n")
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
         print(
             "MINIMAL_LOOP=BLOCKED reason=all_pending_tasks_held "
             f"held_pending={len(blocked_pending)} eligible_pending=0 (no task was executed)",
