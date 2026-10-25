@@ -12,7 +12,6 @@ Run once by default; pass --watch for bounded continuous polling.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import shutil
 import subprocess
@@ -49,7 +48,7 @@ def run_openclaw(message: str, timeout_seconds: int) -> str:
         raise RuntimeError("openclaw CLI was not found")
     # Argument array only: never pass the task through a shell.
     completed = subprocess.run(
-        [binary, "agent", "--message", message.strip()],
+        [binary, "agent", "--agent", os.environ.get("OPENCLAW_AGENT_ID", "main"), "--message", message.strip()],
         capture_output=True,
         text=True,
         timeout=timeout_seconds,
