@@ -31,6 +31,58 @@ _SEARCH_RE = re.compile(
 _LIST_RE = re.compile(r"^obsidian\s*(?:の)?\s*(?:一覧|リスト)\s*$", re.IGNORECASE)
 
 
+def _related_note_candidates(vault: ObsidianVault, focus: str, *, exclude_path: str, limit: int = 5) -> list[tuple[str, list[str]]]:
+    """Return explainable lexical candidates from real vault notes; never invent paths."""
+    if not focus.strip():
+        return []
+    stopwords = {"する", "した", "して", "こと", "ため", "これ", "それ", "アイデア", "関連", "開発", "機能"}
+    normalized = re.sub(r"[^0-9a-zA-Zぁ-んァ-ヶ一-龠ー]+", " ", focus.casefold())
+    tokens = [token for token in normalized.split() if len(token) >= 2 and token not in stopwords]
+    # Japanese ideas are often written without spaces; add overlapping bigrams from
+    # Japanese runs, while keeping the matched fragments visible as evidence.
+    japanese_runs = re.findall(r"[ぁ-んァ-ヶ一-龠ー]{3,}", focus)
+    for run in japanese_runs:
+        for index in range(len(run) - 1):
+            term = run[index:index + 2]
+            if term not in stopwords:
+                tokens.append(term)
+    terms = list(dict.fromkeys(tokens))
+    if not terms:
+        return []
+
+    scored: list[tuple[int, str, list[str]]] = []
+    for path in vault.list_notes(limit=200):
+        if path == exclude_path or path.startswith("Ideas/Inbox/IDEA-"):
+            continue
+        try:
+            body = vault.read_note(path).casefold()[:20_000]
+        except (ObsidianError, OSError, UnicodeError):
+            continue
+        hits = [term for term in terms if term.casefold() in body]
+        # Avoid noisy links: require two independent matches, or one distinctive
+        # token of at least four characters.
+        if len(hits) < 2 and not any(len(term) >= 4 for term in hits):
+            continue
+        scored.append((len(hits), path, hits[:5]))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [(path, hits) for _, path, hits in scored[:limit]]
+
+
+def _attach_related_notes(content: str, candidates: list[tuple[str, list[str]]]) -> str:
+    """Replace the pending placeholder with evidence-backed links or a clear no-match."""
+    marker = "- まだ検索していません。実在するノートとの照合後にのみリンクを追加します。"
+    if not candidates:
+        replacement = "- 検索済み: 関連候補は見つかりませんでした（自動統合・リンク追加なし）。"
+    else:
+        lines = ["- 検索済み: 以下は本文中の一致語に基づく候補です（意味的関連の確定ではありません）。"]
+        for path, hits in candidates:
+            link = path[:-3] if path.lower().endswith(".md") else path
+            evidence = "、".join(hits)
+            lines.append(f"- [[{link}]] — 一致語: {evidence}")
+        replacement = "\\n".join(lines)
+    return content.replace(marker, replacement, 1)
+
+
 def _response(state: AgentState, text: str, **metadata: object) -> AgentState:
     results = dict(state.get("agent_results", {}))
     results["obsidian"] = {"text": text, **metadata}
@@ -124,6 +176,10 @@ def obsidian_agent_node(state: AgentState) -> AgentState:
                     reason="overwrite_blocked",
                 )
             assert_specialist_capability("obsidian", "obsidian_write")
+            original_idea = parse_idea_command(raw_message)
+            if original_idea is not None and path.startswith("Ideas/Inbox/IDEA-"):
+                candidates = _related_note_candidates(vault, original_idea, exclude_path=path)
+                content = _attach_related_notes(content, candidates)
             target = vault.write_note(path, content, append=mode in {"追記", "追加"})
             return _response(
                 state,
