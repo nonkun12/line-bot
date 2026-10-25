@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import os
 import re
 
@@ -204,6 +205,19 @@ def _existing_matching_run(
     return False
 
 
+def _spreadsheet_fingerprint(client: GoogleSheetsClient) -> str:
+    """Return a stable identifier without exposing the configured spreadsheet ID.
+
+    The production GoogleSheetsClient always has a spreadsheet ID. Test doubles
+    and compatible clients may omit it, so diagnostics must not fail a verified
+    write solely because the optional fingerprint is unavailable.
+    """
+    spreadsheet_id = getattr(client, "spreadsheet_id", None)
+    if not isinstance(spreadsheet_id, str) or not spreadsheet_id.strip():
+        return "unavailable"
+    return hashlib.sha256(spreadsheet_id.strip().encode("utf-8")).hexdigest()[:12]
+
+
 def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool:
     """Append once to the existing sheet table and verify the actual returned row."""
     try:
@@ -212,6 +226,16 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
     except Exception as exc:
         raise RuntimeError(
             f"Google Sheets ledger header/read failed for sheet={_configured_sheet()!r}: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+    # Validate the destination identifier before any append so a logging failure
+    # cannot occur after a successful write and trigger a duplicate retry.
+    try:
+        fingerprint = _spreadsheet_fingerprint(client)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Google Sheets destination identification failed before append: "
             f"{type(exc).__name__}: {exc}"
         ) from exc
 
@@ -253,6 +277,11 @@ def append_once(client: GoogleSheetsClient, record: AutonomousRunRecord) -> bool
         raise RuntimeError(
             f"Google Sheets append read-back mismatch for run_id={record.run_id}"
         )
+    # Log a one-way fingerprint so operators can distinguish spreadsheets without exposing IDs.
+    print(
+        "Google Sheets ledger verified destination: "
+        f"spreadsheet_fingerprint={fingerprint} range={readback_range}"
+    )
     return True
 
 
