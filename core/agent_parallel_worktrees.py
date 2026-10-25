@@ -153,7 +153,7 @@ class IsolatedParallelBatchRunner:
             capture_output=True,
             timeout=15,
         )
-        fields = result.stdout.split(b"\\0")
+        fields = result.stdout.split(b"\0")
         paths: set[str] = set()
         index = 0
         while index < len(fields):
