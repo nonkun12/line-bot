@@ -216,12 +216,12 @@ def test_repair_change_count_plan_requests_single_safe_edit():
     }
     response = json.dumps({
         "no_change": False,
-        "changes": [{"file": "app.py", "old": "def target():\\n    old\\n", "new": "def target():\\n    new\\n"}],
+        "changes": [{"file": "app.py", "old": "def target():\n    old\n", "new": "def target():\n    new\n"}],
     })
     client = FakeClient([response])
     plan = worker.repair_change_count_plan(
         client, "app.py を安全に修正", "app.py",
-        "def target():\\n    old\\n", rejected,
+        "def target():\n    old\n", rejected,
     )
     assert len(plan["changes"]) == 1
     assert worker.validate_plan(plan, "app.py") == (True, "app.py")
@@ -238,12 +238,12 @@ def test_validate_plan_with_bounded_repairs_recovers_invalid_change_count():
     }
     response = json.dumps({
         "no_change": False,
-        "changes": [{"file": chosen, "old": "def target():\\n    old\\n", "new": "def target():\\n    new\\n"}],
+        "changes": [{"file": chosen, "old": "def target():\n    old\n", "new": "def target():\n    new\n"}],
     })
     client = FakeClient([response])
     plan, ok, detail = worker.validate_plan_with_bounded_repairs(
         client, "テストを最小修正", chosen, rejected,
-        "def target():\\n    old\\n",
+        "def target():\n    old\n",
     )
     assert ok
     assert detail == chosen
@@ -521,8 +521,8 @@ def test_validate_plan_with_bounded_repairs_recovers_invalid_old_new_once(monkey
         "changes": [
             {
                 "file": chosen,
-                "old": "def target():\\n    old\\n",
-                "new": "def target():\\n    new\\n",
+                "old": "def target():\n    old\n",
+                "new": "def target():\n    new\n",
             }
         ],
     }
@@ -538,7 +538,7 @@ def test_validate_plan_with_bounded_repairs_recovers_invalid_old_new_once(monkey
         "テストを最小修正",
         chosen,
         rejected,
-        "def target():\\n    old\\n",
+        "def target():\n    old\n",
     )
 
     assert ok
@@ -569,7 +569,7 @@ def test_validate_plan_with_bounded_repairs_rejects_unsafe_invalid_old_new_repai
         "テストを最小修正",
         chosen,
         rejected,
-        "def target():\\n    old\\n",
+        "def target():\n    old\n",
     )
 
     assert not ok
