@@ -87,8 +87,9 @@ def test_rejects_duplicate_task_and_existing_target(repository, tmp_path):
 
     with pytest.raises(WorktreeError, match="registered"):
         manager.create("task-04", commit)
+    (root / "task-05").mkdir()
     with pytest.raises(WorktreeError, match="already exists"):
-        manager.create("task-05", commit) if (root / "task-05").mkdir() is None else None
+        manager.create("task-05", commit)
 
 
 def test_remove_refuses_unregistered_task(repository, tmp_path):
@@ -97,3 +98,13 @@ def test_remove_refuses_unregistered_task(repository, tmp_path):
 
     with pytest.raises(WorktreeError, match="no registered"):
         manager.remove("task-06")
+
+
+def test_rejects_worktree_root_overlapping_primary_checkout(repository, tmp_path):
+    repo, _ = repository
+
+    with pytest.raises(WorktreeError, match="separate, non-overlapping"):
+        IsolatedWorktreeManager(repo, repo / "workers")
+
+    with pytest.raises(WorktreeError, match="separate, non-overlapping"):
+        IsolatedWorktreeManager(repo, tmp_path)
