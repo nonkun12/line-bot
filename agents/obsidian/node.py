@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 
 from agents.obsidian.intents import is_obsidian_intent, normalize_obsidian_command
-from core.idea_ai import parse_idea_command
+from core.idea_ai import build_idea_card, parse_idea_command
 from core.specialist_gate import assert_agent_approved, assert_specialist_capability
 from core.obsidian import ObsidianError, ObsidianVault
 from graph.state import AgentState
@@ -41,7 +41,7 @@ def obsidian_agent_node(state: AgentState) -> AgentState:
     """Execute bounded Obsidian operations only after explicit capability gating."""
     assert_agent_approved("obsidian")
 
-    raw_message = str(state.get("raw_message", "") or "").strip()
+    raw_message = str(state.get("raw_message", "") or "")
     message = normalize_obsidian_command(raw_message) or raw_message
     vault = ObsidianVault.from_env()
     if vault is None:
@@ -84,7 +84,7 @@ def obsidian_agent_node(state: AgentState) -> AgentState:
                         existing = vault.read_note(path)
                     except (ObsidianError, OSError):
                         existing = ""
-                    original_marker = "~~~text\\n" + original_idea + "\\n~~~"
+                    original_marker = str(build_idea_card(original_idea)["original_block"])
                     if original_marker in existing:
                         return _response(
                             state,
