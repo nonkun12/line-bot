@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from core.agent_runtime import MultiAgentRuntime, RuntimeReport
+from core.agent_runtime import MultiAgentRuntime, RuntimeReport, RuntimeTaskResult
 from core.creator_critic import CriticAgent, CreatorAgent, CreatorCriticLoop
 from core.multi_agent import AgentResult, AgentRole, AgentTask
 from core.control_tower import ControlTower
@@ -431,3 +431,75 @@ def test_control_tower_approval_is_bound_to_exact_task():
     assert decision.approved_task_matches(approved)
     assert not decision.approved_task_matches(tampered)
     assert decision.approved_task is approved
+
+
+def test_runtime_isolated_entrypoint_is_explicit_and_never_marks_integration_ready() -> None:
+    from types import SimpleNamespace
+
+    completed_task = task("isolated-ok", AgentRole.IMPLEMENTER)
+    completed_result = AgentResult("isolated-ok", True, "review required")
+    fake_runner = SimpleNamespace(
+        run=lambda tasks: SimpleNamespace(
+            success=True,
+            outcomes=(SimpleNamespace(task=completed_task, result=completed_result, error=None),),
+            failed_task_id=None,
+            error=None,
+        )
+    )
+    runtime = MultiAgentRuntime({AgentRole.IMPLEMENTER: Executor({})})
+
+    report = runtime.run_isolated_batches([completed_task], fake_runner)
+
+    assert report.success
+    assert report.completed == (
+        RuntimeTaskResult(
+            completed_task, completed_result
+        ),
+    )
+    assert not report.integration_ready
+
+
+def test_runtime_isolated_entrypoint_preserves_fail_closed_report() -> None:
+    from types import SimpleNamespace
+
+    failed_task = task("isolated-fail", AgentRole.IMPLEMENTER)
+    fake_runner = SimpleNamespace(
+        run=lambda tasks: SimpleNamespace(
+            success=False,
+            outcomes=(SimpleNamespace(
+                task=failed_task,
+                result=AgentResult("isolated-fail", False, "safety gate rejected"),
+                error="safety gate rejected",
+            ),),
+            failed_task_id="isolated-fail",
+            error="safety gate rejected",
+        )
+    )
+    runtime = MultiAgentRuntime({AgentRole.IMPLEMENTER: Executor({})})
+
+    report = runtime.run_isolated_batches([failed_task], fake_runner)
+
+    assert not report.success
+    assert report.failed_task_id == "isolated-fail"
+    assert report.error == "safety gate rejected"
+    assert report.completed == ()
+    assert not report.integration_ready
+
+def test_runtime_isolated_entrypoint_fails_closed_without_failure_reason() -> None:
+    from types import SimpleNamespace
+
+    fake_runner = SimpleNamespace(
+        run=lambda tasks: SimpleNamespace(
+            success=False,
+            outcomes=(),
+            failed_task_id=None,
+            error=None,
+        )
+    )
+    runtime = MultiAgentRuntime({AgentRole.IMPLEMENTER: Executor({})})
+
+    report = runtime.run_isolated_batches([], fake_runner)
+
+    assert not report.success
+    assert report.error == "isolated runner reported failure without a failure reason"
+    assert not report.integration_ready
