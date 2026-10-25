@@ -189,3 +189,43 @@ def test_actual_changed_path_collision_fails_batch_closed(repository):
     assert "actual changed-path conflict with collision-a: shared.txt" in (report.error or "")
     assert (root / "collision-a" / "shared.txt").exists()
     assert (root / "collision-b" / "shared.txt").exists()
+
+
+def test_empty_task_list_is_a_successful_noop(repository):
+    repo, commit, root = repository
+
+    class Executor:
+        def execute_in_worktree(self, item: AgentTask, path: Path) -> AgentResult:
+            raise AssertionError("executor must not run for an empty task list")
+
+    runner = IsolatedParallelBatchRunner(
+        IsolatedWorktreeManager(repo, root), Executor(), AcceptGate(),
+        base_ref=commit,
+    )
+    report = runner.run([])
+
+    assert report.success
+    assert report.outcomes == ()
+    assert report.batches_completed == 0
+
+
+def test_changed_path_parser_handles_rename_with_spaces(repository):
+    repo, _commit, _root = repository
+    old_path = repo / "README.md"
+    new_path = repo / "renamed file.txt"
+    old_path.rename(new_path)
+    git(repo, "add", "-A")
+
+    changed = IsolatedParallelBatchRunner._changed_paths(repo)
+
+    assert changed == ("README.md", "renamed file.txt")
+
+
+def test_changed_path_parser_handles_newlines_in_untracked_filename(repository):
+    repo, _commit, _root = repository
+    unusual_name = "report\nwith-newline.txt"
+    (repo / unusual_name).write_text("untracked", encoding="utf-8")
+
+    changed = IsolatedParallelBatchRunner._changed_paths(repo)
+
+    assert changed == (unusual_name,)
