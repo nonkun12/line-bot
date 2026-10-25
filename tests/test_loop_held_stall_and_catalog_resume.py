@@ -1,4 +1,4 @@
-""""Regression tests for held catalog tasks hidden by an empty runtime queue."""
+"""Regression tests for held catalog tasks hidden by an empty runtime queue."""
 import json
 from types import SimpleNamespace
 
