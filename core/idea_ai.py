@@ -102,7 +102,7 @@ import hashlib
 from datetime import datetime, timezone
 import re
 
-_IDEA_COMMAND_RE = re.compile(r"^\\s*アイデア\\s*[:：]\\s*(?P<focus>[\\s\\S]+?)\\s*$")
+_IDEA_COMMAND_RE = re.compile(r"^\s*アイデア\s*[:：]\s*(?P<focus>[\s\S]+?)\s*$")
 _MAX_CAPTURE_CHARS = 4_000
 _MAX_CARD_CHARS = 20_000
 
@@ -165,7 +165,7 @@ def build_idea_card(focus: str, *, source: str = "LINE", created_at: datetime | 
         "- 最小の検証を1つ選び、成功条件と失敗条件を明記する。",
         "- 実装タスク化は提案のみ。明示承認なしに実行・マージ・デプロイしない。", "",
     ])
-    markdown = "\\n".join(lines)
+    markdown = "\n".join(lines)
     if len(markdown) > _MAX_CARD_CHARS:
         raise ValueError("generated idea card exceeds 20000 characters")
     return {
