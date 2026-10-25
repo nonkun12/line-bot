@@ -93,3 +93,24 @@ def test_invalid_event_is_rejected(tmp_path, event_type, worker_id, payload):
 
     with pytest.raises(ValueError):
         store.append_event("task-1", event_type, worker_id, payload=payload, now=now)
+
+
+
+def test_claim_event_cannot_bypass_atomic_lease_api(tmp_path):
+    store = AgentCoordinationStore(tmp_path / "events.jsonl")
+
+    with pytest.raises(ValueError, match="use claim_task"):
+        store.append_event(
+            "task-1",
+            "TASK_CLAIMED",
+            "worker-a",
+            payload={"lease_until": "pretend"},
+        )
+
+
+def test_naive_timestamp_is_rejected(tmp_path):
+    store = AgentCoordinationStore(tmp_path / "events.jsonl")
+    naive = datetime(2026, 10, 25, 12, 0)
+
+    with pytest.raises(ValueError, match="timezone-aware"):
+        store.claim_task("task-1", "worker-a", now=naive)
