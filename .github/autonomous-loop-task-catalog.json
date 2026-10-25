@@ -239,6 +239,13 @@
       "allowed_paths": [
         "tests/test_autonomous_task_proposals.py"
       ]
+    },
+    {
+      "id": "refill-exhaustion-input-immutability-20261025",
+      "instruction": "Add one focused regression test to tests/test_autonomous_task_refill.py proving that build_queue does not mutate the source queue JSON or completed-state JSON when the catalog is fully exhausted. Use a temporary directory and exact before/after text comparisons. Keep the test deterministic and self-contained. Modify only this test file; do not change production code.",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
     }
   ]
 }

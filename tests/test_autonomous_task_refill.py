@@ -550,7 +550,8 @@ def test_refill_selects_exactly_four_new_catalog_tasks_when_older_tasks_are_comp
         "proposal-generator-fails-closed-on-malformed-issue-record",
     ]
     assert catalog_data["max_additions_per_run"] == 4
-    assert [task["id"] for task in catalog_data["tasks"][-4:]] == expected_ids
+    catalog_ids = [task["id"] for task in catalog_data["tasks"]]
+    assert [task_id for task_id in catalog_ids if task_id in expected_ids] == expected_ids
 
     queue = _write(
         tmp_path / "queue.json",
