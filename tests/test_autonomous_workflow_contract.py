@@ -5,9 +5,9 @@ WORKFLOW = ROOT / ".github" / "workflows" / "overnight-development.yml"
 
 def test_autonomous_workflow_keeps_jst_schedule_slots():
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert 'cron: "5 3 * * *"' in text
-    assert 'cron: "5 15 * * *"' in text
+    assert 'cron: "30 3 * * *"' in text
     assert 'cron: "5 21 * * *"' in text
+    assert 'cron: "5 15 * * *"' not in text
     assert 'timezone: "Asia/Tokyo"' in text
 
 def test_autonomous_workflow_does_not_escape_github_or_shell_variables():

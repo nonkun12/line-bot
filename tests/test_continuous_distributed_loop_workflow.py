@@ -205,9 +205,10 @@ def test_distributed_loop_continuation_depth_is_bounded_and_propagated():
     assert 'if [ "$depth" -ge 3 ]; then' in continuation
     assert '-f continuation_depth="${{ steps.active.outputs.next_depth }}"' in continuation
     assert "CONTINUATION_STOP=bounded_depth_limit" in continuation
-    # The bounded chain resumes through the distributed loop's own schedule.
+    # Night-focused schedule: two late-evening runs and one after midnight.
     scheduled = source
-    assert "cron: '30 4,10,16,22 * * *'" in scheduled
+    assert "cron: '30 22,0 * * *'" in scheduled
+    assert "cron: '0 2 * * *'" in scheduled
     assert "timezone: 'Asia/Tokyo'" in scheduled
     assert "AUTO_APPLY_PATCH: 'false'" in source
     assert "AUTO_DEPLOY: 'false'" in source
