@@ -1,6 +1,6 @@
 """Run Creator-Critic only when the distributed loop has actionable evidence.
 
-The model output is an artifact for human review only. This runner does not
+The model output is an artifact for human review only. Actionable observations receive two bounded rounds so the Creator can address Critic feedback. This runner does not
 change source code, queues, approval state, task state, or deployment state.
 """
 from __future__ import annotations
@@ -63,7 +63,7 @@ def run_advisory(
         [
             python_executable,
             str(model_runner),
-            "--rounds", "1",
+            "--rounds", "2",
             "--objective", objective,
             "--output", str(output),
         ],

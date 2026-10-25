@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - "feat/local-bonsai-creator-critic-20261024"
+      - "fix/creator-critic-evidence-status-20261024"
     paths:
       - ".github/workflows/creator-critic-github.yml"
       - "scripts/run_creator_critic_github.py"
@@ -12,6 +13,11 @@ on:
       - "tests/test_creator_critic_github_runner.py"
       - "tests/test_creator_critic_loop_advisory.py"
       - "tests/test_creator_critic_loop_workflow_integration.py"
+      - "core/creator_critic.py"
+      - "core/creator_critic_runtime.py"
+      - "scripts/control_tower_loop_observer.py"
+      - "tests/test_creator_critic_runtime.py"
+      - "tests/test_control_tower_loop_observer.py"
   pull_request:
     paths:
       - ".github/workflows/creator-critic-github.yml"
@@ -21,6 +27,11 @@ on:
       - "tests/test_creator_critic_github_runner.py"
       - "tests/test_creator_critic_loop_advisory.py"
       - "tests/test_creator_critic_loop_workflow_integration.py"
+      - "core/creator_critic.py"
+      - "core/creator_critic_runtime.py"
+      - "scripts/control_tower_loop_observer.py"
+      - "tests/test_creator_critic_runtime.py"
+      - "tests/test_control_tower_loop_observer.py"
   workflow_dispatch:
     inputs:
       rounds:
@@ -36,7 +47,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: github-hosted-creator-critic
+  group: github-hosted-creator-critic-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -91,7 +102,8 @@ jobs:
           print(json.dumps(report, ensure_ascii=False, indent=2))
           print("=== CREATOR_CRITIC_TRANSCRIPT_END ===")
           assert report.get("status") == "DISCUSSION_ONLY"
-          assert report.get("evidence_status") == "NOT_MEASURED"
+          assert report.get("evidence_status") == "RUNTIME_MEASURED"
+          assert report.get("improvement_effectiveness") == "NOT_MEASURED"
           assert len(report.get("transcript", [])) == report.get("rounds", 0) * 2
           assert all(item.get("content", "").strip() for item in report["transcript"])
           PY
