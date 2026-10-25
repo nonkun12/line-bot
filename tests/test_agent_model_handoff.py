@@ -58,3 +58,61 @@ def test_handoff_fails_closed_when_reviewer_passes_without_evidence(monkeypatch,
 
     with pytest.raises(AssertionError, match="Reviewer must return HOLD"):
         handoff.run_test("http://127.0.0.1:8081/v1", tmp_path / "events.jsonl", 2)
+
+
+
+def test_model_call_failure_is_persisted_as_blocked(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        handoff,
+        "request_json",
+        lambda url, timeout: {"data": [{"id": "local-test-model"}]},
+    )
+
+    def fail_model_reply(*args, **kwargs):
+        raise TimeoutError("model endpoint timed out")
+
+    monkeypatch.setattr(handoff, "model_reply", fail_model_reply)
+    ledger = tmp_path / "events.jsonl"
+
+    import pytest
+    with pytest.raises(TimeoutError, match="timed out"):
+        handoff.run_test("http://127.0.0.1:8081/v1", ledger, 2)
+
+    events = handoff.AgentCoordinationStore(ledger).read_events()
+    blocked = [event for event in events if event.event_type == "BLOCKED"]
+    assert len(blocked) == 1
+    assert blocked[0].worker_id == "coordinator"
+    assert blocked[0].payload["reason"] == "model endpoint timed out"
+    assert blocked[0].payload["merge_authorized"] is False
+    assert blocked[0].payload["deploy_authorized"] is False
+
+
+def test_unsupported_reviewer_pass_is_recorded_as_blocked(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        handoff,
+        "request_json",
+        lambda url, timeout: {"data": [{"id": "local-test-model"}]},
+    )
+
+    def fake_model_reply(base_url, model, role, task, prior_message, correlation_id, timeout):
+        return {
+            "message": f"{role} received the task",
+            "evidence": "no execution evidence supplied",
+            "next_action": "handoff",
+            "decision": "PASS" if role == "reviewer" else "CONTINUE",
+        }
+
+    monkeypatch.setattr(handoff, "model_reply", fake_model_reply)
+    ledger = tmp_path / "events.jsonl"
+    import pytest
+
+    with pytest.raises(AssertionError, match="Reviewer must return HOLD"):
+        handoff.run_test("http://127.0.0.1:8081/v1", ledger, 2)
+
+    events = handoff.AgentCoordinationStore(ledger).read_events()
+    blocked = [event for event in events if event.event_type == "BLOCKED"]
+    assert len(blocked) == 1
+    assert blocked[0].worker_id == "reviewer"
+    assert blocked[0].payload["received_decision"] == "PASS"
+    assert blocked[0].payload["merge_authorized"] is False
+    assert blocked[0].payload["deploy_authorized"] is False
