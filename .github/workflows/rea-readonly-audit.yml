@@ -1,0 +1,98 @@
+name: REA Read-only Repository Audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 03:30 Japan time (UTC 18:30 on the previous day).
+    - cron: '30 18 * * *'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'core/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'uhip/tests/**'
+      - 'docs/rea/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - 'core/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'uhip/tests/**'
+      - 'docs/rea/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rea-readonly-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  read-only-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Run deterministic read-only REA scan
+        id: scan
+        shell: bash
+        run: |
+          set +e
+          set -u
+          report_path="$RUNNER_TEMP/rea-report.json"
+          python -m scripts.rea_readonly_scanner --repo-root . > "$report_path"
+          rc=$?
+          cp "$report_path" rea-report.json
+          echo "scanner_rc=$rc" >> "$GITHUB_OUTPUT"
+          echo "Scanner exit code: $rc"
+          echo "Metadata-only report:"
+          cat rea-report.json
+        continue-on-error: true
+
+      - name: Preserve metadata-only report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea-readonly-report-${{ github.run_id }}
+          path: rea-report.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Gate on scan evidence
+        if: always()
+        env:
+          SCANNER_OUTCOME: ${{ steps.scan.outcome }}
+          SCANNER_EXIT_CODE: ${{ steps.scan.outputs.scanner_rc }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("rea-report.json")
+          if os.environ.get("SCANNER_OUTCOME") != "success" or not path.is_file():
+              raise SystemExit("REA_BLOCKED: scanner did not produce a trustworthy report")
+          try:
+              report = json.loads(path.read_text(encoding="utf-8"))
+          except (OSError, ValueError):
+              raise SystemExit("REA_BLOCKED: report is missing or invalid")
+          status = report.get("status")
+          complete = report.get("complete") is True
+          count = report.get("findings_count")
+          target_sha = report.get("target_sha", "unknown")
+          print(f"REA_STATUS={status} COMPLETE={complete} FINDINGS={count} TARGET_SHA={target_sha}")
+          if os.environ.get("SCANNER_EXIT_CODE") != "0" or status != "PASS" or not complete:
+              raise SystemExit("REA_GATE_FAILED: inspect the uploaded metadata-only artifact; no code was changed")
+          PY
