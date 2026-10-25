@@ -43,7 +43,8 @@
     "proposal-generator-fails-closed-on-malformed-issue-record",
     "queue-progress-excludes-not-run-results-regression-v2",
     "refill-exhaustion-input-immutability-20261025",
-    "distributed-loop-progress-invalid-task-id-20261025"
+    "distributed-loop-progress-invalid-task-id-20261025",
+    "continuous-loop-empty-queue-report-reason-regression-20261025"
   ],
   "recovery_ai": {
     "checkpoint": null,
