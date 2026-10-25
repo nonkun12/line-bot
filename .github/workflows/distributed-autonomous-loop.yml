@@ -313,6 +313,7 @@ jobs:
             --state /tmp/autonomous-loop-state.json \
             --recovery-state /tmp/recovery-ai-state.json \
             --queue .github/autonomous-loop-tasks.json \
+            --catalog .github/autonomous-loop-task-catalog.json \
             --task-id "$RESUME_TASK_ID" \
             --cause-fixed
 
