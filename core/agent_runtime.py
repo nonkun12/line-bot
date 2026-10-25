@@ -15,6 +15,7 @@ from .multi_agent import AgentResult, AgentRole, AgentTask, plan_batches
 
 if TYPE_CHECKING:
     from .control_tower import ControlTower, ControlTowerDecision
+    from .agent_parallel_worktrees import IsolatedParallelBatchRunner
     from .self_improvement import SelfImprovementEngine
     from .self_improvement_cycle import SelfImprovementCycleResult
     from .self_improvement_handoff import ApprovedImprovementHandoff
@@ -263,6 +264,34 @@ class MultiAgentRuntime:
                 completed.append(RuntimeTaskResult(task, result))
         return RuntimeReport(tuple(completed), rounds=1)
 
+    def run_isolated_batches(
+        self,
+        tasks: Sequence[AgentTask],
+        runner: IsolatedParallelBatchRunner,
+    ) -> RuntimeReport:
+        """Run tasks through a separately configured isolated runner.
+
+        This entry point is opt-in and does not change ``run`` defaults.
+        Success is not integration approval: edits remain in worktrees and
+        ``integration_ready`` is always false for this report.
+        """
+        try:
+            isolated_report = runner.run(tasks)
+        except Exception as exc:
+            return RuntimeReport((), error=f"{type(exc).__name__}: {exc}")
+
+        completed = tuple(
+            RuntimeTaskResult(item.task, item.result)
+            for item in isolated_report.outcomes
+            if item.result.success and item.error is None
+        )
+        return RuntimeReport(
+            completed,
+            failed_task_id=isolated_report.failed_task_id,
+            error=isolated_report.error,
+            rounds=1 if isolated_report.success and tasks else 0,
+            integration_ready=False,
+        )
     def run_development(self, tasks: Sequence[AgentTask], *, repair_planner: RepairPlanner | None = None) -> RuntimeReport:
         """Run Implementer -> Tester -> Reviewer -> Integrator with bounded repair loops."""
         required_roles = {AgentRole.IMPLEMENTER, AgentRole.TESTER, AgentRole.REVIEWER, AgentRole.INTEGRATOR}
