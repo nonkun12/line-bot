@@ -80,7 +80,8 @@ def _attach_related_notes(content: str, candidates: list[tuple[str, list[str]]])
             evidence = "、".join(hits)
             lines.append(f"- [[{link}]] — 一致語: {evidence}")
         replacement = "\n".join(lines)
-    return content.replace(marker, replacement, 1)
+    content = content.replace(marker, replacement, 1)
+    return content.replace("- related_notes_status: pending_search", "- related_notes_status: searched", 1)
 
 
 def _response(state: AgentState, text: str, **metadata: object) -> AgentState:
