@@ -52,7 +52,7 @@ def _related_note_candidates(vault: ObsidianVault, focus: str, *, exclude_path: 
 
     scored: list[tuple[int, str, list[str]]] = []
     for path in vault.list_notes(limit=200):
-        if path == exclude_path or path.startswith("Ideas/Inbox/IDEA-"):
+        if path == exclude_path:
             continue
         try:
             body = vault.read_note(path).casefold()[:20_000]
@@ -79,7 +79,7 @@ def _attach_related_notes(content: str, candidates: list[tuple[str, list[str]]])
             link = path[:-3] if path.lower().endswith(".md") else path
             evidence = "、".join(hits)
             lines.append(f"- [[{link}]] — 一致語: {evidence}")
-        replacement = "\\n".join(lines)
+        replacement = "\n".join(lines)
     return content.replace(marker, replacement, 1)
 
 
