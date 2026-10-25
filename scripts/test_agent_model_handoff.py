@@ -125,6 +125,14 @@ def run_test(base_url: str, ledger_path: Path, timeout: int) -> dict[str, Any]:
         raise AssertionError("Persisted handoff chain did not match the expected role order")
     if len(outputs) != 4:
         raise AssertionError("Expected exactly four model calls")
+    # This scenario deliberately provides no execution/test evidence. The reviewer
+    # must therefore HOLD; model-generated optimism must never turn this into PASS.
+    reviewer_decision = outputs[-1]["decision"].strip().upper()
+    if reviewer_decision != "HOLD":
+        raise AssertionError(
+            "Reviewer must return HOLD when execution evidence is absent; "
+            f"received {outputs[-1]['decision']!r}"
+        )
     return {
         "status": "PASS", "mode": "live-model-calls", "model": model,
         "correlation_id": correlation_id, "model_calls": len(outputs),
