@@ -6,6 +6,7 @@ Required environment:
   OPENCLAW_BRIDGE_KEY=<same secret configured on the server>
 Optional:
   OPENCLAW_BIN=/path/to/openclaw
+  OPENCLAW_AGENT_ID=main
   OPENCLAW_AGENT_TIMEOUT_SECONDS=300
 Run once by default; pass --watch for bounded continuous polling.
 """
