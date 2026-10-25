@@ -87,3 +87,20 @@ def test_cli_returns_two_for_corrupt_evidence(tmp_path: Path, monkeypatch, capsy
 
     assert main() == 2
     assert "QUEUE_PROGRESS_BLOCKED" in capsys.readouterr().out
+
+@pytest.mark.parametrize("status", ["PASS", "NO_CHANGE"])
+def test_progress_does_not_count_foreign_task_result_as_completion(tmp_path: Path, status: str):
+    queue = tmp_path / "runtime-queue.json"
+    state = tmp_path / "state.json"
+    results = tmp_path / "results.jsonl"
+    queue.write_text(json.dumps({"tasks": [{"id": "task-1"}]}), encoding="utf-8")
+    state.write_text(json.dumps({"completed": []}), encoding="utf-8")
+    results.write_text(
+        json.dumps({"task_id": "foreign-task", "status": status}) + "\\n",
+        encoding="utf-8",
+    )
+
+    assert calculate_progress(queue, state, results) == {
+        "queue_total": 1,
+        "queue_completed": 0,
+    }
