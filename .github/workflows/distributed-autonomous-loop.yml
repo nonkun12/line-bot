@@ -1048,6 +1048,7 @@ jobs:
             echo "- State: ${STATE_OUTCOME:-not_run}"
             echo "- Recovery AI state: ${RECOVERY_OUTCOME:-not_run}"
             echo "- Sheets: ${SHEETS_OUTCOME:-not_run}"
+            echo "- Hermes advisor: enabled=${HERMES_ADVISOR_ENABLED:-false}, invoked=${HERMES_ADVISOR_INVOKED:-false}, used=${HERMES_ADVISOR_USED:-false}, reason=${HERMES_ADVISOR_REASON:-not_recorded}"
             echo "- Job: ${JOB_STATUS:-unknown}"
             echo "- Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo
