@@ -58,3 +58,21 @@ def test_enqueue_obsidian_request_normalizes_natural_record_command(monkeypatch)
     assert job_id == 43
     assert captured["message"] == "Obsidianに追記 LINE-Inbox.md: 自然文テスト"
     assert captured["kwargs"]["job_type"] == OBSIDIAN_JOB_TYPE
+
+
+def test_enqueue_idea_keeps_compact_original_for_mac_local_processing(monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_BRIDGE_KEY", "secret")
+    captured = {}
+
+    def fake_create_job(user_id, message, **kwargs):
+        captured.update(user_id=user_id, message=message, kwargs=kwargs)
+        return 44
+
+    monkeypatch.setattr("core.obsidian_bridge.create_job", fake_create_job)
+    original = "アイデア: Bonsaiで発展案を生成する"
+
+    job_id = enqueue_obsidian_request("U1", original)
+
+    assert job_id == 44
+    assert captured["message"] == original
+    assert captured["kwargs"]["job_type"] == OBSIDIAN_JOB_TYPE
