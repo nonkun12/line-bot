@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from core.agent_runtime import MultiAgentRuntime, RuntimeReport
+from core.agent_runtime import MultiAgentRuntime, RuntimeReport, RuntimeTaskResult
 from core.creator_critic import CriticAgent, CreatorAgent, CreatorCriticLoop
 from core.multi_agent import AgentResult, AgentRole, AgentTask
 from core.control_tower import ControlTower
@@ -452,7 +452,7 @@ def test_runtime_isolated_entrypoint_is_explicit_and_never_marks_integration_rea
 
     assert report.success
     assert report.completed == (
-        __import__("core.agent_runtime", fromlist=["RuntimeTaskResult"]).RuntimeTaskResult(
+        RuntimeTaskResult(
             completed_task, completed_result
         ),
     )
@@ -483,4 +483,23 @@ def test_runtime_isolated_entrypoint_preserves_fail_closed_report() -> None:
     assert report.failed_task_id == "isolated-fail"
     assert report.error == "safety gate rejected"
     assert report.completed == ()
+    assert not report.integration_ready
+
+def test_runtime_isolated_entrypoint_fails_closed_without_failure_reason() -> None:
+    from types import SimpleNamespace
+
+    fake_runner = SimpleNamespace(
+        run=lambda tasks: SimpleNamespace(
+            success=False,
+            outcomes=(),
+            failed_task_id=None,
+            error=None,
+        )
+    )
+    runtime = MultiAgentRuntime({AgentRole.IMPLEMENTER: Executor({})})
+
+    report = runtime.run_isolated_batches([], fake_runner)
+
+    assert not report.success
+    assert report.error == "isolated runner reported failure without a failure reason"
     assert not report.integration_ready
