@@ -55,7 +55,8 @@ def test_run_openclaw_uses_exec_and_explicit_workspace(monkeypatch, tmp_path):
     assert worker.run_openclaw("inspect repository", 60, job_id=42) == "completed"
     args = captured["args"]
     assert args[:5] == ["/usr/local/bin/openclaw", "agent", "exec", "--cwd", str(tmp_path)]
-    assert args[5:9] == ["--timeout", "60", "--json", "--message"]
+    assert args[5:8] == ["--timeout", "60", "--json"]
+    assert "--message" not in args
     assert "Do not merge, push, deploy" in args[-1]
     assert "inspect repository" in args[-1]
     assert captured["kwargs"]["timeout"] == 90
@@ -107,6 +108,43 @@ def test_run_openclaw_rejects_unsuccessful_json(monkeypatch, tmp_path):
         worker.subprocess, "run",
         lambda args, **kwargs: subprocess.CompletedProcess(
             args, 0, stdout=json.dumps({"ok": False, "final": "partial"}), stderr=""
+        ),
+    )
+    with pytest.raises(RuntimeError, match="unsuccessful"):
+        worker.run_openclaw("inspect", 60)
+
+
+def test_run_openclaw_accepts_final_for_cleanup_only_error(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCLAW_WORKSPACE_DIR", str(tmp_path))
+    monkeypatch.setattr(worker.shutil, "which", lambda name: "/usr/local/bin/openclaw")
+    monkeypatch.setattr(
+        worker.subprocess, "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(
+            args,
+            0,
+            stdout=json.dumps({
+                "ok": False,
+                "final": "BRIDGE_TEST_OK",
+                "error": {"kind": "cleanup", "message": "permission denied"},
+            }),
+            stderr="",
+        ),
+    )
+    reply = worker.run_openclaw("test", 60)
+    assert "BRIDGE_TEST_OK" in reply
+    assert "後片付けでエラー" in reply
+
+
+def test_run_openclaw_rejects_other_unsuccessful_json(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCLAW_WORKSPACE_DIR", str(tmp_path))
+    monkeypatch.setattr(worker.shutil, "which", lambda name: "/usr/local/bin/openclaw")
+    monkeypatch.setattr(
+        worker.subprocess, "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(
+            args, 0, stdout=json.dumps({
+                "ok": False, "final": "partial",
+                "error": {"kind": "model", "message": "failed"},
+            }), stderr=""
         ),
     )
     with pytest.raises(RuntimeError, match="unsuccessful"):
