@@ -590,3 +590,22 @@ def test_refill_selects_exactly_four_new_catalog_tasks_when_older_tasks_are_comp
         strict=True,
     ))
     assert queue.read_text(encoding="utf-8") == queue_before
+
+
+def test_refill_does_not_mutate_source_files_when_catalog_exhausted(tmp_path: Path):
+    # Setup a queue with some existing tasks and an empty catalog
+    queue, catalog, state = _inputs(tmp_path, existing=[_task("existing-1"), _task("existing-2")], candidates=[])
+    # Record original contents
+    original_queue = queue.read_text(encoding="utf-8")
+    original_state = state.read_text(encoding="utf-8")
+    output = tmp_path / "runtime.json"
+    # Run build_queue; catalog is exhausted, so no new tasks should be added
+    report = build_queue(queue, catalog, state, output)
+    # Verify report indicates no additions
+    assert report["added"] == 0
+    # Verify output contains the same tasks as the original queue
+    result = json.loads(output.read_text(encoding="utf-8"))
+    assert [t["id"] for t in result["tasks"]] == ["existing-1", "existing-2"]
+    # Verify source files were not mutated
+    assert queue.read_text(encoding="utf-8") == original_queue
+    assert state.read_text(encoding="utf-8") == original_state
