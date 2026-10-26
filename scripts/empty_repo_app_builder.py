@@ -15,6 +15,8 @@ from universal_app_builder import (
     clone_repo,
     create_pull_request,
     create_repository,
+    git_auth_env,
+    push_branch,
     normalize_repo_name,
     ask,
     run,
@@ -38,7 +40,7 @@ def configure_git_identity(workspace: Path) -> None:
         raise RuntimeError(f"cannot configure git identity: {detail[-2000:]}")
 
 
-def ensure_main_base(workspace: Path) -> None:
+def ensure_main_base(workspace: Path, repo: str, token: str) -> None:
     """Guarantee a usable main base and deterministic CI git identity."""
     configure_git_identity(workspace)
     has_head = run(["git", "rev-parse", "--verify", "HEAD"], workspace, timeout=60)
@@ -48,7 +50,7 @@ def ensure_main_base(workspace: Path) -> None:
             switch = run(["git", "switch", "-C", "main"], workspace, timeout=60)
             if switch.returncode != 0:
                 raise RuntimeError(f"cannot establish main branch: {switch.stderr[-2000:]}")
-            push = run(["git", "push", "--set-upstream", "origin", "main"], workspace, timeout=180)
+            push = push_branch(workspace, repo, ["--set-upstream", "origin", "main"], token, timeout=180)
             if push.returncode != 0:
                 raise RuntimeError(f"cannot push main branch: {push.stderr[-2000:]}")
         return
@@ -84,7 +86,8 @@ def plan_with_bounded_retries(client: Groq, requirement: str) -> tuple[dict | No
 
 def main() -> int:
     requirement = os.environ.get("APP_REQUIREMENT", "").strip()[:MAX_REQUIREMENT_LENGTH]
-    token = os.environ.get("APP_GITHUB_TOKEN", "").strip()
+    token = os.environ.pop("APP_GITHUB_TOKEN", "").strip()
+    groq_api_key = os.environ.pop("GROQ_API_KEY", "").strip()
     owner = os.environ.get("APP_GITHUB_OWNER", "nonkun12").strip() or "nonkun12"
     if not requirement:
         print("No app requirement supplied")
@@ -94,7 +97,10 @@ def main() -> int:
         return 2
 
     try:
-        client = Groq(api_key=os.environ["GROQ_API_KEY"])
+        if not groq_api_key:
+            print("GROQ_API_KEY is not configured; refusing to call the model")
+            return 2
+        client = Groq(api_key=groq_api_key)
         current_plan, planning_error = plan_with_bounded_retries(client, requirement)
         if current_plan is None:
             print(f"AI planning failed after bounded retries: {planning_error}")
@@ -123,7 +129,7 @@ def main() -> int:
         try:
             clone_repo(repo, token, workspace, Path(temp_dir))
             configure_git_identity(workspace)
-            ensure_main_base(workspace)
+            ensure_main_base(workspace, repo, token)
             branch = f"ai-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}-{requested_slug}"
             checkout = run(["git", "switch", "-c", branch, "origin/main"], workspace, timeout=60)
             if checkout.returncode != 0:
@@ -159,7 +165,7 @@ def main() -> int:
                     commit = run(["git", "commit", "-m", "feat: generate application with AI"], workspace, timeout=60)
                     if commit.returncode != 0:
                         raise RuntimeError(f"git commit failed: {commit.stderr[-2000:]}")
-                    push = run(["git", "push", "--set-upstream", "origin", branch], workspace, timeout=180)
+                    push = push_branch(workspace, repo, ["--set-upstream", "origin", branch], token, timeout=180)
                     if push.returncode != 0:
                         raise RuntimeError(f"git push failed: {push.stderr[-2000:]}")
                     pr_url = create_pull_request(repo, token, branch, requirement, summary)
