@@ -1,7 +1,33 @@
 import os
+import re
 import shutil
 import subprocess
 from git_safety import create_checkpoint, restore_checkpoint, remove_checkpoint
+
+
+def _patch_targets_only_requested_file(patch, filename):
+    """Reject multi-file, absolute, and traversal paths before invoking git apply."""
+    if not isinstance(filename, str) or not filename or os.path.basename(filename) != filename:
+        return False
+
+    headers = []
+    for line in patch.splitlines():
+        if line.startswith("--- ") or line.startswith("+++ "):
+            kind = line[:3]
+            path = line[4:].split("\t", 1)[0].strip()
+            if path in {"/dev/null", "dev/null"}:
+                headers.append((kind, path))
+                continue
+            if path.startswith(("a/", "b/")):
+                path = path[2:]
+            headers.append((kind, path))
+
+    if len(headers) != 2:
+        return False
+    old_header, new_header = headers
+    if old_header[0] != "---" or new_header[0] != "+++":
+        return False
+    return old_header[1] == filename and new_header[1] in {filename, f"{filename}.fixed"}
 
 
 def check_patch(patch, filename="app.py"):
@@ -12,6 +38,12 @@ def check_patch(patch, filename="app.py"):
         return {
             "ok": False,
             "message": "無効なパッチ形式です"
+        }
+
+    if not _patch_targets_only_requested_file(patch, filename):
+        return {
+            "ok": False,
+            "message": "パッチの変更対象が許可された単一ファイルと一致しません"
         }
 
     if not os.path.exists(filename):
