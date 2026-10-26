@@ -48,7 +48,6 @@ jobs:
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [[ "${DEV_INSTRUCTION}" == *E2E* && "${DEV_INSTRUCTION}" == *テスト* ]] || [[ "${DEV_INSTRUCTION}" == *本線E2E* ]]; then
