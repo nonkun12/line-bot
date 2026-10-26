@@ -81,7 +81,7 @@ def push_branch(
 def _test_environment_without_credentials() -> dict[str, str]:
     """Give generated code/tests a copy of the environment with credentials removed."""
     env = os.environ.copy()
-    sensitive_markers = ("TOKEN", "SECRET", "PASSWORD", "API_KEY", "PRIVATE_KEY", "CREDENTIAL")
+    sensitive_markers = ("TOKEN", "SECRET", "PASSWORD", "API_KEY", "PRIVATE_KEY", "CREDENTIAL", "PUSH_KEY", "AUTH")
     private_context = {"APP_REQUIREMENT", "APP_USER_ID", "DEV_INSTRUCTION", "DEV_USER_ID", "LINE_USER_ID", "USER_ID"}
     for name in tuple(env):
         upper = name.upper()
