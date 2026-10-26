@@ -45,7 +45,8 @@
     "refill-exhaustion-input-immutability-20261025",
     "distributed-loop-progress-invalid-task-id-20261025",
     "continuous-loop-empty-queue-report-reason-regression-20261025",
-    "safe-continuation-depth-four-regression-20261026"
+    "safe-continuation-depth-four-regression-20261026",
+    "refill-rejects-duplicate-catalog-task-ids-20261026"
   ],
   "recovery_ai": {
     "checkpoint": null,
