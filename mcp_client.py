@@ -172,10 +172,9 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
     約1分の間隔で限定的に再試行し、最大120秒で打ち切る。
     それ以外の429/通信失敗は従来どおり即時失敗。
     """
+    # Tool arguments may contain personal memory, note text, or credentials.
+    # Never log arguments or endpoint URLs; log only the non-sensitive tool name.
     print(f"[LOG] call_mcp_tool called: tool_name={tool_name}")
-
-    print("MCP CALL:", tool_name, arguments)
-    print("MCP URL:", MCP_SERVER_URL)
 
     payload = {
         "jsonrpc": "2.0",
