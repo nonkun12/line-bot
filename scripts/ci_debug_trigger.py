@@ -80,7 +80,7 @@ def build_summary(full_log: str) -> str:
     lines.append("<summary>pytestログ全文を表示</summary>")
     lines.append("")
     lines.append("```")
-    lines.append(full_log)
+    lines.append("[Raw pytest log omitted for privacy]")
     lines.append("```")
     lines.append("</details>")
 
