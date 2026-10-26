@@ -304,6 +304,11 @@ def validate_plan_with_bounded_repairs(
 ) -> tuple[dict, bool, str]:
     """Validate a plan and perform only the existing bounded validation repairs."""
     ok, detail = validate_plan(plan, chosen)
+    if not ok and detail == "invalid_change_count":
+        repair_plan = repair_change_count_plan(client, instruction, chosen, context, plan)
+        ok, detail = validate_plan(repair_plan, chosen)
+        if ok:
+            plan = repair_plan
     if not ok and detail == "invalid_old_new":
         repair_plan = repair_invalid_old_new_plan(client, instruction, chosen, context, plan, detail)
         ok, detail = validate_plan(repair_plan, chosen)
@@ -568,6 +573,31 @@ the requested change. If a safe exact replacement cannot be identified, return {
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
 
 
+def repair_change_count_plan(
+    client: Groq,
+    instruction: str,
+    chosen: str,
+    context: str,
+    rejected_plan: dict,
+) -> dict:
+    """Reduce an oversized proposal to one minimal, explicitly safe edit."""
+    rejected = json.dumps(rejected_plan, ensure_ascii=False)
+    system = '''Repair ONE rejected JSON search/replace plan. Return JSON only.
+The worker can apply exactly ONE change object to exactly ONE selected file.
+Return either one minimal change object with file, old, and new fields, or
+{"no_change":true} if the requested intent cannot be safely represented by one edit.
+Do not combine unrelated edits, change the selected file, invent source text, or weaken safety.
+The old value must be an exact non-empty substring of the supplied current context.
+The new value must be replacement text only, with no diff markers or markdown fences.'''
+    prompt = (
+        f"Instruction:\n{instruction}\n\nSelected file:\n{chosen}"
+        f"\n\nCurrent file context:\n{context}"
+        f"\n\nValidation error: invalid_change_count"
+        f"\n\nRejected plan:\n{rejected}"
+    )
+    return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
+
+
 def repair_diff_marker_plan(client: Groq, instruction: str, chosen: str, context: str, rejected_plan: dict) -> dict:
     """Perform one bounded plan repair focused only on diff-marker contamination."""
     rejected = json.dumps(rejected_plan, ensure_ascii=False)
@@ -619,50 +649,13 @@ def main() -> int:
             print("Plan generation failed:", type(exc).__name__, str(exc), flush=True)
             traceback.print_exc()
             return 1
-        ok, detail = validate_plan(plan, chosen)
-        if not ok and detail == "invalid_old_new":
-            repair_plan = plan
-            for _ in range(MAX_PLAN_REPAIR_ATTEMPTS):
-                repair_plan = repair_invalid_old_new_plan(
-                    client,
-                    instruction,
-                    chosen,
-                    context_for(chosen),
-                    repair_plan,
-                )
-                ok, detail = validate_plan(repair_plan, chosen)
-                if ok:
-                    plan = repair_plan
-                    break
-            else:
-                print(
-                    "Rejected plan after bounded invalid_old_new repairs:",
-                    detail,
-                    flush=True,
-                )
-        if not ok and detail == "diff_marker_in_replacement":
-            repair_plan = repair_diff_marker_plan(
-                client,
-                instruction,
-                chosen,
-                context_for(chosen),
-                plan,
-            )
-            ok, detail = validate_plan(repair_plan, chosen)
-            if ok:
-                plan = repair_plan
-        if not ok and detail == "change_too_large":
-            repair_plan = repair_size_plan(
-                client,
-                instruction,
-                chosen,
-                context_for(chosen),
-                plan,
-                detail,
-            )
-            ok, detail = validate_plan(repair_plan, chosen)
-            if ok:
-                plan = repair_plan
+        plan, ok, detail = validate_plan_with_bounded_repairs(
+            client,
+            instruction,
+            chosen,
+            plan,
+            context_for(chosen),
+        )
         if not ok:
             print("Rejected plan:", detail, flush=True)
             return 1
