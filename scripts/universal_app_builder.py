@@ -6,6 +6,7 @@ checks out its own workspace, runs tests, pushes a branch, and opens a PR.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -30,8 +31,43 @@ ALLOWED_SUFFIXES = {".py", ".md", ".html", ".css", ".js", ".json", ".txt"}
 FORBIDDEN_NAMES = {".env", ".env.local", ".env.production", "Dockerfile", "render.yaml"}
 
 
-def run(cmd: list[str], cwd: Path, *, timeout: int = 900) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, timeout=timeout)
+def run(
+    cmd: list[str],
+    cwd: Path,
+    *,
+    timeout: int = 900,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, timeout=timeout, env=env)
+
+
+def git_auth_env(token: str) -> dict[str, str]:
+    """Pass GitHub auth to one trusted git subprocess without storing it in the remote URL."""
+    env = os.environ.copy()
+    encoded = base64.b64encode(f"x-access-token:{token}".encode("utf-8")).decode("ascii")
+    env["GIT_CONFIG_COUNT"] = "1"
+    env["GIT_CONFIG_KEY_0"] = "http.https://github.com/.extraheader"
+    env["GIT_CONFIG_VALUE_0"] = f"AUTHORIZATION: basic {encoded}"
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    return env
+
+
+def push_branch(workspace: Path, args: list[str], token: str, *, timeout: int = 180) -> subprocess.CompletedProcess[str]:
+    """Run a trusted git push with a one-process credential header."""
+    return run(["git", "push", *args], workspace, timeout=timeout, env=git_auth_env(token))
+
+
+def _test_environment_without_credentials() -> dict[str, str]:
+    """Give generated code/tests a copy of the environment with credentials removed."""
+    env = os.environ.copy()
+    sensitive_markers = ("TOKEN", "SECRET", "PASSWORD", "API_KEY", "PRIVATE_KEY", "CREDENTIAL")
+    for name in tuple(env):
+        upper = name.upper()
+        if any(marker in upper for marker in sensitive_markers):
+            env.pop(name, None)
+        elif upper.startswith("GIT_CONFIG_") or upper in {"GIT_ASKPASS", "SSH_AUTH_SOCK"}:
+            env.pop(name, None)
+    return env
 
 
 def github_api(path: str, token: str, *, method: str = "GET", payload: dict | None = None) -> dict:
@@ -228,9 +264,10 @@ def create_repository(token: str, owner: str, name: str, description: str) -> st
 
 def clone_repo(repo: str, token: str, workspace: Path, workdir: Path) -> None:
     result = run(
-        ["git", "clone", f"https://x-access-token:{token}@github.com/{repo}.git", str(workspace)],
+        ["git", "clone", f"https://github.com/{repo}.git", str(workspace)],
         workdir,
         timeout=180,
+        env=git_auth_env(token),
     )
     if result.returncode != 0:
         raise RuntimeError(f"git clone failed: {result.stderr[-2000:]}")
@@ -256,10 +293,12 @@ def clear_generated_files(workspace: Path, paths: set[str]) -> None:
 
 
 def run_tests(workspace: Path) -> tuple[bool, str]:
-    compile_result = run(["python", "-m", "compileall", "-q", "."], workspace, timeout=180)
+    # Generated source and tests are untrusted; do not expose workflow/API credentials.
+    test_env = _test_environment_without_credentials()
+    compile_result = run(["python", "-m", "compileall", "-q", "."], workspace, timeout=180, env=test_env)
     if compile_result.returncode != 0:
         return False, compile_result.stderr[-8000:]
-    result = run(["python", "-m", "pytest", "-q"], workspace, timeout=900)
+    result = run(["python", "-m", "pytest", "-q"], workspace, timeout=900, env=test_env)
     return result.returncode == 0, (result.stdout + "\n" + result.stderr)[-12000:]
 
 
