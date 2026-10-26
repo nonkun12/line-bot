@@ -15,7 +15,6 @@ from universal_app_builder import (
     clone_repo,
     create_pull_request,
     create_repository,
-    git_auth_env,
     push_branch,
     normalize_repo_name,
     ask,
