@@ -295,6 +295,13 @@
       "allowed_paths": [
         "tests/test_continuous_distributed_loop_workflow.py"
       ]
+    },
+    {
+      "id": "refill-rejects-duplicate-catalog-task-ids-20261026",
+      "instruction": "tests/test_autonomous_task_refill.py のみに新しい固有名の回帰テストを1件追加してください。カタログに同じ task ID の定義を2件含めた場合、build_queue() が ValueError('duplicate catalog task ID') で fail-closed になり、runtime queue 出力ファイルを作成しないことを確認してください。既存テスト変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
     }
   ]
 }
