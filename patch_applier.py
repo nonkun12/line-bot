@@ -1,5 +1,4 @@
 import os
-import re
 import shutil
 import subprocess
 from git_safety import create_checkpoint, restore_checkpoint, remove_checkpoint
