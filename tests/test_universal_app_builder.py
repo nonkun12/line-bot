@@ -125,3 +125,13 @@ def test_authenticated_push_pins_remote_and_disables_generated_hooks(monkeypatch
     assert "push-token" not in " ".join(captured["cmd"])
     assert captured["env"]["GIT_CONFIG_KEY_1"] == "core.hooksPath"
     assert "push-token" not in captured["env"]["GIT_CONFIG_VALUE_0"]
+
+
+def test_app_builder_removes_credentials_from_parent_environment():
+    root = Path(__file__).resolve().parents[1]
+    standalone = (root / "scripts" / "universal_app_builder.py").read_text(encoding="utf-8")
+    empty_repo = (root / "scripts" / "empty_repo_app_builder.py").read_text(encoding="utf-8")
+
+    for source in (standalone, empty_repo):
+        assert 'os.environ.pop("APP_GITHUB_TOKEN", "")' in source
+        assert 'os.environ.pop("GROQ_API_KEY", "")' in source
