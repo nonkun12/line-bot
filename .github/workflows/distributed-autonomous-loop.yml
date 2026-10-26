@@ -15,15 +15,10 @@ on:
           - '3'
           - '4'
       continuation_depth:
-        description: 'Internal bounded continuation depth (0-3)'
+        description: 'Internal continuation counter; the loop continues only while every cycle passes safety gates and tasks remain'
         required: false
         default: '0'
-        type: choice
-        options:
-          - '0'
-          - '1'
-          - '2'
-          - '3'
+        type: string
       mode:
         description: 'Run mode'
         required: false
