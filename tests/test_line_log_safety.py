@@ -18,3 +18,10 @@ def test_application_does_not_enable_dependency_debug_logging():
 
     assert "logging.basicConfig(level=logging.DEBUG)" not in source
     assert "logging.basicConfig(level=logging.INFO)" in source
+
+
+def test_environment_specific_secret_files_are_ignored():
+    ignore = (APP_SOURCE.parent / ".gitignore").read_text(encoding="utf-8")
+
+    assert ".env.*" in ignore
+    assert "!.env.example" in ignore
