@@ -237,6 +237,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "proposal-generator-resume-review-exclusion-regression": "tests/test_autonomous_task_proposals.py",
     "queue-progress-ignores-unrelated-pass-results-regression": "tests/test_distributed_loop_queue_progress.py",
     "proposal-generator-conflicting-catalog-definitions-regression": "tests/test_autonomous_task_proposals.py",
+    "refill-exhaustion-preserves-durable-state-regression-20261026": "tests/test_autonomous_task_refill.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -280,6 +281,38 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
     if expected_target is not None and chosen != expected_target:
         return None, "deterministic_target_mismatch"
+
+    if task_id == "refill-exhaustion-preserves-durable-state-regression-20261026" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_exhaustion_does_not_mutate_durable_state"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_refill_prioritizes_repeated_failures_from_registered_sanitized_history(tmp_path: Path):"
+        if text.count(anchor) != 1:
+            return None, "deterministic_anchor_not_unique:refill_exhaustion_state"
+        addition = (
+            "def test_refill_exhaustion_does_not_mutate_durable_state(tmp_path: Path):\\n"
+            "    queue, catalog, _ = _inputs(tmp_path, candidates=[_task(\\"task-finished\\")])\\n"
+            "    state = _write(tmp_path / \\"state.json\\", {\\"version\\": 1, \\"completed\\": [\\"task-finished\\"], \\"recovery_ai\\": {\\"schema_version\\": 1, \\"tasks\\": {}, \\"checkpoint\\": None}})\\n"
+            "    before = state.read_bytes()\\n"
+            "    output = tmp_path / \\"runtime.json\\"\\n"
+            "    report = build_queue(queue, catalog, state, output)\\n"
+            "    assert report[\\"exhaustion_reason\\"] == \\"no_eligible_catalog_tasks\\"\\n"
+            "    assert report[\\"eligible_catalog_count\\"] == 0\\n"
+            "    assert state.read_bytes() == before\\n"
+            "    assert json.loads(output.read_text(encoding=\\"utf-8\\"))[\\"tasks\\"] == []\\n"
+            "\\n\\n"
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {"no_change": False, "source": "deterministic_autonomous_task", "changes": [{"file": chosen, "old": anchor, "new": new}]}, None
 
     if task_id == "continuous-loop-not-run-does-not-continue-regression" and chosen == "tests/test_continuous_distributed_loop_workflow.py":
         target = worker.ROOT / chosen
