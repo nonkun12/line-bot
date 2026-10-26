@@ -243,9 +243,7 @@ pytest失敗"""
         return f"""
 🔍 AI Debug Agent
 
-解析エラー:
-
-{e}
+解析エラー: {type(e).__name__}
 """
 
 
