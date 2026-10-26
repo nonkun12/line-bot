@@ -258,8 +258,10 @@ def held_stall_record(
         "status": "BLOCKED",
         "task_id": "",
         "task_count": 0,
-        "queue_total": len(registered_catalog),
-        "queue_completed": sum(
+        "queue_total": 0,
+        "queue_completed": 0,
+        "catalog_total": len(registered_catalog),
+        "catalog_completed": sum(
             1 for task in registered_catalog if str(task.get("id", "")) in completed_task_ids
         ),
         "held_pending_count": len(blocked_pending),
@@ -1009,8 +1011,10 @@ def main() -> int:
                 "status": "BLOCKED",
                 "task_id": "",
                 "task_count": 0,
-                "queue_total": len(registered_catalog),
-                "queue_completed": sum(
+                "queue_total": len(queued_tasks),
+                "queue_completed": sum(1 for task in queued_tasks if str(task.get("id", "")) in completed),
+                "catalog_total": len(registered_catalog),
+                "catalog_completed": sum(
                     1 for task in registered_catalog
                     if str(task.get("id", "")) in completed
                 ),
@@ -1042,8 +1046,10 @@ def main() -> int:
                 "status": "BLOCKED",
                 "task_id": "",
                 "task_count": 0,
-                "queue_total": len(registered_catalog),
-                "queue_completed": sum(
+                "queue_total": len(queued_tasks),
+                "queue_completed": sum(1 for task in queued_tasks if str(task["id"]) in completed),
+                "catalog_total": len(registered_catalog),
+                "catalog_completed": sum(
                     1 for task in registered_catalog if str(task["id"]) in completed
                 ),
                 "held_pending_count": len(blocked_pending),
