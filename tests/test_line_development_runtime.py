@@ -1007,3 +1007,29 @@ def test_priority_boundary_task_fails_closed_when_regression_tests_missing(monke
 
     assert plan is None
     assert error == "required_regression_test_missing:priority_boundaries"
+
+def test_safe_continuation_depth_four_task_has_deterministic_bounded_plan(tmp_path, monkeypatch):
+    chosen = "tests/test_continuous_distributed_loop_workflow.py"
+    anchor = "def test_continuation_depth_missing_fails_closed(tmp_path):\\n"
+    original = anchor + "    pass\\n\\n"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    plan, error = runtime._deterministic_autonomous_test_plan(
+        chosen, "safe-continuation-depth-four-regression-20261026"
+    )
+
+    assert error is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert plan["no_change"] is False
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert "test_safe_continuation_depth_guard_accepts_depth_four" in candidate
+    assert worker.validate_plan(plan, chosen) == (True, chosen)
