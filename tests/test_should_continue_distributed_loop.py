@@ -5,6 +5,7 @@ from scripts.should_continue_distributed_loop import decide
 
 def _row(status="PASS", exit_code=0, *, recorded=True, allow_continue=True, failure_reason=None):
     row = {
+        "task_id": "verified-task",
         "status": status,
         "exit_code": exit_code,
         "control_tower": {
@@ -44,6 +45,16 @@ def test_continues_beyond_four_cycles_when_verified_pass(tmp_path):
 
 def test_stops_for_queue_empty_or_missing_task_evidence(tmp_path):
     assert decide(tmp_path, "Distributed Loop (continuation_depth=0)", "success")["reason"] == "task_evidence_missing"
+
+
+def test_stops_when_synthetic_empty_queue_row_has_no_task_id(tmp_path):
+    row = _row()
+    row["task_id"] = ""
+    row["task_count"] = 0
+    artifact = _artifact(tmp_path, [row])
+    result = decide(artifact, "Distributed Loop (continuation_depth=1)", "success")
+    assert result["continue"] is False
+    assert result["reason"] == "task_not_executed"
 
 
 def test_stops_for_failed_or_blocked_task(tmp_path):
