@@ -42,4 +42,4 @@ jobs:
             --request POST "$AI_REPORT_URL" \
             --header "Content-Type: application/json" \
             --header "x-internal-key: $INTERNAL_PUSH_KEY" \
-            --data-binary "$payload"
+            --data-binary "$payload" > /dev/null
