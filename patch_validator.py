@@ -194,7 +194,7 @@ def review_patch(patch, target_function=None):
 
 
     # 変更ファイル数チェック(1ファイルのみ許可)
-    changed_files = re.findall(r"^\\+\\+\\+ (.+)$", patch, re.MULTILINE)
+    changed_files = re.findall(r"^\+\+\+ (.+)$", patch, re.MULTILINE)
 
     if len(changed_files) > 1:
         result.append(
