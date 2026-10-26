@@ -16,13 +16,13 @@ DEPTH_RE = re.compile(r"continuation_depth=(\d+)")
 ALLOWED_SUCCESS = {"PASS"}
 
 
-def decide(artifact_dir: Path, run_name: str, conclusion: str, max_depth: int = 3) -> dict:
+def decide(artifact_dir: Path, run_name: str, conclusion: str) -> dict:
     match = DEPTH_RE.search(run_name)
     if match is None:
         return {"continue": False, "reason": "continuation_depth_missing"}
     depth = int(match.group(1))
-    if depth < 0 or depth >= max_depth:
-        return {"continue": False, "reason": "continuation_depth_limit", "depth": depth}
+    if depth < 0:
+        return {"continue": False, "reason": "continuation_depth_invalid"}
     if conclusion != "success":
         return {"continue": False, "reason": "source_run_not_success", "depth": depth}
 
@@ -65,10 +65,9 @@ def main() -> int:
     parser.add_argument("--artifact-dir", type=Path, required=True)
     parser.add_argument("--run-name", required=True)
     parser.add_argument("--conclusion", required=True)
-    parser.add_argument("--max-depth", type=int, default=3)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    result = decide(args.artifact_dir, args.run_name, args.conclusion, args.max_depth)
+    result = decide(args.artifact_dir, args.run_name, args.conclusion)
     serialized = json.dumps(result, ensure_ascii=False, sort_keys=True)
     print(serialized)
     if args.output:
