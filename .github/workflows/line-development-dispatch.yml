@@ -40,6 +40,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ github.token }}
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -60,6 +61,7 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
+          AUTONOMOUS_PUBLISH_VIA_WORKFLOW: "true"
           GITHUB_RUN_ID: ${{ github.run_id }}
           GH_TOKEN: ""
         run: |
@@ -140,6 +142,17 @@ jobs:
           BRANCH: line-dev/${{ github.run_id }}
         run: |
           set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/empty-git-hooks"
+          export GIT_CONFIG_COUNT=3
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0=""
+          export GIT_CONFIG_KEY_1="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_1="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          export GIT_CONFIG_KEY_2="core.hooksPath"
+          export GIT_CONFIG_VALUE_2="$RUNNER_TEMP/empty-git-hooks"
+          git -c "remote.origin.url=https://github.com/${GITHUB_REPOSITORY}.git" -c "core.hooksPath=$RUNNER_TEMP/empty-git-hooks" push --set-upstream origin "$BRANCH"
+          unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1 GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2
+
           if ! git ls-remote --exit-code origin "refs/heads/${BRANCH}" >/dev/null 2>&1; then
             echo "Development worker did not push ${BRANCH}; preserving failure." >&2
             exit 1
