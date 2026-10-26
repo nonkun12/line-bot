@@ -237,6 +237,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "proposal-generator-resume-review-exclusion-regression": "tests/test_autonomous_task_proposals.py",
     "queue-progress-ignores-unrelated-pass-results-regression": "tests/test_distributed_loop_queue_progress.py",
     "proposal-generator-conflicting-catalog-definitions-regression": "tests/test_autonomous_task_proposals.py",
+    "safe-continuation-depth-four-regression-20261026": "tests/test_continuous_distributed_loop_workflow.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -280,6 +281,42 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
     if expected_target is not None and chosen != expected_target:
         return None, "deterministic_target_mismatch"
+
+    if task_id == "safe-continuation-depth-four-regression-20261026" and chosen == "tests/test_continuous_distributed_loop_workflow.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_safe_continuation_depth_guard_accepts_depth_four"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_continuation_depth_missing_fails_closed(tmp_path):"
+        if text.count(anchor) != 1:
+            return None, "deterministic_anchor_not_unique:continuation_depth_four"
+        newline = chr(10)
+        addition = newline.join([
+            "def test_safe_continuation_depth_guard_accepts_depth_four():",
+            "    workflow = Path(__file__).resolve().parents[1] / \".github\" / \"workflows\" / \"distributed-loop-safe-continuation.yml\"",
+            "    source = workflow.read_text(encoding=\"utf-8\")",
+            "    guard = next(line.strip() for line in source.splitlines() if line.strip().startswith('case \\\"$NEXT_DEPTH\\\" in'))",
+            "    for value, expected in ((\"4\", 0), (\"\", 1), (\"0\", 1), (\"abc\", 1)):",
+            "        result = subprocess.run([\"bash\", \"-c\", guard], env={**os.environ, \"NEXT_DEPTH\": value}, capture_output=True, text=True, check=False)",
+            "        assert result.returncode == expected",
+            "",
+            "",
+        ]) + newline
+        replacement = addition + anchor
+        if len(anchor) > 1200 or len(replacement) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(replacement)}"
+        candidate = text.replace(anchor, replacement, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": replacement}],
+        }, None
+
 
     if task_id == "continuous-loop-not-run-does-not-continue-regression" and chosen == "tests/test_continuous_distributed_loop_workflow.py":
         target = worker.ROOT / chosen
