@@ -46,6 +46,12 @@ def decide(artifact_dir: Path, run_name: str, conclusion: str) -> dict:
     # Every row must be a verified PASS. NO_CHANGE, HOLD, NOT_RUN, BLOCKED,
     # missing orchestrator evidence, and unknown status all stop the chain.
     for row in rows:
+        # A workflow may upload a synthetic NOT_RUN row for an empty queue.
+        # Never treat a successful wrapper/workflow as proof that a task ran:
+        # continuation requires a concrete task identity as well as PASS.
+        task_id = row.get("task_id")
+        if not isinstance(task_id, str) or not task_id.strip():
+            return {"continue": False, "reason": "task_not_executed", "depth": depth}
         if row.get("status") not in ALLOWED_SUCCESS or row.get("exit_code") != 0:
             return {"continue": False, "reason": "task_not_pass", "depth": depth}
         tower = row.get("control_tower")
