@@ -35,9 +35,11 @@ def test_continues_only_after_verified_pass(tmp_path):
     }
 
 
-def test_stops_when_depth_limit_reached(tmp_path):
+def test_continues_beyond_four_cycles_when_verified_pass(tmp_path):
     artifact = _artifact(tmp_path, [_row()])
-    assert decide(artifact, "Distributed Loop (continuation_depth=3)", "success")["continue"] is False
+    result = decide(artifact, "Distributed Loop (continuation_depth=37)", "success")
+    assert result["continue"] is True
+    assert result["next_depth"] == 38
 
 
 def test_stops_for_queue_empty_or_missing_task_evidence(tmp_path):
