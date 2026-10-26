@@ -296,8 +296,10 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "def test_safe_continuation_depth_guard_accepts_depth_four():",
             "    workflow = Path(__file__).resolve().parents[1] / \".github\" / \"workflows\" / \"distributed-loop-safe-continuation.yml\"",
             "    source = workflow.read_text(encoding=\"utf-8\")",
-            "    assert 'case \"$NEXT_DEPTH\" in \"\"|*[!0-9]*|0)' in source",
-            "    assert \"NEXT_DEPTH\" in source",
+            "    guard = next(line.strip() for line in source.splitlines() if line.strip().startswith('case \\\"$NEXT_DEPTH\\\" in'))",
+            "    for value, expected in ((\"4\", 0), (\"\", 1), (\"0\", 1), (\"abc\", 1)):",
+            "        result = subprocess.run([\"bash\", \"-c\", guard], env={**os.environ, \"NEXT_DEPTH\": value}, capture_output=True, text=True, check=False)",
+            "        assert result.returncode == expected",
             "",
             "",
         ]) + newline
