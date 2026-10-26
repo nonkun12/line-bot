@@ -73,7 +73,7 @@ jobs:
           NEXT_DEPTH: ${{ steps.decision.outputs.next_depth }}
         run: |
           set -euo pipefail
-          case "$NEXT_DEPTH" in 1|2|3) ;; *) echo "::error::Invalid continuation depth"; exit 1 ;; esac
+          case "$NEXT_DEPTH" in ""|*[!0-9]*|0) echo "::error::Invalid continuation depth"; exit 1 ;; esac
           gh workflow run distributed-autonomous-loop.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
