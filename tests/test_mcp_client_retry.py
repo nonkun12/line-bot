@@ -115,3 +115,20 @@ def test_mcp_request_logs_omit_argument_values_and_server_url(monkeypatch, capsy
     assert server_url not in output
     assert "unit-test-api-key" not in output
     assert "tool_name=save_memory" in output
+    assert "saved" not in output
+
+
+def test_mcp_error_response_does_not_expose_upstream_message(monkeypatch, capsys):
+    private_error = "unit-test-private-upstream-error"
+    monkeypatch.setattr(
+        mcp_client.httpx,
+        "post",
+        lambda *args, **kwargs: _response(200, json_data={"error": private_error}),
+    )
+
+    with pytest.raises(RuntimeError, match="MCP server returned an error response"):
+        mcp_client._call_mcp_tool_once("save_memory", {"key": "k", "value": "v"})
+
+    output = capsys.readouterr().out
+    assert private_error not in output
+    assert private_error not in str(pytest.raises)
