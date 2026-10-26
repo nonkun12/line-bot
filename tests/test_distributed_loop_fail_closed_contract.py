@@ -31,3 +31,21 @@ def test_queue_progress_failure_reports_only_safe_diagnostic_class():
     assert 'Queue progress evidence invalid (${progress_diagnostic})' in workflow
     assert 'echo "- Task runner step (Actions status): ${LOOP_OUTCOME:-not_run}"' in workflow
     assert 'echo "- 実タスク結果: $result"' in workflow
+
+
+
+def test_held_catalog_exhaustion_is_blocked_not_misreported_as_queue_empty():
+    workflow = (ROOT / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert "tee /tmp/autonomous-loop-refill-report.json" in workflow
+    assert 'eligible == 0 and isinstance(held, list) and held' in workflow
+    assert 'catalog_exhausted_held:' in workflow
+    assert 'catalog_exhausted_review_pending:' in workflow
+    assert "reason = held_reason" in workflow
+    assert "action = 'review_held_tasks'" in workflow
+
+
+def test_held_task_resume_uses_reviewed_catalog_not_only_tracked_queue():
+    workflow = (ROOT / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    step = workflow.split("- name: Resume one explicitly approved held task", 1)[1].split("- name: Restore durable Recovery RAG history", 1)[0]
+    assert "--queue .github/autonomous-loop-task-catalog.json" in step
+    assert "--cause-fixed" in step
