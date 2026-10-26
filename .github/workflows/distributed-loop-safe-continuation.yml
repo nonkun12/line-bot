@@ -21,6 +21,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Checkout continuation gate
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
       - name: Download source run evidence
         id: evidence
         continue-on-error: true
@@ -59,7 +64,6 @@ jobs:
           print(f"continue={str(result.get('continue') is True).lower()}")
           print(f"next_depth={result.get('next_depth', '')}")
           print(f"reason={result.get('reason', 'unknown')}")
-          print(f"decision_exit={decision_rc}")
           PY
           cat /tmp/continuation-decision.json
 
