@@ -1,5 +1,6 @@
 import httpx
 import pytest
+from pathlib import Path
 
 import mcp_client
 
@@ -132,3 +133,12 @@ def test_mcp_error_response_does_not_expose_upstream_message(monkeypatch, capsys
     output = capsys.readouterr().out
     assert private_error not in output
     assert private_error not in str(exc_info.value)
+
+
+def test_mcp_dispatch_does_not_log_user_messages_or_search_terms():
+    source = (Path(__file__).resolve().parents[1] / "bot_tools.py").read_text(encoding="utf-8")
+
+    assert 'print("DEBUG original_message =", repr(original_message))' not in source
+    assert 'print("DEBUG arguments =", arguments)' not in source
+    assert 'print("SEARCH KEYWORD CLEANED:", keyword)' not in source
+    assert 'print(f"[LOG] wikipedia_search called: query=' not in source
