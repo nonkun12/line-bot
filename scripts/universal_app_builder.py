@@ -41,20 +41,33 @@ def run(
     return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, timeout=timeout, env=env)
 
 
-def git_auth_env(token: str) -> dict[str, str]:
-    """Pass GitHub auth to one trusted git subprocess without storing it in the remote URL."""
+def git_auth_env(token: str, *, hooks_path: str | None = None) -> dict[str, str]:
+    """Pass auth to one trusted git process without storing it in repository config."""
     env = os.environ.copy()
     encoded = base64.b64encode(f"x-access-token:{token}".encode("utf-8")).decode("ascii")
-    env["GIT_CONFIG_COUNT"] = "1"
+    env["GIT_CONFIG_COUNT"] = "2" if hooks_path else "1"
     env["GIT_CONFIG_KEY_0"] = "http.https://github.com/.extraheader"
     env["GIT_CONFIG_VALUE_0"] = f"AUTHORIZATION: basic {encoded}"
+    if hooks_path:
+        env["GIT_CONFIG_KEY_1"] = "core.hooksPath"
+        env["GIT_CONFIG_VALUE_1"] = hooks_path
     env["GIT_TERMINAL_PROMPT"] = "0"
     return env
 
 
-def push_branch(workspace: Path, args: list[str], token: str, *, timeout: int = 180) -> subprocess.CompletedProcess[str]:
-    """Run a trusted git push with a one-process credential header."""
-    return run(["git", "push", *args], workspace, timeout=timeout, env=git_auth_env(token))
+def push_branch(
+    workspace: Path,
+    repo: str,
+    args: list[str],
+    token: str,
+    *,
+    timeout: int = 180,
+) -> subprocess.CompletedProcess[str]:
+    """Push only to the expected GitHub repository with hooks disabled."""
+    with tempfile.TemporaryDirectory(prefix="app-builder-empty-hooks-") as hooks_path:
+        env = git_auth_env(token, hooks_path=hooks_path)
+        command = ["git", "-c", f"remote.origin.url=https://github.com/{repo}.git", "push", *args]
+        return run(command, workspace, timeout=timeout, env=env)
 
 
 def _test_environment_without_credentials() -> dict[str, str]:
