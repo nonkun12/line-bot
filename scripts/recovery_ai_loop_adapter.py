@@ -28,7 +28,7 @@ def _category(result: dict[str, Any]) -> str:
         return "invalid_evidence"
     if status == "FAIL" and any(token in reason for token in ("pytest", "test_regression")):
         return "test_regression"
-    if any(token in reason for token in ("task_runtime_failed", "crash", "process")):
+    if any(token in reason for token in ("crash", "process")):
         return "process_crash"
     if any(token in reason for token in ("network_transient", "connection_reset", "temporary_network", "service_unavailable")):
         return "network_transient"
@@ -125,7 +125,7 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
             "reason": "preflight_blocked_not_task_failure",
         }
     # An operator stop is not evidence of a code defect; preserve the existing streak.
-    if status == "STOPPED" and failure_reason == "stop_requested_during_task":
+    if status == "STOPPED" and failure_reason.startswith("stop_requested_"):
         return {"recorded": False, "reason": "operator_stop_not_task_failure"}
     run_identity_verified = _has_verified_run_identity(result, status)
     success_like = status in {"PASS", "NO_CHANGE"}
