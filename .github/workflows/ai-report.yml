@@ -1,28 +1,45 @@
 name: Daily AI Report
 
 on:
-  
   workflow_dispatch:
+
+permissions: {}
 
 jobs:
   send-ai-report:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check URL
-        run: |
-          echo "${{ secrets.AI_REPORT_URL }}"
-
-      - name: Show AI_REPORT_URL
-        run: |
-          echo "${{ secrets.AI_REPORT_URL }}"
-
       - name: Call AI Report API
+        env:
+          AI_REPORT_URL: ${{ secrets.AI_REPORT_URL }}
+          INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
+          REPORT_USER_ID: ${{ secrets.REPORT_USER_ID }}
+        shell: bash
         run: |
-          curl -X POST "${{ secrets.AI_REPORT_URL }}" \
-          -H "Content-Type: application/json" \
-          -H "x-internal-key: ${{ secrets.INTERNAL_PUSH_KEY }}" \
-          -d '{
-            "user_id":"${{ secrets.REPORT_USER_ID }}",
-            "prompt":"昨日のAI開発状況を確認して、GitHub変更、メモ、作業内容をまとめて報告してください"
-          }'
+          set -euo pipefail
+          test -n "$AI_REPORT_URL"
+          test -n "$INTERNAL_PUSH_KEY"
+          test -n "$REPORT_USER_ID"
+
+          python - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+
+          url = urlsplit(os.environ["AI_REPORT_URL"])
+          if (
+              url.scheme != "https"
+              or not url.hostname
+              or url.username
+              or url.password
+              or url.query
+              or url.fragment
+          ):
+              raise SystemExit("AI_REPORT_URL must be an HTTPS URL without embedded credentials or query parameters")
+          PY
+
+          payload="$(jq -n --arg user_id "$REPORT_USER_ID" --arg prompt '昨日のAI開発状況を確認して、GitHub変更、メモ、作業内容をまとめて報告してください' '{user_id: $user_id, prompt: $prompt}')"
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 \
+            --request POST "$AI_REPORT_URL" \
+            --header "Content-Type: application/json" \
+            --header "x-internal-key: $INTERNAL_PUSH_KEY" \
+            --data-binary "$payload"
