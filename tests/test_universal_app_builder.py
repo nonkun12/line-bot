@@ -126,7 +126,7 @@ def test_authenticated_push_pins_remote_and_disables_generated_hooks(monkeypatch
     assert "push-token" not in " ".join(captured["cmd"])
     assert captured["env"]["GIT_CONFIG_KEY_2"] == "core.hooksPath"
     assert "push-token" not in captured["env"]["GIT_CONFIG_VALUE_1"]
-    assert "core.hooksPath=" in captured["cmd"][-3]
+    assert any(item.startswith("core.hooksPath=") for item in captured["cmd"])
 
 
 def test_app_builder_removes_credentials_from_parent_environment():
