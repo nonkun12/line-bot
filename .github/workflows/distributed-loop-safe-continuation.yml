@@ -41,7 +41,7 @@ jobs:
         id: decision
         if: always()
         env:
-          SOURCE_RUN_NAME: ${{ github.event.workflow_run.name }}
+          SOURCE_RUN_NAME: ${{ github.event.workflow_run.display_title }}
           SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
           set -euo pipefail
