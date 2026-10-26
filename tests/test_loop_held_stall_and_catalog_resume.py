@@ -79,8 +79,10 @@ def test_held_stall_record_is_auditable_and_not_a_completion():
     )
     assert record["status"] == "BLOCKED"
     assert record["failure_reason"] == "all_pending_tasks_held"
-    assert record["queue_total"] == 3
-    assert record["queue_completed"] == 1
+    assert record["queue_total"] == 0
+    assert record["queue_completed"] == 0
+    assert record["catalog_total"] == 3
+    assert record["catalog_completed"] == 1
     assert record["held_pending_count"] == 2
     assert record["eligible_pending_count"] == 0
     assert record["task_count"] == 0
@@ -178,3 +180,16 @@ def test_main_records_queue_catalog_mismatch_without_raising(tmp_path, monkeypat
     output = capsys.readouterr().out
     assert "MINIMAL_LOOP=BLOCKED" in output
     assert "eligible_pending=1" in output
+
+
+def test_held_stall_record_separates_runtime_queue_from_catalog_progress():
+    record = loop.held_stall_record(
+        [_task("done"), _task("held")],
+        {"done"},
+        ["held"],
+        [],
+    )
+    assert record["queue_total"] == 0
+    assert record["queue_completed"] == 0
+    assert record["catalog_total"] == 2
+    assert record["catalog_completed"] == 1
