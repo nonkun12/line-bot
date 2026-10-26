@@ -292,12 +292,12 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         if text.count(anchor) != 1:
             return None, "deterministic_anchor_not_unique:continuation_depth_four"
         addition = (
-            "def test_safe_continuation_depth_guard_accepts_depth_four():\\n"
-            "    workflow = Path(__file__).resolve().parents[1] / \".github\" / \"workflows\" / \"distributed-loop-safe-continuation.yml\"\\n"
-            "    source = workflow.read_text(encoding=\"utf-8\")\\n"
-            "    assert 'case \"$NEXT_DEPTH\" in \"\"|*[!0-9]*|0)' in source\\n"
-            "    assert \"NEXT_DEPTH\" in source\\n"
-            "\\n\\n"
+            "def test_safe_continuation_depth_guard_accepts_depth_four():\n"
+            "    workflow = Path(__file__).resolve().parents[1] / \".github\" / \"workflows\" / \"distributed-loop-safe-continuation.yml\"\n"
+            "    source = workflow.read_text(encoding=\"utf-8\")\n"
+            "    assert 'case \"$NEXT_DEPTH\" in \"\"|*[!0-9]*|0)' in source\n"
+            "    assert \"NEXT_DEPTH\" in source\n"
+            "\n\n"
         )
         replacement = addition + anchor
         if len(anchor) > 1200 or len(replacement) > 1800:
@@ -658,9 +658,9 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "    from scripts.self_improvement_state import read_jsonl",
             "    history = tmp_path / \"history.jsonl\"",
             "    history.write_text(",
-            "        '{\"kind\": \"success\", \"task_id\": \"task-a\"}\\n'",
-            "        '{malformed json}\\n'",
-            "        '{\"kind\": \"failure\", \"task_id\": \"task-b\"}\\n',",
+            "        '{\"kind\": \"success\", \"task_id\": \"task-a\"}\n'",
+            "        '{malformed json}\n'",
+            "        '{\"kind\": \"failure\", \"task_id\": \"task-b\"}\n',",
             "        encoding=\"utf-8\",",
             "    )",
             "    assert read_jsonl(history) == [",
@@ -737,7 +737,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "    results = tmp_path / \"results.jsonl\"",
             "    queue.write_text(json.dumps({\"tasks\": [{\"id\": \"task-1\"}]}), encoding=\"utf-8\")",
             "    state.write_text(json.dumps({\"completed\": []}), encoding=\"utf-8\")",
-            "    results.write_text(json.dumps({\"task_id\": \"task-1\", \"status\": \"NOT_RUN\", \"failure_reason\": \"queue_empty\"}) + \"\\n\", encoding=\"utf-8\")",
+            "    results.write_text(json.dumps({\"task_id\": \"task-1\", \"status\": \"NOT_RUN\", \"failure_reason\": \"queue_empty\"}) + \"\n\", encoding=\"utf-8\")",
             "    assert calculate_progress(queue, state, results) == {\"queue_total\": 1, \"queue_completed\": 0}",
             "",
             "",
@@ -1840,7 +1840,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             '    results = tmp_path / "results.jsonl"',
             '    queue.write_text(json.dumps({"tasks": [{"id": "task-in-queue"}]}), encoding="utf-8")',
             '    state.write_text(json.dumps({"completed": []}), encoding="utf-8")',
-            '    results.write_text(json.dumps({"task_id": "task-outside-queue-pass", "status": "PASS"}) + "\\n" + json.dumps({"task_id": "task-outside-queue-no-change", "status": "NO_CHANGE"}) + "\\n", encoding="utf-8")',
+            '    results.write_text(json.dumps({"task_id": "task-outside-queue-pass", "status": "PASS"}) + "\n" + json.dumps({"task_id": "task-outside-queue-no-change", "status": "NO_CHANGE"}) + "\n", encoding="utf-8")',
             '    assert calculate_progress(queue, state, results) == {"queue_total": 1, "queue_completed": 0}',
             "",
             "",
