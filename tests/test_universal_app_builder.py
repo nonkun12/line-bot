@@ -84,8 +84,9 @@ def test_clone_uses_clean_url_and_does_not_persist_raw_token(monkeypatch, tmp_pa
 
     assert "https://github.com/nonkun12/example-app.git" in captured["cmd"]
     assert all("unit-test-token" not in item for item in captured["cmd"])
-    assert "unit-test-token" not in captured["env"]["GIT_CONFIG_VALUE_0"]
-    assert "AUTHORIZATION: basic " in captured["env"]["GIT_CONFIG_VALUE_0"]
+    assert "unit-test-token" not in captured["env"]["GIT_CONFIG_VALUE_1"]
+    assert captured["env"]["GIT_CONFIG_VALUE_0"] == ""
+    assert "AUTHORIZATION: basic " in captured["env"]["GIT_CONFIG_VALUE_1"]
 
 
 def test_generated_tests_receive_no_environment_credentials(monkeypatch, tmp_path):
@@ -123,8 +124,9 @@ def test_authenticated_push_pins_remote_and_disables_generated_hooks(monkeypatch
 
     assert "remote.origin.url=https://github.com/nonkun12/example-app.git" in captured["cmd"]
     assert "push-token" not in " ".join(captured["cmd"])
-    assert captured["env"]["GIT_CONFIG_KEY_1"] == "core.hooksPath"
-    assert "push-token" not in captured["env"]["GIT_CONFIG_VALUE_0"]
+    assert captured["env"]["GIT_CONFIG_KEY_2"] == "core.hooksPath"
+    assert "push-token" not in captured["env"]["GIT_CONFIG_VALUE_1"]
+    assert "core.hooksPath=" in captured["cmd"][-3]
 
 
 def test_app_builder_removes_credentials_from_parent_environment():
