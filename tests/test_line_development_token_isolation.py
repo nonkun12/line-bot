@@ -25,3 +25,11 @@ def test_line_development_dispatch_runtime_receives_no_github_token():
     assert 'GH_TOKEN: ""' in runtime
     publish = _step(source, "Create or reuse GitHub PR")
     assert "GH_TOKEN: ${{ github.token }}" in publish
+
+
+def test_overnight_runtime_does_not_receive_github_token():
+    source = (WORKFLOWS / "overnight-development.yml").read_text(encoding="utf-8")
+    runtime = _step(source, "Run common guarded development runtime")
+    assert "GH_TOKEN:" not in runtime
+    publish = _step(source, "Create GitHub PR")
+    assert "GH_TOKEN: ${{ github.token }}" in publish
