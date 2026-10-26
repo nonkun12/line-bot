@@ -36,3 +36,15 @@ def test_ai_report_workflow_does_not_echo_or_inline_interpolate_secrets():
     assert 'x-internal-key: ${{ secrets.INTERNAL_PUSH_KEY }}' not in workflow
     assert "permissions: {}" in workflow
     assert 'AI_REPORT_URL: ${{ secrets.AI_REPORT_URL }}' in workflow
+
+
+def test_workflow_run_debugger_does_not_checkout_untrusted_commit():
+    workflow = (
+        APP_SOURCE.parent / ".github" / "workflows" / "ai-debug-agent.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "contents: read" in workflow
+    assert "actions: read" in workflow
+    assert "ref: main" in workflow
+    assert "persist-credentials: false" in workflow
+    assert "ref: ${{ github.event.workflow_run.head_sha }}" not in workflow
