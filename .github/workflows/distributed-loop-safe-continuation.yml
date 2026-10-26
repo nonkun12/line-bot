@@ -50,7 +50,6 @@ jobs:
             --artifact-dir artifacts/source-run \
             --run-name "$SOURCE_RUN_NAME" \
             --conclusion "$SOURCE_CONCLUSION" \
-            --max-depth 3 \
             --output /tmp/continuation-decision.json
           decision_rc=$?
           set -e
