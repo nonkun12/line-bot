@@ -92,7 +92,7 @@ jobs:
               if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", task_id):
                   stop("missing_or_invalid_task_id")
                   raise SystemExit(0)
-                  tower = row.get("control_tower")
+              tower = row.get("control_tower")
               if not isinstance(tower, dict) or tower.get("recorded") is not True:
                   stop("control_tower_evidence_missing")
                   raise SystemExit(0)
