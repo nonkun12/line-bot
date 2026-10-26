@@ -126,9 +126,9 @@ def test_mcp_error_response_does_not_expose_upstream_message(monkeypatch, capsys
         lambda *args, **kwargs: _response(200, json_data={"error": private_error}),
     )
 
-    with pytest.raises(RuntimeError, match="MCP server returned an error response"):
+    with pytest.raises(RuntimeError, match="MCP server returned an error response") as exc_info:
         mcp_client._call_mcp_tool_once("save_memory", {"key": "k", "value": "v"})
 
     output = capsys.readouterr().out
     assert private_error not in output
-    assert private_error not in str(pytest.raises)
+    assert private_error not in str(exc_info.value)
