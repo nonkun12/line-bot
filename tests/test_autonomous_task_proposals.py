@@ -1,8 +1,9 @@
 from __future__ import annotations
 import json
+import sys
 from pathlib import Path
 import pytest
-from scripts.autonomous_task_proposals import build_proposals, SPEC_MARKER
+from scripts.autonomous_task_proposals import build_proposals, main, SPEC_MARKER
 
 
 def write(path: Path, data):
@@ -168,3 +169,34 @@ def test_distinguishes_candidates_excluded_by_durable_state(tmp_path):
     assert result["diagnostics"]["excluded_task_count"] == 1
     assert result["diagnostics"]["invalid_spec_count"] == 0
     assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
+
+
+
+def test_cli_emits_candidate_exclusion_diagnostics(tmp_path, monkeypatch, capsys):
+    issues_path = write(tmp_path / "issues.json", [
+        issue("done"),
+        issue("bad-spec", path="../secret.py"),
+    ])
+    queue_path = write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": 4, "tasks": []})
+    state_path = write(tmp_path / "state.json", state(completed=["done"]))
+    output_path = tmp_path / "proposals.json"
+    catalog_path = write(tmp_path / "catalog.json", {"version": 1, "tasks": []})
+    monkeypatch.setattr(sys, "argv", [
+        "autonomous_task_proposals",
+        "--issues", str(issues_path),
+        "--queue", str(queue_path),
+        "--state", str(state_path),
+        "--output", str(output_path),
+        "--catalog", str(catalog_path),
+    ])
+
+    assert main() == 0
+    logged = json.loads(capsys.readouterr().out)
+    assert logged["status"] == "NO_TRUSTED_CANDIDATES"
+    assert logged["diagnostics"] == {
+        "labeled_open_issue_count": 2,
+        "invalid_spec_count": 1,
+        "excluded_task_count": 1,
+        "invalid_issue_number_count": 0,
+    }
+    assert logged["reason"] == "no_valid_test_only_spec"
