@@ -137,8 +137,9 @@ jobs:
           print(int(match.group(1)))
           PY
           )"
-          active="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=20" \
-            --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length')"
+          queued="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?status=queued&per_page=100" --jq '.total_count')"
+          running="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?status=in_progress&per_page=100" --jq '.total_count')"
+          active=$((queued + running))
           if [ "$active" -gt 0 ]; then
             echo "dispatch=false" >> "$GITHUB_OUTPUT"
             echo "CONTINUATION_STOP=another_loop_is_active"
