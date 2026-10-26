@@ -163,4 +163,4 @@ jobs:
       - name: Explain why continuation stopped
         if: always() && steps.gate.outputs.continue != 'true'
         run: |
-          echo "No follow-up loop was dispatched. This is intentional unless a successful task evidence (PASS or NO_CHANGE) and durable completion evidence are both present."
+          echo "No follow-up loop was dispatched. Continuation requires PASS task evidence, explicit Control Tower approval, and confirmed durable completion evidence."
