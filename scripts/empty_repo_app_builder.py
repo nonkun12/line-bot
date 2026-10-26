@@ -84,7 +84,7 @@ def plan_with_bounded_retries(client: Groq, requirement: str) -> tuple[dict | No
 
 
 def main() -> int:
-    requirement = os.environ.get("APP_REQUIREMENT", "").strip()[:MAX_REQUIREMENT_LENGTH]
+    requirement = os.environ.pop("APP_REQUIREMENT", "").strip()[:MAX_REQUIREMENT_LENGTH]
     token = os.environ.pop("APP_GITHUB_TOKEN", "").strip()
     groq_api_key = os.environ.pop("GROQ_API_KEY", "").strip()
     owner = os.environ.get("APP_GITHUB_OWNER", "nonkun12").strip() or "nonkun12"
