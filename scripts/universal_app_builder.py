@@ -82,9 +82,10 @@ def _test_environment_without_credentials() -> dict[str, str]:
     """Give generated code/tests a copy of the environment with credentials removed."""
     env = os.environ.copy()
     sensitive_markers = ("TOKEN", "SECRET", "PASSWORD", "API_KEY", "PRIVATE_KEY", "CREDENTIAL")
+    private_context = {"APP_REQUIREMENT", "APP_USER_ID", "DEV_INSTRUCTION", "DEV_USER_ID", "LINE_USER_ID", "USER_ID"}
     for name in tuple(env):
         upper = name.upper()
-        if any(marker in upper for marker in sensitive_markers):
+        if upper in private_context or any(marker in upper for marker in sensitive_markers):
             env.pop(name, None)
         elif upper.startswith("GIT_CONFIG_") or upper in {"GIT_ASKPASS", "SSH_AUTH_SOCK"}:
             env.pop(name, None)
