@@ -257,6 +257,8 @@ def test_distributed_loop_continuation_still_requires_existing_evidence_gate():
     assert "durable_completion_not_confirmed" in continuation
     assert "task_status_not_successful" in continuation
     assert "another_loop_is_active" in continuation
+    assert "runs?status=queued&per_page=100" in continuation
+    assert "runs?status=in_progress&per_page=100" in continuation
 
 
 
