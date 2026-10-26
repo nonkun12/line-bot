@@ -86,6 +86,33 @@ def test_continuation_gate_rejects_no_change(tmp_path):
     assert "CONTINUATION_STOP=task_status_not_successful" in result.stdout
 
 
+def test_continuation_gate_rejects_missing_control_tower_evidence(tmp_path):
+    row = _row("task-one")
+    row.pop("control_tower")
+    result, output = _run_gate(tmp_path, [row], ["task-one"])
+    assert result.returncode == 0
+    assert output.splitlines() == ["continue=false"]
+    assert "CONTINUATION_STOP=control_tower_evidence_missing" in result.stdout
+
+
+def test_continuation_gate_rejects_control_tower_denial(tmp_path):
+    row = _row("task-one")
+    row["control_tower"]["orchestration"]["allow_continue"] = False
+    result, output = _run_gate(tmp_path, [row], ["task-one"])
+    assert result.returncode == 0
+    assert output.splitlines() == ["continue=false"]
+    assert "CONTINUATION_STOP=control_tower_denied_continue" in result.stdout
+
+
+def test_continuation_gate_rejects_failure_reason_even_with_pass(tmp_path):
+    row = _row("task-one")
+    row["failure_reason"] = "unexpected warning"
+    result, output = _run_gate(tmp_path, [row], ["task-one"])
+    assert result.returncode == 0
+    assert output.splitlines() == ["continue=false"]
+    assert "CONTINUATION_STOP=failure_reason_present" in result.stdout
+
+
 def test_continuation_gate_accepts_four_verified_passes(tmp_path):
     ids = ["task-one", "task-two", "task-three", "task-four"]
     result, output = _run_gate(
