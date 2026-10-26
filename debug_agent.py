@@ -154,9 +154,11 @@ unified diff形式のみ
 理由:
 {reasons_formatted}"""
 
-        # Auto Apply 条件チェック (全条件必須)
+        # Auto Apply is disabled unless explicitly enabled by a trusted deployment setting.
+        auto_apply_enabled = os.getenv("AUTO_APPLY_PATCH", "false").strip().lower() == "true"
         check_apply = check_patch(patch, filename="app.py")
         can_auto_apply = (
+            auto_apply_enabled and
             safety["score"] >= 90 and
             "自動適用禁止" not in validation and
             "import変更なし" in safety["reasons"] and
