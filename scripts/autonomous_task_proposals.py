@@ -233,10 +233,13 @@ def main() -> int:
     except (ValueError, OSError) as exc:
         print("TASK_PROPOSALS_BLOCKED: " + type(exc).__name__)
         return 2
+    # Emit the same exclusion counters written to the artifact so workflow
+    # logs explain queue exhaustion without requiring artifact downloads.
     print(json.dumps({
         k: result[k] for k in (
             "status", "approved_count", "proposal_count",
-            "rejected_approved_count", "reason"
+            "rejected_approved_count", "rejected_approved_tasks",
+            "diagnostics", "reason"
         )
     }, sort_keys=True))
     return 0
