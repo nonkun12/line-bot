@@ -85,3 +85,26 @@ def test_resume_rejects_completed_or_unknown_task(tmp_path):
             state_path=state, recovery_path=recovery, queue_path=queue,
             task_id="unknown-task", cause_fixed=True,
         )
+
+
+
+def test_resume_accepts_catalog_only_task_when_tracked_queue_is_exhausted(tmp_path):
+    state, recovery, _tracked_queue = _fixtures(tmp_path)
+    catalog_path = tmp_path / "catalog.json"
+    _write(catalog_path, {"tasks": [
+        {"id": TASK_ID, "instruction": "reviewed catalog task", "allowed_paths": ["tests/test_example.py"]},
+    ]})
+
+    result = resume_task(
+        state_path=state,
+        recovery_path=recovery,
+        queue_path=catalog_path,
+        task_id=TASK_ID,
+        cause_fixed=True,
+    )
+
+    assert result["task_id"] == TASK_ID
+    assert result["resume_requires_review"] is True
+    assert RecoveryStore(recovery).task_status(TASK_ID)["held"] is False
+    assert RecoveryStore(recovery).task_status(TASK_ID)["resume_requires_review"] is True
+    assert RecoveryStore(recovery).task_status(OTHER_TASK_ID)["held"] is True
