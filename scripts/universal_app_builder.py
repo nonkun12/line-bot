@@ -334,7 +334,8 @@ def create_pull_request(repo: str, token: str, branch: str, requirement: str, su
 
 def main() -> int:
     requirement = os.environ.get("APP_REQUIREMENT", "").strip()[:MAX_REQUIREMENT_LENGTH]
-    token = os.environ.get("APP_GITHUB_TOKEN", "").strip()
+    token = os.environ.pop("APP_GITHUB_TOKEN", "").strip()
+    groq_api_key = os.environ.pop("GROQ_API_KEY", "").strip()
     owner = os.environ.get("APP_GITHUB_OWNER", "nonkun12").strip() or "nonkun12"
     if not requirement:
         print("No app requirement supplied")
@@ -343,7 +344,10 @@ def main() -> int:
         print("APP_GITHUB_TOKEN is not configured; refusing to create a repository")
         return 2
     try:
-        client = Groq(api_key=os.environ["GROQ_API_KEY"])
+        if not groq_api_key:
+            print("GROQ_API_KEY is not configured; refusing to call the model")
+            return 2
+        client = Groq(api_key=groq_api_key)
         current_plan = ask(client, requirement)
     except Exception as exc:
         print(f"AI planning failed: {type(exc).__name__}: {exc}")
@@ -413,7 +417,7 @@ def main() -> int:
                     if checkout.returncode != 0:
                         print(checkout.stderr[-4000:])
                         return 1
-                    push = run(["git", "push", "--set-upstream", "origin", branch], workspace, timeout=180)
+                    push = push_branch(workspace, repo, ["--set-upstream", "origin", branch], token, timeout=180)
                     if push.returncode != 0:
                         print(push.stderr[-4000:])
                         return 1
