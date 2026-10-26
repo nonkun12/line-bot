@@ -342,7 +342,7 @@ def create_pull_request(repo: str, token: str, branch: str, requirement: str, su
 
 
 def main() -> int:
-    requirement = os.environ.get("APP_REQUIREMENT", "").strip()[:MAX_REQUIREMENT_LENGTH]
+    requirement = os.environ.pop("APP_REQUIREMENT", "").strip()[:MAX_REQUIREMENT_LENGTH]
     token = os.environ.pop("APP_GITHUB_TOKEN", "").strip()
     groq_api_key = os.environ.pop("GROQ_API_KEY", "").strip()
     owner = os.environ.get("APP_GITHUB_OWNER", "nonkun12").strip() or "nonkun12"
