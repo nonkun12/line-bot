@@ -25,3 +25,14 @@ def test_environment_specific_secret_files_are_ignored():
 
     assert ".env.*" in ignore
     assert "!.env.example" in ignore
+
+
+def test_ai_report_workflow_does_not_echo_or_inline_interpolate_secrets():
+    workflow = (
+        APP_SOURCE.parent / ".github" / "workflows" / "ai-report.yml"
+    ).read_text(encoding="utf-8")
+
+    assert 'echo "${{ secrets.AI_REPORT_URL }}"' not in workflow
+    assert 'x-internal-key: ${{ secrets.INTERNAL_PUSH_KEY }}' not in workflow
+    assert "permissions: {}" in workflow
+    assert 'AI_REPORT_URL: ${{ secrets.AI_REPORT_URL }}' in workflow
