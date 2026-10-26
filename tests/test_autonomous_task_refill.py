@@ -117,13 +117,15 @@ def test_refill_accepts_only_allowlisted_test_files(tmp_path: Path, path: str):
     assert result["tasks"][0]["allowed_paths"] == [path]
 
 
-def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):
+def test_refill_fails_closed_on_duplicate_catalog_ids(tmp_path: Path):
     queue, catalog, completed = _inputs(
         tmp_path,
-        candidates=[_task("task-same"), _task("task-same")],
+        candidates=[_task("task-dup"), _task("task-dup")],
     )
-    with pytest.raises(ValueError, match="duplicate"):
+    with pytest.raises(ValueError, match="duplicate catalog task ID"):
         build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+    # Ensure no runtime file was created
+    assert not (tmp_path / "runtime.json").exists()
 
 
 def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):
