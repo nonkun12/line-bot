@@ -57,3 +57,13 @@ def test_ci_debug_summary_does_not_publish_raw_pytest_log():
 
     assert "lines.append(full_log)" not in analyzer
     assert "Raw pytest log omitted for privacy" in analyzer
+
+
+def test_external_service_errors_do_not_echo_raw_exception_details():
+    root = APP_SOURCE.parent
+    delegate = (root / "n8n_delegate.py").read_text(encoding="utf-8")
+    wikipedia = (root / "wikipedia_tool.py").read_text(encoding="utf-8")
+
+    assert "error=str(exc)" not in delegate
+    assert 'print("N8N DELEGATE ERROR:", exc)' not in delegate
+    assert 'print("[WIKIPEDIA ERROR] summary lookup failed:", exc)' not in wikipedia
