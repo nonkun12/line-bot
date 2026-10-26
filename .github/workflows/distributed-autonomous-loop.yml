@@ -304,10 +304,12 @@ jobs:
           RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true' && 'ai-speaker-empty-transcript-no-brain-call' || '' }}
         run: |
           set -euo pipefail
+          # Resume validates membership against the reviewed catalog, because
+          # held tasks are intentionally absent from the tracked runtime queue.
           python -m scripts.resume_held_task \
             --state /tmp/autonomous-loop-state.json \
             --recovery-state /tmp/recovery-ai-state.json \
-            --queue .github/autonomous-loop-tasks.json \
+            --queue .github/autonomous-loop-task-catalog.json \
             --task-id "$RESUME_TASK_ID" \
             --cause-fixed
 
@@ -337,7 +339,8 @@ jobs:
             --catalog .github/autonomous-loop-task-catalog.json \
             --completed-state /tmp/autonomous-loop-state.json \
             --output /tmp/autonomous-loop-runtime-queue.json \
-            --history /tmp/line-bot-self-improvement.jsonl
+            --history /tmp/line-bot-self-improvement.jsonl \
+            | tee /tmp/autonomous-loop-refill-report.json
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
 
       - name: Generate review-only task proposals when catalog is exhausted
@@ -402,8 +405,33 @@ jobs:
           loop_rc=$?
           set -e
           if [ "$loop_rc" -eq 78 ]; then
-            echo "queue_empty" > /tmp/autonomous-loop-not-run
-            echo "::notice::NOT_RUN: queue_empty - no task was executed."
+            # Empty runtime queue can mean true exhaustion OR catalog tasks are
+            # all held/review-gated. Report the latter as BLOCKED, not NOT_RUN.
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          report_path = Path("/tmp/autonomous-loop-refill-report.json")
+          report = {}
+          if report_path.exists():
+              try:
+                  report = json.loads(report_path.read_text(encoding="utf-8"))
+              except (OSError, ValueError):
+                  report = {}
+          eligible = report.get("eligible_catalog_count")
+          held = report.get("skipped_catalog_held_ids")
+          review = report.get("skipped_catalog_review_ids")
+          if type(eligible) is int and eligible == 0 and isinstance(held, list) and held:
+              reason = f"catalog_exhausted_held:{len(held)}"
+              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\n", encoding="utf-8")
+              print(f"::warning::BLOCKED: {reason}; human review is required.")
+          elif type(eligible) is int and eligible == 0 and isinstance(review, list) and review:
+              reason = f"catalog_exhausted_review_pending:{len(review)}"
+              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\n", encoding="utf-8")
+              print(f"::warning::BLOCKED: {reason}; post-resume review is required.")
+          else:
+              Path("/tmp/autonomous-loop-not-run").write_text("queue_empty\n", encoding="utf-8")
+              print("::notice::NOT_RUN: queue_empty - no task was executed.")
+          PY
             exit 0
           fi
           if [ "$loop_rc" -eq 79 ]; then
@@ -850,7 +878,14 @@ jobs:
           recovery = os.getenv('RECOVERY_OUTCOME', '')
 
           not_run = os.path.exists('/tmp/autonomous-loop-not-run')
-          held_tasks = os.path.exists('/tmp/autonomous-loop-held-tasks')
+          held_reason_path = Path('/tmp/autonomous-loop-held-tasks')
+          held_reason = ''
+          if held_reason_path.exists():
+              try:
+                  held_reason = held_reason_path.read_text(encoding='utf-8').strip()
+              except OSError:
+                  held_reason = 'catalog_exhausted_held:reason_unavailable'
+          held_tasks = bool(held_reason)
           if not_run:
               status = 'NOT_RUN'
           elif held_tasks:
@@ -879,7 +914,7 @@ jobs:
           os.environ['AUTONOMOUS_MERGE_RESULT'] = 'NOT_AUTO_MERGED'
           reason = str(result.get('failure_reason') or '')
           if held_tasks:
-              reason = 'all_pending_tasks_held'
+              reason = held_reason
           if not reason and status not in {'PASS', 'NO_CHANGE'}:
               reason = f"loop_{status.lower()}" if result else f"workflow_failed_before_result:{run_outcome or 'not_run'}"
           if not reason and publish not in {'success', 'skipped'}:
