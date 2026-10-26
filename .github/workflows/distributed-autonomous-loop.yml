@@ -582,8 +582,16 @@ jobs:
           fi
           git merge-base --is-ancestor "$GITHUB_SHA" "$head"
           git diff --check "$GITHUB_SHA...$head"
-          auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
-          git push --set-upstream "$auth_url" "HEAD:refs/heads/$branch"
+          mkdir -p "$RUNNER_TEMP/empty-git-hooks"
+          export GIT_CONFIG_COUNT=3
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0=""
+          export GIT_CONFIG_KEY_1="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_1="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          export GIT_CONFIG_KEY_2="core.hooksPath"
+          export GIT_CONFIG_VALUE_2="$RUNNER_TEMP/empty-git-hooks"
+          git -c "remote.origin.url=https://github.com/${GITHUB_REPOSITORY}.git" -c "core.hooksPath=$RUNNER_TEMP/empty-git-hooks" push --set-upstream origin "HEAD:refs/heads/$branch"
+          unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1 GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2
           echo "PUBLISHED_BRANCH=$branch"
           echo "PUBLISHED_SHA=$head"
 
@@ -630,9 +638,17 @@ jobs:
           PY
 
           state_branch="autonomous-loop-state"
-          auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          mkdir -p "$RUNNER_TEMP/empty-git-hooks"
+          export GIT_CONFIG_COUNT=3
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0=""
+          export GIT_CONFIG_KEY_1="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_1="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          export GIT_CONFIG_KEY_2="core.hooksPath"
+          export GIT_CONFIG_VALUE_2="$RUNNER_TEMP/empty-git-hooks"
           if ! git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1; then
-            git push "$auth_url" "refs/remotes/origin/main:refs/heads/$state_branch"
+            git -c "remote.origin.url=https://github.com/${GITHUB_REPOSITORY}.git" -c "core.hooksPath=$RUNNER_TEMP/empty-git-hooks" push origin "refs/remotes/origin/main:refs/heads/$state_branch"
+            unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1 GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2
           fi
           git fetch --quiet origin "$state_branch"
           rm -rf /tmp/autonomous-state-worktree
@@ -730,9 +746,17 @@ jobs:
               raise SystemExit('invalid local Recovery AI state; durable update blocked')
           PY
           state_branch="autonomous-loop-state"
-          auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          mkdir -p "$RUNNER_TEMP/empty-git-hooks"
+          export GIT_CONFIG_COUNT=3
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0=""
+          export GIT_CONFIG_KEY_1="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_1="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          export GIT_CONFIG_KEY_2="core.hooksPath"
+          export GIT_CONFIG_VALUE_2="$RUNNER_TEMP/empty-git-hooks"
           if ! git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1; then
-            git push "$auth_url" "refs/remotes/origin/main:refs/heads/$state_branch"
+            git -c "remote.origin.url=https://github.com/${GITHUB_REPOSITORY}.git" -c "core.hooksPath=$RUNNER_TEMP/empty-git-hooks" push origin "refs/remotes/origin/main:refs/heads/$state_branch"
+            unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1 GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2
           fi
           git fetch --quiet origin "$state_branch"
           rm -rf /tmp/recovery-ai-state-worktree
