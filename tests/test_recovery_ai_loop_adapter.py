@@ -222,7 +222,7 @@ def test_preflight_blocked_does_not_increment_recovery_failure_streak(tmp_path, 
 
 
 @pytest.mark.parametrize(("reason", "expected_category", "expected_action"), [
-    ("task_runtime_failed", "process_crash", "REPAIR_ONCE"),
+    ("task_runtime_failed", "unknown", "HOLD"),
     ("summary_stale", "invalid_evidence", "HOLD"),
     ("diff_unavailable", "invalid_evidence", "HOLD"),
     ("produced_not_descendant_of_base", "invalid_evidence", "HOLD"),
@@ -337,3 +337,17 @@ def test_recovery_store_rejects_success_evidence_for_another_task(tmp_path):
             "task_id": "task-b", "base_sha": "a" * 40,
             "produced_sha": "b" * 40, "run_nonce": "c" * 32,
         })
+
+
+@pytest.mark.parametrize("stop_reason", ["stop_requested_during_task", "stop_requested_after_task"])
+def test_any_explicit_operator_stop_preserves_failure_streak(tmp_path, stop_reason):
+    path = tmp_path / "recovery.json"
+    store = RecoveryStore(path)
+    store.record_failure("task-stop", "timeout")
+    before = store.task_status("task-stop")
+    outcome = record_loop_outcome(path, {
+        "task_id": "task-stop", "status": "STOPPED", "exit_code": 130,
+        "failure_reason": stop_reason,
+    })
+    assert outcome == {"recorded": False, "reason": "operator_stop_not_task_failure"}
+    assert store.task_status("task-stop") == before
