@@ -48,3 +48,12 @@ def test_workflow_run_debugger_does_not_checkout_untrusted_commit():
     assert "ref: main" in workflow
     assert "persist-credentials: false" in workflow
     assert "ref: ${{ github.event.workflow_run.head_sha }}" not in workflow
+
+
+def test_ci_debug_summary_does_not_publish_raw_pytest_log():
+    analyzer = (
+        APP_SOURCE.parent / "scripts" / "ci_debug_trigger.py"
+    ).read_text(encoding="utf-8")
+
+    assert "lines.append(full_log)" not in analyzer
+    assert "Raw pytest log omitted for privacy" in analyzer
