@@ -86,4 +86,5 @@ jobs:
         if: steps.decision.outputs.continue != 'true'
         env:
           REASON: ${{ steps.decision.outputs.reason }}
-        run: echo "Safe continuation stopped: ${REASON:-decision_unavailable}"
+        run: |
+          echo "Safe continuation stopped: ${REASON:-decision_unavailable}"
