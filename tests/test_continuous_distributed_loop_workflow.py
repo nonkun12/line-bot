@@ -57,7 +57,15 @@ def _run_gate(tmp_path, rows, completed):
 
 
 def _row(task_id, *, status="PASS", exit_code=0):
-    return {"task_id": task_id, "status": status, "exit_code": exit_code}
+    return {
+        "task_id": task_id,
+        "status": status,
+        "exit_code": exit_code,
+        "control_tower": {
+            "recorded": True,
+            "orchestration": {"allow_continue": True},
+        },
+    }
 
 
 def test_continuation_gate_accepts_one_verified_pass(tmp_path):
@@ -69,13 +77,13 @@ def test_continuation_gate_accepts_one_verified_pass(tmp_path):
     assert "CONTINUATION_ALLOWED verified_tasks=1" in result.stdout
 
 
-def test_continuation_gate_accepts_verified_no_change(tmp_path):
+def test_continuation_gate_rejects_no_change(tmp_path):
     result, output = _run_gate(
         tmp_path, [_row("task-no-change", status="NO_CHANGE")], ["task-no-change"]
     )
     assert result.returncode == 0
-    assert output.splitlines() == ["continue=true", "task_id=task-no-change"]
-    assert "CONTINUATION_ALLOWED verified_tasks=1" in result.stdout
+    assert output.splitlines() == ["continue=false"]
+    assert "CONTINUATION_STOP=task_status_not_successful" in result.stdout
 
 
 def test_continuation_gate_accepts_four_verified_passes(tmp_path):
@@ -193,7 +201,7 @@ def test_continuation_gate_rejects_malformed_durable_state(tmp_path):
     assert "CONTINUATION_STOP=durable_completion_not_confirmed" in result.stdout
 
 
-def test_distributed_loop_continuation_depth_is_bounded_and_propagated():
+def test_distributed_loop_continuation_depth_is_propagated():
     root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
     source = (root / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     continuation = (root / "continuous-distributed-loop.yml").read_text(encoding="utf-8")
@@ -202,9 +210,9 @@ def test_distributed_loop_continuation_depth_is_bounded_and_propagated():
     assert "continuation_depth:" in source
     assert "options:" in source
     assert 'match = re.search(r"continuation_depth=(\\d+)", title)' in continuation
-    assert 'if [ "$depth" -ge 3 ]; then' in continuation
+    assert 'if [ "$depth" -ge 3 ]; then' not in continuation
     assert '-f continuation_depth="${{ steps.active.outputs.next_depth }}"' in continuation
-    assert "CONTINUATION_STOP=bounded_depth_limit" in continuation
+    assert "CONTINUATION_STOP=bounded_depth_limit" not in continuation
     # The bounded chain resumes through the distributed loop's own schedule.
     scheduled = source
     assert "cron: '30 4,10,16,22 * * *'" in scheduled
@@ -274,11 +282,10 @@ def test_continuation_depth_two_dispatches_depth_three(tmp_path):
     assert "next_depth=3" in output.splitlines()
 
 
-def test_continuation_depth_three_stops_at_bound(tmp_path):
-    result, output = _run_active_check(tmp_path, "Distributed Loop (continuation_depth=3)")
+def test_continuation_depth_beyond_three_continues_when_no_active_run(tmp_path):
+    result, output = _run_active_check(tmp_path, "Distributed Loop (continuation_depth=37)")
     assert result.returncode == 0, result.stderr
-    assert output.splitlines() == ["dispatch=false"]
-    assert "CONTINUATION_STOP=bounded_depth_limit" in result.stdout
+    assert output.splitlines() == ["dispatch=true", "next_depth=38"]
 
 
 def test_continuation_depth_missing_fails_closed(tmp_path):
