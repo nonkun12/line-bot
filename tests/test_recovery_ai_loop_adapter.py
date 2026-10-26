@@ -221,6 +221,39 @@ def test_preflight_blocked_does_not_increment_recovery_failure_streak(tmp_path, 
     assert store.task_status("task-a") == before
 
 
+@pytest.mark.parametrize(("reason", "expected_category", "expected_action"), [
+    ("task_runtime_failed", "process_crash", "REPAIR_ONCE"),
+    ("summary_stale", "invalid_evidence", "HOLD"),
+    ("diff_unavailable", "invalid_evidence", "HOLD"),
+    ("produced_not_descendant_of_base", "invalid_evidence", "HOLD"),
+    ("summary_test_evidence_missing_or_invalid", "invalid_evidence", "HOLD"),
+    ("pytest_test_regression", "test_regression", "REPAIR_ONCE"),
+    ("connection_reset", "network_transient", "RETRY"),
+    ("api_rate_limited", "rate_limited", "RETRY"),
+])
+def test_concrete_failure_reasons_use_bounded_recovery_categories(tmp_path, reason, expected_category, expected_action):
+    from scripts.recovery_ai_loop_adapter import _category
+
+    payload = {"task_id": "task-category", "status": "FAIL", "exit_code": 1, "failure_reason": reason}
+    assert _category(payload) == expected_category
+    outcome = record_loop_outcome(tmp_path / "recovery.json", payload)
+    assert outcome["decision"]["action"] == expected_action
+    assert outcome["decision"]["requires_human"] is (expected_action == "HOLD")
+
+
+def test_operator_stop_does_not_increment_failure_streak(tmp_path):
+    path = tmp_path / "recovery.json"
+    store = RecoveryStore(path)
+    store.record_failure("task-stop", "timeout")
+    before = store.task_status("task-stop")
+    outcome = record_loop_outcome(path, {
+        "task_id": "task-stop", "status": "STOPPED", "exit_code": 130,
+        "failure_reason": "stop_requested_during_task",
+    })
+    assert outcome == {"recorded": False, "reason": "operator_stop_not_task_failure"}
+    assert store.task_status("task-stop") == before
+
+
 def test_real_task_failure_still_increments_recovery_failure_streak(tmp_path):
     path = tmp_path / "recovery.json"
     outcome = record_loop_outcome(path, {
