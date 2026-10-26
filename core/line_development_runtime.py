@@ -291,14 +291,16 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         anchor = "def test_continuation_depth_missing_fails_closed(tmp_path):"
         if text.count(anchor) != 1:
             return None, "deterministic_anchor_not_unique:continuation_depth_four"
-        addition = (
-            "def test_safe_continuation_depth_guard_accepts_depth_four():\n"
-            "    workflow = Path(__file__).resolve().parents[1] / \".github\" / \"workflows\" / \"distributed-loop-safe-continuation.yml\"\n"
-            "    source = workflow.read_text(encoding=\"utf-8\")\n"
-            "    assert 'case \"$NEXT_DEPTH\" in \"\"|*[!0-9]*|0)' in source\n"
-            "    assert \"NEXT_DEPTH\" in source\n"
-            "\n\n"
-        )
+        newline = chr(10)
+        addition = newline.join([
+            "def test_safe_continuation_depth_guard_accepts_depth_four():",
+            "    workflow = Path(__file__).resolve().parents[1] / \".github\" / \"workflows\" / \"distributed-loop-safe-continuation.yml\"",
+            "    source = workflow.read_text(encoding=\"utf-8\")",
+            "    assert 'case \"$NEXT_DEPTH\" in \"\"|*[!0-9]*|0)' in source",
+            "    assert \"NEXT_DEPTH\" in source",
+            "",
+            "",
+        ]) + newline
         replacement = addition + anchor
         if len(anchor) > 1200 or len(replacement) > 1800:
             return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(replacement)}"
