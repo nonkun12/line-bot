@@ -281,6 +281,15 @@ def test_continuation_depth_three_stops_at_bound(tmp_path):
     assert "CONTINUATION_STOP=bounded_depth_limit" in result.stdout
 
 
+def test_safe_continuation_depth_guard_accepts_depth_four():
+    workflow = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-loop-safe-continuation.yml"
+    source = workflow.read_text(encoding="utf-8")
+    guard = next(line.strip() for line in source.splitlines() if line.strip().startswith('case \"$NEXT_DEPTH\" in'))
+    for value, expected in (("4", 0), ("", 1), ("0", 1), ("abc", 1)):
+        result = subprocess.run(["bash", "-c", guard], env={**os.environ, "NEXT_DEPTH": value}, capture_output=True, text=True, check=False)
+        assert result.returncode == expected
+
+
 def test_continuation_depth_missing_fails_closed(tmp_path):
     result, output = _run_active_check(tmp_path, "Distributed Loop")
     assert result.returncode != 0
