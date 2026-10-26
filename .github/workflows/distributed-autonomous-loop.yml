@@ -648,7 +648,6 @@ jobs:
           export GIT_CONFIG_VALUE_2="$RUNNER_TEMP/empty-git-hooks"
           if ! git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1; then
             git -c "remote.origin.url=https://github.com/${GITHUB_REPOSITORY}.git" -c "core.hooksPath=$RUNNER_TEMP/empty-git-hooks" push origin "refs/remotes/origin/main:refs/heads/$state_branch"
-            unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1 GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2
           fi
           git fetch --quiet origin "$state_branch"
           rm -rf /tmp/autonomous-state-worktree
@@ -684,7 +683,7 @@ jobs:
             echo "Durable state already contains all completed task IDs."
           else
             git -C /tmp/autonomous-state-worktree commit -m "chore: record autonomous loop completion"
-            git -C /tmp/autonomous-state-worktree push "$auth_url" HEAD:refs/heads/$state_branch
+            git -C /tmp/autonomous-state-worktree -c "remote.origin.url=https://github.com/${GITHUB_REPOSITORY}.git" -c "core.hooksPath=$RUNNER_TEMP/empty-git-hooks" push origin HEAD:refs/heads/$state_branch
           fi
 
       - name: Persist Recovery AI durable state
@@ -756,7 +755,6 @@ jobs:
           export GIT_CONFIG_VALUE_2="$RUNNER_TEMP/empty-git-hooks"
           if ! git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1; then
             git -c "remote.origin.url=https://github.com/${GITHUB_REPOSITORY}.git" -c "core.hooksPath=$RUNNER_TEMP/empty-git-hooks" push origin "refs/remotes/origin/main:refs/heads/$state_branch"
-            unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1 GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2
           fi
           git fetch --quiet origin "$state_branch"
           rm -rf /tmp/recovery-ai-state-worktree
@@ -805,9 +803,10 @@ jobs:
             echo "Recovery AI durable state already matches the local state."
           else
             git -C /tmp/recovery-ai-state-worktree commit -m "chore: persist Recovery AI task outcomes"
-            git -C /tmp/recovery-ai-state-worktree push "$auth_url" HEAD:refs/heads/$state_branch
+            git -C /tmp/recovery-ai-state-worktree -c "remote.origin.url=https://github.com/${GITHUB_REPOSITORY}.git" -c "core.hooksPath=$RUNNER_TEMP/empty-git-hooks" push origin HEAD:refs/heads/$state_branch
           fi
           git fetch --quiet origin "$state_branch"
+          unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1 GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2
           git show "origin/$state_branch:.autonomous-loop-state.json" > /tmp/recovery-ai-state-readback.json
           python - <<'PY'
           import json
