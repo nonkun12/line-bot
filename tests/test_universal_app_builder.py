@@ -141,3 +141,4 @@ def test_app_builder_removes_credentials_from_parent_environment():
     for source in (standalone, empty_repo):
         assert 'os.environ.pop("APP_GITHUB_TOKEN", "")' in source
         assert 'os.environ.pop("GROQ_API_KEY", "")' in source
+        assert 'os.environ.pop("APP_REQUIREMENT", "")' in source
