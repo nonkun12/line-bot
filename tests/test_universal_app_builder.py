@@ -93,6 +93,8 @@ def test_generated_tests_receive_no_environment_credentials(monkeypatch, tmp_pat
     monkeypatch.setenv("APP_GITHUB_TOKEN", "app-token-for-test")
     monkeypatch.setenv("GROQ_API_KEY", "model-key-for-test")
     monkeypatch.setenv("INTERNAL_PUSH_KEY", "internal-key-for-test")
+    monkeypatch.setenv("APP_REQUIREMENT", "private user requirement")
+    monkeypatch.setenv("APP_USER_ID", "private-user-id")
     captured_envs = []
 
     def fake_run(cmd, cwd, *, timeout=900, env=None):
@@ -108,6 +110,8 @@ def test_generated_tests_receive_no_environment_credentials(monkeypatch, tmp_pat
         assert "APP_GITHUB_TOKEN" not in env
         assert "GROQ_API_KEY" not in env
         assert "INTERNAL_PUSH_KEY" not in env
+        assert "APP_REQUIREMENT" not in env
+        assert "APP_USER_ID" not in env
         assert not any("TOKEN" in key.upper() or "SECRET" in key.upper() or "API_KEY" in key.upper() for key in env)
 
 
