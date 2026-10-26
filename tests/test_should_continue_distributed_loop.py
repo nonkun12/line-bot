@@ -20,7 +20,7 @@ def _row(status="PASS", exit_code=0, *, recorded=True, allow_continue=True, fail
 def _artifact(tmp_path, rows):
     path = tmp_path / "download" / "minimal-autonomous-loop.jsonl"
     path.parent.mkdir(parents=True)
-    path.write_text("".join(json.dumps(row) + "\\n" for row in rows), encoding="utf-8")
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
     return path.parent
 
 
