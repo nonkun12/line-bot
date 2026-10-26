@@ -1,0 +1,85 @@
+name: Distributed Loop Safe Continuation
+
+on:
+  workflow_run:
+    workflows: ["Distributed Autonomous Development Loop"]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: distributed-loop-safe-continuation
+  cancel-in-progress: false
+
+jobs:
+  decide-and-dispatch:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      contains(fromJSON('["schedule","workflow_dispatch","issue_comment"]'), github.event.workflow_run.event)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download source run evidence
+        id: evidence
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          pattern: minimal-autonomous-loop-*
+          path: artifacts/source-run
+          merge-multiple: true
+
+      - name: Evaluate fail-closed continuation gates
+        id: decision
+        if: always()
+        env:
+          SOURCE_RUN_NAME: ${{ github.event.workflow_run.name }}
+          SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          set -euo pipefail
+          set +e
+          python -m scripts.should_continue_distributed_loop \
+            --artifact-dir artifacts/source-run \
+            --run-name "$SOURCE_RUN_NAME" \
+            --conclusion "$SOURCE_CONCLUSION" \
+            --max-depth 3 \
+            --output /tmp/continuation-decision.json
+          decision_rc=$?
+          set -e
+          if [ ! -s /tmp/continuation-decision.json ]; then
+            printf '%s\n' '{"continue":false,"reason":"decision_evidence_missing"}' > /tmp/continuation-decision.json
+          fi
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          result = json.loads(Path('/tmp/continuation-decision.json').read_text(encoding='utf-8'))
+          print(f"continue={str(result.get('continue') is True).lower()}")
+          print(f"next_depth={result.get('next_depth', '')}")
+          print(f"reason={result.get('reason', 'unknown')}")
+          print(f"decision_exit={decision_rc}")
+          PY
+          cat /tmp/continuation-decision.json
+
+      - name: Dispatch next bounded development cycle
+        if: steps.decision.outputs.continue == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEXT_DEPTH: ${{ steps.decision.outputs.next_depth }}
+        run: |
+          set -euo pipefail
+          case "$NEXT_DEPTH" in 1|2|3) ;; *) echo "::error::Invalid continuation depth"; exit 1 ;; esac
+          gh workflow run distributed-autonomous-loop.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f max_tasks=1 \
+            -f continuation_depth="$NEXT_DEPTH"
+          echo "Dispatched bounded next cycle at continuation_depth=$NEXT_DEPTH"
+
+      - name: Report safe stop
+        if: steps.decision.outputs.continue != 'true'
+        env:
+          REASON: ${{ steps.decision.outputs.reason }}
+        run: echo "Safe continuation stopped: ${REASON:-decision_unavailable}"
