@@ -104,3 +104,22 @@ def test_progress_does_not_count_foreign_task_result_as_completion(tmp_path: Pat
         "queue_total": 1,
         "queue_completed": 0,
     }
+
+
+def test_cli_emits_safe_diagnostic_for_unexpected_internal_error(monkeypatch, capsys):
+    import scripts.distributed_loop_queue_progress as progress_module
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["distributed_loop_queue_progress", "--queue", "queue.json", "--state", "state.json", "--results", "results.jsonl"],
+    )
+
+    def unexpected_error(*args, **kwargs):
+        raise RuntimeError("private path or raw data must not be logged")
+
+    monkeypatch.setattr(progress_module, "calculate_progress", unexpected_error)
+    assert main() == 2
+    output = capsys.readouterr().out
+    assert output.strip() == "QUEUE_PROGRESS_BLOCKED: RuntimeError"
+    assert "private path" not in output
