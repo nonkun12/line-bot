@@ -172,6 +172,15 @@ _ENTRIES: dict[str, WordEntry] = {
         example="Experts predict that prices will rise.（専門家は価格が上がると予測している。）",
         note="dict を含む語には「言う・述べる」に関係するものがあります。",
     ),
+    "explain": WordEntry(
+        word="explain",
+        pronunciation="イクスプレイン",
+        core_image="考えや理由を言葉にして、相手がわかる形にする → 説明する・明らかにする",
+        parts="語源の分解はここでは断定せず、「何が・なぜそうなのかを相手に伝わる形にする」という使い方のイメージで覚える。",
+        related=("explanation（説明）", "explainable（説明できる）", "clarify（明確にする）"),
+        example="Could you explain why the plan changed?（なぜ計画が変わったのか説明してもらえますか。）",
+        note="explain something to someone / explain why ... の形も一緒に覚えると使いやすい語です。",
+    ),
     "review": WordEntry(
         word="review",
         pronunciation="レビュー",
