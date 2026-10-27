@@ -191,4 +191,6 @@ def test_explicit_development_prefix_defaults_to_existing_system_unless_app_crea
 
     assert maintenance.mode == TaskMode.SELF_IMPROVEMENT
     assert maintenance.project_repository == "nonkun12/line-bot"
-    assert app_creation.mode == TaskMode.NEW_SOFTWARE
+    # The normal development prefix always targets the existing Secretary repo.
+    assert app_creation.mode == TaskMode.SELF_IMPROVEMENT
+    assert app_creation.project_repository == "nonkun12/line-bot"
