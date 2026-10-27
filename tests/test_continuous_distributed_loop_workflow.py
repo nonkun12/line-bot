@@ -57,7 +57,15 @@ def _run_gate(tmp_path, rows, completed):
 
 
 def _row(task_id, *, status="PASS", exit_code=0):
-    return {"task_id": task_id, "status": status, "exit_code": exit_code}
+    return {
+        "task_id": task_id,
+        "status": status,
+        "exit_code": exit_code,
+        "control_tower": {
+            "recorded": True,
+            "orchestration": {"allow_continue": True},
+        },
+    }
 
 
 def test_continuation_gate_accepts_one_verified_pass(tmp_path):
@@ -69,13 +77,13 @@ def test_continuation_gate_accepts_one_verified_pass(tmp_path):
     assert "CONTINUATION_ALLOWED verified_tasks=1" in result.stdout
 
 
-def test_continuation_gate_accepts_verified_no_change(tmp_path):
+def test_continuation_gate_stops_on_no_change(tmp_path):
     result, output = _run_gate(
         tmp_path, [_row("task-no-change", status="NO_CHANGE")], ["task-no-change"]
     )
     assert result.returncode == 0
-    assert output.splitlines() == ["continue=true", "task_id=task-no-change"]
-    assert "CONTINUATION_ALLOWED verified_tasks=1" in result.stdout
+    assert output.splitlines() == ["continue=false"]
+    assert "CONTINUATION_STOP=task_status_not_pass" in result.stdout
 
 
 def test_continuation_gate_accepts_four_verified_passes(tmp_path):
@@ -93,7 +101,7 @@ def test_continuation_gate_stops_if_any_task_fails(tmp_path):
     result, output = _run_gate(tmp_path, rows, ["task-one", "task-two"])
     assert result.returncode == 0
     assert "continue=false" in output.splitlines()
-    assert "CONTINUATION_STOP=task_status_not_successful" in result.stdout
+    assert "CONTINUATION_STOP=task_status_not_pass" in result.stdout
 
 
 def test_continuation_gate_stops_when_task_is_not_run(tmp_path):
@@ -104,7 +112,7 @@ def test_continuation_gate_stops_when_task_is_not_run(tmp_path):
     )
     assert result.returncode == 0
     assert output.splitlines() == ["continue=false"]
-    assert "CONTINUATION_STOP=task_status_not_successful" in result.stdout
+    assert "CONTINUATION_STOP=task_status_not_pass" in result.stdout
 
 
 def test_continuation_gate_rejects_boolean_exit_code(tmp_path):
@@ -220,7 +228,7 @@ def test_distributed_loop_continuation_still_requires_existing_evidence_gate():
     assert "steps.gate.outputs.continue == 'true'" in continuation
     assert "steps.active.outputs.dispatch == 'true'" in continuation
     assert "durable_completion_not_confirmed" in continuation
-    assert "task_status_not_successful" in continuation
+    assert "task_status_not_pass" in continuation
     assert "another_loop_is_active" in continuation
 
 
