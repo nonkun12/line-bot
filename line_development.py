@@ -64,11 +64,11 @@ def dispatch_development_workflow(
     # LINEの通常開発経路ではアプリ新規作成・開発を開始しない。
     # 既存機能の改善（例:「アプリの通知機能を改善」）は許可し、作成意図は表現揺れも含めて拒否する。
     app_creation_patterns = (
-        r"(?:新規|新しい|新規の)\\s*(?:web\\s*)?(?:アプリ|ソフト|システム|サービス)",
-        r"(?:アプリ|ソフト|システム|サービス)\\s*(?:を|の)?\\s*(?:作成|作って|開発|構築|立ち上げ)",
+        r"(?:新規|新しい|新規の)\s*(?:web\s*)?(?:アプリ|ソフト|システム|サービス)",
+        r"(?:アプリ|ソフト|システム|サービス)\s*(?:を|の)?\s*(?:作成|作って|開発|構築|立ち上げ)",
         r"(?:作って|作成して|開発して|構築して).{0,12}(?:アプリ|ソフト|システム|サービス)",
-        r"\\b(?:build|create|develop)\\s+(?:(?:a|an)\\s+)?(?:new\\s+)?(?:web\\s+)?app\\b",
-        r"\\bnew\\s+(?:web\\s+)?app\\b",
+        r"\b(?:build|create|develop)\s+(?:(?:a|an)\s+)?(?:new\s+)?(?:web\s+)?app\b",
+        r"\bnew\s+(?:web\s+)?app\b",
     )
     lowered_instruction = instruction.lower()
     if any(re.search(pattern, lowered_instruction, re.IGNORECASE) for pattern in app_creation_patterns):
