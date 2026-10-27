@@ -136,3 +136,35 @@ def test_complete_failure_notifies_line_without_leaking_error(monkeypatch):
     assert response.get_json()["status"] == "failed"
     assert pushed == [("U1", "OpenClawの処理に失敗しました。時間をおいて再試行してください。")]
     assert "private" not in pushed[0][1]
+
+
+def test_openclaw_prefix_routes_to_server_ai_without_mac_queue(monkeypatch):
+    from types import SimpleNamespace
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "request_recovery_resume_review", lambda *a: (False, None))
+    monkeypatch.setattr(app_module, "request_distributed_loop", lambda *a: (False, None))
+    monkeypatch.setattr(app_module, "is_control_tower_status_command", lambda *a: False)
+    monkeypatch.setattr(app_module, "handle_core_image_command", lambda *a: None)
+    monkeypatch.setattr(app_module, "is_obsidian_intent", lambda *a: False)
+    monkeypatch.setattr(app_module, "extract_app_development_request", lambda *a: None)
+    monkeypatch.setattr(app_module, "handle_self_introduction", lambda *a: None)
+    monkeypatch.setattr(app_module, "extract_development_instruction", lambda *a: None)
+    monkeypatch.setattr(app_module, "_core_dynamic_enabled", lambda: False)
+    received = []
+    monkeypatch.setattr(
+        app_module, "generate_reply",
+        lambda user_id, message: received.append((user_id, message)) or "server reply",
+    )
+    monkeypatch.setattr(
+        app_module, "enqueue_openclaw_request",
+        lambda *a, **kw: pytest.fail("Mac queue must not be used"),
+        raising=False,
+    )
+
+    response = app_module._handle_ai_gateway_request(
+        SimpleNamespace(message="OpenClaw: explain this", user_id="U-test")
+    )
+
+    assert response == "server reply"
+    assert received == [("U-test", "explain this")]
