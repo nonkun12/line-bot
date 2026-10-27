@@ -212,8 +212,8 @@ jobs:
             *) echo "::error::Invalid task limit: ${REQUESTED_TASK_LIMIT}"; exit 1 ;;
           esac
           expected="${REQUESTED_TASK_LIMIT}"
-          echo "RESUME_TASK_ID=$RESUME_TASK_ID" >> "$GITHUB_ENV"
-          echo "CONFIRM_CAUSE_FIXED=$CONFIRM_CAUSE_FIXED" >> "$GITHUB_ENV"
+          echo "RESUME_TASK_ID=" >> "$GITHUB_ENV"
+          echo "CONFIRM_CAUSE_FIXED=false" >> "$GITHUB_ENV"
           if [ "${EVENT_NAME}" = "issue_comment" ]; then
             case "${COMMENT_BODY}" in
               "/distributed-loop") expected="1" ;;
@@ -234,6 +234,15 @@ jobs:
             expected="4"
           fi
           if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            if [ -n "$RESUME_TASK_ID" ]; then
+              if ! [[ "$RESUME_TASK_ID" =~ ^[A-Za-z0-9._-]{1,100}$ ]]; then
+                echo "::error::Invalid task ID."; exit 1
+              fi
+              if [ "$CONFIRM_CAUSE_FIXED" != "true" ]; then
+                echo "::error::A held task can resume only with explicit cause-fixed confirmation."; exit 1
+              fi
+              expected="1"
+            fi
             echo "RESUME_TASK_ID=$RESUME_TASK_ID" >> "$GITHUB_ENV"
             echo "CONFIRM_CAUSE_FIXED=$CONFIRM_CAUSE_FIXED" >> "$GITHUB_ENV"
             case "${TRIGGER_MODE}" in
@@ -280,7 +289,6 @@ jobs:
             (github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id != '') ||
             (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id=') && endsWith(github.event.comment.body, ' confirm_cause_fixed=true'))
           )
-        env:
         run: |
           set -euo pipefail
           if [ -n "$RESUME_TASK_ID" ]; then
@@ -303,7 +311,6 @@ jobs:
             (github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id != '') ||
             (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id=') && endsWith(github.event.comment.body, ' confirm_cause_fixed=true'))
           )
-        env:
         run: |
           set -euo pipefail
           # Resume validates membership against the reviewed catalog, because
