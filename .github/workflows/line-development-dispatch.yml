@@ -65,15 +65,23 @@ jobs:
         run: |
           set -euo pipefail
           : > /tmp/line-development-loop.log
-          # Only an explicitly test-only request may bypass the autonomous runtime.
-          # Implementation requests remain on the development path even when they
-          # mention E2E, tests, or pytest as acceptance criteria.
+          # Explicit test-only requests are separate from app creation and maintenance.
           if [[ "${DEV_INSTRUCTION}" =~ ^[[:space:]]*(本線E2Eテストを実行|E2Eテストを実行|pytestを実行|pytestのみを実行) ]]; then
             echo "E2E test-only instruction detected; running pytest without autonomous file-edit planning."
             echo "test_only=true" >> "$GITHUB_OUTPUT"
+            echo "app_creation=false" >> "$GITHUB_OUTPUT"
             python -m pytest -q --tb=native
+          elif python -c 'import sys; from scripts.create_app_scaffold import is_new_app_request; sys.exit(0 if is_new_app_request(sys.argv[1]) else 1)' "$DEV_INSTRUCTION"; then
+            echo "test_only=false" >> "$GITHUB_OUTPUT"
+            echo "app_creation=true" >> "$GITHUB_OUTPUT"
+            # New apps use a dedicated, path-restricted scaffold path. Validate its
+            # generator before writing files; it never overwrites an existing app.
+            python -m pytest -q --tb=native tests/test_create_app_scaffold.py
+            python -m scripts.create_app_scaffold --instruction "$DEV_INSTRUCTION" --run-id "$GITHUB_RUN_ID" --branch "line-dev/$GITHUB_RUN_ID"
+            echo "LINE_DEVELOPMENT_LOOP=PASS index=1/1" | tee -a /tmp/line-development-loop.log
           else
             echo "test_only=false" >> "$GITHUB_OUTPUT"
+            echo "app_creation=false" >> "$GITHUB_OUTPUT"
             loop_count="${{ github.event.inputs.loop_count || '4' }}"
             case "$loop_count" in
               1|2|3|4) ;;
