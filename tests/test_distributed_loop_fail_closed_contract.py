@@ -62,3 +62,18 @@ def test_resumed_recovery_ai_state_is_persisted_before_held_queue_exit():
     assert 'record.get("resume_requires_review") is not True' in step
     assert "git push" in step
     assert "durable Recovery AI read-back mismatch" in step
+
+
+
+def test_resumed_recovery_persistence_failure_is_wired_into_final_gates():
+    workflow = (ROOT / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    step = workflow.split(
+        "- name: Persist explicitly resumed Recovery AI state before held-queue exit", 1
+    )[1].split("- name: Persist Recovery AI durable state", 1)[0]
+    assert "id: persist_resumed_recovery_ai" in step
+    failure_override = (
+        "RECOVERY_OUTCOME: ${{ steps.persist_resumed_recovery_ai.outcome == 'failure' "
+        "&& 'failure' || steps.persist_recovery_ai.outcome }}"
+    )
+    # Both Sheets and the final report/classifier must receive the fail-closed outcome.
+    assert workflow.count(failure_override) == 2

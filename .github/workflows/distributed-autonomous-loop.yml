@@ -672,6 +672,7 @@ jobs:
           fi
 
       - name: Persist explicitly resumed Recovery AI state before held-queue exit
+        id: persist_resumed_recovery_ai
         if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -922,7 +923,7 @@ jobs:
           LOOP_OUTCOME: ${{ steps.run_task.outcome }}
           PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
           STATE_OUTCOME: ${{ steps.persist_state.outcome }}
-          RECOVERY_OUTCOME: ${{ steps.persist_recovery_ai.outcome }}
+          RECOVERY_OUTCOME: ${{ steps.persist_resumed_recovery_ai.outcome == 'failure' && 'failure' || steps.persist_recovery_ai.outcome }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -1057,7 +1058,7 @@ jobs:
           LOOP_OUTCOME: ${{ steps.run_task.outcome }}
           PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
           STATE_OUTCOME: ${{ steps.persist_state.outcome }}
-          RECOVERY_OUTCOME: ${{ steps.persist_recovery_ai.outcome }}
+          RECOVERY_OUTCOME: ${{ steps.persist_resumed_recovery_ai.outcome == 'failure' && 'failure' || steps.persist_recovery_ai.outcome }}
           SHEETS_OUTCOME: ${{ steps.sheets.outcome }}
           JOB_STATUS: ${{ job.status }}
           PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event_name == 'pull_request_target' && github.event.pull_request.number || '' }}
