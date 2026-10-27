@@ -109,7 +109,8 @@ def build_proposals(
     proposals = []
     approved_tasks = []
     rejected_approved_tasks = []
-    seen = set()
+    seen_approved = set()
+    seen_proposals = set()
     labeled_open_issue_count = 0
     invalid_spec_count = 0
     excluded_task_count = 0
@@ -138,18 +139,22 @@ def build_proposals(
         if spec is None:
             invalid_spec_count += 1
             continue
-        if spec["id"] in excluded or spec["id"] in seen:
+        if spec["id"] in excluded:
             excluded_task_count += 1
             continue
         number = issue.get("number")
         if type(number) is not int or number < 1:
             invalid_issue_number_count += 1
             continue
-        seen.add(spec["id"])
         fingerprint = hashlib.sha256(
             json.dumps(spec, sort_keys=True, ensure_ascii=False).encode("utf-8")
         ).hexdigest()
         if approved:
+            # Review-only candidates and invalid approvals must not reserve an ID
+            # and shadow a later exact match to the registered catalog.
+            if spec["id"] in seen_approved:
+                excluded_task_count += 1
+                continue
             # Approval is necessary but not sufficient: the issue spec must
             # exactly match a separately reviewed, immutable-SHA catalog entry.
             if registered.get(spec["id"]) != spec:
@@ -159,10 +164,15 @@ def build_proposals(
                     "reason": "not_in_registered_catalog_or_spec_mismatch",
                 })
                 continue
+            seen_approved.add(spec["id"])
             if len(approved_tasks) < min(4, queue_capacity):
                 approved_tasks.append({**spec, "source_issue": number, "proposal_fingerprint": fingerprint})
                 excluded.add(spec["id"])
             continue
+        if spec["id"] in seen_proposals or spec["id"] in seen_approved:
+            excluded_task_count += 1
+            continue
+        seen_proposals.add(spec["id"])
         proposals.append({
             **spec,
             "source_issue": number,
