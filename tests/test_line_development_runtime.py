@@ -889,8 +889,8 @@ def test_three_new_refill_seed_plans_are_syntax_safe_and_bounded(tmp_path, monke
 
 def test_duplicate_approved_task_builds_one_bounded_deterministic_change(monkeypatch, tmp_path):
     chosen = "tests/test_autonomous_task_proposals.py"
-    anchor = "def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):\\n"
-    original = anchor + "    pass\\n"
+    anchor = "def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):\n"
+    original = anchor + "    pass\n"
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(original, encoding="utf-8")
