@@ -291,7 +291,7 @@
     },
     {
       "id": "safe-continuation-depth-four-regression-20261026",
-      "instruction": "tests/test_continuous_distributed_loop_workflow.py のみに、新しい固有名の回帰テストを1件追加してください。`.github/workflows/continuous-distributed-loop.yml` の continuation depth guard が正の10進整数を許可し、空・0・非数字を拒否する入力検証を維持していることを確認してください。既存テストを変更せず、外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "instruction": "tests/test_continuous_distributed_loop_workflow.py のみに、新しい固有名の回帰テストを1件追加してください。`.github/workflows/continuous-distributed-loop.yml` の continuation depth guard について、depth=0・1・2 は次の depth 1・2・3 を許可し、depth=3 は停止し、depth 欠落・非数字・負数は fail-closed になることを検証してください。現行の起動深度0を拒否する誤った条件は追加しないでください。既存テストを変更せず、外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
       "allowed_paths": [
         "tests/test_continuous_distributed_loop_workflow.py"
       ]
