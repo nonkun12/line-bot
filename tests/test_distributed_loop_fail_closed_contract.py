@@ -49,3 +49,15 @@ def test_held_task_resume_uses_reviewed_catalog_not_only_tracked_queue():
     step = workflow.split("- name: Resume one explicitly approved held task", 1)[1].split("- name: Restore durable Recovery RAG history", 1)[0]
     assert "--queue .github/autonomous-loop-task-catalog.json" in step
     assert "--cause-fixed" in step
+
+
+def test_resumed_recovery_ai_state_is_persisted_before_held_queue_exit():
+    workflow = (ROOT / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    step = workflow.split(
+        "- name: Persist explicitly resumed Recovery AI state before held-queue exit", 1
+    )[1].split("- name: Persist Recovery AI durable state", 1)[0]
+    assert "RESUME_TASK_ID" in step
+    assert "resume_requires_review" in step
+    assert 'record.get("held") is False' in step
+    assert "git push" in step
+    assert "durable Recovery AI read-back mismatch" in step
