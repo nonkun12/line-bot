@@ -65,7 +65,9 @@ def main() -> int:
     args = parser.parse_args()
     try:
         result = calculate_progress(args.queue, args.state, args.results)
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except Exception as exc:
+        # Fail closed and always emit a stable, allowlisted diagnostic for the
+        # workflow caller. Do not expose exception messages, paths, or data.
         print(f"QUEUE_PROGRESS_BLOCKED: {type(exc).__name__}")
         return 2
     print(json.dumps(result, sort_keys=True))
