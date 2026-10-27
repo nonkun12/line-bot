@@ -681,8 +681,8 @@ jobs:
           set -euo pipefail
           # Persist an explicit unhold even when the only resumed task awaits
           # review and the runner exits rc=78 before normal result/RAG export.
-          if [ -z "$RESUME_TASK_ID" ] || [ ! -f /tmp/autonomous-loop-held-tasks ]; then
-            echo "No resumed held-task state requires this persistence path."
+          if [ -z "$RESUME_TASK_ID" ]; then
+            echo "No explicit resume request requires this persistence path."
             exit 0
           fi
           if [ ! -s /tmp/recovery-ai-state.json ] || [ ! -s /tmp/autonomous-loop-state.json ]; then
