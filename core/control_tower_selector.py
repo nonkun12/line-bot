@@ -66,13 +66,15 @@ def select_next_task(
         # stale/mismatched HEAD so Recovery AI can route the right repair.
         return _blocked("unregistered_task")
 
-    for task_id in queued_task_ids:
+    for index, task_id in enumerate(queued_task_ids):
         if task_id in held or task_id in completed:
             continue
+        # Higher priority for earlier queued items
+        priority = 50 + (len(queued_task_ids) - index)
         return ControlTowerDecisionRecord(
             reason_code="evidence_sufficient",
             confidence=1.0,
-            priority=50,
+            priority=priority,
             next_action="SELECT_REGISTERED_TASK",
             gate_status="PASS",
             evidence_sha=evidence_sha,
