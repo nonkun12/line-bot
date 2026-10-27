@@ -156,8 +156,8 @@ def test_generic_development_request_does_not_implicitly_start_app_builder(monke
     )
 
     assert reply == (
-        "新規アプリ作成は通常の開発経路と分離しています。"
-        "『アプリ開発: ○○を作って』と明示してください。"
+        "新規アプリ作成はLINEの通常開発指示では実行しません。"
+        "既存システムの保守・機能追加を指示するか、管理された専用フローを使用してください。"
     )
 
 
