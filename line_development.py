@@ -49,7 +49,7 @@ def dispatch_development_workflow(
     repository: str | None = None,
     authorized: bool = False,
 ) -> str:
-    """Dispatch governed Secretary development or independent app creation."""
+    """Dispatch authorized development requests to the existing Secretary repository."""
     instruction = str(instruction or "").strip()
     if not instruction:
         return "開発指示が空です。『開発: ○○を実装して』の形式で指定してください。"
@@ -61,14 +61,17 @@ def dispatch_development_workflow(
     if not token:
         return "開発ワークフローを起動できません。GITHUB_TOKENが設定されていません。"
 
-    # LINEの通常開発経路から新規アプリ作成を開始しない。明示的な専用フローに限定する。
-    app_creation_phrases = (
-        "アプリを作って", "アプリを作成", "webアプリを作", "新規アプリ",
-        "新規ソフト", "ソフトを作って", "システムを新規作成",
-        "サービスを新規作成", "build a new app", "create a new app",
+    # LINEの通常開発経路ではアプリ新規作成・開発を開始しない。
+    # 既存機能の改善（例:「アプリの通知機能を改善」）は許可し、作成意図は表現揺れも含めて拒否する。
+    app_creation_patterns = (
+        r"(?:新規|新しい|新規の)\\s*(?:web\\s*)?(?:アプリ|ソフト|システム|サービス)",
+        r"(?:アプリ|ソフト|システム|サービス)\\s*(?:を|の)?\\s*(?:作成|作って|開発|構築|立ち上げ)",
+        r"(?:作って|作成して|開発して|構築して).{0,12}(?:アプリ|ソフト|システム|サービス)",
+        r"\\b(?:build|create|develop)\\s+(?:(?:a|an)\\s+)?(?:new\\s+)?(?:web\\s+)?app\\b",
+        r"\\bnew\\s+(?:web\\s+)?app\\b",
     )
     lowered_instruction = instruction.lower()
-    if any(phrase.lower() in lowered_instruction for phrase in app_creation_phrases):
+    if any(re.search(pattern, lowered_instruction, re.IGNORECASE) for pattern in app_creation_patterns):
         return (
             "新規アプリ作成はLINEの通常開発指示では実行しません。"
             "既存システムの保守・機能追加を指示するか、管理された専用フローを使用してください。"
