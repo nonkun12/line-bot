@@ -74,15 +74,7 @@ class TaskClassifier:
         if text.startswith("開発:") or lowered.startswith("dev:"):
             if self._matches_any(text, self._SECRETARY_DEV_HINTS):
                 return TaskClassification(TaskMode.SELF_IMPROVEMENT, "high", "line-bot", "nonkun12/line-bot", "development request targets the Secretary")
-            # A normal LINE development prefix must never launch a new-app builder.
-            # New-app creation is handled only by a separate, explicitly authorized flow.
-            return TaskClassification(
-                TaskMode.SELF_IMPROVEMENT,
-                "medium",
-                "line-bot",
-                "nonkun12/line-bot",
-                "explicit development prefix defaults to existing-system maintenance",
-            )
+            return TaskClassification(TaskMode.NEW_SOFTWARE, "high", reason="explicit development prefix for independent software")
 
         if self._matches_any(text, ("ソフトを作って", "アプリを作って", "システムを作って", "サービスを作って", "新規ソフト", "新規アプリ")):
             return TaskClassification(TaskMode.NEW_SOFTWARE, "medium", reason="new software language")
