@@ -316,3 +316,29 @@ def test_only_continuous_workflow_owns_automatic_dispatch():
     assert "continuation_depth=" in continuous
     assert "gh workflow run distributed-autonomous-loop.yml" not in postrun
     assert "Automatically continue the verified distributed loop" not in postrun
+
+def test_continuation_gate_rejects_missing_control_tower_evidence(tmp_path):
+    row = _row("task-missing-tower")
+    row.pop("control_tower")
+    result, output = _run_gate(tmp_path, [row], ["task-missing-tower"])
+    assert result.returncode == 0
+    assert output.splitlines() == ["continue=false"]
+    assert "CONTINUATION_STOP=control_tower_evidence_missing" in result.stdout
+
+
+def test_continuation_gate_rejects_control_tower_denial(tmp_path):
+    row = _row("task-tower-denied")
+    row["control_tower"]["orchestration"]["allow_continue"] = False
+    result, output = _run_gate(tmp_path, [row], ["task-tower-denied"])
+    assert result.returncode == 0
+    assert output.splitlines() == ["continue=false"]
+    assert "CONTINUATION_STOP=control_tower_denied_continue" in result.stdout
+
+
+def test_continuation_gate_rejects_failure_reason_on_pass(tmp_path):
+    row = _row("task-with-failure-reason")
+    row["failure_reason"] = "unexpected_failure"
+    result, output = _run_gate(tmp_path, [row], ["task-with-failure-reason"])
+    assert result.returncode == 0
+    assert output.splitlines() == ["continue=false"]
+    assert "CONTINUATION_STOP=failure_reason_present" in result.stdout
