@@ -1,3 +1,5 @@
+import pytest
+
 from line_development import extract_development_instruction, dispatch_development_workflow
 
 
@@ -156,9 +158,80 @@ def test_generic_development_request_does_not_implicitly_start_app_builder(monke
     )
 
     assert reply == (
-        "新規アプリ作成は通常の開発経路と分離しています。"
-        "『アプリ開発: ○○を作って』と明示してください。"
+        "新規アプリ作成はLINEの通常開発指示では実行しません。"
+        "既存システムの保守・機能追加を指示するか、管理された専用フローを使用してください。"
     )
+
+
+@pytest.mark.parametrize(
+    "instruction",
+    [
+        "新しいアプリを開発して",
+        "アプリ作成して",
+        "新規システムを構築して",
+        "create a new app",
+        "build a new web app",
+    ],
+)
+def test_new_app_creation_variants_are_blocked_before_dispatch(monkeypatch, instruction):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+
+    def unexpected_post(*args, **kwargs):
+        raise AssertionError("new-app request must not trigger GitHub Actions")
+
+    monkeypatch.setattr("line_development.httpx.post", unexpected_post)
+    reply = dispatch_development_workflow(
+        instruction,
+        user_id="U123",
+        token="secret",
+        repository="nonkun12/line-bot",
+    )
+
+    assert "新規アプリ作成はLINEの通常開発指示では実行しません" in reply
+
+
+def test_generic_existing_feature_request_uses_line_development_workflow(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        return FakeResponse()
+
+    monkeypatch.setattr("line_development.httpx.post", fake_post)
+    reply = dispatch_development_workflow(
+        "天気機能を改善して",
+        user_id="U123",
+        token="secret",
+        repository="nonkun12/line-bot",
+    )
+
+    assert "/actions/workflows/line-development-dispatch.yml" in captured["url"]
+    assert captured["json"]["inputs"]["instruction"] == "天気機能を改善して"
+    assert "受け付けました" in reply
+
+
+def test_existing_app_feature_improvement_is_not_blocked(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        return FakeResponse()
+
+    monkeypatch.setattr("line_development.httpx.post", fake_post)
+    reply = dispatch_development_workflow(
+        "既存アプリの通知機能を改善して",
+        user_id="U123",
+        token="secret",
+        repository="nonkun12/line-bot",
+    )
+
+    assert "/actions/workflows/line-development-dispatch.yml" in captured["url"]
+    assert captured["json"]["inputs"]["instruction"] == "既存アプリの通知機能を改善して"
+    assert "受け付けました" in reply
 
 
 def test_secretary_development_request_stays_on_line_bot(monkeypatch):
@@ -179,3 +252,13 @@ def test_secretary_development_request_stays_on_line_bot(monkeypatch):
 
     assert "/actions/workflows/line-development-dispatch.yml" in captured["url"]
     assert "受け付けました" in reply
+
+
+
+def test_generic_classifier_semantics_are_preserved_outside_line_dispatch():
+    from core.task_routing import TaskClassifier, TaskMode
+
+    # The shared classifier remains responsible for independent software requests.
+    assert TaskClassifier().classify(
+        "開発: TODO管理Webアプリを作って"
+    ).mode == TaskMode.NEW_SOFTWARE
