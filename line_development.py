@@ -61,6 +61,19 @@ def dispatch_development_workflow(
     if not token:
         return "開発ワークフローを起動できません。GITHUB_TOKENが設定されていません。"
 
+    # LINEの通常開発経路から新規アプリ作成を開始しない。明示的な専用フローに限定する。
+    app_creation_phrases = (
+        "アプリを作って", "アプリを作成", "webアプリを作", "新規アプリ",
+        "新規ソフト", "ソフトを作って", "システムを新規作成",
+        "サービスを新規作成", "build a new app", "create a new app",
+    )
+    lowered_instruction = instruction.lower()
+    if any(phrase.lower() in lowered_instruction for phrase in app_creation_phrases):
+        return (
+            "新規アプリ作成はLINEの通常開発指示では実行しません。"
+            "既存システムの保守・機能追加を指示するか、管理された専用フローを使用してください。"
+        )
+
     classification = TaskClassifier().classify(f"開発: {instruction}")
     if classification.mode == TaskMode.NEW_SOFTWARE:
         return (
