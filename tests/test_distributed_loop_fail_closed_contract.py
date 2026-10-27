@@ -57,6 +57,8 @@ def test_resumed_recovery_ai_state_is_persisted_before_held_queue_exit():
         "- name: Persist explicitly resumed Recovery AI state before held-queue exit", 1
     )[1].split("- name: Persist Recovery AI durable state", 1)[0]
     assert "RESUME_TASK_ID" in step
+    assert 'if [ -z "$RESUME_TASK_ID" ]; then' in step
+    assert '|| [ ! -f /tmp/autonomous-loop-held-tasks ]' not in step
     assert "resume_requires_review" in step
     assert 'record.get("held") is not False' in step
     assert 'record.get("resume_requires_review") is not True' in step
