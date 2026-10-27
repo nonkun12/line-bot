@@ -1513,23 +1513,23 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         name = "test_duplicate_approved_issues_with_same_registered_task_id_are_queued_once"
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
-        anchor = "def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):\\n"
+        anchor = "def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):\n"
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
         addition = (
-            "\\ndef test_duplicate_approved_issues_with_same_registered_task_id_are_queued_once(tmp_path):\\n"
-            '    task_id = "approved-duplicate"\\n'
-            '    first = issue(task_id, labels=("autonomous-task-approved",))\\n'
-            '    second = issue(task_id, labels=("autonomous-task-approved",))\\n'
-            '    second["number"] = 18\\n'
-            '    result, qp = run(tmp_path, [first, second], state(), registered_tasks=[registered(task_id)])\\n'
-            '    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]\\n'
-            '    assert result["status"] == "QUEUED_APPROVED"\\n'
-            '    assert result["approved_count"] == 1\\n'
-            '    assert result["approved_task_ids"] == [task_id]\\n'
-            '    assert result["diagnostics"]["excluded_task_count"] == 1\\n'
-            '    assert [task["id"] for task in queued] == [task_id]\\n'
-            '    assert queued[0]["source_issue"] == 17\\n'
+            "\ndef test_duplicate_approved_issues_with_same_registered_task_id_are_queued_once(tmp_path):\n"
+            '    task_id = "approved-duplicate"\n'
+            '    first = issue(task_id, labels=("autonomous-task-approved",))\n'
+            '    second = issue(task_id, labels=("autonomous-task-approved",))\n'
+            '    second["number"] = 18\n'
+            '    result, qp = run(tmp_path, [first, second], state(), registered_tasks=[registered(task_id)])\n'
+            '    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]\n'
+            '    assert result["status"] == "QUEUED_APPROVED"\n'
+            '    assert result["approved_count"] == 1\n'
+            '    assert result["approved_task_ids"] == [task_id]\n'
+            '    assert result["diagnostics"]["excluded_task_count"] == 1\n'
+            '    assert [task["id"] for task in queued] == [task_id]\n'
+            '    assert queued[0]["source_issue"] == 17\n'
         )
         new = addition + anchor
         if len(anchor) > 1200 or len(new) > 1800:
