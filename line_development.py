@@ -74,13 +74,8 @@ def dispatch_development_workflow(
             "既存システムの保守・機能追加を指示するか、管理された専用フローを使用してください。"
         )
 
-    classification = TaskClassifier().classify(f"開発: {instruction}")
-    if classification.mode == TaskMode.NEW_SOFTWARE:
-        return (
-            "新規アプリ作成は通常の開発経路と分離しています。"
-            "『アプリ開発: ○○を作って』と明示してください。"
-        )
-
+    # 通常のLINE開発指示は、分類器の汎用判定に関わらず既存リポジトリへ送る。
+    # 新規アプリ作成の明示的な表現は上段で拒否済み。
     repository = repository or os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
     dispatch_url = (
         f"https://api.github.com/repos/{repository}"
