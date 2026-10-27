@@ -8,7 +8,6 @@ from typing import Optional
 
 import httpx
 
-from core.task_routing import TaskClassifier, TaskMode
 
 _DEV_PREFIX = re.compile(r"^(?:開発|dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
 _MAX_INSTRUCTION_LENGTH = 2000
