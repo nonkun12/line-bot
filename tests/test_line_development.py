@@ -1,3 +1,5 @@
+import pytest
+
 from line_development import extract_development_instruction, dispatch_development_workflow
 
 
@@ -159,6 +161,33 @@ def test_generic_development_request_does_not_implicitly_start_app_builder(monke
         "新規アプリ作成はLINEの通常開発指示では実行しません。"
         "既存システムの保守・機能追加を指示するか、管理された専用フローを使用してください。"
     )
+
+
+@pytest.mark.parametrize(
+    "instruction",
+    [
+        "新しいアプリを開発して",
+        "アプリ作成して",
+        "新規システムを構築して",
+        "create a new app",
+        "build a new web app",
+    ],
+)
+def test_new_app_creation_variants_are_blocked_before_dispatch(monkeypatch, instruction):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+
+    def unexpected_post(*args, **kwargs):
+        raise AssertionError("new-app request must not trigger GitHub Actions")
+
+    monkeypatch.setattr("line_development.httpx.post", unexpected_post)
+    reply = dispatch_development_workflow(
+        instruction,
+        user_id="U123",
+        token="secret",
+        repository="nonkun12/line-bot",
+    )
+
+    assert "新規アプリ作成はLINEの通常開発指示では実行しません" in reply
 
 
 def test_generic_existing_feature_request_uses_line_development_workflow(monkeypatch):
