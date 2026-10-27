@@ -182,15 +182,10 @@ def test_secretary_development_request_stays_on_line_bot(monkeypatch):
 
 
 
-def test_explicit_development_prefix_defaults_to_existing_system_unless_app_creation():
+def test_generic_classifier_semantics_are_preserved_outside_line_dispatch():
     from core.task_routing import TaskClassifier, TaskMode
 
-    classifier = TaskClassifier()
-    maintenance = classifier.classify("開発: 天気機能を改善して")
-    app_creation = classifier.classify("開発: TODO管理Webアプリを作って")
-
-    assert maintenance.mode == TaskMode.SELF_IMPROVEMENT
-    assert maintenance.project_repository == "nonkun12/line-bot"
-    # The normal development prefix always targets the existing Secretary repo.
-    assert app_creation.mode == TaskMode.SELF_IMPROVEMENT
-    assert app_creation.project_repository == "nonkun12/line-bot"
+    # The shared classifier remains responsible for independent software requests.
+    assert TaskClassifier().classify(
+        "開発: TODO管理Webアプリを作って"
+    ).mode == TaskMode.NEW_SOFTWARE
