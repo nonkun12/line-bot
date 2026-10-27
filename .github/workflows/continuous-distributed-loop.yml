@@ -83,14 +83,25 @@ jobs:
                   stop("invalid_task_result_row")
                   raise SystemExit(0)
               task_id = row.get("task_id")
-              if row.get("status") not in {"PASS", "NO_CHANGE"}:
-                  stop("task_status_not_successful")
+              if row.get("status") != "PASS":
+                  stop("task_status_not_pass")
                   raise SystemExit(0)
               if type(row.get("exit_code")) is not int or row["exit_code"] != 0:
                   stop("task_exit_code_not_zero")
                   raise SystemExit(0)
               if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", task_id):
                   stop("missing_or_invalid_task_id")
+                  raise SystemExit(0)
+              tower = row.get("control_tower")
+              if not isinstance(tower, dict) or tower.get("recorded") is not True:
+                  stop("control_tower_evidence_missing")
+                  raise SystemExit(0)
+              orchestration = tower.get("orchestration")
+              if not isinstance(orchestration, dict) or orchestration.get("allow_continue") is not True:
+                  stop("control_tower_denied_continue")
+                  raise SystemExit(0)
+              if row.get("failure_reason"):
+                  stop("failure_reason_present")
                   raise SystemExit(0)
               task_ids.append(task_id)
           if len(task_ids) != len(set(task_ids)):
