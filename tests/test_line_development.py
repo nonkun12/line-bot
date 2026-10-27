@@ -148,19 +148,26 @@ def test_worker_parse_plan_accepts_json_with_explanation():
     ) == {"file": "tests/test_line_development.py"}
 
 
-def test_generic_development_request_does_not_implicitly_start_app_builder(monkeypatch):
+def test_new_app_request_uses_governed_development_workflow(monkeypatch):
     monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    captured = {}
 
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        return FakeResponse()
+
+    monkeypatch.setattr("line_development.httpx.post", fake_post)
     reply = dispatch_development_workflow(
         "TODO管理Webアプリを作って",
         user_id="U123",
         token="secret",
+        repository="nonkun12/line-bot",
     )
 
-    assert reply == (
-        "新規アプリ作成はLINEの通常開発指示では実行しません。"
-        "既存システムの保守・機能追加を指示するか、管理された専用フローを使用してください。"
-    )
+    assert "/actions/workflows/line-development-dispatch.yml/dispatches" in captured["url"]
+    assert captured["json"]["inputs"]["instruction"] == "TODO管理Webアプリを作って"
+    assert "受け付けました" in reply
 
 
 @pytest.mark.parametrize(
@@ -173,13 +180,16 @@ def test_generic_development_request_does_not_implicitly_start_app_builder(monke
         "build a new web app",
     ],
 )
-def test_new_app_creation_variants_are_blocked_before_dispatch(monkeypatch, instruction):
+def test_new_app_creation_variants_are_dispatched_to_governed_workflow(monkeypatch, instruction):
     monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    captured = {}
 
-    def unexpected_post(*args, **kwargs):
-        raise AssertionError("new-app request must not trigger GitHub Actions")
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        return FakeResponse()
 
-    monkeypatch.setattr("line_development.httpx.post", unexpected_post)
+    monkeypatch.setattr("line_development.httpx.post", fake_post)
     reply = dispatch_development_workflow(
         instruction,
         user_id="U123",
@@ -187,7 +197,9 @@ def test_new_app_creation_variants_are_blocked_before_dispatch(monkeypatch, inst
         repository="nonkun12/line-bot",
     )
 
-    assert "新規アプリ作成はLINEの通常開発指示では実行しません" in reply
+    assert captured["url"].endswith("/actions/workflows/line-development-dispatch.yml/dispatches")
+    assert captured["json"]["inputs"]["instruction"] == instruction
+    assert "受け付けました" in reply
 
 
 def test_generic_existing_feature_request_uses_line_development_workflow(monkeypatch):
