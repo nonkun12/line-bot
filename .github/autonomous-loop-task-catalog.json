@@ -309,6 +309,34 @@
       "allowed_paths": [
         "tests/test_autonomous_task_proposals.py"
       ]
+    },
+    {
+      "id": "refill-rejects-non-list-runtime-queue-tasks-20261028",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。runtime queue JSON の tasks が list ではなく null・文字列・オブジェクトの場合、build_queue() が ValueError(\"queue and catalog tasks must be lists\") で fail-closed になり、出力ファイルを作成しないことをパラメータ化して検証してください。既存テストを変更せず、このテストファイルだけ変更してください。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "refill-rejects-non-list-catalog-tasks-20261028",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。catalog JSON の tasks が list ではなく null・文字列・オブジェクトの場合、build_queue() が ValueError(\"queue and catalog tasks must be lists\") で fail-closed になり、出力ファイルを作成しないことをパラメータ化して検証してください。既存テストを変更せず、このテストファイルだけ変更してください。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "refill-rejects-empty-task-instruction-20261028",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。catalog task の instruction が空文字または空白だけの場合、build_queue() が ValueError(\"invalid task instruction\") で fail-closed になり、runtime queue 出力ファイルを作成しないことをパラメータ化して検証してください。既存テストを変更せず、このテストファイルだけ変更してください。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "refill-rejects-overlong-task-instruction-20261028",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。catalog task の instruction が5001文字の場合、build_queue() が ValueError(\"invalid task instruction\") で fail-closed になり、runtime queue 出力ファイルを作成しないことを確認してください。既存テストを変更せず、このテストファイルだけ変更してください。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
     }
   ]
 }
