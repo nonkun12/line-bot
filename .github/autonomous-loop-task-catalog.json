@@ -291,7 +291,7 @@
     },
     {
       "id": "safe-continuation-depth-four-regression-20261026",
-      "instruction": "tests/test_continuous_distributed_loop_workflow.py のみに、新しい固有名の回帰テストを1件追加してください。`.github/workflows/distributed-loop-safe-continuation.yml` の continuation depth guard が正の10進整数を許可し、空・0・非数字を拒否する入力検証を維持していることを確認してください。既存テストを変更せず、外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "instruction": "tests/test_continuous_distributed_loop_workflow.py のみに、新しい固有名の回帰テストを1件追加してください。`.github/workflows/continuous-distributed-loop.yml` の continuation depth guard について、depth=0・1・2 は次の depth 1・2・3 を許可し、depth=3 は停止し、depth 欠落・非数字・負数は fail-closed になることを検証してください。現行の起動深度0を拒否する誤った条件は追加しないでください。既存テストを変更せず、外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
       "allowed_paths": [
         "tests/test_continuous_distributed_loop_workflow.py"
       ]
@@ -301,6 +301,13 @@
       "instruction": "tests/test_autonomous_task_refill.py のみに新しい固有名の回帰テストを1件追加してください。カタログに同じ task ID の定義を2件含めた場合、build_queue() が ValueError('duplicate catalog task ID') で fail-closed になり、runtime queue 出力ファイルを作成しないことを確認してください。既存テスト変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
       "allowed_paths": [
         "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "proposal-generator-deduplicates-approved-task-ids-20261027",
+      "instruction": "tests/test_autonomous_task_proposals.py のみに、新しい固有名の回帰テストを1件追加してください。同じ登録済み task ID・instruction・allowed_paths を持つ autonomous-task-approved Issue が2件ある場合、build_proposals() が runtime queue に1件だけ追加し、approved_count=1・approved_task_ids がそのID1件のみ・queue内のtask IDが重複しないことを検証してください。既存テストを変更せず、変更は指定ファイル1つだけにしてください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
       ]
     }
   ]
