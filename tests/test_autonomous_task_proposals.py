@@ -126,6 +126,48 @@ def test_duplicate_approved_issues_with_same_registered_task_id_are_queued_once(
     assert queued[0]["source_issue"] == 17
 
 
+def test_invalid_approved_duplicate_does_not_shadow_registered_spec(tmp_path):
+    task_id = "approved-shadowing"
+    mismatched = issue(
+        task_id,
+        labels=("autonomous-task-approved",),
+        instruction="Unregistered instruction that must not shadow the catalog entry.",
+    )
+    mismatched["number"] = 16
+    valid = issue(task_id, labels=("autonomous-task-approved",))
+    valid["number"] = 17
+    result, qp = run(
+        tmp_path,
+        [mismatched, valid],
+        state(),
+        registered_tasks=[registered(task_id)],
+    )
+    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]
+    assert result["approved_count"] == 1
+    assert result["approved_task_ids"] == [task_id]
+    assert result["rejected_approved_count"] == 1
+    assert [task["source_issue"] for task in queued] == [17]
+
+
+def test_review_only_candidate_does_not_shadow_later_approved_task(tmp_path):
+    task_id = "candidate-shadowing"
+    candidate = issue(task_id)
+    candidate["number"] = 16
+    approved = issue(task_id, labels=("autonomous-task-approved",))
+    approved["number"] = 17
+    result, qp = run(
+        tmp_path,
+        [candidate, approved],
+        state(),
+        registered_tasks=[registered(task_id)],
+    )
+    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]
+    assert result["approved_count"] == 1
+    assert result["approved_task_ids"] == [task_id]
+    assert result["proposal_count"] == 1
+    assert [task["source_issue"] for task in queued] == [17]
+
+
 def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):
     existing = {"id": "already-queued", "instruction": "Existing task", "allowed_paths": ["tests/test_existing.py"]}
     issues = [issue("approved-one", labels=("autonomous-task-approved",)),
