@@ -62,3 +62,15 @@ def test_non_app_instruction_cannot_create_files(tmp_path):
     with pytest.raises(ValueError):
         create_app("既存アプリの通知機能を改善して", root=tmp_path, run_id="42")
     assert not (tmp_path / "apps").exists()
+
+def test_symlinked_generated_root_cannot_escape_repository(tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (root / "apps").mkdir()
+    (root / "apps" / "generated").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ValueError, match="outside the allowed root"):
+        create_app("TODO管理Webアプリを作って", root=root, run_id="42")
+    assert not list(outside.iterdir())
+
