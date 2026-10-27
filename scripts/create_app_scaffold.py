@@ -136,9 +136,15 @@ def create_app(instruction: str, *, root: Path = ROOT, run_id: str = "local") ->
     if len(instruction) > MAX_INSTRUCTION_LENGTH:
         raise ValueError("instruction exceeds the configured limit")
     slug = safe_slug(instruction, run_id)
-    base = (root / "apps" / "generated" / slug).resolve()
+    root_resolved = root.resolve()
     allowed_root = (root / "apps" / "generated").resolve()
-    if not base.is_relative_to(allowed_root) or base == allowed_root:
+    base = (root / "apps" / "generated" / slug).resolve()
+    if (
+        not allowed_root.is_relative_to(root_resolved)
+        or allowed_root == root_resolved
+        or not base.is_relative_to(allowed_root)
+        or base == allowed_root
+    ):
         raise ValueError("generated app path is outside the allowed root")
     index_path = base / "index.html"
     readme_path = base / "README.md"
