@@ -237,6 +237,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "proposal-generator-resume-review-exclusion-regression": "tests/test_autonomous_task_proposals.py",
     "queue-progress-ignores-unrelated-pass-results-regression": "tests/test_distributed_loop_queue_progress.py",
     "proposal-generator-conflicting-catalog-definitions-regression": "tests/test_autonomous_task_proposals.py",
+    "proposal-generator-deduplicates-approved-task-ids-20261027": "tests/test_autonomous_task_proposals.py",
     "safe-continuation-depth-four-regression-20261026": "tests/test_continuous_distributed_loop_workflow.py",
 }
 
@@ -1491,6 +1492,44 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "    assert decision.specialist is Specialist.STOCKS\n"
             '    assert decision.metadata["matched_specialists"] == ["stocks", "jobs"]\n'
             '    assert decision.metadata["routing_priority"] == 5\n'
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "proposal-generator-deduplicates-approved-task-ids-20261027" and chosen == "tests/test_autonomous_task_proposals.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_duplicate_approved_issues_with_same_registered_task_id_are_queued_once"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):\\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "\\ndef test_duplicate_approved_issues_with_same_registered_task_id_are_queued_once(tmp_path):\\n"
+            '    task_id = "approved-duplicate"\\n'
+            '    first = issue(task_id, labels=("autonomous-task-approved",))\\n'
+            '    second = issue(task_id, labels=("autonomous-task-approved",))\\n'
+            '    second["number"] = 18\\n'
+            '    result, qp = run(tmp_path, [first, second], state(), registered_tasks=[registered(task_id)])\\n'
+            '    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]\\n'
+            '    assert result["status"] == "QUEUED_APPROVED"\\n'
+            '    assert result["approved_count"] == 1\\n'
+            '    assert result["approved_task_ids"] == [task_id]\\n'
+            '    assert result["diagnostics"]["excluded_task_count"] == 1\\n'
+            '    assert [task["id"] for task in queued] == [task_id]\\n'
+            '    assert queued[0]["source_issue"] == 17\\n'
         )
         new = addition + anchor
         if len(anchor) > 1200 or len(new) > 1800:
