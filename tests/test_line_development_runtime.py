@@ -887,6 +887,34 @@ def test_three_new_refill_seed_plans_are_syntax_safe_and_bounded(tmp_path, monke
         assert worker.validate_plan(plan, chosen) == (True, chosen)
 
 
+def test_duplicate_approved_task_builds_one_bounded_deterministic_change(monkeypatch, tmp_path):
+    chosen = "tests/test_autonomous_task_proposals.py"
+    anchor = "def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):\n"
+    original = anchor + "    pass\n"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    plan, error = runtime._deterministic_autonomous_test_plan(
+        chosen, "proposal-generator-deduplicates-approved-task-ids-20261027"
+    )
+
+    assert error is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert plan["no_change"] is False
+    assert len(plan["changes"]) == 1
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert "test_duplicate_approved_issues_with_same_registered_task_id_are_queued_once" in candidate
+    assert worker.validate_plan(plan, chosen) == (True, chosen)
+
+
 def test_four_reviewed_refill_tasks_have_deterministic_bounded_plans(tmp_path, monkeypatch):
     cases = [
         (
