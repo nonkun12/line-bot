@@ -671,6 +671,91 @@ jobs:
             git -C /tmp/autonomous-state-worktree push "$auth_url" HEAD:refs/heads/$state_branch
           fi
 
+      - name: Persist explicitly resumed Recovery AI state before held-queue exit
+        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true' && 'ai-speaker-empty-transcript-no-brain-call' || '' }}
+        run: |
+          set -euo pipefail
+          # Persist an explicit unhold even when the only resumed task awaits
+          # review and the runner exits rc=78 before normal result/RAG export.
+          if [ -z "$RESUME_TASK_ID" ] || [ ! -f /tmp/autonomous-loop-held-tasks ]; then
+            echo "No resumed held-task state requires this persistence path."
+            exit 0
+          fi
+          if [ ! -s /tmp/recovery-ai-state.json ] || [ ! -s /tmp/autonomous-loop-state.json ]; then
+            echo "::error::Resumed Recovery AI state evidence is missing."
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          task_id = os.environ["RESUME_TASK_ID"]
+          recovery = json.loads(Path("/tmp/recovery-ai-state.json").read_text(encoding="utf-8"))
+          state = json.loads(Path("/tmp/autonomous-loop-state.json").read_text(encoding="utf-8"))
+          if not isinstance(recovery, dict) or recovery.get("schema_version") != 1 or not isinstance(recovery.get("tasks"), dict) or "checkpoint" not in recovery:
+              raise SystemExit("invalid local Recovery AI state; durable update blocked")
+          if state.get("recovery_ai") != recovery:
+              raise SystemExit("local loop and Recovery AI state disagree; durable update blocked")
+          record = recovery["tasks"].get(task_id)
+          if not isinstance(record, dict) or record.get("held") is not False or record.get("resume_requires_review") is not True:
+              raise SystemExit("explicit resume evidence is missing or invalid; durable update blocked")
+          PY
+          state_branch="autonomous-loop-state"
+          auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          if ! git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1; then
+            git push "$auth_url" "refs/remotes/origin/main:refs/heads/$state_branch"
+          fi
+          git fetch --quiet origin "$state_branch"
+          rm -rf /tmp/resumed-recovery-ai-worktree
+          git worktree add --detach /tmp/resumed-recovery-ai-worktree "origin/$state_branch"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          root = Path("/tmp/resumed-recovery-ai-worktree")
+          state_path = root / ".autonomous-loop-state.json"
+          if state_path.exists():
+              durable = json.loads(state_path.read_text(encoding="utf-8"))
+          else:
+              durable = {"version": 1, "completed": []}
+          if not isinstance(durable, dict) or not isinstance(durable.get("completed", []), list):
+              raise SystemExit("durable loop state is invalid")
+          recovery = json.loads(Path("/tmp/recovery-ai-state.json").read_text(encoding="utf-8"))
+          task_id = os.environ["RESUME_TASK_ID"]
+          record = recovery.get("tasks", {}).get(task_id)
+          if not isinstance(record, dict) or record.get("held") is not False or record.get("resume_requires_review") is not True:
+              raise SystemExit("resume state failed validation before persistence")
+          durable["recovery_ai"] = recovery
+          durable["version"] = 1
+          state_path.write_text(json.dumps(durable, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+          git -C /tmp/resumed-recovery-ai-worktree config user.name "github-actions[bot]"
+          git -C /tmp/resumed-recovery-ai-worktree config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C /tmp/resumed-recovery-ai-worktree add .autonomous-loop-state.json
+          if ! git -C /tmp/resumed-recovery-ai-worktree diff --cached --quiet; then
+            git -C /tmp/resumed-recovery-ai-worktree commit -m "chore: persist explicitly resumed Recovery AI state"
+            git -C /tmp/resumed-recovery-ai-worktree push "$auth_url" HEAD:refs/heads/$state_branch
+          fi
+          git fetch --quiet origin "$state_branch"
+          git show "origin/$state_branch:.autonomous-loop-state.json" > /tmp/resumed-recovery-ai-readback.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          durable = json.loads(Path("/tmp/resumed-recovery-ai-readback.json").read_text(encoding="utf-8"))
+          expected = json.loads(Path("/tmp/recovery-ai-state.json").read_text(encoding="utf-8"))
+          task_id = os.environ["RESUME_TASK_ID"]
+          if durable.get("recovery_ai") != expected:
+              raise SystemExit("durable Recovery AI read-back mismatch")
+          record = durable.get("recovery_ai", {}).get("tasks", {}).get(task_id)
+          if not isinstance(record, dict) or record.get("held") is not False or record.get("resume_requires_review") is not True:
+              raise SystemExit("durable resumed task state failed read-back verification")
+          print("Explicitly resumed Recovery AI state persisted and verified.")
+          PY
+
       - name: Persist Recovery AI durable state
         id: persist_recovery_ai
         if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}

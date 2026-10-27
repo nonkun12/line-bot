@@ -67,7 +67,9 @@ def classify_final_outcome(
         return "NOT_RUN", "queue_empty"
 
     if all_tasks_held:
-        if task_statuses != ["BLOCKED"] or loop_outcome != "success":
+        # The runner may report NOT_RUN when every catalog task is held and
+        # the explicitly resumed task is awaiting review. Preserve the held reason.
+        if task_statuses not in (["BLOCKED"], ["NOT_RUN"]) or loop_outcome != "success":
             return "BLOCKED", "held_queue_evidence_mismatch"
         failed_gates = [
             name for name, outcome in (
