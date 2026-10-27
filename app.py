@@ -84,7 +84,7 @@ from core.self_introduction import handle_self_introduction
 from routes.core_api import core_api_bp
 from routes.obsidian_bridge import obsidian_bridge_bp
 from routes.openclaw_bridge import openclaw_bridge_bp
-from core.openclaw_bridge import enqueue_openclaw_request, is_openclaw_intent
+from core.openclaw_bridge import is_openclaw_intent, normalize_openclaw_message
 from obsidian_loop_dispatch import dispatch_configuration_status
 from core.obsidian_bridge import enqueue_obsidian_request
 from agents.obsidian.intents import is_obsidian_intent
@@ -348,14 +348,14 @@ def _handle_ai_gateway_request(ai_request):
     if core_image_reply is not None:
         return core_image_reply
 
-    # Route only explicitly prefixed OpenClaw tasks to the authenticated Mac queue.
-    # This is opt-in; ordinary chat cannot trigger local execution.
+    # Legacy OpenClaw-prefixed prompts are handled by the server-side LINE AI
+    # pipeline. Do not enqueue them for a Mac-local worker: Mac availability
+    # must not determine whether a LINE request can be processed.
     if is_openclaw_intent(message):
         try:
-            job_id = enqueue_openclaw_request(user_id, message)
-            return f"OpenClawへの依頼を受け付けました。Mac側ワーカーの実行待ちです。（Job {job_id}）"
+            message = normalize_openclaw_message(message)
         except Exception:
-            return "OpenClawへの依頼を受け付けられませんでした。ブリッジ設定を確認してください。"
+            return "指示を読み取れませんでした。内容を確認して再送してください。"
 
     # Route only explicit Obsidian commands to the authenticated Mac approval queue.
     # Never fall through to a cloud agent that cannot access the local vault.
