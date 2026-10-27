@@ -33,8 +33,8 @@ def test_slug_is_path_safe_for_japanese_and_traversal_text():
 def test_create_app_writes_functional_starter_only_under_generated_root(tmp_path):
     paths = create_app("TODO管理Webアプリを作って", root=tmp_path, run_id="42")
     assert [p.relative_to(tmp_path).as_posix() for p in paths] == [
-        "apps/generated/todo-web-app/index.html",
-        "apps/generated/todo-web-app/README.md",
+        "apps/generated/todo-web/index.html",
+        "apps/generated/todo-web/README.md",
     ]
     page = paths[0].read_text(encoding="utf-8")
     assert 'id="task-form"' in page
