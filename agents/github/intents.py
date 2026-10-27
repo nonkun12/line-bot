@@ -29,6 +29,16 @@ _GITHUB_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Do not route a request to the GitHub agent just because it lists GitHub-like
+# operations that it explicitly forbids. Keep this deliberately narrow: only
+# remove a common enumerated, negated safety clause, not arbitrary user text.
+_NEGATED_OPERATION_LIST = re.compile(
+    r"(?:リポジトリ変更|コード実行|デプロイ|GitHub操作)"
+    r"(?:[、, ]+(?:リポジトリ変更|コード実行|デプロイ|GitHub操作))*"
+    r"などの操作は(?:しないでください|行わないでください|実行しないでください)",
+    re.IGNORECASE,
+)
+
 
 # Natural-language file content requests (e.g. "README.mdを見せて",
 # "app.pyを表示して"). Shared with agents.github.handlers.handle_file_contents()
@@ -49,15 +59,19 @@ def is_github_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
     if not text:
         return False
 
-    lower_text = text.lower()
+    # A negated list of operations is a constraint, not a request to execute
+    # those operations. Other positive GitHub intents in the same message
+    # remain detectable after this narrowly scoped clause is removed.
+    intent_text = _NEGATED_OPERATION_LIST.sub("", text)
+    lower_text = intent_text.lower()
 
     if any(keyword in lower_text for keyword in _GITHUB_KEYWORDS):
         return True
 
-    if _GITHUB_PATTERN.search(text):
+    if _GITHUB_PATTERN.search(intent_text):
         return True
 
-    return bool(_FILE_CONTENT_PATTERN.search(text))
+    return bool(_FILE_CONTENT_PATTERN.search(intent_text))
 
 
 _PR_KEYWORDS = [
@@ -105,8 +119,8 @@ def is_pull_request_intent(raw_message: str) -> bool:
 
 def is_issue_intent(raw_message: str) -> bool:
     """
-    Detect whether a user message is asking about Issues specifically
-    (and is not also a Pull Request request).
+    Detect whether a user message is asking about GitHub Issues or Pull
+    Requests (and is not also a Pull Request request).
     """
 
     text = (raw_message or "").strip()
