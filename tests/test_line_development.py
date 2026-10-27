@@ -161,6 +161,28 @@ def test_generic_development_request_does_not_implicitly_start_app_builder(monke
     )
 
 
+def test_generic_existing_feature_request_uses_line_development_workflow(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        return FakeResponse()
+
+    monkeypatch.setattr("line_development.httpx.post", fake_post)
+    reply = dispatch_development_workflow(
+        "天気機能を改善して",
+        user_id="U123",
+        token="secret",
+        repository="nonkun12/line-bot",
+    )
+
+    assert "/actions/workflows/line-development-dispatch.yml" in captured["url"]
+    assert captured["json"]["inputs"]["instruction"] == "天気機能を改善して"
+    assert "受け付けました" in reply
+
+
 def test_secretary_development_request_stays_on_line_bot(monkeypatch):
     monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     captured = {}
