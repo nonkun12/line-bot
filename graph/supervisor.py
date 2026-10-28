@@ -25,6 +25,7 @@ from agents.news.intents import is_ai_news_intent
 from agents.voice.intents import is_voice_intent
 from agents.jobs.intents import is_job_seeking_intent
 from agents.obsidian.intents import is_obsidian_intent
+from core.idea_ai import parse_idea_command
 
 _DEBUG_PREFIX = "debug"
 
@@ -56,6 +57,9 @@ def classify_intent(raw_message: str, user_id: str | None = None) -> str:
 
     if text.startswith(_DEBUG_PREFIX):
         return "debug"
+    if parse_idea_command(text) is not None:
+        print("SUPERVISOR: explicit idea capture intent")
+        return "obsidian"
     if extract_app_development_request(text) is not None:
         print("SUPERVISOR: app development intent")
         return "app_development"

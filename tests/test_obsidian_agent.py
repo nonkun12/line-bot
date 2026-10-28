@@ -96,3 +96,102 @@ def test_line_note_natural_record_command_appends_to_default_note(tmp_path, monk
     assert result["agent_results"]["obsidian"]["operation"] == "append"
     target = tmp_path / "LINE-Inbox.md"
     assert target.read_text(encoding="utf-8") == "MCPとObsidianの実保存テスト"
+
+
+def test_explicit_idea_is_routed_and_saved_as_new_card(tmp_path, monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+    from graph.supervisor import supervisor_node
+
+    message = "アイデア: LINEから発展案を自動生成する"
+    state = supervisor_node({
+        "user_id": "test-user",
+        "raw_message": message,
+        "channel": "test",
+        "metadata": {},
+        "agent_results": {},
+    })
+    assert state["intent"] == "obsidian"
+    assert state["next_agent"] == "obsidian"
+
+    result = obsidian_agent_node(_state(message, tmp_path))
+    metadata = result["agent_results"]["obsidian"]
+    assert metadata["success"] is True
+    assert metadata["operation"] == "create"
+    note = tmp_path / metadata["path"]
+    assert note.is_file()
+    saved = note.read_text(encoding="utf-8")
+    assert "原案（原文・変更禁止）" in saved
+    assert "LINEから発展案を自動生成する" in saved
+    assert "発展案（自動生成・未検証）" in saved
+    assert "- execution_approval: pending" in saved
+
+
+def test_repeated_idea_capture_is_idempotent(tmp_path, monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+    message = "アイデア: 同じ入力の重複保存を防ぐ"
+    first = obsidian_agent_node(_state(message, tmp_path))
+    first_meta = first["agent_results"]["obsidian"]
+    assert first_meta["success"] is True
+    note = tmp_path / first_meta["path"]
+    original_contents = note.read_text(encoding="utf-8")
+
+    second = obsidian_agent_node(_state(message, tmp_path))
+    second_meta = second["agent_results"]["obsidian"]
+    assert second_meta["success"] is True
+    assert second_meta["duplicate"] is True
+    assert note.read_text(encoding="utf-8") == original_contents
+    assert len(list((tmp_path / "Ideas" / "Inbox").glob("IDEA-*.md"))) == 1
+
+
+def test_idea_capture_queues_when_cloud_has_no_vault(tmp_path, monkeypatch):
+    monkeypatch.delenv("OBSIDIAN_VAULT_PATH", raising=False)
+    captured = {}
+
+    def fake_enqueue(user_id, message):
+        captured.update(user_id=user_id, message=message)
+        return 51
+
+    monkeypatch.setattr("core.obsidian_bridge.enqueue_obsidian_request", fake_enqueue)
+    result = obsidian_agent_node(_state("アイデア: Mac側で安全に保存する", tmp_path))
+    metadata = result["agent_results"]["obsidian"]
+
+    assert metadata["success"] is True
+    assert metadata["operation"] == "queued"
+    assert metadata["status"] == "pending"
+    assert metadata["job_id"] == 51
+    assert captured["message"] == "アイデア: Mac側で安全に保存する"
+
+
+def test_idea_card_links_only_existing_notes_with_matching_evidence(tmp_path, monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+    (tmp_path / "Projects").mkdir()
+    (tmp_path / "Projects" / "idea-workflow.md").write_text(
+        "# 発展案の自動生成\nLINEから発展案を自動生成し、検証する。", encoding="utf-8"
+    )
+    (tmp_path / "unrelated.md").write_text(
+        "# 園芸メモ\nトマトとバジルの育て方。", encoding="utf-8"
+    )
+
+    message = "アイデア: LINEから発展案を自動生成する"
+    result = obsidian_agent_node(_state(message, tmp_path))
+    metadata = result["agent_results"]["obsidian"]
+    saved = (tmp_path / metadata["path"]).read_text(encoding="utf-8")
+
+    assert metadata["success"] is True
+    assert "[[Projects/idea-workflow]]" in saved
+    assert "一致語:" in saved
+    assert "[[unrelated]]" not in saved
+    assert "まだ検索していません" not in saved
+    assert "- related_notes_status: searched" in saved
+
+
+def test_idea_card_marks_related_note_search_complete_when_no_match(tmp_path, monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+    (tmp_path / "unrelated.md").write_text("星空観測と園芸。", encoding="utf-8")
+
+    result = obsidian_agent_node(_state("アイデア: LINEから発展案を自動生成する", tmp_path))
+    saved = (tmp_path / result["agent_results"]["obsidian"]["path"]).read_text(encoding="utf-8")
+
+    assert "検索済み: 関連候補は見つかりませんでした" in saved
+    assert "- related_notes_status: searched" in saved
+    assert "[[unrelated]]" not in saved

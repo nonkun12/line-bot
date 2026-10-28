@@ -9,6 +9,7 @@ import os
 
 from .obsidian import ObsidianError
 from agents.obsidian.intents import is_obsidian_intent, normalize_obsidian_command
+from core.idea_ai import parse_idea_command
 from db import create_job
 
 OBSIDIAN_JOB_TYPE = "obsidian"
@@ -18,7 +19,9 @@ MAX_OBSIDIAN_MESSAGE_CHARS = 4000
 def enqueue_obsidian_request(user_id: str, message: str) -> int:
     """Queue one explicit Obsidian request for the Mac bridge."""
     normalized_user_id = str(user_id or "").strip()
-    raw_message = str(message or "").strip()
+    raw_input = str(message or "")
+    idea_capture = parse_idea_command(raw_input) is not None
+    raw_message = raw_input if idea_capture else raw_input.strip()
     if not normalized_user_id:
         raise ObsidianError("user_id is required")
     if len(normalized_user_id) > 200:
@@ -30,15 +33,18 @@ def enqueue_obsidian_request(user_id: str, message: str) -> int:
     normalized_message = normalize_obsidian_command(raw_message)
     if normalized_message is None:
         raise ObsidianError("only explicit Obsidian commands may be queued")
-    if len(normalized_message) > MAX_OBSIDIAN_MESSAGE_CHARS:
+    if len(normalized_message) > MAX_OBSIDIAN_MESSAGE_CHARS and not idea_capture:
         raise ObsidianError("Obsidian message exceeds 4000 characters")
-    if not is_obsidian_intent(normalized_message):
+    if not is_obsidian_intent(raw_message):
         raise ObsidianError("only explicit Obsidian commands may be queued")
+    # Keep explicit idea input compact in the cloud queue; the Mac-local worker
+    # generates the bounded card only when it has access to the real vault.
+    queued_message = raw_message if idea_capture else normalized_message
     if not os.environ.get("OBSIDIAN_BRIDGE_KEY", "").strip():
         raise ObsidianError("Obsidian Mac bridge is not configured")
     job_id = create_job(
         normalized_user_id,
-        normalized_message,
+        queued_message,
         job_type=OBSIDIAN_JOB_TYPE,
         source="line",
         max_retries=3,

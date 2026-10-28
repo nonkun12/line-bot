@@ -7,6 +7,10 @@ boundaries, not by making ideation conservative.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+from datetime import datetime, timezone
+import re
+
 from .multi_agent import AgentRole, AgentTask
 
 _MAX_IDEAS = 5
@@ -93,4 +97,121 @@ class IdeaAgent:
         return tuple(ideas)
 
 
-__all__ = ["Idea", "IdeaAgent"]
+# The capture layer below deliberately stays separate from task execution.
+# Stable IDs and the existing IdeaAgent make retries deterministic and ideas reviewable.
+
+_IDEA_COMMAND_RE = re.compile(r"^\s*アイデア\s*[:：](?P<focus>[\s\S]*)$")
+_MAX_CAPTURE_CHARS = 4_000
+_MAX_CARD_CHARS = 20_000
+
+
+def parse_idea_command(message: str) -> str | None:
+    """Accept only an explicit アイデア: prefix; ordinary chat is not captured."""
+    if not isinstance(message, str):
+        return None
+    match = _IDEA_COMMAND_RE.fullmatch(message)
+    if not match:
+        return None
+    focus = match.group("focus")
+    # Consume only one conventional separator space; preserve the remaining payload verbatim.
+    if focus.startswith(" "):
+        focus = focus[1:]
+    if not focus.strip() or len(focus) > _MAX_CAPTURE_CHARS:
+        return None
+    return focus
+
+
+def build_idea_card(focus: str, *, source: str = "LINE", created_at: datetime | None = None) -> dict[str, object]:
+    """Build an Obsidian Markdown card plus five bounded, non-executing idea proposals."""
+    if not isinstance(focus, str) or not focus.strip():
+        raise ValueError("focus is required")
+    if len(focus) > _MAX_CAPTURE_CHARS:
+        raise ValueError("focus exceeds 4000 characters")
+    if source not in {"LINE", "Obsidian", "manual"}:
+        raise ValueError("source must be LINE, Obsidian, or manual")
+
+    identifier = hashlib.sha256(focus.encode("utf-8")).hexdigest()[:12].upper()
+    timestamp = created_at or datetime.now(timezone.utc)
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    stamp = timestamp.isoformat(timespec="seconds")
+    proposals = IdeaAgent().propose(focus, context=("Obsidian", "free/local-first", "fail-closed safety"))
+    title = " ".join(focus.split())[:80].replace("#", "＃") or "アイデア"
+    tilde_runs = [len(match.group(0)) for match in re.finditer(r"~+", focus)]
+    fence = "~" * max(3, max(tilde_runs, default=0) + 1)
+    original_block = f"{fence}text\n{focus}\n{fence}"
+    lines = [
+        f"# {title}", "",
+        f"- idea_id: {identifier}",
+        f"- created_at: {stamp}",
+        "- status: captured",
+        f"- source: {source}",
+        "- analysis_status: local_deterministic_draft",
+        "- related_notes_status: pending_search",
+        "- execution_approval: pending", "",
+        "## 原案（原文・変更禁止）", "",
+        original_block, "",
+        "## 発展案（自動生成・未検証）", "",
+    ]
+    for index, idea in enumerate(proposals, start=1):
+        lines.extend([
+            f"### {index}. {idea.style}: {idea.title}",
+            f"- 発想: {idea.rationale}",
+            f"- 次の一歩: {idea.next_step}",
+            f"- 期待する効果: {idea.positive_impact}",
+            f"- 新規性の目安: {idea.novelty}/5",
+            f"- 安全境界: {idea.safety_boundary}",
+            "- 初期評価（ヒューリスティック・未検証）:",
+            f"  - 価値: {idea.positive_impact}",
+            f"  - 実現可能性: { {'reframe': '高', 'recombine': '中', 'specialize': '高', 'architecture-leap': '低〜中', 'constraint': '高'}.get(idea.style, '未評価') }",
+            f"  - コスト目安: { {'reframe': '低', 'recombine': '低〜中', 'specialize': '低〜中', 'architecture-leap': '中', 'constraint': '低'}.get(idea.style, '未評価') }",
+            f"  - 検証可能性: { {'reframe': '高', 'recombine': '高', 'specialize': '高', 'architecture-leap': '中', 'constraint': '高'}.get(idea.style, '未評価') }",
+            "  - リスク: 実験前に既存機能・権限・費用への影響を確認する。",
+            "",
+        ])
+    related_ideas = [idea for idea in proposals if idea.style in {"reframe", "recombine"}]
+    lines.extend(["## 関連アイデア候補（自動生成・未検証）", ""])
+    for idea in related_ideas:
+        lines.extend([
+            f"- **{idea.title}** — {idea.rationale}",
+            f"  - 次の検討: {idea.next_step}",
+        ])
+    lines.append("")
+    lines.extend([
+        "## 関連ノート候補", "",
+        "- まだ検索していません。実在するノートとの照合後にのみリンクを追加します。", "",
+        "## 次の検証", "",
+        "- 最小の検証を1つ選び、成功条件と失敗条件を明記する。",
+        "- 実装タスク化は提案のみ。明示承認なしに実行・マージ・デプロイしない。", "",
+    ])
+    markdown = "\n".join(lines)
+    if len(markdown) > _MAX_CARD_CHARS:
+        raise ValueError("generated idea card exceeds 20000 characters")
+    return {
+        "idea_id": identifier,
+        "path": f"Ideas/Inbox/IDEA-{identifier}.md",
+        "focus": focus,
+        "source": source,
+        "created_at": stamp,
+        "markdown": markdown,
+        "original_block": original_block,
+        "proposals": proposals,
+        "execution_approval": "pending",
+    }
+
+
+def idea_command_to_obsidian_command(message: str) -> str | None:
+    """Adapt an explicit idea capture to the existing guarded Obsidian write path."""
+    focus = parse_idea_command(message)
+    if focus is None:
+        return None
+    card = build_idea_card(focus, source="LINE")
+    return f"Obsidianに保存 {card['path']}: {card['markdown']}"
+
+__all__ = [
+    "Idea",
+    "IdeaAgent",
+    "build_idea_card",
+    "idea_command_to_obsidian_command",
+    "parse_idea_command",
+]
