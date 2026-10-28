@@ -605,6 +605,19 @@ def test_final_outcome_blocks_held_queue_without_claiming_completion():
         all_tasks_held=True,
     ) == ("BLOCKED", "all_pending_tasks_held")
 
+def test_final_outcome_classifies_empty_runtime_queue_with_held_catalog_as_blocked():
+    assert loop.classify_final_outcome(
+        ["NOT_RUN"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        recovery_outcome="success",
+        all_tasks_held=True,
+        queue_completed=0,
+        queue_total=0,
+    ) == ("BLOCKED", "all_pending_tasks_held")
+
 
 def test_final_outcome_blocks_held_queue_when_post_run_gate_fails():
     assert loop.classify_final_outcome(
