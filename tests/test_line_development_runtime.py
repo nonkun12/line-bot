@@ -1100,6 +1100,7 @@ def test_overlong_instruction_task_executor_applies_deterministic_plan(monkeypat
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(real_file.read_text(encoding="utf-8"), encoding="utf-8")
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setattr(runtime.worker, "repo_files", lambda: [chosen])
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "refill-rejects-overlong-task-instruction-20261028")
 
     state = runtime.DevelopmentState(
