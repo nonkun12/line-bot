@@ -828,7 +828,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          python scripts/self_improvement_candidate_adapter.py \
+          PYTHONPATH=. python scripts/self_improvement_candidate_adapter.py \
             --state /tmp/recovery-ai-state-readback.json \
             --output /tmp/self-improvement-review-candidates.json
           python scripts/review_candidate_bridge.py \
