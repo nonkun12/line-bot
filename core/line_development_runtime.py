@@ -420,6 +420,43 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "changes": [{"file": chosen, "old": anchor, "new": new}],
         }, None
 
+    if task_id == "refill-rejects-overlong-task-instruction-20261028" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_rejects_catalog_task_instruction_over_5000_characters"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):\\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            "def test_refill_rejects_catalog_task_instruction_over_5000_characters(tmp_path: Path):",
+            "    queue, catalog, completed = _inputs(tmp_path, candidates=[_task(\"task-overlong-instruction\")])",
+            "    catalog_data = json.loads(catalog.read_text(encoding=\"utf-8\"))",
+            '    catalog_data["tasks"][0]["instruction"] = "x" * 5001',
+            "    catalog.write_text(json.dumps(catalog_data), encoding=\"utf-8\")",
+            '    output = tmp_path / "runtime.json"',
+            '    with pytest.raises(ValueError, match="invalid task instruction"):',
+            "        build_queue(queue, catalog, completed, output)",
+            "    assert not output.exists()",
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
     if task_id == "refill-rejects-malformed-completed-state" and chosen == "tests/test_autonomous_task_refill.py":
         target = worker.ROOT / chosen
         text = target.read_text(encoding="utf-8")
