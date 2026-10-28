@@ -1140,3 +1140,97 @@ def test_overlong_instruction_task_executor_applies_deterministic_plan(monkeypat
     assert state.touched == [chosen]
     updated_text = target.read_text(encoding="utf-8")
     assert "def test_refill_rejects_catalog_task_instruction_over_5000_characters(" in updated_text
+
+def test_overlong_instruction_task_never_falls_back_to_model_plan(monkeypatch, tmp_path):
+    chosen = "tests/test_autonomous_task_refill.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):\\n    pass\\n\\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setattr(runtime.worker, "repo_files", lambda: [chosen])
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "refill-rejects-overlong-task-instruction-20261028")
+
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Add the overlong catalog instruction regression test.",
+        chosen=chosen,
+    )
+    executor = runtime.DevelopmentExecutor(state)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("registered deterministic task must not fall back to model-backed planning")
+
+    monkeypatch.setattr(runtime.worker, "choose_file", forbidden)
+    monkeypatch.setattr(runtime.worker, "build_plan", forbidden)
+    monkeypatch.setattr(runtime.worker, "validate_plan_with_bounded_repairs", forbidden)
+
+    manager = executor.execute(
+        AgentTask(
+            "manager",
+            AgentRole.MANAGER,
+            "Select the registered deterministic target.",
+            resources=frozenset({"working-tree"}),
+        )
+    )
+    assert manager.success is True
+
+    result = executor.execute(
+        AgentTask(
+            "implementer",
+            AgentRole.IMPLEMENTER,
+            "Implement the registered regression.",
+            resources=frozenset({"working-tree"}),
+        )
+    )
+    assert result.success is True
+    assert state.plan["source"] == "deterministic_autonomous_task"
+
+
+def test_overlong_instruction_invalid_deterministic_plan_fails_closed(monkeypatch, tmp_path):
+    chosen = "tests/test_autonomous_task_refill.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):\\n    pass\\n\\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setattr(runtime.worker, "repo_files", lambda: [chosen])
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "refill-rejects-overlong-task-instruction-20261028")
+    monkeypatch.setattr(
+        runtime,
+        "_deterministic_autonomous_test_plan",
+        lambda *args, **kwargs: ({"no_change": False, "source": "deterministic_autonomous_task", "changes": []}, None),
+    )
+
+    apply_calls = []
+    monkeypatch.setattr(runtime.worker, "validate_plan", lambda *args, **kwargs: (False, "invalid_change_count"))
+    monkeypatch.setattr(runtime.worker, "apply_plan", lambda *args, **kwargs: apply_calls.append(args) or (True, "", []))
+    monkeypatch.setattr(
+        runtime.worker,
+        "build_plan",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("model plan fallback is forbidden")),
+    )
+
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Add the overlong catalog instruction regression test.",
+        chosen=chosen,
+    )
+    executor = runtime.DevelopmentExecutor(state)
+    result = executor.execute(
+        AgentTask(
+            "implementer",
+            AgentRole.IMPLEMENTER,
+            "Implement the registered regression.",
+            resources=frozenset({"working-tree"}),
+        )
+    )
+
+    assert result.success is False
+    assert "deterministic plan rejected" in result.summary
+    assert apply_calls == []
+
