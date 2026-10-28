@@ -337,6 +337,34 @@
       "allowed_paths": [
         "tests/test_autonomous_task_refill.py"
       ]
+    },
+    {
+      "id": "rea-scanner-blocks-untracked-file-evidence-20261028",
+      "instruction": "`tests/test_rea_readonly_scanner.py` に回帰テストを1件追加し、Git管理下のファイルを変更せず untracked file だけが存在する作業ツリーでも `scan_repository` が SHA-bound evidence 用のスキャンを `ScanBlocked` で拒否することを確認してください。既存の dirty worktree テストと重複しないよう、変更ではなく untracked file のケースに限定してください。実装コード・workflow・状態ファイルは変更禁止。実際の外部通信、秘密情報、OS操作は使わず、このテストファイルだけを変更してください。失敗した場合は実装を変更せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_rea_readonly_scanner.py"
+      ]
+    },
+    {
+      "id": "creator-critic-zero-rounds-safe-behavior-20261028",
+      "instruction": "`tests/test_creator_critic_runtime_evidence.py` に回帰テストを1件追加し、Creator/Critic の `rounds=0` 入力が無制限ループや例外漏出を起こさず、仕様で定められた安全な結果になることを確認してください。既存の通常1ラウンドの計測テストとは異なる境界値ケースにしてください。実装コード・workflow・状態ファイルは変更禁止。外部APIを呼ばず、テストファイルだけを変更してください。失敗した場合は実装を変更せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_creator_critic_runtime_evidence.py"
+      ]
+    },
+    {
+      "id": "control-tower-recovery-evidence-nonce-type-boundary-20261028",
+      "instruction": "`tests/test_control_tower_orchestrator.py` に回帰テストを1件追加し、Recovery AI の `evidence.run_nonce` が真偽値や数値など文字列以外の場合に、Control Tower が継続を許可せず fail-closed になることを確認してください。既存の nonce 不一致テストとは異なり、型境界に限定してください。実装コード・workflow・状態ファイルは変更禁止。このテストファイルだけを変更し、失敗時は実装を変更せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_control_tower_orchestrator.py"
+      ]
+    },
+    {
+      "id": "proposal-generator-rejects-malformed-label-entry-20261028",
+      "instruction": "`tests/test_autonomous_task_proposals.py` に回帰テストを1件追加し、GitHub issue の `labels` 配列に不正な型の要素が混在しても、未承認タスクが実行キューに入らず安全に処理されることを確認してください。既存の不正 issue record テストと重複しないよう、issue全体ではなく labels 要素の境界ケースに限定してください。実装コード・workflow・状態ファイルは変更禁止。このテストファイルだけを変更し、失敗時は実装を変更せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ]
     }
   ]
 }
