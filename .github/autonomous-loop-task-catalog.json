@@ -372,6 +372,13 @@
       "allowed_paths": [
         "tests/test_rea_readonly_scanner.py"
       ]
+    },
+    {
+      "id": "queue-progress-rejects-boolean-completed-task-id-20261028",
+      "instruction": "`tests/test_distributed_loop_queue_progress.py` だけを変更して、completed state に boolean の task ID が含まれた場合に `calculate_progress` が `ValueError(\"invalid completed task ID\")` を送出する回帰テストを1件追加してください。既存テストやデコレータを変更せず、ファイル末尾に追加してください。必ず old アンカーとしてファイル末尾の次の4行をそのまま正確に使い、同じ4行の後に新しい関数を追加してください:\n    assert main() == 2\n    output = capsys.readouterr().out\n    assert output.strip() == \"QUEUE_PROGRESS_BLOCKED: RuntimeError\"\n    assert \"private details\" not in output\nnew は上記4行をそのまま含めたうえで、次のテスト関数をモジュールレベルで追加してください:\n\ndef test_progress_rejects_boolean_completed_task_id(tmp_path: Path):\n    queue = tmp_path / \"queue.json\"\n    state = tmp_path / \"state.json\"\n    results = tmp_path / \"results.jsonl\"\n    queue.write_text(json.dumps({\"tasks\": [{\"id\": \"task-1\"}]}), encoding=\"utf-8\")\n    state.write_text(json.dumps({\"completed\": [True]}), encoding=\"utf-8\")\n    with pytest.raises(ValueError, match=\"invalid completed task ID\"):\n        calculate_progress(queue, state, results)\nこのテストは既存の `pytest.mark.parametrize` や他のデコレータの下に挿入しないでください。変更対象はこのテストファイルだけです。実装コード、workflow、catalog/state/approval ロジックは変更禁止。既存テストが失敗したら修正せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_queue_progress.py"
+      ]
     }
   ]
 }
