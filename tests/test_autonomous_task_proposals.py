@@ -230,6 +230,16 @@ def test_distinguishes_candidates_excluded_by_durable_state(tmp_path):
 
 
 def test_cli_emits_candidate_exclusion_diagnostics(tmp_path, monkeypatch, capsys):
+    # Additional regression: labels may contain non-dict elements; they should be ignored.
+    issue_dict = issue("mixed-labels")
+    # Replace labels with a mix of a non-dict element and a string (which is not a dict)
+    issue_dict["labels"] = [5, "autonomous-task-approved"]
+    # Run with this issue and a registered task; since no approved dict is present, it should not be queued.
+    result, qp = run(tmp_path, [issue_dict], state(), registered_tasks=[registered("mixed-labels")])
+    assert json.loads(qp.read_text(encoding="utf-8")).get("tasks", []) == []
+    # The status should reflect that no approved tasks were queued.
+    assert result["status"] in ("REVIEW_REQUIRED", "NO_TRUSTED_CANDIDATES")
+
     issues_path = write(tmp_path / "issues.json", [
         issue("done"),
         issue("bad-spec", path="../secret.py"),
