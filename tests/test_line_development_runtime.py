@@ -835,7 +835,7 @@ def test_self_improvement_history_plan_is_syntax_safe_and_bounded(monkeypatch, t
     candidate = anchor.replace(change["old"], change["new"], 1)
     compile(candidate, chosen, "exec")
     assert "test_read_jsonl_skips_malformed_rows_and_preserves_valid_order" in candidate
-    assert "\n" in candidate
+    assert "\\n" in candidate
     assert worker.validate_plan(plan, chosen) == (True, chosen)
 
 
@@ -1005,8 +1005,8 @@ def test_priority_boundary_task_uses_deterministic_registered_target(monkeypatch
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
-        "def test_priority_rejects_bool_float_and_out_of_range_values():\n    pass\n\n"
-        "def test_priority_accepts_integer_boundaries():\n    pass\n",
+        "def test_priority_rejects_bool_float_and_out_of_range_values():\\n    pass\\n\\n"
+        "def test_priority_accepts_integer_boundaries():\\n    pass\\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
@@ -1026,7 +1026,7 @@ def test_priority_boundary_task_fails_closed_when_regression_tests_missing(monke
     chosen = "tests/test_control_tower_decision.py"
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("def test_existing_case():\n    pass\n", encoding="utf-8")
+    target.write_text("def test_existing_case():\\n    pass\\n", encoding="utf-8")
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
 
     plan, error = runtime._deterministic_autonomous_test_plan(
