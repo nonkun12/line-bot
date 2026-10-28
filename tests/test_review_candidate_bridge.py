@@ -98,4 +98,5 @@ def test_summary_escapes_untrusted_markdown_structure(tmp_path):
 
     assert "## [Injected]" not in report
     assert "**bold**" not in report
-    assert "| another column" not in report
+    assert "\\| another column" in report
+    assert " | another column" not in report
