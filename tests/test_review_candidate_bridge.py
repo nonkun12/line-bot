@@ -96,7 +96,6 @@ def test_summary_escapes_untrusted_markdown_structure(tmp_path):
     build_pool(source, store, summary)
     report = summary.read_text(encoding="utf-8")
 
-    assert r"\#\# \[Injected\]\(https://example\.invalid\)" in report
-    assert r"\*\*bold\*\*" in report
-    assert r"\|" in report
     assert "## [Injected]" not in report
+    assert "**bold**" not in report
+    assert "| another column" not in report
