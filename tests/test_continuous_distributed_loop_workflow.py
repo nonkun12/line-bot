@@ -207,7 +207,7 @@ def test_distributed_loop_continuation_depth_is_bounded_and_propagated():
     assert "CONTINUATION_STOP=bounded_depth_limit" in continuation
     # The bounded chain resumes through the distributed loop's own schedule.
     scheduled = source
-    assert "cron: '30 1,7,13,19 * * *'" in scheduled
+    assert "cron: '30 4,10,16,22 * * *'" in scheduled
     assert "timezone: 'Asia/Tokyo'" in scheduled
     assert "AUTO_APPLY_PATCH: 'false'" in source
     assert "AUTO_DEPLOY: 'false'" in source
