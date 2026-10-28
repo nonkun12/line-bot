@@ -104,3 +104,26 @@ def test_progress_does_not_count_foreign_task_result_as_completion(tmp_path: Pat
         "queue_total": 1,
         "queue_completed": 0,
     }
+
+
+def test_cli_fails_closed_and_reports_unexpected_exception(tmp_path: Path, monkeypatch, capsys):
+    queue = tmp_path / "queue.json"
+    state = tmp_path / "state.json"
+    results = tmp_path / "results.jsonl"
+    queue.write_text(json.dumps({"tasks": [{"id": "task-1"}]}), encoding="utf-8")
+    state.write_text(json.dumps({"completed": []}), encoding="utf-8")
+    results.write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["distributed_loop_queue_progress", "--queue", str(queue), "--state", str(state), "--results", str(results)],
+    )
+
+    def raise_unexpected(*args, **kwargs):
+        raise RuntimeError("private details must not be printed")
+
+    monkeypatch.setattr("scripts.distributed_loop_queue_progress.calculate_progress", raise_unexpected)
+    assert main() == 2
+    output = capsys.readouterr().out
+    assert output.strip() == "QUEUE_PROGRESS_BLOCKED: RuntimeError"
+    assert "private details" not in output
