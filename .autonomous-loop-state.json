@@ -47,7 +47,8 @@
     "continuous-loop-empty-queue-report-reason-regression-20261025",
     "safe-continuation-depth-four-regression-20261026",
     "refill-rejects-duplicate-catalog-task-ids-20261026",
-    "creator-critic-zero-rounds-safe-behavior-20261028"
+    "creator-critic-zero-rounds-safe-behavior-20261028",
+    "proposal-generator-rejects-malformed-label-entry-20261028"
   ],
   "recovery_ai": {
     "checkpoint": null,
