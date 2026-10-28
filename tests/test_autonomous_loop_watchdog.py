@@ -26,9 +26,9 @@ def test_expected_slot_rolls_back_to_previous_day_before_first_slot():
     assert expected_slot(now) == datetime(2026, 9, 22, 22, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
 
 
-def test_find_scheduled_run_uses_distributed_workflow_and_schedule_event(monkeypatch):
+def test_find_scheduled_run_accepts_workflow_run_name_override(monkeypatch):
     scheduled = {
-        "name": "Distributed Autonomous Development Loop",
+        "name": "Distributed Loop (continuation_depth=0)",
         "event": "schedule",
         "id": 123,
         "created_at": "2026-09-22T19:31:00Z",
@@ -41,8 +41,8 @@ def test_find_scheduled_run_uses_distributed_workflow_and_schedule_event(monkeyp
         captured["url"] = url
         return {
             "workflow_runs": [
-                {"name": "other", "event": "schedule", "id": 1, "created_at": "2026-09-23T19:30:00Z"},
-                {"name": "Distributed Autonomous Development Loop", "event": "workflow_dispatch", "id": 2, "created_at": "2026-09-23T19:31:00Z"},
+                {"name": "Other Workflow", "event": "schedule", "id": 1, "created_at": "2026-09-23T19:30:00Z"},
+                {"name": "Distributed Loop (continuation_depth=0)", "event": "workflow_dispatch", "id": 2, "created_at": "2026-09-23T19:31:00Z"},
                 scheduled,
             ]
         }
@@ -54,7 +54,6 @@ def test_find_scheduled_run_uses_distributed_workflow_and_schedule_event(monkeyp
     assert captured["url"].endswith(
         "/actions/workflows/distributed-autonomous-loop.yml/runs?event=schedule&per_page=20"
     )
-
 
 def test_find_scheduled_run_accepts_delayed_run_within_four_hours(monkeypatch):
     scheduled = {
