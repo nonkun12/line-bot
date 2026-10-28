@@ -38,3 +38,17 @@ def test_creator_critic_marks_default_objective_source():
 
     assert report["execution_metrics"]["objective_source"] == "manual_or_default"
     assert report["improvement_effectiveness"] == "NOT_MEASURED"
+
+
+def test_creator_critic_invalid_rounds_raises_value_error_and_no_generate_call():
+    calls = []
+
+    def generate(messages, max_tokens):
+        calls.append((messages, max_tokens))
+        return "Should not be called"
+
+    import pytest
+    with pytest.raises(ValueError, match="rounds must be between 1 and 3"):
+        run_discussion(generate, "Some objective", rounds=0)
+
+    assert len(calls) == 0
