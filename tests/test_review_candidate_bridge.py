@@ -76,7 +76,7 @@ def test_tampered_existing_row_fails_closed(tmp_path):
         "schema_version": 1, "candidate_key": "forged", "source": "idea_ai",
         "source_id": "", "title": "## injected heading", "rationale": "tampered",
         "status": "proposed", "execution_authorized": False, "extra": "field",
-    }) + "\\n", encoding="utf-8")
+    }) + "\n", encoding="utf-8")
     try:
         build_pool(source, store, summary)
     except ValueError as exc:
