@@ -1061,3 +1061,34 @@ def test_safe_continuation_depth_four_task_has_deterministic_bounded_plan(tmp_pa
     compile(candidate, chosen, "exec")
     assert "test_safe_continuation_depth_guard_accepts_depth_four" in candidate
     assert worker.validate_plan(plan, chosen) == (True, chosen)
+
+
+def test_overlong_instruction_task_has_deterministic_bounded_plan(monkeypatch, tmp_path):
+    chosen = "tests/test_autonomous_task_refill.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    anchor = "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):\\n"
+    target.write_text(anchor + "    pass\\n\\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    assert runtime._DETERMINISTIC_AUTONOMOUS_TASK_TARGETS[
+        "refill-rejects-overlong-task-instruction-20261028"
+    ] == chosen
+    plan, error = runtime._deterministic_autonomous_test_plan(
+        chosen, "refill-rejects-overlong-task-instruction-20261028"
+    )
+
+    assert error is None
+    assert plan is not None
+    assert plan["no_change"] is False
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert len(plan["changes"]) == 1
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert change["old"] == anchor
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    candidate = target.read_text(encoding="utf-8").replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert "test_refill_rejects_catalog_task_instruction_over_5000_characters" in candidate
+    assert worker.validate_plan(plan, chosen) == (True, chosen)
