@@ -398,6 +398,17 @@
         },
         "same_fingerprint_attempts": 0
       },
+      "rea-scanner-blocks-untracked-file-evidence-20261028": {
+        "consecutive_failures": 1,
+        "fingerprints": [
+          "9ec8bb5f8719f5b4486c143208b61e0d3b97b246417e79964bf037bc977cc002"
+        ],
+        "held": true,
+        "last_category": "unknown",
+        "last_fingerprint": "9ec8bb5f8719f5b4486c143208b61e0d3b97b246417e79964bf037bc977cc002",
+        "same_fingerprint_attempts": 1,
+        "updated_at": "2026-10-28T09:08:40.463969+00:00"
+      },
       "recovery-ai-held-task-isolation-regression": {
         "consecutive_failures": 1,
         "fingerprints": [
@@ -633,345 +644,15 @@
   "recovery_rag": [
     {
       "category": "unknown",
-      "fingerprint": "71b6fd2ac6755cd88a8324e349ba7c5914b1a62efc4ca9c5e1ae19be421b3e69",
+      "fingerprint": "9ec8bb5f8719f5b4486c143208b61e0d3b97b246417e79964bf037bc977cc002",
       "status": "FAIL",
-      "task_id": "refill-rejects-overlong-task-instruction-20261028"
+      "task_id": "rea-scanner-blocks-untracked-file-evidence-20261028"
     },
     {
       "category": "unknown",
-      "fingerprint": "9e4924ca9716b145184b9f7ae5ffcb5a279e5266c89b8a5637e83ff456cd3e7b",
+      "fingerprint": "8f424016849b8e45a5eca6a56c98185a4e80d62ac32cb865a6936210f284ae61",
       "status": "FAIL",
-      "task_id": "refill-rejects-non-list-catalog-tasks-20261028"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "15ec64b9429b2874cdaea53269614286c83b53705d9f0917ec9763fdfee8e7f3",
-      "status": "FAIL",
-      "task_id": "proposal-generator-deduplicates-approved-task-ids-20261027"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "383a32454016fe292bdd88d871b72cc7d34ce179d63327ec8b52ee602f5f8f5b",
-      "status": "PASS",
-      "task_id": "safe-continuation-depth-four-regression-20261026"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "1af51a1b4fff40796d2ba44c685c6f1abe1342707225295499feb504f0247cd4",
-      "status": "FAIL",
-      "task_id": "recovery-rag-invalid-history-record-sanitization-regression-20261025"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "59e087c21918446daeac1f97094d1a1951e80ef6c0e43f21d843bbfc15285524",
-      "status": "FAIL",
-      "task_id": "proposal-generator-approved-queue-capacity-diagnostic-20261025"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "42ca56abbe2a2281b5f9da06c16d90d48ae66dd97b61a1e0e42347e409d4a608",
-      "status": "PASS",
-      "task_id": "distributed-loop-progress-invalid-task-id-20261025"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "d06afda9727735b1969902f67e7bb91d0cf9411390c580e9171d75da5653e3fc",
-      "status": "PASS",
-      "task_id": "queue-progress-excludes-not-run-results-regression-v2"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "780a197fa6e2731e973ced1c2733ce3515b2eafbbc9d6a3e4c594e7ddbc7e61d",
-      "status": "FAIL",
-      "task_id": "continuous-loop-not-run-does-not-continue-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "1e314398b9ac34b6919dd9610d5e3a230b1691419d2a0c8c5555fd8f711194c5",
-      "status": "PASS",
-      "task_id": "proposal-generator-fails-closed-on-malformed-issue-record"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "ed255b9ede46fb556e06246d9ea97a0a2ce8a6b37d1d55b9c6c4f7e49a6324ef",
-      "status": "FAIL",
-      "task_id": "control-tower-decision-priority-type-boundaries"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "c69cf975b4b7964177458cc3857b926a58bb988579247ff387b0fb98f91c2633",
-      "status": "FAIL",
-      "task_id": "proposal-generator-conflicting-catalog-definitions-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "295214f882c1b3f7794de835d51dab946817fd0af3dcce26ebfe3a26fb106fb5",
-      "status": "PASS",
-      "task_id": "queue-progress-ignores-unrelated-pass-results-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "8bdf15e8e94d5d640dc19c20d826f592f20a5dc269fc78a137f5fc2d1570b04b",
-      "status": "PASS",
-      "task_id": "proposal-generator-resume-review-exclusion-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "2483ccf96e9bb76b11eb03b586d7a6cc37766116dd51a4b481ca69c930411c5a",
-      "status": "PASS",
-      "task_id": "proposal-generator-rejects-boolean-runtime-limit"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "cc315a00e4df8bdc20f33844f0d7a97857edfb366d38f4c42811ba2c5e5cf79f",
-      "status": "FAIL",
-      "task_id": "loop-refill-empty-catalog-next-safe-test-20261023"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "b6935c1fdbe94fc322bfe75608287d3998ece59d11f52294f31909bce150ba9c",
-      "status": "PASS",
-      "task_id": "refill-rejects-non-ascii-task-id"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "301b7b29a654f1d47ef3b2c90faf6c1f99236afe5e7edc95173e6f71a8dd9f1e",
-      "status": "PASS",
-      "task_id": "refill-rejects-boolean-catalog-addition-cap"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "1631449032b9e7658b04bbe7e1c22ea70c1d2aeeef1e72b3f4df46e8fb9d3e02",
-      "status": "PASS",
-      "task_id": "refill-rejects-nonobject-recovery-task-map"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "02faeea08cc46dc69b939f59b9c66c5c4e3f29596329015d12f2b0f2464f2bcf",
-      "status": "PASS",
-      "task_id": "refill-rejects-malformed-completed-state"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "fe114954a700183221c521e36fead9c3a1e648c9111e04ce226bdd1749bd5e52",
-      "status": "NO_CHANGE",
-      "task_id": "english-core-image-unknown-word-safe-fallback"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "fffd1235f764e30ecbe85c43085ade7bec773d8c84ce4936dcd1a71ed3228a7c",
-      "status": "FAIL",
-      "task_id": "distributed-loop-queue-progress-empty-queue-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "5004af39f5086b8a79a5447fac043d434595d7cefeaaf7dfcbd3e6a3c187ffce",
-      "status": "PASS",
-      "task_id": "control-tower-run-identity-invalid-sha-regression-v2"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "b679edd8461a75f28442afcd069a64f8e3c2ba884edf3b8b7d66a172c3a61434",
-      "status": "PASS",
-      "task_id": "control-tower-recovery-evidence-identity-mismatch"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "bb1df3836771dd9d3536d1d5954e326e2ed714e560383e14680f9d0fe27b9c0c",
-      "status": "NO_CHANGE",
-      "task_id": "obsidian-bridge-invalid-job-id-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "06f9f463d0d816bceb89934028b5239f928347b1e579ab63d3c274091b9cb90a",
-      "status": "PASS",
-      "task_id": "router-general-channel-metadata-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "bdf1e7a04d723bd7e63bf2f5ba630e4bcbe51f388a87c3917788907986507fe2",
-      "status": "FAIL",
-      "task_id": "ai-speaker-transcript-normalization-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "c0aa28ff369621f11fb4d062bc9e51b65297a5b86f8e5ea48b8e47e095ebcb22",
-      "status": "NO_CHANGE",
-      "task_id": "loop-deterministic-nochange-focused-test"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56",
-      "status": "NO_CHANGE",
-      "task_id": "ai-speaker-empty-transcript-no-brain-call"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "4a0af154ce6ba0e050b288965baa951e0aa0430d43143a1e9414ac23145d6d45",
-      "status": "FAIL",
-      "task_id": "t1"
-    },
-    {
-      "category": "timeout",
-      "fingerprint": "dbafb28f4bc38108e37b6e730e2fd22217b9fe10ee31eccff5e5996033ad492b",
-      "status": "TIMEOUT",
-      "task_id": "task-a"
-    },
-    {
-      "category": "invalid_evidence",
-      "fingerprint": "2dbc8be6a89b0b3cf7a414b6e0315c424c11aa10194b11ae979024ba5bd1306b",
-      "status": "FAIL",
-      "task_id": "task-a"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "af1646c0e1876f9b6b9a4258f07b6a9146f5abf96678cc214c7a39078da4c546",
-      "status": "FAIL",
-      "task_id": "router-regression-general-request-metadata-refresh-20261015"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "4e3b2f3fa0cc168be35c286a2d71a3d3c7b3ad9564f95c74932e434bf1168550",
-      "status": "FAIL",
-      "task_id": "recovery-ai-held-task-isolation-regression"
-    },
-    {
-      "category": "invalid_evidence",
-      "fingerprint": "eb830e24eb8f9a1aaead8cc3f642de43663b42d71a67872b63b00a7f4596d798",
-      "status": "FAIL",
-      "task_id": "task-bool"
-    },
-    {
-      "category": "invalid_evidence",
-      "fingerprint": "b58fc9bffaebb257427c04c5b1df51610c66c7b98c6a72e2b9e31f610a771363",
-      "status": "FAIL",
-      "task_id": "task-sha"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "0b4ab352cd37a1149f848fae77dc1b3701d946e61e458651f4b8a8ce999efe07",
-      "status": "PASS",
-      "task_id": "task-bound"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "9cf09eae3d9f6d98ff618df02d25da07d446d6dd6e2baa7d5ef0c0844ae9539b",
-      "status": "FAIL",
-      "task_id": "english-core-image-rotation-user-isolation"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "b0ccf643008e0a2a3aae07e46c8b91cb7f88dcbc8385d2247c0e75a945b473d8",
-      "status": "FAIL",
-      "task_id": "control-tower-run-identity-invalid-sha-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "8c54a6c11ea10cae349a53cd6aeafe488ea5c819d25c73a1fa1f05fbd4c4aa15",
-      "status": "FAIL",
-      "task_id": "english-core-image-rotation-user-isolation-v2"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "2fa4371f14403f4174abf9f9669fe4f3979d6cc6dd579b8edf3b87dc4683dfc0",
-      "status": "PASS",
-      "task_id": "distributed-loop-queue-progress-empty-queue-regression-v2"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "542eb65964eec1c7c0f7b748e89036800c94cd291589a71be61f8f6135715cf8",
-      "status": "FAIL",
-      "task_id": "refill-all-catalog-candidates-ineligible-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "b40300a0a3eac984744813966cedd9918d798943a6b1a580ac353316be4370de",
-      "status": "PASS",
-      "task_id": "self-improvement-history-malformed-jsonl-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "bb7cd53bd3d9df849b1559380b866d3d4664b26f75ed6781d2b34b753e3e26a8",
-      "status": "NO_CHANGE",
-      "task_id": "refill-rejects-malformed-recovery-task-entry"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "577de9138558ad640e796623733539130e47a3e4a5ec1aa260641dd5d9208a1e",
-      "status": "PASS",
-      "task_id": "auto-test-tests-test-agent-communication-one-shot-8e144779c60c"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "2c10843e4e28d8f0e34089598892d8df9604e583f26a9f165b5ec6970e1be090",
-      "status": "PASS",
-      "task_id": "refill-preserves-catalog-order-within-addition-cap"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "fb04ea1f32aa01d170b223fa2a640c97d095370bf09c8a7626193b730503ff0f",
-      "status": "PASS",
-      "task_id": "distributed-loop-dispatch-duplicate-active-run-guard-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "6a2ec8df425e614825c0aed18dd3f8066cf5c40d405cc7384dda92fdaf6475a1",
-      "status": "FAIL",
-      "task_id": "control-tower-decision-malformed-evidence-sha"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "d545da5295468e01ffef2d5358478a5c6c15cec5a535187b32915fbd8af4c4be",
-      "status": "FAIL",
-      "task_id": "task-refill-feedback-history-skips-malformed-lines"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "dceefabd68f2f09856847d41243292b6c39dc3b3d5aba913fbe3a387c687c275",
-      "status": "FAIL",
-      "task_id": "recovery-rag-context-never-echoes-raw-instruction"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "8a60b199985729fed5edb6da05b1b56a77e1f22d5d4107184e38a283ac0a8516",
-      "status": "FAIL",
-      "task_id": "queue-progress-excludes-not-run-results-regression"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "62b5a28fb87b89726664e735be851ac89b27bf676c59dd2de1d4813b3003bf6b",
-      "status": "PASS",
-      "task_id": "refill-exhaustion-input-immutability-20261025"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "3031dd2d9da8086d0ac8e9d2a5fe0359c49c024ff1a3782dde384f72959d4a9e",
-      "status": "FAIL",
-      "task_id": "distributed-loop-progress-ignores-foreign-results-20261025"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "2b960578b18c71114a9b61376f141b73024507fed7d27532478ec8c0fd146246",
-      "status": "NO_CHANGE",
-      "task_id": "continuous-loop-empty-queue-report-reason-regression-20261025"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "f79170039e7461221577f1efcb9347f0923a0102a463c6f1ef5def07f09b84d3",
-      "status": "FAIL",
-      "task_id": "control-tower-blocks-missing-task-result-evidence-20261025"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "3910a2759f35ed1eec939e1ef7a38dbce32b1da27617bc284bf303cc61d7cc27",
-      "status": "FAIL",
-      "task_id": "task-a"
-    },
-    {
-      "category": "unknown",
-      "fingerprint": "c6a3b8e466dd58c96f029c4fd128a038df31b961cb771b5d82856339d9c46939",
-      "status": "PASS",
-      "task_id": "refill-rejects-duplicate-catalog-task-ids-20261026"
+      "task_id": "refill-rejects-empty-task-instruction-20261028"
     },
     {
       "category": "unknown",
@@ -981,9 +662,345 @@
     },
     {
       "category": "unknown",
-      "fingerprint": "8f424016849b8e45a5eca6a56c98185a4e80d62ac32cb865a6936210f284ae61",
+      "fingerprint": "c6a3b8e466dd58c96f029c4fd128a038df31b961cb771b5d82856339d9c46939",
+      "status": "PASS",
+      "task_id": "refill-rejects-duplicate-catalog-task-ids-20261026"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "3910a2759f35ed1eec939e1ef7a38dbce32b1da27617bc284bf303cc61d7cc27",
       "status": "FAIL",
-      "task_id": "refill-rejects-empty-task-instruction-20261028"
+      "task_id": "task-a"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "f79170039e7461221577f1efcb9347f0923a0102a463c6f1ef5def07f09b84d3",
+      "status": "FAIL",
+      "task_id": "control-tower-blocks-missing-task-result-evidence-20261025"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "2b960578b18c71114a9b61376f141b73024507fed7d27532478ec8c0fd146246",
+      "status": "NO_CHANGE",
+      "task_id": "continuous-loop-empty-queue-report-reason-regression-20261025"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "3031dd2d9da8086d0ac8e9d2a5fe0359c49c024ff1a3782dde384f72959d4a9e",
+      "status": "FAIL",
+      "task_id": "distributed-loop-progress-ignores-foreign-results-20261025"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "62b5a28fb87b89726664e735be851ac89b27bf676c59dd2de1d4813b3003bf6b",
+      "status": "PASS",
+      "task_id": "refill-exhaustion-input-immutability-20261025"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "8a60b199985729fed5edb6da05b1b56a77e1f22d5d4107184e38a283ac0a8516",
+      "status": "FAIL",
+      "task_id": "queue-progress-excludes-not-run-results-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "dceefabd68f2f09856847d41243292b6c39dc3b3d5aba913fbe3a387c687c275",
+      "status": "FAIL",
+      "task_id": "recovery-rag-context-never-echoes-raw-instruction"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "d545da5295468e01ffef2d5358478a5c6c15cec5a535187b32915fbd8af4c4be",
+      "status": "FAIL",
+      "task_id": "task-refill-feedback-history-skips-malformed-lines"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "6a2ec8df425e614825c0aed18dd3f8066cf5c40d405cc7384dda92fdaf6475a1",
+      "status": "FAIL",
+      "task_id": "control-tower-decision-malformed-evidence-sha"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "fb04ea1f32aa01d170b223fa2a640c97d095370bf09c8a7626193b730503ff0f",
+      "status": "PASS",
+      "task_id": "distributed-loop-dispatch-duplicate-active-run-guard-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "2c10843e4e28d8f0e34089598892d8df9604e583f26a9f165b5ec6970e1be090",
+      "status": "PASS",
+      "task_id": "refill-preserves-catalog-order-within-addition-cap"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "577de9138558ad640e796623733539130e47a3e4a5ec1aa260641dd5d9208a1e",
+      "status": "PASS",
+      "task_id": "auto-test-tests-test-agent-communication-one-shot-8e144779c60c"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "bb7cd53bd3d9df849b1559380b866d3d4664b26f75ed6781d2b34b753e3e26a8",
+      "status": "NO_CHANGE",
+      "task_id": "refill-rejects-malformed-recovery-task-entry"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "b40300a0a3eac984744813966cedd9918d798943a6b1a580ac353316be4370de",
+      "status": "PASS",
+      "task_id": "self-improvement-history-malformed-jsonl-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "542eb65964eec1c7c0f7b748e89036800c94cd291589a71be61f8f6135715cf8",
+      "status": "FAIL",
+      "task_id": "refill-all-catalog-candidates-ineligible-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "2fa4371f14403f4174abf9f9669fe4f3979d6cc6dd579b8edf3b87dc4683dfc0",
+      "status": "PASS",
+      "task_id": "distributed-loop-queue-progress-empty-queue-regression-v2"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "8c54a6c11ea10cae349a53cd6aeafe488ea5c819d25c73a1fa1f05fbd4c4aa15",
+      "status": "FAIL",
+      "task_id": "english-core-image-rotation-user-isolation-v2"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "b0ccf643008e0a2a3aae07e46c8b91cb7f88dcbc8385d2247c0e75a945b473d8",
+      "status": "FAIL",
+      "task_id": "control-tower-run-identity-invalid-sha-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "9cf09eae3d9f6d98ff618df02d25da07d446d6dd6e2baa7d5ef0c0844ae9539b",
+      "status": "FAIL",
+      "task_id": "english-core-image-rotation-user-isolation"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "0b4ab352cd37a1149f848fae77dc1b3701d946e61e458651f4b8a8ce999efe07",
+      "status": "PASS",
+      "task_id": "task-bound"
+    },
+    {
+      "category": "invalid_evidence",
+      "fingerprint": "b58fc9bffaebb257427c04c5b1df51610c66c7b98c6a72e2b9e31f610a771363",
+      "status": "FAIL",
+      "task_id": "task-sha"
+    },
+    {
+      "category": "invalid_evidence",
+      "fingerprint": "eb830e24eb8f9a1aaead8cc3f642de43663b42d71a67872b63b00a7f4596d798",
+      "status": "FAIL",
+      "task_id": "task-bool"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "4e3b2f3fa0cc168be35c286a2d71a3d3c7b3ad9564f95c74932e434bf1168550",
+      "status": "FAIL",
+      "task_id": "recovery-ai-held-task-isolation-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "af1646c0e1876f9b6b9a4258f07b6a9146f5abf96678cc214c7a39078da4c546",
+      "status": "FAIL",
+      "task_id": "router-regression-general-request-metadata-refresh-20261015"
+    },
+    {
+      "category": "invalid_evidence",
+      "fingerprint": "2dbc8be6a89b0b3cf7a414b6e0315c424c11aa10194b11ae979024ba5bd1306b",
+      "status": "FAIL",
+      "task_id": "task-a"
+    },
+    {
+      "category": "timeout",
+      "fingerprint": "dbafb28f4bc38108e37b6e730e2fd22217b9fe10ee31eccff5e5996033ad492b",
+      "status": "TIMEOUT",
+      "task_id": "task-a"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "4a0af154ce6ba0e050b288965baa951e0aa0430d43143a1e9414ac23145d6d45",
+      "status": "FAIL",
+      "task_id": "t1"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "65fa9cb9b4cdc63fda0567bbac7d84c73efaa214f26bfaaa4b6a32b8146ffc56",
+      "status": "NO_CHANGE",
+      "task_id": "ai-speaker-empty-transcript-no-brain-call"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "c0aa28ff369621f11fb4d062bc9e51b65297a5b86f8e5ea48b8e47e095ebcb22",
+      "status": "NO_CHANGE",
+      "task_id": "loop-deterministic-nochange-focused-test"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "bdf1e7a04d723bd7e63bf2f5ba630e4bcbe51f388a87c3917788907986507fe2",
+      "status": "FAIL",
+      "task_id": "ai-speaker-transcript-normalization-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "06f9f463d0d816bceb89934028b5239f928347b1e579ab63d3c274091b9cb90a",
+      "status": "PASS",
+      "task_id": "router-general-channel-metadata-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "bb1df3836771dd9d3536d1d5954e326e2ed714e560383e14680f9d0fe27b9c0c",
+      "status": "NO_CHANGE",
+      "task_id": "obsidian-bridge-invalid-job-id-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "b679edd8461a75f28442afcd069a64f8e3c2ba884edf3b8b7d66a172c3a61434",
+      "status": "PASS",
+      "task_id": "control-tower-recovery-evidence-identity-mismatch"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "5004af39f5086b8a79a5447fac043d434595d7cefeaaf7dfcbd3e6a3c187ffce",
+      "status": "PASS",
+      "task_id": "control-tower-run-identity-invalid-sha-regression-v2"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "fffd1235f764e30ecbe85c43085ade7bec773d8c84ce4936dcd1a71ed3228a7c",
+      "status": "FAIL",
+      "task_id": "distributed-loop-queue-progress-empty-queue-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "fe114954a700183221c521e36fead9c3a1e648c9111e04ce226bdd1749bd5e52",
+      "status": "NO_CHANGE",
+      "task_id": "english-core-image-unknown-word-safe-fallback"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "02faeea08cc46dc69b939f59b9c66c5c4e3f29596329015d12f2b0f2464f2bcf",
+      "status": "PASS",
+      "task_id": "refill-rejects-malformed-completed-state"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "1631449032b9e7658b04bbe7e1c22ea70c1d2aeeef1e72b3f4df46e8fb9d3e02",
+      "status": "PASS",
+      "task_id": "refill-rejects-nonobject-recovery-task-map"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "301b7b29a654f1d47ef3b2c90faf6c1f99236afe5e7edc95173e6f71a8dd9f1e",
+      "status": "PASS",
+      "task_id": "refill-rejects-boolean-catalog-addition-cap"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "b6935c1fdbe94fc322bfe75608287d3998ece59d11f52294f31909bce150ba9c",
+      "status": "PASS",
+      "task_id": "refill-rejects-non-ascii-task-id"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "cc315a00e4df8bdc20f33844f0d7a97857edfb366d38f4c42811ba2c5e5cf79f",
+      "status": "FAIL",
+      "task_id": "loop-refill-empty-catalog-next-safe-test-20261023"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "2483ccf96e9bb76b11eb03b586d7a6cc37766116dd51a4b481ca69c930411c5a",
+      "status": "PASS",
+      "task_id": "proposal-generator-rejects-boolean-runtime-limit"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "8bdf15e8e94d5d640dc19c20d826f592f20a5dc269fc78a137f5fc2d1570b04b",
+      "status": "PASS",
+      "task_id": "proposal-generator-resume-review-exclusion-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "295214f882c1b3f7794de835d51dab946817fd0af3dcce26ebfe3a26fb106fb5",
+      "status": "PASS",
+      "task_id": "queue-progress-ignores-unrelated-pass-results-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "c69cf975b4b7964177458cc3857b926a58bb988579247ff387b0fb98f91c2633",
+      "status": "FAIL",
+      "task_id": "proposal-generator-conflicting-catalog-definitions-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "ed255b9ede46fb556e06246d9ea97a0a2ce8a6b37d1d55b9c6c4f7e49a6324ef",
+      "status": "FAIL",
+      "task_id": "control-tower-decision-priority-type-boundaries"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "1e314398b9ac34b6919dd9610d5e3a230b1691419d2a0c8c5555fd8f711194c5",
+      "status": "PASS",
+      "task_id": "proposal-generator-fails-closed-on-malformed-issue-record"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "780a197fa6e2731e973ced1c2733ce3515b2eafbbc9d6a3e4c594e7ddbc7e61d",
+      "status": "FAIL",
+      "task_id": "continuous-loop-not-run-does-not-continue-regression"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "d06afda9727735b1969902f67e7bb91d0cf9411390c580e9171d75da5653e3fc",
+      "status": "PASS",
+      "task_id": "queue-progress-excludes-not-run-results-regression-v2"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "42ca56abbe2a2281b5f9da06c16d90d48ae66dd97b61a1e0e42347e409d4a608",
+      "status": "PASS",
+      "task_id": "distributed-loop-progress-invalid-task-id-20261025"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "59e087c21918446daeac1f97094d1a1951e80ef6c0e43f21d843bbfc15285524",
+      "status": "FAIL",
+      "task_id": "proposal-generator-approved-queue-capacity-diagnostic-20261025"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "1af51a1b4fff40796d2ba44c685c6f1abe1342707225295499feb504f0247cd4",
+      "status": "FAIL",
+      "task_id": "recovery-rag-invalid-history-record-sanitization-regression-20261025"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "383a32454016fe292bdd88d871b72cc7d34ce179d63327ec8b52ee602f5f8f5b",
+      "status": "PASS",
+      "task_id": "safe-continuation-depth-four-regression-20261026"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "15ec64b9429b2874cdaea53269614286c83b53705d9f0917ec9763fdfee8e7f3",
+      "status": "FAIL",
+      "task_id": "proposal-generator-deduplicates-approved-task-ids-20261027"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "9e4924ca9716b145184b9f7ae5ffcb5a279e5266c89b8a5637e83ff456cd3e7b",
+      "status": "FAIL",
+      "task_id": "refill-rejects-non-list-catalog-tasks-20261028"
+    },
+    {
+      "category": "unknown",
+      "fingerprint": "71b6fd2ac6755cd88a8324e349ba7c5914b1a62efc4ca9c5e1ae19be421b3e69",
+      "status": "FAIL",
+      "task_id": "refill-rejects-overlong-task-instruction-20261028"
     }
   ],
   "self_improvement_history": [
@@ -1763,6 +1780,28 @@
       "target_path": "",
       "recurring_patterns": [],
       "cycle_id": "40599181981"
+    },
+    {
+      "kind": "failure",
+      "task_id": "implementer",
+      "detail": "development failure observed"
+    },
+    {
+      "kind": "failure",
+      "task_id": "rea-scanner-blocks-untracked-file-evidence-20261028",
+      "detail": "development failure observed"
+    },
+    {
+      "record_type": "cycle_memory",
+      "outcome": "FAIL",
+      "cause": "development cycle failed",
+      "improvements": [
+        "review recurring development failure"
+      ],
+      "next_action": "review failure evidence before another attempt",
+      "target_path": "",
+      "recurring_patterns": [],
+      "cycle_id": "40661828352"
     }
   ]
 }
