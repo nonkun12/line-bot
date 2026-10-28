@@ -1092,3 +1092,33 @@ def test_overlong_instruction_task_has_deterministic_bounded_plan(monkeypatch, t
     compile(candidate, chosen, "exec")
     assert "test_refill_rejects_catalog_task_instruction_over_5000_characters" in candidate
     assert worker.validate_plan(plan, chosen) == (True, chosen)
+
+def test_overlong_instruction_task_executor_applies_deterministic_plan(monkeypatch, tmp_path):
+    chosen = "tests/test_autonomous_task_refill.py"
+    real_file = runtime.worker.ROOT / chosen
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(real_file.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "refill-rejects-overlong-task-instruction-20261028")
+
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Add the overlong catalog instruction regression test.",
+        chosen=chosen,
+    )
+    executor = runtime.DevelopmentExecutor(state)
+    task = AgentTask(
+        "implementer",
+        AgentRole.IMPLEMENTER,
+        "Implement the registered overlong-instruction regression test.",
+        resources=frozenset({"working-tree"}),
+    )
+
+    result = executor.execute(task)
+
+    assert result.success is True
+    assert result.summary == "guarded change applied"
+    assert state.touched == [chosen]
+    updated_text = target.read_text(encoding="utf-8")
+    assert "def test_refill_rejects_catalog_task_instruction_over_5000_characters(" in updated_text
