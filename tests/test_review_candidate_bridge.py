@@ -61,3 +61,25 @@ def test_input_must_be_a_list(tmp_path):
         assert "JSON list" in str(exc)
     else:
         raise AssertionError("expected schema rejection")
+
+
+
+def test_unhashable_source_and_status_are_rejected_without_crashing():
+    assert normalize_candidate({"source": ["idea_ai"], "title": "candidate"}) is None
+    assert normalize_candidate({"source": "idea_ai", "title": "candidate", "status": ["approved"]}) is None
+
+
+def test_tampered_existing_row_fails_closed(tmp_path):
+    source, store, summary = tmp_path / "input.json", tmp_path / "pool.jsonl", tmp_path / "summary.md"
+    source.write_text("[]", encoding="utf-8")
+    store.write_text(json.dumps({
+        "schema_version": 1, "candidate_key": "forged", "source": "idea_ai",
+        "source_id": "", "title": "## injected heading", "rationale": "tampered",
+        "status": "proposed", "execution_authorized": False, "extra": "field",
+    }) + "\\n", encoding="utf-8")
+    try:
+        build_pool(source, store, summary)
+    except ValueError as exc:
+        assert "refusing to overwrite" in str(exc)
+    else:
+        raise AssertionError("expected fail-closed ValueError")
