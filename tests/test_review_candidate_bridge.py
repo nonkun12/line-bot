@@ -63,7 +63,6 @@ def test_input_must_be_a_list(tmp_path):
         raise AssertionError("expected schema rejection")
 
 
-
 def test_unhashable_source_and_status_are_rejected_without_crashing():
     assert normalize_candidate({"source": ["idea_ai"], "title": "candidate"}) is None
     assert normalize_candidate({"source": "idea_ai", "title": "candidate", "status": ["approved"]}) is None
@@ -83,3 +82,21 @@ def test_tampered_existing_row_fails_closed(tmp_path):
         assert "refusing to overwrite" in str(exc)
     else:
         raise AssertionError("expected fail-closed ValueError")
+
+
+def test_summary_escapes_untrusted_markdown_structure(tmp_path):
+    source, store, summary = tmp_path / "input.json", tmp_path / "pool.jsonl", tmp_path / "summary.md"
+    source.write_text(json.dumps([{
+        "source": "idea_ai",
+        "source_id": "idea-injection",
+        "title": "## [Injected](https://example.invalid)",
+        "rationale": "text **bold** | another column",
+    }]), encoding="utf-8")
+
+    build_pool(source, store, summary)
+    report = summary.read_text(encoding="utf-8")
+
+    assert r"\#\# \[Injected\]\(https://example\.invalid\)" in report
+    assert r"\*\*bold\*\*" in report
+    assert r"\|" in report
+    assert "## [Injected]" not in report
