@@ -36,9 +36,9 @@ def normalize_candidate(row: object) -> dict[str, Any] | None:
     rationale = _clean_text(row.get("rationale"), MAX_RATIONALE)
     source_id = row.get("source_id", "")
     status = row.get("status", "proposed")
-    if source not in _ALLOWED_SOURCES or not title:
+    if not isinstance(source, str) or source not in _ALLOWED_SOURCES or not title:
         return None
-    if status not in _ALLOWED_STATUSES:
+    if not isinstance(status, str) or status not in _ALLOWED_STATUSES:
         return None
     if not isinstance(source_id, str) or (source_id and not _ID.fullmatch(source_id)):
         return None
@@ -68,10 +68,21 @@ def build_pool(input_path: Path, store_path: Path, summary_path: Path) -> dict[s
             old_rows = [json.loads(line) for line in store_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise ValueError("candidate store is invalid; refusing to overwrite") from exc
-        if not all(isinstance(row, dict) and row.get("schema_version") == 1
-                   and isinstance(row.get("candidate_key"), str)
-                   and row.get("execution_authorized") is False for row in old_rows):
-            raise ValueError("candidate store schema is invalid; refusing to overwrite")
+        for row in old_rows:
+            if not isinstance(row, dict) or set(row) != {
+                "schema_version", "candidate_key", "source", "source_id",
+                "title", "rationale", "status", "execution_authorized",
+            }:
+                raise ValueError("candidate store schema is invalid; refusing to overwrite")
+            normalized = normalize_candidate(row)
+            if (
+                normalized is None
+                or row.get("schema_version") != 1
+                or row.get("execution_authorized") is not False
+                or row.get("candidate_key") != normalized["candidate_key"]
+                or row != normalized
+            ):
+                raise ValueError("candidate store row is invalid; refusing to overwrite")
         existing = {row["candidate_key"]: row for row in old_rows}
 
     accepted = 0
