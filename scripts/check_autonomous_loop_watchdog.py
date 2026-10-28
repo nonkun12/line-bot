@@ -57,7 +57,11 @@ def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
     window_end = slot + timedelta(minutes=240)
     window_start = slot - timedelta(minutes=10)
     for run in data.get("workflow_runs", []):
-        if run.get("name") != "Distributed Autonomous Development Loop" or run.get("event") != "schedule":
+        # The workflow uses run-name, so the API name field may contain
+        # a title such as "Distributed Loop (continuation_depth=0)" rather than
+        # the workflow name. The endpoint is already scoped to this workflow;
+        # filter by event only and rely on the bounded timestamp window.
+        if run.get("event") != "schedule":
             continue
         created = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00")).astimezone(JST)
         if window_start <= created <= window_end:
