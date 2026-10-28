@@ -379,6 +379,13 @@
       "allowed_paths": [
         "tests/test_distributed_loop_queue_progress.py"
       ]
+    },
+    {
+      "id": "watchdog-pending-grace-boundary-regression-20261029",
+      "instruction": "tests/test_autonomous_loop_watchdog.py のみに、新しい固有名の回帰テストを1件追加してください。run_is_pending_within_grace() が status='queued' または 'in_progress' の場合でも、now が slot より1分前なら False、slot からちょうど90分後なら True を返す境界を確認してください。既存テストを変更せず、指定されたテストファイルだけを変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。既存テストが失敗したら実装を変更せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_autonomous_loop_watchdog.py"
+      ]
     }
   ]
 }
