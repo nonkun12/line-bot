@@ -1005,7 +1005,7 @@ def test_priority_boundary_task_uses_deterministic_registered_target(monkeypatch
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
-        "def test_priority_rejects_bool_float_and_out_of_range_values():\\n    pass\\n\\n"
+        "def test_priority_rejects_bool_float_and_out_of_range_values():\n    pass\n\n"
         "def test_priority_accepts_integer_boundaries():\\n    pass\\n",
         encoding="utf-8",
     )
@@ -1146,7 +1146,7 @@ def test_overlong_instruction_task_never_falls_back_to_model_plan(monkeypatch, t
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
-        "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):\\n    pass\\n\\n",
+        "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):\n    pass\n\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
@@ -1194,7 +1194,7 @@ def test_overlong_instruction_invalid_deterministic_plan_fails_closed(monkeypatc
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
-        "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):\\n    pass\\n\\n",
+        "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):\n    pass\n\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
