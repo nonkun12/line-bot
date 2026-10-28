@@ -1,5 +1,6 @@
 import httpx
 import pytest
+from pathlib import Path
 
 import mcp_client
 
@@ -96,3 +97,48 @@ def test_hibernate_retry_default_wait_is_long(monkeypatch):
 
     assert max_wait == 120.0
     assert interval == 60.0
+
+
+def test_mcp_request_logs_omit_argument_values_and_server_url(monkeypatch, capsys):
+    private_value = "unit-test-private-value"
+    server_url = "https://mcp.example.test/private-path"
+    monkeypatch.setattr(mcp_client, "MCP_SERVER_URL", server_url)
+    monkeypatch.setattr(mcp_client, "MCP_API_KEY", "unit-test-api-key")
+    monkeypatch.setattr(mcp_client.httpx, "post", lambda *args, **kwargs: _success_response())
+
+    result = mcp_client._call_mcp_tool_once(
+        "save_memory", {"key": "private", "value": private_value}
+    )
+
+    output = capsys.readouterr().out
+    assert result == "saved"
+    assert private_value not in output
+    assert server_url not in output
+    assert "unit-test-api-key" not in output
+    assert "tool_name=save_memory" in output
+    assert "saved" not in output
+
+
+def test_mcp_error_response_does_not_expose_upstream_message(monkeypatch, capsys):
+    private_error = "unit-test-private-upstream-error"
+    monkeypatch.setattr(
+        mcp_client.httpx,
+        "post",
+        lambda *args, **kwargs: _response(200, json_data={"error": private_error}),
+    )
+
+    with pytest.raises(RuntimeError, match="MCP server returned an error response") as exc_info:
+        mcp_client._call_mcp_tool_once("save_memory", {"key": "k", "value": "v"})
+
+    output = capsys.readouterr().out
+    assert private_error not in output
+    assert private_error not in str(exc_info.value)
+
+
+def test_mcp_dispatch_does_not_log_user_messages_or_search_terms():
+    source = (Path(__file__).resolve().parents[1] / "bot_tools.py").read_text(encoding="utf-8")
+
+    assert 'print("DEBUG original_message =", repr(original_message))' not in source
+    assert 'print("DEBUG arguments =", arguments)' not in source
+    assert 'print("SEARCH KEYWORD CLEANED:", keyword)' not in source
+    assert 'print(f"[LOG] wikipedia_search called: query=' not in source

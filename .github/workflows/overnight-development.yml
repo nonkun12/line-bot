@@ -33,6 +33,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ github.token }}
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -140,7 +141,7 @@ jobs:
           DEV_INSTRUCTION: "自律開発です。既存機能を壊さない安全な小規模改善を1件だけ実装してください。まずリポジトリ内の安全な候補から現在のコードとテストに基づいて改善対象を1ファイルだけ選び、既存機能との重複や不要な変更を避けてください。テスト可能な改善を優先し、必ずpytestとレビューゲートを通してください。mainへ直接変更せずPRを作成する前提です。"
           DEV_USER_ID: autonomous
           GITHUB_RUN_ID: ${{ github.run_id }}
-          GH_TOKEN: ${{ github.token }}
+          AUTONOMOUS_PUBLISH_VIA_WORKFLOW: "true"
           AUTONOMOUS_SUMMARY_PATH: ${{ runner.temp }}/autonomous_run_summary.json
           SELF_IMPROVEMENT_HISTORY_PATH: ${{ runner.temp }}/self-improvement-state/self-improvement.jsonl
           SELF_IMPROVEMENT_POLICY_ENFORCED: "true"
@@ -226,6 +227,16 @@ jobs:
             echo "AUTONOMOUS_RESULT=no-changes" >> "$GITHUB_ENV"
             exit 0
           fi
+          mkdir -p "$RUNNER_TEMP/empty-git-hooks"
+          export GIT_CONFIG_COUNT=3
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0=""
+          export GIT_CONFIG_KEY_1="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_1="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          export GIT_CONFIG_KEY_2="core.hooksPath"
+          export GIT_CONFIG_VALUE_2="$RUNNER_TEMP/empty-git-hooks"
+          git -c "remote.origin.url=https://github.com/${GITHUB_REPOSITORY}.git" -c "core.hooksPath=$RUNNER_TEMP/empty-git-hooks" push --set-upstream origin "$BRANCH"
+          unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1 GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2
           PR_URL="$(gh pr list \
             --repo "${GITHUB_REPOSITORY}" \
             --head "${BRANCH}" \

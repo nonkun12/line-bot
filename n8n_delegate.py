@@ -63,8 +63,8 @@ def _call_ai_app_builder(user_id: str, message: str) -> tuple[bool, str | None]:
         return True, summary
     except Exception as exc:
         elapsed_ms = int((time.time() - start) * 1000)
-        record_step("ai_app_builder", False, response_time_ms=elapsed_ms, error=str(exc), error_location="_call_ai_app_builder")
-        return True, f"アプリ作成サービスへの接続に失敗しました。\n{type(exc).__name__}: {exc}"
+        record_step("ai_app_builder", False, response_time_ms=elapsed_ms, error=type(exc).__name__, error_location="_call_ai_app_builder")
+        return True, f"アプリ作成サービスへの接続に失敗しました。\nエラー種別: {type(exc).__name__}"
 
 
 def _delegate_to_ai_app_builder(user_id: str, message: str) -> bool:
@@ -87,6 +87,6 @@ def _delegate_to_n8n(user_id, message, webhook_url, timeout=5):
         return ok
     except Exception as exc:
         elapsed_ms = int((time.time() - start) * 1000)
-        record_step("n8n_webhook", False, response_time_ms=elapsed_ms, error=str(exc), error_location="_delegate_to_n8n")
-        print("N8N DELEGATE ERROR:", exc)
+        record_step("n8n_webhook", False, response_time_ms=elapsed_ms, error=type(exc).__name__, error_location="_delegate_to_n8n")
+        print("N8N DELEGATE ERROR:", type(exc).__name__)
         return False

@@ -79,7 +79,7 @@ def wikipedia_search(query: str) -> str:
         extract = (summary.get("extract") or "").strip()
         page_url = ((summary.get("content_urls") or {}).get("desktop") or {}).get("page")
     except requests.RequestException as exc:
-        print("[WIKIPEDIA ERROR] summary lookup failed:", exc)
+        print("[WIKIPEDIA ERROR] summary lookup failed:", type(exc).__name__)
         extract = ""
         page_url = None
 

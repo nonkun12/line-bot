@@ -21,4 +21,6 @@ def test_publish_keeps_token_scoped_to_publish_step():
     end = workflow.index("      - name: Persist completed task state\n", start)
     publish_step = workflow[start:end]
     assert "GH_TOKEN: ${{ github.token }}" in publish_step
-    assert "auth_url=" in publish_step
+    assert "AUTHORIZATION: basic " in publish_step
+    assert "x-access-token:$GH_TOKEN@" not in publish_step
+    assert "core.hooksPath" in publish_step

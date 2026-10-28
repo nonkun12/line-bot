@@ -68,3 +68,28 @@ if __name__ == "__main__":
     test_patch_applier_ng_import()
     test_patch_applier_invalid_diff()
     print("All patch applier tests passed!")
+
+
+def test_patch_applier_rejects_multiple_or_unexpected_file_targets():
+    target_file = "test_target_tmp.py"
+    try:
+        with open(target_file, "w", encoding="utf-8") as f:
+            f.write("value = 1\n")
+
+        multi_file_patch = f"""--- {target_file}
++++ {target_file}.fixed
+@@ -1 +1 @@
+-value = 1
++value = 2
+--- ../../outside.py
++++ ../../outside.py
+@@ -1 +1 @@
+-old = 1
++old = 2
+"""
+        result = check_patch(multi_file_patch, filename=target_file)
+        assert result["ok"] is False
+        assert "変更対象" in result["message"]
+    finally:
+        if os.path.exists(target_file):
+            os.remove(target_file)

@@ -6,6 +6,7 @@ checks out its own workspace, runs tests, pushes a branch, and opens a PR.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -30,8 +31,65 @@ ALLOWED_SUFFIXES = {".py", ".md", ".html", ".css", ".js", ".json", ".txt"}
 FORBIDDEN_NAMES = {".env", ".env.local", ".env.production", "Dockerfile", "render.yaml"}
 
 
-def run(cmd: list[str], cwd: Path, *, timeout: int = 900) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, timeout=timeout)
+def run(
+    cmd: list[str],
+    cwd: Path,
+    *,
+    timeout: int = 900,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, timeout=timeout, env=env)
+
+
+def git_auth_env(token: str, *, hooks_path: str | None = None) -> dict[str, str]:
+    """Pass auth to one trusted git process without storing it in repository config."""
+    env = os.environ.copy()
+    encoded = base64.b64encode(f"x-access-token:{token}".encode("utf-8")).decode("ascii")
+    # Empty extraheader clears any repository-provided header before adding our auth.
+    env["GIT_CONFIG_COUNT"] = "3" if hooks_path else "2"
+    env["GIT_CONFIG_KEY_0"] = "http.https://github.com/.extraheader"
+    env["GIT_CONFIG_VALUE_0"] = ""
+    env["GIT_CONFIG_KEY_1"] = "http.https://github.com/.extraheader"
+    env["GIT_CONFIG_VALUE_1"] = f"AUTHORIZATION: basic {encoded}"
+    if hooks_path:
+        env["GIT_CONFIG_KEY_2"] = "core.hooksPath"
+        env["GIT_CONFIG_VALUE_2"] = hooks_path
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    return env
+
+
+def push_branch(
+    workspace: Path,
+    repo: str,
+    args: list[str],
+    token: str,
+    *,
+    timeout: int = 180,
+) -> subprocess.CompletedProcess[str]:
+    """Push only to the expected GitHub repository with hooks disabled."""
+    with tempfile.TemporaryDirectory(prefix="app-builder-empty-hooks-") as hooks_path:
+        env = git_auth_env(token, hooks_path=hooks_path)
+        command = [
+            "git",
+            "-c", f"remote.origin.url=https://github.com/{repo}.git",
+            "-c", f"core.hooksPath={hooks_path}",
+            "push", *args,
+        ]
+        return run(command, workspace, timeout=timeout, env=env)
+
+
+def _test_environment_without_credentials() -> dict[str, str]:
+    """Give generated code/tests a copy of the environment with credentials removed."""
+    env = os.environ.copy()
+    sensitive_markers = ("TOKEN", "SECRET", "PASSWORD", "API_KEY", "PRIVATE_KEY", "CREDENTIAL", "PUSH_KEY", "AUTH")
+    private_context = {"APP_REQUIREMENT", "APP_USER_ID", "DEV_INSTRUCTION", "DEV_USER_ID", "LINE_USER_ID", "USER_ID"}
+    for name in tuple(env):
+        upper = name.upper()
+        if upper in private_context or any(marker in upper for marker in sensitive_markers):
+            env.pop(name, None)
+        elif upper.startswith("GIT_CONFIG_") or upper in {"GIT_ASKPASS", "SSH_AUTH_SOCK"}:
+            env.pop(name, None)
+    return env
 
 
 def github_api(path: str, token: str, *, method: str = "GET", payload: dict | None = None) -> dict:
@@ -228,9 +286,10 @@ def create_repository(token: str, owner: str, name: str, description: str) -> st
 
 def clone_repo(repo: str, token: str, workspace: Path, workdir: Path) -> None:
     result = run(
-        ["git", "clone", f"https://x-access-token:{token}@github.com/{repo}.git", str(workspace)],
+        ["git", "clone", f"https://github.com/{repo}.git", str(workspace)],
         workdir,
         timeout=180,
+        env=git_auth_env(token),
     )
     if result.returncode != 0:
         raise RuntimeError(f"git clone failed: {result.stderr[-2000:]}")
@@ -256,10 +315,12 @@ def clear_generated_files(workspace: Path, paths: set[str]) -> None:
 
 
 def run_tests(workspace: Path) -> tuple[bool, str]:
-    compile_result = run(["python", "-m", "compileall", "-q", "."], workspace, timeout=180)
+    # Generated source and tests are untrusted; do not expose workflow/API credentials.
+    test_env = _test_environment_without_credentials()
+    compile_result = run(["python", "-m", "compileall", "-q", "."], workspace, timeout=180, env=test_env)
     if compile_result.returncode != 0:
         return False, compile_result.stderr[-8000:]
-    result = run(["python", "-m", "pytest", "-q"], workspace, timeout=900)
+    result = run(["python", "-m", "pytest", "-q"], workspace, timeout=900, env=test_env)
     return result.returncode == 0, (result.stdout + "\n" + result.stderr)[-12000:]
 
 
@@ -281,8 +342,9 @@ def create_pull_request(repo: str, token: str, branch: str, requirement: str, su
 
 
 def main() -> int:
-    requirement = os.environ.get("APP_REQUIREMENT", "").strip()[:MAX_REQUIREMENT_LENGTH]
-    token = os.environ.get("APP_GITHUB_TOKEN", "").strip()
+    requirement = os.environ.pop("APP_REQUIREMENT", "").strip()[:MAX_REQUIREMENT_LENGTH]
+    token = os.environ.pop("APP_GITHUB_TOKEN", "").strip()
+    groq_api_key = os.environ.pop("GROQ_API_KEY", "").strip()
     owner = os.environ.get("APP_GITHUB_OWNER", "nonkun12").strip() or "nonkun12"
     if not requirement:
         print("No app requirement supplied")
@@ -291,7 +353,10 @@ def main() -> int:
         print("APP_GITHUB_TOKEN is not configured; refusing to create a repository")
         return 2
     try:
-        client = Groq(api_key=os.environ["GROQ_API_KEY"])
+        if not groq_api_key:
+            print("GROQ_API_KEY is not configured; refusing to call the model")
+            return 2
+        client = Groq(api_key=groq_api_key)
         current_plan = ask(client, requirement)
     except Exception as exc:
         print(f"AI planning failed: {type(exc).__name__}: {exc}")
@@ -361,7 +426,7 @@ def main() -> int:
                     if checkout.returncode != 0:
                         print(checkout.stderr[-4000:])
                         return 1
-                    push = run(["git", "push", "--set-upstream", "origin", branch], workspace, timeout=180)
+                    push = push_branch(workspace, repo, ["--set-upstream", "origin", branch], token, timeout=180)
                     if push.returncode != 0:
                         print(push.stderr[-4000:])
                         return 1

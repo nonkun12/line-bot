@@ -35,3 +35,22 @@ if __name__ == "__main__":
     test_patch_safety_ok()
     test_patch_safety_ng()
     print("All patch safety tests passed!")
+
+
+def test_patch_safety_rejects_multiple_file_headers():
+    from patch_validator import review_patch
+
+    multi_file_patch = """--- app.py
++++ app.py.fixed
+@@ -1 +1 @@
+-a = 1
++a = 2
+--- notes.py
++++ notes.py
+@@ -1 +1 @@
+-b = 1
++b = 2
+"""
+    result = review_patch(multi_file_patch, target_function="target")
+    assert "変更ファイルが複数" in result
+    assert "自動適用禁止" in result

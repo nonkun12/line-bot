@@ -172,10 +172,9 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
     約1分の間隔で限定的に再試行し、最大120秒で打ち切る。
     それ以外の429/通信失敗は従来どおり即時失敗。
     """
+    # Tool arguments may contain personal memory, note text, or credentials.
+    # Never log arguments or endpoint URLs; log only the non-sensitive tool name.
     print(f"[LOG] call_mcp_tool called: tool_name={tool_name}")
-
-    print("MCP CALL:", tool_name, arguments)
-    print("MCP URL:", MCP_SERVER_URL)
 
     payload = {
         "jsonrpc": "2.0",
@@ -253,9 +252,8 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
             res.close()
             time.sleep(retry_interval)
     except Exception as e:
-        import traceback
-        print("EXCEPTION TYPE:", type(e))
-        traceback.print_exc()
+        # Exceptions can embed request URLs or payload fragments; log type only.
+        print("MCP REQUEST FAILED:", type(e).__name__)
         raise
     finally:
         if wake_owner:
@@ -265,7 +263,7 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
     print("POST END TIME:", time.time())
 
     print("MCP STATUS:", res.status_code)
-    print("MCP HEADERS:", res.headers)
+    # Do not dump response headers; upstreams may add sensitive metadata.
 
     res.raise_for_status()
 
@@ -292,10 +290,10 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
         finally:
             res.close()
 
-    print("MCP PARSED BODY:", body)
+    # MCP result bodies can contain private memories, notes, and user content.
 
     if "error" in body:
-        raise RuntimeError(f"MCP error: {body['error']}")
+        raise RuntimeError("MCP server returned an error response") from None
 
     result = body.get("result", {})
     parts = result.get("content", [])

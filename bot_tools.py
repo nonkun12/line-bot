@@ -185,10 +185,10 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
 
     if name == "wikipedia_search":
         try:
-            print(f"[LOG] wikipedia_search called: query={arguments.get('query', '')!r}")
+            print("[LOG] wikipedia_search called")
             return wikipedia_search(arguments.get("query", ""))
         except Exception as exc:
-            print("WIKIPEDIA TOOL ERROR:", exc)
+            print("WIKIPEDIA TOOL ERROR:", type(exc).__name__)
             return "Wikipedia検索中にエラーが発生しました。"
 
     if name == "save_note":
@@ -204,8 +204,8 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
 
     if name == "save_memory":
         print("DEBUG SAVE_MEMORY CALLED")
-        print("DEBUG original_message =", repr(original_message))
-        print("DEBUG arguments =", arguments)
+        # User messages and tool arguments may contain private memories or notes.
+        # Do not write them to application logs.
         msg_stripped = (original_message or "").strip()
         _DELETE_INTENT_WORDS = ("消して", "消す", "削除")
         if msg_stripped.endswith(("？", "?")):
@@ -251,7 +251,7 @@ def dispatch_tool_call(user_id, name, arguments, original_message=""):
         for word in ["のメモ", "メモある", "メモありますか", "ありますか", "ある？", "ある?"]:
             keyword = keyword.replace(word, "")
         keyword = keyword.strip()
-        print("SEARCH KEYWORD CLEANED:", keyword)
+        print("[LOG] search_notes called")
         return call_mcp_tool_fn("search_notes", {"user_id": user_id, "keyword": keyword})
 
     if name == "set_reminder":

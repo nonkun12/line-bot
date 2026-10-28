@@ -14,7 +14,7 @@ import random
 import threading
 import httpx
 import logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 import re
 import os
 import time
