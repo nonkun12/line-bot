@@ -347,7 +347,7 @@
     },
     {
       "id": "creator-critic-zero-rounds-safe-behavior-20261028",
-      "instruction": "`tests/test_creator_critic_runtime_evidence.py` に回帰テストを1件追加し、Creator/Critic の `rounds=0` 入力が無制限ループや例外漏出を起こさず、仕様で定められた安全な結果になることを確認してください。既存の通常1ラウンドの計測テストとは異なる境界値ケースにしてください。実装コード・workflow・状態ファイルは変更禁止。外部APIを呼ばず、テストファイルだけを変更してください。失敗した場合は実装を変更せず失敗として報告してください。",
+      "instruction": "`tests/test_creator_critic_runtime_evidence.py` に回帰テストを1件追加し、`run_discussion` に `rounds=0` を渡すと `ValueError(\"rounds must be between 1 and 3\")` が送出され、`generate` が一度も呼ばれないことを `pytest.raises` で確認してください。既存の通常1ラウンドの計測テストとは異なる境界値ケースにしてください。実装コード・workflow・状態ファイルは変更禁止。外部APIを呼ばず、テストファイルだけを変更してください。失敗した場合は実装を変更せず失敗として報告してください。",
       "allowed_paths": [
         "tests/test_creator_critic_runtime_evidence.py"
       ]
@@ -361,7 +361,7 @@
     },
     {
       "id": "proposal-generator-rejects-malformed-label-entry-20261028",
-      "instruction": "`tests/test_autonomous_task_proposals.py` に回帰テストを1件追加し、GitHub issue の `labels` 配列に不正な型の要素が混在しても、未承認タスクが実行キューに入らず安全に処理されることを確認してください。既存の不正 issue record テストと重複しないよう、issue全体ではなく labels 要素の境界ケースに限定してください。実装コード・workflow・状態ファイルは変更禁止。このテストファイルだけを変更し、失敗時は実装を変更せず失敗として報告してください。",
+      "instruction": "`tests/test_autonomous_task_proposals.py` に回帰テストを1件追加し、GitHub issue の `labels` 配列に dict 以外の要素が混在してもそれらが無視され、承認ラベル付き dict が存在しない場合は未承認タスクが実行キューに入らないことを確認してください。既存の不正 issue record テストと重複しないよう、issue全体ではなく labels 要素の境界ケースに限定してください。実装コード・workflow・状態ファイルは変更禁止。このテストファイルだけを変更し、失敗時は実装を変更せず失敗として報告してください。",
       "allowed_paths": [
         "tests/test_autonomous_task_proposals.py"
       ]
