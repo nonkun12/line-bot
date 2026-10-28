@@ -1009,7 +1009,7 @@ jobs:
           fi
           progress_output_file=/tmp/distributed-loop-queue-progress.out
           rm -f "$progress_output_file"
-          if python -m scripts.distributed_loop_queue_progress \
+          if PYTHONPATH=. python -m scripts.distributed_loop_queue_progress \
             --queue "${AUTONOMOUS_LOOP_TASK_QUEUE:-.github/autonomous-loop-tasks.json}" \
             --state /tmp/autonomous-loop-state.json \
             --results /tmp/minimal-autonomous-loop.jsonl >"$progress_output_file" 2>&1; then
