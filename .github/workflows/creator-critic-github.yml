@@ -91,9 +91,12 @@ jobs:
           print(json.dumps(report, ensure_ascii=False, indent=2))
           print("=== CREATOR_CRITIC_TRANSCRIPT_END ===")
           assert report.get("status") == "DISCUSSION_ONLY"
-          assert report.get("evidence_status") == "NOT_MEASURED"
+          assert report.get("evidence_status") == "RUNTIME_MEASURED"
           assert len(report.get("transcript", [])) == report.get("rounds", 0) * 2
           assert all(item.get("content", "").strip() for item in report["transcript"])
+          assert report.get("improvement_effectiveness") == "NOT_MEASURED"
+          assert report.get("source_changes") is False
+          assert report.get("merge_or_deploy") is False
           PY
 
       - name: Upload discussion transcript
