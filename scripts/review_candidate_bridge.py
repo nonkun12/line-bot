@@ -2,7 +2,7 @@
 
 This utility never creates tasks, issues, queue entries, or execution permissions.
 Only allowlisted metadata is persisted; free-form content is length-bounded and
-rendered as inert text in the summary.
+escaped before it is rendered in the Markdown summary.
 """
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ MAX_RATIONALE = 500
 _ALLOWED_SOURCES = {"self_improvement", "idea_ai"}
 _ALLOWED_STATUSES = {"proposed", "reviewed"}
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
+_MARKDOWN_SPECIAL = frozenset("\\`*_{}[]()#+-.!|>")
 
 
 def _clean_text(value: object, limit: int) -> str:
@@ -26,6 +27,11 @@ def _clean_text(value: object, limit: int) -> str:
         return ""
     value = "".join(ch for ch in value if ch in "\n\t" or ord(ch) >= 32)
     return " ".join(value.split())[:limit]
+
+
+def _markdown_text(value: str) -> str:
+    """Escape untrusted candidate text so it cannot alter summary structure."""
+    return "".join("\\" + char if char in _MARKDOWN_SPECIAL else char for char in value)
 
 
 def normalize_candidate(row: object) -> dict[str, Any] | None:
@@ -115,9 +121,11 @@ def build_pool(input_path: Path, store_path: Path, summary_path: Path) -> dict[s
     ]
     for row in rows:
         lines.extend([
-            f"## {row['title']}", f"- Source: {row['source']}",
-            f"- Candidate key: `{row['candidate_key']}`", f"- Status: {row['status']}",
-            f"- Rationale: {row['rationale'] or '(not provided)'}", "",
+            f"## {_markdown_text(row['title'])}",
+            f"- Source: {row['source']}",
+            f"- Candidate key: `{row['candidate_key']}`",
+            f"- Status: {row['status']}",
+            f"- Rationale: {_markdown_text(row['rationale']) or '(not provided)'}", "",
         ])
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text("\n".join(lines), encoding="utf-8")
