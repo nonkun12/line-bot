@@ -1108,17 +1108,34 @@ def test_overlong_instruction_task_executor_applies_deterministic_plan(monkeypat
         chosen=chosen,
     )
     executor = runtime.DevelopmentExecutor(state)
-    task = AgentTask(
+    def forbidden_model_selection(*args, **kwargs):
+        raise AssertionError("registered deterministic task must not use model-backed file selection")
+
+    monkeypatch.setattr(runtime.worker, "choose_file", forbidden_model_selection)
+    manager_task = AgentTask(
+        "manager",
+        AgentRole.MANAGER,
+        "Select the registered overlong-instruction regression target.",
+        resources=frozenset({"working-tree"}),
+    )
+    manager_result = executor.execute(manager_task)
+    assert manager_result.success is True
+    assert state.chosen == chosen
+
+    implementer_task = AgentTask(
         "implementer",
         AgentRole.IMPLEMENTER,
         "Implement the registered overlong-instruction regression test.",
         resources=frozenset({"working-tree"}),
     )
-
-    result = executor.execute(task)
+    result = executor.execute(implementer_task)
 
     assert result.success is True
     assert result.summary == "guarded change applied"
+    assert state.plan["source"] == "deterministic_autonomous_task"
+    assert state.plan["no_change"] is False
+    assert len(state.plan["changes"]) == 1
+    assert worker.validate_plan(state.plan, chosen) == (True, chosen)
     assert state.touched == [chosen]
     updated_text = target.read_text(encoding="utf-8")
     assert "def test_refill_rejects_catalog_task_instruction_over_5000_characters(" in updated_text
