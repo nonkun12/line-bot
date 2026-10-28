@@ -77,8 +77,8 @@ on:
   schedule:
     # Same four daily fire times, expressed as one cron entry.
     # Changing the cron expression also reactivates a deactivated scheduled workflow.
-# UTC cron corresponding to 04:30, 10:30, 16:30, and 22:30 JST watchdog slots.
-    - cron: '30 1,7,13,19 * * *'
+# Interpret these four daily slots directly in JST; the watchdog uses the same local clock.
+    - cron: '30 4,10,16,22 * * *'
       timezone: 'Asia/Tokyo'
 
 permissions:
