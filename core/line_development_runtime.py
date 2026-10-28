@@ -226,6 +226,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "loop-deterministic-nochange-focused-test": "tests/test_line_development_worker_v2.py",
     "self-improvement-history-malformed-jsonl-regression": "tests/test_self_improvement_state.py",
     "refill-rejects-malformed-completed-state": "tests/test_autonomous_task_refill.py",
+    "refill-rejects-overlong-task-instruction-20261028": "tests/test_autonomous_task_refill.py",
     "refill-rejects-malformed-recovery-task-entry": "tests/test_autonomous_task_refill.py",
     "refill-rejects-non-ascii-task-id": "tests/test_autonomous_task_refill.py",
     "refill-preserves-catalog-order-within-addition-cap": "tests/test_autonomous_task_refill.py",
@@ -426,7 +427,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         name = "test_refill_rejects_catalog_task_instruction_over_5000_characters"
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
-        anchor = "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):\\n"
+        anchor = "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):\n"
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
         newline = chr(10)
