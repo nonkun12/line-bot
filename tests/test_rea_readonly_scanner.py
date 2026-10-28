@@ -83,6 +83,10 @@ class ReadonlyScannerTests(unittest.TestCase):
         self._write("scripts/good.py", "VALUE = 2\n")
         with self.assertRaises(ScanBlocked):
             scan_repository(self.root)
+    def test_untracked_file_blocks_sha_bound_evidence(self) -> None:
+        self._write("tests/untracked.txt", "UNTRACKED = 1\n")
+        with self.assertRaises(ScanBlocked):
+            scan_repository(self.root)
 
     def test_git_index_paths_preserve_newlines_and_unicode(self) -> None:
         self._write("scripts/日本語\nname.py", "VALUE = 2\n")
