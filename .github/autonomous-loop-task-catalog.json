@@ -365,6 +365,13 @@
       "allowed_paths": [
         "tests/test_autonomous_task_proposals.py"
       ]
+    },
+    {
+      "id": "rea-scanner-blocks-untracked-file-evidence-v2-20261028",
+      "instruction": "`tests/test_rea_readonly_scanner.py` だけを変更して、untracked file がある場合に `scan_repository` が `ScanBlocked` を送出する回帰テストを1件追加してください。必ず既存の次の関数ブロック全体（4行）を old アンカーとして正確に使い、その直後に新しいテスト関数を追加してください。old アンカーは次のとおりです:\n    def test_dirty_worktree_blocks_sha_bound_evidence(self) -> None:\n        self._write(\"scripts/good.py\", \"VALUE = 2\\n\")\n        with self.assertRaises(ScanBlocked):\n            scan_repository(self.root)\n新しい関数名は `test_untracked_file_blocks_sha_bound_evidence` とし、本文は次の4行としてください:\n    def test_untracked_file_blocks_sha_bound_evidence(self) -> None:\n        self._write(\"tests/untracked.txt\", \"UNTRACKED = 1\\n\")\n        with self.assertRaises(ScanBlocked):\n            scan_repository(self.root)\n追加位置はクラス `ReadonlyScannerTests` 内で、既存のメソッドの後です。デコレータや既存関数の本文の途中には挿入しないでください。変更はこのテストファイルだけ、外部通信・シークレット・OS UI・実装コード変更は禁止。既存テストが失敗したら修正せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_rea_readonly_scanner.py"
+      ]
     }
   ]
 }
