@@ -1,5 +1,7 @@
 """Regression tests for normal-agent MCP tool exposure."""
 
+from types import SimpleNamespace
+
 from agents.normal import handlers
 
 
