@@ -69,5 +69,6 @@ def test_readiness_backoff_remains_bounded(monkeypatch):
         mcp_client.wait_for_mcp_http_ready()
 
     assert sleeps == [5, 10, 20]
-    assert len(calls) == 4
+    # The deadline is checked before starting a probe, so no request starts after it.
+    assert len(calls) == 3
     assert clock[0] == pytest.approx(35.0)
