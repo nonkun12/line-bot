@@ -109,20 +109,18 @@ class CreatorCriticGitHubRunnerTests(unittest.TestCase):
         result = assess_discussion_quality(transcript)
         self.assertEqual(result["quality_status"], "HOLD")
 
-    def test_quality_gate_passes_actionable_critique_and_feedback_linked_revision(self):
+    def test_quality_gate_holds_when_final_critic_leaves_evidence_gap(self):
         transcript = [
             {"role": "creator", "content": "Add loop logging and run unit tests."},
             {"role": "critic", "content": "Finding: the proposal lacks a measurable failure case. Evidence gap: add a test that simulates a missing task ID, verify the ledger records BLOCKED, and compare the result with current behavior before implementation."},
             {"role": "creator", "content": "Concrete change: add a missing-task-ID regression test. Validation: assert the ledger records BLOCKED and compare before/after outputs without changing production behavior. Risk: ensure no false PASS is emitted."},
-            {"role": "critic", "content": "Finding: the revised test should verify no task is marked PASS when its ID is missing. Evidence gap: inspect the output artifact. Risk: false PASS. Validation: record expected BLOCKED and compare outputs."},
+            {"role": "critic", "content": "Finding: the revised test should verify no task is marked PASS when its ID is missing. UNRESOLVED: Evidence gap remains; inspect the output artifact before closing this finding. Risk: false PASS. Validation: record expected BLOCKED and compare outputs.\nHOLD"},
         ]
         result = assess_discussion_quality(transcript)
-        # The final Critic still leaves "inspect the output artifact" as an
-        # evidence gap, so it must not be treated as a quality PASS.
         self.assertEqual(result["quality_status"], "HOLD")
         self.assertEqual(result["actionable_critique_count"], 2)
-        self.assertTrue(result["creator_revision_detected"])
-        self.assertGreaterEqual(result["revision_feedback_overlap"], 0.12)
+        self.assertFalse(result["creator_revision_detected"])
+        self.assertEqual(result["revision_check"], "HOLD")
 
 
 if __name__ == "__main__":
