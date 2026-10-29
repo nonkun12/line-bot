@@ -71,6 +71,12 @@ def assess_discussion_quality(transcript: list[dict[str, str]]) -> dict:
         revision_detected = bool(first and last and first != last and revision_similarity < 0.90)
         if not revision_detected:
             revision_reasons.append("proposal is unchanged or only superficially changed")
+        # An explicit unresolved marker must never be treated as a successful
+        # revision merely because the model appended critique-related wording.
+        unresolved_markers = ("unresolved", "unable to address", "not sufficient to address the critique")
+        if any(marker in creators[-1].casefold() for marker in unresolved_markers):
+            revision_detected = False
+            revision_reasons.append("Creator explicitly reports the critique remains unresolved")
         feedback = critics[-2] if len(critics) >= 2 else (critics[-1] if critics else "")
         feedback_terms = _meaningful_terms(feedback)
         revision_terms = _meaningful_terms(creators[-1])
