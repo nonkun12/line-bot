@@ -91,6 +91,6 @@ def test_candidate_id_is_stable_when_symbol_moves(tmp_path: Path):
     root, catalog, queue, state, runtime = _fixture(tmp_path)
     before = analyze(root, catalog, queue, state, runtime)["candidates"][0]["id"]
     code = root / "core" / "agent_runtime.py"
-    code.write_text("# moved line\\ndef uncovered_boundary(value):\\n    return value\\n", encoding="utf-8")
+    code.write_text("# moved line\ndef uncovered_boundary(value):\n    return value\n", encoding="utf-8")
     after = analyze(root, catalog, queue, state, runtime)["candidates"][0]["id"]
     assert after == before
