@@ -28,16 +28,16 @@ def test_normal_chat_does_not_implicitly_read_memory(monkeypatch):
 
 
 
-def test_normal_agent_schema_excludes_memory_and_notes_tools():
+def test_normal_agent_schema_excludes_memory_but_includes_read_only_notes_search():
     names = {
         tool["function"]["name"]
         for tool in handlers._NORMAL_MCP_TOOLS_SCHEMA
     }
     assert "get_all_memory" not in names
     assert "get_memory" not in names
-    assert "search_notes" not in names
+    assert "search_notes" in names
     assert "save_memory" not in names
-    assert names == {"set_reminder", "list_reminders", "cancel_reminder"}
+    assert names == {"set_reminder", "list_reminders", "cancel_reminder", "search_notes"}
 
 
 def test_normal_agent_rejects_forged_memory_tool_call(monkeypatch):
