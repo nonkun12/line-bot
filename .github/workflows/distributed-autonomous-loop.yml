@@ -377,7 +377,23 @@ jobs:
             --runtime core/line_development_runtime.py \
             --output /tmp/catalog-exhaustion-report.json \
             | tee /tmp/catalog-exhaustion-summary.json; then
-            cat /tmp/catalog-exhaustion-report.json >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "### Catalog exhaustion review"
+              python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("/tmp/catalog-exhaustion-report.json").read_text(encoding="utf-8"))
+          refill = json.loads(Path("/tmp/autonomous-loop-refill-report.json").read_text(encoding="utf-8"))
+          held = refill.get("held_count", refill.get("held_task_count", None))
+          if held is None:
+              held = len(refill.get("held_ids", [])) if isinstance(refill.get("held_ids"), list) else "unknown"
+          print(f"- Analyzer status: `{report.get('status', 'unknown')}`")
+          print(f"- Review candidates: {report.get('candidate_count', 0)}")
+          print(f"- No-candidate reason: `{report.get('reason') or 'none'}`")
+          print(f"- Held tasks reported by refill: {held}")
+          PY
+              cat /tmp/catalog-exhaustion-report.json
+            } >> "$GITHUB_STEP_SUMMARY"
             echo "CATALOG_EXHAUSTION_REPORT_PATH=/tmp/catalog-exhaustion-report.json" >> "$GITHUB_ENV"
           else
             rc=$?
@@ -860,7 +876,7 @@ jobs:
             PYTHONPATH=. python scripts/catalog_exhaustion_candidate_adapter.py \
               --history /tmp/self-improvement-review-candidates.json \
               --catalog-report /tmp/catalog-exhaustion-report.json \
-              --output /tmp/review-candidate-input.json
+              --output /tmp/review-candidate-input.json | tee -a "$GITHUB_STEP_SUMMARY"
           else
             cp /tmp/self-improvement-review-candidates.json /tmp/review-candidate-input.json
           fi
