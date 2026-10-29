@@ -110,10 +110,14 @@ def wait_for_mcp_http_ready(max_wait=None, poll_interval=None, stable_count=None
     last_reason = "no response"
     current_interval = poll_interval
     while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise McpNotReadyError(f"MCP server not ready ({last_reason})")
+        probe_timeout = min(8.0, max(0.01, remaining))
         try:
             res = httpx.get(
                 mcp_health_url(),
-                timeout=httpx.Timeout(8.0, connect=8.0),
+                timeout=httpx.Timeout(probe_timeout, connect=probe_timeout),
                 follow_redirects=False,
             )
             ok = False
