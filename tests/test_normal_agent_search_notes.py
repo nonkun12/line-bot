@@ -28,7 +28,7 @@ def test_normal_agent_executes_search_notes_tool_call(monkeypatch):
         id="notes-search-1",
         function=SimpleNamespace(
             name="search_notes",
-            arguments='{"query": "LINE Bot"}',
+            arguments='{"keyword": "LINE Bot"}',
         ),
     )
     first = SimpleNamespace(content="", tool_calls=[tool_call])
@@ -60,5 +60,5 @@ def test_normal_agent_executes_search_notes_tool_call(monkeypatch):
 
     assert reply == "LINE Botのメモが見つかりました。"
     assert calls == [
-        ("test-user", "search_notes", {"query": "LINE Bot"}, "LINE Botのメモを検索して")
+        ("test-user", "search_notes", {"keyword": "LINE Bot"}, "LINE Botのメモを検索して")
     ]
