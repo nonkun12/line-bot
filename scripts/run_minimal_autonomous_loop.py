@@ -48,7 +48,9 @@ def classify_final_outcome(
 ) -> tuple[str, str]:
     """Fail closed when task evidence, requested work, or a post-run gate is missing."""
     successful = {"PASS", "NO_CHANGE"}
-    if queue_empty:
+    # A catalog whose remaining tasks are all held must stay BLOCKED even when
+    # the generated runtime queue is empty. Otherwise queue_empty masks the hold gate.
+    if queue_empty and not all_tasks_held:
         if task_statuses != ["NOT_RUN"] or loop_outcome != "success":
             return "BLOCKED", "queue_empty_evidence_mismatch"
         failed_gates = [
