@@ -71,6 +71,7 @@ class AgentVersionRegistry:
         return enabled[0] if enabled else None
 
     def history(self, agent_name: str) -> tuple[AgentVersion, ...]:
+        """Return the full history of versions for the given agent."""
         return tuple(self._history.get(str(agent_name).strip(), ()))
 
     def rollback_target(self, agent_name: str) -> AgentVersion | None:
