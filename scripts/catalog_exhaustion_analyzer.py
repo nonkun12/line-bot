@@ -129,7 +129,7 @@ def analyze(repo_root: Path, catalog_path: Path, queue_path: Path, state_path: P
             leaf = function.rsplit(".", 1)[-1]
             # Conservative textual heuristic only. It is explicitly marked as
             # review-only because indirect/parameterized coverage is possible.
-            if re.search(r"\\b" + re.escape(leaf) + r"\\b", test_source):
+            if re.search(r"\b" + re.escape(leaf) + r"\b", test_source):
                 continue
             suffix = hashlib.sha256(f"{code_rel}:{function}:{line}".encode()).hexdigest()[:10]
             task_id = f"review-coverage-gap-{suffix}"
