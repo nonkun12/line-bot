@@ -94,3 +94,16 @@ def test_candidate_id_is_stable_when_symbol_moves(tmp_path: Path):
     code.write_text("# moved line\ndef uncovered_boundary(value):\n    return value\n", encoding="utf-8")
     after = analyze(root, catalog, queue, state, runtime)["candidates"][0]["id"]
     assert after == before
+
+
+
+def test_analyzer_suppresses_symbol_referenced_in_another_test_module(tmp_path: Path):
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    (root / "tests" / "test_agent_runtime_handoff.py").write_text(
+        "def test_handoff():\n    assert uncovered_boundary(1) == 1\n",
+        encoding="utf-8",
+    )
+    report = analyze(root, catalog, queue, state, runtime)
+    assert report["candidate_count"] == 0
+    assert report["status"] == "NO_SAFE_CANDIDATE"
+    assert report["reason"] == "no_allowlisted_unreferenced_public_symbols_found"
