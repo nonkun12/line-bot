@@ -53,15 +53,31 @@ def test_analyzer_is_deterministic(tmp_path: Path):
 def test_analyzer_reports_catalog_ids_without_plan_and_excludes_held_or_completed(tmp_path: Path):
     root, catalog, queue, state, runtime = _fixture(tmp_path)
     _write(catalog, {"tasks": [{"id": "known-task"}, {"id": "missing-plan"}]})
-    _write(state, {"completed": ["known-task"], "recovery_ai": {"schema_version": 1, "tasks": {"review-coverage-gap-0": {"held": True}}, "checkpoint": None}})
-    report = analyze(root, catalog, queue, state, runtime)
-    assert report["catalog_ids_without_runtime_plan"] == ["missing-plan"]
-    assert all(c["id"] != "known-task" for c in report["candidates"])
+    initial = analyze(root, catalog, queue, state, runtime)
+    candidate_id = initial["candidates"][0]["id"]
+    _write(state, {"completed": [candidate_id], "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None}})
+    completed_report = analyze(root, catalog, queue, state, runtime)
+    assert all(c["id"] != candidate_id for c in completed_report["candidates"])
+
+    _write(state, {"completed": [], "recovery_ai": {"schema_version": 1, "tasks": {candidate_id: {"held": True}}, "checkpoint": None}})
+    held_report = analyze(root, catalog, queue, state, runtime)
+    assert all(c["id"] != candidate_id for c in held_report["candidates"])
+    assert held_report["candidate_count"] == 0
+    assert held_report["catalog_ids_without_runtime_plan"] == ["missing-plan"]
 
 
-def test_planned_ids_come_only_from_runtime_mapping():
-    assert _planned_ids('_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {"a": "tests/test_a.py"}') == {"a"}
-    assert _planned_ids("unrelated = {'not-a-plan': 1}") == set()
+def test_planned_ids_include_mapping_and_explicit_plan_branches():
+    source = '''
+_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {"mapped-task": "tests/test_a.py"}
+def _deterministic_autonomous_test_plan(task_id, chosen):
+    if task_id == "branch-task" and chosen == "tests/test_b.py":
+        return {}
+    return None
+def unrelated(value):
+    if value == "not-a-plan":
+        return None
+'''
+    assert _planned_ids(source) == {"mapped-task", "branch-task"}
 
 
 def test_analyzer_fails_closed_on_malformed_state(tmp_path: Path):
@@ -69,3 +85,12 @@ def test_analyzer_fails_closed_on_malformed_state(tmp_path: Path):
     _write(state, {"completed": [], "recovery_ai": {"schema_version": 2, "tasks": {}, "checkpoint": None}})
     with pytest.raises(ValueError, match="Recovery AI state"):
         analyze(root, catalog, queue, state, runtime)
+
+
+def test_candidate_id_is_stable_when_symbol_moves(tmp_path: Path):
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    before = analyze(root, catalog, queue, state, runtime)["candidates"][0]["id"]
+    code = root / "core" / "agent_runtime.py"
+    code.write_text("# moved line\\ndef uncovered_boundary(value):\\n    return value\\n", encoding="utf-8")
+    after = analyze(root, catalog, queue, state, runtime)["candidates"][0]["id"]
+    assert after == before
