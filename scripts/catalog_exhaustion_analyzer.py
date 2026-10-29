@@ -52,6 +52,16 @@ def _planned_ids(runtime_source: str) -> set[str]:
             for key in node.value.keys:
                 if isinstance(key, ast.Constant) and isinstance(key.value, str):
                     planned.add(key.value)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "_deterministic_autonomous_test_plan":
+            for child in ast.walk(node):
+                if not isinstance(child, ast.Compare):
+                    continue
+                operands = [child.left, *child.comparators]
+                if not any(isinstance(value, ast.Name) and value.id == "task_id" for value in operands):
+                    continue
+                for value in operands:
+                    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                        planned.add(value.value)
     return planned
 
 
@@ -131,7 +141,8 @@ def analyze(repo_root: Path, catalog_path: Path, queue_path: Path, state_path: P
             # review-only because indirect/parameterized coverage is possible.
             if re.search(r"\b" + re.escape(leaf) + r"\b", test_source):
                 continue
-            suffix = hashlib.sha256(f"{code_rel}:{function}:{line}".encode()).hexdigest()[:10]
+            # Stable across line movement; source location remains in evidence/fingerprint.
+            suffix = hashlib.sha256(f"{code_rel}:{function}".encode()).hexdigest()[:10]
             task_id = f"review-coverage-gap-{suffix}"
             if task_id in excluded:
                 continue
