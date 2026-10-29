@@ -88,6 +88,27 @@ class CreatorCriticGitHubRunnerTests(unittest.TestCase):
         self.assertEqual(result["revision_check"], "HOLD")
         self.assertTrue(any("unresolved" in reason.casefold() for reason in result["revision_reasons"]))
 
+    def test_final_critic_unresolved_or_hold_blocks_pass(self):
+        base = [
+            {"role": "creator", "content": "Add loop logging and run unit tests."},
+            {"role": "critic", "content": "Finding: add a reproducible test for missing task IDs. Evidence gap: verify the ledger records BLOCKED. Risk: false PASS. Validation: assert BLOCKED is emitted."},
+            {"role": "creator", "content": "Concrete change: add a missing-task-ID regression test. Validation: assert the ledger records BLOCKED and compare before/after output. Risk: prevent false PASS."},
+            {"role": "critic", "content": "Finding: the revision still leaves an evidence gap. UNRESOLVED: inspect the output artifact before closing this finding.\nHOLD"},
+        ]
+        result = assess_discussion_quality(base)
+        self.assertEqual(result["quality_status"], "HOLD")
+        self.assertEqual(result["revision_check"], "HOLD")
+
+    def test_japanese_unresolved_marker_blocks_pass(self):
+        transcript = [
+            {"role": "creator", "content": "Add loop logging and run unit tests."},
+            {"role": "critic", "content": "Finding: add a reproducible test for missing task IDs. Evidence gap: verify the ledger records BLOCKED. Risk: false PASS. Validation: assert BLOCKED is emitted."},
+            {"role": "creator", "content": "Concrete change: add a missing-task-ID regression test. Validation: assert the ledger records BLOCKED and compare before/after output. Risk: prevent false PASS."},
+            {"role": "critic", "content": "Finding: 未解決。証拠が不足しているため対応できない。\nHOLD"},
+        ]
+        result = assess_discussion_quality(transcript)
+        self.assertEqual(result["quality_status"], "HOLD")
+
     def test_quality_gate_passes_actionable_critique_and_feedback_linked_revision(self):
         transcript = [
             {"role": "creator", "content": "Add loop logging and run unit tests."},
@@ -96,7 +117,9 @@ class CreatorCriticGitHubRunnerTests(unittest.TestCase):
             {"role": "critic", "content": "Finding: the revised test should verify no task is marked PASS when its ID is missing. Evidence gap: inspect the output artifact. Risk: false PASS. Validation: record expected BLOCKED and compare outputs."},
         ]
         result = assess_discussion_quality(transcript)
-        self.assertEqual(result["quality_status"], "PASS")
+        # The final Critic still leaves "inspect the output artifact" as an
+        # evidence gap, so it must not be treated as a quality PASS.
+        self.assertEqual(result["quality_status"], "HOLD")
         self.assertEqual(result["actionable_critique_count"], 2)
         self.assertTrue(result["creator_revision_detected"])
         self.assertGreaterEqual(result["revision_feedback_overlap"], 0.12)
