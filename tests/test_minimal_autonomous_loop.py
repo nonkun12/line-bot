@@ -619,6 +619,21 @@ def test_final_outcome_classifies_empty_runtime_queue_with_held_catalog_as_block
     ) == ("BLOCKED", "all_pending_tasks_held")
 
 
+def test_final_outcome_held_catalog_takes_precedence_over_empty_runtime_queue():
+    assert loop.classify_final_outcome(
+        ["NOT_RUN"],
+        loop_outcome="success",
+        publish_outcome="success",
+        state_outcome="success",
+        sheets_outcome="success",
+        recovery_outcome="success",
+        queue_empty=True,
+        all_tasks_held=True,
+        queue_completed=0,
+        queue_total=0,
+    ) == ("BLOCKED", "all_pending_tasks_held")
+
+
 def test_final_outcome_blocks_held_queue_when_post_run_gate_fails():
     assert loop.classify_final_outcome(
         ["BLOCKED"],
