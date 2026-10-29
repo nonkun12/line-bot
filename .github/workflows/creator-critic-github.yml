@@ -95,6 +95,7 @@ jobs:
           print("=== CREATOR_CRITIC_TRANSCRIPT_END ===")
           assert report.get("status") == "DISCUSSION_ONLY"
           assert report.get("evidence_status") == "RUNTIME_MEASURED"
+          assert report.get("quality_assessment", {}).get("quality_status") == "PASS"
           assert len(report.get("transcript", [])) == report.get("rounds", 0) * 2
           assert all(item.get("content", "").strip() for item in report["transcript"])
           PY
