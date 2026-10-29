@@ -6,7 +6,6 @@ registered task catalog, durable state, GitHub issues, or execution permissions.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 from pathlib import Path
