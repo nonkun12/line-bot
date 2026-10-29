@@ -99,7 +99,9 @@ jobs:
           if not path.is_file():
               print("No discussion artifact exists; manifest not created.")
               raise SystemExit(0)
-          report = json.loads(path.read_text(encoding="utf-8"))
+          raw_report = path.read_bytes()
+          import hashlib
+          report = json.loads(raw_report.decode("utf-8"))
           report["evidence_manifest"] = {
               "manifest_version": 1,
               "git_sha": os.environ["EVIDENCE_GIT_SHA"],
@@ -108,7 +110,7 @@ jobs:
               "workflow": os.environ["EVIDENCE_WORKFLOW"],
               "ref": os.environ["EVIDENCE_REF"],
               "recorded_at": datetime.now(timezone.utc).isoformat(),
-              "artifact_sha256": None,
+              "artifact_sha256": hashlib.sha256(raw_report).hexdigest(),
               "model_identity": {
                   "repository": report.get("model_repo"),
                   "filename": report.get("model_file"),
