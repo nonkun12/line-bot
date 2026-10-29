@@ -228,3 +228,14 @@ def test_active_run_is_not_pending_after_90_minute_grace():
 def test_completed_run_is_never_classified_as_pending():
     slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
     assert not run_is_pending_within_grace({"status": "completed"}, slot, slot)
+
+def test_run_is_pending_within_grace_boundary_conditions():
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    # 1 minute before slot should not be pending
+    now_before = slot - timedelta(minutes=1)
+    for status in ("queued", "in_progress"):
+        assert not run_is_pending_within_grace({"status": status}, slot, now_before)
+    # exactly 90 minutes after slot should be pending
+    now_after = slot + timedelta(hours=1, minutes=30)
+    for status in ("queued", "in_progress"):
+        assert run_is_pending_within_grace({"status": status}, slot, now_after)
