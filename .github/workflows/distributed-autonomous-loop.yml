@@ -385,6 +385,40 @@ jobs:
             echo "::warning::Catalog exhaustion analyzer failed (exit=$rc); bounded loop outcome classification will continue."
           fi
 
+      - name: Publish catalog-exhaustion candidates as review-only Issues
+        if: success() && env.TRIGGER_MODE == 'normal'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ ! -s /tmp/catalog-exhaustion-report.json ]; then
+            echo "REVIEW_ISSUE_PROPOSALS=0 (no analyzer report)"
+            exit 0
+          fi
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" | jq -s 'add' > /tmp/catalog-review-existing-issues.json
+          PYTHONPATH=. python -m scripts.catalog_review_issue_publisher \
+            --report /tmp/catalog-exhaustion-report.json \
+            --existing-issues /tmp/catalog-review-existing-issues.json \
+            --output /tmp/catalog-review-issue-proposals.json
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+          payloads = json.loads(Path("/tmp/catalog-review-issue-proposals.json").read_text(encoding="utf-8"))
+          for index, row in enumerate(payloads):
+              body_path = Path("/tmp") / f"catalog-review-issue-{index}.md"
+              body_path.write_text(row["body"], encoding="utf-8")
+              subprocess.run([
+                  "gh", "issue", "create", "--repo", os.environ["GITHUB_REPOSITORY"],
+                  "--title", row["title"], "--body-file", str(body_path),
+                  "--label", "autonomous-task-candidate",
+              ], check=True, capture_output=True, text=True)
+              print(f"Published review-only proposal: {row['id']}")
+          print(f"REVIEW_ISSUES_CREATED={len(payloads)}")
+          PY
+
       - name: Run one bounded autonomous task
         id: run_task
         env:
