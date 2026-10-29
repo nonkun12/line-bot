@@ -110,10 +110,14 @@ def wait_for_mcp_http_ready(max_wait=None, poll_interval=None, stable_count=None
     last_reason = "no response"
     current_interval = poll_interval
     while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise McpNotReadyError(f"MCP server not ready ({last_reason})")
+        probe_timeout = min(8.0, max(0.01, remaining))
         try:
             res = httpx.get(
                 mcp_health_url(),
-                timeout=httpx.Timeout(8.0, connect=8.0),
+                timeout=httpx.Timeout(probe_timeout, connect=probe_timeout),
                 follow_redirects=False,
             )
             ok = False
@@ -167,9 +171,9 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
     MCP_TIMEOUT_SEC が設定されていればそれを使用し、未設定時は10秒。
     Render Free等のcold startで3秒を超えるケースを考慮する。
 
-    Render Free が自動スピンダウンから復帰する際に返す
+    Render Free の休止復帰時に返る
     429 + x-render-routing=hibernate-rate-limited だけは、
-    約1分の間隔で限定的に再試行し、最大120秒で打ち切る。
+    /health が安定して ready になるまで同一の期限内で待機してから再試行する。
     それ以外の429/通信失敗は従来どおり即時失敗。
     """
     print(f"[LOG] call_mcp_tool called: tool_name={tool_name}")
@@ -240,18 +244,23 @@ def _call_mcp_tool_once(tool_name, arguments, timeout=None):
                 wake_cooldown = retry_interval
 
             remaining = retry_deadline - time.monotonic()
-            if remaining < retry_interval:
+            if remaining <= 0:
                 print("MCP HIBERNATE RETRY DEADLINE EXCEEDED", flush=True)
                 res.close()
                 raise McpNotReadyError("MCP hibernate retry deadline exceeded")
 
             print(
-                f"MCP HIBERNATE RATE LIMIT: retrying in "
-                f"{retry_interval:.1f}s",
+                f"MCP HIBERNATE RATE LIMIT: waiting for HTTP readiness "
+                f"(remaining={remaining:.1f}s)",
                 flush=True,
             )
             res.close()
-            time.sleep(retry_interval)
+            wait_for_mcp_http_ready(max_wait=remaining)
+
+            # Health probes and their timeouts count against the same retry budget.
+            if time.monotonic() >= retry_deadline:
+                print("MCP HIBERNATE RETRY DEADLINE EXCEEDED", flush=True)
+                raise McpNotReadyError("MCP hibernate retry deadline exceeded")
     except Exception as e:
         import traceback
         print("EXCEPTION TYPE:", type(e))
