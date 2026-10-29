@@ -384,6 +384,15 @@ jobs:
             printf '{"status":"ANALYZER_BLOCKED","reason":"analyzer_failed","exit_code":%s}\\n' "$rc" >> "$GITHUB_STEP_SUMMARY"
             echo "::warning::Catalog exhaustion analyzer failed (exit=$rc); bounded loop outcome classification will continue."
           fi
+          if [ -s /tmp/catalog-exhaustion-report.json ]; then
+            python -m scripts.catalog_exhaustion_proposal_report \
+              --proposals /tmp/autonomous-loop-task-proposals.json \
+              --catalog-report /tmp/catalog-exhaustion-report.json \
+              --output /tmp/autonomous-loop-task-proposals-merged.json
+            mv /tmp/autonomous-loop-task-proposals-merged.json /tmp/autonomous-loop-task-proposals.json
+            cat /tmp/autonomous-loop-task-proposals.json >> "$GITHUB_STEP_SUMMARY"
+            echo "Catalog exhaustion candidates are review-only; execution authorization remains false."
+          fi
 
       - name: Run one bounded autonomous task
         id: run_task
