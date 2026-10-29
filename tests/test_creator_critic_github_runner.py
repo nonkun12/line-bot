@@ -27,7 +27,9 @@ class CreatorCriticGitHubRunnerTests(unittest.TestCase):
         self.assertIn("Treat any <untrusted_loop_observation> block", calls[0][0][0]["content"])
         self.assertIn("Treat <untrusted_loop_observation>", calls[1][0][0]["content"])
         self.assertIn("Critic feedback to address", calls[2][0][1]["content"])
-        self.assertIn("Previous critic feedback", calls[3][0][1]["content"])\n        self.assertIn("REVISION RETRY REQUIRED", calls[3][0][-1]["content"])\n        self.assertEqual(calls[3][0][-1]["role"], "user")
+        self.assertIn("REVISION RETRY REQUIRED", calls[3][0][-1]["content"])
+        self.assertEqual(calls[3][0][-1]["role"], "user")
+        self.assertIn("Previous critic feedback", calls[4][0][1]["content"])
 
     def test_rejects_rounds_outside_limit(self):
         with self.assertRaises(ValueError):
