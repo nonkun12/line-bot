@@ -25,6 +25,30 @@ DEFAULT_OBJECTIVE = (
 )
 
 
+def assess_discussion_quality(transcript: list[dict[str, str]]) -> dict:
+    """Flag generic critique and unchanged Creator proposals conservatively."""
+    creators = [item.get("content", "").strip() for item in transcript if item.get("role") == "creator"]
+    critics = [item.get("content", "").strip() for item in transcript if item.get("role") == "critic"]
+    actionable_terms = ("because", "evidence", "test", "risk", "assumption", "measure", "specific", "should", "must", "failure", "validation", "missing", "reproduce", "threshold", "compare", "verify")
+    actionable_critique_count = sum(1 for critique in critics if len(critique) >= 50 and any(term in critique.casefold() for term in actionable_terms) and critique.casefold().strip(" .!\n") not in {"hold", "review", "hold review"})
+    revision_detected = False
+    if len(creators) >= 2:
+        import difflib
+        first = " ".join(creators[0].casefold().split())
+        last = " ".join(creators[-1].casefold().split())
+        revision_detected = bool(first and last and first != last and difflib.SequenceMatcher(None, first, last).ratio() < 0.90)
+    critique_pass = bool(critics) and actionable_critique_count == len(critics)
+    quality_pass = critique_pass and revision_detected
+    return {
+        "quality_status": "PASS" if quality_pass else "HOLD",
+        "actionable_critique_count": actionable_critique_count,
+        "critic_turn_count": len(critics),
+        "actionable_critique_check": "PASS" if critique_pass else "HOLD",
+        "creator_revision_detected": revision_detected,
+        "revision_check": "PASS" if revision_detected else "HOLD",
+        "note": "Heuristic transcript checks only; PASS is not proof of measured improvement or permission to implement.",
+    }
+
 def run_discussion(
     generate: Callable[[list[dict[str, str]], int], str],
     objective: str,
@@ -95,8 +119,10 @@ def run_discussion(
             raise RuntimeError(f"Critic returned empty content in round {index}")
         transcript.append({"role": "critic", "round": str(index), "content": critique})
 
+    quality_assessment = assess_discussion_quality(transcript)
     return {
         "schema_version": 1,
+        "quality_assessment": quality_assessment,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "runtime": "github-actions-hosted-cpu",
         "model_repo": MODEL_REPO,
