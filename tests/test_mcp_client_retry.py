@@ -112,6 +112,7 @@ def test_hibernate_retry_default_wait_is_long(monkeypatch):
     assert interval == 60.0
 
 def test_health_probe_timeout_is_capped_by_remaining_readiness_budget(monkeypatch):
+    monkeypatch.setenv("MCP_HTTP_READY_CHECK", "true")
     clock = [0.0]
     timeouts = []
 
