@@ -54,7 +54,7 @@ class AgentVersionRegistry:
         if errors:
             raise ValueError("invalid agent version: " + "; ".join(errors))
         history = self._history.setdefault(version.agent_name.strip(), [])
-        if any(item.version == version.version for item in history):
+        if any(item.version.strip() == version.version.strip() for item in history):
             raise ValueError(f"version already registered: {version.agent_name}@{version.version}")
         if version.lifecycle == AgentLifecycle.ENABLED and any(
             item.lifecycle == AgentLifecycle.ENABLED for item in history
