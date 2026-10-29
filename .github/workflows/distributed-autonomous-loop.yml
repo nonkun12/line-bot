@@ -848,8 +848,25 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Build review-only self-improvement candidate pool
+      - name: Restore durable review-only candidate pool
+        id: restore_review_candidates
         if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/self-improvement-candidates
+          store="artifacts/self-improvement-candidates/candidates.jsonl"
+          : > "$store"
+          if git ls-remote --exit-code origin refs/heads/autonomous-loop-state >/dev/null 2>&1; then
+            git fetch --quiet origin autonomous-loop-state
+            if git cat-file -e origin/autonomous-loop-state:.autonomous-loop-review-candidates.jsonl 2>/dev/null; then
+              git show origin/autonomous-loop-state:.autonomous-loop-review-candidates.jsonl > "$store"
+            fi
+          fi
+          echo "Restored durable review-only candidates: $(wc -l < "$store" | tr -d ' ')"
+
+      - name: Build review-only self-improvement candidate pool
+        id: build_review_candidates
+        if: always() && steps.restore_review_candidates.outcome == 'success'
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -868,6 +885,34 @@ jobs:
             --input /tmp/review-candidate-input.json \
             --store artifacts/self-improvement-candidates/candidates.jsonl \
             --summary artifacts/self-improvement-candidates/summary.md
+
+      - name: Persist durable review-only candidate pool
+        if: always() && steps.build_review_candidates.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          state_branch="autonomous-loop-state"
+          auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          git fetch --quiet origin "$state_branch"
+          rm -rf /tmp/review-candidate-state-worktree
+          git worktree add --detach /tmp/review-candidate-state-worktree "origin/$state_branch"
+          store="/tmp/review-candidate-state-worktree/.autonomous-loop-review-candidates.jsonl"
+          cp artifacts/self-improvement-candidates/candidates.jsonl "$store"
+          printf '[]\n' > /tmp/empty-review-candidate-input.json
+          python scripts/review_candidate_bridge.py \
+            --input /tmp/empty-review-candidate-input.json \
+            --store "$store" \
+            --summary /tmp/review-candidate-state-summary.md
+          git -C /tmp/review-candidate-state-worktree config user.name "github-actions[bot]"
+          git -C /tmp/review-candidate-state-worktree config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C /tmp/review-candidate-state-worktree add .autonomous-loop-review-candidates.jsonl
+          if git -C /tmp/review-candidate-state-worktree diff --cached --quiet; then
+            echo "Durable review-only candidate pool is unchanged."
+          else
+            git -C /tmp/review-candidate-state-worktree commit -m "chore: persist review-only improvement candidates"
+            git -C /tmp/review-candidate-state-worktree push "$auth_url" HEAD:refs/heads/$state_branch
+          fi
 
       - name: Upload review-only self-improvement candidates
         if: always()
