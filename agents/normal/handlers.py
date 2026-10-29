@@ -43,9 +43,9 @@ _SAFE_INLINE_TOOLS = {
     "get_today_schedule",
 }
 
-_SAFE_FALLBACK_TOOLS = {"list_reminders"}
+_SAFE_FALLBACK_TOOLS = {"list_reminders", "search_notes"}
 
-_NORMAL_MCP_TOOL_NAMES = {"set_reminder", "list_reminders", "cancel_reminder"}
+_NORMAL_MCP_TOOL_NAMES = {"set_reminder", "list_reminders", "cancel_reminder", "search_notes"}
 _NORMAL_MCP_TOOLS_SCHEMA = [
     tool for tool in MCP_TOOLS_SCHEMA
     if tool.get("function", {}).get("name") in _NORMAL_MCP_TOOL_NAMES
