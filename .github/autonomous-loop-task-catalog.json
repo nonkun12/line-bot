@@ -393,7 +393,6 @@
       "allowed_paths": [
         "tests/test_autonomous_task_proposals.py"
       ]
-    }
     },
     {
       "id": "catalog-exhaustion-adapter-deduplicates-duplicate-findings-20261029",
