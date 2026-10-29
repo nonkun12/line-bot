@@ -28,8 +28,9 @@ def _success_response():
     )
 
 
-def test_hibernate_429_retries_and_succeeds(monkeypatch):
+def test_hibernate_429_waits_for_health_readiness_then_retries(monkeypatch):
     calls = []
+    readiness_waits = []
     responses = [
         _response(429, headers={"x-render-routing": "hibernate-rate-limited"}),
         _success_response(),
@@ -38,12 +39,18 @@ def test_hibernate_429_retries_and_succeeds(monkeypatch):
     monkeypatch.setenv("MCP_HIBERNATE_RETRY_MAX_SEC", "5")
     monkeypatch.setenv("MCP_HIBERNATE_RETRY_INTERVAL_SEC", "0.1")
     monkeypatch.setattr(mcp_client.httpx, "post", lambda *args, **kwargs: calls.append(1) or responses.pop(0))
-    monkeypatch.setattr(mcp_client.time, "sleep", lambda _: None)
+    monkeypatch.setattr(
+        mcp_client,
+        "wait_for_mcp_http_ready",
+        lambda max_wait=None: readiness_waits.append(max_wait),
+    )
 
     result = mcp_client._call_mcp_tool_once("save_memory", {"key": "k", "value": "v"})
 
     assert result == "saved"
     assert len(calls) == 2
+    assert len(readiness_waits) == 1
+    assert 0 < readiness_waits[0] <= 5
 
 
 def test_non_hibernate_429_does_not_retry(monkeypatch):
@@ -81,10 +88,17 @@ def test_hibernate_retry_is_bounded(monkeypatch):
         or _response(429, headers={"x-render-routing": "hibernate-rate-limited"}),
     )
 
-    with pytest.raises(mcp_client.McpNotReadyError):
+    def readiness_times_out(max_wait=None):
+        clock[0] += max_wait
+        raise mcp_client.McpNotReadyError("MCP server not ready (status=429)")
+
+    monkeypatch.setattr(mcp_client, "wait_for_mcp_http_ready", readiness_times_out)
+
+    with pytest.raises(mcp_client.McpNotReadyError, match="not ready"):
         mcp_client._call_mcp_tool_once("save_memory", {"key": "k", "value": "v"})
 
-    assert len(calls) == 2
+    # The POST is not repeated until health readiness succeeds.
+    assert len(calls) == 1
     assert clock[0] == pytest.approx(1.0)
 
 
