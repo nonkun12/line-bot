@@ -84,7 +84,14 @@ def run_discussion(
                     f"Objective: {objective}\nRound: {index}\n"
                     f"Previous proposal: {proposal or '(none)'}\n"
                     f"Critic feedback: {critique or '(none)'}\n"
-                    "Return a concise proposal, validation steps, and risks."
+                    "Return a concise proposal, validation steps, and risks. "
+                    "When Critic feedback is present, you MUST explicitly address its finding, "
+                    "evidence gap, risk, and validation request. Revise the proposal itself where "
+                    "the feedback warrants it; do not merely append a conclusion or repeat the "
+                    "previous proposal. Include a short 'Revision made' section naming the exact "
+                    "change from the previous proposal and why it addresses the critique. If you "
+                    "cannot make a justified change, state that limitation plainly instead of "
+                    "claiming the proposal improved."
                 ),
             },
         ]
