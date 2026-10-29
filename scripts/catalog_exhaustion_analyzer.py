@@ -57,11 +57,11 @@ def _planned_ids(runtime_source: str) -> set[str]:
                 if not isinstance(child, ast.Compare):
                     continue
                 operands = [child.left, *child.comparators]
-                if not any(isinstance(value, ast.Name) and value.id == "task_id" for value in operands):
-                    continue
-                for value in operands:
-                    if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                        planned.add(value.value)
+                for left, right in zip(operands, operands[1:]):
+                    if isinstance(left, ast.Name) and left.id == "task_id" and isinstance(right, ast.Constant) and isinstance(right.value, str):
+                        planned.add(right.value)
+                    elif isinstance(right, ast.Name) and right.id == "task_id" and isinstance(left, ast.Constant) and isinstance(left.value, str):
+                        planned.add(left.value)
     return planned
 
 
