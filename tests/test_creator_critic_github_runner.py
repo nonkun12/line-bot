@@ -75,6 +75,19 @@ class CreatorCriticGitHubRunnerTests(unittest.TestCase):
         self.assertEqual(result["revision_check"], "HOLD")
         self.assertTrue(result["revision_reasons"])
 
+    def test_quality_gate_rejects_explicit_unresolved_revision_even_with_lexical_overlap(self):
+        transcript = [
+            {"role": "creator", "content": "Implement logging and validate by reviewing logs."},
+            {"role": "critic", "content": "Finding: define a measurable test threshold. Evidence gap: reproduce missing task IDs, verify BLOCKED output, and compare before and after. Risk: false PASS. Validation: add a regression test."},
+            {"role": "creator", "content": "Implement logging and validate by reviewing logs. UNRESOLVED: the revision is not sufficient to address the critique. A concrete change is still needed to define the test threshold and verify BLOCKED output."},
+            {"role": "critic", "content": "Finding: the issue remains unresolved. Evidence gap: no regression test was added. Risk: false PASS. Validation: verify BLOCKED output."},
+        ]
+        result = assess_discussion_quality(transcript)
+        self.assertEqual(result["quality_status"], "HOLD")
+        self.assertFalse(result["creator_revision_detected"])
+        self.assertEqual(result["revision_check"], "HOLD")
+        self.assertTrue(any("unresolved" in reason.casefold() for reason in result["revision_reasons"]))
+
     def test_quality_gate_passes_actionable_critique_and_feedback_linked_revision(self):
         transcript = [
             {"role": "creator", "content": "Add loop logging and run unit tests."},
