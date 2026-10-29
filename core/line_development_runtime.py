@@ -239,6 +239,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "proposal-generator-conflicting-catalog-definitions-regression": "tests/test_autonomous_task_proposals.py",
     "proposal-generator-deduplicates-approved-task-ids-20261027": "tests/test_autonomous_task_proposals.py",
     "safe-continuation-depth-four-regression-20261026": "tests/test_continuous_distributed_loop_workflow.py",
+    "catalog-exhaustion-adapter-deduplicates-duplicate-findings-20261029": "tests/test_catalog_exhaustion_candidate_adapter.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
