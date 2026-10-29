@@ -360,6 +360,31 @@ jobs:
           cat /tmp/autonomous-loop-task-proposals.json >> "$GITHUB_STEP_SUMMARY"
           echo "TASK_PROPOSALS_PATH=/tmp/autonomous-loop-task-proposals.json" >> "$GITHUB_ENV"
 
+      - name: Analyze catalog exhaustion without changing execution state
+        if: success() && env.TRIGGER_MODE == 'normal'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          if ! python -c 'import json; from pathlib import Path; raise SystemExit(0 if json.loads(Path("/tmp/autonomous-loop-refill-report.json").read_text(encoding="utf-8")).get("eligible_catalog_count") == 0 else 1)'; then
+            echo "CATALOG_EXHAUSTION_ANALYZER_SKIPPED: catalog still has eligible tasks"
+            exit 0
+          fi
+          if python -m scripts.catalog_exhaustion_analyzer \
+            --repo-root . \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --queue /tmp/autonomous-loop-runtime-queue.json \
+            --state /tmp/autonomous-loop-state.json \
+            --runtime core/line_development_runtime.py \
+            --output /tmp/catalog-exhaustion-report.json \
+            | tee /tmp/catalog-exhaustion-summary.json; then
+            cat /tmp/catalog-exhaustion-report.json >> "$GITHUB_STEP_SUMMARY"
+            echo "CATALOG_EXHAUSTION_REPORT_PATH=/tmp/catalog-exhaustion-report.json" >> "$GITHUB_ENV"
+          else
+            rc=$?
+            printf '{"status":"ANALYZER_BLOCKED","reason":"analyzer_failed","exit_code":%s}\\n' "$rc" >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Catalog exhaustion analyzer failed (exit=$rc); bounded loop outcome classification will continue."
+          fi
+
       - name: Run one bounded autonomous task
         id: run_task
         env:
