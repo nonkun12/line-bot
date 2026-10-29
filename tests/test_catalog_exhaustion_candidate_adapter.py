@@ -53,10 +53,32 @@ def test_no_safe_candidate_report_leaves_history_unchanged():
 @pytest.mark.parametrize("mutate", [
     lambda r: r["candidates"][0].update(target_test="../unsafe.py"),
     lambda r: r["candidates"][0].update(fingerprint="bad"),
+])
+def test_invalid_individual_candidate_is_skipped_and_counted(mutate):
+    report = _report()
+    mutate(report)
+    rejected = []
+    assert merge_candidates([], report, rejected) == []
+    assert rejected == [1]
+
+
+def test_one_invalid_candidate_does_not_discard_valid_batch_member():
+    report = _report()
+    bad = dict(report["candidates"][0], id="not-a-valid-id")
+    report["candidates"].append(bad)
+    report["candidate_count"] = 2
+    rejected = []
+    rows = merge_candidates([], report, rejected)
+    assert len(rows) == 1
+    assert rows[0]["source_id"] == "catalog-exhaustion:review-coverage-gap-0123456789"
+    assert rejected == [1]
+
+
+@pytest.mark.parametrize("mutate", [
     lambda r: r["safety"].update(candidates_executable=True),
     lambda r: r.update(candidate_count=2),
 ])
-def test_invalid_analyzer_evidence_fails_closed(mutate):
+def test_invalid_report_envelope_fails_closed(mutate):
     report = _report()
     mutate(report)
     with pytest.raises(ValueError):

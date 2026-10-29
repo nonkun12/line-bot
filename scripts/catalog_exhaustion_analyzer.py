@@ -133,13 +133,34 @@ def analyze(repo_root: Path, catalog_path: Path, queue_path: Path, state_path: P
             continue
         code_source = code_path.read_text(encoding="utf-8")
         test_source = test_path.read_text(encoding="utf-8")
+        # Search every repository test module, not just the paired file, to
+        # suppress obvious false positives from handoff/integration tests.
+        test_sources: list[tuple[str, str]] = []
+        for test_root_rel in ("tests", "uhip/tests"):
+            test_root = repo_root / test_root_rel
+            if not test_root.is_dir() or test_root.is_symlink():
+                continue
+            for candidate_path in sorted(test_root.rglob("test_*.py")):
+                if candidate_path.is_symlink() or not candidate_path.is_file():
+                    continue
+                try:
+                    candidate_rel = candidate_path.relative_to(repo_root).as_posix()
+                    if not (candidate_rel.startswith("tests/") or candidate_rel.startswith("uhip/tests/")):
+                        continue
+                    candidate_source = candidate_path.read_text(encoding="utf-8")
+                except (OSError, UnicodeError, ValueError):
+                    continue
+                test_sources.append((candidate_rel, candidate_source))
         for function, line in _public_functions(code_source):
             if len(candidates) >= MAX_CANDIDATES:
                 break
             leaf = function.rsplit(".", 1)[-1]
-            # Conservative textual heuristic only. It is explicitly marked as
-            # review-only because indirect/parameterized coverage is possible.
-            if re.search(r"\b" + re.escape(leaf) + r"\b", test_source):
+            matches = sorted(
+                path for path, source in test_sources
+                if re.search(r"\b" + re.escape(leaf) + r"\b", source)
+            )
+            # This is still a textual heuristic, not proof of semantic coverage.
+            if matches:
                 continue
             # Stable across line movement; source location remains in evidence/fingerprint.
             suffix = hashlib.sha256(f"{code_rel}:{function}".encode()).hexdigest()[:10]
@@ -157,7 +178,8 @@ def analyze(repo_root: Path, catalog_path: Path, queue_path: Path, state_path: P
                 "evidence": evidence,
                 "source_function": function,
                 "status": "REVIEW_REQUIRED",
-                "heuristic": "public-symbol-name-not-found-in-test-source; may have indirect coverage",
+                "heuristic": "public-symbol-name-not-found-in-any-test-module; textual heuristic only",
+                "textual_matches": [],
                 "fingerprint": fingerprint,
             })
     return {
