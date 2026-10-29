@@ -132,6 +132,7 @@ def analyze(repo_root: Path, catalog_path: Path, queue_path: Path, state_path: P
         if test_path.is_symlink() or not TEST_PATH.fullmatch(test_rel):
             continue
         code_source = code_path.read_text(encoding="utf-8")
+        test_source = test_path.read_text(encoding="utf-8")
         # Search every repository test module, not just the paired file, to
         # suppress obvious false positives from handoff/integration tests.
         test_sources: list[tuple[str, str]] = []
