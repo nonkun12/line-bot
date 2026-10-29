@@ -49,7 +49,8 @@
     "refill-rejects-duplicate-catalog-task-ids-20261026",
     "creator-critic-zero-rounds-safe-behavior-20261028",
     "proposal-generator-rejects-malformed-label-entry-20261028",
-    "rea-scanner-blocks-untracked-file-evidence-v2-20261028"
+    "rea-scanner-blocks-untracked-file-evidence-v2-20261028",
+    "watchdog-pending-grace-boundary-regression-20261029"
   ],
   "recovery_ai": {
     "checkpoint": null,
