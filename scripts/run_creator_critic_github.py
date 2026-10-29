@@ -153,9 +153,50 @@ def run_discussion(
         ]
         turn_started = time.monotonic()
         proposal = generate(creator_messages, 384).strip()
-        turn_metrics.append({"role": "creator", "round": index, "elapsed_seconds": round(time.monotonic() - turn_started, 3), "non_empty": bool(proposal)})
+        retry_used = False
         if not proposal:
             raise RuntimeError(f"Creator returned empty content in round {index}")
+        # A small local model may repeat the prior proposal despite explicit revision
+        # instructions. Give it exactly one bounded repair attempt, then let the
+        # independent quality gate HOLD if the result is still cosmetic.
+        if previous_proposal and difflib.SequenceMatcher(
+            None, _normalise(previous_proposal), _normalise(proposal)
+        ).ratio() >= 0.90:
+            retry_used = True
+            retry_messages = creator_messages + [{
+                "role": "user",
+                "content": (
+                    "REVISION RETRY REQUIRED: your draft is materially the same as the previous "
+                    "proposal. Do not restate it. Rewrite the proposal itself with a specific "
+                    "before -> after change that directly addresses this critique: "
+                    f"{critique}\nPrevious proposal: {previous_proposal}\n"
+                    "Your revised proposal must include one reproducible test case, an expected "
+                    "observable result, and a measurable acceptance threshold. If you cannot "
+                    "make that change, output UNRESOLVED and state the missing evidence. "
+                    "Do not claim code was changed or tests were run."
+                ),
+            }]
+            retry_started = time.monotonic()
+            retry_proposal = generate(retry_messages, 384).strip()
+            turn_metrics.append({
+                "role": "creator_revision_retry",
+                "round": index,
+                "elapsed_seconds": round(time.monotonic() - retry_started, 3),
+                "non_empty": bool(retry_proposal),
+            })
+            if retry_proposal and difflib.SequenceMatcher(
+                None, _normalise(previous_proposal), _normalise(retry_proposal)
+            ).ratio() < difflib.SequenceMatcher(
+                None, _normalise(previous_proposal), _normalise(proposal)
+            ).ratio():
+                proposal = retry_proposal
+        turn_metrics.append({
+            "role": "creator",
+            "round": index,
+            "elapsed_seconds": round(time.monotonic() - turn_started, 3),
+            "non_empty": bool(proposal),
+            "revision_retry_used": retry_used,
+        })
         transcript.append({"role": "creator", "round": str(index), "content": proposal})
 
         critic_messages = [
