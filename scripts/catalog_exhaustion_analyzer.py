@@ -157,7 +157,7 @@ def analyze(repo_root: Path, catalog_path: Path, queue_path: Path, state_path: P
             leaf = function.rsplit(".", 1)[-1]
             matches = sorted(
                 path for path, source in test_sources
-                if re.search(r"\\b" + re.escape(leaf) + r"\\b", source)
+                if re.search(r"\b" + re.escape(leaf) + r"\b", source)
             )
             # This is still a textual heuristic, not proof of semantic coverage.
             if matches:
