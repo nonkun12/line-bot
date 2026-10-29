@@ -89,6 +89,8 @@ jobs:
           report = json.loads(path.read_text(encoding="utf-8"))
           print("=== CREATOR_CRITIC_TRANSCRIPT_BEGIN ===")
           print(json.dumps(report, ensure_ascii=False, indent=2))
+          print("=== QUALITY ASSESSMENT ===")
+          print(json.dumps(report.get("quality_assessment", {}), ensure_ascii=False, indent=2))
           print("=== CREATOR_CRITIC_TRANSCRIPT_END ===")
           assert report.get("status") == "DISCUSSION_ONLY"
           assert report.get("evidence_status") == "NOT_MEASURED"
