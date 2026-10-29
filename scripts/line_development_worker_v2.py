@@ -309,6 +309,13 @@ def validate_plan_with_bounded_repairs(
         ok, detail = validate_plan(repair_plan, chosen)
         if ok:
             plan = repair_plan
+    if not ok and detail == "invalid_change_count":
+        repair_plan = repair_invalid_change_count_plan(client, instruction, chosen, context, plan)
+        ok, detail = validate_plan(repair_plan, chosen)
+        if ok and detail != "no_change":
+            plan = repair_plan
+        else:
+            ok, detail = False, "invalid_change_count_repair_failed"
     if not ok and detail == "diff_marker_in_replacement":
         repair_plan = repair_diff_marker_plan(client, instruction, chosen, context, plan)
         ok, detail = validate_plan(repair_plan, chosen)
@@ -568,6 +575,32 @@ the requested change. If a safe exact replacement cannot be identified, return {
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
 
 
+
+def repair_invalid_change_count_plan(
+    client: Groq,
+    instruction: str,
+    chosen: str,
+    context: str,
+    rejected_plan: dict,
+) -> dict:
+    """Regenerate one malformed plan once, without relaxing any validator."""
+    rejected = json.dumps(rejected_plan, ensure_ascii=False)
+    system = '''Regenerate ONE malformed JSON search/replace plan. Return JSON only.
+Return either {"no_change":true} or a plan with exactly one changes object containing file, old, and new.
+The file must equal the selected file. The old value must be a non-empty exact substring of current
+context; new must be replacement text only. Preserve the original request and do not broaden scope.
+Do not invent source text, modify another file, use diff markers, or bypass any safety rule.
+If no safe single change can be produced, return {"no_change":true}.'''
+    prompt = (
+        f"Instruction:\n{instruction}\n\nSelected file (only editable file):\n{chosen}"
+        f"\n\nCurrent file context:\n{context}"
+        f"\n\nRejected validation reason: invalid_change_count"
+        f"\n\nRejected plan:\n{rejected}"
+    )
+    return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
+
+
+
 def repair_diff_marker_plan(client: Groq, instruction: str, chosen: str, context: str, rejected_plan: dict) -> dict:
     """Perform one bounded plan repair focused only on diff-marker contamination."""
     rejected = json.dumps(rejected_plan, ensure_ascii=False)
@@ -640,6 +673,15 @@ def main() -> int:
                     detail,
                     flush=True,
                 )
+        if not ok and detail == "invalid_change_count":
+            repair_plan = repair_invalid_change_count_plan(
+                client, instruction, chosen, context_for(chosen), plan
+            )
+            ok, detail = validate_plan(repair_plan, chosen)
+            if ok and detail != "no_change":
+                plan = repair_plan
+            else:
+                ok, detail = False, "invalid_change_count_repair_failed"
         if not ok and detail == "diff_marker_in_replacement":
             repair_plan = repair_diff_marker_plan(
                 client,
