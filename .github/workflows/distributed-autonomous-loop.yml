@@ -386,7 +386,7 @@ jobs:
           refill = json.loads(Path("/tmp/autonomous-loop-refill-report.json").read_text(encoding="utf-8"))
           held = refill.get("held_count", refill.get("held_task_count", None))
           if held is None:
-              held = len(refill.get("held_ids", [])) if isinstance(refill.get("held_ids"), list) else "unknown"
+          held = len(refill.get("held_ids", [])) if isinstance(refill.get("held_ids"), list) else "unknown"
           print(f"- Analyzer status: `{report.get('status', 'unknown')}`")
           print(f"- Review candidates: {report.get('candidate_count', 0)}")
           print(f"- No-candidate reason: `{report.get('reason') or 'none'}`")
