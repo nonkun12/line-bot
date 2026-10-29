@@ -100,3 +100,28 @@ def test_summary_escapes_untrusted_markdown_structure(tmp_path):
     assert "**bold**" not in report
     assert "\\| another column" in report
     assert " | another column" not in report
+
+
+
+def test_candidate_bridge_does_not_mutate_runtime_queue(tmp_path):
+    import hashlib
+
+    source = tmp_path / "input.json"
+    store = tmp_path / "candidate-pool.jsonl"
+    summary = tmp_path / "summary.md"
+    queue = tmp_path / "runtime-queue.json"
+    source.write_text(json.dumps([{
+        "source": "self_improvement",
+        "source_id": "catalog-exhaustion:review-coverage-gap-0123456789",
+        "title": "Review coverage",
+        "rationale": "Human review only; no execution authorization",
+    }]), encoding="utf-8")
+    queue.write_text('{"tasks": []}\n', encoding="utf-8")
+    before = hashlib.sha256(queue.read_bytes()).hexdigest()
+
+    result = build_pool(source, store, summary)
+
+    after = hashlib.sha256(queue.read_bytes()).hexdigest()
+    assert result["stored"] == 1
+    assert before == after
+    assert json.loads(queue.read_text(encoding="utf-8")) == {"tasks": []}
