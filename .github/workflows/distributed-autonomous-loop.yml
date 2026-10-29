@@ -856,8 +856,16 @@ jobs:
           PYTHONPATH=. python scripts/self_improvement_candidate_adapter.py \
             --state /tmp/recovery-ai-state-readback.json \
             --output /tmp/self-improvement-review-candidates.json
+          if [ -s /tmp/catalog-exhaustion-report.json ]; then
+            PYTHONPATH=. python scripts/catalog_exhaustion_candidate_adapter.py \
+              --history /tmp/self-improvement-review-candidates.json \
+              --catalog-report /tmp/catalog-exhaustion-report.json \
+              --output /tmp/review-candidate-input.json
+          else
+            cp /tmp/self-improvement-review-candidates.json /tmp/review-candidate-input.json
+          fi
           python scripts/review_candidate_bridge.py \
-            --input /tmp/self-improvement-review-candidates.json \
+            --input /tmp/review-candidate-input.json \
             --store artifacts/self-improvement-candidates/candidates.jsonl \
             --summary artifacts/self-improvement-candidates/summary.md
 
