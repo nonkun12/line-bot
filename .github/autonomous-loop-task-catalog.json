@@ -386,6 +386,13 @@
       "allowed_paths": [
         "tests/test_autonomous_loop_watchdog.py"
       ]
+    },
+    {
+      "id": "proposal-generator-rejects-boolean-issue-number-20261029",
+      "instruction": "tests/test_autonomous_task_proposals.py のみに、新しい回帰テストを1件追加してください。候補Issueの number が true または false の場合、Pythonでは bool が int の派生型であっても build_proposals() が有効なIssue番号として扱わず、invalid_issue_number_count=1 となり、approved task をruntime queueへ追加しないことを確認してください。実装コード・workflow・状態ファイルは変更禁止。既存テストを変更せず、指定テストファイル1つだけを変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。既存テストが失敗したら実装を変更せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ]
     }
   ]
 }
