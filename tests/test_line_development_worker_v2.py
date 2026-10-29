@@ -579,3 +579,84 @@ def test_default_completion_budget_preserves_groq_free_tpm_headroom():
     # The Groq free/on-demand TPM ceiling includes both prompt and completion.
     # Keep enough headroom that a ~4.8k-token prompt is not rejected at 8k TPM.
     assert worker.MAX_RESPONSE_TOKENS == 2500
+
+
+def test_repair_invalid_change_count_plan_requests_single_change(monkeypatch):
+    chosen = "tests/test_example.py"
+    rejected = {"no_change": False, "changes": []}
+    repaired = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "def test_old():\n    pass\n", "new": "def test_new():\n    pass\n"}],
+    }
+    captured = {}
+
+    def fake_ask(client, system, prompt, max_tokens):
+        captured["system"] = system
+        captured["prompt"] = prompt
+        return json.dumps(repaired)
+
+    monkeypatch.setattr(worker, "ask", fake_ask)
+    result = worker.repair_invalid_change_count_plan(
+        FakeClient([]), "Add one regression test", chosen, "def test_old():\n    pass\n", rejected
+    )
+
+    assert result == repaired
+    assert "exactly one changes object" in captured["system"]
+    assert chosen in captured["prompt"]
+    assert "invalid_change_count" in captured["prompt"]
+
+
+def test_bounded_repairs_recovers_invalid_change_count_once(monkeypatch):
+    chosen = "tests/test_management_router.py"
+    rejected = {"no_change": False, "changes": []}
+    repaired = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "old", "new": "new"}],
+    }
+    calls = []
+    monkeypatch.setattr(
+        worker, "repair_invalid_change_count_plan", lambda *args: calls.append(1) or repaired
+    )
+
+    plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+        FakeClient([]), "Add one regression test", chosen, rejected, "old"
+    )
+
+    assert ok
+    assert detail == chosen
+    assert plan == repaired
+    assert calls == [1]
+
+
+def test_bounded_repairs_fails_closed_if_invalid_change_count_repair_returns_no_change(monkeypatch):
+    chosen = "tests/test_management_router.py"
+    rejected = {"no_change": False, "changes": []}
+    calls = []
+    monkeypatch.setattr(
+        worker, "repair_invalid_change_count_plan",
+        lambda *args: calls.append(1) or {"no_change": True},
+    )
+
+    plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+        FakeClient([]), "Add one regression test", chosen, rejected, "old"
+    )
+
+    assert not ok
+    assert detail == "invalid_change_count_repair_failed"
+    assert plan == rejected
+    assert calls == [1]
+
+
+def test_bounded_repairs_rejects_invalid_change_count_repair_for_other_file(monkeypatch):
+    chosen = "tests/test_management_router.py"
+    rejected = {"no_change": False, "changes": []}
+    unsafe = {"no_change": False, "changes": [{"file": "app.py", "old": "old", "new": "new"}]}
+    monkeypatch.setattr(worker, "repair_invalid_change_count_plan", lambda *args: unsafe)
+
+    plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+        FakeClient([]), "Add one regression test", chosen, rejected, "old"
+    )
+
+    assert not ok
+    assert detail == "invalid_change_count_repair_failed"
+    assert plan == rejected
