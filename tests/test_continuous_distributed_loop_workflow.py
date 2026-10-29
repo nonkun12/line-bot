@@ -308,3 +308,12 @@ def test_only_continuous_workflow_owns_automatic_dispatch():
     assert "continuation_depth=" in continuous
     assert "gh workflow run distributed-autonomous-loop.yml" not in postrun
     assert "Automatically continue the verified distributed loop" not in postrun
+
+def test_review_candidate_pool_is_restored_and_persisted_on_state_branch():
+    workflow = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert "Restore durable review-only candidate pool" in workflow
+    assert "Persist durable review-only candidate pool" in workflow
+    assert ".autonomous-loop-review-candidates.jsonl" in workflow
+    assert "origin/autonomous-loop-state:.autonomous-loop-review-candidates.jsonl" in workflow
+    assert "steps.build_review_candidates.outcome == 'success'" in workflow
+
