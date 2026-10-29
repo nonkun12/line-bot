@@ -91,7 +91,28 @@ def assess_discussion_quality(transcript: list[dict[str, str]]) -> dict:
         feedback_linked = False
         revision_reasons.append("at least two Creator proposals are required")
 
-    quality_pass = critique_pass and revision_detected and feedback_linked
+    # A transcript-level quality result is advisory only. Any explicit unresolved
+    # finding from the Critic must fail closed; lexical overlap cannot override it.
+    unresolved_markers = (
+        "unresolved", "not addressed", "still missing", "insufficient evidence",
+        "evidence is missing", "cannot address", "unable to address", "not sufficient",
+        "未解決", "対応できない", "証拠が不足", "未対応",
+    )
+    critic_unresolved = any(
+        marker in critique.casefold()
+        for critique in critics
+        for marker in unresolved_markers
+    )
+    final_critic = critics[-1].strip() if critics else ""
+    final_line = final_critic.splitlines()[-1].strip().casefold() if final_critic else ""
+    explicit_final_hold = final_line in {"hold", "decision: hold", "findings_status: unresolved"}
+    explicit_unresolved = critic_unresolved or explicit_final_hold
+    if explicit_unresolved:
+        revision_detected = False
+        feedback_linked = False
+        revision_reasons.append("Critic left an explicit unresolved finding or HOLD decision")
+
+    quality_pass = critique_pass and revision_detected and feedback_linked and not explicit_unresolved
     return {
         "quality_status": "PASS" if quality_pass else "HOLD",
         "actionable_critique_count": actionable_critique_count,
@@ -314,10 +335,13 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({
             "status": report["status"],
             "evidence_status": report["evidence_status"],
+            "quality_status": report["quality_assessment"]["quality_status"],
             "turns": len(report["transcript"]),
             "output": str(output),
         }, ensure_ascii=False))
-        return 0
+        # HOLD must not produce a successful Actions exit status. This is still
+        # only a discussion-quality check, not an implementation or merge approval.
+        return 0 if report["quality_assessment"]["quality_status"] == "PASS" else 3
     except Exception as exc:
         print(f"CREATOR_CRITIC_HOLD: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
