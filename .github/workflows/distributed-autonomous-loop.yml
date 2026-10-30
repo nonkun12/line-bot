@@ -485,6 +485,28 @@ jobs:
           fi
           exit "$loop_rc"
 
+      - name: Maintenance AI read-only failure triage
+        id: maintenance_ai
+        if: ${{ always() && steps.run_task.conclusion != 'skipped' }}
+        run: |
+          set -euo pipefail
+          if [ ! -f /tmp/minimal-autonomous-loop.jsonl ]; then
+            : > /tmp/minimal-autonomous-loop.jsonl
+          fi
+          python scripts/maintenance_ai.py \
+            --results /tmp/minimal-autonomous-loop.jsonl \
+            --output artifacts/maintenance-ai/diagnosis.json
+          cat artifacts/maintenance-ai/diagnosis.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Maintenance AI diagnosis
+        if: ${{ always() && steps.maintenance_ai.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-ai-diagnosis-${{ github.run_id }}
+          path: artifacts/maintenance-ai/diagnosis.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Export sanitized Recovery RAG history
         if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
         env:
