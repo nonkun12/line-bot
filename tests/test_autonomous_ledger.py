@@ -28,9 +28,9 @@ class FakeClient:
     def read_rows(self, range_name):
         self.read_ranges.append(range_name)
         if range_name in (
-            f"{SHEET}!A1:ZZ1000",
-            f"'{SHEET}'!A1:ZZ1000",
-            *[f"'{title}'!A1:ZZ1000" for title in self.titles],
+            f"{SHEET}!A:ZZ",
+            f"'{SHEET}'!A:ZZ",
+            *[f"'{title}'!A:ZZ" for title in self.titles],
         ):
             return [self._header_row(), *self.existing]
         match = range_name in (f"{SHEET}!AE185:AU185", f"'{SHEET}'!AE185:AU185", *[f"'{title}'!AE185:AU185" for title in self.titles])
@@ -99,7 +99,7 @@ def test_append_once_accepts_google_table_location_shift():
     client = FakeClient(readback=[record.values()])
     assert ledger.append_once(client, record) is True
     assert client.appended[0][0] == f"'{SHEET}'!AE:AU"
-    assert f"'{SHEET}'!A1:ZZ1000" in client.read_ranges
+    assert f"'{SHEET}'!A:ZZ" in client.read_ranges
     assert f"{SHEET}!AE185:AU185" in client.read_ranges
     assert client.sheet_title_calls == 1
 
@@ -227,7 +227,7 @@ def test_record_autonomous_run_deduplicates_after_append_then_client_error(monke
             return [SHEET]
 
         def read_rows(self, range_name):
-            if range_name in (f"{SHEET}!A1:ZZ1000", f"'{SHEET}'!A1:ZZ1000"):
+            if range_name in (f"{SHEET}!A:ZZ", f"'{SHEET}'!A:ZZ"):
                 return [
                     [""] * LEDGER_START + ledger.HEADERS,
                     *shared_rows,
