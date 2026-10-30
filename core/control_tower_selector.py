@@ -72,7 +72,7 @@ def select_next_task(
         return ControlTowerDecisionRecord(
             reason_code="evidence_sufficient",
             confidence=1.0,
-            priority=50,
+            priority=50 + (len(queued_task_ids) - queued_task_ids.index(task_id)),
             next_action="SELECT_REGISTERED_TASK",
             gate_status="PASS",
             evidence_sha=evidence_sha,
