@@ -39,6 +39,23 @@ def test_invalid_evidence_holds_for_human_review(tmp_path):
     assert result["decision"]["requires_human"] is True
 
 
+@pytest.mark.parametrize("failure_reason", [
+    "apply failed: change_too_large",
+    "invalid_change_count_repair_failed",
+    "invalid_old_new",
+    "diff_marker_in_replacement",
+])
+def test_rejected_bounded_plan_is_invalid_task_and_requires_human_review(tmp_path, failure_reason):
+    path = tmp_path / "recovery.json"
+    result = record_loop_outcome(path, {
+        "task_id": "task-invalid-plan", "status": "FAIL", "exit_code": 1,
+        "failure_reason": failure_reason,
+    })
+    assert result["decision"]["action"] == "HOLD"
+    assert result["decision"]["requires_human"] is True
+    assert RecoveryStore(path).task_status("task-invalid-plan")["last_category"] == "invalid_task"
+
+
 def test_corrupt_recovery_state_fails_closed(tmp_path):
     path = tmp_path / "recovery.json"
     path.write_text("{broken", encoding="utf-8")
