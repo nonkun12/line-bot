@@ -239,7 +239,7 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                         run_number = run.get("run_number", "?")
                         status = run.get("status")
                         url = str(run.get("html_url") or "")
-                        link = f"\\n{url}" if url.startswith("https://github.com/") else ""
+                        link = f"\n{url}" if url.startswith("https://github.com/") else ""
                         if status == "queued":
                             return True, (
                                 f"分散Loopの依頼を受け付け、待ち行列に登録しました。Run #{run_number} / "
