@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - "feat/local-bonsai-creator-critic-20261024"
+      - "feat/creator-critic-quality-gates"
     paths:
       - ".github/workflows/creator-critic-github.yml"
       - "scripts/run_creator_critic_github.py"
@@ -79,6 +80,53 @@ jobs:
             --rounds "$DISCUSSION_ROUNDS" \
             --output artifacts/creator-critic-github/latest.json
 
+      - name: Attach execution evidence manifest
+        if: always() && github.event_name != 'pull_request'
+        env:
+          EVIDENCE_GIT_SHA: ${{ github.sha }}
+          EVIDENCE_RUN_ID: ${{ github.run_id }}
+          EVIDENCE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          EVIDENCE_WORKFLOW: ${{ github.workflow }}
+          EVIDENCE_REF: ${{ github.ref }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          path = Path("artifacts/creator-critic-github/latest.json")
+          if not path.is_file():
+              print("No discussion artifact exists; manifest not created.")
+              raise SystemExit(0)
+          raw_report = path.read_bytes()
+          import hashlib
+          report = json.loads(raw_report.decode("utf-8"))
+          report["evidence_manifest"] = {
+              "manifest_version": 1,
+              "git_sha": os.environ["EVIDENCE_GIT_SHA"],
+              "github_run_id": os.environ["EVIDENCE_RUN_ID"],
+              "github_run_attempt": os.environ["EVIDENCE_RUN_ATTEMPT"],
+              "workflow": os.environ["EVIDENCE_WORKFLOW"],
+              "ref": os.environ["EVIDENCE_REF"],
+              "recorded_at": datetime.now(timezone.utc).isoformat(),
+              "artifact_sha256": hashlib.sha256(raw_report).hexdigest(),
+              "model_identity": {
+                  "repository": report.get("model_repo"),
+                  "filename": report.get("model_file"),
+                  "revision_pinned": False,
+                  "file_sha256_recorded": False,
+              },
+              "limitations": [
+                  "This manifest identifies the workflow execution and source revision.",
+                  "Model revision and model-file SHA-256 are not yet pinned or recorded.",
+                  "The discussion quality heuristic is not an independent semantic QA."
+              ],
+          }
+          path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(report["evidence_manifest"], ensure_ascii=False, indent=2))
+          PY
+
       - name: Print actual Creator-Critic transcript for verification
         if: success() && github.event_name != 'pull_request'
         run: |
@@ -89,9 +137,12 @@ jobs:
           report = json.loads(path.read_text(encoding="utf-8"))
           print("=== CREATOR_CRITIC_TRANSCRIPT_BEGIN ===")
           print(json.dumps(report, ensure_ascii=False, indent=2))
+          print("=== QUALITY ASSESSMENT ===")
+          print(json.dumps(report.get("quality_assessment", {}), ensure_ascii=False, indent=2))
           print("=== CREATOR_CRITIC_TRANSCRIPT_END ===")
           assert report.get("status") == "DISCUSSION_ONLY"
-          assert report.get("evidence_status") == "NOT_MEASURED"
+          assert report.get("evidence_status") == "RUNTIME_MEASURED"
+          assert report.get("quality_assessment", {}).get("quality_status") == "PASS"
           assert len(report.get("transcript", [])) == report.get("rounds", 0) * 2
           assert all(item.get("content", "").strip() for item in report["transcript"])
           PY
