@@ -1,5 +1,5 @@
 name: Distributed Autonomous Development Loop
-run-name: Distributed Loop (continuation_depth=${{ inputs.continuation_depth || '0' }})
+run-name: Distributed Loop (continuation_depth=${{ inputs.continuation_depth || '0' }}, request_id=${{ inputs.request_id || 'scheduled' }})
 
 on:
   workflow_dispatch:
@@ -14,6 +14,11 @@ on:
           - '2'
           - '3'
           - '4'
+      request_id:
+        description: 'Optional correlation ID for a LINE-queued request'
+        required: false
+        default: ''
+        type: string
       continuation_depth:
         description: 'Internal continuation counter; the loop continues only while every cycle passes safety gates and tasks remain'
         required: false
@@ -88,6 +93,9 @@ permissions:
 concurrency:
   group: distributed-autonomous-loop
   cancel-in-progress: false
+  # Preserve multiple requests instead of replacing the latest pending run.
+  # LINE dispatch is separately capped at two outstanding runs.
+  queue: max
 
 jobs:
   minimal-loop:
@@ -268,6 +276,17 @@ jobs:
             exit 1
           fi
           echo "Validated bounded task limit: ${REQUESTED_TASK_LIMIT}"
+
+      - name: Validate optional request correlation ID
+        if: success() && github.event_name == 'workflow_dispatch'
+        env:
+          REQUEST_ID: ${{ github.event.inputs.request_id || '' }}
+        run: |
+          set -euo pipefail
+          if [ -n "${REQUEST_ID}" ] && ! [[ "${REQUEST_ID}" =~ ^[0-9a-f]{32}$ ]]; then
+            echo "::error::Invalid request correlation ID"
+            exit 1
+          fi
 
       - name: Validate held-task resume request
         if: >-
