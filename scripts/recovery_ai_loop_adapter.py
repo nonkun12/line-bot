@@ -24,7 +24,7 @@ def _category(result: dict[str, Any]) -> str:
         return "security_violation"
     if any(token in reason for token in ("evidence", "summary_missing", "summary_invalid")):
         return "invalid_evidence"
-    if any(token in reason for token in ("change_too_large", "invalid_change_count", "invalid_old_new", "diff_marker_in_replacement")):
+    if any(token in reason for token in ("change_too_large", "invalid_change_count", "invalid_old_new", "diff_marker_in_replacement", "anchor_count_")):
         # A bounded-plan rejection is an invalid task proposal, not a transient
         # failure or a repairable test regression. Keep it fail-closed for review.
         return "invalid_task"
