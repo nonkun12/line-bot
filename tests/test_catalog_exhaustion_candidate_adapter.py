@@ -3,6 +3,7 @@ import json
 import pytest
 
 from scripts.catalog_exhaustion_candidate_adapter import merge_candidates, main
+from scripts.review_candidate_bridge import build_pool
 
 
 def _report():
@@ -71,3 +72,31 @@ def test_main_combines_files(tmp_path):
     report.write_text(json.dumps(_report()), encoding="utf-8")
     assert main(["--history", str(history), "--catalog-report", str(report), "--output", str(output)]) == 0
     assert len(json.loads(output.read_text(encoding="utf-8"))) == 1
+
+
+def test_catalog_exhaustion_findings_reach_review_only_candidate_pool(tmp_path):
+    """Exercise the exact adapter -> review-pool handoff used by the workflow."""
+    input_path = tmp_path / "review-candidate-input.json"
+    store_path = tmp_path / "candidates.jsonl"
+    summary_path = tmp_path / "summary.md"
+
+    merged = merge_candidates([], _report())
+    input_path.write_text(json.dumps(merged), encoding="utf-8")
+
+    first = build_pool(input_path, store_path, summary_path)
+    stored = [json.loads(line) for line in store_path.read_text(encoding="utf-8").splitlines()]
+
+    assert first == {"stored": 1, "added": 1, "rejected": 0}
+    assert len(stored) == 1
+    assert stored[0]["source"] == "self_improvement"
+    assert stored[0]["source_id"] == "catalog-exhaustion:review-coverage-gap-0123456789"
+    assert stored[0]["execution_authorized"] is False
+    summary = summary_path.read_text(encoding="utf-8")
+    assert "Stored candidates: 1" in summary
+    assert "Execution authorization: **none**" in summary
+    assert "Queue / issue / PR creation: **not performed**" in summary
+
+    # Re-running the handoff must remain idempotent and must not duplicate rows.
+    second = build_pool(input_path, store_path, summary_path)
+    assert second == {"stored": 1, "added": 0, "rejected": 0}
+    assert len(store_path.read_text(encoding="utf-8").splitlines()) == 1
