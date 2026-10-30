@@ -7,6 +7,7 @@ from agents.notes.handlers import (
     handle_natural_note_search,
     handle_save_note,
     handle_search_notes,
+    handle_note_message,
 )
 
 
@@ -32,6 +33,20 @@ def test_handle_search_notes_success():
         "search_notes",
         {"user_id": "user123", "keyword": "テニス"},
     )
+
+
+def test_handle_search_notes_extracts_quoted_keyword_from_instruction():
+    call_mcp_tool = MagicMock(return_value="search result")
+    message = "メモ検索で『テスト』という語を検索してください。新しいメモは作成せず、検索ツールを実行した結果を報告してください。ツールが使えない場合は、そのことを正直に教えてください。"
+
+    result = handle_note_message(message, "user123", call_mcp_tool)
+
+    assert result == "search result"
+    call_mcp_tool.assert_called_once_with(
+        "search_notes",
+        {"user_id": "user123", "keyword": "テスト"},
+    )
+    assert all(call.args[0] != "save_note" for call in call_mcp_tool.call_args_list)
 
 
 def test_handle_search_notes_without_keyword():
