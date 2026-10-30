@@ -452,6 +452,7 @@ def test_dispatch_counts_pending_and_waiting_runs_toward_capacity(monkeypatch):
 
 
 def test_status_command_reads_task_result_and_hold_count_from_run_artifact(monkeypatch):
+    import json
     from io import BytesIO
     from zipfile import ZipFile
 
