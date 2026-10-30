@@ -1135,3 +1135,92 @@ def test_development_repair_planner_bounds_failure_summary():
         "Use the normal guarded repair planner. Repair after IMPLEMENTER failure: "
     ) + 1500
     assert repair.instruction.endswith("x" * 1500)
+
+
+def test_refactorer_skips_only_bounded_malformed_plan_failures(monkeypatch):
+    chosen = "core/example.py"
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Fix the example implementation",
+    )
+    state.chosen = chosen
+    state.touched = [chosen]
+    state.test_output = "The focused tests passed"
+
+    monkeypatch.setattr(
+        worker,
+        "build_plan",
+        lambda *args, **kwargs: {"no_change": False, "changes": []},
+    )
+    monkeypatch.setattr(worker, "context_for", lambda path: "current source context")
+    monkeypatch.setattr(
+        worker,
+        "validate_plan_with_bounded_repairs",
+        lambda *args, **kwargs: (
+            {"no_change": False, "changes": []},
+            False,
+            "invalid_change_count_repair_failed",
+        ),
+    )
+    monkeypatch.setattr(
+        worker,
+        "apply_plan_with_bounded_anchor_repair",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("rejected refactor plan must never be applied")
+        ),
+    )
+
+    result = runtime.DevelopmentExecutor(state).execute(
+        AgentTask(
+            "refactor:bounded-plan-failure",
+            AgentRole.REFACTORER,
+            "Optional cleanup after the implementation fix",
+            frozenset({"working-tree"}),
+        )
+    )
+
+    assert result.success is True
+    assert result.summary == (
+        "refactor skipped after bounded plan repair: invalid_change_count_repair_failed"
+    )
+    assert result.changed_resources == frozenset()
+
+
+def test_refactorer_keeps_protected_file_violations_fail_closed(monkeypatch):
+    chosen = "core/example.py"
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Fix the example implementation",
+    )
+    state.chosen = chosen
+    state.touched = [chosen]
+
+    monkeypatch.setattr(
+        worker,
+        "build_plan",
+        lambda *args, **kwargs: {"no_change": False, "changes": []},
+    )
+    monkeypatch.setattr(worker, "context_for", lambda path: "current source context")
+    monkeypatch.setattr(
+        worker,
+        "validate_plan_with_bounded_repairs",
+        lambda *args, **kwargs: (
+            {"no_change": False, "changes": []},
+            False,
+            "protected_file:.github/workflows/deploy.yml",
+        ),
+    )
+
+    result = runtime.DevelopmentExecutor(state).execute(
+        AgentTask(
+            "refactor:protected-file",
+            AgentRole.REFACTORER,
+            "Optional cleanup after the implementation fix",
+            frozenset({"working-tree"}),
+        )
+    )
+
+    assert result.success is False
+    assert result.summary == (
+        "refactor plan rejected: protected_file:.github/workflows/deploy.yml"
+    )
