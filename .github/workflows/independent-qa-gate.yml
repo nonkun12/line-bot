@@ -71,7 +71,6 @@ jobs:
           args=()
           if [ "$ALLOW_PROTECTED" = "true" ]; then args+=(--allow-protected); fi
           python scripts/independent_qa_gate.py --base-sha "${{ steps.refs.outputs.base_sha }}" --head-sha "${{ steps.refs.outputs.head_sha }}" --base-junit base-junit.xml --head-junit head-junit.xml --output qa.json "${args[@]}"
-            --output qa.json "${args[@]}"
 
       - name: Upload QA evidence
         if: always()
