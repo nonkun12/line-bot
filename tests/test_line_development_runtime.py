@@ -1,5 +1,5 @@
 from core import line_development_runtime as runtime
-from core.multi_agent import AgentRole, AgentTask
+from core.multi_agent import AgentResult, AgentRole, AgentTask
 from scripts import line_development_worker_v2 as worker
 
 
@@ -1061,3 +1061,77 @@ def test_safe_continuation_depth_four_task_has_deterministic_bounded_plan(tmp_pa
     compile(candidate, chosen, "exec")
     assert "test_safe_continuation_depth_guard_accepts_depth_four" in candidate
     assert worker.validate_plan(plan, chosen) == (True, chosen)
+
+
+
+def test_development_repair_planner_preserves_task_contract():
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Fix the failing development task",
+    )
+    planner = runtime.DevelopmentRepairPlanner(state)
+    failed_task = AgentTask(
+        "implementation:sample",
+        AgentRole.IMPLEMENTER,
+        "Implement the requested change",
+        resources=frozenset({"working-tree", "tests"}),
+    )
+    result = AgentResult(
+        failed_task.task_id,
+        False,
+        "AssertionError: expected value",
+    )
+
+    repair = planner.repair_task(failed_task, result, 2)
+
+    assert repair.task_id == "repair:2:implementation:sample"
+    assert repair.role is AgentRole.REPAIRER
+    assert repair.resources == failed_task.resources
+    assert "Use the normal guarded repair planner." in repair.instruction
+    assert "AssertionError: expected value" in repair.instruction
+
+
+def test_development_repair_planner_uses_deterministic_retry_for_comment_task():
+    state = runtime.DevelopmentState(
+        client=None,
+        instruction="line_development.py にコメントを1行追加する",
+        chosen="line_development.py",
+    )
+    planner = runtime.DevelopmentRepairPlanner(state)
+    failed_task = AgentTask(
+        "comment:self-test",
+        AgentRole.TESTER,
+        "Run the deterministic self-test",
+        resources=frozenset({"working-tree"}),
+    )
+    result = AgentResult(failed_task.task_id, False, "test failed")
+
+    repair = planner.repair_task(failed_task, result, 1)
+
+    assert "Use deterministic retry; do not call an LLM or parse JSON." in repair.instruction
+    assert "Use the normal guarded repair planner." not in repair.instruction
+
+
+def test_development_repair_planner_bounds_failure_summary():
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Fix the failing development task",
+    )
+    planner = runtime.DevelopmentRepairPlanner(state)
+    failed_task = AgentTask(
+        "implementation:large-error",
+        AgentRole.IMPLEMENTER,
+        "Implement the requested change",
+    )
+    long_summary = "x" * 1600
+
+    repair = planner.repair_task(
+        failed_task,
+        AgentResult(failed_task.task_id, False, long_summary),
+        3,
+    )
+
+    assert len(repair.instruction) <= len(
+        "Use the normal guarded repair planner. Repair after IMPLEMENTER failure: "
+    ) + 1500
+    assert repair.instruction.endswith("x" * 1500)
