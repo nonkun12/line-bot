@@ -43,3 +43,15 @@ def test_queue_does_not_change_safety_limits_or_auto_deploy():
     assert "AUTO_DEPLOY: 'false'" in workflow
     assert "HERMES_ADVISOR_ENABLED: 'false'" in workflow
     assert "SELF_IMPROVEMENT_CREATOR_CRITIC: 'false'" in workflow
+
+def test_actionlint_compatibility_ignore_is_scoped_to_this_workflow():
+    config = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "actionlint.yaml"
+    ).read_text(encoding="utf-8")
+
+    assert '".github/workflows/distributed-autonomous-loop.yml":' in config
+    assert 'unexpected key "queue" for "concurrency" section' in config
+    assert "ignore:" in config
+
