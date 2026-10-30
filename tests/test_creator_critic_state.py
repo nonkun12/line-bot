@@ -3,7 +3,7 @@ import json
 import pytest
 
 from scripts.creator_critic_state import (
-    MAX_RECORDS, append_records, read_state, record_id, validate_records,
+    MAX_RECORDS, append_records, atomic_write, read_state, record_id, validate_records,
 )
 
 
@@ -82,3 +82,41 @@ def test_record_id_is_stable_and_envelope_is_versioned(tmp_path):
     assert envelope["schema_version"] == 1
     assert envelope["records"] == [row]
     assert row["record_id"] == record_id("123", "task-1", "a" * 40, "review")
+
+
+def test_malformed_enum_values_are_rejected_as_value_error():
+    row = _record()
+    for key in ("status", "rea_gate", "recovery_action"):
+        for value in ([], {}, None):
+            with pytest.raises(ValueError):
+                validate_records([{**row, key: value}], {"task-1"})
+    for value in ([], {}, None):
+        critic = {**row["critic"], "verdict": value}
+        with pytest.raises(ValueError):
+            validate_records([{**row, "critic": critic}], {"task-1"})
+
+
+def test_record_id_rejects_non_string_arguments():
+    for args in (("run", "task", None, "stage"), ("run", "task", [], "stage"),
+                 (None, "task", "a" * 40, "stage"), ("run", {}, "a" * 40, "stage"),
+                 ("run", "task", "a" * 40, None)):
+        with pytest.raises(ValueError):
+            record_id(*args)
+
+
+def test_invalid_calendar_datetimes_are_rejected():
+    for created_at in ("2026-02-30T00:00:00Z", "2026-13-01T00:00:00Z",
+                       "2026-01-01T25:00:00Z", "2026-01-01T00:00:60Z"):
+        with pytest.raises(ValueError):
+            validate_records([{**_record(), "created_at": created_at}], {"task-1"})
+
+
+def test_atomic_write_validates_records_and_registered_tasks(tmp_path):
+    path = tmp_path / "history.json"
+    with pytest.raises(ValueError):
+        atomic_write(path, [_record()], set())
+    with pytest.raises(ValueError):
+        atomic_write(path, [{**_record(), "status": {"bad": True}}], {"task-1"})
+    assert not path.exists()
+    atomic_write(path, [_record()], {"task-1"})
+    assert read_state(path, {"task-1"}) == [_record()]

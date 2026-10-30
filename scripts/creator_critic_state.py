@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Iterable
@@ -44,7 +45,7 @@ def record_id(run_id: str, task_id: str, base_sha: str, stage: str) -> str:
         raise ValueError("invalid task_id")
     if not isinstance(stage, str) or not _STAGE.fullmatch(stage):
         raise ValueError("invalid stage")
-    if not _SHA.fullmatch(base_sha):
+    if not isinstance(base_sha, str) or not _SHA.fullmatch(base_sha):
         raise ValueError("invalid base SHA")
     return hashlib.sha256(f"{run_id}|{task_id}|{base_sha}|{stage}".encode()).hexdigest()
 
@@ -79,7 +80,9 @@ def validate_records(records: object, registered_task_ids: Iterable[str]) -> lis
             raise ValueError("invalid record_id")
         if rid != record_id(run_id_value, task_id, base_sha, stage):
             raise ValueError("record_id does not match record identity")
-        if row["status"] not in _STATUSES or row["rea_gate"] not in _REA_GATES or row["recovery_action"] not in _RECOVERY_ACTIONS:
+        if (not isinstance(row["status"], str) or row["status"] not in _STATUSES
+                or not isinstance(row["rea_gate"], str) or row["rea_gate"] not in _REA_GATES
+                or not isinstance(row["recovery_action"], str) or row["recovery_action"] not in _RECOVERY_ACTIONS):
             raise ValueError("invalid status or gate")
         proposal, critic = row["proposal"], row["critic"]
         if not isinstance(proposal, dict) or set(proposal) != {"title", "rationale"}:
@@ -90,7 +93,7 @@ def validate_records(records: object, registered_task_ids: Iterable[str]) -> lis
             raise ValueError("invalid proposal rationale")
         if not isinstance(critic, dict) or set(critic) != {"verdict", "reason_codes", "evidence_refs", "model_id"}:
             raise ValueError("invalid critic schema")
-        if critic["verdict"] not in _VERDICTS:
+        if not isinstance(critic["verdict"], str) or critic["verdict"] not in _VERDICTS:
             raise ValueError("invalid critic verdict")
         if not isinstance(critic["reason_codes"], list) or len(critic["reason_codes"]) > 20 or any(not isinstance(x, str) or not _REASON.fullmatch(x) for x in critic["reason_codes"]):
             raise ValueError("invalid critic reason codes")
@@ -100,6 +103,10 @@ def validate_records(records: object, registered_task_ids: Iterable[str]) -> lis
             raise ValueError("invalid model id")
         if not isinstance(row["created_at"], str) or not re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z", row["created_at"]):
             raise ValueError("created_at must be UTC ISO-8601")
+        try:
+            datetime.fromisoformat(row["created_at"][:-1] + "+00:00")
+        except ValueError as exc:
+            raise ValueError("created_at must be a real UTC datetime") from exc
         if row["execution_authorized"] is not False:
             raise ValueError("execution authorization must remain false")
         validated.append(dict(row))
@@ -111,10 +118,11 @@ def sanitize_records(records: object, registered_task_ids: Iterable[str]) -> lis
     return validate_records(records, registered_task_ids)
 
 
-def atomic_write(path: str | Path, records: list[dict[str, object]]) -> None:
-    """Atomically write a versioned artifact after strict input validation."""
+def atomic_write(path: str | Path, records: object, registered_task_ids: Iterable[str]) -> None:
+    """Atomically write validated records using the caller-provided task registry."""
+    validated = validate_records(records, registered_task_ids)
     target = Path(path)
-    payload = {"schema_version": SCHEMA_VERSION, "records": records[-MAX_RECORDS:]}
+    payload = {"schema_version": SCHEMA_VERSION, "records": validated[-MAX_RECORDS:]}
     target.parent.mkdir(parents=True, exist_ok=True)
     temp_name = None
     try:
@@ -162,7 +170,7 @@ def append_records(path: str | Path, records: object, registered_task_ids: Itera
             unique_additions.append(item)
     merged = current + unique_additions
     appended = len(merged) - len(current)
-    atomic_write(path, merged[-MAX_RECORDS:])
+    atomic_write(path, merged[-MAX_RECORDS:], registered)
     return appended
 
 
