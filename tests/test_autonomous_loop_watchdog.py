@@ -258,8 +258,14 @@ def test_missing_scheduled_run_is_pending_within_90_minute_grace():
         assert run_is_pending_within_grace(None, slot, now)
 
 
-def test_missing_scheduled_run_is_not_pending_outside_grace():
+def test_missing_scheduled_run_remains_pending_through_discovery_window():
     slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
-    for minutes in (-1, 91):
+    for minutes in (0, 30, 90, 239, 240):
         now = slot + timedelta(minutes=minutes)
-        assert not run_is_pending_within_grace(None, slot, now)
+        assert run_is_pending_within_grace(None, slot, now)
+
+
+def test_missing_scheduled_run_is_not_pending_after_discovery_window():
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    now = slot + timedelta(minutes=241)
+    assert not run_is_pending_within_grace(None, slot, now)
