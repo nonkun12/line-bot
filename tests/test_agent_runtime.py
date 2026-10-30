@@ -179,7 +179,15 @@ def test_runtime_persists_self_improvement_cycle_without_executing_proposal(tmp_
     assert runtime.last_self_improvement_cycle_error is None
 
 
-def test_runtime_self_improvement_cycle_exposes_reviewed_decision_without_mutation() -> None:
+def test_runtime_handoff_accessors_are_empty_without_handoffs_or_store() -> None:
+    runtime = development_runtime()
+
+    assert runtime.last_self_improvement_handoffs == ()
+    assert isinstance(runtime.last_self_improvement_handoffs, tuple)
+    assert runtime.persisted_self_improvement_handoffs == ()
+
+
+def test_runtime_self_improvement_cycle_exposes_and_persists_approved_handoff(tmp_path) -> None:
     model = lambda prompt: "minimal test-backed improvement"
     critic = lambda prompt: "evidence supports the bounded proposal"
     engine = SelfImprovementEngine()
@@ -188,8 +196,18 @@ def test_runtime_self_improvement_cycle_exposes_reviewed_decision_without_mutati
         feedback_engine=engine,
         creator_critic=CreatorCriticLoop(CreatorAgent(model), CriticAgent(critic)),
     )
-    runtime = development_runtime()
-    runtime._control_tower = tower
+    runtime = MultiAgentRuntime(
+        {
+            AgentRole.IMPLEMENTER: Executor({}),
+            AgentRole.TESTER: Executor({}),
+            AgentRole.REVIEWER: Executor({}),
+            AgentRole.REPAIRER: Executor({}),
+            AgentRole.INTEGRATOR: Executor({}),
+        },
+        control_tower=tower,
+        self_improvement_target_paths=("tests/test_agent_runtime.py",),
+        self_improvement_handoff_path=tmp_path / "approved-handoffs.jsonl",
+    )
 
     report = RuntimeReport((), rounds=1, integration_ready=True)
     decision = runtime.run_self_improvement_cycle(
@@ -204,6 +222,9 @@ def test_runtime_self_improvement_cycle_exposes_reviewed_decision_without_mutati
     assert decision.approved_for_pipeline
     assert decision.approved_task is not None
     assert decision.approved_task.role is AgentRole.DEBUGGER
+    assert len(runtime.last_self_improvement_handoffs) == 1
+    assert runtime.last_self_improvement_handoffs[0].task == decision.approved_task
+    assert runtime.persisted_self_improvement_handoffs == runtime.last_self_improvement_handoffs
 
 
 def test_development_loop_requires_reviewer_and_integrator_tasks() -> None:
