@@ -42,13 +42,17 @@ def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
     decision = decision if isinstance(decision, dict) else {}
     rea = row.get("rea")
     rea = rea if isinstance(rea, dict) else {}
+    rea_gate = rea.get("gate")
+    rea_gate = rea_gate if isinstance(rea_gate, str) else None
+    recovery_action = decision.get("action")
+    recovery_action = recovery_action if isinstance(recovery_action, str) else None
 
     # Safety holds outrank a nominal PASS: contradictory evidence fails closed.
-    if rea.get("gate") in {"BLOCKED", "FAIL"}:
+    if rea_gate in {"BLOCKED", "FAIL"}:
         category = "safety_gate_blocked"
         recommendation = "Review the REA findings; do not retry or bypass the gate."
         requires_human = True
-    elif decision.get("action") == "HOLD" or decision.get("requires_human") is True:
+    elif recovery_action == "HOLD" or decision.get("requires_human") is True:
         category = "recovery_hold"
         recommendation = "Inspect the exact failed step and prepare a reviewed repair proposal; keep the hold."
         requires_human = True
@@ -85,7 +89,7 @@ def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
             "task_runtime_failed", "queue_empty", "all_pending_tasks_held",
             "safety_gate_blocked", "recovery_ai_requires_hold",
         } else None,
-        "recovery_action": decision.get("action") if decision.get("action") in {
+        "recovery_action": recovery_action if recovery_action in {
             "CONTINUE", "REPAIR_ONCE", "HOLD", "STOP", "REVIEW",
         } else None,
         "requires_human": requires_human,
