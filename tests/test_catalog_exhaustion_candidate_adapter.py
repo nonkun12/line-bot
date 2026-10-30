@@ -100,3 +100,25 @@ def test_catalog_exhaustion_findings_reach_review_only_candidate_pool(tmp_path):
     second = build_pool(input_path, store_path, summary_path)
     assert second == {"stored": 1, "added": 0, "rejected": 0}
     assert len(store_path.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_distributed_workflow_wires_analyzer_adapter_before_review_pool(tmp_path):
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    start = workflow.index("- name: Build review-only self-improvement candidate pool")
+    end = workflow.index("- name: Upload review-only self-improvement candidates", start)
+    step = workflow[start:end]
+
+    adapter = step.index("scripts/catalog_exhaustion_candidate_adapter.py")
+    bridge = step.index("scripts/review_candidate_bridge.py")
+    assert adapter < bridge
+    assert "--history /tmp/self-improvement-review-candidates.json" in step
+    assert "--catalog-report /tmp/catalog-exhaustion-report.json" in step
+    assert "--output /tmp/review-candidate-input.json" in step
+    assert "--input /tmp/review-candidate-input.json" in step
+    assert "--store artifacts/self-improvement-candidates/candidates.jsonl" in step
+    assert "--summary artifacts/self-improvement-candidates/summary.md" in step
+    assert "if [ -s /tmp/catalog-exhaustion-report.json ]; then" in step
+    assert "cp /tmp/self-improvement-review-candidates.json /tmp/review-candidate-input.json" in step
