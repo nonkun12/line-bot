@@ -218,11 +218,32 @@ def test_active_run_is_pending_inside_90_minute_grace():
         assert run_is_pending_within_grace({"status": status}, slot, now)
 
 
-def test_active_run_is_not_pending_after_90_minute_grace():
+def test_queued_run_remains_pending_during_bounded_queue_grace():
     slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
     now = slot + timedelta(hours=3)
-    for status in ("queued", "in_progress"):
-        assert not run_is_pending_within_grace({"status": status}, slot, now)
+    assert run_is_pending_within_grace({"status": "queued"}, slot, now)
+
+
+def test_queued_run_is_not_pending_after_bounded_queue_grace():
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    now = slot + timedelta(minutes=361)
+    assert not run_is_pending_within_grace({"status": "queued"}, slot, now)
+
+
+def test_in_progress_run_uses_actual_start_time_after_slot_delay():
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    now = slot + timedelta(hours=3)
+    started = now - timedelta(minutes=30)
+    run = {"status": "in_progress", "run_started_at": started.isoformat()}
+    assert run_is_pending_within_grace(run, slot, now)
+
+
+def test_in_progress_run_fails_after_90_minutes_from_actual_start():
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    now = slot + timedelta(hours=3)
+    started = now - timedelta(minutes=91)
+    run = {"status": "in_progress", "run_started_at": started.isoformat()}
+    assert not run_is_pending_within_grace(run, slot, now)
 
 
 def test_completed_run_is_never_classified_as_pending():
