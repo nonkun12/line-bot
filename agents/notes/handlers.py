@@ -25,7 +25,19 @@ _LOOKUP_QUESTION_RE = re.compile(
 
 
 def _extract_search_keyword(message: str) -> str:
-    return re.sub(r"^メモ検索\s*[:：]?\s*", "", message)
+    normalized = unicodedata.normalize("NFKC", (message or "").strip())
+    remainder = re.sub(r"^メモ検索\s*[:：]?\s*", "", normalized)
+
+    # Prefer an explicitly quoted term so explanatory instructions are never
+    # accidentally sent to the notes database as part of the search keyword.
+    quoted = re.search(r"[「『\"“](.+?)[」』\"”]", remainder)
+    if quoted:
+        return quoted.group(1).strip()
+
+    remainder = re.sub(r"^で\s*", "", remainder)
+    remainder = re.sub(r"(?:という(?:語|キーワード))?を検索してください[。！!]*$", "", remainder)
+    remainder = re.sub(r"検索してください[。！!]*$", "", remainder)
+    return remainder.strip()
 
 
 def _normalize_natural_search_message(message: str) -> str:
