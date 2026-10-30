@@ -108,7 +108,7 @@ def create_quiz(user_id: str) -> str:
     user_sum = sum(ord(ch) for ch in key)
     shift = user_sum % len(options)
     options = options[shift:] + options[:shift]
-    labels = ("a", "b", "c")
+    labels = tuple("abc"[: len(options)])
     correct = labels[options.index(target)]
     with _connect() as conn:
         conn.execute(
