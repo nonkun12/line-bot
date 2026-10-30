@@ -8,7 +8,9 @@ from core.agent_runtime import MultiAgentRuntime, RuntimeReport
 from core.creator_critic import CriticAgent, CreatorAgent, CreatorCriticLoop
 from core.multi_agent import AgentResult, AgentRole, AgentTask
 from core.control_tower import ControlTower
-from core.self_improvement import SelfImprovementEngine
+from core.self_improvement import ImprovementProposal, ImprovementSignal, SelfImprovementEngine
+from core.self_improvement_handoff import build_approved_improvement_handoff
+from core.self_improvement_handoff_store import ApprovedImprovementHandoffStore
 
 
 @dataclass
@@ -431,3 +433,64 @@ def test_control_tower_approval_is_bound_to_exact_task():
     assert decision.approved_task_matches(approved)
     assert not decision.approved_task_matches(tampered)
     assert decision.approved_task is approved
+
+
+
+def test_runtime_last_self_improvement_handoffs_defaults_to_empty_immutable_tuple() -> None:
+    runtime = development_runtime()
+
+    handoffs = runtime.last_self_improvement_handoffs
+
+    assert handoffs == ()
+    assert isinstance(handoffs, tuple)
+    with pytest.raises(AttributeError):
+        handoffs.append(object())
+
+
+def test_runtime_persisted_self_improvement_handoffs_is_empty_without_store() -> None:
+    runtime = development_runtime()
+
+    assert runtime.persisted_self_improvement_handoffs == ()
+
+
+def test_runtime_persisted_self_improvement_handoffs_uses_validated_store(tmp_path) -> None:
+    model = lambda prompt: "bounded test-backed improvement"
+    critic = lambda prompt: "evidence supports the bounded proposal"
+    tower = ControlTower(
+        creator_critic=CreatorCriticLoop(CreatorAgent(model), CriticAgent(critic)),
+    )
+    handoff_task = AgentTask(
+        task_id="self-improvement:runtime-accessor",
+        role=AgentRole.DEBUGGER,
+        instruction="Add a focused regression test for the runtime accessor.",
+        resources=frozenset({"tests"}),
+        priority=1,
+    )
+    proposal = __import__("core.self_improvement", fromlist=["ImprovementProposal"]).ImprovementProposal(
+        "Cover runtime handoff accessors",
+        "The public runtime accessors lack direct regression coverage.",
+        (__import__("core.self_improvement", fromlist=["ImprovementSignal"]).ImprovementSignal(
+            "failure", "tests", "missing accessor coverage"
+        ),),
+        handoff_task,
+    )
+    decision = tower.evaluate_proposal(
+        RuntimeReport((), rounds=1, integration_ready=True),
+        proposal,
+        evidence={"accuracy": 1.0, "stability": 1.0, "efficiency": 1.0, "safety": 1.0},
+    )
+    assert decision.approved_for_pipeline
+    handoff = build_approved_improvement_handoff(
+        decision,
+        ("tests/test_agent_runtime.py",),
+    )
+
+    store_path = tmp_path / "handoffs.jsonl"
+    store = ApprovedImprovementHandoffStore(store_path)
+    store.append(handoff)
+    runtime = MultiAgentRuntime(
+        {},
+        self_improvement_handoff_path=store_path,
+    )
+
+    assert runtime.persisted_self_improvement_handoffs == (handoff,)
