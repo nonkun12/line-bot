@@ -363,7 +363,7 @@ save_memoryではなく 必ず set_reminder ツールを使用してください
             if mcp_unavailable:
                 print("[NORMAL AGENT] MCP tool failed; skipping follow-up Groq call")
                 reply = (
-                    "メモ検索サーバーが一時的に利用できません。"
+                    "連携サーバーが一時的に利用できません。"
                     "少し時間をおいてから、もう一度お試しください🙏"
                 )
             else:
