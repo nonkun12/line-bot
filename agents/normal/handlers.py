@@ -352,12 +352,27 @@ save_memoryではなく 必ず set_reminder ツールを使用してください
                     ),
                 })
 
-            res2 = generate_chat_completion(
-                messages=messages,
-                temperature=0.85,
-                max_tokens=1024,
+            mcp_unavailable = any(
+                "ツール実行エラー:" in str(result)
+                or "MCP server not ready" in str(result)
+                or "hibernate-rate-limited" in str(result)
+                for results in tool_results_by_name.values()
+                for result in results
             )
-            reply = res2.choices[0].message.content
+
+            if mcp_unavailable:
+                print("[NORMAL AGENT] MCP tool failed; skipping follow-up Groq call")
+                reply = (
+                    "連携サーバーが一時的に利用できません。"
+                    "少し時間をおいてから、もう一度お試しください🙏"
+                )
+            else:
+                res2 = generate_chat_completion(
+                    messages=messages,
+                    temperature=0.85,
+                    max_tokens=1024,
+                )
+                reply = res2.choices[0].message.content
         else:
             reply = (
                 sanitized_override_reply
