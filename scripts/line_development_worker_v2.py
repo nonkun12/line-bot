@@ -345,6 +345,7 @@ def apply_plan_with_bounded_anchor_repair(
         return plan, False, detail, touched
 
     repair_plan = plan
+    size_repair_used = False
     for _ in range(MAX_APPLY_REPAIR_ATTEMPTS):
         repair_plan = repair_anchor_plan(
             client,
@@ -355,6 +356,17 @@ def apply_plan_with_bounded_anchor_repair(
             detail,
         )
         ok, repair_detail = validate_plan(repair_plan, chosen)
+        if not ok and repair_detail == "change_too_large" and not size_repair_used:
+            size_repair_used = True
+            repair_plan = repair_size_plan(
+                client,
+                instruction,
+                chosen,
+                context,
+                repair_plan,
+                repair_detail,
+            )
+            ok, repair_detail = validate_plan(repair_plan, chosen)
         if not ok or repair_detail == "no_change":
             return repair_plan, False, repair_detail, []
         target = ROOT / chosen
