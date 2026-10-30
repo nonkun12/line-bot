@@ -23,7 +23,7 @@ def test_newline_preferred_without_exceeding_budget():
     source = ("x" * 100 + "\n") * 60
     chunks = split_line_message(source, max_len=120, max_messages=5, max_total=600)
     assert all(_line_text_length(chunk) <= 120 for chunk in chunks)
-    assert chunks[0].endswith("\\n")
+    assert chunks[0].endswith("\n")
     assert "一部を省略しました" in chunks[-1]
 
 
