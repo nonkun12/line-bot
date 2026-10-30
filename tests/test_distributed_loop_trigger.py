@@ -322,6 +322,7 @@ def test_status_command_reports_latest_runs(monkeypatch):
     assert "Run #86" in reply
     assert "WORKFLOW_SUCCESS（タスクPASSは未確認）" in reply
     assert "a" * 12 in reply
+    assert "実行Artifactを取得できず" in reply
 
 
 def test_status_command_separates_skipped_runs_from_execution_history(monkeypatch):
