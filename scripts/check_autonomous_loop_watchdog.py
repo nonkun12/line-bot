@@ -90,12 +90,16 @@ def _ledger_rows(client: GoogleSheetsClient) -> tuple[list[list], int, int]:
 
 
 
-def run_is_pending_within_grace(run: dict, slot: datetime, now: datetime) -> bool:
-    """Treat active runs as pending only during the first 90 minutes after a slot."""
-    if run.get("status") not in {"queued", "in_progress"}:
-        return False
+def run_is_pending_within_grace(run: dict | None, slot: datetime, now: datetime) -> bool:
+    """Treat a missing or active scheduled run as pending for its first 90 minutes."""
     elapsed = now.astimezone(JST) - slot.astimezone(JST)
-    return timedelta(0) <= elapsed <= timedelta(minutes=90)
+    if not timedelta(0) <= elapsed <= timedelta(minutes=90):
+        return False
+    if run is None:
+        # GitHub may publish a scheduled workflow run after the watchdog's
+        # first check. Do not report a missing run as failed before grace expires.
+        return True
+    return run.get("status") in {"queued", "in_progress"}
 
 
 def has_audit_row(client: GoogleSheetsClient, run_id: str) -> bool:
@@ -162,7 +166,11 @@ def main() -> int:
     pending = False
 
     if run is None:
-        problems.append(f"distributed scheduled run missing for {slot.isoformat()}")
+        pending = run_is_pending_within_grace(None, slot, now)
+        if not pending:
+            problems.append(
+                f"distributed scheduled run missing after grace for {slot.isoformat()}"
+            )
     else:
         run_id = str(run["id"])
         if run.get("status") in {"queued", "in_progress"}:
