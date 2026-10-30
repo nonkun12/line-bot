@@ -21,6 +21,7 @@ MAX_RATIONALE = 1200
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
 _RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
+_STAGE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
 _STATUSES = {"FAIL", "BLOCKED", "TIMEOUT", "STOPPED", "PASS", "NO_CHANGE"}
 _REA_GATES = {"PASS", "BLOCKED", "FAIL", "UNKNOWN"}
 _RECOVERY_ACTIONS = {"CONTINUE", "REPAIR_ONCE", "HOLD", "STOP", "REVIEW", "UNKNOWN"}
@@ -29,7 +30,7 @@ _REASON = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,199}$")
 _MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$")
 _RECORD_FIELDS = {
-    "schema_version", "record_id", "run_id", "task_id", "base_sha",
+    "schema_version", "record_id", "run_id", "task_id", "base_sha", "stage",
     "produced_sha", "status", "rea_gate", "recovery_action", "proposal",
     "critic", "created_at", "execution_authorized",
 }
@@ -37,8 +38,12 @@ _RECORD_FIELDS = {
 
 def record_id(run_id: str, task_id: str, base_sha: str, stage: str) -> str:
     """Return deterministic identity for one run/task/base/stage tuple."""
-    if not all(isinstance(value, str) and value for value in (run_id, task_id, stage)):
-        raise ValueError("record identity fields must be non-empty strings")
+    if not isinstance(run_id, str) or not _RUN_ID.fullmatch(run_id):
+        raise ValueError("invalid run_id")
+    if not isinstance(task_id, str) or not _TASK_ID.fullmatch(task_id):
+        raise ValueError("invalid task_id")
+    if not isinstance(stage, str) or not _STAGE.fullmatch(stage):
+        raise ValueError("invalid stage")
     if not _SHA.fullmatch(base_sha):
         raise ValueError("invalid base SHA")
     return hashlib.sha256(f"{run_id}|{task_id}|{base_sha}|{stage}".encode()).hexdigest()
@@ -55,13 +60,15 @@ def validate_records(records: object, registered_task_ids: Iterable[str]) -> lis
             raise ValueError("Creator/Critic record schema is invalid")
         if type(row["schema_version"]) is not int or row["schema_version"] != SCHEMA_VERSION:
             raise ValueError("unsupported Creator/Critic schema version")
-        rid, run_id_value, task_id, base_sha = (row[k] for k in ("record_id", "run_id", "task_id", "base_sha"))
+        rid, run_id_value, task_id, base_sha, stage = (row[k] for k in ("record_id", "run_id", "task_id", "base_sha", "stage"))
         if not isinstance(run_id_value, str) or not _RUN_ID.fullmatch(run_id_value):
             raise ValueError("invalid run_id")
         if not isinstance(task_id, str) or not _TASK_ID.fullmatch(task_id) or task_id not in registered:
             raise ValueError("task_id is not registered")
         if not isinstance(base_sha, str) or not _SHA.fullmatch(base_sha):
             raise ValueError("invalid base SHA")
+        if not isinstance(stage, str) or not _STAGE.fullmatch(stage):
+            raise ValueError("invalid stage")
         produced = row["produced_sha"]
         if produced is not None and (not isinstance(produced, str) or not _SHA.fullmatch(produced)):
             raise ValueError("invalid produced SHA")
@@ -70,6 +77,8 @@ def validate_records(records: object, registered_task_ids: Iterable[str]) -> lis
             raise ValueError("produced SHA is required")
         if not isinstance(rid, str) or not re.fullmatch(r"[0-9a-f]{64}", rid):
             raise ValueError("invalid record_id")
+        if rid != record_id(run_id_value, task_id, base_sha, stage):
+            raise ValueError("record_id does not match record identity")
         if row["status"] not in _STATUSES or row["rea_gate"] not in _REA_GATES or row["recovery_action"] not in _RECOVERY_ACTIONS:
             raise ValueError("invalid status or gate")
         proposal, critic = row["proposal"], row["critic"]
@@ -145,7 +154,13 @@ def append_records(path: str | Path, records: object, registered_task_ids: Itera
     additions = validate_records(records, registered)
     current = read_state(path, registered)
     identities = {item["record_id"] for item in current}
-    merged = current + [item for item in additions if item["record_id"] not in identities]
+    unique_additions = []
+    for item in additions:
+        identity = item["record_id"]
+        if identity not in identities:
+            identities.add(identity)
+            unique_additions.append(item)
+    merged = current + unique_additions
     appended = len(merged) - len(current)
     atomic_write(path, merged[-MAX_RECORDS:])
     return appended

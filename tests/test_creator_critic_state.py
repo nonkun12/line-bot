@@ -16,6 +16,7 @@ def _record(task_id="task-1", run_id="123", base=None, produced=None, stage="rev
         "run_id": run_id,
         "task_id": task_id,
         "base_sha": base,
+        "stage": stage,
         "produced_sha": produced,
         "status": "FAIL",
         "rea_gate": "UNKNOWN",
@@ -36,6 +37,8 @@ def test_schema_and_task_allowlist_are_strict():
         {"produced_sha": None},
         {"status": "UNKNOWN"},
         {"execution_authorized": True},
+        {"record_id": "0" * 64},
+        {"stage": "review|forged"},
     ):
         bad = {**row, **change}
         with pytest.raises(ValueError):
@@ -49,9 +52,13 @@ def test_append_is_idempotent_bounded_and_round_trips(tmp_path):
     row = _record()
     assert append_records(path, [row], {"task-1"}) == 1
     assert append_records(path, [row], {"task-1"}) == 0
+    same_batch = _record(task_id="task-2", run_id="run-2")
+    assert append_records(path, [same_batch, same_batch], {"task-1", "task-2"}) == 1
+    assert append_records(path, [row, same_batch], {"task-1", "task-2"}) == 0
     many = [_record(task_id=f"task-{i}", run_id=f"run-{i}") for i in range(205)]
     registered = {f"task-{i}" for i in range(205)} | {"task-1"}
-    assert append_records(path, many[:200], registered) == 200
+    # task-2/run-2 was already stored above, so its repeated identity is ignored.
+    assert append_records(path, many[:200], registered) == 199
     assert append_records(path, many[200:], registered) == 5
     result = read_state(path, registered)
     assert len(result) == MAX_RECORDS
