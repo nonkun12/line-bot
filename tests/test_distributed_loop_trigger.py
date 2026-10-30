@@ -155,9 +155,10 @@ def test_similar_unapproved_natural_command_does_not_trigger():
 
 
 class _Response:
-    def __init__(self, status_code=200, payload=None):
+    def __init__(self, status_code=200, payload=None, content=b""):
         self.status_code = status_code
         self._payload = payload or {}
+        self.content = content
 
     def raise_for_status(self):
         return None
@@ -167,10 +168,15 @@ class _Response:
 
 
 class _Client:
-    def __init__(self, runs, *, auto_create_run=True, created_status="in_progress"):
+    def __init__(
+        self, runs, *, auto_create_run=True, created_status="in_progress",
+        artifacts=None, artifact_zip=b"",
+    ):
         self.runs = list(runs)
         self.auto_create_run = auto_create_run
         self.created_status = created_status
+        self.artifacts = list(artifacts or [])
+        self.artifact_zip = artifact_zip
         self.posted = []
 
     def __enter__(self):
@@ -180,7 +186,12 @@ class _Client:
         return False
 
     def get(self, *args, **kwargs):
+        url = args[0] if args else ""
         params = kwargs.get("params", {})
+        if url.endswith("/zip"):
+            return _Response(200, content=self.artifact_zip)
+        if url.endswith("/artifacts"):
+            return _Response(200, {"artifacts": self.artifacts})
         if "status" in params:
             matching = [run for run in self.runs if run.get("status") == params["status"]]
             return _Response(200, {"workflow_runs": matching})
@@ -311,9 +322,10 @@ def test_status_command_reports_latest_runs(monkeypatch):
     assert "Run #86" in reply
     assert "WORKFLOW_SUCCESS（タスクPASSは未確認）" in reply
     assert "a" * 12 in reply
+    assert "実行Artifactを取得できず" in reply
 
 
-def test_status_command_labels_skipped_as_not_run_and_shows_event(monkeypatch):
+def test_status_command_separates_skipped_runs_from_execution_history(monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
     monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
     client = _Client([{
@@ -330,12 +342,12 @@ def test_status_command_labels_skipped_as_not_run_and_shows_event(monkeypatch):
     with patch.object(trigger.httpx, "Client", return_value=client):
         handled, reply = trigger.request_distributed_loop("u1", "統括AIの状況")
     assert handled is True
-    assert "SKIPPED（起動条件不一致・タスク未実行）" in reply
-    assert "イベント: issue_comment" in reply
-    assert "Run #88" in reply
+    assert "実作業Runはまだ確認できません" in reply
+    assert "起動条件不一致によるSKIPPED: 1件" in reply
+    assert "Run #88" not in reply
 
 
-def test_result_command_does_not_mislabel_latest_skipped_run(monkeypatch):
+def test_result_command_skips_non_matching_comment_runs(monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
     monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
     client = _Client([{
@@ -361,10 +373,9 @@ def test_result_command_does_not_mislabel_latest_skipped_run(monkeypatch):
     with patch.object(trigger.httpx, "Client", return_value=client):
         handled, reply = trigger.request_distributed_loop("u1", "分散Loopの結果")
     assert handled is True
-    assert "Run #89" in reply
-    assert "SKIPPED（起動条件不一致・タスク未実行）" in reply
-    assert "イベント: issue_comment" in reply
-    assert "Run #88" not in reply
+    assert "Run #88" in reply
+    assert "起動条件不一致によるSKIPPED: 1件" in reply
+    assert "Run #89" not in reply
 
 
 def test_result_command_reports_latest_completed_run(monkeypatch):
@@ -393,7 +404,7 @@ def test_result_command_reports_latest_completed_run(monkeypatch):
     assert "Run #86" in reply
     assert "FAIL（ワークフロー失敗）" in reply
 
-def test_status_command_labels_skipped_runs_as_not_executed(monkeypatch):
+def test_status_command_reports_only_skipped_runs_as_no_execution(monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
     monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
     client = _Client([{
@@ -410,9 +421,9 @@ def test_status_command_labels_skipped_runs_as_not_executed(monkeypatch):
     with patch.object(trigger.httpx, "Client", return_value=client):
         handled, reply = trigger.request_distributed_loop("u1", "統括AIの状況")
     assert handled is True
-    assert "SKIPPED（起動条件不一致・タスク未実行）" in reply
-    assert "Run #496" in reply
-    assert "PASS" not in reply
+    assert "実行履歴から分離" in reply
+    assert "起動条件不一致によるSKIPPED: 1件" in reply
+    assert "Run #496" not in reply
 
 
 def test_natural_distributed_ai_run_command_is_bounded_to_one_task():
@@ -438,3 +449,66 @@ def test_dispatch_counts_pending_and_waiting_runs_toward_capacity(monkeypatch):
         assert "受付枠（最大2件）が埋まっています" in reply
         assert client.posted == []
 
+
+
+
+def test_status_command_reads_task_result_and_hold_count_from_run_artifact(monkeypatch):
+    import json
+    from io import BytesIO
+    from zipfile import ZipFile
+
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    output = BytesIO()
+    with ZipFile(output, "w") as archive:
+        archive.writestr(
+            "distributed-final-report.txt",
+            "# 分散Loop 終了報告\n"
+            "- 結果: **BLOCKED**\n"
+            "- 結果理由: all_pending_tasks_held\n"
+            "- 今回の実行タスク: 0/1\n"
+            "- キュー進捗: 0/0\n",
+        )
+        archive.writestr(
+            "autonomous-loop-refill-report.json",
+            json.dumps({
+                "eligible_catalog_count": 0,
+                "skipped_catalog_held_ids": ["held-a", "held-b"],
+            }),
+        )
+        archive.writestr(
+            "minimal-autonomous-loop.jsonl",
+            '{"status":"NOT_RUN","task_id":"","task_count":0}\n',
+        )
+    blob = output.getvalue()
+    run = {
+        "id": 123,
+        "run_number": 91,
+        "event": "schedule",
+        "status": "completed",
+        "conclusion": "success",
+        "display_title": "scheduled loop",
+        "head_sha": "a" * 40,
+        "created_at": "2026-10-20T07:00:00Z",
+        "html_url": "https://github.com/nonkun12/line-bot/actions/runs/123",
+    }
+    client = _Client(
+        [run],
+        artifacts=[{
+            "id": 456,
+            "name": "minimal-autonomous-loop-123",
+            "expired": False,
+            "size_in_bytes": len(blob),
+        }],
+        artifact_zip=blob,
+    )
+    from unittest.mock import patch
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = trigger.request_distributed_loop("u1", "統括AIの状況")
+    assert handled is True
+    assert "実タスク結果: BLOCKED（all_pending_tasks_held）" in reply
+    assert "今回の実行タスク: 0/1" in reply
+    assert "キュー進捗: 0/0" in reply
+    assert "安全保留（Catalog）: 2件" in reply
+    assert "Catalog実行候補: 0件" in reply
+    assert "Task ID付き実行記録: 0件" in reply
