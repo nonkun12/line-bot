@@ -167,8 +167,11 @@ class _Response:
 
 
 class _Client:
-    def __init__(self, runs):
+    def __init__(self, runs, *, auto_create_run=True, created_status="in_progress"):
         self.runs = list(runs)
+        self.auto_create_run = auto_create_run
+        self.created_status = created_status
+        self.posted = []
 
     def __enter__(self):
         return self
@@ -178,22 +181,37 @@ class _Client:
 
     def get(self, *args, **kwargs):
         params = kwargs.get("params", {})
-        if "event" in params or params.get("per_page") == 5:
+        if "status" in params:
+            matching = [run for run in self.runs if run.get("status") == params["status"]]
+            return _Response(200, {"workflow_runs": matching})
+        if "event" in params:
+            matching = [run for run in self.runs if run.get("event") == params["event"]]
+            return _Response(200, {"workflow_runs": matching})
+        if params.get("per_page") == 5:
             return _Response(200, {"workflow_runs": self.runs})
-        return _Response(200, {"workflow_runs": []})
+        return _Response(200, {"workflow_runs": self.runs})
 
     def post(self, *args, **kwargs):
+        payload = kwargs.get("json") or {}
+        self.posted.append(payload)
+        if self.auto_create_run:
+            request_id = payload["inputs"]["request_id"]
+            self.runs.insert(0, {
+                "id": 9001,
+                "run_number": 86,
+                "event": "workflow_dispatch",
+                "status": self.created_status,
+                "display_title": f"Distributed Loop request_id={request_id}",
+                "created_at": "2099-01-01T00:00:00Z",
+                "html_url": "https://github.com/nonkun12/line-bot/actions/runs/9001",
+            })
         return _Response(204)
 
 
 def test_dispatch_acknowledges_only_after_run_is_visible(monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
     monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
-    client = _Client([{
-        "run_number": 86,
-        "event": "workflow_dispatch",
-        "created_at": "2099-01-01T00:00:00Z",
-    }])
+    client = _Client([])
     from unittest.mock import patch
     with patch.object(trigger.httpx, "Client", return_value=client):
         handled, reply = trigger.request_distributed_loop(
@@ -202,12 +220,27 @@ def test_dispatch_acknowledges_only_after_run_is_visible(monkeypatch):
     assert handled is True
     assert "Run #86" in reply
     assert "4タスク" in reply
+    inputs = client.posted[0]["inputs"]
+    assert inputs["max_tasks"] == "4"
+    assert len(inputs["request_id"]) == 32
+
+
+def test_dispatch_reports_queued_request_as_accepted(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _Client([], created_status="queued")
+    from unittest.mock import patch
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = trigger.request_distributed_loop("u1", "分散Loop開始")
+    assert handled is True
+    assert "待ち行列に登録しました" in reply
+    assert "Run #86" in reply
 
 
 def test_dispatch_does_not_claim_started_when_run_is_not_visible(monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
     monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
-    client = _Client([])
+    client = _Client([], auto_create_run=False)
     from unittest.mock import patch
     with patch.object(trigger.httpx, "Client", return_value=client):
         with patch.object(trigger.time, "monotonic", side_effect=[0, 21]):
@@ -215,8 +248,35 @@ def test_dispatch_does_not_claim_started_when_run_is_not_visible(monkeypatch):
                 "u1", "分散Loopを4回、安全確認付きで実行"
             )
     assert handled is True
-    assert "実行開始を確認できませんでした" in reply
-    assert "安全のため再実行していません" in reply
+    assert "この依頼に対応するRunを確認できませんでした" in reply
+    assert "安全のため再送していません" in reply
+
+
+def test_dispatch_rejects_when_running_and_waiting_slots_are_full(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _Client([
+        {"id": 1, "status": "in_progress"},
+        {"id": 2, "status": "queued"},
+    ])
+    from unittest.mock import patch
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = trigger.request_distributed_loop("u1", "分散Loop開始")
+    assert handled is True
+    assert "受付枠（最大2件）が埋まっています" in reply
+    assert client.posted == []
+
+
+def test_dispatch_accepts_one_new_request_when_one_run_is_active(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _Client([{"id": 1, "status": "in_progress"}], created_status="queued")
+    from unittest.mock import patch
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = trigger.request_distributed_loop("u1", "分散Loop開始")
+    assert handled is True
+    assert "待ち行列に登録しました" in reply
+    assert len(client.posted) == 1
 
 
 def test_status_command_requires_allowlisted_user_and_token(monkeypatch):
