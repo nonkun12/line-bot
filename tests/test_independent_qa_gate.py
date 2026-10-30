@@ -37,17 +37,24 @@ class IndependentQAGateTests(unittest.TestCase):
         )
         self.assertIn("SKIPPED_TEST_COUNT_INCREASED", result["reasons"])
 
-    def test_protected_paths_require_explicit_approval(self):
-        args = dict(
+    def test_protected_paths_always_require_maintainer_review(self):
+        result = evaluate(
             base_sha="base", head_sha="head", actual_sha="head",
             base_counts=self.counts, head_counts=self.counts,
             files=["core/creator_critic.py", "tests/test_gate.py"],
         )
-        blocked = evaluate(**args)
-        approved = evaluate(**args, allow_protected=True)
-        self.assertEqual(blocked["quality_status"], "HOLD")
-        self.assertEqual(approved["quality_status"], "PASS")
-        self.assertEqual(len(blocked["protected_files"]), 2)
+        self.assertEqual(result["quality_status"], "HOLD")
+        self.assertIn("PROTECTED_PATHS_REQUIRE_MAINTAINER_REVIEW", result["reasons"])
+        self.assertFalse(result["protected_changes_approved"])
+        self.assertEqual(len(result["protected_files"]), 2)
+
+    def test_total_test_count_decrease_holds_even_if_pass_count_is_unchanged(self):
+        head = {**self.counts, "total": 95, "skipped": 0}
+        result = evaluate(
+            base_sha="base", head_sha="head", actual_sha="head",
+            base_counts=self.counts, head_counts=head, files=[],
+        )
+        self.assertIn("TOTAL_TEST_COUNT_DECREASED", result["reasons"])
 
     def test_failed_head_test_holds(self):
         head = {**self.counts, "failed": 1, "passed": 94}
