@@ -393,6 +393,13 @@
       "allowed_paths": [
         "tests/test_autonomous_task_proposals.py"
       ]
+    },
+    {
+      "id": "loop-artifact-expired-evidence-fail-closed-regression-20261030",
+      "instruction": "tests/test_distributed_loop_trigger.py のみに新しい固有名の回帰テストを1件追加してください。completed workflow run に対し、Artifact API が期待名 minimal-autonomous-loop-{run_id} の artifact を expired=true で返すケースを作り、統括AIの状況照会が「実行Artifactを取得できず、タスク結果・保留件数は未確認です。」を返し、Artifact内の結果・Task ID集計・保留件数を表示しないことを確認してください。期限切れArtifactのZIPダウンロードが発生しないことも確認してください。既存テストを変更せず、変更は指定テストファイル1つだけ。実ネットワーク、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_trigger.py"
+      ]
     }
   ]
 }
