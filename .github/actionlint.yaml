@@ -1,0 +1,7 @@
+# actionlint 1.7.12 predates GitHub Actions concurrency.queue.
+# Ignore only its unknown-key diagnostic for the single workflow that uses
+# GitHub's documented queue:max feature. All other checks remain enabled.
+paths:
+  ".github/workflows/distributed-autonomous-loop.yml":
+    ignore:
+      - 'unexpected key "queue" for "concurrency" section'
