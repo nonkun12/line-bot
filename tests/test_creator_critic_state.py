@@ -112,6 +112,9 @@ def test_invalid_calendar_datetimes_are_rejected():
 
 
 def test_atomic_write_validates_records_and_registered_tasks(tmp_path):
+    # Regression test: read_state should return empty list when file does not exist
+    path = tmp_path / "nonexistent.json"
+    assert read_state(path, {"task-1"}) == []
     path = tmp_path / "history.json"
     with pytest.raises(ValueError):
         atomic_write(path, [_record()], set())
