@@ -91,15 +91,37 @@ def _ledger_rows(client: GoogleSheetsClient) -> tuple[list[list], int, int]:
 
 
 def run_is_pending_within_grace(run: dict | None, slot: datetime, now: datetime) -> bool:
-    """Treat a missing or active scheduled run as pending for its first 90 minutes."""
+    """Keep delayed schedule publication and bounded queue waits from looking like failures."""
     elapsed = now.astimezone(JST) - slot.astimezone(JST)
-    if not timedelta(0) <= elapsed <= timedelta(minutes=90):
+    if elapsed < timedelta(0):
         return False
+
     if run is None:
-        # GitHub may publish a scheduled workflow run after the watchdog's
-        # first check. Do not report a missing run as failed before grace expires.
-        return True
-    return run.get("status") in {"queued", "in_progress"}
+        # Scheduled events can be published late; the run lookup uses the same
+        # four-hour discovery window. Do not report a missing run before it ends.
+        return elapsed <= timedelta(minutes=240)
+
+    status = run.get("status")
+    if status == "queued":
+        # LINE dispatch admits at most two outstanding loop runs. This bounded
+        # grace also covers the next scheduled run waiting behind them.
+        return elapsed <= timedelta(minutes=360)
+    if status != "in_progress":
+        return False
+
+    started_at = run.get("run_started_at")
+    if isinstance(started_at, str) and started_at:
+        try:
+            started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+        except ValueError:
+            started = None
+        if started is not None:
+            running_for = now.astimezone(JST) - started.astimezone(JST)
+            return timedelta(0) <= running_for <= timedelta(minutes=90)
+
+    # Older API/test fixtures may not provide run_started_at. Keep a bounded
+    # fallback rather than silently treating a malformed timestamp as healthy.
+    return elapsed <= timedelta(minutes=360)
 
 
 def has_audit_row(client: GoogleSheetsClient, run_id: str) -> bool:
