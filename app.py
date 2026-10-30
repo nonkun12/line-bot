@@ -176,7 +176,7 @@ def split_line_message(text, max_len=LINE_MAX_MESSAGE_LENGTH, max_messages=LINE_
     while remaining and len(chunks) < max_messages:
         chunk, rest = _take_line_text(remaining, max_len)
         if rest:
-            split_at = chunk.rfind("\\n")
+            split_at = chunk.rfind("\n")
             if split_at > 0:
                 chunk, rest = chunk[:split_at + 1], chunk[split_at + 1:] + rest
         chunks.append(chunk)
