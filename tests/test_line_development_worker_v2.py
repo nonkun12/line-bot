@@ -823,7 +823,7 @@ def test_apply_anchor_size_repair_is_used_only_once_across_anchor_retries(monkey
 
     def repair_anchor(*args):
         anchor_calls.append(1)
-        return oversized
+        return oversized if len(anchor_calls) == 1 else size_repaired_but_ambiguous
 
     def repair_size(*args):
         size_calls.append(1)
