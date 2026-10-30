@@ -175,7 +175,7 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                         lines.append(url)
                 return True, "\n".join(lines)
             outstanding_runs: dict[str, dict] = {}
-            for status in ("in_progress", "queued"):
+            for status in ("in_progress", "queued", "pending", "waiting"):
                 response = client.get(
                     f"{base}/actions/workflows/{WORKFLOW}/runs",
                     params={"branch": "main", "status": status, "per_page": 100},
@@ -240,7 +240,7 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                         status = run.get("status")
                         url = str(run.get("html_url") or "")
                         link = f"\n{url}" if url.startswith("https://github.com/") else ""
-                        if status == "queued":
+                        if status in {"queued", "pending", "waiting"}:
                             return True, (
                                 f"分散Loopの依頼を受け付け、待ち行列に登録しました。Run #{run_number} / "
                                 f"最大{max_tasks}タスクです。{link}"
