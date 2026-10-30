@@ -44,6 +44,18 @@ def _meaningful_terms(text: str) -> set[str]:
     return {word for word in words if word not in _STOP_WORDS}
 
 
+def _has_unresolved_marker(text: str, markers: tuple[str, ...]) -> bool:
+    """Detect affirmative unresolved statements without matching simple negations."""
+    normalised = _normalise(text)
+    for marker in markers:
+        for match in re.finditer(re.escape(marker), normalised):
+            prefix = normalised[max(0, match.start() - 32):match.start()]
+            if re.search(r"\\b(?:not|no|never|isn't|isnt|wasn't|wasnt)\\s+(?:\\w+\\s+){0,2}$", prefix):
+                continue
+            return True
+    return False
+
+
 def assess_discussion_quality(transcript: list[dict[str, str]]) -> dict:
     """Fail closed unless critiques are actionable and the next proposal changes."""
     creators = [item.get("content", "").strip() for item in transcript if item.get("role") == "creator"]
@@ -73,8 +85,11 @@ def assess_discussion_quality(transcript: list[dict[str, str]]) -> dict:
             revision_reasons.append("proposal is unchanged or only superficially changed")
         # An explicit unresolved marker must never be treated as a successful
         # revision merely because the model appended critique-related wording.
-        unresolved_markers = ("unresolved", "unable to address", "not sufficient to address the critique")
-        if any(marker in creators[-1].casefold() for marker in unresolved_markers):
+        creator_unresolved_markers = (
+            "unresolved", "cannot address", "unable to address",
+            "not sufficient to address the critique", "対応できない", "未解決", "未対応",
+        )
+        if _has_unresolved_marker(creators[-1], creator_unresolved_markers):
             revision_detected = False
             revision_reasons.append("Creator explicitly reports the critique remains unresolved")
         feedback = critics[-2] if len(critics) >= 2 else (critics[-1] if critics else "")
@@ -99,13 +114,14 @@ def assess_discussion_quality(transcript: list[dict[str, str]]) -> dict:
         "未解決", "対応できない", "証拠が不足", "未対応",
     )
     critic_unresolved = any(
-        marker in critique.casefold()
+        _has_unresolved_marker(critique, unresolved_markers)
         for critique in critics
-        for marker in unresolved_markers
     )
     final_critic = critics[-1].strip() if critics else ""
     final_line = final_critic.splitlines()[-1].strip().casefold() if final_critic else ""
-    explicit_final_hold = final_line in {"hold", "decision: hold", "findings_status: unresolved"}
+    # The final Critic must explicitly certify that the prior finding was addressed.
+    # HOLD, REVIEW, UNRESOLVED, missing, or malformed dispositions all fail closed.
+    explicit_final_hold = final_line != "addressed"
     explicit_unresolved = critic_unresolved or explicit_final_hold
     if explicit_unresolved:
         revision_detected = False
@@ -237,8 +253,11 @@ def run_discussion(
                     "Use a reproducible test or measurable threshold. On rounds after the first, "
                     "also assess whether the Creator actually addressed the previous critique: "
                     "name the specific before -> after change and mark ADDRESSED or UNRESOLVED. "
-                    "Do not accept a 'Revision made' heading without a substantive change. End "
-                    "with HOLD or REVIEW on its own final line."
+                    "Do not accept a 'Revision made' heading without a substantive change. "
+                    "On the final round, end with ADDRESSED only if the prior finding is fully "
+                    "resolved by a concrete, verifiable change; otherwise end with UNRESOLVED. "
+                    "On earlier rounds, end with REVIEW. The final line must contain exactly one "
+                    "of these dispositions."
                 ),
             },
             {
