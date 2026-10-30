@@ -3,14 +3,6 @@ name: Independent QA Gate
 on:
   pull_request:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      allow_protected_changes:
-        description: "Explicitly approve changes to protected QA/control files"
-        required: true
-        type: boolean
-        default: false
-
 permissions:
   contents: read
 
@@ -63,14 +55,9 @@ jobs:
         run: pytest -q --junitxml=head-junit.xml
 
       - name: Evaluate independent QA evidence
-        shell: bash
-        env:
-          ALLOW_PROTECTED: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_protected_changes }}
         run: |
           set -euo pipefail
-          args=()
-          if [ "$ALLOW_PROTECTED" = "true" ]; then args+=(--allow-protected); fi
-          python scripts/independent_qa_gate.py --base-sha "${{ steps.refs.outputs.base_sha }}" --head-sha "${{ steps.refs.outputs.head_sha }}" --base-junit base-junit.xml --head-junit head-junit.xml --output qa.json "${args[@]}"
+          python scripts/independent_qa_gate.py --base-sha "${{ steps.refs.outputs.base_sha }}" --head-sha "${{ steps.refs.outputs.head_sha }}" --base-junit base-junit.xml --head-junit head-junit.xml --output qa.json
 
       - name: Upload QA evidence
         if: always()
