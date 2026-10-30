@@ -787,3 +787,59 @@ def test_bounded_repairs_rejects_invalid_change_count_repair_for_other_file(monk
     assert not ok
     assert detail == "invalid_change_count_repair_failed"
     assert plan == rejected
+
+
+def test_validate_plan_size_boundaries_are_exact():
+    chosen = "app.py"
+    accepted = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "o" * 1200, "new": "n" * 1800}],
+    }
+    too_large_old = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "o" * 1201, "new": "n"}],
+    }
+    too_large_new = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "o", "new": "n" * 1801}],
+    }
+
+    assert worker.validate_plan(accepted, chosen) == (True, chosen)
+    assert worker.validate_plan(too_large_old, chosen) == (False, "change_too_large")
+    assert worker.validate_plan(too_large_new, chosen) == (False, "change_too_large")
+
+
+def test_apply_anchor_size_repair_is_used_only_once_across_anchor_retries(monkeypatch, tmp_path):
+    target = tmp_path / "app.py"
+    original = "x\\nx\\nexact\\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    rejected = {"no_change": False, "changes": [{"file": "app.py", "old": "missing", "new": "replacement"}]}
+    oversized = {"no_change": False, "changes": [{"file": "app.py", "old": "exact", "new": "z" * 2000}]}
+    size_repaired_but_ambiguous = {"no_change": False, "changes": [{"file": "app.py", "old": "x", "new": "y"}]}
+    anchor_calls = []
+    size_calls = []
+
+    def repair_anchor(*args):
+        anchor_calls.append(1)
+        return oversized
+
+    def repair_size(*args):
+        size_calls.append(1)
+        return size_repaired_but_ambiguous
+
+    monkeypatch.setattr(worker, "repair_anchor_plan", repair_anchor)
+    monkeypatch.setattr(worker, "repair_size_plan", repair_size)
+
+    plan, ok, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+        FakeClient([]), "app.py を最小修正", "app.py", rejected, original
+    )
+
+    assert not ok
+    assert detail == "anchor_count_app.py:2"
+    assert touched == []
+    assert len(anchor_calls) == worker.MAX_APPLY_REPAIR_ATTEMPTS
+    assert size_calls == [1]
+    assert plan == size_repaired_but_ambiguous
+    assert target.read_text(encoding="utf-8") == original
