@@ -466,10 +466,10 @@ def test_runtime_persisted_self_improvement_handoffs_uses_validated_store(tmp_pa
         resources=frozenset({"tests"}),
         priority=1,
     )
-    proposal = __import__("core.self_improvement", fromlist=["ImprovementProposal"]).ImprovementProposal(
+    proposal = ImprovementProposal(
         "Cover runtime handoff accessors",
         "The public runtime accessors lack direct regression coverage.",
-        (__import__("core.self_improvement", fromlist=["ImprovementSignal"]).ImprovementSignal(
+        (ImprovementSignal(
             "failure", "tests", "missing accessor coverage"
         ),),
         handoff_task,
