@@ -113,11 +113,10 @@ def assess_discussion_quality(transcript: list[dict[str, str]]) -> dict:
         "evidence is missing", "cannot address", "unable to address", "not sufficient",
         "未解決", "対応できない", "証拠が不足", "未対応",
     )
-    critic_unresolved = any(
-        _has_unresolved_marker(critique, unresolved_markers)
-        for critique in critics
-    )
     final_critic = critics[-1].strip() if critics else ""
+    # Earlier Critic turns are expected to identify gaps; only the final disposition
+    # determines whether the discussion ended with an unresolved finding.
+    critic_unresolved = _has_unresolved_marker(final_critic, unresolved_markers)
     final_line = final_critic.splitlines()[-1].strip().casefold() if final_critic else ""
     # The final Critic must explicitly certify that the prior finding was addressed.
     # HOLD, REVIEW, UNRESOLVED, missing, or malformed dispositions all fail closed.
