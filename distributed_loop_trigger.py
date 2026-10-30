@@ -5,6 +5,7 @@ import os
 import re
 import time
 import unicodedata
+import uuid
 from datetime import datetime, timezone
 from typing import Tuple
 
@@ -173,19 +174,41 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                     if url.startswith("https://github.com/"):
                         lines.append(url)
                 return True, "\n".join(lines)
+            outstanding_runs: dict[str, dict] = {}
             for status in ("in_progress", "queued"):
-                r = client.get(
+                response = client.get(
                     f"{base}/actions/workflows/{WORKFLOW}/runs",
-                    params={"branch": "main", "status": status, "per_page": 1},
+                    params={"branch": "main", "status": status, "per_page": 100},
                     headers=headers,
                 )
-                r.raise_for_status()
-                if r.json().get("workflow_runs", []):
-                    return True, "分散Loopはすでに実行中です。重複起動はしません。"
+                if response.status_code in {401, 403}:
+                    return True, "分散Loopの待ち行列を確認できません（GitHub権限不足）。"
+                response.raise_for_status()
+                for run in response.json().get("workflow_runs", []):
+                    run_id = run.get("id")
+                    if run_id is not None:
+                        outstanding_runs[str(run_id)] = run
+
+            # Keep the LINE intake deliberately small: one running and one waiting
+            # request at most. GitHub's queue:max is a backstop for other trusted
+            # workflow triggers, not an invitation to build an unbounded backlog.
+            if len(outstanding_runs) >= 2:
+                return True, (
+                    "分散Loopは実行中または待機中です。LINEからの受付枠（最大2件）が埋まっています。"
+                    "現在の処理が進んでから、もう一度依頼してください。"
+                )
+
             dispatch_started_at = datetime.now(timezone.utc).timestamp()
+            request_id = uuid.uuid4().hex
             r = client.post(
                 f"{base}/actions/workflows/{WORKFLOW}/dispatches",
-                json={"ref": "main", "inputs": {"max_tasks": str(max_tasks)}},
+                json={
+                    "ref": "main",
+                    "inputs": {
+                        "max_tasks": str(max_tasks),
+                        "request_id": request_id,
+                    },
+                },
                 headers=headers,
             )
             if r.status_code == 204:
@@ -193,13 +216,16 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                 while time.monotonic() < deadline:
                     runs_response = client.get(
                         f"{base}/actions/workflows/{WORKFLOW}/runs",
-                        params={"branch": "main", "event": "workflow_dispatch", "per_page": 10},
+                        params={"branch": "main", "event": "workflow_dispatch", "per_page": 100},
                         headers=headers,
                     )
                     runs_response.raise_for_status()
                     for run in runs_response.json().get("workflow_runs", []):
+                        display_title = str(run.get("display_title") or "")
+                        if request_id not in display_title:
+                            continue
                         created_at = run.get("created_at")
-                        if not created_at:
+                        if not isinstance(created_at, str) or not created_at:
                             continue
                         try:
                             created_ts = datetime.fromisoformat(
@@ -207,15 +233,31 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                             ).timestamp()
                         except ValueError:
                             continue
-                        if created_ts >= dispatch_started_at - 5:
+                        if created_ts < dispatch_started_at - 5:
+                            continue
+
+                        run_number = run.get("run_number", "?")
+                        status = run.get("status")
+                        url = str(run.get("html_url") or "")
+                        link = f"\\n{url}" if url.startswith("https://github.com/") else ""
+                        if status == "queued":
                             return True, (
-                                f"分散Loopを起動しました。Run #{run.get('run_number', '?')} / "
-                                f"{max_tasks}タスクまで安全に実行します。"
+                                f"分散Loopの依頼を受け付け、待ち行列に登録しました。Run #{run_number} / "
+                                f"最大{max_tasks}タスクです。{link}"
                             )
+                        if status == "in_progress":
+                            return True, (
+                                f"分散Loopを起動しました。Run #{run_number} / "
+                                f"最大{max_tasks}タスクまで安全に実行します。{link}"
+                            )
+                        return True, (
+                            f"分散Loopの受付を確認しました。Run #{run_number} / "
+                            f"状態: {_display_run_state(run)}{link}"
+                        )
                     time.sleep(1.0)
                 return True, (
                     "分散Loop起動要求はGitHubに受理されましたが、"
-                    "実行開始を確認できませんでした。安全のため再実行していません。"
+                    "この依頼に対応するRunを確認できませんでした。安全のため再送していません。"
                 )
             if r.status_code in {401, 403}:
                 return True, "分散Loopを起動できません（GitHub Actions権限不足）。"
