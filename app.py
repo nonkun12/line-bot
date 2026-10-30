@@ -131,10 +131,27 @@ def camera_test():
 client = _ai_client_client
 generate_ai_secretary_report = generate_secretary_report
 
-LINE_MAX_MESSAGE_LENGTH = 5000
+# Keep headroom below LINE's 5,000-character limit. Count UTF-16 code units
+# so supplementary-plane characters (including many emoji) are handled safely.
+LINE_MAX_MESSAGE_LENGTH = 4500
 LINE_MAX_MESSAGES_PER_SEND = 5
 LINE_MAX_TOTAL_LENGTH = LINE_MAX_MESSAGE_LENGTH * LINE_MAX_MESSAGES_PER_SEND
 _LINE_TRUNCATION_NOTICE = "\n\n(※文字数が多いため一部を省略しました)"
+
+
+def _line_text_length(value: str) -> int:
+    return len(value.encode("utf-16-le")) // 2
+
+
+def _take_line_text(value: str, limit: int) -> tuple[str, str]:
+    """Split at a Unicode character boundary within a UTF-16 unit budget."""
+    used = 0
+    for index, char in enumerate(value):
+        width = 2 if ord(char) > 0xFFFF else 1
+        if used + width > limit:
+            return value[:index], value[index:]
+        used += width
+    return value, ""
 
 
 def _build_dashboard_url(user_id: str, path: str = "/dashboard") -> str:
@@ -150,37 +167,29 @@ def split_line_message(text, max_len=LINE_MAX_MESSAGE_LENGTH, max_messages=LINE_
     if not text:
         return [text or ""]
     truncated = False
-    working = text
-    if len(working) > max_total:
-        working = working[:max_total]
+    remaining = text
+    if _line_text_length(remaining) > max_total:
+        remaining, _ = _take_line_text(remaining, max_total)
         truncated = True
-    if len(working) <= max_len:
-        chunks = [working]
-    else:
-        chunks = []
-        remaining = working
-        while len(remaining) > max_len:
-            window = remaining[:max_len]
-            split_at = window.rfind("\n")
-            if split_at <= 0:
-                chunks.append(remaining[:max_len])
-                remaining = remaining[max_len:]
-            else:
-                chunks.append(remaining[:split_at + 1])
-                remaining = remaining[split_at + 1:]
-        if remaining:
-            chunks.append(remaining)
-    if len(chunks) > max_messages:
-        chunks = chunks[:max_messages]
+
+    chunks = []
+    while remaining and len(chunks) < max_messages:
+        chunk, rest = _take_line_text(remaining, max_len)
+        if rest:
+            # Prefer a nearby newline without exceeding the safe UTF-16 budget.
+            split_at = chunk.rfind("\n")
+            if split_at > 0:
+                chunk, rest = chunk[:split_at + 1], chunk[split_at + 1:] + rest
+        chunks.append(chunk)
+        remaining = rest
+
+    if remaining:
         truncated = True
     if not chunks:
         chunks = [""]
     if truncated:
         notice = _LINE_TRUNCATION_NOTICE
-        last = chunks[-1]
-        available = max(0, max_len - len(notice))
-        if len(last) > available:
-            last = last[:available]
+        last, _ = _take_line_text(chunks[-1], max(0, max_len - _line_text_length(notice)))
         chunks[-1] = last + notice
     return chunks
 
