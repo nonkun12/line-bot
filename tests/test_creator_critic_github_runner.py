@@ -123,5 +123,37 @@ class CreatorCriticGitHubRunnerTests(unittest.TestCase):
         self.assertEqual(result["revision_check"], "HOLD")
 
 
+    def test_final_review_disposition_never_passes(self):
+        transcript = [
+            {"role": "creator", "content": "Add missing task ID validation and a BLOCKED regression test."},
+            {"role": "critic", "content": "Finding: define the missing task ID threshold. Evidence gap: verify BLOCKED in the ledger. Risk: false PASS. Validation: add a regression test."},
+            {"role": "creator", "content": "Concrete change: add missing task ID validation. Validation: regression test asserts BLOCKED in the ledger. Risk: false PASS is prevented by the threshold."},
+            {"role": "critic", "content": "Finding: validation is improved. Evidence gap: inspect the missing task ID regression output. Risk: false PASS. Validation: verify BLOCKED in the ledger.\\nREVIEW"},
+        ]
+        result = assess_discussion_quality(transcript)
+        self.assertEqual(result["quality_status"], "HOLD")
+
+    def test_creator_cannot_address_marker_blocks_pass(self):
+        transcript = [
+            {"role": "creator", "content": "Add missing task ID validation and a BLOCKED regression test."},
+            {"role": "critic", "content": "Finding: define the missing task ID threshold. Evidence gap: verify BLOCKED in the ledger. Risk: false PASS. Validation: add a regression test."},
+            {"role": "creator", "content": "Concrete change: cannot address the missing task ID threshold. Validation: add a BLOCKED test."},
+            {"role": "critic", "content": "Finding: the test is documented. Evidence gap: inspect the missing task ID regression output. Risk: false PASS. Validation: verify BLOCKED in the ledger.\\nADDRESSED"},
+        ]
+        result = assess_discussion_quality(transcript)
+        self.assertEqual(result["quality_status"], "HOLD")
+
+    def test_negated_unresolved_phrases_do_not_trigger_marker(self):
+        transcript = [
+            {"role": "creator", "content": "Add missing task ID validation and a BLOCKED regression test."},
+            {"role": "critic", "content": "Finding: define the missing task ID threshold. Evidence gap: verify BLOCKED in the ledger. Risk: false PASS. Validation: add a regression test."},
+            {"role": "creator", "content": "Concrete change: add missing task ID validation. Validation: regression test asserts BLOCKED in the ledger. The issue is not unresolved; no evidence is missing."},
+            {"role": "critic", "content": "Finding: validation is complete. No evidence is missing and the issue is not unresolved. Risk: false PASS. Validation: verify BLOCKED in the ledger.\\nADDRESSED"},
+        ]
+        result = assess_discussion_quality(transcript)
+        self.assertEqual(result["quality_status"], "PASS")
+
+
+
 if __name__ == "__main__":
     unittest.main()
