@@ -1,3 +1,127 @@
+from flask import Flask, request, jsonify, render_template
+from linebot.v3.exceptions import InvalidSignatureError
+from linebot.v3.webhooks import MessageEvent, TextMessageContent
+from linebot.v3.messaging import (
+    ApiClient,
+    MessagingApi,
+    ReplyMessageRequest,
+    PushMessageRequest,
+    TextMessage
+)
+import unicodedata
+import json
+import random
+import threading
+import httpx
+import logging
+logging.basicConfig(level=logging.DEBUG)
+import re
+import os
+import time
+from urllib.parse import urlencode
+from collections import OrderedDict
+from datetime import datetime, timezone, timedelta
+
+from config import (
+    CHANNEL_ACCESS_TOKEN,
+    CHANNEL_SECRET,
+    GROQ_API_KEY,
+    INTERNAL_PUSH_KEY,
+    AI_REPORT_GITHUB_REPO,
+    GITHUB_TOKEN,
+    N8N_WEBHOOK_URL,
+    configuration,
+    handler,
+    client,
+    MODEL,
+)
+from db import (
+    init_db,
+    save_message,
+    load_history,
+    create_processed_event,
+    is_processed_event,
+)
+from reminders import (
+    handle_daily_reminder,
+    handle_relative_time_reminder,
+    handle_tomorrow_reminder,
+)
+from agents.notes.intents import is_note_intent
+from agents.github.intents import is_github_intent
+from mcp_client import (
+    call_mcp_tool as _call_mcp_tool_impl,
+    parse_mcp_json_list as _parse_mcp_json_list_impl,
+)
+from ai_client import (
+    generate_chat_completion,
+    generate_secretary_report,
+    client as _ai_client_client,
+)
+from bot_tools import (
+    MCP_TOOLS_SCHEMA as _MCP_TOOLS_SCHEMA,
+    extract_quoted_text as _extract_quoted_text_impl,
+    normalize_memory_key as _normalize_memory_key_impl,
+    ensure_jst_offset as _ensure_jst_offset_impl,
+    clean_memory_value as _clean_memory_value_impl,
+    dispatch_tool_call as _dispatch_tool_call_impl,
+)
+
+from debug_agent import run_debug_agent
+from internal_ask_route import register_internal_ask_route
+from n8n_delegate import _delegate_to_n8n
+from e2e_status import init_e2e_table, record_step, StepTimer
+from core.channel import handle_channel_request
+from core.gateway import AIGateway
+from core.request_path import run_core_request, extract_core_reply
+from core.management_bridge import should_route_to_management_ai, run_management_request
+from core.line_runtime_audit import record_line_runtime
+from core.control_tower_status import (
+    build_control_tower_status_reply,
+    is_control_tower_status_command,
+)
+from core.self_introduction import handle_self_introduction
+from routes.core_api import core_api_bp
+from routes.obsidian_bridge import obsidian_bridge_bp
+from routes.openclaw_bridge import openclaw_bridge_bp
+from core.openclaw_bridge import is_openclaw_intent, normalize_openclaw_message
+from obsidian_loop_dispatch import dispatch_configuration_status
+from core.obsidian_bridge import enqueue_obsidian_request
+from agents.obsidian.intents import is_obsidian_intent
+from routes.voice_api import voice_api_bp
+from app_development import extract_app_development_request, dispatch_app_development_workflow
+from line_development import extract_development_instruction, dispatch_development_workflow
+from slack_command import register_slack_command
+from distributed_loop_trigger import request_distributed_loop
+from recovery_review_trigger import request_recovery_resume_review
+from agents.english.core_image import handle_core_image_command
+
+app = Flask(__name__)
+
+from routes.dashboard import dashboard_bp
+app.register_blueprint(dashboard_bp)
+
+from routes.e2e_dashboard import e2e_bp
+app.register_blueprint(e2e_bp)
+app.register_blueprint(core_api_bp)
+app.register_blueprint(obsidian_bridge_bp)
+app.register_blueprint(openclaw_bridge_bp)
+
+# Log only non-secret configuration booleans so deployment setup can be checked
+# without exposing token values or running an autonomous task.
+_obsidian_dispatch_config = dispatch_configuration_status()
+app.logger.info(
+    "OBSIDIAN AUTOREPAIR CONFIG token_present=%s repo_format_valid=%s repo_is_target=%s",
+    _obsidian_dispatch_config["token_present"],
+    _obsidian_dispatch_config["repo_format_valid"],
+    _obsidian_dispatch_config["repo_is_target"],
+)
+app.register_blueprint(voice_api_bp)
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"ok": True}), 200
+
 
 @app.route("/camera-test", methods=["GET"])
 def camera_test():
@@ -7,8 +131,8 @@ def camera_test():
 client = _ai_client_client
 generate_ai_secretary_report = generate_secretary_report
 
-# LINE's per-message limit is 5,000 UTF-16 code units. Count supplementary-
-# plane characters as two units so emoji cannot exceed the API limit.
+# Count UTF-16 code units so supplementary-plane characters (including emoji)
+# cannot exceed LINE's per-message text limit.
 LINE_MAX_MESSAGE_LENGTH = 5000
 LINE_MAX_MESSAGES_PER_SEND = 5
 LINE_MAX_TOTAL_LENGTH = LINE_MAX_MESSAGE_LENGTH * LINE_MAX_MESSAGES_PER_SEND
@@ -52,8 +176,7 @@ def split_line_message(text, max_len=LINE_MAX_MESSAGE_LENGTH, max_messages=LINE_
     while remaining and len(chunks) < max_messages:
         chunk, rest = _take_line_text(remaining, max_len)
         if rest:
-            # Prefer a nearby newline without exceeding the UTF-16 unit budget.
-            split_at = chunk.rfind("\n")
+            split_at = chunk.rfind("\\n")
             if split_at > 0:
                 chunk, rest = chunk[:split_at + 1], chunk[split_at + 1:] + rest
         chunks.append(chunk)
@@ -89,3 +212,332 @@ def _line_reply(reply_token, text):
 
 def _line_push(user_id, text):
     with StepTimer("line_out") as timer:
+        try:
+            with ApiClient(configuration) as api:
+                MessagingApi(api).push_message(
+                    PushMessageRequest(to=user_id, messages=_build_line_messages(text))
+                )
+        except Exception as exc:
+            timer.fail(error=exc, error_location="app._line_push")
+            raise
+        timer.ok(http_status=200)
+
+print("===== APP VERSION CHECK =====")
+print("search_notes enabled")
+init_db()
+init_e2e_table()
+
+
+def call_mcp_tool(tool_name, arguments, timeout=3.0):
+    return _call_mcp_tool_impl(tool_name, arguments, timeout=timeout)
+
+
+def _parse_mcp_json_list(raw):
+    return _parse_mcp_json_list_impl(raw)
+
+_DIRECT_TEXT_AGENT_KEYS = ("memory", "notes", "normal", "sheets")
+
+
+def _invoke_graph(user_id: str, message: str):
+    from graph.graph import graph
+    return graph.invoke({
+        "user_id": user_id,
+        "raw_message": message,
+        "call_mcp_tool": call_mcp_tool,
+        "agent_results": {},
+    })
+
+
+def _extract_graph_reply(result):
+    if result is None:
+        return None
+    agent_results = result.get("agent_results", {}) or {}
+    for key in _DIRECT_TEXT_AGENT_KEYS:
+        agent_result = agent_results.get(key)
+        if isinstance(agent_result, dict) and "text" in agent_result:
+            return agent_result["text"]
+    return result.get("final_reply", "Agent結果なし")
+
+
+def extract_quoted_text(original_message):
+    return _extract_quoted_text_impl(original_message)
+
+
+def normalize_memory_key(key, original_message):
+    return _normalize_memory_key_impl(key, original_message)
+
+
+def ensure_jst_offset(remind_at):
+    return _ensure_jst_offset_impl(remind_at)
+
+MCP_TOOLS_SCHEMA = _MCP_TOOLS_SCHEMA
+
+
+def clean_memory_value(key, value):
+    return _clean_memory_value_impl(key, value)
+
+
+def dispatch_tool_call(user_id, name, arguments, original_message=""):
+    return _dispatch_tool_call_impl(user_id, name, arguments, original_message=original_message)
+
+_pending_delete_confirmation = {}
+_pending_confirm_lock = threading.Lock()
+_DELETE_ALL_MEMORY_PATTERN = re.compile(
+    r"記憶.*(全部|全て|すべて).*(消して|消す|削除|消していい)"
+    r"|(全部|全て|すべて).*記憶.*(消して|消す|削除|消していい)"
+)
+
+
+def generate_reply(user_id, message):
+    print("===== APP VERSION CHECK =====")
+    print("GITHUB ROUTE ENABLED")
+    print("=== GENERATE_REPLY: received ===")
+    print("MESSAGE DEBUG: received")
+
+    command = str(message).strip()
+    if command in {"ダッシュボード", "株式ダッシュボード"}:
+        path = "/stock-dashboard" if command == "株式ダッシュボード" else "/dashboard"
+        dashboard_url = _build_dashboard_url(user_id, path)
+        print(f"[LOG] generate_reply: dashboard command={command}")
+        return f"{'株式投資ダッシュボード' if command == '株式ダッシュボード' else 'ダッシュボード'}はこちらです。\n{dashboard_url}"
+
+    if "Daily AI Repo" in message:
+        print("DAILY AI REPORT TRIGGERED")
+        return generate_ai_secretary_report(user_id)
+
+    if message.startswith("pytest"):
+        return "pytestテストメッセージを受信しました。"
+
+    print("DEBUG CONDITION CHECK")
+    print("startswith debug:", message.startswith("debug"))
+    print("has github:", "github" in message.lower())
+    print("has search:", "search" in message.lower())
+    print("has repo:", "repo" in message.lower())
+    print("GITHUB INTENT RESULT:", is_github_intent(message))
+
+    try:
+        result = _invoke_graph(user_id, message)
+    except Exception:
+        print("===== GRAPH INVOCATION ERROR =====")
+        print("graph invocation failed")
+        return "AIサービスで一時的な問題が発生しました。少し時間を置いてもう一度お試しください。"
+
+    print("===== AFTER GRAPH.INVOKE: completed =====")
+    return _extract_graph_reply(result)
+
+
+def _core_dynamic_enabled():
+    return os.environ.get("AI_CORE_DYNAMIC_GRAPH", "true").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
+
+def _handle_ai_gateway_request(ai_request):
+    message = str(ai_request.message)
+    user_id = str(ai_request.user_id)
+
+    review_handled, review_reply = request_recovery_resume_review(user_id, message)
+    if review_handled:
+        return review_reply
+
+    loop_handled, loop_reply = request_distributed_loop(user_id, message)
+    if loop_handled:
+        return loop_reply
+
+    # Explicit status commands must bypass the general chat model. Report only
+    # read-only GitHub Actions evidence and fail closed when it is unavailable.
+    if is_control_tower_status_command(message):
+        return build_control_tower_status_reply(
+            AI_REPORT_GITHUB_REPO,
+            GITHUB_TOKEN,
+        )
+
+    core_image_reply = handle_core_image_command(message)
+    if core_image_reply is not None:
+        return core_image_reply
+
+    # Legacy OpenClaw-prefixed prompts are handled by the server-side LINE AI
+    # pipeline. Do not enqueue them for a Mac-local worker: Mac availability
+    # must not determine whether a LINE request can be processed.
+    if is_openclaw_intent(message):
+        try:
+            message = normalize_openclaw_message(message)
+        except Exception:
+            return "指示を読み取れませんでした。内容を確認して再送してください。"
+
+    # Route only explicit Obsidian commands to the authenticated Mac approval queue.
+    # Never fall through to a cloud agent that cannot access the local vault.
+    if is_obsidian_intent(message):
+        try:
+            job_id = enqueue_obsidian_request(user_id, message)
+            return f"Obsidianへの保存依頼を受け付けました。Macで「実行」を選ぶと保存します。（Job {job_id}）"
+        except Exception:
+            return "Obsidianへの保存依頼を受け付けられませんでした。設定を確認してください。"
+
+    app_development_requirement = extract_app_development_request(message)
+    if app_development_requirement is not None:
+        return dispatch_app_development_workflow(
+            app_development_requirement,
+            user_id=user_id,
+            token=GITHUB_TOKEN,
+        )
+
+    self_introduction_reply = handle_self_introduction(message)
+    if self_introduction_reply is not None:
+        return self_introduction_reply
+
+    development_instruction = extract_development_instruction(message)
+    if development_instruction is not None:
+        return dispatch_development_workflow(
+            development_instruction,
+            user_id=user_id,
+            token=GITHUB_TOKEN,
+            repository=AI_REPORT_GITHUB_REPO,
+        )
+
+    if not _core_dynamic_enabled():
+        return generate_reply(user_id, message)
+
+    if message.strip() in {"ダッシュボード", "株式ダッシュボード"} or "Daily AI Repo" in message or message.startswith("pytest"):
+        return generate_reply(user_id, message)
+
+    if should_route_to_management_ai(message):
+        management_reply = run_management_request(
+            user_id,
+            message,
+            channel=ai_request.channel,
+            metadata=ai_request.metadata,
+        )
+        if management_reply:
+            return management_reply
+
+    result = run_core_request(
+        user_id,
+        message,
+        channel=ai_request.channel,
+        metadata=ai_request.metadata,
+        call_mcp_tool=call_mcp_tool,
+    )
+    return extract_core_reply(result)
+
+
+app.ai_gateway = AIGateway(_handle_ai_gateway_request)
+
+
+def _gateway_reply(user_id, message):
+    response = handle_channel_request(
+        app.ai_gateway,
+        str(user_id),
+        str(message),
+        "internal",
+        metadata={"route": "internal_ask"},
+    )
+    return response.text
+
+
+register_internal_ask_route(app, INTERNAL_PUSH_KEY, _gateway_reply)
+register_slack_command(app)
+
+
+@app.route("/callback", methods=["POST"])
+def callback():
+    print("[LOG] /callback endpoint called")
+    body = request.get_data(as_text=True)
+    signature = request.headers.get("X-Line-Signature")
+    print("===== CALLBACK RECEIVED =====")
+    print("BODY LENGTH:", len(body))
+    print("SIGNATURE PRESENT:", bool(signature))
+    try:
+        handler.handle(body, signature)
+        return "OK", 200
+    except InvalidSignatureError:
+        # LINE SDK treats signature failures as a bad request. Returning 500 here
+        # makes LINE retry the same invalid request and hides the real cause.
+        app.logger.warning(
+            "LINE webhook rejected: invalid signature (body_len=%d)",
+            len(body),
+        )
+        record_step(
+            "line_in",
+            False,
+            http_status=400,
+            error="invalid_signature",
+            error_location="callback/signature",
+        )
+        return jsonify({"ok": False, "error": "invalid signature"}), 400
+    except json.JSONDecodeError:
+        app.logger.warning(
+            "LINE webhook rejected: malformed JSON (body_len=%d)",
+            len(body),
+        )
+        record_step(
+            "line_in",
+            False,
+            http_status=400,
+            error="malformed_json",
+            error_location="callback/json",
+        )
+        return jsonify({"ok": False, "error": "malformed json"}), 400
+    except Exception as exc:
+        # Keep the 500 response for genuine server-side failures, but preserve
+        # the complete traceback in Render logs so the next incident is
+        # diagnosable instead of appearing as a generic "handler failed".
+        app.logger.exception(
+            "LINE webhook handler failed (body_len=%d, signature_present=%s)",
+            len(body),
+            bool(signature),
+        )
+        record_step(
+            "line_in",
+            False,
+            http_status=500,
+            error=exc,
+            error_location="callback/handler.handle",
+        )
+        return jsonify({"ok": False, "error": "internal server error"}), 500
+
+
+_processed_message_ids = OrderedDict()
+_processed_lock = threading.Lock()
+_MAX_TRACKED_IDS = 2000
+_user_processing_locks = {}
+_user_processing_lock = threading.Lock()
+
+
+def _process_and_reply(event, user_id, text):
+    print("[LOG] _process_and_reply called")
+    with _user_processing_lock:
+        if user_id not in _user_processing_locks:
+            _user_processing_locks[user_id] = threading.Lock()
+    user_lock = _user_processing_locks[user_id]
+    with user_lock:
+        print("[LOG] USER LOCK ACQUIRED")
+        command = text.strip()
+        if command in {"ダッシュボード", "株式ダッシュボード"}:
+            path = "/stock-dashboard" if command == "株式ダッシュボード" else "/dashboard"
+            dashboard_url = _build_dashboard_url(user_id, path)
+            label = "株式投資ダッシュボード" if command == "株式ダッシュボード" else "ダッシュボード"
+            _line_reply(event.reply_token, f"{label}はこちらです。\n{dashboard_url}")
+            return
+        status = "PASS"
+        route = "core-gateway"
+        try:
+            ai_response = handle_channel_request(
+                app.ai_gateway,
+                str(user_id),
+                str(text),
+                "line",
+                metadata={"route": "line_callback"},
+            )
+            reply = ai_response.text
+            route = str(ai_response.metadata.get("route", route))
+        except Exception as exc:
+            print(f"[LOG] Core gateway failed; returning safe reply: {type(exc).__name__}")
+            status = "FAIL"
+            reply = "AIサービスで一時的な問題が発生しました。少し時間を置いてもう一度お試しください。"
+        record_line_runtime(user_message=str(text), reply=reply, status=status, route=route)
+        try:
+            _line_reply(event.reply_token, reply)
+        except Exception:
+            print("[LOG] LINE reply failed; falling back to push")
+            _line_push(user_id, reply)
