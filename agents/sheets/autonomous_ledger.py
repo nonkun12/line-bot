@@ -85,7 +85,7 @@ def _resolved_sheet(client: GoogleSheetsClient) -> str:
 
 def _sheet_scan_range(sheet: str) -> str:
     escaped = sheet.replace("'", "''")
-    return f"'{escaped}'!A1:ZZ1000"
+    return f"'{escaped}'!A:ZZ"
 
 
 def _normalized_row(row: list) -> list[str]:
