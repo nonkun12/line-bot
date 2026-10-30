@@ -228,3 +228,17 @@ def test_active_run_is_not_pending_after_90_minute_grace():
 def test_completed_run_is_never_classified_as_pending():
     slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
     assert not run_is_pending_within_grace({"status": "completed"}, slot, slot)
+
+
+def test_missing_scheduled_run_is_pending_within_90_minute_grace():
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    for minutes in (0, 30, 90):
+        now = slot + timedelta(minutes=minutes)
+        assert run_is_pending_within_grace(None, slot, now)
+
+
+def test_missing_scheduled_run_is_not_pending_outside_grace():
+    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    for minutes in (-1, 91):
+        now = slot + timedelta(minutes=minutes)
+        assert not run_is_pending_within_grace(None, slot, now)
