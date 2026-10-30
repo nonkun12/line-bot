@@ -837,7 +837,7 @@ def test_apply_anchor_size_repair_is_used_only_once_across_anchor_retries(monkey
     )
 
     assert not ok
-    assert detail == "anchor_count_app.py:2"
+    assert detail == "anchor_count_app.py:3"
     assert touched == []
     assert len(anchor_calls) == worker.MAX_APPLY_REPAIR_ATTEMPTS
     assert size_calls == [1]
