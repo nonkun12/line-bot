@@ -138,7 +138,7 @@ class CreatorCriticGitHubRunnerTests(unittest.TestCase):
             {"role": "creator", "content": "Add missing task ID validation and a BLOCKED regression test."},
             {"role": "critic", "content": "Finding: define the missing task ID threshold. Evidence gap: verify BLOCKED in the ledger. Risk: false PASS. Validation: add a regression test."},
             {"role": "creator", "content": "Concrete change: cannot address the missing task ID threshold. Validation: add a BLOCKED test."},
-            {"role": "critic", "content": "Finding: the test is documented. Evidence gap: inspect the missing task ID regression output. Risk: false PASS. Validation: verify BLOCKED in the ledger.\\nADDRESSED"},
+            {"role": "critic", "content": "Finding: the test is documented. Evidence gap: inspect the missing task ID regression output. Risk: false PASS. Validation: verify BLOCKED in the ledger.\nADDRESSED"},
         ]
         result = assess_discussion_quality(transcript)
         self.assertEqual(result["quality_status"], "HOLD")
@@ -148,7 +148,7 @@ class CreatorCriticGitHubRunnerTests(unittest.TestCase):
             {"role": "creator", "content": "Add missing task ID validation and a BLOCKED regression test."},
             {"role": "critic", "content": "Finding: define the missing task ID threshold. Evidence gap: verify BLOCKED in the ledger. Risk: false PASS. Validation: add a regression test."},
             {"role": "creator", "content": "Concrete change: add missing task ID validation. Validation: regression test asserts BLOCKED in the ledger. The issue is not unresolved; no evidence is missing."},
-            {"role": "critic", "content": "Finding: validation is complete. No evidence is missing and the issue is not unresolved. Risk: false PASS. Validation: verify BLOCKED in the ledger.\\nADDRESSED"},
+            {"role": "critic", "content": "Finding: validation is complete. No evidence is missing and the issue is not unresolved. Risk: false PASS. Validation: verify BLOCKED in the ledger.\nADDRESSED"},
         ]
         result = assess_discussion_quality(transcript)
         self.assertEqual(result["quality_status"], "PASS")
