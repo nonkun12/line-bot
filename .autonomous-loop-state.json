@@ -51,7 +51,8 @@
     "proposal-generator-rejects-malformed-label-entry-20261028",
     "rea-scanner-blocks-untracked-file-evidence-v2-20261028",
     "watchdog-pending-grace-boundary-regression-20261029",
-    "review-agent-runtime-handoff-accessors-20261030"
+    "review-agent-runtime-handoff-accessors-20261030",
+    "creator-critic-history-missing-file-empty-state-regression"
   ],
   "recovery_ai": {
     "checkpoint": null,
