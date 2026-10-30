@@ -2145,6 +2145,20 @@ class DevelopmentExecutor:
                     worker.context_for(self.state.chosen),
                 )
                 if not ok:
+                    # Refactoring is an optional quality pass. A malformed or oversized
+                    # refactor proposal must not discard an already-applied implementation
+                    # or debug fix; keep all safety violations fail-closed.
+                    if detail in {
+                        "invalid_change_count_repair_failed",
+                        "invalid_old_new",
+                        "diff_marker_in_replacement",
+                        "change_too_large",
+                    }:
+                        return AgentResult(
+                            task.task_id,
+                            True,
+                            f"refactor skipped after bounded plan repair: {detail}",
+                        )
                     return AgentResult(task.task_id, False, f"refactor plan rejected: {detail}")
                 if detail == "no_change":
                     return AgentResult(task.task_id, True, "no refactor change required")
