@@ -422,3 +422,19 @@ def test_natural_distributed_ai_run_command_is_bounded_to_one_task():
     # LINE whitespace normalization allows transport spacing variants only.
     assert _requested_max_tasks("分散AI回して") == 1
     assert _requested_max_tasks("分散AI を回して") is None
+
+def test_dispatch_counts_pending_and_waiting_runs_toward_capacity(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    for queued_status in ("pending", "waiting"):
+        client = _Client([
+            {"id": 1, "status": "in_progress"},
+            {"id": 2, "status": queued_status},
+        ])
+        from unittest.mock import patch
+        with patch.object(trigger.httpx, "Client", return_value=client):
+            handled, reply = trigger.request_distributed_loop("u1", "分散Loop開始")
+        assert handled is True
+        assert "受付枠（最大2件）が埋まっています" in reply
+        assert client.posted == []
+
