@@ -107,7 +107,7 @@ def main() -> int:
         allow_protected=args.allow_protected,
     )
     Path(args.output).write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8"
+        json.dumps(report, ensure_ascii=False, indent=2) + chr(10), encoding="utf-8"
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["quality_status"] == "PASS" else 1
