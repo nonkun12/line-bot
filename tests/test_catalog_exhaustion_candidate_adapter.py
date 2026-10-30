@@ -71,3 +71,51 @@ def test_main_combines_files(tmp_path):
     report.write_text(json.dumps(_report()), encoding="utf-8")
     assert main(["--history", str(history), "--catalog-report", str(report), "--output", str(output)]) == 0
     assert len(json.loads(output.read_text(encoding="utf-8"))) == 1
+
+
+def test_analyzer_candidates_reach_persisted_review_only_pool(tmp_path):
+    from scripts.self_improvement_candidate_adapter import candidates_from_history
+    from scripts.review_candidate_bridge import build_pool
+
+    report = _report()
+    base = report["candidates"][0]
+    targets = [
+        ("review-coverage-gap-0123456789", "core/agent_runtime.py", "tests/test_agent_runtime.py", "AgentRuntime.handle", 12),
+        ("review-coverage-gap-1123456789", "core/control_tower_orchestrator.py", "tests/test_control_tower_orchestrator.py", "ControlTower.decide", 24),
+        ("review-coverage-gap-2123456789", "core/recovery_ai.py", "tests/test_recovery_ai.py", "RecoveryAI.review", 36),
+    ]
+    report["candidates"] = [
+        {
+            **base,
+            "id": task_id,
+            "target_test": target_test,
+            "evidence": f"{target_code}:{line}",
+            "source_function": source_function,
+            "fingerprint": str(index) * 64,
+        }
+        for index, (task_id, target_code, target_test, source_function, line)
+        in enumerate(targets, start=1)
+    ]
+    report["candidate_count"] = len(report["candidates"])
+
+    history = candidates_from_history([])
+    merged = merge_candidates(history, report)
+    input_path = tmp_path / "review-candidate-input.json"
+    store_path = tmp_path / "candidates.jsonl"
+    summary_path = tmp_path / "summary.md"
+    input_path.write_text(json.dumps(merged), encoding="utf-8")
+
+    result = build_pool(input_path, store_path, summary_path)
+    stored = [
+        json.loads(line)
+        for line in store_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+    assert result == {"stored": 3, "added": 3, "rejected": 0}
+    assert {row["source_id"] for row in stored} == {
+        "catalog-exhaustion:" + item[0] for item in targets
+    }
+    assert all(row["status"] == "proposed" for row in stored)
+    assert all(row["execution_authorized"] is False for row in stored)
+    assert "Stored candidates: 3" in summary_path.read_text(encoding="utf-8")
