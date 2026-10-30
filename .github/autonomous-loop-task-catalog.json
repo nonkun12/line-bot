@@ -414,6 +414,13 @@
       "allowed_paths": [
         "tests/test_line_development_runtime.py"
       ]
+    },
+    {
+      "id": "creator-critic-history-missing-file-empty-state-regression",
+      "instruction": "Add one focused regression test only in tests/test_creator_critic_state.py proving read_state() returns an empty list when the target history file does not exist. Use tmp_path and a valid registered task ID set; do not create the file before the read. Assert the returned value is exactly []. Do not change production code or any other file; do not use external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_creator_critic_state.py"
+      ]
     }
   ]
 }
