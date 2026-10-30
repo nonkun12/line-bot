@@ -50,7 +50,7 @@ def _has_unresolved_marker(text: str, markers: tuple[str, ...]) -> bool:
     for marker in markers:
         for match in re.finditer(re.escape(marker), normalised):
             prefix = normalised[max(0, match.start() - 32):match.start()]
-            if re.search(r"\\b(?:not|no|never|isn't|isnt|wasn't|wasnt)\\s+(?:\\w+\\s+){0,2}$", prefix):
+            if any(word in {"not", "no", "never"} for word in prefix.split()[-3:]):
                 continue
             return True
     return False
