@@ -44,6 +44,7 @@ def test_invalid_evidence_holds_for_human_review(tmp_path):
     "invalid_change_count_repair_failed",
     "invalid_old_new",
     "diff_marker_in_replacement",
+    "apply failed: anchor_count_tests/test_rea_readonly_scanner.py:0",
 ])
 def test_rejected_bounded_plan_is_invalid_task_and_requires_human_review(tmp_path, failure_reason):
     path = tmp_path / "recovery.json"
