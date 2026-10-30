@@ -3,6 +3,7 @@ import json
 import pytest
 
 from scripts.catalog_exhaustion_candidate_adapter import merge_candidates, main
+from scripts.review_candidate_bridge import build_pool
 
 
 def _report():
@@ -71,3 +72,53 @@ def test_main_combines_files(tmp_path):
     report.write_text(json.dumps(_report()), encoding="utf-8")
     assert main(["--history", str(history), "--catalog-report", str(report), "--output", str(output)]) == 0
     assert len(json.loads(output.read_text(encoding="utf-8"))) == 1
+
+
+def test_catalog_exhaustion_findings_reach_review_only_candidate_pool(tmp_path):
+    """Exercise the exact adapter -> review-pool handoff used by the workflow."""
+    input_path = tmp_path / "review-candidate-input.json"
+    store_path = tmp_path / "candidates.jsonl"
+    summary_path = tmp_path / "summary.md"
+
+    merged = merge_candidates([], _report())
+    input_path.write_text(json.dumps(merged), encoding="utf-8")
+
+    first = build_pool(input_path, store_path, summary_path)
+    stored = [json.loads(line) for line in store_path.read_text(encoding="utf-8").splitlines()]
+
+    assert first == {"stored": 1, "added": 1, "rejected": 0}
+    assert len(stored) == 1
+    assert stored[0]["source"] == "self_improvement"
+    assert stored[0]["source_id"] == "catalog-exhaustion:review-coverage-gap-0123456789"
+    assert stored[0]["execution_authorized"] is False
+    summary = summary_path.read_text(encoding="utf-8")
+    assert "Stored candidates: 1" in summary
+    assert "Execution authorization: **none**" in summary
+    assert "Queue / issue / PR creation: **not performed**" in summary
+
+    # Re-running the handoff must remain idempotent and must not duplicate rows.
+    second = build_pool(input_path, store_path, summary_path)
+    assert second == {"stored": 1, "added": 0, "rejected": 0}
+    assert len(store_path.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_distributed_workflow_wires_analyzer_adapter_before_review_pool(tmp_path):
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    start = workflow.index("- name: Build review-only self-improvement candidate pool")
+    end = workflow.index("- name: Upload review-only self-improvement candidates", start)
+    step = workflow[start:end]
+
+    adapter = step.index("scripts/catalog_exhaustion_candidate_adapter.py")
+    bridge = step.index("scripts/review_candidate_bridge.py")
+    assert adapter < bridge
+    assert "--history /tmp/self-improvement-review-candidates.json" in step
+    assert "--catalog-report /tmp/catalog-exhaustion-report.json" in step
+    assert "--output /tmp/review-candidate-input.json" in step
+    assert "--input /tmp/review-candidate-input.json" in step
+    assert "--store artifacts/self-improvement-candidates/candidates.jsonl" in step
+    assert "--summary artifacts/self-improvement-candidates/summary.md" in step
+    assert "if [ -s /tmp/catalog-exhaustion-report.json ]; then" in step
+    assert "cp /tmp/self-improvement-review-candidates.json /tmp/review-candidate-input.json" in step
