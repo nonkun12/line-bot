@@ -151,7 +151,10 @@ def _load_run_task_evidence(
         if response.status_code in {401, 403}:
             return None
         response.raise_for_status()
-        artifacts = response.json().get("artifacts", [])
+        artifact_payload = response.json()
+        if not isinstance(artifact_payload, dict):
+            return None
+        artifacts = artifact_payload.get("artifacts", [])
         expected_name = f"minimal-autonomous-loop-{run_id}"
         artifact = next(
             (
@@ -166,7 +169,12 @@ def _load_run_task_evidence(
             return None
 
         size = artifact.get("size_in_bytes")
-        if isinstance(size, bool) or (isinstance(size, int) and size > 5 * 1024 * 1024):
+        if (
+            isinstance(size, bool)
+            or not isinstance(size, int)
+            or size < 0
+            or size > 5 * 1024 * 1024
+        ):
             return None
         artifact_id = artifact.get("id")
         if isinstance(artifact_id, bool) or not str(artifact_id or "").isdigit():
@@ -197,6 +205,8 @@ def _load_run_task_evidence(
 
         report = report_bytes.decode("utf-8") if report_bytes is not None else ""
         refill = json.loads(refill_bytes) if refill_bytes is not None else {}
+        if not isinstance(refill, dict):
+            refill = {}
         result_rows: list[dict[str, object]] = []
         if results_bytes is not None:
             for line in results_bytes.decode("utf-8").splitlines():
@@ -344,7 +354,10 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
                 if response.status_code in {401, 403}:
                     return True, "統括AIの状態を取得できません（GitHub権限不足）。"
                 response.raise_for_status()
-                all_runs = response.json().get("workflow_runs", [])
+                run_payload = response.json()
+                if not isinstance(run_payload, dict):
+                    return True, "統括AIの状態を取得できません（GitHub応答形式が不正です）。"
+                all_runs = run_payload.get("workflow_runs", [])
                 if not isinstance(all_runs, list):
                     return True, "統括AIの状態を取得できません（GitHub応答形式が不正です）。"
 
