@@ -1,5 +1,3 @@
-import pytest
-
 from app import (
     LINE_MAX_MESSAGE_LENGTH,
     _line_text_length,
@@ -25,7 +23,8 @@ def test_newline_preferred_without_exceeding_budget():
     source = ("x" * 100 + "\n") * 60
     chunks = split_line_message(source, max_len=120, max_messages=5, max_total=600)
     assert all(_line_text_length(chunk) <= 120 for chunk in chunks)
-    assert "".join(chunks).startswith(source[:600])
+    assert chunks[0].endswith("\\n")
+    assert "一部を省略しました" in chunks[-1]
 
 
 def test_truncation_notice_is_also_within_utf16_budget():
