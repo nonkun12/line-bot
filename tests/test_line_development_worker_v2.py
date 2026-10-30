@@ -270,6 +270,133 @@ def test_apply_plan_with_bounded_anchor_repair_recovers_once(monkeypatch, tmp_pa
     assert target.read_text(encoding="utf-8") == "replacement\n"
 
 
+def test_apply_plan_with_bounded_anchor_repair_size_repairs_once(monkeypatch, tmp_path):
+    target = tmp_path / "app.py"
+    target.write_text("exact\\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    rejected = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "missing", "new": "replacement"}],
+    }
+    oversized = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "exact", "new": "x" * 2000}],
+    }
+    repaired = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "exact", "new": "replacement"}],
+    }
+    calls = []
+    monkeypatch.setattr(worker, "repair_anchor_plan", lambda *args: oversized)
+    monkeypatch.setattr(
+        worker,
+        "repair_size_plan",
+        lambda *args: calls.append("size") or repaired,
+    )
+
+    plan, ok, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+        FakeClient([]),
+        "app.py を最小修正",
+        "app.py",
+        rejected,
+        "exact\\n",
+    )
+
+    assert ok
+    assert detail == "applied"
+    assert touched == ["app.py"]
+    assert calls == ["size"]
+    assert plan == repaired
+    assert target.read_text(encoding="utf-8") == "replacement\\n"
+
+
+def test_apply_plan_with_bounded_anchor_repair_rejects_unrepairable_size(monkeypatch, tmp_path):
+    target = tmp_path / "app.py"
+    original = "exact\\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    rejected = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "missing", "new": "replacement"}],
+    }
+    oversized = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "exact", "new": "x" * 2000}],
+    }
+    calls = []
+    monkeypatch.setattr(worker, "repair_anchor_plan", lambda *args: oversized)
+    monkeypatch.setattr(
+        worker,
+        "repair_size_plan",
+        lambda *args: calls.append("size") or oversized,
+    )
+
+    plan, ok, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+        FakeClient([]),
+        "app.py を最小修正",
+        "app.py",
+        rejected,
+        original,
+    )
+
+    assert not ok
+    assert detail == "change_too_large"
+    assert touched == []
+    assert calls == ["size"]
+    assert plan == oversized
+    assert target.read_text(encoding="utf-8") == original
+
+
+def test_apply_plan_with_bounded_anchor_size_repair_rejects_no_change(monkeypatch, tmp_path):
+    target = tmp_path / "app.py"
+    original = "exact\\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    rejected = {"no_change": False, "changes": [{"file": "app.py", "old": "missing", "new": "x"}]}
+    oversized = {"no_change": False, "changes": [{"file": "app.py", "old": "exact", "new": "x" * 2000}]}
+    no_change = {"no_change": True, "changes": []}
+    calls = []
+    monkeypatch.setattr(worker, "repair_anchor_plan", lambda *args: oversized)
+    monkeypatch.setattr(worker, "repair_size_plan", lambda *args: calls.append("size") or no_change)
+
+    plan, ok, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+        FakeClient([]), "app.py を最小修正", "app.py", rejected, original
+    )
+
+    assert not ok
+    assert detail == "no_change"
+    assert touched == []
+    assert calls == ["size"]
+    assert plan == no_change
+    assert target.read_text(encoding="utf-8") == original
+
+
+def test_apply_plan_with_bounded_anchor_size_repair_rejects_invalid_file(monkeypatch, tmp_path):
+    target = tmp_path / "app.py"
+    original = "exact\\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    rejected = {"no_change": False, "changes": [{"file": "app.py", "old": "missing", "new": "x"}]}
+    oversized = {"no_change": False, "changes": [{"file": "app.py", "old": "exact", "new": "x" * 2000}]}
+    invalid = {"no_change": False, "changes": [{"file": "other.py", "old": "a", "new": "b"}]}
+    calls = []
+    monkeypatch.setattr(worker, "repair_anchor_plan", lambda *args: oversized)
+    monkeypatch.setattr(worker, "repair_size_plan", lambda *args: calls.append("size") or invalid)
+
+    plan, ok, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+        FakeClient([]), "app.py を最小修正", "app.py", rejected, original
+    )
+
+    assert not ok
+    assert detail == "change_outside_selected_file"
+    assert touched == []
+    assert calls == ["size"]
+    assert plan == invalid
+    assert target.read_text(encoding="utf-8") == original
+
+
 def test_apply_plan_with_bounded_anchor_repair_retries_non_unique_anchor(monkeypatch, tmp_path):
     target = tmp_path / "app.py"
     target.write_text("x\nx\nexact\n", encoding="utf-8")
@@ -660,3 +787,59 @@ def test_bounded_repairs_rejects_invalid_change_count_repair_for_other_file(monk
     assert not ok
     assert detail == "invalid_change_count_repair_failed"
     assert plan == rejected
+
+
+def test_validate_plan_size_boundaries_are_exact():
+    chosen = "app.py"
+    accepted = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "o" * 1200, "new": "n" * 1800}],
+    }
+    too_large_old = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "o" * 1201, "new": "n"}],
+    }
+    too_large_new = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "o", "new": "n" * 1801}],
+    }
+
+    assert worker.validate_plan(accepted, chosen) == (True, chosen)
+    assert worker.validate_plan(too_large_old, chosen) == (False, "change_too_large")
+    assert worker.validate_plan(too_large_new, chosen) == (False, "change_too_large")
+
+
+def test_apply_anchor_size_repair_is_used_only_once_across_anchor_retries(monkeypatch, tmp_path):
+    target = tmp_path / "app.py"
+    original = "x\\nx\\nexact\\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    rejected = {"no_change": False, "changes": [{"file": "app.py", "old": "missing", "new": "replacement"}]}
+    oversized = {"no_change": False, "changes": [{"file": "app.py", "old": "exact", "new": "z" * 2000}]}
+    size_repaired_but_ambiguous = {"no_change": False, "changes": [{"file": "app.py", "old": "x", "new": "y"}]}
+    anchor_calls = []
+    size_calls = []
+
+    def repair_anchor(*args):
+        anchor_calls.append(1)
+        return oversized if len(anchor_calls) == 1 else size_repaired_but_ambiguous
+
+    def repair_size(*args):
+        size_calls.append(1)
+        return size_repaired_but_ambiguous
+
+    monkeypatch.setattr(worker, "repair_anchor_plan", repair_anchor)
+    monkeypatch.setattr(worker, "repair_size_plan", repair_size)
+
+    plan, ok, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+        FakeClient([]), "app.py を最小修正", "app.py", rejected, original
+    )
+
+    assert not ok
+    assert detail == "anchor_count_app.py:3"
+    assert touched == []
+    assert len(anchor_calls) == worker.MAX_APPLY_REPAIR_ATTEMPTS
+    assert size_calls == [1]
+    assert plan == size_repaired_but_ambiguous
+    assert target.read_text(encoding="utf-8") == original
