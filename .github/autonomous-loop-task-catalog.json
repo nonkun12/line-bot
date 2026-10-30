@@ -400,6 +400,20 @@
       "allowed_paths": [
         "tests/test_distributed_loop_trigger.py"
       ]
+    },
+    {
+      "id": "review-agent-runtime-handoff-accessors-20261030",
+      "instruction": "Add focused regression tests only in tests/test_agent_runtime.py for MultiAgentRuntime.last_self_improvement_handoffs and persisted_self_improvement_handoffs. Verify the default accessor returns an empty immutable tuple when no handoff exists and no store is configured; verify the persisted accessor returns an empty tuple without a configured store; and, with a temporary handoff store configured, verify persisted handoffs are loaded through the store validation boundary and the public property returns the approved handoff tuple produced by the runtime. Reuse existing constructors and fixtures where possible; avoid duplicate coverage if equivalent tests already exist. Do not change production code, other files, external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_agent_runtime.py"
+      ]
+    },
+    {
+      "id": "review-development-repair-planner-contract-20261030",
+      "instruction": "Add one or more focused regression tests only in tests/test_line_development_runtime.py for DevelopmentRepairPlanner.repair_task. Verify the returned task uses a deterministic repair task_id containing the attempt and failed task ID, role REPAIRER, preserves failed_task.resources, includes the failed role and bounded failure summary in its instruction, and selects the deterministic-retry wording only when the request/path predicate is satisfied. Reuse existing state/task fixtures and avoid duplicate coverage if equivalent tests already exist. Do not change production code, other files, external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_line_development_runtime.py"
+      ]
     }
   ]
 }
