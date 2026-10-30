@@ -109,11 +109,13 @@ def test_find_scheduled_run_accepts_small_scheduler_delay(monkeypatch):
 class FakeSheetsClient:
     def __init__(self, rows):
         self.rows = rows
+        self.read_ranges = []
 
     def sheet_titles(self):
         return ["AutonomousDevelopment"]
 
-    def read_rows(self, _range):
+    def read_rows(self, range_name):
+        self.read_ranges.append(range_name)
         return self.rows
 
 
@@ -147,6 +149,12 @@ def test_has_audit_row_supports_ledger_starting_in_later_column():
     client = FakeSheetsClient([header, row])
     assert has_audit_row(client, "37861561986")
 
+
+def test_audit_row_outcome_finds_run_after_row_1000():
+    filler = [[""] * len(HEADERS) for _ in range(1000)]
+    client = FakeSheetsClient([HEADERS, *filler, _audit_row()])
+    assert audit_row_outcome(client, "12345") == (True, "verified_task_passed")
+    assert client.read_ranges == ["'AutonomousDevelopment'!A:ZZ"]
 
 def test_audit_row_outcome_accepts_verified_pass():
     client = FakeSheetsClient([HEADERS, _audit_row()])
