@@ -62,13 +62,15 @@ def evaluate(
         reasons.append("HEAD_TESTS_NOT_CLEAN")
     if head_counts["total"] == 0 or base_counts["total"] == 0:
         reasons.append("TEST_EVIDENCE_EMPTY")
+    if head_counts["total"] < base_counts["total"]:
+        reasons.append("TOTAL_TEST_COUNT_DECREASED")
     if head_counts["passed"] < base_counts["passed"]:
         reasons.append("PASSED_TEST_COUNT_DECREASED")
     if head_counts["skipped"] > base_counts["skipped"]:
         reasons.append("SKIPPED_TEST_COUNT_INCREASED")
     protected = [path for path in files if is_protected(path)]
-    if protected and not allow_protected:
-        reasons.append("PROTECTED_PATHS_REQUIRE_EXPLICIT_APPROVAL")
+    if protected:
+        reasons.append("PROTECTED_PATHS_REQUIRE_MAINTAINER_REVIEW")
     return {
         "schema_version": 1,
         "quality_status": "PASS" if not reasons else "HOLD",
@@ -79,7 +81,7 @@ def evaluate(
         "head_tests": head_counts,
         "changed_files": files,
         "protected_files": protected,
-        "protected_changes_approved": bool(allow_protected),
+        "protected_changes_approved": False,
         "reasons": reasons,
     }
 
@@ -91,7 +93,6 @@ def main() -> int:
     parser.add_argument("--base-junit", required=True)
     parser.add_argument("--head-junit", required=True)
     parser.add_argument("--output", default="qa.json")
-    parser.add_argument("--allow-protected", action="store_true")
     args = parser.parse_args()
 
     actual = subprocess.run(
@@ -104,7 +105,6 @@ def main() -> int:
         base_counts=junit_counts(args.base_junit),
         head_counts=junit_counts(args.head_junit),
         files=changed_paths(args.base_sha, args.head_sha),
-        allow_protected=args.allow_protected,
     )
     Path(args.output).write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + chr(10), encoding="utf-8"
