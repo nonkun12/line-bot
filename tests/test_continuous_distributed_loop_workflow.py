@@ -198,7 +198,10 @@ def test_distributed_loop_continuation_depth_is_bounded_and_propagated():
     source = (root / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     continuation = (root / "continuous-distributed-loop.yml").read_text(encoding="utf-8")
 
-    assert "run-name: Distributed Loop (continuation_depth=${{ inputs.continuation_depth || '0' }})" in source
+    assert (
+        "run-name: Distributed Loop (continuation_depth=${{ inputs.continuation_depth || '0' }}, "
+        "request_id=${{ inputs.request_id || 'scheduled' }})"
+    ) in source
     assert "continuation_depth:" in source
     assert "options:" in source
     assert 'match = re.search(r"continuation_depth=(\\d+)", title)' in continuation
