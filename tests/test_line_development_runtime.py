@@ -1231,7 +1231,7 @@ def test_catalog_exhaustion_dedup_task_plan_is_deterministic(monkeypatch, tmp_pa
     anchor = "def test_distributed_workflow_wires_analyzer_adapter_before_review_pool(tmp_path):\n"
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(anchor, encoding="utf-8")
+    target.write_text(anchor + "    pass\n", encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
 
     plan, err = runtime._deterministic_autonomous_test_plan(
