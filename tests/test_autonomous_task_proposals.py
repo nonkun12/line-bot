@@ -267,3 +267,13 @@ def test_cli_emits_candidate_exclusion_diagnostics(tmp_path, monkeypatch, capsys
         "invalid_issue_number_count": 0,
     }
     assert logged["reason"] == "no_valid_test_only_spec"
+ 
+ 
+ def test_build_proposals_rejects_boolean_issue_number(tmp_path):
+     candidate = issue("boolean-issue-number")
+     candidate["number"] = True
+     result, queue_path = run(tmp_path, [candidate], state())
+     assert result["proposal_count"] == 0
+     assert result["diagnostics"]["invalid_issue_number_count"] == 1
+     assert json.loads(queue_path.read_text(encoding="utf-8"))["tasks"] == []
+ 
