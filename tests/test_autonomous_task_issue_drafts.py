@@ -90,4 +90,4 @@ def test_distributed_workflow_paginates_all_issues_for_deduplication():
     step = workflow[start:end]
     assert "gh api --paginate" in step
     assert "state=all&per_page=100" in step
-    assert "jq -s '.'" in step
+    assert "jq -s 'add'" in step
