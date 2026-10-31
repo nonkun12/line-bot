@@ -84,7 +84,7 @@ def run_local_cycle(
             ),
             "critic": os.environ.get(
                 "CREATOR_CRITIC_CRITIC_PROVIDER",
-                __import__("os").environ.get("CREATOR_CRITIC_PROVIDER", "groq"),
+                os.environ.get("CREATOR_CRITIC_PROVIDER", "groq"),
             ),
         },
         "evidence_status": "CALLER_PROVIDED_NOT_VERIFIED",
@@ -106,8 +106,11 @@ def run_local_cycle(
     }
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return report
+    serialized = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+    output.write_text(serialized, encoding="utf-8")
+    # Return the same JSON-native structure that callers will read from disk
+    # (e.g. tuples become lists), keeping the API and persisted report aligned.
+    return json.loads(serialized)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
