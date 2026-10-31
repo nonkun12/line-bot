@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(telemetry.status==='ok' && runs.length){
           history.innerHTML='<div class="loop-run-list">'+runs.map(run=>{
             const url=String(run.html_url||'');
-            const safeUrl=/^https:\/\/github\\.com\/nonkun12\/line-bot\/actions\/runs\/\\d+$/.test(url)?url:'';
+            const safeUrl=/^https:\/\/github\.com\/nonkun12\/line-bot\/actions\/runs\/\d+$/.test(url)?url:'';
             const eventLabels={schedule:'定期実行',workflow_dispatch:'手動実行',issue_comment:'Issueコメント',pull_request_target:'PRラベル'};
             const link=safeUrl?'<a class="run-link" href="'+esc(safeUrl)+'" target="_blank" rel="noopener noreferrer">詳細 ↗</a>':'';
             return '<article class="loop-run-item"><div class="loop-run-main"><strong>Run #'+esc(run.run_number??'--')+'</strong><span>'+esc(runState(run))+'</span></div><div class="loop-run-meta">'+esc(eventLabels[run.event]||run.event||'起動元未取得')+' ・ '+esc(jstTime(run.created_at))+'</div>'+link+'</article>';
