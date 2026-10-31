@@ -39,7 +39,7 @@ def test_enqueue_creates_pending_not_approved_issue(monkeypatch):
         "url": "https://github.com/nonkun12/ai-dispatch-queue/issues/17",
     }
     assert captured["url"] == "https://api.github.com/repos/nonkun12/ai-dispatch-queue/issues"
-    assert captured["json"]["labels"] == ["queue:pending"]
+    assert "labels" not in captured["json"]
     assert "- queue_state: pending" in captured["json"]["body"]
     assert "- approval_state: not_approved" in captured["json"]["body"]
     assert "テストを実行して" in captured["json"]["body"]
