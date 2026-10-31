@@ -183,3 +183,32 @@ def test_dashboard_catalog_entries_exist_in_core_registry():
         descriptor.agent_name in registered_names
         for descriptor in DISTRIBUTED_AGENT_CATALOG
     )
+
+
+def test_dashboard_loop_exposes_current_workflow_limits_and_schedule(auth_headers):
+    client = app.test_client()
+    with patch("routes.dashboard._github_loop_runs", return_value={"status": "ok", "runs": []}):
+        response = client.get("/api/dashboard/loop", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["loop"]["timezone"] == "Asia/Tokyo"
+    assert data["loop"]["schedule_jst"] == ["04:30", "10:30", "16:30", "22:30"]
+    assert data["loop"]["frequency_per_day"] == 4
+    assert data["loop"]["manual_default_tasks"] == 1
+    assert data["loop"]["max_tasks_per_run"] == 4
+    assert data["loop"]["auto_apply_patch"] is False
+    assert data["loop"]["auto_deploy"] is False
+    assert data["safety"]["auto_merge"] is False
+    assert data["safety"]["auto_deploy"] is False
+
+
+def test_dashboard_loop_history_is_read_only_and_reports_unavailable(auth_headers):
+    client = app.test_client()
+    with patch("routes.dashboard._github_loop_runs", return_value={"status": "unavailable", "reason": "GITHUB_TOKEN not configured"}):
+        response = client.get("/api/dashboard/loop", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["loop"]["last_run"]["status"] == "unavailable"
+    assert data["loop"]["last_run"]["reason"] == "GITHUB_TOKEN not configured"
+    assert data["loop"]["auto_apply_patch"] is False
+    assert data["safety"]["auto_merge"] is False
