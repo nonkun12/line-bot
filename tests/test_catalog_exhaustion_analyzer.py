@@ -94,3 +94,44 @@ def test_candidate_id_is_stable_when_symbol_moves(tmp_path: Path):
     code.write_text("# moved line\ndef uncovered_boundary(value):\n    return value\n", encoding="utf-8")
     after = analyze(root, catalog, queue, state, runtime)["candidates"][0]["id"]
     assert after == before
+
+
+def test_analyzer_discovers_unreferenced_agent_version_history_as_review_only(tmp_path: Path):
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    version_source = """\
+class AgentVersionRegistry:
+    def current(self, agent_name):
+        return None
+
+    def history(self, agent_name):
+        return tuple(self._history.get(agent_name, ()))
+"""
+    version_tests = """\
+def test_registry_current_and_rollback_target():
+    assert registry.current("developer") is not None
+    assert registry.rollback_target("developer") is not None
+    registry.register(version)
+"""
+    (root / "core" / "agent_versioning.py").write_text(version_source, encoding="utf-8")
+    (root / "tests" / "test_agent_versioning.py").write_text(version_tests, encoding="utf-8")
+
+    report = analyze(root, catalog, queue, state, runtime)
+    candidates = [item for item in report["candidates"] if item["source_function"] == "AgentVersionRegistry.history"]
+    assert len(candidates) == 1
+    assert candidates[0]["target_test"] == "tests/test_agent_versioning.py"
+    assert candidates[0]["status"] == "REVIEW_REQUIRED"
+    assert candidates[0]["heuristic"] == "public-symbol-name-not-found-in-test-source; may have indirect coverage"
+    assert report["safety"]["candidates_executable"] is False
+
+
+def test_analyzer_suppresses_agent_version_history_when_named_in_paired_test(tmp_path: Path):
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    (root / "core" / "agent_versioning.py").write_text(
+        "class AgentVersionRegistry:\\n    def history(self, agent_name):\\n        return ()\\n", encoding="utf-8"
+    )
+    (root / "tests" / "test_agent_versioning.py").write_text(
+        "def test_history_is_returned_unchanged():\\n    assert registry.history(\\\"developer\\\") == ()\\n",
+        encoding="utf-8",
+    )
+    report = analyze(root, catalog, queue, state, runtime)
+    assert all(item["source_function"] != "AgentVersionRegistry.history" for item in report["candidates"])
