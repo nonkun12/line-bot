@@ -1,4 +1,5 @@
 from functools import wraps
+import httpx
 import hashlib
 import hmac
 import json
