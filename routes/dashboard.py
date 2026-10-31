@@ -312,11 +312,11 @@ def autonomous_loop_status():
         "ok": True,
         "loop": {
             "status": "configured",
-            "schedule_jst": ["04:30", "12:30", "16:30", "20:30"],
+            "schedule_jst": ["04:30", "10:30", "16:30", "22:30"],
             "frequency_per_day": 4,
             "manual_run_available": True,
             "manual_default_tasks": 1,
-            "max_tasks_per_run": 3,
+            "max_tasks_per_run": 4,
             "concurrency_cancel_in_progress": False,
             "auto_apply_patch": False,
             "auto_deploy": False,
@@ -341,6 +341,27 @@ def autonomous_loop_status():
         },
     })
 
+
+def _summarize_github_loop_runs(runs):
+    """Summarize only the supplied, observed GitHub Actions runs."""
+    observed = [run for run in runs if isinstance(run, dict)]
+    completed = [run for run in observed if run.get("status") == "completed"]
+    successful = [run for run in completed if run.get("conclusion") == "success"]
+    failed = [run for run in completed if run.get("conclusion") in {"failure", "timed_out", "action_required", "startup_failure"}]
+    cancelled = [run for run in completed if run.get("conclusion") == "cancelled"]
+    active = [run for run in observed if run.get("status") == "in_progress"]
+    queued = [run for run in observed if run.get("status") == "queued"]
+    return {
+        "window": "latest_5_observed_runs",
+        "observed": len(observed),
+        "completed": len(completed),
+        "successful": len(successful),
+        "failed": len(failed),
+        "cancelled": len(cancelled),
+        "in_progress": len(active),
+        "queued": len(queued),
+        "success_rate_pct": round(len(successful) / len(completed) * 100, 1) if completed else None,
+    }
 
 def _github_loop_runs():
     """Read-only GitHub Actions telemetry for the autonomous loop."""
@@ -368,7 +389,7 @@ def _github_loop_runs():
                 "head_sha": run.get("head_sha"),
                 "html_url": run.get("html_url"),
             })
-        return {"status": "ok", "runs": runs}
+        return {"status": "ok", "runs": runs, "summary": _summarize_github_loop_runs(runs)}
     except Exception:
         current_app.logger.exception("DASHBOARD GITHUB LOOP TELEMETRY ERROR")
         return {"status": "unavailable", "reason": "github_api_error"}
