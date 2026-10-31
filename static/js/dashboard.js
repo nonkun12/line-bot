@@ -63,22 +63,37 @@ document.addEventListener('DOMContentLoaded', () => {
       const historyError=document.getElementById('loopHistoryError');
       const runData=l.last_run||{};
       if(historyError) historyError.classList.add('hidden');
-      if(historyUpdated) historyUpdated.textContent='更新 '+new Date().toLocaleTimeString('ja-JP');
+      if(historyUpdated) historyUpdated.textContent='更新 '+new Date().toLocaleTimeString('ja-JP')+' ・ 直近5件';
+      const historyMetrics=document.getElementById('loopHistoryMetrics');
+      const historyRuns=runData.status==='ok' && Array.isArray(runData.runs)?runData.runs:[];
+      const completedRuns=historyRuns.filter(run=>String(run.status||'').toLowerCase()==='completed');
+      const successfulRuns=completedRuns.filter(run=>String(run.conclusion||'').toLowerCase()==='success');
+      const failedRuns=completedRuns.filter(run=>Boolean(run.conclusion)&&String(run.conclusion).toLowerCase()!=='success');
+      const runningRuns=historyRuns.filter(run=>String(run.status||'').toLowerCase()!=='completed');
+      if(historyMetrics){
+        const metrics=runData.status==='ok'?[
+          ['取得件数',historyRuns.length+'件','直近5件のWorkflow'],
+          ['Workflow成功',successfulRuns.length+'件','個別タスクPASSとは別判定'],
+          ['失敗・取消等',failedRuns.length+'件','success以外の完了'],
+          ['実行中',runningRuns.length+'件','未完了Run']
+        ]:[['履歴','未取得',runData.reason||'GitHub API未接続']];
+        historyMetrics.innerHTML=metrics.map(item=>'<div class="system-card"><div class="system-card-title">'+esc(item[0])+'</div><div class="history-metric-value">'+esc(item[1])+'</div><div class="system-details">'+esc(item[2])+'</div></div>').join('');
+      }
       if(historyBody){
         if(runData.status!=='ok'){
           historyBody.innerHTML='<tr><td colspan="6">GitHub Actions 履歴を取得できません。'+esc(runData.reason||'状態未取得')+'</td></tr>';
         } else {
-          const runs=Array.isArray(runData.runs)?runData.runs:[];
-          historyBody.innerHTML=runs.length?runs.map(run=>{
+          historyBody.innerHTML=historyRuns.length?historyRuns.map(run=>{
             const status=String(run.status||'unknown').toLowerCase();
             const conclusion=String(run.conclusion||'').toLowerCase();
-            const workflowLabel=status!=='completed'?'実行中':conclusion==='success'?'Workflow成功':conclusion?'Workflow '+conclusion:'完了状態不明';
+            const workflowLabel=status!=='completed'?'実行中':conclusion==='success'?'成功':conclusion?({failure:'失敗',cancelled:'取消',timed_out:'タイムアウト',action_required:'要対応'}[conclusion]||'完了: '+esc(conclusion)):'完了状態不明';
             const tone=status!=='completed'?'running':conclusion==='success'?'ok':conclusion?'failed':'unknown';
             const started=run.created_at?new Date(run.created_at).toLocaleString('ja-JP'):'未取得';
             const sha=String(run.head_sha||'').slice(0,10)||'未取得';
             const href=String(run.html_url||'');
             const safeHref=/^https:\/\/github\.com\/nonkun12\/line-bot\/actions\/runs\/[0-9]+$/.test(href)?href:'';
-            return '<tr><td>#'+esc(run.run_number??'—')+'</td><td><span class="run-state '+tone+'">'+workflowLabel+'</span></td><td>'+esc(run.event||'未取得')+'</td><td>'+esc(started)+'</td><td><code>'+esc(sha)+'</code></td><td>'+(safeHref?'<a href="'+safeHref+'" target="_blank" rel="noopener noreferrer">Runを開く ↗</a>':'リンク未取得')+'</td></tr>';
+            const title=esc(run.display_title||run.name||'Distributed Loop');
+            return '<tr><td>#'+esc(run.run_number??'—')+'<div class="run-title">'+title+'</div></td><td><span class="run-state '+tone+'">'+workflowLabel+'</span></td><td>'+esc(run.event||'未取得')+'</td><td>'+esc(started)+'</td><td><code>'+esc(sha)+'</code></td><td>'+(safeHref?'<a href="'+safeHref+'" target="_blank" rel="noopener noreferrer">Runを開く ↗</a>':'リンク未取得')+'</td></tr>';
           }).join(''):'<tr><td colspan="6">取得できる実行履歴はありません</td></tr>';
         }
       }
