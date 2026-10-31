@@ -204,9 +204,9 @@ def test_classify_blocks_unallowlisted_requester_and_empty_allowlist(monkeypatch
 
 
 @pytest.mark.parametrize("metadata", [
-    "- requester_user_id: U123\\n- requester_user_id: U123",
-    "- approval_state: approved\\n- approval_state: approved",
-    "- queue_state: pending\\n- queue_state: pending",
+    "- requester_user_id: U123\n- requester_user_id: U123",
+    "- approval_state: approved\n- approval_state: approved",
+    "- queue_state: pending\n- queue_state: pending",
 ])
 def test_classify_blocks_duplicate_security_metadata(monkeypatch, metadata):
     monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
