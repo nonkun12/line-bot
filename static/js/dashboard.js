@@ -37,9 +37,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const f=features[key]||{}, status=f.status||'unknown';
         return `<div class="system-card"><div class="system-card-title">${icons[key]||'🤖'} ${esc(title)}</div><div class="system-status">${label(status)}</div><div class="system-details">${esc(f.detail||baseDetail)}</div></div>`;
       }).join('');
+      let loopLastRun = {};
       try {
         const lr=await fetch(api('/api/dashboard/loop')); const ld=await lr.json();
         const l=ld.loop||{}, s=ld.safety||{}, h=ld.hand_sign||{};
+        loopLastRun = l.last_run || {};
         const cards=[
           ['🔄 Loop','🟢 自動運転設定済み',`1日 ${l.frequency_per_day||4}回 ・ ${(l.schedule_jst||[]).join(' / ')} JST`],
           ['🛡️ Safety Gate',s.fail_closed||l.fail_closed?'🟢 FAIL_CLOSED 有効':'⚪ 未確認',`Auto Merge: ${s.auto_merge?'有':'無'} ・ Auto Deploy: ${s.auto_deploy?'有':'無'}`],
@@ -61,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const historyBody=document.getElementById('loopHistoryBody');
       const historyUpdated=document.getElementById('loopHistoryUpdated');
       const historyError=document.getElementById('loopHistoryError');
-      const runData=l.last_run||{};
+      const runData=loopLastRun;
       if(historyError) historyError.classList.add('hidden');
       if(historyUpdated) historyUpdated.textContent='更新 '+new Date().toLocaleTimeString('ja-JP')+' ・ 直近5件';
       const historyMetrics=document.getElementById('loopHistoryMetrics');
