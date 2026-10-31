@@ -19,7 +19,10 @@ and `safety` values in the inclusive range 0–1, plus non-empty provenance
 fields `source`, `method`, `measured_at`, and `evidence_ref`.
 Only these allowlisted fields are passed into the model loop. The runner labels
 them `CALLER_PROVIDED_NOT_VERIFIED`; it does not independently validate test
-results or infer that the metrics are true.
+results or infer that the metrics are true. The Critic pass/score thresholds are
+computed deterministically from those supplied numbers, not verified by either
+model. The report marks this as
+`DETERMINISTIC_FROM_UNVERIFIED_CALLER_INPUT`; model feedback is separate advisory text.
 
 ## Run
 
