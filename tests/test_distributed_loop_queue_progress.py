@@ -150,3 +150,18 @@ def test_parse_progress_output_accepts_empty_runtime_queue():
 def test_parse_progress_output_rejects_invalid_payload(output: str):
     with pytest.raises(ValueError):
         parse_progress_output(output)
+
+def test_distributed_loop_final_report_uses_run_local_queue_and_uploads_diagnostic():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    report_start = workflow.index("- name: Build final distributed loop report")
+    report_end = workflow.index("- name: Wake Render before LINE final report", report_start)
+    report_step = workflow[report_start:report_end]
+
+    assert "if [ -f /tmp/autonomous-loop-runtime-queue.json ]; then" in report_step
+    assert "progress_queue=/tmp/autonomous-loop-runtime-queue.json" in report_step
+    assert '--queue "$progress_queue"' in report_step
+    assert "/tmp/distributed-loop-queue-progress.out" in workflow
+    assert "QUEUE_PROGRESS_BLOCKED:" in report_step
