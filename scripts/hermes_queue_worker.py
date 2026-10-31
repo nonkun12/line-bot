@@ -25,6 +25,20 @@ _REQUESTER_RE = re.compile(r"^- requester_user_id: ([^\r\n]{1,128})$", re.MULTIL
 _APPROVAL_RE = re.compile(r"^- approval_state: (not_approved|approved)$", re.MULTILINE)
 _QUEUE_STATE_RE = re.compile(r"^- queue_state: (pending|claimed|running|completed|blocked|failed)$", re.MULTILINE)
 _MAX_ISSUES = 50
+_QUEUE_REPOSITORY = "nonkun12/ai-dispatch-queue"
+
+
+def _allowed_requesters() -> set[str]:
+    configured = os.environ.get("DEV_ALLOWED_USER_IDS", "")
+    return {item.strip() for item in configured.split(",") if item.strip()}
+
+
+def _trusted_requester(body: str) -> str | None:
+    values = _REQUESTER_RE.findall(body)
+    allowed = _allowed_requesters()
+    if len(values) != 1 or not allowed or values[0] not in allowed:
+        return None
+    return values[0]
 
 
 class WorkerConfigurationError(RuntimeError):
@@ -54,26 +68,26 @@ def classify_issue(issue: dict[str, Any]) -> dict[str, str] | None:
     body = issue.get("body")
     if not isinstance(body, str):
         return None
-    requester = _REQUESTER_RE.search(body)
-    approval = _APPROVAL_RE.search(body)
-    queue_state = _QUEUE_STATE_RE.search(body)
-    if not requester or not approval or not queue_state:
+    requester = _trusted_requester(body)
+    approvals = _APPROVAL_RE.findall(body)
+    queue_states = _QUEUE_STATE_RE.findall(body)
+    if requester is None or len(approvals) != 1 or len(queue_states) != 1:
         return {
             "task_id": match.group(1),
             "issue_number": str(issue.get("number", "")),
             "state": "blocked_invalid_metadata",
         }
-    state = queue_state.group(1)
+    state = queue_states[0]
     if state != "pending":
         result_state = f"blocked_{state}"
-    elif approval.group(1) != "approved":
+    elif approvals[0] != "approved":
         result_state = "blocked_not_approved"
     else:
         result_state = "ready_for_manual_approval"
     return {
         "task_id": match.group(1),
         "issue_number": str(issue.get("number", "")),
-        "requester_user_id": requester.group(1),
+        "requester_user_id": requester,
         "state": result_state,
     }
 
@@ -85,8 +99,8 @@ def _credentials(token: str | None, repository: str | None) -> tuple[str, str]:
     ).strip()
     if not token:
         raise WorkerConfigurationError("GH_QUEUE_TOKEN is not configured")
-    if not _REPOSITORY_RE.fullmatch(repository):
-        raise WorkerConfigurationError("GH_QUEUE_REPOSITORY must be owner/name")
+    if repository != _QUEUE_REPOSITORY:
+        raise WorkerConfigurationError("GH_QUEUE_REPOSITORY must target the configured private queue repository")
     return token, repository
 
 
@@ -193,12 +207,15 @@ def _claim_approved_issue_locked(
     if not _TASK_TITLE_RE.fullmatch(title):
         raise ClaimRejected("issue is not a Hermes queue task")
 
-    approval = _APPROVAL_RE.search(body)
-    state = _QUEUE_STATE_RE.search(body)
-    if not approval or approval.group(1) != "approved":
-        raise ClaimRejected("explicit approval is required")
-    if not state or state.group(1) != "pending":
-        raise ClaimRejected("only pending tasks can be claimed")
+    requester = _trusted_requester(body)
+    approvals = _APPROVAL_RE.findall(body)
+    states = _QUEUE_STATE_RE.findall(body)
+    if requester is None:
+        raise ClaimRejected("requester is missing or not allowlisted")
+    if len(approvals) != 1 or approvals[0] != "approved":
+        raise ClaimRejected("exactly one explicit approval marker is required")
+    if len(states) != 1 or states[0] != "pending":
+        raise ClaimRejected("exactly one pending queue-state marker is required")
 
     claimed_at = datetime.now(timezone.utc).isoformat()
     updated = _QUEUE_STATE_RE.sub("- queue_state: claimed", body, count=1)
