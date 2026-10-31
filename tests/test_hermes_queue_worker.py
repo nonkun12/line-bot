@@ -262,7 +262,7 @@ def test_claim_rejects_unallowlisted_requester_without_patch(monkeypatch):
 def test_claim_rejects_duplicate_security_metadata_without_patch(monkeypatch, duplicate_line):
     monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     issue = _issue(approval="approved")
-    issue["body"] += f"\\n{duplicate_line}"
+    issue["body"] += f"\n{duplicate_line}"
     calls = []
     monkeypatch.setattr(worker.httpx, "get", lambda *args, **kwargs: _Response(payload=issue))
     monkeypatch.setattr(worker.httpx, "patch", lambda *args, **kwargs: calls.append(args))
