@@ -428,6 +428,13 @@
       "allowed_paths": [
         "tests/test_catalog_exhaustion_candidate_adapter.py"
       ]
+    },
+    {
+      "id": "dashboard-loop-telemetry-missing-token-no-network-20261031",
+      "instruction": "tests/test_dashboard.py のみに、新しい固有名の回帰テストを1件追加してください。GITHUB_TOKEN が未設定の場合、_github_loop_runs() が status='unavailable' と reason='GITHUB_TOKEN not configured' を返し、GitHub APIへのHTTP通信を試みないことを確認してください。monkeypatch で環境変数を削除し、routes.dashboard.httpx.Client を呼ばれたら失敗するようにモックしてください。既存テストを変更せず、テストファイルのみ変更。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_dashboard.py"
+      ]
     }
   ]
 }

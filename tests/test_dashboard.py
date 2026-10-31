@@ -186,3 +186,46 @@ def test_dashboard_catalog_entries_exist_in_core_registry():
         descriptor.agent_name in registered_names
         for descriptor in DISTRIBUTED_AGENT_CATALOG
     )
+
+
+def test_dashboard_loop_telemetry_returns_verified_run_evidence(auth_headers, monkeypatch):
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "workflow_runs": [{
+                    "id": 12345,
+                    "run_number": 7,
+                    "status": "completed",
+                    "conclusion": "success",
+                    "event": "schedule",
+                    "created_at": "2026-10-31T06:00:00Z",
+                    "updated_at": "2026-10-31T06:01:00Z",
+                    "head_sha": "a" * 40,
+                    "html_url": "https://github.com/nonkun12/line-bot/actions/runs/12345",
+                }]
+            }
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def get(self, *_args, **_kwargs):
+            return FakeResponse()
+
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    client = app.test_client()
+    with patch("routes.dashboard.httpx.Client", return_value=FakeClient()):
+        response = client.get("/api/dashboard/loop", headers=auth_headers)
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["loop"]["last_run"]["status"] == "ok"
+    run = data["loop"]["last_run"]["runs"][0]
+    assert run["id"] == 12345
+    assert run["head_sha"] == "a" * 40
+    assert run["conclusion"] == "success"
