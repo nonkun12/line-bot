@@ -13,6 +13,10 @@ from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
+MAX_PROMPT_CHARS = 65_536
+MAX_RESPONSE_BYTES = 1_048_576
+
+
 class _RejectRedirects(HTTPRedirectHandler):
     """Do not allow a local endpoint to redirect prompts to another host."""
 
@@ -79,6 +83,8 @@ def local_model_call(prompt: str, profile: LocalModelProfile) -> str:
     """Send one chat completion to a validated local model profile."""
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError("prompt is required")
+    if len(prompt) > MAX_PROMPT_CHARS:
+        raise ValueError(f"prompt exceeds {MAX_PROMPT_CHARS} characters")
     body = json.dumps({
         "model": profile.model,
         "messages": [{"role": "user", "content": prompt}],
@@ -96,7 +102,10 @@ def local_model_call(prompt: str, profile: LocalModelProfile) -> str:
     try:
         opener = build_opener(_RejectRedirects)
         with opener.open(request, timeout=profile.timeout) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            raw_payload = response.read(MAX_RESPONSE_BYTES + 1)
+            if len(raw_payload) > MAX_RESPONSE_BYTES:
+                raise RuntimeError("local model response exceeds size limit")
+            payload = json.loads(raw_payload.decode("utf-8"))
     except (URLError, TimeoutError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"{profile.name} local model request failed: {type(exc).__name__}") from None
     choices = payload.get("choices") if isinstance(payload, dict) else None
