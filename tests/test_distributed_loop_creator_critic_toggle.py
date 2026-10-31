@@ -15,8 +15,7 @@ def test_distributed_loop_creator_critic_advisory_honors_explicit_opt_in():
         source.index("- name: Advisory Creator-Critic review for failed or repaired tasks"):
         source.index("- name: Build review-only self-improvement candidate pool")
     ]
-    assert "if: always() && env.SELF_IMPROVEMENT_CREATOR_CRITIC == 'true'" in review
-    assert "if: always() && env.SELF_IMPROVEMENT_CREATOR_CRITIC == 'true'" in review
+    assert review.count("if: always() && env.SELF_IMPROVEMENT_CREATOR_CRITIC == 'true'") == 2
     assert "continue-on-error: true" in review
     assert "AUTO_APPLY_PATCH: 'false'" in source
     assert "AUTO_DEPLOY: 'false'" in source
