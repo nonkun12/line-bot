@@ -17,6 +17,27 @@ def test_tracks_current_and_rollback_target():
     assert registry.rollback_target("developer").version == "1.0.0"
 
 
+def test_history_returns_registered_versions_in_order():
+    first = version(number="1.0.0", lifecycle=AgentLifecycle.REVIEWED)
+    second = version(number="1.1.0")
+    registry = AgentVersionRegistry([first, second])
+
+    assert registry.history("developer") == (first, second)
+
+
+def test_history_returns_empty_tuple_for_unknown_agent():
+    registry = AgentVersionRegistry([version()])
+
+    assert registry.history("unknown-agent") == ()
+
+
+def test_history_normalizes_agent_name_whitespace():
+    registered = version(name="developer", lifecycle=AgentLifecycle.REVIEWED)
+    registry = AgentVersionRegistry([registered])
+
+    assert registry.history("  developer  ") == (registered,)
+
+
 def test_rejects_duplicate_version():
     registry = AgentVersionRegistry([version()])
     with pytest.raises(ValueError, match="already registered"):
