@@ -96,11 +96,12 @@ def test_enqueue_requires_queue_credentials(monkeypatch):
             user_id="U123",
             authorized=True,
             token="",
-            repository="owner/repo",
+            repository="nonkun12/ai-dispatch-queue",
         )
 
 
 def test_enqueue_does_not_leak_github_error_body(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     def fake_post(url, **kwargs):
         return _Response(status_code=403)
 
@@ -111,6 +112,6 @@ def test_enqueue_does_not_leak_github_error_body(monkeypatch):
             user_id="U123",
             authorized=True,
             token="token",
-            repository="owner/repo",
+            repository="nonkun12/ai-dispatch-queue",
         )
     assert "token" not in str(error.value)
