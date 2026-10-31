@@ -414,7 +414,10 @@ jobs:
             echo "No validated catalog-exhaustion report; issue generation skipped."
             exit 0
           fi
-          gh issue list --state all --limit 500 --json number,title,body,state,labels > /tmp/autonomous-loop-all-issues.json
+          # Paginate every issue (closed included) so old candidate IDs cannot be re-created.
+          gh api --paginate --jq '.[] | select(has("pull_request") | not) | {number,title,body,state,labels}' \
+            "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" \
+            | jq -s '.' > /tmp/autonomous-loop-all-issues.json
           python -m scripts.autonomous_task_issue_drafts \
             --report /tmp/catalog-exhaustion-report.json \
             --issues /tmp/autonomous-loop-all-issues.json \
