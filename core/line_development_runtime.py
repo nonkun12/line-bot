@@ -1951,19 +1951,19 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         name = "test_duplicate_catalog_candidates_are_deduplicated_within_report"
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
-        anchor = "def test_distributed_workflow_wires_analyzer_adapter_before_review_pool(tmp_path):\\n"
+        anchor = "def test_distributed_workflow_wires_analyzer_adapter_before_review_pool(tmp_path):\n"
         if text.count(anchor) != 1:
             return None, f"deterministic_anchor_not_unique:{chosen}:{text.count(anchor)}"
         addition = (
-            "def test_duplicate_catalog_candidates_are_deduplicated_within_report():\\n"
-            "    report = _report()\\n"
-            '    candidate = report["candidates"][0]\\n'
-            '    report["candidates"] = [dict(candidate), dict(candidate)]\\n'
-            '    report["candidate_count"] = 2\\n'
-            "    rows = merge_candidates([], report)\\n"
-            "    assert len(rows) == 1\\n"
-            '    assert rows[0]["source_id"] == "catalog-exhaustion:review-coverage-gap-0123456789"\\n'
-            "\\n\\n"
+            "def test_duplicate_catalog_candidates_are_deduplicated_within_report():\n"
+            "    report = _report()\n"
+            '    candidate = report["candidates"][0]\n'
+            '    report["candidates"] = [dict(candidate), dict(candidate)]\n'
+            '    report["candidate_count"] = 2\n'
+            "    rows = merge_candidates([], report)\n"
+            "    assert len(rows) == 1\n"
+            '    assert rows[0]["source_id"] == "catalog-exhaustion:review-coverage-gap-0123456789"\n'
+            "\n\n"
         )
         new = addition + anchor
         if len(anchor) > 1200 or len(new) > 1800:
