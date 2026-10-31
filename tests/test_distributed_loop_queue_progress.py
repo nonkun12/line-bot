@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.distributed_loop_queue_progress import calculate_progress, main
+from scripts.distributed_loop_queue_progress import calculate_progress, main, parse_progress_output
 
 
 def test_progress_does_not_count_not_run_result_as_completion(tmp_path: Path):
@@ -127,3 +127,26 @@ def test_cli_fails_closed_and_reports_unexpected_exception(tmp_path: Path, monke
     output = capsys.readouterr().out
     assert output.strip() == "QUEUE_PROGRESS_BLOCKED: RuntimeError"
     assert "private details" not in output
+
+
+
+def test_parse_progress_output_accepts_empty_runtime_queue():
+    assert parse_progress_output('{"queue_total": 0, "queue_completed": 0}') == {
+        "queue_total": 0,
+        "queue_completed": 0,
+    }
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "not-json",
+        "[]",
+        '{"queue_total": true, "queue_completed": 0}',
+        '{"queue_total": 0, "queue_completed": -1}',
+        '{"queue_total": 1, "queue_completed": 2}',
+    ],
+)
+def test_parse_progress_output_rejects_invalid_payload(output: str):
+    with pytest.raises(ValueError):
+        parse_progress_output(output)
