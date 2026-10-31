@@ -57,6 +57,28 @@ def calculate_progress(queue_path: Path, state_path: Path, results_path: Path) -
     return {"queue_total": len(queue_ids), "queue_completed": len(done_ids)}
 
 
+
+def parse_progress_output(output: str) -> dict[str, int]:
+    """Parse and validate the CLI's JSON progress payload.
+
+    Keep output parsing separate from CLI execution so a JSON/consumer error
+    cannot be misreported as a missing CLI diagnostic.
+    """
+    try:
+        data = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise ValueError("invalid queue progress JSON") from exc
+    if not isinstance(data, dict):
+        raise ValueError("invalid queue progress payload")
+    total = data.get("queue_total")
+    completed = data.get("queue_completed")
+    if type(total) is not int or type(completed) is not int or total < 0 or completed < 0:
+        raise ValueError("invalid queue progress counts")
+    if completed > total:
+        raise ValueError("queue progress exceeds total")
+    return {"queue_total": total, "queue_completed": completed}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--queue", type=Path, required=True)
