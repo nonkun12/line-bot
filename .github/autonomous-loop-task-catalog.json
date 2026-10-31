@@ -421,6 +421,13 @@
       "allowed_paths": [
         "tests/test_creator_critic_state.py"
       ]
+    },
+    {
+      "id": "catalog-exhaustion-adapter-deduplicates-duplicate-findings-20261031",
+      "instruction": "tests/test_catalog_exhaustion_candidate_adapter.py のみに、新しい固有名の回帰テスト test_duplicate_catalog_candidates_are_deduplicated_within_report を1件追加してください。_report() が返す候補を2件（同じ候補の複製）にして candidate_count=2 とし、merge_candidates([], report) の結果が1件だけで source_id が catalog-exhaustion:review-coverage-gap-0123456789 であることを検証してください。既存テストを変更せず、指定テストファイルだけを変更してください。外部通信・シークレット参照・OS操作は禁止。実装コード・workflow・catalog/state/approval ロジックの変更は禁止。マージ・デプロイは禁止。既存テストが失敗したら実装を変更せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_catalog_exhaustion_candidate_adapter.py"
+      ]
     }
   ]
 }

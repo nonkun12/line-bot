@@ -239,6 +239,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "proposal-generator-conflicting-catalog-definitions-regression": "tests/test_autonomous_task_proposals.py",
     "proposal-generator-deduplicates-approved-task-ids-20261027": "tests/test_autonomous_task_proposals.py",
     "safe-continuation-depth-four-regression-20261026": "tests/test_continuous_distributed_loop_workflow.py",
+    "catalog-exhaustion-adapter-deduplicates-duplicate-findings-20261031": "tests/test_catalog_exhaustion_candidate_adapter.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -1935,6 +1936,41 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         candidate = text.replace(anchor, new, 1)
         try:
             compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+
+    if task_id == "catalog-exhaustion-adapter-deduplicates-duplicate-findings-20261031" and chosen == "tests/test_catalog_exhaustion_candidate_adapter.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_duplicate_catalog_candidates_are_deduplicated_within_report"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_distributed_workflow_wires_analyzer_adapter_before_review_pool(tmp_path):\n"
+        if text.count(anchor) != 1:
+            return None, f"deterministic_anchor_not_unique:{chosen}:{text.count(anchor)}"
+        addition = (
+            "def test_duplicate_catalog_candidates_are_deduplicated_within_report():\n"
+            "    report = _report()\n"
+            '    candidate = report["candidates"][0]\n'
+            '    report["candidates"] = [dict(candidate), dict(candidate)]\n'
+            '    report["candidate_count"] = 2\n'
+            "    rows = merge_candidates([], report)\n"
+            "    assert len(rows) == 1\n"
+            '    assert rows[0]["source_id"] == "catalog-exhaustion:review-coverage-gap-0123456789"\n'
+            "\n\n"
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate_source = text.replace(anchor, new, 1)
+        try:
+            compile(candidate_source, chosen, "exec")
         except (SyntaxError, IndentationError) as exc:
             return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
         return {
