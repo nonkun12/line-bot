@@ -69,13 +69,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const completedRuns=historyRuns.filter(run=>String(run.status||'').toLowerCase()==='completed');
       const successfulRuns=completedRuns.filter(run=>String(run.conclusion||'').toLowerCase()==='success');
       const failedRuns=completedRuns.filter(run=>Boolean(run.conclusion)&&String(run.conclusion).toLowerCase()!=='success');
-      const runningRuns=historyRuns.filter(run=>String(run.status||'').toLowerCase()!=='completed');
+      const runningRuns=historyRuns.filter(run=>String(run.status||'').toLowerCase()==='in_progress');
+      const queuedRuns=historyRuns.filter(run=>['queued','waiting','pending','requested'].includes(String(run.status||'').toLowerCase()));
       if(historyMetrics){
         const metrics=runData.status==='ok'?[
           ['取得件数',historyRuns.length+'件','直近5件のWorkflow'],
           ['Workflow成功',successfulRuns.length+'件','個別タスクPASSとは別判定'],
           ['失敗・取消等',failedRuns.length+'件','success以外の完了'],
-          ['実行中',runningRuns.length+'件','未完了Run']
+          ['実行中',runningRuns.length+'件','in_progress'],
+          ['待機中',queuedRuns.length+'件','queued / waiting']
         ]:[['履歴','未取得',runData.reason||'GitHub API未接続']];
         historyMetrics.innerHTML=metrics.map(item=>'<div class="system-card"><div class="system-card-title">'+esc(item[0])+'</div><div class="history-metric-value">'+esc(item[1])+'</div><div class="system-details">'+esc(item[2])+'</div></div>').join('');
       }
@@ -86,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
           historyBody.innerHTML=historyRuns.length?historyRuns.map(run=>{
             const status=String(run.status||'unknown').toLowerCase();
             const conclusion=String(run.conclusion||'').toLowerCase();
-            const workflowLabel=status!=='completed'?'実行中':conclusion==='success'?'成功':conclusion?({failure:'失敗',cancelled:'取消',timed_out:'タイムアウト',action_required:'要対応'}[conclusion]||'完了: '+esc(conclusion)):'完了状態不明';
+            const workflowLabel=['queued','waiting','pending','requested'].includes(status)?'待機中':status==='in_progress'?'実行中':status!=='completed'?'状態: '+esc(status):conclusion==='success'?'成功':conclusion?({failure:'失敗',cancelled:'取消',timed_out:'タイムアウト',action_required:'要対応'}[conclusion]||'完了: '+esc(conclusion)):'完了状態不明';
             const tone=status!=='completed'?'running':conclusion==='success'?'ok':conclusion?'failed':'unknown';
             const started=run.created_at?new Date(run.created_at).toLocaleString('ja-JP'):'未取得';
             const sha=String(run.head_sha||'').slice(0,10)||'未取得';
