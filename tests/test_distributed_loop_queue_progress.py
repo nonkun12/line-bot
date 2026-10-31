@@ -127,3 +127,14 @@ def test_cli_fails_closed_and_reports_unexpected_exception(tmp_path: Path, monke
     output = capsys.readouterr().out
     assert output.strip() == "QUEUE_PROGRESS_BLOCKED: RuntimeError"
     assert "private details" not in output
+ 
+ 
+def test_progress_rejects_boolean_completed_task_id(tmp_path: Path):
+    queue = tmp_path / "queue.json"
+    state = tmp_path / "state.json"
+    results = tmp_path / "results.jsonl"
+    queue.write_text(json.dumps({"tasks": [{"id": "task-1"}]}), encoding="utf-8")
+    state.write_text(json.dumps({"completed": [True]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid completed task ID"):
+        calculate_progress(queue, state, results)
+
