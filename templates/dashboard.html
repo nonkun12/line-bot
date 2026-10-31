@@ -45,11 +45,12 @@
       <div class="title-group"><span class="section-icon">🧾</span><h2 class="section-title">分散Loop 実行履歴</h2></div>
       <span id="loopHistoryUpdated" class="status-note">GitHub Actions 読み込み待ち</span>
     </div>
-    <p class="dashboard-evidence-note">ここに表示するのは GitHub Actions の Workflow 状態です。Workflow 成功だけでは個別タスクの PASS を意味しません。Task ID・PASS／NOT_RUN・キュー進捗は実行レポートで確認してください。</p>
+    <p class="dashboard-evidence-note">直近5件の GitHub Actions 実行記録です。Workflow成功は個別タスクのPASSを意味しません。Task ID・PASS／NOT_RUN・キュー進捗は各Runの実行レポートで確認してください。</p>
+    <div id="loopHistoryMetrics" class="system-grid loop-history-metrics" aria-live="polite"></div>
     <div id="loopHistoryError" class="alert alert-danger hidden"></div>
     <div class="loop-history-wrap">
       <table class="loop-history-table">
-        <thead><tr><th>Run</th><th>Workflow</th><th>起動イベント</th><th>開始日時</th><th>SHA</th><th>詳細</th></tr></thead>
+        <thead><tr><th>Run</th><th>状態</th><th>起動イベント</th><th>開始日時</th><th>SHA</th><th>詳細</th></tr></thead>
         <tbody id="loopHistoryBody"><tr><td colspan="6">実行履歴を取得中...</td></tr></tbody>
       </table>
     </div>
