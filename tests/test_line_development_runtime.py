@@ -1228,7 +1228,7 @@ def test_refactorer_keeps_protected_file_violations_fail_closed(monkeypatch):
 
 def test_catalog_exhaustion_dedup_task_plan_is_deterministic(monkeypatch, tmp_path):
     chosen = "tests/test_catalog_exhaustion_candidate_adapter.py"
-    anchor = "def test_distributed_workflow_wires_analyzer_adapter_before_review_pool(tmp_path):\\n"
+    anchor = "def test_distributed_workflow_wires_analyzer_adapter_before_review_pool(tmp_path):\n"
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(anchor, encoding="utf-8")
