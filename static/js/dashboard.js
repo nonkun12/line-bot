@@ -58,6 +58,30 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('loopSummary').textContent='状態取得失敗';
         document.getElementById('loopGrid').innerHTML='<div class="system-details">Loop状態を取得できません。未確認の稼働を断定しません。</div>';
       }
+      const historyBody=document.getElementById('loopHistoryBody');
+      const historyUpdated=document.getElementById('loopHistoryUpdated');
+      const historyError=document.getElementById('loopHistoryError');
+      const runData=l.last_run||{};
+      if(historyError) historyError.classList.add('hidden');
+      if(historyUpdated) historyUpdated.textContent='更新 '+new Date().toLocaleTimeString('ja-JP');
+      if(historyBody){
+        if(runData.status!=='ok'){
+          historyBody.innerHTML='<tr><td colspan="6">GitHub Actions 履歴を取得できません。'+esc(runData.reason||'状態未取得')+'</td></tr>';
+        } else {
+          const runs=Array.isArray(runData.runs)?runData.runs:[];
+          historyBody.innerHTML=runs.length?runs.map(run=>{
+            const status=String(run.status||'unknown').toLowerCase();
+            const conclusion=String(run.conclusion||'').toLowerCase();
+            const workflowLabel=status!=='completed'?'実行中':conclusion==='success'?'Workflow成功':conclusion?'Workflow '+conclusion:'完了状態不明';
+            const tone=status!=='completed'?'running':conclusion==='success'?'ok':conclusion?'failed':'unknown';
+            const started=run.created_at?new Date(run.created_at).toLocaleString('ja-JP'):'未取得';
+            const sha=String(run.head_sha||'').slice(0,10)||'未取得';
+            const href=String(run.html_url||'');
+            const safeHref=/^https:\/\/github\.com\/nonkun12\/line-bot\/actions\/runs\/[0-9]+$/.test(href)?href:'';
+            return '<tr><td>#'+esc(run.run_number??'—')+'</td><td><span class="run-state '+tone+'">'+workflowLabel+'</span></td><td>'+esc(run.event||'未取得')+'</td><td>'+esc(started)+'</td><td><code>'+esc(sha)+'</code></td><td>'+(safeHref?'<a href="'+safeHref+'" target="_blank" rel="noopener noreferrer">Runを開く ↗</a>':'リンク未取得')+'</td></tr>';
+          }).join(''):'<tr><td colspan="6">取得できる実行履歴はありません</td></tr>';
+        }
+      }
       const distributed=d.distributed_ai||{};
       const specialists=distributed.specialists||[];
       const onlineCount=specialists.filter(x=>x.status==='online').length;
