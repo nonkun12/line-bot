@@ -27,7 +27,8 @@ def _issue(number=7, approval="not_approved", queue_state="pending"):
     }
 
 
-def test_classify_issue_hides_instruction_and_blocks_unapproved():
+def test_classify_issue_hides_instruction_and_blocks_unapproved(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     result = worker.classify_issue(_issue())
     assert result == {
         "task_id": "a" * 32,
@@ -38,12 +39,14 @@ def test_classify_issue_hides_instruction_and_blocks_unapproved():
     assert "instruction" not in str(result).lower()
 
 
-def test_classify_approved_pending_issue_is_ready_for_manual_approval():
+def test_classify_approved_pending_issue_is_ready_for_manual_approval(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     result = worker.classify_issue(_issue(approval="approved"))
     assert result["state"] == "ready_for_manual_approval"
 
 
-def test_classify_non_pending_issue_is_not_requeued():
+def test_classify_non_pending_issue_is_not_requeued(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     result = worker.classify_issue(_issue(approval="approved", queue_state="claimed"))
     assert result["state"] == "blocked_claimed"
 
@@ -62,6 +65,7 @@ def test_classify_blocks_malformed_metadata():
 
 
 def test_fetch_queue_uses_read_only_get_and_returns_sorted_safe_metadata(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     captured = {}
 
     def fake_get(url, **kwargs):
@@ -81,15 +85,15 @@ def test_fetch_queue_uses_read_only_get_and_returns_sorted_safe_metadata(monkeyp
 
 def test_fetch_queue_requires_token_and_valid_repository():
     with pytest.raises(worker.WorkerConfigurationError):
-        worker.fetch_queue(token="", repository="owner/repo")
+        worker.fetch_queue(token="", repository="nonkun12/ai-dispatch-queue")
     with pytest.raises(worker.WorkerConfigurationError):
-        worker.fetch_queue(token="token", repository="owner/repo/extra")
+        worker.fetch_queue(token="token", repository="someone/else")
 
 
 def test_fetch_queue_does_not_leak_github_error_body(monkeypatch):
     monkeypatch.setattr(worker.httpx, "get", lambda *args, **kwargs: _Response(status_code=403))
     with pytest.raises(worker.WorkerFetchError, match="HTTP 403") as error:
-        worker.fetch_queue(token="secret-token", repository="owner/repo")
+        worker.fetch_queue(token="secret-token", repository="nonkun12/ai-dispatch-queue")
     assert "secret-token" not in str(error.value)
 
 
@@ -99,12 +103,13 @@ def test_claim_rejects_unapproved_without_patching(monkeypatch):
     monkeypatch.setattr(worker.httpx, "patch", lambda *args, **kwargs: calls.append(args))
     with pytest.raises(worker.ClaimRejected, match="approval"):
         worker.claim_approved_issue(
-            7, worker_id="mac-worker-1", token="token", repository="owner/repo"
+            7, worker_id="mac-worker-1", token="token", repository="nonkun12/ai-dispatch-queue"
         )
     assert calls == []
 
 
 def test_claim_updates_only_approved_pending_issue_and_does_not_execute(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     calls = {}
 
     def fake_get(url, **kwargs):
@@ -117,7 +122,7 @@ def test_claim_updates_only_approved_pending_issue_and_does_not_execute(monkeypa
     monkeypatch.setattr(worker.httpx, "get", fake_get)
     monkeypatch.setattr(worker.httpx, "patch", fake_patch)
     result = worker.claim_approved_issue(
-        7, worker_id="mac-worker-1", token="token", repository="owner/repo"
+        7, worker_id="mac-worker-1", token="token", repository="nonkun12/ai-dispatch-queue"
     )
     assert result == {
         "task_id": "a" * 32,
@@ -138,7 +143,7 @@ def test_claim_rejects_already_claimed_issue(monkeypatch):
     )
     with pytest.raises(worker.ClaimRejected, match="pending"):
         worker.claim_approved_issue(
-            7, worker_id="mac-worker-1", token="token", repository="owner/repo"
+            7, worker_id="mac-worker-1", token="token", repository="nonkun12/ai-dispatch-queue"
         )
 
 
@@ -150,6 +155,7 @@ def test_single_worker_lock_excludes_second_process_lock_handle(tmp_path):
                 pass
 
 def test_claim_holds_single_worker_lock_for_read_and_update(monkeypatch, tmp_path):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     from contextlib import contextmanager
 
     lock_state = {"held": False}
@@ -179,10 +185,53 @@ def test_claim_holds_single_worker_lock_for_read_and_update(monkeypatch, tmp_pat
         7,
         worker_id="mac-worker-1",
         token="token",
-        repository="owner/repo",
+        repository="nonkun12/ai-dispatch-queue",
         lock_path=tmp_path / "worker.lock",
     )
 
     assert result["state"] == "claimed_not_executed"
     assert lock_state["held"] is False
 
+
+
+def test_classify_blocks_unallowlisted_requester_and_empty_allowlist(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U999")
+    assert worker.classify_issue(_issue(approval="approved"))["state"] == "blocked_invalid_metadata"
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "")
+    assert worker.classify_issue(_issue(approval="approved"))["state"] == "blocked_invalid_metadata"
+
+
+@pytest.mark.parametrize("metadata", [
+    "- requester_user_id: U123\\n- requester_user_id: U123",
+    "- approval_state: approved\\n- approval_state: approved",
+    "- queue_state: pending\\n- queue_state: pending",
+])
+def test_classify_blocks_duplicate_security_metadata(monkeypatch, metadata):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    issue = _issue(approval="approved")
+    body = issue["body"]
+    if metadata.startswith("- requester"):
+        body = body.replace("- requester_user_id: U123", metadata)
+    elif metadata.startswith("- approval"):
+        body = body.replace("- approval_state: approved", metadata)
+    else:
+        body = body.replace("- queue_state: pending", metadata)
+    issue["body"] = body
+    assert worker.classify_issue(issue)["state"] == "blocked_invalid_metadata"
+
+
+def test_claim_rejects_unallowlisted_or_missing_allowlist_without_patch(monkeypatch):
+    calls = []
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "")
+    monkeypatch.setattr(worker.httpx, "get", lambda *args, **kwargs: _Response(payload=_issue(approval="approved")))
+    monkeypatch.setattr(worker.httpx, "patch", lambda *args, **kwargs: calls.append(args))
+    with pytest.raises(worker.ClaimRejected, match="allowlisted"):
+        worker.claim_approved_issue(
+            7, worker_id="mac-worker-1", token="token", repository="nonkun12/ai-dispatch-queue"
+        )
+    assert calls == []
+
+
+def test_worker_rejects_different_queue_repository():
+    with pytest.raises(worker.WorkerConfigurationError, match="private queue"):
+        worker.fetch_queue(token="token", repository="attacker/public")
