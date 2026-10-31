@@ -6,7 +6,7 @@ import pytest
 from app import app
 from core.distributed_agent_catalog import DISTRIBUTED_AGENT_CATALOG
 from db import init_db, save_message
-from routes.dashboard import _get_oracle_n8n_status
+from routes.dashboard import _get_oracle_n8n_status, _summarize_github_loop_runs
 
 TEST_USER_ID = "U19391b0b93be2f4d94284361153919ce"
 
@@ -186,3 +186,44 @@ def test_dashboard_catalog_entries_exist_in_core_registry():
         descriptor.agent_name in registered_names
         for descriptor in DISTRIBUTED_AGENT_CATALOG
     )
+
+
+
+def test_github_loop_run_summary_counts_only_observed_states():
+    summary = _summarize_github_loop_runs([
+        {"status": "completed", "conclusion": "failure"},
+        {"status": "completed", "conclusion": "timed_out"},
+        {"status": "completed", "conclusion": "cancelled"},
+        {"status": "in_progress", "conclusion": None},
+        {"status": "queued", "conclusion": None},
+        {"status": "completed", "conclusion": "success"},
+    ])
+    assert summary == {
+        "window": "latest_5_observed_runs",
+        "observed": 5,
+        "completed": 3,
+        "successful": 0,
+        "failed": 2,
+        "cancelled": 1,
+        "in_progress": 1,
+        "queued": 1,
+        "success_rate_pct": 0.0,
+    }
+
+def test_dashboard_loop_reports_actual_schedule_and_task_limit(auth_headers):
+    client = app.test_client()
+    with patch("routes.dashboard._github_loop_runs", return_value={
+        "status": "ok",
+        "runs": [{"run_number": 1, "status": "completed", "conclusion": "success"}],
+        "summary": _summarize_github_loop_runs([
+            {"status": "completed", "conclusion": "success"}
+        ]),
+    }):
+        response = client.get("/api/dashboard/loop", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["loop"]["schedule_jst"] == ["04:30", "10:30", "16:30", "22:30"]
+    assert data["loop"]["max_tasks_per_run"] == 4
+    assert data["loop"]["last_run"]["summary"]["successful"] == 1
+    assert data["safety"]["auto_merge"] is False
+    assert data["safety"]["auto_deploy"] is False

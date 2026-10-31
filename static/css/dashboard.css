@@ -596,3 +596,15 @@ body {
 .run-state.failed { color: #ef4444; border-color: rgba(239,68,68,.35); }
 .run-state.running { color: #eab308; border-color: rgba(234,179,8,.35); }
 .run-state.unknown { color: var(--text-secondary); }
+
+ 
+/* --- Loop outcome metric cards --- */
+.loop-metric-value {
+    font-size: 1.65rem;
+    line-height: 1.25;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0.35rem 0;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
