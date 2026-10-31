@@ -344,7 +344,7 @@ def autonomous_loop_status():
 
 def _summarize_github_loop_runs(runs):
     """Summarize only the supplied, observed GitHub Actions runs."""
-    observed = [run for run in runs if isinstance(run, dict)]
+    observed = [run for run in runs if isinstance(run, dict)][:5]
     completed = [run for run in observed if run.get("status") == "completed"]
     successful = [run for run in completed if run.get("conclusion") == "success"]
     failed = [run for run in completed if run.get("conclusion") in {"failure", "timed_out", "action_required", "startup_failure"}]
