@@ -88,6 +88,7 @@ def run_local_cycle(
             ),
         },
         "evidence_status": "CALLER_PROVIDED_NOT_VERIFIED",
+        "metric_assessment": "DETERMINISTIC_FROM_UNVERIFIED_CALLER_INPUT",
         "evidence": evidence,
         "iterations": [
             {
