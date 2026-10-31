@@ -464,12 +464,18 @@ jobs:
           eligible = report.get("eligible_catalog_count")
           held = report.get("skipped_catalog_held_ids")
           review = report.get("skipped_catalog_review_ids")
-          if type(eligible) is int and eligible == 0 and isinstance(held, list) and held:
-              reason = f"catalog_exhausted_held:{len(held)}"
+          held_count = len(held) if isinstance(held, list) else 0
+          review_count = len(review) if isinstance(review, list) else 0
+          if type(eligible) is int and eligible == 0 and held_count and review_count:
+              reason = f"catalog_exhausted_mixed:held={held_count},review={review_count}"
+              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\n", encoding="utf-8")
+              print(f"::warning::BLOCKED: {reason}; held and review-pending tasks require human review.")
+          elif type(eligible) is int and eligible == 0 and held_count:
+              reason = f"catalog_exhausted_held:{held_count}"
               Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\n", encoding="utf-8")
               print(f"::warning::BLOCKED: {reason}; human review is required.")
-          elif type(eligible) is int and eligible == 0 and isinstance(review, list) and review:
-              reason = f"catalog_exhausted_review_pending:{len(review)}"
+          elif type(eligible) is int and eligible == 0 and review_count:
+              reason = f"catalog_exhausted_review_pending:{review_count}"
               Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\n", encoding="utf-8")
               print(f"::warning::BLOCKED: {reason}; post-resume review is required.")
           else:
@@ -1083,24 +1089,44 @@ jobs:
           fi
           progress_output_file=/tmp/distributed-loop-queue-progress.out
           rm -f "$progress_output_file"
-          if PYTHONPATH=. python -m scripts.distributed_loop_queue_progress \
+          progress_exit=0
+          PYTHONPATH=. python -m scripts.distributed_loop_queue_progress \
             --queue "${AUTONOMOUS_LOOP_TASK_QUEUE:-.github/autonomous-loop-tasks.json}" \
             --state /tmp/autonomous-loop-state.json \
-            --results /tmp/minimal-autonomous-loop.jsonl >"$progress_output_file" 2>&1; then
-            progress_json="$(cat "$progress_output_file")"
-            queue_total="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["queue_total"])' "$progress_json")"
-            queue_completed="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["queue_completed"])' "$progress_json")"
-            export QUEUE_PROGRESS_INVALID=false
-          else
-            # Extract only the CLI allowlisted exception class; never echo raw stderr, paths, or queue data.
+            --results /tmp/minimal-autonomous-loop.jsonl >"$progress_output_file" 2>&1 || progress_exit=$?
+          if [ "$progress_exit" -ne 0 ]; then
+            # CLI failure and output-consumer failure are distinct. Preserve an
+            # allowlisted CLI diagnostic when present; never expose raw stderr.
             progress_diagnostic="$(grep -E '^QUEUE_PROGRESS_BLOCKED: [A-Za-z][A-Za-z0-9_]*$' "$progress_output_file" | tail -n 1 || true)"
             if [ -z "$progress_diagnostic" ]; then
-              progress_diagnostic="QUEUE_PROGRESS_BLOCKED: no diagnostic emitted"
+              progress_diagnostic="QUEUE_PROGRESS_BLOCKED: cli_exit_${progress_exit}_no_diagnostic"
             fi
-            echo "::error::Queue progress evidence invalid (${progress_diagnostic}); final outcome will be BLOCKED."
+            echo "::error::Queue progress CLI failed (${progress_diagnostic}); final outcome will be BLOCKED."
             queue_total=0
             queue_completed=0
             export QUEUE_PROGRESS_INVALID=true
+          else
+            if progress_values="$(python - "$progress_output_file" <<'PY'
+          import sys
+          from pathlib import Path
+          from scripts.distributed_loop_queue_progress import parse_progress_output
+
+          try:
+              progress = parse_progress_output(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          except Exception as exc:
+              print(f"QUEUE_PROGRESS_OUTPUT_BLOCKED: {type(exc).__name__}", file=sys.stderr)
+              raise SystemExit(2)
+          print(f"{progress['queue_total']} {progress['queue_completed']}")
+          PY
+            )"; then
+              read -r queue_total queue_completed <<< "$progress_values"
+              export QUEUE_PROGRESS_INVALID=false
+            else
+              echo "::error::Queue progress CLI output was invalid; final outcome will be BLOCKED."
+              queue_total=0
+              queue_completed=0
+              export QUEUE_PROGRESS_INVALID=true
+            fi
           fi
           export REQUESTED_TASKS="$requested"
           export QUEUE_COMPLETED="$queue_completed"
@@ -1160,6 +1186,14 @@ jobs:
             result_reason="final_outcome_classifier_failed"
             echo "::error::Final outcome classifier failed; result is BLOCKED. See Python error class above."
           fi
+          if [ "$result" = "BLOCKED" ] && [ -s /tmp/autonomous-loop-held-tasks ]; then
+            blocked_reason="$(cat /tmp/autonomous-loop-held-tasks)"
+            case "$blocked_reason" in
+              catalog_exhausted_held:[0-9]*|catalog_exhausted_review_pending:[0-9]*|catalog_exhausted_mixed:held=[0-9]*,review=[0-9]*)
+                result_reason="$blocked_reason"
+                ;;
+            esac
+          fi
           produced_sha="$(git rev-parse HEAD 2>/dev/null || echo "${GITHUB_SHA}")"
           {
             echo "# 分散Loop 終了報告"
@@ -1182,7 +1216,8 @@ jobs:
             if [ "$result" = "NOT_RUN" ]; then
               echo "(NOT_RUN: タスクは1件も実行されていません。理由: ${result_reason}。キューは ${queue_completed}/${queue_total} で、未完了Taskがありません。タスクの補充が必要です。)"
             elif [ "$result" = "BLOCKED" ] && [ -f /tmp/autonomous-loop-held-tasks ]; then
-              echo "(BLOCKED: 未完了Taskはすべて安全上の保留状態です。自動再実行せず、人による原因修正と再開確認が必要です。)"
+              blocked_detail="$(cat /tmp/autonomous-loop-held-tasks)"
+              echo "(BLOCKED: 実行可能Taskがありません。分類: ${blocked_detail}。保留・レビュー待ちは自動解除せず、人による確認が必要です。)"
             fi
             if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
               cat /tmp/minimal-autonomous-loop.jsonl
