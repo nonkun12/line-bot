@@ -89,5 +89,6 @@ def test_distributed_workflow_paginates_all_issues_for_deduplication():
     end = workflow.index("- name: Run one bounded autonomous task", start)
     step = workflow[start:end]
     assert "gh api --paginate" in step
+    assert "--jq" not in step
     assert "state=all&per_page=100" in step
-    assert "jq -s 'add'" in step
+    assert "jq -s 'add | map(select(has(\"pull_request\") | not) | {number,title,body,state,labels})'" in step
