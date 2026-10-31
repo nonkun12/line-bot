@@ -1121,9 +1121,18 @@ jobs:
           fi
           progress_output_file=/tmp/distributed-loop-queue-progress.out
           rm -f "$progress_output_file"
+          # Use the exact run-local queue produced by Prepare bounded runtime
+          # task refill. Do not depend on GITHUB_ENV propagation in this
+          # always()-executed reporting step; fall back only for non-refill modes.
+          if [ -f /tmp/autonomous-loop-runtime-queue.json ]; then
+            progress_queue=/tmp/autonomous-loop-runtime-queue.json
+          else
+            progress_queue="${AUTONOMOUS_LOOP_TASK_QUEUE:-.github/autonomous-loop-tasks.json}"
+          fi
+          echo "Queue progress source: $progress_queue"
           progress_exit=0
           PYTHONPATH=. python -m scripts.distributed_loop_queue_progress \
-            --queue "${AUTONOMOUS_LOOP_TASK_QUEUE:-.github/autonomous-loop-tasks.json}" \
+            --queue "$progress_queue" \
             --state /tmp/autonomous-loop-state.json \
             --results /tmp/minimal-autonomous-loop.jsonl >"$progress_output_file" 2>&1 || progress_exit=$?
           if [ "$progress_exit" -ne 0 ]; then
@@ -1326,6 +1335,7 @@ jobs:
             /tmp/recovery-ai-state-readback.json
             /tmp/autonomous-*.json
             /tmp/distributed-sheets-log-result.json
+            /tmp/distributed-loop-queue-progress.out
             /tmp/distributed-final-report.txt
           if-no-files-found: ignore
 
