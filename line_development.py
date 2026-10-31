@@ -10,6 +10,22 @@ import httpx
 
 
 _DEV_PREFIX = re.compile(r"^(?:開発|dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
+# Natural-language execution is limited to clear imperative requests that name
+# a software target. Questions and exploratory wording remain ordinary chat.
+_NATURAL_DEV_TARGET = re.compile(
+    r"(?:アプリ|システム|機能|コード|リポジトリ|プログラム|ワークフロー|"
+    r"LINE\s*AI\s*Secretary|line-bot|\.py)",
+    re.IGNORECASE,
+)
+_NATURAL_DEV_ACTION = re.compile(
+    r"(?:改善して|改善してください|改良して|改良してください|修正して|修正してください|"
+    r"直して|直してください|追加して|追加してください|実装して|実装してください|"
+    r"開発して|開発してください|構築して|構築してください|保守して|テストして|"
+    r"テストを実行して|調査して)",
+)
+_NATURAL_DEV_QUESTION = re.compile(
+    r"(?:教えて|方法|やり方|どうやって|できますか|可能ですか|おすすめ|比較|とは)",
+)
 _MAX_INSTRUCTION_LENGTH = 2000
 _WORKFLOW_FILE = "line-development-dispatch.yml"
 _DISPATCH_TIMEOUT_SECONDS = 10.0
@@ -25,12 +41,22 @@ def extract_development_instruction(message: str) -> Optional[str]:
     """Return the explicit normal development instruction, or None."""
     text = str(message or "").strip()
     match = _DEV_PREFIX.match(text)
-    if not match:
-        return None
-    instruction = match.group(1).strip()
-    if not instruction:
-        return ""
-    return instruction[:_MAX_INSTRUCTION_LENGTH]
+    if match:
+        instruction = match.group(1).strip()
+        if not instruction:
+            return ""
+        return instruction[:_MAX_INSTRUCTION_LENGTH]
+
+    # Allow direct LINE commands such as "このアプリを改善して" without
+    # requiring a special prefix. Keep authorization in the dispatcher and
+    # require both an imperative development verb and an explicit software target.
+    if (
+        _NATURAL_DEV_TARGET.search(text)
+        and _NATURAL_DEV_ACTION.search(text)
+        and not _NATURAL_DEV_QUESTION.search(text)
+    ):
+        return text[:_MAX_INSTRUCTION_LENGTH]
+    return None
 
 
 def _is_authorized_user(user_id: str) -> bool:
