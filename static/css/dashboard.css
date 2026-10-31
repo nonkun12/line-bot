@@ -539,3 +539,53 @@ body {
     padding-top: 1.25rem;
     margin-top: 0.5rem;
 }
+
+ 
+/* --- Distributed loop operational history --- */
+.loop-metric-value {
+    font-size: 1.65rem;
+    line-height: 1.25;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0.35rem 0;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+.loop-history {
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.12);
+}
+.loop-history-list {
+    display: flex;
+    flex-direction: column;
+}
+.loop-history-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) minmax(110px, 0.45fr) minmax(120px, 0.4fr);
+    align-items: center;
+    gap: 1rem;
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.loop-history-row:last-child { border-bottom: 0; }
+.loop-run-state {
+    font-family: monospace;
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+}
+.loop-history-row a {
+    color: #a5b4fc;
+    text-decoration: none;
+    font-size: 0.85rem;
+}
+.loop-history-row a:hover { text-decoration: underline; }
+.loop-history > .system-details { padding: 0.8rem 1rem; }
+@media (max-width: 640px) {
+    .loop-history-row {
+        grid-template-columns: 1fr auto;
+        gap: 0.35rem 0.75rem;
+    }
+    .loop-history-row > div:last-child { grid-column: 1 / -1; }
+}
