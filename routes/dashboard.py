@@ -1,4 +1,5 @@
 from functools import wraps
+import httpx
 import hashlib
 import hmac
 import json
@@ -312,11 +313,11 @@ def autonomous_loop_status():
         "ok": True,
         "loop": {
             "status": "configured",
-            "schedule_jst": ["04:30", "12:30", "16:30", "20:30"],
+            "schedule_jst": ["04:30", "10:30", "16:30", "22:30"],
             "frequency_per_day": 4,
             "manual_run_available": True,
             "manual_default_tasks": 1,
-            "max_tasks_per_run": 3,
+            "max_tasks_per_run": 4,
             "concurrency_cancel_in_progress": False,
             "auto_apply_patch": False,
             "auto_deploy": False,
@@ -365,7 +366,11 @@ def _github_loop_runs():
                 "event": run.get("event"),
                 "created_at": run.get("created_at"),
                 "updated_at": run.get("updated_at"),
+                "name": run.get("name"),
+                "display_title": run.get("display_title"),
                 "head_sha": run.get("head_sha"),
+                "run_attempt": run.get("run_attempt"),
+                "workflow_id": run.get("workflow_id"),
                 "html_url": run.get("html_url"),
             })
         return {"status": "ok", "runs": runs}

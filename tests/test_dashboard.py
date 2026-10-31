@@ -33,7 +33,7 @@ def test_dashboard_page_status_code_and_content(auth_headers):
     assert b"agentMessageSummary" in response.data
     assert "分散Loop 実行履歴".encode("utf-8") in response.data
     assert b"loopHistoryBody" in response.data
-    assert "個別タスクの PASS".encode("utf-8") in response.data
+    assert "個別タスクのPASS".encode("utf-8") in response.data
 
 
 def test_dashboard_notes_api_success(auth_headers):
@@ -186,3 +186,72 @@ def test_dashboard_catalog_entries_exist_in_core_registry():
         descriptor.agent_name in registered_names
         for descriptor in DISTRIBUTED_AGENT_CATALOG
     )
+
+
+def test_dashboard_loop_api_matches_current_workflow_limits(auth_headers):
+    client = app.test_client()
+    runs = {
+        "status": "ok",
+        "runs": [{
+            "run_number": 42,
+            "status": "completed",
+            "conclusion": "success",
+            "head_sha": "a" * 40,
+            "html_url": "https://github.com/nonkun12/line-bot/actions/runs/42",
+        }],
+    }
+    with patch("routes.dashboard._github_loop_runs", return_value=runs):
+        response = client.get("/api/dashboard/loop", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["loop"]["schedule_jst"] == ["04:30", "10:30", "16:30", "22:30"]
+    assert data["loop"]["frequency_per_day"] == 4
+    assert data["loop"]["max_tasks_per_run"] == 4
+    assert data["loop"]["last_run"] == runs
+    assert data["safety"]["auto_merge"] is False
+    assert data["safety"]["auto_deploy"] is False
+
+
+def test_dashboard_github_loop_runs_includes_evidence_fields(monkeypatch):
+    from routes.dashboard import _github_loop_runs
+
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"workflow_runs": [{
+                "id": 123,
+                "run_number": 7,
+                "name": "Distributed Loop",
+                "display_title": "bounded task run",
+                "status": "completed",
+                "conclusion": "success",
+                "event": "workflow_dispatch",
+                "created_at": "2026-10-31T05:00:00Z",
+                "updated_at": "2026-10-31T05:01:00Z",
+                "head_sha": "b" * 40,
+                "run_attempt": 2,
+                "workflow_id": 99,
+                "html_url": "https://github.com/nonkun12/line-bot/actions/runs/123",
+            }]}
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def get(self, *_args, **_kwargs):
+            return FakeResponse()
+
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    with patch("routes.dashboard.httpx.Client", return_value=FakeClient()):
+        result = _github_loop_runs()
+    assert result["status"] == "ok"
+    run = result["runs"][0]
+    assert run["head_sha"] == "b" * 40
+    assert run["display_title"] == "bounded task run"
+    assert run["run_attempt"] == 2
+    assert run["workflow_id"] == 99
