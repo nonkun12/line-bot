@@ -6,7 +6,6 @@ never creates issues, edits the queue/catalog, or grants execution approval.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 from pathlib import Path
