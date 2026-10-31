@@ -52,7 +52,8 @@
     "rea-scanner-blocks-untracked-file-evidence-v2-20261028",
     "watchdog-pending-grace-boundary-regression-20261029",
     "review-agent-runtime-handoff-accessors-20261030",
-    "creator-critic-history-missing-file-empty-state-regression"
+    "creator-critic-history-missing-file-empty-state-regression",
+    "catalog-exhaustion-adapter-deduplicates-duplicate-findings-20261031"
   ],
   "recovery_ai": {
     "checkpoint": null,
