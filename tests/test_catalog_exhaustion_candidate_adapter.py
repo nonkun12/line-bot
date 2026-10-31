@@ -102,6 +102,16 @@ def test_catalog_exhaustion_findings_reach_review_only_candidate_pool(tmp_path):
     assert len(store_path.read_text(encoding="utf-8").splitlines()) == 1
 
 
+def test_duplicate_catalog_candidates_are_deduplicated_within_report():
+    report = _report()
+    candidate = report["candidates"][0]
+    report["candidates"] = [dict(candidate), dict(candidate)]
+    report["candidate_count"] = 2
+    rows = merge_candidates([], report)
+    assert len(rows) == 1
+    assert rows[0]["source_id"] == "catalog-exhaustion:review-coverage-gap-0123456789"
+
+
 def test_distributed_workflow_wires_analyzer_adapter_before_review_pool(tmp_path):
     from pathlib import Path
 
