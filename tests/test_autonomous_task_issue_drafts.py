@@ -63,3 +63,18 @@ def test_main_writes_drafts(tmp_path):
     issues.write_text("[]", encoding="utf-8")
     assert main(["--report", str(report), "--issues", str(issues), "--output", str(output)]) == 0
     assert len(json.loads(output.read_text(encoding="utf-8"))) == 1
+
+def test_distributed_workflow_creates_only_review_candidate_issues():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    start = workflow.index("- name: Create bounded review-only task issues from analyzer findings")
+    end = workflow.index("- name: Run one bounded autonomous task", start)
+    step = workflow[start:end]
+    assert "scripts.autonomous_task_issue_drafts" in step
+    assert "gh issue create" in step
+    assert "--label autonomous-task-candidate" in step
+    assert "autonomous-task-approved" not in step
+    assert "no execution approval was granted" in step
+
