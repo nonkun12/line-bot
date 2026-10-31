@@ -53,7 +53,34 @@ document.addEventListener('DOMContentLoaded', () => {
               : '未取得のRunを成功扱いしません'],
         ];
         document.getElementById('loopGrid').innerHTML=cards.map(x=>'<div class="system-card"><div class="system-card-title">'+x[0]+'</div><div class="system-status">'+x[1]+'</div><div class="system-details">'+esc(x[2])+'</div></div>').join('');
-        document.getElementById('loopSummary').textContent=`自動Loop ${l.frequency_per_day||4}回/日 ・ 安全設定確認済み`;
+        const runData=l.last_run||{};
+        const runs=Array.isArray(runData.runs)?runData.runs:[];
+        const metrics=document.getElementById('loopMetrics');
+        const history=document.getElementById('loopHistory');
+        const summary=runData.summary||{};
+        if(runData.status==='ok' && runs.length){
+          const metricCards=[
+            ['観測対象',String(summary.observed ?? runs.length)+'件','GitHub Actions 最新5件の取得範囲'],
+            ['成功',String(summary.successful ?? 0)+'件','completed / success'],
+            ['失敗',String(summary.failed ?? 0)+'件','completed / failure'],
+            ['実行中・待機',String((summary.in_progress ?? 0)+(summary.queued ?? 0))+'件','実行中 '+(summary.in_progress ?? 0)+' ・ 待機 '+(summary.queued ?? 0)],
+            ['成功率',summary.success_rate_pct==null?'--':String(summary.success_rate_pct)+'%','完了済み観測Runのみで算出'],
+          ];
+          metrics.innerHTML=metricCards.map(([title,value,detail])=>'<div class="system-card"><div class="system-card-title">'+esc(title)+'</div><div class="loop-metric-value">'+esc(value)+'</div><div class="system-details">'+esc(detail)+'</div></div>').join('');
+          history.innerHTML='<div class="loop-history-list">'+runs.map(run=>{
+            const status=run.status==='completed'?(run.conclusion||'completed'):run.status||'unknown';
+            const runUrl=typeof run.html_url==='string' && /^https:\/\/github\.com\/nonkun12\/line-bot\/actions\/runs\/\d+$/.test(run.html_url)?run.html_url:'';
+            const created=run.created_at?new Date(run.created_at).toLocaleString('ja-JP'):'時刻不明';
+            const title='Run #'+(run.run_number ?? '-');
+            const link=runUrl?'<a href="'+runUrl+'" target="_blank" rel="noopener noreferrer">GitHubで確認 ↗</a>':'リンク未確認';
+            return '<div class="loop-history-row"><div><strong>'+esc(title)+'</strong><div class="system-details">'+esc(created)+' ・ '+esc(run.event||'event不明')+'</div></div><div class="loop-run-state">'+esc(status)+'</div><div>'+link+'</div></div>';
+          }).join('')+'</div><p class="system-details">集計は取得できた最新5件のみ。全期間の成功率や未取得Runは含みません。</p>';
+          document.getElementById('loopSummary').textContent='直近'+(summary.observed ?? runs.length)+'件：成功 '+(summary.successful ?? 0)+' ・失敗 '+(summary.failed ?? 0)+' ・実行中 '+(summary.in_progress ?? 0);
+        } else {
+          metrics.innerHTML='<div class="system-details">GitHub Actionsの実績は未取得です。未取得を成功・失敗として集計しません。</div>';
+          history.innerHTML='<div class="system-details">実行履歴を表示できません。GitHub連携設定とAPI応答を確認してください。</div>';
+          document.getElementById('loopSummary').textContent='実行実績 未取得';
+        }
       } catch(e) {
         document.getElementById('loopSummary').textContent='状態取得失敗';
         document.getElementById('loopGrid').innerHTML='<div class="system-details">Loop状態を取得できません。未確認の稼働を断定しません。</div>';
