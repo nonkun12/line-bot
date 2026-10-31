@@ -146,8 +146,30 @@ def claim_approved_issue(
     worker_id: str,
     token: str | None = None,
     repository: str | None = None,
+    lock_path: str | Path | None = None,
 ) -> dict[str, str]:
-    """Claim only an approved, pending issue; never execute its instruction."""
+    """Claim an approved pending issue while holding the designated-Mac lock.
+
+    The lock serializes all claim callers on this Mac. It is not a distributed
+    lock; deployments must keep exactly one designated worker host.
+    """
+    with single_worker_lock(lock_path):
+        return _claim_approved_issue_locked(
+            issue_number,
+            worker_id=worker_id,
+            token=token,
+            repository=repository,
+        )
+
+
+def _claim_approved_issue_locked(
+    issue_number: int,
+    *,
+    worker_id: str,
+    token: str | None = None,
+    repository: str | None = None,
+) -> dict[str, str]:
+    """Read, validate and update one issue; caller must hold the local lock."""
     token, repository = _credentials(token, repository)
     worker_id = str(worker_id or "").strip()
     if not worker_id or len(worker_id) > 128 or "\n" in worker_id:
