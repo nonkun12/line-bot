@@ -62,6 +62,22 @@ document.addEventListener('DOMContentLoaded', () => {
       const historyUpdated=document.getElementById('loopHistoryUpdated');
       const historyError=document.getElementById('loopHistoryError');
       const runData=l.last_run||{};
+      const runSummary=runData.summary||{};
+      const metrics=document.getElementById('loopMetrics');
+      if(metrics && runData.status==='ok'){
+        const metricCards=[
+          ['観測対象',String(runSummary.observed ?? (runData.runs||[]).length)+'件','GitHub Actions 最新5件'],
+          ['成功',String(runSummary.successful ?? 0)+'件','Workflow conclusion: success'],
+          ['失敗',String(runSummary.failed ?? 0)+'件','failure / timed_out / action_required'],
+          ['キャンセル',String(runSummary.cancelled ?? 0)+'件','Workflow conclusion: cancelled'],
+          ['実行中・待機',String((runSummary.in_progress ?? 0)+(runSummary.queued ?? 0))+'件','実行中 '+(runSummary.in_progress ?? 0)+' ・ 待機 '+(runSummary.queued ?? 0)],
+          ['成功率',runSummary.success_rate_pct==null?'--':String(runSummary.success_rate_pct)+'%','完了済み観測Runのみ'],
+          ['タスクキュー','未接続','ライブのキュー情報は未公開。件数を推測しません'],
+        ];
+        metrics.innerHTML=metricCards.map(([title,value,detail])=>'<div class="system-card"><div class="system-card-title">'+esc(title)+'</div><div class="loop-metric-value">'+esc(value)+'</div><div class="system-details">'+esc(detail)+'</div></div>').join('');
+      } else if(metrics){
+        metrics.innerHTML='<div class="system-details">GitHub Actions 実績未取得。未取得をゼロや成功として扱いません。</div>';
+      }
       if(historyError) historyError.classList.add('hidden');
       if(historyUpdated) historyUpdated.textContent='更新 '+new Date().toLocaleTimeString('ja-JP');
       if(historyBody){
