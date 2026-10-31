@@ -148,3 +148,41 @@ def test_single_worker_lock_excludes_second_process_lock_handle(tmp_path):
         with pytest.raises(worker.WorkerAlreadyRunning):
             with worker.single_worker_lock(lock_path):
                 pass
+
+def test_claim_holds_single_worker_lock_for_read_and_update(monkeypatch, tmp_path):
+    from contextlib import contextmanager
+
+    lock_state = {"held": False}
+
+    @contextmanager
+    def fake_lock(lock_path=None):
+        assert lock_state["held"] is False
+        lock_state["held"] = True
+        try:
+            yield
+        finally:
+            lock_state["held"] = False
+
+    def fake_get(url, **kwargs):
+        assert lock_state["held"] is True
+        return _Response(payload=_issue(approval="approved"))
+
+    def fake_patch(url, **kwargs):
+        assert lock_state["held"] is True
+        return _Response(payload={"number": 7})
+
+    monkeypatch.setattr(worker, "single_worker_lock", fake_lock)
+    monkeypatch.setattr(worker.httpx, "get", fake_get)
+    monkeypatch.setattr(worker.httpx, "patch", fake_patch)
+
+    result = worker.claim_approved_issue(
+        7,
+        worker_id="mac-worker-1",
+        token="token",
+        repository="owner/repo",
+        lock_path=tmp_path / "worker.lock",
+    )
+
+    assert result["state"] == "claimed_not_executed"
+    assert lock_state["held"] is False
+
