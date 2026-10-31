@@ -127,10 +127,18 @@ def test_registry_current_and_rollback_target():
 def test_analyzer_suppresses_agent_version_history_when_named_in_paired_test(tmp_path: Path):
     root, catalog, queue, state, runtime = _fixture(tmp_path)
     (root / "core" / "agent_versioning.py").write_text(
-        "class AgentVersionRegistry:\\n    def history(self, agent_name):\\n        return ()\\n", encoding="utf-8"
+        """\\
+class AgentVersionRegistry:
+    def history(self, agent_name):
+        return ()
+""",
+        encoding="utf-8",
     )
     (root / "tests" / "test_agent_versioning.py").write_text(
-        "def test_history_is_returned_unchanged():\\n    assert registry.history(\\\"developer\\\") == ()\\n",
+        """\\
+def test_history_is_returned_unchanged():
+    assert registry.history("developer") == ()
+""",
         encoding="utf-8",
     )
     report = analyze(root, catalog, queue, state, runtime)
