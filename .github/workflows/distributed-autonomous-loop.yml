@@ -404,6 +404,34 @@ jobs:
             echo "::warning::Catalog exhaustion analyzer failed (exit=$rc); bounded loop outcome classification will continue."
           fi
 
+      - name: Create bounded review-only task issues from analyzer findings
+        if: success() && env.TRIGGER_MODE == 'normal'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ ! -s /tmp/catalog-exhaustion-report.json ]; then
+            echo "No validated catalog-exhaustion report; issue generation skipped."
+            exit 0
+          fi
+          gh issue list --state all --limit 500 --json number,title,body,state,labels > /tmp/autonomous-loop-all-issues.json
+          python -m scripts.autonomous_task_issue_drafts \
+            --report /tmp/catalog-exhaustion-report.json \
+            --issues /tmp/autonomous-loop-all-issues.json \
+            --output /tmp/autonomous-loop-task-issue-drafts.json
+          count="$(python -c 'import json; from pathlib import Path; print(len(json.loads(Path("/tmp/autonomous-loop-task-issue-drafts.json").read_text(encoding="utf-8"))))')"
+          if [ "$count" -eq 0 ]; then
+            echo "No new review-only task issues to create."
+            exit 0
+          fi
+          gh label create autonomous-task-candidate --color 0E8A16 --description "AI-generated task candidate; human review required" --force
+          while IFS= read -r draft; do
+            title="$(printf '%s' "$draft" | jq -r '.title')"
+            body="$(printf '%s' "$draft" | jq -r '.body')"
+            gh issue create --title "$title" --body "$body" --label autonomous-task-candidate
+          done < <(jq -c '.[]' /tmp/autonomous-loop-task-issue-drafts.json)
+          echo "Created $count review-only task candidate issue(s); no execution approval was granted."
+
       - name: Run one bounded autonomous task
         id: run_task
         env:
