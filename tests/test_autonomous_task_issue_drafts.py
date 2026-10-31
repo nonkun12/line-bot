@@ -78,3 +78,16 @@ def test_distributed_workflow_creates_only_review_candidate_issues():
     assert "autonomous-task-approved" not in step
     assert "no execution approval was granted" in step
 
+
+
+def test_distributed_workflow_paginates_all_issues_for_deduplication():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    start = workflow.index("- name: Create bounded review-only task issues from analyzer findings")
+    end = workflow.index("- name: Run one bounded autonomous task", start)
+    step = workflow[start:end]
+    assert "gh api --paginate" in step
+    assert "state=all&per_page=100" in step
+    assert "jq -s '.'" in step
