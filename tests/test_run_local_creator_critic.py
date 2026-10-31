@@ -55,6 +55,10 @@ class LocalCreatorCriticRunnerTests(unittest.TestCase):
         saved = json.loads(self.output.read_text(encoding="utf-8"))
         self.assertEqual(report, saved)
         self.assertEqual(saved["evidence_status"], "CALLER_PROVIDED_NOT_VERIFIED")
+        self.assertEqual(
+            saved["metric_assessment"],
+            "DETERMINISTIC_FROM_UNVERIFIED_CALLER_INPUT",
+        )
         self.assertFalse(saved["promotion_eligible"])
         self.assertFalse(saved["source_changes"])
         self.assertFalse(saved["merge_or_deploy"])
