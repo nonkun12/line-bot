@@ -365,6 +365,7 @@ def _github_loop_runs():
                 "event": run.get("event"),
                 "created_at": run.get("created_at"),
                 "updated_at": run.get("updated_at"),
+                "head_sha": run.get("head_sha"),
                 "html_url": run.get("html_url"),
             })
         return {"status": "ok", "runs": runs}
