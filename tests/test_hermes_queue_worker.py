@@ -98,6 +98,7 @@ def test_fetch_queue_does_not_leak_github_error_body(monkeypatch):
 
 
 def test_claim_rejects_unapproved_without_patching(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     calls = []
     monkeypatch.setattr(worker.httpx, "get", lambda *args, **kwargs: _Response(payload=_issue()))
     monkeypatch.setattr(worker.httpx, "patch", lambda *args, **kwargs: calls.append(args))
@@ -137,6 +138,7 @@ def test_claim_updates_only_approved_pending_issue_and_does_not_execute(monkeypa
 
 
 def test_claim_rejects_already_claimed_issue(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     monkeypatch.setattr(
         worker.httpx, "get",
         lambda *args, **kwargs: _Response(payload=_issue(approval="approved", queue_state="claimed"))
