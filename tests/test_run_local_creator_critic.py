@@ -2,9 +2,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
+from core.creator_critic import CriticEvaluation, DuelResult, ImprovementCandidate
 from scripts.run_local_creator_critic import load_evidence, run_local_cycle
 
 
@@ -39,10 +39,17 @@ class LocalCreatorCriticRunnerTests(unittest.TestCase):
             load_evidence(self.evidence)
 
     def test_runner_writes_advisory_report_and_never_authorizes_promotion(self):
-        candidate = SimpleNamespace(candidate_id="creator-1", objective="Improve tests", proposal="Add a focused regression test", constraints=(), evidence={})
-        evaluation = SimpleNamespace(candidate_id="creator-1", passed=True, score=0.9, accuracy=0.9, stability=0.8, efficiency=0.7, safety=1.0, feedback="Looks testable", evidence={})
-        result = SimpleNamespace(candidate=candidate, evaluation=evaluation, next_instruction="Submit to review")
-        loop = SimpleNamespace(run=lambda objective, provider: (result,))
+        candidate = ImprovementCandidate(
+            candidate_id="creator-1", objective="Improve tests",
+            proposal="Add a focused regression test",
+        )
+        evaluation = CriticEvaluation(
+            candidate_id="creator-1", passed=True, score=0.9,
+            accuracy=0.9, stability=0.8, efficiency=0.7, safety=1.0,
+            feedback="Looks testable",
+        )
+        result = DuelResult(candidate, evaluation, "Submit to review")
+        loop = type("FakeLoop", (), {"run": lambda self, objective, provider: (result,)})()
         with patch("scripts.run_local_creator_critic.build_creator_critic_loop", return_value=loop):
             report = run_local_cycle("Improve tests", self.evidence, self.output)
         saved = json.loads(self.output.read_text(encoding="utf-8"))
