@@ -33,7 +33,7 @@ def test_dashboard_page_status_code_and_content(auth_headers):
     assert b"agentMessageSummary" in response.data
     assert "分散Loop 実行履歴".encode("utf-8") in response.data
     assert b"loopHistoryBody" in response.data
-    assert "個別タスクの PASS".encode("utf-8") in response.data
+    assert "個別タスクのPASS".encode("utf-8") in response.data
 
 
 def test_dashboard_notes_api_success(auth_headers):
