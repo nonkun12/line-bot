@@ -80,9 +80,9 @@ def run_local_cycle(
         "provider_configuration": {
             "creator": os.environ.get(
                 "CREATOR_CRITIC_CREATOR_PROVIDER",
-                __import__("os").environ.get("CREATOR_CRITIC_PROVIDER", "groq"),
+                os.environ.get("CREATOR_CRITIC_PROVIDER", "groq"),
             ),
-            "critic": __import__("os").environ.get(
+            "critic": os.environ.get(
                 "CREATOR_CRITIC_CRITIC_PROVIDER",
                 __import__("os").environ.get("CREATOR_CRITIC_PROVIDER", "groq"),
             ),
