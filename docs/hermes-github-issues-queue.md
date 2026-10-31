@@ -11,21 +11,21 @@ Do not deploy the current in-memory HTTP queue prototype from PR #1. Its process
 1. Keep LINE Developers Console pointed at the existing Render endpoint: https://line-bot-yvea.onrender.com/callback.
 2. Render validates the LINE event and the existing development-user allowlist.
 3. Render creates one issue in the private queue repository. The issue contains a request ID, bounded instruction, requesting LINE user ID, creation time, and an explicit approval state. Do not include channel secrets, access tokens, or unrelated chat history.
-4. A single Mac-local Hermes worker polls the private repository outbound using an authenticated GitHub CLI/API session. No inbound tunnel to the Mac is needed.
-5. The worker claims a pending issue by changing its queue label, then runs only tasks whose approval state permits execution.
-6. The worker posts a structured result (status, task ID, commit SHA, changed files, test evidence, and error summary) and closes only successfully completed queue items. Failed or interrupted tasks remain visible for recovery.
-7. Render sends the concise result to the original LINE user through the existing /internal/push quota guard.
+4. A single Mac-local worker polls the private repository outbound using an authenticated GitHub API session. No inbound tunnel to the Mac is needed.
+5. A non-blocking macOS process lock prevents two local worker processes from running at once. Before claiming, the worker re-reads the issue and requires both approval_state: approved and queue_state: pending.
+6. The first claim implementation updates the issue body to queue_state: claimed and records worker_id/claimed_at. It does not execute the instruction. GitHub Issues does not provide a compare-and-swap claim in this implementation, so only one designated Mac worker may be enabled; do not run another worker on another host.
+7. Execution, result comments, closing issues, and LINE result delivery remain disabled until separately implemented and reviewed.
 
 ## Queue states
 
-- queue:pending: accepted and waiting for the local worker.
-- queue:claimed: held by the single configured Mac worker.
-- queue:running: execution started.
-- queue:completed: completed with exact-SHA verification evidence.
-- queue:blocked: approval, authorization, or safety gate prevented execution.
-- queue:failed: execution failed; preserve logs and retry metadata.
+- pending: accepted and waiting for explicit approval.
+- claimed: reserved by the single designated Mac worker; claim alone does not execute.
+- running: execution started (not implemented yet).
+- completed: completed with exact-SHA verification evidence (not implemented yet).
+- blocked: approval, authorization, or safety gate prevented execution.
+- failed: execution failed; preserve logs and retry metadata (not implemented yet).
 
-The first release is intentionally single-consumer. Do not run multiple Mac workers against the same queue until claim operations have a server-side compare-and-swap/lease mechanism.
+The current local file lock protects only processes on the same Mac. It is not a distributed lock and does not prevent another host from racing the GitHub issue update. Keep exactly one designated worker host until a server-side compare-and-swap/lease mechanism exists.
 
 ## Security requirements
 
@@ -55,4 +55,4 @@ The first release is intentionally single-consumer. Do not run multiple Mac work
 
 ## Current status
 
-This document records the architecture decision only. It does not change the live Render service, LINE webhook, GitHub secrets, Hermes Gateway, or Mac permissions. The existing queue prototype PR #1 remains unmerged and must not be treated as production-ready.
+The PR now contains a read-only poller and an explicit-approval claim function protected by a same-Mac process lock. Task execution and LINE delivery are still not implemented. No live Render service, LINE webhook, GitHub secrets, Hermes Gateway, or Mac permissions were changed. The existing queue prototype PR #1 remains unmerged and must not be treated as production-ready.
