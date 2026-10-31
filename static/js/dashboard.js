@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const lr=await fetch(api('/api/dashboard/loop')); const ld=await lr.json();
         const l=ld.loop||{}, s=ld.safety||{}, h=ld.hand_sign||{};
         const cards=[
-          ['🔄 Loop','🟢 自動運転設定済み',`1日 ${l.frequency_per_day||4}回 ・ ${(l.schedule_jst||[]).join(' / ')} JST`],
+          ['🔄 Loop','🟢 自動運転設定済み',`1日 ${l.frequency_per_day||4}回 ・ ${(l.schedule_jst||[]).join(' / ')} JST ・ 最大${l.max_tasks_per_run||4}タスク/回`],
           ['🛡️ Safety Gate',s.fail_closed||l.fail_closed?'🟢 FAIL_CLOSED 有効':'⚪ 未確認',`Auto Merge: ${s.auto_merge?'有':'無'} ・ Auto Deploy: ${s.auto_deploy?'有':'無'}`],
           ['📋 Sheets監査',l.sheets_audit?'🟢 有効':'⚪ 未確認',`Runtime telemetry: ${esc(l.runtime_telemetry||'unknown')}`],
           ['🧭 Hermes Adviser',s.hermes_role==='adviser'?'🟢 Adviser':'⚪ 未確認',s.hermes_is_auxiliary?'補助系統・Loop本体とは分離':'状態確認要'],
@@ -53,6 +53,32 @@ document.addEventListener('DOMContentLoaded', () => {
               : '未取得のRunを成功扱いしません'],
         ];
         document.getElementById('loopGrid').innerHTML=cards.map(x=>'<div class="system-card"><div class="system-card-title">'+x[0]+'</div><div class="system-status">'+x[1]+'</div><div class="system-details">'+esc(x[2])+'</div></div>').join('');
+        const history=document.getElementById('loopRunHistory');
+        const historyUpdated=document.getElementById('loopHistoryUpdated');
+        const telemetry=l.last_run||{};
+        const runs=Array.isArray(telemetry.runs)?telemetry.runs:[];
+        const jstTime=value=>value?new Date(value).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo'}):'日時未取得';
+        const runState=run=>{
+          if(run.status!=='completed') return run.status==='in_progress'?'実行中':(run.status||'状態未取得');
+          if(run.conclusion==='success') return 'Workflow成功（タスクPASSは未確認）';
+          if(run.conclusion==='failure') return 'Workflow失敗';
+          if(run.conclusion==='cancelled') return 'キャンセル';
+          return run.conclusion||'結論未取得';
+        };
+        if(telemetry.status==='ok' && runs.length){
+          history.innerHTML='<div class="loop-run-list">'+runs.map(run=>{
+            const url=String(run.html_url||'');
+            const safeUrl=/^https:\/\/github\\.com\/nonkun12\/line-bot\/actions\/runs\/\\d+$/.test(url)?url:'';
+            const eventLabels={schedule:'定期実行',workflow_dispatch:'手動実行',issue_comment:'Issueコメント',pull_request_target:'PRラベル'};
+            const link=safeUrl?'<a class="run-link" href="'+esc(safeUrl)+'" target="_blank" rel="noopener noreferrer">詳細 ↗</a>':'';
+            return '<article class="loop-run-item"><div class="loop-run-main"><strong>Run #'+esc(run.run_number??'--')+'</strong><span>'+esc(runState(run))+'</span></div><div class="loop-run-meta">'+esc(eventLabels[run.event]||run.event||'起動元未取得')+' ・ '+esc(jstTime(run.created_at))+'</div>'+link+'</article>';
+          }).join('')+'</div>';
+          historyUpdated.textContent='最新 '+runs.length+' 件 ・ JST表示';
+        }else{
+          history.innerHTML='<p class="status-note">'+esc(telemetry.reason==='GITHUB_TOKEN not configured'?'GitHub接続設定が未構成です。実行履歴は未取得です。':'実行履歴を取得できません。成功・稼働中とは判定しません。')+'</p>';
+          historyUpdated.textContent='未取得';
+        }
+        
         document.getElementById('loopSummary').textContent=`自動Loop ${l.frequency_per_day||4}回/日 ・ 安全設定確認済み`;
       } catch(e) {
         document.getElementById('loopSummary').textContent='状態取得失敗';
