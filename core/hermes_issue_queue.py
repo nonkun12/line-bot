@@ -76,7 +76,7 @@ def enqueue_hermes_task(
     )
     response = httpx.post(
         f"https://api.github.com/repos/{repository}/issues",
-        json={"title": title, "body": body, "labels": ["queue:pending"]},
+        json={"title": title, "body": body},
         headers={
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
