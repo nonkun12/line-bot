@@ -15,6 +15,13 @@ import httpx
 
 _MAX_INSTRUCTION_LENGTH = 2000
 _REQUEST_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+_QUEUE_REPOSITORY = "nonkun12/ai-dispatch-queue"
+
+
+def _is_authorized_user(user_id: str) -> bool:
+    configured = os.environ.get("DEV_ALLOWED_USER_IDS", "")
+    allowed = {item.strip() for item in configured.split(",") if item.strip()}
+    return bool(allowed) and user_id in allowed
 
 
 class QueueConfigurationError(RuntimeError):
@@ -39,8 +46,10 @@ def enqueue_hermes_task(
     actor = str(user_id or "").strip()
     if not authorized:
         raise PermissionError("authorized caller required")
-    if not actor:
-        raise ValueError("user_id is required")
+    if not actor or len(actor) > 128 or "\\n" in actor or "\\r" in actor:
+        raise ValueError("user_id must be a valid single-line identifier")
+    if not _is_authorized_user(actor):
+        raise PermissionError("user_id is not allowlisted")
     if not text:
         raise ValueError("instruction is required")
     if len(text) > _MAX_INSTRUCTION_LENGTH:
@@ -52,8 +61,8 @@ def enqueue_hermes_task(
     ).strip()
     if not token:
         raise QueueConfigurationError("GH_QUEUE_TOKEN is not configured")
-    if repository.count("/") != 1 or any(not part.strip() for part in repository.split("/")):
-        raise QueueConfigurationError("GH_QUEUE_REPOSITORY must be owner/name")
+    if repository != _QUEUE_REPOSITORY:
+        raise QueueConfigurationError("GH_QUEUE_REPOSITORY must target the configured private queue repository")
 
     task_id = request_id or uuid.uuid4().hex
     if not _REQUEST_ID_RE.fullmatch(task_id):
