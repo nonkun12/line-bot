@@ -40,19 +40,21 @@ The current local file lock protects only processes on the same Mac. It is not a
 
 ## Recovery and audit
 
-- Every task has a stable request ID and immutable origin metadata.
-- Claims have a bounded lease; a stale claim is returned to pending only after checking that no active worker still owns it.
-- Completion records include exact commit SHA and exact-SHA test status. Runtime completion alone is not PASS.
+The current v1 does **not** implement lease expiry/recovery, enqueue idempotency, distributed claim collision protection, or authenticated approval-actor audit. The issue body is mutable by queue-repository writers; `approval_state: approved` is therefore a workflow marker, not cryptographic or independently authenticated proof of who approved. Do not treat it as sufficient authorization for task execution.
+
+- Every task has a request ID, but duplicate enqueue requests are not deduplicated in v1.
+- A claim has no bounded lease and is not automatically returned to pending. Manual inspection/recovery is required; do not blindly reset a claimed item.
+- Completion records with exact commit SHA and exact-SHA test status are future work. Runtime completion alone is not PASS.
 - Keep failed/blocked issues open with diagnostic comments; do not silently discard them.
 
-## Rollout gates
+## Explicit v1 scope and rollout gates
 
-1. Review and merge the queue protocol implementation only after tests cover auth, allowlist, duplicate delivery, claim collision, stale-claim recovery, malformed payloads, and secret redaction.
-2. Deploy the Render enqueue path without changing the LINE webhook URL.
-3. Configure the Mac worker in read-only/dry-run mode first.
-4. Verify one end-to-end task and its audit trail.
-5. Enable execution only after the user explicitly approves the rollout.
+1. V1 is limited to private-queue enqueue, read-only polling, strict metadata/allowlist validation, and a best-effort claim on one designated Mac. It cannot execute instructions, deliver results to LINE, merge, or deploy.
+2. Keep the worker in read-only/dry-run mode unless the user separately approves a claim-only test. Never enable execution under this protocol.
+3. Before any multi-host or execution rollout, implement and test: server-side atomic claim/lease, stale-claim recovery, idempotent enqueue, and an authenticated/auditable approval actor. Include duplicate-delivery, concurrent-claim, lease-expiry, and unauthorized-approval tests.
+4. Deploy the Render enqueue path only after the PR is reviewed and merged; do not change the existing LINE webhook URL as part of this PR.
+5. Verify one end-to-end hand-off and its audit trail before enabling any later capability. Execution requires a separate design, review, and explicit user approval.
 
 ## Current status
 
-The PR now contains a read-only poller and an explicit-approval claim function protected by a same-Mac process lock. Task execution and LINE delivery are still not implemented. No live Render service, LINE webhook, GitHub secrets, Hermes Gateway, or Mac permissions were changed. The existing queue prototype PR #1 remains unmerged and must not be treated as production-ready.
+The PR contains a read-only poller and a claim-only function protected by a same-Mac process lock. The approval marker is not an authenticated approval audit. Lease recovery, enqueue idempotency, distributed claim safety, task execution, and LINE result delivery are not implemented. No live Render service, LINE webhook, GitHub secrets, Hermes Gateway, or Mac permissions were changed. The existing queue prototype PR #1 remains unmerged and must not be treated as production-ready.

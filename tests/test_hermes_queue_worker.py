@@ -237,3 +237,38 @@ def test_claim_rejects_unallowlisted_or_missing_allowlist_without_patch(monkeypa
 def test_worker_rejects_different_queue_repository():
     with pytest.raises(worker.WorkerConfigurationError, match="private queue"):
         worker.fetch_queue(token="token", repository="attacker/public")
+
+def test_claim_rejects_unallowlisted_requester_without_patch(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U999")
+    calls = []
+    monkeypatch.setattr(
+        worker.httpx, "get",
+        lambda *args, **kwargs: _Response(payload=_issue(approval="approved")),
+    )
+    monkeypatch.setattr(worker.httpx, "patch", lambda *args, **kwargs: calls.append(args))
+    with pytest.raises(worker.ClaimRejected, match="allowlisted"):
+        worker.claim_approved_issue(
+            7, worker_id="mac-worker-1", token="token",
+            repository="nonkun12/ai-dispatch-queue",
+        )
+    assert calls == []
+
+
+@pytest.mark.parametrize("duplicate_line", [
+    "- requester_user_id: U123",
+    "- approval_state: approved",
+    "- queue_state: pending",
+])
+def test_claim_rejects_duplicate_security_metadata_without_patch(monkeypatch, duplicate_line):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    issue = _issue(approval="approved")
+    issue["body"] += f"\n{duplicate_line}"
+    calls = []
+    monkeypatch.setattr(worker.httpx, "get", lambda *args, **kwargs: _Response(payload=issue))
+    monkeypatch.setattr(worker.httpx, "patch", lambda *args, **kwargs: calls.append(args))
+    with pytest.raises(worker.ClaimRejected):
+        worker.claim_approved_issue(
+            7, worker_id="mac-worker-1", token="token",
+            repository="nonkun12/ai-dispatch-queue",
+        )
+    assert calls == []
