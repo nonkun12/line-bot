@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import re
 import sys
 from dataclasses import asdict
@@ -77,7 +78,7 @@ def run_local_cycle(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "execution_status": "COMPLETED" if results else "NO_RESULT",
         "provider_configuration": {
-            "creator": __import__("os").environ.get(
+            "creator": os.environ.get(
                 "CREATOR_CRITIC_CREATOR_PROVIDER",
                 __import__("os").environ.get("CREATOR_CRITIC_PROVIDER", "groq"),
             ),
