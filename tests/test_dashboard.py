@@ -191,25 +191,24 @@ def test_dashboard_catalog_entries_exist_in_core_registry():
 
 def test_github_loop_run_summary_counts_only_observed_states():
     summary = _summarize_github_loop_runs([
-        {"status": "completed", "conclusion": "success"},
         {"status": "completed", "conclusion": "failure"},
-        {"status": "completed", "conclusion": "cancelled"},
         {"status": "completed", "conclusion": "timed_out"},
+        {"status": "completed", "conclusion": "cancelled"},
         {"status": "in_progress", "conclusion": None},
         {"status": "queued", "conclusion": None},
+        {"status": "completed", "conclusion": "success"},
     ])
     assert summary == {
         "window": "latest_5_observed_runs",
-        "observed": 6,
-        "completed": 4,
-        "successful": 1,
+        "observed": 5,
+        "completed": 3,
+        "successful": 0,
         "failed": 2,
         "cancelled": 1,
         "in_progress": 1,
         "queued": 1,
-        "success_rate_pct": 25.0,
+        "success_rate_pct": 0.0,
     }
-
 
 def test_dashboard_loop_reports_actual_schedule_and_task_limit(auth_headers):
     client = app.test_client()
