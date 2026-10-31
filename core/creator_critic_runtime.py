@@ -12,6 +12,7 @@ from typing import Callable
 from groq import Groq
 
 from .creator_critic import CriticAgent, CreatorAgent, CreatorCriticLoop, ModelCall
+from .local_model_profiles import load_local_model_profile, local_model_call
 
 DEFAULT_MODEL = "openai/gpt-oss-20b"
 
@@ -60,10 +61,37 @@ def build_creator_critic_loop(
     ``model_call`` is injectable for deterministic tests. Production callers
     can omit it and use the configured Groq model.
     """
-    call: Callable[[str], str] = model_call or groq_model_call
-    creator = CreatorAgent(call)
-    critic = CriticAgent(call)
+    if model_call is not None:
+        creator_call = critic_call = model_call
+    else:
+        default_provider = os.environ.get("CREATOR_CRITIC_PROVIDER", "groq").strip().lower()
+        creator_provider = os.environ.get(
+            "CREATOR_CRITIC_CREATOR_PROVIDER", default_provider
+        ).strip().lower()
+        critic_provider = os.environ.get(
+            "CREATOR_CRITIC_CRITIC_PROVIDER", default_provider
+        ).strip().lower()
+
+        def provider_call(provider: str) -> Callable[[str], str]:
+            if provider == "groq":
+                return groq_model_call
+            if provider in {"bonsai", "lfm"}:
+                profile = load_local_model_profile(provider)
+                return lambda prompt: local_model_call(prompt, profile)
+            raise ValueError("provider must be groq, bonsai, or lfm")
+
+        creator_call = provider_call(creator_provider)
+        critic_call = provider_call(critic_provider)
+
+    creator = CreatorAgent(creator_call)
+    critic = CriticAgent(critic_call)
     return CreatorCriticLoop(creator, critic, max_iterations=max_iterations)
 
 
-__all__ = ["DEFAULT_MODEL", "build_creator_critic_loop", "groq_model_call"]
+__all__ = [
+    "DEFAULT_MODEL",
+    "build_creator_critic_loop",
+    "groq_model_call",
+    "load_local_model_profile",
+    "local_model_call",
+]
