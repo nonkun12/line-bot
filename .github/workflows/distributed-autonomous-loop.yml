@@ -466,17 +466,17 @@ jobs:
           review = report.get("skipped_catalog_review_ids")
           held_count = len(held) if isinstance(held, list) else 0
           review_count = len(review) if isinstance(review, list) else 0
-          if type(eligible) is int and eligible == 0 and held_count and review_count:
-              reason = f"catalog_exhausted_mixed:held={held_count},review={review_count}"
-              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\n", encoding="utf-8")
-              print(f"::warning::BLOCKED: {reason}; held and review-pending tasks require human review.")
-          elif type(eligible) is int and eligible == 0 and held_count:
-              reason = f"catalog_exhausted_held:{held_count}"
-              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\n", encoding="utf-8")
-              print(f"::warning::BLOCKED: {reason}; human review is required.")
+          if type(eligible) is int and eligible == 0 and isinstance(held, list) and held:
+              if review_count:
+                  reason = f"catalog_exhausted_mixed:held={held_count},review={review_count}"
+                  print(f"::warning::BLOCKED: {reason}; held and review-pending tasks require human review.")
+              else:
+                  reason = f"catalog_exhausted_held:{held_count}"
+                  print(f"::warning::BLOCKED: {reason}; human review is required.")
+              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\\n", encoding="utf-8")
           elif type(eligible) is int and eligible == 0 and review_count:
               reason = f"catalog_exhausted_review_pending:{review_count}"
-              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\n", encoding="utf-8")
+              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\\n", encoding="utf-8")
               print(f"::warning::BLOCKED: {reason}; post-resume review is required.")
           else:
               Path("/tmp/autonomous-loop-not-run").write_text("queue_empty\n", encoding="utf-8")
@@ -1101,7 +1101,8 @@ jobs:
             if [ -z "$progress_diagnostic" ]; then
               progress_diagnostic="QUEUE_PROGRESS_BLOCKED: cli_exit_${progress_exit}_no_diagnostic"
             fi
-            echo "::error::Queue progress CLI failed (${progress_diagnostic}); final outcome will be BLOCKED."
+            echo "::error::Queue progress evidence invalid (${progress_diagnostic}); final outcome will be BLOCKED."
+            echo "Queue progress CLI failed (${progress_diagnostic}); final outcome will be BLOCKED."
             queue_total=0
             queue_completed=0
             export QUEUE_PROGRESS_INVALID=true
