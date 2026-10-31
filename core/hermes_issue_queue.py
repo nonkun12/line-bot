@@ -46,7 +46,7 @@ def enqueue_hermes_task(
     actor = str(user_id or "").strip()
     if not authorized:
         raise PermissionError("authorized caller required")
-    if not actor or len(actor) > 128 or "\\n" in actor or "\\r" in actor:
+    if not actor or len(actor) > 128 or "\n" in actor or "\r" in actor:
         raise ValueError("user_id must be a valid single-line identifier")
     if not _is_authorized_user(actor):
         raise PermissionError("user_id is not allowlisted")
