@@ -1,8 +1,9 @@
 """Real-model adapter for the provider-neutral Creator/Critic pair.
 
-The Creator/Critic contracts remain provider-neutral; this module is the thin
-boundary that connects them to the existing Groq configuration. Secrets stay
-in environment variables and are never passed through the agent contracts.
+The Creator/Critic contracts remain provider-neutral. Groq remains the
+backward-compatible default; Creator and Critic may independently select
+Bonsai or LFM through explicit loopback-only environment profiles. Secrets
+stay in environment variables and are never passed through agent contracts.
 """
 from __future__ import annotations
 
@@ -58,8 +59,11 @@ def build_creator_critic_loop(
 ) -> CreatorCriticLoop:
     """Build a real-model Creator -> evidence -> Critic loop.
 
-    ``model_call`` is injectable for deterministic tests. Production callers
-    can omit it and use the configured Groq model.
+    ``model_call`` is injectable for deterministic tests. Otherwise set
+    CREATOR_CRITIC_PROVIDER=groq|bonsai|lfm, or independently set
+    CREATOR_CRITIC_CREATOR_PROVIDER and CREATOR_CRITIC_CRITIC_PROVIDER.
+    Local profiles require CREATOR_CRITIC_BONSAI_* or CREATOR_CRITIC_LFM_*
+    BASE_URL and MODEL values. Local endpoints are restricted to loopback.
     """
     if model_call is not None:
         creator_call = critic_call = model_call
