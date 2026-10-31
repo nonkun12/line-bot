@@ -514,50 +514,50 @@ def test_status_command_reads_task_result_and_hold_count_from_run_artifact(monke
     assert "Task ID付き実行記録: 0件" in reply
  
  
- def test_status_does_not_download_or_expose_expired_run_artifact(monkeypatch):
-     monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
-     monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
-     run = {
-         "id": 123,
-         "run_number": 92,
-         "event": "schedule",
-         "status": "completed",
-         "conclusion": "success",
-         "display_title": "scheduled loop",
-         "head_sha": "a" * 40,
-         "created_at": "2026-10-21T07:00:00Z",
-         "html_url": "https://github.com/nonkun12/line-bot/actions/runs/123",
-     }
- 
-     class _TrackingClient(_Client):
-         def __init__(self, *args, **kwargs):
-             super().__init__(*args, **kwargs)
-             self.requested_urls = []
- 
-         def get(self, *args, **kwargs):
-             self.requested_urls.append(args[0] if args else "")
-             return super().get(*args, **kwargs)
- 
-     client = _TrackingClient(
-         [run],
-         artifacts=[{
-             "id": 456,
-             "name": "minimal-autonomous-loop-123",
-             "expired": True,
-             "size_in_bytes": 1024,
-         }],
-         artifact_zip=b"must-not-be-downloaded",
-     )
-     from unittest.mock import patch
-     with patch.object(trigger.httpx, "Client", return_value=client):
-         handled, reply = trigger.request_distributed_loop("u1", "統括AIの状況")
- 
-     assert handled is True
-     assert "実行Artifactを取得できず、タスク結果・保留件数は未確認です。" in reply
-     assert "実タスク結果:" not in reply
-     assert "今回の実行タスク:" not in reply
-     assert "安全保留（Catalog）:" not in reply
-     assert "Catalog実行候補:" not in reply
-     assert "Task ID付き実行記録:" not in reply
-     assert not any(url.endswith("/zip") for url in client.requested_urls)
- 
+def test_status_does_not_download_or_expose_expired_run_artifact(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    run = {
+        "id": 123,
+        "run_number": 92,
+        "event": "schedule",
+        "status": "completed",
+        "conclusion": "success",
+        "display_title": "scheduled loop",
+        "head_sha": "a" * 40,
+        "created_at": "2026-10-21T07:00:00Z",
+        "html_url": "https://github.com/nonkun12/line-bot/actions/runs/123",
+    }
+
+    class _TrackingClient(_Client):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.requested_urls = []
+
+        def get(self, *args, **kwargs):
+            self.requested_urls.append(args[0] if args else "")
+            return super().get(*args, **kwargs)
+
+    client = _TrackingClient(
+        [run],
+        artifacts=[{
+            "id": 456,
+            "name": "minimal-autonomous-loop-123",
+            "expired": True,
+            "size_in_bytes": 1024,
+        }],
+        artifact_zip=b"must-not-be-downloaded",
+    )
+    from unittest.mock import patch
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = trigger.request_distributed_loop("u1", "統括AIの状況")
+
+    assert handled is True
+    assert "実行Artifactを取得できず、タスク結果・保留件数は未確認です。" in reply
+    assert "実タスク結果:" not in reply
+    assert "今回の実行タスク:" not in reply
+    assert "安全保留（Catalog）:" not in reply
+    assert "Catalog実行候補:" not in reply
+    assert "Task ID付き実行記録:" not in reply
+    assert not any(url.endswith("/zip") for url in client.requested_urls)
+
