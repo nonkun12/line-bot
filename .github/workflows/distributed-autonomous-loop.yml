@@ -417,7 +417,7 @@ jobs:
           # Paginate every issue (closed included) so old candidate IDs cannot be re-created.
           gh api --paginate --jq '.[] | select(has("pull_request") | not) | {number,title,body,state,labels}' \
             "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" \
-            | jq -s '.' > /tmp/autonomous-loop-all-issues.json
+            | jq -s 'add' > /tmp/autonomous-loop-all-issues.json
           python -m scripts.autonomous_task_issue_drafts \
             --report /tmp/catalog-exhaustion-report.json \
             --issues /tmp/autonomous-loop-all-issues.json \
