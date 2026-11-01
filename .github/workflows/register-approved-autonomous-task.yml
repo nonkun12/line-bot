@@ -51,23 +51,23 @@ jobs:
           fi
 
           branch="automation/register-approved-task-${ISSUE_NUMBER}"
-          if gh pr list --state open --head "feat/approved-candidate-catalog-registration-20261101" --json number --jq 'length > 0' | grep -q true; then
+          if gh pr list --state open --head "${branch}" --json number --jq 'length > 0' | grep -q true; then
             echo "A draft registration PR already exists for issue #${ISSUE_NUMBER}."
             exit 0
           fi
-          if git ls-remote --exit-code origin "refs/heads/feat/approved-candidate-catalog-registration-20261101" >/dev/null 2>&1; then
+          if git ls-remote --exit-code origin "refs/heads/${branch}" >/dev/null 2>&1; then
             echo "::error::Registration branch already exists without an open PR; refusing to overwrite it."
             exit 1
           fi
 
-          git checkout -b "feat/approved-candidate-catalog-registration-20261101"
+          git checkout -b "${branch}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .github/autonomous-loop-task-catalog.json
           git commit -m "chore(loop): register approved candidate"
-          git push origin "feat/approved-candidate-catalog-registration-20261101"
+          git push origin "${branch}"
           gh pr create --draft \
             --base main \
-            --head "feat/approved-candidate-catalog-registration-20261101" \
+            --head "${branch}" \
             --title "chore(loop): register approved task candidate" \
             --body "This draft PR adds the validated test-only task specification from the explicitly approved issue. It does not queue, execute, merge, or deploy the task. Review the catalog entry before merging."
