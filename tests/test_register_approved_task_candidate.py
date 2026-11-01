@@ -227,7 +227,8 @@ def test_catalog_candidate_workflow_only_creates_draft_registration_pr():
     ).read_text(encoding="utf-8")
     assert "autonomous-task-candidate" in registrar
     assert "autonomous-task-approved" in registrar
-    assert "scripts/register_approved_task_candidate.py" in workflow
+    assert "python -m scripts.register_approved_task_candidate" in workflow
+    assert "python scripts/register_approved_task_candidate.py" not in workflow
     assert "gh pr create --draft" in workflow
     assert "pull-requests: write" in workflow
     assert "contents: write" in workflow
