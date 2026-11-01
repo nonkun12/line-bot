@@ -301,3 +301,25 @@ def test_generic_classifier_semantics_are_preserved_outside_line_dispatch():
     assert TaskClassifier().classify(
         "開発: TODO管理Webアプリを作って"
     ).mode == TaskMode.NEW_SOFTWARE
+
+
+
+def test_read_only_receipt_and_actions_status_request_is_not_dispatched():
+    message = (
+        "line-botの開発指示受付が正常に動作するかテストしてください。"
+        "コード変更・PR作成・マージ・デプロイは行わず、"
+        "受付結果とGitHub Actionsへの連携状況だけ報告してください。"
+    )
+    assert extract_development_instruction(message) is None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "line-botの受付結果だけ報告してください。コード変更は行わず。",
+        "読み取り専用でこのシステムのテスト状況を調査して",
+        "このアプリを変更せずに結果だけ確認して",
+    ],
+)
+def test_non_mutating_diagnostic_requests_are_not_dispatched(message):
+    assert extract_development_instruction(message) is None
