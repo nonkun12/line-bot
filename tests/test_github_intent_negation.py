@@ -1,4 +1,9 @@
-from agents.github.intents import (\n    is_github_intent,\n    is_issue_or_pr_intent,\n    is_pull_request_intent,\n    is_issue_intent,\n)
+from agents.github.intents import (
+    is_github_intent,
+    is_issue_or_pr_intent,
+    is_pull_request_intent,
+    is_issue_intent,
+)
 
 
 def test_negated_repository_and_deployment_operations_do_not_route_to_github():
