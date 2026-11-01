@@ -15,11 +15,10 @@ from typing import Any
 from scripts.autonomous_task_target_allowlist import TARGETS
 
 SPEC_MARKER = "<!-- autonomous-task-spec -->"
-TASK_ID = re.compile(r"^(?:review-coverage-gap-[a-f0-9]{10}|review-[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{8})$")
+TASK_ID = re.compile(r"^review-coverage-gap-[a-f0-9]{10}$")
 INSTRUCTION_LIMIT = 2000
 MAX_CATALOG_TASKS = 200
 TICK = chr(96)
-from scripts.autonomous_task_target_allowlist import TARGETS
 
 
 def _load(path: Path) -> Any:
