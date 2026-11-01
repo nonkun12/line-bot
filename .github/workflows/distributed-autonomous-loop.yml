@@ -929,7 +929,6 @@ jobs:
 
       - name: Build review-only self-improvement candidate pool
         if: always()
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
