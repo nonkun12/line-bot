@@ -147,3 +147,44 @@ def test_control_tower_event_store_failure_does_not_change_runtime_result() -> N
 
     assert decision.proposal is not None
     assert tower.last_event_recording_error == "RuntimeError"
+
+
+
+def test_control_tower_does_not_write_to_default_database() -> None:
+    tower = ControlTower()
+    tower.observe(RuntimeReport((), rounds=1, integration_ready=True))
+    assert tower.last_event_recording_error is None
+
+
+def test_control_tower_uses_unique_run_ids_and_continues_after_record_failure() -> None:
+    attempted = []
+
+    def flaky_recorder(event):
+        attempted.append(event)
+        if len(attempted) == 1:
+            raise RuntimeError("db locked")
+        return True
+
+    # Reuse completed task records to exercise multiple events in one report.
+    from core.multi_agent import AgentRole, AgentTask
+    from core.agent_runtime import TaskResult
+    tasks = (
+        TaskResult(AgentTask(task_id="implementer", role=AgentRole.IMPLEMENTER, instruction="x"), True, ()),
+        TaskResult(AgentTask(task_id="reviewer", role=AgentRole.REVIEWER, instruction="y"), True, ()),
+    )
+    report = RuntimeReport(tasks, rounds=1, integration_ready=True)
+    tower = ControlTower(event_recorder=flaky_recorder)
+    tower.observe(report)
+    assert len(attempted) == 2
+    assert attempted[0].event_id != attempted[1].event_id
+    assert attempted[0].request_id == attempted[1].request_id
+    assert tower.last_event_recording_error == "RuntimeError"
+
+
+def test_control_tower_records_error_only_runtime_failure() -> None:
+    recorded = []
+    tower = ControlTower(event_recorder=lambda event: recorded.append(event) or True)
+    tower.observe(RuntimeReport((), error="reviewer gate missing", rounds=1))
+    assert len(recorded) == 1
+    assert recorded[0].role == "control_tower"
+    assert recorded[0].status == "FAILED"
