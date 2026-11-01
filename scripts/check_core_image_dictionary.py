@@ -56,6 +56,9 @@ def main() -> int:
         missing = [field for field in REQUIRED_FIELDS if field not in fields]
         if missing:
             errors.append(f"{word}: missing fields {', '.join(missing)}")
+        entry_word = fields.get("word")
+        if not isinstance(entry_word, ast.Constant) or entry_word.value != word:
+            errors.append(f"{word}: WordEntry.word must match its dictionary key")
         for field in ("pronunciation", "core_image", "parts", "example"):
             value = fields.get(field)
             if not isinstance(value, ast.Constant) or not isinstance(value.value, str) or not value.value.strip():
