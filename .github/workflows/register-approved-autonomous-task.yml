@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   register:
-    if: github.event.label.name == 'autonomous-task-approved'
+    if: github.event.label.name == 'autonomous-task-approved' && github.event.sender.login == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
