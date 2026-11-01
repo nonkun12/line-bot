@@ -27,7 +27,7 @@ def issue(root, labels=("autonomous-task-candidate", "autonomous-task-approved")
     source_text = (root / SOURCE).read_text(encoding="utf-8")
     test_text = (root / TEST).read_text(encoding="utf-8")
     fingerprint = hashlib.sha256(
-        f"{SOURCE}\0{FUNCTION}\02\0{hashlib.sha256(source_text.encode()).hexdigest()}\0{hashlib.sha256(test_text.encode()).hexdigest()}".encode()
+        f"{SOURCE}\0{FUNCTION}\0{2}\0{hashlib.sha256(source_text.encode()).hexdigest()}\0{hashlib.sha256(test_text.encode()).hexdigest()}".encode()
     ).hexdigest()
     task_id = "review-coverage-gap-" + hashlib.sha256(f"{SOURCE}:{FUNCTION}".encode()).hexdigest()[:10]
     evidence = f"{SOURCE}:2"
