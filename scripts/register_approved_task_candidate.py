@@ -157,6 +157,7 @@ def register_approved_candidate(
     ):
         raise ValueError("durable Recovery AI state is invalid")
 
+    catalog_spec = {**spec, "execution_approved": False}
     task_id = spec["id"]
     if task_id in state["completed"]:
         raise ValueError("candidate task is already completed")
@@ -176,7 +177,7 @@ def register_approved_candidate(
         if not isinstance(existing, dict) or not isinstance(existing.get("id"), str):
             raise ValueError("task catalog contains an invalid entry")
         if existing["id"] == task_id:
-            if existing == spec:
+            if existing == catalog_spec:
                 return {
                     "status": "ALREADY_REGISTERED",
                     "task_id": task_id,
@@ -190,7 +191,7 @@ def register_approved_candidate(
         "status": "REGISTERED_FOR_REVIEW",
         "task_id": task_id,
         "source_issue": issue_number,
-        "catalog_entry": spec,
+        "catalog_entry": catalog_spec,
     }, True
 
 
