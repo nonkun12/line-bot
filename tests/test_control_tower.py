@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from core.agent_runtime import RuntimeReport, RuntimeTaskResult
-from core.control_tower import ControlTower, _report_evidence
+from core.control_tower import ControlTower, _report_evidence, task_hash
 from core.self_improvement import SelfImprovementEngine
 from core.multi_agent import AgentResult, AgentRole, AgentTask
 from core.creator_critic_runtime import build_creator_critic_loop
@@ -229,3 +229,33 @@ def test_control_tower_approved_task_matches_only_the_exact_approved_task() -> N
         priority=approved_task.priority,
     )
     assert decision.approved_task_matches(modified_task) is False
+
+
+
+def test_task_hash_is_stable_sha256_and_handles_missing_task() -> None:
+    assert task_hash(None) is None
+
+    task = AgentTask(
+        task_id="hash-boundary",
+        role=AgentRole.IMPLEMENTER,
+        instruction="verify canonical task hashing",
+        resources=frozenset({"resource-z", "resource-a"}),
+        depends_on=("dependency-2", "dependency-1"),
+        priority=7,
+    )
+
+    digest = task_hash(task)
+    assert isinstance(digest, str)
+    assert len(digest) == 64
+    assert all(character in "0123456789abcdef" for character in digest)
+    assert task_hash(task) == digest
+
+    changed_task = AgentTask(
+        task_id=task.task_id,
+        role=task.role,
+        instruction=task.instruction + " changed",
+        resources=task.resources,
+        depends_on=task.depends_on,
+        priority=task.priority,
+    )
+    assert task_hash(changed_task) != digest
