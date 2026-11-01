@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 SPEC_MARKER = "<!-- autonomous-task-spec -->"
-TASK_ID = re.compile(r"^review-coverage-gap-[a-f0-9]{10}$")
+TASK_ID = re.compile(r"^review-[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{8}$")
 INSTRUCTION_LIMIT = 2000
 MAX_CATALOG_TASKS = 200
 TICK = chr(96)
