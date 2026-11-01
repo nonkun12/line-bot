@@ -12,19 +12,14 @@ import re
 from pathlib import Path
 from typing import Any
 
+from scripts.autonomous_task_target_allowlist import TARGETS
+
 SPEC_MARKER = "<!-- autonomous-task-spec -->"
 TASK_ID = re.compile(r"^(?:review-coverage-gap-[a-f0-9]{10}|review-[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{8})$")
 INSTRUCTION_LIMIT = 2000
 MAX_CATALOG_TASKS = 200
 TICK = chr(96)
-TARGETS = {
-    ("core/line_development_runtime.py", "tests/test_line_development_runtime.py"),
-    ("core/agent_runtime.py", "tests/test_agent_runtime.py"),
-    ("core/management_router.py", "tests/test_management_router.py"),
-    ("core/control_tower_orchestrator.py", "tests/test_control_tower_orchestrator.py"),
-    ("core/recovery_ai.py", "tests/test_recovery_ai.py"),
-    ("core/agent_versioning.py", "tests/test_agent_versioning.py"),
-}
+from scripts.autonomous_task_target_allowlist import TARGETS
 
 
 def _load(path: Path) -> Any:
