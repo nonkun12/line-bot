@@ -79,7 +79,7 @@ def _validated_spec(issue: object) -> tuple[dict[str, Any], int]:
     if not evidence_match:
         raise ValueError("candidate source evidence does not match its test target")
     source_function_match = re.search(
-        r"- Source function: " + re.escape(TICK) + r"([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)" + re.escape(TICK),
+        r"- Source function: " + re.escape(TICK) + r"([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)" + re.escape(TICK),
         body,
     )
     if not source_function_match:
