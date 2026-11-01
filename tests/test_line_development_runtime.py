@@ -1251,3 +1251,58 @@ def test_catalog_exhaustion_dedup_task_plan_is_deterministic(monkeypatch, tmp_pa
     assert len(change["old"]) <= 1200
     assert len(change["new"]) <= 1800
 
+
+
+def test_operational_validation_plan_adds_only_a_new_e2e_test(monkeypatch, tmp_path):
+    chosen = "tests/test_line_development.py"
+    anchor = "def test_shared_read_only_guard_blocks_app_style_constraints_too():\\n"
+    original = (
+        "from line_development import extract_development_instruction\\n\\n"
+        "def test_existing_case():\\n"
+        "    assert True\\n\\n"
+        + anchor
+        + "    pass\\n"
+    )
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, error = runtime._deterministic_operational_validation_plan(
+        "LINE AI Secretaryの自動開発基盤を実運用テストしてください。",
+        chosen,
+    )
+
+    assert error is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_operational_validation"
+    assert len(plan["changes"]) == 1
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert change["old"] == anchor
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert runtime.worker._test_definitions_unchanged(chosen, change["old"], change["new"])
+    assert "test_operational_validation_phrase_is_classified_as_development_command" in candidate
+    assert runtime.worker.validate_plan(plan, chosen) == (True, chosen)
+
+
+def test_operational_validation_plan_is_idempotent(monkeypatch, tmp_path):
+    chosen = "tests/test_line_development.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "def test_operational_validation_phrase_is_classified_as_development_command():\\n    pass\\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, error = runtime._deterministic_operational_validation_plan(
+        "実運用検証してください。",
+        chosen,
+    )
+
+    assert error is None
+    assert plan == {"no_change": True, "source": "deterministic_operational_validation"}
