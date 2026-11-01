@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import math
 import re
 from typing import Any
 
@@ -56,11 +57,17 @@ class AgentEvent:
         for key, value in payload.items():
             if not isinstance(key, str) or not key or len(key) > 80:
                 raise ValueError("payload keys must be non-empty strings <= 80 characters")
+            if any(part in key.lower() for part in ("secret", "token", "password", "prompt", "message", "body", "content")):
+                raise ValueError("payload keys must not identify sensitive or raw text fields")
             if value is not None and (
                 isinstance(value, (dict, list, tuple, set))
                 or not isinstance(value, (str, int, float, bool))
             ):
                 raise ValueError("payload values must be scalar metadata")
+            if isinstance(value, str) and len(value) > 512:
+                raise ValueError("payload strings must be <= 512 characters")
+            if isinstance(value, float) and not math.isfinite(value):
+                raise ValueError("payload numbers must be finite")
         encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         if len(encoded.encode("utf-8")) > _MAX_PAYLOAD_BYTES:
             raise ValueError("payload exceeds 4096 UTF-8 bytes")
