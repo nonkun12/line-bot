@@ -929,9 +929,33 @@ jobs:
 
       - name: Build review-only self-improvement candidate pool
         if: always()
-        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          if [ ! -s /tmp/recovery-ai-state-readback.json ]; then
+            if [ ! -f /tmp/autonomous-loop-not-run ] && [ ! -f /tmp/autonomous-loop-held-tasks ]; then
+              echo "::error::Recovery AI read-back is missing after an attempted task; refusing to generate an empty candidate pool."
+              exit 1
+            fi
+            echo "No task executed; loading the existing durable state branch read-only for candidate discovery."
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/contents/.autonomous-loop-state.json?ref=autonomous-loop-state" \
+              --jq '.content' \
+              | base64 --decode > /tmp/recovery-ai-state-readback.json
+          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("/tmp/recovery-ai-state-readback.json")
+          try:
+              state = json.loads(path.read_text(encoding="utf-8"))
+          except (OSError, ValueError) as exc:
+              raise SystemExit(f"durable Recovery AI read-back is invalid: {type(exc).__name__}") from exc
+          if not isinstance(state, dict) or not isinstance(state.get("self_improvement_history"), list):
+              raise SystemExit("durable self-improvement history is missing or invalid; candidate generation blocked")
+          print(f"DURABLE_SELF_IMPROVEMENT_HISTORY_RECORDS={len(state['self_improvement_history'])}")
+          PY
           PYTHONPATH=. python scripts/self_improvement_candidate_adapter.py \
             --state /tmp/recovery-ai-state-readback.json \
             --output /tmp/self-improvement-review-candidates.json

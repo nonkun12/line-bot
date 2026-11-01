@@ -33,7 +33,7 @@ def test_candidate_adapter_rejects_malformed_durable_history():
         candidates_from_history([{"kind": "failure", "task_id": "bad id", "detail": "raw"}])
 
 
-def test_candidate_adapter_missing_state_writes_empty_list(tmp_path):
+def test_candidate_adapter_missing_state_fails_closed_without_writing_empty_pool(tmp_path):
     output = tmp_path / "candidate-input.json"
-    assert main(["--state", str(tmp_path / "missing.json"), "--output", str(output)]) == 0
-    assert json.loads(output.read_text(encoding="utf-8")) == []
+    assert main(["--state", str(tmp_path / "missing.json"), "--output", str(output)]) == 2
+    assert not output.exists()
