@@ -9,12 +9,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import logging
+import uuid
 from typing import Callable, Mapping
 
 from .agent_runtime import RuntimeReport
 from .creator_critic import DuelResult, CreatorCriticLoop
 from .multi_agent import AgentTask
 from .self_improvement import ImprovementProposal, ImprovementSignal, SelfImprovementEngine
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -63,20 +67,51 @@ class ControlTower:
     def _record_runtime_observation(self, report: RuntimeReport) -> None:
         """Append bounded runtime evidence without granting execution authority."""
         self.last_event_recording_error = None
-        try:
-            from .agent_events import AgentEvent, record_agent_event
-            recorder = self.event_recorder or record_agent_event
-            items = [(item.task.task_id, item.task.role.value, item.result.success, len(item.result.changed_resources)) for item in report.completed]
-            if report.failed_task_id:
-                items.append((report.failed_task_id, "unknown", False, 0))
-            if not items:
-                synthetic = "control-tower-" + hashlib.sha256(json.dumps({"success": report.success, "rounds": report.rounds, "repair_attempts": report.repair_attempts, "integration_ready": report.integration_ready}, sort_keys=True).encode("utf-8")).hexdigest()[:24]
-                items.append((synthetic, "control_tower", report.success, 0))
-            for task_id, role, success, changed_count in items:
-                digest = hashlib.sha256(f"{task_id}|{role}|{success}|{report.rounds}|{report.repair_attempts}".encode("utf-8")).hexdigest()
-                recorder(AgentEvent(event_id="runtime-" + digest, task_id=task_id, agent_id="control_tower", role=role, event_type="runtime_observed", status="COMPLETED" if success else "FAILED", payload={"runtime_success": report.success, "integration_ready": report.integration_ready, "rounds": report.rounds, "repair_attempts": report.repair_attempts, "changed_resource_count": changed_count}))
-        except Exception as exc:
-            self.last_event_recording_error = type(exc).__name__
+        # Persistence is opt-in: observing a report must not silently write to
+        # the application's production CHAT_DB_PATH.
+        recorder = self.event_recorder
+        if recorder is None:
+            return
+
+        from .agent_events import AgentEvent
+
+        run_id = uuid.uuid4().hex
+        items = [
+            (item.task.task_id, item.task.role.value, item.result.success,
+             len(item.result.changed_resources))
+            for item in report.completed
+        ]
+        if report.failed_task_id:
+            items.append((report.failed_task_id, "unknown", False, 0))
+        elif report.error:
+            # Preserve a runtime-level failure even when no task ID was supplied.
+            items.append((f"control-tower-{run_id}", "control_tower", False, 0))
+        if not items:
+            items.append((f"control-tower-{run_id}", "control_tower", report.success, 0))
+
+        for task_id, role, success, changed_count in items:
+            event = AgentEvent(
+                event_id=f"runtime-{run_id}-{uuid.uuid4().hex}",
+                task_id=task_id,
+                request_id=run_id,
+                agent_id="control_tower",
+                role=role,
+                event_type="runtime_observed",
+                status="COMPLETED" if success else "FAILED",
+                payload={
+                    "runtime_success": report.success,
+                    "integration_ready": report.integration_ready,
+                    "rounds": report.rounds,
+                    "repair_attempts": report.repair_attempts,
+                    "changed_resource_count": changed_count,
+                },
+            )
+            try:
+                recorder(event)
+            except Exception as exc:
+                # Isolate failures so one event cannot suppress later events.
+                self.last_event_recording_error = type(exc).__name__
+                logger.warning("Control Tower event recording failed (%s)", type(exc).__name__)
 
     def evaluate_proposal(
         self,
