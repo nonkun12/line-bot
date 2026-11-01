@@ -547,6 +547,7 @@ jobs:
       - name: Debug Agent read-only failure analysis
         id: debug_agent
         if: ${{ always() && steps.run_task.conclusion != 'skipped' }}
+        continue-on-error: true
         run: |
           set -euo pipefail
           python scripts/distributed_loop_debug_agent.py \
@@ -556,6 +557,7 @@ jobs:
 
       - name: Upload Debug Agent diagnosis
         if: ${{ always() && steps.debug_agent.outcome == 'success' }}
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: debug-agent-diagnosis-${{ github.run_id }}
