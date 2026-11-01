@@ -1,0 +1,73 @@
+name: Register approved autonomous task candidate
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+
+concurrency:
+  group: register-approved-autonomous-task-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  register:
+    if: github.event.label.name == 'autonomous-task-approved'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate approved issue and prepare catalog change
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}" > /tmp/approved-candidate-issue.json
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/contents/.autonomous-loop-state.json?ref=autonomous-loop-state" \
+            --jq '.content' \
+            | base64 --decode > /tmp/autonomous-loop-state.json
+          python scripts/register_approved_task_candidate.py \
+            --issue /tmp/approved-candidate-issue.json \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --state /tmp/autonomous-loop-state.json
+          if git diff --quiet -- .github/autonomous-loop-task-catalog.json; then
+            echo "Candidate is already registered; no catalog change required."
+            exit 0
+          fi
+
+          branch="automation/register-approved-task-${ISSUE_NUMBER}"
+          if gh pr list --state open --head "feat/approved-candidate-catalog-registration-20261101" --json number --jq 'length > 0' | grep -q true; then
+            echo "A draft registration PR already exists for issue #${ISSUE_NUMBER}."
+            exit 0
+          fi
+          if git ls-remote --exit-code origin "refs/heads/feat/approved-candidate-catalog-registration-20261101" >/dev/null 2>&1; then
+            echo "::error::Registration branch already exists without an open PR; refusing to overwrite it."
+            exit 1
+          fi
+
+          git checkout -b "feat/approved-candidate-catalog-registration-20261101"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/autonomous-loop-task-catalog.json
+          git commit -m "chore(loop): register approved candidate"
+          git push origin "feat/approved-candidate-catalog-registration-20261101"
+          gh pr create --draft \
+            --base main \
+            --head "feat/approved-candidate-catalog-registration-20261101" \
+            --title "chore(loop): register approved task candidate" \
+            --body "This draft PR adds the validated test-only task specification from the explicitly approved issue. It does not queue, execute, merge, or deploy the task. Review the catalog entry before merging."
