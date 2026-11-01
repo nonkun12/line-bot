@@ -407,7 +407,7 @@ _ENTRIES: dict[str, WordEntry] = {
     ),
     "acquire": WordEntry(
         word="acquire", pronunciation="アクワイア",
-        core_image="時間や努力を通じて自分のものにする → 得る・習得する",
+        core_image="必要なもの・知識・技能などを自分のものにする → 得る・習得する",
         parts="語源の細かな分解はここでは断定しない。",
         related=("obtain（獲得する）", "gain（得る）", "acquisition（獲得）"),
         example="She acquired new skills.（彼女は新しい技能を身につけた。）",
@@ -681,7 +681,7 @@ _ENTRIES: dict[str, WordEntry] = {
     ),
     "provide": WordEntry(
         word="provide", pronunciation="プロヴァイド",
-        core_image="必要なものを前もって用意して渡す → 提供する",
+        core_image="相手が必要とするものを与える・使えるようにする → 提供する",
         parts="語源の細かな分解はここでは断定しない。",
         related=("provision（供給・準備）", "supply（供給する）", "provider（提供者）"),
         example="The service provides free lessons.（そのサービスは無料レッスンを提供する。）",
