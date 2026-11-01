@@ -44,10 +44,16 @@ _NEGATED_OPERATION_LIST = re.compile(
 # A request to report receipt/status only is not a request to browse PRs or
 # execute GitHub operations merely because it mentions GitHub Actions.
 _STATUS_ONLY_REQUEST = re.compile(
-    r"(?:受付結果|受付状況).{0,40}(?:だけ|のみ).{0,20}(?:報告|確認)|"
-    r"(?:連携状況|起動状況).{0,30}(?:だけ|のみ).{0,20}(?:報告|確認)",
+    r"(?:受付結果|受付状況|LINE受信成功|返信成功|疎通結果|GitHub連携の有無|"
+    r"連携状況|起動状況).{0,120}(?:だけ|のみ).{0,30}(?:報告|確認|回答)|"
+    r"(?:だけ|のみ).{0,30}(?:報告|確認|回答).{0,60}(?:GitHub|Actions)",
     re.IGNORECASE,
 )
+
+
+def _is_status_only_request(text: str) -> bool:
+    """Keep receipt/status-only requests out of every GitHub operation router."""
+    return bool(_STATUS_ONLY_REQUEST.search(text))
 
 
 # Natural-language file content requests (e.g. "README.mdを見せて",
@@ -68,7 +74,7 @@ def is_github_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
     text = (raw_message or "").strip()
     if not text:
         return False
-    if _STATUS_ONLY_REQUEST.search(text):
+    if _is_status_only_request(text):
         return False
 
     # A negated list of operations is a constraint, not a request to execute
@@ -109,7 +115,7 @@ def is_issue_or_pr_intent(raw_message: str) -> bool:
     """
 
     text = (raw_message or "").strip()
-    if not text:
+    if not text or _is_status_only_request(text):
         return False
 
     lower_text = text.lower()
@@ -121,7 +127,7 @@ def is_pull_request_intent(raw_message: str) -> bool:
     """Detect whether a user message is asking about Pull Requests specifically."""
 
     text = (raw_message or "").strip()
-    if not text:
+    if not text or _is_status_only_request(text):
         return False
 
     lower_text = text.lower()
@@ -136,7 +142,7 @@ def is_issue_intent(raw_message: str) -> bool:
     """
 
     text = (raw_message or "").strip()
-    if not text:
+    if not text or _is_status_only_request(text):
         return False
 
     lower_text = text.lower()
