@@ -1,4 +1,8 @@
-from agents.english.core_image import explain_core_image
+from agents.english.core_image import _ENTRIES, explain_core_image
+
+
+def test_dictionary_keys_match_word_entry_names():
+    assert all(key == entry.word for key, entry in _ENTRIES.items())
 
 
 def test_reviewed_batch_words_have_local_core_image_explanations():
