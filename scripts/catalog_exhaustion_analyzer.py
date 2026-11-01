@@ -12,19 +12,12 @@ import json
 import re
 from pathlib import Path
 
+from scripts.autonomous_task_target_allowlist import TARGETS
+
 MAX_CANDIDATES = 4
 TEST_PATH = re.compile(r"^(tests|uhip/tests)/test_[A-Za-z0-9_]+\.py$")
 TASK_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,99}$")
 # Explicit code-to-test map: no paths are derived from untrusted input.
-TARGETS = (
-    ("core/line_development_runtime.py", "tests/test_line_development_runtime.py"),
-    ("core/agent_runtime.py", "tests/test_agent_runtime.py"),
-    ("core/management_router.py", "tests/test_management_router.py"),
-    ("core/control_tower_orchestrator.py", "tests/test_control_tower_orchestrator.py"),
-    ("core/recovery_ai.py", "tests/test_recovery_ai.py"),
-    ("core/agent_versioning.py", "tests/test_agent_versioning.py"),
-)
-
 
 def _read_json(path: Path):
     try:
