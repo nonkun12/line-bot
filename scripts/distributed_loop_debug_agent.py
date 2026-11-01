@@ -23,6 +23,8 @@ _ALLOWED_REASONS = {
     "summary_timestamp_future", "summary_timestamp_invalid",
     "summary_identity_mismatch", "summary_base_sha_mismatch",
     "blocked_summary_rea_evidence_invalid", "blocked_summary_failure_reason_invalid",
+    "blocked_summary_missing_rea_evidence", "summary_status_invalid",
+    "summary_produced_sha_mismatch", "summary_no_change_but_head_moved",
     "control_tower_head_changed", "control_tower_kill_switch_enabled",
     "control_tower_catalog:catalog_unavailable_or_invalid",
     "control_tower_recovery_state:unavailable_or_invalid",
