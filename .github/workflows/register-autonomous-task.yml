@@ -1,0 +1,85 @@
+name: Register Autonomous Task (Human Review)
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Open autonomous-task-candidate issue number"
+        required: true
+        type: string
+      confirm_issue_number:
+        description: "Type the same issue number to confirm catalog-registration PR creation"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+
+concurrency:
+  group: autonomous-task-registration-${{ inputs.issue_number }}
+  cancel-in-progress: false
+
+jobs:
+  register:
+    if: github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate explicit human confirmation
+        env:
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          CONFIRM_ISSUE_NUMBER: ${{ inputs.confirm_issue_number }}
+        run: |
+          set -euo pipefail
+          [[ "$ISSUE_NUMBER" =~ ^[1-9][0-9]{0,7}$ ]] || { echo "::error::Invalid issue number"; exit 1; }
+          [[ "$CONFIRM_ISSUE_NUMBER" == "$ISSUE_NUMBER" ]] || { echo "::error::Confirmation must exactly match issue number"; exit 1; }
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Load candidate and durable execution state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}" > /tmp/task-issue.json
+          gh api "repos/${GITHUB_REPOSITORY}/contents/.autonomous-loop-state.json?ref=autonomous-loop-state" --jq .content | tr -d '\n' | base64 --decode > /tmp/autonomous-loop-state.json
+          cp .github/autonomous-loop-tasks.json /tmp/autonomous-loop-queue.json
+
+      - name: Validate candidate and add catalog entry on isolated branch
+        env:
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          CONFIRM_ISSUE_NUMBER: ${{ inputs.confirm_issue_number }}
+        run: |
+          set -euo pipefail
+          python -m scripts.register_autonomous_task \
+            --issue /tmp/task-issue.json \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --state /tmp/autonomous-loop-state.json \
+            --queue /tmp/autonomous-loop-queue.json \
+            --confirm-issue "$CONFIRM_ISSUE_NUMBER"
+          git diff --check
+          git diff -- .github/autonomous-loop-task-catalog.json
+
+      - name: Create catalog registration pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: |
+          set -euo pipefail
+          branch="autonomous-task-registration/issue-${ISSUE_NUMBER}"
+          git switch -c "$branch"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/autonomous-loop-task-catalog.json
+          git commit -m "chore(loop): register reviewed task candidate #${ISSUE_NUMBER}"
+          git push origin "$branch"
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "chore(loop): register reviewed task candidate #${ISSUE_NUMBER}" \
+            --body "## Human-reviewed task registration\n\n- Source candidate: #${ISSUE_NUMBER}\n- Catalog entry only; no runtime queue or durable state changes\n- This PR does not add the `autonomous-task-approved` label\n- After merge, a human must separately review the issue and apply the approval label\n- The distributed loop still requires an exact issue-spec/catalog match and excludes completed, held, and review-required tasks\n\nNo task was dispatched by this workflow."
