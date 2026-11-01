@@ -11,19 +11,14 @@ import re
 from pathlib import Path
 from typing import Any
 
+from scripts.autonomous_task_target_allowlist import TARGETS
+
 MAX_DRAFTS = 4
 TASK_ID = re.compile(r"^review-coverage-gap-[a-f0-9]{10}$")
 FINGERPRINT = re.compile(r"^[a-f0-9]{64}$")
 FUNCTION = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
 SPEC_MARKER = "<!-- autonomous-task-spec -->"
-TARGETS = {
-    ("core/line_development_runtime.py", "tests/test_line_development_runtime.py"),
-    ("core/agent_runtime.py", "tests/test_agent_runtime.py"),
-    ("core/management_router.py", "tests/test_management_router.py"),
-    ("core/control_tower_orchestrator.py", "tests/test_control_tower_orchestrator.py"),
-    ("core/recovery_ai.py", "tests/test_recovery_ai.py"),
-    ("core/agent_versioning.py", "tests/test_agent_versioning.py"),
-}
+from scripts.autonomous_task_target_allowlist import TARGETS
 
 
 def _load(path: Path) -> Any:
