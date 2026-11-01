@@ -160,7 +160,7 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
               out.write(f"issues={len(issues)}\n")
               out.write(f"queue_empty={'true' if queue_empty else 'false'}\n")
-              out.write(f"catalog_blocked={'true' if catalog_blocked else 'false'}\\n")
+              out.write(f"catalog_blocked={'true' if catalog_blocked else 'false'}\n")
           print("\n".join(report))
           PY
 
