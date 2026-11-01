@@ -525,17 +525,58 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
 
 
 def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
+    """Preflight every bounded change before writing any file."""
+    if not isinstance(plan, dict):
+        return False, "invalid_plan", []
     if plan.get("no_change") is True:
         return True, "NO_CHANGE", []
-    touched: list[str] = []
-    for change in plan["changes"]:
-        target = ROOT / change["file"]
-        text = target.read_text(encoding="utf-8")
-        count = text.count(change["old"])
+    changes = plan.get("changes")
+    if not isinstance(changes, list) or not 1 <= len(changes) <= MAX_FILES:
+        return False, "invalid_change_count", []
+
+    prepared: list[tuple[str, Path, str, str, str]] = []
+    seen_paths: set[str] = set()
+    for change in changes:
+        if not isinstance(change, dict):
+            return False, "invalid_change", []
+        path, old, new = change.get("file"), change.get("old"), change.get("new")
+        if not isinstance(path, str) or not path or not isinstance(old, str) or not old:
+            return False, "invalid_old_new", []
+        if not isinstance(new, str) or old == new:
+            return False, "invalid_old_new", []
+        if path in seen_paths:
+            return False, "duplicate_change_path", []
+        seen_paths.add(path)
+        target = (ROOT / path).resolve()
+        try:
+            target.relative_to(ROOT.resolve())
+        except ValueError:
+            return False, "change_path_outside_root", []
+        try:
+            original = target.read_text(encoding="utf-8")
+        except OSError:
+            return False, f"change_target_unreadable:{path}", []
+        count = original.count(old)
         if count != 1:
-            return False, f"anchor_count_{change['file']}:{count}", touched
-        target.write_text(text.replace(change["old"], change["new"], 1), encoding="utf-8")
-        touched.append(change["file"])
+            return False, f"anchor_count_{path}:{count}", []
+        prepared.append((path, target, original, old, new))
+
+    touched: list[str] = []
+    try:
+        for path, target, original, old, new in prepared:
+            target.write_text(original.replace(old, new, 1), encoding="utf-8")
+            touched.append(path)
+    except OSError as exc:
+        rollback_errors: list[str] = []
+        for path, target, original, _, _ in reversed(prepared[:len(touched)]):
+            try:
+                target.write_text(original, encoding="utf-8")
+            except OSError:
+                rollback_errors.append(path)
+        detail = f"apply_write_failed:{type(exc).__name__}"
+        if rollback_errors:
+            detail += f":rollback_failed={','.join(rollback_errors)}"
+        return False, detail, touched
     return True, "applied", touched
 
 
