@@ -355,3 +355,15 @@ def test_exact_line_connectivity_read_only_message_is_not_dispatched():
         "「LINE受信成功」「返信成功」「GitHub連携の有無」だけ報告してください。"
     )
     assert extract_development_instruction(message) is None
+
+
+
+def test_shared_read_only_guard_blocks_app_style_constraints_too():
+    from core.request_safety import is_non_execution_request
+
+    assert is_non_execution_request(
+        "アプリを作って。ただしコード変更・PR作成・マージ・デプロイは行わないでください。"
+    )
+    assert extract_development_instruction(
+        "line-botのコードを改善して。ただしGitHub Actions起動はしないでください。"
+    ) is None
