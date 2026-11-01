@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from scripts.autonomous_task_target_allowlist import TARGETS
+from scripts.catalog_exhaustion_analyzer import _public_functions
 
 SPEC_MARKER = "<!-- autonomous-task-spec -->"
 TASK_ID = re.compile(r"^review-coverage-gap-[a-f0-9]{10}$")
@@ -28,7 +29,7 @@ def _load(path: Path) -> Any:
         raise ValueError("registration input is missing or invalid") from exc
 
 
-def _validated_spec(issue: object) -> tuple[dict[str, Any], int]:
+def _validated_spec(issue: object, repo_root: Path) -> tuple[dict[str, Any], int]:
     if not isinstance(issue, dict) or issue.get("state") != "open" or "pull_request" in issue:
         raise ValueError("candidate must be an open GitHub issue")
     number = issue.get("number")
@@ -65,31 +66,56 @@ def _validated_spec(issue: object) -> tuple[dict[str, Any], int]:
     if len(matching) != 1:
         raise ValueError("candidate test path is not in the analyzer allowlist")
 
-    source_path, _ = matching[0]
-    evidence_match = re.search(
+    source_path, test_path = matching[0]
+    evidence_matches = re.findall(
         r"- Source evidence: " + re.escape(TICK) + re.escape(source_path) + r":([1-9][0-9]*)" + re.escape(TICK),
         body,
     )
-    if not evidence_match:
-        raise ValueError("candidate source evidence does not match its test target")
-    source_function_match = re.search(
+    function_matches = re.findall(
         r"- Source function: " + re.escape(TICK) + r"([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)" + re.escape(TICK),
         body,
     )
-    if not source_function_match:
-        raise ValueError("candidate source function evidence is missing")
-    source_function = source_function_match.group(1)
-    evidence = f"{source_path}:{evidence_match.group(1)}"
+    fingerprint_matches = re.findall(
+        r"- Analyzer fingerprint: " + re.escape(TICK) + r"([a-f0-9]{64})" + re.escape(TICK),
+        body,
+    )
+    if len(evidence_matches) != 1 or len(function_matches) != 1 or len(fingerprint_matches) != 1:
+        raise ValueError("candidate source evidence or analyzer fingerprint is missing or ambiguous")
+
+    line = int(evidence_matches[0])
+    source_function = function_matches[0]
+    fingerprint = fingerprint_matches[0]
+    evidence = f"{source_path}:{line}"
     expected_suffix = hashlib.sha256(f"{source_path}:{source_function}".encode("utf-8")).hexdigest()[:10]
     if task_id != f"review-coverage-gap-{expected_suffix}":
         raise ValueError("candidate task ID does not match its source evidence")
-    fingerprint_pattern = r"- Analyzer fingerprint: " + re.escape(TICK) + r"[a-f0-9]{64}" + re.escape(TICK)
-    if not re.search(fingerprint_pattern, body):
-        raise ValueError("candidate analyzer fingerprint is missing")
     if "- Allowed change: 指定されたテストファイル1つのみ" not in body:
         raise ValueError("candidate issue is missing its exact-path safety marker")
     if "Queue admission: not authorized" not in body:
         raise ValueError("candidate issue is missing its review-only safety marker")
+
+    root = repo_root.resolve()
+    source_file = root / source_path
+    test_file = root / test_path
+    for candidate_file in (source_file, test_file):
+        if candidate_file.is_symlink() or not candidate_file.is_file():
+            raise ValueError("candidate source or test file is missing or unsafe")
+        try:
+            candidate_file.resolve().relative_to(root)
+        except ValueError as exc:
+            raise ValueError("candidate source or test file escapes repository root") from exc
+
+    source_text = source_file.read_text(encoding="utf-8")
+    test_text = test_file.read_text(encoding="utf-8")
+    if (source_function, line) not in _public_functions(source_text):
+        raise ValueError("candidate source function or line no longer matches current source")
+    if re.search(r"\b" + re.escape(source_function.rsplit(".", 1)[-1]) + r"\b", test_text):
+        raise ValueError("candidate is stale: target test now references the source function")
+    expected_fingerprint = hashlib.sha256(
+        f"{source_path}\0{source_function}\0{line}\0{hashlib.sha256(source_text.encode()).hexdigest()}\0{hashlib.sha256(test_text.encode()).hexdigest()}".encode()
+    ).hexdigest()
+    if fingerprint != expected_fingerprint:
+        raise ValueError("candidate analyzer fingerprint does not match current source and test files")
 
     expected_instruction = (
         f"人手レビュー後に限り、{paths[0]} に {source_function} ({evidence}) の"
@@ -108,8 +134,10 @@ def _validated_spec(issue: object) -> tuple[dict[str, Any], int]:
     }, number
 
 
-def register_approved_candidate(issue: object, catalog: object, state: object) -> tuple[dict[str, Any], bool]:
-    spec, issue_number = _validated_spec(issue)
+def register_approved_candidate(
+    issue: object, catalog: object, state: object, repo_root: Path = Path(".")
+) -> tuple[dict[str, Any], bool]:
+    spec, issue_number = _validated_spec(issue, repo_root)
     if not isinstance(catalog, dict) or not isinstance(catalog.get("tasks"), list):
         raise ValueError("task catalog schema is invalid")
     if not isinstance(state, dict) or not isinstance(state.get("completed"), list):
@@ -167,12 +195,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--issue", type=Path, required=True)
     parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True)
+    parser.add_argument("--repo-root", type=Path, default=Path("."))
     args = parser.parse_args(argv)
     try:
         issue = _load(args.issue)
         catalog = _load(args.catalog)
         state = _load(args.state)
-        result, changed = register_approved_candidate(issue, catalog, state)
+        result, changed = register_approved_candidate(issue, catalog, state, args.repo_root)
         if changed:
             updated = dict(catalog)
             updated["tasks"] = [*catalog["tasks"], result["catalog_entry"]]
