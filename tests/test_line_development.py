@@ -323,3 +323,15 @@ def test_read_only_receipt_and_actions_status_request_is_not_dispatched():
 )
 def test_non_mutating_diagnostic_requests_are_not_dispatched(message):
     assert extract_development_instruction(message) is None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "開発: 読み取り専用でline-botのテスト状況を調査して",
+        "dev: line-botの受付結果だけ確認して。コード変更は行わず",
+        "開発: line-botのコード変更・PR作成・マージ・デプロイは行わず、結果だけ報告して",
+    ],
+)
+def test_explicit_dev_prefix_cannot_override_non_execution_constraints(message):
+    assert extract_development_instruction(message) is None
