@@ -46,7 +46,15 @@ def _validate_task(task: object) -> dict:
         if not isinstance(path, str) or not ALLOWED_TEST_PATH.fullmatch(path):
             raise ValueError("forbidden allowed path")
         clean_paths.append(path)
-    return {"id": task_id, "instruction": instruction.strip(), "allowed_paths": clean_paths}
+    execution_approved = task.get("execution_approved", True)
+    if not isinstance(execution_approved, bool):
+        raise ValueError("invalid task execution approval flag")
+    return {
+        "id": task_id,
+        "instruction": instruction.strip(),
+        "allowed_paths": clean_paths,
+        "execution_approved": execution_approved,
+    }
 
 
 def _history_priority(history_path: Path | None, registered_ids: set[str]) -> tuple[dict[str, int], dict[str, dict[str, int]]]:
@@ -153,6 +161,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         if task["id"] not in original_ids
         and task["id"] not in completed_ids
         and task["id"] not in ineligible_ids
+        and task["execution_approved"]
     ]
     # Stable sort: recurring failures first; ties preserve reviewed catalog order.
     catalog_order = {task["id"]: index for index, task in enumerate(normalized_catalog)}
