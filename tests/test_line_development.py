@@ -345,3 +345,13 @@ def test_exact_line_connectivity_smoke_message_never_dispatches_development():
         "「LINE受信成功」「返信成功」「GitHub連携の有無」だけ報告してください。"
     )
     assert extract_development_instruction(message) is None
+
+
+
+def test_exact_line_connectivity_read_only_message_is_not_dispatched():
+    message = (
+        "疎通テストです。LINEからのメッセージ受信と返信が正常に動作するか確認してください。"
+        "GitHubの検索・Actions起動・コード変更・PR作成・マージ・デプロイは一切行わないでください。"
+        "「LINE受信成功」「返信成功」「GitHub連携の有無」だけ報告してください。"
+    )
+    assert extract_development_instruction(message) is None
