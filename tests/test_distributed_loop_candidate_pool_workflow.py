@@ -106,6 +106,12 @@ def test_workflow_keeps_catalog_adapter_before_review_pool_bridge():
 
 
 
+def test_candidate_history_step_is_a_required_gate_not_continue_on_error():
+    script = _candidate_pool_step()
+    assert "continue-on-error: true" not in script
+    assert "Recovery AI read-back is missing after an attempted task" in script
+
+
 def test_workflow_loads_durable_state_for_no_task_run_when_readback_is_missing(tmp_path):
     marker = tmp_path / "autonomous-loop-not-run"
     marker.write_text("queue_empty\n", encoding="utf-8")
