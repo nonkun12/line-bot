@@ -429,7 +429,7 @@ _ENTRIES: dict[str, WordEntry] = {
     "advocate": WordEntry(
         word="advocate", pronunciation="アドヴォケイト",
         core_image="ある考えや人の側に立って支える → 提唱する・擁護する",
-        parts="名詞・動詞で発音や用法が異なる。語源分解はここでは断定しない。",
+        parts="この項目は動詞の発音（/ˈæd.və.keɪt/）。名詞は /ˈæd.və.kət/ と発音が異なる。語源分解はここでは断定しない。",
         related=("support（支持する）", "defend（擁護する）", "advocacy（擁護・提唱）"),
         example="They advocate equal access to education.（彼らは教育への平等なアクセスを提唱している。）",
     ),
@@ -513,7 +513,7 @@ _ENTRIES: dict[str, WordEntry] = {
     "elaborate": WordEntry(
         word="elaborate", pronunciation="イラボレイト",
         core_image="細部を加えて詳しく形にする → 詳しく説明する・精巧な",
-        parts="動詞と形容詞で用法・発音が異なる。語源分解はここでは断定しない。",
+        parts="この項目は動詞の発音（/ɪˈlæb.ə.reɪt/）。形容詞は /ɪˈlæb.ər.ət/ と発音が異なる。語源分解はここでは断定しない。",
         related=("explain（説明する）", "detailed（詳細な）", "elaboration（詳述）"),
         example="Could you elaborate on that point?（その点を詳しく説明してもらえますか。）",
     ),
