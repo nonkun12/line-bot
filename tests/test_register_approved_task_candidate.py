@@ -64,6 +64,13 @@ def test_registers_explicitly_approved_analyzer_candidate_for_pr_review():
     assert result["catalog_entry"]["allowed_paths"] == [TEST]
 
 
+def test_accepts_deterministic_coverage_gap_candidate_id():
+    gap_issue = issue(task_id="review-coverage-gap-dc8331d971")
+    result, changed = register_approved_candidate(gap_issue, catalog(), state())
+    assert changed is True
+    assert result["task_id"] == "review-coverage-gap-dc8331d971"
+
+
 def test_candidate_label_without_explicit_approval_cannot_register():
     with pytest.raises(ValueError, match="explicit human-approval"):
         register_approved_candidate(
