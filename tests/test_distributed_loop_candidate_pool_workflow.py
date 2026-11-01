@@ -12,6 +12,8 @@ import re
 import subprocess
 import textwrap
 
+from scripts.self_improvement_state import sanitize_records
+
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "distributed-autonomous-loop.yml"
@@ -123,9 +125,9 @@ def test_workflow_loads_durable_state_for_no_task_run_when_readback_is_missing(t
     marker = tmp_path / "autonomous-loop-not-run"
     marker.write_text("queue_empty\n", encoding="utf-8")
     state = {
-        "self_improvement_history": [
-            {"kind": "failure", "task_id": "safe-task-1", "detail": "development failure observed"}
-        ]
+        "self_improvement_history": sanitize_records([
+            {"kind": "failure", "task_id": "safe-task-1", "detail": "raw failure detail"}
+        ])
     }
     encoded = base64.b64encode(json.dumps(state).encode("utf-8")).decode("ascii")
     content_file = tmp_path / "state-content.txt"
