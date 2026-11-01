@@ -936,8 +936,8 @@ def test_choose_file_fails_closed_when_only_test_candidates_exist(monkeypatch):
 
 def test_existing_test_guard_covers_root_and_nested_test_files(monkeypatch, tmp_path):
     cases = [
-        ("test_app.py", "def test_contract():\\n    assert value() == 1\\n"),
-        ("uhip/tests/test_schema_contracts.py", "def test_contract():\\n    assert value() == 1\\n"),
+        ("test_app.py", "def test_contract():\n    assert value() == 1\n"),
+        ("uhip/tests/test_schema_contracts.py", "def test_contract():\n    assert value() == 1\n"),
     ]
     for relative_path, original in cases:
         target = tmp_path / relative_path
