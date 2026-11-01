@@ -166,7 +166,13 @@ def test_catalog_candidate_workflow_only_creates_draft_registration_pr():
     ).read_text(encoding="utf-8")
     assert "types: [labeled]" in workflow
     assert "github.event.label.name == 'autonomous-task-approved'" in workflow
-    assert "autonomous-task-candidate" in workflow
+    registrar = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "register_approved_task_candidate.py"
+    ).read_text(encoding="utf-8")
+    assert "autonomous-task-candidate" in registrar
+    assert "autonomous-task-approved" in registrar
     assert "scripts/register_approved_task_candidate.py" in workflow
     assert "gh pr create --draft" in workflow
     assert "pull-requests: write" in workflow
