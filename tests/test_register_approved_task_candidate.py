@@ -94,7 +94,7 @@ def test_task_id_must_be_derived_from_source_evidence(tmp_path):
 
 def test_candidate_label_without_explicit_approval_cannot_register(tmp_path):
     root = repository(tmp_path)
-    with pytest.raises(ValueError, match="explicit human-approval"):
+    with pytest.raises(ValueError, match="explicit catalog-approval"):
         register_approved_candidate(
             issue(root, labels=("autonomous-task-candidate",)), catalog(), state(), root
         )
