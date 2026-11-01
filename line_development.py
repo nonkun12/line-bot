@@ -1,15 +1,19 @@
 """Explicit LINE/Slack -> governed development command dispatcher."""
 from __future__ import annotations
 
+import logging
 import os
 import re
 import time
+import uuid
 from typing import Optional
 
 import httpx
 
 from core.request_safety import is_non_execution_request
 
+
+logger = logging.getLogger(__name__)
 
 _DEV_PREFIX = re.compile(r"^(?:開発|dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
 # Natural-language execution is limited to clear imperative requests that name
@@ -83,16 +87,19 @@ def dispatch_development_workflow(
 ) -> str:
     """Dispatch authorized development requests to the existing Secretary repository."""
     instruction = str(instruction or "").strip()
+    request_id = uuid.uuid4().hex[:12]
     if is_non_execution_request(instruction):
         return "読み取り専用の依頼として受け付けました。開発ワークフローは起動していません。"
     if not instruction:
         return "開発指示が空です。『開発: ○○を実装して』の形式で指定してください。"
 
     if not authorized and not _is_authorized_user(user_id):
+        logger.warning("line_dev_dispatch event=denied request_id=%s reason=allowlist", request_id)
         return "このユーザーには開発ワークフローの実行権限がありません。"
 
     token = token or os.environ.get("GITHUB_TOKEN", "")
     if not token:
+        logger.error("line_dev_dispatch event=failed request_id=%s reason=missing_token", request_id)
         return "開発ワークフローを起動できません。GITHUB_TOKENが設定されていません。"
 
     # 新規アプリ作成も既存システムの保守・機能追加も受け付ける。
@@ -117,6 +124,7 @@ def dispatch_development_workflow(
         },
     }
 
+    logger.info("line_dev_dispatch event=requested request_id=%s workflow=%s", request_id, _WORKFLOW_FILE)
     last_error: str | None = None
     for attempt in range(1, _DISPATCH_ATTEMPTS + 1):
         try:
@@ -128,6 +136,7 @@ def dispatch_development_workflow(
             )
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
             last_error = type(exc).__name__
+            logger.warning("line_dev_dispatch event=network_error request_id=%s attempt=%s error=%s", request_id, attempt, last_error)
             if attempt < _DISPATCH_ATTEMPTS:
                 time.sleep(0.5 * attempt)
                 continue
@@ -135,8 +144,10 @@ def dispatch_development_workflow(
         except Exception as exc:
             return f"開発ワークフローの起動に失敗しました: {type(exc).__name__}"
 
+        logger.info("line_dev_dispatch event=github_response request_id=%s attempt=%s status=%s", request_id, attempt, response.status_code)
         if response.status_code == 204:
-            return "🚀 開発指示を受け付けました。GitHub Actionsで開発・テストを開始しました。\n通常のLINE会話とは分離して実行します。"
+            logger.info("line_dev_dispatch event=accepted request_id=%s", request_id)
+            return f"🚀 開発指示を受け付けました。GitHub Actionsで開発・テストを開始しました。\n通常のLINE会話とは分離して実行します。\n受付ID: {request_id}"
 
         if response.status_code in _RETRYABLE_STATUS_CODES and attempt < _DISPATCH_ATTEMPTS:
             retry_after = response.headers.get("Retry-After", "")
@@ -151,9 +162,11 @@ def dispatch_development_workflow(
         if len(detail) > 300:
             detail = detail[:300]
         if response.status_code in {401, 403}:
-            return f"開発ワークフローの起動に失敗しました: HTTP {response.status_code}（GitHub Token/権限を確認してください）"
+            logger.error("line_dev_dispatch event=failed request_id=%s reason=github_auth status=%s", request_id, response.status_code)
+            return f"開発ワークフローの起動に失敗しました: HTTP {response.status_code}（GitHub Token/権限を確認してください。受付ID: {request_id}）"
+        logger.error("line_dev_dispatch event=failed request_id=%s reason=github_http status=%s", request_id, response.status_code)
         if detail:
-            return f"開発ワークフローの起動に失敗しました: HTTP {response.status_code}（{detail}）"
-        return f"開発ワークフローの起動に失敗しました: HTTP {response.status_code}"
+            return f"開発ワークフローの起動に失敗しました: HTTP {response.status_code}（{detail}、受付ID: {request_id}）"
+        return f"開発ワークフローの起動に失敗しました: HTTP {response.status_code}（受付ID: {request_id}）"
 
     return f"開発ワークフローの起動に失敗しました: {last_error or 'unknown error'}"
