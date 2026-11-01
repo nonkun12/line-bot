@@ -26,6 +26,16 @@ _NATURAL_DEV_ACTION = re.compile(
 _NATURAL_DEV_QUESTION = re.compile(
     r"(?:教えて|方法|やり方|どうやって|できますか|可能ですか|おすすめ|比較|とは)",
 )
+# Read-only, diagnostic, and explicitly non-mutating requests must never
+# start the autonomous development workflow, even when they mention a code
+# target and contain words such as "test" or "investigate".
+_NON_EXECUTION_REQUEST = re.compile(
+    r"(?:読み取り専用|変更(?:は)?せず|変更(?:は)?しないで|変更(?:は)?行わず|"
+    r"変更禁止|コード変更.{0,30}(?:行わず|しないで|禁止)|"
+    r"(?:PR作成|マージ|デプロイ).{0,30}(?:行わず|しないで|禁止)|"
+    r"だけ(?:を)?(?:確認|報告)|受付結果.{0,30}だけ報告)",
+    re.IGNORECASE,
+)
 _MAX_INSTRUCTION_LENGTH = 2000
 _WORKFLOW_FILE = "line-development-dispatch.yml"
 _DISPATCH_TIMEOUT_SECONDS = 10.0
@@ -54,6 +64,7 @@ def extract_development_instruction(message: str) -> Optional[str]:
         _NATURAL_DEV_TARGET.search(text)
         and _NATURAL_DEV_ACTION.search(text)
         and not _NATURAL_DEV_QUESTION.search(text)
+        and not _NON_EXECUTION_REQUEST.search(text)
     ):
         return text[:_MAX_INSTRUCTION_LENGTH]
     return None
