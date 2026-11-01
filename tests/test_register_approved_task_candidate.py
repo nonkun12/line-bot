@@ -219,7 +219,7 @@ def test_catalog_candidate_workflow_only_creates_draft_registration_pr():
         / "register-approved-autonomous-task.yml"
     ).read_text(encoding="utf-8")
     assert "types: [labeled]" in workflow
-    assert "github.event.label.name == 'autonomous-task-approved'" in workflow
+    assert "github.event.label.name == 'autonomous-task-approved' && github.event.sender.login == github.repository_owner" in workflow
     registrar = (
         Path(__file__).resolve().parents[1]
         / "scripts"
