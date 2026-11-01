@@ -68,6 +68,19 @@ def is_protected(path: str) -> bool:
     return path in PROTECTED_PATHS or any(path.startswith(prefix) for prefix in PROTECTED_PREFIXES)
 
 
+def is_test_path(path: str) -> bool:
+    """Recognize pytest files in root, nested test directories, and conftest modules."""
+    normalized = str(path or "").replace("\\", "/").strip("/")
+    parts = normalized.split("/") if normalized else []
+    name = parts[-1] if parts else ""
+    return (
+        "tests" in parts[:-1]
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+        or name == "conftest.py"
+    )
+
+
 @lru_cache(maxsize=512)
 def _shared_policy_decision(path: str) -> SelfImprovementDecision:
     return assess_self_improvement((path,)).decision
@@ -188,13 +201,19 @@ def choose_file(client: Groq, instruction: str, files: list[str]) -> str | None:
             if candidate in files:
                 return candidate
 
-    prompt = f"Instruction:\n{instruction}\n\nEligible files:\n" + "\n".join(files)
+    # Generic implementation requests must not be steered into tests. Explicit
+    # test paths and the dedicated E2E targets above remain available.
+    candidates = [path for path in files if not is_test_path(path)]
+    if not candidates:
+        return None
+    prompt = f"Instruction:\n{instruction}\n\nEligible files:\n" + "\n".join(candidates)
     try:
         data = parse_plan(ask(client, "Select exactly one eligible file and return JSON only: {\"file\":\"path\"} or {\"file\":null}", prompt))
-    except Exception:
+    except Exception as exc:
+        print(f"[FILE-SELECTION] model selection failed: {type(exc).__name__}", flush=True)
         return None
     chosen = data.get("file")
-    if isinstance(chosen, str) and chosen in files and _is_shared_policy_autonomous(chosen):
+    if isinstance(chosen, str) and chosen in candidates and _is_shared_policy_autonomous(chosen):
         return chosen
     return None
 
@@ -435,7 +454,7 @@ def _test_definitions_unchanged(path: str, old: str, new: str) -> bool:
     equivalent at the AST level so an agent cannot make a failing test pass by
     weakening or rewriting its assertion.
     """
-    if not path.startswith("tests/") or not path.endswith(".py"):
+    if not is_test_path(path) or not path.endswith(".py"):
         return True
     target = ROOT / path
     try:
@@ -491,7 +510,7 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
             return False, "invalid_old_new"
         if old == new:
             return False, "no_op_change"
-        if path.startswith("tests/") and not _test_definitions_unchanged(path, old, new):
+        if is_test_path(path) and not _test_definitions_unchanged(path, old, new):
             return False, "existing_test_modified"
         if any(line.strip() in {"+", "-"} for line in new.splitlines()):
             return False, "diff_marker_in_replacement"
