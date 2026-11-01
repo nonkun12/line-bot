@@ -6,8 +6,8 @@ from pathlib import Path
 
 
 _GITHUB_INTEGRATION_STATUS_RE = re.compile(
-    r"(?:github|git\\s*hub).{0,24}(?:連携|接続).{0,24}(?:状態|状況|有無|設定|使える|利用|有効|動作|確認)|"
-    r"(?:連携|接続).{0,24}(?:状態|状況|有無|設定|使える|利用|有効|動作|確認).{0,24}(?:github|git\\s*hub)",
+    r"(?:github|git\s*hub).{0,24}(?:連携|接続).{0,24}(?:状態|状況|有無|設定|使える|利用|有効|動作|確認)|"
+    r"(?:連携|接続).{0,24}(?:状態|状況|有無|設定|使える|利用|有効|動作|確認).{0,24}(?:github|git\s*hub)",
     re.IGNORECASE,
 )
 
