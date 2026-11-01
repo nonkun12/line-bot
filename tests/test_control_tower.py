@@ -114,3 +114,36 @@ def test_report_evidence_cannot_override_runtime_safety_facts() -> None:
     assert evidence["rounds"] == 2
     assert evidence["repair_attempts"] == 1
     assert evidence["accuracy"] == 0.9
+
+
+def test_control_tower_records_runtime_events_without_storing_raw_output() -> None:
+    recorded = []
+
+    def recorder(event):
+        recorded.append(event)
+        return True
+
+    tower = ControlTower(event_recorder=recorder)
+    report = RuntimeReport((), failed_task_id="tester-42", error="private failure detail",
+                           rounds=2, repair_attempts=1, integration_ready=False)
+    tower.observe(report)
+
+    assert len(recorded) == 1
+    event = recorded[0]
+    assert event.task_id == "tester-42"
+    assert event.agent_id == "control_tower"
+    assert event.status == "FAILED"
+    assert "private failure detail" not in str(event.payload)
+    assert event.payload["rounds"] == 2
+
+
+def test_control_tower_event_store_failure_does_not_change_runtime_result() -> None:
+    def broken_recorder(_event):
+        raise RuntimeError("sensitive provider detail")
+
+    tower = ControlTower(event_recorder=broken_recorder)
+    report = RuntimeReport((), failed_task_id="tester-43", error="test failed", rounds=1)
+    decision = tower.observe(report)
+
+    assert decision.proposal is not None
+    assert tower.last_event_recording_error == "RuntimeError"
