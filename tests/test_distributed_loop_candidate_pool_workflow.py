@@ -111,7 +111,7 @@ def test_workflow_loads_durable_state_for_no_task_run_when_readback_is_missing(t
     marker.write_text("queue_empty\n", encoding="utf-8")
     state = {
         "self_improvement_history": [
-            {"kind": "failure", "task_id": "safe-task-1", "detail": "sanitized failure"}
+            {"kind": "failure", "task_id": "safe-task-1", "detail": "development failure observed"}
         ]
     }
     encoded = base64.b64encode(json.dumps(state).encode("utf-8")).decode("ascii")
