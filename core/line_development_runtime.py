@@ -40,16 +40,7 @@ class DevelopmentState:
 
 
 def _fallback_safe_target(files: list[str]) -> str | None:
-    """Return a deterministic, test-focused target when model selection fails."""
-    preferred = (
-        "tests/test_management_router.py",
-        "tests/test_agent_runtime.py",
-        "tests/test_line_development_runtime.py",
-    )
-    available = set(files)
-    for path in preferred:
-        if path in available and not worker.is_protected(path):
-            return path
+    """Fail closed when model selection is uncertain; never guess an edit target."""
     return None
 
 
