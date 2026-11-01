@@ -110,15 +110,15 @@ def test_workflow_keeps_catalog_adapter_before_review_pool_bridge():
 
 def test_candidate_history_step_is_a_required_gate_not_continue_on_error():
     source = WORKFLOW.read_text(encoding="utf-8")
-    step = re.search(
-        r"      - name: Build review-only self-improvement candidate pool\\n"
-        r"(.*?)(?=\\n      - name: Upload review-only self-improvement candidates)",
-        source,
-        flags=re.DOTALL,
+    marker = "      - name: Build review-only self-improvement candidate pool"
+    start = source.index(marker)
+    end = source.index(
+        "      - name: Upload review-only self-improvement candidates",
+        start,
     )
-    assert step
-    assert "continue-on-error: true" not in step.group(1)
-    assert "Recovery AI read-back is missing after an attempted task" in step.group(1)
+    step = source[start:end]
+    assert "continue-on-error: true" not in step
+    assert "Recovery AI read-back is missing after an attempted task" in step
 
 
 def test_workflow_loads_durable_state_for_no_task_run_when_readback_is_missing(tmp_path):
