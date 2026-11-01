@@ -69,12 +69,12 @@ def test_fails_closed_on_missing_recovery_state(tmp_path):
 
 def test_fails_closed_when_true_recovery_flag_masks_malformed_sibling(tmp_path):
     with pytest.raises(ValueError, match="Recovery AI task flags"):
-        run(tmp_path, [issue("new-task", labels=("autonomous-task-approved",))],
+        run(tmp_path, [issue("new-task", labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))],
             state(tasks={"held-task": {"held": True, "resume_requires_review": "invalid"}}))
 
 
 def test_explicitly_approved_registered_test_only_issue_enters_bounded_runtime_queue(tmp_path):
-    result, qp = run(tmp_path, [issue("approved-task", labels=("autonomous-task-approved",))],
+    result, qp = run(tmp_path, [issue("approved-task", labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))],
                      state(), registered_tasks=[registered("approved-task")])
     queue_after = json.loads(qp.read_text(encoding="utf-8"))
     assert result["status"] == "QUEUED_APPROVED"
@@ -92,8 +92,42 @@ def test_candidate_only_issue_never_enters_executable_queue(tmp_path):
     assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
 
 
+def test_legacy_catalog_approval_label_never_authorizes_queue_admission(tmp_path):
+    labels = ("autonomous-task-candidate", "autonomous-task-approved")
+    result, qp = run(
+        tmp_path, [issue("legacy-approved", labels=labels)], state(),
+        registered_tasks=[registered("legacy-approved")],
+    )
+    assert result["approved_count"] == 0
+    assert result["proposal_count"] == 1
+    assert result["status"] == "REVIEW_REQUIRED"
+    assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
+
+
+def test_catalog_approval_label_never_authorizes_queue_admission(tmp_path):
+    labels = ("autonomous-task-candidate", "autonomous-task-catalog-approved")
+    result, qp = run(
+        tmp_path, [issue("catalog-approved", labels=labels)], state(),
+        registered_tasks=[registered("catalog-approved")],
+    )
+    assert result["approved_count"] == 0
+    assert result["proposal_count"] == 1
+    assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
+
+
+def test_execution_approval_requires_candidate_label(tmp_path):
+    labels = ("autonomous-task-execution-approved",)
+    result, qp = run(
+        tmp_path, [issue("execution-only", labels=labels)], state(),
+        registered_tasks=[registered("execution-only")],
+    )
+    assert result["approved_count"] == 0
+    assert result["proposal_count"] == 0
+    assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
+
+
 def test_approved_but_unregistered_issue_is_rejected_before_dispatch(tmp_path):
-    result, qp = run(tmp_path, [issue("not-registered", labels=("autonomous-task-approved",))], state())
+    result, qp = run(tmp_path, [issue("not-registered", labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))], state())
     assert result["status"] == "APPROVED_TASKS_REJECTED_UNREGISTERED"
     assert result["rejected_approved_count"] == 1
     assert result["rejected_approved_tasks"] == [{
@@ -104,7 +138,7 @@ def test_approved_but_unregistered_issue_is_rejected_before_dispatch(tmp_path):
 
 
 def test_approved_issue_spec_must_exactly_match_registered_definition(tmp_path):
-    result, qp = run(tmp_path, [issue("registered-task", labels=("autonomous-task-approved",))], state(),
+    result, qp = run(tmp_path, [issue("registered-task", labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))], state(),
                      registered_tasks=[registered("registered-task", instruction="Different instruction.")])
     assert result["approved_count"] == 0
     assert result["rejected_approved_count"] == 1
@@ -113,8 +147,8 @@ def test_approved_issue_spec_must_exactly_match_registered_definition(tmp_path):
 
 def test_duplicate_approved_issues_with_same_registered_task_id_are_queued_once(tmp_path):
     task_id = "approved-duplicate"
-    first = issue(task_id, labels=("autonomous-task-approved",))
-    second = issue(task_id, labels=("autonomous-task-approved",))
+    first = issue(task_id, labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))
+    second = issue(task_id, labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))
     second["number"] = 18
     result, qp = run(tmp_path, [first, second], state(), registered_tasks=[registered(task_id)])
     queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]
@@ -130,11 +164,11 @@ def test_invalid_approved_duplicate_does_not_shadow_registered_spec(tmp_path):
     task_id = "approved-shadowing"
     mismatched = issue(
         task_id,
-        labels=("autonomous-task-approved",),
+        labels=("autonomous-task-candidate", "autonomous-task-execution-approved"),
         instruction="Unregistered instruction that must not shadow the catalog entry.",
     )
     mismatched["number"] = 16
-    valid = issue(task_id, labels=("autonomous-task-approved",))
+    valid = issue(task_id, labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))
     valid["number"] = 17
     result, qp = run(
         tmp_path,
@@ -153,7 +187,7 @@ def test_review_only_candidate_does_not_shadow_later_approved_task(tmp_path):
     task_id = "candidate-shadowing"
     candidate = issue(task_id)
     candidate["number"] = 16
-    approved = issue(task_id, labels=("autonomous-task-approved",))
+    approved = issue(task_id, labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))
     approved["number"] = 17
     result, qp = run(
         tmp_path,
@@ -170,8 +204,8 @@ def test_review_only_candidate_does_not_shadow_later_approved_task(tmp_path):
 
 def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):
     existing = {"id": "already-queued", "instruction": "Existing task", "allowed_paths": ["tests/test_existing.py"]}
-    issues = [issue("approved-one", labels=("autonomous-task-approved",)),
-              issue("approved-two", labels=("autonomous-task-approved",))]
+    issues = [issue("approved-one", labels=("autonomous-task-candidate", "autonomous-task-execution-approved")),
+              issue("approved-two", labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))]
     result, qp = run(tmp_path, issues, state(), registered_tasks=[
         registered("approved-one"), registered("approved-two")
     ], queue_data={"version": 1, "max_tasks_per_run": 1, "tasks": [existing]})
@@ -180,8 +214,8 @@ def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):
 
 
 def test_approved_task_is_not_requeued_when_completed_or_held(tmp_path):
-    issues = [issue("already-done", labels=("autonomous-task-approved",)),
-              issue("held-task", labels=("autonomous-task-approved",))]
+    issues = [issue("already-done", labels=("autonomous-task-candidate", "autonomous-task-execution-approved")),
+              issue("held-task", labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))]
     result, qp = run(tmp_path, issues, state(completed=["already-done"], tasks={"held-task": {"held": True}}),
                      registered_tasks=[registered("already-done"), registered("held-task")])
     assert result["approved_count"] == 0
@@ -217,7 +251,7 @@ def test_reports_why_labeled_candidates_were_rejected(tmp_path):
 def test_distinguishes_candidates_excluded_by_durable_state(tmp_path):
     result, qp = run(
         tmp_path,
-        [issue("already-done", labels=("autonomous-task-approved",))],
+        [issue("already-done", labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))],
         state(completed=["already-done"]),
         registered_tasks=[registered("already-done")],
     )
