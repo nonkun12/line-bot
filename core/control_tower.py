@@ -9,12 +9,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
-from typing import Mapping
+import logging
+import uuid
+from typing import Callable, Mapping
 
 from .agent_runtime import RuntimeReport
 from .creator_critic import DuelResult, CreatorCriticLoop
 from .multi_agent import AgentTask
 from .self_improvement import ImprovementProposal, ImprovementSignal, SelfImprovementEngine
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -53,9 +57,61 @@ class ControlTower:
         self,
         feedback_engine: SelfImprovementEngine | None = None,
         creator_critic: CreatorCriticLoop | None = None,
+        event_recorder: Callable[[object], bool] | None = None,
     ) -> None:
         self.feedback_engine = feedback_engine or SelfImprovementEngine()
         self.creator_critic = creator_critic
+        self.event_recorder = event_recorder
+        self.last_event_recording_error: str | None = None
+
+    def _record_runtime_observation(self, report: RuntimeReport) -> None:
+        """Append bounded runtime evidence without granting execution authority."""
+        self.last_event_recording_error = None
+        # Persistence is opt-in: observing a report must not silently write to
+        # the application's production CHAT_DB_PATH.
+        recorder = self.event_recorder
+        if recorder is None:
+            return
+
+        from .agent_events import AgentEvent
+
+        run_id = uuid.uuid4().hex
+        items = [
+            (item.task.task_id, item.task.role.value, item.result.success,
+             len(item.result.changed_resources))
+            for item in report.completed
+        ]
+        if report.failed_task_id:
+            items.append((report.failed_task_id, "unknown", False, 0))
+        elif report.error:
+            # Preserve a runtime-level failure even when no task ID was supplied.
+            items.append((f"control-tower-{run_id}", "control_tower", False, 0))
+        if not items:
+            items.append((f"control-tower-{run_id}", "control_tower", report.success, 0))
+
+        for task_id, role, success, changed_count in items:
+            event = AgentEvent(
+                event_id=f"runtime-{run_id}-{uuid.uuid4().hex}",
+                task_id=task_id,
+                request_id=run_id,
+                agent_id="control_tower",
+                role=role,
+                event_type="runtime_observed",
+                status="COMPLETED" if success else "FAILED",
+                payload={
+                    "runtime_success": report.success,
+                    "integration_ready": report.integration_ready,
+                    "rounds": report.rounds,
+                    "repair_attempts": report.repair_attempts,
+                    "changed_resource_count": changed_count,
+                },
+            )
+            try:
+                recorder(event)
+            except Exception as exc:
+                # Isolate failures so one event cannot suppress later events.
+                self.last_event_recording_error = type(exc).__name__
+                logger.warning("Control Tower event recording failed (%s)", type(exc).__name__)
 
     def evaluate_proposal(
         self,
@@ -108,6 +164,7 @@ class ControlTower:
         Evidence is explicit and deterministic; model text cannot manufacture
         safety or test results. No repository mutation occurs in this method.
         """
+        self._record_runtime_observation(report)
         signals = self.feedback_engine.observe(report)
         proposal = self.feedback_engine.propose()
         if proposal is None or self.creator_critic is None:
