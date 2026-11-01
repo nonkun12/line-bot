@@ -80,6 +80,10 @@ from core.control_tower_status import (
     build_control_tower_status_reply,
     is_control_tower_status_command,
 )
+from core.github_integration_status import (
+    build_github_integration_status_reply,
+    is_github_integration_status_request,
+)
 from core.self_introduction import handle_self_introduction
 from routes.core_api import core_api_bp
 from routes.obsidian_bridge import obsidian_bridge_bp
@@ -335,6 +339,14 @@ def _core_dynamic_enabled():
 def _handle_ai_gateway_request(ai_request):
     message = str(ai_request.message)
     user_id = str(ai_request.user_id)
+
+    # Report deployment configuration deterministically; never ask the chat model
+    # to guess whether GitHub integration is enabled, and never dispatch Actions here.
+    if is_github_integration_status_request(message):
+        return build_github_integration_status_reply(
+            token=GITHUB_TOKEN,
+            allowed_user_ids=os.environ.get("DEV_ALLOWED_USER_IDS", ""),
+        )
 
     review_handled, review_reply = request_recovery_resume_review(user_id, message)
     if review_handled:
