@@ -1255,13 +1255,13 @@ def test_catalog_exhaustion_dedup_task_plan_is_deterministic(monkeypatch, tmp_pa
 
 def test_operational_validation_plan_adds_only_a_new_e2e_test(monkeypatch, tmp_path):
     chosen = "tests/test_line_development.py"
-    anchor = "def test_shared_read_only_guard_blocks_app_style_constraints_too():\\n"
+    anchor = "def test_shared_read_only_guard_blocks_app_style_constraints_too():\n"
     original = (
-        "from line_development import extract_development_instruction\\n\\n"
-        "def test_existing_case():\\n"
-        "    assert True\\n\\n"
+        "from line_development import extract_development_instruction\n\n"
+        "def test_existing_case():\n"
+        "    assert True\n\n"
         + anchor
-        + "    pass\\n"
+        + "    pass\n"
     )
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -1294,7 +1294,7 @@ def test_operational_validation_plan_is_idempotent(monkeypatch, tmp_path):
     target = tmp_path / chosen
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
-        "def test_operational_validation_phrase_is_classified_as_development_command():\\n    pass\\n",
+        "def test_operational_validation_phrase_is_classified_as_development_command():\n    pass\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
