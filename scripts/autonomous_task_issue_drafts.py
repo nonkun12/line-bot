@@ -22,6 +22,7 @@ TARGETS = {
     ("core/management_router.py", "tests/test_management_router.py"),
     ("core/control_tower_orchestrator.py", "tests/test_control_tower_orchestrator.py"),
     ("core/recovery_ai.py", "tests/test_recovery_ai.py"),
+    ("core/agent_versioning.py", "tests/test_agent_versioning.py"),
 }
 
 
