@@ -1205,9 +1205,11 @@ jobs:
                   if isinstance(row, dict):
                       statuses.append(str(row.get("status") or ""))
           queue_empty = Path("/tmp/autonomous-loop-not-run").exists()
-          # The loop exits 78 without writing a result row when its queue is empty.
-          # Normalize that explicit sentinel into the classifier's documented evidence.
-          if queue_empty and not statuses:
+          held_queue = Path("/tmp/autonomous-loop-held-tasks").is_file()
+          # The runner emits no JSONL row when refill finds no executable task.
+          # Normalize both explicit empty-queue and held/review-gated sentinels to
+          # NOT_RUN evidence; all_tasks_held keeps the latter BLOCKED in the classifier.
+          if (queue_empty or held_queue) and not statuses:
               statuses = ["NOT_RUN"]
           try:
               if os.getenv("QUEUE_PROGRESS_INVALID", "").lower() == "true":
