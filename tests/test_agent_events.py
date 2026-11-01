@@ -50,6 +50,8 @@ def test_identical_retry_is_idempotent_but_conflict_is_rejected(tmp_path, monkey
         {"result_sha": "not-a-sha"},
         {"payload": {"nested": {"secret": "no"}}},
         {"payload": {"x": "a" * 5000}},
+        {"payload": {"access_token": "should-not-be-stored"}},
+        {"payload": {"x": float("inf")}},
     ],
 )
 def test_invalid_event_fails_closed(overrides) -> None:
