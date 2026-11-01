@@ -95,6 +95,58 @@ def _explicit_comment_plan(instruction: str, chosen: str) -> dict | None:
     return {"no_change": False, "source": "deterministic_self_test", "changes": [{"file": chosen, "old": anchor, "new": anchor + marker + "\n"}]}
 
 
+
+def _deterministic_operational_validation_plan(
+    instruction: str,
+    chosen: str,
+) -> tuple[dict | None, str | None]:
+    """Create one additive regression test for explicit operational E2E requests.
+
+    The E2E harness is the verification target, not a prompt for an LLM to
+    rewrite existing tests. Keep the plan deterministic and preserve every
+    existing test definition.
+    """
+    if chosen != "tests/test_line_development.py":
+        return None, None
+    if not any(
+        keyword in instruction
+        for keyword in ("実運用テスト", "実運用検証", "基盤検証")
+    ):
+        return None, None
+
+    target = worker.ROOT / chosen
+    source = target.read_text(encoding="utf-8")
+    test_name = "test_operational_validation_phrase_is_classified_as_development_command"
+    if f"def {test_name}(" in source:
+        return {"no_change": True, "source": "deterministic_operational_validation"}, None
+
+    anchor = "def test_shared_read_only_guard_blocks_app_style_constraints_too():\n"
+    if source.count(anchor) != 1:
+        return None, "operational_validation_anchor_not_unique"
+
+    addition = (
+        f"def {test_name}():\n"
+        '    message = "LINE AI Secretaryの自動開発基盤を実運用テストしてください。"\n'
+        "    assert extract_development_instruction(message) == message\n"
+        "\n\n"
+    )
+    replacement = addition + anchor
+    if len(anchor) > 1200 or len(replacement) > 1800:
+        return None, "operational_validation_plan_too_large"
+
+    candidate = source.replace(anchor, replacement, 1)
+    try:
+        compile(candidate, chosen, "exec")
+    except (SyntaxError, IndentationError) as exc:
+        return None, f"operational_validation_plan_invalid:{type(exc).__name__}"
+
+    return {
+        "no_change": False,
+        "source": "deterministic_operational_validation",
+        "changes": [{"file": chosen, "old": anchor, "new": replacement}],
+    }, None
+
+
 def _is_deterministic_comment_request(instruction: str, chosen: str | None) -> bool:
     return chosen == "line_development.py" and re.search(r"コメント.*(?:1行|一行)|(?:1行|一行).*コメント", instruction, re.IGNORECASE | re.DOTALL) is not None
 
@@ -2042,6 +2094,41 @@ class DevelopmentExecutor:
                     self.state.plan = deterministic_plan
                     self.state.touched = touched
                     return AgentResult(task.task_id, True, "guarded change applied", frozenset(touched))
+
+                operational_plan, operational_error = _deterministic_operational_validation_plan(
+                    self.state.instruction,
+                    self.state.chosen,
+                )
+                if operational_error:
+                    return AgentResult(
+                        task.task_id,
+                        False,
+                        f"operational validation plan rejected: {operational_error}",
+                    )
+                if operational_plan is not None:
+                    ok, detail = worker.validate_plan(operational_plan, self.state.chosen)
+                    if not ok:
+                        return AgentResult(
+                            task.task_id,
+                            False,
+                            f"operational validation plan rejected: {detail}",
+                        )
+                    if detail == "no_change":
+                        self.state.plan = operational_plan
+                        self.state.touched = []
+                        return AgentResult(task.task_id, True, "operational E2E regression already present")
+                    applied, detail, touched = worker.apply_plan(operational_plan)
+                    if not applied:
+                        worker.restore(touched)
+                        return AgentResult(task.task_id, False, f"operational validation apply failed: {detail}")
+                    self.state.plan = operational_plan
+                    self.state.touched = touched
+                    return AgentResult(
+                        task.task_id,
+                        True,
+                        "guarded additive operational E2E regression test applied",
+                        frozenset(touched),
+                    )
 
                 explicit_comment_plan = _explicit_comment_plan(self.state.instruction, self.state.chosen)
                 comment_plan = None if explicit_comment_plan is not None else worker.build_comment_test_plan(self.state.instruction, self.state.chosen)
