@@ -68,3 +68,21 @@ def test_second_reviewed_batch_words_have_local_core_image_explanations():
         assert expected_meaning in response, word
         assert "説明を保留" not in response, word
         assert "外部APIへの問い合わせは行いません" in response
+
+
+def test_every_reviewed_entry_renders_complete_offline_explanation():
+    for word, entry in _ENTRIES.items():
+        response = explain_core_image(word)
+        assert entry.word in response, word
+        assert entry.pronunciation in response, word
+        assert entry.core_image in response, word
+        assert entry.example in response, word
+        assert "外部APIへの問い合わせは行いません" in response, word
+        assert "説明を保留" not in response, word
+
+
+def test_unknown_word_fails_closed_without_guessing():
+    response = explain_core_image("unlistedword")
+    assert "確かな解説がありません" in response
+    assert "説明を保留" in response
+    assert "外部APIへの問い合わせは行いません" not in response
