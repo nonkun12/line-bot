@@ -77,6 +77,7 @@ def test_registers_explicitly_approved_analyzer_candidate_for_pr_review(tmp_path
     assert changed is True
     assert result["status"] == "REGISTERED_FOR_REVIEW"
     assert result["catalog_entry"]["allowed_paths"] == [TEST]
+    assert result["catalog_entry"]["execution_approved"] is False
 
 
 def test_task_id_must_be_derived_from_source_evidence(tmp_path):
@@ -191,6 +192,7 @@ def test_existing_identical_catalog_entry_is_idempotent(tmp_path):
     start = body.index("<!-- autonomous-task-spec -->") + len("<!-- autonomous-task-spec -->")
     end = body.index("<!-- autonomous-task-spec -->", start)
     spec = json.loads(body[start:end].strip())
+    spec["execution_approved"] = False
     result, changed = register_approved_candidate(candidate, catalog([spec]), state(), root)
     assert changed is False
     assert result["status"] == "ALREADY_REGISTERED"
