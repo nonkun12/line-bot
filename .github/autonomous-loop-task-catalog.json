@@ -441,7 +441,8 @@
       "instruction": "人手レビュー後に限り、tests/test_management_safety.py に CapabilityGrant.is_valid_at (core/management_safety.py:86) の境界条件を検証する新しい回帰テストを1件追加してください。まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
       "allowed_paths": [
         "tests/test_management_safety.py"
-      ]
+      ],
+      "execution_approved": false
     }
   ]
 }
