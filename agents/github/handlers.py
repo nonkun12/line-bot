@@ -334,7 +334,7 @@ def format_search_results(result: Any) -> str:
         return error_message
 
     if not items:
-        return "GitHub検索結果は0件でした。検索語を短くするか、対象リポジトリを指定してください。"
+        return "GitHub検索結果が見つかりませんでした。"
 
     lines = ["【GitHub Search Results】"]
 
