@@ -18,7 +18,6 @@ TASK_ID = re.compile(r"^review-coverage-gap-[a-f0-9]{10}$")
 FINGERPRINT = re.compile(r"^[a-f0-9]{64}$")
 FUNCTION = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
 SPEC_MARKER = "<!-- autonomous-task-spec -->"
-from scripts.autonomous_task_target_allowlist import TARGETS
 
 
 def _load(path: Path) -> Any:
