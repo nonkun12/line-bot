@@ -23,7 +23,7 @@ def repository(tmp_path):
     return root
 
 
-def issue(root, labels=("autonomous-task-candidate", "autonomous-task-approved"), path=TEST):
+def issue(root, labels=("autonomous-task-candidate", "autonomous-task-catalog-approved"), path=TEST):
     source_text = (root / SOURCE).read_text(encoding="utf-8")
     test_text = (root / TEST).read_text(encoding="utf-8")
     fingerprint = hashlib.sha256(
@@ -98,6 +98,23 @@ def test_candidate_label_without_explicit_approval_cannot_register(tmp_path):
         register_approved_candidate(
             issue(root, labels=("autonomous-task-candidate",)), catalog(), state(), root
         )
+
+
+def test_execution_approval_alone_cannot_register_candidate(tmp_path):
+    root = repository(tmp_path)
+    with pytest.raises(ValueError, match="catalog-approval"):
+        register_approved_candidate(
+            issue(root, labels=("autonomous-task-candidate", "autonomous-task-execution-approved")),
+            catalog(), state(), root
+        )
+
+
+def test_legacy_approval_label_remains_catalog_registration_only(tmp_path):
+    root = repository(tmp_path)
+    candidate = issue(root, labels=("autonomous-task-candidate", "autonomous-task-approved"))
+    result, changed = register_approved_candidate(candidate, catalog(), state(), root)
+    assert changed is True
+    assert result["status"] == "REGISTERED_FOR_REVIEW"
 
 
 def test_non_allowlisted_path_cannot_register(tmp_path):
@@ -219,14 +236,17 @@ def test_catalog_candidate_workflow_only_creates_draft_registration_pr():
         / "register-approved-autonomous-task.yml"
     ).read_text(encoding="utf-8")
     assert "types: [labeled]" in workflow
-    assert "github.event.label.name == 'autonomous-task-approved' && github.event.sender.login == github.repository_owner" in workflow
+    assert "github.event.label.name == 'autonomous-task-catalog-approved'" in workflow
+    assert "github.event.label.name == 'autonomous-task-approved'" in workflow
+    assert "github.event.sender.login == github.repository_owner" in workflow
     registrar = (
         Path(__file__).resolve().parents[1]
         / "scripts"
         / "register_approved_task_candidate.py"
     ).read_text(encoding="utf-8")
     assert "autonomous-task-candidate" in registrar
-    assert "autonomous-task-approved" in registrar
+    assert "autonomous-task-catalog-approved" in registrar
+    assert "autonomous-task-approved" in registrar  # legacy registration-only compatibility
     assert "python -m scripts.register_approved_task_candidate" in workflow
     assert "python scripts/register_approved_task_candidate.py" not in workflow
     assert "gh pr create --draft" in workflow
