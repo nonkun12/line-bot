@@ -123,7 +123,7 @@ def is_pull_request_intent(raw_message: str) -> bool:
     """Detect whether a user message is asking about Pull Requests specifically."""
 
     text = (raw_message or "").strip()
-    if not text or _is_status_only_request(text):
+    if not text:
         return False
 
     if _STATUS_ONLY_REQUEST.search(text):
@@ -140,7 +140,7 @@ def is_issue_intent(raw_message: str) -> bool:
     """
 
     text = (raw_message or "").strip()
-    if not text or _is_status_only_request(text):
+    if not text:
         return False
 
     if _STATUS_ONLY_REQUEST.search(text):
