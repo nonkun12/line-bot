@@ -550,7 +550,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          python scripts/distributed_loop_debug_agent.py \
+          PYTHONPATH=. python scripts/distributed_loop_debug_agent.py \
             --results /tmp/minimal-autonomous-loop.jsonl \
             --output artifacts/debug-agent/diagnosis.json
           cat artifacts/debug-agent/diagnosis.json >> "$GITHUB_STEP_SUMMARY"
