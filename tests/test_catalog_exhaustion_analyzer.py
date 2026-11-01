@@ -143,3 +143,40 @@ def test_history_is_returned_unchanged():
     )
     report = analyze(root, catalog, queue, state, runtime)
     assert all(item["source_function"] != "AgentVersionRegistry.history" for item in report["candidates"])
+
+
+def test_analyzer_discovers_unmentioned_symbols_across_the_shared_allowlist(tmp_path: Path):
+    root = tmp_path / "repo"
+    (root / "core").mkdir(parents=True)
+    (root / "tests").mkdir()
+    (root / "core" / "control_tower.py").write_text(
+        "class ControlTowerDecision:\n"
+        "    def approved_task_matches(self, task):\n"
+        "        return task is not None\n"
+        "\n"
+        "def task_hash(task_id):\n"
+        "    return str(task_id)\n",
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_control_tower.py").write_text(
+        "def test_control_tower_exists():\n"
+        "    assert True\n",
+        encoding="utf-8",
+    )
+    catalog = _write(tmp_path / "catalog.json", {"tasks": []})
+    queue = _write(tmp_path / "queue.json", {"tasks": []})
+    state = _write(
+        tmp_path / "state.json",
+        {"completed": [], "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None}},
+    )
+    runtime = root / "core" / "line_development_runtime.py"
+    runtime.write_text("_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {}\n", encoding="utf-8")
+
+    report = analyze(root, catalog, queue, state, runtime)
+    assert report["candidate_count"] == 2
+    assert {item["source_function"] for item in report["candidates"]} == {
+        "ControlTowerDecision.approved_task_matches",
+        "task_hash",
+    }
+    assert all(item["target_test"] == "tests/test_control_tower.py" for item in report["candidates"])
+    assert report["safety"]["candidates_executable"] is False
