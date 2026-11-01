@@ -4,6 +4,7 @@ The test extracts the workflow's shell body and runs the actual adapters with
 isolated temporary paths. It proves analyzer findings reach the durable
 review-only artifact without gaining execution authority.
 """
+import base64
 import json
 import os
 from pathlib import Path
@@ -107,7 +108,7 @@ def test_workflow_keeps_catalog_adapter_before_review_pool_bridge():
 
 def test_workflow_loads_durable_state_for_no_task_run_when_readback_is_missing(tmp_path):
     marker = tmp_path / "autonomous-loop-not-run"
-    marker.write_text("queue_empty\\n", encoding="utf-8")
+    marker.write_text("queue_empty\n", encoding="utf-8")
     state = {
         "self_improvement_history": [
             {"kind": "failure", "task_id": "safe-task-1", "detail": "sanitized failure"}
@@ -121,9 +122,9 @@ def test_workflow_loads_durable_state_for_no_task_run_when_readback_is_missing(t
     mock_bin.mkdir()
     gh = mock_bin / "gh"
     gh.write_text(
-        "#!/bin/sh\\n"
-        "printf '%s\\n' \"$*\" >> \"$MOCK_GH_LOG\"\\n"
-        "cat \"$MOCK_GH_CONTENT\"\\n",
+        "#!/bin/sh\n"
+        "printf '%s\\n' \"$*\" >> \"$MOCK_GH_LOG\"\n"
+        "cat \"$MOCK_GH_CONTENT\"\n",
         encoding="utf-8",
     )
     gh.chmod(0o755)
@@ -175,7 +176,7 @@ def test_workflow_does_not_silently_fallback_when_task_ran_but_readback_is_missi
     mock_bin = tmp_path / "bin"
     mock_bin.mkdir()
     gh = mock_bin / "gh"
-    gh.write_text("#!/bin/sh\\nexit 99\\n", encoding="utf-8")
+    gh.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
     gh.chmod(0o755)
     script = _candidate_pool_step()
     replacements = {
