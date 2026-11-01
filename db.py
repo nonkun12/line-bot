@@ -99,6 +99,31 @@ def init_db():
         ON jobs(parent_job_id)
         """)
         conn.execute("""
+        CREATE TABLE IF NOT EXISTS agent_task_events(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT UNIQUE NOT NULL,
+            task_id TEXT NOT NULL,
+            parent_task_id TEXT,
+            request_id TEXT,
+            agent_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            next_agent TEXT,
+            result_sha TEXT,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_task_events_task_id
+        ON agent_task_events(task_id, id)
+        """)
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_task_events_request_id
+        ON agent_task_events(request_id, id)
+        """)
+        conn.execute("""
         CREATE TABLE IF NOT EXISTS job_checkpoints(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             job_id INTEGER NOT NULL,
