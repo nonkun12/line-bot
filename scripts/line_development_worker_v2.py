@@ -562,13 +562,17 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
         prepared.append((path, target, original, old, new))
 
     touched: list[str] = []
+    current_index = -1
     try:
-        for path, target, original, old, new in prepared:
+        for current_index, (path, target, original, old, new) in enumerate(prepared):
             target.write_text(original.replace(old, new, 1), encoding="utf-8")
             touched.append(path)
     except OSError as exc:
         rollback_errors: list[str] = []
-        for path, target, original, _, _ in reversed(prepared[:len(touched)]):
+        # Include the failing target: write_text may truncate/write partially
+        # before raising, even though it was not appended to touched.
+        rollback_targets = prepared[: current_index + 1]
+        for path, target, original, _, _ in reversed(rollback_targets):
             try:
                 target.write_text(original, encoding="utf-8")
             except OSError:
