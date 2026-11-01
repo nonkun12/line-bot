@@ -57,6 +57,27 @@ def test_test_instruction_requires_no_file_target():
     )
 
 
+def test_choose_file_routes_operational_validation_to_e2e_harness(monkeypatch):
+    def forbidden_ask(*args, **kwargs):
+        raise AssertionError("operational validation must not use generic model file selection")
+
+    monkeypatch.setattr(worker, "ask", forbidden_ask)
+    files = [
+        "core/line_development_runtime.py",
+        "tests/test_line_development.py",
+        "tests/test_app_development_dispatch.py",
+    ]
+
+    for instruction in (
+        "LINE AI Secretaryの自動開発基盤を実運用テストしてください",
+        "自動開発基盤の実運用検証をしてください",
+        "分散AI基盤検証を実施してください",
+    ):
+        assert worker.choose_file(FakeClient([]), instruction, files) == (
+            "tests/test_line_development.py"
+        )
+
+
 def test_choose_file_rejects_unknown_path():
     client = FakeClient([json.dumps({"file": "missing.py"})])
     assert worker.choose_file(client, "test", ["app.py"]) is None

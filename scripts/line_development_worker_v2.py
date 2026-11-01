@@ -183,6 +183,11 @@ _E2E_TEST_KEYWORDS = (
     "接続テスト",
     "開発テスト",
     "自動開発テスト",
+    # Operational validation requests must use the dedicated E2E harness,
+    # not the generic implementation-file selector.
+    "実運用テスト",
+    "実運用検証",
+    "基盤検証",
 )
 
 _E2E_TEST_TARGETS = (
