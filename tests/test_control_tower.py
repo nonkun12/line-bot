@@ -3,7 +3,7 @@ from __future__ import annotations
 from core.agent_runtime import RuntimeReport, RuntimeTaskResult
 from core.control_tower import ControlTower, _report_evidence
 from core.self_improvement import SelfImprovementEngine
-from core.multi_agent import AgentResult
+from core.multi_agent import AgentResult, AgentRole, AgentTask
 from core.creator_critic_runtime import build_creator_critic_loop
 
 
@@ -194,3 +194,38 @@ def test_control_tower_records_error_only_runtime_failure() -> None:
     assert len(recorded) == 1
     assert recorded[0].role == "control_tower"
     assert recorded[0].status == "FAILED"
+
+
+def test_control_tower_approved_task_matches_only_the_exact_approved_task() -> None:
+    def fake_model(_prompt: str) -> str:
+        return "Minimal test-backed improvement proposal."
+
+    engine = SelfImprovementEngine()
+    engine.observe(
+        RuntimeReport((), failed_task_id="tester-1", error="pytest failed", rounds=1)
+    )
+    tower = ControlTower(
+        feedback_engine=engine,
+        creator_critic=build_creator_critic_loop(model_call=fake_model, max_iterations=1),
+    )
+    decision = tower.evaluate_proposal(
+        RuntimeReport((), rounds=1, integration_ready=True),
+        engine.propose(),
+        objective="repair the test failure",
+        evidence={"accuracy": 1.0, "stability": 1.0, "efficiency": 1.0, "safety": 1.0},
+    )
+
+    approved_task = decision.approved_task
+    assert approved_task is not None
+    assert decision.approved_task_matches(approved_task) is True
+    assert decision.approved_task_matches(None) is False
+
+    modified_task = AgentTask(
+        task_id=approved_task.task_id,
+        role=approved_task.role,
+        instruction=approved_task.instruction + " changed",
+        resources=approved_task.resources,
+        depends_on=approved_task.depends_on,
+        priority=approved_task.priority,
+    )
+    assert decision.approved_task_matches(modified_task) is False
