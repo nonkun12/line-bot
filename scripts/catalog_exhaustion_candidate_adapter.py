@@ -18,7 +18,6 @@ MAX_ANALYZER_CANDIDATES = 4
 ID_PATTERN = re.compile(r"^review-coverage-gap-[a-f0-9]{10}$")
 FINGERPRINT_PATTERN = re.compile(r"^[a-f0-9]{64}$")
 FUNCTION_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
-from scripts.autonomous_task_target_allowlist import TARGETS
 
 
 def merge_candidates(history: object, report: object) -> list[dict[str, Any]]:
