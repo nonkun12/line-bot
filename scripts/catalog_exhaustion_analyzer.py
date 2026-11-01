@@ -17,7 +17,6 @@ from scripts.autonomous_task_target_allowlist import TARGETS
 MAX_CANDIDATES = 4
 TEST_PATH = re.compile(r"^(tests|uhip/tests)/test_[A-Za-z0-9_]+\.py$")
 TASK_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,99}$")
-from scripts.autonomous_task_target_allowlist import TARGETS
 
 
 def _read_json(path: Path):
