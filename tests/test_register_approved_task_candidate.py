@@ -7,7 +7,7 @@ from scripts.register_approved_task_candidate import register_approved_candidate
 
 SOURCE = "core/agent_runtime.py"
 TEST = "tests/test_agent_runtime.py"
-TASK_ID = "review-development-repair-planner-contract-20261030"
+TASK_ID = "review-coverage-gap-dc8331d971"
 TICK = chr(96)
 
 
@@ -64,11 +64,13 @@ def test_registers_explicitly_approved_analyzer_candidate_for_pr_review():
     assert result["catalog_entry"]["allowed_paths"] == [TEST]
 
 
-def test_accepts_deterministic_coverage_gap_candidate_id():
-    gap_issue = issue(task_id="review-coverage-gap-dc8331d971")
-    result, changed = register_approved_candidate(gap_issue, catalog(), state())
-    assert changed is True
-    assert result["task_id"] == "review-coverage-gap-dc8331d971"
+def test_task_id_must_be_derived_from_source_evidence():
+    with pytest.raises(ValueError, match="ID does not match"):
+        register_approved_candidate(
+            issue(task_id="review-coverage-gap-0000000000"),
+            catalog(),
+            state(),
+        )
 
 
 def test_candidate_label_without_explicit_approval_cannot_register():
@@ -117,12 +119,12 @@ def test_completed_or_held_candidates_cannot_register():
 
 
 def test_existing_identical_catalog_entry_is_idempotent():
-    spec = {
-        "id": TASK_ID,
-        "instruction": "Add one focused regression test after human review.",
-        "allowed_paths": [TEST],
-    }
-    result, changed = register_approved_candidate(issue(), catalog([spec]), state())
+    candidate = issue()
+    body = candidate["body"]
+    start = body.index("<!-- autonomous-task-spec -->") + len("<!-- autonomous-task-spec -->")
+    end = body.index("<!-- autonomous-task-spec -->", start)
+    spec = json.loads(body[start:end].strip())
+    result, changed = register_approved_candidate(candidate, catalog([spec]), state())
     assert changed is False
     assert result["status"] == "ALREADY_REGISTERED"
 
