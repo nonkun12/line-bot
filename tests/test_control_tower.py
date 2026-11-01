@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from core.agent_runtime import RuntimeReport
+from core.agent_runtime import RuntimeReport, RuntimeTaskResult
 from core.control_tower import ControlTower, _report_evidence
 from core.self_improvement import SelfImprovementEngine
+from core.multi_agent import AgentResult
 from core.creator_critic_runtime import build_creator_critic_loop
 
 
@@ -167,10 +168,15 @@ def test_control_tower_uses_unique_run_ids_and_continues_after_record_failure() 
 
     # Reuse completed task records to exercise multiple events in one report.
     from core.multi_agent import AgentRole, AgentTask
-    from core.agent_runtime import TaskResult
     tasks = (
-        TaskResult(AgentTask(task_id="implementer", role=AgentRole.IMPLEMENTER, instruction="x"), True, ()),
-        TaskResult(AgentTask(task_id="reviewer", role=AgentRole.REVIEWER, instruction="y"), True, ()),
+        RuntimeTaskResult(
+            AgentTask(task_id="implementer", role=AgentRole.IMPLEMENTER, instruction="x"),
+            AgentResult(task_id="implementer", success=True),
+        ),
+        RuntimeTaskResult(
+            AgentTask(task_id="reviewer", role=AgentRole.REVIEWER, instruction="y"),
+            AgentResult(task_id="reviewer", success=True),
+        ),
     )
     report = RuntimeReport(tasks, rounds=1, integration_ready=True)
     tower = ControlTower(event_recorder=flaky_recorder)
