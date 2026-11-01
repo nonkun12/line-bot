@@ -641,7 +641,8 @@ _ENTRIES: dict[str, WordEntry] = {
         core_image="これから起こることを見込んで待つ → 予期する・期待する",
         parts="語源の細かな分解はここでは断定しない。",
         related=("expectation（期待）", "anticipate（予期する）", "unexpected（予想外の）"),
-        example="I expect the package tomorrow.（明日その荷物が届くと思っています。）",
+        example="I expect the package to arrive tomorrow.（明日その荷物が届くと思っています。）",
+        note="expect は「起こると見込む」。人に何かを期待する場合は expect 人 to do の形も使います。",
     ),
     "explain": WordEntry(
         word="explain", pronunciation="エクスプレイン",
