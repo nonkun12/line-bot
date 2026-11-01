@@ -6,6 +6,7 @@ clears Recovery AI state, or creates a merge/deployment action.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -71,20 +72,44 @@ def _validated_spec(issue: object) -> tuple[dict[str, Any], int]:
         raise ValueError("candidate test path is not in the analyzer allowlist")
 
     source_path, _ = matching[0]
-    evidence_pattern = re.compile(
-        r"- Source evidence: " + re.escape(TICK) + re.escape(source_path) + r":[1-9][0-9]*" + re.escape(TICK)
+    evidence_match = re.search(
+        r"- Source evidence: " + re.escape(TICK) + re.escape(source_path) + r":([1-9][0-9]*)" + re.escape(TICK),
+        body,
     )
-    if not evidence_pattern.search(body):
+    if not evidence_match:
         raise ValueError("candidate source evidence does not match its test target")
+    source_function_match = re.search(
+        r"- Source function: " + re.escape(TICK) + r"([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)" + re.escape(TICK),
+        body,
+    )
+    if not source_function_match:
+        raise ValueError("candidate source function evidence is missing")
+    source_function = source_function_match.group(1)
+    evidence = f"{source_path}:{evidence_match.group(1)}"
+    expected_suffix = hashlib.sha256(f"{source_path}:{source_function}".encode("utf-8")).hexdigest()[:10]
+    if task_id != f"review-coverage-gap-{expected_suffix}":
+        raise ValueError("candidate task ID does not match its source evidence")
     fingerprint_pattern = r"- Analyzer fingerprint: " + re.escape(TICK) + r"[a-f0-9]{64}" + re.escape(TICK)
     if not re.search(fingerprint_pattern, body):
         raise ValueError("candidate analyzer fingerprint is missing")
+    if "- Allowed change: 指定されたテストファイル1つのみ" not in body:
+        raise ValueError("candidate issue is missing its exact-path safety marker")
     if "Queue admission: not authorized" not in body:
         raise ValueError("candidate issue is missing its review-only safety marker")
 
+    expected_instruction = (
+        f"人手レビュー後に限り、{paths[0]} に {source_function} ({evidence}) の"
+        "境界条件を検証する新しい回帰テストを1件追加してください。"
+        "まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。"
+        "変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。"
+        "外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。"
+    )
+    if instruction.strip() != expected_instruction:
+        raise ValueError("candidate instruction differs from the validated test-only template")
+
     return {
         "id": task_id,
-        "instruction": instruction.strip(),
+        "instruction": expected_instruction,
         "allowed_paths": paths,
     }, number
 
