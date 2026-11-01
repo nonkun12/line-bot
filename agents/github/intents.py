@@ -33,9 +33,19 @@ _GITHUB_PATTERN = re.compile(
 # operations that it explicitly forbids. Keep this deliberately narrow: only
 # remove a common enumerated, negated safety clause, not arbitrary user text.
 _NEGATED_OPERATION_LIST = re.compile(
-    r"(?:リポジトリ変更|コード実行|デプロイ|GitHub操作)"
-    r"(?:[、, ]+(?:リポジトリ変更|コード実行|デプロイ|GitHub操作))*"
-    r"などの操作は(?:しないでください|行わないでください|実行しないでください)",
+    r"(?:リポジトリ変更|コード変更|コード実行|PR作成|プルリク作成|"
+    r"マージ|デプロイ|GitHub操作)"
+    r"(?:[、,・ ]+(?:リポジトリ変更|コード変更|コード実行|PR作成|プルリク作成|"
+    r"マージ|デプロイ|GitHub操作))*"
+    r"(?:などの操作)?は(?:しないでください|行わず|行わないでください|"
+    r"実行しないでください|禁止)",
+    re.IGNORECASE,
+)
+# A request to report receipt/status only is not a request to browse PRs or
+# execute GitHub operations merely because it mentions GitHub Actions.
+_STATUS_ONLY_REQUEST = re.compile(
+    r"(?:受付結果|受付状況).{0,40}(?:だけ|のみ).{0,20}(?:報告|確認)|"
+    r"(?:連携状況|起動状況).{0,30}(?:だけ|のみ).{0,20}(?:報告|確認)",
     re.IGNORECASE,
 )
 
@@ -57,6 +67,8 @@ def is_github_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
 
     text = (raw_message or "").strip()
     if not text:
+        return False
+    if _STATUS_ONLY_REQUEST.search(text):
         return False
 
     # A negated list of operations is a constraint, not a request to execute
