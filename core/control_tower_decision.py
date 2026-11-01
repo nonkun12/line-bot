@@ -102,6 +102,22 @@ class ControlTowerDecisionRecord:
             and self.task_template_id in registered_task_ids
         )
 
+    @classmethod
+    def fallback(cls, reason_code: str = "no_eligible_task") -> "ControlTowerDecisionRecord":
+        """Return a safe fallback decision when no eligible task is found.
+
+        The fallback uses the lowest priority and confidence, and instructs the
+        downstream system to not run any task. It is intended for use by
+        components that need a deterministic response when the control tower
+        cannot select a registered task.
+        """
+        return cls(
+            reason_code=reason_code,
+            confidence=0.0,
+            priority=0,
+            next_action="NOT_RUN",
+            gate_status="NOT_RUN",
+        )
 
 __all__ = [
     "ControlTowerDecisionRecord",
