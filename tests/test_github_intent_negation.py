@@ -1,4 +1,4 @@
-from agents.github.intents import is_github_intent
+from agents.github.intents import (\n    is_github_intent,\n    is_issue_or_pr_intent,\n    is_pull_request_intent,\n    is_issue_intent,\n)
 
 
 def test_negated_repository_and_deployment_operations_do_not_route_to_github():
@@ -63,4 +63,23 @@ def test_status_only_request_does_not_route_to_pr_listing_even_when_pr_creation_
         "PR作成・マージ・デプロイは行わず、"
         "受付結果とGitHub Actionsへの連携状況だけ報告してください。"
     )
+    assert is_pull_request_intent(message) is False
+
+
+
+def test_exact_line_connectivity_smoke_message_does_not_route_to_github_or_prs():
+    message = (
+        "疎通テストです。LINEからのメッセージ受信と返信が正常に動作するか確認してください。"
+        "GitHubの検索・Actions起動・コード変更・PR作成・マージ・デプロイは一切行わないでください。"
+        "「LINE受信成功」「返信成功」「GitHub連携の有無」だけ報告してください。"
+    )
+    assert is_github_intent(message) is False
+    assert is_issue_or_pr_intent(message) is False
+    assert is_pull_request_intent(message) is False
+    assert is_issue_intent(message) is False
+
+
+def test_explicitly_negated_pr_creation_is_not_a_pr_query():
+    message = "GitHubの検索・PR作成・マージは一切行わないでください。"
+    assert is_issue_or_pr_intent(message) is False
     assert is_pull_request_intent(message) is False
