@@ -39,8 +39,12 @@ def _validated_spec(issue: object, repo_root: Path) -> tuple[dict[str, Any], int
     if not isinstance(labels, list) or any(not isinstance(label, dict) or not isinstance(label.get("name"), str) for label in labels):
         raise ValueError("candidate issue labels are invalid")
     label_names = {label["name"] for label in labels}
-    if not {"autonomous-task-candidate", "autonomous-task-approved"} <= label_names:
-        raise ValueError("both candidate and explicit human-approval labels are required")
+    catalog_approved = (
+        "autonomous-task-catalog-approved" in label_names
+        or "autonomous-task-approved" in label_names  # legacy registration-only label
+    )
+    if "autonomous-task-candidate" not in label_names or not catalog_approved:
+        raise ValueError("candidate and explicit catalog-approval labels are required")
 
     body = issue.get("body")
     if not isinstance(body, str) or body.count(SPEC_MARKER) != 2:
