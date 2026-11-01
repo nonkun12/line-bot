@@ -49,3 +49,18 @@ def test_held_task_resume_uses_reviewed_catalog_not_only_tracked_queue():
     step = workflow.split("- name: Resume one explicitly approved held task", 1)[1].split("- name: Restore durable Recovery RAG history", 1)[0]
     assert "--queue .github/autonomous-loop-task-catalog.json" in step
     assert "--cause-fixed" in step
+
+
+def test_resume_comment_parses_requested_task_id_without_hardcoded_task():
+    workflow = (ROOT / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert "startsWith(github.event.comment.body, '/distributed-loop resume_task_id=')" in workflow
+    assert "endsWith(github.event.comment.body, ' confirm_cause_fixed=true')" in workflow
+    assert r"resume_task_id=([A-Za-z0-9._-]{1,100})" in workflow
+    assert 'RESUME_TASK_ID="${BASH_REMATCH[1]}"' in workflow
+    assert "ai-speaker-empty-transcript-no-brain-call" not in workflow
+
+
+def test_resumed_state_persistence_is_limited_to_confirmed_held_queue():
+    workflow = (ROOT / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert 'echo "held_queue=true" >> "$GITHUB_OUTPUT"' in workflow
+    assert "steps.run_task.outputs.held_queue == 'true'" in workflow
