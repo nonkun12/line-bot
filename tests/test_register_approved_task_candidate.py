@@ -140,4 +140,6 @@ def test_catalog_candidate_workflow_only_creates_draft_registration_pr():
     assert "pull-requests: write" in workflow
     assert "contents: write" in workflow
     assert "gh pr merge" not in workflow
-    assert "git push" in workflow
+    assert 'branch="automation/register-approved-task-${ISSUE_NUMBER}"' in workflow
+    assert '--head "${branch}"' in workflow
+    assert "git push origin \"${branch}\"" in workflow
