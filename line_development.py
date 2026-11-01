@@ -50,6 +50,10 @@ _RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 def extract_development_instruction(message: str) -> Optional[str]:
     """Return the explicit normal development instruction, or None."""
     text = str(message or "").strip()
+    # Safety constraints take precedence over both prefixed and natural-language
+    # commands. A "開発:" prefix must never override an explicit read-only request.
+    if _NON_EXECUTION_REQUEST.search(text):
+        return None
     match = _DEV_PREFIX.match(text)
     if match:
         instruction = match.group(1).strip()
