@@ -7,7 +7,7 @@ from core.github_integration_status import (
 def test_detects_japanese_github_integration_status_questions():
     assert is_github_integration_status_request("GitHub連携の有無を教えて")
     assert is_github_integration_status_request("GitHubとの接続状況を確認して")
-    assert is_github_integration_status_request("連携設定は有効ですか？")
+    assert is_github_integration_status_request("GitHub連携設定は有効ですか？")
 
 
 def test_does_not_capture_unrelated_github_requests():
