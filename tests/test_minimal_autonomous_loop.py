@@ -1154,3 +1154,23 @@ def test_registered_catalog_never_trusts_queue_entries(monkeypatch):
     assert [task["id"] for task in registered] == [reviewed_id]
     assert queue_only_id not in {task["id"] for task in registered}
     assert len(calls) == 1
+
+
+def test_distributed_loop_workflow_normalizes_empty_held_catalog_to_not_run():
+    from pathlib import Path
+
+    workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert 'held_queue = Path("/tmp/autonomous-loop-held-tasks").is_file()' in workflow
+    assert '(queue_empty or held_queue) and not statuses' in workflow
+    assert 'statuses = ["NOT_RUN"]' in workflow
+
+
+def test_postrun_verifier_distinguishes_catalog_block_from_invalid_evidence():
+    from pathlib import Path
+
+    workflow = Path(".github/workflows/distributed-loop-postrun.yml").read_text(encoding="utf-8")
+    assert '"catalog_exhausted_held:"' in workflow
+    assert '"catalog_exhausted_review_pending:"' in workflow
+    assert '"catalog_exhausted_mixed:"' in workflow
+    assert 'CATALOG_BLOCKED: ${{ steps.verify.outputs.catalog_blocked }}' in workflow
+    assert 'BLOCKED（保留・レビュー待ち。人の確認が必要）' in workflow
