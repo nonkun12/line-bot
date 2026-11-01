@@ -57,18 +57,20 @@ def test_validate_plan_rejects_oversized_change():
     )
 
 
-def test_fallback_safe_target_prefers_management_router_test():
+def test_fallback_safe_target_fails_closed_instead_of_guessing():
     files = [
-        "tests/test_line_development_runtime.py",
         "tests/test_management_router.py",
         "core/management_router.py",
     ]
 
-    assert runtime._fallback_safe_target(files) == "tests/test_management_router.py"
+    assert runtime._fallback_safe_target(files) is None
 
 
-def test_fallback_safe_target_returns_none_without_preferred_targets():
-    assert runtime._fallback_safe_target(["core/example.py"]) is None
+def test_fallback_safe_target_returns_none_when_only_tests_are_available():
+    assert runtime._fallback_safe_target([
+        "tests/test_management_router.py",
+        "uhip/tests/test_schema_contracts.py",
+    ]) is None
 
 
 def test_deterministic_manager_uses_declared_target_without_llm(monkeypatch):
