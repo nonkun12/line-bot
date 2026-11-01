@@ -6,6 +6,8 @@ import re
 
 import httpx
 
+from core.request_safety import is_non_execution_request
+
 _APP_PREFIX = re.compile(r"^(?:アプリ開発|app|app-dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.DOTALL)
 _NATURAL_APP_CREATE_RE = re.compile(
     r"(?:アプリ|webアプリ|アプリケーション).*?(?:作って|作成して|開発して|作ってください|作成してください|開発してください)",
@@ -21,7 +23,7 @@ _WORKFLOW_FILE = "app-development.yml"
 
 def extract_app_development_request(message: str) -> str | None:
     text = str(message or "").strip()
-    if not text:
+    if not text or is_non_execution_request(text):
         return None
 
     match = _APP_PREFIX.match(text)
@@ -46,6 +48,8 @@ def _is_authorized_user(user_id: str) -> bool:
 
 def dispatch_app_development_workflow(requirement: str, *, user_id: str, token: str | None = None) -> str:
     requirement = str(requirement or "").strip()
+    if is_non_execution_request(requirement):
+        return "読み取り専用の依頼として受け付けました。アプリ開発ワークフローは起動していません。"
     if not requirement:
         return "アプリ開発の要件が空です。『アプリ開発: ○○を作って』の形式で指定してください。"
     if not _is_authorized_user(user_id):
