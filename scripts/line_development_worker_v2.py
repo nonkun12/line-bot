@@ -6,6 +6,7 @@ Security-sensitive files are never editable by this worker.
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -427,6 +428,44 @@ def _is_allowed_comment_test_change(plan: dict, chosen: str) -> bool:
     return bool(suffix) and re.fullmatch(r"# [^\r\n]{1,120}\n", suffix) is not None
 
 
+def _test_definitions_unchanged(path: str, old: str, new: str) -> bool:
+    """Reject autonomous edits that alter or remove existing pytest test bodies.
+
+    New test functions may be added, but existing tests must remain byte-for-byte
+    equivalent at the AST level so an agent cannot make a failing test pass by
+    weakening or rewriting its assertion.
+    """
+    if not path.startswith("tests/") or not path.endswith(".py"):
+        return True
+    target = ROOT / path
+    try:
+        original = target.read_text(encoding="utf-8")
+        if original.count(old) != 1:
+            return False
+        candidate = original.replace(old, new, 1)
+        before = ast.parse(original, filename=path)
+        after = ast.parse(candidate, filename=path)
+    except (OSError, SyntaxError, ValueError):
+        return False
+
+    def tests(tree):
+        found = {}
+        def visit(node, scope=()):
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    name = (*scope, child.name)
+                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name.startswith("test"):
+                        found[".".join(name)] = ast.dump(child, include_attributes=False)
+                    visit(child, name)
+                else:
+                    visit(child, scope)
+        visit(tree)
+        return found
+
+    old_tests, new_tests = tests(before), tests(after)
+    return all(new_tests.get(name) == body for name, body in old_tests.items())
+
+
 def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
     if plan.get("no_change") is True:
         return True, "no_change"
@@ -450,6 +489,8 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
             return False, "invalid_old_new"
         if old == new:
             return False, "no_op_change"
+        if path.startswith("tests/") and not _test_definitions_unchanged(path, old, new):
+            return False, "existing_test_modified"
         if any(line.strip() in {"+", "-"} for line in new.splitlines()):
             return False, "diff_marker_in_replacement"
         if len(old) > 1200 or len(new) > 1800:
