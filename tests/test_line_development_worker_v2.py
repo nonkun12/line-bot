@@ -1047,3 +1047,42 @@ def test_apply_plan_rejects_paths_outside_repository_root(tmp_path, monkeypatch)
     assert ok is False
     assert detail == "change_path_outside_root"
     assert touched == []
+
+
+
+def test_apply_plan_rolls_back_target_when_write_fails_midway(tmp_path, monkeypatch):
+    first = tmp_path / "first.py"
+    second = tmp_path / "second.py"
+    first.write_text("first-original\\n", encoding="utf-8")
+    second.write_text("second-original\\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.setattr(worker, "MAX_FILES", 2)
+
+    original_write_text = type(second).write_text
+    failed_once = False
+
+    def partial_then_fail(path, data, *args, **kwargs):
+        nonlocal failed_once
+        if path == second and data.startswith("second-updated") and not failed_once:
+            failed_once = True
+            original_write_text(path, data[:6], *args, **kwargs)
+            raise OSError("simulated interrupted write")
+        return original_write_text(path, data, *args, **kwargs)
+
+    monkeypatch.setattr(type(second), "write_text", partial_then_fail)
+
+    ok, detail, touched = worker.apply_plan(
+        {
+            "no_change": False,
+            "changes": [
+                {"file": "first.py", "old": "first-original", "new": "first-updated"},
+                {"file": "second.py", "old": "second-original", "new": "second-updated"},
+            ],
+        }
+    )
+
+    assert ok is False
+    assert detail == "apply_write_failed:OSError"
+    assert touched == ["first.py"]
+    assert first.read_text(encoding="utf-8") == "first-original\\n"
+    assert second.read_text(encoding="utf-8") == "second-original\\n"
