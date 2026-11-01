@@ -27,6 +27,33 @@ def test_explicit_english_development_command():
     assert extract_development_instruction("dev: add a health check test") == "add a health check test"
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "このアプリを改善して",
+        "LINE AI Secretaryの通知機能を追加して",
+        "line-botのコードを修正してください",
+        "このシステムのテストを実行して",
+    ],
+)
+def test_clear_natural_language_development_commands_are_dispatched(message):
+    assert extract_development_instruction(message) == message
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "このアプリの改善方法を教えて",
+        "システムをどうやって開発できますか",
+        "アプリのおすすめを比較して",
+        "明日の予定を教えて",
+        "今日は何を追加したらよい？",
+    ],
+)
+def test_questions_and_non_commands_stay_in_normal_chat(message):
+    assert extract_development_instruction(message) is None
+
+
 def test_empty_development_command_is_rejected():
     assert extract_development_instruction("開発:") == ""
     assert extract_development_instruction("dev:   ") == ""
