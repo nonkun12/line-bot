@@ -60,7 +60,7 @@ def extract_development_instruction(message: str) -> Optional[str]:
         _NATURAL_DEV_TARGET.search(text)
         and _NATURAL_DEV_ACTION.search(text)
         and not _NATURAL_DEV_QUESTION.search(text)
-        and not _NON_EXECUTION_REQUEST.search(text)
+        and not is_non_execution_request(text)
     ):
         return text[:_MAX_INSTRUCTION_LENGTH]
     return None
@@ -83,6 +83,8 @@ def dispatch_development_workflow(
 ) -> str:
     """Dispatch authorized development requests to the existing Secretary repository."""
     instruction = str(instruction or "").strip()
+    if is_non_execution_request(instruction):
+        return "読み取り専用の依頼として受け付けました。開発ワークフローは起動していません。"
     if not instruction:
         return "開発指示が空です。『開発: ○○を実装して』の形式で指定してください。"
 
