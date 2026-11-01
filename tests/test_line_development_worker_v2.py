@@ -885,3 +885,73 @@ def test_test_file_plan_allows_adding_a_new_test_without_changing_existing_tests
     assert worker.validate_plan(plan, "tests/test_sample.py") == (
         True, "tests/test_sample.py"
     )
+
+
+
+def test_is_test_path_recognizes_root_nested_and_conftest_paths():
+    assert worker.is_test_path("test_app.py")
+    assert worker.is_test_path("tests/test_app.py")
+    assert worker.is_test_path("uhip/tests/test_schema_contracts.py")
+    assert worker.is_test_path("pkg/conftest.py")
+    assert worker.is_test_path("pkg/sample_test.py")
+    assert not worker.is_test_path("core/management_router.py")
+
+
+def test_choose_file_excludes_tests_from_generic_model_candidates(monkeypatch):
+    captured = {}
+
+    def fake_ask(client, system, prompt, max_tokens=1024):
+        captured["prompt"] = prompt
+        return json.dumps({"file": "core/management_router.py"})
+
+    monkeypatch.setattr(worker, "ask", fake_ask)
+    files = [
+        "tests/test_management_router.py",
+        "uhip/tests/test_schema_contracts.py",
+        "core/management_router.py",
+    ]
+
+    selected = worker.choose_file(
+        FakeClient([]), "一般的なルーティング処理を改善してください", files
+    )
+
+    assert selected == "core/management_router.py"
+    assert "core/management_router.py" in captured["prompt"]
+    assert "tests/test_management_router.py" not in captured["prompt"]
+    assert "uhip/tests/test_schema_contracts.py" not in captured["prompt"]
+
+
+def test_choose_file_fails_closed_when_only_test_candidates_exist(monkeypatch):
+    def forbidden_ask(*args, **kwargs):
+        raise AssertionError("model must not be asked to select a test file")
+
+    monkeypatch.setattr(worker, "ask", forbidden_ask)
+    selected = worker.choose_file(
+        FakeClient([]),
+        "通常の実装を修正してください",
+        ["tests/test_management_router.py", "uhip/tests/test_schema_contracts.py"],
+    )
+    assert selected is None
+
+
+def test_existing_test_guard_covers_root_and_nested_test_files(monkeypatch, tmp_path):
+    cases = [
+        ("test_app.py", "def test_contract():\\n    assert value() == 1\\n"),
+        ("uhip/tests/test_schema_contracts.py", "def test_contract():\\n    assert value() == 1\\n"),
+    ]
+    for relative_path, original in cases:
+        target = tmp_path / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(original, encoding="utf-8")
+        monkeypatch.setattr(worker, "ROOT", tmp_path)
+        plan = {
+            "no_change": False,
+            "changes": [{
+                "file": relative_path,
+                "old": "assert value() == 1",
+                "new": "assert value() == 2",
+            }],
+        }
+        assert worker.validate_plan(plan, relative_path) == (
+            False, "existing_test_modified"
+        )
