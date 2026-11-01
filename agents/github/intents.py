@@ -70,8 +70,6 @@ def is_github_intent(raw_message: str, user_id: Optional[str] = None) -> bool:
     text = (raw_message or "").strip()
     if not text:
         return False
-    if _is_status_only_request(text):
-        return False
 
     # Status-only requests and forbidden operations must not trigger browsing.
     if _STATUS_ONLY_REQUEST.search(text):
@@ -111,7 +109,7 @@ def is_issue_or_pr_intent(raw_message: str) -> bool:
     """
 
     text = (raw_message or "").strip()
-    if not text or _is_status_only_request(text):
+    if not text:
         return False
 
     if _STATUS_ONLY_REQUEST.search(text):
