@@ -7,7 +7,7 @@ from scripts.register_approved_task_candidate import register_approved_candidate
 
 SOURCE = "core/agent_runtime.py"
 TEST = "tests/test_agent_runtime.py"
-TASK_ID = "review-coverage-gap-dc8331d971"
+TASK_ID = "review-development-repair-planner-contract-20261030"
 TICK = chr(96)
 
 
