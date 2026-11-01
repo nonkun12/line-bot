@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from dataclasses import FrozenInstanceError
+
 import db
 from core.agent_events import AgentEvent, list_agent_events, record_agent_event
 
@@ -51,6 +53,8 @@ def test_identical_retry_is_idempotent_but_conflict_is_rejected(tmp_path, monkey
         {"payload": {"nested": {"secret": "no"}}},
         {"payload": {"x": "a" * 5000}},
         {"payload": {"access_token": "should-not-be-stored"}},
+        {"payload": {"authorization": "Bearer-secret"}},
+        {"payload": {"note": "private free-form text"}},
         {"payload": {"x": float("inf")}},
     ],
 )
@@ -69,3 +73,20 @@ def test_events_are_append_only_and_scoped_to_task(tmp_path, monkeypatch) -> Non
     ))
     assert [item["event_id"] for item in list_agent_events("task-1")] == ["evt-1", "evt-2"]
     assert list_agent_events("other-task") == ()
+
+
+
+def test_payload_is_immutable_after_validation() -> None:
+    event = _event()
+    with pytest.raises(TypeError):
+        event.payload["count"] = 999  # type: ignore[index]
+
+
+def test_persistence_boundary_revalidates_payload(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(db, "DB", str(tmp_path / "events.sqlite"))
+    db.init_db()
+    event = _event()
+    # Frozen dataclass plus read-only payload prevents mutation after validation.
+    with pytest.raises(TypeError):
+        event.payload["rounds"] = 100000  # type: ignore[index]
+    assert record_agent_event(event) is True
