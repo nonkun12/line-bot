@@ -23,7 +23,7 @@ def repository(tmp_path):
     return root
 
 
-def issue(root, labels=("autonomous-task-candidate", "autonomous-task-approved"), path=TEST):
+def issue(root, labels=("autonomous-task-candidate", "autonomous-task-catalog-approved"), path=TEST):
     source_text = (root / SOURCE).read_text(encoding="utf-8")
     test_text = (root / TEST).read_text(encoding="utf-8")
     fingerprint = hashlib.sha256(
@@ -77,6 +77,7 @@ def test_registers_explicitly_approved_analyzer_candidate_for_pr_review(tmp_path
     assert changed is True
     assert result["status"] == "REGISTERED_FOR_REVIEW"
     assert result["catalog_entry"]["allowed_paths"] == [TEST]
+    assert result["catalog_entry"]["execution_approved"] is False
 
 
 def test_task_id_must_be_derived_from_source_evidence(tmp_path):
@@ -94,10 +95,27 @@ def test_task_id_must_be_derived_from_source_evidence(tmp_path):
 
 def test_candidate_label_without_explicit_approval_cannot_register(tmp_path):
     root = repository(tmp_path)
-    with pytest.raises(ValueError, match="explicit human-approval"):
+    with pytest.raises(ValueError, match="explicit catalog-approval"):
         register_approved_candidate(
             issue(root, labels=("autonomous-task-candidate",)), catalog(), state(), root
         )
+
+
+def test_execution_approval_alone_cannot_register_candidate(tmp_path):
+    root = repository(tmp_path)
+    with pytest.raises(ValueError, match="catalog-approval"):
+        register_approved_candidate(
+            issue(root, labels=("autonomous-task-candidate", "autonomous-task-execution-approved")),
+            catalog(), state(), root
+        )
+
+
+def test_legacy_approval_label_remains_catalog_registration_only(tmp_path):
+    root = repository(tmp_path)
+    candidate = issue(root, labels=("autonomous-task-candidate", "autonomous-task-approved"))
+    result, changed = register_approved_candidate(candidate, catalog(), state(), root)
+    assert changed is True
+    assert result["status"] == "REGISTERED_FOR_REVIEW"
 
 
 def test_non_allowlisted_path_cannot_register(tmp_path):
@@ -174,6 +192,7 @@ def test_existing_identical_catalog_entry_is_idempotent(tmp_path):
     start = body.index("<!-- autonomous-task-spec -->") + len("<!-- autonomous-task-spec -->")
     end = body.index("<!-- autonomous-task-spec -->", start)
     spec = json.loads(body[start:end].strip())
+    spec["execution_approved"] = False
     result, changed = register_approved_candidate(candidate, catalog([spec]), state(), root)
     assert changed is False
     assert result["status"] == "ALREADY_REGISTERED"
@@ -219,14 +238,17 @@ def test_catalog_candidate_workflow_only_creates_draft_registration_pr():
         / "register-approved-autonomous-task.yml"
     ).read_text(encoding="utf-8")
     assert "types: [labeled]" in workflow
-    assert "github.event.label.name == 'autonomous-task-approved' && github.event.sender.login == github.repository_owner" in workflow
+    assert "github.event.label.name == 'autonomous-task-catalog-approved'" in workflow
+    assert "github.event.label.name == 'autonomous-task-approved'" in workflow
+    assert "github.event.sender.login == github.repository_owner" in workflow
     registrar = (
         Path(__file__).resolve().parents[1]
         / "scripts"
         / "register_approved_task_candidate.py"
     ).read_text(encoding="utf-8")
     assert "autonomous-task-candidate" in registrar
-    assert "autonomous-task-approved" in registrar
+    assert "autonomous-task-catalog-approved" in registrar
+    assert "autonomous-task-approved" in registrar  # legacy registration-only compatibility
     assert "python -m scripts.register_approved_task_candidate" in workflow
     assert "python scripts/register_approved_task_candidate.py" not in workflow
     assert "gh pr create --draft" in workflow

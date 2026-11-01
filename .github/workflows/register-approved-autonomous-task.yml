@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   register:
-    if: github.event.label.name == 'autonomous-task-approved' && github.event.sender.login == github.repository_owner
+    if: (github.event.label.name == 'autonomous-task-catalog-approved' || github.event.label.name == 'autonomous-task-approved') && github.event.sender.login == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -41,7 +41,7 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/contents/.autonomous-loop-state.json?ref=autonomous-loop-state" \
             --jq '.content' \
             | base64 --decode > /tmp/autonomous-loop-state.json
-          # Registration requires both candidate-only and explicit human-approval labels.
+          # Registration requires a candidate plus catalog approval. This label never grants queue admission.
           python -m scripts.register_approved_task_candidate \
             --issue /tmp/approved-candidate-issue.json \
             --catalog .github/autonomous-loop-task-catalog.json \

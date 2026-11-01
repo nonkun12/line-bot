@@ -39,8 +39,12 @@ def _validated_spec(issue: object, repo_root: Path) -> tuple[dict[str, Any], int
     if not isinstance(labels, list) or any(not isinstance(label, dict) or not isinstance(label.get("name"), str) for label in labels):
         raise ValueError("candidate issue labels are invalid")
     label_names = {label["name"] for label in labels}
-    if not {"autonomous-task-candidate", "autonomous-task-approved"} <= label_names:
-        raise ValueError("both candidate and explicit human-approval labels are required")
+    catalog_approved = (
+        "autonomous-task-catalog-approved" in label_names
+        or "autonomous-task-approved" in label_names  # legacy registration-only label
+    )
+    if "autonomous-task-candidate" not in label_names or not catalog_approved:
+        raise ValueError("candidate and explicit catalog-approval labels are required")
 
     body = issue.get("body")
     if not isinstance(body, str) or body.count(SPEC_MARKER) != 2:
@@ -153,6 +157,7 @@ def register_approved_candidate(
     ):
         raise ValueError("durable Recovery AI state is invalid")
 
+    catalog_spec = {**spec, "execution_approved": False}
     task_id = spec["id"]
     if task_id in state["completed"]:
         raise ValueError("candidate task is already completed")
@@ -172,7 +177,7 @@ def register_approved_candidate(
         if not isinstance(existing, dict) or not isinstance(existing.get("id"), str):
             raise ValueError("task catalog contains an invalid entry")
         if existing["id"] == task_id:
-            if existing == spec:
+            if existing == catalog_spec:
                 return {
                     "status": "ALREADY_REGISTERED",
                     "task_id": task_id,
@@ -186,7 +191,7 @@ def register_approved_candidate(
         "status": "REGISTERED_FOR_REVIEW",
         "task_id": task_id,
         "source_issue": issue_number,
-        "catalog_entry": spec,
+        "catalog_entry": catalog_spec,
     }, True
 
 

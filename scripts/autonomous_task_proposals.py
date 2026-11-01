@@ -130,8 +130,11 @@ def build_proposals(
             continue
         # Approval is a separate, explicit human action. Candidate-only issues
         # remain review-only and can never enter the executable queue.
-        approved = "autonomous-task-approved" in label_names
         candidate = "autonomous-task-candidate" in label_names
+        execution_approved = "autonomous-task-execution-approved" in label_names
+        # The legacy generic approval label is catalog-registration approval only.
+        # Queue admission requires a candidate issue plus the new explicit execution label.
+        approved = candidate and execution_approved
         if not approved and not candidate:
             continue
         labeled_open_issue_count += 1
