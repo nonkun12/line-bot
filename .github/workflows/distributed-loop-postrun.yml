@@ -205,6 +205,7 @@ jobs:
           DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
           QUEUE_EMPTY: ${{ steps.verify.outputs.queue_empty }}
+          CATALOG_BLOCKED: ${{ steps.verify.outputs.catalog_blocked }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
@@ -218,8 +219,11 @@ jobs:
           from pathlib import Path
           findings = json.loads(Path("postrun-findings.json").read_text(encoding="utf-8"))
           queue_empty = os.environ.get("QUEUE_EMPTY", "false").lower() == "true"
+          catalog_blocked = os.environ.get("CATALOG_BLOCKED", "false").lower() == "true"
           if findings:
               text = "⚠️ 分散Loop終了後レポート：要確認事項あり\n"
+          elif catalog_blocked:
+              text = "ℹ️ 分散Loop終了後レポート：BLOCKED（保留・レビュー待ち。人の確認が必要）\n"
           elif queue_empty:
               text = "ℹ️ 分散Loop終了後レポート：キュー空（今回の開発タスク実行なし）\n"
           else:
@@ -229,6 +233,8 @@ jobs:
           text += f"Run: {os.environ.get('RUN_URL', '')}\n"
           if findings:
               text += "\n".join("- " + x for x in findings)
+          elif catalog_blocked:
+              text += "実行可能タスクはありません。保留・レビュー待ちの解除は行っていません。候補Issueを人が確認し、承認されたものだけ登録してください。"
           elif queue_empty:
               text += "未完了タスクがないため、今回はタスクを実行していません。新しいレビュー済みタスクが追加されるまで、実行結果はありません。"
           else:
