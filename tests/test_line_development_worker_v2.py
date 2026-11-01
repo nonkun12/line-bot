@@ -843,3 +843,45 @@ def test_apply_anchor_size_repair_is_used_only_once_across_anchor_retries(monkey
     assert size_calls == [1]
     assert plan == size_repaired_but_ambiguous
     assert target.read_text(encoding="utf-8") == original
+
+
+
+def test_test_file_plan_rejects_rewriting_existing_assertions(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_contract():\n    assert route() == 'english'\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    plan = {
+        "no_change": False,
+        "changes": [{
+            "file": "tests/test_sample.py",
+            "old": "assert route() == 'english'",
+            "new": "assert route() == 'general'",
+        }],
+    }
+
+    assert worker.validate_plan(plan, "tests/test_sample.py") == (
+        False, "existing_test_modified"
+    )
+
+
+def test_test_file_plan_allows_adding_a_new_test_without_changing_existing_tests(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_contract():\n    assert route() == 'english'\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    addition = "\n\ndef test_new_regression():\n    assert route() == 'general'\n"
+    plan = {
+        "no_change": False,
+        "changes": [{
+            "file": "tests/test_sample.py",
+            "old": original,
+            "new": original + addition,
+        }],
+    }
+
+    assert worker.validate_plan(plan, "tests/test_sample.py") == (
+        True, "tests/test_sample.py"
+    )
