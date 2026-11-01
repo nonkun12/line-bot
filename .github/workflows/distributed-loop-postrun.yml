@@ -89,40 +89,50 @@ jobs:
               report_files[0].read_text(encoding="utf-8")[:12000]
               if report_files else ""
           )
-          # Empty queue is an expected no-work outcome, not missing task evidence.
-          # Match the exact reason marker produced by the trusted source workflow.
+          # No executable queue because every catalog item is held/review-gated is
+          # an expected safety BLOCKED state, not malformed progress evidence.
+          report_lines = original_report.splitlines()
+          result_reason = next(
+              (line.split(":", 1)[1].strip() for line in report_lines if line.startswith("- 結果理由:")),
+              "",
+          )
           queue_empty = any(
               line.strip() in {
                   "- 結果理由: queue_empty",
-                  "- 結果理由: queue_exhausted_no_tasks",  # Backward compatibility with older run reports.
+                  "- 結果理由: queue_exhausted_no_tasks",  # Backward compatibility.
               }
-              for line in original_report.splitlines()
+              for line in report_lines
           )
+          source_blocked = "- 結果: **BLOCKED**" in original_report
+          catalog_blocked = source_blocked and result_reason.startswith((
+              "catalog_exhausted_held:",
+              "catalog_exhausted_review_pending:",
+              "catalog_exhausted_mixed:",
+          ))
+          expected_no_task = queue_empty or catalog_blocked
           issues = []
-          # The source report is authoritative for the explicit task outcome too.
-          # A successful workflow conclusion or Sheets artifact must not mask BLOCKED.
-          if "- 結果: **BLOCKED**" in original_report:
-              issues.append("Source workflow final report is BLOCKED; task progress evidence is invalid or the final classifier failed.")
+          # Other BLOCKED outcomes still require investigation; catalog exhaustion
+          # is an explicit human-review gate and must retain its exact reason.
+          if source_blocked and not catalog_blocked:
+              issues.append(f"Source workflow final report is BLOCKED: {result_reason or 'reason_missing'}.")
           if conclusion != "success":
               issues.append(f"Loop workflow conclusion is {conclusion}.")
-          if queue_empty and tasks:
-              # The source workflow records a synthetic NOT_RUN row (empty task_id,
-              # task_count=0) so the run is auditable. It is not an executed task and
-              # must not conflict with the queue-empty report.
-              synthetic_empty_queue = all(
+          if expected_no_task and tasks:
+              # Synthetic NOT_RUN rows are audit markers, not executed tasks.
+              synthetic_no_task = all(
                   str(item.get("status", "")) == "NOT_RUN"
                   and not str(item.get("task_id", "")).strip()
                   and int(item.get("task_count", 0) or 0) == 0
                   for item in tasks
               )
-              if synthetic_empty_queue:
+              if synthetic_no_task:
                   tasks = []
                   statuses = []
               else:
-                  issues.append("Queue-empty report conflicts with task result evidence.")
-          if not tasks and not queue_empty:
+                  issues.append("No-task report conflicts with task result evidence.")
+          if not tasks and not expected_no_task:
               issues.append("Task result evidence is missing or empty.")
-          if any(s not in {"PASS", "NO_CHANGE"} for s in statuses):
+          if not catalog_blocked and any(s not in {"PASS", "NO_CHANGE"} for s in statuses):
               issues.append("One or more task results are not PASS/NO_CHANGE: " + ", ".join(statuses))
           if sheets_result not in {"RECORDED", "ALREADY_RECORDED"}:
               issues.append("Google Sheets evidence is not confirmed: " + sheets_result)
@@ -135,7 +145,7 @@ jobs:
               f"- Head SHA: {os.environ.get('HEAD_SHA', '')}",
               f"- Task count in evidence: {len(tasks)}",
               f"- Task statuses: {', '.join(statuses) if statuses else 'NO EVIDENCE'}",
-              f"- Queue state: {'QUEUE_EMPTY (no task executed)' if queue_empty else ('TASK_RESULTS_PRESENT' if tasks else 'UNKNOWN')}",
+              f"- Queue state: {'CATALOG_BLOCKED (human review required; no task executed)' if catalog_blocked else ('QUEUE_EMPTY (no task executed)' if queue_empty else ('TASK_RESULTS_PRESENT' if tasks else 'UNKNOWN'))}",
               f"- Google Sheets artifact result: {sheets_result}",
               f"- Sheets artifact task ID: {sheets.get('task_id', 'unknown')}",
               "",
@@ -150,6 +160,7 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
               out.write(f"issues={len(issues)}\n")
               out.write(f"queue_empty={'true' if queue_empty else 'false'}\n")
+              out.write(f"catalog_blocked={'true' if catalog_blocked else 'false'}\\n")
           print("\n".join(report))
           PY
 
