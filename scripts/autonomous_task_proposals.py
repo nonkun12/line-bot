@@ -175,6 +175,10 @@ def build_proposals(
         if spec["id"] in seen_proposals or spec["id"] in seen_approved:
             excluded_task_count += 1
             continue
+        # The review-only proposal cap must not stop scanning for approved
+        # executable tasks later in the issue list.
+        if len(proposals) >= 4:
+            continue
         seen_proposals.add(spec["id"])
         proposals.append({
             **spec,
@@ -182,8 +186,6 @@ def build_proposals(
             "status": "REVIEW_REQUIRED",
             "proposal_fingerprint": fingerprint,
         })
-        if len(proposals) >= 4:
-            break
 
     if approved_tasks:
         updated_queue = dict(queue)
