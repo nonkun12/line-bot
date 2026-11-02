@@ -283,6 +283,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "proposal-generator-deduplicates-approved-task-ids-20261027": "tests/test_autonomous_task_proposals.py",
     "safe-continuation-depth-four-regression-20261026": "tests/test_continuous_distributed_loop_workflow.py",
     "catalog-exhaustion-adapter-deduplicates-duplicate-findings-20261031": "tests/test_catalog_exhaustion_candidate_adapter.py",
+    "review-coverage-gap-703fa3c06b": "tests/test_project_registry.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -2020,6 +2021,46 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "no_change": False,
             "source": "deterministic_autonomous_task",
             "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "review-coverage-gap-703fa3c06b" and chosen == "tests/test_project_registry.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_list_projects_returns_ordered_snapshot_without_exposing_registry"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = (
+            '    assert serialized["supported_agents"] == ["implementer", "tester"]\n'
+            '    assert isinstance(serialized["supported_agents"], list)\n'
+        )
+        if text.count(anchor) != 1:
+            return None, f"deterministic_anchor_not_unique:project_registry_list_projects:{text.count(anchor)}"
+        addition = (
+            "\n\n"
+            "def test_list_projects_returns_ordered_snapshot_without_exposing_registry():\n"
+            "    first = DEFAULT_PROJECT\n"
+            "    second = ProjectRecord(name=\"sample-app\", repository=\"nonkun12/sample-app\")\n"
+            "    registry = ProjectRegistry([first, second])\n"
+            "\n"
+            "    projects = registry.list_projects()\n"
+            "\n"
+            "    assert projects == [first, second]\n"
+            "    projects.clear()\n"
+            "    assert registry.list_projects() == [first, second]\n"
+            "    assert ProjectRegistry([]).list_projects() == []\n"
+        )
+        replacement = anchor + addition
+        if len(anchor) > 1200 or len(replacement) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(replacement)}"
+        candidate = text.replace(anchor, replacement, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": replacement}],
         }, None
 
     return None, None
