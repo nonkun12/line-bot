@@ -1,8 +1,11 @@
-"""Bounded, evidence-only Maintenance AI triage for distributed loop outcomes.
-This stage diagnoses structured run evidence. It never edits files, retries tasks,
-clears Recovery AI holds, publishes branches, merges, or deploys.
+"""Evidence-only Maintenance AI triage for distributed loop and queue health.
+
+Maintenance AI is an independent observer: it classifies structured run evidence
+and queue sentinels, but never edits source, retries tasks, clears holds, publishes,
+merges, or deploys.
 """
 from __future__ import annotations
+
 import argparse
 import json
 import re
@@ -11,6 +14,9 @@ from typing import Any
 
 _SAFE_TASK_ID = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
 _VALID_STATUSES = {"PASS", "NO_CHANGE", "FAIL", "BLOCKED", "NOT_RUN"}
+_HELD_COUNT = re.compile(r"^catalog_exhausted_held:[0-9]+$")
+_REVIEW_COUNT = re.compile(r"^catalog_exhausted_review_pending:[0-9]+$")
+_MIXED_COUNT = re.compile(r"^catalog_exhausted_mixed:held=[0-9]+,review=[0-9]+$")
 
 
 def _load_rows(path: Path) -> list[dict[str, Any]]:
@@ -26,6 +32,30 @@ def _load_rows(path: Path) -> list[dict[str, Any]]:
             raise ValueError(f"result at line {line_number} must be an object")
         rows.append(value)
     return rows
+
+
+def _read_queue_state(not_run_marker: Path | None, held_marker: Path | None) -> str | None:
+    """Translate workflow marker files into a small allowlisted state vocabulary."""
+    not_run = not_run_marker is not None and not_run_marker.is_file()
+    held = held_marker is not None and held_marker.is_file()
+    if not_run and held:
+        raise ValueError("conflicting queue state markers")
+    if not_run:
+        return "queue_empty"
+    if not held:
+        return None
+
+    try:
+        raw = held_marker.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("queue state marker is unreadable") from exc
+    if raw == "all_pending_tasks_held" or _HELD_COUNT.fullmatch(raw):
+        return "all_pending_tasks_held"
+    if _REVIEW_COUNT.fullmatch(raw):
+        return "review_pending"
+    if _MIXED_COUNT.fullmatch(raw):
+        return "mixed_queue_blocked"
+    raise ValueError("queue state marker is not allowlisted")
 
 
 def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
@@ -47,7 +77,7 @@ def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
     recovery_action = decision.get("action")
     recovery_action = recovery_action if isinstance(recovery_action, str) else None
 
-    # Safety holds outrank a nominal PASS: contradictory evidence fails closed.
+    # Independent safety evidence always outranks a nominal PASS.
     if rea_gate in {"BLOCKED", "FAIL"}:
         category = "safety_gate_blocked"
         recommendation = "Review the REA findings; do not retry or bypass the gate."
@@ -58,11 +88,19 @@ def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
         requires_human = True
     elif failure_reason == "queue_empty" or status == "NOT_RUN":
         category = "queue_exhausted"
-        recommendation = "No task was executed because the queue is empty; replenish the reviewed task catalog before expecting further work."
+        recommendation = "No task was executed because the executable queue is empty; replenish reviewed tasks before another run."
         requires_human = True
     elif failure_reason == "all_pending_tasks_held":
         category = "all_tasks_held"
-        recommendation = "All pending tasks are held; review the hold reasons and explicitly approve any resume."
+        recommendation = "Pending tasks are held; review the hold reasons and explicitly approve any resume."
+        requires_human = True
+    elif failure_reason == "review_pending":
+        category = "review_pending"
+        recommendation = "Tasks are waiting for human review; review existing candidates before generating more."
+        requires_human = True
+    elif failure_reason == "mixed_queue_blocked":
+        category = "mixed_queue_blocked"
+        recommendation = "The queue contains held and review-pending tasks; resolve the existing review backlog before adding candidates."
         requires_human = True
     elif status in {"PASS", "NO_CHANGE"}:
         category = "completed"
@@ -81,14 +119,16 @@ def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
         recommendation = "Do not infer success or failure; obtain a complete task result."
         requires_human = True
 
+    allowed_reasons = {
+        "task_runtime_failed", "queue_empty", "all_pending_tasks_held",
+        "review_pending", "mixed_queue_blocked", "safety_gate_blocked",
+        "recovery_ai_requires_hold",
+    }
     return {
         "task_id": task_id,
         "status": status if status in _VALID_STATUSES else "UNKNOWN",
         "category": category,
-        "failure_reason": failure_reason if failure_reason in {
-            "task_runtime_failed", "queue_empty", "all_pending_tasks_held",
-            "safety_gate_blocked", "recovery_ai_requires_hold",
-        } else None,
+        "failure_reason": failure_reason if failure_reason in allowed_reasons else None,
         "recovery_action": recovery_action if recovery_action in {
             "CONTINUE", "REPAIR_ONCE", "HOLD", "STOP", "REVIEW",
         } else None,
@@ -101,19 +141,35 @@ def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def build_report(rows: list[dict[str, Any]], queue_state: str | None = None) -> dict[str, Any]:
+    if queue_state is not None:
+        queue_rows = {
+            "queue_empty": ("NOT_RUN", "queue_empty"),
+            "all_pending_tasks_held": ("BLOCKED", "all_pending_tasks_held"),
+            "review_pending": ("BLOCKED", "review_pending"),
+            "mixed_queue_blocked": ("BLOCKED", "mixed_queue_blocked"),
+        }
+        if queue_state not in queue_rows:
+            raise ValueError("queue state is not allowlisted")
+        if not rows:
+            status, reason = queue_rows[queue_state]
+            rows = [{"task_id": "distributed-loop-queue", "status": status, "failure_reason": reason}]
+
     if not rows:
         return {
             "schema_version": 1, "agent": "MaintenanceAI",
             "status": "NO_TASK_EVIDENCE", "diagnoses": [],
             "policy": "READ_ONLY_REVIEW_REQUIRED",
+            "scope": "DISTRIBUTED_LOOP_AND_QUEUE",
         }
     diagnoses = [_diagnose(row) for row in rows]
     blocked = any(item["requires_human"] for item in diagnoses)
     return {
         "schema_version": 1, "agent": "MaintenanceAI",
         "status": "REVIEW_REQUIRED" if blocked else "NO_ACTION",
-        "diagnoses": diagnoses, "policy": "READ_ONLY_REVIEW_REQUIRED",
+        "diagnoses": diagnoses,
+        "policy": "READ_ONLY_REVIEW_REQUIRED",
+        "scope": "DISTRIBUTED_LOOP_AND_QUEUE",
     }
 
 
@@ -121,10 +177,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--not-run-marker", type=Path)
+    parser.add_argument("--held-marker", type=Path)
     args = parser.parse_args()
     try:
         rows = _load_rows(args.results)
-        report = build_report(rows)
+        queue_state = _read_queue_state(args.not_run_marker, args.held_marker)
+        report = build_report(rows, queue_state=queue_state)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     except (OSError, ValueError) as exc:
