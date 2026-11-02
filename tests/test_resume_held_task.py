@@ -12,7 +12,7 @@ OTHER_TASK_ID = "loop-test-recovery-state-isolation"
 
 def _held_state(path, task_id):
     store = RecoveryStore(path)
-    store.record_failure(task_id, "unknown")
+    store.record_failure(task_id, "invalid_task")
     return json.loads(path.read_text(encoding="utf-8"))
 
 
