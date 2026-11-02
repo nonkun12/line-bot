@@ -17,8 +17,6 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from core.loop_failure_codes import is_safe_failure_code
-
 
 ROOT = Path(__file__).resolve().parents[1]
 # Running this file as `python scripts/run_minimal_autonomous_loop.py` puts
@@ -26,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # fail-closed Recovery AI imports work in GitHub Actions and local invocations.
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from core.loop_failure_codes import is_safe_failure_code
 QUEUE = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", str(ROOT / ".github" / "autonomous-loop-tasks.json"))).resolve()
 DEFAULT_STOP_FILE = Path("/tmp/line-bot-autonomous-loop.stop")
 ACTIVE_PROCESS: subprocess.Popen[str] | None = None
