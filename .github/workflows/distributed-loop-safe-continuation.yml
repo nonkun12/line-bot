@@ -18,7 +18,7 @@ jobs:
   # Keeping two workflow_run dispatchers creates competing decisions and can
   # enqueue duplicate follow-up runs after the same successful task.
   decide-and-dispatch:
-    if: ${{ false }}
+    if: github.event.workflow_run.run_attempt < 0
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
