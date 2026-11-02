@@ -24,11 +24,25 @@ def _authorized() -> bool:
     expected = os.environ.get("OPENCLAW_BRIDGE_KEY", "")
     provided = request.headers.get("X-OpenClaw-Bridge-Key", "")
     # Enforce the same minimum strength on the API as on the enqueue path.
-    return bool(
-        len(expected) >= 24
+    expected_length_ok = len(expected) >= 24
+    matched = bool(
+        expected_length_ok
         and provided
         and hmac.compare_digest(expected, provided)
     )
+    if not matched:
+        # Never log either secret value; lengths and presence are sufficient to
+        # distinguish a missing header from a mismatched credential.
+        current_app.logger.warning(
+            "OPENCLAW BRIDGE AUTH REJECTED expected_present=%s "
+            "expected_length_ok=%s header_present=%s header_length=%d matched=%s",
+            bool(expected),
+            expected_length_ok,
+            bool(provided),
+            len(provided),
+            matched,
+        )
+    return matched
 
 
 def _read_queue_summary() -> dict[str, int]:
