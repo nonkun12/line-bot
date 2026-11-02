@@ -66,7 +66,7 @@ def confirm_in_durable_state(
             ) as handle:
                 temp_local_recovery = handle.name
                 json.dump(updated_recovery, handle, ensure_ascii=False, sort_keys=True)
-                handle.write("\\n")
+                handle.write("\n")
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temp_local_recovery, recovery_path)
