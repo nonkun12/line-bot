@@ -942,7 +942,7 @@ def test_bounded_repair_recovers_rejected_test_rewrite_with_one_additive_test(mo
     assert worker._adds_exactly_one_test(chosen, original, original + addition)
 
 
-def test_bounded_repair_keeps_existing_test_rewrite_rejected(monkeypatch, tmp_path):
+def test_bounded_repair_salvages_one_new_test_without_rewriting_existing_tests(monkeypatch, tmp_path):
     target = tmp_path / "tests" / "test_sample.py"
     target.parent.mkdir()
     original = "def test_contract():\n    assert route() == 'english'\n"
@@ -977,9 +977,36 @@ def test_bounded_repair_keeps_existing_test_rewrite_rejected(monkeypatch, tmp_pa
         original,
     )
 
-    assert not ok
-    assert detail == "existing_test_modified_repair_failed"
-    assert plan == rejected
+    assert ok
+    assert detail == chosen
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert change["new"].endswith("def test_new_regression():\n    assert route() == 'general'\n")
+    assert worker._adds_exactly_one_test(chosen, change["old"], change["new"])
+    assert target.read_text(encoding="utf-8") == original
+
+
+def test_additive_test_salvage_rejects_multiple_new_test_functions(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_contract():\n    assert route() == 'english'\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    chosen = "tests/test_sample.py"
+    rewritten = {
+        "no_change": False,
+        "changes": [{
+            "file": chosen,
+            "old": original,
+            "new": (
+                "def test_contract():\n    assert route() == 'general'\n"
+                "\ndef test_new_one():\n    assert route() == 'general'\n"
+                "\ndef test_new_two():\n    assert route() == 'general'\n"
+            ),
+        }],
+    }
+
+    assert worker._salvage_additive_test_plan(chosen, rewritten) is None
     assert target.read_text(encoding="utf-8") == original
 
 
