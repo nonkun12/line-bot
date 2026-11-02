@@ -362,13 +362,24 @@ jobs:
             | tee /tmp/autonomous-loop-refill-report.json
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
 
+      - name: Load all existing issues for candidate deduplication
+        if: success() && env.TRIGGER_MODE == 'normal'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Include closed issues too: candidate IDs are immutable and must not be re-issued.
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" \
+            | jq -s 'add | map(select(has("pull_request") | not) | {number,title,body,state,labels})' > /tmp/autonomous-loop-all-issues.json
+          jq '[.[] | select(.state == "open")]' /tmp/autonomous-loop-all-issues.json > /tmp/autonomous-loop-open-issues.json
+
       - name: Generate review-only task proposals when catalog is exhausted
         if: success() && env.TRIGGER_MODE == 'normal'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&per_page=100" > /tmp/autonomous-loop-open-issues.json
           python -m scripts.autonomous_task_proposals \
             --issues /tmp/autonomous-loop-open-issues.json \
             --queue /tmp/autonomous-loop-runtime-queue.json \
@@ -394,6 +405,7 @@ jobs:
             --queue /tmp/autonomous-loop-runtime-queue.json \
             --state /tmp/autonomous-loop-state.json \
             --runtime core/line_development_runtime.py \
+            --existing-issues /tmp/autonomous-loop-all-issues.json \
             --output /tmp/catalog-exhaustion-report.json \
             | tee /tmp/catalog-exhaustion-summary.json; then
             cat /tmp/catalog-exhaustion-report.json >> "$GITHUB_STEP_SUMMARY"
@@ -414,10 +426,6 @@ jobs:
             echo "No validated catalog-exhaustion report; issue generation skipped."
             exit 0
           fi
-          # Paginate every issue (closed included) so old candidate IDs cannot be re-created.
-          gh api --paginate \
-            "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" \
-            | jq -s 'add | map(select(has("pull_request") | not) | {number,title,body,state,labels})' > /tmp/autonomous-loop-all-issues.json
           python -m scripts.autonomous_task_issue_drafts \
             --report /tmp/catalog-exhaustion-report.json \
             --issues /tmp/autonomous-loop-all-issues.json \

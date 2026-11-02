@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -64,6 +65,30 @@ def test_analyzer_reports_catalog_ids_without_plan_and_excludes_held_or_complete
     assert all(c["id"] != candidate_id for c in held_report["candidates"])
     assert held_report["candidate_count"] == 0
     assert held_report["catalog_ids_without_runtime_plan"] == ["missing-plan"]
+
+
+def test_analyzer_skips_already_issued_candidates_and_fills_next_batch(tmp_path: Path):
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    code = root / "core" / "agent_runtime.py"
+    names = [f"uncovered_boundary_{index}" for index in range(6)]
+    code.write_text(
+        "".join(f"def {name}(value):\n    return value\n\n" for name in names),
+        encoding="utf-8",
+    )
+    marker = "<!-- autonomous-task-spec -->"
+    existing = []
+    for name in names[:4]:
+        suffix = hashlib.sha256(f"core/agent_runtime.py:{name}".encode()).hexdigest()[:10]
+        spec = {"id": f"review-coverage-gap-{suffix}"}
+        existing.append({"state": "open", "body": f"{marker}\n{json.dumps(spec)}\n{marker}"})
+    issues = _write(tmp_path / "existing-issues.json", existing)
+
+    report = analyze(root, catalog, queue, state, runtime, issues)
+
+    assert report["candidate_count"] == 2
+    assert [item["source_function"] for item in report["candidates"]] == names[4:]
+    assert all(item["status"] == "REVIEW_REQUIRED" for item in report["candidates"])
+    assert report["safety"]["candidates_executable"] is False
 
 
 def test_planned_ids_include_mapping_and_explicit_plan_branches():

@@ -320,6 +320,74 @@ If the requested change cannot be expressed as a small safe search/replace, retu
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
 
 
+def repair_existing_test_modified_plan(
+    client: Groq,
+    instruction: str,
+    chosen: str,
+    context: str,
+    rejected_plan: dict,
+) -> dict:
+    """Regenerate one test-only plan as a strictly additive test insertion."""
+    rejected = json.dumps(rejected_plan, ensure_ascii=False)
+    system = '''Repair ONE rejected test-file plan. Return JSON only.
+The selected file is the ONLY file that may change. Add exactly ONE new pytest test function.
+Do not edit, rename, delete, reorder, or weaken any existing test function, assertion,
+fixture, parametrization, or class. Preserve all existing test definitions byte-for-byte
+at the AST level. Prefer appending the new test at the end of the current file.
+Return one search/replace change with an exact, unique old anchor from the supplied current
+file and a new value that preserves that anchor verbatim and appends only the new test.
+Do not rewrite the full file, modify imports or fixtures, change production code, or use
+diff markers or markdown fences. If this cannot be done safely, return {"no_change":true}.'''
+    prompt = (
+        f"Instruction:\n{instruction}\n\nSelected file (ONLY editable file):\n{chosen}"
+        f"\n\nCurrent file context:\n{context}"
+        f"\n\nRejected validation reason: existing_test_modified"
+        f"\n\nRejected plan:\n{rejected}"
+    )
+    return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
+
+
+def _test_definition_signatures(source: str, path: str) -> list[str] | None:
+    """Return AST signatures for all pytest test functions, including class methods."""
+    try:
+        tree = ast.parse(source, filename=path)
+    except SyntaxError:
+        return None
+    signatures = []
+
+    def visit(node):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name.startswith("test"):
+                signatures.append(ast.dump(child, include_attributes=False))
+            visit(child)
+
+    visit(tree)
+    return signatures
+
+
+def _adds_exactly_one_test(path: str, old: str, new: str) -> bool:
+    """Require exactly one new test and byte-for-byte-equivalent ASTs for existing tests."""
+    target = ROOT / path
+    try:
+        original = target.read_text(encoding="utf-8")
+        if not old or original.count(old) != 1:
+            return False
+        candidate = original.replace(old, new, 1)
+    except OSError:
+        return False
+    before = _test_definition_signatures(original, path)
+    after = _test_definition_signatures(candidate, path)
+    if before is None or after is None or len(after) != len(before) + 1:
+        return False
+    remaining = list(after)
+    for signature in before:
+        try:
+            remaining.remove(signature)
+        except ValueError:
+            return False
+    return len(remaining) == 1
+
+
 def validate_plan_with_bounded_repairs(
     client: Groq,
     instruction: str,
@@ -351,6 +419,25 @@ def validate_plan_with_bounded_repairs(
         ok, detail = validate_plan(repair_plan, chosen)
         if ok:
             plan = repair_plan
+    if not ok and detail == "existing_test_modified":
+        repair_plan = repair_existing_test_modified_plan(
+            client, instruction, chosen, context, plan
+        )
+        ok, detail = validate_plan(repair_plan, chosen)
+        if (
+            ok
+            and detail != "no_change"
+            and isinstance(repair_plan.get("changes"), list)
+            and len(repair_plan["changes"]) == 1
+            and _adds_exactly_one_test(
+                chosen,
+                repair_plan["changes"][0].get("old", ""),
+                repair_plan["changes"][0].get("new", ""),
+            )
+        ):
+            plan = repair_plan
+        else:
+            ok, detail = False, "existing_test_modified_repair_failed"
     return plan, ok, detail
 
 

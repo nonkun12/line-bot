@@ -909,6 +909,80 @@ def test_test_file_plan_allows_adding_a_new_test_without_changing_existing_tests
 
 
 
+def test_bounded_repair_recovers_rejected_test_rewrite_with_one_additive_test(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_contract():\n    assert route() == 'english'\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    chosen = "tests/test_sample.py"
+    rejected = {
+        "no_change": False,
+        "changes": [{
+            "file": chosen,
+            "old": "assert route() == 'english'",
+            "new": "assert route() == 'general'",
+        }],
+    }
+    addition = "\n\ndef test_new_regression():\n    assert route() == 'general'\n"
+    repaired = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": original, "new": original + addition}],
+    }
+    client = FakeClient([json.dumps(repaired)])
+
+    plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+        client, "Add one focused regression test", chosen, rejected, original
+    )
+
+    assert ok
+    assert detail == chosen
+    assert plan == repaired
+    assert target.read_text(encoding="utf-8") == original
+    assert worker._adds_exactly_one_test(chosen, original, original + addition)
+
+
+def test_bounded_repair_keeps_existing_test_rewrite_rejected(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_contract():\n    assert route() == 'english'\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    chosen = "tests/test_sample.py"
+    rejected = {
+        "no_change": False,
+        "changes": [{
+            "file": chosen,
+            "old": "assert route() == 'english'",
+            "new": "assert route() == 'general'",
+        }],
+    }
+    unsafe_repair = {
+        "no_change": False,
+        "changes": [{
+            "file": chosen,
+            "old": original,
+            "new": (
+                "def test_contract():\n    assert route() == 'general'\n"
+                "\ndef test_new_regression():\n    assert route() == 'general'\n"
+            ),
+        }],
+    }
+
+    plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+        FakeClient([json.dumps(unsafe_repair)]),
+        "Add one focused regression test",
+        chosen,
+        rejected,
+        original,
+    )
+
+    assert not ok
+    assert detail == "existing_test_modified_repair_failed"
+    assert plan == rejected
+    assert target.read_text(encoding="utf-8") == original
+
+
 def test_is_test_path_recognizes_root_nested_and_conftest_paths():
     assert worker.is_test_path("test_app.py")
     assert worker.is_test_path("tests/test_app.py")

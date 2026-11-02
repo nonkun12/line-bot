@@ -17,6 +17,8 @@ from scripts.autonomous_task_target_allowlist import TARGETS
 MAX_CANDIDATES = 4
 TEST_PATH = re.compile(r"^(tests|uhip/tests)/test_[A-Za-z0-9_]+\.py$")
 TASK_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,99}$")
+REVIEW_TASK_ID = re.compile(r"^review-coverage-gap-[a-f0-9]{10}$")
+SPEC_MARKER = "<!-- autonomous-task-spec -->"
 # Explicit code-to-test map: no paths are derived from untrusted input.
 
 def _read_json(path: Path):
@@ -75,7 +77,39 @@ def _public_functions(source: str) -> list[tuple[str, int]]:
     return found
 
 
-def analyze(repo_root: Path, catalog_path: Path, queue_path: Path, state_path: Path, runtime_path: Path) -> dict:
+def _existing_issue_task_ids(issues_path: Path | None) -> set[str]:
+    """Exclude every previously issued review candidate before selecting the next batch."""
+    if issues_path is None:
+        return set()
+    issues = _read_json(issues_path)
+    if not isinstance(issues, list):
+        raise ValueError("existing issues must be a list")
+    found: set[str] = set()
+    for issue in issues:
+        if not isinstance(issue, dict):
+            raise ValueError("existing issue entry is invalid")
+        body = issue.get("body")
+        if not isinstance(body, str) or body.count(SPEC_MARKER) != 2:
+            continue
+        try:
+            _, raw_spec, _ = body.split(SPEC_MARKER)
+            spec = json.loads(raw_spec.strip())
+        except (ValueError, TypeError):
+            continue
+        task_id = spec.get("id") if isinstance(spec, dict) else None
+        if isinstance(task_id, str) and REVIEW_TASK_ID.fullmatch(task_id):
+            found.add(task_id)
+    return found
+
+
+def analyze(
+    repo_root: Path,
+    catalog_path: Path,
+    queue_path: Path,
+    state_path: Path,
+    runtime_path: Path,
+    existing_issues_path: Path | None = None,
+) -> dict:
     catalog = _read_json(catalog_path)
     queue = _read_json(queue_path)
     state = _read_json(state_path)
@@ -115,7 +149,9 @@ def analyze(repo_root: Path, catalog_path: Path, queue_path: Path, state_path: P
     runtime_source = runtime_path.read_text(encoding="utf-8")
     planned = _planned_ids(runtime_source)
     missing_plan = sorted(catalog_ids - planned)
-    excluded = queued_ids | completed | held | review | catalog_ids
+    # Exclude old candidates during discovery; otherwise the bounded first batch
+    # is rediscovered forever and issue creation filters every result as duplicate.
+    excluded = queued_ids | completed | held | review | catalog_ids | _existing_issue_task_ids(existing_issues_path)
     candidates = []
     for code_rel, test_rel in TARGETS:
         if len(candidates) >= MAX_CANDIDATES:
@@ -179,10 +215,11 @@ def main() -> int:
     parser.add_argument("--queue", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--runtime", type=Path, required=True)
+    parser.add_argument("--existing-issues", type=Path, default=None)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
-        report = analyze(args.repo_root, args.catalog, args.queue, args.state, args.runtime)
+        report = analyze(args.repo_root, args.catalog, args.queue, args.state, args.runtime, args.existing_issues)
     except (ValueError, OSError) as exc:
         print(f"CATALOG_EXHAUSTION_ANALYZER_BLOCKED: {type(exc).__name__}")
         return 2
