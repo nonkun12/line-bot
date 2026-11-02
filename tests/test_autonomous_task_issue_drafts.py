@@ -122,7 +122,7 @@ def test_caps_new_candidates_to_remaining_review_backlog_capacity():
 
 
 def test_closed_or_execution_approved_issues_do_not_consume_review_capacity():
-    closed = _open_review_issue()
+    closed = _open_review_issue("review-coverage-gap-2222222222")
     closed["state"] = "closed"
     approved = _open_review_issue("review-coverage-gap-1111111111", approved=True)
     assert build_issue_drafts(_report(), [closed, approved])
