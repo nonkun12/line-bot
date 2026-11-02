@@ -29,6 +29,7 @@ HTTP_TIMEOUT_SECONDS = 15
 MAX_MESSAGE_CHARS = 4000
 MAX_REPLY_CHARS = 12000
 OPENCLAW_TIMEOUT_GRACE_SECONDS = 60
+DEFAULT_WORKSPACE = "~/line-bot"
 
 
 class OpenClawExecutionError(RuntimeError):
@@ -36,8 +37,8 @@ class OpenClawExecutionError(RuntimeError):
 
     def __init__(self, category: str):
         self.category = category
-        super().__init__(category)
-DEFAULT_WORKSPACE = "~/line-bot"
+        message = "unsuccessful" if category == "openclaw_reported_error" else category
+        super().__init__(message)
 
 
 def validate_config(server_url: str, key: str) -> str:
