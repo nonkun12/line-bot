@@ -158,20 +158,32 @@ def process_one(client: httpx.Client, base_url: str, headers: dict[str, str], ti
         or len(message) > MAX_MESSAGE_CHARS
     ):
         raise RuntimeError("server returned an invalid job payload")
+    started_at = time.monotonic()
+    outcome = "success"
     try:
         reply = run_openclaw(message, timeout, job_id=job_id)
         result = {"job_id": job_id, "claim_token": token, "success": True, "reply": reply}
     except subprocess.TimeoutExpired:
+        outcome = "process_timeout"
         result = {"job_id": job_id, "claim_token": token, "success": False,
                   "error": "OpenClaw process_timeout"}
     except OpenClawExecutionError as exc:
+        outcome = exc.category
         result = {"job_id": job_id, "claim_token": token, "success": False,
                   "error": f"OpenClaw {exc.category}"}
     except Exception as exc:
         # Send only a stable category; never expose exception details or local output.
-        category = "timeout" if "timeout" in type(exc).__name__.lower() else "execution_error"
+        outcome = "timeout" if "timeout" in type(exc).__name__.lower() else "execution_error"
         result = {"job_id": job_id, "claim_token": token, "success": False,
-                  "error": f"OpenClaw {category}"}
+                  "error": f"OpenClaw {outcome}"}
+    elapsed_ms = int((time.monotonic() - started_at) * 1000)
+    # Correlate each claimed job with its duration and sanitized outcome only.
+    # Never log the LINE prompt, reply, claim token, environment, or subprocess output.
+    print(
+        f"openclaw_job job_id={job_id} outcome={outcome} elapsed_ms={elapsed_ms}",
+        file=sys.stderr,
+        flush=True,
+    )
     done = client.post(f"{base_url}/complete", headers=headers, json=result)
     done.raise_for_status()
     return True
