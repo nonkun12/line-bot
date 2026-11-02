@@ -9,6 +9,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from core.loop_failure_codes import is_safe_failure_code
+
 _SAFE_TASK_ID = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
 _VALID_STATUSES = {"PASS", "NO_CHANGE", "FAIL", "BLOCKED", "NOT_RUN"}
 
@@ -46,6 +48,8 @@ def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
     rea_gate = rea_gate if isinstance(rea_gate, str) else None
     recovery_action = decision.get("action")
     recovery_action = recovery_action if isinstance(recovery_action, str) else None
+    failure_code = row.get("failure_code")
+    failure_code = failure_code if is_safe_failure_code(failure_code) else None
 
     # Safety holds outrank a nominal PASS: contradictory evidence fails closed.
     if rea_gate in {"BLOCKED", "FAIL"}:
@@ -53,8 +57,12 @@ def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
         recommendation = "Review the REA findings; do not retry or bypass the gate."
         requires_human = True
     elif recovery_action == "HOLD" or decision.get("requires_human") is True:
-        category = "recovery_hold"
-        recommendation = "Inspect the exact failed step and prepare a reviewed repair proposal; keep the hold."
+        if failure_code == "existing_test_modified_repair_failed":
+            category = "test_plan_repair_failed"
+            recommendation = "The proposed test edit could not preserve existing tests. Keep the hold; revise the task to append one new test only, then require human review before any resume."
+        else:
+            category = "recovery_hold"
+            recommendation = "Inspect the exact failed step and prepare a reviewed repair proposal; keep the hold."
         requires_human = True
     elif failure_reason == "queue_empty" or status == "NOT_RUN":
         category = "queue_exhausted"
@@ -89,6 +97,7 @@ def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
             "task_runtime_failed", "queue_empty", "all_pending_tasks_held",
             "safety_gate_blocked", "recovery_ai_requires_hold",
         } else None,
+        "failure_code": failure_code,
         "recovery_action": recovery_action if recovery_action in {
             "CONTINUE", "REPAIR_ONCE", "HOLD", "STOP", "REVIEW",
         } else None,
