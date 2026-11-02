@@ -87,3 +87,18 @@ def test_untrusted_status_and_reason_types_do_not_crash(bad_value):
     report = build_report([{"task_id":"malformed","status":bad_value,"failure_reason":bad_value,"recovery_ai":{"decision":{"action":bad_value}}}])
     assert report["status"] == "REVIEW_REQUIRED"
     assert report["diagnoses"][0]["category"] == "insufficient_evidence"
+
+
+def test_known_failure_code_explains_append_only_repair_failure_without_retry_authority():
+    diagnosis = build_report([{
+        "task_id": "review-coverage-gap-example",
+        "status": "FAIL",
+        "failure_reason": "task_runtime_failed",
+        "failure_code": "existing_test_modified_repair_failed",
+        "recovery_ai": {"decision": {"action": "HOLD", "requires_human": True}},
+    }])["diagnoses"][0]
+    assert diagnosis["category"] == "test_plan_repair_failed"
+    assert diagnosis["failure_code"] == "existing_test_modified_repair_failed"
+    assert "append one new test only" in diagnosis["recommendation"]
+    assert diagnosis["permissions"]["retry_task"] is False
+    assert diagnosis["permissions"]["clear_hold"] is False
