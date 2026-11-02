@@ -98,3 +98,25 @@ def test_distributed_workflow_loads_existing_issues_before_candidate_analysis():
     assert "--existing-issues /tmp/autonomous-loop-all-issues.json" in analyze_step
     assert "--issues /tmp/autonomous-loop-all-issues.json" in create_step
     assert "gh api --paginate" not in create_step
+
+def test_distributed_workflow_pauses_discovery_when_review_candidate_backlog_is_full():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    load_start = workflow.index("- name: Load all existing issues for candidate deduplication")
+    analyze_start = workflow.index("- name: Analyze catalog exhaustion without changing execution state", load_start)
+    create_start = workflow.index("- name: Create bounded review-only task issues from analyzer findings", analyze_start)
+    create_end = workflow.index("- name: Run one bounded autonomous task", create_start)
+    load_step = workflow[load_start:analyze_start]
+    analyze_step = workflow[analyze_start:create_start]
+    create_step = workflow[create_start:create_end]
+
+    assert "id: load-existing-issues" in load_step
+    assert "open_candidate_count=" in load_step
+    assert 'autonomous-task-candidate' in load_step
+    assert "discovery pause threshold: 4" in load_step
+    assert "execution approvals remain explicit" in load_step
+    assert "fromJSON(steps.load-existing-issues.outputs.open_candidate_count) < 4" in analyze_step
+    assert "fromJSON(steps.load-existing-issues.outputs.open_candidate_count) < 4" in create_step
+
