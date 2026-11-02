@@ -102,6 +102,15 @@ from agents.english.core_image import handle_core_image_command
 
 app = Flask(__name__)
 
+# Safe OpenClaw Bridge configuration diagnostic; never log the secret itself.
+_openclaw_bridge_key = os.environ.get("OPENCLAW_BRIDGE_KEY", "")
+app.logger.info(
+    "OPENCLAW BRIDGE CONFIG key_present=%s key_length_ok=%s",
+    bool(_openclaw_bridge_key),
+    len(_openclaw_bridge_key) >= 24,
+)
+del _openclaw_bridge_key
+
 from routes.dashboard import dashboard_bp
 app.register_blueprint(dashboard_bp)
 
