@@ -115,6 +115,17 @@ def test_catalog_approval_label_never_authorizes_queue_admission(tmp_path):
     assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
 
 
+
+def test_operator_guide_and_registration_pr_use_exact_execution_approval_label():
+    guide = Path("docs/rea/AUTONOMOUS_TASK_REGISTRATION.md").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/register-autonomous-task.yml").read_text(encoding="utf-8")
+
+    assert "`autonomous-task-execution-approved`" in guide
+    assert "apply `autonomous-task-approved`" not in guide
+    assert "`autonomous-task-execution-approved`" in workflow
+    assert "apply the approval label" not in workflow
+
+
 def test_execution_approval_requires_candidate_label(tmp_path):
     labels = ("autonomous-task-execution-approved",)
     result, qp = run(
