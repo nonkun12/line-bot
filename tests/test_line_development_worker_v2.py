@@ -963,8 +963,8 @@ def test_bounded_repair_keeps_existing_test_rewrite_rejected(monkeypatch, tmp_pa
             "file": chosen,
             "old": original,
             "new": (
-                "def test_contract():\\n    assert route() == 'general'\\n"
-                "\\ndef test_new_regression():\\n    assert route() == 'general'\\n"
+                "def test_contract():\n    assert route() == 'general'\n"
+                "\ndef test_new_regression():\n    assert route() == 'general'\n"
             ),
         }],
     }
