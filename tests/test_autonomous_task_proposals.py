@@ -213,6 +213,33 @@ def test_review_only_candidate_does_not_shadow_later_approved_task(tmp_path):
     assert [task["source_issue"] for task in queued] == [17]
 
 
+def test_review_proposal_cap_does_not_hide_later_approved_task(tmp_path):
+    review_candidates = []
+    for index in range(4):
+        candidate = issue(f"review-cap-{index}")
+        candidate["number"] = 10 + index
+        review_candidates.append(candidate)
+    approved_id = "approved-after-review-cap"
+    approved = issue(
+        approved_id,
+        labels=("autonomous-task-candidate", "autonomous-task-execution-approved"),
+    )
+    approved["number"] = 20
+
+    result, qp = run(
+        tmp_path,
+        [*review_candidates, approved],
+        state(),
+        registered_tasks=[registered(approved_id)],
+    )
+
+    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]
+    assert result["proposal_count"] == 4
+    assert result["approved_count"] == 1
+    assert result["approved_task_ids"] == [approved_id]
+    assert [task["source_issue"] for task in queued] == [20]
+
+
 def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):
     existing = {"id": "already-queued", "instruction": "Existing task", "allowed_paths": ["tests/test_existing.py"]}
     issues = [issue("approved-one", labels=("autonomous-task-candidate", "autonomous-task-execution-approved")),
