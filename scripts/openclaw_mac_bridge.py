@@ -180,7 +180,7 @@ def process_one(client: httpx.Client, base_url: str, headers: dict[str, str], ti
     # Correlate each claimed job with its duration and sanitized outcome only.
     # Never log the LINE prompt, reply, claim token, environment, or subprocess output.
     print(
-        f"openclaw_job job_id={job_id} outcome={outcome} elapsed_ms={elapsed_ms}",
+        f"openclaw_job job_id={job_id} outcome={outcome} timeout_seconds={timeout} elapsed_ms={elapsed_ms}",
         file=sys.stderr,
         flush=True,
     )
