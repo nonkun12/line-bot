@@ -152,3 +152,54 @@ def test_elapsed_seconds_requires_aware_nonnegative_timestamps():
         elapsed_seconds("2026-10-11T00:00:00", "2026-10-11T00:00:01+00:00")
     with pytest.raises(ValueError):
         elapsed_seconds("2026-10-11T00:00:02+00:00", "2026-10-11T00:00:01+00:00")
+
+
+def test_hold_reason_and_last_decision_are_persisted(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    decision = store.record_failure("task-held", "security_violation")
+    status = store.task_status("task-held")
+
+    assert decision.action == "HOLD"
+    assert status["held"] is True
+    assert status["hold_reason"] == "non_repairable_failure"
+    assert status["last_decision_action"] == "HOLD"
+    assert status["last_decision_reason"] == "non_repairable_failure"
+
+
+def test_legacy_hold_is_preserved_and_reported_without_inventing_cause(tmp_path):
+    path = tmp_path / "state.json"
+    path.write_text(json.dumps({
+        "schema_version": 1,
+        "checkpoint": None,
+        "tasks": {
+            "legacy-task": {
+                "consecutive_failures": 1,
+                "fingerprints": [],
+                "held": True,
+            }
+        },
+    }), encoding="utf-8")
+    store = RecoveryStore(path)
+
+    decision = store.record_failure("legacy-task", "unknown")
+    status = store.task_status("legacy-task")
+
+    assert decision.action == "HOLD"
+    assert decision.reason == "previous_hold_requires_explicit_resume"
+    assert status["held"] is True
+    assert status["hold_reason"] == "legacy_hold_reason_unavailable"
+    assert status["last_decision_action"] == "HOLD"
+
+
+def test_existing_hold_cause_is_not_overwritten_by_later_failure(tmp_path):
+    path = tmp_path / "state.json"
+    store = RecoveryStore(path)
+    store.record_failure("task-held", "security_violation")
+    first = store.task_status("task-held")["hold_reason"]
+
+    decision = store.record_failure("task-held", "unknown")
+    status = store.task_status("task-held")
+
+    assert decision.reason == "previous_hold_requires_explicit_resume"
+    assert status["hold_reason"] == first
+    assert status["last_category"] == "unknown"
