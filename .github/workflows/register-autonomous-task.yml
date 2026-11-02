@@ -35,14 +35,27 @@ jobs:
           [[ "$ISSUE_NUMBER" =~ ^[1-9][0-9]{0,7}$ ]] || { echo "::error::Invalid issue number"; exit 1; }
           [[ "$CONFIRM_ISSUE_NUMBER" == "$ISSUE_NUMBER" ]] || { echo "::error::Confirmation must exactly match issue number"; exit 1; }
 
+      - name: Prepare GitHub App authentication
+        id: github_auth
+        uses: ./.github/actions/github-app-token
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          fallback-token: ${{ github.token }}
+          require-app: ${{ vars.GH_APP_AUTH_REQUIRED == 'true' }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: read
+
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
+          token: ${{ steps.github_auth.outputs.token }}
 
       - name: Load candidate and durable execution state
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.github_auth.outputs.token }}
           ISSUE_NUMBER: ${{ inputs.issue_number }}
         run: |
           set -euo pipefail
@@ -67,7 +80,7 @@ jobs:
 
       - name: Create catalog registration pull request
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.github_auth.outputs.token }}
           ISSUE_NUMBER: ${{ inputs.issue_number }}
         run: |
           set -euo pipefail
