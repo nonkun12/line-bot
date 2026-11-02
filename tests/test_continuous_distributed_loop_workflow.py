@@ -311,3 +311,23 @@ def test_only_continuous_workflow_owns_automatic_dispatch():
     assert "continuation_depth=" in continuous
     assert "gh workflow run distributed-autonomous-loop.yml" not in postrun
     assert "Automatically continue the verified distributed loop" not in postrun
+
+def test_only_one_workflow_owns_automatic_continuation():
+    root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    primary = (root / "continuous-distributed-loop.yml").read_text(encoding="utf-8")
+    duplicate = (root / "distributed-loop-safe-continuation.yml").read_text(encoding="utf-8")
+
+    assert "gh workflow run distributed-autonomous-loop.yml" in primary
+    assert "if: github.event.workflow_run.run_attempt < 0" in duplicate
+    assert "Automatic continuation is owned exclusively by continuous-distributed-loop.yml." in duplicate
+
+
+def test_postrun_verification_does_not_send_a_second_line_report():
+    path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-loop-postrun.yml"
+    source = path.read_text(encoding="utf-8")
+
+    assert "Always report the completed Loop to LINE" not in source
+    assert "LINE duplicate notification disabled (source loop is authoritative)" in source
+    disabled = source[source.index("LINE duplicate notification disabled (source loop is authoritative)"):]
+    disabled = disabled.split("\n      - name:", 1)[0]
+    assert "if: github.event.workflow_run.run_attempt < 0" in disabled
