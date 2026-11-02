@@ -57,6 +57,80 @@ def test_validate_plan_rejects_oversized_change():
     )
 
 
+
+def test_review_coverage_gap_task_requires_exact_single_test_path(monkeypatch):
+    task_id = "review-coverage-gap-4f1b715515"
+    chosen = "tests/test_stocks.py"
+    instruction = (
+        "人手レビュー後に限り、tests/test_stocks.py に safe_stock_quote の境界条件を検証する"
+        "新しい回帰テストを1件追加してください。変更は指定テストファイル1つだけ。"
+    )
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction=instruction,
+        autonomous_task_id=task_id,
+        chosen=chosen,
+    )
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/test_stocks.py"]')
+
+    assert runtime._is_review_coverage_gap_task(state, task_id)
+
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/test_stocks.py", "core/stocks.py"]')
+    assert not runtime._is_review_coverage_gap_task(state, task_id)
+
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/test_voice_contract.py"]')
+    assert not runtime._is_review_coverage_gap_task(state, task_id)
+
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/test_stocks.py"]')
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "manual")
+    assert not runtime._is_review_coverage_gap_task(state, task_id)
+
+
+def test_review_coverage_gap_implementer_uses_append_only_plan(monkeypatch):
+    task_id = "review-coverage-gap-4f1b715515"
+    chosen = "tests/test_stocks.py"
+    instruction = (
+        "人手レビュー後に限り、tests/test_stocks.py に safe_stock_quote の境界条件を検証する"
+        "新しい回帰テストを1件追加してください。変更は指定テストファイル1つだけ。"
+    )
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction=instruction,
+        autonomous_task_id=task_id,
+        chosen=chosen,
+    )
+    plan = {
+        "no_change": False,
+        "source": "append_only_review_task",
+        "changes": [{
+            "file": chosen,
+            "old": "def test_existing():\n    pass\n",
+            "new": "def test_existing():\n    pass\n\ndef test_new():\n    assert True\n",
+        }],
+    }
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/test_stocks.py"]')
+    monkeypatch.setattr(worker, "context_for", lambda path: "current test file")
+    monkeypatch.setattr(worker, "build_append_only_test_plan", lambda *args: (plan, ""))
+    monkeypatch.setattr(worker, "validate_plan", lambda *args: (True, chosen))
+    monkeypatch.setattr(worker, "apply_plan", lambda value: (True, "applied", [chosen]))
+
+    def forbidden_generic_plan(*args, **kwargs):
+        raise AssertionError("review-gap tasks must not use generic search/replace generation")
+
+    monkeypatch.setattr(worker, "build_plan", forbidden_generic_plan)
+
+    result = runtime.DevelopmentExecutor(state).execute(
+        AgentTask("implementer", AgentRole.IMPLEMENTER, "Implement one reviewed regression test.")
+    )
+
+    assert result.success is True
+    assert result.summary == "guarded append-only regression test applied"
+    assert result.changed_resources == frozenset({chosen})
+
+
+
 def test_fallback_safe_target_fails_closed_instead_of_guessing():
     files = [
         "tests/test_management_router.py",

@@ -474,6 +474,131 @@ def _salvage_additive_test_plan(path: str, rejected_plan: dict) -> dict | None:
     return None
 
 
+
+def build_append_only_test_plan(
+    client: Groq,
+    instruction: str,
+    chosen: str,
+    context: str,
+) -> tuple[dict | None, str]:
+    """Generate one test function, then construct an append-only EOF patch."""
+    if not is_test_path(chosen) or not chosen.endswith(".py"):
+        return None, "append_only_test_target_invalid"
+    system = """Write exactly ONE pytest test function for the requested boundary condition.
+Return Python source only: no JSON, markdown fences, or explanation.
+If existing coverage already makes a new test unnecessary, return exactly NO_CHANGE.
+Use only imports and fixtures already visible in the current test file.
+Do not add imports, decorators, helper functions, classes, or module-level statements.
+Do not access the network, environment variables, secrets, files, processes, or the OS.
+Do not weaken, edit, rename, reorder, or copy any existing test.
+The function name must start with test_. Keep the test focused and concise."""
+    prompt = (
+        f"Task:\n{instruction}\n\n"
+        f"Only editable file:\n{chosen}\n\n"
+        f"Current test file:\n{context}\n\n"
+        "Return one complete test function, or NO_CHANGE."
+    )
+    try:
+        generated = ask(client, system, prompt, max_tokens=1200).strip()
+    except Exception as exc:
+        return None, f"append_only_test_generation_failed:{type(exc).__name__}"
+    if generated == "NO_CHANGE":
+        return {"no_change": True, "source": "append_only_review_task"}, ""
+    if not generated or (chr(96) * 3) in generated or len(generated) > 1400:
+        return None, "append_only_test_output_invalid"
+    try:
+        tree = ast.parse(generated, filename=chosen)
+    except SyntaxError:
+        return None, "append_only_test_invalid_syntax"
+    if (
+        len(tree.body) != 1
+        or not isinstance(tree.body[0], ast.FunctionDef)
+        or not tree.body[0].name.startswith("test_")
+        or tree.body[0].decorator_list
+        or not tree.body[0].body
+    ):
+        return None, "append_only_test_not_single_function"
+
+    function = tree.body[0]
+    forbidden_names = {
+        "__builtins__", "__import__", "builtins", "compile", "ctypes",
+        "eval", "exec", "globals", "getattr", "getenv", "locals",
+        "multiprocessing", "open", "os", "pathlib", "Path", "PurePath",
+        "requests", "setattr", "shutil", "socket", "subprocess", "tempfile",
+        "threading", "urllib", "vars",
+    }
+    forbidden_attributes = {
+        "Popen", "call", "chdir", "check_call", "check_output", "chmod",
+        "connect", "cwd", "environ", "exists", "getenv", "glob", "home",
+        "is_dir", "is_file", "iterdir", "mkdir", "open", "read", "read_bytes",
+        "read_text", "remove", "rename", "replace", "resolve", "rmdir",
+        "rglob", "run", "send", "spawn", "stat", "system", "touch", "unlink",
+        "urlopen", "write", "write_bytes", "write_text",
+    }
+    for node in ast.walk(function):
+        if isinstance(node, (ast.Import, ast.ImportFrom, ast.Global, ast.Nonlocal)):
+            return None, "append_only_test_unsafe_operation"
+        # Reject references to powerful modules already imported by the test
+        # module; generated code must not inherit ambient OS/network capabilities.
+        if isinstance(node, ast.Name) and node.id in forbidden_names:
+            return None, "append_only_test_unsafe_operation"
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in forbidden_names:
+                return None, "append_only_test_unsafe_operation"
+            if isinstance(node.func, ast.Attribute) and node.func.attr in forbidden_attributes:
+                return None, "append_only_test_unsafe_operation"
+        if isinstance(node, ast.Attribute) and (
+            node.attr in forbidden_attributes or node.attr.startswith("__")
+        ):
+            return None, "append_only_test_unsafe_operation"
+
+    target = ROOT / chosen
+    try:
+        original = target.read_text(encoding="utf-8")
+        original_tree = ast.parse(original, filename=chosen)
+    except (OSError, SyntaxError):
+        return None, "append_only_test_source_unavailable"
+    existing_names = {
+        node.name
+        for node in ast.walk(original_tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+    }
+    if function.name in existing_names:
+        return None, "append_only_test_name_exists"
+
+    addition_text = generated.rstrip("\r\n") + "\n"
+    original_lines = original.splitlines(keepends=True)
+    for start in range(len(original_lines) - 1, -1, -1):
+        old = "".join(original_lines[start:])
+        if len(old) > 1200:
+            break
+        if not old.strip() or original.count(old) != 1:
+            continue
+        new = old.rstrip("\r\n") + "\n\n" + addition_text
+        if len(new) > 1800:
+            continue
+        candidate = original.replace(old, new, 1)
+        prefix = original[: -len(old)]
+        if not candidate.startswith(prefix) or candidate != prefix + new:
+            continue
+        try:
+            ast.parse(candidate, filename=chosen)
+        except SyntaxError:
+            continue
+        if not _adds_exactly_one_test(chosen, old, new):
+            continue
+        plan = {
+            "no_change": False,
+            "source": "append_only_review_task",
+            "changes": [{"file": chosen, "old": old, "new": new}],
+        }
+        valid, detail = validate_plan(plan, chosen)
+        if valid and detail != "no_change":
+            return plan, ""
+    return None, "append_only_test_anchor_or_size_invalid"
+
+
 def validate_plan_with_bounded_repairs(
     client: Groq,
     instruction: str,
