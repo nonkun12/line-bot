@@ -101,7 +101,7 @@ def test_distributed_workflow_loads_existing_issues_before_candidate_analysis():
 
 
 def _open_review_issue(task_id="review-coverage-gap-0123456789", approved=False):
-    body = "<!-- autonomous-task-spec -->\\n" + json.dumps({"id": task_id}) + "\\n<!-- autonomous-task-spec -->"
+    body = "<!-- autonomous-task-spec -->\n" + json.dumps({"id": task_id}) + "\n<!-- autonomous-task-spec -->"
     labels = [{"name": "autonomous-task-candidate"}]
     if approved:
         labels.append({"name": "autonomous-task-execution-approved"})
