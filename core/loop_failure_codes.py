@@ -5,6 +5,7 @@ import re
 
 SAFE_FAILURE_CODES = frozenset({
     "existing_test_modified_repair_failed",
+    "invalid_change_count",
     "invalid_change_count_repair_failed",
     "append_only_test_anchor_or_size_invalid",
 })
