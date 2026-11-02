@@ -326,8 +326,5 @@ def test_postrun_verification_does_not_send_a_second_line_report():
     path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-loop-postrun.yml"
     source = path.read_text(encoding="utf-8")
 
-    assert "Notify LINE of distributed loop final report" in source
-    assert "LINE duplicate notification disabled (source loop is authoritative)" in source
-    disabled = source[source.index("LINE duplicate notification disabled (source loop is authoritative)"):]
-    disabled = disabled.split("\n      - name:", 1)[0]
-    assert "if: ${{ false }}" in disabled
+    assert "Always report the completed Loop to LINE" not in source
+    assert "LINE duplicate notification disabled (source loop is authoritative)" not in source
