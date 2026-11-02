@@ -275,3 +275,25 @@ def test_stale_job_with_retry_budget_is_requeued_and_claimed(monkeypatch, tmp_pa
     assert claimed["status"] == "running"
     assert claimed["retry_count"] == 2
     assert claimed["claim_token"]
+
+
+def test_auth_rejection_logs_only_short_key_fingerprints(monkeypatch, caplog):
+    import hashlib
+
+    expected = "expected-secret-" + "e" * 32
+    provided = "provided-secret-" + "p" * 32
+    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", expected)
+
+    response = make_app().test_client().get(
+        "/api/openclaw/status",
+        headers={"X-OpenClaw-Bridge-Key": provided},
+    )
+
+    assert response.status_code == 401
+    log_text = " ".join(record.getMessage() for record in caplog.records)
+    expected_fp = hashlib.sha256(expected.encode("utf-8")).hexdigest()[:16]
+    provided_fp = hashlib.sha256(provided.encode("utf-8")).hexdigest()[:16]
+    assert f"expected_fp={expected_fp}" in log_text
+    assert f"provided_fp={provided_fp}" in log_text
+    assert expected not in log_text
+    assert provided not in log_text

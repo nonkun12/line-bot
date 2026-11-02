@@ -10,6 +10,7 @@ from linebot.v3.messaging import (
 )
 import unicodedata
 import json
+import hashlib
 import random
 import threading
 import httpx
@@ -105,9 +106,11 @@ app = Flask(__name__)
 # Safe OpenClaw Bridge configuration diagnostic; never log the secret itself.
 _openclaw_bridge_key = os.environ.get("OPENCLAW_BRIDGE_KEY", "")
 app.logger.info(
-    "OPENCLAW BRIDGE CONFIG key_present=%s key_length_ok=%s",
+    "OPENCLAW BRIDGE CONFIG key_present=%s key_length_ok=%s key_fp=%s",
     bool(_openclaw_bridge_key),
     len(_openclaw_bridge_key) >= 24,
+    hashlib.sha256(_openclaw_bridge_key.encode("utf-8")).hexdigest()[:16]
+    if _openclaw_bridge_key else "absent",
 )
 del _openclaw_bridge_key
 

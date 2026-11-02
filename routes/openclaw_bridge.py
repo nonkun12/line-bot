@@ -4,6 +4,7 @@ The Mac initiates outbound HTTPS requests; this service never opens a port on th
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import os
 import sqlite3
@@ -18,6 +19,13 @@ from db import DB, claim_pending_job_by_type, complete_claimed_job, get_job
 openclaw_bridge_bp = Blueprint("openclaw_bridge", __name__, url_prefix="/api/openclaw")
 _MAX_REPLY_CHARS = 12000
 _MAX_ERROR_CHARS = 1000
+
+
+def _key_fingerprint(value: str) -> str:
+    """Return a short diagnostic fingerprint without exposing the credential."""
+    if not value:
+        return "absent"
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
 
 
 def _authorized() -> bool:
@@ -35,11 +43,14 @@ def _authorized() -> bool:
         # distinguish a missing header from a mismatched credential.
         current_app.logger.warning(
             "OPENCLAW BRIDGE AUTH REJECTED expected_present=%s "
-            "expected_length_ok=%s header_present=%s header_length=%d matched=%s",
+            "expected_length_ok=%s header_present=%s header_length=%d "
+            "expected_fp=%s provided_fp=%s matched=%s",
             bool(expected),
             expected_length_ok,
             bool(provided),
             len(provided),
+            _key_fingerprint(expected),
+            _key_fingerprint(provided),
             matched,
         )
     return matched
