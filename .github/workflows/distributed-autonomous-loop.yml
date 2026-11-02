@@ -512,7 +512,7 @@ jobs:
               loop_args+=(--incident-job-id "$INCIDENT_JOB_ID")
             fi
           fi
-          rm -f /tmp/autonomous-loop-not-run
+          rm -f /tmp/autonomous-loop-not-run /tmp/autonomous-loop-held-tasks
           set +e
           python scripts/run_minimal_autonomous_loop.py "${loop_args[@]}"
           loop_rc=$?
