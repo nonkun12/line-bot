@@ -54,6 +54,7 @@ def find_work(
         {"source": source, "test": test}
         for source, test in TARGETS
         if (repo_root / source).is_file() and (repo_root / test).is_file()
+        and not (repo_root / source).is_symlink()
         and not (repo_root / test).is_symlink()
     ]
     records = recovery["tasks"]
