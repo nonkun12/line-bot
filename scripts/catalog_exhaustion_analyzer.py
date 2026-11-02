@@ -61,6 +61,32 @@ def _planned_ids(runtime_source: str) -> set[str]:
     return planned
 
 
+def _is_non_executable_stub(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Ignore Protocol/ABC-style declarations that have no executable body."""
+    decorator_names = {
+        item.id if isinstance(item, ast.Name) else item.attr if isinstance(item, ast.Attribute) else ""
+        for item in node.decorator_list
+    }
+    if decorator_names.intersection({"abstractmethod", "overload"}):
+        return True
+    body = list(node.body)
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str):
+        body = body[1:]
+    if not body:
+        return True
+    return all(
+        isinstance(item, ast.Pass)
+        or (isinstance(item, ast.Expr) and isinstance(item.value, ast.Constant) and item.value.value is Ellipsis)
+        or (
+            isinstance(item, ast.Raise)
+            and isinstance(item.exc, ast.Call)
+            and isinstance(item.exc.func, ast.Name)
+            and item.exc.func.id == "NotImplementedError"
+        )
+        for item in body
+    )
+
+
 def _public_functions(source: str) -> list[tuple[str, int]]:
     try:
         tree = ast.parse(source)
@@ -69,10 +95,15 @@ def _public_functions(source: str) -> list[tuple[str, int]]:
     found = []
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith("_"):
-            found.append((node.name, node.lineno))
+            if not _is_non_executable_stub(node):
+                found.append((node.name, node.lineno))
         elif isinstance(node, ast.ClassDef):
             for member in node.body:
-                if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and not member.name.startswith("_"):
+                if (
+                    isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and not member.name.startswith("_")
+                    and not _is_non_executable_stub(member)
+                ):
                     found.append((f"{node.name}.{member.name}", member.lineno))
     return found
 
