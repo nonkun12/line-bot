@@ -459,6 +459,38 @@
         "tests/test_obsidian.py"
       ],
       "execution_approved": false
+    },
+    {
+      "id": "recovery-resume-review-cli-test-20261102",
+      "instruction": "Add exactly one new pytest test function only to tests/test_confirm_recovery_resume_review.py. Exercise scripts.confirm_recovery_resume_review.main as a CLI boundary: provide --state-file and --task-id through monkeypatched sys.argv, stub confirm_in_durable_state, and assert main returns 0 and forwards the exact values. Append the new test at the end of the file. Do not edit, rename, delete, reorder, reformat, or weaken any existing test, assertion, fixture, or class. Do not change production code or any other file. If an equivalent test already exists or safe append-only editing is not possible, make no change and report why. No external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_confirm_recovery_resume_review.py"
+      ],
+      "execution_approved": true
+    },
+    {
+      "id": "catalog-exhaustion-analyzer-cli-test-20261102",
+      "instruction": "Add exactly one new pytest test function only to tests/test_catalog_exhaustion_analyzer.py. Exercise scripts.catalog_exhaustion_analyzer.main on its successful CLI path using the existing _fixture(tmp_path) helper, monkeypatched sys.argv, and an output file; assert the return code is 0 and the output JSON has the analyzer's expected status/count fields. Append the new test at the end of the file. Do not edit, rename, delete, reorder, reformat, or weaken any existing test, assertion, fixture, or class. Do not change production code or any other file. If equivalent CLI coverage already exists or safe append-only editing is not possible, make no change and report why. No external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_catalog_exhaustion_analyzer.py"
+      ],
+      "execution_approved": true
+    },
+    {
+      "id": "task-refill-cli-test-20261102",
+      "instruction": "Add exactly one new pytest test function only to tests/test_autonomous_task_refill.py. Exercise scripts.autonomous_task_refill.main on its successful CLI path using the existing _inputs(tmp_path) helper, monkeypatched sys.argv, and an output file; assert the return code is 0 and the output JSON records the expected bounded queue result. Append the new test at the end of the file. Do not edit, rename, delete, reorder, reformat, or weaken any existing test, assertion, fixture, or class. Do not change production code or any other file. If equivalent CLI coverage already exists or safe append-only editing is not possible, make no change and report why. No external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ],
+      "execution_approved": true
+    },
+    {
+      "id": "task-refill-read-json-test-20261102",
+      "instruction": "Add exactly one new pytest test function only to tests/test_autonomous_task_refill.py for scripts.autonomous_task_refill.read_json. Use tmp_path to write a JSON array (not an object), call read_json, and assert it raises ValueError without exposing file contents. Append the new test at the end of the file. Do not edit, rename, delete, reorder, reformat, or weaken any existing test, assertion, fixture, or class. Do not change production code or any other file. If equivalent direct read_json coverage already exists or safe append-only editing is not possible, make no change and report why. No external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ],
+      "execution_approved": true
     }
   ]
 }
