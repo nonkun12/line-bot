@@ -397,6 +397,7 @@ jobs:
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
 
       - name: Load all existing issues for candidate deduplication
+        id: load-existing-issues
         if: success() && env.TRIGGER_MODE == 'normal'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -407,6 +408,12 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" \
             | jq -s 'add | map(select(has("pull_request") | not) | {number,title,body,state,labels})' > /tmp/autonomous-loop-all-issues.json
           jq '[.[] | select(.state == "open")]' /tmp/autonomous-loop-all-issues.json > /tmp/autonomous-loop-open-issues.json
+          open_candidate_count="$(jq '[.[] | select(.state == "open") | select(any(.labels[]?; .name == "autonomous-task-candidate"))] | length' /tmp/autonomous-loop-all-issues.json)"
+          echo "open_candidate_count=$open_candidate_count" >> "$GITHUB_OUTPUT"
+          echo "Open review-only candidate backlog: $open_candidate_count (discovery pause threshold: 4)" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$open_candidate_count" -ge 4 ]; then
+            echo "Work Finder discovery is paused until existing review candidates are triaged; execution approvals remain explicit." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Generate review-only task proposals when catalog is exhausted
         if: success() && env.TRIGGER_MODE == 'normal'
@@ -425,7 +432,7 @@ jobs:
           echo "TASK_PROPOSALS_PATH=/tmp/autonomous-loop-task-proposals.json" >> "$GITHUB_ENV"
 
       - name: Analyze catalog exhaustion without changing execution state (Work Finder AI)
-        if: success() && env.TRIGGER_MODE == 'normal'
+        if: success() && env.TRIGGER_MODE == 'normal' && fromJSON(steps.load-existing-issues.outputs.open_candidate_count) < 4
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -447,7 +454,7 @@ jobs:
           fi
 
       - name: Create bounded review-only task issues from analyzer findings
-        if: success() && env.TRIGGER_MODE == 'normal'
+        if: success() && env.TRIGGER_MODE == 'normal' && fromJSON(steps.load-existing-issues.outputs.open_candidate_count) < 4
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
