@@ -178,3 +178,17 @@ def test_maintenance_ai_cli_bootstraps_project_imports_without_pythonpath(tmp_pa
     )
     assert completed.returncode == 0, completed.stderr
     assert json.loads(output.read_text(encoding="utf-8"))["status"] == "NO_TASK_EVIDENCE"
+
+
+def test_invalid_change_count_failure_code_is_classified_without_retry_authority():
+    diagnosis = build_report([{
+        "task_id": "invalid-change-count-example",
+        "status": "FAIL",
+        "failure_reason": "task_runtime_failed",
+        "failure_code": "invalid_change_count",
+        "recovery_ai": {"decision": {"action": "HOLD", "requires_human": True}},
+    }])["diagnoses"][0]
+    assert diagnosis["category"] == "invalid_plan_change_count"
+    assert diagnosis["failure_code"] == "invalid_change_count"
+    assert diagnosis["permissions"]["retry_task"] is False
+    assert diagnosis["permissions"]["clear_hold"] is False
