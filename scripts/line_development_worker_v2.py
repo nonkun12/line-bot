@@ -538,6 +538,10 @@ The function name must start with test_. Keep the test focused and concise."""
     for node in ast.walk(function):
         if isinstance(node, (ast.Import, ast.ImportFrom, ast.Global, ast.Nonlocal)):
             return None, "append_only_test_unsafe_operation"
+        # Reject references to powerful modules already imported by the test
+        # module; generated code must not inherit ambient OS/network capabilities.
+        if isinstance(node, ast.Name) and node.id in forbidden_names:
+            return None, "append_only_test_unsafe_operation"
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name) and node.func.id in forbidden_names:
                 return None, "append_only_test_unsafe_operation"
