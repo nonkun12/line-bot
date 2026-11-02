@@ -71,6 +71,11 @@ on:
         required: false
         default: false
         type: boolean
+      confirm_resume_review:
+        description: 'Confirm that the resumed task has been reviewed and may re-enter the queue'
+        required: false
+        default: false
+        type: boolean
   # ChatGPT can request a bounded run by creating an authorized PR comment.
   # The trigger defaults to four tasks and remains fail-closed.
   issue_comment:
@@ -110,7 +115,7 @@ jobs:
          github.event.comment.body == '/distributed-loop max_tasks=2' ||
          github.event.comment.body == '/distributed-loop max_tasks=3' ||
          github.event.comment.body == '/distributed-loop max_tasks=4' ||
-         github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true') &&
+         startsWith(github.event.comment.body, '/distributed-loop resume_task_id=')) &&
         (
           github.event.comment.author_association == 'OWNER' ||
           github.event.comment.author_association == 'MEMBER' ||
@@ -127,7 +132,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || github.event_name == 'pull_request_target' && '4' || '1' }}
+      MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id=') && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || github.event_name == 'pull_request_target' && '4' || '1' }}
       TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'normal' }}
       INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_category || '' }}
       INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_detail || '' }}
@@ -226,7 +231,13 @@ jobs:
               "/distributed-loop max_tasks=2") expected="2" ;;
               "/distributed-loop max_tasks=3") expected="3" ;;
               "/distributed-loop max_tasks=4") expected="4" ;;
-              "/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true") expected="1" ;;
+              *)
+                if [[ "${COMMENT_BODY}" =~ ^/distributed-loop[[:space:]]resume_task_id=([A-Za-z0-9._-]{1,100})[[:space:]]confirm_cause_fixed=true[[:space:]]reviewed=true$ ]]; then
+                  expected="1"
+                else
+                  echo "::error::Unexpected issue-comment trigger"; exit 1
+                fi
+                ;;
               *) echo "::error::Unexpected issue-comment trigger"; exit 1 ;;
             esac
           elif [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
@@ -292,35 +303,55 @@ jobs:
         if: >-
           success() && (
             (github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id != '') ||
-            (github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true')
+            (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id='))
           )
+        id: validate_resume_request
         env:
-          RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true' && 'ai-speaker-empty-transcript-no-brain-call' || '' }}
-          CONFIRM_CAUSE_FIXED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_cause_fixed || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true' && 'true' || 'false' }}
+          EVENT_NAME: ${{ github.event_name }}
+          RESUME_TASK_ID_INPUT: ${{ github.event.inputs.resume_task_id || '' }}
+          CONFIRM_CAUSE_FIXED_INPUT: ${{ github.event.inputs.confirm_cause_fixed || 'false' }}
+          CONFIRM_RESUME_REVIEW_INPUT: ${{ github.event.inputs.confirm_resume_review || 'false' }}
+          RESUME_COMMENT: ${{ github.event_name == 'issue_comment' && github.event.comment.body || '' }}
         run: |
           set -euo pipefail
-          if [ -n "$RESUME_TASK_ID" ]; then
-            if [ "$CONFIRM_CAUSE_FIXED" != "true" ]; then
-              echo "::error::A held task can resume only with explicit cause-fixed confirmation."
-              exit 1
-            fi
-            if ! [[ "$RESUME_TASK_ID" =~ ^[A-Za-z0-9._-]{1,100}$ ]]; then
-              echo "::error::Invalid task ID."
-              exit 1
-            fi
-          elif [ "$CONFIRM_CAUSE_FIXED" = "true" ]; then
-            echo "::error::Cause-fixed confirmation requires a task ID."
-            exit 1
-          fi
+          python - <<'PY'
+          import os, re
+          event = os.environ.get("EVENT_NAME", "")
+          task_id = ""
+          cause_fixed = False
+          reviewed = False
+          if event == "issue_comment":
+              match = re.fullmatch(
+                  r"/distributed-loop resume_task_id=([A-Za-z0-9._-]{1,100}) confirm_cause_fixed=true reviewed=true",
+                  os.environ.get("RESUME_COMMENT", ""),
+              )
+              if not match:
+                  raise SystemExit("resume comment must explicitly confirm cause_fixed and reviewed")
+              task_id = match.group(1)
+              cause_fixed = reviewed = True
+          elif event == "workflow_dispatch":
+              task_id = os.environ.get("RESUME_TASK_ID_INPUT", "")
+              cause_fixed = os.environ.get("CONFIRM_CAUSE_FIXED_INPUT", "false").lower() == "true"
+              reviewed = os.environ.get("CONFIRM_RESUME_REVIEW_INPUT", "false").lower() == "true"
+          if task_id:
+              if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", task_id):
+                  raise SystemExit("invalid resume task ID")
+              if not cause_fixed or not reviewed:
+                  raise SystemExit("resume requires explicit cause-fixed and post-resume review confirmations")
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+                  out.write("task_id=" + task_id + "\\n")
+          elif cause_fixed or reviewed:
+              raise SystemExit("resume confirmations require a task ID")
+          PY
 
       - name: Resume one explicitly approved held task
         if: >-
           success() && (
             (github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id != '') ||
-            (github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true')
-          )
+            (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id='))
+          ) && steps.validate_resume_request.outputs.task_id != ''
         env:
-          RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true' && 'ai-speaker-empty-transcript-no-brain-call' || '' }}
+          RESUME_TASK_ID: ${{ steps.validate_resume_request.outputs.task_id }}
         run: |
           set -euo pipefail
           # Resume validates membership against the reviewed catalog, because
@@ -331,6 +362,10 @@ jobs:
             --queue .github/autonomous-loop-task-catalog.json \
             --task-id "$RESUME_TASK_ID" \
             --cause-fixed
+          python -m scripts.confirm_recovery_resume_review \
+            --state-file /tmp/autonomous-loop-state.json \
+            --recovery-state-file /tmp/recovery-ai-state.json \
+            --task-id "$RESUME_TASK_ID"
 
       - name: Restore durable Recovery RAG history
         if: success()
