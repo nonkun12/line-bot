@@ -261,6 +261,7 @@ def test_process_one_logs_only_sanitized_job_timing(monkeypatch, capsys):
     logged = capsys.readouterr().err
     assert "job_id=73" in logged
     assert "outcome=success" in logged
+    assert "timeout_seconds=60" in logged
     assert "elapsed_ms=" in logged
     assert "private prompt" not in logged
     assert "private reply" not in logged
