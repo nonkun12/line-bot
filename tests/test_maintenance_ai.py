@@ -89,6 +89,58 @@ def test_untrusted_status_and_reason_types_do_not_crash(bad_value):
     assert report["diagnoses"][0]["category"] == "insufficient_evidence"
 
 
+
+def test_empty_jsonl_with_not_run_marker_is_reported_as_queue_exhausted(tmp_path):
+    from scripts.maintenance_ai import _read_queue_state
+
+    marker = tmp_path / "not-run"
+    marker.write_text("queue_empty\n", encoding="utf-8")
+    state = _read_queue_state(marker, None)
+    report = build_report([], queue_state=state)
+    assert report["status"] == "REVIEW_REQUIRED"
+    assert report["diagnoses"][0]["category"] == "queue_exhausted"
+    assert report["diagnoses"][0]["permissions"]["retry_task"] is False
+
+
+@pytest.mark.parametrize(("marker_text", "expected"), [
+    ("all_pending_tasks_held\n", "all_tasks_held"),
+    ("catalog_exhausted_held:3\n", "all_tasks_held"),
+    ("catalog_exhausted_review_pending:2\n", "review_pending"),
+    ("catalog_exhausted_mixed:held=2,review=1\n", "mixed_queue_blocked"),
+])
+def test_held_and_review_markers_are_classified_without_raw_text(tmp_path, marker_text, expected):
+    from scripts.maintenance_ai import _read_queue_state
+
+    marker = tmp_path / "held"
+    marker.write_text(marker_text, encoding="utf-8")
+    state = _read_queue_state(None, marker)
+    report = build_report([], queue_state=state)
+    diagnosis = report["diagnoses"][0]
+    assert diagnosis["category"] == expected
+    assert diagnosis["requires_human"] is True
+    assert all(value is False for value in diagnosis["permissions"].values())
+
+
+def test_unknown_queue_marker_fails_closed_without_echoing_content(tmp_path):
+    from scripts.maintenance_ai import _read_queue_state
+
+    marker = tmp_path / "held"
+    marker.write_text("secret-token=must-not-appear", encoding="utf-8")
+    with pytest.raises(ValueError, match="not allowlisted"):
+        _read_queue_state(None, marker)
+
+
+def test_conflicting_queue_markers_fail_closed(tmp_path):
+    from scripts.maintenance_ai import _read_queue_state
+
+    not_run = tmp_path / "not-run"
+    held = tmp_path / "held"
+    not_run.write_text("queue_empty\n", encoding="utf-8")
+    held.write_text("all_pending_tasks_held\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="conflicting"):
+        _read_queue_state(not_run, held)
+
+
 def test_known_failure_code_explains_append_only_repair_failure_without_retry_authority():
     diagnosis = build_report([{
         "task_id": "review-coverage-gap-example",
