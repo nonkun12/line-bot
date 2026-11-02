@@ -72,7 +72,7 @@ def test_analyzer_skips_already_issued_candidates_and_fills_next_batch(tmp_path:
     code = root / "core" / "agent_runtime.py"
     names = [f"uncovered_boundary_{index}" for index in range(6)]
     code.write_text(
-        "".join(f"def {name}(value):\\n    return value\\n\\n" for name in names),
+        "".join(f"def {name}(value):\n    return value\n\n" for name in names),
         encoding="utf-8",
     )
     marker = "<!-- autonomous-task-spec -->"
@@ -80,7 +80,7 @@ def test_analyzer_skips_already_issued_candidates_and_fills_next_batch(tmp_path:
     for name in names[:4]:
         suffix = hashlib.sha256(f"core/agent_runtime.py:{name}".encode()).hexdigest()[:10]
         spec = {"id": f"review-coverage-gap-{suffix}"}
-        existing.append({"state": "open", "body": f"{marker}\\n{json.dumps(spec)}\\n{marker}"})
+        existing.append({"state": "open", "body": f"{marker}\n{json.dumps(spec)}\n{marker}"})
     issues = _write(tmp_path / "existing-issues.json", existing)
 
     report = analyze(root, catalog, queue, state, runtime, issues)
