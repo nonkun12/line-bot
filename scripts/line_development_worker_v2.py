@@ -388,6 +388,92 @@ def _adds_exactly_one_test(path: str, old: str, new: str) -> bool:
     return len(remaining) == 1
 
 
+def _salvage_additive_test_plan(path: str, rejected_plan: dict) -> dict | None:
+    """Extract one new top-level test from a rejected rewrite and append it safely.
+
+    The model may return a replacement that rewrites existing tests while adding
+    the requested regression. Never keep that replacement. Extract only one new
+    test function, then build a fresh append-only patch against the current file.
+    """
+    if not is_test_path(path) or not path.endswith(".py"):
+        return None
+    changes = rejected_plan.get("changes")
+    if not isinstance(changes, list) or len(changes) != 1:
+        return None
+    change = changes[0]
+    if not isinstance(change, dict) or change.get("file") != path:
+        return None
+    old, new = change.get("old"), change.get("new")
+    if not isinstance(old, str) or not old or not isinstance(new, str):
+        return None
+
+    target = ROOT / path
+    try:
+        original = target.read_text(encoding="utf-8")
+        if original.count(old) != 1:
+            return None
+        candidate = original.replace(old, new, 1)
+        original_tree = ast.parse(original, filename=path)
+        candidate_tree = ast.parse(candidate, filename=path)
+    except (OSError, SyntaxError, ValueError):
+        return None
+
+    original_names = {
+        node.name for node in original_tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test")
+    }
+    candidate_tests = [
+        node for node in candidate_tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test")
+    ]
+    candidate_names = [node.name for node in candidate_tests]
+    if (
+        not original_names.issubset(set(candidate_names))
+        or len(candidate_names) != len(set(candidate_names))
+    ):
+        return None
+    additions = [node for node in candidate_tests if node.name not in original_names]
+    if len(additions) != 1:
+        return None
+
+    added = additions[0]
+    start_line = min(
+        [added.lineno, *(decorator.lineno for decorator in added.decorator_list)]
+    )
+    if added.end_lineno is None:
+        return None
+    candidate_lines = candidate.splitlines(keepends=True)
+    addition = "".join(candidate_lines[start_line - 1 : added.end_lineno]).strip("\r\n")
+    if not addition or len(addition) > 1200:
+        return None
+    addition += "\n"
+
+    original_lines = original.splitlines(keepends=True)
+    for start in range(len(original_lines) - 1, -1, -1):
+        anchor = "".join(original_lines[start:])
+        if len(anchor) > 1200:
+            break
+        if not anchor.strip() or original.count(anchor) != 1:
+            continue
+        replacement = anchor.rstrip("\r\n") + "\n\n" + addition
+        if len(replacement) > 1800:
+            continue
+        plan = {
+            "no_change": False,
+            "changes": [{"file": path, "old": anchor, "new": replacement}],
+        }
+        valid, detail = validate_plan(plan, path)
+        if (
+            valid
+            and detail != "no_change"
+            and _adds_exactly_one_test(path, anchor, replacement)
+        ):
+            return plan
+    return None
+
+
 def validate_plan_with_bounded_repairs(
     client: Groq,
     instruction: str,
