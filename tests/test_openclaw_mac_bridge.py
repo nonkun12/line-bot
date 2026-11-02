@@ -59,7 +59,7 @@ def test_run_openclaw_uses_exec_and_explicit_workspace(monkeypatch, tmp_path):
     assert "--message" not in args
     assert "Do not merge, push, deploy" in args[-1]
     assert "inspect repository" in args[-1]
-    assert captured["kwargs"]["timeout"] == 90
+    assert captured["kwargs"]["timeout"] == 60 + worker.OPENCLAW_TIMEOUT_GRACE_SECONDS
     assert "shell" not in captured["kwargs"]
 
 
