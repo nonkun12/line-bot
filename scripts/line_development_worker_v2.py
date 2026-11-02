@@ -347,38 +347,45 @@ diff markers or markdown fences. If this cannot be done safely, return {"no_chan
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
 
 
-def _test_definition_count(source: str, path: str) -> int:
-    """Count pytest test functions, including methods nested in test classes."""
+def _test_definition_signatures(source: str, path: str) -> list[str] | None:
+    """Return AST signatures for all pytest test functions, including class methods."""
     try:
         tree = ast.parse(source, filename=path)
     except SyntaxError:
-        return -1
-    count = 0
+        return None
+    signatures = []
 
     def visit(node):
-        nonlocal count
         for child in ast.iter_child_nodes(node):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name.startswith("test"):
-                count += 1
+                signatures.append(ast.dump(child, include_attributes=False))
             visit(child)
 
     visit(tree)
-    return count
+    return signatures
 
 
 def _adds_exactly_one_test(path: str, old: str, new: str) -> bool:
-    """Require a repaired test plan to add exactly one test without changing old tests."""
+    """Require exactly one new test and byte-for-byte-equivalent ASTs for existing tests."""
     target = ROOT / path
     try:
         original = target.read_text(encoding="utf-8")
-        if original.count(old) != 1:
+        if not old or original.count(old) != 1:
             return False
         candidate = original.replace(old, new, 1)
     except OSError:
         return False
-    before_count = _test_definition_count(original, path)
-    after_count = _test_definition_count(candidate, path)
-    return before_count >= 0 and after_count == before_count + 1
+    before = _test_definition_signatures(original, path)
+    after = _test_definition_signatures(candidate, path)
+    if before is None or after is None or len(after) != len(before) + 1:
+        return False
+    remaining = list(after)
+    for signature in before:
+        try:
+            remaining.remove(signature)
+        except ValueError:
+            return False
+    return len(remaining) == 1
 
 
 def validate_plan_with_bounded_repairs(
