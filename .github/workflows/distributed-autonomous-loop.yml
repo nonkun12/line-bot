@@ -238,7 +238,6 @@ jobs:
                   echo "::error::Unexpected issue-comment trigger"; exit 1
                 fi
                 ;;
-              *) echo "::error::Unexpected issue-comment trigger"; exit 1 ;;
             esac
           elif [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
             expected="${DISPATCH_INPUT:-1}"
@@ -339,7 +338,7 @@ jobs:
               if not cause_fixed or not reviewed:
                   raise SystemExit("resume requires explicit cause-fixed and post-resume review confirmations")
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
-                  out.write("task_id=" + task_id + "\\n")
+                  out.write("task_id=" + task_id + "\n")
           elif cause_fixed or reviewed:
               raise SystemExit("resume confirmations require a task ID")
           PY
