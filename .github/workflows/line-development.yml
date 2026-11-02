@@ -25,11 +25,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      - name: Prepare GitHub App authentication
+        id: github_auth
+        uses: ./.github/actions/github-app-token
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          fallback-token: ${{ github.token }}
+          require-app: ${{ vars.GH_APP_AUTH_REQUIRED == 'true' }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ github.token }}
+          token: ${{ steps.github_auth.outputs.token }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -48,7 +59,7 @@ jobs:
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.github_auth.outputs.token }}
         run: |
           set -euo pipefail
           if [[ "${DEV_INSTRUCTION}" == *E2E* && "${DEV_INSTRUCTION}" == *テスト* ]] || [[ "${DEV_INSTRUCTION}" == *本線E2E* ]]; then
@@ -64,7 +75,7 @@ jobs:
         id: create_pr
         if: ${{ steps.development.outputs.test_only != 'true' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.github_auth.outputs.token }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           BRANCH: line-dev/${{ github.run_id }}
