@@ -1437,7 +1437,7 @@ def test_new_refill_cli_tasks_use_bounded_deterministic_plans(monkeypatch, tmp_p
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
 
     for task_id, expected_name, expected_marker in cases:
-        original = "def existing_test():\\n" + anchor + "\\n"
+        original = "def existing_test():\n" + anchor + "\n"
         target.write_text(original, encoding="utf-8")
         plan, error = runtime._deterministic_autonomous_test_plan(chosen, task_id)
 
