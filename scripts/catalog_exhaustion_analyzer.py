@@ -157,9 +157,12 @@ def analyze(
         if len(candidates) >= MAX_CANDIDATES:
             break
         code_path, test_path = repo_root / code_rel, repo_root / test_rel
+        # Never follow repository-controlled symlinks while scanning source or tests.
+        if code_path.is_symlink() or test_path.is_symlink():
+            continue
         if not code_path.is_file() or not test_path.is_file():
             continue
-        if test_path.is_symlink() or not TEST_PATH.fullmatch(test_rel):
+        if not TEST_PATH.fullmatch(test_rel):
             continue
         code_source = code_path.read_text(encoding="utf-8")
         test_source = test_path.read_text(encoding="utf-8")
