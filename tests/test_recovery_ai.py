@@ -31,6 +31,28 @@ def test_same_deterministic_failure_is_not_repaired_repeatedly(tmp_path):
     assert second.reason == "repair_budget_exhausted"
 
 
+def test_unknown_failure_gets_one_bounded_retry_then_holds(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    first = store.record_failure("task-unknown", "unknown")
+    second = store.record_failure("task-unknown", "unknown")
+
+    assert first.action == "REPAIR_ONCE"
+    assert first.requires_human is False
+    assert second.action == "HOLD"
+    assert second.requires_human is True
+    assert second.reason == "repair_budget_exhausted"
+
+
+def test_unknown_failure_streak_holds_after_three_distinct_fingerprints(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    store.record_failure("task-unknown", "unknown", ["test.one"])
+    store.record_failure("task-unknown", "unknown", ["test.two"])
+    third = store.record_failure("task-unknown", "unknown", ["test.three"])
+
+    assert third.action == "HOLD"
+    assert third.consecutive_failures == 3
+
+
 def test_three_failures_hold_task_even_if_fingerprints_change(tmp_path):
     store = RecoveryStore(tmp_path / "state.json")
     store.record_failure("task-a", "test_regression", ["test.one"])
