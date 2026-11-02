@@ -1098,6 +1098,27 @@ def test_append_only_test_plan_rejects_preimported_process_and_network_modules(m
 
 
 
+
+def test_append_only_test_plan_rejects_dunder_attribute_traversal(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_existing_contract():\n    assert True\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    generated = "def test_escapes_restrictions():\n    assert ().__class__.__base__\n"
+    plan, error = worker.build_append_only_test_plan(
+        FakeClient([generated]),
+        "Add a regression test",
+        "tests/test_sample.py",
+        original,
+    )
+
+    assert plan is None
+    assert error == "append_only_test_unsafe_operation"
+    assert target.read_text(encoding="utf-8") == original
+
+
 def test_append_only_test_plan_rejects_os_and_filesystem_calls(monkeypatch, tmp_path):
     target = tmp_path / "tests" / "test_sample.py"
     target.parent.mkdir()
