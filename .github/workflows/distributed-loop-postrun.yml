@@ -203,7 +203,7 @@ jobs:
       # Post-run verification records discrepancies as GitHub issues; it must
       # not send a second success/queue/blocked message for the same Run ID.
       - name: LINE duplicate notification disabled (source loop is authoritative)
-        if: ${{ false }}
+        if: github.event.workflow_run.run_attempt < 0
         env:
           LINE_INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
           DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
