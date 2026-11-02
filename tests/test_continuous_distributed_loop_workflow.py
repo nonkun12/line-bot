@@ -318,7 +318,7 @@ def test_only_one_workflow_owns_automatic_continuation():
     duplicate = (root / "distributed-loop-safe-continuation.yml").read_text(encoding="utf-8")
 
     assert "gh workflow run distributed-autonomous-loop.yml" in primary
-    assert "if: ${{ false }}" in duplicate
+    assert "if: github.event.workflow_run.run_attempt < 0" in duplicate
     assert "Automatic continuation is owned exclusively by continuous-distributed-loop.yml." in duplicate
 
 
