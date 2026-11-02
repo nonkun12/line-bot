@@ -221,6 +221,23 @@ def test_preflight_blocked_does_not_increment_recovery_failure_streak(tmp_path, 
     assert store.task_status("task-a") == before
 
 
+def test_unclassified_runtime_failure_is_recorded_for_one_bounded_retry(tmp_path):
+    path = tmp_path / "recovery.json"
+    outcome = record_loop_outcome(path, {
+        "task_id": "task-unknown",
+        "status": "FAIL",
+        "exit_code": 1,
+        "failure_reason": "task_runtime_failed",
+    })
+
+    assert outcome["recorded"] is True
+    assert outcome["decision"]["action"] == "REPAIR_ONCE"
+    assert outcome["decision"]["consecutive_failures"] == 1
+    record = RecoveryStore(path).task_status("task-unknown")
+    assert record["last_category"] == "unknown"
+    assert "task_runtime_failed" not in json.dumps(record)
+
+
 def test_real_task_failure_still_increments_recovery_failure_streak(tmp_path):
     path = tmp_path / "recovery.json"
     outcome = record_loop_outcome(path, {
