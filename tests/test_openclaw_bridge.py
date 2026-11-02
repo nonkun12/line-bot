@@ -179,3 +179,56 @@ def test_openclaw_enqueue_failure_fails_closed(monkeypatch):
     )
 
     assert "受け付けられませんでした" in response
+
+
+def test_stale_job_at_retry_limit_becomes_failed(monkeypatch, tmp_path):
+    import db
+
+    monkeypatch.setattr(db, "DB", str(tmp_path / "jobs.sqlite3"))
+    db.init_db()
+    job_id = db.create_job(
+        "U1", "run tests", job_type="openclaw", max_retries=3
+    )
+    with db.get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE jobs
+            SET status='running', retry_count=3, claim_token='stale-token',
+                updated_at=datetime('now', '-1 hour')
+            WHERE id=?
+            """,
+            (job_id,),
+        )
+
+    assert db.claim_pending_job_by_type("openclaw", stale_after_seconds=60) is None
+    job = db.get_job(job_id)
+    assert job["status"] == "failed"
+    assert job["retry_count"] == 3
+    assert job["claim_token"] is None
+    assert job["last_error"] == "worker claim timed out after maximum retries"
+
+
+def test_stale_job_with_retry_budget_is_requeued_and_claimed(monkeypatch, tmp_path):
+    import db
+
+    monkeypatch.setattr(db, "DB", str(tmp_path / "jobs.sqlite3"))
+    db.init_db()
+    job_id = db.create_job(
+        "U1", "run tests", job_type="openclaw", max_retries=3
+    )
+    with db.get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE jobs
+            SET status='running', retry_count=1, claim_token='stale-token',
+                updated_at=datetime('now', '-1 hour')
+            WHERE id=?
+            """,
+            (job_id,),
+        )
+
+    claimed = db.claim_pending_job_by_type("openclaw", stale_after_seconds=60)
+    assert claimed["id"] == job_id
+    assert claimed["status"] == "running"
+    assert claimed["retry_count"] == 2
+    assert claimed["claim_token"]
