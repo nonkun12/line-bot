@@ -52,6 +52,49 @@ def test_enqueue_creates_typed_job(monkeypatch):
     }
 
 
+def test_status_requires_auth_and_does_not_read_queue_without_it(monkeypatch):
+    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "s" * 32)
+    monkeypatch.setattr(
+        routes, "_read_queue_summary",
+        lambda: pytest.fail("unauthenticated status must not inspect the queue"),
+    )
+    response = make_app().test_client().get("/api/openclaw/status")
+    assert response.status_code == 401
+
+
+def test_status_returns_only_read_only_queue_counts(monkeypatch, tmp_path):
+    import db
+
+    monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "s" * 32)
+    database = tmp_path / "jobs.sqlite3"
+    monkeypatch.setattr(db, "DB", str(database))
+    db.init_db()
+    pending_id = db.create_job(
+        "U1", "private task text", job_type="openclaw", max_retries=3
+    )
+    running_id = db.create_job(
+        "U2", "another private task", job_type="openclaw", max_retries=3
+    )
+    db.update_job(running_id, status="running")
+    db.create_job("U3", "unrelated", job_type="ai_task")
+    monkeypatch.setattr(routes, "DB", str(database))
+
+    response = make_app().test_client().get(
+        "/api/openclaw/status",
+        headers={"X-OpenClaw-Bridge-Key": "s" * 32},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "ok": True,
+        "queue": {"pending": 1, "running": 1, "completed": 0, "failed": 0},
+    }
+    assert pending_id > 0
+    assert db.get_job(pending_id)["status"] == "pending"
+    assert db.get_job(running_id)["status"] == "running"
+    # The endpoint returns no task text, user IDs, claim tokens, or job IDs.
+
+
 def test_claim_requires_auth(monkeypatch):
     monkeypatch.setenv("OPENCLAW_BRIDGE_KEY", "s" * 32)
     response = make_app().test_client().post("/api/openclaw/claim", json={})
