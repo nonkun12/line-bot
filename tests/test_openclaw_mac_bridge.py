@@ -196,3 +196,38 @@ def test_run_openclaw_rejects_nonzero_exit_for_non_cleanup_error(monkeypatch, tm
     )
     with pytest.raises(RuntimeError, match="unsuccessful"):
         worker.run_openclaw("test", 60)
+
+
+
+def test_run_openclaw_classifies_model_timeout_envelope(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCLAW_WORKSPACE_DIR", str(tmp_path))
+    monkeypatch.setattr(worker.shutil, "which", lambda name: "/usr/local/bin/openclaw")
+    monkeypatch.setattr(
+        worker.subprocess, "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(
+            args, 0, stdout=json.dumps({
+                "ok": False,
+                "final": "",
+                "error": {"kind": "timeout", "message": "provider timed out"},
+            }), stderr=""
+        ),
+    )
+    with pytest.raises(worker.OpenClawExecutionError) as exc:
+        worker.run_openclaw("inspect", 60)
+    assert exc.value.category == "model_timeout"
+
+
+def test_run_openclaw_uses_explicit_timeout_grace(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCLAW_WORKSPACE_DIR", str(tmp_path))
+    monkeypatch.setattr(worker.shutil, "which", lambda name: "/usr/local/bin/openclaw")
+    captured = {}
+
+    def fake_run(args, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(
+            args, 0, stdout=json.dumps({"ok": True, "final": "completed"}), stderr=""
+        )
+
+    monkeypatch.setattr(worker.subprocess, "run", fake_run)
+    assert worker.run_openclaw("inspect", 120) == "completed"
+    assert captured["timeout"] == 120 + worker.OPENCLAW_TIMEOUT_GRACE_SECONDS
