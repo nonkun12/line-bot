@@ -13,11 +13,22 @@ import re
 from typing import Any
 
 from scripts.recovery_ai import RecoveryStore, failure_fingerprint
+from core.loop_failure_codes import is_safe_failure_code
 
 
 def _category(result: dict[str, Any]) -> str:
     reason = str(result.get("failure_reason", "")).lower()
     status = str(result.get("status", "")).upper()
+    failure_code = result.get("failure_code")
+    if status == "FAIL" and is_safe_failure_code(failure_code):
+        if failure_code == "existing_test_modified_repair_failed":
+            return "security_violation"
+        if failure_code in {
+            "invalid_change_count",
+            "invalid_change_count_repair_failed",
+            "append_only_test_anchor_or_size_invalid",
+        }:
+            return "invalid_task"
     if status == "TIMEOUT" or "timeout" in reason:
         return "timeout"
     if any(token in reason for token in ("sha_mismatch", "nonce_mismatch", "outside_allowed_paths", "security")):
