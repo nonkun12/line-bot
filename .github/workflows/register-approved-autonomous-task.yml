@@ -19,6 +19,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+
       - name: Prepare GitHub App authentication
         id: github_auth
         uses: ./.github/actions/github-app-token
@@ -31,12 +38,13 @@ jobs:
           permission-pull-requests: write
           permission-issues: read
 
-      - name: Checkout main
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          persist-credentials: true
-          token: ${{ steps.github_auth.outputs.token }}
+      - name: Configure Git authentication for push
+        env:
+          GH_TOKEN: ${{ steps.github_auth.outputs.token }}
+        run: |
+          set -euo pipefail
+          header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $header"
 
       - name: Set up Python
         uses: actions/setup-python@v5
