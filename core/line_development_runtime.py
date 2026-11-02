@@ -21,6 +21,7 @@ from .self_improvement_cycle import SelfImprovementCycleResult, run_self_improve
 from .execution_safety import GitWorktreeSafetyGate
 from .multi_agent import AgentResult, AgentRole, AgentTask
 from .idea_ai import IdeaAgent
+from .loop_failure_codes import extract_safe_failure_code
 from .idea_handoff import IdeaAcceptance, handoff_idea
 from .immediate_stop import ImmediateStop, ImmediateStopController, StopReason
 from .quality_runtime import QualityRuntime
@@ -2634,6 +2635,9 @@ def execute(instruction: str) -> int:
     if not report.success or not report.integration_ready:
         _rollback_to_clean_baseline(baseline_sha)
         detail = report.error or report.failed_task_id or "quality runtime failed"
+        failure_code = extract_safe_failure_code(detail)
+        if failure_code is not None:
+            os.environ["AUTONOMOUS_FAILURE_CODE"] = failure_code
         print(f"Multi-agent development failed: {detail}", flush=True)
         stopped = stop_controller.is_stopped()
         _write_development_audit_to_google_sheets(instruction=instruction, status="STOP" if stopped else "FAIL", target_path=state.chosen, branch=None, exit_detail=detail, base_sha=baseline_sha, produced_sha=None)

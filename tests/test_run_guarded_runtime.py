@@ -192,3 +192,31 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
     assert summary["status"] == "PASS"
     assert summary["rea"] == rea
+
+
+def test_write_summary_preserves_only_allowlisted_failure_code(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_FAILURE_CODE", "existing_test_modified_repair_failed")
+    monkeypatch.setattr(
+        guarded_runtime,
+        "_git",
+        lambda *args: "a" * 40 if args[0] == "rev-parse" else "main",
+    )
+    summary = tmp_path / "summary.json"
+
+    guarded_runtime._write_summary("FAIL", 1, "a" * 40, summary)
+
+    assert json.loads(summary.read_text(encoding="utf-8"))["failure_code"] == "existing_test_modified_repair_failed"
+
+
+def test_write_summary_drops_untrusted_failure_text(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_FAILURE_CODE", "secret=do-not-copy")
+    monkeypatch.setattr(
+        guarded_runtime,
+        "_git",
+        lambda *args: "a" * 40 if args[0] == "rev-parse" else "main",
+    )
+    summary = tmp_path / "summary.json"
+
+    guarded_runtime._write_summary("FAIL", 1, "a" * 40, summary)
+
+    assert "failure_code" not in json.loads(summary.read_text(encoding="utf-8"))

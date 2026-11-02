@@ -24,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # fail-closed Recovery AI imports work in GitHub Actions and local invocations.
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from core.loop_failure_codes import is_safe_failure_code
 QUEUE = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", str(ROOT / ".github" / "autonomous-loop-tasks.json"))).resolve()
 DEFAULT_STOP_FILE = Path("/tmp/line-bot-autonomous-loop.stop")
 ACTIVE_PROCESS: subprocess.Popen[str] | None = None
@@ -690,6 +692,9 @@ def run_task(
         else:
             status = "FAIL"
 
+    safe_failure_code = payload.get("failure_code")
+    if not is_safe_failure_code(safe_failure_code):
+        safe_failure_code = None
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "run_index": run_index,
@@ -700,6 +705,7 @@ def run_task(
         "base_sha": base_sha,
         "produced_sha": produced_sha,
         "failure_reason": (str(payload.get("failure_reason", "")) if status == "BLOCKED" else failure_reason),
+        **({"failure_code": safe_failure_code} if safe_failure_code is not None else {}),
         **({"rea": payload["rea"]} if status == "BLOCKED" and isinstance(payload.get("rea"), dict) else {}),
     }
 
