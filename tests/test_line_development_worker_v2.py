@@ -1010,6 +1010,89 @@ def test_additive_test_salvage_rejects_multiple_new_test_functions(monkeypatch, 
     assert target.read_text(encoding="utf-8") == original
 
 
+
+def test_append_only_test_plan_constructs_eof_patch_without_rewriting_existing_tests(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_existing_contract():\n    assert normalize(' aapl ') == 'AAPL'\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    generated = "def test_blank_ticker_is_rejected():\n    assert normalize('   ') == ''\n"
+
+    plan, error = worker.build_append_only_test_plan(
+        FakeClient([generated]),
+        "Add one boundary regression for a blank ticker",
+        "tests/test_sample.py",
+        original,
+    )
+
+    assert error == ""
+    assert plan is not None
+    assert plan["source"] == "append_only_review_task"
+    change = plan["changes"][0]
+    assert change["file"] == "tests/test_sample.py"
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    candidate = original.replace(change["old"], change["new"], 1)
+    assert candidate.startswith(original)
+    assert "def test_blank_ticker_is_rejected():" in candidate
+    assert worker.validate_plan(plan, "tests/test_sample.py") == (True, "tests/test_sample.py")
+    assert target.read_text(encoding="utf-8") == original
+
+
+def test_append_only_test_plan_fails_closed_on_imports_and_multiple_functions(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_existing_contract():\n    assert True\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    unsafe = "import os\n\ndef test_reads_environment():\n    assert os.getenv('TOKEN')\n"
+    plan, error = worker.build_append_only_test_plan(
+        FakeClient([unsafe]),
+        "Add a regression test",
+        "tests/test_sample.py",
+        original,
+    )
+    assert plan is None
+    assert error == "append_only_test_not_single_function"
+
+    multiple = (
+        "def test_first():\n    assert True\n\n"
+        "def test_second():\n    assert True\n"
+    )
+    plan, error = worker.build_append_only_test_plan(
+        FakeClient([multiple]),
+        "Add a regression test",
+        "tests/test_sample.py",
+        original,
+    )
+    assert plan is None
+    assert error == "append_only_test_not_single_function"
+    assert target.read_text(encoding="utf-8") == original
+
+
+def test_append_only_test_plan_rejects_os_and_filesystem_calls(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_existing_contract():\n    assert True\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    generated = "def test_reads_file():\n    assert open('secret.txt').read()\n"
+    plan, error = worker.build_append_only_test_plan(
+        FakeClient([generated]),
+        "Add a regression test",
+        "tests/test_sample.py",
+        original,
+    )
+
+    assert plan is None
+    assert error == "append_only_test_unsafe_operation"
+    assert target.read_text(encoding="utf-8") == original
+
+
+
 def test_is_test_path_recognizes_root_nested_and_conftest_paths():
     assert worker.is_test_path("test_app.py")
     assert worker.is_test_path("tests/test_app.py")
