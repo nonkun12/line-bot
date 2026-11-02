@@ -53,7 +53,8 @@
     "watchdog-pending-grace-boundary-regression-20261029",
     "review-agent-runtime-handoff-accessors-20261030",
     "creator-critic-history-missing-file-empty-state-regression",
-    "catalog-exhaustion-adapter-deduplicates-duplicate-findings-20261031"
+    "catalog-exhaustion-adapter-deduplicates-duplicate-findings-20261031",
+    "catalog-exhaustion-analyzer-cli-test-20261102"
   ],
   "recovery_ai": {
     "checkpoint": null,
