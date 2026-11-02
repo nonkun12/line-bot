@@ -210,7 +210,7 @@ def test_analyzer_discovers_unmentioned_symbols_across_the_shared_allowlist(tmp_
 def test_analyzer_does_not_follow_symlinked_source_or_test_targets(tmp_path: Path):
     root, catalog, queue, state, runtime = _fixture(tmp_path)
     external = tmp_path / "outside.py"
-    external.write_text("def should_not_be_scanned():\\n    return True\\n", encoding="utf-8")
+    external.write_text("def should_not_be_scanned():\n    return True\\n", encoding="utf-8")
     source = root / "core" / "agent_runtime.py"
     source.unlink()
     source.symlink_to(external)
