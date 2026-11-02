@@ -321,3 +321,32 @@ def test_recovery_store_rejects_success_evidence_for_another_task(tmp_path):
             "task_id": "task-b", "base_sha": "a" * 40,
             "produced_sha": "b" * 40, "run_nonce": "c" * 32,
         })
+
+
+@pytest.mark.parametrize(
+    ("failure_code", "expected_category"),
+    [
+        ("invalid_change_count", "invalid_task"),
+        ("invalid_change_count_repair_failed", "invalid_task"),
+        ("append_only_test_anchor_or_size_invalid", "invalid_task"),
+        ("existing_test_modified_repair_failed", "security_violation"),
+    ],
+)
+def test_allowlisted_planner_failure_code_triggers_immediate_hold(
+    tmp_path, failure_code, expected_category
+):
+    path = tmp_path / "recovery.json"
+    outcome = record_loop_outcome(path, {
+        "task_id": "task-invalid-plan",
+        "status": "FAIL",
+        "exit_code": 1,
+        "failure_reason": "task_runtime_failed",
+        "failure_code": failure_code,
+    })
+
+    assert outcome["recorded"] is True
+    assert outcome["decision"]["action"] == "HOLD"
+    assert outcome["decision"]["requires_human"] is True
+    record = RecoveryStore(path).task_status("task-invalid-plan")
+    assert record["last_category"] == expected_category
+    assert record["held"] is True
