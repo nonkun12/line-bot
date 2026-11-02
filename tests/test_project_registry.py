@@ -61,3 +61,19 @@ def test_registry_rejects_incomplete_json_entry(tmp_path):
     path.write_text('[{"name":"broken"}]', encoding="utf-8")
     with pytest.raises(ValueError, match="require name and repository"):
         ProjectRegistry.from_path(path)
+
+
+def test_project_record_to_dict_serializes_supported_agents_as_list():
+    record = ProjectRecord(
+        name="sample-app",
+        repository="nonkun12/sample-app",
+        project_type="software",
+        supported_agents=("implementer", "tester"),
+    )
+
+    serialized = record.to_dict()
+
+    assert serialized["name"] == "sample-app"
+    assert serialized["repository"] == "nonkun12/sample-app"
+    assert serialized["supported_agents"] == ["implementer", "tester"]
+    assert isinstance(serialized["supported_agents"], list)
