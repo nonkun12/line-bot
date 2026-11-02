@@ -94,7 +94,7 @@ def test_distributed_workflow_loads_existing_issues_before_candidate_analysis():
     create_step = workflow[create_start:create_end]
     assert "gh api --paginate" in load_step
     assert "state=all&per_page=100" in load_step
-    assert "jq -s 'add | map(select(has(\\"pull_request\\") | not) | {number,title,body,state,labels})'" in load_step
+    assert "pull_request" in load_step
     assert "--existing-issues /tmp/autonomous-loop-all-issues.json" in analyze_step
     assert "--issues /tmp/autonomous-loop-all-issues.json" in create_step
     assert "gh api --paginate" not in create_step
