@@ -14,6 +14,8 @@ from scripts.autonomous_task_target_allowlist import TARGETS
 from typing import Any
 
 MAX_DRAFTS = 4
+# Stop creating review issues until humans process the existing backlog.
+MAX_OPEN_REVIEW_ISSUES = 4
 TASK_ID = re.compile(r"^review-coverage-gap-[a-f0-9]{10}$")
 FINGERPRINT = re.compile(r"^[a-f0-9]{64}$")
 FUNCTION = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
@@ -46,6 +48,40 @@ def _existing_task_ids(issues: object) -> set[str]:
     return found
 
 
+def _open_review_issue_count(issues: object) -> int:
+    """Count open candidate issues still awaiting human execution review."""
+    if not isinstance(issues, list):
+        raise ValueError("existing issues must be a list")
+    count = 0
+    for issue in issues:
+        if not isinstance(issue, dict):
+            raise ValueError("existing issue entry must be an object")
+        if issue.get("state") != "open":
+            continue
+        labels = issue.get("labels", [])
+        if not isinstance(labels, list):
+            raise ValueError("existing issue labels must be a list")
+        label_names = {
+            item.get("name") for item in labels if isinstance(item, dict)
+        }
+        if "autonomous-task-candidate" not in label_names:
+            continue
+        if "autonomous-task-execution-approved" in label_names:
+            continue
+        body = issue.get("body")
+        if not isinstance(body, str) or body.count(SPEC_MARKER) != 2:
+            continue
+        try:
+            _, raw, _ = body.split(SPEC_MARKER)
+            spec = json.loads(raw.strip())
+        except (ValueError, TypeError):
+            continue
+        task_id = spec.get("id") if isinstance(spec, dict) else None
+        if isinstance(task_id, str) and TASK_ID.fullmatch(task_id):
+            count += 1
+    return count
+
+
 def build_issue_drafts(report: object, issues: object) -> list[dict[str, str]]:
     if not isinstance(report, dict):
         raise ValueError("analyzer report must be an object")
@@ -61,6 +97,10 @@ def build_issue_drafts(report: object, issues: object) -> list[dict[str, str]]:
         raise ValueError("analyzer candidate count is invalid")
 
     existing = _existing_task_ids(issues)
+    open_review_count = _open_review_issue_count(issues)
+    remaining_capacity = MAX_OPEN_REVIEW_ISSUES - open_review_count
+    if remaining_capacity <= 0:
+        return []
     seen: set[str] = set()
     drafts: list[dict[str, str]] = []
     for candidate in candidates:
@@ -92,6 +132,9 @@ def build_issue_drafts(report: object, issues: object) -> list[dict[str, str]]:
             f"人手レビュー後に限り、{test_path} に {function} ({evidence}) の"
             "境界条件を検証する新しい回帰テストを1件追加してください。"
             "まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。"
+            "既存テスト関数・assert・fixture・parametrize・classは変更、削除、改名、並べ替え禁止。"
+            "ファイル末尾に新しいpytest test関数を1つだけ追記し、既存定義を一切変更しないでください。"
+            "安全な追記ができなければ変更せず理由を報告してください。"
             "変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。"
             "外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。"
         )
@@ -112,6 +155,8 @@ def build_issue_drafts(report: object, issues: object) -> list[dict[str, str]]:
             "body": body,
             "task_id": task_id,
         })
+        if len(drafts) >= remaining_capacity:
+            break
     return drafts
 
 

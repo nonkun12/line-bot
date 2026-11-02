@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.catalog_exhaustion_analyzer import analyze, _planned_ids
+from scripts.catalog_exhaustion_analyzer import analyze, _planned_ids, _public_functions
 
 
 def _write(path: Path, value) -> Path:
@@ -219,3 +219,24 @@ def test_analyzer_does_not_follow_symlinked_source_or_test_targets(tmp_path: Pat
 
     assert report["candidate_count"] == 0
     assert report["candidates"] == []
+
+
+def test_public_function_discovery_skips_protocol_and_abstract_stubs():
+    source = '''
+from abc import abstractmethod
+from typing import Protocol
+
+class VoicePipeline(Protocol):
+    def handle(self, request):
+        ...
+
+class Base:
+    @abstractmethod
+    def execute(self):
+        raise NotImplementedError
+
+class Concrete:
+    def handle(self, request):
+        return request
+'''
+    assert _public_functions(source) == [("Concrete.handle", 15)]
