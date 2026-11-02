@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -221,9 +222,18 @@ def observe_self_improvement(
         return result
     except Exception as exc:
         # Improvement observation must never turn a validated development result
-        # into an unrelated deployment failure.
+        # into an unrelated deployment failure. Record only the source location
+        # and exception class: exception text may contain credentials or user data.
+        extracted = traceback.extract_tb(exc.__traceback__)
+        origin = extracted[-1] if extracted else None
+        origin_label = (
+            f"{Path(origin.filename).name}:{origin.lineno}:{origin.name}"
+            if origin is not None
+            else "unavailable"
+        )
         print(
-            f"[CONTROL-TOWER] status=observation_error error_class={type(exc).__name__}",
+            "[CONTROL-TOWER] status=observation_error "
+            f"error_class={type(exc).__name__} origin={origin_label}",
             flush=True,
         )
         return None
