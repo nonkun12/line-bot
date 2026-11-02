@@ -1072,6 +1072,32 @@ def test_append_only_test_plan_fails_closed_on_imports_and_multiple_functions(mo
     assert target.read_text(encoding="utf-8") == original
 
 
+
+def test_append_only_test_plan_rejects_preimported_process_and_network_modules(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_existing_contract():\n    assert True\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    for generated in (
+        "def test_reads_environment():\n    assert os.getenv('TOKEN')\n",
+        "def test_starts_process():\n    subprocess.run(['echo', 'unsafe'])\n",
+        "def test_calls_network():\n    requests.get('https://example.invalid')\n",
+    ):
+        plan, error = worker.build_append_only_test_plan(
+            FakeClient([generated]),
+            "Add a regression test",
+            "tests/test_sample.py",
+            original,
+        )
+        assert plan is None
+        assert error == "append_only_test_unsafe_operation"
+
+    assert target.read_text(encoding="utf-8") == original
+
+
+
 def test_append_only_test_plan_rejects_os_and_filesystem_calls(monkeypatch, tmp_path):
     target = tmp_path / "tests" / "test_sample.py"
     target.parent.mkdir()
