@@ -390,7 +390,7 @@ jobs:
           cat /tmp/autonomous-loop-task-proposals.json >> "$GITHUB_STEP_SUMMARY"
           echo "TASK_PROPOSALS_PATH=/tmp/autonomous-loop-task-proposals.json" >> "$GITHUB_ENV"
 
-      - name: Work Finder AI - discover reviewable work every cycle
+      - name: Analyze catalog exhaustion without changing execution state (Work Finder AI)
         if: success() && env.TRIGGER_MODE == 'normal'
         continue-on-error: true
         run: |
@@ -412,7 +412,7 @@ jobs:
             echo "::warning::Work Finder AI discovery failed (exit=$rc); bounded loop outcome classification will continue."
           fi
 
-      - name: Create bounded review-only task issues from Work Finder AI findings
+      - name: Create bounded review-only task issues from analyzer findings
         if: success() && env.TRIGGER_MODE == 'normal'
         env:
           GH_TOKEN: ${{ github.token }}
