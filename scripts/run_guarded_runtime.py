@@ -157,6 +157,9 @@ def _augment_with_hermes_advice(instruction: str, history_path: Path) -> str:
     return f"{instruction}\n\nUNTRUSTED HERMES ADVISORY:\n{bounded_advice}"
 
 
+from core.loop_failure_codes import extract_safe_failure_code
+
+
 def _write_summary(
     status: str,
     exit_code: int,
@@ -179,6 +182,9 @@ def _write_summary(
     }
     if rea_evidence is not None:
         payload["rea"] = rea_evidence
+    failure_code = extract_safe_failure_code(os.environ.get("AUTONOMOUS_FAILURE_CODE", ""))
+    if failure_code is not None:
+        payload["failure_code"] = failure_code
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     github_env = os.environ.get("GITHUB_ENV")
@@ -190,6 +196,8 @@ def _write_summary(
 
 
 def main() -> int:
+    # Each guarded task owns its own failure evidence; never inherit a stale code.
+    os.environ.pop("AUTONOMOUS_FAILURE_CODE", None)
     start_sha = _git("rev-parse", "HEAD")
     if not start_sha:
         return 1
