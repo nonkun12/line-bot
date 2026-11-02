@@ -148,21 +148,31 @@ class RecoveryStore:
             raise RecoveryStateError("failure fingerprint history invalid")
         same_count = sum(1 for item in history if item == fingerprint)
         now = utc_now()
+        was_held = previous.get("held") is True
         data["tasks"][task_id] = {
             "consecutive_failures": count,
             "last_category": category,
             "last_fingerprint": fingerprint,
             "fingerprints": (history + [fingerprint])[-20:],
             "same_fingerprint_attempts": same_count + 1,
-            "held": bool(previous.get("held", False)),
+            "held": was_held,
             "updated_at": now,
         }
         record = data["tasks"][task_id]
         if category == "state_persistence_failure":
             action, reason, delay, human = "STOP_FAIL_CLOSED", "state_persistence_failure", 0, True
-        elif record["held"] or count >= HOLD_AFTER_FAILURES or category in NON_REPAIRABLE_CATEGORIES:
+        elif was_held:
+            # Preserve the original hold cause. Legacy state files did not store it,
+            # so report that limitation rather than inventing a historical reason.
+            record["hold_reason"] = previous.get("hold_reason") or "legacy_hold_reason_unavailable"
+            action, reason, delay, human = "HOLD", "previous_hold_requires_explicit_resume", 0, True
+        elif count >= HOLD_AFTER_FAILURES or category in NON_REPAIRABLE_CATEGORIES:
             record["held"] = True
-            action, reason, delay, human = "HOLD", "task_held_for_safety", 0, True
+            action, reason, delay, human = "HOLD", (
+                "failure_threshold_reached" if count >= HOLD_AFTER_FAILURES
+                else "non_repairable_failure"
+            ), 0, True
+            record["hold_reason"] = reason
         elif category in TRANSIENT_CATEGORIES and transient_attempt <= MAX_TRANSIENT_RETRIES:
             action, reason, delay, human = "RETRY", "bounded_transient_retry", min(30 * (2 ** (transient_attempt - 1)), 120), False
         elif category in REPAIRABLE_CATEGORIES and same_count < MAX_REPAIR_ATTEMPTS_PER_FINGERPRINT:
@@ -170,6 +180,9 @@ class RecoveryStore:
         else:
             record["held"] = True
             action, reason, delay, human = "HOLD", "repair_budget_exhausted", 0, True
+            record["hold_reason"] = reason
+        record["last_decision_action"] = action
+        record["last_decision_reason"] = reason
         self._write(data)
         return RecoveryDecision(action, reason, task_id, fingerprint, count, delay, human)
 
