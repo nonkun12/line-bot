@@ -521,13 +521,19 @@ The function name must start with test_. Keep the test focused and concise."""
 
     function = tree.body[0]
     forbidden_names = {
-        "__import__", "compile", "eval", "exec", "open", "system",
-        "popen", "spawn", "urlopen", "getenv",
+        "__builtins__", "__import__", "builtins", "compile", "ctypes",
+        "eval", "exec", "globals", "getattr", "getenv", "locals",
+        "multiprocessing", "open", "os", "pathlib", "Path", "PurePath",
+        "requests", "setattr", "shutil", "socket", "subprocess", "tempfile",
+        "threading", "urllib", "vars",
     }
     forbidden_attributes = {
-        "environ", "getenv", "read_text", "write_text", "read_bytes",
-        "write_bytes", "unlink", "remove", "mkdir", "rmdir", "urlopen",
-        "Popen", "system", "connect",
+        "Popen", "call", "chdir", "check_call", "check_output", "chmod",
+        "connect", "cwd", "environ", "exists", "getenv", "glob", "home",
+        "is_dir", "is_file", "iterdir", "mkdir", "open", "read", "read_bytes",
+        "read_text", "remove", "rename", "replace", "resolve", "rmdir",
+        "rglob", "run", "send", "spawn", "stat", "system", "touch", "unlink",
+        "urlopen", "write", "write_bytes", "write_text",
     }
     for node in ast.walk(function):
         if isinstance(node, (ast.Import, ast.ImportFrom, ast.Global, ast.Nonlocal)):
