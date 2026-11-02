@@ -37,7 +37,7 @@ class OpenClawExecutionError(RuntimeError):
 
     def __init__(self, category: str):
         self.category = category
-        message = "unsuccessful" if category == "openclaw_reported_error" else category
+        message = "unsuccessful" if category in {"openclaw_reported_error", "process_exit"} else category
         super().__init__(message)
 
 
