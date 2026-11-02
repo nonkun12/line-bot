@@ -44,3 +44,23 @@ def test_missing_vault_fails_closed(tmp_path: Path):
     vault = ObsidianVault(tmp_path / "missing")
     with pytest.raises(ObsidianError):
         vault.list_notes()
+
+
+@pytest.mark.parametrize(
+    ("keyword", "limit"),
+    [
+        ("", 1),
+        ("   ", 1),
+        ("x" * 201, 1),
+        ("needle", 0),
+        ("needle", 21),
+        ("needle", True),
+    ],
+)
+def test_search_notes_rejects_invalid_keyword_or_limit(
+    tmp_path: Path, keyword: str, limit: int
+):
+    vault = ObsidianVault(tmp_path)
+
+    with pytest.raises(ObsidianError):
+        vault.search_notes(keyword, limit=limit)
