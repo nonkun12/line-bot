@@ -6,11 +6,14 @@ from __future__ import annotations
 
 import hmac
 import os
+import sqlite3
+from contextlib import closing
+from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request
 
 from core.openclaw_bridge import OPENCLAW_JOB_TYPE
-from db import claim_pending_job_by_type, complete_claimed_job, get_job
+from db import DB, claim_pending_job_by_type, complete_claimed_job, get_job
 
 openclaw_bridge_bp = Blueprint("openclaw_bridge", __name__, url_prefix="/api/openclaw")
 _MAX_REPLY_CHARS = 12000
@@ -26,6 +29,39 @@ def _authorized() -> bool:
         and provided
         and hmac.compare_digest(expected, provided)
     )
+
+
+def _read_queue_summary() -> dict[str, int]:
+    """Read aggregate OpenClaw queue counts using a SQLite-enforced read-only connection."""
+    uri = Path(DB).resolve().as_uri() + "?mode=ro"
+    with closing(sqlite3.connect(uri, uri=True)) as conn:
+        rows = conn.execute(
+            """
+            SELECT status, COUNT(*)
+            FROM jobs
+            WHERE job_type=?
+            GROUP BY status
+            """,
+            (OPENCLAW_JOB_TYPE,),
+        ).fetchall()
+    summary = {"pending": 0, "running": 0, "completed": 0, "failed": 0}
+    for status, count in rows:
+        if status in summary:
+            summary[status] = int(count)
+    return summary
+
+
+@openclaw_bridge_bp.route("/status", methods=["GET"])
+def status():
+    """Authenticate and inspect queue counts without claiming or changing jobs."""
+    if not _authorized():
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    try:
+        queue = _read_queue_summary()
+    except Exception:
+        current_app.logger.exception("OPENCLAW BRIDGE STATUS ERROR")
+        return jsonify({"ok": False, "error": "bridge unavailable"}), 503
+    return jsonify({"ok": True, "queue": queue}), 200
 
 
 @openclaw_bridge_bp.route("/claim", methods=["POST"])

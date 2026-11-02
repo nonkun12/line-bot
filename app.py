@@ -88,7 +88,7 @@ from core.self_introduction import handle_self_introduction
 from routes.core_api import core_api_bp
 from routes.obsidian_bridge import obsidian_bridge_bp
 from routes.openclaw_bridge import openclaw_bridge_bp
-from core.openclaw_bridge import is_openclaw_intent, normalize_openclaw_message
+from core.openclaw_bridge import enqueue_openclaw_request, is_openclaw_intent
 from obsidian_loop_dispatch import dispatch_configuration_status
 from core.obsidian_bridge import enqueue_obsidian_request
 from agents.obsidian.intents import is_obsidian_intent
@@ -368,14 +368,25 @@ def _handle_ai_gateway_request(ai_request):
     if core_image_reply is not None:
         return core_image_reply
 
-    # Legacy OpenClaw-prefixed prompts are handled by the server-side LINE AI
-    # pipeline. Do not enqueue them for a Mac-local worker: Mac availability
-    # must not determine whether a LINE request can be processed.
+    # Only explicitly prefixed OpenClaw requests enter the authenticated Mac queue.
+    # All ordinary LINE messages keep using the existing cloud/Core routing path.
+    # The durable queue preserves requests while the Mac worker is offline.
     if is_openclaw_intent(message):
         try:
-            message = normalize_openclaw_message(message)
-        except Exception:
-            return "指示を読み取れませんでした。内容を確認して再送してください。"
+            job_id = enqueue_openclaw_request(user_id, message)
+            return (
+                f"OpenClawへの依頼を受け付けました（Job {job_id}）。"
+                "Mac側のBonsaiワーカーが処理し、完了結果をこのLINEに返信します。"
+            )
+        except Exception as exc:
+            app.logger.warning(
+                "OPENCLAW BRIDGE ENQUEUE FAILED: %s",
+                type(exc).__name__,
+            )
+            return (
+                "OpenClawへの依頼を受け付けられませんでした。"
+                "Macブリッジ設定とキュー状態を確認してください。"
+            )
 
     # Route only explicit Obsidian commands to the authenticated Mac approval queue.
     # Never fall through to a cloud agent that cannot access the local vault.
