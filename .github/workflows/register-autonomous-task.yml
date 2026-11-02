@@ -35,6 +35,13 @@ jobs:
           [[ "$ISSUE_NUMBER" =~ ^[1-9][0-9]{0,7}$ ]] || { echo "::error::Invalid issue number"; exit 1; }
           [[ "$CONFIRM_ISSUE_NUMBER" == "$ISSUE_NUMBER" ]] || { echo "::error::Confirmation must exactly match issue number"; exit 1; }
 
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: main
+          fetch-depth: 0
+
+
       - name: Prepare GitHub App authentication
         id: github_auth
         uses: ./.github/actions/github-app-token
@@ -47,11 +54,13 @@ jobs:
           permission-pull-requests: write
           permission-issues: read
 
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-          token: ${{ steps.github_auth.outputs.token }}
+      - name: Configure Git authentication for push
+        env:
+          GH_TOKEN: ${{ steps.github_auth.outputs.token }}
+        run: |
+          set -euo pipefail
+          header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $header"
 
       - name: Load candidate and durable execution state
         env:
