@@ -327,4 +327,7 @@ def test_postrun_verification_does_not_send_a_second_line_report():
     source = path.read_text(encoding="utf-8")
 
     assert "Always report the completed Loop to LINE" not in source
-    assert "LINE duplicate notification disabled (source loop is authoritative)" not in source
+    assert "LINE duplicate notification disabled (source loop is authoritative)" in source
+    disabled = source[source.index("LINE duplicate notification disabled (source loop is authoritative)"):]
+    disabled = disabled.split("\n      - name:", 1)[0]
+    assert "if: github.event.workflow_run.run_attempt < 0" in disabled
