@@ -158,6 +158,29 @@ def test_deterministic_task_id_does_not_disable_unrelated_self_improvement_calls
     assert result is not None
 
 
+def test_self_improvement_observation_logs_safe_exception_origin(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("SELF_IMPROVEMENT_HISTORY_PATH", str(tmp_path / "history.jsonl"))
+    monkeypatch.setattr(runtime, "ControlTower", lambda **kwargs: object())
+
+    def broken_cycle(*args, **kwargs):
+        raise ValueError("sensitive detail must not be logged")
+
+    monkeypatch.setattr(runtime, "run_self_improvement_cycle", broken_cycle)
+
+    result = runtime.observe_self_improvement(
+        object(),
+        "tests/test_agent_runtime.py",
+        allow_external_ai=False,
+    )
+
+    output = capsys.readouterr().out
+    assert result is None
+    assert "[CONTROL-TOWER] status=observation_error error_class=ValueError" in output
+    assert "origin=test_line_development_runtime.py:" in output
+    assert "broken_cycle" in output
+    assert "sensitive detail must not be logged" not in output
+
+
 def test_debugger_restores_before_building_real_worker_plan(monkeypatch):
     state = runtime.DevelopmentState(client=object(), instruction="fix the failing implementation")
     state.chosen = "core/example.py"
