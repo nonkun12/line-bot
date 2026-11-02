@@ -308,6 +308,25 @@ def _autonomous_task_id_for_state(state: DevelopmentState) -> str:
     return ambient if _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(ambient) == state.chosen else ""
 
 
+
+def _is_review_coverage_gap_task(state: DevelopmentState, task_id: str) -> bool:
+    """Allow append-only generation only for catalog-scoped review-gap test tasks."""
+    if (
+        not task_id.startswith("review-coverage-gap-")
+        or os.environ.get("AUTONOMOUS_RUN_SOURCE") != "minimal-mvp-loop"
+        or not state.chosen
+        or not worker.is_test_path(state.chosen)
+        or "新しい回帰テストを1件追加" not in state.instruction
+        or "変更は指定テストファイル1つだけ" not in state.instruction
+    ):
+        return False
+    try:
+        allowed_paths = json.loads(os.environ.get("AUTONOMOUS_ALLOWED_PATHS", ""))
+    except (TypeError, ValueError):
+        return False
+    return isinstance(allowed_paths, list) and allowed_paths == [state.chosen]
+
+
 def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None) -> tuple[dict | None, str | None]:
     """Return bounded, deterministic plans for explicit queued regression-test tasks.
 
@@ -2135,6 +2154,42 @@ class DevelopmentExecutor:
                     self.state.plan = deterministic_plan
                     self.state.touched = touched
                     return AgentResult(task.task_id, True, "guarded change applied", frozenset(touched))
+
+                if _is_review_coverage_gap_task(self.state, task_id):
+                    context = worker.context_for(self.state.chosen)
+                    append_plan, append_error = worker.build_append_only_test_plan(
+                        self.state.client,
+                        self.state.instruction,
+                        self.state.chosen,
+                        context,
+                    )
+                    if append_error:
+                        return AgentResult(
+                            task.task_id,
+                            False,
+                            f"append-only test plan rejected: {append_error}",
+                        )
+                    if append_plan is None:
+                        return AgentResult(task.task_id, False, "append-only test plan unavailable")
+                    if append_plan.get("no_change") is True:
+                        self.state.plan = append_plan
+                        self.state.touched = []
+                        return AgentResult(task.task_id, True, "no additional regression test required")
+                    ok, detail = worker.validate_plan(append_plan, self.state.chosen)
+                    if not ok:
+                        return AgentResult(task.task_id, False, f"append-only test plan rejected: {detail}")
+                    applied, detail, touched = worker.apply_plan(append_plan)
+                    if not applied:
+                        worker.restore(touched)
+                        return AgentResult(task.task_id, False, f"append-only test apply failed: {detail}")
+                    self.state.plan = append_plan
+                    self.state.touched = touched
+                    return AgentResult(
+                        task.task_id,
+                        True,
+                        "guarded append-only regression test applied",
+                        frozenset(touched),
+                    )
 
                 operational_plan, operational_error = _deterministic_operational_validation_plan(
                     self.state.instruction,
