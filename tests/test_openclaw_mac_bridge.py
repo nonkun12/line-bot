@@ -231,3 +231,37 @@ def test_run_openclaw_uses_explicit_timeout_grace(monkeypatch, tmp_path):
     monkeypatch.setattr(worker.subprocess, "run", fake_run)
     assert worker.run_openclaw("inspect", 120) == "completed"
     assert captured["timeout"] == 120 + worker.OPENCLAW_TIMEOUT_GRACE_SECONDS
+
+
+
+def test_process_one_logs_only_sanitized_job_timing(monkeypatch, capsys):
+    class FakeResponse:
+        def __init__(self, payload=None):
+            self.payload = payload or {}
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return self.payload
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+        def post(self, url, headers=None, json=None):
+            self.calls.append((url, json))
+            if url.endswith("/claim"):
+                return FakeResponse({
+                    "ok": True,
+                    "job": {"id": 73, "claim_token": "do-not-log-this", "message": "private prompt"},
+                })
+            return FakeResponse()
+
+    monkeypatch.setattr(worker, "run_openclaw", lambda *args, **kwargs: "private reply")
+    client = FakeClient()
+    assert worker.process_one(client, "https://example.test/api/openclaw", {}, 60)
+    logged = capsys.readouterr().err
+    assert "job_id=73" in logged
+    assert "outcome=success" in logged
+    assert "elapsed_ms=" in logged
+    assert "private prompt" not in logged
+    assert "private reply" not in logged
+    assert "do-not-log-this" not in logged
