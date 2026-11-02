@@ -523,7 +523,23 @@ def validate_plan_with_bounded_repairs(
         ):
             plan = repair_plan
         else:
-            ok, detail = False, "existing_test_modified_repair_failed"
+            salvaged_plan = _salvage_additive_test_plan(chosen, repair_plan)
+            if salvaged_plan is not None:
+                ok, detail = validate_plan(salvaged_plan, chosen)
+                if (
+                    ok
+                    and detail != "no_change"
+                    and _adds_exactly_one_test(
+                        chosen,
+                        salvaged_plan["changes"][0]["old"],
+                        salvaged_plan["changes"][0]["new"],
+                    )
+                ):
+                    plan = salvaged_plan
+                else:
+                    ok, detail = False, "existing_test_modified_repair_failed"
+            else:
+                ok, detail = False, "existing_test_modified_repair_failed"
     return plan, ok, detail
 
 
