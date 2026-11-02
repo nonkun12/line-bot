@@ -91,6 +91,10 @@ def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
         category = "safety_gate_blocked"
         recommendation = "Review the REA findings; do not retry or bypass the gate."
         requires_human = True
+    elif failure_code in {"invalid_change_count", "invalid_change_count_repair_failed"}:
+        category = "invalid_plan_change_count"
+        recommendation = "The planner did not produce a valid bounded change list. Keep the hold; revise the task to one file and one explicit test addition, then require human review before any resume."
+        requires_human = True
     elif recovery_action == "HOLD" or decision.get("requires_human") is True:
         if failure_code == "existing_test_modified_repair_failed":
             category = "test_plan_repair_failed"
