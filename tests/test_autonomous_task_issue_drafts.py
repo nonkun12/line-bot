@@ -98,3 +98,31 @@ def test_distributed_workflow_loads_existing_issues_before_candidate_analysis():
     assert "--existing-issues /tmp/autonomous-loop-all-issues.json" in analyze_step
     assert "--issues /tmp/autonomous-loop-all-issues.json" in create_step
     assert "gh api --paginate" not in create_step
+
+
+def _open_review_issue(task_id="review-coverage-gap-0123456789", approved=False):
+    body = "<!-- autonomous-task-spec -->\\n" + json.dumps({"id": task_id}) + "\\n<!-- autonomous-task-spec -->"
+    labels = [{"name": "autonomous-task-candidate"}]
+    if approved:
+        labels.append({"name": "autonomous-task-execution-approved"})
+    return {"state": "open", "labels": labels, "body": body}
+
+
+def test_stops_candidate_generation_when_four_review_issues_are_open():
+    issues = [_open_review_issue(f"review-coverage-gap-{i:010d}") for i in range(4)]
+    assert build_issue_drafts(_report(), issues) == []
+
+
+def test_caps_new_candidates_to_remaining_review_backlog_capacity():
+    report = _report()
+    report["candidate_count"] = 1
+    issues = [_open_review_issue(f"review-coverage-gap-{i:010d}") for i in range(3)]
+    drafts = build_issue_drafts(report, issues)
+    assert len(drafts) == 1
+
+
+def test_closed_or_execution_approved_issues_do_not_consume_review_capacity():
+    closed = _open_review_issue()
+    closed["state"] = "closed"
+    approved = _open_review_issue("review-coverage-gap-1111111111", approved=True)
+    assert build_issue_drafts(_report(), [closed, approved])
