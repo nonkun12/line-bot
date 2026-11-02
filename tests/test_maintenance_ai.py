@@ -1,4 +1,9 @@
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 from scripts.maintenance_ai import build_report, _load_rows
 
@@ -154,3 +159,22 @@ def test_known_failure_code_explains_append_only_repair_failure_without_retry_au
     assert "append one new test only" in diagnosis["recommendation"]
     assert diagnosis["permissions"]["retry_task"] is False
     assert diagnosis["permissions"]["clear_hold"] is False
+
+
+def test_maintenance_ai_cli_bootstraps_project_imports_without_pythonpath(tmp_path):
+    script = Path(__file__).resolve().parents[1] / "scripts" / "maintenance_ai.py"
+    results = tmp_path / "results.jsonl"
+    output = tmp_path / "diagnosis.json"
+    results.write_text("", encoding="utf-8")
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    completed = subprocess.run(
+        [sys.executable, str(script), "--results", str(results), "--output", str(output)],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(output.read_text(encoding="utf-8"))["status"] == "NO_TASK_EVIDENCE"
