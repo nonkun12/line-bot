@@ -23,7 +23,8 @@ MAX_TRANSIENT_RETRIES = 2
 MAX_REPAIR_ATTEMPTS_PER_FINGERPRINT = 1
 
 TRANSIENT_CATEGORIES = frozenset({"network_transient", "service_unavailable", "rate_limited"})
-REPAIRABLE_CATEGORIES = frozenset({"test_regression", "timeout", "process_crash"})
+# Unknown runtime failures get one bounded retry; the second identical failure holds.
+REPAIRABLE_CATEGORIES = frozenset({"test_regression", "timeout", "process_crash", "unknown"})
 NON_REPAIRABLE_CATEGORIES = frozenset({"invalid_task", "invalid_evidence", "security_violation"})
 FAILURE_CATEGORIES = (
     TRANSIENT_CATEGORIES | REPAIRABLE_CATEGORIES | NON_REPAIRABLE_CATEGORIES
