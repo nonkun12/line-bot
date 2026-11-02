@@ -547,7 +547,9 @@ The function name must start with test_. Keep the test focused and concise."""
                 return None, "append_only_test_unsafe_operation"
             if isinstance(node.func, ast.Attribute) and node.func.attr in forbidden_attributes:
                 return None, "append_only_test_unsafe_operation"
-        if isinstance(node, ast.Attribute) and node.attr in forbidden_attributes:
+        if isinstance(node, ast.Attribute) and (
+            node.attr in forbidden_attributes or node.attr.startswith("__")
+        ):
             return None, "append_only_test_unsafe_operation"
 
     target = ROOT / chosen
