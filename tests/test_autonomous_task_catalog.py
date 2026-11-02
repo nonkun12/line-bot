@@ -15,5 +15,5 @@ def test_new_replenishment_tasks_are_explicitly_approved_and_test_scoped():
         task = by_id[task_id]
         assert task["execution_approved"] is True
         assert task["allowed_paths"] == [path]
-        assert "既存" not in task["instruction"] or "existing" in task["instruction"].lower()
-        assert "existing test" in task["instruction"].lower()
+        assert "Append the new test at the end" in task["instruction"]
+        assert "Do not edit" in task["instruction"]
