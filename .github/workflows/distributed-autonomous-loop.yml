@@ -570,6 +570,8 @@ jobs:
           fi
           python scripts/maintenance_ai.py \
             --results /tmp/minimal-autonomous-loop.jsonl \
+            --not-run-marker /tmp/autonomous-loop-not-run \
+            --held-marker /tmp/autonomous-loop-held-tasks \
             --output artifacts/maintenance-ai/diagnosis.json
           cat artifacts/maintenance-ai/diagnosis.json >> "$GITHUB_STEP_SUMMARY"
 
