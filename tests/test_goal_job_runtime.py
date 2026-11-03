@@ -21,7 +21,7 @@ def proposal(job_id="child-1", *, depends_on=None):
         "human_approval_required": False,
         "autonomy_grant_id": "grant-demo",
         "autonomy_policy": {"decision": "AUTO_APPROVE", "risk": "low"},
-        "permissions": {"merge": False, "deploy": False},
+        "permissions": {\n            "clear_hold": False, "merge": False, "deploy": False,\n            "modify_secrets_or_permissions": False, "mutate_production_data": False,\n        },
         "job": {
             "id": job_id,
             "stage": "test",
@@ -231,3 +231,24 @@ def test_advance_goal_never_reports_pass_without_evidence(tmp_path, monkeypatch)
     result = advance_goal(goal, user_id="U-test", autonomy_grant=trusted_grant())
     assert result["criterion_results"]["criterion-demo"] == "FAIL"
     assert result["plan"]["decision"] == "PROPOSE_CHILD_JOB"
+
+
+def test_idempotent_key_cannot_be_rebound_to_another_parent_or_user(tmp_path, monkeypatch):
+    setup_db(tmp_path, monkeypatch)
+    parent_a = job_store.create_job("U-test", "parent A")
+    parent_b = job_store.create_job("U-test", "parent B")
+    job_store.update_job(parent_a, status="completed")
+    job_store.update_job(parent_b, status="completed")
+    child_plan = proposal("child-dependent", depends_on=["parent-key"])
+    first = _persist_next_job(
+        child_plan, user_id="U-test", parent_job_id=parent_a,
+    )
+    assert first["created"] is True
+    with pytest.raises(ValueError, match="owner"):
+        _persist_next_job(
+            child_plan, user_id="U-other", parent_job_id=parent_a,
+        )
+    with pytest.raises(ValueError, match="parent"):
+        _persist_next_job(
+            child_plan, user_id="U-test", parent_job_id=parent_b,
+        )
