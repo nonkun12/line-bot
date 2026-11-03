@@ -72,6 +72,30 @@ def _normalize_command(message: str) -> str:
     return re.sub(r"\s+", "", command)
 
 
+def _is_readonly_status_request(message: str) -> bool:
+    """Recognize natural-language status inquiries without matching dev actions."""
+    command = _normalize_command(message).lower()
+    subject = any(token in command for token in ("分散loop", "分散ループ", "統括ai"))
+    status_detail = any(token in command for token in (
+        "状況", "状態", "ステータス", "実行結果", "最新の実行", "pass", "not_run",
+        "blocked", "保留", "件数", "タスク結果",
+    ))
+    if not subject or not status_detail:
+        return False
+    action_request = any(token in command for token in (
+        "起動して", "起動し", "回して", "実行して", "開発して", "修正して",
+        "作成して", "prを作成", "マージして", "デプロイして",
+    ))
+    explicit_readonly = any(token in command for token in (
+        "しない", "しません", "しないで", "禁止", "不要", "読み取り専用",
+        "状態確認だけ", "確認だけ",
+    ))
+    query_cue = any(token in command for token in (
+        "調べ", "確認", "教えて", "報告", "取得", "見せて", "どう", "現在",
+    ))
+    return explicit_readonly or (query_cue and not action_request)
+
+
 def _requested_max_tasks(message: str) -> int | None:
     command = _normalize_command(message)
     normalized_trigger_phrases = {_normalize_command(phrase) for phrase in TRIGGER_PHRASES}
@@ -343,6 +367,9 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
         "分散ループ結果",
     }:
         status_kind = "result"
+
+    if status_kind is None and _is_readonly_status_request(message):
+        status_kind = "status"
 
     max_tasks = _requested_max_tasks(message)
     if max_tasks is None and status_kind is None:
