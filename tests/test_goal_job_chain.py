@@ -121,9 +121,8 @@ def test_goal_planner_fails_closed_on_malformed_unhashable_job_fields():
 
 
 
-def _autonomous_goal():
-    goal = _goal()
-    goal["autonomy_policy"] = {
+def _autonomy_policy():
+    return {
         "mode": "bounded_autonomous",
         "auto_approve_registered_jobs": True,
         "max_jobs": 12,
@@ -131,14 +130,38 @@ def _autonomous_goal():
         "auto_merge": False,
         "auto_deploy": False,
     }
+
+
+def _autonomous_goal():
+    goal = _goal()
+    goal["autonomy_policy"] = _autonomy_policy()
     for job in goal["jobs"]:
         job["execution_approved"] = False
         job["risk_level"] = "medium"
     return goal
 
 
-def test_goal_scoped_policy_removes_per_job_approval_for_registered_low_risk_work():
+def _plan_autonomous(goal, criterion_results, job_states):
+    approved_policy = goal.pop("autonomy_policy")
+    return plan_next_job(
+        goal, criterion_results, job_states,
+        approved_autonomy_policy=approved_policy,
+    )
+
+
+def test_goal_text_cannot_self_grant_autonomous_authority():
+    goal = _autonomous_goal()
     result = plan_next_job(
+        goal,
+        {"line-routing": "FAIL", "safe-execution": "FAIL"},
+        {},
+    )
+    assert result["decision"] == "HOLD"
+    assert result["reason"] == "human_approval_required"
+
+
+def test_goal_scoped_policy_removes_per_job_approval_for_registered_low_risk_work():
+    result = _plan_autonomous(
         _autonomous_goal(),
         {"line-routing": "FAIL", "safe-execution": "FAIL"},
         {},
@@ -158,7 +181,7 @@ def test_goal_scoped_policy_removes_per_job_approval_for_registered_low_risk_wor
 def test_goal_scoped_policy_still_requires_human_for_high_risk_job():
     goal = _autonomous_goal()
     goal["jobs"][0]["risk_level"] = "high"
-    result = plan_next_job(
+    result = _plan_autonomous(
         goal,
         {"line-routing": "FAIL", "safe-execution": "FAIL"},
         {},
@@ -171,7 +194,7 @@ def test_goal_scoped_policy_still_requires_human_for_high_risk_job():
 def test_goal_scoped_policy_stops_at_job_budget():
     goal = _autonomous_goal()
     goal["autonomy_policy"]["max_jobs"] = 1
-    result = plan_next_job(
+    result = _plan_autonomous(
         goal,
         {"line-routing": "FAIL", "safe-execution": "FAIL"},
         {"routing-tests": "done"},
@@ -183,7 +206,7 @@ def test_goal_scoped_policy_stops_at_job_budget():
 def test_goal_scoped_policy_rejects_merge_deploy_or_unbounded_scope():
     goal = _autonomous_goal()
     goal["autonomy_policy"]["auto_deploy"] = True
-    result = plan_next_job(
+    result = _plan_autonomous(
         goal,
         {"line-routing": "FAIL", "safe-execution": "FAIL"},
         {},
@@ -193,7 +216,7 @@ def test_goal_scoped_policy_rejects_merge_deploy_or_unbounded_scope():
 
     goal = _autonomous_goal()
     goal["autonomy_policy"]["max_jobs"] = 1000
-    result = plan_next_job(
+    result = _plan_autonomous(
         goal,
         {"line-routing": "FAIL", "safe-execution": "FAIL"},
         {},
