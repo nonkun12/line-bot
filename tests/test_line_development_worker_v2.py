@@ -52,7 +52,7 @@ def test_ask_uses_low_reasoning_effort_by_default(monkeypatch):
 def test_append_only_test_generation_uses_reasoning_completion_budget(monkeypatch, tmp_path):
     target = tmp_path / "tests" / "test_sample.py"
     target.parent.mkdir()
-    original = "def test_existing_contract():\\n    assert True\\n"
+    original = "def test_existing_contract():\n    assert True\n"
     target.write_text(original, encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     captured = {}
@@ -60,7 +60,7 @@ def test_append_only_test_generation_uses_reasoning_completion_budget(monkeypatc
     class CaptureCompletions:
         def create(self, **kwargs):
             captured.update(kwargs)
-            return _Response("def test_new_boundary():\\n    assert True\\n")
+            return _Response("def test_new_boundary():\n    assert True\n")
 
     client = type("Client", (), {"chat": type("Chat", (), {"completions": CaptureCompletions()})()})()
     plan, error = worker.build_append_only_test_plan(
@@ -332,7 +332,7 @@ def test_apply_plan_with_bounded_anchor_repair_recovers_once(monkeypatch, tmp_pa
 
 def test_apply_plan_with_bounded_anchor_repair_size_repairs_once(monkeypatch, tmp_path):
     target = tmp_path / "app.py"
-    target.write_text("exact\\n", encoding="utf-8")
+    target.write_text("exact\n", encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
 
     rejected = {
@@ -360,7 +360,7 @@ def test_apply_plan_with_bounded_anchor_repair_size_repairs_once(monkeypatch, tm
         "app.py を最小修正",
         "app.py",
         rejected,
-        "exact\\n",
+        "exact\n",
     )
 
     assert ok
@@ -368,12 +368,12 @@ def test_apply_plan_with_bounded_anchor_repair_size_repairs_once(monkeypatch, tm
     assert touched == ["app.py"]
     assert calls == ["size"]
     assert plan == repaired
-    assert target.read_text(encoding="utf-8") == "replacement\\n"
+    assert target.read_text(encoding="utf-8") == "replacement\n"
 
 
 def test_apply_plan_with_bounded_anchor_repair_rejects_unrepairable_size(monkeypatch, tmp_path):
     target = tmp_path / "app.py"
-    original = "exact\\n"
+    original = "exact\n"
     target.write_text(original, encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
 
@@ -411,7 +411,7 @@ def test_apply_plan_with_bounded_anchor_repair_rejects_unrepairable_size(monkeyp
 
 def test_apply_plan_with_bounded_anchor_size_repair_rejects_no_change(monkeypatch, tmp_path):
     target = tmp_path / "app.py"
-    original = "exact\\n"
+    original = "exact\n"
     target.write_text(original, encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     rejected = {"no_change": False, "changes": [{"file": "app.py", "old": "missing", "new": "x"}]}
@@ -435,7 +435,7 @@ def test_apply_plan_with_bounded_anchor_size_repair_rejects_no_change(monkeypatc
 
 def test_apply_plan_with_bounded_anchor_size_repair_rejects_invalid_file(monkeypatch, tmp_path):
     target = tmp_path / "app.py"
-    original = "exact\\n"
+    original = "exact\n"
     target.write_text(original, encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     rejected = {"no_change": False, "changes": [{"file": "app.py", "old": "missing", "new": "x"}]}
@@ -664,8 +664,8 @@ def test_validate_plan_with_bounded_repairs_recovers_invalid_old_new_once(monkey
         "changes": [
             {
                 "file": chosen,
-                "old": "def target():\\n    old\\n",
-                "new": "def target():\\n    new\\n",
+                "old": "def target():\n    old\n",
+                "new": "def target():\n    new\n",
             }
         ],
     }
@@ -681,7 +681,7 @@ def test_validate_plan_with_bounded_repairs_recovers_invalid_old_new_once(monkey
         "テストを最小修正",
         chosen,
         rejected,
-        "def target():\\n    old\\n",
+        "def target():\n    old\n",
     )
 
     assert ok
@@ -712,7 +712,7 @@ def test_validate_plan_with_bounded_repairs_rejects_unsafe_invalid_old_new_repai
         "テストを最小修正",
         chosen,
         rejected,
-        "def target():\\n    old\\n",
+        "def target():\n    old\n",
     )
 
     assert not ok
@@ -871,7 +871,7 @@ def test_validate_plan_size_boundaries_are_exact():
 
 def test_apply_anchor_size_repair_is_used_only_once_across_anchor_retries(monkeypatch, tmp_path):
     target = tmp_path / "app.py"
-    original = "x\\nx\\nexact\\n"
+    original = "x\nx\nexact\n"
     target.write_text(original, encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
 
@@ -1251,7 +1251,7 @@ def test_existing_test_guard_covers_root_and_nested_test_files(monkeypatch, tmp_
 
 def test_apply_plan_rejects_empty_or_oversized_change_lists_without_writes(tmp_path, monkeypatch):
     target = tmp_path / "app.py"
-    target.write_text("before\\n", encoding="utf-8")
+    target.write_text("before\n", encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     monkeypatch.setattr(worker, "MAX_FILES", 1)
 
@@ -1274,14 +1274,14 @@ def test_apply_plan_rejects_empty_or_oversized_change_lists_without_writes(tmp_p
         "invalid_change_count",
         [],
     )
-    assert target.read_text(encoding="utf-8") == "before\\n"
+    assert target.read_text(encoding="utf-8") == "before\n"
 
 
 def test_apply_plan_preflights_all_anchors_before_any_write(tmp_path, monkeypatch):
     first = tmp_path / "first.py"
     second = tmp_path / "second.py"
-    first.write_text("first-original\\n", encoding="utf-8")
-    second.write_text("second-original\\n", encoding="utf-8")
+    first.write_text("first-original\n", encoding="utf-8")
+    second.write_text("second-original\n", encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     monkeypatch.setattr(worker, "MAX_FILES", 2)
 
@@ -1298,8 +1298,8 @@ def test_apply_plan_preflights_all_anchors_before_any_write(tmp_path, monkeypatc
     assert ok is False
     assert detail == "anchor_count_second.py:0"
     assert touched == []
-    assert first.read_text(encoding="utf-8") == "first-original\\n"
-    assert second.read_text(encoding="utf-8") == "second-original\\n"
+    assert first.read_text(encoding="utf-8") == "first-original\n"
+    assert second.read_text(encoding="utf-8") == "second-original\n"
 
 
 def test_apply_plan_rejects_paths_outside_repository_root(tmp_path, monkeypatch):
@@ -1323,8 +1323,8 @@ def test_apply_plan_rejects_paths_outside_repository_root(tmp_path, monkeypatch)
 def test_apply_plan_rolls_back_target_when_write_fails_midway(tmp_path, monkeypatch):
     first = tmp_path / "first.py"
     second = tmp_path / "second.py"
-    first.write_text("first-original\\n", encoding="utf-8")
-    second.write_text("second-original\\n", encoding="utf-8")
+    first.write_text("first-original\n", encoding="utf-8")
+    second.write_text("second-original\n", encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     monkeypatch.setattr(worker, "MAX_FILES", 2)
 
@@ -1354,8 +1354,8 @@ def test_apply_plan_rolls_back_target_when_write_fails_midway(tmp_path, monkeypa
     assert ok is False
     assert detail == "apply_write_failed:OSError"
     assert touched == ["first.py"]
-    assert first.read_text(encoding="utf-8") == "first-original\\n"
-    assert second.read_text(encoding="utf-8") == "second-original\\n"
+    assert first.read_text(encoding="utf-8") == "first-original\n"
+    assert second.read_text(encoding="utf-8") == "second-original\n"
 
 def test_refill_deterministic_test_insertions_preserve_suffix_and_converge(tmp_path, monkeypatch):
     from core.line_development_runtime import _deterministic_autonomous_test_plan
