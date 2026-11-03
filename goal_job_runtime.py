@@ -25,7 +25,7 @@ def load_goal_job_states(goal_id: str) -> dict[str, str]:
     }
 
 
-def persist_next_job(
+def _persist_next_job(
     plan: object,
     *,
     user_id: str,
@@ -174,7 +174,7 @@ def advance_goal(
             raise ValueError("all parent JOB dependencies must be completed")
         parent_id = by_key[dependencies[-1]]["job_id"]
 
-    persisted = persist_next_job(
+    persisted = _persist_next_job(
         plan, user_id=user_id, parent_job_id=parent_id, max_retries=max_retries
     )
     return {
