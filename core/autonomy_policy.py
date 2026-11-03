@@ -23,7 +23,8 @@ _PROTECTED_PREFIXES = (
     "core/control_tower", "core/task_routing.py", "core/management_bridge.py",
     "core/openclaw_bridge.py", "core/auth/", "core/security/",
 )
-_PROTECTED_NAME = re.compile(r"(^|[/_.-])(secret|secrets|auth|authentication|token|credential|permission|security|billing|payment|deploy|deployment|migration|database|production|prod)([/_.-]|$)", re.IGNORECASE)\n_HIGH_RISK_INSTRUCTION = re.compile(
+_PROTECTED_NAME = re.compile(r"(^|[/_.-])(secret|secrets|auth|authentication|token|credential|permission|security|billing|payment|deploy|deployment|migration|database|production|prod)([/_.-]|$)", re.IGNORECASE)
+_HIGH_RISK_INSTRUCTION = re.compile(
     r"(?:\bdeploy\b|\bmerge\b|\bpublish\b|\bproduction\b|\bsecret\b|"
     r"\bcredential\b|\bpermission\b|\bdelete\b|\bdrop\b|\bmigration\b|"
     r"デプロイ|本番|秘密|認証情報|権限変更|データ削除|マージ|公開)",
