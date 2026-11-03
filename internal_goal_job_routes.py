@@ -77,6 +77,22 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
                 return jsonify({"ok": False, "error": "successful completion requires evidence checks"}), 400
             if not all(isinstance(check, dict) and check.get("status") == "PASS" for check in evidence["checks"]):
                 success = False
+            verification = evidence.get("verification")
+            produced_sha = evidence.get("produced_sha")
+            if (
+                not isinstance(verification, dict)
+                or not isinstance(produced_sha, str)
+                or len(produced_sha) not in {40, 64}
+                or any(ch not in "0123456789abcdef" for ch in produced_sha.lower())
+                or verification.get("target_sha") != produced_sha
+                or verification.get("pytest_status") != "PASS"
+                or verification.get("review_status") != "PASS"
+                or not isinstance(verification.get("pytest_run_url"), str)
+                or not verification["pytest_run_url"].startswith("https://github.com/")
+                or not isinstance(verification.get("review_run_url"), str)
+                or not verification["review_run_url"].startswith("https://github.com/")
+            ):
+                return jsonify({"ok": False, "error": "independent exact-SHA pytest and review evidence is required"}), 400
         try:
             completed = goal_job_store.complete_claimed_child_job(
                 job_id,
