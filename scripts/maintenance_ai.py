@@ -85,6 +85,12 @@ def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
     recovery_action = recovery_action if isinstance(recovery_action, str) else None
     failure_code = row.get("failure_code")
     failure_code_category_value = failure_code_category(failure_code)
+    # Preserve the established Maintenance AI public categories for existing
+    # consumers while the shared Recovery AI taxonomy remains canonical.
+    if failure_code == "invalid_change_count":
+        failure_code_category_value = "legacy_invalid_plan_change_count"
+    elif failure_code == "existing_test_modified_repair_failed":
+        failure_code_category_value = "legacy_test_plan_repair_failed"
 
     # Independent safety evidence always outranks a nominal PASS.
     if rea_gate in {"BLOCKED", "FAIL"}:
@@ -94,6 +100,14 @@ def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
     elif failure_code is not None and failure_code_category_value is None:
         category = "invalid_failure_code_evidence"
         recommendation = "The failure code is unknown or malformed. Keep the hold and inspect the original run evidence; do not retry automatically."
+        requires_human = True
+    elif failure_code_category_value == "legacy_test_plan_repair_failed":
+        category = "test_plan_repair_failed"
+        recommendation = "The append-only test repair failed. Keep the hold; inspect the diff and append one new test only after human review."
+        requires_human = True
+    elif failure_code_category_value == "legacy_invalid_plan_change_count":
+        category = "invalid_plan_change_count"
+        recommendation = "The deterministic plan has an invalid change count. Keep the hold and correct the plan before any reviewed resume."
         requires_human = True
     elif failure_code_category_value == "security_violation":
         category = "security_violation"
