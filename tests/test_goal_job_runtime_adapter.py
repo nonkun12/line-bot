@@ -112,3 +112,44 @@ def test_run_goal_child_once_delegates_to_typed_worker(monkeypatch):
 
     assert result == {"id": 77, "status": "completed"}
     assert captured == {"executor": adapter.execute_goal_child, "job_id": 77}
+
+
+def test_goal_runtime_adapter_sets_and_restores_child_audit_identity(monkeypatch):
+    import os
+
+    from scripts.goal_job_runtime_adapter import execute_goal_child
+
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "previous-task")
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "previous-source")
+    git_values = {
+        ("rev-parse", "HEAD"): ["base-sha", "produced-sha"],
+        ("branch", "--show-current"): ["goal-child/42"],
+        ("diff", "--name-only", "base-sha..produced-sha"): ["tests/test_goal_job_runtime_adapter.py"],
+    }
+    observed = {}
+
+    def fake_git(*args):
+        return git_values[args].pop(0)
+
+    def fake_execute(instruction, *, allowed_paths):
+        observed["task_id"] = os.environ.get("AUTONOMOUS_TASK_ID")
+        observed["source"] = os.environ.get("AUTONOMOUS_RUN_SOURCE")
+        return 0
+
+    execute_goal_child(
+        {"id": 42, "job_type": "goal_child"},
+        {
+            "goal_job_key": "goal-child-42",
+            "instruction": "Add a regression test",
+            "allowed_paths": ["tests/test_goal_job_runtime_adapter.py"],
+        },
+        runtime_execute=fake_execute,
+        git=fake_git,
+    )
+
+    assert observed == {
+        "task_id": "goal-child-42",
+        "source": "goal-child",
+    }
+    assert os.environ["AUTONOMOUS_TASK_ID"] == "previous-task"
+    assert os.environ["AUTONOMOUS_RUN_SOURCE"] == "previous-source"
