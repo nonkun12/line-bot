@@ -42,7 +42,7 @@ def _validate_grant(grant: object, goal_id: str) -> dict[str, Any]:
         or expiry is None or expiry.tzinfo is None or expiry <= datetime.now(timezone.utc)
         or type(max_jobs) is not int or not 1 <= max_jobs <= 50
         or not isinstance(stages, list) or not stages
-        or any(stage not in {"requirements", "design", "implementation", "test", "review", "fix", "verify"} for stage in stages)
+        or any(not isinstance(stage, str) or stage not in {"requirements", "design", "implementation", "test", "review", "fix", "verify"} for stage in stages)
         or len(stages) != len(set(stages))
         or not isinstance(roots, list) or not roots
         or any(not isinstance(root, str) or root not in _ALLOWED_GRANT_ROOTS for root in roots)
@@ -309,7 +309,7 @@ def complete_claimed_child_job(
             if (
                 not isinstance(check, dict)
                 or not isinstance(check.get("name"), str) or not check["name"].strip()
-                or check.get("status") not in {"PASS", "FAIL"}
+                or not isinstance(check.get("status"), str) or check.get("status") not in {"PASS", "FAIL"}
                 or not isinstance(check.get("source"), str) or not check["source"].strip()
             ):
                 raise ValueError("evidence checks require name, PASS/FAIL status, and source")
