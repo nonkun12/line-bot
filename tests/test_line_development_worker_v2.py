@@ -1550,9 +1550,10 @@ def test_append_only_generation_failure_includes_safe_api_error_detail(monkeypat
     )
 
     assert plan is None
-    assert error == (
-        "append_only_test_generation_failed:BadRequestError:status=400:"
-        "code=invalid_request:param=max_tokens:"
-        "message=Requested token budget exceeds limit"
+    assert error.startswith(
+        "append_only_test_generation_failed:BadRequestError:"
+        "model=openai/gpt-oss-20b:groq_sdk="
     )
+    assert "status=400:code=invalid_request:param=max_tokens:" in error
+    assert "message=Requested token budget exceeds limit" in error
     assert target.read_text(encoding="utf-8") == "def test_existing():\n    assert True\n"
