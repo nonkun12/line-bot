@@ -61,7 +61,7 @@ def evaluate_job_autonomy(job: object) -> dict[str, Any]:
     stage = job.get("stage")
     instruction = job.get("instruction")
     paths = job.get("allowed_paths")
-    if stage not in {"requirements", "design", "implementation", "test", "review", "fix", "verify"}:
+    if not isinstance(stage, str) or stage not in {"requirements", "design", "implementation", "test", "review", "fix", "verify"}:
         return {"decision": "HUMAN_REVIEW", "reason": "stage_not_allowlisted", "risk": "unknown"}
     if not isinstance(instruction, str) or not instruction.strip() or len(instruction) > 5000:
         return {"decision": "HUMAN_REVIEW", "reason": "instruction_invalid", "risk": "unknown"}
