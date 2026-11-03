@@ -77,6 +77,7 @@ def init_goal_job_store() -> None:
                 goal_job_key TEXT NOT NULL,
                 criterion_id TEXT NOT NULL,
                 job_id INTEGER NOT NULL UNIQUE,
+                evidence_json TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(goal_id, goal_job_key),
@@ -84,6 +85,9 @@ def init_goal_job_store() -> None:
                 FOREIGN KEY(job_id) REFERENCES jobs(id)
             )
         """)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(goal_chain_jobs)").fetchall()}
+        if "evidence_json" not in columns:
+            conn.execute("ALTER TABLE goal_chain_jobs ADD COLUMN evidence_json TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_goal_chain_jobs_goal_id ON goal_chain_jobs(goal_id, id)")
 
 
@@ -196,6 +200,9 @@ def persist_child_job(goal_id: str, job: object, *, parent_job_key: str | None =
 
         parent_job_id = None
         if parent_job_key is not None:
+            dependencies = job.get("depends_on", [])
+            if not isinstance(dependencies, list) or parent_job_key not in dependencies:
+                raise ValueError("parent_job_key must be declared in depends_on")
             parent = conn.execute(
                 "SELECT job_id FROM goal_chain_jobs WHERE goal_id=? AND goal_job_key=?",
                 (goal_id, parent_job_key),
@@ -270,7 +277,64 @@ def update_goal_evidence(goal_id: str, criterion_results: object) -> dict[str, A
     return get_goal(goal_id)
 
 
+
+def authorize_claimed_job(job: object) -> dict[str, Any]:
+    """Re-check a claimed typed job against its persisted Goal grant."""
+    if not isinstance(job, dict) or job.get("job_type") != "goal_child":
+        raise PermissionError("not a Goal child JOB")
+    try:
+        payload = json.loads(job.get("message", ""))
+    except (TypeError, json.JSONDecodeError):
+        raise PermissionError("Goal child payload is malformed")
+    if not isinstance(payload, dict):
+        raise PermissionError("Goal child payload is malformed")
+    goal_id = payload.get("goal_id")
+    init_goal_job_store()
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT grant_json,status FROM goal_chains WHERE goal_id=?",
+            (goal_id,),
+        ).fetchone()
+        link = conn.execute(
+            "SELECT goal_job_key FROM goal_chain_jobs WHERE goal_id=? AND job_id=?",
+            (goal_id, job.get("id")),
+        ).fetchone()
+    if row is None or row[1] != "active" or link is None or link[0] != payload.get("goal_job_key"):
+        raise PermissionError("Goal child is not registered under an active Goal")
+    grant = _validate_grant(json.loads(row[0]), goal_id)
+    decision = evaluate_job_autonomy(payload)
+    if (
+        decision.get("decision") != "AUTO_APPROVE"
+        or payload.get("stage") not in grant["allowed_stages"]
+        or any(not any(path.startswith(root) for root in grant["allowed_path_prefixes"])
+               for path in payload.get("allowed_paths", []))
+    ):
+        raise PermissionError("Goal child no longer satisfies the autonomy policy")
+    return payload
+
+
+def save_child_evidence(job_id: int, evidence: object) -> bool:
+    """Persist structured executor evidence for an exactly registered child JOB."""
+    if not isinstance(evidence, dict) or not isinstance(evidence.get("checks"), list) or not evidence["checks"]:
+        raise ValueError("evidence must contain non-empty checks")
+    for check in evidence["checks"]:
+        if (
+            not isinstance(check, dict)
+            or not isinstance(check.get("name"), str) or not check["name"].strip()
+            or check.get("status") not in {"PASS", "FAIL"}
+            or not isinstance(check.get("source"), str) or not check["source"].strip()
+        ):
+            raise ValueError("each evidence check requires name, PASS/FAIL status, and source")
+    init_goal_job_store()
+    with db.get_conn() as conn:
+        cursor = conn.execute(
+            "UPDATE goal_chain_jobs SET evidence_json=?,updated_at=CURRENT_TIMESTAMP WHERE job_id=?",
+            (_json(evidence), job_id),
+        )
+        return cursor.rowcount == 1
+
+
 __all__ = [
     "init_goal_job_store", "create_goal", "get_goal", "persist_child_job",
-    "get_goal_job_states", "update_goal_evidence",
+    "get_goal_job_states", "update_goal_evidence", "authorize_claimed_job", "save_child_evidence",
 ]
