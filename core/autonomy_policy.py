@@ -55,7 +55,7 @@ def _path_reason(path: object) -> str | None:
 
 
 def evaluate_job_autonomy(job: object) -> dict[str, Any]:
-    """Return AUTO_APPROVE only for bounded low-risk repository work."""
+    """Classify risk only; this function never grants authorization or permissions."""
     if not isinstance(job, dict):
         return {"decision": "HUMAN_REVIEW", "reason": "job_contract_invalid", "risk": "unknown"}
     stage = job.get("stage")
@@ -97,18 +97,9 @@ def evaluate_job_autonomy(job: object) -> dict[str, Any]:
 
     risk = "low" if all(path.startswith(("tests/", "uhip/tests/", "docs/")) for path in paths) else "medium"
     return {
-        "decision": "AUTO_APPROVE",
+        "decision": "SAFE_CANDIDATE",
         "reason": "bounded_reversible_repository_work",
         "risk": risk,
-        "permissions": {
-            "execute_scoped_job": True,
-            "create_branch_or_draft_pr": True,
-            "merge": False,
-            "deploy": False,
-            "modify_secrets_or_permissions": False,
-            "mutate_production_data": False,
-            "verify_realpath_within_repository": True,
-        },
     }
 
 
