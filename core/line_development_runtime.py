@@ -2132,7 +2132,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
                 if anchor_pos < 0:
                     return None, "deterministic_anchor_not_unique:refill_cli"
                 old = text[anchor_pos:pos] + read_json_def
-                new = eof_anchor + "\n\n" + cli_body + "\n\n" + read_json_def
+                new = eof_anchor + "\n\n" + cli_body + "\n" + read_json_def
             else:
                 if text.count(eof_anchor) != 1:
                     return None, f"deterministic_anchor_not_unique:refill_cli:{text.count(eof_anchor)}"
