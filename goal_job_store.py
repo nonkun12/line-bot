@@ -198,18 +198,24 @@ def persist_child_job(goal_id: str, job: object, *, parent_job_key: str | None =
         if registered >= grant["max_jobs"]:
             raise PermissionError("goal autonomy job budget exhausted")
 
+        dependencies = job.get("depends_on", [])
+        if not isinstance(dependencies, list) or any(not isinstance(dep, str) for dep in dependencies):
+            raise ValueError("depends_on must be a list of Goal JOB keys")
+        if parent_job_key is not None and parent_job_key not in dependencies:
+            raise ValueError("parent_job_key must be declared in depends_on")
         parent_job_id = None
-        if parent_job_key is not None:
-            dependencies = job.get("depends_on", [])
-            if not isinstance(dependencies, list) or parent_job_key not in dependencies:
-                raise ValueError("parent_job_key must be declared in depends_on")
+        for dependency_key in dependencies:
             parent = conn.execute(
-                "SELECT job_id FROM goal_chain_jobs WHERE goal_id=? AND goal_job_key=?",
-                (goal_id, parent_job_key),
+                "SELECT link.job_id,j.status FROM goal_chain_jobs link "
+                "JOIN jobs j ON j.id=link.job_id WHERE link.goal_id=? AND link.goal_job_key=?",
+                (goal_id, dependency_key),
             ).fetchone()
             if parent is None:
-                raise ValueError("parent Goal JOB has not been persisted")
-            parent_job_id = parent[0]
+                raise ValueError("dependency Goal JOB has not been persisted")
+            if parent[1] not in {"done", "completed"}:
+                raise ValueError("dependency Goal JOB is not complete")
+            if parent_job_id is None:
+                parent_job_id = parent[0]
 
         message = _json({
             "goal_id": goal_id,
