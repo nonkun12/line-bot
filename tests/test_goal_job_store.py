@@ -18,7 +18,14 @@ def _goal():
             {"id": "routing-tests", "description": "Routing regression tests pass"},
             {"id": "evidence-review", "description": "Evidence review passes"},
         ],
-        "jobs": [],
+        "jobs": [{
+            "id": "routing-tests",
+            "criterion_id": "routing-tests",
+            "stage": "test",
+            "instruction": "Add focused routing regression tests.",
+            "allowed_paths": ["tests/test_line_development_routing.py"],
+            "depends_on": [],
+        }],
     }
 
 
@@ -106,6 +113,10 @@ def test_persist_child_job_rejects_scope_and_budget_violations(tmp_path, monkeyp
 
     budget_goal = _goal()
     budget_goal["goal_id"] = "goal-autonomy-budget"
+    budget_goal["jobs"].append({
+        "id": "second", "criterion_id": "evidence-review", "stage": "review",
+        "instruction": "Review the evidence.", "allowed_paths": ["docs/review.md"], "depends_on": [],
+    })
     grant = _grant()
     grant["goal_id"] = "goal-autonomy-budget"
     grant["grant_id"] = "grant-autonomy-budget"
