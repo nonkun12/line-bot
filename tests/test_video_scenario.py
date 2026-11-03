@@ -97,3 +97,36 @@ def test_scenario_validator_rejects_invalid_sync_point():
     draft = build_scenario("海の記憶", duration_seconds=60, scene_count=3)
     draft["scenes"][0]["music_sync"]["sync_points"][0]["at_seconds"] = -1
     assert "scene_1_sync_points_invalid" in validate_scenario(draft)
+
+
+def test_scenario_rejects_more_scenes_than_available_seconds():
+    try:
+        build_scenario("短い映像", duration_seconds=15, scene_count=20)
+    except ValueError as exc:
+        assert "at least scene_count" in str(exc)
+    else:
+        raise AssertionError("zero-duration scenes must be rejected")
+
+
+def test_scenario_music_energy_tracks_the_four_act_emotional_arc():
+    draft = build_scenario("感情の起伏", duration_seconds=120, scene_count=4)
+    assert [scene["music_sync"]["energy"] for scene in draft["scenes"]] == [
+        "low", "medium", "high", "low"
+    ]
+
+
+def test_scenario_validator_rejects_bad_start_time_energy_and_motif():
+    draft = build_scenario("検証", duration_seconds=120, scene_count=4)
+    draft["scenes"][1]["time_start_seconds"] += 1
+    draft["scenes"][2]["music_sync"]["energy"] = ["high"]
+    draft["scenes"][0]["music_sync"]["motif"] = None
+    errors = validate_scenario(draft)
+    assert "scene_2_start_time_invalid" in errors
+    assert "scene_3_energy_invalid" in errors
+    assert "scene_1_motif_invalid" in errors
+
+
+def test_scenario_validator_rejects_non_string_energy_without_crashing():
+    draft = build_scenario("不正な入力", duration_seconds=60, scene_count=3)
+    draft["scenes"][0]["music_sync"]["energy"] = ["low"]
+    assert "scene_1_energy_invalid" in validate_scenario(draft)
