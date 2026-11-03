@@ -96,6 +96,23 @@ def test_continuation_gate_stops_if_any_task_fails(tmp_path):
     assert result["reason"] == "task_status_not_verified_pass"
 
 
+def test_continuation_gate_stops_when_task_is_not_run(tmp_path):
+    from scripts.chain_job_ai import decide
+
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    (evidence / "minimal-autonomous-loop.jsonl").write_text(
+        __import__("json").dumps(_row("queue-empty-task", status="NOT_RUN", exit_code=78)),
+        encoding="utf-8",
+    )
+    (evidence / "autonomous-loop-state.json").write_text(
+        __import__("json").dumps({"completed": []}), encoding="utf-8"
+    )
+    result = decide(evidence, "continuation_depth=0", "success")
+    assert result["continue"] is False
+    assert result["reason"] == "task_status_not_verified_pass"
+
+
 def test_chain_job_ai_is_the_workflow_continuation_decision_owner():
     source = WORKFLOW.read_text(encoding="utf-8")
     assert "uses: actions/checkout@v4" in source
