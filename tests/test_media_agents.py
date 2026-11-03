@@ -52,3 +52,38 @@ def test_music_agent_accepts_video_scenario_and_returns_synchronized_score_plan(
     assert plan["source_scenario_title"] == scenario["title"]
     assert len(plan["cues"]) == len(scenario["scenes"])
     assert plan["rendering_status"] == "not_generated"
+
+
+def test_music_agent_uses_real_line_breaks_for_scenario_reply():
+    from agents.video.scenario import build_scenario
+
+    scenario = build_scenario("映像と音楽", duration_seconds=60, scene_count=3)
+    response = MusicAgent().handle(AgentRequest(
+        "u1", "映像に合わせて作曲", metadata={"scenario": scenario}
+    ))
+    assert "\\\\n" not in response.text
+    assert "\\n" in response.text
+
+
+def test_music_agent_returns_validation_message_for_invalid_scenario():
+    response = MusicAgent().handle(AgentRequest(
+        "u1", "映像に合わせて作曲",
+        metadata={"scenario": {"schema_version": "invalid"}},
+    ))
+    assert response.metadata["status"] == "invalid_request"
+    assert "確認してください" in response.text
+
+
+def test_video_agent_accepts_english_scenario_keyword():
+    response = VideoAgent().handle(AgentRequest("u1", "Create a scenario for a short film"))
+    assert response.metadata["mode"] == "scenario"
+    assert response.metadata["scenario"]["schema_version"] == "video-scenario.v1"
+
+
+def test_video_agent_handles_invalid_metadata_without_raising():
+    response = VideoAgent().handle(AgentRequest(
+        "u1", "シナリオを作って",
+        metadata={"duration_seconds": "180", "scene_count": 30},
+    ))
+    assert response.metadata["status"] == "invalid_request"
+    assert "確認してください" in response.text
