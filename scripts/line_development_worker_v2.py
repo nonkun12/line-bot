@@ -487,10 +487,28 @@ def _safe_api_error_detail(exc: Exception) -> str:
     status = getattr(exc, "status_code", None)
     if isinstance(status, int):
         parts.append(f"status={status}")
+    body = getattr(exc, "body", None)
+    provider_error = body.get("error", body) if isinstance(body, dict) else {}
     for key in ("code", "param"):
         value = getattr(exc, key, None)
+        if not isinstance(value, str) and isinstance(provider_error, dict):
+            value = provider_error.get(key)
         if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", value):
             parts.append(f"{key}={value}")
+    failed_generation = (
+        provider_error.get("failed_generation")
+        if isinstance(provider_error, dict)
+        else None
+    )
+    if isinstance(failed_generation, str):
+        known_failures = {
+            "max completion tokens reached before generating a valid document",
+            "completion returned no choices",
+        }
+        if failed_generation in known_failures:
+            parts.append(f"failed_generation={failed_generation}")
+        elif failed_generation:
+            parts.append("failed_generation=present")
     message = getattr(exc, "message", None)
     if isinstance(message, str) and message:
         safe = re.sub(r"(?i)bearer\s+\S+", "Bearer [REDACTED]", message)
