@@ -162,7 +162,7 @@ def persist_child_job(goal_id: str, job: object, *, parent_job_key: str | None =
     with db.get_conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
         goal_row = conn.execute(
-            "SELECT grant_json,status FROM goal_chains WHERE goal_id=?",
+            "SELECT grant_json,status,goal_json FROM goal_chains WHERE goal_id=?",
             (goal_id,),
         ).fetchone()
         if goal_row is None:
@@ -180,6 +180,17 @@ def persist_child_job(goal_id: str, job: object, *, parent_job_key: str | None =
             ).fetchone()
             return {"job_id": existing[0], "status": row[1], "parent_job_id": row[2], "created": False}
 
+        goal_contract = json.loads(goal_row[2])
+        registered_job = next((item for item in goal_contract.get("jobs", [])
+                               if isinstance(item, dict) and item.get("id") == key), None)
+        if not isinstance(registered_job, dict):
+            raise PermissionError("child JOB is not registered in the persisted Goal contract")
+        for field in ("criterion_id", "stage", "allowed_paths", "depends_on"):
+            default = [] if field == "depends_on" else None
+            if registered_job.get(field, default) != job.get(field, default):
+                raise PermissionError("child JOB differs from the persisted Goal contract")
+        if registered_job.get("instruction", "").strip() != job.get("instruction", "").strip():
+            raise PermissionError("child JOB instruction differs from the persisted Goal contract")
         grant = json.loads(goal_row[0])
         grant = _validate_grant(grant, goal_id)
         decision = evaluate_job_autonomy(job)
@@ -359,6 +370,17 @@ def authorize_claimed_job(job: object) -> dict[str, Any]:
         ).fetchone()
     if row is None or row[1] != "active" or link is None or link[0] != payload.get("goal_job_key"):
         raise PermissionError("Goal child is not registered under an active Goal")
+    goal_contract = json.loads(row[2])
+    registered_job = next((item for item in goal_contract.get("jobs", [])
+                           if isinstance(item, dict) and item.get("id") == payload.get("goal_job_key")), None)
+    if not isinstance(registered_job, dict):
+        raise PermissionError("claimed child JOB is not in the persisted Goal contract")
+    for field in ("criterion_id", "stage", "allowed_paths", "depends_on"):
+        default = [] if field == "depends_on" else None
+        if registered_job.get(field, default) != payload.get(field, default):
+            raise PermissionError("claimed child JOB differs from the persisted Goal contract")
+    if registered_job.get("instruction", "").strip() != payload.get("instruction", "").strip():
+        raise PermissionError("claimed child JOB instruction differs from the persisted Goal contract")
     grant = _validate_grant(json.loads(row[0]), goal_id)
     decision = evaluate_job_autonomy(payload)
     if (
