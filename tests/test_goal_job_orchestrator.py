@@ -155,3 +155,65 @@ def test_run_until_blocked_uses_registered_fix_after_failed_child(tmp_path, monk
     assert result["decision"] == "GOAL_ACHIEVED"
     assert calls == ["first-test", "repair-first-test"]
     assert result["steps_executed"] == 2
+
+
+def test_run_until_blocked_generates_new_child_jobs_when_registered_queue_is_empty(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    goal = _goal("goal-dynamic-generation")
+    goal["jobs"] = []
+    goal_job_store.create_goal(goal, "U-test", _grant("goal-dynamic-generation"))
+    generated = []
+
+    def generator(goal_record, criterion_results, job_states):
+        generated.append((goal_record["goal_id"], dict(criterion_results), dict(job_states)))
+        return {
+            "id": "generated-test",
+            "criterion_id": "criterion",
+            "stage": "test",
+            "instruction": "Run the missing focused regression test.",
+            "allowed_paths": ["tests/test_goal_job_orchestrator.py"],
+            "depends_on": [],
+        }
+
+    def executor(_job, payload):
+        return {
+            "result": "generated task complete",
+            "evidence": {
+                "checks": [{"name": "pytest", "status": "PASS", "source": "CI run 999"}]
+            },
+        }
+
+    result = goal_job_orchestrator.run_until_blocked(
+        "goal-dynamic-generation",
+        executor=executor,
+        evidence_evaluator=lambda *_: {"criterion": "PASS"},
+        job_generator=generator,
+        max_steps=3,
+    )
+    assert result["decision"] == "GOAL_ACHIEVED"
+    assert len(generated) == 1
+    assert generated[0][0] == "goal-dynamic-generation"
+
+
+def test_generated_job_outside_goal_grant_is_held(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    goal = _goal("goal-reject-generated")
+    goal["jobs"] = []
+    goal_job_store.create_goal(goal, "U-test", _grant("goal-reject-generated"))
+
+    def generator(*_):
+        return {
+            "id": "unsafe-generated",
+            "criterion_id": "criterion",
+            "stage": "implementation",
+            "instruction": "Change production code.",
+            "allowed_paths": ["app.py"],
+            "depends_on": [],
+        }
+
+    result = goal_job_orchestrator.advance_goal(
+        "goal-reject-generated",
+        job_generator=generator,
+    )
+    assert result["decision"] == "HOLD"
+    assert result["reason"] == "generated_job_rejected"
