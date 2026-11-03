@@ -522,7 +522,7 @@ The function name must start with test_. Keep the test focused and concise."""
         "Return one complete test function, or NO_CHANGE."
     )
     try:
-        generated = ask(client, system, prompt, max_tokens=1200).strip()
+        generated = ask(client, system, prompt, max_tokens=2000).strip()
     except Exception as exc:
         detail = _safe_api_error_detail(exc)
         suffix = f":{detail}" if detail else ""
