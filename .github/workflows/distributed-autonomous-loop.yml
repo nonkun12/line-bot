@@ -1015,7 +1015,7 @@ jobs:
             echo "CHAIN_DISPATCH=SKIPPED reason=$reason" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          next_depth="$((depth + 1))"
+          next_depth="$(python -c 'import json; print(json.load(open("/tmp/distributed-loop-chain-decision.json", encoding="utf-8"))["next_depth"])')"
           chain_request_id="chain-${RUN_ID}"
           # A rerun of the same source run must not create a duplicate child job.
           if gh run list --repo "$REPOSITORY" --workflow distributed-autonomous-loop.yml \\
