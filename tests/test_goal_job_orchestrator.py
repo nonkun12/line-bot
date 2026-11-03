@@ -114,3 +114,44 @@ def test_run_until_blocked_rejects_budget_above_goal_grant(tmp_path, monkeypatch
     )
     assert result["decision"] == "HOLD"
     assert result["reason"] == "step_budget_invalid"
+
+
+def test_run_until_blocked_uses_registered_fix_after_failed_child(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    goal = _goal("goal-repair-chain")
+    goal["jobs"][1]["id"] = "repair-first-test"
+    goal["jobs"][1]["stage"] = "fix"
+    goal["jobs"][1]["instruction"] = "Repair the failed focused test."
+    goal["jobs"][1]["allowed_paths"] = ["tests/test_goal_job_orchestrator.py"]
+    grant = _grant("goal-repair-chain")
+    goal_job_store.create_goal(goal, "U-test", grant)
+    calls = []
+
+    def executor(_job, payload):
+        key = payload["goal_job_key"]
+        calls.append(key)
+        if key == "first-test":
+            raise RuntimeError("test command failed")
+        return {
+            "result": "repair applied and verified",
+            "evidence": {
+                "checks": [{"name": "pytest", "status": "PASS", "source": "CI run 789"}]
+            },
+        }
+
+    def evaluator(_goal_record, job):
+        if job["status"] != "completed":
+            return {"criterion": "FAIL"}
+        import json
+        key = json.loads(job["message"])["goal_job_key"]
+        return {"criterion": "PASS" if key == "repair-first-test" else "FAIL"}
+
+    result = goal_job_orchestrator.run_until_blocked(
+        "goal-repair-chain",
+        executor=executor,
+        evidence_evaluator=evaluator,
+        max_steps=4,
+    )
+    assert result["decision"] == "GOAL_ACHIEVED"
+    assert calls == ["first-test", "repair-first-test"]
+    assert result["steps_executed"] == 2
