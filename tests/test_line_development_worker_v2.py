@@ -1496,6 +1496,38 @@ def test_safe_api_error_detail_exposes_only_known_provider_failure_metadata():
     )
 
 
+
+def test_safe_api_error_detail_includes_request_id_and_redacted_generation():
+    class FakeResponse:
+        headers = {
+            "x-request-id": "req_abc123",
+            "x-groq-region": "us-east-1",
+            "authorization": "Bearer must-not-appear",
+        }
+
+    class BadRequestError(Exception):
+        status_code = 400
+        body = {
+            "error": {
+                "code": "json_validate_failed",
+                "failed_generation": (
+                    "invalid output gsk-abcdefghijklmnopqrstuvwxyz1234567890 "
+                    "and api_key=supersecret"
+                ),
+            }
+        }
+        response = FakeResponse()
+
+    detail = worker._safe_api_error_detail(BadRequestError("provider rejected request"))
+
+    assert "request_id=req_abc123" in detail
+    assert "region=us-east-1" in detail
+    assert "failed_generation=invalid output [REDACTED] and api_key=[REDACTED]" in detail
+    assert "supersecret" not in detail
+    assert "must-not-appear" not in detail
+
+
+
 def test_append_only_generation_failure_includes_safe_api_error_detail(monkeypatch, tmp_path):
     target = tmp_path / "tests" / "test_sample.py"
     target.parent.mkdir()
