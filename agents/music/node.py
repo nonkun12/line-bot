@@ -32,8 +32,8 @@ class MusicAgent:
                 )
             return AgentResponse(
                 text=(
-                    f"🎵 映像連動の音楽設計：{plan['source_scenario_title']}\\n"
-                    f"尺：{plan['duration_seconds']}秒 / キュー：{len(plan['cues'])}件\\n"
+                    f"🎵 映像連動の音楽設計：{plan['source_scenario_title']}\n"
+                    f"尺：{plan['duration_seconds']}秒 / キュー：{len(plan['cues'])}件\n"
                     "映像の感情曲線・シーン時刻・同期点に沿った作曲設計を作成しました。"
                     "音源そのものはまだ生成していません。"
                 ),
