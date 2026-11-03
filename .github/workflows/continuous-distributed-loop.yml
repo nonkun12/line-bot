@@ -1,8 +1,8 @@
 name: Continuous Distributed Loop
 
-# Continue only after a task has a successful runtime status and durable completion state
-# confirms it. Empty queues, HOLD/FAIL, missing evidence, and kill switch
-# all stop the chain. Each individual loop remains bounded to one task.
+# Chain Job AI continues only after verified PASS, Control Tower authorization,
+# and durable completion evidence. Empty queues, NO_CHANGE, HOLD/FAIL, missing
+# evidence, kill switch, and the depth limit all stop the chain.
 on:
   workflow_run:
     workflows: ["Distributed Autonomous Development Loop"]
@@ -102,4 +102,4 @@ jobs:
       - name: Explain why continuation stopped
         if: always() && steps.gate.outputs.continue != 'true'
         run: |
-          echo "No follow-up loop was dispatched. This is intentional unless a successful task evidence (PASS or NO_CHANGE) and durable completion evidence are both present."
+          echo "Chain Job AI stopped continuation; only verified PASS plus Control Tower and durable completion evidence can authorize another bounded job."
