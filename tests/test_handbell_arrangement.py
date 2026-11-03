@@ -77,3 +77,36 @@ def test_rejects_missing_inventory():
     assert "bell_inventory_required" in {
         e["code"] for e in validate_handbell_arrangement(arrangement)["errors"]
     }
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected"),
+    [
+        ("performer_id", ["P1"], "event_performer_unknown"),
+        ("bell_id", ["C5"], "event_bell_unknown"),
+        ("pitch", ["C5"], "event_pitch_does_not_match_bell"),
+    ],
+)
+def test_rejects_unhashable_or_wrongly_typed_event_identifiers(field, value, expected):
+    arrangement = _arrangement()
+    arrangement["events"][0][field] = value
+    result = validate_handbell_arrangement(arrangement)
+    assert result["valid"] is False
+    assert expected in {item["code"] for item in result["errors"]}
+
+
+def test_rejects_event_end_overflow():
+    arrangement = _arrangement()
+    arrangement["events"][0]["start_beat"] = 1.0e308
+    arrangement["events"][0]["duration_beats"] = 1.0e308
+    result = validate_handbell_arrangement(arrangement)
+    assert result["valid"] is False
+    assert "event_end_invalid" in {item["code"] for item in result["errors"]}
+
+
+def test_bounds_extremely_large_event_lists():
+    arrangement = _arrangement()
+    arrangement["events"] = arrangement["events"] * 3334
+    result = validate_handbell_arrangement(arrangement)
+    assert result["valid"] is False
+    assert "event_count_exceeds_limit" in {item["code"] for item in result["errors"]}
