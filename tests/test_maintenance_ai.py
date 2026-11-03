@@ -217,5 +217,5 @@ def test_absent_failure_code_does_not_create_invalid_evidence():
 def test_distributed_loop_writes_real_newlines_to_held_marker():
     workflow = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml"
     text = workflow.read_text(encoding="utf-8")
-    assert text.count('write_text(reason + "\\n", encoding="utf-8")') == 2
+    assert text.count("write_text(reason + chr(10), encoding=\\"utf-8\\")") == 2
     assert 'write_text(reason + "\\\\n", encoding="utf-8")' not in text
