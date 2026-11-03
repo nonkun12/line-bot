@@ -1333,3 +1333,100 @@ def test_transient_retry_runner_stops_when_worktree_is_dirty(monkeypatch, tmp_pa
     assert result["status"] == "FAIL"
     assert retries == 0
     assert calls == [sha]
+
+
+def test_transient_retry_rechecks_stop_signal_after_backoff(monkeypatch, tmp_path: Path):
+    calls = []
+    stopped_state = {"value": False}
+    sha = "e" * 40
+
+    def fake_run_task(task, index, stop_file, *, expected_base_sha):
+        calls.append(expected_base_sha)
+        return {
+            "status": "FAIL",
+            "failure_reason": "HTTP status=503",
+            "base_sha": sha,
+            "produced_sha": sha,
+        }
+
+    monkeypatch.setattr(loop, "run_task", fake_run_task)
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+    monkeypatch.setattr(loop, "_git_checked", lambda *args: (0, ""))
+    monkeypatch.setattr(loop, "stopped", lambda _path: stopped_state["value"])
+    monkeypatch.setattr(
+        loop.time, "sleep", lambda _seconds: stopped_state.update(value=True)
+    )
+
+    result, retries = loop.run_task_with_transient_recovery(
+        {"id": "stop-during-backoff"}, 1, tmp_path / "stop",
+        expected_base_sha=sha,
+    )
+
+    assert result["status"] == "FAIL"
+    assert retries == 0
+    assert calls == [sha]
+
+
+def test_transient_retry_rechecks_worktree_after_backoff(monkeypatch, tmp_path: Path):
+    calls = []
+    sha = "f" * 40
+    status_outputs = iter(["", "?? newly-created-file.txt"])
+
+    def fake_run_task(task, index, stop_file, *, expected_base_sha):
+        calls.append(expected_base_sha)
+        return {
+            "status": "FAIL",
+            "failure_reason": "HTTP status=503",
+            "base_sha": sha,
+            "produced_sha": sha,
+        }
+
+    monkeypatch.setattr(loop, "run_task", fake_run_task)
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+    monkeypatch.setattr(
+        loop, "_git_checked", lambda *args: (0, next(status_outputs))
+    )
+    monkeypatch.setattr(loop, "stopped", lambda _path: False)
+    monkeypatch.setattr(loop.time, "sleep", lambda _seconds: None)
+
+    result, retries = loop.run_task_with_transient_recovery(
+        {"id": "dirty-during-backoff"}, 1, tmp_path / "stop",
+        expected_base_sha=sha,
+    )
+
+    assert result["status"] == "FAIL"
+    assert retries == 0
+    assert calls == [sha]
+
+
+def test_transient_retry_does_not_count_retry_when_head_changes_during_backoff(
+    monkeypatch, tmp_path: Path
+):
+    calls = []
+    sha_before = "1" * 40
+    sha_after = "2" * 40
+    heads = iter([sha_before, sha_after])
+
+    def fake_run_task(task, index, stop_file, *, expected_base_sha):
+        calls.append(expected_base_sha)
+        return {
+            "status": "FAIL",
+            "failure_reason": "HTTP status=503",
+            "base_sha": sha_before,
+            "produced_sha": sha_before,
+        }
+
+    monkeypatch.setattr(loop, "run_task", fake_run_task)
+    monkeypatch.setattr(loop, "_git_head", lambda: next(heads))
+    monkeypatch.setattr(loop, "_git_checked", lambda *args: (0, ""))
+    monkeypatch.setattr(loop, "stopped", lambda _path: False)
+    monkeypatch.setattr(loop.time, "sleep", lambda _seconds: None)
+
+    result, retries = loop.run_task_with_transient_recovery(
+        {"id": "head-changes-during-backoff"}, 1, tmp_path / "stop",
+        expected_base_sha=sha_before,
+    )
+
+    assert result["status"] == "FAIL"
+    assert retries == 0
+    assert calls == [sha_before]
