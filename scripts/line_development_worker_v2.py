@@ -475,6 +475,28 @@ def _salvage_additive_test_plan(path: str, rejected_plan: dict) -> dict | None:
 
 
 
+
+def _safe_api_error_detail(exc: Exception) -> str:
+    """Expose bounded provider error metadata without leaking credentials or prompts."""
+    parts: list[str] = []
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        parts.append(f"status={status}")
+    for key in ("code", "param"):
+        value = getattr(exc, key, None)
+        if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", value):
+            parts.append(f"{key}={value}")
+    message = getattr(exc, "message", None)
+    if isinstance(message, str) and message:
+        safe = re.sub(r"(?i)bearer\s+\S+", "Bearer [REDACTED]", message)
+        safe = re.sub(r"\b(?:gsk|sk)-[A-Za-z0-9_-]{8,}\b", "[REDACTED]", safe)
+        safe = re.sub(r"[\r\n\t]+", " ", safe)
+        safe = re.sub(r"\s{2,}", " ", safe).strip()
+        if safe:
+            parts.append(f"message={safe[:180]}")
+    return ":".join(parts)
+
+
 def build_append_only_test_plan(
     client: Groq,
     instruction: str,
@@ -501,7 +523,9 @@ The function name must start with test_. Keep the test focused and concise."""
     try:
         generated = ask(client, system, prompt, max_tokens=1200).strip()
     except Exception as exc:
-        return None, f"append_only_test_generation_failed:{type(exc).__name__}"
+        detail = _safe_api_error_detail(exc)
+        suffix = f":{detail}" if detail else ""
+        return None, f"append_only_test_generation_failed:{type(exc).__name__}{suffix}"
     if generated == "NO_CHANGE":
         return {"no_change": True, "source": "append_only_review_task"}, ""
     if not generated or (chr(96) * 3) in generated or len(generated) > 1400:
