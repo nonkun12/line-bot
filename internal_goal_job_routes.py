@@ -7,11 +7,58 @@ from __future__ import annotations
 
 import hmac
 import json
+import os
+import re
+import urllib.error
+import urllib.request
 
 from flask import jsonify, request
 
 import db
 import goal_job_store
+
+
+def _github_run_passed(run_url: str, expected_name: str, target_sha: str) -> bool:
+    """Verify a named GitHub Actions run against GitHub, never worker-supplied status."""
+    match = re.fullmatch(
+        r"https://github\\.com/nonkun12/line-bot/actions/runs/(\\d+)",
+        run_url.strip() if isinstance(run_url, str) else "",
+    )
+    if not match:
+        return False
+    run_id = match.group(1)
+    url = f"https://api.github.com/repos/nonkun12/line-bot/actions/runs/{run_id}"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "line-bot-goal-job-verifier",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        request_obj = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(request_obj, timeout=8) as response:
+            run = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, urllib.error.URLError):
+        return False
+    return (
+        str(run.get("id")) == run_id
+        and run.get("name") == expected_name
+        and run.get("head_sha") == target_sha
+        and run.get("status") == "completed"
+        and run.get("conclusion") == "success"
+    )
+
+
+def _verify_exact_sha_checks(evidence: dict, produced_sha: str) -> bool:
+    verification = evidence.get("verification")
+    if not isinstance(verification, dict) or verification.get("target_sha") != produced_sha:
+        return False
+    return (
+        _github_run_passed(verification.get("pytest_run_url"), "Pytest", produced_sha)
+        and _github_run_passed(verification.get("review_run_url"), "AI Code Review", produced_sha)
+    )
 
 
 def register_goal_job_routes(app, internal_key: str | None) -> None:
@@ -88,12 +135,9 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
                     or verification.get("target_sha") != produced_sha
                     or verification.get("pytest_status") != "PASS"
                     or verification.get("review_status") != "PASS"
-                    or not isinstance(verification.get("pytest_run_url"), str)
-                    or not verification["pytest_run_url"].startswith("https://github.com/")
-                    or not isinstance(verification.get("review_run_url"), str)
-                    or not verification["review_run_url"].startswith("https://github.com/")
+                    or not _verify_exact_sha_checks(evidence, produced_sha)
                 ):
-                    return jsonify({"ok": False, "error": "independent exact-SHA pytest and review evidence is required"}), 400
+                    return jsonify({"ok": False, "error": "GitHub-confirmed exact-SHA pytest and review success is required"}), 400
         try:
             completed = goal_job_store.complete_claimed_child_job(
                 job_id,
