@@ -426,7 +426,7 @@ def save_child_evidence(job_id: int, evidence: object) -> bool:
         if (
             not isinstance(check, dict)
             or not isinstance(check.get("name"), str) or not check["name"].strip()
-            or check.get("status") not in {"PASS", "FAIL"}
+            or not isinstance(check.get("status"), str) or check.get("status") not in {"PASS", "FAIL"}
             or not isinstance(check.get("source"), str) or not check["source"].strip()
         ):
             raise ValueError("each evidence check requires name, PASS/FAIL status, and source")
