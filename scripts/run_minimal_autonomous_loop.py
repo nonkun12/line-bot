@@ -101,9 +101,8 @@ def run_task_with_transient_recovery(
         )
         time.sleep(delay)
 
-        # Revalidate every safety condition after the wait. A stop signal or
-        # worktree mutation may arrive while sleeping; never dispatch on stale
-        # pre-wait evidence.
+        # Re-check every safety boundary after backoff. The stop file, remote
+        # kill switch, worktree, or HEAD may change while this process sleeps.
         if stopped(stop_file):
             break
         retry_base_sha = _git_head()
@@ -113,16 +112,16 @@ def run_task_with_transient_recovery(
             clean_rc, clean_output = _git_checked(
                 "status", "--porcelain", "--untracked-files=all"
             )
-            retry_worktree_clean = clean_rc == 0 and not clean_output.strip()
+            worktree_clean = clean_rc == 0 and not clean_output.strip()
         except Exception:
-            retry_worktree_clean = False
-        if not retry_worktree_clean:
+            worktree_clean = False
+        if not worktree_clean:
             break
 
-        # Count only retries that are actually dispatched.
         result = run_task(
             task, index, stop_file, expected_base_sha=retry_base_sha
         )
+        # Count only retries that were actually dispatched.
         retry_count += 1
     return result, retry_count
 
