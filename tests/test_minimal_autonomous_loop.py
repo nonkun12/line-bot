@@ -424,6 +424,37 @@ def _capture_task_provider_env(monkeypatch, tmp_path: Path, task: dict[str, obje
     return observed, result
 
 
+def test_review_coverage_gap_model_task_retains_provider_credentials(monkeypatch, tmp_path: Path):
+    task = {
+        "id": "review-coverage-gap-703fa3c06b",
+        "instruction": (
+            "新しい回帰テストを1件追加してください。"
+            "変更は指定テストファイル1つだけ。"
+        ),
+        "allowed_paths": ["tests/test_project_registry.py"],
+    }
+    monkeypatch.setenv("GROQ_API_KEY", "test-only-sentinel")
+
+    provider_env, result = _capture_task_provider_env(monkeypatch, tmp_path, task)
+
+    assert result["status"] == "NO_CHANGE"
+    assert provider_env["GROQ_API_KEY"] == "test-only-sentinel"
+
+
+def test_malformed_review_coverage_gap_does_not_retain_provider_credentials(monkeypatch, tmp_path: Path):
+    task = {
+        "id": "review-coverage-gap-703fa3c06b",
+        "instruction": "Run a generic task.",
+        "allowed_paths": ["tests/test_project_registry.py"],
+    }
+    monkeypatch.setenv("GROQ_API_KEY", "test-only-sentinel")
+
+    provider_env, result = _capture_task_provider_env(monkeypatch, tmp_path, task)
+
+    assert result["status"] == "NO_CHANGE"
+    assert provider_env == {}
+
+
 def test_deterministic_task_subprocess_has_no_provider_credentials(monkeypatch, tmp_path: Path):
     task = {
         "id": "uhip-confidence-out-of-range-rejection",
