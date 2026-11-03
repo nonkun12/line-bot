@@ -50,6 +50,9 @@ _CATEGORY_SEVERITY = {
     "security_violation": 3,
     "invalid_evidence": 2,
     "invalid_task": 1,
+    "rate_limited": 0,
+    "service_unavailable": 0,
+    "network_transient": 0,
 }
 
 # Prefix aliases normalize human-readable diagnostics emitted by legacy stages.
