@@ -188,14 +188,20 @@ def create_goal_child_job(
         conn.execute("BEGIN IMMEDIATE")
         existing = conn.execute(
             """
-            SELECT job_id, payload_sha256
-            FROM goal_job_links WHERE goal_id=? AND job_key=?
+            SELECT l.job_id, l.payload_sha256, j.parent_job_id, j.user_id
+            FROM goal_job_links l
+            JOIN jobs j ON j.id=l.job_id
+            WHERE l.goal_id=? AND l.job_key=?
             """,
             (goal_id, job_key),
         ).fetchone()
         if existing is not None:
-            if not hmac.compare_digest(existing[1], payload_hash):
-                raise ValueError("goal job key already exists with different payload")
+            if (
+                not hmac.compare_digest(existing[1], payload_hash)
+                or existing[2] != parent_job_id
+                or existing[3] != user_id
+            ):
+                raise ValueError("goal job key already exists with different payload or owner")
             conn.commit()
             return existing[0], False
 
