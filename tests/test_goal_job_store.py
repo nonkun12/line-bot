@@ -104,13 +104,17 @@ def test_persist_child_job_rejects_scope_and_budget_violations(tmp_path, monkeyp
     with pytest.raises(PermissionError):
         goal_job_store.persist_child_job("goal-autonomy-demo", unsafe)
 
+    budget_goal = _goal()
+    budget_goal["goal_id"] = "goal-autonomy-budget"
     grant = _grant()
+    grant["goal_id"] = "goal-autonomy-budget"
+    grant["grant_id"] = "grant-autonomy-budget"
     grant["max_jobs"] = 1
-    goal_job_store.create_goal(_goal(), "U-test-2", grant)
-    goal_job_store.persist_child_job("goal-autonomy-demo", _job())
+    goal_job_store.create_goal(budget_goal, "U-test-2", grant)
+    goal_job_store.persist_child_job("goal-autonomy-budget", _job())
     with pytest.raises(PermissionError):
         goal_job_store.persist_child_job(
-            "goal-autonomy-demo",
+            "goal-autonomy-budget",
             {
                 "id": "second",
                 "criterion_id": "evidence-review",
