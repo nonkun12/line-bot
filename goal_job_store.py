@@ -213,8 +213,10 @@ def persist_child_job(goal_id: str, job: object, *, parent_job_key: str | None =
             ).fetchone()
             if parent is None:
                 raise ValueError("dependency Goal JOB has not been persisted")
-            if parent[1] not in {"done", "completed"}:
-                raise ValueError("dependency Goal JOB is not complete")
+            if parent[1] not in {"done", "completed"} and not (
+                job.get("stage") == "fix" and parent[1] in {"failed", "held"}
+            ):
+                raise ValueError("dependency Goal JOB is not complete or eligible for repair")
             if parent_job_id is None:
                 parent_job_id = parent[0]
 
