@@ -31,7 +31,7 @@ def _plan():
                 "instruction": "承認済みの変更範囲だけを修正する",
                 "agent": "development",
                 "depends_on": ["inspect"],
-                "allowed_paths": ["core/"],
+                "allowed_paths": ["core/goal_ai_orchestrator.py"],
                 "approval_required": True,
             },
             {
