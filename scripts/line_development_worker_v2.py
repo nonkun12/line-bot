@@ -500,15 +500,33 @@ def _safe_api_error_detail(exc: Exception) -> str:
         if isinstance(provider_error, dict)
         else None
     )
-    if isinstance(failed_generation, str):
-        known_failures = {
-            "max completion tokens reached before generating a valid document",
-            "completion returned no choices",
-        }
-        if failed_generation in known_failures:
-            parts.append(f"failed_generation={failed_generation}")
-        elif failed_generation:
-            parts.append("failed_generation=present")
+    if isinstance(failed_generation, str) and failed_generation:
+        safe_failure = re.sub(r"(?i)bearer\\s+\\S+", "Bearer [REDACTED]", failed_generation)
+        safe_failure = re.sub(r"\\b(?:gsk|sk)-[A-Za-z0-9_-]{8,}\\b", "[REDACTED]", safe_failure)
+        safe_failure = re.sub(
+            r"(?i)(api[_ -]?key|token|secret)(\\s*[:=]\\s*)[^\\s,;]+",
+            r"\\1\\2[REDACTED]",
+            safe_failure,
+        )
+        safe_failure = re.sub(r"[\\r\\n\\t]+", " ", safe_failure)
+        safe_failure = re.sub(r"\\s{2,}", " ", safe_failure).strip()
+        if safe_failure:
+            parts.append(f"failed_generation={safe_failure[:160]}")
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is not None:
+        for header, label in (
+            ("x-request-id", "request_id"),
+            ("request-id", "request_id"),
+            ("x-groq-region", "region"),
+        ):
+            try:
+                value = headers.get(header)
+            except Exception:
+                value = None
+            if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", value):
+                if not any(part.startswith(f"{label}=") for part in parts):
+                    parts.append(f"{label}={value}")
     message = getattr(exc, "message", None)
     if isinstance(message, str) and message:
         safe = re.sub(r"(?i)bearer\s+\S+", "Bearer [REDACTED]", message)
@@ -554,8 +572,18 @@ The function name must start with test_. Keep the test focused and concise."""
         ).strip()
     except Exception as exc:
         detail = _safe_api_error_detail(exc)
+        try:
+            from importlib.metadata import version as package_version
+
+            sdk_version = package_version("groq")
+        except Exception:
+            sdk_version = "unknown"
+        model = re.sub(r"[^A-Za-z0-9_./-]", "", MODEL)[:100] or "unknown"
         suffix = f":{detail}" if detail else ""
-        return None, f"append_only_test_generation_failed:{type(exc).__name__}{suffix}"
+        return None, (
+            f"append_only_test_generation_failed:{type(exc).__name__}:"
+            f"model={model}:groq_sdk={sdk_version}{suffix}"
+        )
     if generated == "NO_CHANGE":
         return {"no_change": True, "source": "append_only_review_task"}, ""
     if not generated or (chr(96) * 3) in generated or len(generated) > 1400:
