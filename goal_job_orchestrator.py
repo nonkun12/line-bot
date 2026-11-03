@@ -14,7 +14,7 @@ import goal_job_worker
 from scripts.goal_job_chain import MAX_AUTONOMOUS_JOBS_PER_GOAL, plan_next_job
 
 
-def advance_goal(goal_id: str) -> dict[str, Any]:
+def advance_goal(goal_id: str, *, job_generator: Callable[[dict[str, Any], dict[str, str], dict[str, str]], object] | None = None) -> dict[str, Any]:
     """Plan and idempotently persist at most one next child JOB."""
     record = goal_job_store.get_goal(goal_id)
     if record is None:
@@ -30,6 +30,31 @@ def advance_goal(goal_id: str) -> dict[str, Any]:
         states,
         autonomy_grant=record["autonomy_grant"],
     )
+    generation_reasons = {
+        "no_registered_job_for_unmet_criteria",
+        "no_safe_next_job",
+        "failed_job_requires_registered_repair",
+    }
+    if decision.get("decision") == "HOLD" and decision.get("reason") in generation_reasons and job_generator is not None:
+        try:
+            proposed = job_generator(record, evidence, states)
+            if not isinstance(proposed, dict):
+                return {"decision": "HOLD", "reason": "job_generator_returned_no_valid_child", "goal_id": goal_id}
+            goal_job_store.register_child_job_definition(goal_id, proposed)
+            refreshed = goal_job_store.get_goal(goal_id)
+            if refreshed is None:
+                return {"decision": "HOLD", "reason": "goal_disappeared_after_job_generation"}
+            goal = refreshed["goal"]
+            evidence = refreshed["criterion_results"]
+            states = goal_job_store.get_goal_job_states(goal_id)
+            decision = plan_next_job(
+                goal,
+                evidence,
+                states,
+                autonomy_grant=refreshed["autonomy_grant"],
+            )
+        except (ValueError, PermissionError) as exc:
+            return {"decision": "HOLD", "reason": "generated_job_rejected", "detail": str(exc)[:240]}
     if decision.get("decision") != "PROPOSE_CHILD_JOB":
         return decision
 
@@ -56,6 +81,7 @@ def run_until_blocked(
     executor: Callable[[dict[str, Any], dict[str, Any]], object] | None,
     evidence_evaluator: Callable[[dict[str, Any], dict[str, Any]], dict[str, str]] | None,
     max_steps: int | None = None,
+    job_generator: Callable[[dict[str, Any], dict[str, str], dict[str, str]], object] | None = None,
 ) -> dict[str, Any]:
     """Run a bounded chain until Goal completion, HOLD, or its step budget.
 
@@ -76,22 +102,17 @@ def run_until_blocked(
         return {"decision": "HOLD", "reason": "step_budget_invalid"}
 
     for step in range(max_steps):
-        planned = advance_goal(goal_id)
+        planned = advance_goal(goal_id, job_generator=job_generator)
         if planned.get("decision") != "CHILD_JOB_QUEUED":
             return {**planned, "steps_executed": step}
         job_id = planned["job_record"]["job_id"]
         completed = goal_job_worker.run_once(executor, job_id=job_id)
         if completed is None:
             return {"decision": "HOLD", "reason": "child_job_claim_unavailable", "job_id": job_id, "steps_executed": step}
-        if completed.get("status") != "completed":
-            # Let the evaluator inspect failure evidence and potentially select
-            # a separately registered repair JOB on the next planner pass.
-            evaluation = evidence_evaluator(goal_job_store.get_goal(goal_id), completed)
-        else:
-            evaluation = evidence_evaluator(goal_job_store.get_goal(goal_id), completed)
+        evaluation = evidence_evaluator(goal_job_store.get_goal(goal_id), completed)
         goal_job_store.update_goal_evidence(goal_id, evaluation)
 
-    final = advance_goal(goal_id)
+    final = advance_goal(goal_id, job_generator=job_generator)
     if final.get("decision") == "GOAL_ACHIEVED":
         return {**final, "steps_executed": max_steps}
     return {
