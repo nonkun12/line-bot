@@ -1328,12 +1328,12 @@ def test_refill_deterministic_test_insertions_preserve_suffix_and_converge(tmp_p
     monkeypatch.setattr(worker, "ROOT", tmp_path)
 
     eof_anchor = '    assert queue.read_text(encoding="utf-8") == queue_before'
-    unrelated_tail = "\\n\\n\\ndef test_unrelated_tail_must_survive():\\n    assert True\\n"
+    unrelated_tail = "\n\n\ndef test_unrelated_tail_must_survive():\n    assert True\n"
     initial = (
-        "from pathlib import Path\\nimport json\\nimport pytest\\n\\n"
-        "def test_existing_refill_behavior():\\n"
-        "    queue = Path('queue.json')\\n"
-        "    queue_before = queue.read_text(encoding='utf-8')\\n"
+        "from pathlib import Path\nimport json\nimport pytest\n\n"
+        "def test_existing_refill_behavior():\n"
+        "    queue = Path('queue.json')\n"
+        "    queue_before = queue.read_text(encoding='utf-8')\n"
         + eof_anchor + unrelated_tail
     )
 
@@ -1354,4 +1354,4 @@ def test_refill_deterministic_test_insertions_preserve_suffix_and_converge(tmp_p
 
     assert cli_then_read == read_then_cli
     assert cli_then_read.count("def test_unrelated_tail_must_survive():") == 1
-    assert cli_then_read.endswith("    assert True\\n")
+    assert cli_then_read.endswith("    assert True\n")
