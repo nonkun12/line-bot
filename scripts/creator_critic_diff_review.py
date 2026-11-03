@@ -56,7 +56,7 @@ def review_evidence(payload: object) -> dict[str, Any]:
 
     allowed = payload["allowed_paths"]
     if (not isinstance(allowed, list) or not allowed
-            or any(not _safe_repo_path(path) for path in allowed)
+            or any(not isinstance(path, str) or not _safe_repo_path(path) for path in allowed)
             or len(set(allowed)) != len(allowed)):
         raise EvidenceInvalid("allowed_paths_invalid")
 
@@ -72,7 +72,7 @@ def review_evidence(payload: object) -> dict[str, Any]:
         if not _safe_repo_path(path) or path in seen:
             raise EvidenceInvalid("changed_file_path_invalid_or_duplicate")
         seen.add(path)
-        if status not in _ALLOWED_STATUSES:
+        if not isinstance(status, str) or status not in _ALLOWED_STATUSES:
             violations.append("changed_file_operation_not_allowed")
         if path not in allowed:
             violations.append("changed_file_outside_task_allowlist")
@@ -92,7 +92,7 @@ def review_evidence(payload: object) -> dict[str, Any]:
     rea = payload["rea"]
     if not isinstance(rea, dict) or set(rea) != _REA_FIELDS:
         raise EvidenceInvalid("rea_evidence_schema_invalid")
-    if rea["status"] not in {"PASS", "FINDINGS", "BLOCKED"}:
+    if not isinstance(rea["status"], str) or rea["status"] not in {"PASS", "FINDINGS", "BLOCKED"}:
         raise EvidenceInvalid("rea_status_invalid")
     if type(rea["complete"]) is not bool:
         raise EvidenceInvalid("rea_completeness_invalid")
