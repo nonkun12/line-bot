@@ -392,3 +392,15 @@ def test_operator_stop_is_not_recorded_as_task_failure(tmp_path, status, reason)
     })
     assert result == {"recorded": False, "reason": "operator_stop_not_task_failure"}
     assert not path.exists()
+
+def test_stop_requested_token_inside_other_failure_reason_is_not_operator_stop(tmp_path):
+    path = tmp_path / "recovery.json"
+    outcome = record_loop_outcome(path, {
+        "task_id": "task-stop-token-in-diagnostic",
+        "status": "FAIL",
+        "exit_code": 1,
+        "failure_reason": "task_error:stop_requested_marker",
+    })
+    assert outcome["recorded"] is True
+    assert outcome["decision"]["action"] == "REPAIR_ONCE"
+    assert RecoveryStore(path).task_status("task-stop-token-in-diagnostic")["last_category"] == "unknown"
