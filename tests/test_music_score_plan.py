@@ -25,3 +25,9 @@ def test_music_plan_rejects_invalid_scenario_and_unbounded_options():
         pass
     else:
         raise AssertionError("invalid scenario must not produce a music plan")
+
+
+def test_music_plan_preserves_emotional_energy_per_scene():
+    scenario = build_scenario("感情の曲線", duration_seconds=120, scene_count=4)
+    plan = build_music_plan(scenario)
+    assert [cue["energy"] for cue in plan["cues"]] == ["low", "medium", "high", "low"]
