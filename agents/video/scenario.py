@@ -59,6 +59,8 @@ def build_scenario(
         raise ValueError("duration_seconds must be an integer from 15 to 3600")
     if type(scene_count) is not int or not MIN_SCENES <= scene_count <= MAX_SCENES:
         raise ValueError("scene_count must be an integer from 2 to 20")
+    if duration_seconds < scene_count:
+        raise ValueError("duration_seconds must be at least scene_count to give every scene positive duration")
 
     scenes = []
     base, remainder = divmod(duration_seconds, scene_count)
@@ -84,7 +86,7 @@ def build_scenario(
             "audio_direction": "環境音・効果音・音楽の役割と開始終了位置を指定する",
             "music_sync": {
                 "emotional_intent": "このシーンで視聴者に届ける感情",
-                "energy": "low",
+                "energy": {"opening": "low", "development": "medium", "climax": "high", "resolution": "low"}[act],
                 "tempo_relation": "映像の動きと自然に呼吸を合わせる",
                 "cue_in_seconds": 0,
                 "cue_out_seconds": length,
@@ -158,60 +160,113 @@ def validate_scenario(scenario: object) -> tuple[str, ...]:
         errors.append("schema_version_invalid")
     if scenario.get("status") != "draft":
         errors.append("status_must_be_draft")
+    if not isinstance(scenario.get("title"), str) or not scenario["title"].strip():
+        errors.append("title_invalid")
     brief = scenario.get("creative_brief")
     scenes = scenario.get("scenes")
     if not isinstance(brief, dict) or not isinstance(scenes, list) or not scenes:
         return tuple(errors + ["creative_brief_or_scenes_missing"])
+
     duration = brief.get("duration_seconds")
-    durations = [
-        item.get("duration_seconds") for item in scenes if isinstance(item, dict)
-    ]
-    if (
-        type(duration) is not int
-        or len(durations) != len(scenes)
-        or any(type(value) is not int or value <= 0 for value in durations)
-        or sum(value for value in durations if type(value) is int) != duration
-    ):
-        errors.append("scene_duration_total_mismatch")
-    ids = [item.get("scene_id") for item in scenes if isinstance(item, dict)]
-    if len(ids) != len(scenes) or len(ids) != len(set(ids)):
-        errors.append("scene_ids_invalid_or_duplicate")
-    required = ("purpose", "story_beat", "visual_direction", "action",
-                "dialogue_or_narration", "audio_direction", "music_sync",
-                "transition", "continuity")
+    scene_count = brief.get("scene_count")
+    if type(duration) is not int or not MIN_DURATION_SECONDS <= duration <= MAX_DURATION_SECONDS:
+        errors.append("duration_seconds_invalid")
+    if type(scene_count) is not int or not MIN_SCENES <= scene_count <= MAX_SCENES:
+        errors.append("scene_count_invalid")
+    if len(scenes) != scene_count:
+        errors.append("scene_count_mismatch")
+    if type(duration) is int and len(scenes) > duration:
+        errors.append("duration_shorter_than_scene_count")
+
+    required_strings = (
+        "purpose", "story_beat", "visual_direction", "action",
+        "dialogue_or_narration", "audio_direction", "transition",
+    )
+    expected_start = 0
+    seen_ids: set[str] = set()
+    valid_energies = {"low", "medium", "high"}
+    valid_mix = {"dialogue_first", "music_first", "balanced", "intentional_silence"}
+
     for index, scene in enumerate(scenes):
-        if not isinstance(scene, dict) or any(not scene.get(key) for key in required):
-            errors.append(f"scene_{index + 1}_incomplete")
+        if not isinstance(scene, dict):
+            errors.append(f"scene_{index + 1}_invalid")
             continue
+        scene_id = scene.get("scene_id")
+        if not isinstance(scene_id, str) or not scene_id.strip() or scene_id in seen_ids:
+            errors.append("scene_ids_invalid_or_duplicate")
+        else:
+            seen_ids.add(scene_id)
+
+        start = scene.get("time_start_seconds")
+        scene_duration = scene.get("duration_seconds")
+        if type(start) is not int or start != expected_start:
+            errors.append(f"scene_{index + 1}_start_time_invalid")
+        if type(scene_duration) is not int or scene_duration <= 0:
+            errors.append(f"scene_{index + 1}_duration_invalid")
+        elif type(start) is int:
+            expected_start = start + scene_duration
+
+        for key in required_strings:
+            value = scene.get(key)
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"scene_{index + 1}_{key}_invalid")
+        if not isinstance(scene.get("continuity"), dict):
+            errors.append(f"scene_{index + 1}_continuity_invalid")
+
         sync = scene.get("music_sync")
         if not isinstance(sync, dict):
             errors.append(f"scene_{index + 1}_music_sync_invalid")
             continue
+        for key in ("emotional_intent", "tempo_relation", "motif"):
+            value = sync.get(key)
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"scene_{index + 1}_{key}_invalid")
+        if sync.get("energy") not in valid_energies:
+            errors.append(f"scene_{index + 1}_energy_invalid")
+
         cue_in = sync.get("cue_in_seconds")
         cue_out = sync.get("cue_out_seconds")
-        scene_duration = scene.get("duration_seconds")
         if (
             type(cue_in) is not int or type(cue_out) is not int
             or type(scene_duration) is not int
             or cue_in < 0 or cue_out <= cue_in or cue_out > scene_duration
         ):
             errors.append(f"scene_{index + 1}_music_cue_timing_invalid")
-        if sync.get("mix_priority") not in {"dialogue_first", "music_first", "balanced", "intentional_silence"}:
+        if sync.get("mix_priority") not in valid_mix:
             errors.append(f"scene_{index + 1}_mix_priority_invalid")
         points = sync.get("sync_points")
         if not isinstance(points, list) or any(
             not isinstance(point, dict)
             or type(point.get("at_seconds")) is not int
             or point["at_seconds"] < 0
-            or point["at_seconds"] > scene_duration
+            or (type(scene_duration) is int and point["at_seconds"] > scene_duration)
             or not isinstance(point.get("event"), str)
             or not point["event"].strip()
             for point in points
         ):
             errors.append(f"scene_{index + 1}_sync_points_invalid")
+
+    if type(duration) is int and expected_start != duration:
+        errors.append("scene_duration_total_mismatch")
     audiovisual = scenario.get("audiovisual_direction")
-    if not isinstance(audiovisual, dict) or not audiovisual.get("mixing_rules"):
+    if not isinstance(audiovisual, dict):
         errors.append("audiovisual_direction_missing")
+    else:
+        motif = audiovisual.get("global_music_motif")
+        if not isinstance(motif, str) or not motif.strip():
+            errors.append("global_music_motif_invalid")
+        if not isinstance(audiovisual.get("mixing_rules"), list) or not audiovisual["mixing_rules"]:
+            errors.append("mixing_rules_invalid")
+        arc = audiovisual.get("emotional_arc")
+        if not isinstance(arc, list) or not arc:
+            errors.append("emotional_arc_invalid")
+        elif any(
+            not isinstance(item, dict)
+            or item.get("act") not in {act[0] for act in _ACTS}
+            or item.get("energy") not in valid_energies
+            for item in arc
+        ):
+            errors.append("emotional_arc_invalid")
     return tuple(errors)
 
 
