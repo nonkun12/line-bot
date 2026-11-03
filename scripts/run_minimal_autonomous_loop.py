@@ -12,6 +12,7 @@ import json
 import os
 import signal
 import subprocess
+import time
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -25,10 +26,44 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core.loop_failure_codes import is_safe_failure_code
+from core.loop_failure_codes import extract_safe_failure_code, is_safe_failure_code
 QUEUE = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", str(ROOT / ".github" / "autonomous-loop-tasks.json"))).resolve()
 DEFAULT_STOP_FILE = Path("/tmp/line-bot-autonomous-loop.stop")
 ACTIVE_PROCESS: subprocess.Popen[str] | None = None
+
+MAX_TRANSIENT_TASK_RETRIES = 2
+TRANSIENT_RETRY_DELAYS_SECONDS = (2, 5)
+
+
+def transient_retry_code(result: dict[str, object]) -> str | None:
+    """Return only an explicitly recognized transient provider failure code."""
+    if not isinstance(result, dict) or result.get("status") != "FAIL":
+        return None
+    evidence = " ".join(
+        str(result.get(key, ""))
+        for key in ("failure_code", "failure_reason", "error", "provider_error")
+    )
+    code = extract_safe_failure_code(evidence)
+    return code if code in {
+        "provider_rate_limited",
+        "provider_service_unavailable",
+        "provider_network_transient",
+    } else None
+
+
+def retry_is_safe(result: dict[str, object], *, current_head: str, working_tree_clean: bool) -> bool:
+    """Retry only known transient failures with unchanged repository state."""
+    base_sha = result.get("base_sha")
+    produced_sha = result.get("produced_sha")
+    return bool(
+        transient_retry_code(result)
+        and working_tree_clean is True
+        and isinstance(base_sha, str)
+        and isinstance(produced_sha, str)
+        and _valid_sha(base_sha)
+        and base_sha == produced_sha == current_head
+    )
+
 
 EXIT_NOT_RUN = 78
 NOT_RUN_REASON_QUEUE_EMPTY = "queue_empty"
@@ -1238,6 +1273,42 @@ def main() -> int:
                 result = run_task(
                     task, index, args.stop_file, expected_base_sha=control_tower_head
                 )
+                # Retry only explicit transient provider failures. Never retry
+                # invalid requests, authorization/security failures, test failures,
+                # changed worktrees, or any result without verified unchanged HEAD.
+                retry_count = 0
+                while retry_count < MAX_TRANSIENT_TASK_RETRIES:
+                    current_head = _git_head()
+                    try:
+                        clean_rc, clean_output = _git_checked(
+                            "status", "--porcelain", "--untracked-files=all"
+                        )
+                        worktree_clean = clean_rc == 0 and not clean_output.strip()
+                    except Exception:
+                        worktree_clean = False
+                    if not retry_is_safe(
+                        result,
+                        current_head=current_head,
+                        working_tree_clean=worktree_clean,
+                    ):
+                        break
+                    if stopped(args.stop_file):
+                        break
+                    delay = TRANSIENT_RETRY_DELAYS_SECONDS[retry_count]
+                    print(
+                        f"MINIMAL_LOOP=TRANSIENT_RETRY task={task['id']} "
+                        f"attempt={retry_count + 2}/{MAX_TRANSIENT_TASK_RETRIES + 1} "
+                        f"code={transient_retry_code(result)} delay={delay}s",
+                        flush=True,
+                    )
+                    time.sleep(delay)
+                    retry_count += 1
+                    retry_base_sha = _git_head()
+                    if retry_base_sha != current_head:
+                        break
+                    result = run_task(
+                        task, index, args.stop_file, expected_base_sha=retry_base_sha
+                    )
         # Carry the exact preflight REA evidence into the Control Tower decision.
         # This is diagnostic metadata only and grants no execution or repair authority.
         if not isinstance(result.get("rea"), dict):
