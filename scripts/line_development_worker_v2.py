@@ -520,14 +520,14 @@ Do not access the network, environment variables, secrets, files, processes, or 
 Do not weaken, edit, rename, reorder, or copy any existing test.
 The function name must start with test_. Keep the test focused and concise."""
     if len(context) > MAX_APPEND_ONLY_CONTEXT_CHARS:
-        marker = "\\n...[middle omitted; append-only context bounded]...\\n"
+        marker = "\n...[middle omitted; append-only context bounded]...\n"
         budget = MAX_APPEND_ONLY_CONTEXT_CHARS - len(marker)
         head_size = budget // 2
         context = context[:head_size] + marker + context[-(budget - head_size):]
     prompt = (
-        f"Task:\\n{instruction}\\n\\n"
-        f"Only editable file:\\n{chosen}\\n\\n"
-        f"Current test file:\\n{context}\\n\\n"
+        f"Task:\n{instruction}\n\n"
+        f"Only editable file:\n{chosen}\n\n"
+        f"Current test file:\n{context}\n\n"
         "Return one complete test function, or NO_CHANGE."
     )
     try:
