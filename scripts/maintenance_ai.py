@@ -17,7 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from core.loop_failure_codes import is_safe_failure_code
+from core.loop_failure_codes import failure_code_category, is_safe_failure_code
 
 _SAFE_TASK_ID = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
 _VALID_STATUSES = {"PASS", "NO_CHANGE", "FAIL", "BLOCKED", "NOT_RUN"}
@@ -84,24 +84,32 @@ def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
     recovery_action = decision.get("action")
     recovery_action = recovery_action if isinstance(recovery_action, str) else None
     failure_code = row.get("failure_code")
-    failure_code = failure_code if is_safe_failure_code(failure_code) else None
+    failure_code_category_value = failure_code_category(failure_code)
 
     # Independent safety evidence always outranks a nominal PASS.
     if rea_gate in {"BLOCKED", "FAIL"}:
         category = "safety_gate_blocked"
         recommendation = "Review the REA findings; do not retry or bypass the gate."
         requires_human = True
-    elif failure_code in {"invalid_change_count", "invalid_change_count_repair_failed"}:
-        category = "invalid_plan_change_count"
-        recommendation = "The planner did not produce a valid bounded change list. Keep the hold; revise the task to one file and one explicit test addition, then require human review before any resume."
+    elif failure_code is not None and failure_code_category_value is None:
+        category = "invalid_failure_code_evidence"
+        recommendation = "The failure code is unknown or malformed. Keep the hold and inspect the original run evidence; do not retry automatically."
+        requires_human = True
+    elif failure_code_category_value == "security_violation":
+        category = "security_violation"
+        recommendation = "A security-boundary violation was reported. Keep the hold; inspect the exact REA and file-scope evidence before any human-approved resume."
+        requires_human = True
+    elif failure_code_category_value == "invalid_task":
+        category = "invalid_task"
+        recommendation = "The deterministic task plan or target is invalid. Keep the hold; revise the task specification and require human review before any resume."
+        requires_human = True
+    elif failure_code_category_value == "invalid_evidence":
+        category = "invalid_evidence"
+        recommendation = "The failure evidence is invalid. Keep the hold and inspect the source evidence; do not retry automatically."
         requires_human = True
     elif recovery_action == "HOLD" or decision.get("requires_human") is True:
-        if failure_code == "existing_test_modified_repair_failed":
-            category = "test_plan_repair_failed"
-            recommendation = "The proposed test edit could not preserve existing tests. Keep the hold; revise the task to append one new test only, then require human review before any resume."
-        else:
-            category = "recovery_hold"
-            recommendation = "Inspect the exact failed step and prepare a reviewed repair proposal; keep the hold."
+        category = "recovery_hold"
+        recommendation = "Inspect the exact failed step and prepare a reviewed repair proposal; keep the hold."
         requires_human = True
     elif failure_reason == "queue_empty" or status == "NOT_RUN":
         category = "queue_exhausted"
