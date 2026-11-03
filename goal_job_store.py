@@ -266,6 +266,27 @@ def persist_child_job(goal_id: str, job: object, *, parent_job_key: str | None =
         return {"job_id": job_id, "status": "pending", "parent_job_id": parent_job_id, "created": True}
 
 
+
+def get_goal_child_jobs(goal_id: str) -> list[dict[str, Any]]:
+    """Return persisted child JOB identifiers and states in creation order.
+
+    This is a read-only resume view; claiming remains atomic in db.claim_goal_child_job.
+    """
+    init_goal_job_store()
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            "SELECT link.goal_job_key,link.job_id,j.status "
+            "FROM goal_chain_jobs link JOIN jobs j ON j.id=link.job_id "
+            "WHERE link.goal_id=? ORDER BY link.id",
+            (goal_id,),
+        ).fetchall()
+    return [
+        {"goal_job_key": key, "job_id": job_id,
+         "status": "done" if status in {"done", "completed"} else status}
+        for key, job_id, status in rows
+    ]
+
+
 def get_goal_job_states(goal_id: str) -> dict[str, str]:
     """Normalize both historical terminal spellings to the planner's vocabulary."""
     init_goal_job_store()
@@ -532,5 +553,5 @@ def register_child_job_definition(goal_id: str, job: object) -> bool:
 
 __all__ = [
     "init_goal_job_store", "create_goal", "get_goal", "persist_child_job",
-    "get_goal_job_states", "update_goal_evidence", "authorize_claimed_job", "save_child_evidence", "complete_claimed_child_job", "register_child_job_definition",
+    "get_goal_job_states", "get_goal_child_jobs", "update_goal_evidence", "authorize_claimed_job", "save_child_evidence", "complete_claimed_child_job", "register_child_job_definition",
 ]
