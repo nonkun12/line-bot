@@ -17,8 +17,8 @@ def _active_script():
     source = WORKFLOW.read_text(encoding="utf-8")
     marker = "      - name: Avoid duplicate dispatch while another loop is queued or running"
     start = source.index(marker)
-    run = source.index("        run: |\\n", start) + len("        run: |\\n")
-    end = source.index("\\n      - name: Dispatch the next bounded loop", run)
+    run = source.index("        run: |\n", start) + len("        run: |\n")
+    end = source.index("\n      - name: Dispatch the next bounded loop", run)
     return textwrap.dedent(source[run:end])
 
 
@@ -26,7 +26,7 @@ def _run_active_check(tmp_path, depth, *, active_count=0):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     gh = fake_bin / "gh"
-    gh.write_text(f"#!/bin/sh\\nprintf '%s\\\\n' '{active_count}'\\n", encoding="utf-8")
+    gh.write_text(f"#!/bin/sh\nprintf '%s\\n' '{active_count}'\n", encoding="utf-8")
     gh.chmod(0o755)
     output = tmp_path / "github-output"
     env = os.environ.copy()
@@ -50,7 +50,7 @@ def test_chain_job_ai_is_the_workflow_continuation_decision_owner():
     assert "uses: actions/checkout@v4" in source
     assert "python scripts/chain_job_ai.py" in source
     assert "--max-depth 12" in source
-    assert "--github-output \"$GITHUB_OUTPUT\"" in source
+    assert '--github-output "$GITHUB_OUTPUT"' in source
     assert "EVIDENCE_DOWNLOAD_OUTCOME:" in source
     assert "KILL_SWITCH:" in source
     assert "Require successful task status plus durable completion evidence" not in source
@@ -59,9 +59,9 @@ def test_chain_job_ai_is_the_workflow_continuation_decision_owner():
 
 def test_continuation_depth_is_passed_from_chain_job_ai_and_incremented():
     source = WORKFLOW.read_text(encoding="utf-8")
-    assert "GATE_DEPTH: ${{ steps.gate.outputs.depth }}" in source
+    assert "GATE_DEPTH: \${{ steps.gate.outputs.depth }}" in source
     assert 'depth="$GATE_DEPTH"' in source
-    assert '-f continuation_depth="${{ steps.active.outputs.next_depth }}"' in source
+    assert '-f continuation_depth="\${{ steps.active.outputs.next_depth }}"' in source
     assert "continuation_depth:" in (
         Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml"
     ).read_text(encoding="utf-8")
