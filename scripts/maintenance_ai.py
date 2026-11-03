@@ -97,7 +97,7 @@ def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
         category = "safety_gate_blocked"
         recommendation = "Review the REA findings; do not retry or bypass the gate."
         requires_human = True
-    elif failure_code is not None and failure_code_category_value is None:
+    elif "failure_code" in row and failure_code_category_value is None:
         category = "invalid_failure_code_evidence"
         recommendation = "The failure code is unknown or malformed. Keep the hold and inspect the original run evidence; do not retry automatically."
         requires_human = True
