@@ -1,3 +1,4 @@
+import pytest
 from core.loop_failure_codes import extract_safe_failure_code, is_safe_failure_code
 
 
@@ -16,3 +17,19 @@ def test_untrusted_or_unknown_failure_text_is_not_preserved():
 def test_extracts_invalid_change_count_as_a_safe_failure_code():
     assert extract_safe_failure_code("apply failed: invalid_change_count") == "invalid_change_count"
     assert is_safe_failure_code("invalid_change_count")
+
+
+@pytest.mark.parametrize(
+    "evidence,expected",
+    [
+        ("provider response status=429", "provider_rate_limited"),
+        ("provider response status=503", "provider_service_unavailable"),
+        ("provider response status=408", "provider_service_unavailable"),
+        ("APIConnectionError: connection reset", "provider_network_transient"),
+        ("APITimeoutError: request timed out", "provider_network_transient"),
+        ("provider response status=400", None),
+        ("provider response status=401", None),
+    ],
+)
+def test_extract_safe_transient_provider_signals(evidence, expected):
+    assert extract_safe_failure_code(evidence) == expected
