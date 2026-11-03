@@ -2100,23 +2100,23 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "    import sys\n"
             "    from scripts.autonomous_task_refill import main\n"
             "    queue, catalog, completed = _inputs(\n"
-            "        tmp_path, candidates=[{**_task(\\"task-cli-new\\"), \\"execution_approved\\": True}]\n"
+            "        tmp_path, candidates=[{**_task(\"task-cli-new\"), \"execution_approved\": True}]\n"
             "    )\n"
-            "    output = tmp_path / \\"runtime.json\\"\n"
-            "    monkeypatch.setattr(sys, \\"argv\\", [\\"autonomous_task_refill\\", \\"--queue\\", str(queue), \\"--catalog\\", str(catalog), \\"--completed-state\\", str(completed), \\"--output\\", str(output)])\n"
+            "    output = tmp_path / \"runtime.json\"\n"
+            "    monkeypatch.setattr(sys, \"argv\", [\"autonomous_task_refill\", \"--queue\", str(queue), \"--catalog\", str(catalog), \"--completed-state\", str(completed), \"--output\", str(output)])\n"
             "    assert main() == 0\n"
             "    report = json.loads(capsys.readouterr().out.strip())\n"
-            "    assert report[\\"added_ids\\"] == [\\"task-cli-new\\"]\n"
-            "    assert report[\\"added\\"] == 1\n"
-            "    runtime_queue = json.loads(output.read_text(encoding=\\"utf-8\\"))\n"
-            "    assert [task[\\"id\\"] for task in runtime_queue[\\"tasks\\"]] == [\\"task-cli-new\\"]\n"
+            "    assert report[\"added_ids\"] == [\"task-cli-new\"]\n"
+            "    assert report[\"added\"] == 1\n"
+            "    runtime_queue = json.loads(output.read_text(encoding=\"utf-8\"))\n"
+            "    assert [task[\"id\"] for task in runtime_queue[\"tasks\"]] == [\"task-cli-new\"]\n"
         )
         read_json_body = (
             "def test_read_json_rejects_non_object_root(tmp_path: Path):\n"
             "    from scripts.autonomous_task_refill import read_json\n"
-            "    path = tmp_path / \\"array.json\\"\n"
-            "    path.write_text(\\"[]\\", encoding=\\"utf-8\\")\n"
-            "    with pytest.raises(ValueError, match=\\"JSON root must be an object\\"):\n"
+            "    path = tmp_path / \"array.json\"\n"
+            "    path.write_text(\"[]\", encoding=\"utf-8\")\n"
+            "    with pytest.raises(ValueError, match=\"JSON root must be an object\"):\n"
             "        read_json(path)\n"
         )
 
@@ -2132,12 +2132,12 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
                 if anchor_pos < 0:
                     return None, "deterministic_anchor_not_unique:refill_cli"
                 old = text[anchor_pos:pos] + read_json_def
-                new = eof_anchor + "\\n\\n" + cli_body + "\\n\\n" + read_json_def
+                new = eof_anchor + "\n\n" + cli_body + "\n\n" + read_json_def
             else:
                 if text.count(eof_anchor) != 1:
                     return None, f"deterministic_anchor_not_unique:refill_cli:{text.count(eof_anchor)}"
                 old = eof_anchor
-                new = eof_anchor + "\\n\\n" + cli_body
+                new = eof_anchor + "\n\n" + cli_body
         else:
             if f"def {read_json_name}(" in text:
                 return {"no_change": True, "source": "deterministic_autonomous_task"}, None
@@ -2146,10 +2146,10 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
                     return None, f"deterministic_anchor_not_unique:refill_read_json:{text.count(cli_end)}"
                 pos = text.index(cli_end) + len(cli_end)
                 suffix_end = pos
-                while suffix_end < len(text) and text[suffix_end] in "\\r\\n \\t":
+                while suffix_end < len(text) and text[suffix_end] in "\r\n \t":
                     suffix_end += 1
                 old = text[pos:suffix_end]
-                new = "\\n\\n" + read_json_body
+                new = "\n\n" + read_json_body
                 # Include the task-end assertion in the replacement to keep the
                 # exact separator independent of the previous insertion order.
                 old = cli_end + old
@@ -2158,7 +2158,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
                 if text.count(eof_anchor) != 1:
                     return None, f"deterministic_anchor_not_unique:refill_read_json:{text.count(eof_anchor)}"
                 old = eof_anchor
-                new = eof_anchor + "\\n\\n" + read_json_body
+                new = eof_anchor + "\n\n" + read_json_body
 
         if len(old) > 1200 or len(new) > 1800:
             return None, f"deterministic_plan_too_large: old={len(old)}, new={len(new)}"
