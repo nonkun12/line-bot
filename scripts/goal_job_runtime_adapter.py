@@ -72,7 +72,17 @@ def execute_goal_child(
     branch = git("branch", "--show-current")
     changed_raw = git("diff", "--name-only", f"{base_sha}..{produced_sha}") if produced_sha != base_sha else ""
     changed_paths = sorted(path for path in changed_raw.splitlines() if path)
-    outside_scope = sorted(set(changed_paths) - set(allowed_paths))
+    def is_within_grant(path: str) -> bool:
+        # A grant may name one exact file or a directory (with or without
+        # a trailing slash). Never treat a shared prefix such as "corex"
+        # as being inside the "core" directory.
+        for granted in allowed_paths:
+            normalized = granted.rstrip("/")
+            if path == normalized or path.startswith(normalized + "/"):
+                return True
+        return False
+
+    outside_scope = sorted(path for path in changed_paths if not is_within_grant(path))
     runtime_passed = exit_code == 0
     scope_passed = not outside_scope
     sha_passed = bool(produced_sha) and produced_sha != base_sha
