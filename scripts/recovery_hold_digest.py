@@ -6,6 +6,7 @@ import json
 from collections import Counter
 from pathlib import Path
 import sys
+import re
 
 
 LEGACY_REASON = "legacy_hold_reason_unavailable"
@@ -23,7 +24,7 @@ def build_digest(state: dict) -> str:
 
     held = []
     for task_id, record in tasks.items():
-        if not isinstance(task_id, str) or not task_id.strip():
+        if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", task_id):
             raise ValueError("Recovery AI task ID is invalid")
         if not isinstance(record, dict):
             raise ValueError(f"Recovery AI record is invalid for task: {task_id}")
