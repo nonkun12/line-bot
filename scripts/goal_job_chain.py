@@ -147,8 +147,7 @@ def plan_next_job(
     approval_required = []
     waiting = []
     for job in relevant:
-        state = job_states.get(job["id"], "pending")
-        if state in {"done", "held", "failed", "running"}:
+        if job["id"] in job_states:
             continue
         if any(job_states.get(dep) != "done" for dep in job["depends_on"]):
             waiting.append(job["id"])
