@@ -2146,16 +2146,10 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             if f"def {cli_name}(" in text:
                 if text.count(cli_end) != 1:
                     return None, f"deterministic_anchor_not_unique:refill_read_json:{text.count(cli_end)}"
-                pos = text.index(cli_end) + len(cli_end)
-                suffix_end = pos
-                while suffix_end < len(text) and text[suffix_end] in "\r\n \t":
-                    suffix_end += 1
-                old = text[pos:suffix_end]
-                new = "\n\n" + read_json_body
-                # Include the task-end assertion in the replacement to keep the
-                # exact separator independent of the previous insertion order.
-                old = cli_end + old
-                new = cli_end + new
+                # Insert immediately after the CLI test and retain all
+                # existing whitespace and following source byte-for-byte.
+                old = cli_end
+                new = cli_end + "\n\n" + read_json_body
             else:
                 if text.count(eof_anchor) != 1:
                     return None, f"deterministic_anchor_not_unique:refill_read_json:{text.count(eof_anchor)}"
