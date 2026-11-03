@@ -90,16 +90,23 @@ def test_goal_ai_returns_only_dependency_ready_jobs_with_parallel_cap():
     assert result["execution_authorized"] is False
 
 
-def test_goal_ai_releases_next_job_only_after_dependency_completion():
+def test_goal_ai_requires_approval_before_enqueueing_development_job():
     result = evaluate_goal_progress(_plan(), completed_job_ids=["inspect"])
-    assert result["status"] == "READY"
-    assert result["ready_job_ids"] == ["implement"]
+    assert result["status"] == "APPROVAL_REQUIRED"
+    assert result["ready_job_ids"] == []
+    assert result["approval_pending_job_ids"] == ["implement"]
+
+    approved = evaluate_goal_progress(
+        _plan(), completed_job_ids=["inspect"], approved_job_ids=["implement"]
+    )
+    assert approved["status"] == "READY"
+    assert approved["ready_job_ids"] == ["implement"]
 
 
 def test_goal_ai_respects_parallel_limit():
     plan = _plan()
     plan["jobs"][1]["depends_on"] = []
-    result = evaluate_goal_progress(plan, running_job_ids=["inspect"])
+    result = evaluate_goal_progress(plan, running_job_ids=["inspect"], approved_job_ids=["implement"])
     assert result["status"] == "READY"
     assert result["ready_job_ids"] == ["implement"]
 
@@ -129,3 +136,8 @@ def test_job_states_cannot_overlap_or_reference_unknown_jobs():
         evaluate_goal_progress(_plan(), completed_job_ids=["inspect"], running_job_ids=["inspect"])
     with pytest.raises(GoalPlanError, match="completed_job_id_unknown"):
         evaluate_goal_progress(_plan(), completed_job_ids=["unknown"])
+
+
+def test_approval_cannot_be_applied_to_a_job_that_does_not_require_it():
+    with pytest.raises(GoalPlanError, match="approval_for_unprotected_job"):
+        evaluate_goal_progress(_plan(), approved_job_ids=["inspect"])
