@@ -205,7 +205,7 @@ def test_distributed_loop_continuation_depth_is_bounded_and_propagated():
     assert "continuation_depth:" in source
     assert "options:" in source
     assert 'match = re.search(r"continuation_depth=(\\d+)", title)' in continuation
-    assert 'if [ "$depth" -ge 3 ]; then' in continuation
+    assert 'if [ "$depth" -ge 12 ]; then' in continuation
     assert '-f continuation_depth="${{ steps.active.outputs.next_depth }}"' in continuation
     assert "CONTINUATION_STOP=bounded_depth_limit" in continuation
     # The bounded chain resumes through the distributed loop's own schedule.
@@ -270,15 +270,15 @@ def test_continuation_depth_zero_dispatches_depth_one(tmp_path):
     assert "next_depth=1" in output.splitlines()
 
 
-def test_continuation_depth_two_dispatches_depth_three(tmp_path):
-    result, output = _run_active_check(tmp_path, "Distributed Loop (continuation_depth=2)")
+def test_continuation_depth_eleven_dispatches_depth_twelve(tmp_path):
+    result, output = _run_active_check(tmp_path, "Distributed Loop (continuation_depth=11)")
     assert result.returncode == 0, result.stderr
     assert "dispatch=true" in output.splitlines()
-    assert "next_depth=3" in output.splitlines()
+    assert "next_depth=12" in output.splitlines()
 
 
-def test_continuation_depth_three_stops_at_bound(tmp_path):
-    result, output = _run_active_check(tmp_path, "Distributed Loop (continuation_depth=3)")
+def test_continuation_depth_twelve_stops_at_bound(tmp_path):
+    result, output = _run_active_check(tmp_path, "Distributed Loop (continuation_depth=12)")
     assert result.returncode == 0, result.stderr
     assert output.splitlines() == ["dispatch=false"]
     assert "CONTINUATION_STOP=bounded_depth_limit" in result.stdout
@@ -317,7 +317,10 @@ def test_only_one_workflow_owns_automatic_continuation():
     primary = (root / "continuous-distributed-loop.yml").read_text(encoding="utf-8")
     duplicate = (root / "distributed-loop-safe-continuation.yml").read_text(encoding="utf-8")
 
+    distributed = (root / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     assert "gh workflow run distributed-autonomous-loop.yml" in primary
+    assert "actions/workflows/distributed-autonomous-loop.yml/dispatches" not in distributed
+    assert "Dispatch next bounded job when verified work remains" not in distributed
     assert "if: github.event.workflow_run.run_attempt < 0" in duplicate
     assert "Automatic continuation is owned exclusively by continuous-distributed-loop.yml." in duplicate
 
@@ -331,3 +334,9 @@ def test_postrun_verification_does_not_send_a_second_line_report():
     disabled = source[source.index("LINE duplicate notification disabled (source loop is authoritative)"):]
     disabled = disabled.split("\n      - name:", 1)[0]
     assert "if: github.event.workflow_run.run_attempt < 0" in disabled
+
+
+def test_line_notification_failure_does_not_block_verified_continuation():
+    source = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    notification = source.split("      - name: Notify LINE of distributed loop final report", 1)[1].split("      - name:", 1)[0]
+    assert "continue-on-error: true" in notification
