@@ -218,7 +218,7 @@ def _mcp_http_is_hibernate_rate_limited() -> bool:
     while True:
         if time.monotonic() >= deadline:
             raise RuntimeError(
-                f"MCP health probe remained rate-limited (HTTP 429, routing={last_routing})"
+                f"MCP health probe remained rate-limited (HTTP 429, routing={last_routing}) after bounded retry"
             )
         try:
             response = requests.get(
