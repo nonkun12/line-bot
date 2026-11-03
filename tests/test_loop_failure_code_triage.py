@@ -96,3 +96,54 @@ def test_original_hold_category_survives_later_failure(tmp_path):
     assert after["last_category"] == "unknown"
     assert after["hold_category"] == "security_violation"
     assert after["hold_reason"] == before["hold_reason"]
+
+
+@pytest.mark.parametrize(
+    ("diagnostic", "expected"),
+    [
+        ("change_path_outside_root:/tmp/escape.py", "change_path_outside_root"),
+        ("self_improvement_policy:blocked", "self_improvement_policy"),
+        ("required_regression_test_missing:tests/test_x.py", "required_regression_test_missing"),
+        ("existing_test_missing:tests/test_x.py", "existing_test_missing"),
+        ("operational_validation_plan_invalid:SyntaxError", "operational_validation_plan_invalid"),
+        ("deterministic target unavailable or disallowed: tests/x.py", "deterministic_target_unavailable_or_disallowed"),
+        ("deterministic target mismatch: expected tests/x.py", "deterministic_target_mismatch"),
+        ("manager could not select a safe target", "manager_could_not_select_safe_target"),
+        ("manager selection missing", "manager_selection_missing"),
+        ("invalid_change", "invalid_change"),
+        ("invalid_old_new", "invalid_old_new"),
+        ("no_op_change", "no_op_change"),
+        ("diff_marker_in_replacement", "diff_marker_in_replacement"),
+        ("change_too_large", "change_too_large"),
+        ("invalid_plan", "invalid_plan"),
+        ("duplicate_change_path", "duplicate_change_path"),
+        ("change_target_unreadable", "change_target_unreadable"),
+    ],
+)
+def test_reported_runtime_diagnostics_are_all_canonicalized(diagnostic, expected):
+    assert extract_safe_failure_code(diagnostic) == expected
+    assert failure_code_category(expected) in {"invalid_task", "security_violation"}
+
+
+@pytest.mark.parametrize(
+    ("diagnostic", "expected"),
+    [
+        ("invalid_change_count then protected_file:core/x.py", "protected_file"),
+        ("sha_mismatch then anchor_count_tests/x.py:1", "sha_mismatch"),
+        ("protected_file then nonce_mismatch", "nonce_mismatch"),
+        ("change_outside_selected_file then deterministic_plan_too_large", "change_outside_selected_file"),
+    ],
+)
+def test_security_diagnostic_precedence_is_deterministic(diagnostic, expected):
+    assert extract_safe_failure_code(diagnostic) == expected
+
+
+def test_legacy_hold_category_is_never_inferred_from_last_category(tmp_path):
+    store = RecoveryStore(tmp_path / "legacy.json")
+    store.path.write_text(
+        '{"schema_version":1,"tasks":{"legacy":{"held":true,"last_category":"unknown","consecutive_failures":2,"fingerprints":[]}},"checkpoint":null}',
+        encoding="utf-8",
+    )
+    decision = store.record_failure("legacy", "unknown")
+    assert decision.action == "HOLD"
+    assert store.task_status("legacy")["hold_category"] == "legacy_hold_category_unavailable"
