@@ -159,6 +159,11 @@ class RecoveryStore:
             "updated_at": now,
         }
         record = data["tasks"][task_id]
+        # Preserve review metadata across a failure after an explicitly approved
+        # resume; a subsequent failure must not erase the human-review barrier.
+        for key in ("resume_requires_review", "resumed_at", "last_success_at", "last_success_evidence"):
+            if key in previous:
+                record[key] = previous[key]
         if category == "state_persistence_failure":
             action, reason, delay, human = "STOP_FAIL_CLOSED", "state_persistence_failure", 0, True
         elif was_held:
@@ -167,7 +172,6 @@ class RecoveryStore:
             record["hold_reason"] = previous.get("hold_reason") or "legacy_hold_reason_unavailable"
             record["hold_category"] = (
                 previous.get("hold_category")
-                or previous.get("last_category")
                 or "legacy_hold_category_unavailable"
             )
             action, reason, delay, human = "HOLD", "previous_hold_requires_explicit_resume", 0, True
