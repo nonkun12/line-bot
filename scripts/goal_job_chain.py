@@ -54,6 +54,8 @@ def plan_next_job(
     goal: object,
     criterion_results: object,
     job_states: object,
+    *,
+    approved_autonomy_policy: object | None = None,
 ) -> dict[str, Any]:
     """Assess explicit goal evidence and propose at most one eligible child JOB.
 
@@ -64,6 +66,7 @@ def plan_next_job(
 
     criterion_results maps criterion IDs to PASS, FAIL, or UNKNOWN.
     job_states maps job IDs to pending, running, done, failed, or held.
+    approved_autonomy_policy must be loaded from trusted, human-approved state.
     """
     if not isinstance(goal, dict):
         return _hold("goal_contract_invalid")
@@ -71,7 +74,9 @@ def plan_next_job(
     objective = goal.get("objective")
     criteria = goal.get("success_criteria")
     jobs = goal.get("jobs")
-    autonomy_policy = goal.get("autonomy_policy")
+    # Autonomy authority must come from a trusted approval store/caller, never
+    # from model-generated goal text. Embedded goal fields are intentionally ignored.
+    autonomy_policy = approved_autonomy_policy
     if autonomy_policy is not None and not _valid_autonomy_policy(autonomy_policy):
         return _hold("autonomy_policy_invalid_or_unsafe")
     if not _valid_id(goal_id) or not isinstance(objective, str) or not objective.strip():
