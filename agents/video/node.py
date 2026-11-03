@@ -17,18 +17,25 @@ class VideoAgent:
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         text = request.message.casefold()
-        if any(k in text for k in ("シナリオ", "台本", "脚本", "script")):
-            mode = "scenario" if "シナリオ" in text else "script"
-            scenario = build_scenario(
-                request.message,
-                duration_seconds=request.metadata.get("duration_seconds", 180),
-                scene_count=request.metadata.get("scene_count", 4),
-                genre=request.metadata.get("genre", "未指定"),
-                audience=request.metadata.get("target_audience", "一般視聴者"),
-                tone=request.metadata.get("tone", "わかりやすく、印象に残る"),
-                premise=request.metadata.get("premise"),
-                title=request.metadata.get("title"),
-            )
+        metadata = request.metadata if isinstance(request.metadata, dict) else {}
+        if any(k in text for k in ("シナリオ", "scenario", "台本", "脚本", "script")):
+            mode = "scenario" if any(k in text for k in ("シナリオ", "scenario")) else "script"
+            try:
+                scenario = build_scenario(
+                    request.message,
+                    duration_seconds=metadata.get("duration_seconds", 180),
+                    scene_count=metadata.get("scene_count", 4),
+                    genre=metadata.get("genre", "未指定"),
+                    audience=metadata.get("target_audience", "一般視聴者"),
+                    tone=metadata.get("tone", "わかりやすく、印象に残る"),
+                    premise=metadata.get("premise"),
+                    title=metadata.get("title"),
+                )
+            except ValueError as exc:
+                return AgentResponse(
+                    text=f"シナリオを作成できませんでした。尺・シーン数・入力内容を確認してください：{exc}",
+                    metadata={"feature": self.name, "status": "invalid_request", "mode": mode},
+                )
             lines = [
                 f"🎬 映像AI｜シナリオ草案：{scenario['title']}",
                 f"尺：{scenario['creative_brief']['duration_seconds']}秒 / "
