@@ -113,6 +113,7 @@ def create_goal(goal: object, user_id: str, approved_grant: object) -> dict[str,
     grant = _validate_grant(approved_grant, goal_id)
     goal_payload = _json(goal)
     grant_payload = _json(grant)
+    initial_evidence = _json({item["id"]: "FAIL" for item in criteria if isinstance(item, dict) and isinstance(item.get("id"), str)})
     init_goal_job_store()
     with db.get_conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -125,8 +126,8 @@ def create_goal(goal: object, user_id: str, approved_grant: object) -> dict[str,
                 raise ValueError("goal_id already exists with different content or grant")
         else:
             conn.execute(
-                "INSERT INTO goal_chains(goal_id,user_id,objective,goal_json,grant_json) VALUES(?,?,?,?,?)",
-                (goal_id, user_id, objective.strip(), goal_payload, grant_payload),
+                "INSERT INTO goal_chains(goal_id,user_id,objective,goal_json,grant_json,evidence_json) VALUES(?,?,?,?,?,?)",
+                (goal_id, user_id, objective.strip(), goal_payload, grant_payload, initial_evidence),
             )
     return get_goal(goal_id)
 
