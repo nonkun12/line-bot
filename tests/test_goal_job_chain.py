@@ -42,11 +42,12 @@ def test_goal_planner_proposes_first_approved_child_job_only():
 def test_goal_planner_waits_for_parent_job_before_child():
     result = plan_next_job(
         _goal(),
-        {"line-routing": "FAIL", "safe-execution": "FAIL"},
+        {"line-routing": "PASS", "safe-execution": "FAIL"},
         {"routing-tests": "pending"},
     )
-    assert result["decision"] == "PROPOSE_CHILD_JOB"
-    assert result["job"]["id"] == "routing-tests"
+    assert result["decision"] == "HOLD"
+    assert result["reason"] == "waiting_for_parent_jobs"
+    assert result["waiting_job_ids"] == ["safe-review"]
 
 
 def test_goal_planner_waits_for_dependency_to_complete():
@@ -107,3 +108,13 @@ def test_goal_planner_rejects_unsafe_paths_and_malformed_evidence():
     goal["jobs"][0]["allowed_paths"] = ["../secrets.txt"]
     assert plan_next_job(goal, {"line-routing": "FAIL", "safe-execution": "FAIL"}, {})["decision"] == "HOLD"
     assert plan_next_job(_goal(), {"line-routing": "PASS"}, {})["reason"] == "criterion_evidence_incomplete"
+
+
+def test_goal_planner_fails_closed_on_malformed_unhashable_job_fields():
+    goal = _goal()
+    goal["jobs"][0]["criterion_id"] = ["line-routing"]
+    assert plan_next_job(goal, {"line-routing": "FAIL", "safe-execution": "FAIL"}, {})["decision"] == "HOLD"
+
+    goal = _goal()
+    goal["jobs"][0]["stage"] = ["test"]
+    assert plan_next_job(goal, {"line-routing": "FAIL", "safe-execution": "FAIL"}, {})["decision"] == "HOLD"
