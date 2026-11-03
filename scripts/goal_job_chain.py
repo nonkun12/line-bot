@@ -34,10 +34,53 @@ def _valid_id(value: object) -> bool:
     return isinstance(value, str) and _ID.fullmatch(value) is not None
 
 
+
+def _validate_autonomy_grant(grant: object, goal_id: str) -> dict[str, Any] | None:
+    """Validate a grant supplied separately by the trusted approval-store adapter.
+
+    The caller must retrieve this record from server-side durable storage; the
+    goal payload and model output are never an authorization source.
+    """
+    if not isinstance(grant, dict):
+        return None
+    grant_id = grant.get("grant_id")
+    allowed_stages = grant.get("allowed_stages")
+    allowed_paths = grant.get("allowed_path_prefixes")
+    max_jobs = grant.get("max_jobs")
+    if (
+        not _valid_id(grant_id)
+        or grant.get("goal_id") != goal_id
+        or grant.get("active") is not True
+        or grant.get("auto_approve_registered_jobs") is not True
+        or type(max_jobs) is not int
+        or not 1 <= max_jobs <= MAX_AUTONOMOUS_JOBS_PER_GOAL
+        or not isinstance(allowed_stages, list)
+        or not allowed_stages
+        or any(not isinstance(stage, str) or stage not in _STAGES for stage in allowed_stages)
+        or len(allowed_stages) != len(set(allowed_stages))
+        or not isinstance(allowed_paths, list)
+        or not allowed_paths
+        or any(path not in {"tests/", "uhip/tests/", "docs/", "agents/", "core/", "scripts/"}
+               for path in allowed_paths)
+        or len(allowed_paths) != len(set(allowed_paths))
+        or grant.get("auto_merge", False) is not False
+        or grant.get("auto_deploy", False) is not False
+    ):
+        return None
+    return {
+        "grant_id": grant_id,
+        "max_jobs": max_jobs,
+        "allowed_stages": tuple(allowed_stages),
+        "allowed_path_prefixes": tuple(allowed_paths),
+    }
+
+
 def plan_next_job(
     goal: object,
     criterion_results: object,
     job_states: object,
+    *,
+    autonomy_grant: object = None,
 ) -> dict[str, Any]:
     """Select at most one next JOB using verified goal evidence and risk policy.
 
@@ -46,6 +89,8 @@ def plan_next_job(
        jobs:[{id, criterion_id, stage, instruction, allowed_paths, depends_on:[]}]}
 
     No approval/risk flag supplied by a model or goal payload is trusted.
+    A one-time grant must be loaded by the trusted caller from its approval store;
+    it is deliberately not accepted inside the goal contract.
     criterion_results maps criterion IDs to PASS, FAIL, or UNKNOWN.
     job_states maps job IDs to pending, running, done, failed, or held.
     """
@@ -63,6 +108,10 @@ def plan_next_job(
         return _hold("goal_contract_incomplete")
     if not isinstance(criterion_results, dict) or not isinstance(job_states, dict):
         return _hold("evidence_maps_invalid")
+
+    grant = _validate_autonomy_grant(autonomy_grant, goal_id)
+    if autonomy_grant is not None and grant is None:
+        return _hold("autonomy_grant_invalid_or_mismatched")
 
     criterion_ids: set[str] = set()
     for criterion in criteria:
@@ -145,11 +194,11 @@ def plan_next_job(
     if any(value == "UNKNOWN" for value in criterion_results.values()):
         return _hold("success_criteria_not_fully_verified")
 
-    if len(job_states) >= MAX_AUTONOMOUS_JOBS_PER_GOAL:
+    if grant is not None and len(job_states) >= grant["max_jobs"]:
         return _hold(
             "autonomy_job_budget_exhausted",
             goal_id=goal_id,
-            job_budget=MAX_AUTONOMOUS_JOBS_PER_GOAL,
+            job_budget=grant["max_jobs"],
             jobs_registered=len(job_states),
         )
 
@@ -168,8 +217,17 @@ def plan_next_job(
             waiting.append(job["id"])
             continue
         autonomy = evaluate_job_autonomy(job)
-        if autonomy.get("decision") != "AUTO_APPROVE":
-            review_required.append({"job_id": job["id"], "reason": str(autonomy.get("reason", "policy_denied"))})
+        grant_allows = (
+            grant is not None
+            and job["stage"] in grant["allowed_stages"]
+            and all(any(path.startswith(prefix) for prefix in grant["allowed_path_prefixes"])
+                    for path in job["allowed_paths"])
+        )
+        if autonomy.get("decision") != "AUTO_APPROVE" or not grant_allows:
+            reason = str(autonomy.get("reason", "goal_autonomy_grant_required"))
+            if autonomy.get("decision") == "AUTO_APPROVE" and not grant_allows:
+                reason = "outside_goal_autonomy_grant_scope" if grant is not None else "goal_autonomy_grant_required"
+            review_required.append({"job_id": job["id"], "reason": reason})
             continue
         eligible.append((job, autonomy))
 
@@ -185,7 +243,8 @@ def plan_next_job(
             "autonomy_policy": autonomy,
             "approval_mode": "deterministic_low_risk_auto_approval",
             "human_approval_required": False,
-            "remaining_job_budget": MAX_AUTONOMOUS_JOBS_PER_GOAL - len(job_states) - 1,
+            "remaining_job_budget": grant["max_jobs"] - len(job_states) - 1,
+            "autonomy_grant_id": grant["grant_id"],
             # Planning alone cannot write to the DB or start a worker.
             "create_job": False,
             "execute_job": False,
