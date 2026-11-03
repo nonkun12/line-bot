@@ -2131,9 +2131,12 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
                 anchor_pos = prefix.rfind(eof_anchor)
                 if anchor_pos < 0:
                     return None, "deterministic_anchor_not_unique:refill_cli"
-                # Replace only the gap before read_json. Preserve every
-                # byte after its definition, including unrelated tests or helpers.
-                old = text[anchor_pos:pos]
+                # Only whitespace may separate the anchor and read_json.
+                # Refuse to replace intervening tests or helpers.
+                gap = text[anchor_pos + len(eof_anchor):pos]
+                if gap.strip():
+                    return None, "deterministic_anchor_intervening_content:refill_cli"
+                old = eof_anchor + gap
                 new = eof_anchor + "\n\n" + cli_body + "\n"
             else:
                 if text.count(eof_anchor) != 1:
