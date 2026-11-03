@@ -502,7 +502,7 @@ def _safe_api_error_detail(exc: Exception) -> str:
     )
     if isinstance(failed_generation, str) and failed_generation:
         safe_failure = re.sub(r"(?i)bearer\s+\S+", "Bearer [REDACTED]", failed_generation)
-        safe_failure = re.sub(r"\b(?:gsk|sk)-[A-Za-z0-9_-]{8,}\b", "[REDACTED]", safe_failure)
+        safe_failure = re.sub(r"\b(?:gsk[_-]|sk-)[A-Za-z0-9_-]{8,}\b", "[REDACTED]", safe_failure)
         safe_failure = re.sub(
             r"(?i)(api[_ -]?key|token|secret)(\s*[:=]\s*)[^\s,;]+",
             r"\1\2[REDACTED]",
