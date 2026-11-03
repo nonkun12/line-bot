@@ -59,10 +59,10 @@ def test_two_refill_task_orders_produce_identical_file_bytes(tmp_path, monkeypat
         target = root / TARGET
         target.parent.mkdir(parents=True)
         target.write_text(
-            "from pathlib import Path\\n\\n"
-            "def test_existing_refill_case():\\n"
-            "    queue = Path('queue.json')\\n"
-            f"{EOF_ANCHOR}\\n",
+            "from pathlib import Path\n\n"
+            "def test_existing_refill_case():\n"
+            "    queue = Path('queue.json')\n"
+            f"{EOF_ANCHOR}\n",
             encoding="utf-8",
         )
 
