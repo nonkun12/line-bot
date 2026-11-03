@@ -83,12 +83,12 @@ def extract_safe_failure_code(value: object) -> str | None:
     matches: set[str] = set()
     # Only explicit, bounded provider status/transport signals are transient.
     # HTTP 400/401/403 and unknown errors remain non-transient and fail closed.
-    statuses = [int(item) for item in re.findall(r"\\bstatus\\s*=\\s*(\\d{3})\\b", value, re.IGNORECASE)]
+    statuses = [int(item) for item in re.findall(r"\bstatus\s*=\s*(\d{3})\b", value, re.IGNORECASE)]
     if 429 in statuses:
         matches.add("provider_rate_limited")
     elif any(status in {408, 425} or 500 <= status <= 599 for status in statuses):
         matches.add("provider_service_unavailable")
-    elif re.search(r"\\b(?:APITimeoutError|APIConnectionError|TimeoutError|ConnectionError)\\b", value):
+    elif re.search(r"\b(?:APITimeoutError|APIConnectionError|TimeoutError|ConnectionError)\b", value):
         matches.add("provider_network_transient")
     for pattern, code in _FAILURE_PATTERNS:
         if pattern.search(value):
