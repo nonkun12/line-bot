@@ -192,3 +192,23 @@ def test_invalid_change_count_failure_code_is_classified_without_retry_authority
     assert diagnosis["failure_code"] == "invalid_change_count"
     assert diagnosis["permissions"]["retry_task"] is False
     assert diagnosis["permissions"]["clear_hold"] is False
+
+@pytest.mark.parametrize("failure_code", [None, [], {}, 7])
+def test_present_malformed_failure_code_is_invalid_evidence(failure_code):
+    diagnosis = build_report([{
+        "task_id": "malformed-failure-code",
+        "status": "PASS",
+        "failure_code": failure_code,
+    }])["diagnoses"][0]
+    assert diagnosis["category"] == "invalid_failure_code_evidence"
+    assert diagnosis["requires_human"] is True
+    assert diagnosis["permissions"]["retry_task"] is False
+
+
+def test_absent_failure_code_does_not_create_invalid_evidence():
+    diagnosis = build_report([{
+        "task_id": "no-failure-code",
+        "status": "PASS",
+    }])["diagnoses"][0]
+    assert diagnosis["category"] == "completed"
+    assert diagnosis["requires_human"] is False
