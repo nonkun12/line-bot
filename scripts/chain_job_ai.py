@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-_DEPTH = re.compile(r"continuation_depth=(\\d+)")
+_DEPTH = re.compile(r"continuation_depth=(\d+)")
 _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _MAX_RESULTS = 4
 
