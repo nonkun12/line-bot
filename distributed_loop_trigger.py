@@ -324,9 +324,24 @@ def _append_task_evidence(
 def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
     command = _normalize_command(message)
     status_kind = None
-    if command in {"統括AIの状況", "統括AI状況", "分散Loopの状況", "分散ループの状況"}:
+    if command in {
+        "統括AIの状況",
+        "統括AI状況",
+        "統括AI状況確認",
+        "統括AIの状況確認",
+        "統括AIステータス",
+        "分散Loopの状況",
+        "分散ループの状況",
+        "分散Loop状況確認",
+        "分散ループ状況確認",
+    }:
         status_kind = "status"
-    elif command in {"分散Loopの結果", "分散ループの結果", "分散Loop結果", "分散ループ結果"}:
+    elif command in {
+        "分散Loopの結果",
+        "分散ループの結果",
+        "分散Loop結果",
+        "分散ループ結果",
+    }:
         status_kind = "result"
 
     max_tasks = _requested_max_tasks(message)
