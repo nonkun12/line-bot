@@ -1511,7 +1511,7 @@ def test_safe_api_error_detail_includes_request_id_and_redacted_generation():
             "error": {
                 "code": "json_validate_failed",
                 "failed_generation": (
-                    "invalid output gsk-abcdefghijklmnopqrstuvwxyz1234567890 "
+                    "invalid output gsk_abcdefghijklmnopqrstuvwxyz1234567890 "
                     "and api_key=supersecret"
                 ),
             }
