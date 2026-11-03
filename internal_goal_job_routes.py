@@ -21,7 +21,7 @@ import goal_job_store
 def _github_run_passed(run_url: str, expected_name: str, target_sha: str) -> bool:
     """Verify a named GitHub Actions run against GitHub, never worker-supplied status."""
     match = re.fullmatch(
-        r"https://github\\.com/nonkun12/line-bot/actions/runs/(\\d+)",
+        r"https://github\.com/nonkun12/line-bot/actions/runs/(\d+)",
         run_url.strip() if isinstance(run_url, str) else "",
     )
     if not match:
