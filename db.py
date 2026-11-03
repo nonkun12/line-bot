@@ -99,6 +99,23 @@ def init_db():
         ON jobs(parent_job_id)
         """)
         conn.execute("""
+        CREATE TABLE IF NOT EXISTS goal_job_links(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            goal_id TEXT NOT NULL,
+            job_key TEXT NOT NULL,
+            criterion_id TEXT NOT NULL,
+            job_id INTEGER NOT NULL UNIQUE,
+            payload_sha256 TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(goal_id, job_key),
+            FOREIGN KEY(job_id) REFERENCES jobs(id)
+        )
+        """)
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_goal_job_links_goal_id
+        ON goal_job_links(goal_id, id)
+        """)
+        conn.execute("""
         CREATE TABLE IF NOT EXISTS agent_task_events(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             event_id TEXT UNIQUE NOT NULL,
@@ -138,6 +155,106 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_job_checkpoints_job_id
         ON job_checkpoints(job_id, id)
         """)
+
+
+
+
+def create_goal_child_job(
+    user_id, goal_id, job_key, criterion_id, payload, *,
+    parent_job_id=None, max_retries=2,
+):
+    """Persist one Goal child atomically; repeated keys return the same JOB.
+
+    The caller must pass a proposal already approved by the trusted Goal
+    autonomy policy. A key reused with different content is rejected.
+    """
+    for name, value in (
+        ("user_id", user_id), ("goal_id", goal_id),
+        ("job_key", job_key), ("criterion_id", criterion_id),
+    ):
+        if not isinstance(value, str) or not value.strip() or len(value) > 200:
+            raise ValueError(f"{name} is invalid")
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be an object")
+    if not isinstance(max_retries, int) or isinstance(max_retries, bool) or not 0 <= max_retries <= 5:
+        raise ValueError("max_retries must be between 0 and 5")
+    if parent_job_id is not None and not _is_valid_job_id(parent_job_id):
+        raise ValueError("parent_job_id is invalid")
+
+    message = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    payload_hash = hashlib.sha256(message.encode("utf-8")).hexdigest()
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        existing = conn.execute(
+            """
+            SELECT job_id, payload_sha256
+            FROM goal_job_links WHERE goal_id=? AND job_key=?
+            """,
+            (goal_id, job_key),
+        ).fetchone()
+        if existing is not None:
+            if not hmac.compare_digest(existing[1], payload_hash):
+                raise ValueError("goal job key already exists with different payload")
+            conn.commit()
+            return existing[0], False
+
+        if parent_job_id is not None:
+            parent = conn.execute(
+                "SELECT status FROM jobs WHERE id=?", (parent_job_id,)
+            ).fetchone()
+            if parent is None or parent[0] not in {"done", "completed"}:
+                raise ValueError("parent job must be completed before child creation")
+
+        cursor = conn.execute(
+            """
+            INSERT INTO jobs(
+                user_id, job_type, source, parent_job_id, message, status, max_retries
+            ) VALUES (?, 'goal_child', 'goal_ai', ?, ?, 'pending', ?)
+            """,
+            (user_id, parent_job_id, message, max_retries),
+        )
+        job_id = cursor.lastrowid
+        conn.execute(
+            """
+            INSERT INTO goal_job_links(
+                goal_id, job_key, criterion_id, job_id, payload_sha256
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (goal_id, job_key, criterion_id, job_id, payload_hash),
+        )
+        conn.commit()
+        return job_id, True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def list_goal_child_jobs(goal_id):
+    """Return persisted child JOBs for one Goal in creation order."""
+    if not isinstance(goal_id, str) or not goal_id.strip():
+        raise ValueError("goal_id is required")
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT l.goal_id, l.job_key, l.criterion_id, j.id, j.parent_job_id,
+                   j.status, j.retry_count, j.max_retries, j.result, j.last_error,
+                   j.created_at, j.updated_at
+            FROM goal_job_links l
+            JOIN jobs j ON j.id=l.job_id
+            WHERE l.goal_id=?
+            ORDER BY l.id
+            """,
+            (goal_id,),
+        ).fetchall()
+    keys = (
+        "goal_id", "job_key", "criterion_id", "job_id", "parent_job_id",
+        "status", "retry_count", "max_retries", "result", "last_error",
+        "created_at", "updated_at",
+    )
+    return [dict(zip(keys, row)) for row in rows]
 
 
 def save_message(user_id, role, content):
