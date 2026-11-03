@@ -13,7 +13,7 @@ import re
 from typing import Any
 
 from scripts.recovery_ai import MAX_TRANSIENT_RETRIES, RecoveryStore, failure_fingerprint
-from core.loop_failure_codes import failure_code_category, is_safe_failure_code
+from core.loop_failure_codes import extract_safe_failure_code, failure_code_category, is_safe_failure_code
 
 
 def _category(result: dict[str, Any]) -> str:
@@ -42,6 +42,11 @@ def _category(result: dict[str, Any]) -> str:
             return category
         if status not in {"FAIL", "BLOCKED", "STOPPED"}:
             return "invalid_evidence"
+    if not failure_code_present and status in {"FAIL", "BLOCKED", "STOPPED"}:
+        inferred_code = extract_safe_failure_code(raw_reason)
+        inferred_category = failure_code_category(inferred_code)
+        if inferred_category is not None:
+            return inferred_category
 
     if status == "TIMEOUT" or "timeout" in reason:
         return "timeout"
