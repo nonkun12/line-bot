@@ -2133,7 +2133,12 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         name = "test_read_json_rejects_non_object_root"
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
-        anchor = '    assert queue.read_text(encoding="utf-8") == queue_before'
+        # Append after the first refill test when it is already present;
+        # otherwise use the original EOF anchor. This makes either task order
+        # converge to the same file order without inserting into an earlier test.
+        first_task_end = '    assert [task["id"] for task in runtime_queue["tasks"]] == ["task-cli-new"]'
+        eof_anchor = '    assert queue.read_text(encoding="utf-8") == queue_before'
+        anchor = first_task_end if text.count(first_task_end) == 1 else eof_anchor
         if text.count(anchor) != 1:
             return None, f"deterministic_anchor_not_unique:refill_read_json:{text.count(anchor)}"
         addition = (
