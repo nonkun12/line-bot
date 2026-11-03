@@ -148,12 +148,12 @@ def main(argv: list[str] | None = None) -> int:
         max_depth=args.max_depth,
     )
     with args.github_output.open("a", encoding="utf-8") as output:
-        output.write(f"continue={'true' if report['continue'] else 'false'}\\n")
+        output.write(f"continue={'true' if report['continue'] else 'false'}\n")
         if "depth" in report:
-            output.write(f"depth={report['depth']}\\n")
+            output.write(f"depth={report['depth']}\n")
         if report["continue"]:
-            output.write(f"task_id={report['verified_task_ids'][-1]}\\n")
-            output.write(f"next_depth={report['next_depth']}\\n")
+            output.write(f"task_id={report['verified_task_ids'][-1]}\n")
+            output.write(f"next_depth={report['next_depth']}\n")
     print("CHAIN_JOB_AI_DECISION=" + json.dumps(report, ensure_ascii=False, sort_keys=True))
     return 0
 
