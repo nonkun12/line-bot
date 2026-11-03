@@ -95,3 +95,20 @@ def test_goal_runtime_adapter_rejects_duplicate_allowed_paths():
         assert "unique" in str(exc)
     else:
         raise AssertionError("duplicate grant paths must be rejected")
+
+
+def test_run_goal_child_once_delegates_to_typed_worker(monkeypatch):
+    from scripts import goal_job_runtime_adapter as adapter
+
+    captured = {}
+
+    def fake_run_once(executor, *, job_id=None):
+        captured["executor"] = executor
+        captured["job_id"] = job_id
+        return {"id": job_id, "status": "completed"}
+
+    monkeypatch.setattr(adapter.goal_job_worker, "run_once", fake_run_once)
+    result = adapter.run_goal_child_once(job_id=77)
+
+    assert result == {"id": 77, "status": "completed"}
+    assert captured == {"executor": adapter.execute_goal_child, "job_id": 77}
