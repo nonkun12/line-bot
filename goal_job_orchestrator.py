@@ -55,17 +55,22 @@ def advance_goal(goal_id: str, *, job_generator: Callable[[dict[str, Any], dict[
             )
         except (ValueError, PermissionError) as exc:
             return {"decision": "HOLD", "reason": "generated_job_rejected", "detail": str(exc)[:240]}
+        except Exception as exc:
+            return {"decision": "HOLD", "reason": "job_generator_failed", "error_type": type(exc).__name__}
     if decision.get("decision") != "PROPOSE_CHILD_JOB":
         return decision
 
     job = decision["job"]
     dependencies = job.get("depends_on", [])
     parent_key = dependencies[0] if dependencies else None
-    persisted = goal_job_store.persist_child_job(
-        goal_id,
-        job,
-        parent_job_key=parent_key,
-    )
+    try:
+        persisted = goal_job_store.persist_child_job(
+            goal_id,
+            job,
+            parent_job_key=parent_key,
+        )
+    except (ValueError, PermissionError) as exc:
+        return {"decision": "HOLD", "reason": "child_job_persistence_rejected", "detail": str(exc)[:240]}
     return {
         **decision,
         "decision": "CHILD_JOB_QUEUED",
@@ -109,8 +114,17 @@ def run_until_blocked(
         completed = goal_job_worker.run_once(executor, job_id=job_id)
         if completed is None:
             return {"decision": "HOLD", "reason": "child_job_claim_unavailable", "job_id": job_id, "steps_executed": step}
-        evaluation = evidence_evaluator(goal_job_store.get_goal(goal_id), completed)
-        goal_job_store.update_goal_evidence(goal_id, evaluation)
+        try:
+            evaluation = evidence_evaluator(goal_job_store.get_goal(goal_id), completed)
+            goal_job_store.update_goal_evidence(goal_id, evaluation)
+        except Exception as exc:
+            return {
+                "decision": "HOLD",
+                "reason": "independent_evidence_evaluation_failed",
+                "error_type": type(exc).__name__,
+                "job_id": job_id,
+                "steps_executed": step + 1,
+            }
 
     final = advance_goal(goal_id, job_generator=job_generator)
     if final.get("decision") == "GOAL_ACHIEVED":
