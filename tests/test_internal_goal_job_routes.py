@@ -127,3 +127,51 @@ def test_success_is_rejected_without_independent_exact_sha_verification(tmp_path
     })
     assert response.status_code == 400
     assert db.get_job(job_id)["status"] == "running"
+
+
+
+def test_github_run_verifier_requires_exact_sha_and_success(monkeypatch):
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return json.dumps({
+                "id": 123,
+                "name": "Pytest",
+                "head_sha": "a" * 40,
+                "status": "completed",
+                "conclusion": "success",
+            }).encode()
+
+    monkeypatch.setattr(goal_routes.urllib.request, "urlopen", lambda request, timeout: FakeResponse())
+    assert goal_routes._github_run_passed(
+        "https://github.com/nonkun12/line-bot/actions/runs/123",
+        "Pytest",
+        "a" * 40,
+    )
+    assert not goal_routes._github_run_passed(
+        "https://github.com/nonkun12/line-bot/actions/runs/123",
+        "Pytest",
+        "b" * 40,
+    )
+    assert not goal_routes._github_run_passed(
+        "https://example.com/actions/runs/123",
+        "Pytest",
+        "a" * 40,
+    )
+
+
+def test_github_run_verifier_fails_closed_on_api_error(monkeypatch):
+    def unavailable(*args, **kwargs):
+        raise OSError("network unavailable")
+
+    monkeypatch.setattr(goal_routes.urllib.request, "urlopen", unavailable)
+    assert not goal_routes._github_run_passed(
+        "https://github.com/nonkun12/line-bot/actions/runs/123",
+        "Pytest",
+        "a" * 40,
+    )
