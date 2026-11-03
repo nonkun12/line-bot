@@ -216,6 +216,10 @@ def _mcp_http_is_hibernate_rate_limited() -> bool:
     delay = 1.0
     last_routing = ""
     while True:
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"MCP health probe remained rate-limited (HTTP 429, routing={last_routing})"
+            )
         try:
             response = requests.get(
                 _mcp_health_url(), headers={"Accept": "application/json"},
