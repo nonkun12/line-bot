@@ -290,6 +290,30 @@ def update_goal_evidence(goal_id: str, criterion_results: object) -> dict[str, A
         expected = {item.get("id") for item in goal["success_criteria"] if isinstance(item, dict)}
         if set(criterion_results) != expected:
             raise ValueError("criterion evidence must cover every registered criterion")
+        for criterion_id, state in criterion_results.items():
+            if state != "PASS":
+                continue
+            rows = conn.execute(
+                "SELECT j.status,link.evidence_json FROM goal_chain_jobs link "
+                "JOIN jobs j ON j.id=link.job_id WHERE link.goal_id=? AND link.criterion_id=?",
+                (goal_id, criterion_id),
+            ).fetchall()
+            verified = False
+            for job_status, evidence_json in rows:
+                if job_status not in {"done", "completed"} or not evidence_json:
+                    continue
+                try:
+                    checks = json.loads(evidence_json).get("checks", [])
+                except (TypeError, json.JSONDecodeError, AttributeError):
+                    continue
+                if checks and all(
+                    isinstance(check, dict) and check.get("status") == "PASS"
+                    for check in checks
+                ):
+                    verified = True
+                    break
+            if not verified:
+                raise ValueError("PASS criterion requires completed child JOB evidence with all checks passing")
         status = "achieved" if all(value == "PASS" for value in criterion_results.values()) else "active"
         conn.execute(
             "UPDATE goal_chains SET evidence_json=?,status=?,updated_at=CURRENT_TIMESTAMP WHERE goal_id=?",
