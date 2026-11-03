@@ -25,6 +25,10 @@ def _goal():
             "instruction": "Add focused routing regression tests.",
             "allowed_paths": ["tests/test_line_development_routing.py"],
             "depends_on": [],
+        }, {
+            "id": "review", "criterion_id": "evidence-review",
+            "stage": "review", "instruction": "Review the regression evidence.",
+            "allowed_paths": ["docs/review.md"], "depends_on": ["routing-tests"],
         }],
     }
 
