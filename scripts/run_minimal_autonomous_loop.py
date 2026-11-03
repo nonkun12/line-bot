@@ -100,13 +100,29 @@ def run_task_with_transient_recovery(
             flush=True,
         )
         time.sleep(delay)
-        retry_count += 1
+
+        # Re-check every safety boundary after backoff. The stop file, remote
+        # kill switch, worktree, or HEAD may change while this process sleeps.
+        if stopped(stop_file):
+            break
         retry_base_sha = _git_head()
         if retry_base_sha != current_head:
             break
+        try:
+            clean_rc, clean_output = _git_checked(
+                "status", "--porcelain", "--untracked-files=all"
+            )
+            worktree_clean = clean_rc == 0 and not clean_output.strip()
+        except Exception:
+            worktree_clean = False
+        if not worktree_clean:
+            break
+
         result = run_task(
             task, index, stop_file, expected_base_sha=retry_base_sha
         )
+        # Count only retries that were actually dispatched.
+        retry_count += 1
     return result, retry_count
 
 
