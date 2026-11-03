@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from core.agents import AgentRequest, AgentResponse
 from agents.music.intents import is_music_intent
+from agents.music.score_plan import build_music_plan
 
 
 class MusicAgent:
@@ -16,6 +17,25 @@ class MusicAgent:
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         text = request.message.casefold()
+        scenario = request.metadata.get("scenario") if isinstance(request.metadata, dict) else None
+        if isinstance(scenario, dict):
+            plan = build_music_plan(
+                scenario,
+                genre=request.metadata.get("music_genre", "映像に合わせたオリジナル音楽"),
+                instrumentation=request.metadata.get("instrumentation", "映像の世界観に合う編成"),
+            )
+            return AgentResponse(
+                text=(
+                    f"🎵 映像連動の音楽設計：{plan['source_scenario_title']}\\n"
+                    f"尺：{plan['duration_seconds']}秒 / キュー：{len(plan['cues'])}件\\n"
+                    "映像の感情曲線・シーン時刻・同期点に沿った作曲設計を作成しました。"
+                    "音源そのものはまだ生成していません。"
+                ),
+                metadata={
+                    "feature": self.name, "status": "online",
+                    "mode": "audiovisual_score_plan", "music_plan": plan,
+                },
+            )
         if any(k in text for k in ("作曲", "作詞", "メロディ", "楽曲制作")):
             mode = "composition"
             reply = (
