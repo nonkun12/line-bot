@@ -59,9 +59,9 @@ def test_chain_job_ai_is_the_workflow_continuation_decision_owner():
 
 def test_continuation_depth_is_passed_from_chain_job_ai_and_incremented():
     source = WORKFLOW.read_text(encoding="utf-8")
-    assert "GATE_DEPTH: \${{ steps.gate.outputs.depth }}" in source
+    assert "GATE_DEPTH: ${{ steps.gate.outputs.depth }}" in source
     assert 'depth="$GATE_DEPTH"' in source
-    assert '-f continuation_depth="\${{ steps.active.outputs.next_depth }}"' in source
+    assert '-f continuation_depth="${{ steps.active.outputs.next_depth }}"' in source
     assert "continuation_depth:" in (
         Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml"
     ).read_text(encoding="utf-8")
