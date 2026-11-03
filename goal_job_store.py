@@ -103,7 +103,7 @@ def create_goal(goal: object, user_id: str, approved_grant: object) -> dict[str,
     goal_id = goal.get("goal_id")
     objective = goal.get("objective")
     criteria = goal.get("success_criteria")
-    if not isinstance(goal_id, str) or not goal_id.strip() or len(goal_id) > 100:
+    if not isinstance(goal_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", goal_id):
         raise ValueError("goal_id is invalid")
     if not isinstance(user_id, str) or not user_id.strip():
         raise ValueError("user_id is required")
@@ -111,6 +111,18 @@ def create_goal(goal: object, user_id: str, approved_grant: object) -> dict[str,
         raise ValueError("objective is required")
     if not isinstance(criteria, list) or not criteria:
         raise ValueError("success_criteria are required")
+    criterion_ids = set()
+    for criterion in criteria:
+        if (
+            not isinstance(criterion, dict)
+            or not isinstance(criterion.get("id"), str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", criterion["id"])
+            or not isinstance(criterion.get("description"), str)
+            or not criterion["description"].strip()
+            or criterion["id"] in criterion_ids
+        ):
+            raise ValueError("success criterion contract is invalid or duplicated")
+        criterion_ids.add(criterion["id"])
     grant = _validate_grant(approved_grant, goal_id)
     goal_payload = _json(goal)
     grant_payload = _json(grant)
