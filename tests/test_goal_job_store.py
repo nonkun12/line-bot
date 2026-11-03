@@ -147,7 +147,23 @@ def test_status_normalizes_completed_and_done_and_evidence_closes_goal(tmp_path,
     first = goal_job_store.persist_child_job("goal-autonomy-demo", _job())
     with db.get_conn() as conn:
         conn.execute("UPDATE jobs SET status='completed' WHERE id=?", (first["job_id"],))
-    assert goal_job_store.get_goal_job_states("goal-autonomy-demo") == {"routing-tests": "done"}
+    passing_evidence = {"checks": [{"name": "pytest", "status": "PASS", "source": "CI run 123"}]}
+    assert goal_job_store.save_child_evidence(first["job_id"], passing_evidence) is True
+    review = goal_job_store.persist_child_job(
+        "goal-autonomy-demo",
+        {
+            "id": "review", "criterion_id": "evidence-review", "stage": "review",
+            "instruction": "Review the regression evidence.",
+            "allowed_paths": ["docs/review.md"], "depends_on": ["routing-tests"],
+        },
+        parent_job_key="routing-tests",
+    )
+    with db.get_conn() as conn:
+        conn.execute("UPDATE jobs SET status='completed' WHERE id=?", (review["job_id"],))
+    assert goal_job_store.save_child_evidence(review["job_id"], passing_evidence) is True
+    assert goal_job_store.get_goal_job_states("goal-autonomy-demo") == {
+        "routing-tests": "done", "review": "done"
+    }
     result = goal_job_store.update_goal_evidence(
         "goal-autonomy-demo",
         {"routing-tests": "PASS", "evidence-review": "PASS"},
