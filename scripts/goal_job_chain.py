@@ -14,6 +14,25 @@ _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 _STAGES = frozenset({"requirements", "design", "implementation", "test", "review", "fix", "verify"})
 _CRITERION_STATES = frozenset({"PASS", "FAIL", "UNKNOWN"})
 _JOB_STATES = frozenset({"pending", "running", "done", "failed", "held"})
+_RISK_LEVELS = frozenset({"low", "medium", "high"})
+
+
+def _valid_autonomy_policy(policy: object) -> bool:
+    """Validate a one-time, goal-scoped grant; never grant merge/deploy rights."""
+    if not isinstance(policy, dict):
+        return False
+    stages = policy.get("allowed_stages")
+    max_jobs = policy.get("max_jobs")
+    return (
+        policy.get("mode") == "bounded_autonomous"
+        and policy.get("auto_approve_registered_jobs") is True
+        and type(max_jobs) is int and 1 <= max_jobs <= 50
+        and isinstance(stages, list) and 1 <= len(stages) <= len(_STAGES)
+        and len(stages) == len(set(stages))
+        and all(isinstance(stage, str) and stage in _STAGES for stage in stages)
+        and policy.get("auto_merge", False) is False
+        and policy.get("auto_deploy", False) is False
+    )
 
 
 def _hold(reason: str) -> dict[str, Any]:
@@ -52,6 +71,9 @@ def plan_next_job(
     objective = goal.get("objective")
     criteria = goal.get("success_criteria")
     jobs = goal.get("jobs")
+    autonomy_policy = goal.get("autonomy_policy")
+    if autonomy_policy is not None and not _valid_autonomy_policy(autonomy_policy):
+        return _hold("autonomy_policy_invalid_or_unsafe")
     if not _valid_id(goal_id) or not isinstance(objective, str) or not objective.strip():
         return _hold("goal_identity_or_objective_invalid")
     if not isinstance(criteria, list) or not criteria or not isinstance(jobs, list):
@@ -85,6 +107,7 @@ def plan_next_job(
         paths = job.get("allowed_paths")
         dependencies = job.get("depends_on", [])
         approved = job.get("execution_approved")
+        risk_level = job.get("risk_level", "medium")
         if (
             not _valid_id(jid) or jid in job_ids or not _valid_id(cid) or cid not in criterion_ids
             or not isinstance(stage, str) or stage not in _STAGES or not isinstance(instruction, str)
@@ -92,7 +115,7 @@ def plan_next_job(
             or not isinstance(paths, list) or not paths or len(paths) > 10
             or not all(isinstance(p, str) and re.fullmatch(r"(tests|uhip/tests)/test_[A-Za-z0-9_]+[.]py", p) for p in paths)
             or not isinstance(dependencies, list) or not all(_valid_id(dep) for dep in dependencies)
-            or type(approved) is not bool
+            or type(approved) is not bool or risk_level not in _RISK_LEVELS
         ):
             return _hold("job_definition_invalid_or_unsafe")
         job_ids.add(jid)
@@ -100,6 +123,7 @@ def plan_next_job(
             "id": jid, "criterion_id": cid, "stage": stage,
             "instruction": instruction.strip(), "allowed_paths": list(paths),
             "depends_on": list(dependencies), "execution_approved": approved,
+            "risk_level": risk_level,
         })
 
     if any(dep not in job_ids for job in normalized for dep in job["depends_on"]):
@@ -139,6 +163,9 @@ def plan_next_job(
         return _hold("success_criteria_not_fully_verified")
 
     unmet = {cid for cid, state in criterion_results.items() if state != "PASS"}
+    if autonomy_policy is not None and len(job_states) >= autonomy_policy["max_jobs"]:
+        return {**_hold("autonomy_job_budget_exhausted"), "goal_id": goal_id,
+                "job_budget": autonomy_policy["max_jobs"], "jobs_registered": len(job_states)}
     relevant = [job for job in normalized if job["criterion_id"] in unmet]
     if not relevant:
         return _hold("no_registered_job_for_unmet_criteria")
@@ -152,7 +179,13 @@ def plan_next_job(
         if any(job_states.get(dep) != "done" for dep in job["depends_on"]):
             waiting.append(job["id"])
             continue
-        if not job["execution_approved"]:
+        policy_auto_approved = (
+            autonomy_policy is not None
+            and autonomy_policy["auto_approve_registered_jobs"] is True
+            and job["stage"] in autonomy_policy["allowed_stages"]
+            and job["risk_level"] in {"low", "medium"}
+        )
+        if not job["execution_approved"] and not policy_auto_approved:
             approval_required.append(job["id"])
             continue
         eligible.append(job)
@@ -164,6 +197,9 @@ def plan_next_job(
             "reason": "unmet_criterion_has_approved_dependency_ready_job",
             "goal_id": goal_id, "criterion_id": selected["criterion_id"],
             "job": selected, "create_job": False, "execute_job": False,
+            "approval_mode": "goal_scoped_autonomy" if autonomy_policy is not None and not selected["execution_approved"] else "explicit_job_approval",
+            "human_approval_required": False,
+            "remaining_job_budget": (autonomy_policy["max_jobs"] - len(job_states) - 1) if autonomy_policy is not None else None,
             "permissions": {"clear_hold": False, "merge": False, "deploy": False},
         }
     if approval_required:
