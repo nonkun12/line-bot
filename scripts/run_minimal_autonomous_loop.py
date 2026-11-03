@@ -687,7 +687,7 @@ def run_task(
             status = "NO_CHANGE"
         elif failure_reason == "task_timeout":
             status = "TIMEOUT"
-        elif "stop_requested" in failure_reason:
+        elif failure_reason.startswith("stop_requested"):
             status = "STOPPED"
         else:
             status = "FAIL"
