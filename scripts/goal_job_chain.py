@@ -230,7 +230,10 @@ def plan_next_job(
             elif state in {"failed", "held"}:
                 failed_jobs.append(job["id"])
             continue
-        if any(job_states.get(dep) != "done" for dep in job["depends_on"]):
+        acceptable_dependency_states = {"done"}
+        if job["stage"] == "fix":
+            acceptable_dependency_states.update({"failed", "held"})
+        if any(job_states.get(dep) not in acceptable_dependency_states for dep in job["depends_on"]):
             waiting.append(job["id"])
             continue
         autonomy = evaluate_job_autonomy(job)
