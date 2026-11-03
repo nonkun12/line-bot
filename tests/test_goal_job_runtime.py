@@ -5,7 +5,7 @@ import pytest
 import db
 import job_store
 import job_worker
-from goal_job_runtime import load_goal_job_states, normalize_job_status, persist_next_job
+from goal_job_runtime import advance_goal, load_goal_job_states, normalize_job_status, persist_next_job
 
 
 def setup_db(tmp_path, monkeypatch):
@@ -138,3 +138,96 @@ def test_goal_worker_records_explicit_failure_with_evidence(tmp_path, monkeypatc
     assert result["id"] == goal["job_id"]
     assert result["status"] == "failed"
     assert json.loads(result["result"])["outcome"] == "FAIL"
+
+
+def trusted_grant():
+    return {
+        "grant_id": "grant-demo",
+        "goal_id": "goal-demo",
+        "active": True,
+        "approved_by": "repository-owner",
+        "expires_at": "2099-01-01T00:00:00Z",
+        "auto_approve_registered_jobs": True,
+        "max_jobs": 10,
+        "allowed_stages": ["requirements", "design", "implementation", "test", "review", "fix", "verify"],
+        "allowed_path_prefixes": ["tests/", "docs/", "agents/", "core/", "scripts/"],
+        "auto_merge": False,
+        "auto_deploy": False,
+    }
+
+
+def chained_goal():
+    return {
+        "goal_id": "goal-demo",
+        "objective": "Verify a two-stage child JOB chain",
+        "success_criteria": [
+            {"id": "criterion-demo", "description": "Both stages pass with evidence"},
+        ],
+        "jobs": [
+            {
+                "id": "child-1", "criterion_id": "criterion-demo",
+                "stage": "test", "instruction": "Run stage one tests.",
+                "allowed_paths": ["tests/test_goal_job_runtime.py"],
+                "depends_on": [],
+            },
+            {
+                "id": "child-2", "criterion_id": "criterion-demo",
+                "stage": "test", "instruction": "Run stage two tests.",
+                "allowed_paths": ["tests/test_goal_job_runtime.py"],
+                "depends_on": ["child-1"],
+            },
+        ],
+    }
+
+
+def test_advance_goal_persists_executes_and_chains_until_verified_goal(tmp_path, monkeypatch):
+    setup_db(tmp_path, monkeypatch)
+    goal = chained_goal()
+    grant = trusted_grant()
+
+    first = advance_goal(goal, user_id="U-test", autonomy_grant=grant)
+    assert first["plan"]["decision"] == "PROPOSE_CHILD_JOB"
+    assert first["persisted_job"]["job_key"] == "child-1"
+
+    waiting = advance_goal(goal, user_id="U-test", autonomy_grant=grant)
+    assert waiting["plan"]["decision"] == "HOLD"
+    assert waiting["criterion_results"]["criterion-demo"] == "UNKNOWN"
+
+    first_result = job_worker.run_goal_child_once(
+        executor=lambda _job, _payload: {
+            "outcome": "PASS", "summary": "stage one complete",
+            "evidence": ["stage one test report: PASS"],
+        }
+    )
+    assert first_result["status"] == "done"
+
+    second = advance_goal(goal, user_id="U-test", autonomy_grant=grant)
+    assert second["plan"]["decision"] == "PROPOSE_CHILD_JOB"
+    assert second["persisted_job"]["job_key"] == "child-2"
+    second_job = job_store.get_job(second["persisted_job"]["job_id"])
+    assert second_job["parent_job_id"] == first_result["id"]
+
+    second_result = job_worker.run_goal_child_once(
+        executor=lambda _job, _payload: {
+            "outcome": "PASS", "summary": "stage two complete",
+            "evidence": ["stage two test report: PASS"],
+        }
+    )
+    assert second_result["status"] == "done"
+
+    completed = advance_goal(goal, user_id="U-test", autonomy_grant=grant)
+    assert completed["plan"]["decision"] == "GOAL_ACHIEVED"
+    assert completed["criterion_results"]["criterion-demo"] == "PASS"
+    assert completed["persisted_job"] is None
+
+
+def test_advance_goal_never_reports_pass_without_evidence(tmp_path, monkeypatch):
+    setup_db(tmp_path, monkeypatch)
+    goal = chained_goal()
+    first = advance_goal(goal, user_id="U-test", autonomy_grant=trusted_grant())
+    job_id = first["persisted_job"]["job_id"]
+    # A legacy/direct DB status change without an evidence payload is not enough.
+    job_store.update_job(job_id, status="completed", result="completed")
+    result = advance_goal(goal, user_id="U-test", autonomy_grant=trusted_grant())
+    assert result["criterion_results"]["criterion-demo"] == "FAIL"
+    assert result["plan"]["decision"] == "PROPOSE_CHILD_JOB"
