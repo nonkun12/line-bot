@@ -217,3 +217,57 @@ def test_generated_job_outside_goal_grant_is_held(tmp_path, monkeypatch):
     )
     assert result["decision"] == "HOLD"
     assert result["reason"] == "generated_job_rejected"
+
+
+
+def test_run_until_blocked_resumes_persisted_pending_child_after_interruption(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    goal_job_store.create_goal(_goal(), "U-test", _grant("goal-orchestrator"))
+    queued = goal_job_orchestrator.advance_goal("goal-orchestrator")
+    assert queued["decision"] == "CHILD_JOB_QUEUED"
+    assert goal_job_store.get_goal_child_jobs("goal-orchestrator")[0]["status"] == "pending"
+
+    executed = []
+
+    def executor(_job, payload):
+        executed.append(payload["goal_job_key"])
+        return {
+            "result": "resumed child completed",
+            "evidence": {
+                "checks": [{"name": "pytest", "status": "PASS", "source": "CI run 1001"}]
+            },
+        }
+
+    def evaluator(_goal_record, job):
+        import json
+        key = json.loads(job["message"])["goal_job_key"]
+        return {"criterion": "PASS" if key == "second-review" else "FAIL"}
+
+    result = goal_job_orchestrator.run_until_blocked(
+        "goal-orchestrator",
+        executor=executor,
+        evidence_evaluator=evaluator,
+        max_steps=4,
+    )
+    assert result["decision"] == "GOAL_ACHIEVED"
+    assert executed == ["first-test", "second-review"]
+    assert result["steps_executed"] == 2
+
+
+def test_run_until_blocked_does_not_steal_running_child(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    goal_job_store.create_goal(_goal(), "U-test", _grant("goal-orchestrator"))
+    queued = goal_job_orchestrator.advance_goal("goal-orchestrator")
+    job_id = queued["job_record"]["job_id"]
+    claimed = db.claim_goal_child_job(job_id)
+    assert claimed is not None
+
+    result = goal_job_orchestrator.run_until_blocked(
+        "goal-orchestrator",
+        executor=lambda *_: {"result": "should not run", "evidence": {"checks": [{"name": "x", "status": "PASS", "source": "test"}]}},
+        evidence_evaluator=lambda *_: {"criterion": "PASS"},
+        max_steps=2,
+    )
+    assert result["decision"] == "HOLD"
+    assert result["reason"] == "goal_child_already_running"
+    assert result["job_id"] == job_id
