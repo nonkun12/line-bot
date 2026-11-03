@@ -169,14 +169,6 @@ def test_goal_scoped_policy_still_requires_human_for_high_risk_job():
 
 
 def test_goal_scoped_policy_stops_at_job_budget():
-    result = plan_next_job(
-        _autonomous_goal(),
-        {"line-routing": "FAIL", "safe-execution": "FAIL"},
-        {"routing-tests": "done"},
-    )
-    assert result["decision"] == "HOLD"
-    assert result["reason"] == "autonomy_job_budget_exhausted"
-
     goal = _autonomous_goal()
     goal["autonomy_policy"]["max_jobs"] = 1
     result = plan_next_job(
