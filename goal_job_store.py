@@ -361,7 +361,7 @@ def authorize_claimed_job(job: object) -> dict[str, Any]:
     init_goal_job_store()
     with db.get_conn() as conn:
         row = conn.execute(
-            "SELECT grant_json,status FROM goal_chains WHERE goal_id=?",
+            "SELECT grant_json,status,goal_json FROM goal_chains WHERE goal_id=?",
             (goal_id,),
         ).fetchone()
         link = conn.execute(
