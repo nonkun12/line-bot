@@ -161,6 +161,14 @@ def _is_review_coverage_gap_task_id(task_id: str) -> bool:
     )
 
 
+def _is_provider_free_autonomous_task(task_id: str) -> bool:
+    """Only tasks with fully deterministic plans may run without a model client."""
+    return (
+        task_id in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
+        and not _is_review_coverage_gap_task_id(task_id)
+    )
+
+
 def _self_improvement_history_path() -> Path:
     raw = os.environ.get(
         "SELF_IMPROVEMENT_HISTORY_PATH",
@@ -2640,7 +2648,7 @@ def execute(instruction: str) -> int:
     # Deterministic queue tasks must run with no provider client and no API key.
     # If a deterministic plan unexpectedly needs a model, the guarded executor
     # fails closed instead of falling back to an external service.
-    provider_free_task = deterministic_task and not review_coverage_gap_task
+    provider_free_task = _is_provider_free_autonomous_task(autonomous_task_id)
     client = None if provider_free_task else worker.Groq(api_key=os.environ["GROQ_API_KEY"])
     state = DevelopmentState(
         client=client,
