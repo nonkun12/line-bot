@@ -409,6 +409,15 @@ jobs:
             | jq -s 'add | map(select(has("pull_request") | not) | {number,title,body,state,labels})' > /tmp/autonomous-loop-all-issues.json
           jq '[.[] | select(.state == "open")]' /tmp/autonomous-loop-all-issues.json > /tmp/autonomous-loop-open-issues.json
 
+      - name: Publish read-only task review backlog digest
+        if: success() && env.TRIGGER_MODE == 'normal'
+        run: |
+          set -euo pipefail
+          python -m scripts.autonomous_task_review_digest \
+            --issues /tmp/autonomous-loop-all-issues.json \
+            --output /tmp/autonomous-task-review-backlog.md
+          cat /tmp/autonomous-task-review-backlog.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Generate review-only task proposals when catalog is exhausted
         if: success() && env.TRIGGER_MODE == 'normal'
         env:
