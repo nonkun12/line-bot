@@ -82,6 +82,19 @@ def build_scenario(
             "action": "人物や対象の動きと、前後の状態変化を記述する",
             "dialogue_or_narration": "必要な台詞またはナレーションを作成する",
             "audio_direction": "環境音・効果音・音楽の役割と開始終了位置を指定する",
+            "music_sync": {
+                "emotional_intent": "このシーンで視聴者に届ける感情",
+                "energy": "low",
+                "tempo_relation": "映像の動きと自然に呼吸を合わせる",
+                "cue_in_seconds": 0,
+                "cue_out_seconds": length,
+                "sync_points": [
+                    {"at_seconds": 0, "event": "シーン開始に合わせて音楽を導入"},
+                    {"at_seconds": length, "event": "次シーンへの余韻または自然な接続"},
+                ],
+                "motif": "作品全体で一貫性を持たせる主題モチーフ",
+                "mix_priority": "dialogue_first",
+            },
             "transition": "次のシーンへ自然につながる画面・音の変化を指定する",
             "continuity": {
                 "characters": [],
@@ -106,6 +119,23 @@ def build_scenario(
             "scene_count": scene_count,
         },
         "story_structure": ["opening", "development", "climax", "resolution"],
+        "audiovisual_direction": {
+            "principle": "映像と音楽を同じ感情設計から作り、互いの表現を生かす",
+            "emotional_arc": [
+                {"act": "opening", "energy": "low", "music_role": "世界観を静かに提示"},
+                {"act": "development", "energy": "medium", "music_role": "展開と期待を支える"},
+                {"act": "climax", "energy": "high", "music_role": "映像の山場を強調し、過剰に競合しない"},
+                {"act": "resolution", "energy": "low", "music_role": "余韻を残して自然に収束"},
+            ],
+            "global_music_motif": "全シーンを通して一貫する主題。必要に応じて編成・調性・リズムを変奏する",
+            "mixing_rules": [
+                "台詞がある区間では台詞の明瞭さを最優先し、BGMを自動的に控えめにする",
+                "重要な映像イベントと音楽のアクセント位置を同期させる",
+                "シーン間の音楽は唐突に切らず、クロスフェードまたは意図した無音で接続する",
+                "効果音は音楽と周波数・タイミングが競合しないよう配置する",
+                "無音も演出として使い、常時BGMを流すことを必須にしない",
+            ],
+        },
         "scenes": scenes,
         "quality_gates": [
             "目的・対象視聴者・メッセージが一貫している",
@@ -147,10 +177,41 @@ def validate_scenario(scenario: object) -> tuple[str, ...]:
     if len(ids) != len(scenes) or len(ids) != len(set(ids)):
         errors.append("scene_ids_invalid_or_duplicate")
     required = ("purpose", "story_beat", "visual_direction", "action",
-                "dialogue_or_narration", "audio_direction", "transition", "continuity")
+                "dialogue_or_narration", "audio_direction", "music_sync",
+                "transition", "continuity")
     for index, scene in enumerate(scenes):
         if not isinstance(scene, dict) or any(not scene.get(key) for key in required):
             errors.append(f"scene_{index + 1}_incomplete")
+            continue
+        sync = scene.get("music_sync")
+        if not isinstance(sync, dict):
+            errors.append(f"scene_{index + 1}_music_sync_invalid")
+            continue
+        cue_in = sync.get("cue_in_seconds")
+        cue_out = sync.get("cue_out_seconds")
+        scene_duration = scene.get("duration_seconds")
+        if (
+            type(cue_in) is not int or type(cue_out) is not int
+            or type(scene_duration) is not int
+            or cue_in < 0 or cue_out <= cue_in or cue_out > scene_duration
+        ):
+            errors.append(f"scene_{index + 1}_music_cue_timing_invalid")
+        if sync.get("mix_priority") not in {"dialogue_first", "music_first", "balanced", "intentional_silence"}:
+            errors.append(f"scene_{index + 1}_mix_priority_invalid")
+        points = sync.get("sync_points")
+        if not isinstance(points, list) or any(
+            not isinstance(point, dict)
+            or type(point.get("at_seconds")) is not int
+            or point["at_seconds"] < 0
+            or point["at_seconds"] > scene_duration
+            or not isinstance(point.get("event"), str)
+            or not point["event"].strip()
+            for point in points
+        ):
+            errors.append(f"scene_{index + 1}_sync_points_invalid")
+    audiovisual = scenario.get("audiovisual_direction")
+    if not isinstance(audiovisual, dict) or not audiovisual.get("mixing_rules"):
+        errors.append("audiovisual_direction_missing")
     return tuple(errors)
 
 
@@ -170,8 +231,13 @@ def scenario_goal_jobs(scenario: dict[str, Any]) -> list[dict[str, Any]]:
          "deliverable": "camera, framing, movement, and timing plan"},
         {"id": "audio_plan", "stage": "design", "depends_on": ["screenplay"],
          "deliverable": "dialogue, ambience, effects, and original music cues"},
+        {"id": "music_composition", "stage": "design", "depends_on": ["audio_plan"],
+         "deliverable": "original music themes, motifs, arrangement, and scene-level cue timing"},
+        {"id": "audiovisual_sync_review", "stage": "review",
+         "depends_on": ["shot_list", "music_composition"],
+         "deliverable": "verify emotional, rhythmic, transition, and mix harmony between picture and sound"},
         {"id": "production_readiness", "stage": "verify",
-         "depends_on": ["shot_list", "audio_plan"],
+         "depends_on": ["audiovisual_sync_review", "audio_plan"],
          "deliverable": "validated production package"},
     ]
 
