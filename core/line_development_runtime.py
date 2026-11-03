@@ -2629,19 +2629,25 @@ def _prepare_idea_stage(instruction: str) -> tuple[str, str | None, str | None]:
     return handoff.instruction, handoff.task_id, None
 
 def _validate_goal_allowed_paths(allowed_paths: object) -> tuple[str, ...]:
-    """Validate exact repository-relative paths supplied by a trusted Goal caller."""
+    """Validate repository-relative exact files or directory prefixes from a trusted Goal caller."""
     if not isinstance(allowed_paths, (list, tuple)) or not allowed_paths:
-        raise ValueError("Goal execution requires a non-empty exact allowed_paths list")
+        raise ValueError("Goal execution requires a non-empty allowed_paths list")
     roots = ("tests/", "uhip/tests/", "docs/", "agents/", "core/", "scripts/")
     validated = []
     for path in allowed_paths:
         if not isinstance(path, str) or not path or len(path) > 240:
             raise ValueError("Goal allowed path is invalid")
-        candidate = Path(path)
+        is_directory = path.endswith("/")
+        candidate_text = path[:-1] if is_directory else path
+        candidate = Path(candidate_text)
         normalized = candidate.as_posix()
-        if (candidate.is_absolute() or normalized != path or "\\\\" in path
-                or any(part in {"", ".", ".."} for part in path.split("/"))
-                or not any(path.startswith(root) for root in roots)):
+        if (
+            candidate.is_absolute()
+            or normalized != candidate_text
+            or "\\\\" in path
+            or any(part in {"", ".", ".."} for part in candidate_text.split("/"))
+            or not any(path.startswith(root) for root in roots)
+        ):
             raise ValueError("Goal allowed path is outside the supported repository scope")
         if path.startswith(".github/") or path.startswith("secrets/"):
             raise ValueError("Goal allowed path is protected")
