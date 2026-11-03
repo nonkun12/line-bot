@@ -476,6 +476,24 @@ def _deterministic_target_for_task(task: dict[str, object]) -> str | None:
     return expected_target
 
 
+def _is_review_coverage_gap_model_task(task: dict[str, object]) -> bool:
+    """Recognize tightly-scoped review-gap tests that need a model for one new test."""
+    task_id = str(task.get("id", "")).strip()
+    instruction = str(task.get("instruction", ""))
+    allowed_paths = task.get("allowed_paths")
+    return (
+        task_id.startswith("review-coverage-gap-")
+        and "新しい回帰テストを1件追加" in instruction
+        and "変更は指定テストファイル1つだけ" in instruction
+        and isinstance(allowed_paths, list)
+        and len(allowed_paths) == 1
+        and isinstance(allowed_paths[0], str)
+        and allowed_paths[0].startswith("tests/")
+        and allowed_paths[0].endswith(".py")
+        and ".." not in Path(allowed_paths[0]).parts
+    )
+
+
 def run_task(
     task: dict[str, object],
     run_index: int,
@@ -501,7 +519,7 @@ def run_task(
             "failure_reason": "control_tower_head_changed",
         }
     env = os.environ.copy()
-    if _deterministic_target_for_task(task) is not None:
+    if _deterministic_target_for_task(task) is not None and not _is_review_coverage_gap_model_task(task):
         # Do not expose provider credentials to deterministic test-only tasks.
         for key in (
             "GROQ_API_KEY",
