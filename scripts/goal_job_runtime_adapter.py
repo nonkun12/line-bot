@@ -5,6 +5,7 @@ meant to be called only from an authenticated, isolated GitHub Actions worker.
 """
 from __future__ import annotations
 
+import json
 import subprocess
 from collections.abc import Callable
 from typing import Any
@@ -88,7 +89,7 @@ def execute_goal_child(
         "changed_paths": changed_paths,
         "outside_scope_paths": outside_scope,
     }
-    return {"result": __import__("json").dumps(result, ensure_ascii=False, sort_keys=True), "evidence": {"checks": checks, **result}}
+    return {"result": json.dumps(result, ensure_ascii=False, sort_keys=True), "evidence": {"checks": checks, **result}}
 
 
 __all__ = ["execute_goal_child"]
