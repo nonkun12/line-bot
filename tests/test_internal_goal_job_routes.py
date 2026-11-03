@@ -2,6 +2,7 @@ import json
 
 import db
 import goal_job_store
+import internal_goal_job_routes as goal_routes
 from internal_goal_job_routes import register_goal_job_routes
 
 
@@ -66,6 +67,7 @@ def test_claim_is_atomic_and_second_worker_gets_no_job(tmp_path, monkeypatch):
 
 
 def test_complete_requires_claim_token_and_is_idempotently_rejected_after_first_write(tmp_path, monkeypatch):
+    monkeypatch.setattr(goal_routes, "_verify_exact_sha_checks", lambda evidence, sha: True)
     client = _app(tmp_path, monkeypatch)
     job_id = _create_goal()
     headers = {"x-internal-key": "test-internal-key"}
