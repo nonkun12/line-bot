@@ -107,10 +107,27 @@ def run_until_blocked(
         return {"decision": "HOLD", "reason": "step_budget_invalid"}
 
     for step in range(max_steps):
-        planned = advance_goal(goal_id, job_generator=job_generator)
-        if planned.get("decision") != "CHILD_JOB_QUEUED":
-            return {**planned, "steps_executed": step}
-        job_id = planned["job_record"]["job_id"]
+        # Resume a durable pending child before asking the planner to create
+        # another one. A running child belongs to another worker and is never
+        # stolen; concurrent orchestration returns an explicit HOLD.
+        child_jobs = goal_job_store.get_goal_child_jobs(goal_id)
+        running = [item for item in child_jobs if item["status"] == "running"]
+        if running:
+            return {
+                "decision": "HOLD",
+                "reason": "goal_child_already_running",
+                "job_id": running[0]["job_id"],
+                "steps_executed": step,
+            }
+        pending = next((item for item in child_jobs if item["status"] == "pending"), None)
+        if pending is not None:
+            job_id = pending["job_id"]
+        else:
+            planned = advance_goal(goal_id, job_generator=job_generator)
+            if planned.get("decision") != "CHILD_JOB_QUEUED":
+                return {**planned, "steps_executed": step}
+            job_id = planned["job_record"]["job_id"]
+
         completed = goal_job_worker.run_once(executor, job_id=job_id)
         if completed is None:
             return {"decision": "HOLD", "reason": "child_job_claim_unavailable", "job_id": job_id, "steps_executed": step}
