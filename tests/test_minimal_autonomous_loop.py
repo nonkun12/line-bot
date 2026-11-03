@@ -840,12 +840,12 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
     monkeypatch.setattr(
         recovery_ai_loop_adapter,
         "record_loop_outcome",
-        lambda _path, result: persisted.append(("recovery", result["status"])) or {"recorded": False, "reason": "preflight_blocked_not_task_failure"},
+        lambda _path, result, **_kwargs: persisted.append(("recovery", result["status"])) or {"recorded": False, "reason": "preflight_blocked_not_task_failure"},
     )
     monkeypatch.setattr(
         control_tower_loop_observer,
         "record_loop_observation",
-        lambda _path, result: persisted.append(("control_tower", result["status"])) or {"recorded": True, "proposal_executable": False},
+        lambda _path, result, **_kwargs: persisted.append(("control_tower", result["status"])) or {"recorded": True, "proposal_executable": False},
     )
     monkeypatch.setattr(
         control_tower_orchestrator,
@@ -1132,7 +1132,7 @@ def test_orchestrator_gates_successful_loop_on_exact_evidence(monkeypatch, tmp_p
     monkeypatch.setattr(
         recovery_ai_loop_adapter,
         "record_loop_outcome",
-        lambda _path, result: {
+        lambda _path, result, **_kwargs: {
             "recorded": True,
             "verified": True,
             "status": result["status"],
@@ -1142,7 +1142,7 @@ def test_orchestrator_gates_successful_loop_on_exact_evidence(monkeypatch, tmp_p
     monkeypatch.setattr(
         control_tower_loop_observer,
         "record_loop_observation",
-        lambda _path, result: {
+        lambda _path, result, **_kwargs: {
             "recorded": True,
             "observed_status": result["status"],
             "proposal_executable": False,
