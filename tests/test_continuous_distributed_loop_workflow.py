@@ -64,7 +64,7 @@ def _run_gate(tmp_path, rows, completed):
     evidence = tmp_path / "evidence"
     evidence.mkdir()
     (evidence / "minimal-autonomous-loop.jsonl").write_text(
-        "".join(__import__("json").dumps(row) + "\\n" for row in rows),
+        "".join(__import__("json").dumps(row) + chr(10) for row in rows),
         encoding="utf-8",
     )
     (evidence / "autonomous-loop-state.json").write_text(
@@ -86,7 +86,7 @@ def test_continuation_gate_stops_if_any_task_fails(tmp_path):
     evidence = tmp_path / "evidence"
     evidence.mkdir()
     (evidence / "minimal-autonomous-loop.jsonl").write_text(
-        __import__("json").dumps(_row(status="FAIL", exit_code=1)) + "\\n",
+        __import__("json").dumps(_row(status="FAIL", exit_code=1)),
         encoding="utf-8",
     )
     (evidence / "autonomous-loop-state.json").write_text(
