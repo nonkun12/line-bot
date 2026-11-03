@@ -421,7 +421,7 @@ def authorize_claimed_job(job: object) -> dict[str, Any]:
     grant = _validate_grant(json.loads(row[0]), goal_id)
     decision = evaluate_job_autonomy(payload)
     if (
-        decision.get("decision") != "AUTO_APPROVE"
+        decision.get("decision") != "SAFE_CANDIDATE"
         or payload.get("stage") not in grant["allowed_stages"]
         or any(not any(path.startswith(root) for root in grant["allowed_path_prefixes"])
                for path in payload.get("allowed_paths", []))
@@ -520,7 +520,7 @@ def register_child_job_definition(goal_id: str, job: object) -> bool:
             and bool(paths)
             and all(isinstance(path, str) and any(path.startswith(root) for root in grant["allowed_path_prefixes"]) for path in paths)
         )
-        if decision.get("decision") != "AUTO_APPROVE" or not in_grant:
+        if decision.get("decision") != "SAFE_CANDIDATE" or not in_grant:
             raise PermissionError("generated JOB is outside the trusted autonomy grant or risk policy")
         jobs.append(candidate)
         conn.execute(
