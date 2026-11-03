@@ -191,3 +191,25 @@ def test_goal_planner_stops_at_bounded_goal_job_budget():
     result = plan_next_job(goal, {"line-routing": "FAIL", "safe-execution": "FAIL"}, states, autonomy_grant=grant)
     assert result["decision"] == "HOLD"
     assert result["reason"] == "autonomy_job_budget_exhausted"
+
+
+def test_goal_planner_rejects_expired_or_malformed_grants():
+    grant = _grant()
+    grant["expires_at"] = "2000-01-01T00:00:00Z"
+    result = plan_next_job(_goal(), {"line-routing": "FAIL", "safe-execution": "FAIL"}, {}, autonomy_grant=grant)
+    assert result["decision"] == "HOLD"
+    assert result["reason"] == "autonomy_grant_invalid_or_mismatched"
+
+    grant = _grant()
+    grant["allowed_path_prefixes"] = [["tests/"]]
+    result = plan_next_job(_goal(), {"line-routing": "FAIL", "safe-execution": "FAIL"}, {}, autonomy_grant=grant)
+    assert result["decision"] == "HOLD"
+    assert result["reason"] == "autonomy_grant_invalid_or_mismatched"
+
+
+def test_goal_planner_rejects_test_stage_writing_outside_tests():
+    goal = _goal()
+    goal["jobs"][0]["allowed_paths"] = ["core/new_feature.py"]
+    result = plan_next_job(goal, {"line-routing": "FAIL", "safe-execution": "FAIL"}, {}, autonomy_grant=_grant())
+    assert result["decision"] == "HOLD"
+    assert result["approval_required_jobs"][0]["reason"] == "test_stage_must_be_test_only"
