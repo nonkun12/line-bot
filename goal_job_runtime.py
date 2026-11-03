@@ -184,4 +184,4 @@ def advance_goal(
     }
 
 
-__all__ = [\n    "normalize_job_status", "load_goal_job_states", "persist_next_job",\n    "derive_goal_criterion_results", "advance_goal",\n]
+__all__ = ["normalize_job_status", "load_goal_job_states", "derive_goal_criterion_results", "advance_goal"]
