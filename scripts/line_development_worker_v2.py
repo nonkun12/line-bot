@@ -501,15 +501,15 @@ def _safe_api_error_detail(exc: Exception) -> str:
         else None
     )
     if isinstance(failed_generation, str) and failed_generation:
-        safe_failure = re.sub(r"(?i)bearer\\s+\\S+", "Bearer [REDACTED]", failed_generation)
-        safe_failure = re.sub(r"\\b(?:gsk|sk)-[A-Za-z0-9_-]{8,}\\b", "[REDACTED]", safe_failure)
+        safe_failure = re.sub(r"(?i)bearer\s+\S+", "Bearer [REDACTED]", failed_generation)
+        safe_failure = re.sub(r"\b(?:gsk|sk)-[A-Za-z0-9_-]{8,}\b", "[REDACTED]", safe_failure)
         safe_failure = re.sub(
-            r"(?i)(api[_ -]?key|token|secret)(\\s*[:=]\\s*)[^\\s,;]+",
-            r"\\1\\2[REDACTED]",
+            r"(?i)(api[_ -]?key|token|secret)(\s*[:=]\s*)[^\s,;]+",
+            r"\1\2[REDACTED]",
             safe_failure,
         )
-        safe_failure = re.sub(r"[\\r\\n\\t]+", " ", safe_failure)
-        safe_failure = re.sub(r"\\s{2,}", " ", safe_failure).strip()
+        safe_failure = re.sub(r"[\r\n\t]+", " ", safe_failure)
+        safe_failure = re.sub(r"\s{2,}", " ", safe_failure).strip()
         if safe_failure:
             parts.append(f"failed_generation={safe_failure[:160]}")
     response = getattr(exc, "response", None)
