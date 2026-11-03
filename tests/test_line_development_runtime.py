@@ -62,9 +62,9 @@ def test_review_coverage_gap_task_skips_idea_handoff_but_is_not_deterministic(mo
     task_id = "review-coverage-gap-703fa3c06b"
     monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
     assert runtime._is_review_coverage_gap_task_id(task_id)
-    assert task_id not in runtime._DETERMINISTIC_AUTONOMOUS_TASK_TARGETS or (
-        runtime._DETERMINISTIC_AUTONOMOUS_TASK_TARGETS[task_id] == "tests/test_project_registry.py"
-    )
+    assert task_id in runtime._DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
+    assert not runtime._is_provider_free_autonomous_task(task_id)
+    assert runtime._is_provider_free_autonomous_task("uhip-confidence-out-of-range-rejection")
     monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "manual")
     assert not runtime._is_review_coverage_gap_task_id(task_id)
 
