@@ -30,7 +30,7 @@ class VideoAgent:
                 title=request.metadata.get("title"),
             )
             lines = [
-                f"🎬 シナリオ草案：{scenario['title']}",
+                f"🎬 映像AI｜シナリオ草案：{scenario['title']}",
                 f"尺：{scenario['creative_brief']['duration_seconds']}秒 / "
                 f"シーン数：{len(scenario['scenes'])}",
                 "状態：草案（台詞・演出の詳細化とレビュー前）",
