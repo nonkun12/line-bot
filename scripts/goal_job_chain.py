@@ -7,6 +7,7 @@ execution, HOLD release, merge, and deployment remain separate capabilities.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 from core.autonomy_policy import evaluate_job_autonomy
@@ -47,10 +48,18 @@ def _validate_autonomy_grant(grant: object, goal_id: str) -> dict[str, Any] | No
     allowed_stages = grant.get("allowed_stages")
     allowed_paths = grant.get("allowed_path_prefixes")
     max_jobs = grant.get("max_jobs")
+    expires_at = grant.get("expires_at")
+    approved_by = grant.get("approved_by")
+    try:
+        expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00")) if isinstance(expires_at, str) else None
+    except ValueError:
+        expiry = None
     if (
         not _valid_id(grant_id)
         or grant.get("goal_id") != goal_id
         or grant.get("active") is not True
+        or not isinstance(approved_by, str) or not approved_by.strip()
+        or expiry is None or expiry.tzinfo is None or expiry <= datetime.now(timezone.utc)
         or grant.get("auto_approve_registered_jobs") is not True
         or type(max_jobs) is not int
         or not 1 <= max_jobs <= MAX_AUTONOMOUS_JOBS_PER_GOAL
@@ -69,6 +78,8 @@ def _validate_autonomy_grant(grant: object, goal_id: str) -> dict[str, Any] | No
         return None
     return {
         "grant_id": grant_id,
+        "approved_by": approved_by.strip(),
+        "expires_at": expires_at,
         "max_jobs": max_jobs,
         "allowed_stages": tuple(allowed_stages),
         "allowed_path_prefixes": tuple(allowed_paths),
