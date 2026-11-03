@@ -346,10 +346,15 @@ def claim_pending_job_by_type(job_type, *, stale_after_seconds=900):
         )
         row = conn.execute(
             """
-            SELECT id
-            FROM jobs
-            WHERE job_type=? AND status='pending'
-            ORDER BY id
+            SELECT child.id
+            FROM jobs AS child
+            LEFT JOIN jobs AS parent ON parent.id = child.parent_job_id
+            WHERE child.job_type=? AND child.status='pending'
+              AND (
+                  child.parent_job_id IS NULL
+                  OR parent.status IN ('done', 'completed')
+              )
+            ORDER BY child.id
             LIMIT 1
             """,
             (job_type.strip(),),
