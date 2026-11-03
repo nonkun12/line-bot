@@ -31,6 +31,8 @@ def _grant():
         "grant_id": "grant-line-goal-001",
         "goal_id": "goal-line-autonomy",
         "active": True,
+        "approved_by": "repository-owner",
+        "expires_at": "2099-01-01T00:00:00Z",
         "auto_approve_registered_jobs": True,
         "max_jobs": 12,
         "allowed_stages": ["requirements", "design", "implementation", "test", "review", "fix", "verify"],
