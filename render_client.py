@@ -236,7 +236,9 @@ def _mcp_http_is_hibernate_rate_limited() -> bool:
                     return True
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    raise RuntimeError("MCP health probe remained rate-limited (HTTP 429) after bounded retry")
+                    raise RuntimeError(
+                        f"MCP health probe returned status=429 (routing={last_routing}) after bounded retry"
+                    )
                 retry_after = response.headers.get("Retry-After", "").strip()
                 try:
                     wait_seconds = min(max(float(retry_after), 0.0), 10.0) if retry_after else delay
@@ -258,7 +260,13 @@ def _mcp_http_is_hibernate_rate_limited() -> bool:
         finally:
             close_response = getattr(response, "close", None)
             if callable(close_response):
-                close_response()
+                try:
+                    close_response()
+                except Exception:
+                    # requests.Response.close() may fail for lightweight mocked
+                    # responses with no underlying raw stream; the health result
+                    # has already been handled and this cleanup must not mask it.
+                    pass
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise RuntimeError(f"MCP health probe remained rate-limited (HTTP 429, routing={last_routing})")
