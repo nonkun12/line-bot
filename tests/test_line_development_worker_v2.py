@@ -1473,6 +1473,29 @@ def test_safe_api_error_detail_reports_provider_metadata_without_secrets():
     assert "abcdefghijklmnopqrstuvwxyz" not in detail
 
 
+
+
+def test_safe_api_error_detail_exposes_only_known_provider_failure_metadata():
+    class BadRequestError(Exception):
+        status_code = 400
+        body = {
+            "error": {
+                "code": "json_validate_failed",
+                "failed_generation": (
+                    "max completion tokens reached before generating a valid document"
+                ),
+            }
+        }
+
+    detail = worker._safe_api_error_detail(BadRequestError("provider rejected request"))
+
+    assert "code=json_validate_failed" in detail
+    assert (
+        "failed_generation=max completion tokens reached before generating a valid document"
+        in detail
+    )
+
+
 def test_append_only_generation_failure_includes_safe_api_error_detail(monkeypatch, tmp_path):
     target = tmp_path / "tests" / "test_sample.py"
     target.parent.mkdir()
