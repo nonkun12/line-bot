@@ -10,6 +10,8 @@ from scripts.goal_job_chain import plan_next_job
 
 def normalize_job_status(status: object) -> str:
     """Normalize the two existing successful terminal spellings."""
+    if not isinstance(status, str):
+        return "unknown"
     if status in {"done", "completed"}:
         return "done"
     if status in {"pending", "running", "failed", "held"}:
@@ -43,8 +45,11 @@ def _persist_next_job(
         or not isinstance(policy, dict)
         or policy.get("decision") != "AUTO_APPROVE"
         or not isinstance(permissions, dict)
+        or permissions.get("clear_hold") is not False
         or permissions.get("merge") is not False
         or permissions.get("deploy") is not False
+        or permissions.get("modify_secrets_or_permissions") is not False
+        or permissions.get("mutate_production_data") is not False
         or not isinstance(job, dict)
     ):
         raise ValueError("proposal does not contain trusted bounded-autonomy evidence")
@@ -151,7 +156,16 @@ def advance_goal(
     max_retries: int = 2,
 ) -> dict[str, Any]:
     """Plan, persist at most one next child, and stop only on verified Goal completion."""
-    if not isinstance(goal, dict) or not isinstance(goal.get("goal_id"), str):
+    if (
+        not isinstance(goal, dict)
+        or not isinstance(goal.get("goal_id"), str)
+        or not isinstance(goal.get("success_criteria"), list)
+        or not goal["success_criteria"]
+        or not isinstance(goal.get("jobs"), list)
+        or any(not isinstance(item, dict) or not isinstance(item.get("id"), str)
+               for item in goal["success_criteria"])
+        or any(not isinstance(item, dict) for item in goal["jobs"])
+    ):
         raise ValueError("goal contract is invalid")
     records = job_store.list_goal_child_jobs(goal["goal_id"])
     states = {item["job_key"]: normalize_job_status(item["status"]) for item in records}
