@@ -17,11 +17,11 @@ import db
 STEP_NAME = "goal_child_executor"
 
 
-def run_once(executor: Callable[[dict[str, Any], dict[str, Any]], object] | None = None):
+def run_once(executor: Callable[[dict[str, Any], dict[str, Any]], object] | None = None, *, job_id: int | None = None):
     """Claim and execute one Goal child. No executor means no claim and no work."""
     if executor is None:
         return None
-    job = db.claim_pending_job_by_type("goal_child")
+    job = db.claim_goal_child_job(job_id) if job_id is not None else db.claim_pending_job_by_type("goal_child")
     if job is None:
         return None
 
