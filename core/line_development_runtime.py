@@ -39,6 +39,7 @@ class DevelopmentState:
     test_output: str = ""
     tests_passed: bool = False
     baseline_status: str = ""
+    allowed_paths: tuple[str, ...] | None = None
 
 
 def _fallback_safe_target(files: list[str]) -> str | None:
@@ -2207,6 +2208,12 @@ class DevelopmentExecutor:
                 autonomous_task_id = self.state.autonomous_task_id.strip() or os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
                 expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(autonomous_task_id)
                 files = worker.repo_files()
+                if self.state.allowed_paths is not None:
+                    # Goal child execution is explicitly scoped by a trusted caller.
+                    # Restrict the manager's candidate set before model selection.
+                    files = [path for path in files if path in self.state.allowed_paths]
+                    if not files:
+                        return AgentResult(task.task_id, False, "no repository files remain inside the Goal grant")
                 if expected_target is not None:
                     # Deterministic queue tasks use their declared target directly;
                     # never call the model-backed file selector for these tasks.
@@ -2615,8 +2622,32 @@ def _prepare_idea_stage(instruction: str) -> tuple[str, str | None, str | None]:
     )
     return handoff.instruction, handoff.task_id, None
 
-def execute(instruction: str) -> int:
-    """Run one real guarded development request through the quality pipeline."""
+def _validate_goal_allowed_paths(allowed_paths: object) -> tuple[str, ...]:
+    """Validate exact repository-relative paths supplied by a trusted Goal caller."""
+    if not isinstance(allowed_paths, (list, tuple)) or not allowed_paths:
+        raise ValueError("Goal execution requires a non-empty exact allowed_paths list")
+    roots = ("tests/", "uhip/tests/", "docs/", "agents/", "core/", "scripts/")
+    validated = []
+    for path in allowed_paths:
+        if not isinstance(path, str) or not path or len(path) > 240:
+            raise ValueError("Goal allowed path is invalid")
+        candidate = Path(path)
+        normalized = candidate.as_posix()
+        if (candidate.is_absolute() or normalized != path or "\\\\" in path
+                or any(part in {"", ".", ".."} for part in path.split("/"))
+                or not any(path.startswith(root) for root in roots)):
+            raise ValueError("Goal allowed path is outside the supported repository scope")
+        if path.startswith(".github/") or path.startswith("secrets/"):
+            raise ValueError("Goal allowed path is protected")
+        validated.append(path)
+    if len(validated) != len(set(validated)):
+        raise ValueError("Goal allowed paths must be unique")
+    return tuple(validated)
+
+
+def execute(instruction: str, *, allowed_paths: object = None) -> int:
+    """Run one guarded development request; optional Goal scope is enforced at target selection."""
+    scoped_paths = _validate_goal_allowed_paths(allowed_paths) if allowed_paths is not None else None
     stop_controller = ImmediateStopController()
     try:
         stop_controller.assert_can_execute()
@@ -2654,6 +2685,7 @@ def execute(instruction: str) -> int:
         client=client,
         instruction=instruction,
         autonomous_task_id=os.environ.get("AUTONOMOUS_TASK_ID", "").strip(),
+        allowed_paths=scoped_paths,
     )
     executor = DevelopmentExecutor(state)
     tasks = (
