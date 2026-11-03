@@ -692,9 +692,13 @@ def run_task(
         else:
             status = "FAIL"
 
-    safe_failure_code = payload.get("failure_code")
-    if not is_safe_failure_code(safe_failure_code):
-        safe_failure_code = None
+    raw_failure_code = payload.get("failure_code")
+    if "failure_code" in payload and raw_failure_code is not None and not is_safe_failure_code(raw_failure_code):
+        # Preserve the fact that malformed machine-readable evidence was supplied.
+        # The adapter maps this sentinel to non-repairable invalid_evidence.
+        safe_failure_code = "invalid_failure_code_evidence"
+    else:
+        safe_failure_code = raw_failure_code if is_safe_failure_code(raw_failure_code) else None
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "run_index": run_index,
