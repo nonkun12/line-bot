@@ -34,8 +34,8 @@ def proposal(job_id="child-1", *, depends_on=None):
 
 def test_goal_child_persistence_is_idempotent_and_state_is_normalized(tmp_path, monkeypatch):
     setup_db(tmp_path, monkeypatch)
-    first = _persist_next_job(proposal(), user_id="U-test")
-    second = persist_next_job(proposal(), user_id="U-test")
+    first = __persist_next_job(proposal(), user_id="U-test")
+    second = _persist_next_job(proposal(), user_id="U-test")
 
     assert first["created"] is True
     assert second["created"] is False
@@ -48,23 +48,23 @@ def test_goal_child_persistence_is_idempotent_and_state_is_normalized(tmp_path, 
 
 def test_goal_child_key_cannot_be_reused_for_different_payload(tmp_path, monkeypatch):
     setup_db(tmp_path, monkeypatch)
-    persist_next_job(proposal(), user_id="U-test")
+    _persist_next_job(proposal(), user_id="U-test")
     changed = proposal()
     changed["job"]["instruction"] = "A different instruction"
     with pytest.raises(ValueError, match="different payload"):
-        persist_next_job(changed, user_id="U-test")
+        _persist_next_job(changed, user_id="U-test")
 
 
 def test_dependent_child_requires_completed_parent(tmp_path, monkeypatch):
     setup_db(tmp_path, monkeypatch)
     parent_id = job_store.create_job("U-test", "parent")
     with pytest.raises(ValueError, match="completed"):
-        persist_next_job(
+        _persist_next_job(
             proposal("child-2", depends_on=["child-1"]),
             user_id="U-test", parent_job_id=parent_id,
         )
     job_store.update_job(parent_id, status="completed")
-    result = persist_next_job(
+    result = _persist_next_job(
         proposal("child-2", depends_on=["child-1"]),
         user_id="U-test", parent_job_id=parent_id,
     )
@@ -78,17 +78,17 @@ def test_persist_adapter_rejects_unapproved_or_unbounded_proposals(tmp_path, mon
     plan = proposal()
     plan["human_approval_required"] = True
     with pytest.raises(ValueError):
-        persist_next_job(plan, user_id="U-test")
+        _persist_next_job(plan, user_id="U-test")
     plan = proposal()
     plan["permissions"]["merge"] = True
     with pytest.raises(ValueError):
-        persist_next_job(plan, user_id="U-test")
+        _persist_next_job(plan, user_id="U-test")
 
 
 def test_goal_worker_only_claims_typed_jobs_and_requires_executor(tmp_path, monkeypatch):
     setup_db(tmp_path, monkeypatch)
     normal_id = job_store.create_job("U-test", "normal")
-    goal = persist_next_job(proposal(), user_id="U-test")
+    goal = _persist_next_job(proposal(), user_id="U-test")
     with pytest.raises(ValueError, match="executor"):
         job_worker.run_goal_child_once()
     assert job_store.get_job(goal["job_id"])["status"] == "pending"
@@ -97,7 +97,7 @@ def test_goal_worker_only_claims_typed_jobs_and_requires_executor(tmp_path, monk
 
 def test_goal_worker_completes_only_with_explicit_pass_evidence(tmp_path, monkeypatch):
     setup_db(tmp_path, monkeypatch)
-    goal = persist_next_job(proposal(), user_id="U-test")
+    goal = _persist_next_job(proposal(), user_id="U-test")
 
     def executor(job, payload):
         assert job["id"] == goal["job_id"]
@@ -115,7 +115,7 @@ def test_goal_worker_completes_only_with_explicit_pass_evidence(tmp_path, monkey
 
 def test_goal_worker_records_fail_and_rejects_missing_evidence(tmp_path, monkeypatch):
     setup_db(tmp_path, monkeypatch)
-    goal = persist_next_job(proposal(), user_id="U-test")
+    goal = _persist_next_job(proposal(), user_id="U-test")
 
     result = job_worker.run_goal_child_once(
         executor=lambda _job, _payload: {"outcome": "PASS", "evidence": []}
@@ -128,7 +128,7 @@ def test_goal_worker_records_fail_and_rejects_missing_evidence(tmp_path, monkeyp
 
 def test_goal_worker_records_explicit_failure_with_evidence(tmp_path, monkeypatch):
     setup_db(tmp_path, monkeypatch)
-    goal = persist_next_job(proposal(), user_id="U-test")
+    goal = _persist_next_job(proposal(), user_id="U-test")
     result = job_worker.run_goal_child_once(
         executor=lambda _job, _payload: {
             "outcome": "FAIL", "summary": "One assertion failed",
