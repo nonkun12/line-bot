@@ -384,6 +384,8 @@ def complete_claimed_child_job(
                 or not isinstance(check.get("source"), str) or not check["source"].strip()
             ):
                 raise ValueError("evidence checks require name, PASS/FAIL status, and source")
+            if check["status"] != "PASS":
+                raise ValueError("successful completion requires every evidence check to PASS")
         evidence_json = _json(evidence)
     init_goal_job_store()
     with db.get_conn() as conn:
