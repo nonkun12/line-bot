@@ -236,6 +236,13 @@ def plan_next_job(
         if any(job_states.get(dep) not in acceptable_dependency_states for dep in job["depends_on"]):
             waiting.append(job["id"])
             continue
+        autonomy = evaluate_job_autonomy(job)
+        if autonomy.get("decision") != "SAFE_CANDIDATE":
+            review_required.append({
+                "job_id": job["id"],
+                "reason": str(autonomy.get("reason", "human_review_required")),
+            })
+            continue
         grant_allows = (
             grant is not None
             and job["stage"] in grant["allowed_stages"]
@@ -245,13 +252,6 @@ def plan_next_job(
         if not grant_allows:
             reason = "outside_goal_autonomy_grant_scope" if grant is not None else "goal_autonomy_grant_required"
             review_required.append({"job_id": job["id"], "reason": reason})
-            continue
-        autonomy = evaluate_job_autonomy(job)
-        if autonomy.get("decision") != "SAFE_CANDIDATE":
-            review_required.append({
-                "job_id": job["id"],
-                "reason": str(autonomy.get("reason", "human_review_required")),
-            })
             continue
         eligible.append((job, autonomy))
 
