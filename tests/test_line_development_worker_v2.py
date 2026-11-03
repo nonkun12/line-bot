@@ -103,7 +103,7 @@ def test_append_only_test_generation_bounds_context_before_larger_completion(mon
     assert len(prompt) < worker.MAX_APPEND_ONLY_CONTEXT_CHARS + 1000
     assert "HEAD" in prompt and "TAIL" in prompt
     assert "append-only context bounded" in prompt
-    assert captured["max_completion_tokens"] == 3500
+    assert captured["max_completion_tokens"] == worker.MAX_APPEND_ONLY_RESPONSE_TOKENS
 
 
 def test_protected_worker_files_are_never_editable():
