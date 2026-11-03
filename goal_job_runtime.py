@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 import job_store
+from scripts.goal_job_chain import plan_next_job
 
 
 def normalize_job_status(status: object) -> str:
@@ -88,4 +89,98 @@ def persist_next_job(
     }
 
 
-__all__ = ["normalize_job_status", "load_goal_job_states", "persist_next_job"]
+
+
+def derive_goal_criterion_results(
+    goal: dict[str, Any],
+    initial_results: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Derive criteria from persisted child outcomes; never infer PASS from status alone."""
+    initial_results = initial_results or {}
+    records = {
+        item["job_key"]: item
+        for item in job_store.list_goal_child_jobs(goal["goal_id"])
+    }
+    derived: dict[str, str] = {}
+    for criterion in goal["success_criteria"]:
+        criterion_id = criterion["id"]
+        definitions = [
+            item for item in goal["jobs"]
+            if item.get("criterion_id") == criterion_id
+        ]
+        if not definitions:
+            derived[criterion_id] = initial_results.get(criterion_id, "UNKNOWN")
+            continue
+
+        criterion_records = [records.get(item["id"]) for item in definitions]
+        present = [item for item in criterion_records if item is not None]
+        if any(item["status"] == "failed" for item in present):
+            derived[criterion_id] = "FAIL"
+            continue
+        if any(item["status"] in {"pending", "running", "held"} for item in present):
+            derived[criterion_id] = "UNKNOWN"
+            continue
+        if len(present) != len(definitions):
+            derived[criterion_id] = "FAIL"
+            continue
+
+        all_pass = True
+        for record in present:
+            if normalize_job_status(record["status"]) != "done":
+                all_pass = False
+                break
+            try:
+                result = json.loads(record["result"] or "")
+            except (TypeError, ValueError):
+                all_pass = False
+                break
+            if not isinstance(result, dict) or result.get("outcome") != "PASS" or not result.get("evidence"):
+                all_pass = False
+                break
+        derived[criterion_id] = "PASS" if all_pass else "FAIL"
+    return derived
+
+
+def advance_goal(
+    goal: object,
+    *,
+    user_id: str,
+    autonomy_grant: object,
+    initial_criterion_results: dict[str, str] | None = None,
+    max_retries: int = 2,
+) -> dict[str, Any]:
+    """Plan, persist at most one next child, and stop only on verified Goal completion."""
+    if not isinstance(goal, dict) or not isinstance(goal.get("goal_id"), str):
+        raise ValueError("goal contract is invalid")
+    records = job_store.list_goal_child_jobs(goal["goal_id"])
+    states = {item["job_key"]: normalize_job_status(item["status"]) for item in records}
+    criteria = derive_goal_criterion_results(goal, initial_criterion_results)
+    plan = plan_next_job(
+        goal, criteria, states, autonomy_grant=autonomy_grant
+    )
+    if plan.get("decision") != "PROPOSE_CHILD_JOB":
+        return {"plan": plan, "persisted_job": None, "criterion_results": criteria}
+
+    selected = plan["job"]
+    dependencies = selected.get("depends_on", [])
+    parent_id = None
+    if dependencies:
+        by_key = {item["job_key"]: item for item in records}
+        missing = [key for key in dependencies if key not in by_key]
+        if missing:
+            raise ValueError("completed dependency record is missing")
+        if any(normalize_job_status(by_key[key]["status"]) != "done" for key in dependencies):
+            raise ValueError("all parent JOB dependencies must be completed")
+        parent_id = by_key[dependencies[-1]]["job_id"]
+
+    persisted = persist_next_job(
+        plan, user_id=user_id, parent_job_id=parent_id, max_retries=max_retries
+    )
+    return {
+        "plan": plan,
+        "persisted_job": persisted,
+        "criterion_results": criteria,
+    }
+
+
+__all__ = [\n    "normalize_job_status", "load_goal_job_states", "persist_next_job",\n    "derive_goal_criterion_results", "advance_goal",\n]
