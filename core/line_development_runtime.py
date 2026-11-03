@@ -2715,9 +2715,11 @@ def execute(instruction: str) -> int:
     if not report.success or not report.integration_ready:
         _rollback_to_clean_baseline(baseline_sha)
         detail = report.error or report.failed_task_id or "quality runtime failed"
-        failure_code = extract_safe_failure_code(detail)
-        if failure_code is not None:
-            os.environ["AUTONOMOUS_FAILURE_CODE"] = failure_code
+        # Every failed guarded runtime must carry a canonical, non-repairable
+        # code. Unknown diagnostics are invalid task evidence, never "unknown"
+        # (which would authorize a bounded retry).
+        failure_code = extract_safe_failure_code(detail) or "invalid_task"
+        os.environ["AUTONOMOUS_FAILURE_CODE"] = failure_code
         print(f"Multi-agent development failed: {detail}", flush=True)
         stopped = stop_controller.is_stopped()
         _write_development_audit_to_google_sheets(instruction=instruction, status="STOP" if stopped else "FAIL", target_path=state.chosen, branch=None, exit_detail=detail, base_sha=baseline_sha, produced_sha=None)
