@@ -201,7 +201,7 @@ def persist_child_job(goal_id: str, job: object, *, parent_job_key: str | None =
             and isinstance(paths, list) and bool(paths)
             and all(isinstance(path, str) and any(path.startswith(root) for root in grant["allowed_path_prefixes"]) for path in paths)
         )
-        if decision.get("decision") != "AUTO_APPROVE" or not in_grant:
+        if decision.get("decision") != "SAFE_CANDIDATE" or not in_grant:
             raise PermissionError("job is outside the trusted autonomy grant or risk policy")
 
         registered = conn.execute(
