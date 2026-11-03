@@ -131,6 +131,7 @@ def evaluate_goal_progress(
             raise GoalPlanError(f"{name}_job_ids_duplicate")
         normalized[name] = set(values)
 
+    by_id = {job["id"]: job for job in validated["jobs"]}
     names = ("completed", "running", "failed", "blocked")
     for index, left in enumerate(names):
         for right in names[index + 1:]:
@@ -143,7 +144,6 @@ def evaluate_goal_progress(
     running = normalized["running"]
     failed = normalized["failed"]
     blocked = normalized["blocked"]
-    by_id = {job["id"]: job for job in validated["jobs"]}
 
     for job_id in completed | running:
         if not set(by_id[job_id]["depends_on"]) <= completed:
