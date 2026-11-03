@@ -21,7 +21,10 @@ def proposal(job_id="child-1", *, depends_on=None):
         "human_approval_required": False,
         "autonomy_grant_id": "grant-demo",
         "autonomy_policy": {"decision": "AUTO_APPROVE", "risk": "low"},
-        "permissions": {\n            "clear_hold": False, "merge": False, "deploy": False,\n            "modify_secrets_or_permissions": False, "mutate_production_data": False,\n        },
+        "permissions": {
+            "clear_hold": False, "merge": False, "deploy": False,
+            "modify_secrets_or_permissions": False, "mutate_production_data": False,
+        },
         "job": {
             "id": job_id,
             "stage": "test",
