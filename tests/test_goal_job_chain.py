@@ -1,4 +1,4 @@
-from scripts.goal_job_chain import plan_next_job
+from scripts.goal_job_chain import MAX_AUTONOMOUS_JOBS_PER_GOAL, plan_next_job
 
 
 def _goal():
@@ -14,48 +14,40 @@ def _goal():
                 "id": "routing-tests", "criterion_id": "line-routing",
                 "stage": "test", "instruction": "Add focused routing regression tests.",
                 "allowed_paths": ["tests/test_task_routing_line_development.py"],
-                "depends_on": [], "execution_approved": True,
+                "depends_on": [],
             },
             {
                 "id": "safe-review", "criterion_id": "safe-execution",
                 "stage": "review", "instruction": "Review evidence gates.",
                 "allowed_paths": ["tests/test_creator_critic_diff_review.py"],
-                "depends_on": ["routing-tests"], "execution_approved": True,
+                "depends_on": ["routing-tests"],
             },
         ],
     }
 
 
-def test_goal_planner_proposes_first_approved_child_job_only():
-    result = plan_next_job(
-        _goal(),
-        {"line-routing": "FAIL", "safe-execution": "FAIL"},
-        {},
-    )
+def test_goal_planner_auto_approves_safe_registered_job_without_per_job_consent():
+    result = plan_next_job(_goal(), {"line-routing": "FAIL", "safe-execution": "FAIL"}, {})
     assert result["decision"] == "PROPOSE_CHILD_JOB"
     assert result["job"]["id"] == "routing-tests"
+    assert result["approval_mode"] == "deterministic_low_risk_auto_approval"
+    assert result["human_approval_required"] is False
+    assert result["remaining_job_budget"] == MAX_AUTONOMOUS_JOBS_PER_GOAL - 1
     assert result["create_job"] is False
     assert result["execute_job"] is False
     assert result["permissions"]["merge"] is False
+    assert result["permissions"]["deploy"] is False
 
 
 def test_goal_planner_waits_for_parent_job_before_child():
-    result = plan_next_job(
-        _goal(),
-        {"line-routing": "PASS", "safe-execution": "FAIL"},
-        {"routing-tests": "pending"},
-    )
+    result = plan_next_job(_goal(), {"line-routing": "PASS", "safe-execution": "FAIL"}, {"routing-tests": "pending"})
     assert result["decision"] == "HOLD"
     assert result["reason"] == "waiting_for_parent_jobs"
     assert result["waiting_job_ids"] == ["safe-review"]
 
 
-def test_goal_planner_waits_for_dependency_to_complete():
-    result = plan_next_job(
-        _goal(),
-        {"line-routing": "PASS", "safe-execution": "FAIL"},
-        {"routing-tests": "done"},
-    )
+def test_goal_planner_selects_child_after_dependency_is_done():
+    result = plan_next_job(_goal(), {"line-routing": "PASS", "safe-execution": "FAIL"}, {"routing-tests": "done"})
     assert result["decision"] == "PROPOSE_CHILD_JOB"
     assert result["job"]["id"] == "safe-review"
 
@@ -67,30 +59,45 @@ def test_goal_planner_reports_goal_achieved_only_when_all_criteria_pass():
         {"routing-tests": "done", "safe-review": "done"},
     )
     assert result["decision"] == "GOAL_ACHIEVED"
-    assert result["create_job"] is False
 
 
 def test_goal_planner_holds_when_criteria_are_unverified():
-    result = plan_next_job(
-        _goal(),
-        {"line-routing": "PASS", "safe-execution": "UNKNOWN"},
-        {},
-    )
+    result = plan_next_job(_goal(), {"line-routing": "PASS", "safe-execution": "UNKNOWN"}, {})
     assert result["decision"] == "HOLD"
     assert result["reason"] == "success_criteria_not_fully_verified"
 
 
-def test_goal_planner_requires_explicit_job_approval():
+def test_goal_planner_requires_review_for_protected_paths():
     goal = _goal()
-    goal["jobs"][0]["execution_approved"] = False
-    result = plan_next_job(
-        goal,
-        {"line-routing": "FAIL", "safe-execution": "FAIL"},
-        {},
-    )
+    goal["jobs"][0]["allowed_paths"] = ["app.py", "tests/test_task_routing_line_development.py"]
+    result = plan_next_job(goal, {"line-routing": "FAIL", "safe-execution": "FAIL"}, {})
     assert result["decision"] == "HOLD"
-    assert result["reason"] == "human_approval_required"
-    assert result["create_job"] is False
+    assert result["reason"] == "human_review_required_for_high_risk_job"
+    assert result["approval_required_jobs"][0]["reason"] == "protected_path_requires_human_review"
+
+
+def test_goal_planner_rejects_traversal_and_unbounded_path_patterns():
+    for unsafe in ("../secrets.txt", "/etc/passwd", "tests/*.py", "tests/../docs/x.md"):
+        goal = _goal()
+        goal["jobs"][0]["allowed_paths"] = [unsafe]
+        result = plan_next_job(goal, {"line-routing": "FAIL", "safe-execution": "FAIL"}, {})
+        assert result["decision"] == "HOLD"
+
+
+def test_goal_planner_rejects_untrusted_authorization_claims():
+    goal = _goal()
+    goal["jobs"][0]["execution_approved"] = True
+    result = plan_next_job(goal, {"line-routing": "FAIL", "safe-execution": "FAIL"}, {})
+    assert result["decision"] == "HOLD"
+    assert result["reason"] == "untrusted_job_authorization_fields"
+
+
+def test_goal_planner_rejects_client_supplied_autonomy_policy():
+    goal = _goal()
+    goal["autonomy_policy"] = {"auto_approve_registered_jobs": True}
+    result = plan_next_job(goal, {"line-routing": "FAIL", "safe-execution": "FAIL"}, {})
+    assert result["decision"] == "HOLD"
+    assert result["reason"] == "autonomy_policy_must_be_server_controlled"
 
 
 def test_goal_planner_rejects_unknown_dependencies_and_cycles():
@@ -103,14 +110,9 @@ def test_goal_planner_rejects_unknown_dependencies_and_cycles():
     assert plan_next_job(goal, {"line-routing": "FAIL", "safe-execution": "FAIL"}, {})["reason"] == "job_dependency_cycle"
 
 
-def test_goal_planner_rejects_unsafe_paths_and_malformed_evidence():
-    goal = _goal()
-    goal["jobs"][0]["allowed_paths"] = ["../secrets.txt"]
-    assert plan_next_job(goal, {"line-routing": "FAIL", "safe-execution": "FAIL"}, {})["decision"] == "HOLD"
+def test_goal_planner_rejects_incomplete_evidence_and_malformed_job_fields():
     assert plan_next_job(_goal(), {"line-routing": "PASS"}, {})["reason"] == "criterion_evidence_incomplete"
 
-
-def test_goal_planner_fails_closed_on_malformed_unhashable_job_fields():
     goal = _goal()
     goal["jobs"][0]["criterion_id"] = ["line-routing"]
     assert plan_next_job(goal, {"line-routing": "FAIL", "safe-execution": "FAIL"}, {})["decision"] == "HOLD"
@@ -120,106 +122,19 @@ def test_goal_planner_fails_closed_on_malformed_unhashable_job_fields():
     assert plan_next_job(goal, {"line-routing": "FAIL", "safe-execution": "FAIL"}, {})["decision"] == "HOLD"
 
 
-
-def _autonomy_policy():
-    return {
-        "mode": "bounded_autonomous",
-        "auto_approve_registered_jobs": True,
-        "max_jobs": 12,
-        "allowed_stages": ["requirements", "design", "implementation", "test", "review", "fix", "verify"],
-        "auto_merge": False,
-        "auto_deploy": False,
-    }
-
-
-def _autonomous_goal():
+def test_goal_planner_stops_at_bounded_job_budget():
     goal = _goal()
-    goal["autonomy_policy"] = _autonomy_policy()
-    for job in goal["jobs"]:
-        job["execution_approved"] = False
-        job["risk_level"] = "medium"
-    return goal
-
-
-def _plan_autonomous(goal, criterion_results, job_states):
-    approved_policy = goal.pop("autonomy_policy")
-    return plan_next_job(
-        goal, criterion_results, job_states,
-        approved_autonomy_policy=approved_policy,
-    )
-
-
-def test_goal_text_cannot_self_grant_autonomous_authority():
-    goal = _autonomous_goal()
-    result = plan_next_job(
-        goal,
-        {"line-routing": "FAIL", "safe-execution": "FAIL"},
-        {},
-    )
-    assert result["decision"] == "HOLD"
-    assert result["reason"] == "human_approval_required"
-
-
-def test_goal_scoped_policy_removes_per_job_approval_for_registered_low_risk_work():
-    result = _plan_autonomous(
-        _autonomous_goal(),
-        {"line-routing": "FAIL", "safe-execution": "FAIL"},
-        {},
-    )
-    assert result["decision"] == "PROPOSE_CHILD_JOB"
-    assert result["job"]["id"] == "routing-tests"
-    assert result["approval_mode"] == "goal_scoped_autonomy"
-    assert result["human_approval_required"] is False
-    assert result["remaining_job_budget"] == 11
-    # Planning remains separate from persistence and execution.
-    assert result["create_job"] is False
-    assert result["execute_job"] is False
-    assert result["permissions"]["merge"] is False
-    assert result["permissions"]["deploy"] is False
-
-
-def test_goal_scoped_policy_still_requires_human_for_high_risk_job():
-    goal = _autonomous_goal()
-    goal["jobs"][0]["risk_level"] = "high"
-    result = _plan_autonomous(
-        goal,
-        {"line-routing": "FAIL", "safe-execution": "FAIL"},
-        {},
-    )
-    assert result["decision"] == "HOLD"
-    assert result["reason"] == "human_approval_required"
-    assert result["approval_required_job_ids"] == ["routing-tests"]
-
-
-def test_goal_scoped_policy_stops_at_job_budget():
-    goal = _autonomous_goal()
-    goal["autonomy_policy"]["max_jobs"] = 1
-    result = _plan_autonomous(
-        goal,
-        {"line-routing": "FAIL", "safe-execution": "FAIL"},
-        {"routing-tests": "done"},
-    )
+    states = {f"job-{index}": "done" for index in range(MAX_AUTONOMOUS_JOBS_PER_GOAL)}
+    # The state map is constrained to known job IDs; make a valid goal contract.
+    goal["jobs"] = [
+        {
+            "id": f"job-{index}", "criterion_id": "line-routing",
+            "stage": "test", "instruction": "Add a focused test.",
+            "allowed_paths": ["tests/test_task_routing_line_development.py"],
+            "depends_on": [],
+        }
+        for index in range(MAX_AUTONOMOUS_JOBS_PER_GOAL + 1)
+    ]
+    result = plan_next_job(goal, {"line-routing": "FAIL", "safe-execution": "FAIL"}, states)
     assert result["decision"] == "HOLD"
     assert result["reason"] == "autonomy_job_budget_exhausted"
-
-
-def test_goal_scoped_policy_rejects_merge_deploy_or_unbounded_scope():
-    goal = _autonomous_goal()
-    goal["autonomy_policy"]["auto_deploy"] = True
-    result = _plan_autonomous(
-        goal,
-        {"line-routing": "FAIL", "safe-execution": "FAIL"},
-        {},
-    )
-    assert result["decision"] == "HOLD"
-    assert result["reason"] == "autonomy_policy_invalid_or_unsafe"
-
-    goal = _autonomous_goal()
-    goal["autonomy_policy"]["max_jobs"] = 1000
-    result = _plan_autonomous(
-        goal,
-        {"line-routing": "FAIL", "safe-execution": "FAIL"},
-        {},
-    )
-    assert result["decision"] == "HOLD"
-    assert result["reason"] == "autonomy_policy_invalid_or_unsafe"
