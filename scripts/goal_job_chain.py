@@ -90,7 +90,7 @@ def plan_next_job(
             or stage not in _STAGES or not isinstance(instruction, str)
             or not instruction.strip() or len(instruction) > 5000
             or not isinstance(paths, list) or not paths or len(paths) > 10
-            or not all(isinstance(p, str) and p.startswith(("tests/", "uhip/tests/")) for p in paths)
+            or not all(isinstance(p, str) and re.fullmatch(r"(tests|uhip/tests)/test_[A-Za-z0-9_]+[.]py", p) for p in paths)
             or not isinstance(dependencies, list) or not all(_valid_id(dep) for dep in dependencies)
             or type(approved) is not bool
         ):
