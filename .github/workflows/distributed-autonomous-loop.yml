@@ -1410,11 +1410,7 @@ jobs:
           if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ] || [ -f .autonomous-loop.stop ]; then
             kill_args+=(--kill-switch)
           fi
-          python -m scripts.distributed_loop_chain \\
-            --report /tmp/distributed-final-report.txt \\
-            --results /tmp/minimal-autonomous-loop.jsonl \\
-            --depth "$depth" --max-depth 12 --run-conclusion success \\
-            --output /tmp/distributed-loop-chain-decision.json "${kill_args[@]}"
+          python -m scripts.distributed_loop_chain --report /tmp/distributed-final-report.txt --results /tmp/minimal-autonomous-loop.jsonl --depth "$depth" --max-depth 12 --run-conclusion success --output /tmp/distributed-loop-chain-decision.json "${kill_args[@]}"
           cat /tmp/distributed-loop-chain-decision.json
           if ! python -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[1], encoding="utf-8")).get("continue") is True else 1)' /tmp/distributed-loop-chain-decision.json; then
             reason="$(python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("reason", "unknown"))' /tmp/distributed-loop-chain-decision.json)"
@@ -1423,10 +1419,7 @@ jobs:
           fi
           next_depth="$(python -c 'import json; print(json.load(open("/tmp/distributed-loop-chain-decision.json", encoding="utf-8"))["next_depth"])')"
           chain_request_id="chain-${RUN_ID}"
-          # A rerun of the same source run must not create a duplicate child job.
-          if gh run list --repo "$REPOSITORY" --workflow distributed-autonomous-loop.yml \\
-              --limit 100 --json displayTitle --jq '.[].displayTitle' \\
-              | grep -Fq "request_id=$chain_request_id"; then
+          if gh run list --repo "$REPOSITORY" --workflow distributed-autonomous-loop.yml --limit 100 --json displayTitle --jq '.[].displayTitle' | grep -Fq "request_id=$chain_request_id"; then
             echo "CHAIN_DISPATCH=ALREADY_QUEUED request_id=$chain_request_id" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -1444,12 +1437,6 @@ jobs:
           }))
           PY
           )"
-          curl --fail-with-body --silent --show-error --max-time 30 \\
-            -X POST "https://api.github.com/repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/dispatches" \\
-            -H "Accept: application/vnd.github+json" \\
-            -H "Authorization: Bearer $GH_TOKEN" \\
-            -H "X-GitHub-Api-Version: 2022-11-28" \\
-            -H "Content-Type: application/json" \\
-            --data "$payload"
+          curl --fail-with-body --silent --show-error --max-time 30 -X POST "https://api.github.com/repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/dispatches" -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" -H "Content-Type: application/json" --data "$payload"
           echo "CHAIN_DISPATCH=QUEUED request_id=$chain_request_id next_depth=$next_depth" | tee -a "$GITHUB_STEP_SUMMARY"
 
