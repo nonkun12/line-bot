@@ -19,11 +19,17 @@ class MusicAgent:
         text = request.message.casefold()
         scenario = request.metadata.get("scenario") if isinstance(request.metadata, dict) else None
         if isinstance(scenario, dict):
-            plan = build_music_plan(
-                scenario,
-                genre=request.metadata.get("music_genre", "映像に合わせたオリジナル音楽"),
-                instrumentation=request.metadata.get("instrumentation", "映像の世界観に合う編成"),
-            )
+            try:
+                plan = build_music_plan(
+                    scenario,
+                    genre=request.metadata.get("music_genre", "映像に合わせたオリジナル音楽"),
+                    instrumentation=request.metadata.get("instrumentation", "映像の世界観に合う編成"),
+                )
+            except ValueError as exc:
+                return AgentResponse(
+                    text=f"音楽設計を作成できませんでした。シナリオまたは設定を確認してください：{exc}",
+                    metadata={"feature": self.name, "status": "invalid_request", "mode": "audiovisual_score_plan"},
+                )
             return AgentResponse(
                 text=(
                     f"🎵 映像連動の音楽設計：{plan['source_scenario_title']}\\n"
