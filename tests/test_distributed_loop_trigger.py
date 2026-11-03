@@ -531,3 +531,32 @@ def test_control_tower_status_aliases_are_read_only_requests(monkeypatch):
         assert handled is True
         assert "GitHub認証未設定" in reply
         assert "起動" not in reply
+
+
+def test_natural_language_status_request_is_read_only_and_does_not_dispatch(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    message = (
+        "分散Loopの現在の状況を調べてください。最新の実行結果、"
+        "タスクのPASS・NOT_RUN・BLOCKED件数、保留中の課題を報告してください。"
+        "状態確認だけなので、Loopの起動や開発・PR作成はしないでください。"
+    )
+    client = _Client([{
+        "run_number": 896, "event": "workflow_dispatch", "status": "completed",
+        "conclusion": "success", "display_title": "status regression fixture",
+        "head_sha": "a" * 40, "created_at": "2026-11-03T00:00:00Z",
+        "html_url": "https://github.com/nonkun12/line-bot/actions/runs/896",
+    }])
+    from unittest.mock import patch
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = trigger.request_distributed_loop("u1", message)
+    assert handled is True
+    assert "統括AI／分散Loop 状況" in reply
+    assert "Run #896" in reply
+    assert client.posted == []
+
+
+def test_status_classifier_does_not_swallow_development_requests():
+    from distributed_loop_trigger import _is_readonly_status_request
+    assert not _is_readonly_status_request("分散Loopを起動して4タスク開発してください")
+    assert not _is_readonly_status_request("分散Loopの仕組みを修正してPRを作成してください")
