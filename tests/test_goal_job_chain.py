@@ -130,6 +130,7 @@ def test_goal_planner_requires_review_for_operations_outside_granted_path_scope(
     grant = _grant()
     grant["allowed_path_prefixes"] = ["tests/"]
     goal = _goal()
+    goal["jobs"][0]["stage"] = "design"
     goal["jobs"][0]["allowed_paths"] = ["docs/design.md"]
     result = plan_next_job(goal, {"line-routing": "FAIL", "safe-execution": "FAIL"}, {}, autonomy_grant=grant)
     assert result["decision"] == "HOLD"
