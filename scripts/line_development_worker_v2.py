@@ -34,6 +34,10 @@ MAX_FILE_CHARS = 12000
 # A 3,500-token completion plus the observed ~4,808-token prompt was rejected
 # at 8,308 TPM. Keep the default completion budget at 2,500 to leave headroom.
 MAX_RESPONSE_TOKENS = 2500
+# Keep this endpoint within the observed Groq TPM budget: a 3,500-token
+# completion plus a ~4,808-token prompt was rejected. Bound both sides.
+MAX_APPEND_ONLY_RESPONSE_TOKENS = 2500
+MAX_APPEND_ONLY_CONTEXT_CHARS = 3000
 MAX_INSTRUCTION_LENGTH = 2000
 MAX_REPAIR_ATTEMPTS = 1
 MAX_APPLY_REPAIR_ATTEMPTS = 2
@@ -148,7 +152,7 @@ def ask(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOK
         model=MODEL,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.0,
-        max_tokens=max_tokens,
+        max_completion_tokens=max_tokens,
         reasoning_effort=os.environ.get("DEV_AI_REASONING_EFFORT", "low"),
         include_reasoning=False,
     )
@@ -483,10 +487,28 @@ def _safe_api_error_detail(exc: Exception) -> str:
     status = getattr(exc, "status_code", None)
     if isinstance(status, int):
         parts.append(f"status={status}")
+    body = getattr(exc, "body", None)
+    provider_error = body.get("error", body) if isinstance(body, dict) else {}
     for key in ("code", "param"):
         value = getattr(exc, key, None)
+        if not isinstance(value, str) and isinstance(provider_error, dict):
+            value = provider_error.get(key)
         if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", value):
             parts.append(f"{key}={value}")
+    failed_generation = (
+        provider_error.get("failed_generation")
+        if isinstance(provider_error, dict)
+        else None
+    )
+    if isinstance(failed_generation, str):
+        known_failures = {
+            "max completion tokens reached before generating a valid document",
+            "completion returned no choices",
+        }
+        if failed_generation in known_failures:
+            parts.append(f"failed_generation={failed_generation}")
+        elif failed_generation:
+            parts.append("failed_generation=present")
     message = getattr(exc, "message", None)
     if isinstance(message, str) and message:
         safe = re.sub(r"(?i)bearer\s+\S+", "Bearer [REDACTED]", message)
@@ -515,6 +537,11 @@ Do not add imports, decorators, helper functions, classes, or module-level state
 Do not access the network, environment variables, secrets, files, processes, or the OS.
 Do not weaken, edit, rename, reorder, or copy any existing test.
 The function name must start with test_. Keep the test focused and concise."""
+    if len(context) > MAX_APPEND_ONLY_CONTEXT_CHARS:
+        marker = "\n...[middle omitted; append-only context bounded]...\n"
+        budget = MAX_APPEND_ONLY_CONTEXT_CHARS - len(marker)
+        head_size = budget // 2
+        context = context[:head_size] + marker + context[-(budget - head_size):]
     prompt = (
         f"Task:\n{instruction}\n\n"
         f"Only editable file:\n{chosen}\n\n"
@@ -522,7 +549,9 @@ The function name must start with test_. Keep the test focused and concise."""
         "Return one complete test function, or NO_CHANGE."
     )
     try:
-        generated = ask(client, system, prompt, max_tokens=2000).strip()
+        generated = ask(
+            client, system, prompt, max_tokens=MAX_APPEND_ONLY_RESPONSE_TOKENS
+        ).strip()
     except Exception as exc:
         detail = _safe_api_error_detail(exc)
         suffix = f":{detail}" if detail else ""
