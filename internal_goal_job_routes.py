@@ -57,7 +57,7 @@ def _verify_exact_sha_checks(evidence: dict, produced_sha: str) -> bool:
         return False
     return (
         _github_run_passed(verification.get("pytest_run_url"), "Pytest", produced_sha)
-        and _github_run_passed(verification.get("review_run_url"), "AI Code Review", produced_sha)
+        and _github_run_passed(verification.get("review_run_url"), "Independent Code Review", produced_sha)
     )
 
 
