@@ -1536,3 +1536,30 @@ def test_goal_scoped_manager_blocks_when_granted_paths_are_not_in_repository(mon
 
     assert result.success is False
     assert "inside the Goal grant" in result.summary
+
+
+def test_goal_allowed_paths_accepts_directory_prefixes():
+    assert runtime._validate_goal_allowed_paths(["core/", "tests/"]) == ("core/", "tests/")
+
+
+def test_goal_scoped_manager_selects_from_directory_grant(monkeypatch):
+    granted = "tests/test_line_development_runtime.py"
+    ungranted = "core/line_development_runtime.py"
+    monkeypatch.setattr(runtime.worker, "repo_files", lambda: [ungranted, granted])
+
+    def choose_file(client, instruction, files):
+        assert files == [granted]
+        return files[0]
+
+    monkeypatch.setattr(runtime.worker, "choose_file", choose_file)
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Improve tests",
+        allowed_paths=("tests/",),
+    )
+    result = runtime.DevelopmentExecutor(state).execute(
+        AgentTask("manager", AgentRole.MANAGER, "Select a safe target.")
+    )
+
+    assert result.success is True
+    assert state.chosen == granted
