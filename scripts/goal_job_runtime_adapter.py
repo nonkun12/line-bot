@@ -11,6 +11,7 @@ from collections.abc import Callable
 from typing import Any
 
 from core import line_development_runtime
+import goal_job_worker
 
 
 def _git(*args: str) -> str:
@@ -92,4 +93,9 @@ def execute_goal_child(
     return {"result": json.dumps(result, ensure_ascii=False, sort_keys=True), "evidence": {"checks": checks, **result}}
 
 
-__all__ = ["execute_goal_child"]
+def run_goal_child_once(*, job_id: int | None = None):
+    """Claim one persisted Goal child and execute it through the guarded runtime."""
+    return goal_job_worker.run_once(execute_goal_child, job_id=job_id)
+
+
+__all__ = ["execute_goal_child", "run_goal_child_once"]
