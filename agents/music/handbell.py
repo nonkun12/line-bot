@@ -63,6 +63,15 @@ def validate_handbell_arrangement(arrangement: dict[str, Any]) -> dict[str, Any]
     if not isinstance(events, list) or not events:
         error("events_required")
         events = []
+    elif len(events) > 10000:
+        error("event_count_exceeds_limit")
+        events = events[:10000]
+    if len(performers) > 256:
+        error("performer_count_exceeds_limit")
+        performers = performers[:256]
+    if len(bells) > 1024:
+        error("bell_count_exceeds_limit")
+        bells = bells[:1024]
 
     performer_ids: set[str] = set()
     for performer in performers:
@@ -111,16 +120,20 @@ def validate_handbell_arrangement(arrangement: dict[str, Any]) -> dict[str, Any]
         performer_id = event.get("performer_id")
         bell_id = event.get("bell_id")
         pitch = event.get("pitch")
-        if performer_id not in performer_ids:
+        if not isinstance(performer_id, str) or performer_id not in performer_ids:
             error("event_performer_unknown", index)
             continue
-        if bell_id not in bell_map:
+        if not isinstance(bell_id, str) or bell_id not in bell_map:
             error("event_bell_unknown", index)
             continue
-        if pitch != bell_map[bell_id]:
+        if not isinstance(pitch, str) or pitch != bell_map[bell_id]:
             error("event_pitch_does_not_match_bell", index)
             continue
-        normalized.append((float(start), float(start + duration), performer_id, bell_id, index))
+        end = start + duration
+        if not isfinite(end):
+            error("event_end_invalid", index)
+            continue
+        normalized.append((float(start), float(end), performer_id, bell_id, index))
 
     # Check overlap using half-open intervals: an event ending at beat N does
     # not overlap another event starting at beat N.
