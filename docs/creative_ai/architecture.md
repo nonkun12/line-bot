@@ -98,7 +98,7 @@ Specialists communicate through versioned artifact manifests and typed JOB resul
 
 ## General-purpose music production milestone
 
-Music production is a general-purpose specialist capability. Handbell is only one possible example of an arrangement request; it is not a dedicated implementation target or a hard-coded first product.
+Music production is a general-purpose specialist capability. No single instrument, ensemble, genre, or arrangement format is hard-coded as the product target.
 
 The music specialist should support a range of user-defined formats and ensembles through typed, reusable jobs:
 
@@ -139,4 +139,4 @@ The project must remain usable without paid subscriptions, paid APIs, usage-base
 - Use existing free storage and retention only within known limits; enforce quotas, cleanup previews and intermediates safely, and do not create paid storage resources.
 - Keep the same restrictions in tests: assert that provider selection cannot silently choose a paid/remote adapter and that missing local tools cause HOLD rather than paid fallback.
 
-For the handbell milestone, the first deliverables should be generated from structured note/event data into MusicXML/MIDI and rendered locally only when an eligible local synthesizer and soundfont are available. The score and parts remain the authoritative performance materials; a missing audio renderer must not prevent score validation or be disguised as a completed audio deliverable.
+For any music project, structured note/event data should be the source of truth for notation and MIDI exports. Audio rendering is a separate deliverable and may be marked complete only when a local renderer actually produces and validates the output. A missing audio renderer must produce an explicit partial result or HOLD, never a false completion.
