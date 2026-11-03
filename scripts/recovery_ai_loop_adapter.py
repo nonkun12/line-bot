@@ -150,9 +150,9 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
 
     run_identity_verified = _has_verified_run_identity(result, status)
     success_like = status in {"PASS", "NO_CHANGE"}
-    supplied_invalid_code = "failure_code" in result and not is_safe_failure_code(result.get("failure_code"))
+    supplied_failure_code = "failure_code" in result
     if success_like and (
-        supplied_invalid_code
+        supplied_failure_code
         or type(result.get("exit_code")) is not int
         or result.get("exit_code") != 0
         or not run_identity_verified
@@ -163,7 +163,7 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
         result["status"] = "FAIL"
         result["exit_code"] = 1
         result["failure_reason"] = "recovery_ai_invalid_evidence"
-        result["failure_code"] = "invalid_failure_code_evidence" if supplied_invalid_code else "invalid_failure_code_evidence"
+        result["failure_code"] = "invalid_failure_code_evidence"
         outcome = {"recorded": True, "status": "FAIL", "decision": asdict(decision)}
         return _attach_rag_advisory(
             outcome, task_id=task_id, status="FAIL", category="invalid_evidence"
