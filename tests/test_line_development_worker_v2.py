@@ -34,6 +34,21 @@ class FakeClient:
         self.chat = type("Chat", (), {"completions": FakeCompletions(responses)})()
 
 
+def test_ask_uses_low_reasoning_effort_by_default(monkeypatch):
+    monkeypatch.delenv("DEV_AI_REASONING_EFFORT", raising=False)
+    captured = {}
+
+    class CaptureCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return _Response("ok")
+
+    client = type("Client", (), {"chat": type("Chat", (), {"completions": CaptureCompletions()})()})()
+
+    assert worker.ask(client, "system", "prompt") == "ok"
+    assert captured["reasoning_effort"] == "low"
+
+
 def test_protected_worker_files_are_never_editable():
     assert worker.is_protected("scripts/line_development_worker_v2.py")
     assert worker.is_protected(".github/workflows/line-development.yml")
