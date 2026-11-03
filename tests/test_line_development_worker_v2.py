@@ -1317,3 +1317,69 @@ def test_apply_plan_rolls_back_target_when_write_fails_midway(tmp_path, monkeypa
     assert touched == ["first.py"]
     assert first.read_text(encoding="utf-8") == "first-original\\n"
     assert second.read_text(encoding="utf-8") == "second-original\\n"
+
+def test_refill_deterministic_test_insertions_preserve_suffix_and_converge(tmp_path, monkeypatch):
+    from core.line_development_runtime import _deterministic_autonomous_test_plan
+
+    target = "tests/test_autonomous_task_refill.py"
+    target_dir = tmp_path / "tests"
+    target_dir.mkdir()
+    target_path = target_dir / "test_autonomous_task_refill.py"
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    eof_anchor = '    assert queue.read_text(encoding="utf-8") == queue_before'
+    unrelated_tail = "\n\n\ndef test_unrelated_tail_must_survive():\n    assert True\n"
+    initial = (
+        "from pathlib import Path\nimport json\nimport pytest\n\n"
+        "def test_existing_refill_behavior():\n"
+        "    queue = Path('queue.json')\n"
+        "    queue_before = queue.read_text(encoding='utf-8')\n"
+        + eof_anchor + unrelated_tail
+    )
+
+    def apply_task(source, task_id):
+        target_path.write_text(source, encoding="utf-8")
+        plan, error = _deterministic_autonomous_test_plan(target, task_id)
+        assert error is None
+        assert plan is not None and plan.get("no_change") is not True
+        change = plan["changes"][0]
+        assert change["file"] == target
+        assert source.count(change["old"]) == 1
+        return source.replace(change["old"], change["new"], 1)
+
+    cli_task = "task-refill-cli-test-20261102"
+    read_json_task = "task-refill-read-json-test-20261102"
+    cli_then_read = apply_task(apply_task(initial, cli_task), read_json_task)
+    read_then_cli = apply_task(apply_task(initial, read_json_task), cli_task)
+
+    assert cli_then_read == read_then_cli
+    assert cli_then_read.count("def test_unrelated_tail_must_survive():") == 1
+    assert cli_then_read.endswith("    assert True\n")
+
+def test_refill_cli_insertion_fails_closed_on_intervening_test(tmp_path, monkeypatch):
+    from core.line_development_runtime import _deterministic_autonomous_test_plan
+
+    target = "tests/test_autonomous_task_refill.py"
+    target_dir = tmp_path / "tests"
+    target_dir.mkdir()
+    target_path = target_dir / "test_autonomous_task_refill.py"
+    anchor = '    assert queue.read_text(encoding="utf-8") == queue_before'
+    intervening = "\n\n\ndef test_existing_intervening_test():\n    assert True\n\n\n"
+    source = (
+        "from pathlib import Path\n"
+        "def test_existing():\n"
+        "    queue = Path('queue.json')\n"
+        "    queue_before = queue.read_text(encoding='utf-8')\n"
+        + anchor + intervening
+        + "def test_read_json_rejects_non_object_root(tmp_path: Path):\n    pass\n"
+    )
+    target_path.write_text(source, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    plan, error = _deterministic_autonomous_test_plan(
+        target, "task-refill-cli-test-20261102"
+    )
+
+    assert plan is None
+    assert error == "deterministic_anchor_intervening_content:refill_cli"
+    assert target_path.read_text(encoding="utf-8") == source

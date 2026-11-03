@@ -321,3 +321,86 @@ def test_recovery_store_rejects_success_evidence_for_another_task(tmp_path):
             "task_id": "task-b", "base_sha": "a" * 40,
             "produced_sha": "b" * 40, "run_nonce": "c" * 32,
         })
+
+
+@pytest.mark.parametrize(
+    ("failure_code", "expected_category"),
+    [
+        ("invalid_change_count", "invalid_task"),
+        ("invalid_change_count_repair_failed", "invalid_task"),
+        ("append_only_test_anchor_or_size_invalid", "invalid_task"),
+        ("existing_test_modified_repair_failed", "security_violation"),
+    ],
+)
+def test_allowlisted_planner_failure_code_triggers_immediate_hold(
+    tmp_path, failure_code, expected_category
+):
+    path = tmp_path / "recovery.json"
+    outcome = record_loop_outcome(path, {
+        "task_id": "task-invalid-plan",
+        "status": "FAIL",
+        "exit_code": 1,
+        "failure_reason": "task_runtime_failed",
+        "failure_code": failure_code,
+    })
+
+    assert outcome["recorded"] is True
+    assert outcome["decision"]["action"] == "HOLD"
+    assert outcome["decision"]["requires_human"] is True
+    record = RecoveryStore(path).task_status("task-invalid-plan")
+    assert record["last_category"] == expected_category
+    assert record["held"] is True
+
+
+@pytest.mark.parametrize("bad_code", ["bogus", None, [], {"code": "sha_mismatch"}, "invalid_failure_code_evidence"])
+def test_success_with_any_present_failure_code_is_invalid_evidence(tmp_path, bad_code):
+    path = tmp_path / "recovery.json"
+    payload = {
+        "task_id": "task-contradictory-success",
+        "status": "PASS",
+        "exit_code": 0,
+        "failure_reason": "",
+        "base_sha": "a" * 40,
+        "produced_sha": "b" * 40,
+        "run_nonce": "c" * 32,
+        "failure_code": bad_code,
+    }
+    outcome = record_loop_outcome(path, payload)
+    assert outcome["recorded"] is True
+    assert outcome["status"] == "FAIL"
+    assert outcome["decision"]["action"] == "HOLD"
+    assert outcome["decision"]["requires_human"] is True
+    assert payload["status"] == "FAIL"
+    assert payload["failure_code"] == "invalid_failure_code_evidence"
+
+
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [
+        ("STOPPED", "stop_requested_during_task"),
+        ("STOPPED", "stop_requested_after_task"),
+        ("PASS", "stop_requested_after_task"),
+    ],
+)
+def test_operator_stop_is_not_recorded_as_task_failure(tmp_path, status, reason):
+    path = tmp_path / "recovery.json"
+    result = record_loop_outcome(path, {
+        "task_id": "task-operator-stop",
+        "status": status,
+        "exit_code": 0 if status == "PASS" else 130,
+        "failure_reason": reason,
+    })
+    assert result == {"recorded": False, "reason": "operator_stop_not_task_failure"}
+    assert not path.exists()
+
+def test_stop_requested_token_inside_other_failure_reason_is_not_operator_stop(tmp_path):
+    path = tmp_path / "recovery.json"
+    outcome = record_loop_outcome(path, {
+        "task_id": "task-stop-token-in-diagnostic",
+        "status": "FAIL",
+        "exit_code": 1,
+        "failure_reason": "task_error:stop_requested_marker",
+    })
+    assert outcome["recorded"] is True
+    assert outcome["decision"]["action"] == "REPAIR_ONCE"
+    assert RecoveryStore(path).task_status("task-stop-token-in-diagnostic")["last_category"] == "unknown"

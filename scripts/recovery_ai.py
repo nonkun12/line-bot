@@ -159,12 +159,21 @@ class RecoveryStore:
             "updated_at": now,
         }
         record = data["tasks"][task_id]
+        # Preserve review metadata across a failure after an explicitly approved
+        # resume; a subsequent failure must not erase the human-review barrier.
+        for key in ("resume_requires_review", "resumed_at", "last_success_at", "last_success_evidence"):
+            if key in previous:
+                record[key] = previous[key]
         if category == "state_persistence_failure":
             action, reason, delay, human = "STOP_FAIL_CLOSED", "state_persistence_failure", 0, True
         elif was_held:
             # Preserve the original hold cause. Legacy state files did not store it,
             # so report that limitation rather than inventing a historical reason.
             record["hold_reason"] = previous.get("hold_reason") or "legacy_hold_reason_unavailable"
+            record["hold_category"] = (
+                previous.get("hold_category")
+                or "legacy_hold_category_unavailable"
+            )
             action, reason, delay, human = "HOLD", "previous_hold_requires_explicit_resume", 0, True
         elif count >= HOLD_AFTER_FAILURES or category in NON_REPAIRABLE_CATEGORIES:
             record["held"] = True
@@ -173,6 +182,7 @@ class RecoveryStore:
                 else "non_repairable_failure"
             ), 0, True
             record["hold_reason"] = reason
+            record["hold_category"] = category
         elif category in TRANSIENT_CATEGORIES and transient_attempt <= MAX_TRANSIENT_RETRIES:
             action, reason, delay, human = "RETRY", "bounded_transient_retry", min(30 * (2 ** (transient_attempt - 1)), 120), False
         elif category in REPAIRABLE_CATEGORIES and same_count < MAX_REPAIR_ATTEMPTS_PER_FINGERPRINT:
@@ -181,6 +191,7 @@ class RecoveryStore:
             record["held"] = True
             action, reason, delay, human = "HOLD", "repair_budget_exhausted", 0, True
             record["hold_reason"] = reason
+            record["hold_category"] = category
         record["last_decision_action"] = action
         record["last_decision_reason"] = reason
         self._write(data)

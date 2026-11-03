@@ -278,6 +278,8 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "loop-refill-empty-catalog-next-safe-test-20261023": "tests/test_autonomous_task_refill.py",
     "refill-rejects-boolean-catalog-addition-cap": "tests/test_autonomous_task_refill.py",
     "refill-rejects-nonobject-recovery-task-map": "tests/test_autonomous_task_refill.py",
+    "task-refill-cli-test-20261102": "tests/test_autonomous_task_refill.py",
+    "task-refill-read-json-test-20261102": "tests/test_autonomous_task_refill.py",
     "distributed-loop-dispatch-duplicate-active-run-guard-regression": "tests/test_distributed_loop_trigger.py",
     "proposal-generator-resume-review-exclusion-regression": "tests/test_autonomous_task_proposals.py",
     "queue-progress-ignores-unrelated-pass-results-regression": "tests/test_distributed_loop_queue_progress.py",
@@ -2084,6 +2086,97 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "changes": [{"file": chosen, "old": anchor, "new": replacement}],
         }, None
 
+
+    if task_id in {"task-refill-cli-test-20261102", "task-refill-read-json-test-20261102"} and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        cli_name = "test_refill_main_cli_adds_one_approved_task"
+        read_json_name = "test_read_json_rejects_non_object_root"
+        cli_end = '    assert [task["id"] for task in runtime_queue["tasks"]] == ["task-cli-new"]'
+        eof_anchor = '    assert queue.read_text(encoding="utf-8") == queue_before'
+
+        cli_body = (
+            "def test_refill_main_cli_adds_one_approved_task(tmp_path: Path, monkeypatch, capsys):\n"
+            "    import sys\n"
+            "    from scripts.autonomous_task_refill import main\n"
+            "    queue, catalog, completed = _inputs(\n"
+            "        tmp_path, candidates=[{**_task(\"task-cli-new\"), \"execution_approved\": True}]\n"
+            "    )\n"
+            "    output = tmp_path / \"runtime.json\"\n"
+            "    monkeypatch.setattr(sys, \"argv\", [\"autonomous_task_refill\", \"--queue\", str(queue), \"--catalog\", str(catalog), \"--completed-state\", str(completed), \"--output\", str(output)])\n"
+            "    assert main() == 0\n"
+            "    report = json.loads(capsys.readouterr().out.strip())\n"
+            "    assert report[\"added_ids\"] == [\"task-cli-new\"]\n"
+            "    assert report[\"added\"] == 1\n"
+            "    runtime_queue = json.loads(output.read_text(encoding=\"utf-8\"))\n"
+            "    assert [task[\"id\"] for task in runtime_queue[\"tasks\"]] == [\"task-cli-new\"]\n"
+        )
+        read_json_body = (
+            "def test_read_json_rejects_non_object_root(tmp_path: Path):\n"
+            "    from scripts.autonomous_task_refill import read_json\n"
+            "    path = tmp_path / \"array.json\"\n"
+            "    path.write_text(\"[]\", encoding=\"utf-8\")\n"
+            "    with pytest.raises(ValueError, match=\"JSON root must be an object\"):\n"
+            "        read_json(path)\n"
+        )
+
+        if task_id == "task-refill-cli-test-20261102":
+            if f"def {cli_name}(" in text:
+                return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+            read_json_def = f"def {read_json_name}("
+            if read_json_def in text:
+                # Normalize the gap and insert CLI immediately before read_json.
+                pos = text.index(read_json_def)
+                prefix = text[:pos]
+                anchor_pos = prefix.rfind(eof_anchor)
+                if anchor_pos < 0:
+                    return None, "deterministic_anchor_not_unique:refill_cli"
+                # Only whitespace may separate the anchor and read_json.
+                # Refuse to replace intervening tests or helpers.
+                gap = text[anchor_pos + len(eof_anchor):pos]
+                if gap.strip():
+                    return None, "deterministic_anchor_intervening_content:refill_cli"
+                old = eof_anchor + gap
+                new = eof_anchor + "\n\n" + cli_body + "\n"
+            else:
+                if text.count(eof_anchor) != 1:
+                    return None, f"deterministic_anchor_not_unique:refill_cli:{text.count(eof_anchor)}"
+                old = eof_anchor
+                new = eof_anchor + "\n\n" + cli_body
+        else:
+            if f"def {read_json_name}(" in text:
+                return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+            if f"def {cli_name}(" in text:
+                if text.count(cli_end) != 1:
+                    return None, f"deterministic_anchor_not_unique:refill_read_json:{text.count(cli_end)}"
+                # Normalize only the separator after the CLI test. Keep
+                # all source following that separator, including unrelated tests.
+                pos = text.index(cli_end) + len(cli_end)
+                separator_start = pos + (1 if text.startswith("\n", pos) else 0)
+                suffix_end = separator_start
+                while suffix_end < len(text) and text[suffix_end] in "\r\n \t":
+                    suffix_end += 1
+                old = cli_end + text[pos:suffix_end]
+                new = cli_end + "\n\n" + read_json_body + text[separator_start:suffix_end]
+            else:
+                if text.count(eof_anchor) != 1:
+                    return None, f"deterministic_anchor_not_unique:refill_read_json:{text.count(eof_anchor)}"
+                old = eof_anchor
+                new = eof_anchor + "\n\n" + read_json_body
+
+        if len(old) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(old)}, new={len(new)}"
+        candidate = text.replace(old, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": old, "new": new}],
+        }, None
+
     return None, None
 
 class DevelopmentExecutor:
@@ -2635,9 +2728,11 @@ def execute(instruction: str) -> int:
     if not report.success or not report.integration_ready:
         _rollback_to_clean_baseline(baseline_sha)
         detail = report.error or report.failed_task_id or "quality runtime failed"
-        failure_code = extract_safe_failure_code(detail)
-        if failure_code is not None:
-            os.environ["AUTONOMOUS_FAILURE_CODE"] = failure_code
+        # Every failed guarded runtime must carry a canonical, non-repairable
+        # code. Unknown diagnostics are invalid task evidence, never "unknown"
+        # (which would authorize a bounded retry).
+        failure_code = extract_safe_failure_code(detail) or "invalid_task"
+        os.environ["AUTONOMOUS_FAILURE_CODE"] = failure_code
         print(f"Multi-agent development failed: {detail}", flush=True)
         stopped = stop_controller.is_stopped()
         _write_development_audit_to_google_sheets(instruction=instruction, status="STOP" if stopped else "FAIL", target_path=state.chosen, branch=None, exit_detail=detail, base_sha=baseline_sha, produced_sha=None)

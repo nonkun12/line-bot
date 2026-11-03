@@ -1414,3 +1414,46 @@ def test_operational_validation_plan_is_idempotent(monkeypatch, tmp_path):
 
     assert error is None
     assert plan == {"no_change": True, "source": "deterministic_operational_validation"}
+
+
+
+def test_new_refill_cli_tasks_use_bounded_deterministic_plans(monkeypatch, tmp_path):
+    cases = [
+        (
+            "task-refill-cli-test-20261102",
+            "test_refill_main_cli_adds_one_approved_task",
+            'report["added_ids"] == ["task-cli-new"]',
+        ),
+        (
+            "task-refill-read-json-test-20261102",
+            "test_read_json_rejects_non_object_root",
+            "JSON root must be an object",
+        ),
+    ]
+    chosen = "tests/test_autonomous_task_refill.py"
+    anchor = '    assert queue.read_text(encoding="utf-8") == queue_before'
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    for task_id, expected_name, expected_marker in cases:
+        original = "def existing_test():\n" + anchor + "\n"
+        target.write_text(original, encoding="utf-8")
+        plan, error = runtime._deterministic_autonomous_test_plan(chosen, task_id)
+
+        assert error is None, task_id
+        assert plan is not None, task_id
+        assert plan["source"] == "deterministic_autonomous_task"
+        assert plan["no_change"] is False
+        assert runtime._DETERMINISTIC_AUTONOMOUS_TASK_TARGETS[task_id] == chosen
+        assert len(plan["changes"]) == 1
+        change = plan["changes"][0]
+        assert change["old"] == anchor
+        assert change["file"] == chosen
+        assert len(change["old"]) <= 1200
+        assert len(change["new"]) <= 1800
+        candidate = original.replace(change["old"], change["new"], 1)
+        compile(candidate, chosen, "exec")
+        assert expected_name in candidate
+        assert expected_marker in candidate
+        assert runtime.worker.validate_plan(plan, chosen) == (True, chosen)
