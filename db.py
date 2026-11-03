@@ -224,8 +224,10 @@ def has_pending_job_by_type(job_type: str) -> bool:
 def claim_pending_job():
     """最古のpending Jobを1件だけrunningへ移す。SQLite向けの最小claim実装。"""
     with get_conn() as conn:
+        # Goal child jobs have a dedicated typed executor. Keep them out of
+        # this legacy generic worker so they cannot be dry-run completed.
         row = conn.execute(
-            "SELECT id FROM jobs WHERE status='pending' ORDER BY id LIMIT 1"
+            "SELECT id FROM jobs WHERE status='pending' AND job_type != 'goal_child' ORDER BY id LIMIT 1"
         ).fetchone()
         if row is None:
             return None
@@ -234,7 +236,7 @@ def claim_pending_job():
             """
             UPDATE jobs
             SET status='running', updated_at=CURRENT_TIMESTAMP
-            WHERE id=? AND status='pending'
+            WHERE id=? AND status='pending' AND job_type != 'goal_child'
             """,
             (job_id,),
         )
