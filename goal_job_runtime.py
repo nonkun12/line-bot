@@ -1,6 +1,7 @@
 """Adapters connecting Goal AI proposals to durable JOBs and typed execution."""
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import job_store
