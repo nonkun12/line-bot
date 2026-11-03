@@ -63,7 +63,7 @@ def build_scenario(
     scenes = []
     base, remainder = divmod(duration_seconds, scene_count)
     for index in range(scene_count):
-        act_index = min(3, (index * 4) // scene_count)
+        act_index = round(index * 3 / (scene_count - 1))
         act, act_label, purpose = _ACTS[act_index]
         start = index * base + min(index, remainder)
         length = base + (1 if index < remainder else 0)
@@ -133,9 +133,15 @@ def validate_scenario(scenario: object) -> tuple[str, ...]:
     if not isinstance(brief, dict) or not isinstance(scenes, list) or not scenes:
         return tuple(errors + ["creative_brief_or_scenes_missing"])
     duration = brief.get("duration_seconds")
-    if type(duration) is not int or sum(
-        item.get("duration_seconds", 0) for item in scenes if isinstance(item, dict)
-    ) != duration:
+    durations = [
+        item.get("duration_seconds") for item in scenes if isinstance(item, dict)
+    ]
+    if (
+        type(duration) is not int
+        or len(durations) != len(scenes)
+        or any(type(value) is not int or value <= 0 for value in durations)
+        or sum(value for value in durations if type(value) is int) != duration
+    ):
         errors.append("scene_duration_total_mismatch")
     ids = [item.get("scene_id") for item in scenes if isinstance(item, dict)]
     if len(ids) != len(scenes) or len(ids) != len(set(ids)):
