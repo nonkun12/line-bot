@@ -128,3 +128,19 @@ Video is a full specialist workflow, not just a renderer. Its dependent jobs cov
 - Retries are idempotent and bounded. A repair job must reference the failed evidence and remain within the original Goal scope.
 - The critic is independent of the producing specialist and checks the actual output artifacts, not only the specialist's completion message.
 - Goal completion requires all acceptance criteria to pass with persisted evidence and artifact hashes.
+
+
+## Free-only operating policy (mandatory)
+
+The project must remain usable without paid subscriptions, paid APIs, usage-based model endpoints, or newly purchased storage/compute. This is a hard constraint, not a default that can be silently relaxed.
+
+- Default to local, open-source tools already available on the user's own machines or existing free infrastructure. Check actual hardware, disk, memory, and runtime availability before proposing a model download or workload.
+- Do not call paid hosted music/video/image generation APIs. Do not add billing credentials, payment methods, or paid-provider SDKs. Remote inference is disabled by default; any future exception would require a separate explicit user decision and is outside this free-only plan.
+- Prefer deterministic open formats and local tools: MusicXML/MIDI for scores and performance events; a locally installed synthesizer and legally usable soundfont for rehearsal audio; FFmpeg for video assembly; and locally available image/audio analysis where practical.
+- A tool or model is eligible only after its license, redistribution/use restrictions, model size, hardware requirements, and ongoing resource cost are checked. "Open source" does not automatically mean unrestricted commercial or public use.
+- Never assume that a free tier is permanent, sufficient, or suitable for autonomous production. Do not build core Goal completion on a vendor free tier, trial, or quota.
+- If local hardware cannot complete a task within the configured limits, preserve the Goal and artifacts, report a truthful HOLD with the resource reason, and offer a smaller local workflow. Never fall back to a paid endpoint.
+- Use existing free storage and retention only within known limits; enforce quotas, cleanup previews and intermediates safely, and do not create paid storage resources.
+- Keep the same restrictions in tests: assert that provider selection cannot silently choose a paid/remote adapter and that missing local tools cause HOLD rather than paid fallback.
+
+For the handbell milestone, the first deliverables should be generated from structured note/event data into MusicXML/MIDI and rendered locally only when an eligible local synthesizer and soundfont are available. The score and parts remain the authoritative performance materials; a missing audio renderer must not prevent score validation or be disguised as a completed audio deliverable.
