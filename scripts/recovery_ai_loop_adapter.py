@@ -13,26 +13,40 @@ import re
 from typing import Any
 
 from scripts.recovery_ai import RecoveryStore, failure_fingerprint
-from core.loop_failure_codes import is_safe_failure_code
+from core.loop_failure_codes import failure_code_category, is_safe_failure_code
 
 
 def _category(result: dict[str, Any]) -> str:
-    reason = str(result.get("failure_reason", "")).lower()
-    status = str(result.get("status", "")).upper()
+    raw_reason = result.get("failure_reason", "")
+    reason = raw_reason.lower() if isinstance(raw_reason, str) else ""
+    raw_status = result.get("status", "")
+    status = raw_status.upper() if isinstance(raw_status, str) else ""
+    failure_code_present = "failure_code" in result and result.get("failure_code") is not None
     failure_code = result.get("failure_code")
-    if status == "FAIL" and is_safe_failure_code(failure_code):
-        if failure_code == "existing_test_modified_repair_failed":
-            return "security_violation"
-        if failure_code in {
-            "invalid_change_count",
-            "invalid_change_count_repair_failed",
-            "append_only_test_anchor_or_size_invalid",
-        }:
-            return "invalid_task"
+
+    # Security evidence outranks task-planning codes and generic failure labels.
+    if any(token in reason for token in (
+        "sha_mismatch", "nonce_mismatch", "outside_allowed_paths",
+        "protected_file", "change_outside_selected_file",
+        "existing_test_modified", "security",
+    )):
+        return "security_violation"
+
+    # A supplied but malformed/unrecognized code is invalid evidence, never
+    # silently downgraded to the repairable "unknown" category.
+    if failure_code_present and not is_safe_failure_code(failure_code):
+        return "invalid_evidence"
+    if failure_code_present:
+        category = failure_code_category(failure_code)
+        if category is not None and status in {"FAIL", "BLOCKED", "STOPPED"}:
+            return category
+        if status not in {"FAIL", "BLOCKED", "STOPPED"}:
+            return "invalid_evidence"
+
     if status == "TIMEOUT" or "timeout" in reason:
         return "timeout"
-    if any(token in reason for token in ("sha_mismatch", "nonce_mismatch", "outside_allowed_paths", "security")):
-        return "security_violation"
+    if status in {"BLOCKED", "STOPPED"}:
+        return "invalid_evidence"
     if any(token in reason for token in ("evidence", "summary_missing", "summary_invalid")):
         return "invalid_evidence"
     if status == "FAIL" and any(token in reason for token in ("pytest", "test_regression")):
