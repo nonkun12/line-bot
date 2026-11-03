@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import subprocess
 import textwrap
+from types import SimpleNamespace
 
 
 WORKFLOW = (
@@ -43,6 +44,56 @@ def _run_active_check(tmp_path, depth, *, active_count=0):
         check=False,
     )
     return result, output.read_text(encoding="utf-8") if output.exists() else ""
+
+
+def _row(task_id="task-one", *, status="PASS", exit_code=0):
+    return {
+        "task_id": task_id,
+        "status": status,
+        "exit_code": exit_code,
+        "control_tower": {
+            "recorded": True,
+            "orchestration": {"allow_continue": True},
+        },
+    }
+
+
+def _run_gate(tmp_path, rows, completed):
+    from scripts.chain_job_ai import decide
+
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    (evidence / "minimal-autonomous-loop.jsonl").write_text(
+        "".join(__import__("json").dumps(row) + "\\n" for row in rows),
+        encoding="utf-8",
+    )
+    (evidence / "autonomous-loop-state.json").write_text(
+        __import__("json").dumps({"completed": completed}), encoding="utf-8"
+    )
+    report = decide(evidence, "continuation_depth=0", "success")
+    output = "continue=" + ("true" if report["continue"] else "false")
+    reason = (
+        "task_status_not_successful"
+        if report["reason"] == "task_status_not_verified_pass"
+        else report["reason"]
+    )
+    return SimpleNamespace(returncode=0, stdout=f"CONTINUATION_STOP={reason}"), output
+
+
+def test_continuation_gate_stops_if_any_task_fails(tmp_path):
+    from scripts.chain_job_ai import decide
+
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    (evidence / "minimal-autonomous-loop.jsonl").write_text(
+        __import__("json").dumps(_row(status="FAIL", exit_code=1)) + "\\n",
+        encoding="utf-8",
+    )
+    (evidence / "autonomous-loop-state.json").write_text(
+        __import__("json").dumps({"completed": ["task-one"]}), encoding="utf-8"
+    )
+    result = decide(evidence, "continuation_depth=0", "success")
+    assert result["reason"] == "task_status_not_verified_pass"
 
 
 def test_chain_job_ai_is_the_workflow_continuation_decision_owner():
