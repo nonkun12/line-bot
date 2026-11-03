@@ -34,7 +34,7 @@ def proposal(job_id="child-1", *, depends_on=None):
 
 def test_goal_child_persistence_is_idempotent_and_state_is_normalized(tmp_path, monkeypatch):
     setup_db(tmp_path, monkeypatch)
-    first = __persist_next_job(proposal(), user_id="U-test")
+    first = _persist_next_job(proposal(), user_id="U-test")
     second = _persist_next_job(proposal(), user_id="U-test")
 
     assert first["created"] is True
