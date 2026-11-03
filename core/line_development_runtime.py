@@ -2640,7 +2640,8 @@ def execute(instruction: str) -> int:
     # Deterministic queue tasks must run with no provider client and no API key.
     # If a deterministic plan unexpectedly needs a model, the guarded executor
     # fails closed instead of falling back to an external service.
-    client = None if deterministic_task else worker.Groq(api_key=os.environ["GROQ_API_KEY"])
+    provider_free_task = deterministic_task and not review_coverage_gap_task
+    client = None if provider_free_task else worker.Groq(api_key=os.environ["GROQ_API_KEY"])
     state = DevelopmentState(
         client=client,
         instruction=instruction,
