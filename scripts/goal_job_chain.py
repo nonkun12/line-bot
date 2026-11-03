@@ -86,8 +86,8 @@ def plan_next_job(
         dependencies = job.get("depends_on", [])
         approved = job.get("execution_approved")
         if (
-            not _valid_id(jid) or jid in job_ids or cid not in criterion_ids
-            or stage not in _STAGES or not isinstance(instruction, str)
+            not _valid_id(jid) or jid in job_ids or not _valid_id(cid) or cid not in criterion_ids
+            or not isinstance(stage, str) or stage not in _STAGES or not isinstance(instruction, str)
             or not instruction.strip() or len(instruction) > 5000
             or not isinstance(paths, list) or not paths or len(paths) > 10
             or not all(isinstance(p, str) and re.fullmatch(r"(tests|uhip/tests)/test_[A-Za-z0-9_]+[.]py", p) for p in paths)
