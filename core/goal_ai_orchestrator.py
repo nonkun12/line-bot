@@ -109,6 +109,7 @@ def evaluate_goal_progress(
     running_job_ids: object = (),
     failed_job_ids: object = (),
     blocked_job_ids: object = (),
+    approved_job_ids: object = (),
 ) -> dict[str, Any]:
     """Return bounded next-job candidates from a validated plan and durable states."""
     validated = validate_goal_plan(plan)
@@ -117,6 +118,7 @@ def evaluate_goal_progress(
         "running": running_job_ids,
         "failed": failed_job_ids,
         "blocked": blocked_job_ids,
+        "approved": approved_job_ids,
     }
     normalized: dict[str, set[str]] = {}
     known = {job["id"] for job in validated["jobs"]}
@@ -129,11 +131,13 @@ def evaluate_goal_progress(
             raise GoalPlanError(f"{name}_job_ids_duplicate")
         normalized[name] = set(values)
 
-    names = tuple(normalized)
+    names = ("completed", "running", "failed", "blocked")
     for index, left in enumerate(names):
         for right in names[index + 1:]:
             if normalized[left] & normalized[right]:
                 raise GoalPlanError("job_states_overlap")
+    if any(not by_id.get(job_id, {}).get("approval_required") for job_id in normalized["approved"]):
+        raise GoalPlanError("approval_for_unprotected_job")
 
     completed = normalized["completed"]
     running = normalized["running"]
@@ -164,16 +168,34 @@ def evaluate_goal_progress(
         return {**base, "status": "COMPLETE", "ready_job_ids": [], "reason": "all_goal_jobs_verified_complete"}
 
     slots = max(0, validated["max_parallel_jobs"] - len(running))
-    ready = [
-        job["id"] for job in validated["jobs"]
+    dependency_ready = [
+        job for job in validated["jobs"]
         if job["id"] not in completed | running
         and set(job["depends_on"]) <= completed
+    ]
+    approval_pending = [
+        job["id"] for job in dependency_ready
+        if job["approval_required"] and job["id"] not in normalized["approved"]
+    ]
+    ready = [
+        job["id"] for job in dependency_ready
+        if not job["approval_required"] or job["id"] in normalized["approved"]
     ][:slots]
     if ready:
-        return {**base, "status": "READY", "ready_job_ids": ready, "reason": "dependencies_verified"}
+        return {
+            **base, "status": "READY", "ready_job_ids": ready,
+            "approval_pending_job_ids": approval_pending,
+            "reason": "dependencies_and_required_approvals_verified",
+        }
+    if approval_pending:
+        return {
+            **base, "status": "APPROVAL_REQUIRED", "ready_job_ids": [],
+            "approval_pending_job_ids": approval_pending,
+            "reason": "human_approval_required_before_enqueue",
+        }
     if running:
-        return {**base, "status": "RUNNING", "ready_job_ids": [], "reason": "waiting_for_running_jobs"}
-    return {**base, "status": "HOLD", "ready_job_ids": [], "reason": "no_runnable_job_or_state_inconsistency"}
+        return {**base, "status": "RUNNING", "ready_job_ids": [], "approval_pending_job_ids": [], "reason": "waiting_for_running_jobs"}
+    return {**base, "status": "HOLD", "ready_job_ids": [], "approval_pending_job_ids": [], "reason": "no_runnable_job_or_state_inconsistency"}
 
 
 __all__ = ["GoalPlanError", "evaluate_goal_progress", "validate_goal_plan"]
