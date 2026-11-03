@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from scripts.recovery_ai import RecoveryStore, failure_fingerprint
+from scripts.recovery_ai import MAX_TRANSIENT_RETRIES, RecoveryStore, failure_fingerprint
 from core.loop_failure_codes import failure_code_category, is_safe_failure_code
 
 
@@ -120,10 +120,17 @@ def _attach_rag_advisory(
     return outcome
 
 
-def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[str, Any]:
+def record_loop_outcome(
+    state_path: str | Path,
+    result: dict[str, Any],
+    *,
+    transient_attempt: int = 1,
+) -> dict[str, Any]:
     """Persist one verified outcome; fail closed if state cannot be trusted."""
     if not isinstance(result, dict):
         raise ValueError("loop result must be an object")
+    if type(transient_attempt) is not int or not 1 <= transient_attempt <= MAX_TRANSIENT_RETRIES + 1:
+        raise ValueError("transient attempt is outside the bounded retry policy")
     task_id = str(result.get("task_id", "")).strip()
     if not task_id:
         # Synthetic queue/incident summaries are not task outcomes.
@@ -194,7 +201,7 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
             task_id=task_id, status=status, category="unknown",
         )
     category = _category(result)
-    decision = store.record_failure(task_id, category, ())
+    decision = store.record_failure(task_id, category, (), transient_attempt=transient_attempt)
     return _attach_rag_advisory(
         {"recorded": True, "status": status, "decision": asdict(decision)},
         task_id=task_id, status=status, category=category,
