@@ -96,25 +96,21 @@ Initial specialist roles:
 
 Specialists communicate through versioned artifact manifests and typed JOB results, not hidden shared state or free-form agent-to-agent commands. Each child JOB records its parent/dependencies, inputs, outputs, tool identity, limits, evidence, and idempotency key. A specialist cannot grant itself permissions or mark the overall Goal achieved.
 
-## First end-to-end performance milestone: handbell
+## General-purpose music production milestone
 
-The first concrete creative deliverable is a handbell arrangement that is genuinely ready for performers, not merely a musical idea or a rendered demo.
+Music production is a general-purpose specialist capability. Handbell is only one possible example of an arrangement request; it is not a dedicated implementation target or a hard-coded first product.
 
-The Goal should produce and validate:
+The music specialist should support a range of user-defined formats and ensembles through typed, reusable jobs:
 
-1. A complete score with key/time signature, tempo, measure numbers, dynamics, articulation, rests, accidentals, and clear entrances/cutoffs.
-2. A playable bell assignment: each pitch mapped to an available bell, with octave/range and accidental coverage checked. If the requested bell inventory is unknown, ask for it or produce a clearly labelled provisional arrangement rather than claiming playability.
-3. Performer parts: one readable part per player or station, including bell handoffs, simultaneous-note constraints, ringing/damping instructions, and page turns where relevant.
-4. A machine-readable event/MIDI representation with exact onset, duration, pitch, velocity/dynamics, and performer/bell assignment.
-5. A rehearsal audio render and, where practical, separated performer/station guide tracks. The render is a rehearsal aid and must not substitute for the score.
-6. Independent music review: check range, collisions, impossible hand assignments, missing notes, rhythm alignment, score-to-MIDI consistency, and whether every part can be performed with the declared inventory.
-7. A delivery package containing score PDF or MusicXML, MIDI, audio preview, performer parts, inventory assumptions, and provenance/license metadata.
+1. Interpret the brief and record genre, mood, duration, instrumentation, audience, and delivery format.
+2. Compose and arrange using a structured, editable representation rather than a prompt-only description.
+3. Validate musical structure, timing, pitch/range, instrument constraints, and consistency between source notation and exported artifacts.
+4. Export appropriate deliverables such as MusicXML, MIDI, notation/PDF, stems, or other formats supported by available local tools.
+5. Render audio previews locally when an eligible synthesizer, sound library, and sufficient resources are available.
+6. Run an independent critic against the user's acceptance criteria and the actual generated artifacts; create bounded repair jobs for concrete defects.
+7. Package outputs with provenance, licenses, assumptions, and clear disclosure of any unavailable deliverables.
 
-Handbell job chain (illustrative, each step persisted and evidence-gated):
-
-`music.brief` -> `music.inventory_check` -> `music.compose` -> `music.arrange_for_bells` -> `music.generate_score` -> `music.generate_parts` -> `music.export_midi` -> `audio.render_rehearsal` -> `music.critic_review` -> `music.repair` (only if needed) -> `creative.package`.
-
-The chain may continue through multiple repair/review cycles within the Goal grant and job budget. If the bell inventory, performer count, or required musical standard is unknown, the Goal records the assumption and requests only the missing essential information. No PASS is allowed merely because a file exists or a renderer exits successfully.
+Instrument-specific constraints (including handbell inventory, performer assignments, and ringing/damping techniques) belong in optional specialist validators selected only when the user's brief calls for them. They must not constrain the general music pipeline.
 
 ## Video production follows the same Goal discipline
 
