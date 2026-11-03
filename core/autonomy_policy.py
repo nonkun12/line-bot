@@ -77,6 +77,12 @@ def evaluate_job_autonomy(job: object) -> dict[str, Any]:
             "reason": next(reason for reason in reasons if reason),
             "risk": "high",
         }
+    if stage == "test" and any(not path.startswith(("tests/", "uhip/tests/")) for path in paths):
+        return {"decision": "HUMAN_REVIEW", "reason": "test_stage_must_be_test_only", "risk": "medium"}
+    if stage in {"requirements", "design", "review", "verify"} and any(
+        not path.startswith(("tests/", "uhip/tests/", "docs/")) for path in paths
+    ):
+        return {"decision": "HUMAN_REVIEW", "reason": "analysis_stage_must_be_read_only_scope", "risk": "medium"}
     if stage in {"implementation", "fix"}:
         has_test_scope = any(
             isinstance(path, str) and path.startswith(("tests/", "uhip/tests/"))
@@ -89,10 +95,11 @@ def evaluate_job_autonomy(job: object) -> dict[str, Any]:
                 "risk": "medium",
             }
 
+    risk = "low" if all(path.startswith(("tests/", "uhip/tests/", "docs/")) for path in paths) else "medium"
     return {
         "decision": "AUTO_APPROVE",
         "reason": "bounded_reversible_repository_work",
-        "risk": "low",
+        "risk": risk,
         "permissions": {
             "execute_scoped_job": True,
             "create_branch_or_draft_pr": True,
