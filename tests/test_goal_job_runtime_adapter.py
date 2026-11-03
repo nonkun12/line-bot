@@ -1,0 +1,97 @@
+from scripts.goal_job_runtime_adapter import execute_goal_child
+
+
+def test_goal_runtime_adapter_passes_exact_granted_paths_and_records_provenance():
+    calls = []
+    git_values = {
+        ("rev-parse", "HEAD"): ["base-sha", "produced-sha"],
+        ("branch", "--show-current"): ["goal-child/42"],
+        ("diff", "--name-only", "base-sha..produced-sha"): ["tests/test_goal_job_runtime_adapter.py"],
+    }
+
+    def fake_git(*args):
+        value = git_values[args].pop(0)
+        return value
+
+    def fake_execute(instruction, *, allowed_paths):
+        calls.append((instruction, allowed_paths))
+        return 0
+
+    payload = {
+        "goal_job_key": "job-42",
+        "instruction": "Add one focused regression test",
+        "allowed_paths": ["tests/test_goal_job_runtime_adapter.py"],
+    }
+    output = execute_goal_child(
+        {"id": 42, "job_type": "goal_child"},
+        payload,
+        runtime_execute=fake_execute,
+        git=fake_git,
+    )
+
+    assert calls == [("Add one focused regression test", ["tests/test_goal_job_runtime_adapter.py"])]
+    assert output["evidence"]["base_sha"] == "base-sha"
+    assert output["evidence"]["produced_sha"] == "produced-sha"
+    assert output["evidence"]["changed_paths"] == ["tests/test_goal_job_runtime_adapter.py"]
+    assert all(item["status"] == "PASS" for item in output["evidence"]["checks"])
+
+
+def test_goal_runtime_adapter_marks_out_of_grant_changes_as_failure():
+    git_values = {
+        ("rev-parse", "HEAD"): ["base-sha", "produced-sha"],
+        ("branch", "--show-current"): ["goal-child/42"],
+        ("diff", "--name-only", "base-sha..produced-sha"): [
+            "tests/test_goal_job_runtime_adapter.py",
+            "core/protected.py",
+        ],
+    }
+
+    def fake_git(*args):
+        return git_values[args].pop(0)
+
+    output = execute_goal_child(
+        {"id": 42, "job_type": "goal_child"},
+        {
+            "goal_job_key": "job-42",
+            "instruction": "Add one focused regression test",
+            "allowed_paths": ["tests/test_goal_job_runtime_adapter.py"],
+        },
+        runtime_execute=lambda *args, **kwargs: 0,
+        git=fake_git,
+    )
+
+    assert output["evidence"]["outside_scope_paths"] == ["core/protected.py"]
+    assert output["evidence"]["checks"][1]["status"] == "FAIL"
+
+
+def test_goal_runtime_adapter_rejects_non_goal_jobs_before_execution():
+    called = []
+    try:
+        execute_goal_child(
+            {"id": 1, "job_type": "normal"},
+            {"instruction": "do work", "allowed_paths": ["tests/test_x.py"]},
+            runtime_execute=lambda *args, **kwargs: called.append(True) or 0,
+            git=lambda *args: "sha",
+        )
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError("non-Goal job must be rejected")
+    assert called == []
+
+
+def test_goal_runtime_adapter_rejects_duplicate_allowed_paths():
+    try:
+        execute_goal_child(
+            {"id": 1, "job_type": "goal_child"},
+            {
+                "instruction": "do work",
+                "allowed_paths": ["tests/test_x.py", "tests/test_x.py"],
+            },
+            runtime_execute=lambda *args, **kwargs: 0,
+            git=lambda *args: "sha",
+        )
+    except ValueError as exc:
+        assert "unique" in str(exc)
+    else:
+        raise AssertionError("duplicate grant paths must be rejected")
