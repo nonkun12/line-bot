@@ -488,10 +488,10 @@ def _safe_api_error_detail(exc: Exception) -> str:
             parts.append(f"{key}={value}")
     message = getattr(exc, "message", None)
     if isinstance(message, str) and message:
-        safe = re.sub(r"(?i)bearer\\s+\\S+", "Bearer [REDACTED]", message)
-        safe = re.sub(r"\\b(?:gsk|sk)-[A-Za-z0-9_-]{8,}\\b", "[REDACTED]", safe)
-        safe = re.sub(r"[\\r\\n\\t]+", " ", safe)
-        safe = re.sub(r"\\s{2,}", " ", safe).strip()
+        safe = re.sub(r"(?i)bearer\s+\S+", "Bearer [REDACTED]", message)
+        safe = re.sub(r"\b(?:gsk|sk)-[A-Za-z0-9_-]{8,}\b", "[REDACTED]", safe)
+        safe = re.sub(r"[\r\n\t]+", " ", safe)
+        safe = re.sub(r"\s{2,}", " ", safe).strip()
         if safe:
             parts.append(f"message={safe[:180]}")
     return ":".join(parts)
