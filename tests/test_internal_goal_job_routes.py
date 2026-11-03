@@ -75,7 +75,17 @@ def test_complete_requires_claim_token_and_is_idempotently_rejected_after_first_
         "claim_token": claimed["claim_token"],
         "success": True,
         "result": json.dumps({"produced_sha": "a" * 40}),
-        "evidence": {"checks": [{"name": "guarded_runtime", "status": "PASS", "source": "worker"}]},
+        "evidence": {
+            "produced_sha": "a" * 40,
+            "checks": [{"name": "guarded_runtime", "status": "PASS", "source": "worker"}],
+            "verification": {
+                "target_sha": "a" * 40,
+                "pytest_status": "PASS",
+                "review_status": "PASS",
+                "pytest_run_url": "https://github.com/nonkun12/line-bot/actions/runs/123",
+                "review_run_url": "https://github.com/nonkun12/line-bot/actions/runs/124",
+            },
+        },
     }
     first = client.post("/internal/goal-jobs/complete", headers=headers, json=payload)
     second = client.post("/internal/goal-jobs/complete", headers=headers, json=payload)
