@@ -40,9 +40,9 @@ def test_goal_runtime_adapter_marks_out_of_grant_changes_as_failure():
     git_values = {
         ("rev-parse", "HEAD"): ["base-sha", "produced-sha"],
         ("branch", "--show-current"): ["goal-child/42"],
-        ("diff", "--name-only", "base-sha..produced-sha"): (
+        ("diff", "--name-only", "base-sha..produced-sha"): [
             "tests/test_goal_job_runtime_adapter.py\ncore/protected.py"
-        ),
+        ],
     }
 
     def fake_git(*args):
