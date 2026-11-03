@@ -356,11 +356,11 @@ def test_control_tower_reselects_second_task_against_new_head(monkeypatch, tmp_p
     )
     monkeypatch.setattr(
         "scripts.recovery_ai_loop_adapter.record_loop_outcome",
-        lambda _path, result: {"recorded": True, "task_id": result["task_id"]},
+        lambda _path, result, **_kwargs: {"recorded": True, "task_id": result["task_id"]},
     )
     monkeypatch.setattr(
         "scripts.control_tower_loop_observer.record_loop_observation",
-        lambda _path, result: {"recorded": True, "task_id": result["task_id"], "proposal_executable": False},
+        lambda _path, result, **_kwargs: {"recorded": True, "task_id": result["task_id"], "proposal_executable": False},
     )
     monkeypatch.setattr(
         "scripts.control_tower_orchestrator.coordinate_outcome",
