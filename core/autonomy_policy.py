@@ -23,7 +23,7 @@ _PROTECTED_PREFIXES = (
     "core/control_tower", "core/task_routing.py", "core/management_bridge.py",
     "core/openclaw_bridge.py", "core/auth/", "core/security/",
 )
-_HIGH_RISK_INSTRUCTION = re.compile(
+_PROTECTED_NAME = re.compile(r"(^|[/_.-])(secret|secrets|auth|authentication|token|credential|permission|security|billing|payment|deploy|deployment|migration|database|production|prod)([/_.-]|$)", re.IGNORECASE)\n_HIGH_RISK_INSTRUCTION = re.compile(
     r"(?:\bdeploy\b|\bmerge\b|\bpublish\b|\bproduction\b|\bsecret\b|"
     r"\bcredential\b|\bpermission\b|\bdelete\b|\bdrop\b|\bmigration\b|"
     r"デプロイ|本番|秘密|認証情報|権限変更|データ削除|マージ|公開)",
@@ -39,6 +39,10 @@ def _path_reason(path: object) -> str | None:
     if any(char in path for char in "*?[]{}"):
         return "path_must_be_explicit"
     normalized = str(PurePosixPath(path))
+    if any(part.startswith(".") for part in normalized.split("/")) or not PurePosixPath(normalized).suffix:
+        return "hidden_or_non_file_path"
+    if _PROTECTED_NAME.search(normalized):
+        return "protected_name_requires_human_review"
     if normalized in _PROTECTED_EXACT or any(
         normalized == prefix.rstrip("/") or normalized.startswith(prefix)
         for prefix in _PROTECTED_PREFIXES
@@ -95,6 +99,7 @@ def evaluate_job_autonomy(job: object) -> dict[str, Any]:
             "deploy": False,
             "modify_secrets_or_permissions": False,
             "mutate_production_data": False,
+            "verify_realpath_within_repository": True,
         },
     }
 
