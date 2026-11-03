@@ -215,11 +215,13 @@ def _mcp_http_is_hibernate_rate_limited() -> bool:
     deadline = time.monotonic() + max_wait
     delay = 1.0
     last_routing = ""
+    first_attempt = True
     while True:
-        if time.monotonic() >= deadline:
+        if not first_attempt and time.monotonic() >= deadline:
             raise RuntimeError(
-                f"MCP health probe remained rate-limited (HTTP 429, routing={last_routing}) after bounded retry"
+                f"MCP health probe returned status=429 (routing={last_routing}) after bounded retry"
             )
+        first_attempt = False
         try:
             response = requests.get(
                 _mcp_health_url(), headers={"Accept": "application/json"},
@@ -247,14 +249,16 @@ def _mcp_http_is_hibernate_rate_limited() -> bool:
                     raise RuntimeError("MCP health response is not valid JSON") from exc
                 if isinstance(payload, dict) and payload.get("ok") is True:
                     return False
-                raise RuntimeError("MCP health response did not confirm readiness")
+                raise RuntimeError("MCP health probe returned status=200: response did not confirm readiness")
             else:
                 raise RuntimeError(
                     f"MCP health probe returned status={response.status_code} "
                     f"routing={response.headers.get('x-render-routing', '')}"
                 )
         finally:
-            response.close()
+            close_response = getattr(response, "close", None)
+            if callable(close_response):
+                close_response()
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise RuntimeError(f"MCP health probe remained rate-limited (HTTP 429, routing={last_routing})")
