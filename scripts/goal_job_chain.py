@@ -69,7 +69,7 @@ def _validate_autonomy_grant(grant: object, goal_id: str) -> dict[str, Any] | No
         or len(allowed_stages) != len(set(allowed_stages))
         or not isinstance(allowed_paths, list)
         or not allowed_paths
-        or any(path not in {"tests/", "uhip/tests/", "docs/", "agents/", "core/", "scripts/"}
+        or any(not isinstance(path, str) or path not in {"tests/", "uhip/tests/", "docs/", "agents/", "core/", "scripts/"}
                for path in allowed_paths)
         or len(allowed_paths) != len(set(allowed_paths))
         or grant.get("auto_merge", False) is not False
