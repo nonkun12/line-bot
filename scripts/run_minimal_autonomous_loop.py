@@ -100,13 +100,30 @@ def run_task_with_transient_recovery(
             flush=True,
         )
         time.sleep(delay)
-        retry_count += 1
+
+        # Revalidate every safety condition after the wait. A stop signal or
+        # worktree mutation may arrive while sleeping; never dispatch on stale
+        # pre-wait evidence.
+        if stopped(stop_file):
+            break
         retry_base_sha = _git_head()
         if retry_base_sha != current_head:
             break
+        try:
+            clean_rc, clean_output = _git_checked(
+                "status", "--porcelain", "--untracked-files=all"
+            )
+            retry_worktree_clean = clean_rc == 0 and not clean_output.strip()
+        except Exception:
+            retry_worktree_clean = False
+        if not retry_worktree_clean:
+            break
+
+        # Count only retries that are actually dispatched.
         result = run_task(
             task, index, stop_file, expected_base_sha=retry_base_sha
         )
+        retry_count += 1
     return result, retry_count
 
 
