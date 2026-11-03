@@ -458,7 +458,7 @@
       "allowed_paths": [
         "tests/test_obsidian.py"
       ],
-      "execution_approved": false
+      "execution_approved": true
     },
     {
       "id": "recovery-resume-review-cli-test-20261102",
