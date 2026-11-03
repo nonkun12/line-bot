@@ -78,6 +78,8 @@ def test_persist_child_job_is_idempotent_and_keeps_parent_relation(tmp_path, mon
     assert first["job_id"] == second["job_id"]
     assert goal_job_store.get_goal_job_states("goal-autonomy-demo") == {"routing-tests": "pending"}
 
+    with db.get_conn() as conn:
+        conn.execute("UPDATE jobs SET status='completed' WHERE id=?", (first["job_id"],))
     child = goal_job_store.persist_child_job(
         "goal-autonomy-demo",
         {
