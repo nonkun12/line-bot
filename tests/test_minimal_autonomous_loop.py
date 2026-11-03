@@ -1205,3 +1205,37 @@ def test_postrun_verifier_distinguishes_catalog_block_from_invalid_evidence():
     assert '"catalog_exhausted_mixed:"' in workflow
     assert 'CATALOG_BLOCKED: ${{ steps.verify.outputs.catalog_blocked }}' in workflow
     assert 'BLOCKED（保留・レビュー待ち。人の確認が必要）' in workflow
+
+
+@pytest.mark.parametrize(
+    "result,expected",
+    [
+        ({"status": "FAIL", "failure_reason": "provider_rate_limited"}, "provider_rate_limited"),
+        ({"status": "FAIL", "failure_reason": "HTTP status=503"}, "provider_service_unavailable"),
+        ({"status": "FAIL", "failure_reason": "APIConnectionError"}, "provider_network_transient"),
+        ({"status": "FAIL", "failure_reason": "HTTP status=400"}, None),
+        ({"status": "FAIL", "failure_reason": "unauthorized status=401"}, None),
+        ({"status": "FAIL", "failure_reason": "pytest failed"}, None),
+        ({"status": "BLOCKED", "failure_reason": "status=503"}, None),
+    ],
+)
+def test_transient_retry_code_is_allowlisted_and_fail_closed(result, expected):
+    from scripts.run_minimal_autonomous_loop import transient_retry_code
+
+    assert transient_retry_code(result) == expected
+
+
+def test_transient_retry_requires_unchanged_head_and_clean_worktree():
+    from scripts.run_minimal_autonomous_loop import retry_is_safe
+
+    result = {
+        "status": "FAIL",
+        "failure_reason": "provider_service_unavailable status=503",
+        "base_sha": "a" * 40,
+        "produced_sha": "a" * 40,
+    }
+    assert retry_is_safe(result, current_head="a" * 40, working_tree_clean=True)
+    assert not retry_is_safe(result, current_head="b" * 40, working_tree_clean=True)
+    assert not retry_is_safe(result, current_head="a" * 40, working_tree_clean=False)
+    result["failure_reason"] = "HTTP status=400"
+    assert not retry_is_safe(result, current_head="a" * 40, working_tree_clean=True)
