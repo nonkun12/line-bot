@@ -178,3 +178,51 @@ def test_grant_must_be_valid_and_goal_scoped(tmp_path, monkeypatch):
     import pytest
     with pytest.raises(ValueError):
         goal_job_store.create_goal(_goal(), "U-test", bad)
+
+def test_successful_child_completion_rejects_any_failing_evidence_check(tmp_path, monkeypatch):
+    import pytest
+
+    _setup(tmp_path, monkeypatch)
+    goal_job_store.create_goal(_goal(), "U-test", _grant())
+    child = goal_job_store.persist_child_job("goal-autonomy-demo", _job())
+    with db.get_conn() as conn:
+        conn.execute(
+            "UPDATE jobs SET status='running', claim_token=? WHERE id=?",
+            ("claim-evidence-test", child["job_id"]),
+        )
+
+    failing_evidence = {
+        "checks": [
+            {"name": "pytest", "status": "PASS", "source": "CI run 123"},
+            {"name": "scope", "status": "FAIL", "source": "git diff"},
+        ]
+    }
+    with pytest.raises(ValueError, match="every evidence check to PASS"):
+        goal_job_store.complete_claimed_child_job(
+            child["job_id"],
+            "claim-evidence-test",
+            success=True,
+            result="work completed",
+            evidence=failing_evidence,
+        )
+
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT status, claim_token FROM jobs WHERE id=?",
+            (child["job_id"],),
+        ).fetchone()
+    assert row == ("running", "claim-evidence-test")
+
+    passing_evidence = {
+        "checks": [
+            {"name": "pytest", "status": "PASS", "source": "CI run 123"},
+            {"name": "scope", "status": "PASS", "source": "git diff"},
+        ]
+    }
+    assert goal_job_store.complete_claimed_child_job(
+        child["job_id"],
+        "claim-evidence-test",
+        success=True,
+        result="verified work",
+        evidence=passing_evidence,
+    ) is True
