@@ -6,7 +6,10 @@ from core.control_tower_status import (
 
 def test_recognizes_explicit_status_commands_only():
     assert is_control_tower_status_command("統括AI 状況確認")
+    assert is_control_tower_status_command("統括AIの状況確認")
+    assert is_control_tower_status_command("統括AI ステータス")
     assert is_control_tower_status_command("  分散Loop   状況確認 ")
+    assert is_control_tower_status_command("分散ループ 状況確認")
     assert not is_control_tower_status_command("こんにちは")
     assert not is_control_tower_status_command("統括AIを強化して")
 
