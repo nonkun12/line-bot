@@ -8,6 +8,7 @@ merge, deploy, or clear an existing HOLD.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -414,7 +415,86 @@ def save_child_evidence(job_id: int, evidence: object) -> bool:
         return cursor.rowcount == 1
 
 
+def register_child_job_definition(goal_id: str, job: object) -> bool:
+    """Register one AI-proposed child only inside the persisted Goal/grant.
+
+    The generator is untrusted: the criterion must already exist, dependencies
+    must refer to known JOB definitions, and deterministic risk/scope policy
+    must approve the exact proposed paths before it becomes executable.
+    """
+    if not isinstance(job, dict):
+        raise ValueError("generated child JOB must be an object")
+    key = job.get("id")
+    criterion_id = job.get("criterion_id")
+    stage = job.get("stage")
+    instruction = job.get("instruction")
+    paths = job.get("allowed_paths")
+    dependencies = job.get("depends_on", [])
+    if (
+        not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", key)
+        or not isinstance(criterion_id, str) or not criterion_id.strip()
+        or not isinstance(stage, str) or not isinstance(instruction, str)
+        or not isinstance(paths, list) or not isinstance(dependencies, list)
+        or any(not isinstance(dep, str) for dep in dependencies)
+    ):
+        raise ValueError("generated child JOB contract is malformed")
+    init_goal_job_store()
+    with db.get_conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT goal_json,grant_json,status FROM goal_chains WHERE goal_id=?",
+            (goal_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("goal not found")
+        if row[2] != "active":
+            raise ValueError("goal is not active")
+        goal = json.loads(row[0])
+        grant = _validate_grant(json.loads(row[1]), goal_id)
+        criteria = {
+            item.get("id") for item in goal.get("success_criteria", [])
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        }
+        if criterion_id not in criteria:
+            raise PermissionError("generated child references an unknown success criterion")
+        jobs = goal.get("jobs")
+        if not isinstance(jobs, list):
+            raise ValueError("persisted Goal JOB definitions are malformed")
+        existing = next((item for item in jobs if isinstance(item, dict) and item.get("id") == key), None)
+        candidate = {
+            "id": key,
+            "criterion_id": criterion_id,
+            "stage": stage,
+            "instruction": instruction.strip(),
+            "allowed_paths": list(paths),
+            "depends_on": list(dependencies),
+        }
+        if existing is not None:
+            if _json(existing) == _json(candidate):
+                return False
+            raise ValueError("generated JOB id already exists with different content")
+        if len(jobs) >= grant["max_jobs"]:
+            raise PermissionError("Goal JOB definition budget exhausted")
+        known_ids = {item.get("id") for item in jobs if isinstance(item, dict)}
+        if key in known_ids or any(dep not in known_ids for dep in dependencies):
+            raise ValueError("generated JOB id or dependency is invalid")
+        decision = evaluate_job_autonomy(candidate)
+        in_grant = (
+            stage in grant["allowed_stages"]
+            and bool(paths)
+            and all(isinstance(path, str) and any(path.startswith(root) for root in grant["allowed_path_prefixes"]) for path in paths)
+        )
+        if decision.get("decision") != "AUTO_APPROVE" or not in_grant:
+            raise PermissionError("generated JOB is outside the trusted autonomy grant or risk policy")
+        jobs.append(candidate)
+        conn.execute(
+            "UPDATE goal_chains SET goal_json=?,updated_at=CURRENT_TIMESTAMP WHERE goal_id=?",
+            (_json(goal), goal_id),
+        )
+        return True
+
+
 __all__ = [
     "init_goal_job_store", "create_goal", "get_goal", "persist_child_job",
-    "get_goal_job_states", "update_goal_evidence", "authorize_claimed_job", "save_child_evidence", "complete_claimed_child_job",
+    "get_goal_job_states", "update_goal_evidence", "authorize_claimed_job", "save_child_evidence", "complete_claimed_child_job", "register_child_job_definition",
 ]
