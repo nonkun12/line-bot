@@ -34,7 +34,7 @@ def _is_int(value: object) -> bool:
 
 
 def _safe_repo_path(value: object) -> bool:
-    if not isinstance(value, str) or not value or "\\\\" in value or value.startswith("/"):
+    if not isinstance(value, str) or not value or chr(92) in value or value.startswith("/"):
         return False
     path = PurePosixPath(value)
     return not any(part in {"", ".", ".."} for part in value.split("/")) and not path.is_absolute()
