@@ -6,6 +6,7 @@ meant to be called only from an authenticated, isolated GitHub Actions worker.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from collections.abc import Callable
 from typing import Any
@@ -55,7 +56,18 @@ def execute_goal_child(
     if not base_sha:
         raise RuntimeError("cannot capture Goal child base SHA")
     execute = runtime_execute or line_development_runtime.execute
-    exit_code = execute(instruction, allowed_paths=allowed_paths)
+    env_keys = ("AUTONOMOUS_TASK_ID", "AUTONOMOUS_RUN_SOURCE")
+    previous_env = {key: os.environ.get(key) for key in env_keys}
+    os.environ["AUTONOMOUS_TASK_ID"] = str(payload.get("goal_job_key") or job.get("id"))[:100]
+    os.environ["AUTONOMOUS_RUN_SOURCE"] = "goal-child"
+    try:
+        exit_code = execute(instruction, allowed_paths=allowed_paths)
+    finally:
+        for key, value in previous_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
     produced_sha = git("rev-parse", "HEAD")
     branch = git("branch", "--show-current")
     changed_raw = git("diff", "--name-only", f"{base_sha}..{produced_sha}") if produced_sha != base_sha else ""
