@@ -106,3 +106,22 @@ def test_failed_checks_cannot_be_reported_as_success(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert response.get_json()["success"] is False
     assert db.get_job(job_id)["status"] == "failed"
+
+
+def test_success_is_rejected_without_independent_exact_sha_verification(tmp_path, monkeypatch):
+    client = _app(tmp_path, monkeypatch)
+    job_id = _create_goal()
+    headers = {"x-internal-key": "test-internal-key"}
+    claimed = client.post("/internal/goal-jobs/claim", headers=headers, json={"job_id": job_id}).get_json()["job"]
+    response = client.post("/internal/goal-jobs/complete", headers=headers, json={
+        "job_id": job_id,
+        "claim_token": claimed["claim_token"],
+        "success": True,
+        "result": "runtime finished",
+        "evidence": {
+            "produced_sha": "b" * 40,
+            "checks": [{"name": "guarded_runtime", "status": "PASS", "source": "worker"}],
+        },
+    })
+    assert response.status_code == 400
+    assert db.get_job(job_id)["status"] == "running"
