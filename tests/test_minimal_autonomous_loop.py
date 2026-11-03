@@ -840,12 +840,12 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
     monkeypatch.setattr(
         recovery_ai_loop_adapter,
         "record_loop_outcome",
-        lambda _path, result: persisted.append(("recovery", result["status"])) or {"recorded": False, "reason": "preflight_blocked_not_task_failure"},
+        lambda _path, result, **_kwargs: persisted.append(("recovery", result["status"])) or {"recorded": False, "reason": "preflight_blocked_not_task_failure"},
     )
     monkeypatch.setattr(
         control_tower_loop_observer,
         "record_loop_observation",
-        lambda _path, result: persisted.append(("control_tower", result["status"])) or {"recorded": True, "proposal_executable": False},
+        lambda _path, result, **_kwargs: persisted.append(("control_tower", result["status"])) or {"recorded": True, "proposal_executable": False},
     )
     monkeypatch.setattr(
         control_tower_orchestrator,
@@ -1132,7 +1132,7 @@ def test_orchestrator_gates_successful_loop_on_exact_evidence(monkeypatch, tmp_p
     monkeypatch.setattr(
         recovery_ai_loop_adapter,
         "record_loop_outcome",
-        lambda _path, result: {
+        lambda _path, result, **_kwargs: {
             "recorded": True,
             "verified": True,
             "status": result["status"],
@@ -1142,7 +1142,7 @@ def test_orchestrator_gates_successful_loop_on_exact_evidence(monkeypatch, tmp_p
     monkeypatch.setattr(
         control_tower_loop_observer,
         "record_loop_observation",
-        lambda _path, result: {
+        lambda _path, result, **_kwargs: {
             "recorded": True,
             "observed_status": result["status"],
             "proposal_executable": False,
@@ -1205,3 +1205,37 @@ def test_postrun_verifier_distinguishes_catalog_block_from_invalid_evidence():
     assert '"catalog_exhausted_mixed:"' in workflow
     assert 'CATALOG_BLOCKED: ${{ steps.verify.outputs.catalog_blocked }}' in workflow
     assert 'BLOCKED（保留・レビュー待ち。人の確認が必要）' in workflow
+
+
+@pytest.mark.parametrize(
+    "result,expected",
+    [
+        ({"status": "FAIL", "failure_reason": "provider_rate_limited"}, "provider_rate_limited"),
+        ({"status": "FAIL", "failure_reason": "HTTP status=503"}, "provider_service_unavailable"),
+        ({"status": "FAIL", "failure_reason": "APIConnectionError"}, "provider_network_transient"),
+        ({"status": "FAIL", "failure_reason": "HTTP status=400"}, None),
+        ({"status": "FAIL", "failure_reason": "unauthorized status=401"}, None),
+        ({"status": "FAIL", "failure_reason": "pytest failed"}, None),
+        ({"status": "BLOCKED", "failure_reason": "status=503"}, None),
+    ],
+)
+def test_transient_retry_code_is_allowlisted_and_fail_closed(result, expected):
+    from scripts.run_minimal_autonomous_loop import transient_retry_code
+
+    assert transient_retry_code(result) == expected
+
+
+def test_transient_retry_requires_unchanged_head_and_clean_worktree():
+    from scripts.run_minimal_autonomous_loop import retry_is_safe
+
+    result = {
+        "status": "FAIL",
+        "failure_reason": "provider_service_unavailable status=503",
+        "base_sha": "a" * 40,
+        "produced_sha": "a" * 40,
+    }
+    assert retry_is_safe(result, current_head="a" * 40, working_tree_clean=True)
+    assert not retry_is_safe(result, current_head="b" * 40, working_tree_clean=True)
+    assert not retry_is_safe(result, current_head="a" * 40, working_tree_clean=False)
+    result["failure_reason"] = "HTTP status=400"
+    assert not retry_is_safe(result, current_head="a" * 40, working_tree_clean=True)

@@ -15,7 +15,8 @@ from scripts.recovery_ai import RecoveryStore
 def test_every_allowlisted_failure_code_has_one_canonical_category():
     assert set(SAFE_FAILURE_CODES) == set(FAILURE_CODE_CATEGORIES)
     assert all(category in {
-        "invalid_task", "security_violation", "invalid_evidence"
+        "invalid_task", "security_violation", "invalid_evidence",
+        "rate_limited", "service_unavailable", "network_transient"
     } for category in FAILURE_CODE_CATEGORIES.values())
     assert all(failure_code_category(code) for code in SAFE_FAILURE_CODES)
 
