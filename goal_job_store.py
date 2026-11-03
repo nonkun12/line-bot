@@ -278,6 +278,55 @@ def update_goal_evidence(goal_id: str, criterion_results: object) -> dict[str, A
 
 
 
+def complete_claimed_child_job(
+    job_id: int,
+    claim_token: str,
+    *,
+    success: bool,
+    result: str | None = None,
+    last_error: str | None = None,
+    evidence: object = None,
+) -> bool:
+    """Atomically complete a typed child JOB and attach evidence to its Goal link."""
+    if not isinstance(job_id, int) or isinstance(job_id, bool) or job_id <= 0:
+        raise ValueError("job_id is invalid")
+    if not isinstance(claim_token, str) or not claim_token.strip():
+        raise ValueError("claim_token is required")
+    if not isinstance(success, bool):
+        raise ValueError("success must be boolean")
+    evidence_json = None
+    if success:
+        if not isinstance(evidence, dict) or not isinstance(evidence.get("checks"), list) or not evidence["checks"]:
+            raise ValueError("successful completion requires non-empty evidence checks")
+        for check in evidence["checks"]:
+            if (
+                not isinstance(check, dict)
+                or not isinstance(check.get("name"), str) or not check["name"].strip()
+                or check.get("status") not in {"PASS", "FAIL"}
+                or not isinstance(check.get("source"), str) or not check["source"].strip()
+            ):
+                raise ValueError("evidence checks require name, PASS/FAIL status, and source")
+        evidence_json = _json(evidence)
+    init_goal_job_store()
+    with db.get_conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        cursor = conn.execute(
+            "UPDATE jobs SET status=?,result=?,last_error=?,claim_token=NULL,updated_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND job_type='goal_child' AND status='running' AND claim_token=?",
+            ("completed" if success else "failed", result, last_error, job_id, claim_token),
+        )
+        if cursor.rowcount != 1:
+            return False
+        if success:
+            link = conn.execute(
+                "UPDATE goal_chain_jobs SET evidence_json=?,updated_at=CURRENT_TIMESTAMP WHERE job_id=?",
+                (evidence_json, job_id),
+            )
+            if link.rowcount != 1:
+                raise ValueError("Goal child link is missing")
+        return True
+
+
 def authorize_claimed_job(job: object) -> dict[str, Any]:
     """Re-check a claimed typed job against its persisted Goal grant."""
     if not isinstance(job, dict) or job.get("job_type") != "goal_child":
@@ -336,5 +385,5 @@ def save_child_evidence(job_id: int, evidence: object) -> bool:
 
 __all__ = [
     "init_goal_job_store", "create_goal", "get_goal", "persist_child_job",
-    "get_goal_job_states", "update_goal_evidence", "authorize_claimed_job", "save_child_evidence",
+    "get_goal_job_states", "update_goal_evidence", "authorize_claimed_job", "save_child_evidence", "complete_claimed_child_job",
 ]
