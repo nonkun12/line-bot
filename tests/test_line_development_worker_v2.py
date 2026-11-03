@@ -1385,6 +1385,7 @@ def test_refill_cli_insertion_fails_closed_on_intervening_test(tmp_path, monkeyp
     assert target_path.read_text(encoding="utf-8") == source
 
 
+
 def test_safe_api_error_detail_reports_provider_metadata_without_secrets():
     class BadRequestError(Exception):
         status_code = 400
@@ -1403,7 +1404,7 @@ def test_safe_api_error_detail_reports_provider_metadata_without_secrets():
 def test_append_only_generation_failure_includes_safe_api_error_detail(monkeypatch, tmp_path):
     target = tmp_path / "tests" / "test_sample.py"
     target.parent.mkdir()
-    target.write_text("def test_existing():\\n    assert True\\n", encoding="utf-8")
+    target.write_text("def test_existing():\n    assert True\n", encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
 
     class BadRequestError(Exception):
@@ -1427,4 +1428,4 @@ def test_append_only_generation_failure_includes_safe_api_error_detail(monkeypat
         "code=invalid_request:param=max_tokens:"
         "message=Requested token budget exceeds limit"
     )
-    assert target.read_text(encoding="utf-8") == "def test_existing():\\n    assert True\\n"
+    assert target.read_text(encoding="utf-8") == "def test_existing():\n    assert True\n"
