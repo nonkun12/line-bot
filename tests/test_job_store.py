@@ -125,3 +125,25 @@ def test_invalid_job_chain_is_rejected_without_partial_inserts(tmp_path, monkeyp
         with db.get_conn() as conn:
             count = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
         assert count == 0
+
+
+def test_typed_claim_respects_goal_chain_parent_dependency(tmp_path, monkeypatch):
+    db_path = tmp_path / "jobs.sqlite"
+    monkeypatch.setattr(db, "DB", str(db_path))
+    db.init_db()
+
+    ids = job_store.create_job_chain(
+        "U-goal",
+        [
+            {"message": "research", "job_type": "goal_research"},
+            {"message": "build", "job_type": "goal_build"},
+        ],
+    )
+    assert db.claim_pending_job_by_type("goal_build") is None
+    parent = db.claim_pending_job_by_type("goal_research")
+    assert parent["id"] == ids[0]
+    assert db.complete_claimed_job(
+        parent["id"], parent["claim_token"], success=True, result="done"
+    )
+    child = db.claim_pending_job_by_type("goal_build")
+    assert child["id"] == ids[1]
