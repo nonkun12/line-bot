@@ -34,10 +34,10 @@ MAX_FILE_CHARS = 12000
 # A 3,500-token completion plus the observed ~4,808-token prompt was rejected
 # at 8,308 TPM. Keep the default completion budget at 2,500 to leave headroom.
 MAX_RESPONSE_TOKENS = 2500
-# GPT-OSS reasoning tokens count against Groq's completion cap. The append-only
-# test generator gets a larger budget, paired with bounded context for TPM headroom.
-MAX_APPEND_ONLY_RESPONSE_TOKENS = 3500
-MAX_APPEND_ONLY_CONTEXT_CHARS = 8000
+# Keep this endpoint within the observed Groq TPM budget: a 3,500-token
+# completion plus a ~4,808-token prompt was rejected. Bound both sides.
+MAX_APPEND_ONLY_RESPONSE_TOKENS = 2500
+MAX_APPEND_ONLY_CONTEXT_CHARS = 3000
 MAX_INSTRUCTION_LENGTH = 2000
 MAX_REPAIR_ATTEMPTS = 1
 MAX_APPLY_REPAIR_ATTEMPTS = 2
