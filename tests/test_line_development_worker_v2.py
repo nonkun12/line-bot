@@ -80,7 +80,7 @@ def test_append_only_test_generation_uses_reasoning_completion_budget(monkeypatc
 def test_append_only_test_generation_bounds_context_before_larger_completion(monkeypatch, tmp_path):
     target = tmp_path / "tests" / "test_sample.py"
     target.parent.mkdir()
-    original = "def test_existing_contract():\\n    assert True\\n"
+    original = "def test_existing_contract():\n    assert True\n"
     target.write_text(original, encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     captured = {}
@@ -88,10 +88,10 @@ def test_append_only_test_generation_bounds_context_before_larger_completion(mon
     class CaptureCompletions:
         def create(self, **kwargs):
             captured.update(kwargs)
-            return _Response("def test_new_boundary():\\n    assert True\\n")
+            return _Response("def test_new_boundary():\n    assert True\n")
 
     client = type("Client", (), {"chat": type("Chat", (), {"completions": CaptureCompletions()})()})()
-    oversized_context = "HEAD\\n" + ("x" * 9000) + "\\nTAIL"
+    oversized_context = "HEAD\n" + ("x" * 9000) + "\nTAIL"
     plan, error = worker.build_append_only_test_plan(
         client, "Add one focused boundary regression", "tests/test_sample.py",
         oversized_context,
