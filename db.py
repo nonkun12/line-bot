@@ -182,6 +182,50 @@ def create_job(user_id, message, job_type="ai_task", source="line", parent_job_i
         return cursor.lastrowid
 
 
+def create_job_chain(user_id, steps, *, source="goal_ai"):
+    """Create a bounded sequential parent/child job chain atomically.
+
+    Each step becomes a child of the preceding step. Descendants are not
+    claimable until their parent reaches done/completed.
+    """
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise ValueError("user_id is required")
+    if not isinstance(source, str) or not source.strip():
+        raise ValueError("source is required")
+    if not isinstance(steps, list) or not 1 <= len(steps) <= 12:
+        raise ValueError("steps must contain between 1 and 12 jobs")
+
+    normalized = []
+    for step in steps:
+        if not isinstance(step, dict) or set(step) - {"message", "job_type", "max_retries"}:
+            raise ValueError("invalid job step schema")
+        message = step.get("message")
+        job_type = step.get("job_type", "ai_task")
+        max_retries = step.get("max_retries", 3)
+        if not isinstance(message, str) or not message.strip() or len(message) > 4000:
+            raise ValueError("job message must contain 1 to 4000 characters")
+        if not isinstance(job_type, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", job_type):
+            raise ValueError("invalid job_type")
+        if type(max_retries) is not int or not 0 <= max_retries <= 5:
+            raise ValueError("max_retries must be between 0 and 5")
+        normalized.append((job_type, message, max_retries))
+
+    job_ids = []
+    with get_conn() as conn:
+        parent_id = None
+        for job_type, message, max_retries in normalized:
+            cursor = conn.execute(
+                """
+                INSERT INTO jobs(user_id, job_type, source, parent_job_id, message, status, max_retries)
+                VALUES (?, ?, ?, ?, ?, 'pending', ?)
+                """,
+                (user_id.strip(), job_type, source.strip(), parent_id, message.strip(), max_retries),
+            )
+            parent_id = cursor.lastrowid
+            job_ids.append(parent_id)
+    return job_ids
+
+
 def get_job(job_id):
     with get_conn() as conn:
         row = conn.execute(
@@ -225,7 +269,18 @@ def claim_pending_job():
     """最古のpending Jobを1件だけrunningへ移す。SQLite向けの最小claim実装。"""
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT id FROM jobs WHERE status='pending' ORDER BY id LIMIT 1"
+            """
+            SELECT child.id
+            FROM jobs AS child
+            LEFT JOIN jobs AS parent ON parent.id = child.parent_job_id
+            WHERE child.status='pending'
+              AND (
+                  child.parent_job_id IS NULL
+                  OR parent.status IN ('done', 'completed')
+              )
+            ORDER BY child.id
+            LIMIT 1
+            """
         ).fetchone()
         if row is None:
             return None
