@@ -221,7 +221,8 @@ def validate_scenario(scenario: object) -> tuple[str, ...]:
             value = sync.get(key)
             if not isinstance(value, str) or not value.strip():
                 errors.append(f"scene_{index + 1}_{key}_invalid")
-        if sync.get("energy") not in valid_energies:
+        energy = sync.get("energy")
+        if not isinstance(energy, str) or energy not in valid_energies:
             errors.append(f"scene_{index + 1}_energy_invalid")
 
         cue_in = sync.get("cue_in_seconds")
@@ -232,7 +233,8 @@ def validate_scenario(scenario: object) -> tuple[str, ...]:
             or cue_in < 0 or cue_out <= cue_in or cue_out > scene_duration
         ):
             errors.append(f"scene_{index + 1}_music_cue_timing_invalid")
-        if sync.get("mix_priority") not in valid_mix:
+        mix_priority = sync.get("mix_priority")
+        if not isinstance(mix_priority, str) or mix_priority not in valid_mix:
             errors.append(f"scene_{index + 1}_mix_priority_invalid")
         points = sync.get("sync_points")
         if not isinstance(points, list) or any(
@@ -262,7 +264,9 @@ def validate_scenario(scenario: object) -> tuple[str, ...]:
             errors.append("emotional_arc_invalid")
         elif any(
             not isinstance(item, dict)
+            or not isinstance(item.get("act"), str)
             or item.get("act") not in {act[0] for act in _ACTS}
+            or not isinstance(item.get("energy"), str)
             or item.get("energy") not in valid_energies
             for item in arc
         ):
