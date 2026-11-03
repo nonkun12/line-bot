@@ -1209,6 +1209,7 @@ def main() -> int:
         except Exception:
             authorized, authorization_reason = False, "control_tower_adapter_error"
 
+        retry_count = 0
         if not authorized:
             result = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -1276,7 +1277,6 @@ def main() -> int:
                 # Retry only explicit transient provider failures. Never retry
                 # invalid requests, authorization/security failures, test failures,
                 # changed worktrees, or any result without verified unchanged HEAD.
-                retry_count = 0
                 while retry_count < MAX_TRANSIENT_TASK_RETRIES:
                     current_head = _git_head()
                     try:
@@ -1317,7 +1317,8 @@ def main() -> int:
         try:
             from scripts.recovery_ai_loop_adapter import record_loop_outcome
             result["recovery_ai"] = record_loop_outcome(
-                args.state.parent / "recovery-ai-state.json", result
+                args.state.parent / "recovery-ai-state.json", result,
+                transient_attempt=retry_count + 1,
             )
         except Exception:
             # Do not report PASS or proceed to another task unless the recovery
