@@ -10,7 +10,7 @@ def _evidence(tmp_path: Path, rows, completed=None):
     root = tmp_path / "evidence"
     root.mkdir()
     (root / "minimal-autonomous-loop.jsonl").write_text(
-        "".join(json.dumps(row) + "\\n" for row in rows), encoding="utf-8"
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
     )
     (root / "autonomous-loop-state.json").write_text(
         json.dumps({"completed": completed if completed is not None else [r["task_id"] for r in rows]}),
@@ -80,6 +80,6 @@ def test_chain_job_ai_rejects_ambiguous_artifacts(tmp_path):
     evidence = _evidence(tmp_path, [_row()])
     duplicate = evidence / "nested"
     duplicate.mkdir()
-    (duplicate / "minimal-autonomous-loop.jsonl").write_text(json.dumps(_row()) + "\\n")
+    (duplicate / "minimal-autonomous-loop.jsonl").write_text(json.dumps(_row()) + "\n")
     result = decide(evidence, "continuation_depth=0", "success")
     assert result["reason"] == "missing_or_ambiguous_evidence"
