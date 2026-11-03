@@ -28,8 +28,8 @@ def _valid_autonomy_policy(policy: object) -> bool:
         and policy.get("auto_approve_registered_jobs") is True
         and type(max_jobs) is int and 1 <= max_jobs <= 50
         and isinstance(stages, list) and 1 <= len(stages) <= len(_STAGES)
-        and len(stages) == len(set(stages))
         and all(isinstance(stage, str) and stage in _STAGES for stage in stages)
+        and len(stages) == len(set(stages))
         and policy.get("auto_merge", False) is False
         and policy.get("auto_deploy", False) is False
     )
@@ -115,7 +115,8 @@ def plan_next_job(
             or not isinstance(paths, list) or not paths or len(paths) > 10
             or not all(isinstance(p, str) and re.fullmatch(r"(tests|uhip/tests)/test_[A-Za-z0-9_]+[.]py", p) for p in paths)
             or not isinstance(dependencies, list) or not all(_valid_id(dep) for dep in dependencies)
-            or type(approved) is not bool or risk_level not in _RISK_LEVELS
+            or type(approved) is not bool
+            or not isinstance(risk_level, str) or risk_level not in _RISK_LEVELS
         ):
             return _hold("job_definition_invalid_or_unsafe")
         job_ids.add(jid)
