@@ -352,7 +352,7 @@ def test_allowlisted_planner_failure_code_triggers_immediate_hold(
     assert record["held"] is True
 
 
-@pytest.mark.parametrize("bad_code", ["bogus", None, [], {"code": "sha_mismatch"}])
+@pytest.mark.parametrize("bad_code", ["bogus", None, [], {"code": "sha_mismatch"}, "invalid_failure_code_evidence"])
 def test_success_with_any_present_failure_code_is_invalid_evidence(tmp_path, bad_code):
     path = tmp_path / "recovery.json"
     payload = {
