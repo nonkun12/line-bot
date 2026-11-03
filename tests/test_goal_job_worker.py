@@ -16,7 +16,14 @@ def _goal():
         "goal_id": "goal-worker-demo",
         "objective": "Run Goal children through a typed worker",
         "success_criteria": [{"id": "test", "description": "Test evidence exists"}],
-        "jobs": [],
+        "jobs": [{
+            "id": "test-job",
+            "criterion_id": "test",
+            "stage": "test",
+            "instruction": "Run focused regression tests.",
+            "allowed_paths": ["tests/test_goal_job_worker.py"],
+            "depends_on": [],
+        }],
     }
 
 
