@@ -58,6 +58,17 @@ def test_validate_plan_rejects_oversized_change():
 
 
 
+def test_review_coverage_gap_task_skips_idea_handoff_but_is_not_deterministic(monkeypatch):
+    task_id = "review-coverage-gap-703fa3c06b"
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
+    assert runtime._is_review_coverage_gap_task_id(task_id)
+    assert task_id not in runtime._DETERMINISTIC_AUTONOMOUS_TASK_TARGETS or (
+        runtime._DETERMINISTIC_AUTONOMOUS_TASK_TARGETS[task_id] == "tests/test_project_registry.py"
+    )
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "manual")
+    assert not runtime._is_review_coverage_gap_task_id(task_id)
+
+
 def test_review_coverage_gap_task_requires_exact_single_test_path(monkeypatch):
     task_id = "review-coverage-gap-4f1b715515"
     chosen = "tests/test_stocks.py"
