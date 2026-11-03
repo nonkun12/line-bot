@@ -350,3 +350,45 @@ def test_allowlisted_planner_failure_code_triggers_immediate_hold(
     record = RecoveryStore(path).task_status("task-invalid-plan")
     assert record["last_category"] == expected_category
     assert record["held"] is True
+
+
+@pytest.mark.parametrize("bad_code", ["bogus", None, [], {"code": "sha_mismatch"}])
+def test_success_with_any_present_failure_code_is_invalid_evidence(tmp_path, bad_code):
+    path = tmp_path / "recovery.json"
+    payload = {
+        "task_id": "task-contradictory-success",
+        "status": "PASS",
+        "exit_code": 0,
+        "failure_reason": "",
+        "base_sha": "a" * 40,
+        "produced_sha": "b" * 40,
+        "run_nonce": "c" * 32,
+        "failure_code": bad_code,
+    }
+    outcome = record_loop_outcome(path, payload)
+    assert outcome["recorded"] is True
+    assert outcome["status"] == "FAIL"
+    assert outcome["decision"]["action"] == "HOLD"
+    assert outcome["decision"]["requires_human"] is True
+    assert payload["status"] == "FAIL"
+    assert payload["failure_code"] == "invalid_failure_code_evidence"
+
+
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [
+        ("STOPPED", "stop_requested_during_task"),
+        ("STOPPED", "stop_requested_after_task"),
+        ("PASS", "stop_requested_after_task"),
+    ],
+)
+def test_operator_stop_is_not_recorded_as_task_failure(tmp_path, status, reason):
+    path = tmp_path / "recovery.json"
+    result = record_loop_outcome(path, {
+        "task_id": "task-operator-stop",
+        "status": status,
+        "exit_code": 0 if status == "PASS" else 130,
+        "failure_reason": reason,
+    })
+    assert result == {"recorded": False, "reason": "operator_stop_not_task_failure"}
+    assert not path.exists()
