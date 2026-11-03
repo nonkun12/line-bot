@@ -221,8 +221,14 @@ def plan_next_job(
     eligible: list[tuple[dict[str, Any], dict[str, Any]]] = []
     review_required: list[dict[str, str]] = []
     waiting: list[str] = []
+    failed_jobs: list[str] = []
     for job in relevant:
         if job["id"] in job_states:
+            state = job_states[job["id"]]
+            if state in {"pending", "running"}:
+                waiting.append(job["id"])
+            elif state in {"failed", "held"}:
+                failed_jobs.append(job["id"])
             continue
         if any(job_states.get(dep) != "done" for dep in job["depends_on"]):
             waiting.append(job["id"])
@@ -272,7 +278,9 @@ def plan_next_job(
             approval_required_jobs=review_required,
         )
     if waiting:
-        return _hold("waiting_for_parent_jobs", goal_id=goal_id, waiting_job_ids=waiting)
+        return _hold("waiting_for_registered_jobs", goal_id=goal_id, waiting_job_ids=waiting)
+    if failed_jobs:
+        return _hold("failed_job_requires_registered_repair", goal_id=goal_id, failed_job_ids=failed_jobs)
     return _hold("no_safe_next_job", goal_id=goal_id)
 
 
