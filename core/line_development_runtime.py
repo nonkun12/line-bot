@@ -2211,7 +2211,13 @@ class DevelopmentExecutor:
                 if self.state.allowed_paths is not None:
                     # Goal child execution is explicitly scoped by a trusted caller.
                     # Restrict the manager's candidate set before model selection.
-                    files = [path for path in files if path in self.state.allowed_paths]
+                    def is_granted(path: str) -> bool:
+                        return any(
+                            path == grant.rstrip("/")
+                            or path.startswith(grant.rstrip("/") + "/")
+                            for grant in self.state.allowed_paths
+                        )
+                    files = [path for path in files if is_granted(path)]
                     if not files:
                         return AgentResult(task.task_id, False, "no repository files remain inside the Goal grant")
                 if expected_target is not None:
