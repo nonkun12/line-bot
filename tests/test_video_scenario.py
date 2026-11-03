@@ -43,3 +43,30 @@ def test_scenario_validator_detects_duration_tampering():
     draft = build_scenario("小さな冒険", duration_seconds=60, scene_count=3)
     draft["scenes"][0]["duration_seconds"] += 1
     assert "scene_duration_total_mismatch" in validate_scenario(draft)
+
+
+def test_video_agent_routes_scenario_request_and_returns_structured_draft():
+    from agents.video.node import VideoAgent
+    from core.agents import AgentRequest
+
+    agent = VideoAgent()
+    request = AgentRequest(
+        "user-1",
+        "シナリオを作って",
+        metadata={"duration_seconds": 90, "scene_count": 3},
+    )
+    assert agent.can_handle(request)
+    response = agent.handle(request)
+    assert response.metadata["mode"] == "scenario"
+    assert response.metadata["scenario"]["status"] == "draft"
+    assert len(response.metadata["scenario"]["scenes"]) == 3
+    assert "連続性レビュー" in response.text
+
+
+def test_video_agent_preserves_existing_script_mode():
+    from agents.video.node import VideoAgent
+    from core.agents import AgentRequest
+
+    response = VideoAgent().handle(AgentRequest("user-1", "動画の台本を作って"))
+    assert response.metadata["mode"] == "script"
+    assert response.metadata["scenario"]["schema_version"] == "video-scenario.v1"
