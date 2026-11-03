@@ -512,3 +512,22 @@ def test_status_command_reads_task_result_and_hold_count_from_run_artifact(monke
     assert "安全保留（Catalog）: 2件" in reply
     assert "Catalog実行候補: 0件" in reply
     assert "Task ID付き実行記録: 0件" in reply
+
+
+
+def test_control_tower_status_aliases_are_read_only_requests(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.delenv("GITHUB_ACTIONS_DISPATCH_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+    for command in (
+        "統括AI 状況確認",
+        "統括AIの状況確認",
+        "統括AI ステータス",
+        "分散Loop 状況確認",
+        "分散ループ 状況確認",
+    ):
+        handled, reply = request_distributed_loop("u1", command)
+        assert handled is True
+        assert "GitHub認証未設定" in reply
+        assert "起動" not in reply

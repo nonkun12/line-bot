@@ -360,13 +360,16 @@ def _handle_ai_gateway_request(ai_request):
             allowed_user_ids=os.environ.get("DEV_ALLOWED_USER_IDS", ""),
         )
 
-    review_handled, review_reply = request_recovery_resume_review(user_id, message)
-    if review_handled:
-        return review_reply
-
+    # Resolve explicit read-only status requests and bounded Loop commands before
+    # any general/development routing. Status aliases are handled by the same
+    # GitHub-evidence path as the Loop status command and never dispatch a run.
     loop_handled, loop_reply = request_distributed_loop(user_id, message)
     if loop_handled:
         return loop_reply
+
+    review_handled, review_reply = request_recovery_resume_review(user_id, message)
+    if review_handled:
+        return review_reply
 
     # Explicit status commands must bypass the general chat model. Report only
     # read-only GitHub Actions evidence and fail closed when it is unavailable.
