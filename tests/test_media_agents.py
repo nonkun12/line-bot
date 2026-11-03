@@ -35,3 +35,20 @@ def test_video_agent_editing_mode_is_explicit_about_rendering_limit() -> None:
     response = VideoAgent().handle(AgentRequest("u1", "動画を編集したい"))
     assert response.metadata["mode"] == "editing"
     assert "実編集・書き出し・配信連携はまだ接続していません" in response.text
+
+
+def test_music_agent_accepts_video_scenario_and_returns_synchronized_score_plan() -> None:
+    from agents.video.scenario import build_scenario
+
+    scenario = build_scenario("夕暮れの海辺", duration_seconds=90, scene_count=3)
+    request = AgentRequest(
+        "u1",
+        "映像に合わせて音楽を設計",
+        metadata={"scenario": scenario, "music_genre": "cinematic"},
+    )
+    response = MusicAgent().handle(request)
+    assert response.metadata["mode"] == "audiovisual_score_plan"
+    plan = response.metadata["music_plan"]
+    assert plan["source_scenario_title"] == scenario["title"]
+    assert len(plan["cues"]) == len(scenario["scenes"])
+    assert plan["rendering_status"] == "not_generated"
