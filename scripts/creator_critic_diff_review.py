@@ -158,7 +158,6 @@ def main(argv: list[str] | None = None) -> int:
         }
     with open(args.output, "w", encoding="utf-8") as stream:
         json.dump(report, stream, ensure_ascii=False, sort_keys=True)
-        stream.write("\\n")
     print("CREATOR_CRITIC_DIFF_REVIEW=" + report["verdict"])
     return 0 if report["verdict"] == "PASS" else 2
 
