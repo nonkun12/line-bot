@@ -153,6 +153,14 @@ def _is_deterministic_comment_request(instruction: str, chosen: str | None) -> b
     return chosen == "line_development.py" and re.search(r"コメント.*(?:1行|一行)|(?:1行|一行).*コメント", instruction, re.IGNORECASE | re.DOTALL) is not None
 
 
+def _is_review_coverage_gap_task_id(task_id: str) -> bool:
+    """Keep review-gap tasks out of the IDEA handoff while retaining their model client."""
+    return (
+        task_id.startswith("review-coverage-gap-")
+        and os.environ.get("AUTONOMOUS_RUN_SOURCE") == "minimal-mvp-loop"
+    )
+
+
 def _self_improvement_history_path() -> Path:
     raw = os.environ.get(
         "SELF_IMPROVEMENT_HISTORY_PATH",
@@ -2610,8 +2618,9 @@ def execute(instruction: str) -> int:
         return 1
     autonomous_task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
     deterministic_task = autonomous_task_id in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
-    if deterministic_task:
-        # Queue tasks with explicit deterministic plans require no ideation stage.
+    review_coverage_gap_task = _is_review_coverage_gap_task_id(autonomous_task_id)
+    if deterministic_task or review_coverage_gap_task:
+        # Queued test tasks must preserve their task identity and exact instruction.
         instruction, idea_task_id, idea_block_reason = instruction, None, None
     else:
         instruction, idea_task_id, idea_block_reason = _prepare_idea_stage(instruction)
