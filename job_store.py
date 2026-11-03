@@ -42,3 +42,31 @@ def save_checkpoint(job_id, step_name, step_status, output_snapshot=None):
 
 def get_latest_checkpoint(job_id):
     return db.get_latest_checkpoint(job_id)
+
+
+def create_goal_child_job(
+    user_id, goal_id, job_key, criterion_id, payload, *,
+    parent_job_id=None, max_retries=2,
+):
+    return db.create_goal_child_job(
+        user_id, goal_id, job_key, criterion_id, payload,
+        parent_job_id=parent_job_id, max_retries=max_retries,
+    )
+
+
+def list_goal_child_jobs(goal_id):
+    return db.list_goal_child_jobs(goal_id)
+
+
+def claim_pending_job_by_type(job_type, *, stale_after_seconds=900):
+    return db.claim_pending_job_by_type(
+        job_type, stale_after_seconds=stale_after_seconds
+    )
+
+
+def complete_claimed_job(
+    job_id, claim_token, *, success, result=None, last_error=None,
+):
+    return db.complete_claimed_job(
+        job_id, claim_token, success=success, result=result, last_error=last_error
+    )
