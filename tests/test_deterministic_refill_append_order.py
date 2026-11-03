@@ -50,3 +50,30 @@ def test_two_refill_tasks_append_in_stable_file_order(tmp_path, monkeypatch, ord
         "def test_read_json_rejects_non_object_root("
     )
     assert content.rstrip().endswith("read_json(path)")
+
+
+
+def test_two_refill_task_orders_produce_identical_file_bytes(tmp_path, monkeypatch):
+    roots = [tmp_path / "cli-first", tmp_path / "read-json-first"]
+    for root in roots:
+        target = root / TARGET
+        target.parent.mkdir(parents=True)
+        target.write_text(
+            "from pathlib import Path\\n\\n"
+            "def test_existing_refill_case():\\n"
+            "    queue = Path('queue.json')\\n"
+            f"{EOF_ANCHOR}\\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(runtime.worker, "ROOT", roots[0])
+    for task_id in (FIRST_TASK, SECOND_TASK):
+        _apply(task_id, roots[0])
+
+    monkeypatch.setattr(runtime.worker, "ROOT", roots[1])
+    for task_id in (SECOND_TASK, FIRST_TASK):
+        _apply(task_id, roots[1])
+
+    first = (roots[0] / TARGET).read_bytes()
+    second = (roots[1] / TARGET).read_bytes()
+    assert first == second
