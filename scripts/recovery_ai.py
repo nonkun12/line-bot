@@ -166,6 +166,7 @@ class RecoveryStore:
             **identity,
             "fingerprint": fingerprint,
             "status": "PENDING_PREREQUISITE_OR_REVIEW",
+            "requires_human_review": True,
             "first_seen_at": previous.get("first_seen_at", now) if previous else now,
             "last_seen_at": now,
             "occurrences": occurrences,
