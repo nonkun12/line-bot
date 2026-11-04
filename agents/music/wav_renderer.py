@@ -94,7 +94,8 @@ def build_wav_bytes(
         previous_end = float(end)
 
     total_frames = duration * sample_rate
-    mix = array("f", [0.0]) * total_frames
+    left_mix = array("f", [0.0]) * total_frames
+    right_mix = array("f", [0.0]) * total_frames
     for start, end, pitch, amplitude, pan in _events(music_plan, bpm):
         first = max(0, int(start * sample_rate))
         last = min(total_frames, int(end * sample_rate))
@@ -113,18 +114,21 @@ def build_wav_bytes(
             phase = phase_step * (frame - first)
             # A fundamental plus a quiet second harmonic gives a soft synthetic tone.
             sample = math.sin(phase) * 0.82 + math.sin(phase * 2.0) * 0.18
-            mix[frame] += sample * amplitude * envelope * (left_gain + right_gain) * 0.5
+            value = sample * amplitude * envelope
+            left_mix[frame] += value * left_gain
+            right_mix[frame] += value * right_gain
 
-    pcm = bytearray(total_frames * 2)
-    for index, value in enumerate(mix):
-        # Keep a conservative headroom; final mastering is a separate stage.
-        sample = max(-0.92, min(0.92, value * 0.72))
-        struct.pack_into("<h", pcm, index * 2, int(sample * 32767))
+    pcm = bytearray(total_frames * 4)
+    for index, (left, right) in enumerate(zip(left_mix, right_mix)):
+        # Keep conservative headroom; final mastering is a separate stage.
+        left_sample = max(-0.92, min(0.92, left * 0.62))
+        right_sample = max(-0.92, min(0.92, right * 0.62))
+        struct.pack_into("<hh", pcm, index * 4, int(left_sample * 32767), int(right_sample * 32767))
     output = bytearray()
     import io
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as writer:
-        writer.setnchannels(1)
+        writer.setnchannels(2)
         writer.setsampwidth(2)
         writer.setframerate(sample_rate)
         writer.writeframes(pcm)
@@ -147,7 +151,7 @@ def write_wav_file(
         stream.write(data)
     return {
         "path": str(path),
-        "format": "WAV PCM 16-bit mono",
+        "format": "WAV PCM 16-bit stereo",
         "sample_rate": sample_rate,
         "duration_seconds": music_plan["duration_seconds"],
         "bytes": len(data),
