@@ -21,11 +21,11 @@ def _camera_motion_filter(motion: str, duration: float, fps: int, width: int, he
     """Return a fixed, allowlisted Ken Burns filter; never interpolate user text."""
     frames = max(1, round(duration * fps))
     if motion == "slow_push_in":
-        zoom = f"min(1+on*0.12/{frames},1.12)"
+        zoom = f"min(1+on*0.12/{frames}\\,1.12)"
         x = "(iw-iw/zoom)/2"
         y = "(ih-ih/zoom)/2"
     elif motion == "slow_pull_back":
-        zoom = f"max(1.12-on*0.12/{frames},1.0)"
+        zoom = f"max(1.12-on*0.12/{frames}\\,1.0)"
         x = "(iw-iw/zoom)/2"
         y = "(ih-ih/zoom)/2"
     elif motion == "measured_tracking":
@@ -33,7 +33,7 @@ def _camera_motion_filter(motion: str, duration: float, fps: int, width: int, he
         x = f"(iw-iw/zoom)/2+on*iw*0.04/{frames}"
         y = "(ih-ih/zoom)/2"
     elif motion == "decisive_reveal":
-        zoom = f"min(1+on*0.18/{frames},1.18)"
+        zoom = f"min(1+on*0.18/{frames}\\,1.18)"
         x = "(iw-iw/zoom)/2"
         y = "(ih-ih/zoom)/2"
     else:
