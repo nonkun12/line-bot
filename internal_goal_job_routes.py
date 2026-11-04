@@ -63,10 +63,143 @@ def _verify_exact_sha_checks(evidence: dict, produced_sha: str) -> bool:
     )
 
 
+_MEDIA_EXECUTOR_ID = "mac_local_media.v1"
+_MEDIA_OPERATION = "create_audiovisual_bundle"
+_MEDIA_ARTIFACT_KEYS = {
+    "scenario", "music_plan", "midi", "audio_preview",
+    "video_edit_decision_list", "video",
+}
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
 def register_goal_job_routes(app, internal_key: str | None) -> None:
     def authorized() -> bool:
         supplied = request.headers.get("x-internal-key", "")
         return bool(internal_key and supplied and hmac.compare_digest(str(supplied), str(internal_key)))
+
+    @app.route("/internal/media-jobs/claim", methods=["POST"])
+    def claim_local_media_job():
+        if not authorized():
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+        try:
+            job = db.claim_pending_media_goal_child_job(_MEDIA_EXECUTOR_ID)
+            if job is None:
+                return jsonify({"ok": True, "claimed": False}), 200
+            try:
+                payload = goal_job_store.authorize_claimed_media_job(
+                    job, _MEDIA_EXECUTOR_ID, _MEDIA_OPERATION
+                )
+            except Exception as exc:
+                goal_job_store.complete_claimed_child_job(
+                    job["id"], job["claim_token"], success=False,
+                    last_error=f"media authorization failed: {type(exc).__name__}",
+                )
+                app.logger.warning("Local media Goal authorization rejected: job_id=%s", job["id"])
+                return jsonify({"ok": False, "error": "media job authorization failed"}), 403
+            return jsonify({
+                "ok": True,
+                "claimed": True,
+                "job": {
+                    "id": job["id"],
+                    "job_type": job["job_type"],
+                    "claim_token": job["claim_token"],
+                    "payload": payload,
+                },
+                "lease_seconds": 1800,
+            }), 200
+        except Exception:
+            app.logger.exception("Local media Goal claim failed")
+            return jsonify({"ok": False, "error": "media job claim failed"}), 500
+
+    @app.route("/internal/media-jobs/complete", methods=["POST"])
+    def complete_local_media_job():
+        if not authorized():
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+        data = request.get_json(silent=True) or {}
+        job_id = data.get("job_id")
+        claim_token = data.get("claim_token")
+        result = data.get("result")
+        evidence = data.get("evidence")
+        if type(job_id) is not int or job_id <= 0:
+            return jsonify({"ok": False, "error": "job_id must be a positive integer"}), 400
+        if not isinstance(claim_token, str) or len(claim_token) < 20:
+            return jsonify({"ok": False, "error": "claim_token is invalid"}), 400
+        if not isinstance(result, str) or not result.strip() or len(result) > 20000:
+            return jsonify({"ok": False, "error": "result is invalid"}), 400
+        if not isinstance(evidence, dict) or not isinstance(evidence.get("checks"), list) or not evidence["checks"]:
+            return jsonify({"ok": False, "error": "evidence checks are required"}), 400
+        try:
+            receipt = json.loads(result)
+        except (TypeError, json.JSONDecodeError):
+            return jsonify({"ok": False, "error": "media receipt must be JSON"}), 400
+        artifact_hashes = receipt.get("artifact_sha256") if isinstance(receipt, dict) else None
+        evidence_hashes = evidence.get("artifact_sha256")
+        if (
+            not isinstance(receipt, dict)
+            or receipt.get("schema_version") != "mac-local-media-receipt.v1"
+            or receipt.get("executor") != _MEDIA_EXECUTOR_ID
+            or receipt.get("operation") != _MEDIA_OPERATION
+            or receipt.get("goal_job_id") != job_id
+            or receipt.get("status") != "draft"
+            or receipt.get("publication") != "not_performed"
+            or not isinstance(artifact_hashes, dict)
+            or not artifact_hashes
+            or set(artifact_hashes) - _MEDIA_ARTIFACT_KEYS
+            or any(not isinstance(value, str) or not _SHA256_RE.fullmatch(value) for value in artifact_hashes.values())
+            or evidence_hashes != artifact_hashes
+            or not isinstance(evidence.get("receipt_sha256"), str)
+            or not _SHA256_RE.fullmatch(evidence["receipt_sha256"])
+            or evidence.get("executor") != _MEDIA_EXECUTOR_ID
+            or evidence.get("goal_job_id") != job_id
+        ):
+            return jsonify({"ok": False, "error": "media receipt or artifact hashes failed validation"}), 400
+        if not all(
+            isinstance(check, dict)
+            and isinstance(check.get("name"), str) and check["name"].strip()
+            and check.get("status") == "PASS"
+            and check.get("source") == _MEDIA_EXECUTOR_ID
+            for check in evidence["checks"]
+        ):
+            return jsonify({"ok": False, "error": "all media evidence checks must be executor-sourced PASS"}), 400
+        try:
+            claimed = db.get_job(job_id)
+            if not claimed or claimed.get("status") != "running" or claimed.get("claim_token") != claim_token:
+                return jsonify({"ok": False, "error": "claim is stale or already completed"}), 409
+            goal_job_store.authorize_claimed_media_job(
+                claimed, _MEDIA_EXECUTOR_ID, _MEDIA_OPERATION
+            )
+            completed = goal_job_store.complete_claimed_child_job(
+                job_id, claim_token, success=True, result=result, evidence=evidence
+            )
+            if not completed:
+                return jsonify({"ok": False, "error": "claim is stale or already completed"}), 409
+            continuation = {"decision": "NOT_STARTED"}
+            try:
+                goal_id = goal_job_store.get_goal_id_for_child_job(job_id)
+                if goal_id:
+                    criterion_results = goal_job_store.evaluate_completed_goal_criteria(goal_id)
+                    goal_job_store.update_goal_evidence(goal_id, criterion_results)
+                    continuation = advance_goal(
+                        goal_id, job_generator=generate_bounded_followup_job
+                    )
+            except Exception as exc:
+                app.logger.exception("Media Goal continuation failed after durable completion")
+                continuation = {
+                    "decision": "HOLD",
+                    "reason": "goal_continuation_failed",
+                    "error_type": type(exc).__name__,
+                }
+            return jsonify({
+                "ok": True, "completed": True, "success": True,
+                "continuation": continuation,
+            }), 200
+        except PermissionError:
+            return jsonify({"ok": False, "error": "media Goal authorization failed"}), 403
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except Exception:
+            app.logger.exception("Local media Goal completion failed")
+            return jsonify({"ok": False, "error": "media job completion failed"}), 500
 
     @app.route("/internal/goal-jobs/claim", methods=["POST"])
     def claim_goal_job():
