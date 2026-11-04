@@ -123,6 +123,7 @@ text = "次のシーンへ"
 """
     main_script = '''extends Control
 
+const AudioController = preload("res://scripts/audio_controller.gd")
 const STORY_PATH := "res://data/story.json"
 @onready var title_label: Label = $Margin/Panel/Layout/Title
 @onready var progress_label: Label = $Margin/Panel/Layout/Progress
