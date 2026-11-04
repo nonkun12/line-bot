@@ -34,7 +34,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         report = analyze_audiovisual_bundle(
             scenario, args.audio, args.video
         )
-        rendered = json.dumps(report, ensure_ascii=False, indent=2) + "\\n"
+        rendered = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
         if args.output:
             args.output.write_text(rendered, encoding="utf-8")
         else:
