@@ -49,6 +49,39 @@ TASKS = [
 ]
 
 
+def _analyze_reachability(start_node: str, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, Any]:
+    """Traverse the declared directed graph; never trust precomputed reachability claims."""
+    node_ids = [node.get("id") for node in nodes]
+    unique_ids = len(node_ids) == len(set(node_ids)) and all(isinstance(x, str) and x for x in node_ids)
+    declared = set(node_ids)
+    adjacency: dict[str, list[str]] = {node_id: [] for node_id in declared}
+    invalid_edges = []
+    for edge in edges:
+        source, target = edge.get("source_node"), edge.get("next_node")
+        if source not in declared or target not in declared:
+            invalid_edges.append(edge.get("id", "<unknown>"))
+        else:
+            adjacency[source].append(target)
+    reachable: set[str] = set()
+    if start_node in declared:
+        pending = [start_node]
+        while pending:
+            current = pending.pop()
+            if current in reachable:
+                continue
+            reachable.add(current)
+            pending.extend(adjacency[current])
+    unreachable = sorted(declared - reachable)
+    return {
+        "start_node_declared": start_node in declared,
+        "node_ids_unique": unique_ids,
+        "invalid_edges": invalid_edges,
+        "reachable_nodes": sorted(reachable),
+        "unreachable_nodes": unreachable,
+        "all_nodes_reachable": bool(unique_ids and start_node in declared and not invalid_edges and not unreachable),
+    }
+
+
 def _build_hourly_focus_artifact(task_id: str) -> tuple[str, dict[str, Any]]:
     """Create one substantive, editable deliverable for the selected hourly focus."""
     deliverables: dict[str, tuple[str, dict[str, Any]]] = {
@@ -78,19 +111,29 @@ def _build_hourly_focus_artifact(task_id: str) -> tuple[str, dict[str, Any]]:
             "canon_status": "proposal_only",
         }),
         "branch_graph": ("branch_reachability.json", {
-            "focus_id": task_id, "initial_state": {"trust_mina": 0, "city_lights": 0, "noa_memory": 0},
+            "focus_id": task_id, "start_node": "NODE_START", "initial_state": {"trust_mina": 0, "city_lights": 0, "noa_memory": 0},
             "branches": [
-                {"id": "CHOICE_LUMINA_01A", "state_delta": {"noa_memory": 1}, "next_node": "NODE_MEMORY"},
-                {"id": "CHOICE_LUMINA_01B", "state_delta": {"city_lights": 1}, "next_node": "NODE_LIGHTS"},
-                {"id": "CHOICE_LUMINA_01C", "state_delta": {"trust_mina": 1}, "next_node": "NODE_TRUST"},
+                {"id": "CHOICE_LUMINA_01A", "source_node": "NODE_START", "state_delta": {"noa_memory": 1}, "next_node": "NODE_MEMORY"},
+                {"id": "CHOICE_LUMINA_01B", "source_node": "NODE_START", "state_delta": {"city_lights": 1}, "next_node": "NODE_LIGHTS"},
+                {"id": "CHOICE_LUMINA_01C", "source_node": "NODE_START", "state_delta": {"trust_mina": 1}, "next_node": "NODE_TRUST"},
             ],
             "nodes": [
+                {"id": "NODE_START", "type": "choice", "description": "ルミナをどう使うか選ぶ"},
                 {"id": "NODE_MEMORY", "outcome": "ノアの記憶を優先し、旧駅の記録区画を解放", "unlocks": "LOC_OLD_STATION_ARCHIVE"},
                 {"id": "NODE_LIGHTS", "outcome": "街の非常灯を優先し、暗い通路を照らす", "unlocks": "LOC_OLD_STATION_TUNNEL"},
                 {"id": "NODE_TRUST", "outcome": "ミナとの信頼を優先し、案内機の協力を得る", "unlocks": "LOC_OLD_STATION_CONTROL"},
             ],
-            "reachable_nodes": ["NODE_MEMORY", "NODE_LIGHTS", "NODE_TRUST"],
-            "all_branches_reachable": True, "validation": "declared_one_step_targets",
+            "reachability": _analyze_reachability("NODE_START", [
+                {"id": "NODE_START"}, {"id": "NODE_MEMORY"}, {"id": "NODE_LIGHTS"}, {"id": "NODE_TRUST"}
+            ], [
+                {"id": branch["id"], "source_node": branch["source_node"], "next_node": branch["next_node"]}
+                for branch in [
+                    {"id": "CHOICE_LUMINA_01A", "source_node": "NODE_START", "next_node": "NODE_MEMORY"},
+                    {"id": "CHOICE_LUMINA_01B", "source_node": "NODE_START", "next_node": "NODE_LIGHTS"},
+                    {"id": "CHOICE_LUMINA_01C", "source_node": "NODE_START", "next_node": "NODE_TRUST"}
+                ]
+            ]),
+            "validation": "breadth_first_graph_traversal",
         }),
         "visual_design": ("visual_design.json", {
             "focus_id": task_id, "global_style": "雨の青を基調に、光だけを暖色で際立たせる",
@@ -345,15 +388,16 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
                       "energy_curve": [s["energy"] for s in SCENES],
                       "rights_note": "Python合成のオリジナル試作。公開前に権利・音質レビュー必須。"}
         graph = {"schema_version": "interactive-story-graph.v1", "project_id": PROJECT,
-                 "status": "draft", "initial_state": {"trust_mina": 0, "city_lights": 0, "noa_memory": 0},
+                 "status": "draft", "start_node": "NODE_START", "initial_state": {"trust_mina": 0, "city_lights": 0, "noa_memory": 0},
                  "nodes": [
+                     {"id": "NODE_START", "type": "choice", "description": "ルミナをどう使うか選ぶ"},
                      {"id": "NODE_MEMORY", "outcome": "ノアの記憶を優先し、旧駅の記録区画を解放", "unlocks": "LOC_OLD_STATION_ARCHIVE"},
                      {"id": "NODE_LIGHTS", "outcome": "街の非常灯を優先し、暗い通路を照らす", "unlocks": "LOC_OLD_STATION_TUNNEL"},
                      {"id": "NODE_TRUST", "outcome": "ミナとの信頼を優先し、案内機の協力を得る", "unlocks": "LOC_OLD_STATION_CONTROL"},
                  ],
-                 "choices": [{"id": "CHOICE_LUMINA_01A", "effect": {"noa_memory": 1}, "next_node": "NODE_MEMORY"},
-                             {"id": "CHOICE_LUMINA_01B", "effect": {"city_lights": 1}, "next_node": "NODE_LIGHTS"},
-                             {"id": "CHOICE_LUMINA_01C", "effect": {"trust_mina": 1}, "next_node": "NODE_TRUST"}]}
+                 "choices": [{"id": "CHOICE_LUMINA_01A", "source_node": "NODE_START", "effect": {"noa_memory": 1}, "next_node": "NODE_MEMORY"},
+                             {"id": "CHOICE_LUMINA_01B", "source_node": "NODE_START", "effect": {"city_lights": 1}, "next_node": "NODE_LIGHTS"},
+                             {"id": "CHOICE_LUMINA_01C", "source_node": "NODE_START", "effect": {"trust_mina": 1}, "next_node": "NODE_TRUST"}]}
         task_index = int(moment.timestamp() // 3600) % len(TASKS)
         task_id, task_title = TASKS[task_index]
         task = {"task_id": f"SN-HOURLY-{stamp}", "focus": task_id, "proposal": task_title,
@@ -366,7 +410,8 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
             "all_scenes_have_location": all(s["location"] for s in SCENES),
             "choice_ids_unique": len({c["id"] for c in graph["choices"]}) == 3,
             "choice_targets_declared": all(c["next_node"] in {n["id"] for n in graph["nodes"]} for c in graph["choices"]),
-            "choice_effect_keys_valid": all(set(c["effect"]).issubset(graph["initial_state"]) for c in graph["choices"])}
+            "choice_effect_keys_valid": all(set(c["effect"]).issubset(graph["initial_state"]) for c in graph["choices"]),
+            "graph_reachability_valid": _analyze_reachability(graph["start_node"], graph["nodes"], graph["choices"])["all_nodes_reachable"]}
         critic = {
             "status": "PASS" if all(critic_checks.values()) else "FAIL",
             "checks": critic_checks,
