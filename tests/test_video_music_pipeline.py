@@ -277,3 +277,41 @@ def test_core_video_music_route_respects_disabled_specialist_registry_entry(monk
             "映像と音楽を組み合わせた短編のシナリオを作って",
             channel="line",
         )
+
+
+def test_midi_artifact_includes_bounded_playable_wav_preview():
+    import base64
+    import io
+    import wave
+    from agents.music.midi import build_midi_artifact
+    from agents.video.scenario import build_scenario
+    from agents.music.score_plan import build_music_plan
+
+    scenario = build_scenario("音と光の短編", duration_seconds=60, scene_count=3)
+    plan = build_music_plan(scenario)
+    artifact = build_midi_artifact(plan)
+    preview = artifact["preview_audio"]
+    wav_bytes = base64.b64decode(preview["content_base64"], validate=True)
+    assert wav_bytes.startswith(b"RIFF")
+    assert preview["mime_type"] == "audio/wav"
+    assert preview["size_bytes"] == len(wav_bytes)
+    assert preview["duration_seconds"] == 15
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wav:
+        assert wav.getnchannels() == 1
+        assert wav.getsampwidth() == 2
+        assert wav.getframerate() == 11025
+        assert wav.getnframes() == 15 * 11025
+
+
+def test_wav_preview_is_capped_and_rejects_invalid_limit():
+    from agents.music.midi import build_wav_preview_bytes
+    plan = {
+        "duration_seconds": 20,
+        "cues": [{"scene_id": "S1", "start_seconds": 0, "end_seconds": 20, "energy": "low"}],
+    }
+    import io
+    import wave
+    with wave.open(io.BytesIO(build_wav_preview_bytes(plan, max_seconds=3)), "rb") as wav:
+        assert wav.getnframes() == 3 * 11025
+    with pytest.raises(ValueError, match="max_seconds"):
+        build_wav_preview_bytes(plan, max_seconds=16)
