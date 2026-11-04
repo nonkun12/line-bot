@@ -1,0 +1,47 @@
+import json
+
+import pytest
+
+from agents.media.production import create_audiovisual_production_bundle
+from agents.video.scenario import build_scenario
+
+
+def _scenario():
+    return build_scenario(
+        "A small journey from uncertainty to hope",
+        duration_seconds=30,
+        scene_count=3,
+    )
+
+
+def test_creates_complete_editable_music_and_video_production_bundle(tmp_path):
+    destination = tmp_path / "作品01"
+    result = create_audiovisual_production_bundle(_scenario(), destination, bpm=96)
+    assert result["status"] == "draft_bundle_created"
+    assert (destination / "scenario.json").is_file()
+    assert (destination / "music_plan.json").is_file()
+    assert (destination / "edit_decision_list.json").is_file()
+    assert (destination / "original_music.mid").read_bytes().startswith(b"MThd")
+    manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["audio_render_status"] == "not_rendered"
+    assert manifest["video_render_status"] == "not_rendered"
+    edl = json.loads((destination / "edit_decision_list.json").read_text(encoding="utf-8"))
+    assert edl["schema_version"] == "audiovisual-edl.v1"
+    assert len(edl["video_track"]) == len(edl["audio_track"]) == 3
+
+
+def test_refuses_to_overwrite_an_existing_bundle(tmp_path):
+    destination = tmp_path / "existing"
+    destination.mkdir()
+    sentinel = destination / "keep.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+    with pytest.raises(FileExistsError):
+        create_audiovisual_production_bundle(_scenario(), destination)
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+
+
+def test_invalid_scenario_does_not_create_output_directory(tmp_path):
+    destination = tmp_path / "invalid"
+    with pytest.raises(ValueError, match="invalid scenario"):
+        create_audiovisual_production_bundle({}, destination)
+    assert not destination.exists()
