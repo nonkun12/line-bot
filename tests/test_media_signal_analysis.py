@@ -112,3 +112,46 @@ def test_scene_signal_comparison_rejects_invalid_scene_interval():
     video = {"schema_version": "audiovisual-signal-analysis.v1", "media_type": "video", "samples": []}
     with pytest.raises(ValueError, match="scene intervals"):
         compare_scene_signals(audio, video, [{"scene_id": "bad", "time_start_seconds": -1, "duration_seconds": 0}])
+
+
+def test_bundle_analysis_connects_audio_video_and_scenario_by_scene(tmp_path, monkeypatch):
+    from agents.media import signal_analysis
+
+    audio_path = tmp_path / "draft.wav"
+    video_path = tmp_path / "draft.mp4"
+    audio_path.write_bytes(b"wav")
+    video_path.write_bytes(b"mp4")
+    scenario = {
+        "schema_version": "video-scenario.v1",
+        "title": "sample",
+        "creative_brief": {"duration_seconds": 2},
+        "scenes": [
+            {"scene_id": "A", "time_start_seconds": 0, "duration_seconds": 1},
+            {"scene_id": "B", "time_start_seconds": 1, "duration_seconds": 1},
+        ],
+    }
+    monkeypatch.setattr(signal_analysis, "analyze_wav_signal", lambda path: {
+        "schema_version": "audiovisual-signal-analysis.v1",
+        "media_type": "audio",
+        "duration_seconds": 2.0,
+        "windows": [
+            {"start_seconds": 0.0, "end_seconds": 1.0, "rms_dbfs": -20.0, "spectral_centroid_hz": 300.0},
+            {"start_seconds": 1.0, "end_seconds": 2.0, "rms_dbfs": -12.0, "spectral_centroid_hz": 700.0},
+        ],
+    })
+    monkeypatch.setattr(signal_analysis, "analyze_video_signal", lambda path, ffmpeg_executable=None: {
+        "schema_version": "audiovisual-signal-analysis.v1",
+        "media_type": "video",
+        "samples": [
+            {"at_seconds": 0, "mean_luma": 40.0, "mean_saturation": 20.0, "frame_change_luma": 0.0},
+            {"at_seconds": 1, "mean_luma": 150.0, "mean_saturation": 60.0, "frame_change_luma": 110.0},
+        ],
+    })
+
+    report = signal_analysis.analyze_audiovisual_bundle(scenario, audio_path, video_path)
+
+    assert report["schema_version"] == "audiovisual-bundle-signal-report.v1"
+    assert report["scene_comparison"]["scenes"][1]["audio_mean_rms_dbfs"] == -12.0
+    assert report["scene_comparison"]["scenes"][1]["video_mean_luma"] == 150.0
+    assert report["publication_authorized"] is False
+    assert report["assets_modified"] is False
