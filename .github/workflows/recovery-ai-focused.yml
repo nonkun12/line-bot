@@ -1,0 +1,29 @@
+name: Recovery AI focused tests
+
+on:
+  pull_request:
+    paths:
+      - "scripts/recovery_ai.py"
+      - "scripts/recovery_ai_loop_adapter.py"
+      - "tests/test_recovery_ai_loop_adapter.py"
+      - ".github/workflows/recovery-ai-focused.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  recovery-ai:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run focused Recovery AI tests
+        run: pytest -q tests/test_recovery_ai_loop_adapter.py
