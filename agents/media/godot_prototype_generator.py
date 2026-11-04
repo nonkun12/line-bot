@@ -229,7 +229,7 @@ def generate_godot_project(design: object, output_dir: str | Path) -> dict[str, 
         for relative, content in files.items():
             target = destination / relative
             target.parent.mkdir(parents=True, exist_ok=True)
-            with target.open("x", encoding="utf-8", newline="\\n") as handle:
+            with target.open("x", encoding="utf-8", newline="\n") as handle:
                 handle.write(content)
             written.append(relative)
     except Exception:
