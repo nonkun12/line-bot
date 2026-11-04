@@ -25,7 +25,6 @@ from agents.news.node import agent as ai_news_agent
 from agents.voice.node import agent as voice_agent
 from agents.jobs.node import agent as job_seeking_agent
 from agents.music.node import agent as music_agent
-from agents.video.node import agent as video_agent
 from agents.video_music_pipeline import handle_video_request
 from agents.obsidian.node import obsidian_agent_node
 from dev_notes.wrappers.graph_node_wrapper import with_execution_logging
