@@ -30,6 +30,7 @@ def _sha256(path: Path) -> str:
 
 _ARTIFACT_FILENAMES = {
     "scenario": "scenario.json",
+    "screenplay": "screenplay.md",
     "storyboard": "storyboard.json",
     "shot_list": "shot_list.json",
     "music_plan": "music_plan.json",
