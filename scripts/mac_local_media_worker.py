@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -28,14 +29,43 @@ class WorkerError(RuntimeError):
     pass
 
 
+KEYCHAIN_SERVICE = "line-bot-mac-media-worker"
+KEYCHAIN_ACCOUNT = "INTERNAL_PUSH_KEY"
+
+
+def _read_keychain_secret() -> str:
+    """Read one fixed Generic Password item; never invoke a shell or log its value."""
+    if sys.platform != "darwin":
+        return ""
+    try:
+        result = subprocess.run(
+            [
+                "/usr/bin/security", "find-generic-password",
+                "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT, "-w",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout.strip()
+
+
 def _configuration() -> tuple[str, str]:
     base_url = os.environ.get("LINE_BOT_BASE_URL", "").strip().rstrip("/")
-    internal_key = os.environ.get("INTERNAL_PUSH_KEY", "")
+    internal_key = os.environ.get("INTERNAL_PUSH_KEY", "").strip()
+    if not internal_key:
+        internal_key = _read_keychain_secret()
     parsed = urlparse(base_url)
     if parsed.scheme != "https" or not parsed.netloc or parsed.path or parsed.query or parsed.fragment:
         raise WorkerError("LINE_BOT_BASE_URL must be an HTTPS origin")
     if not internal_key or len(internal_key) < 24:
-        raise WorkerError("INTERNAL_PUSH_KEY is missing or too short")
+        raise WorkerError(
+            "INTERNAL_PUSH_KEY is unavailable; add the Generic Password item "
+            "line-bot-mac-media-worker / INTERNAL_PUSH_KEY in macOS Keychain"
+        )
     output_root = os.environ.get("LOCAL_MEDIA_OUTPUT_ROOT", "").strip()
     if not output_root:
         raise WorkerError("LOCAL_MEDIA_OUTPUT_ROOT is missing; refusing to claim media work")
