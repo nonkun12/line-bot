@@ -453,6 +453,8 @@ def register_goal_job_routes(app, internal_key: str | None, *, independent_goal_
     def complete_local_goal_review():
         if not authorized():
             return jsonify({"ok": False, "error": "unauthorized"}), 401
+        if request.content_length is not None and request.content_length > 16 * 1024:
+            return jsonify({"ok": False, "error": "review completion payload exceeds 16 KiB"}), 413
         data = request.get_json(silent=True) or {}
         review_id = data.get("review_id")
         claim_token = data.get("claim_token")

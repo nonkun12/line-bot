@@ -1,6 +1,7 @@
 import pytest
 
 from goal_job_review_queue import _bounded_child_snapshot
+from scripts import mac_bonsai_goal_review_worker as worker
 from scripts.mac_bonsai_goal_review_worker import ReviewWorkerError, _bounded_review_input
 
 
@@ -93,3 +94,71 @@ def test_worker_rejects_duplicate_criterion_ids():
     }
     with pytest.raises(ReviewWorkerError, match="unique"):
         _bounded_review_input(review)
+
+
+
+def _valid_review():
+    return {
+        "objective": "verify an artifact",
+        "success_criteria": [{"id": "artifact", "description": "Artifact is verified"}],
+        "children": [{
+            "goal_job_key": "job-1",
+            "status": "completed",
+            "evidence": {"checks": [{"name": "test", "status": "PASS", "source": "pytest"}]},
+            "result": "verified",
+        }],
+    }
+
+
+def test_bonsai_response_accepts_exact_criterion_map(monkeypatch):
+    monkeypatch.setattr(worker, "_post_json", lambda *args, **kwargs: {
+        "choices": [{"message": {"content": '{"artifact":"PASS"}'}}]
+    })
+    assert worker._review_with_bonsai(_valid_review(), "http://127.0.0.1:8081/v1", "local") == {
+        "artifact": "PASS"
+    }
+
+
+@pytest.mark.parametrize("content", [
+    '{"artifact":"PASS","extra":"PASS"}',
+    '{"artifact":"MAYBE"}',
+    '{"different":"PASS"}',
+    'not json',
+    '',
+])
+def test_bonsai_response_rejects_malformed_or_ambiguous_results(monkeypatch, content):
+    monkeypatch.setattr(worker, "_post_json", lambda *args, **kwargs: {
+        "choices": [{"message": {"content": content}}]
+    })
+    with pytest.raises(ReviewWorkerError):
+        worker._review_with_bonsai(_valid_review(), "http://127.0.0.1:8081/v1", "local")
+
+
+def test_bonsai_response_rejects_missing_message(monkeypatch):
+    monkeypatch.setattr(worker, "_post_json", lambda *args, **kwargs: {"choices": []})
+    with pytest.raises(ReviewWorkerError):
+        worker._review_with_bonsai(_valid_review(), "http://127.0.0.1:8081/v1", "local")
+
+
+def test_worker_configuration_requires_https_api_and_local_bonsai(monkeypatch):
+    monkeypatch.setattr(worker, "_keychain_secret", lambda: "")
+    monkeypatch.setenv("LINE_BOT_BASE_URL", "http://line-bot.example")
+    monkeypatch.setenv("INTERNAL_PUSH_KEY", "k" * 32)
+    with pytest.raises(ReviewWorkerError, match="HTTPS"):
+        worker._configuration()
+
+    monkeypatch.setenv("LINE_BOT_BASE_URL", "https://line-bot.example")
+    monkeypatch.setenv("BONSAI_BASE_URL", "https://remote-model.example/v1")
+    with pytest.raises(ReviewWorkerError, match="localhost"):
+        worker._configuration()
+
+
+def test_worker_configuration_accepts_https_api_and_local_bonsai(monkeypatch):
+    monkeypatch.setattr(worker, "_keychain_secret", lambda: "")
+    monkeypatch.setenv("LINE_BOT_BASE_URL", "https://line-bot.example")
+    monkeypatch.setenv("INTERNAL_PUSH_KEY", "k" * 32)
+    monkeypatch.setenv("BONSAI_BASE_URL", "http://127.0.0.1:8081/v1")
+    assert worker._configuration() == (
+        "https://line-bot.example", "k" * 32,
+        "http://127.0.0.1:8081/v1", "Ternary-Bonsai-2-9B-mlx-2bit"
+    )
