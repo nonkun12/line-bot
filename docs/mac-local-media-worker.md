@@ -53,5 +53,10 @@ The current first draft produces scenario JSON, an editable storyboard, a shot l
 a music plan, original MIDI, a synthesized WAV preview, an edit decision list,
 and a hash-verified executor receipt. The storyboard and shot list are included
 in the receipt's artifact hashes and are not rendered image/video files.
-It does **not** render an MP4 yet. The worker must not be treated as a video renderer
-until the Blender/FFmpeg scene-render stage is implemented and tested.
+The default Goal worker does **not** render an MP4. An explicit local Python call
+to `create_audiovisual_production_bundle(..., render_animatic=True)` can opt into
+Blender-generated procedural storyboard blocking frames followed by FFmpeg MP4
+assembly. This is a first animatic made from abstract composition placeholders,
+not final character animation, a finished cinematic scene, or rights-cleared footage.
+The standard Mac Goal worker does not enable this option automatically; the
+Blender/FFmpeg output needs separate local review before it is accepted.
