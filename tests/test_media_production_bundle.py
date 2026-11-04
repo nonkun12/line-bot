@@ -99,3 +99,50 @@ def test_bundle_can_assemble_video_when_local_scene_assets_are_supplied(tmp_path
     manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["artifacts"]["video"] == "final_video.mp4"
     assert manifest["video_render_status"] == "rendered"
+
+
+def test_long_video_uses_bounded_90_second_audio_preview(tmp_path, monkeypatch):
+    from agents.media import production
+
+    received = {}
+
+    def fake_wav(plan, output_path, **kwargs):
+        received["duration"] = plan["duration_seconds"]
+        assert all(cue["end_seconds"] <= 90 for cue in plan["cues"])
+        Path(output_path).write_bytes(b"RIFF" + b"\x00" * 64)
+        return {"status": "generated", "format": "WAV PCM 16-bit stereo"}
+
+    monkeypatch.setattr(production, "write_wav_file", fake_wav)
+    scenario = build_scenario("A longer journey", duration_seconds=180, scene_count=3)
+    result = production.create_audiovisual_production_bundle(
+        scenario, tmp_path / "long-preview"
+    )
+    assert received["duration"] == 90
+    assert result["audio_render_status"] == "synthesized_preview_first_90_seconds"
+    manifest = json.loads(
+        (tmp_path / "long-preview" / "manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["audio_preview_duration_seconds"] == 90
+
+
+def test_long_video_requires_full_audio_before_assembly(tmp_path, monkeypatch):
+    from agents.media import production
+
+    monkeypatch.setattr(
+        production, "write_wav_file",
+        lambda plan, path, **kwargs: (
+            Path(path).write_bytes(b"RIFF" + b"\x00" * 64)
+            or {"status": "generated"}
+        ),
+    )
+    scenario = build_scenario("A longer journey", duration_seconds=180, scene_count=3)
+    assets = {}
+    for scene in scenario["scenes"]:
+        asset = tmp_path / f"{scene['scene_id']}.mp4"
+        asset.write_bytes(b"video")
+        assets[scene["scene_id"]] = asset
+    with pytest.raises(ValueError, match="full-length WAV"):
+        production.create_audiovisual_production_bundle(
+            scenario, tmp_path / "blocked-video", scene_media=assets
+        )
+    assert not (tmp_path / "blocked-video").exists()
