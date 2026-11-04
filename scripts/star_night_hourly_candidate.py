@@ -70,10 +70,10 @@ def _midi_bytes() -> bytes:
     events = [(0, bytes([0xFF, 0x51, 0x03, 0x0C, 0x16, 0x15])),
               (0, bytes([0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08]))]
     ticks_per_second = 480 * 76 / 60
-    motif = [(60, 60), (62, 60), (67, 120), (72, 120), (67, 120), (62, 120)]
-    for start_sec, (note, duration_ticks) in zip([0, 1, 3, 6, 10, 13], motif):
+    motif = [(60, 0.8), (62, 1.2), (67, 2.4), (72, 2.8), (67, 2.2), (62, 1.5)]
+    for start_sec, (note, duration_seconds) in zip([0, 1, 3, 6, 10, 13], motif):
         start = round(start_sec * ticks_per_second)
-        end = start + duration_ticks
+        end = start + round(duration_seconds * ticks_per_second)
         events.append((start, bytes([0x90, note, 72])))
         events.append((end, bytes([0x80, note, 0])))
     events.sort(key=lambda item: item[0])
