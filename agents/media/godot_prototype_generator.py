@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from agents.media.godot_story_graph import build_story_graph
+
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 
 def _scenes(design: object) -> list[dict[str, str]]:
@@ -84,13 +86,30 @@ def _approved_assets(design_scenes: list[dict[str, str]], manifest: object | Non
             result[sid] = normalized
     return result
 
-def build_godot_project_files(design: object, approved_assets: object | None = None) -> dict[str, str]:
+def build_godot_project_files(
+    design: object,
+    approved_assets: object | None = None,
+    story_graph: object | None = None,
+) -> dict[str, str]:
     """Build a deterministic file map; no filesystem or network side effects."""
     scenes = _scenes(design)
+    graph = None
+    if story_graph is not None:
+        if not isinstance(story_graph, dict):
+            raise ValueError("story_graph must be an object")
+        graph = build_story_graph(story_graph.get("scenes"), story_graph.get("entry_scene_id"))
+        if [item["scene_id"] for item in graph["scenes"]] != [item["scene_id"] for item in scenes]:
+            raise ValueError("story graph scene IDs and order must match the approved design")
+        for scene, transitions in zip(scenes, graph["scenes"]):
+            scene.update({key: transitions[key] for key in ("choices", "next_scene_id", "ending")})
     asset_map = _approved_assets(scenes, approved_assets)
     for item in scenes:
         item.update(asset_map.get(item["scene_id"], {}))
-    story = json.dumps({"schema_version": "godot-prototype-story.v1", "scenes": scenes}, ensure_ascii=False, indent=2) + "\n"
+    story_data = {"schema_version": "godot-prototype-story.v1", "scenes": scenes}
+    if graph is not None:
+        story_data["entry_scene_id"] = graph["entry_scene_id"]
+        story_data["story_graph_enabled"] = True
+    story = json.dumps(story_data, ensure_ascii=False, indent=2) + "\n"
     project = """; Generated Godot 4 project
 config_version=5
 
@@ -164,6 +183,10 @@ autowrap_mode = 3
 layout_mode = 2
 autowrap_mode = 3
 
+[node name="ChoiceContainer" type="VBoxContainer" parent="Margin/Panel/Layout"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
 [node name="Advance" type="Button" parent="Margin/Panel/Layout"]
 custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
@@ -180,10 +203,13 @@ const STORY_PATH := "res://data/story.json"
 @onready var visual_label: Label = $Margin/Panel/Layout/VisualMotif
 @onready var music_label: Label = $Margin/Panel/Layout/MusicMotif
 @onready var advance_button: Button = $Margin/Panel/Layout/Advance
+@onready var choice_container: VBoxContainer = $Margin/Panel/Layout/ChoiceContainer
 @onready var layout: VBoxContainer = $Margin/Panel/Layout
 
 var story_scenes: Array[Dictionary] = []
 var current_index := 0
+var current_scene_id := ""
+var story_graph_enabled := false
 var audio_controller := AudioController.new()
 var visual_controller := VisualController.new()
 
@@ -201,24 +227,95 @@ func _load_story() -> void:
     if not parsed is Dictionary or not parsed.get("scenes") is Array:
         _show_error("ストーリーデータの形式が不正です")
         return
+    story_graph_enabled = parsed.get("story_graph_enabled", false) == true
+    current_scene_id = str(parsed.get("entry_scene_id", ""))
     for item in parsed["scenes"]:
         if item is Dictionary and item.has("scene_id") and item.has("story_intent"):
             story_scenes.append(item)
     if story_scenes.is_empty():
         _show_error("シーンがありません")
         return
+    if story_graph_enabled and current_scene_id.is_empty():
+        _show_error("開始シーンが指定されていません")
+        return
+    if not story_graph_enabled:
+        current_scene_id = str(story_scenes[0]["scene_id"])
     _show_scene()
 
 func _show_scene() -> void:
+    if story_graph_enabled:
+        current_index = _find_scene_index(current_scene_id)
+        if current_index < 0:
+            _show_error("遷移先シーンが見つかりません")
+            return
     var item := story_scenes[current_index]
     title_label.text = "Story Harmony"
     progress_label.text = "Scene %d / %d  ·  %s" % [current_index + 1, story_scenes.size(), item["scene_id"]]
     intent_label.text = str(item["story_intent"])
     visual_label.text = "VISUAL  ·  " + str(item.get("visual_motif", ""))
     music_label.text = "MUSIC  ·  " + str(item.get("music_motif", ""))
-    advance_button.text = "物語を完了" if current_index == story_scenes.size() - 1 else "次のシーンへ"
+    if story_graph_enabled:
+        _render_graph_controls(item)
+    else:
+        advance_button.visible = true
+        advance_button.disabled = false
+        advance_button.text = "物語を完了" if current_index == story_scenes.size() - 1 else "次のシーンへ"
     audio_controller.request_scene_cue(str(item["scene_id"]), str(item.get("music_motif", "")), str(item.get("audio_path", "")))
     visual_controller.show_scene(item, layout)
+
+func _find_scene_index(scene_id: String) -> int:
+    for index in range(story_scenes.size()):
+        if str(story_scenes[index].get("scene_id", "")) == scene_id:
+            return index
+    return -1
+
+func _render_graph_controls(item: Dictionary) -> void:
+    for child in choice_container.get_children():
+        child.queue_free()
+    var choices: Array = item.get("choices", [])
+    advance_button.visible = false
+    if not choices.is_empty():
+        for choice in choices:
+            if not choice is Dictionary:
+                continue
+            var button := Button.new()
+            button.text = str(choice.get("label", "選択"))
+            button.custom_minimum_size = Vector2(0, 52)
+            var target := str(choice.get("next_scene_id", ""))
+            button.pressed.connect(_go_to_scene.bind(target))
+            choice_container.add_child(button)
+        return
+    var next_id := str(item.get("next_scene_id", ""))
+    if not next_id.is_empty():
+        advance_button.text = "次のシーンへ"
+        advance_button.visible = true
+        advance_button.disabled = false
+        advance_button.pressed.disconnect(_advance_scene)
+        advance_button.pressed.connect(_go_to_scene.bind(next_id))
+        return
+    if item.get("ending", false) == true:
+        advance_button.text = "物語を完了"
+        advance_button.visible = true
+        advance_button.disabled = false
+        advance_button.pressed.disconnect(_advance_scene)
+        advance_button.pressed.connect(_complete_story)
+        return
+    _show_error("シーンの遷移設定が不正です")
+
+func _go_to_scene(target_scene_id: String) -> void:
+    if _find_scene_index(target_scene_id) < 0:
+        _show_error("遷移先シーンが見つかりません")
+        return
+    current_scene_id = target_scene_id
+    _show_scene()
+
+func _complete_story() -> void:
+    progress_label.text = "Prototype complete"
+    advance_button.disabled = true
+    for child in choice_container.get_children():
+        child.queue_free()
+    audio_controller.stop()
+    visual_controller.stop()
 
 func _advance_scene() -> void:
     if current_index + 1 >= story_scenes.size():
@@ -228,6 +325,7 @@ func _advance_scene() -> void:
         visual_controller.stop()
         return
     current_index += 1
+    current_scene_id = str(story_scenes[current_index]["scene_id"])
     _show_scene()
 
 func _show_error(message: String) -> void:
