@@ -167,5 +167,5 @@ def test_pipeline_reply_uses_actual_line_breaks():
         "user-1", "短編映像のシナリオを作って",
         metadata={"duration_seconds": 60, "scene_count": 3},
     ))
-    assert "\\\\n" not in response.text
-    assert "\\n" in response.text
+    assert "\\n" not in response.text
+    assert "\n" in response.text
