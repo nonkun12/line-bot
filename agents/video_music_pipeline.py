@@ -105,4 +105,18 @@ def run_video_music_pipeline(request: AgentRequest) -> AgentResponse:
     return VideoMusicPipeline().run(request)
 
 
-__all__ = ["VideoMusicPipeline", "run_video_music_pipeline"]
+def handle_video_request(request: AgentRequest) -> AgentResponse:
+    """Normal graph entry point: chain Music AI after scenario requests only.
+
+    Other Video intents retain their existing VideoAgent behavior. This keeps
+    storyboard/editing requests from being incorrectly forced through the
+    scenario-only handoff while making scenario production an actual route.
+    """
+    if not isinstance(request, AgentRequest):
+        raise TypeError("request must be an AgentRequest")
+    if "シナリオ" in request.message.casefold():
+        return VideoMusicPipeline().run(request)
+    return VideoAgent().handle(request)
+
+
+__all__ = ["VideoMusicPipeline", "run_video_music_pipeline", "handle_video_request"]
