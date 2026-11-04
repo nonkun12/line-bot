@@ -90,7 +90,7 @@ def build_godot_project_files(design: object, approved_assets: object | None = N
     asset_map = _approved_assets(scenes, approved_assets)
     for item in scenes:
         item.update(asset_map.get(item["scene_id"], {}))
-    story = json.dumps({"schema_version": "godot-prototype-story.v1", "scenes": scenes}, ensure_ascii=False, indent=2) + "\\n"
+    story = json.dumps({"schema_version": "godot-prototype-story.v1", "scenes": scenes}, ensure_ascii=False, indent=2) + "\n"
     project = """; Generated Godot 4 project
 config_version=5
 
