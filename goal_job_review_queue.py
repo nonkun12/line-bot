@@ -50,6 +50,44 @@ def init_goal_review_queue() -> None:
         )
 
 
+def _bounded_child_snapshot(children: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return a small evidence projection for the remote Mac reviewer."""
+    snapshot = []
+    for child in children[:12]:
+        if not isinstance(child, dict):
+            continue
+        evidence = child.get("evidence")
+        evidence = evidence if isinstance(evidence, dict) else {}
+        checks = evidence.get("checks")
+        compact_checks = []
+        if isinstance(checks, list):
+            for check in checks[:20]:
+                if not isinstance(check, dict):
+                    continue
+                compact_checks.append({
+                    "name": str(check.get("name", ""))[:120],
+                    "status": str(check.get("status", ""))[:20],
+                    "source": str(check.get("source", ""))[:120],
+                    "detail": str(check.get("detail", ""))[:500],
+                })
+        evidence_text = json.dumps(evidence, ensure_ascii=False, default=str)
+        truncated = len(evidence_text.encode("utf-8")) > 8192
+        if isinstance(checks, list) and len(checks) > 20:
+            truncated = True
+        snapshot.append({
+            "goal_job_key": str(child.get("goal_job_key", ""))[:120],
+            "job_id": str(child.get("job_id", ""))[:120],
+            "status": str(child.get("status", ""))[:40],
+            "evidence": {
+                "checks": compact_checks,
+                "summary": str(evidence.get("summary", ""))[:1000],
+                "truncated": truncated,
+            },
+            "result": str(child.get("result", ""))[:5000],
+        })
+    return snapshot
+
+
 def claim_next_goal_review() -> dict[str, Any] | None:
     """Claim one review snapshot; stale leases may be reclaimed safely."""
     init_goal_review_queue()
@@ -90,7 +128,7 @@ def claim_next_goal_review() -> dict[str, Any] | None:
             ).fetchone()
             if row is None or row[1] in {"completed", "held"}:
                 continue
-            if row[1] == "running" and row[2]:
+            if row[1] in {"running", "reviewing"} and row[2]:
                 try:
                     if datetime.fromisoformat(row[2]) > now:
                         continue
@@ -98,7 +136,7 @@ def claim_next_goal_review() -> dict[str, Any] | None:
                     pass
             changed = conn.execute(
                 "UPDATE goal_review_claims SET status='running',claim_token=?,lease_expires_at=?,"
-                "updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('pending','running')",
+                "updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('pending','running','reviewing')",
                 (token, expires, row[0]),
             ).rowcount
             if changed != 1:
@@ -110,7 +148,8 @@ def claim_next_goal_review() -> dict[str, Any] | None:
             "goal_id": record["goal_id"],
             "objective": record.get("objective", ""),
             "success_criteria": criteria,
-            "children": children,
+            "children": _bounded_child_snapshot(children),
+            "children_truncated": len(children) > 12,
             "evidence_fingerprint": fingerprint,
         }
     return None
@@ -142,9 +181,13 @@ def complete_goal_review(
                 raise PermissionError("review claim lease expired")
         except ValueError:
             raise PermissionError("review claim lease is invalid")
+        renewed_expiry = (
+            datetime.now(timezone.utc) + timedelta(minutes=_LEASE_MINUTES)
+        ).isoformat()
         conn.execute(
-            "UPDATE goal_review_claims SET status='reviewing',updated_at=CURRENT_TIMESTAMP WHERE id=?",
-            (review_id,),
+            "UPDATE goal_review_claims SET status='reviewing',lease_expires_at=?,"
+            "updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running' AND claim_token=?",
+            (renewed_expiry, review_id, claim_token),
         )
 
     try:
@@ -163,14 +206,18 @@ def complete_goal_review(
     with db.get_conn() as conn:
         conn.execute(
             "UPDATE goal_review_claims SET status=?,claim_token=NULL,lease_expires_at=NULL,"
-            "result_json=?,decision_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='reviewing'",
+            "result_json=?,decision_json=?,updated_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND status='reviewing' AND claim_token=?",
             (
                 status,
                 json.dumps(criterion_results, ensure_ascii=False, sort_keys=True),
                 json.dumps(decision, ensure_ascii=False, sort_keys=True, default=str),
                 review_id,
+                claim_token,
             ),
         )
+        if conn.execute("SELECT changes()").fetchone()[0] != 1:
+            raise PermissionError("review claim was reclaimed before completion")
     return decision
 
 

@@ -87,8 +87,17 @@ def _post_json(url: str, payload: dict, *, key: str | None = None, timeout: int 
 def _bounded_review_input(review: dict) -> dict:
     criteria = review.get("success_criteria")
     children = review.get("children")
-    if not isinstance(criteria, list) or not criteria or not isinstance(children, list):
-        raise ReviewWorkerError("review payload is incomplete")
+    if (
+        not isinstance(criteria, list) or not criteria or len(criteria) > 50
+        or not isinstance(children, list) or review.get("children_truncated") is True
+    ):
+        raise ReviewWorkerError("review payload is incomplete or truncated")
+    criterion_ids = [
+        item.get("id") for item in criteria
+        if isinstance(item, dict) and isinstance(item.get("id"), str) and item.get("id")
+    ]
+    if len(criterion_ids) != len(criteria) or len(set(criterion_ids)) != len(criterion_ids):
+        raise ReviewWorkerError("success criteria must have unique non-empty ids")
     compact_children = []
     for child in children[:12]:
         if not isinstance(child, dict):
@@ -99,7 +108,13 @@ def _bounded_review_input(review: dict) -> dict:
             "evidence": child.get("evidence") if isinstance(child.get("evidence"), dict) else {},
             "result": str(child.get("result", ""))[:5000],
         })
-    return {
+    if any(
+        child.get("evidence", {}).get("truncated") is True
+        for child in compact_children
+        if isinstance(child.get("evidence"), dict)
+    ):
+        raise ReviewWorkerError("one or more child evidence snapshots were truncated")
+    bounded = {
         "objective": str(review.get("objective", ""))[:2000],
         "criteria": [
             {"id": str(item.get("id", ""))[:100], "description": str(item.get("description", ""))[:1000]}
@@ -107,6 +122,15 @@ def _bounded_review_input(review: dict) -> dict:
         ],
         "completed_job_evidence": compact_children,
     }
+    encoded_size = len(json.dumps(bounded, ensure_ascii=False).encode("utf-8"))
+    if encoded_size > 24 * 1024:
+        raise ReviewWorkerError("bounded review evidence exceeded 24 KiB")
+    if any(
+        len(json.dumps(child.get("evidence", {}), ensure_ascii=False).encode("utf-8")) > 8192
+        for child in compact_children
+    ):
+        raise ReviewWorkerError("one child evidence item exceeded 8 KiB")
+    return bounded
 
 
 def _review_with_bonsai(review: dict, bonsai_url: str, model: str) -> dict[str, str]:
