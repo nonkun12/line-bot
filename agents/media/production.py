@@ -122,7 +122,8 @@ def create_audiovisual_production_bundle(
                 for index, scene in enumerate(scenario["scenes"])
             }
             video = render_video_from_edl(
-                edl, generated_media, selected_audio, destination / "final_video.mp4"
+                edl, generated_media, selected_audio, destination / "final_video.mp4",
+                width=640, height=360, fps=24, timeout_seconds=600,
             )
         if scene_media is not None:
             if audio_path is None and preview_duration < music_plan["duration_seconds"]:
