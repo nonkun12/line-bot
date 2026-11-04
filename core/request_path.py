@@ -380,6 +380,76 @@ def _run_distributed_music_request(
     }
 
 
+def _is_video_scenario_request(message: str) -> bool:
+    """Recognize scenario/script requests before generic multi-agent fan-out."""
+    normalized = (message or "").casefold()
+    return is_video_intent(message) and any(
+        keyword in normalized for keyword in ("シナリオ", "台本", "脚本", "script")
+    )
+
+
+def _run_distributed_video_music_request(
+    user_id: str, message: str, *, channel: str, metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Run the approved Video→Music handoff as one ordered distributed task."""
+    from agents.video_music_pipeline import run_video_music_pipeline
+    from core.agents import AgentRequest
+    from core.multi_agent import AgentRole
+    from core.specialist_gate import assert_all_approved
+
+    # Validate both capabilities before either specialist executes.
+    assert_all_approved((AgentRole.VIDEO, AgentRole.MUSIC))
+    response = run_video_music_pipeline(AgentRequest(
+        user_id=user_id, message=message, channel=channel, metadata=dict(metadata),
+    ))
+    response_metadata = dict(response.metadata)
+    return {
+        "user_id": user_id,
+        "raw_message": message,
+        "channel": channel,
+        "metadata": {
+            **dict(metadata),
+            "video_music_handoff": response_metadata.get("handoff"),
+            "video_music_artifacts": {
+                "scenario": response_metadata.get("scenario"),
+                "music_plan": response_metadata.get("music_plan"),
+                "midi_artifact": response_metadata.get("midi_artifact"),
+                "goal_jobs": response_metadata.get("goal_jobs"),
+                "rendering_status": response_metadata.get("rendering_status"),
+            },
+        },
+        "intent": "distributed_video_music_pipeline",
+        "next_agent": "music",
+        "route": "distributed:video→music",
+        "agent_results": {
+            "video": {
+                "text": response.text,
+                "metadata": {
+                    "feature": "video",
+                    "scenario": response_metadata.get("scenario"),
+                    "handoff": response_metadata.get("handoff"),
+                },
+                "status": "ok",
+            },
+            "music": {
+                "text": response.text,
+                "metadata": {
+                    "feature": "music",
+                    "music_plan": response_metadata.get("music_plan"),
+                    "midi_artifact": response_metadata.get("midi_artifact"),
+                },
+                "status": "ok",
+            },
+        },
+        "final_reply": response.text,
+        "error": None,
+        "specialists": ["video", "music"],
+        "parallel": False,
+        "max_workers": 1,
+        "failed_specialists": [],
+    }
+
+
 def _run_distributed_video_request(
     user_id: str, message: str, *, channel: str, metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -496,6 +566,20 @@ def run_core_request(
                 }
             except Exception as exc:
                 core_timer.fail(error=exc, error_location="core/request_path.obsidian_bridge")
+                raise
+            core_timer.ok()
+            return result
+
+    # A scenario request is an ordered Video→Music workflow, not two
+    # independent parallel specialists. Route it before generic fan-out.
+    if _is_video_scenario_request(message):
+        with StepTimer("core") as core_timer:
+            try:
+                result = _run_distributed_video_music_request(
+                    user_id, message, channel=channel, metadata=request_metadata
+                )
+            except Exception as exc:
+                core_timer.fail(error=exc, error_location="core/request_path.video_music_pipeline")
                 raise
             core_timer.ok()
             return result
