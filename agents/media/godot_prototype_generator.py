@@ -450,9 +450,14 @@ are never overwritten, and publication remains unauthorized.
         "README.md": readme,
     }
 
-def generate_godot_project(design: object, output_dir: str | Path, approved_assets: object | None = None) -> dict[str, Any]:
+def generate_godot_project(
+    design: object,
+    output_dir: str | Path,
+    approved_assets: object | None = None,
+    story_graph: object | None = None,
+) -> dict[str, Any]:
     """Create a brand-new project directory, refusing existing destinations."""
-    files = build_godot_project_files(design, approved_assets)
+    files = build_godot_project_files(design, approved_assets, story_graph)
     destination = Path(output_dir).expanduser()
     if destination.exists() or destination.is_symlink():
         raise FileExistsError("output directory already exists; refusing to overwrite")
