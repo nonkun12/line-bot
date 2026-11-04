@@ -1,4 +1,4 @@
-"""Read-only Markdown digest of durable Recovery AI HOLD records."""
+"""Read-only Markdown digest of durable Recovery AI BLOCKED and FAILED records."""
 from __future__ import annotations
 
 import argparse
@@ -63,7 +63,7 @@ def build_digest(state: dict) -> str:
     )
 
     lines = [
-        "# Recovery AI HOLD digest",
+        "# Recovery AI BLOCKED / FAILED digest",
         "",
         "> Read-only report. No HOLD state, queue, approval, or task record is modified.",
         "",
@@ -113,7 +113,7 @@ def build_digest(state: dict) -> str:
             str(record.get("last_decision_action") or "missing"),
             str(record.get("last_decision_reason") or record.get("hold_reason") or "missing"),
         ]
-        lines.append("| " + " | ".join(value.replace("|", "\\\\|") for value in values) + " |")
+        lines.append("| " + " | ".join(value.replace("|", "\\|") for value in values) + " |")
     if not inventory:
         lines.append("| — | — | — | — | — | — | — |")
     lines.extend(["", "## Last recovery decisions", "", "| Decision | Count |", "|---|---:|"])
