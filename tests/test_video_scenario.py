@@ -209,3 +209,18 @@ def test_storyboard_rejects_invalid_scenario_and_shot_list_rejects_incomplete_pa
         pass
     else:
         raise AssertionError("incomplete panel must not produce a shot list")
+
+
+def test_shot_list_rejects_non_contiguous_storyboard_timeline():
+    from agents.video.storyboard import build_storyboard
+    from agents.video.shot_list import build_shot_list
+
+    scenario = build_scenario("時を越える手紙", duration_seconds=60, scene_count=3)
+    storyboard = build_storyboard(scenario)
+    storyboard["panels"][1]["time_start_seconds"] += 1
+    try:
+        build_shot_list(storyboard)
+    except ValueError as exc:
+        assert "contiguous timeline" in str(exc)
+    else:
+        raise AssertionError("shot list must reject storyboard timeline gaps")
