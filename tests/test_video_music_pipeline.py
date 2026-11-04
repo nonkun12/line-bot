@@ -213,6 +213,6 @@ def test_midi_generator_emits_standard_midi_type_zero_header():
         ],
     })
     assert midi[:4] == b"MThd"
-    assert midi[8:10] == b"\\x00\\x00"
-    assert midi[10:12] == b"\\x00\\x01"
+    assert midi[8:10] == bytes((0, 0))
+    assert midi[10:12] == bytes((0, 1))
     assert midi[14:18] == b"MTrk"
