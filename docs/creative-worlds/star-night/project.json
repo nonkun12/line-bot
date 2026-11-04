@@ -125,12 +125,17 @@
       "original_music.mid",
       "original_music.wav",
       "critic_review.json",
-      "manifest.json"
+      "manifest.json",
+      "final_video.mp4 (procedural animatic only)"
     ],
     "artifact_retention_days": 14,
-    "video_status": "not_rendered",
+    "video_status": "procedural_storyboard_animatic",
     "publication_authorized": false,
     "paid_provider_fallback": false,
-    "mac_dependency": false
+    "mac_dependency": false,
+    "renderer": [
+      "Blender",
+      "FFmpeg"
+    ]
   }
 }
