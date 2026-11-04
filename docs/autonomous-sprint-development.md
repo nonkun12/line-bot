@@ -160,3 +160,59 @@ For a 16 GB unified-memory machine, avoid loading multiple large models simultan
 - Artifact hashes, tool versions, licenses, and test/review evidence are persisted.
 - A render failure creates a repair JOB with bounded scope, not an unbounded retry loop.
 
+## Evidence-first Goal planning and failure learning
+
+The next reliability increment should combine the Muse proposals S1 (falsifiable experiments) and S3 (failure immune memory), while reusing existing Goal and Recovery components rather than creating parallel planners.
+
+### Evidence contract for each success criterion
+
+A success criterion should carry a measurement contract before implementation begins:
+
+- hypothesis: what is expected to be true;
+- falsification condition: what observable result would prove the hypothesis wrong;
+- measurement procedure: the deterministic command, test, or review protocol;
+- threshold: the exact pass/fail boundary, where quantification is meaningful;
+- evidence artifacts: expected logs, test reports, output hashes, or review records;
+- verifier: the independent deterministic checker or named human review required.
+
+Keep two outcomes separate:
+
+- **JOB execution outcome** — whether the work or experiment ran successfully;
+- **criterion finding** — whether the collected evidence supports, refutes, or cannot yet decide the Goal hypothesis.
+
+An experiment can execute successfully and produce a negative finding. That must not be confused with a failed worker or a passing Goal criterion. A worker's self-reported PASS is never sufficient to mark a criterion achieved.
+
+### UNKNOWN must lead to bounded discovery
+
+The current Goal planner returns a HOLD when any success criterion is UNKNOWN. The next planner increment should allow a narrowly scoped, registered evidence/discovery JOB for that criterion, provided its measurement contract is valid and its dependencies, paths, grant, and budget pass the existing policy checks.
+
+- Prefer the next JOB that reduces the most consequential uncertainty, not the JOB that appears to make the most visible progress.
+- An UNKNOWN criterion may become PASS or FAIL only after its evidence is independently evaluated.
+- If a criterion cannot be measured mechanically (for example, whether a game is genuinely fun), use measurable proxy evidence plus a separate human evaluation. Proxy metrics alone cannot declare Goal completion.
+- If no safe experiment is registered, return a typed HOLD explaining what measurement contract or input is missing. Never generate an empty JOB or invent evidence.
+
+### Failure immune memory: extend, do not duplicate
+
+The repository already has a deterministic Recovery controller and RAG memory with sanitized failure fingerprints, bounded repair attempts, and HOLD behavior. The next increment should extend those components rather than introduce a second recovery engine.
+
+- Preserve the existing per-task retry/repair budget and fail-closed behavior.
+- Add a separate, privacy-safe cross-task failure signature built from validated fields such as exception class, normalized failure site, operation/stage, and canonical failing-test identifiers. Do not persist raw stack traces, prompts, secrets, or unrestricted exception text.
+- On a repeated signature, create a design/root-cause review JOB rather than blindly applying the same local patch again. A further recurrence after that bounded review should HOLD for human intervention.
+- Turn a confirmed root cause into a focused regression/antibody test. Keep the test linked to the signature and evidence that demonstrates the original failure is prevented.
+- Track whether the test actually reproduces the original defect before calling it an effective antibody. Do not award Critic/Creator scores for prose-only claims.
+
+### Safe implementation sequence
+
+1. Add schema and validation tests for the measurement contract; no runtime behavior change.
+2. Add a pure planner test proving that a valid UNKNOWN criterion selects its registered discovery JOB, while missing/unsafe experiments HOLD.
+3. Separate JOB execution outcome from experiment finding in the evidence contract and persistence adapter; preserve existing data compatibility.
+4. Add cross-task failure-signature tests and design-review escalation using the existing Recovery controller.
+5. Connect the Control Tower only after the standalone contracts, migration behavior, and regression suite pass.
+
+Each step should be a separate small PR with evidence. No step may widen autonomy grants, clear HOLD, merge, or deploy.
+
+### First creative prototype candidate: The Interpreter
+
+For the first game sprint, evaluate The Interpreter as a text-first prototype: two fictional cultures, a small generated vocabulary, a few grammar rules, and scenes where the player tests uncertain translations through low-risk dialogue. Use deterministic rules rather than an LLM so the game remains free, reproducible, and playable offline. LINE can provide the player-initiated conversation interface; Godot can later host a richer presentation without changing the language simulation core.
+
+The first prototype should measure whether players can infer meanings from contextual clues, notice and correct a mistaken dictionary entry, and understand why a translation changed the relationship. Do not build the full story, notification schedule, image pipeline, or multiplayer vote system until this core loop is fun in playtests.
