@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -109,6 +110,11 @@ def run_once(base_url: str, internal_key: str) -> bool:
     if render_setting not in {"0", "1"}:
         raise WorkerError("LOCAL_MEDIA_RENDER_ANIMATIC must be 0 or 1; refusing to claim work")
     render_animatic = render_setting == "1"
+    if render_animatic:
+        if shutil.which("blender") is None:
+            raise WorkerError("Blender is required for animatic rendering; no Goal JOB was claimed")
+        if shutil.which("ffmpeg") is None:
+            raise WorkerError("FFmpeg is required for animatic rendering; no Goal JOB was claimed")
     claimed = _request(base_url, internal_key, "/internal/media-jobs/claim", {})
     if claimed.get("claimed") is not True:
         return False
