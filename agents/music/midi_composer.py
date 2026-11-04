@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agents.music.motif import motif_pitch
 from typing import Any
+
+from agents.music.motif import motif_pitch
 
 
 _TICKS_PER_BEAT = 480
-_SECONDS_PER_BEAT_AT_120 = 0.5
 _CHORDS = (
     (60, (60, 64, 67)),
     (65, (65, 69, 72)),
@@ -113,7 +113,6 @@ def build_midi_bytes(music_plan: dict[str, Any], *, bpm: int = 120) -> bytes:
                 _note(bass_events, 2, chord_root - 24, chord_start, chord_end, max(30, velocity - 5))
             bar_start += bar_ticks
 
-        intervals = _MELODY_INTERVALS[energy]
         step = beat_ticks // 2
         cursor = start_tick
         note_index = 0
