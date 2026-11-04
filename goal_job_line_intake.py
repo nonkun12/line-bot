@@ -80,11 +80,10 @@ def _build_proposal(objective: str, proposal_id: str) -> dict[str, Any]:
                 "Create a concise, sprint-oriented implementation plan for this Goal in "
                 f"docs/goal-plans/{goal_id}.md. Objective: {objective}\n"
                 "Include a Sprint Goal, small dependency-ordered JOBs, acceptance criteria, "
-                "free-only tool choices, safety boundaries, and verification steps. "
-                "Do not modify application code, secrets, permissions, production data, "
-                "or deployment settings in this planning JOB."
+                "free-only tool choices, scope boundaries, and verification steps. "
+                "This planning JOB writes only its plan document."
             ),
-            "allowed_paths": ["docs/"],
+            "allowed_paths": [f"docs/goal-plans/{goal_id}.md"],
             "depends_on": [],
         }],
     }
