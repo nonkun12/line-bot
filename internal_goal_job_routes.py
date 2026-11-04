@@ -5,6 +5,7 @@ approve grants, clear HOLDs, merge, or deploy.
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import os
@@ -68,6 +69,14 @@ _MEDIA_OPERATION = "create_audiovisual_bundle"
 _MEDIA_ARTIFACT_KEYS = {
     "scenario", "music_plan", "midi", "audio_preview",
     "video_edit_decision_list", "video",
+}
+_MEDIA_REQUIRED_ARTIFACT_KEYS = _MEDIA_ARTIFACT_KEYS - {"video"}
+_MEDIA_EVIDENCE_CHECKS = {
+    "typed_local_executor_authorization",
+    "scenario_validation",
+    "output_confined_to_configured_root",
+    "artifact_inventory_and_sha256",
+    "no_publish_or_external_download",
 }
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -143,9 +152,12 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
             or receipt.get("status") != "draft"
             or receipt.get("publication") != "not_performed"
             or not isinstance(artifact_hashes, dict)
-            or not artifact_hashes
+            or not _MEDIA_REQUIRED_ARTIFACT_KEYS.issubset(artifact_hashes)
             or set(artifact_hashes) - _MEDIA_ARTIFACT_KEYS
             or any(not isinstance(value, str) or not _SHA256_RE.fullmatch(value) for value in artifact_hashes.values())
+            or receipt.get("idempotency_key") != hashlib.sha256(
+                f"{_MEDIA_EXECUTOR_ID}:{job_id}".encode()
+            ).hexdigest()
             or evidence_hashes != artifact_hashes
             or not isinstance(evidence.get("receipt_sha256"), str)
             or not _SHA256_RE.fullmatch(evidence["receipt_sha256"])
@@ -153,12 +165,16 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
             or evidence.get("goal_job_id") != job_id
         ):
             return jsonify({"ok": False, "error": "media receipt or artifact hashes failed validation"}), 400
-        if not all(
-            isinstance(check, dict)
-            and isinstance(check.get("name"), str) and check["name"].strip()
-            and check.get("status") == "PASS"
-            and check.get("source") == _MEDIA_EXECUTOR_ID
-            for check in evidence["checks"]
+        if (
+            {check.get("name") for check in evidence["checks"] if isinstance(check, dict)}
+            != _MEDIA_EVIDENCE_CHECKS
+            or not all(
+                isinstance(check, dict)
+                and check.get("name") in _MEDIA_EVIDENCE_CHECKS
+                and check.get("status") == "PASS"
+                and check.get("source") == _MEDIA_EXECUTOR_ID
+                for check in evidence["checks"]
+            )
         ):
             return jsonify({"ok": False, "error": "all media evidence checks must be executor-sourced PASS"}), 400
         try:
