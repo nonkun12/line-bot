@@ -273,3 +273,13 @@ def test_post_json_rejects_redirects_without_following_them(monkeypatch):
             {},
             key="s" * 32,
         )
+
+
+def test_configuration_rejects_credentials_embedded_in_server_origin(monkeypatch):
+    import scripts.mac_bonsai_goal_review_worker as worker
+
+    monkeypatch.setenv("LINE_BOT_BASE_URL", "https://user:password@example.invalid")
+    monkeypatch.setenv("INTERNAL_PUSH_KEY", "x" * 32)
+    monkeypatch.setenv("BONSAI_BASE_URL", "http://127.0.0.1:8081/v1")
+    with pytest.raises(ReviewWorkerError, match="without embedded credentials"):
+        worker._configuration()
