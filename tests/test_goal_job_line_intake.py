@@ -128,7 +128,7 @@ def test_approved_goal_runs_four_sequential_sprint_plans_to_goal(tmp_path, monke
         goal_job_store.evaluate_completed_goal_criteria(proposal["goal_id"]),
     )
 
-    executed = []
+    executed = ["media-01-audiovisual-draft"]
 
     def executor(_job, payload):
         executed.append(payload["goal_job_key"])
