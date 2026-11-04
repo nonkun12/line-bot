@@ -109,7 +109,10 @@ def _public_functions(source: str) -> list[tuple[str, int]]:
 
 
 def _referenced_symbols(test_source: str) -> set[str]:
-    """Collect executable Python name/attribute references, not comments or strings."""
+    """Collect executable Python name/attribute references, not comments or strings.
+
+    Imported aliases are retained alongside their original symbol names.
+    """
     try:
         tree = ast.parse(test_source)
     except SyntaxError as exc:
