@@ -4,6 +4,7 @@ import wave
 
 import pytest
 
+from scripts import star_night_hourly_candidate as candidate_builder
 from scripts.star_night_hourly_candidate import build_candidate
 
 
@@ -65,3 +66,15 @@ def test_cloud_animatic_renders_video_and_includes_music(tmp_path):
     assert manifest["video_render_status"] == "animatic_rendered"
     assert "star-night-episode-01-animatic.mp4" in manifest["sha256"]
     assert result["video"] == str(video)
+
+
+def test_critic_fails_when_structural_check_fails(tmp_path, monkeypatch):
+    invalid_scenes = [dict(scene) for scene in candidate_builder.SCENES]
+    invalid_scenes[1]["id"] = invalid_scenes[0]["id"]
+    monkeypatch.setattr(candidate_builder, "SCENES", invalid_scenes)
+
+    out = tmp_path / "invalid-candidate"
+    build_candidate(out)
+    critic = json.loads((out / "critic_review.json").read_text())
+    assert critic["status"] == "FAIL"
+    assert critic["checks"]["five_unique_scene_ids"] is False
