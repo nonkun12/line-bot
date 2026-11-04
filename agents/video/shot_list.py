@@ -12,6 +12,7 @@ def build_shot_list(storyboard: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(panels, list) or not panels:
         raise ValueError("storyboard panels are required")
     shots = []
+    expected_start = 0
     for panel in panels:
         if not isinstance(panel, dict):
             raise ValueError("storyboard panel must be an object")
@@ -20,9 +21,17 @@ def build_shot_list(storyboard: dict[str, Any]) -> dict[str, Any]:
                     "lighting", "color_palette", "action")
         if any(panel.get(key) is None or panel.get(key) == "" for key in required):
             raise ValueError("storyboard panel is incomplete")
+        start = panel["time_start_seconds"]
         duration = panel["duration_seconds"]
+        if type(start) is not int or start != expected_start:
+            raise ValueError("storyboard panel start times must form a contiguous timeline")
         if type(duration) is not int or duration <= 0:
             raise ValueError("shot duration must be a positive integer")
+        if any(not isinstance(panel[key], str) for key in
+               ("panel_id", "scene_id", "frame_description", "shot_size",
+                "camera_motion", "focal_subject", "lighting", "color_palette", "action")):
+            raise ValueError("storyboard panel text fields must be strings")
+        expected_start = start + duration
         # A panel is a shot-design unit, not a demand for a single unbroken take.
         # Split longer panels into establishing, action, and resolve coverage.
         cuts = [(0, duration, "主となる画面を成立させる")]
@@ -39,8 +48,8 @@ def build_shot_list(storyboard: dict[str, Any]) -> dict[str, Any]:
                 "shot_id": f"{panel['scene_id']}-SH{index:02d}",
                 "panel_id": panel["panel_id"],
                 "scene_id": panel["scene_id"],
-                "start_seconds": panel["time_start_seconds"] + offset,
-                "end_seconds": panel["time_start_seconds"] + end,
+                "start_seconds": start + offset,
+                "end_seconds": start + end,
                 "duration_seconds": end - offset,
                 "purpose": purpose,
                 "shot_size": panel["shot_size"],
@@ -52,6 +61,8 @@ def build_shot_list(storyboard: dict[str, Any]) -> dict[str, Any]:
                 "transition_out": panel["transition"] if end == duration else "同一シーン内で自然につなぐ",
                 "asset_status": "needs_rights_cleared_asset",
             })
+    if expected_start != storyboard.get("duration_seconds"):
+        raise ValueError("storyboard panels must cover the declared duration")
     return {
         "schema_version": "video-shot-list.v1",
         "status": "draft",
