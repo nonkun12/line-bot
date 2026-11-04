@@ -24,8 +24,10 @@ def test_candidate_contains_editable_story_and_game_assets(tmp_path):
     assert all(critic["checks"].values())
     graph = json.loads((out / "game_story_graph.json").read_text())
     node_ids = {node["id"] for node in graph["nodes"]}
-    assert len(node_ids) == 3
-    assert all(choice["next_node"] in node_ids for choice in graph["choices"])
+    assert len(node_ids) == 4
+    assert graph["start_node"] == "NODE_START"
+    assert all(choice["source_node"] in node_ids and choice["next_node"] in node_ids for choice in graph["choices"])
+    assert critic["checks"]["graph_reachability_valid"] is True
     assert all(set(choice["effect"]).issubset(graph["initial_state"]) for choice in graph["choices"])
 
 
@@ -116,6 +118,44 @@ def test_branch_graph_declares_every_choice_target(tmp_path):
     filename, artifact = candidate_builder._build_hourly_focus_artifact("branch_graph")
     node_ids = {node["id"] for node in artifact["nodes"]}
     assert filename == "branch_reachability.json"
-    assert len(node_ids) == 3
-    assert all(branch["next_node"] in node_ids for branch in artifact["branches"])
-    assert artifact["all_branches_reachable"] is True
+    assert len(node_ids) == 4
+    assert artifact["start_node"] == "NODE_START"
+    assert all(branch["source_node"] in node_ids and branch["next_node"] in node_ids for branch in artifact["branches"])
+    assert artifact["reachability"]["all_nodes_reachable"] is True
+    assert artifact["reachability"]["unreachable_nodes"] == []
+
+
+def test_graph_reachability_uses_traversal_and_detects_unreachable_nodes():
+    analyze = candidate_builder._analyze_reachability
+    nodes = [{"id": "START"}, {"id": "A"}, {"id": "B"}, {"id": "ORPHAN"}]
+    edges = [
+        {"id": "to-a", "source_node": "START", "next_node": "A"},
+        {"id": "to-b", "source_node": "A", "next_node": "B"},
+    ]
+    result = analyze("START", nodes, edges)
+    assert result["reachable_nodes"] == ["A", "B", "START"]
+    assert result["unreachable_nodes"] == ["ORPHAN"]
+    assert result["all_nodes_reachable"] is False
+
+
+def test_graph_reachability_rejects_undeclared_edge_endpoints():
+    result = candidate_builder._analyze_reachability(
+        "START",
+        [{"id": "START"}],
+        [{"id": "broken", "source_node": "START", "next_node": "MISSING"}],
+    )
+    assert result["invalid_edges"] == ["broken"]
+    assert result["all_nodes_reachable"] is False
+
+
+def test_graph_reachability_handles_cycles_without_looping():
+    result = candidate_builder._analyze_reachability(
+        "START",
+        [{"id": "START"}, {"id": "A"}],
+        [
+            {"id": "forward", "source_node": "START", "next_node": "A"},
+            {"id": "back", "source_node": "A", "next_node": "START"},
+        ],
+    )
+    assert result["all_nodes_reachable"] is True
+    assert result["reachable_nodes"] == ["A", "START"]
