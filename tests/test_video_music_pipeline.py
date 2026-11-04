@@ -137,7 +137,7 @@ def test_normal_langgraph_video_node_preserves_non_scenario_video_behavior():
         "agent_results": {},
     }
     result = video_agent_node(state)
-    assert "動画の実編集" in result["final_reply"]
+    assert "動画ファイルの実編集" in result["final_reply"]
     assert result["metadata"]["video_music_handoff"] is None
 
 
