@@ -252,8 +252,6 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
                                 completed_job_ids=[
                                     *snapshot["completed_job_ids"],
                                     "scenario",
-                                    "music",
-                                    "visual",
                                 ],
                                 approved_gate_job_ids=snapshot["approved_gate_job_ids"],
                                 held_job_ids=snapshot["held_job_ids"],
