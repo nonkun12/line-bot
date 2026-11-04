@@ -7,6 +7,7 @@ downloaded and existing output directories are never overwritten.
 """
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from typing import Any
@@ -55,19 +56,42 @@ def create_audiovisual_production_bundle(
         _write_json_exclusive(destination / "edit_decision_list.json", edl)
         midi = write_midi_file(music_plan, destination / "original_music.mid", bpm=bpm)
         if soundfont_path is None:
-            audio = write_wav_file(music_plan, destination / "original_music.wav", bpm=bpm)
-            audio_status = "synthesized_preview"
+            preview_plan = copy.deepcopy(music_plan)
+            preview_duration = min(preview_plan["duration_seconds"], 90)
+            if preview_duration < preview_plan["duration_seconds"]:
+                preview_plan["duration_seconds"] = preview_duration
+                clipped_cues = []
+                for cue in preview_plan["cues"]:
+                    if cue["start_seconds"] >= preview_duration:
+                        continue
+                    cue["end_seconds"] = min(cue["end_seconds"], preview_duration)
+                    cue["sync_points"] = [
+                        point for point in cue.get("sync_points", [])
+                        if point.get("at_seconds", 0) <= preview_duration
+                    ]
+                    clipped_cues.append(cue)
+                preview_plan["cues"] = clipped_cues
+            audio = write_wav_file(preview_plan, destination / "original_music.wav", bpm=bpm)
+            audio_status = (
+                "synthesized_preview" if preview_duration == music_plan["duration_seconds"]
+                else "synthesized_preview_first_90_seconds"
+            )
         else:
             audio = render_midi_to_wav(
                 destination / "original_music.mid",
                 soundfont_path,
                 destination / "original_music.wav",
             )
+            preview_duration = music_plan["duration_seconds"]
             audio_status = "rendered"
 
         selected_audio = Path(audio_path).expanduser() if audio_path is not None else destination / "original_music.wav"
         video = None
         if scene_media is not None:
+            if audio_path is None and preview_duration < music_plan["duration_seconds"]:
+                raise ValueError(
+                    "video rendering needs a full-length WAV; provide audio_path or a soundfont renderer"
+                )
             video = render_video_from_edl(
                 edl, scene_media, selected_audio, destination / "final_video.mp4"
             )
@@ -89,6 +113,7 @@ def create_audiovisual_production_bundle(
             "midi": midi,
             "audio_preview": audio,
             "audio_render_status": audio_status,
+            "audio_preview_duration_seconds": preview_duration,
             "video_render_status": "rendered" if video else "not_rendered",
             "video": video,
             "external_assets_attached": scene_media is not None,
