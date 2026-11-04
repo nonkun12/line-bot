@@ -62,11 +62,13 @@ The current first draft produces scenario JSON, an editable Japanese screenplay
 WAV preview, an edit decision list, and a hash-verified executor receipt. The
 screenplay, storyboard, and shot list are included in the receipt's artifact hashes;
 the storyboard and shot list are planning documents, not rendered image/video files.
-The default Goal worker does **not** render an MP4. An explicit local Python call
-to `create_audiovisual_production_bundle(..., render_animatic=True)` can opt into
-Blender-generated procedural storyboard blocking frames followed by FFmpeg MP4
-assembly. This is a first animatic made from abstract composition placeholders,
-not final character animation, a finished cinematic scene, or rights-cleared footage.
+The default Goal worker does **not** render an MP4. Set
+`LOCAL_MEDIA_RENDER_ANIMATIC=1` to opt into Blender-generated procedural storyboard
+blocking frames followed by FFmpeg MP4 assembly. The worker keeps this disabled
+unless explicitly enabled; a missing Blender/FFmpeg installation or failed render
+puts the JOB on HOLD. This is a first animatic made from abstract composition
+placeholders, not final character animation, a finished cinematic scene, or
+rights-cleared footage.
 The current renderer burns in a short title and narration caption (using a local
 Japanese font when available) and applies a small allowlisted Ken Burns-style
 camera move from the shot plan. These are presentation aids for the first animatic,
