@@ -49,7 +49,9 @@ expires safely. Continuous polling is intentionally not enabled by default.
 
 ## Output contract
 
-The current first draft produces scenario JSON, a music plan, original MIDI,
-a synthesized WAV preview, an edit decision list, and a hash-verified executor receipt.
+The current first draft produces scenario JSON, an editable storyboard, a shot list,
+a music plan, original MIDI, a synthesized WAV preview, an edit decision list,
+and a hash-verified executor receipt. The storyboard and shot list are included
+in the receipt's artifact hashes and are not rendered image/video files.
 It does **not** render an MP4 yet. The worker must not be treated as a video renderer
 until the Blender/FFmpeg scene-render stage is implemented and tested.
