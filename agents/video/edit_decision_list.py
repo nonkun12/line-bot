@@ -4,11 +4,14 @@ from __future__ import annotations
 from typing import Any
 
 from agents.video.scenario import validate_scenario
+from agents.video.sync_timeline import build_audiovisual_sync_timeline
 
 
 def build_edit_decision_list(
     scenario: dict[str, Any],
     music_plan: dict[str, Any],
+    *,
+    bpm: int = 120,
 ) -> dict[str, Any]:
     """Create an editable, synchronized video/audio timeline manifest.
 
@@ -107,6 +110,12 @@ def build_edit_decision_list(
         raise ValueError("scene timeline does not cover the full scenario duration")
     if set(cues_by_scene) != {scene["scene_id"] for scene in scenario["scenes"]}:
         raise ValueError("music plan contains cues without matching scenes")
+    beat_sync = build_audiovisual_sync_timeline({
+        "schema_version": "audiovisual-edl.v1",
+        "duration_seconds": duration,
+        "video_track": video_track,
+        "audio_track": audio_track,
+    }, bpm=bpm)
     return {
         "schema_version": "audiovisual-edl.v1",
         "status": "draft",
@@ -114,6 +123,7 @@ def build_edit_decision_list(
         "duration_seconds": duration,
         "video_track": video_track,
         "audio_track": audio_track,
+        "beat_sync": beat_sync,
         "sync_events": sorted(
             [point for scene in video_track for point in scene["visual_sync_points"]],
             key=lambda item: item["at_seconds"],
