@@ -69,10 +69,11 @@ def test_local_executor_rejects_payload_controlled_output_paths(tmp_path):
     assert output["evidence"]["output_directory"] == str(tmp_path.resolve() / "goal-child-42")
 
 
-def test_local_executor_is_idempotent_and_never_overwrites(tmp_path):
-    execute_local_media_job(_job(), _payload(), output_root=tmp_path)
-    with pytest.raises(FileExistsError):
-        execute_local_media_job(_job(), _payload(), output_root=tmp_path)
+def test_local_executor_reuses_only_an_integrity_verified_existing_bundle(tmp_path):
+    first = execute_local_media_job(_job(), _payload(), output_root=tmp_path)
+    second = execute_local_media_job(_job(), _payload(), output_root=tmp_path)
+    assert second["result"] == first["result"]
+    assert second["evidence"]["artifact_sha256"] == first["evidence"]["artifact_sha256"]
 
 
 def test_local_executor_rejects_invalid_scenario_before_creating_output(tmp_path):
@@ -81,3 +82,12 @@ def test_local_executor_rejects_invalid_scenario_before_creating_output(tmp_path
     with pytest.raises(ValueError, match="invalid production scenario"):
         execute_local_media_job(_job(), payload, output_root=tmp_path)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_local_executor_holds_on_partial_existing_output(tmp_path):
+    partial = tmp_path / "goal-child-42"
+    partial.mkdir()
+    (partial / "scenario.json").write_text("partial", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="no safe receipt"):
+        execute_local_media_job(_job(), _payload(), output_root=tmp_path)
+    assert (partial / "scenario.json").read_text(encoding="utf-8") == "partial"
