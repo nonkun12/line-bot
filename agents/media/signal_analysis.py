@@ -199,7 +199,7 @@ def compare_scene_signals(
         raise ValueError("video_report must be a video signal analysis")
     results = []
     for scene in scenes:
-        start, end = scene.get("start_seconds"), scene.get("end_seconds")
+        start = scene.get("start_seconds", scene.get("time_start_seconds"))\n        end = scene.get("end_seconds")\n        if end is None and type(start) in (int, float) and type(scene.get("duration_seconds")) in (int, float):\n            end = start + scene["duration_seconds"]
         if type(start) not in (int, float) or type(end) not in (int, float) or start < 0 or end <= start:
             raise ValueError("scene intervals must have valid start_seconds and end_seconds")
         audio = [
