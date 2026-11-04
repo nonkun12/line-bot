@@ -6,6 +6,7 @@ It uses only Python's standard library so local/cloud execution stays free.
 from __future__ import annotations
 
 import base64
+import math
 import struct
 from typing import Any
 
@@ -64,11 +65,13 @@ def build_midi_bytes(music_plan: dict[str, Any]) -> bytes:
         energy = cue.get("energy")
         if (
             type(start) not in (int, float) or type(end) not in (int, float)
+            or not math.isfinite(start) or not math.isfinite(end)
             or start < previous_end or end <= start or end > duration
-            or energy not in _ENERGY_NOTES
+            or not isinstance(energy, str) or energy not in _ENERGY_NOTES
         ):
             raise ValueError(f"invalid timing or energy in cue {cue_index + 1}")
-        if cue.get("scene_id") is None:
+        scene_id = cue.get("scene_id")
+        if not isinstance(scene_id, str) or not scene_id.strip():
             raise ValueError(f"scene_id missing in cue {cue_index + 1}")
         previous_end = end
         start_tick, end_tick = _tick(start), _tick(end)
