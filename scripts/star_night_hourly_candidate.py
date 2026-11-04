@@ -49,6 +49,78 @@ TASKS = [
 ]
 
 
+def _build_hourly_focus_artifact(task_id: str) -> tuple[str, dict[str, Any]]:
+    """Create one substantive, editable deliverable for the selected hourly focus."""
+    deliverables: dict[str, tuple[str, dict[str, Any]]] = {
+        "continuity": ("continuity_sheet.json", {
+            "focus_id": task_id, "version": 1,
+            "characters": [
+                {"id": "CHAR_NOA", "silhouette": "小柄な丸い頭と短い胴体の探索ロボット",
+                 "fixed_features": ["胸の星形ランプ", "青灰色の外装", "淡いシアンの目"],
+                 "emotional_range": ["警戒", "好奇心", "小さな勇気"]},
+                {"id": "CHAR_LUMINA", "silhouette": "青白い光を放つ小さな星形のかけら",
+                 "fixed_features": ["中心は白に近い青", "外周に淡い水色の光輪"],
+                 "behavior_rule": "感情を言葉で説明せず、明滅と光量で反応する"},
+            ],
+            "environment": {"id": "LOC_RAIN_ALLEY", "weather": "小雨",
+                            "palette_transition": "冷たい青から灯りの琥珀色へ"},
+        }),
+        "episode_002": ("episode_002_outline.json", {
+            "focus_id": task_id, "episode_id": "SN-E002", "title": "旧駅の案内機",
+            "logline": "ノアは旧駅で、街の灯りが消えた理由を知る案内機と出会う。",
+            "beats": [
+                {"id": "E2-B01", "beat": "旧駅の入口で、ルミナに反応する案内板を見つける"},
+                {"id": "E2-B02", "beat": "案内機ミナが起動するが、記憶の一部が欠けている"},
+                {"id": "E2-B03", "beat": "ノアは案内機の記憶か、駅の非常灯か、ミナとの信頼を優先する"},
+                {"id": "E2-B04", "beat": "選択に応じて旧駅の出口と次の探索地点が変化する"},
+            ],
+            "choices": ["CHOICE_MEMORY", "CHOICE_LIGHTS", "CHOICE_TRUST"],
+            "canon_status": "proposal_only",
+        }),
+        "branch_graph": ("branch_reachability.json", {
+            "focus_id": task_id, "initial_state": {"trust_mina": 0, "city_lights": 0, "noa_memory": 0},
+            "branches": [
+                {"id": "CHOICE_LUMINA_01A", "state_delta": {"noa_memory": 1}, "next_node": "NODE_MEMORY"},
+                {"id": "CHOICE_LUMINA_01B", "state_delta": {"city_lights": 1}, "next_node": "NODE_LIGHTS"},
+                {"id": "CHOICE_LUMINA_01C", "state_delta": {"trust_mina": 1}, "next_node": "NODE_TRUST"},
+            ],
+            "reachable_nodes": ["NODE_MEMORY", "NODE_LIGHTS", "NODE_TRUST"],
+            "all_branches_reachable": True, "validation": "static_proposal",
+        }),
+        "visual_design": ("visual_design.json", {
+            "focus_id": task_id, "global_style": "雨の青を基調に、光だけを暖色で際立たせる",
+            "cuts": [
+                {"scene_id": scene["id"], "composition": scene["camera"],
+                 "palette": ["deep_navy", "rain_blue", "lumina_cyan"],
+                 "lighting": "ルミナを主光源にし、濡れた路面へ細い反射を落とす"}
+                for scene in SCENES
+            ],
+        }),
+        "music_variation": ("music_variations.json", {
+            "focus_id": task_id, "motif": "MOTIF_STAR", "tempo_bpm": 76,
+            "variations": [
+                {"scene_id": "SC01", "notes": ["C4"], "texture": "遠い単音、長い余韻"},
+                {"scene_id": "SC02", "notes": ["D4", "G4"], "texture": "問いかける二音"},
+                {"scene_id": "SC03", "notes": ["C4", "D4", "G4"], "texture": "星の三音を明確に提示"},
+                {"scene_id": "SC04", "notes": ["G4", "C5", "D5"], "texture": "街灯の連鎖に合わせて上昇"},
+                {"scene_id": "SC05", "notes": ["G4", "D4"], "texture": "静かに余韻を残す"},
+            ],
+            "production_note": "次工程で弦とパッドを加える候補。現行WAVは単純な合成プレビュー。",
+        }),
+        "game_loop": ("game_loop_design.json", {
+            "focus_id": task_id,
+            "loop": ["探索", "手がかり発見", "修理・謎解き", "キャラクターとの対話",
+                     "選択", "街・関係性の状態変化", "新しい場所の解放"],
+            "state_variables": ["trust_mina", "city_lights", "noa_memory",
+                                "lumina_fragments", "discovered_locations", "choice_history"],
+            "player_feedback": "選択結果を街の灯り・案内機の応答・探索可能範囲で見せる",
+        }),
+    }
+    if task_id not in deliverables:
+        raise ValueError(f"Unknown hourly focus: {task_id}")
+    return deliverables[task_id]
+
+
 def _vlq(value: int) -> bytes:
     value = max(0, int(value))
     buffer = value & 0x7F
@@ -276,6 +348,7 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
         task_id, task_title = TASKS[task_index]
         task = {"task_id": f"SN-HOURLY-{stamp}", "focus": task_id, "proposal": task_title,
                 "status": "candidate_only", "requires_critic_and_human_approval": True}
+        focus_filename, focus_artifact = _build_hourly_focus_artifact(task_id)
         critic_checks = {
             "five_unique_scene_ids": len({s["id"] for s in SCENES}) == 5,
             "timeline_contiguous": all(SCENES[i]["start"] + SCENES[i]["duration"] == SCENES[i+1]["start"] for i in range(4)),
@@ -297,6 +370,10 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
             "critic_review.json": json.dumps(critic, ensure_ascii=False, indent=2) + "\n"}
         for name, content in files.items():
             (destination / name).write_text(content, encoding="utf-8")
+        (destination / focus_filename).write_text(
+            json.dumps(focus_artifact, ensure_ascii=False, indent=2) + "\\n",
+            encoding="utf-8",
+        )
         (destination / "original_music.mid").write_bytes(_midi_bytes())
         _write_wav(destination / "original_music.wav")
         video_path = _render_animatic(destination) if render_animatic else None
