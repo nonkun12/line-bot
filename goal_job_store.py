@@ -175,7 +175,7 @@ def persist_child_job(goal_id: str, job: object, *, parent_job_key: str | None =
     with db.get_conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
         goal_row = conn.execute(
-            "SELECT grant_json,status,goal_json FROM goal_chains WHERE goal_id=?",
+            "SELECT grant_json,status,goal_json,evidence_json FROM goal_chains WHERE goal_id=?",
             (goal_id,),
         ).fetchone()
         if goal_row is None:
@@ -231,16 +231,18 @@ def persist_child_job(goal_id: str, job: object, *, parent_job_key: str | None =
         parent_job_id = None
         for dependency_key in dependencies:
             parent = conn.execute(
-                "SELECT link.job_id,j.status FROM goal_chain_jobs link "
+                "SELECT link.job_id,j.status,link.criterion_id FROM goal_chain_jobs link "
                 "JOIN jobs j ON j.id=link.job_id WHERE link.goal_id=? AND link.goal_job_key=?",
                 (goal_id, dependency_key),
             ).fetchone()
             if parent is None:
                 raise ValueError("dependency Goal JOB has not been persisted")
-            if parent[1] not in {"done", "completed"} and not (
+            criterion_evidence = json.loads(goal_row[3] or "{}")
+            dependency_criterion_passed = criterion_evidence.get(parent[2]) == "PASS"
+            if parent[1] not in {"done", "completed"} and not dependency_criterion_passed and not (
                 job.get("stage") == "fix" and parent[1] in {"failed", "held"}
             ):
-                raise ValueError("dependency Goal JOB is not complete or eligible for repair")
+                raise ValueError("dependency Goal JOB is not complete or criterion-verified")
             if parent_job_id is None:
                 parent_job_id = parent[0]
 
@@ -291,14 +293,21 @@ def get_goal_job_states(goal_id: str) -> dict[str, str]:
     """Normalize both historical terminal spellings to the planner's vocabulary."""
     init_goal_job_store()
     with db.get_conn() as conn:
+        goal_row = conn.execute(
+            "SELECT evidence_json FROM goal_chains WHERE goal_id=?",
+            (goal_id,),
+        ).fetchone()
         rows = conn.execute(
-            "SELECT link.goal_job_key,j.status FROM goal_chain_jobs link "
+            "SELECT link.goal_job_key,link.criterion_id,j.status FROM goal_chain_jobs link "
             "JOIN jobs j ON j.id=link.job_id WHERE link.goal_id=? ORDER BY link.id",
             (goal_id,),
         ).fetchall()
+    criterion_evidence = json.loads(goal_row[0] or "{}") if goal_row else {}
     normalized = {}
-    for key, status in rows:
-        if status in {"done", "completed"}:
+    for key, criterion_id, status in rows:
+        if status in {"done", "completed"} or criterion_evidence.get(criterion_id) == "PASS":
+            # A failed attempt may be superseded by a later independently
+            # verified JOB for the same criterion.
             normalized[key] = "done"
         elif status in {"pending", "running", "failed", "held"}:
             normalized[key] = status
