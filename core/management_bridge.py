@@ -19,7 +19,7 @@ from agents.market.intents import is_market_intent
 from agents.voice.intents import is_voice_intent
 from agents.jobs.intents import is_job_seeking_intent
 from agents.music.intents import is_music_intent
-from agents.video.intents import is_video_intent
+from agents.video.intents import is_video_intent, is_video_scenario_request
 from core.agents import AgentRequest
 from core.distributed_scheduler import DistributedExecutionError
 from core.management_ai import (
@@ -85,7 +85,9 @@ def specialist_roles_for_message(message: str) -> frozenset[AgentRole]:
         roles.add(AgentRole.VOICE)
     if is_job_seeking_intent(text):
         roles.add(AgentRole.JOBS)
-    if is_music_intent(text):
+    # Scenario/script requests are one ordered Video→Music pipeline, not
+    # independent Management-AI specialists. Let Core's dedicated route own it.
+    if is_music_intent(text) and not is_video_scenario_request(text):
         roles.add(AgentRole.MUSIC)
     if is_video_intent(text):
         roles.add(AgentRole.VIDEO)
