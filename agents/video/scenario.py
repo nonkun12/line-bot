@@ -31,6 +31,16 @@ def _clean_text(value: object, field: str, *, limit: int = 500) -> str:
     return value
 
 
+def _scene_act_index(index: int, scene_count: int) -> int:
+    """Allocate story stages explicitly, preserving a legible emotional arc."""
+    if scene_count == 2:
+        return (0, 3)[index]
+    if scene_count == 3:
+        return (0, 1, 3)[index]
+    # Round half up (rather than Python's banker's round) across all four acts.
+    return min(3, (2 * index * 3 + (scene_count - 1)) // (2 * (scene_count - 1)))
+
+
 def build_scenario(
     topic: str,
     *,
@@ -65,7 +75,7 @@ def build_scenario(
     scenes = []
     base, remainder = divmod(duration_seconds, scene_count)
     for index in range(scene_count):
-        act_index = round(index * 3 / (scene_count - 1))
+        act_index = _scene_act_index(index, scene_count)
         act, act_label, purpose = _ACTS[act_index]
         start = index * base + min(index, remainder)
         length = base + (1 if index < remainder else 0)
@@ -165,11 +175,20 @@ def validate_scenario(scenario: object) -> tuple[str, ...]:
         errors.append("schema_version_invalid")
     if scenario.get("status") != "draft":
         errors.append("status_must_be_draft")
+    if not isinstance(scenario.get("title"), str) or not scenario["title"].strip():
+        errors.append("title_invalid")
     brief = scenario.get("creative_brief")
     scenes = scenario.get("scenes")
-    if not isinstance(brief, dict) or not isinstance(scenes, list) or not scenes:
+    if not isinstance(brief, dict) or not isinstance(scenes, list):
         return tuple(errors + ["creative_brief_or_scenes_missing"])
     duration = brief.get("duration_seconds")
+    scene_count = brief.get("scene_count")
+    if type(duration) is not int or not MIN_DURATION_SECONDS <= duration <= MAX_DURATION_SECONDS:
+        errors.append("duration_out_of_bounds")
+    if type(scene_count) is not int or not MIN_SCENES <= scene_count <= MAX_SCENES:
+        errors.append("scene_count_out_of_bounds")
+    if len(scenes) < MIN_SCENES or len(scenes) > MAX_SCENES or scene_count != len(scenes):
+        errors.append("scene_count_mismatch_or_out_of_bounds")
     durations = [
         item.get("duration_seconds") for item in scenes if isinstance(item, dict)
     ]
@@ -219,19 +238,33 @@ def validate_scenario(scenario: object) -> tuple[str, ...]:
             errors.append(f"scene_{index + 1}_music_cue_timing_invalid")
         if sync.get("mix_priority") not in {"dialogue_first", "music_first", "balanced", "intentional_silence"}:
             errors.append(f"scene_{index + 1}_mix_priority_invalid")
+        for field in ("emotional_intent", "energy", "tempo_relation", "motif"):
+            if not isinstance(sync.get(field), str) or not sync[field].strip():
+                errors.append(f"scene_{index + 1}_{field}_invalid")
         points = sync.get("sync_points")
-        if type(scene_duration) is not int or not isinstance(points, list) or any(
-            not isinstance(point, dict)
-            or type(point.get("at_seconds")) is not int
-            or point["at_seconds"] < 0
-            or point["at_seconds"] > scene_duration
-            or not isinstance(point.get("event"), str)
-            or not point["event"].strip()
+        points_valid = isinstance(points, list) and all(
+            isinstance(point, dict)
+            and type(point.get("at_seconds")) is int
+            and 0 <= point["at_seconds"] <= scene_duration
+            and isinstance(point.get("event"), str)
+            and bool(point["event"].strip())
             for point in points
-        ):
+        ) if type(scene_duration) is int else False
+        if not points_valid:
             errors.append(f"scene_{index + 1}_sync_points_invalid")
+        elif (
+            [point["at_seconds"] for point in points] != sorted(point["at_seconds"] for point in points)
+            or not points or points[0]["at_seconds"] != 0
+            or points[-1]["at_seconds"] != scene_duration
+        ):
+            errors.append(f"scene_{index + 1}_sync_points_order_or_boundaries_invalid")
     audiovisual = scenario.get("audiovisual_direction")
-    if not isinstance(audiovisual, dict) or not audiovisual.get("mixing_rules"):
+    if (
+        not isinstance(audiovisual, dict)
+        or not audiovisual.get("mixing_rules")
+        or not isinstance(audiovisual.get("global_music_motif"), str)
+        or not audiovisual["global_music_motif"].strip()
+    ):
         errors.append("audiovisual_direction_missing")
     return tuple(errors)
 
