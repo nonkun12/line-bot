@@ -16,10 +16,19 @@ from typing import Any
 import db
 import goal_job_store
 from agents.video.scenario import build_scenario
+from agents.media.audiovisual_game_sprint import build_audiovisual_game_sprint_plan
+from agents.media.goal_job_chain_store import (
+    GoalChainConflictError,
+    create_or_resume_goal_chain,
+    get_goal_chain,
+    record_goal_chain_evidence,
+)
 from goal_job_orchestrator import advance_goal
 
 _GOAL_PREFIX = re.compile(r"^(?:goal\s*[:：]|目標\s*[:：]|goal\s+ai\s*[:：])\s*(.+)$", re.IGNORECASE | re.DOTALL)
 _APPROVE = re.compile(r"^goal\s*(?:承認|approve)\s+([A-Za-z0-9._-]{6,100})$", re.IGNORECASE)
+_GOAL_STATUS = re.compile(r"^(?:goal\s+status|goal状態)\s+([A-Za-z0-9._-]{1,100})$", re.IGNORECASE)
+_GOAL_STAGE_APPROVE = re.compile(r"^(?:goal\s+stage\s+approve|goalステージ承認)\s+([A-Za-z0-9._-]{1,100})\s+([A-Za-z0-9._-]{1,80})$", re.IGNORECASE)
 _MAX_OBJECTIVE_LENGTH = 2000
 _PROPOSAL_TTL_HOURS = 24
 
@@ -67,6 +76,20 @@ def parse_goal_approval(message: object) -> str | None:
         return None
     match = _APPROVE.fullmatch(message.strip())
     return match.group(1) if match else None
+
+
+def parse_goal_chain_status(message: object) -> str | None:
+    if not isinstance(message, str):
+        return None
+    match = _GOAL_STATUS.fullmatch(message.strip())
+    return match.group(1) if match else None
+
+
+def parse_goal_stage_approval(message: object) -> tuple[str, str] | None:
+    if not isinstance(message, str):
+        return None
+    match = _GOAL_STAGE_APPROVE.fullmatch(message.strip())
+    return (match.group(1), match.group(2)) if match else None
 
 
 def _build_proposal(objective: str, proposal_id: str) -> dict[str, Any]:
@@ -285,6 +308,7 @@ def approve_goal_proposal(user_id: str, proposal_id: str) -> dict[str, Any]:
     # Do not hold the proposal DB transaction while create_goal opens its own
     # connection; that would deadlock SQLite's writer lock.
     if resume_existing:
+        create_or_resume_goal_chain(user_id, proposal["audiovisual_sprint_plan"])
         queued = advance_goal(goal_id)
         return {
             "goal_id": goal_id,
@@ -309,6 +333,7 @@ def approve_goal_proposal(user_id: str, proposal_id: str) -> dict[str, Any]:
     }
     try:
         goal_job_store.create_goal(proposal, user_id, grant)
+        create_or_resume_goal_chain(user_id, proposal["audiovisual_sprint_plan"])
         with db.get_conn() as conn:
             conn.execute(
                 "UPDATE goal_line_proposals SET status='approved',approved_goal_id=?,approval_started_at=NULL "
@@ -334,6 +359,46 @@ def approve_goal_proposal(user_id: str, proposal_id: str) -> dict[str, Any]:
 
 def handle_goal_line_message(user_id: str, message: str) -> tuple[bool, str | None]:
     """Return (handled, reply); unrelated/read-only messages are untouched."""
+    status_goal_id = parse_goal_chain_status(message)
+    if status_goal_id:
+        chain = get_goal_chain(user_id, status_goal_id)
+        if chain is None:
+            return True, "このLINEユーザーが参照できるGoal連鎖は見つかりません。"
+        state = chain["state"]
+        return True, (
+            f"Goal連鎖状態: {chain['goal_id']} / version {chain['version']}\n"
+            f"READY: {', '.join(state['ready_job_ids']) or 'なし'}\n"
+            f"承認待ち: {', '.join(state['awaiting_human_approval_job_ids']) or 'なし'}\n"
+            f"HOLD: {', '.join(state['held_job_ids']) or 'なし'}"
+        )
+
+    stage_approval = parse_goal_stage_approval(message)
+    if stage_approval:
+        goal_id, stage_id = stage_approval
+        if not _authorized_approver(user_id):
+            return True, "Goalステージ承認は許可されていません。登録済みの承認者アカウントから実行してください。"
+        chain = get_goal_chain(user_id, goal_id)
+        if chain is None:
+            return True, "このLINEユーザーが参照できるGoal連鎖は見つかりません。"
+        snapshot = chain["state"]["snapshot"]
+        try:
+            updated = record_goal_chain_evidence(
+                user_id,
+                goal_id,
+                expected_version=chain["version"],
+                completed_job_ids=snapshot["completed_job_ids"],
+                approved_gate_job_ids=[*snapshot["approved_gate_job_ids"], stage_id],
+                held_job_ids=snapshot["held_job_ids"],
+                event_type="human_approved",
+            )
+        except (ValueError, GoalChainConflictError, KeyError) as exc:
+            return True, f"Goalステージを承認できませんでした: {exc}"
+        ready = updated["state"]["ready_job_ids"]
+        return True, (
+            f"Goalステージを承認しました: {stage_id}\n"
+            f"次に実行可能なステージ: {', '.join(ready) or 'なし'}"
+        )
+
     proposal_id = parse_goal_approval(message)
     if proposal_id:
         try:
@@ -375,6 +440,8 @@ __all__ = [
     "init_goal_line_intake",
     "parse_goal_intake",
     "parse_goal_approval",
+    "parse_goal_chain_status",
+    "parse_goal_stage_approval",
     "create_goal_proposal",
     "approve_goal_proposal",
     "handle_goal_line_message",
