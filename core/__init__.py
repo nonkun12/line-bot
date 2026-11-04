@@ -12,7 +12,6 @@ from .execution_pipeline import DefaultPlanner, ExecutionResult, Manager, WorkPl
 from .gateway import AIGateway, AIRequest, AIResponse
 from .channel import handle_channel_request
 from .langgraph_adapter import agent_request_from_state, ai_request_from_state, response_text
-from .langgraph_runtime import CoreGraphState, agent_node_name, build_core_graph
 from .legacy_adapter import LegacyNodeAgent, build_legacy_registry
 from .orchestration import ExternalWorkflow, WorkflowResult
 from .project_registry import ProjectRecord, ProjectRegistry
@@ -47,3 +46,19 @@ __all__ = [
     "response_text", "ExternalWorkflow", "WorkflowResult", "AICompetitionLoop",
     "ReviewerRegistry", "ReviewDecision", "ReviewFinding", "ReviewResult",
 ]
+
+
+_LAZY_GRAPH_EXPORTS = {"CoreGraphState", "agent_node_name", "build_core_graph"}
+
+def __getattr__(name: str):
+    """Load the optional LangGraph runtime only when graph APIs are requested.
+
+    Importing lightweight Core policies (for example autonomy_policy) must not
+    require the optional orchestration runtime to be installed.
+    """
+    if name in _LAZY_GRAPH_EXPORTS:
+        from . import langgraph_runtime
+        value = getattr(langgraph_runtime, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
