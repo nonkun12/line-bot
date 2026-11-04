@@ -132,7 +132,8 @@ def _build_proposal(objective: str, proposal_id: str) -> dict[str, Any]:
         "stage": "design",
         "instruction": (
             "Create the first local-only audiovisual draft bundle from this approved scenario: "
-            "produce the scenario JSON, original music plan, MIDI, WAV preview, and edit decision list. "
+            "produce the scenario JSON, editable Japanese screenplay, storyboard, shot list, "
+            "original music plan, MIDI, WAV preview, and synchronized edit decision list. "
             "Keep outputs as drafts; do not distribute externally or retrieve outside assets."
         ),
         "allowed_paths": [f"docs/goal-plans/{goal_id}/00-audiovisual-draft.md"],
@@ -144,7 +145,7 @@ def _build_proposal(objective: str, proposal_id: str) -> dict[str, Any]:
     criteria = [
         {
             "id": "audiovisual_draft",
-            "description": "A local draft scenario, original MIDI, WAV preview, music plan, and EDL have verified hashes.",
+            "description": "A local draft scenario, Japanese screenplay, storyboard, shot list, original MIDI, WAV preview, music plan, and EDL have verified hashes.",
         },
         *[
             {
