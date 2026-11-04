@@ -69,5 +69,35 @@
       "quota_change_requires_explicit_migration": true,
       "no_implicit_limit_bypass": true
     }
+  },
+  "production_tracks": {
+    "video": {
+      "workspace_id": "visual",
+      "job_family": "star-night.video",
+      "artifact_namespace": "artifacts/video/",
+      "output_examples": [
+        "storyboard.json",
+        "shot-list.json",
+        "video-draft.mp4"
+      ],
+      "independent_from_music": true
+    },
+    "music": {
+      "workspace_id": "music",
+      "job_family": "star-night.music",
+      "artifact_namespace": "artifacts/music/",
+      "output_examples": [
+        "music-plan.json",
+        "score.mid",
+        "music-preview.wav"
+      ],
+      "independent_from_video": true
+    },
+    "synchronization": {
+      "workspace_id": "director",
+      "join_after": "both_tracks_have_reviewed_artifacts",
+      "contract": "shared_timeline_and_explicit_sync_markers",
+      "may_rewrite_source_tracks": false
+    }
   }
 }
