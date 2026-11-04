@@ -27,7 +27,21 @@ if [[ $# -lt 1 || $# -gt 2 ]]; then
 fi
 
 SPEC="$1"
-TEST_TARGET="${2:-tests/test_mac_bonsai_goal_review_worker.py}"
+TEST_TARGET="${2-tests/test_mac_bonsai_goal_review_worker.py}"
+
+# Validate the shared target once before starting any PR, so a bad path cannot
+# cause a partially executed batch. Keep this in sync with the single runner.
+if [[ -z "$TEST_TARGET" || "$TEST_TARGET" == /* || "$TEST_TARGET" == -* ]]; then
+  echo "ERROR: pytest target must be a relative path inside the PR worktree: $TEST_TARGET" >&2
+  exit 2
+fi
+IFS='/' read -r -a TARGET_PARTS <<< "$TEST_TARGET"
+for part in "${TARGET_PARTS[@]}"; do
+  if [[ -z "$part" || "$part" == "." || "$part" == ".." ]]; then
+    echo "ERROR: pytest target contains an unsafe path component: $TEST_TARGET" >&2
+    exit 2
+  fi
+done
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SINGLE_RUNNER="$SCRIPT_DIR/mac_goal_pr_test.sh"
 if [[ ! -f "$SINGLE_RUNNER" ]]; then
