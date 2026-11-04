@@ -88,6 +88,7 @@ def test_media_completion_requires_matching_receipt_and_artifact_hashes(tmp_path
     claimed = client.post("/internal/media-jobs/claim", headers=headers, json={}).get_json()["job"]
     hashes = {
         "scenario": "a" * 64,
+        "screenplay": "9" * 64,
         "storyboard": "f" * 64,
         "shot_list": "0" * 64,
         "music_plan": "b" * 64,
