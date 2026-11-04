@@ -53,3 +53,43 @@ def test_worker_accepts_small_review_input():
     bounded = _bounded_review_input(review)
     assert bounded["criteria"][0]["id"] == "artifact"
     assert bounded["completed_job_evidence"][0]["evidence"]["checks"][0]["status"] == "PASS"
+
+
+
+def test_worker_rejects_truncated_child_evidence():
+    review = {
+        "objective": "do not infer from a partial evidence set",
+        "success_criteria": [{"id": "artifact", "description": "Artifact is verified"}],
+        "children": [{
+            "goal_job_key": "job-1",
+            "status": "completed",
+            "evidence": {"checks": [], "truncated": True},
+            "result": "partial",
+        }],
+    }
+    with pytest.raises(ReviewWorkerError, match="truncated"):
+        _bounded_review_input(review)
+
+
+def test_worker_rejects_omitted_child_jobs():
+    review = {
+        "objective": "do not infer from an incomplete child list",
+        "success_criteria": [{"id": "artifact", "description": "Artifact is verified"}],
+        "children": [],
+        "children_truncated": True,
+    }
+    with pytest.raises(ReviewWorkerError, match="truncated"):
+        _bounded_review_input(review)
+
+
+def test_worker_rejects_duplicate_criterion_ids():
+    review = {
+        "objective": "criterion identity must be unambiguous",
+        "success_criteria": [
+            {"id": "same", "description": "first"},
+            {"id": "same", "description": "second"},
+        ],
+        "children": [],
+    }
+    with pytest.raises(ReviewWorkerError, match="unique"):
+        _bounded_review_input(review)
