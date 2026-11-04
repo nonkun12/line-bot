@@ -75,7 +75,7 @@ def _approved_assets(design_scenes: list[dict[str, str]], manifest: object | Non
                 raise ValueError(f"{kind}_path must be a project-local res://assets path")
             relative = path[len("res://assets/"):]
             parts = relative.split("/")
-            if not relative or any(part in {"", ".", ".."} for part in parts) or "\\\\" in path or ":" in relative:
+            if not relative or any(part in {"", ".", ".."} for part in parts) or not re.fullmatch(r"[A-Za-z0-9._/-]+", relative):
                 raise ValueError(f"{kind}_path contains an unsafe path segment")
             if Path(relative).suffix.lower() not in _ASSET_EXTENSIONS[kind]:
                 raise ValueError(f"unsupported {kind} asset extension")
@@ -310,7 +310,7 @@ func show_scene(item: Dictionary, parent_layout: VBoxContainer) -> void:
             video_node.play()
 
 func _safe_asset_path(path: String) -> bool:
-    return path.begins_with("res://assets/") and not ".." in path and not "\\" in path
+    return path.begins_with("res://assets/") and not ".." in path and not path.contains(char(92))
 
 func stop() -> void:
     if image_node != null:
