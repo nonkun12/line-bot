@@ -276,12 +276,16 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
         task_id, task_title = TASKS[task_index]
         task = {"task_id": f"SN-HOURLY-{stamp}", "focus": task_id, "proposal": task_title,
                 "status": "candidate_only", "requires_critic_and_human_approval": True}
-        critic = {"status": "STRUCTURAL_CHECKS_PASS", "checks": {
+        critic_checks = {
             "five_unique_scene_ids": len({s["id"] for s in SCENES}) == 5,
             "timeline_contiguous": all(SCENES[i]["start"] + SCENES[i]["duration"] == SCENES[i+1]["start"] for i in range(4)),
             "total_duration_15_seconds": sum(s["duration"] for s in SCENES) == 15,
             "all_scenes_have_location": all(s["location"] for s in SCENES),
-            "choice_ids_unique": len({c["id"] for c in graph["choices"]}) == 3}}
+            "choice_ids_unique": len({c["id"] for c in graph["choices"]}) == 3}
+        critic = {
+            "status": "PASS" if all(critic_checks.values()) else "FAIL",
+            "checks": critic_checks,
+        }
         files = {
             "scenario.json": json.dumps(scenario, ensure_ascii=False, indent=2) + "\n",
             "screenplay.md": "\n".join(screenplay),
