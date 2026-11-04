@@ -1,8 +1,9 @@
 """Local, free-tool audiovisual artifact bundle creation.
 
-The bundle contains an editable MIDI composition sketch, its scenario-aware
-music cue plan, the screenplay/scenario draft, and a synchronized video EDL.
-It does not claim to render audio or video and performs no network operations.
+The bundle includes an editable scenario, music plan, original MIDI, a
+dependency-free synthesized WAV preview, and synchronized video EDL. When
+local scene assets are supplied, FFmpeg can assemble a draft MP4. Nothing is
+downloaded and existing output directories are never overwritten.
 """
 from __future__ import annotations
 
@@ -10,8 +11,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from agents.music.midi_composer import write_midi_file
 from agents.music.audio_renderer import render_midi_to_wav
+from agents.music.midi_composer import write_midi_file
 from agents.music.score_plan import build_music_plan
 from agents.music.wav_renderer import write_wav_file
 from agents.video.edit_decision_list import build_edit_decision_list
@@ -36,17 +37,11 @@ def create_audiovisual_production_bundle(
     scene_media: dict[str, str | Path] | None = None,
     audio_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Create a new, non-overwriting local production bundle.
-
-    output_dir is the exact new bundle directory, not a parent directory.
-    Existing directories are rejected to prevent accidental replacement.
-    """
+    """Create a new local bundle. output_dir must be a new, exact directory."""
     errors = validate_scenario(scenario)
     if errors:
         raise ValueError("invalid scenario: " + ", ".join(errors))
-    music_plan = build_music_plan(
-        scenario, genre=genre, instrumentation=instrumentation
-    )
+    music_plan = build_music_plan(scenario, genre=genre, instrumentation=instrumentation)
     edl = build_edit_decision_list(scenario, music_plan)
     destination = Path(output_dir).expanduser()
     if not destination.name or destination.name in {".", ".."}:
@@ -60,39 +55,48 @@ def create_audiovisual_production_bundle(
         _write_json_exclusive(destination / "edit_decision_list.json", edl)
         midi = write_midi_file(music_plan, destination / "original_music.mid", bpm=bpm)
         if soundfont_path is None:
-            audio = write_wav_file(
-                music_plan, destination / "original_music.wav", bpm=bpm
-            )
-            audio_render_status = "synthesized_preview"
+            audio = write_wav_file(music_plan, destination / "original_music.wav", bpm=bpm)
+            audio_status = "synthesized_preview"
         else:
             audio = render_midi_to_wav(
                 destination / "original_music.mid",
                 soundfont_path,
                 destination / "original_music.wav",
             )
-            audio_render_status = "rendered"
+            audio_status = "rendered"
+
+        selected_audio = Path(audio_path).expanduser() if audio_path is not None else destination / "original_music.wav"
+        video = None
+        if scene_media is not None:
+            video = render_video_from_edl(
+                edl, scene_media, selected_audio, destination / "final_video.mp4"
+            )
+
+        artifacts = {
+            "scenario": "scenario.json",
+            "music_plan": "music_plan.json",
+            "midi": "original_music.mid",
+            "audio_preview": "original_music.wav",
+            "video_edit_decision_list": "edit_decision_list.json",
+        }
+        if video is not None:
+            artifacts["video"] = "final_video.mp4"
         manifest = {
             "schema_version": "audiovisual-production-bundle.v1",
             "status": "draft",
             "title": scenario["title"],
-            "artifacts": {
-                "scenario": "scenario.json",
-                "music_plan": "music_plan.json",
-                "midi": "original_music.mid",
-                "audio_preview": "original_music.wav",
-                "video_edit_decision_list": "edit_decision_list.json",
-            },
+            "artifacts": artifacts,
             "midi": midi,
             "audio_preview": audio,
-            "audio_render_status": audio_render_status,
-            "video_render_status": "not_rendered",
-            "external_assets_attached": False,
+            "audio_render_status": audio_status,
+            "video_render_status": "rendered" if video else "not_rendered",
+            "video": video,
+            "external_assets_attached": scene_media is not None,
             "rights_review_required_before_publication": True,
         }
         _write_json_exclusive(destination / "manifest.json", manifest)
     except Exception:
-        # Only remove the newly-created bundle directory; never touch an
-        # existing user directory or any path outside this exact directory.
+        # Remove only files created inside this newly-created bundle directory.
         for child in destination.iterdir():
             if child.is_file() and not child.is_symlink():
                 child.unlink()
@@ -104,9 +108,8 @@ def create_audiovisual_production_bundle(
         "directory": str(destination),
         "artifacts": manifest["artifacts"],
         "midi": midi,
-        "audio_render_status": manifest["audio_render_status"],
+        "audio_render_status": audio_status,
         "audio_preview": audio,
-        "audio": audio,
         "video": video,
         "video_render_status": manifest["video_render_status"],
     }
