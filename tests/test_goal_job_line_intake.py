@@ -24,6 +24,14 @@ def test_goal_proposal_is_inert_until_same_user_approves(tmp_path, monkeypatch):
     monkeypatch.setenv("GOAL_APPROVER_USER_IDS", "U-authorized")
     proposal = intake.create_goal_proposal("U-authorized", "Build an original browser game")
     assert goal_job_store.get_goal(proposal["goal_id"]) is None
+    proposal_record = intake._build_proposal("Build an original browser game", proposal["proposal_id"])
+    assert [job["id"] for job in proposal_record["jobs"]] == [
+        "sprint-01-music-video", "sprint-02-interactive",
+        "sprint-03-game-prototype", "sprint-04-full-game",
+    ]
+    assert proposal_record["jobs"][1]["depends_on"] == ["sprint-01-music-video"]
+    assert proposal_record["jobs"][3]["depends_on"] == ["sprint-03-game-prototype"]
+    assert all(job["allowed_paths"][0].startswith("docs/goal-plans/") for job in proposal_record["jobs"])
     assert intake.parse_goal_approval(f"Goal承認 {proposal['proposal_id']}") == proposal["proposal_id"]
 
     result = intake.approve_goal_proposal("U-authorized", proposal["proposal_id"])
