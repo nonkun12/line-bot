@@ -11,7 +11,7 @@ from agents.video.scenario import build_scenario
 def _plan():
     return build_music_plan(build_scenario(
         "A quiet town discovers a new light",
-        duration_seconds=12,
+        duration_seconds=15,
         scene_count=3,
     ))
 
@@ -22,7 +22,7 @@ def test_renders_original_cues_as_valid_pcm_wav():
         assert reader.getnchannels() == 2
         assert reader.getsampwidth() == 2
         assert reader.getframerate() == 22050
-        assert reader.getnframes() == 12 * 22050
+        assert reader.getnframes() == 15 * 22050
         assert reader.readframes(10)
 
 
