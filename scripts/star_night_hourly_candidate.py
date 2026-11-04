@@ -241,7 +241,7 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
     if moment.tzinfo is None:
         raise ValueError("now must be timezone-aware")
     stamp = moment.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    destination = Path(output_dir)
+    destination = Path(output_dir).resolve()
     if destination.exists():
         raise FileExistsError(str(destination))
     destination.mkdir(parents=True, exist_ok=False)
