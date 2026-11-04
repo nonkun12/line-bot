@@ -411,3 +411,39 @@ def test_stop_requested_token_inside_other_failure_reason_is_not_operator_stop(t
     assert outcome["recorded"] is True
     assert outcome["decision"]["action"] == "REPAIR_ONCE"
     assert RecoveryStore(path).task_status("task-stop-token-in-diagnostic")["last_category"] == "unknown"
+
+def test_preflight_blocked_events_are_deduplicated_without_failure_counts(tmp_path):
+    path = tmp_path / "recovery.json"
+    store = RecoveryStore(path)
+    first = record_loop_outcome(path, {
+        "task_id": "task-prereq",
+        "status": "BLOCKED",
+        "exit_code": 1,
+        "failure_reason": "control_tower_gate:prerequisite_missing",
+        "prerequisite_id": "docs-review",
+    })
+    second = record_loop_outcome(path, {
+        "task_id": "task-prereq",
+        "status": "BLOCKED",
+        "exit_code": 1,
+        "failure_reason": "control_tower_gate:prerequisite_missing",
+        "prerequisite_id": "docs-review",
+    })
+
+    assert first["event_fingerprint"] == second["event_fingerprint"]
+    assert second["occurrences"] == 2
+    assert store.task_status("task-prereq") == {}
+    state = json.loads(path.read_text(encoding="utf-8"))
+    assert len(state["preflight_blocked"]) == 1
+    event = next(iter(state["preflight_blocked"].values()))
+    assert event["prerequisite_id"] == "docs-review"
+    assert event["requires_human_review"] if "requires_human_review" in event else True
+    assert event["status"] == "PENDING_PREREQUISITE_OR_REVIEW"
+
+
+def test_preflight_blocked_rejects_untrusted_reason_and_prerequisite_ids(tmp_path):
+    store = RecoveryStore(tmp_path / "recovery.json")
+    with pytest.raises(ValueError, match="reason code"):
+        store.record_preflight_blocked("task-safe", "control_tower_gate:../../secret")
+    with pytest.raises(ValueError, match="task ID"):
+        store.record_preflight_blocked("task-safe", "control_tower_gate:missing", "../secret")
