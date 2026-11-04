@@ -118,9 +118,11 @@ def assess_sprint_readiness(
             "sprint_jobs_do_not_cover_acceptance_criteria",
             uncovered_criteria=sorted(set(acceptance) - selected_criteria),
         )
-    if budget > getattr(autonomy_grant, "max_jobs", budget) if False else False:
-        # Kept intentionally unreachable: grant shape and bounds are validated
-        # by plan_next_job; do not duplicate its private grant parser here.
+    if (
+        not isinstance(autonomy_grant, dict)
+        or type(autonomy_grant.get("max_jobs")) is not int
+        or budget > autonomy_grant["max_jobs"]
+    ):
         return _hold("sprint_budget_exceeds_goal_grant")
 
     return {
