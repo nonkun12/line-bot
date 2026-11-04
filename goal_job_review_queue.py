@@ -149,6 +149,7 @@ def claim_next_goal_review() -> dict[str, Any] | None:
             "objective": record.get("objective", ""),
             "success_criteria": criteria,
             "children": _bounded_child_snapshot(children),
+            "children_truncated": len(children) > 12,
             "evidence_fingerprint": fingerprint,
         }
     return None
