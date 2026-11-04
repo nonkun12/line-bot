@@ -101,7 +101,7 @@ def build_star_night_scenario() -> dict[str, Any]:
         scene["scene_id"] = f"SC{index:02d}"
         scene["visual_direction"] = authored["visual"]
         scene["action"] = authored["action"]
-        scene["dialogue_or_narration"] = ""
+        scene["dialogue_or_narration"] = "（セリフなし。環境音と音楽のみ）"
         scene["audio_direction"] = authored["audio"]
         scene["transition"] = (
             "雨音と光の余韻を保って次のカットへ接続する"
