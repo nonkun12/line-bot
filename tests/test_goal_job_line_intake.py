@@ -30,11 +30,11 @@ def test_goal_proposal_is_inert_until_same_user_approves(tmp_path, monkeypatch):
     assert goal_job_store.get_goal(proposal["goal_id"]) is None
     proposal_record = intake._build_proposal("Build an original browser game", proposal["proposal_id"])
     assert [job["id"] for job in proposal_record["jobs"]] == [
-        "sprint-01-music-video", "sprint-02-interactive",
+        "media-01-audiovisual-draft", "sprint-01-music-video", "sprint-02-interactive",
         "sprint-03-game-prototype", "sprint-04-full-game",
     ]
-    assert proposal_record["jobs"][1]["depends_on"] == ["sprint-01-music-video"]
-    assert proposal_record["jobs"][3]["depends_on"] == ["sprint-03-game-prototype"]
+    assert proposal_record["jobs"][1]["depends_on"] == ["media-01-audiovisual-draft"]
+    assert proposal_record["jobs"][4]["depends_on"] == ["sprint-03-game-prototype"]
     assert all(job["allowed_paths"][0].startswith("docs/goal-plans/") for job in proposal_record["jobs"])
     assert intake.parse_goal_approval(f"Goal承認 {proposal['proposal_id']}") == proposal["proposal_id"]
 
@@ -110,10 +110,11 @@ def test_approved_goal_runs_four_sequential_sprint_plans_to_goal(tmp_path, monke
         proposal["goal_id"],
         executor=executor,
         evidence_evaluator=evaluator,
-        max_steps=4,
+        max_steps=5,
     )
     assert result["decision"] == "GOAL_ACHIEVED"
     assert executed == [
+        "media-01-audiovisual-draft",
         "sprint-01-music-video",
         "sprint-02-interactive",
         "sprint-03-game-prototype",
