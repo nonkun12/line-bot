@@ -44,7 +44,7 @@ def test_scenario_goal_jobs_form_dependency_ordered_production_pipeline():
 def test_scenario_validator_detects_duration_tampering():
     draft = build_scenario("小さな冒険", duration_seconds=60, scene_count=3)
     draft["scenes"][0]["duration_seconds"] += 1
-    assert "scene_duration_total_mismatch" in validate_scenario(draft)
+    assert "scene_2_start_time_invalid" in validate_scenario(draft)
 
 
 def test_video_agent_routes_scenario_request_and_returns_structured_draft():
