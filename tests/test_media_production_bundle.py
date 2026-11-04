@@ -26,7 +26,7 @@ def test_creates_complete_editable_music_and_video_production_bundle(tmp_path):
     assert (destination / "original_music.wav").read_bytes().startswith(b"RIFF")
     manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["audio_render_status"] == "synthesized_preview"
-    assert manifest["audio_preview"]["format"] == "WAV PCM 16-bit mono"
+    assert manifest["audio_preview"]["format"] == "WAV PCM 16-bit stereo"
     assert manifest["video_render_status"] == "not_rendered"
     edl = json.loads((destination / "edit_decision_list.json").read_text(encoding="utf-8"))
     assert edl["schema_version"] == "audiovisual-edl.v1"
