@@ -131,7 +131,7 @@ def test_media_completion_requires_matching_receipt_and_artifact_hashes(tmp_path
     assert rejected.status_code == 400
     assert db.get_job(job_id)["status"] == "running"
 
-    unimplemented_video = dict(
+    inconsistent_video = dict(
         receipt,
         video_render_status="rendered",
         artifact_sha256={**hashes, "video": "9" * 64},
@@ -139,10 +139,10 @@ def test_media_completion_requires_matching_receipt_and_artifact_hashes(tmp_path
     rejected_video = client.post("/internal/media-jobs/complete", headers=headers, json={
         "job_id": job_id,
         "claim_token": claimed["claim_token"],
-        "result": json.dumps(unimplemented_video, ensure_ascii=False, sort_keys=True),
+        "result": json.dumps(inconsistent_video, ensure_ascii=False, sort_keys=True),
         "evidence": dict(
             evidence,
-            artifact_sha256=unimplemented_video["artifact_sha256"],
+            artifact_sha256=inconsistent_video["artifact_sha256"],
             receipt_sha256=hashlib.sha256(
                 (json.dumps(unimplemented_video, ensure_ascii=False, sort_keys=True) + "\\n").encode()
             ).hexdigest(),
