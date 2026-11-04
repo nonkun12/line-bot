@@ -41,10 +41,11 @@ class MusicAgent:
                     metadata={"feature": self.name, "status": "invalid_request", "mode": "audiovisual_score_plan"},
                 )
             midi_base64 = base64.b64encode(midi_bytes).decode("ascii")
+            line_break = chr(10)
             return AgentResponse(
                 text=(
-                    f"🎵 映像連動の音楽設計：{plan['source_scenario_title']}\n"
-                    f"尺：{plan['duration_seconds']}秒 / キュー：{len(plan['cues'])}件\n"
+                    f"🎵 映像連動の音楽設計：{plan['source_scenario_title']}{line_break}"
+                    f"尺：{plan['duration_seconds']}秒 / キュー：{len(plan['cues'])}件{line_break}"
                     "シナリオの感情曲線・シーン時刻・同期点からオリジナルMIDIスケッチを生成しました。"
                     "4トラックのStandard MIDI Fileです。音源へのレンダリングは別工程です。"
                 ),
