@@ -1,0 +1,141 @@
+{
+  "schema_version": "creative-project.v1",
+  "project_id": "STAR-NIGHT",
+  "title": "星を拾った夜",
+  "status": "active_draft",
+  "canon_ref": "docs/creative-worlds/star-night/series-bible.md",
+  "episode_refs": [
+    "docs/creative-worlds/star-night/episode-001.md"
+  ],
+  "story_graph_ref": "docs/creative-worlds/star-night/game-story-graph.json",
+  "hourly_policy_ref": "docs/creative-worlds/star-night/hourly-cycle.md",
+  "side_chat_contract": {
+    "compatible_with": "Muse-style independent side conversations",
+    "project_scope": "STAR-NIGHT",
+    "shared_context_refs": [
+      "docs/creative-worlds/star-night/series-bible.md",
+      "docs/creative-worlds/star-night/game-story-graph.json"
+    ],
+    "workspaces": [
+      {
+        "id": "director",
+        "title": "総合制作",
+        "purpose": "作品全体の方針、進行、採用判断"
+      },
+      {
+        "id": "story",
+        "title": "シナリオ",
+        "purpose": "世界観、脚本、キャラクター、伏線、分岐"
+      },
+      {
+        "id": "visual",
+        "title": "映像",
+        "purpose": "絵コンテ、ショット、画面演出、映像素材"
+      },
+      {
+        "id": "music",
+        "title": "音楽",
+        "purpose": "作曲、編曲、効果音、映像同期"
+      },
+      {
+        "id": "game",
+        "title": "ゲーム設計",
+        "purpose": "探索、クエスト、状態遷移、Godot実装"
+      },
+      {
+        "id": "critic",
+        "title": "独立レビュー",
+        "purpose": "整合性、品質、実装可能性の検証"
+      }
+    ],
+    "isolation": {
+      "independent_histories": true,
+      "shared_project_context": true,
+      "cross_workspace_messages": "explicit_handoff_only",
+      "side_chat_may_edit_canon": false,
+      "tool_execution_requires_main_goal_approval": true
+    },
+    "handoff_artifact_schema": "creative-handoff.v1",
+    "future_storage_fields": [
+      "project_id",
+      "workspace_id",
+      "context_refs",
+      "artifact_refs",
+      "parent_handoff_id"
+    ],
+    "concurrency_policy": {
+      "current_foundation_active_side_chats_per_user": 2,
+      "target_concurrent_project_workspaces": 6,
+      "quota_change_requires_explicit_migration": true,
+      "no_implicit_limit_bypass": true
+    }
+  },
+  "production_tracks": {
+    "video": {
+      "workspace_id": "visual",
+      "job_family": "star-night.video",
+      "artifact_namespace": "artifacts/video/",
+      "output_examples": [
+        "storyboard.json",
+        "shot-list.json",
+        "video-draft.mp4"
+      ],
+      "independent_from_music": true
+    },
+    "music": {
+      "workspace_id": "music",
+      "job_family": "star-night.music",
+      "artifact_namespace": "artifacts/music/",
+      "output_examples": [
+        "music-plan.json",
+        "score.mid",
+        "music-preview.wav"
+      ],
+      "independent_from_video": true
+    },
+    "synchronization": {
+      "workspace_id": "director",
+      "join_after": "both_tracks_have_reviewed_artifacts",
+      "contract": "shared_timeline_and_explicit_sync_markers",
+      "may_rewrite_source_tracks": false
+    }
+  },
+  "execution_policy": {
+    "architecture": "cloud_first",
+    "production_execution": "cloud_only",
+    "mac_role": "optional_advisor_only",
+    "mac_may_execute_production_jobs": false,
+    "mac_required_for_hourly_cycle": false,
+    "video_and_music_jobs": "independent_cloud_jobs",
+    "paid_fallback": "disabled_without_explicit_user_approval",
+    "unavailable_cloud_capacity": "hold_and_retry_later"
+  },
+  "cloud_candidate_producer": {
+    "workflow": ".github/workflows/star-night-cloud-candidate.yml",
+    "entrypoint": "scripts.build_star_night_cloud_candidate",
+    "schedule": "hourly",
+    "execution": "github_actions_ubuntu",
+    "outputs": [
+      "scenario.json",
+      "screenplay.md",
+      "storyboard.json",
+      "shot_list.json",
+      "music_plan.json",
+      "edit_decision_list.json",
+      "original_music.mid",
+      "original_music.wav",
+      "critic_review.json",
+      "manifest.json",
+      "final_video.mp4 (procedural animatic only)"
+    ],
+    "artifact_retention_days": 14,
+    "video_status": "procedural_storyboard_animatic",
+    "publication_authorized": false,
+    "paid_provider_fallback": false,
+    "mac_dependency": false,
+    "renderer": [
+      "Blender",
+      "FFmpeg"
+    ]
+  }
+}

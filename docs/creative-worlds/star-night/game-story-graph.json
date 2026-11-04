@@ -1,0 +1,94 @@
+{
+  "schema_version": "interactive-story-graph.v1",
+  "project_id": "STAR-NIGHT",
+  "status": "draft",
+  "initial_state": {
+    "trust_mina": 0,
+    "city_lights": 0,
+    "noa_memory": 0,
+    "lumina_fragments": [],
+    "discovered_locations": [
+      "LOC_RAIN_ALLEY"
+    ],
+    "choice_history": []
+  },
+  "nodes": [
+    {
+      "id": "SN_E001_START",
+      "type": "scene",
+      "episode_id": "SN-E001",
+      "scene_id": "SC01",
+      "next": "SN_E001_LUMINA"
+    },
+    {
+      "id": "SN_E001_LUMINA",
+      "type": "scene",
+      "episode_id": "SN-E001",
+      "scene_id": "SC02",
+      "next": "SN_E001_CHOICE"
+    },
+    {
+      "id": "SN_E001_CHOICE",
+      "type": "choice",
+      "choice_id": "CHOICE_LUMINA_01",
+      "prompt": "見つけたルミナをどうする？",
+      "options": [
+        {
+          "id": "CHOICE_LUMINA_01A",
+          "label": "自分の記憶を取り戻すために使う",
+          "effects": {
+            "noa_memory": 1
+          },
+          "next": "SN_E002_MEMORY"
+        },
+        {
+          "id": "CHOICE_LUMINA_01B",
+          "label": "街の灯りを取り戻すために使う",
+          "effects": {
+            "city_lights": 1
+          },
+          "next": "SN_E002_STATION"
+        },
+        {
+          "id": "CHOICE_LUMINA_01C",
+          "label": "ミナに預けて別の方法を探す",
+          "effects": {
+            "trust_mina": 1
+          },
+          "next": "SN_E002_WORKSHOP"
+        }
+      ]
+    },
+    {
+      "id": "SN_E002_MEMORY",
+      "type": "story_hook",
+      "episode_id": "SN-E002",
+      "description": "ノアの記憶の断片が先に戻る。街の復旧は遅れる。"
+    },
+    {
+      "id": "SN_E002_STATION",
+      "type": "story_hook",
+      "episode_id": "SN-E002",
+      "description": "旧駅前の灯りが戻り、オルドの案内記録へアクセスできる。"
+    },
+    {
+      "id": "SN_E002_WORKSHOP",
+      "type": "story_hook",
+      "episode_id": "SN-E002",
+      "description": "ミナとの信頼が深まり、工房でルミナの安全な使い方を調べる。"
+    }
+  ],
+  "invariants": [
+    "choice_history is append-only",
+    "state values remain within documented bounds",
+    "all next references resolve to existing node IDs",
+    "no choice silently deletes previously discovered locations or collected fragments",
+    "branch outcomes must preserve the established series bible"
+  ],
+  "review_required": [
+    "branch reachability",
+    "state transition validity",
+    "character continuity",
+    "future episode compatibility"
+  ]
+}
