@@ -13,6 +13,7 @@ Examples:
   bash scripts/mac_goal_pr_batch_test.sh 1251-1255 tests/test_mac_bonsai_goal_review_worker.py
 
 The batch continues after an individual PR fails and prints a final summary.
+Duplicate PRs, zero, malformed selectors, descending ranges, and ranges over 50 PRs are rejected before any test starts.
 EOF
 }
 
@@ -35,18 +36,33 @@ if [[ ! -f "$SINGLE_RUNNER" ]]; then
 fi
 
 declare -a PRS=()
+
+append_pr() {
+  local candidate="$1"
+  local existing
+  for existing in "${PRS[@]}"; do
+    if [[ "$existing" == "$candidate" ]]; then
+      echo "ERROR: duplicate PR number: $candidate" >&2
+      return 1
+    fi
+  done
+  PRS+=("$candidate")
+}
+
 IFS=',' read -r -a PARTS <<< "$SPEC"
 for part in "${PARTS[@]}"; do
-  if [[ "$part" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+  if [[ "$part" =~ ^([1-9][0-9]{0,8})-([1-9][0-9]{0,8})$ ]]; then
     start="${BASH_REMATCH[1]}"
     end="${BASH_REMATCH[2]}"
     if (( start > end || end - start > 49 )); then
       echo "ERROR: invalid or too-large PR range: $part (maximum 50 PRs, ascending only)" >&2
       exit 2
     fi
-    for ((pr=start; pr<=end; pr++)); do PRS+=("$pr"); done
-  elif [[ "$part" =~ ^[0-9]+$ ]]; then
-    PRS+=("$part")
+    for ((pr=start; pr<=end; pr++)); do
+      append_pr "$pr" || exit 2
+    done
+  elif [[ "$part" =~ ^[1-9][0-9]{0,8}$ ]]; then
+    append_pr "$part" || exit 2
   else
     echo "ERROR: invalid PR selector: $part" >&2
     exit 2
