@@ -41,7 +41,10 @@ def test_assembles_local_assets_with_ffmpeg_without_shell_or_overwrite(tmp_path,
     args, kwargs = calls[0]
     assert args[0] == "/usr/bin/ffmpeg"
     assert "-filter_complex" in args
-    assert "concat=n=3:v=1:a=0" in args[args.index("-filter_complex") + 1]
+    filter_graph = args[args.index("-filter_complex") + 1]
+    assert "concat=n=3:v=1:a=0" in filter_graph
+    assert "zoompan=" in filter_graph
+    assert "min(1+on*0.12/" in filter_graph
     assert kwargs["stdin"] is __import__("subprocess").DEVNULL
     assert "shell" not in kwargs
     with pytest.raises(FileExistsError):
