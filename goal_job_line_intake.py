@@ -223,7 +223,7 @@ def approve_goal_proposal(user_id: str, proposal_id: str) -> dict[str, Any]:
         "auto_approve_registered_jobs": True,
         "approved_by": user_id,
         "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
-        "max_jobs": 4,
+        "max_jobs": 8,
         "allowed_stages": ["requirements", "design", "test", "review", "verify"],
         "allowed_path_prefixes": ["docs/"],
         "auto_merge": False,
