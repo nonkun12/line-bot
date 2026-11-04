@@ -27,6 +27,22 @@ fi
 
 PR="$1"
 TEST_TARGET="${2:-tests/test_mac_bonsai_goal_review_worker.py}"
+
+# Pytest targets must be plain relative paths inside the PR worktree.
+# Reject traversal, absolute paths, empty components, and option-like targets
+# before fetching or creating/updating any worktree.
+if [[ -z "$TEST_TARGET" || "$TEST_TARGET" == /* || "$TEST_TARGET" == -* ]]; then
+  echo "ERROR: pytest target must be a relative path inside the PR worktree: $TEST_TARGET" >&2
+  exit 2
+fi
+IFS='/' read -r -a TARGET_PARTS <<< "$TEST_TARGET"
+for part in "${TARGET_PARTS[@]}"; do
+  if [[ -z "$part" || "$part" == "." || "$part" == ".." ]]; then
+    echo "ERROR: pytest target contains an unsafe path component: $TEST_TARGET" >&2
+    exit 2
+  fi
+done
+
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 REMOTE="$(git -C "$REPO_ROOT" remote get-url origin)"
 WORKTREE="$(cd "$REPO_ROOT/.." && pwd)/line-bot-goal-pr$PR"
@@ -79,6 +95,16 @@ if [[ -e "$WORKTREE" ]]; then
 else
   git -C "$REPO_ROOT" worktree add --detach "$WORKTREE" "$REF"
 fi
+
+# Reject symlinked path components so a relative path cannot escape the worktree.
+TARGET_CURSOR="$WORKTREE"
+for part in "${TARGET_PARTS[@]}"; do
+  TARGET_CURSOR="$TARGET_CURSOR/$part"
+  if [[ -L "$TARGET_CURSOR" ]]; then
+    echo "ERROR: pytest target traverses a symlink: $TEST_TARGET" >&2
+    exit 2
+  fi
+done
 
 if [[ ! -f "$WORKTREE/$TEST_TARGET" ]]; then
   echo "ERROR: test target not found: $WORKTREE/$TEST_TARGET" >&2
