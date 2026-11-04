@@ -44,7 +44,7 @@ def _contract(goal_id, objective):
                 "Create a concise Sprint 1 plan for this Goal. Include Sprint Goal, one small "
                 "reviewable increment, acceptance criteria, dependencies, free-only tools, risks, "
                 "and verification steps. Write only under docs/goal_sprints/ using a filename "
-                "derived from the Goal ID. Do not modify application code or service configuration. "
+                "derived from the Goal ID. Limit all edits to the Sprint plan document; leave source code and service configuration untouched. "
                 "Preserve the product sequence: original music and scenario-led audiovisual work, "
                 "interactive narrative, simple game, then a full original game."
             ),
