@@ -17,6 +17,7 @@ _BLENDER_SCRIPT = r"""
 import bpy
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -36,6 +37,36 @@ def clear_scene():
     bpy.ops.object.delete(use_global=False)
     for block in bpy.data.materials:
         bpy.data.materials.remove(block)
+
+def add_caption(body, name, location, size, font=None):
+    if not body:
+        return
+    curve = bpy.data.curves.new(name, type="FONT")
+    curve.body = body
+    curve.size = size
+    curve.align_x = "LEFT"
+    curve.align_y = "CENTER"
+    if font is not None:
+        curve.font = font
+    obj = bpy.data.objects.new(name, curve)
+    bpy.context.collection.objects.link(obj)
+    obj.location = location
+    curve.extrude = 0.001
+    curve.materials.append(material(name + " material", (0.96, 0.97, 1.0)))
+
+font = None
+for font_path in (
+    "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
+    "/System/Library/Fonts/ヒラギノ丸ゴ ProN W4.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+):
+    if os.path.isfile(font_path):
+        try:
+            font = bpy.data.fonts.load(font_path)
+            break
+        except Exception:
+            font = None
 
 for index, panel in enumerate(panels, start=1):
     clear_scene()
@@ -89,6 +120,13 @@ for index, panel in enumerate(panels, start=1):
     light.data.energy = 1600
     light.data.shape = "DISK"
     light.data.size = 8
+
+    # Burn in a readable title and narration subtitle. Japanese font is used
+    # when present; Blender's bundled font remains a safe fallback.
+    title = str(panel.get("focal_subject", ""))[:42]
+    narration = str(panel.get("dialogue_or_narration", ""))[:64]
+    add_caption(title, "Title", (-5.2, 4.35, 0.9), 0.48, font)
+    add_caption(narration, "Narration", (-5.2, -4.45, 0.9), 0.30, font)
 
     scene.render.filepath = str(destination / ("scene_%02d.png" % index))
     bpy.ops.render.render(write_still=True)
