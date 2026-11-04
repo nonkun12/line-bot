@@ -138,7 +138,9 @@ def build_star_night_scenario() -> dict[str, Any]:
     return scenario
 
 
-def build_candidate(\n    output_dir: str | Path, *, bpm: int = 76, render_animatic: bool = False\n) -> dict[str, Any]:
+def build_candidate(
+    output_dir: str | Path, *, bpm: int = 76, render_animatic: bool = False
+) -> dict[str, Any]:
     """Create one non-overwriting cloud candidate and its structural review."""
     scenario = build_star_night_scenario()
     result = create_audiovisual_production_bundle(
@@ -153,6 +155,18 @@ def build_candidate(\n    output_dir: str | Path, *, bpm: int = 76, render_anima
     music_plan = json.loads((root / "music_plan.json").read_text(encoding="utf-8"))
     edl = json.loads((root / "edit_decision_list.json").read_text(encoding="utf-8"))
     storyboard = json.loads((root / "storyboard.json").read_text(encoding="utf-8"))
+    if result["video_render_status"] == "rendered":
+        storyboard["render_status"] = "rendered"
+        storyboard["visual_asset_mode"] = "procedural_storyboard_blocking"
+        frame_paths = (result.get("animatic") or {}).get("frame_paths", [])
+        for index, panel in enumerate(storyboard["panels"]):
+            panel["asset_status"] = "procedural_blocking_frame_rendered"
+            if index < len(frame_paths):
+                panel["frame_path"] = frame_paths[index]
+        (root / "storyboard.json").write_text(
+            json.dumps(storyboard, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
     critic = review_audiovisual_draft(scenario, music_plan, edl, storyboard)
     (root / "critic_review.json").write_text(
         json.dumps(critic, ensure_ascii=False, indent=2) + "\n",
@@ -162,10 +176,11 @@ def build_candidate(\n    output_dir: str | Path, *, bpm: int = 76, render_anima
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["artifacts"]["critic_review"] = "critic_review.json"
     manifest["cloud_execution"] = True
-    manifest["video_render_status"] = "not_rendered"
+    manifest["video_render_status"] = result["video_render_status"]
     manifest["video_render_note"] = (
-        "No final footage or MP4 was generated. A cloud video renderer and "
-        "rights-cleared visual assets are separate prerequisites."
+        "Procedural storyboard animatic only; this is not final character animation or AI-generated footage."
+        if result["video_render_status"] == "rendered"
+        else "No MP4 was generated. A cloud renderer and rights-cleared visual assets are separate prerequisites."
     )
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
@@ -177,7 +192,8 @@ def build_candidate(\n    output_dir: str | Path, *, bpm: int = 76, render_anima
         "artifact_names": sorted(manifest["artifacts"]),
         "midi_status": result["midi"]["status"],
         "audio_status": result["audio_render_status"],
-        "video_status": result["video_render_status"],\n        "video_path": result["video"]["path"] if result.get("video") else None,
+        "video_status": result["video_render_status"],
+        "video_path": result["video"]["path"] if result.get("video") else None,
         "critic_status": critic["status"],
         "publication_authorized": False,
     }
@@ -187,8 +203,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--bpm", type=int, default=76)
+    parser.add_argument(
+        "--render-animatic",
+        action="store_true",
+        help="Render a procedural storyboard animatic with cloud-installed Blender and FFmpeg.",
+    )
     args = parser.parse_args()
-    result = build_candidate(args.output_dir, bpm=args.bpm)
+    result = build_candidate(
+        args.output_dir, bpm=args.bpm, render_animatic=args.render_animatic
+    )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
 
