@@ -26,6 +26,7 @@ from agents.voice.node import agent as voice_agent
 from agents.jobs.node import agent as job_seeking_agent
 from agents.music.node import agent as music_agent
 from agents.video.node import agent as video_agent
+from agents.video_music_pipeline import handle_video_request
 from agents.obsidian.node import obsidian_agent_node
 from dev_notes.wrappers.graph_node_wrapper import with_execution_logging
 from dev_notes.factory import get_default_adapter
@@ -52,6 +53,27 @@ def _agent_node(agent):
         }
 
     return node
+
+
+def video_agent_node(state: AgentState) -> AgentState:
+    """Run Video AI and automatically chain Music AI for scenario requests."""
+    from core.agents import AgentRequest
+
+    request = AgentRequest(
+        user_id=str(state.get("user_id", "")),
+        message=str(state.get("raw_message", "")),
+        channel=str(state.get("channel", "unknown")),
+        metadata=dict(state.get("metadata", {})),
+    )
+    response = handle_video_request(request)
+    results = dict(state.get("agent_results", {}))
+    results["video"] = response.text
+    return {
+        **state,
+        "final_reply": response.text,
+        "agent_results": results,
+        "metadata": {**dict(state.get("metadata", {})), "video_music_handoff": response.metadata.get("handoff")},
+    }
 
 
 debug_agent_node = with_execution_logging(debug_agent_node, "debug", get_default_adapter())
@@ -164,7 +186,7 @@ def build_graph():
     builder.add_node("voice_agent", _agent_node(voice_agent))
     builder.add_node("jobs_agent", _agent_node(job_seeking_agent))
     builder.add_node("music_agent", _agent_node(music_agent))
-    builder.add_node("video_agent", _agent_node(video_agent))
+    builder.add_node("video_agent", video_agent_node)
     builder.add_node("obsidian_agent", obsidian_agent_node)
 
     builder.add_node("fix_agent", fix_agent_node)
