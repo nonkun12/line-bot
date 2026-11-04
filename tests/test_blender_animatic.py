@@ -66,3 +66,7 @@ def test_blender_script_includes_wrapped_narration_and_optional_japanese_font():
     assert "dialogue_or_narration" in renderer._BLENDER_SCRIPT
     assert "NotoSansCJK-Regular.ttc" in renderer._BLENDER_SCRIPT
     assert "ヒラギノ角ゴシック" in renderer._BLENDER_SCRIPT
+
+def test_blender_script_uses_render_material_colors_and_compatible_engine_fallback():
+    assert 'shader.inputs["Base Color"].default_value = rgba' in renderer._BLENDER_SCRIPT
+    assert 'scene.render.engine = "BLENDER_EEVEE"' in renderer._BLENDER_SCRIPT
