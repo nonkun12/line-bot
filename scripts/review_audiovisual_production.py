@@ -1,4 +1,4 @@
-"""Run the integrated read-only audiovisual Creator-Critic from JSON artifacts."""
+"""Run integrated audiovisual review and optionally export Creator suggestions."""
 from __future__ import annotations
 
 import argparse
@@ -7,27 +7,28 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-# Allow direct execution as: python scripts/review_audiovisual_production.py ...
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from agents.media.creator_feedback import build_creator_feedback_candidates
 from agents.media.integrated_audiovisual_review import review_audiovisual_production
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description=(
-            "Read-only integrated review of scenario, music plan, EDL, "
-            "storyboard, and measured WAV/video signal report."
-        )
+        description="Read-only audiovisual Creator-Critic with optional feedback proposals."
     )
     parser.add_argument("--scenario", required=True, type=Path, help="video-scenario.v1 JSON")
     parser.add_argument("--music-plan", required=True, type=Path, help="video-music-plan.v1 JSON")
     parser.add_argument("--edl", required=True, type=Path, help="audiovisual-edl.v1 JSON")
     parser.add_argument("--storyboard", required=True, type=Path, help="video-storyboard.v1 JSON")
     parser.add_argument("--signal-report", required=True, type=Path, help="audiovisual-bundle-signal-report.v1 JSON")
-    parser.add_argument("--output", type=Path, help="Optional report path; stdout when omitted")
+    parser.add_argument("--output", type=Path, help="Optional review report path; stdout when omitted")
+    parser.add_argument(
+        "--feedback-output", type=Path,
+        help="Optional path for evidence-linked Creator suggestions; proposals only",
+    )
     return parser
 
 
@@ -49,6 +50,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             _read_json(args.storyboard, "storyboard"),
             _read_json(args.signal_report, "signal report"),
         )
+        if args.feedback_output:
+            feedback = build_creator_feedback_candidates(report)
+            args.feedback_output.write_text(
+                json.dumps(feedback, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
         rendered = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
         if args.output:
             args.output.write_text(rendered, encoding="utf-8")
