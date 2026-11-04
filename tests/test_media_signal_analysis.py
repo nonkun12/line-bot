@@ -197,7 +197,8 @@ def test_bundle_analysis_marks_scenes_beyond_video_sample_limit_uncovered(tmp_pa
         "title": "long sample",
         "creative_brief": {"duration_seconds": 100},
         "scenes": [
-            {"scene_id": "EARLY", "time_start_seconds": 0, "duration_seconds": 90},
+            {"scene_id": "EARLY", "time_start_seconds": 0, "duration_seconds": 80},
+            {"scene_id": "PARTIAL", "time_start_seconds": 80, "duration_seconds": 20},
             {"scene_id": "LATE", "time_start_seconds": 90, "duration_seconds": 10},
         ],
     }
@@ -225,4 +226,5 @@ def test_bundle_analysis_marks_scenes_beyond_video_sample_limit_uncovered(tmp_pa
     assert report["video_coverage"]["scenario_coverage_complete"] is False
     assert report["video_coverage"]["sampling_limit_reached"] is True
     assert report["video_coverage"]["uncovered_scene_ids"] == ["LATE"]
+    assert report["video_coverage"]["partially_covered_scene_ids"] == ["PARTIAL"]
     assert any("coverage is incomplete" in item for item in report["review_guidance"])
