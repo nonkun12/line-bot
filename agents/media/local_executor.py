@@ -116,11 +116,11 @@ def execute_local_media_job(
 
     evidence = {
         "checks": [
-            {"name": "typed_local_executor_authorization", "status": "PASS"},
-            {"name": "scenario_validation", "status": "PASS"},
-            {"name": "output_confined_to_configured_root", "status": "PASS"},
-            {"name": "artifact_inventory_and_sha256", "status": "PASS"},
-            {"name": "no_publish_or_external_download", "status": "PASS"},
+            {"name": "typed_local_executor_authorization", "status": "PASS", "source": EXECUTOR_ID},
+            {"name": "scenario_validation", "status": "PASS", "source": EXECUTOR_ID},
+            {"name": "output_confined_to_configured_root", "status": "PASS", "source": EXECUTOR_ID},
+            {"name": "artifact_inventory_and_sha256", "status": "PASS", "source": EXECUTOR_ID},
+            {"name": "no_publish_or_external_download", "status": "PASS", "source": EXECUTOR_ID},
         ],
         "executor": EXECUTOR_ID,
         "goal_job_id": job_id,
