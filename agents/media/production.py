@@ -60,7 +60,7 @@ def create_audiovisual_production_bundle(
     if render_animatic and scene_media is not None:
         raise ValueError("choose generated Blender animatic or supplied scene_media, not both")
     music_plan = build_music_plan(scenario, genre=genre, instrumentation=instrumentation)
-    edl = build_edit_decision_list(scenario, music_plan)
+    edl = build_edit_decision_list(scenario, music_plan, bpm=bpm)
     destination = Path(output_dir).expanduser()
     if not destination.name or destination.name in {".", ".."}:
         raise ValueError("output_dir must name a new bundle directory")
