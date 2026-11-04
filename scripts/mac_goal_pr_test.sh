@@ -34,6 +34,20 @@ REF="refs/remotes/origin/pr/$PR"
 LOG_DIR="$HOME/Library/Logs/line-bot-goal-pr-tests"
 STAMP="$(date '+%Y%m%d-%H%M%S')"
 LOG_FILE="$LOG_DIR/pr-$PR-$STAMP.log"
+LOG_RETENTION=5
+
+# Keep only this PR's newest logs; other PRs and unrelated files are untouched.
+prune_old_logs() {
+  local count=0 candidate files
+  files="$(ls -1t "$LOG_DIR"/pr-"$PR"-*.log 2>/dev/null || true)"
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] || continue
+    count=$((count + 1))
+    if (( count > LOG_RETENTION )); then
+      rm -f "$candidate"
+    fi
+  done <<< "$files"
+}
 
 case "$REMOTE" in
   *github.com/nonkun12/line-bot*|*github.com:nonkun12/line-bot*) ;;
@@ -98,6 +112,7 @@ echo "Worktree:  $WORKTREE"
 echo "Python:    $PY"
 echo "Test:      $TEST_TARGET"
 echo "Log:       $LOG_FILE"
+echo "Retention: newest $LOG_RETENTION logs for this PR"
 echo
 set +e
 (
@@ -107,14 +122,18 @@ set +e
 TEST_STATUS=${PIPESTATUS[0]}
 set -e
 
+prune_old_logs
+
 if [[ $TEST_STATUS -eq 0 ]]; then
   echo
   echo "RESULT: PASS (Mac pytest exit code 0)"
   echo "LOG: $LOG_FILE"
+  echo "LOG CLEANUP: kept newest $LOG_RETENTION logs for PR #$PR"
   exit 0
 fi
 
 echo
 echo "RESULT: FAIL (pytest exit code $TEST_STATUS)"
 echo "LOG: $LOG_FILE"
+echo "LOG CLEANUP: kept newest $LOG_RETENTION logs for PR #$PR"
 exit "$TEST_STATUS"

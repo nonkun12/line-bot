@@ -22,8 +22,15 @@ The script:
 4. Refuses to overwrite an existing worktree with uncommitted changes.
 5. Reuses the shared `../line-bot-media-pr1222/.venv/bin/python` when available, or checks other local Python candidates. Set `PYTHON` to override.
 6. Runs pytest and saves the full output under `~/Library/Logs/line-bot-goal-pr-tests/`.
+7. After each test run, retains only the newest five logs for that PR number. Older logs for that PR are deleted; logs for other PRs and unrelated files are untouched.
 
 Exit code 0 means pytest passed; a nonzero exit code means failure. The script does not edit source files, push branches, merge PRs, or deploy services. GitHub Actions status remains a separate check; a local PASS does not imply CI PASS.
+
+## Cleanup policy
+
+- **Logs:** newest five per PR are kept automatically after a test run.
+- **Worktrees:** are not deleted automatically; they may be reused and could contain user work.
+- **Virtual environments:** are not managed or deleted by this script.
 
 ## Prerequisites
 
