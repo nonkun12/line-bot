@@ -18,6 +18,12 @@ def render_screenplay_markdown(scenario: dict[str, Any]) -> str:
         raise ValueError("invalid scenario: " + ", ".join(errors))
 
     brief = scenario["creative_brief"]
+    brief_fields = ("genre", "target_audience", "tone", "topic", "premise")
+    if any(not isinstance(brief.get(key), str) or not brief[key].strip() for key in brief_fields):
+        raise ValueError("scenario creative_brief is incomplete")
+    audiovisual = scenario.get("audiovisual_direction")
+    if not isinstance(audiovisual, dict) or not isinstance(audiovisual.get("principle"), str):
+        raise ValueError("scenario audiovisual_direction is incomplete")
     lines = [
         f"# {scenario['title']}",
         "",
@@ -35,7 +41,7 @@ def render_screenplay_markdown(scenario: dict[str, Any]) -> str:
         "",
         "## 映像と音楽の共通設計",
         "",
-        str(scenario["audiovisual_direction"]["principle"]),
+        str(audiovisual["principle"]),
         "",
         f"**全編モチーフ:** {scenario['audiovisual_direction']['global_music_motif']}",
         "",
@@ -48,7 +54,7 @@ def render_screenplay_markdown(scenario: dict[str, Any]) -> str:
         sync = scene["music_sync"]
         continuity = scene["continuity"]
         lines.extend([
-            f"## Scene {index:02d} — {scene['act_label']}",
+            f"## Scene {index:02d} — {scene.get('act_label', scene.get('act', 'Scene'))}",
             "",
             f"**時間:** {_timestamp(start)}–{_timestamp(end)}（{scene['duration_seconds']}秒）",
             "",
