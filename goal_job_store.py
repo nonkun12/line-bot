@@ -274,23 +274,33 @@ def persist_child_job(goal_id: str, job: object, *, parent_job_key: str | None =
 
 
 def get_goal_child_jobs(goal_id: str) -> list[dict[str, Any]]:
-    """Return persisted child JOB identifiers and states in creation order.
+    """Return child JOB states and persisted review evidence in creation order.
 
-    This is a read-only resume view; claiming remains atomic in db.claim_goal_child_job.
+    Evidence and executor output are exposed read-only to the independent
+    evaluator. Claiming remains atomic in db.claim_goal_child_job.
     """
     init_goal_job_store()
     with db.get_conn() as conn:
         rows = conn.execute(
-            "SELECT link.goal_job_key,link.job_id,j.status "
+            "SELECT link.goal_job_key,link.job_id,j.status,link.evidence_json,j.result "
             "FROM goal_chain_jobs link JOIN jobs j ON j.id=link.job_id "
             "WHERE link.goal_id=? ORDER BY link.id",
             (goal_id,),
         ).fetchall()
-    return [
-        {"goal_job_key": key, "job_id": job_id,
-         "status": "done" if status in {"done", "completed"} else status}
-        for key, job_id, status in rows
-    ]
+    children = []
+    for key, job_id, status, evidence_json, result in rows:
+        try:
+            evidence = json.loads(evidence_json) if evidence_json else None
+        except (TypeError, json.JSONDecodeError):
+            evidence = None
+        children.append({
+            "goal_job_key": key,
+            "job_id": job_id,
+            "status": "done" if status in {"done", "completed"} else status,
+            "evidence": evidence,
+            "result": result,
+        })
+    return children
 
 
 def get_goal_job_states(goal_id: str) -> dict[str, str]:
