@@ -52,3 +52,11 @@ def test_blender_animatic_rejects_existing_output_and_invalid_storyboard(tmp_pat
     invalid = {"schema_version": "wrong", "panels": []}
     with pytest.raises(ValueError, match="video-storyboard.v1"):
         renderer.render_storyboard_animatic(invalid, tmp_path / "invalid", blender_executable="/blender")
+
+def test_blender_animatic_rejects_non_contiguous_timeline(tmp_path, monkeypatch):
+    storyboard = _storyboard()
+    storyboard["panels"][1]["time_start_seconds"] += 1
+    monkeypatch.setattr(renderer.shutil, "which", lambda name: "/Applications/Blender")
+    with pytest.raises(ValueError, match="contiguous"):
+        renderer.render_storyboard_animatic(storyboard, tmp_path / "frames")
+    assert not (tmp_path / "frames").exists()
