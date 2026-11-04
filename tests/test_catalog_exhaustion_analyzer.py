@@ -145,7 +145,7 @@ def test_registry_current_and_rollback_target():
     assert len(candidates) == 1
     assert candidates[0]["target_test"] == "tests/test_agent_versioning.py"
     assert candidates[0]["status"] == "REVIEW_REQUIRED"
-    assert candidates[0]["heuristic"] == "public-symbol-name-not-found-in-test-source; may have indirect coverage"
+    assert candidates[0]["heuristic"] == "public-symbol-name-not-found-in-test-ast; may have indirect coverage"
     assert report["safety"]["candidates_executable"] is False
 
 
@@ -240,3 +240,59 @@ class Concrete:
         return request
 '''
     assert _public_functions(source) == [("Concrete.handle", 15)]
+
+
+def test_comments_and_docstrings_do_not_hide_uncovered_symbols(tmp_path: Path):
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    (root / "tests" / "test_agent_runtime.py").write_text(
+        '''
+# uncovered_boundary is mentioned here but never called.
+
+def test_documentation_only():
+    """The uncovered_boundary helper will be covered in a future test."""
+    assert True
+''',
+        encoding="utf-8",
+    )
+    report = analyze(root, catalog, queue, state, runtime)
+    assert report["candidate_count"] == 1
+    assert report["candidates"][0]["source_function"] == "uncovered_boundary"
+
+
+def test_imported_alias_reference_counts_as_symbol_use(tmp_path: Path):
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    (root / "tests" / "test_agent_runtime.py").write_text(
+        '''
+from core.agent_runtime import uncovered_boundary as boundary_check
+
+def test_boundary_check():
+    assert boundary_check("value") == "value"
+''',
+        encoding="utf-8",
+    )
+    report = analyze(root, catalog, queue, state, runtime)
+    assert report["candidate_count"] == 0
+    assert report["status"] == "NO_SAFE_CANDIDATE"
+
+
+def test_string_literal_does_not_count_as_symbol_reference(tmp_path: Path):
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    (root / "tests" / "test_agent_runtime.py").write_text(
+        '''
+def test_name_is_only_data():
+    assert "uncovered_boundary" in "uncovered_boundary"
+''',
+        encoding="utf-8",
+    )
+    report = analyze(root, catalog, queue, state, runtime)
+    assert report["candidate_count"] == 1
+
+
+def test_invalid_test_python_blocks_discovery_without_guessing(tmp_path: Path):
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    (root / "tests" / "test_agent_runtime.py").write_text(
+        "def test_broken(:\\n    pass\\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="test source AST is invalid"):
+        analyze(root, catalog, queue, state, runtime)
