@@ -15,6 +15,7 @@ from agents.music.audio_renderer import render_midi_to_wav
 from agents.music.score_plan import build_music_plan
 from agents.music.wav_renderer import write_wav_file
 from agents.video.edit_decision_list import build_edit_decision_list
+from agents.video.ffmpeg_renderer import render_video_from_edl
 from agents.video.scenario import validate_scenario
 
 
@@ -32,6 +33,8 @@ def create_audiovisual_production_bundle(
     genre: str = "映像に合わせたオリジナル音楽",
     instrumentation: str = "映像の世界観に合う編成",
     soundfont_path: str | Path | None = None,
+    scene_media: dict[str, str | Path] | None = None,
+    audio_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Create a new, non-overwriting local production bundle.
 
@@ -104,6 +107,7 @@ def create_audiovisual_production_bundle(
         "audio_render_status": manifest["audio_render_status"],
         "audio_preview": audio,
         "audio": audio,
+        "video": video,
         "video_render_status": manifest["video_render_status"],
     }
 
