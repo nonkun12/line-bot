@@ -16,7 +16,7 @@ _MAX_STAGES = 40
 
 def _validated_stages(plan: object) -> tuple[str, list[dict[str, Any]], list[str]]:
     if not isinstance(plan, dict) or plan.get("schema_version") != "audiovisual-to-game-sprint-plan.v1":
-        raise ValueError("plan must use audiovisual-to-game-sprint-plan.v1")
+        raise ValueError("schema_version must be audiovisual-to-game-sprint-plan.v1")
     goal_id = plan.get("goal_id")
     stages = plan.get("stages")
     if not isinstance(goal_id, str) or not _ID.fullmatch(goal_id):
