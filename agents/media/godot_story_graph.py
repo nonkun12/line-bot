@@ -32,8 +32,11 @@ def build_story_graph(scene_mapping: object, entry_scene_id: str | None = None) 
             raise ValueError("scene IDs must be valid and unique")
         if not isinstance(intent, str) or not intent.strip() or len(intent) > 2000:
             raise ValueError(f"scene {sid} requires a valid story_intent")
-        visual = raw.get("visual_motif", raw.get("player_feedback", {}).get("visual", ""))
-        music = raw.get("music_motif", raw.get("player_feedback", {}).get("audio", ""))
+        feedback = raw.get("player_feedback", {})
+        if not isinstance(feedback, dict):
+            raise ValueError(f"scene {sid} player_feedback must be an object")
+        visual = raw.get("visual_motif", feedback.get("visual", ""))
+        music = raw.get("music_motif", feedback.get("audio", ""))
         if not isinstance(visual, str) or len(visual) > 1000:
             raise ValueError(f"scene {sid} has invalid visual_motif")
         if not isinstance(music, str) or len(music) > 1000:
