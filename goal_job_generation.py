@@ -40,7 +40,6 @@ def generate_bounded_followup_job(
         if isinstance(criterion, dict)
         and criterion_results.get(criterion.get("id")) == "FAIL"
     ]
-    unmet.sort(key=lambda item: item.get("id", ""))
     for criterion in unmet:
         criterion_id = criterion.get("id")
         definitions = definitions_by_criterion.get(criterion_id, [])
