@@ -65,8 +65,32 @@ class VideoMusicPipeline:
             raise ValueError("Music AI plan does not reference the source scenario")
         if plan.get("duration_seconds") != scenario["creative_brief"]["duration_seconds"]:
             raise ValueError("Music AI plan duration differs from the source scenario")
-        if len(plan.get("cues", [])) != len(scenario["scenes"]):
+        cues = plan.get("cues")
+        if not isinstance(cues, list) or len(cues) != len(scenario["scenes"]):
             raise ValueError("Music AI cue count differs from the source scene count")
+        for scene, cue in zip(scenario["scenes"], cues):
+            sync = scene["music_sync"]
+            expected_start = scene["time_start_seconds"] + sync["cue_in_seconds"]
+            expected_end = scene["time_start_seconds"] + sync["cue_out_seconds"]
+            expected_points = [
+                {
+                    "at_seconds": scene["time_start_seconds"] + point["at_seconds"],
+                    "event": point["event"],
+                }
+                for point in sync["sync_points"]
+            ]
+            if (
+                not isinstance(cue, dict)
+                or cue.get("scene_id") != scene["scene_id"]
+                or cue.get("start_seconds") != expected_start
+                or cue.get("end_seconds") != expected_end
+                or cue.get("emotional_intent") != sync["emotional_intent"]
+                or cue.get("energy") != sync["energy"]
+                or cue.get("sync_points") != expected_points
+            ):
+                raise ValueError(
+                    f"Music AI cue does not match source scene {scene['scene_id']}"
+                )
 
         jobs = scenario_goal_jobs(scenario)
         lines = [
