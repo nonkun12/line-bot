@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from agents.music.node import MusicAgent
+from agents.music.midi import build_midi_artifact
 from agents.video.node import VideoAgent
 from agents.video.scenario import scenario_goal_jobs, validate_scenario
 from core.agents import AgentRequest, AgentResponse
@@ -93,13 +94,15 @@ class VideoMusicPipeline:
                 )
 
         jobs = scenario_goal_jobs(scenario)
+        midi_artifact = build_midi_artifact(plan)
         lines = [
             "🎬🎵 Video AI → Music AI 連携完了（制作設計草案）",
             f"作品：{scenario['title']}",
             f"尺：{plan['duration_seconds']}秒 / シーン：{len(scenario['scenes'])}",
             f"音楽キュー：{len(plan['cues'])}件",
+            f"MIDI作曲データ：生成済み（{midi_artifact['size_bytes']} bytes）",
             "シナリオのシーンID・感情・同期点をMusic AIへ引き継ぎました。",
-            "音源・映像ファイル自体はまだ生成していません。",
+            "これは演奏データです。音声・映像ファイルのレンダリングはまだ行っていません。",
         ]
         return AgentResponse(
             text="\n".join(lines),
@@ -118,8 +121,9 @@ class VideoMusicPipeline:
                 },
                 "scenario": scenario,
                 "music_plan": plan,
+                "midi_artifact": midi_artifact,
                 "goal_jobs": jobs,
-                "rendering_status": "not_generated",
+                "rendering_status": "midi_generated_audio_not_rendered",
             },
         )
 
