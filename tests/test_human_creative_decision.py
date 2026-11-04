@@ -58,3 +58,12 @@ def test_reject_all_records_reason_without_authorizing_publication():
     result = record_human_creative_decision(_comparison(), decision)
     assert result["action"] == "reject_all"
     assert result["candidate_id"] is None
+
+
+def test_global_blocker_or_warning_prevents_candidate_selection():
+    comparison = _comparison()
+    comparison["global_critic_findings"] = [
+        {"severity": "warning", "code": "video_coverage_incomplete"}
+    ]
+    with pytest.raises(ValueError, match="global Critic findings"):
+        record_human_creative_decision(comparison, _decision())
