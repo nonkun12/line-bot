@@ -210,13 +210,13 @@ var story_scenes: Array[Dictionary] = []
 var current_index := 0
 var current_scene_id := ""
 var story_graph_enabled := false
+var pending_next_scene_id := ""
 var audio_controller := AudioController.new()
 var visual_controller := VisualController.new()
 
 func _ready() -> void:
     add_child(audio_controller)
     add_child(visual_controller)
-    advance_button.pressed.connect(_advance_scene)
     _load_story()
 
 func _load_story() -> void:
@@ -228,6 +228,10 @@ func _load_story() -> void:
         _show_error("ストーリーデータの形式が不正です")
         return
     story_graph_enabled = parsed.get("story_graph_enabled", false) == true
+    if story_graph_enabled:
+        advance_button.pressed.connect(_on_graph_advance)
+    else:
+        advance_button.pressed.connect(_advance_scene)
     current_scene_id = str(parsed.get("entry_scene_id", ""))
     for item in parsed["scenes"]:
         if item is Dictionary and item.has("scene_id") and item.has("story_intent"):
@@ -290,15 +294,13 @@ func _render_graph_controls(item: Dictionary) -> void:
         advance_button.text = "次のシーンへ"
         advance_button.visible = true
         advance_button.disabled = false
-        advance_button.pressed.disconnect(_advance_scene)
-        advance_button.pressed.connect(_go_to_scene.bind(next_id))
+        pending_next_scene_id = next_id
         return
     if item.get("ending", false) == true:
         advance_button.text = "物語を完了"
         advance_button.visible = true
         advance_button.disabled = false
-        advance_button.pressed.disconnect(_advance_scene)
-        advance_button.pressed.connect(_complete_story)
+        pending_next_scene_id = ""
         return
     _show_error("シーンの遷移設定が不正です")
 
@@ -308,6 +310,12 @@ func _go_to_scene(target_scene_id: String) -> void:
         return
     current_scene_id = target_scene_id
     _show_scene()
+
+func _on_graph_advance() -> void:
+    if pending_next_scene_id.is_empty():
+        _complete_story()
+    else:
+        _go_to_scene(pending_next_scene_id)
 
 func _complete_story() -> void:
     progress_label.text = "Prototype complete"
