@@ -258,3 +258,22 @@ def test_core_request_path_routes_combined_scenario_to_ordered_video_music_pipel
     assert artifacts["rendering_status"] == "midi_generated_audio_not_rendered"
     assert artifacts["midi_artifact"]["mime_type"] == "audio/midi"
     assert artifacts["midi_artifact"]["content_base64"].startswith("TVRoZ")
+
+def test_core_video_music_route_respects_disabled_specialist_registry_entry(monkeypatch):
+    from core.request_path import run_core_request
+
+    class FakeAgent:
+        def __init__(self, enabled):
+            self.enabled = enabled
+
+    class FakeRegistry:
+        def get(self, name):
+            return FakeAgent(enabled=(name == "video"))
+
+    monkeypatch.setattr("core.request_path.build_core_agent_registry", lambda: FakeRegistry())
+    with pytest.raises(RuntimeError, match="required specialist disabled: music"):
+        run_core_request(
+            "user-1",
+            "映像と音楽を組み合わせた短編のシナリオを作って",
+            channel="line",
+        )
