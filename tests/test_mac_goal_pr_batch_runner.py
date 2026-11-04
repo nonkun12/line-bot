@@ -98,6 +98,51 @@ class MacGoalPRBatchRunnerTests(unittest.TestCase):
         self.assertEqual(self.recorded_calls(), [])
         self.assertIn("ERROR:", rejected.stderr)
 
+    def test_uses_documented_default_pytest_target(self) -> None:
+        result = self.run_batch("1260", target=None)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(
+            self.recorded_calls(),
+            ["1260\ttests/test_mac_bonsai_goal_review_worker.py"],
+        )
+
+    def test_help_prints_usage_without_running_any_pr(self) -> None:
+        env = os.environ.copy()
+        env["CALL_LOG"] = str(self.call_log)
+        result = subprocess.run(
+            ["bash", str(self.scripts / BATCH_RUNNER.name), "--help"],
+            text=True,
+            capture_output=True,
+            env=env,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Usage:", result.stdout)
+        self.assertEqual(self.recorded_calls(), [])
+
+    def test_rejects_missing_or_extra_arguments_before_running_any_pr(self) -> None:
+        env = os.environ.copy()
+        env["CALL_LOG"] = str(self.call_log)
+        for args in ([], ["1260", "tests/example.py", "extra"]):
+            with self.subTest(args=args):
+                result = subprocess.run(
+                    ["bash", str(self.scripts / BATCH_RUNNER.name), *args],
+                    text=True,
+                    capture_output=True,
+                    env=env,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn("Usage:", result.stderr)
+                self.assertEqual(self.recorded_calls(), [])
+
+    def test_missing_single_pr_runner_fails_closed(self) -> None:
+        (self.scripts / "mac_goal_pr_test.sh").unlink()
+        result = self.run_batch("1260")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("single-PR runner not found", result.stderr)
+        self.assertEqual(self.recorded_calls(), [])
+
 
 if __name__ == "__main__":
     unittest.main()
