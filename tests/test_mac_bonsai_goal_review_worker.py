@@ -222,3 +222,32 @@ def test_bonsai_completion_transport_failure_is_not_silently_retried(monkeypatch
     with pytest.raises(ReviewWorkerError, match="completion endpoint unavailable"):
         worker.run_once("https://line.example", "k" * 32, "http://127.0.0.1:8081/v1", "local")
     assert len(calls) == 2
+
+
+def test_worker_rejects_more_than_twelve_child_jobs_instead_of_dropping_evidence():
+    review = _valid_review()
+    review["children"] = [
+        {
+            "goal_job_key": f"job-{index}",
+            "status": "completed",
+            "evidence": {"checks": [{"name": "test", "status": "PASS"}]},
+            "result": "verified",
+        }
+        for index in range(13)
+    ]
+    with pytest.raises(ReviewWorkerError, match="12-job"):
+        _bounded_review_input(review)
+
+
+def test_worker_rejects_malformed_child_job_instead_of_skipping_it():
+    review = _valid_review()
+    review["children"].append("malformed child")
+    with pytest.raises(ReviewWorkerError, match="malformed"):
+        _bounded_review_input(review)
+
+
+def test_worker_rejects_child_without_persisted_evidence():
+    review = _valid_review()
+    review["children"][0]["evidence"] = None
+    with pytest.raises(ReviewWorkerError, match="persisted evidence"):
+        _bounded_review_input(review)
