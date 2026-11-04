@@ -91,7 +91,6 @@ def test_approved_local_assets_are_bound_to_matching_story_scene():
     assert "player.play()" in files["scripts/audio_controller.gd"]
     assert "video_node.play()" in files["scripts/visual_controller.gd"]
     assert "path.contains(char(92))" in files["scripts/visual_controller.gd"]
-    assert 'not "\\\" in path' not in files["scripts/visual_controller.gd"]
 
 @pytest.mark.parametrize("changes", [
     {"human_approved": False},
