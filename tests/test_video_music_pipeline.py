@@ -238,3 +238,23 @@ def test_midi_generator_rejects_non_finite_timing_and_blank_scene_ids():
                 {"scene_id": "  ", "start_seconds": 0, "end_seconds": 10, "energy": "low"},
             ],
         })
+
+def test_core_request_path_routes_combined_scenario_to_ordered_video_music_pipeline():
+    from core.request_path import run_core_request
+
+    result = run_core_request(
+        "user-1",
+        "映像と音楽を組み合わせた短編のシナリオを作って",
+        channel="line",
+        metadata={"duration_seconds": 60, "scene_count": 3},
+    )
+
+    assert result["route"] == "distributed:video→music"
+    assert result["specialists"] == ["video", "music"]
+    assert result["parallel"] is False
+    assert result["agent_results"]["video"]["status"] == "ok"
+    assert result["agent_results"]["music"]["status"] == "ok"
+    artifacts = result["metadata"]["video_music_artifacts"]
+    assert artifacts["rendering_status"] == "midi_generated_audio_not_rendered"
+    assert artifacts["midi_artifact"]["mime_type"] == "audio/midi"
+    assert artifacts["midi_artifact"]["content_base64"].startswith("TVRoZ")
