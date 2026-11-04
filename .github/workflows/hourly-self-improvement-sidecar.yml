@@ -1,0 +1,66 @@
+name: Hourly Self-Improvement Sidecar
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+      timezone: "Asia/Tokyo"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hourly-self-improvement-sidecar
+  cancel-in-progress: false
+
+jobs:
+  analyze-durable-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Restore durable autonomous-loop state
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin refs/heads/autonomous-loop-state:refs/remotes/origin/autonomous-loop-state
+          git show origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/autonomous-loop-state.json
+          python -m json.tool /tmp/autonomous-loop-state.json > /dev/null
+
+      - name: Generate bounded self-improvement report
+        run: |
+          set -euo pipefail
+          python -m scripts.self_improvement_hourly_report \
+            --state /tmp/autonomous-loop-state.json \
+            --output artifacts/self-improvement/report.json
+
+      - name: Publish evidence summary
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          report = json.loads(Path("artifacts/self-improvement/report.json").read_text(encoding="utf-8"))
+          print("# Hourly Self-Improvement")
+          print(f"- Status: **{report['status']}**")
+          print(f"- Durable history records: {report['evidence']['history_records']}")
+          print(f"- Failure / repair signals: {report['evidence']['failure_signals']} / {report['evidence']['repair_signals']}")
+          print(f"- Recurring patterns: {len(report['recurring_patterns'])}")
+          print(f"- Review candidates: {len(report['review_candidates'])}")
+          print("- Queue, approvals, source, merge, and deployment were not modified.")
+          PY
+
+      - name: Preserve report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: self-improvement-hourly-${{ github.run_id }}
+          path: artifacts/self-improvement/report.json
+          if-no-files-found: error
+          retention-days: 14
