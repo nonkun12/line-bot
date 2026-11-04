@@ -52,7 +52,7 @@ def _configuration() -> tuple[str, str, str, str]:
     local = urlparse(bonsai_url)
     if local.scheme != "http" or local.hostname not in {"127.0.0.1", "localhost", "::1"}:
         raise ReviewWorkerError("BONSAI_BASE_URL must point to localhost over HTTP")
-    model = os.environ.get("BONSAI_REVIEW_MODEL", "local-model").strip()
+    model = os.environ.get("BONSAI_REVIEW_MODEL", "Ternary-Bonsai-2-9B-mlx-2bit").strip()
     if not model or len(model) > 200:
         raise ReviewWorkerError("BONSAI_REVIEW_MODEL is invalid")
     return api_origin, internal_key, bonsai_url, model
