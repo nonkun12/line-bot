@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -47,8 +48,17 @@ class SideChatStore:
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
+    @contextmanager
+    def _session(self):
+        conn = self._connect()
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+
     def initialize(self) -> None:
-        with self._connect() as conn:
+        with self._session() as conn:
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS side_chats (
@@ -94,7 +104,7 @@ class SideChatStore:
         if not isinstance(purpose, str) or len(purpose) > MAX_PURPOSE_LENGTH:
             raise SideChatError("purpose is invalid or too long")
         side_chat_id = uuid.uuid4().hex
-        with self._connect() as conn:
+        with self._session() as conn:
             conn.execute("BEGIN IMMEDIATE")
             active = conn.execute(
                 "SELECT COUNT(*) FROM side_chats WHERE user_id=? AND status='active'",
@@ -113,7 +123,7 @@ class SideChatStore:
 
     def list_for_user(self, user_id: str) -> list[dict]:
         user_id = _required_text(user_id, "user_id", 128)
-        with self._connect() as conn:
+        with self._session() as conn:
             rows = conn.execute(
                 "SELECT * FROM side_chats WHERE user_id=? ORDER BY updated_at DESC, id",
                 (user_id,),
@@ -123,7 +133,7 @@ class SideChatStore:
     def get(self, user_id: str, side_chat_id: str) -> dict:
         user_id = _required_text(user_id, "user_id", 128)
         side_chat_id = _required_text(side_chat_id, "side_chat_id", 64)
-        with self._connect() as conn:
+        with self._session() as conn:
             chat = conn.execute(
                 "SELECT * FROM side_chats WHERE id=? AND user_id=?",
                 (side_chat_id, user_id),
@@ -147,7 +157,7 @@ class SideChatStore:
         if role not in _ALLOWED_ROLES:
             raise SideChatError("role must be user or assistant")
         content = _required_text(content, "content", MAX_MESSAGE_LENGTH)
-        with self._connect() as conn:
+        with self._session() as conn:
             conn.execute("BEGIN IMMEDIATE")
             owned = conn.execute(
                 "SELECT 1 FROM side_chats WHERE id=? AND user_id=? AND status='active'",
@@ -175,7 +185,7 @@ class SideChatStore:
         side_chat_id = _required_text(side_chat_id, "side_chat_id", 64)
         summary = _required_text(summary, "summary", MAX_HANDOFF_LENGTH)
         handoff_id = uuid.uuid4().hex
-        with self._connect() as conn:
+        with self._session() as conn:
             owned = conn.execute(
                 "SELECT 1 FROM side_chats WHERE id=? AND user_id=? AND status='active'",
                 (side_chat_id, user_id),
@@ -197,7 +207,7 @@ class SideChatStore:
         handoff_id = _required_text(handoff_id, "handoff_id", 64)
         if status not in {"accepted", "dismissed"}:
             raise SideChatError("handoff status must be accepted or dismissed")
-        with self._connect() as conn:
+        with self._session() as conn:
             cursor = conn.execute(
                 "UPDATE side_chat_handoffs SET status=? WHERE id=? AND user_id=? "
                 "AND status='pending'",
