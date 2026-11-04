@@ -74,6 +74,7 @@ def test_invalid_animatic_setting_fails_before_claim(monkeypatch):
 
 def test_animatic_opt_in_is_forwarded_to_local_executor(monkeypatch):
     monkeypatch.setenv("LOCAL_MEDIA_RENDER_ANIMATIC", "1")
+    monkeypatch.setattr(worker.shutil, "which", lambda name: f"/usr/bin/{name}")
     calls = []
     job = {
         "id": 7, "job_type": "goal_child", "claim_token": "t" * 32,
@@ -95,3 +96,10 @@ def test_animatic_opt_in_is_forwarded_to_local_executor(monkeypatch):
     monkeypatch.setattr(worker, "execute_local_media_job", fake_execute)
     assert worker.run_once("https://line-bot-yvea.onrender.com", "k" * 32) is True
     assert calls[0][0] == "/internal/media-jobs/complete"
+
+def test_animatic_dependencies_are_checked_before_claim(monkeypatch):
+    monkeypatch.setenv("LOCAL_MEDIA_RENDER_ANIMATIC", "1")
+    monkeypatch.setattr(worker.shutil, "which", lambda name: None if name == "blender" else "/usr/bin/ffmpeg")
+    monkeypatch.setattr(worker, "_request", lambda *args, **kwargs: pytest.fail("must not claim"))
+    with pytest.raises(worker.WorkerError, match="Blender is required"):
+        worker.run_once("https://line-bot-yvea.onrender.com", "k" * 32)
