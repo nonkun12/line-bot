@@ -151,9 +151,18 @@ def record_loop_outcome(
         or failure_reason.startswith("control_tower_rea:")
         or failure_reason == "control_tower_head_changed"
     ):
+        event = store.record_preflight_blocked(
+            task_id,
+            failure_reason,
+            result.get("prerequisite_id"),
+        )
         return {
             "recorded": False,
             "reason": "preflight_blocked_not_task_failure",
+            "persisted": True,
+            "event_fingerprint": event["fingerprint"],
+            "occurrences": event["occurrences"],
+            "requires_human_review": True,
         }
     # Operator-requested stops are control-flow outcomes, not task failures.
     # Do not create a Recovery AI HOLD merely because the operator stopped a run.
