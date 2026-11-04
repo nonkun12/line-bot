@@ -111,3 +111,72 @@ def test_rejects_unapproved_or_unsafe_asset_manifest(changes):
     manifest.update(changes)
     with pytest.raises(ValueError):
         build_godot_project_files(sample_design(), manifest)
+
+
+def branching_graph():
+    return {
+        "schema_version": "godot-story-graph.v1",
+        "entry_scene_id": "opening",
+        "scenes": [
+            {
+                "scene_id": "opening", "story_intent": "A quiet beginning",
+                "visual_motif": "Blue light", "music_motif": "Soft motif",
+                "choices": [
+                    {"choice_id": "stay", "label": "静かな道", "next_scene_id": "ending"},
+                    {"choice_id": "leave", "label": "新しい道", "next_scene_id": "ending"},
+                ],
+                "next_scene_id": None, "ending": False,
+            },
+            {
+                "scene_id": "ending", "story_intent": "A hopeful resolution",
+                "visual_motif": "Warm light", "music_motif": "Resolved motif",
+                "choices": [], "next_scene_id": None, "ending": True,
+            },
+        ],
+    }
+
+
+def test_branching_graph_is_embedded_and_renders_explicit_player_choices():
+    files = build_godot_project_files(sample_design(), story_graph=branching_graph())
+    story = json.loads(files["data/story.json"])
+    assert story["story_graph_enabled"] is True
+    assert story["entry_scene_id"] == "opening"
+    assert [choice["choice_id"] for choice in story["scenes"][0]["choices"]] == ["stay", "leave"]
+    script = files["scripts/main.gd"]
+    assert "func _render_graph_controls" in script
+    assert "button.pressed.connect(_go_to_scene.bind(target))" in script
+    assert "func _on_graph_advance" in script
+    assert "func _complete_story" in script
+
+
+def test_branching_graph_supports_linear_transition_and_ending():
+    graph = branching_graph()
+    graph["scenes"][0]["choices"] = []
+    graph["scenes"][0]["next_scene_id"] = "ending"
+    files = build_godot_project_files(sample_design(), story_graph=graph)
+    story = json.loads(files["data/story.json"])
+    assert story["scenes"][0]["next_scene_id"] == "ending"
+    assert story["scenes"][1]["ending"] is True
+    assert "pending_next_scene_id" in files["scripts/main.gd"]
+
+
+def test_invalid_or_unreachable_graph_fails_before_output_creation(tmp_path):
+    graph = branching_graph()
+    graph["scenes"][0]["choices"][0]["next_scene_id"] = "missing"
+    with pytest.raises(ValueError):
+        generate_godot_project(sample_design(), tmp_path / "must-not-exist", story_graph=graph)
+    assert not (tmp_path / "must-not-exist").exists()
+
+
+def test_graph_scene_order_must_match_approved_design():
+    graph = branching_graph()
+    graph["scenes"].reverse()
+    with pytest.raises(ValueError):
+        build_godot_project_files(sample_design(), story_graph=graph)
+
+
+def test_legacy_linear_project_remains_graph_free():
+    files = build_godot_project_files(sample_design())
+    story = json.loads(files["data/story.json"])
+    assert "story_graph_enabled" not in story
+    assert "func _advance_scene" in files["scripts/main.gd"]
