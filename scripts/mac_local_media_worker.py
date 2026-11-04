@@ -10,9 +10,13 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+
+# Allow direct execution as `python scripts/mac_local_media_worker.py`.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agents.media.local_executor import execute_local_media_job
 
