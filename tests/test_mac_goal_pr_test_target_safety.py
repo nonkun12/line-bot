@@ -78,6 +78,47 @@ class MacGoalPRTestTargetSafetyTests(unittest.TestCase):
         self.assertIn("Usage:", result.stdout)
         self.assertEqual(self.git_calls(), [])
 
+    def test_rejects_symlinked_target_component_before_running_pytest(self) -> None:
+        repo = self.root / "line-bot"
+        repo.mkdir()
+        worktree = self.root / "line-bot-goal-pr123"
+        external = self.root / "external"
+        external.mkdir()
+        (external / "test_example.py").write_text("def test_outside(): pass\n", encoding="utf-8")
+
+        git = self.bin_dir / "git"
+        git.write_text(
+            '#!/usr/bin/env bash\n'
+            'printf "%s\\n" "$*" >> "$GIT_CALL_LOG"\n'
+            'case "$*" in\n'
+            '  "rev-parse --show-toplevel") echo "$FAKE_REPO_ROOT" ;;\n'
+            '  *"remote get-url origin"*) echo "https://github.com/nonkun12/line-bot.git" ;;\n'
+            '  *"worktree add --detach"*) mkdir -p "$6/tests"; ln -s "$EXTERNAL_DIR" "$6/tests/linked" ;;\n'
+            '  *) exit 0 ;;\n'
+            'esac\n',
+            encoding="utf-8",
+        )
+        git.chmod(0o755)
+
+        env = os.environ.copy()
+        env["PATH"] = f"{self.bin_dir}:{env.get('PATH', '')}"
+        env["GIT_CALL_LOG"] = str(self.git_log)
+        env["FAKE_REPO_ROOT"] = str(repo)
+        env["EXTERNAL_DIR"] = str(external)
+        env["HOME"] = str(self.root / "home")
+
+        result = subprocess.run(
+            ["bash", str(RUNNER), "123", "tests/linked/test_example.py"],
+            text=True,
+            capture_output=True,
+            env=env,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("target traverses a symlink", result.stderr)
+        self.assertTrue((worktree / "tests" / "linked").is_symlink())
+        self.assertNotIn("pytest", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
