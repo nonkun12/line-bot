@@ -161,5 +161,23 @@ class MacGoalPRBatchRunnerTests(unittest.TestCase):
                 self.assertIn("ERROR:", result.stderr)
 
 
+    def test_rejects_unsafe_pytest_targets_before_running_any_pr(self) -> None:
+        invalid_targets = (
+            "",
+            "/tmp/test_example.py",
+            "-k",
+            "../outside.py",
+            "tests/../outside.py",
+            "tests//example.py",
+            "./tests/example.py",
+        )
+        for target in invalid_targets:
+            with self.subTest(target=target):
+                self.call_log.unlink(missing_ok=True)
+                result = self.run_batch("1260", target=target)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertEqual(self.recorded_calls(), [])
+                self.assertIn("ERROR:", result.stderr)
+
 if __name__ == "__main__":
     unittest.main()
