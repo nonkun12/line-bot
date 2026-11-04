@@ -155,3 +155,27 @@ def test_bundle_analysis_connects_audio_video_and_scenario_by_scene(tmp_path, mo
     assert report["scene_comparison"]["scenes"][1]["video_mean_luma"] == 150.0
     assert report["publication_authorized"] is False
     assert report["assets_modified"] is False
+
+
+def test_signal_evidence_enriches_critic_report_without_mutation():
+    from agents.media.signal_analysis import attach_signal_evidence_to_critic
+
+    critic = {
+        "schema_version": "audiovisual-creator-critic.v1",
+        "status": "REVIEW_REQUIRED",
+        "review_limits": ["Human review remains required."],
+    }
+    signal = {
+        "schema_version": "audiovisual-bundle-signal-report.v1",
+        "scene_comparison": {"scenes": [{"scene_id": "SC01", "audio_mean_rms_dbfs": -18.0, "video_mean_luma": 82.0}]},
+    }
+    original_critic = dict(critic)
+    original_signal = {"scene_comparison": {"scenes": list(signal["scene_comparison"]["scenes"])}}
+
+    enriched = attach_signal_evidence_to_critic(critic, signal)
+
+    assert enriched["signal_evidence"]["scenes"][0]["scene_id"] == "SC01"
+    assert enriched["signal_evidence"]["is_artistic_quality_score"] is False
+    assert critic == original_critic
+    assert signal["scene_comparison"] == original_signal["scene_comparison"]
+    assert enriched["publication_authorized"] is False
