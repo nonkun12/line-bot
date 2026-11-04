@@ -105,6 +105,10 @@ def _request(base_url: str, internal_key: str, endpoint: str, payload: dict | No
 
 
 def run_once(base_url: str, internal_key: str) -> bool:
+    render_setting = os.environ.get("LOCAL_MEDIA_RENDER_ANIMATIC", "0").strip()
+    if render_setting not in {"0", "1"}:
+        raise WorkerError("LOCAL_MEDIA_RENDER_ANIMATIC must be 0 or 1; refusing to claim work")
+    render_animatic = render_setting == "1"
     claimed = _request(base_url, internal_key, "/internal/media-jobs/claim", {})
     if claimed.get("claimed") is not True:
         return False
@@ -118,7 +122,7 @@ def run_once(base_url: str, internal_key: str) -> bool:
         raise WorkerError("server returned an incomplete claim contract")
 
     try:
-        output = execute_local_media_job(job, payload)
+        output = execute_local_media_job(job, payload, render_animatic=render_animatic)
         _request(
             base_url,
             internal_key,
@@ -130,7 +134,7 @@ def run_once(base_url: str, internal_key: str) -> bool:
                 "evidence": output["evidence"],
             },
         )
-        print(f"media Goal job {job_id}: completed (draft artifacts only)")
+        print(f"media Goal job {job_id}: completed (draft artifacts; animatic={render_animatic})")
     except Exception as exc:
         reason = f"{type(exc).__name__}: {str(exc)}"[:900]
         try:
