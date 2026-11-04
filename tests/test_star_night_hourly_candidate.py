@@ -22,6 +22,11 @@ def test_candidate_contains_editable_story_and_game_assets(tmp_path):
     critic = json.loads((out / "critic_review.json").read_text())
     assert critic["status"] == "PASS"
     assert all(critic["checks"].values())
+    graph = json.loads((out / "game_story_graph.json").read_text())
+    node_ids = {node["id"] for node in graph["nodes"]}
+    assert len(node_ids) == 3
+    assert all(choice["next_node"] in node_ids for choice in graph["choices"])
+    assert all(set(choice["effect"]).issubset(graph["initial_state"]) for choice in graph["choices"])
 
 
 def test_candidate_generates_original_midi_and_valid_wav(tmp_path):
@@ -104,3 +109,13 @@ def test_each_hourly_focus_creates_a_distinct_deliverable(tmp_path):
         assert payload["focus_id"] == focus
         seen.add(focus)
     assert seen == set(expected)
+
+
+
+def test_branch_graph_declares_every_choice_target(tmp_path):
+    filename, artifact = candidate_builder._build_hourly_focus_artifact("branch_graph")
+    node_ids = {node["id"] for node in artifact["nodes"]}
+    assert filename == "branch_reachability.json"
+    assert len(node_ids) == 3
+    assert all(branch["next_node"] in node_ids for branch in artifact["branches"])
+    assert artifact["all_branches_reachable"] is True
