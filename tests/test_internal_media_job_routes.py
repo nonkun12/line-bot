@@ -322,7 +322,7 @@ def test_verified_line_goal_media_completion_checkpoints_scenario_gate(tmp_path,
         "executor": "mac_local_media.v1",
         "goal_job_id": claimed["id"],
         "artifact_sha256": hashes,
-        "receipt_sha256": hashlib.sha256((result + "\\n").encode()).hexdigest(),
+        "receipt_sha256": hashlib.sha256((result + "\n").encode()).hexdigest(),
         "video_render_status": "not_rendered",
         "checks": [
             {"name": name, "status": "PASS", "source": "mac_local_media.v1"}
