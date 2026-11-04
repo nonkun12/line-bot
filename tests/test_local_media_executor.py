@@ -102,3 +102,40 @@ def test_local_executor_holds_on_partial_existing_output(tmp_path):
     with pytest.raises(RuntimeError, match="no safe receipt"):
         execute_local_media_job(_job(), _payload(), output_root=tmp_path)
     assert (partial / "scenario.json").read_text(encoding="utf-8") == "partial"
+
+def test_local_executor_accepts_explicit_animatic_and_receipts_mp4(tmp_path):
+    def fake_bundle(scenario, destination, **kwargs):
+        assert kwargs["render_animatic"] is True
+        destination.mkdir(parents=True)
+        names = {
+            "scenario": "scenario.json",
+            "screenplay": "screenplay.md",
+            "storyboard": "storyboard.json",
+            "shot_list": "shot_list.json",
+            "music_plan": "music_plan.json",
+            "midi": "original_music.mid",
+            "audio_preview": "original_music.wav",
+            "video_edit_decision_list": "edit_decision_list.json",
+            "video": "final_video.mp4",
+        }
+        for filename in names.values():
+            (destination / filename).write_bytes(b"artifact")
+        return {
+            "status": "draft_bundle_created",
+            "artifacts": names,
+            "video_render_status": "rendered",
+        }
+
+    output = execute_local_media_job(
+        _job(), _payload(), output_root=tmp_path,
+        render_animatic=True, bundle_creator=fake_bundle,
+    )
+    receipt = json.loads(output["result"])
+    assert receipt["video_render_status"] == "rendered"
+    assert "video" in receipt["artifact_sha256"]
+    assert output["evidence"]["video_render_status"] == "rendered"
+    retried = execute_local_media_job(
+        _job(), _payload(), output_root=tmp_path, render_animatic=True,
+        bundle_creator=fake_bundle,
+    )
+    assert retried["result"] == output["result"]
