@@ -46,6 +46,10 @@ done
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 REMOTE="$(git -C "$REPO_ROOT" remote get-url origin)"
 WORKTREE="$(cd "$REPO_ROOT/.." && pwd)/line-bot-goal-pr$PR"
+if [[ -L "$WORKTREE" ]]; then
+  echo "ERROR: target worktree path is a symlink; refusing to use it: $WORKTREE" >&2
+  exit 2
+fi
 REF="refs/remotes/origin/pr/$PR"
 LOG_DIR="$HOME/Library/Logs/line-bot-goal-pr-tests"
 STAMP="$(date '+%Y%m%d-%H%M%S')"

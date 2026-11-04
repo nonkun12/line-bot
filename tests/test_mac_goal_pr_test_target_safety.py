@@ -120,5 +120,48 @@ class MacGoalPRTestTargetSafetyTests(unittest.TestCase):
         self.assertNotIn("pytest", result.stdout)
 
 
+    def test_rejects_dangling_symlink_worktree_before_fetch(self) -> None:
+        repo = self.root / "line-bot"
+        repo.mkdir()
+        worktree = self.root / "line-bot-goal-pr123"
+        worktree.symlink_to(self.root / "missing-worktree")
+
+        git = self.bin_dir / "git"
+        git.write_text(
+            """#!/usr/bin/env bash
+printf "%s\\n" "$*" >> "$GIT_CALL_LOG"
+case "$*" in
+  "rev-parse --show-toplevel") echo "$FAKE_REPO_ROOT" ;;
+  *"remote get-url origin"*) echo "https://github.com/nonkun12/line-bot.git" ;;
+  *) exit 0 ;;
+esac
+""",
+            encoding="utf-8",
+        )
+        git.chmod(0o755)
+
+        env = os.environ.copy()
+        env["PATH"] = f"{self.bin_dir}:{env.get('PATH', '')}"
+        env["GIT_CALL_LOG"] = str(self.git_log)
+        env["FAKE_REPO_ROOT"] = str(repo)
+        env["HOME"] = str(self.root / "home")
+
+        result = subprocess.run(
+            ["bash", str(RUNNER), "123", "tests/test_example.py"],
+            text=True,
+            capture_output=True,
+            env=env,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("worktree path is a symlink", result.stderr)
+        self.assertTrue(worktree.is_symlink())
+        self.assertFalse((self.root / "missing-worktree").exists())
+        self.assertEqual(
+            self.git_calls(),
+            ["rev-parse --show-toplevel", f"-C {repo} remote get-url origin"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
