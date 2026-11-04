@@ -31,12 +31,15 @@ def test_local_executor_creates_hashed_bundle_under_fixed_root(tmp_path):
     assert all(item["status"] == "PASS" for item in evidence["checks"])
     assert evidence["output_directory"] == str(tmp_path.resolve() / "goal-child-42")
     assert set(evidence["artifact_sha256"]) == {
-        "scenario", "storyboard", "shot_list", "music_plan", "midi", "audio_preview", "video_edit_decision_list"
+        "scenario", "screenplay", "storyboard", "shot_list", "music_plan", "midi", "audio_preview", "video_edit_decision_list"
     }
     assert all(len(value) == 64 for value in evidence["artifact_sha256"].values())
     bundle = tmp_path / "goal-child-42"
+    screenplay = (bundle / "screenplay.md").read_text(encoding="utf-8")
     storyboard = json.loads((bundle / "storyboard.json").read_text(encoding="utf-8"))
     shot_list = json.loads((bundle / "shot_list.json").read_text(encoding="utf-8"))
+    assert "# 夜明けの街" in screenplay
+    assert "## Scene 01" in screenplay
     assert storyboard["schema_version"] == "video-storyboard.v1"
     assert shot_list["schema_version"] == "video-shot-list.v1"
     assert shot_list["external_assets_downloaded"] is False
