@@ -473,6 +473,17 @@ def save_child_evidence(job_id: int, evidence: object) -> bool:
         )
         return cursor.rowcount == 1
 
+def get_goal_id_for_child_job(job_id: int) -> str | None:
+    """Resolve a completed child JOB to its parent Goal without trusting payload data."""
+    init_goal_job_store()
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT goal_id FROM goal_chain_jobs WHERE job_id=?",
+            (job_id,),
+        ).fetchone()
+    return row[0] if row else None
+
+
 def evaluate_completed_goal_criteria(goal_id: str) -> dict[str, str]:
     """Derive criterion states only from every declared child and its persisted evidence.
 
@@ -615,5 +626,5 @@ def register_child_job_definition(goal_id: str, job: object) -> bool:
 
 __all__ = [
     "init_goal_job_store", "create_goal", "get_goal", "persist_child_job",
-    "get_goal_job_states", "get_goal_child_jobs", "update_goal_evidence", "authorize_claimed_job", "save_child_evidence", "complete_claimed_child_job", "register_child_job_definition", "evaluate_completed_goal_criteria",
+    "get_goal_job_states", "get_goal_child_jobs", "update_goal_evidence", "authorize_claimed_job", "save_child_evidence", "complete_claimed_child_job", "register_child_job_definition", "evaluate_completed_goal_criteria", "get_goal_id_for_child_job",
 ]
