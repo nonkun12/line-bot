@@ -369,6 +369,23 @@ def claim_pending_media_goal_child_job(executor_id):
     return get_job(row[0])
 
 
+def hold_claimed_goal_child_job(job_id, claim_token, reason):
+    """Move one exact claimed Goal child to HOLD without treating it as complete."""
+    if not _is_valid_job_id(job_id):
+        raise ValueError("job_id is invalid")
+    if not isinstance(claim_token, str) or len(claim_token) < 20:
+        raise ValueError("claim_token is invalid")
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("hold reason is required")
+    with get_conn() as conn:
+        cursor = conn.execute(
+            "UPDATE jobs SET status='held',last_error=?,claim_token=NULL,updated_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND job_type='goal_child' AND status='running' AND claim_token=?",
+            (reason.strip()[:2000], job_id, claim_token),
+        )
+        return cursor.rowcount == 1
+
+
 def complete_claimed_job(
     job_id,
     claim_token,
