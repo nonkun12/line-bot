@@ -58,5 +58,10 @@ to `create_audiovisual_production_bundle(..., render_animatic=True)` can opt int
 Blender-generated procedural storyboard blocking frames followed by FFmpeg MP4
 assembly. This is a first animatic made from abstract composition placeholders,
 not final character animation, a finished cinematic scene, or rights-cleared footage.
-The standard Mac Goal worker does not enable this option automatically; the
-Blender/FFmpeg output needs separate local review before it is accepted.
+The current renderer burns in a short title and narration caption (using a local
+Japanese font when available) and applies a small allowlisted Ken Burns-style
+camera move from the shot plan. These are presentation aids for the first animatic,
+not a substitute for authored character animation, detailed 3D assets, or a
+professional subtitle/timing pass. The standard Mac Goal worker does not enable
+this option automatically; Blender/FFmpeg output needs separate local review
+before it is accepted.
