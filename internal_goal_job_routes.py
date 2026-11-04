@@ -17,6 +17,10 @@ from flask import jsonify, request
 
 import db
 import goal_job_store
+from agents.media.goal_job_chain_store import (
+    get_goal_chain,
+    record_goal_chain_evidence,
+)
 from goal_job_orchestrator import advance_goal
 from goal_job_generation import generate_bounded_followup_job
 
@@ -235,6 +239,31 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
                 if goal_id:
                     criterion_results = goal_job_store.evaluate_completed_goal_criteria(goal_id)
                     goal_job_store.update_goal_evidence(goal_id, criterion_results)
+                    goal_record = goal_job_store.get_goal(goal_id)
+                    if goal_record is not None:
+                        media_chain = get_goal_chain(goal_record["user_id"], goal_id)
+                        if media_chain is not None:
+                            snapshot = media_chain["state"]["snapshot"]
+                            media_chain = record_goal_chain_evidence(
+                                goal_record["user_id"],
+                                goal_id,
+                                expected_version=media_chain["version"],
+                                completed_job_ids=[
+                                    *snapshot["completed_job_ids"],
+                                    "scenario",
+                                    "music",
+                                    "visual",
+                                ],
+                                approved_gate_job_ids=snapshot["approved_gate_job_ids"],
+                                held_job_ids=snapshot["held_job_ids"],
+                                event_type="stage_completed",
+                            )
+                            continuation["media_chain_state"] = {
+                                "version": media_chain["version"],
+                                "ready_job_ids": media_chain["state"]["ready_job_ids"],
+                                "awaiting_human_approval_job_ids": media_chain["state"]["awaiting_human_approval_job_ids"],
+                                "held_job_ids": media_chain["state"]["held_job_ids"],
+                            }
                     continuation = advance_goal(
                         goal_id, job_generator=generate_bounded_followup_job
                     )
