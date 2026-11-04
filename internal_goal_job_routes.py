@@ -16,6 +16,8 @@ from flask import jsonify, request
 
 import db
 import goal_job_store
+from goal_job_orchestrator import advance_goal
+from goal_job_generation import generate_bounded_followup_job
 
 
 def _github_run_passed(run_url: str, expected_name: str, target_sha: str) -> bool:
@@ -149,7 +151,32 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
             )
             if not completed:
                 return jsonify({"ok": False, "error": "claim is stale or already completed"}), 409
-            return jsonify({"ok": True, "completed": True, "success": success}), 200
+
+            continuation = {"decision": "NOT_STARTED"}
+            try:
+                goal_id = goal_job_store.get_goal_id_for_child_job(job_id)
+                if goal_id:
+                    criterion_results = goal_job_store.evaluate_completed_goal_criteria(goal_id)
+                    goal_job_store.update_goal_evidence(goal_id, criterion_results)
+                    continuation = advance_goal(
+                        goal_id,
+                        job_generator=generate_bounded_followup_job,
+                    )
+            except Exception as exc:
+                # Completion is already durable. Preserve it and expose a
+                # continuation HOLD rather than returning a false worker failure.
+                app.logger.exception("Goal continuation failed after child completion")
+                continuation = {
+                    "decision": "HOLD",
+                    "reason": "goal_continuation_failed",
+                    "error_type": type(exc).__name__,
+                }
+            return jsonify({
+                "ok": True,
+                "completed": True,
+                "success": success,
+                "continuation": continuation,
+            }), 200
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         except Exception:

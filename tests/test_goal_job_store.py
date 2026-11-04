@@ -226,3 +226,80 @@ def test_successful_child_completion_rejects_any_failing_evidence_check(tmp_path
         result="verified work",
         evidence=passing_evidence,
     ) is True
+
+
+def test_completed_criterion_requires_every_declared_job_and_passing_evidence(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    goal_job_store.create_goal(_goal(), "U-test", _grant())
+    first = goal_job_store.persist_child_job("goal-autonomy-demo", _job())
+    assert goal_job_store.evaluate_completed_goal_criteria("goal-autonomy-demo") == {
+        "routing-tests": "FAIL",
+        "evidence-review": "FAIL",
+    }
+    with db.get_conn() as conn:
+        conn.execute("UPDATE jobs SET status='completed' WHERE id=?", (first["job_id"],))
+    goal_job_store.save_child_evidence(
+        first["job_id"],
+        {"checks": [{"name": "pytest", "status": "PASS", "source": "verified CI"}]},
+    )
+    assert goal_job_store.evaluate_completed_goal_criteria("goal-autonomy-demo") == {
+        "routing-tests": "PASS",
+        "evidence-review": "FAIL",
+    }
+
+
+def test_goal_id_can_be_resolved_from_registered_child(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    goal_job_store.create_goal(_goal(), "U-test", _grant())
+    child = goal_job_store.persist_child_job("goal-autonomy-demo", _job())
+    assert goal_job_store.get_goal_id_for_child_job(child["job_id"]) == "goal-autonomy-demo"
+    assert goal_job_store.get_goal_id_for_child_job(999999) is None
+
+
+def test_verified_followup_can_resolve_a_failed_attempt(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    goal = {
+        "goal_id": "goal-followup-evidence",
+        "objective": "Complete a scoped planning goal",
+        "success_criteria": [{"id": "criterion", "description": "The plan is verified"}],
+        "jobs": [{
+            "id": "initial",
+            "criterion_id": "criterion",
+            "stage": "design",
+            "instruction": "Create the initial plan.",
+            "allowed_paths": ["docs/initial-plan.md"],
+            "depends_on": [],
+        }],
+    }
+    grant = _grant()
+    grant.update({
+        "goal_id": "goal-followup-evidence",
+        "grant_id": "grant-followup-evidence",
+        "max_jobs": 4,
+        "allowed_stages": ["design"],
+        "allowed_path_prefixes": ["docs/"],
+    })
+    goal_job_store.create_goal(goal, "U-test", grant)
+    first = goal_job_store.persist_child_job("goal-followup-evidence", goal["jobs"][0])
+    with db.get_conn() as conn:
+        conn.execute("UPDATE jobs SET status='failed' WHERE id=?", (first["job_id"],))
+    assert goal_job_store.evaluate_completed_goal_criteria("goal-followup-evidence") == {"criterion": "FAIL"}
+
+    followup = {
+        "id": "goal-followup-002",
+        "criterion_id": "criterion",
+        "stage": "design",
+        "instruction": "Create a focused follow-up plan.",
+        "allowed_paths": ["docs/followup-plan.md"],
+        "depends_on": [],
+    }
+    assert goal_job_store.register_child_job_definition("goal-followup-evidence", followup) is True
+    child = goal_job_store.persist_child_job("goal-followup-evidence", followup)
+    assert goal_job_store.evaluate_completed_goal_criteria("goal-followup-evidence") == {"criterion": "FAIL"}
+    with db.get_conn() as conn:
+        conn.execute("UPDATE jobs SET status='completed' WHERE id=?", (child["job_id"],))
+    goal_job_store.save_child_evidence(
+        child["job_id"],
+        {"checks": [{"name": "review", "status": "PASS", "source": "independent evidence"}]},
+    )
+    assert goal_job_store.evaluate_completed_goal_criteria("goal-followup-evidence") == {"criterion": "PASS"}

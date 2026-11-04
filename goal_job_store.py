@@ -175,7 +175,7 @@ def persist_child_job(goal_id: str, job: object, *, parent_job_key: str | None =
     with db.get_conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
         goal_row = conn.execute(
-            "SELECT grant_json,status,goal_json FROM goal_chains WHERE goal_id=?",
+            "SELECT grant_json,status,goal_json,evidence_json FROM goal_chains WHERE goal_id=?",
             (goal_id,),
         ).fetchone()
         if goal_row is None:
@@ -231,16 +231,18 @@ def persist_child_job(goal_id: str, job: object, *, parent_job_key: str | None =
         parent_job_id = None
         for dependency_key in dependencies:
             parent = conn.execute(
-                "SELECT link.job_id,j.status FROM goal_chain_jobs link "
+                "SELECT link.job_id,j.status,link.criterion_id FROM goal_chain_jobs link "
                 "JOIN jobs j ON j.id=link.job_id WHERE link.goal_id=? AND link.goal_job_key=?",
                 (goal_id, dependency_key),
             ).fetchone()
             if parent is None:
                 raise ValueError("dependency Goal JOB has not been persisted")
-            if parent[1] not in {"done", "completed"} and not (
+            criterion_evidence = json.loads(goal_row[3] or "{}")
+            dependency_criterion_passed = criterion_evidence.get(parent[2]) == "PASS"
+            if parent[1] not in {"done", "completed"} and not dependency_criterion_passed and not (
                 job.get("stage") == "fix" and parent[1] in {"failed", "held"}
             ):
-                raise ValueError("dependency Goal JOB is not complete or eligible for repair")
+                raise ValueError("dependency Goal JOB is not complete or criterion-verified")
             if parent_job_id is None:
                 parent_job_id = parent[0]
 
@@ -291,14 +293,21 @@ def get_goal_job_states(goal_id: str) -> dict[str, str]:
     """Normalize both historical terminal spellings to the planner's vocabulary."""
     init_goal_job_store()
     with db.get_conn() as conn:
+        goal_row = conn.execute(
+            "SELECT evidence_json FROM goal_chains WHERE goal_id=?",
+            (goal_id,),
+        ).fetchone()
         rows = conn.execute(
-            "SELECT link.goal_job_key,j.status FROM goal_chain_jobs link "
+            "SELECT link.goal_job_key,link.criterion_id,j.status FROM goal_chain_jobs link "
             "JOIN jobs j ON j.id=link.job_id WHERE link.goal_id=? ORDER BY link.id",
             (goal_id,),
         ).fetchall()
+    criterion_evidence = json.loads(goal_row[0] or "{}") if goal_row else {}
     normalized = {}
-    for key, status in rows:
-        if status in {"done", "completed"}:
+    for key, criterion_id, status in rows:
+        if status in {"done", "completed"} or criterion_evidence.get(criterion_id) == "PASS":
+            # A failed attempt may be superseded by a later independently
+            # verified JOB for the same criterion.
             normalized[key] = "done"
         elif status in {"pending", "running", "failed", "held"}:
             normalized[key] = status
@@ -473,6 +482,89 @@ def save_child_evidence(job_id: int, evidence: object) -> bool:
         )
         return cursor.rowcount == 1
 
+def get_goal_id_for_child_job(job_id: int) -> str | None:
+    """Resolve a completed child JOB to its parent Goal without trusting payload data."""
+    init_goal_job_store()
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT goal_id FROM goal_chain_jobs WHERE job_id=?",
+            (job_id,),
+        ).fetchone()
+    return row[0] if row else None
+
+
+def evaluate_completed_goal_criteria(goal_id: str) -> dict[str, str]:
+    """Derive criterion states only from every declared child and its persisted evidence.
+
+    A criterion passes only when every JOB declared for it has completed and
+    every stored evidence check is PASS. Missing/unregistered work stays FAIL.
+    """
+    record = get_goal(goal_id)
+    if record is None:
+        raise ValueError("goal not found")
+    definitions = record["goal"].get("jobs")
+    criteria = record["goal"].get("success_criteria")
+    if not isinstance(definitions, list) or not isinstance(criteria, list):
+        raise ValueError("Goal contract is malformed")
+    by_criterion = {
+        item["id"]: [] for item in criteria
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    for definition in definitions:
+        if not isinstance(definition, dict) or definition.get("criterion_id") not in by_criterion:
+            raise ValueError("Goal JOB definition references an unknown criterion")
+        by_criterion[definition["criterion_id"]].append(definition.get("id"))
+
+    init_goal_job_store()
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            "SELECT link.goal_job_key,link.criterion_id,j.status,link.evidence_json "
+            "FROM goal_chain_jobs link JOIN jobs j ON j.id=link.job_id "
+            "WHERE link.goal_id=?",
+            (goal_id,),
+        ).fetchall()
+    persisted = {
+        key: (criterion_id, status, evidence_json)
+        for key, criterion_id, status, evidence_json in rows
+    }
+    results: dict[str, str] = {}
+    for criterion_id, job_keys in by_criterion.items():
+        if not job_keys:
+            results[criterion_id] = "FAIL"
+            continue
+        all_terminal = True
+        original_jobs_pass = True
+        recovery_job_pass = False
+        for key in job_keys:
+            row = persisted.get(key)
+            if row is None or row[0] != criterion_id:
+                all_terminal = False
+                original_jobs_pass = False
+                continue
+            if row[1] not in {"done", "completed", "failed", "held"}:
+                all_terminal = False
+            evidence_passed = False
+            if row[1] in {"done", "completed"} and row[2]:
+                try:
+                    checks = json.loads(row[2]).get("checks", [])
+                except (TypeError, json.JSONDecodeError, AttributeError):
+                    checks = []
+                evidence_passed = bool(checks) and all(
+                    isinstance(check, dict) and check.get("status") == "PASS"
+                    for check in checks
+                )
+            if key.startswith("goal-followup-"):
+                recovery_job_pass = recovery_job_pass or evidence_passed
+            else:
+                original_jobs_pass = original_jobs_pass and evidence_passed
+        # All original work must pass, or all attempts must be terminal and a
+        # specifically named bounded follow-up must pass as the recovery.
+        results[criterion_id] = (
+            "PASS" if all_terminal and (original_jobs_pass or recovery_job_pass) else "FAIL"
+        )
+    return results
+
+
 
 def register_child_job_definition(goal_id: str, job: object) -> bool:
     """Register one AI-proposed child only inside the persisted Goal/grant.
@@ -555,5 +647,5 @@ def register_child_job_definition(goal_id: str, job: object) -> bool:
 
 __all__ = [
     "init_goal_job_store", "create_goal", "get_goal", "persist_child_job",
-    "get_goal_job_states", "get_goal_child_jobs", "update_goal_evidence", "authorize_claimed_job", "save_child_evidence", "complete_claimed_child_job", "register_child_job_definition",
+    "get_goal_job_states", "get_goal_child_jobs", "update_goal_evidence", "authorize_claimed_job", "save_child_evidence", "complete_claimed_child_job", "register_child_job_definition", "evaluate_completed_goal_criteria", "get_goal_id_for_child_job",
 ]

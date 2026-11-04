@@ -1,3 +1,5 @@
+import base64
+
 from core.agents import AgentRequest
 from agents.music.node import MusicAgent
 from agents.video.node import VideoAgent
@@ -52,6 +54,13 @@ def test_music_agent_accepts_video_scenario_and_returns_synchronized_score_plan(
     assert plan["source_scenario_title"] == scenario["title"]
     assert len(plan["cues"]) == len(scenario["scenes"])
     assert plan["rendering_status"] == "not_generated"
+    artifact = response.metadata["midi_artifact"]
+    midi_bytes = base64.b64decode(artifact["content"], validate=True)
+    assert artifact["filename"].endswith(".mid")
+    assert artifact["status"] == "generated"
+    assert artifact["tracks"] == 4
+    assert midi_bytes.startswith(b"MThd")
+    assert int.from_bytes(midi_bytes[10:12], "big") == 4
 
 
 def test_music_agent_uses_real_line_breaks_for_scenario_reply():
@@ -87,3 +96,22 @@ def test_video_agent_handles_invalid_metadata_without_raising():
     ))
     assert response.metadata["status"] == "invalid_request"
     assert "確認してください" in response.text
+
+
+def test_video_agent_integrates_music_plan_into_synchronized_edl():
+    from agents.video.scenario import build_scenario
+
+    scenario = build_scenario("A journey through a changing sky", duration_seconds=60, scene_count=3)
+    music_response = MusicAgent().handle(AgentRequest(
+        "u1", "映像に合わせて作曲", metadata={"scenario": scenario}
+    ))
+    video_response = VideoAgent().handle(AgentRequest(
+        "u1",
+        "シナリオを編集タイムラインにする",
+        metadata={"scenario": scenario, "music_plan": music_response.metadata["music_plan"]},
+    ))
+    edl = video_response.metadata["edit_decision_list"]
+    assert edl["schema_version"] == "audiovisual-edl.v1"
+    assert len(edl["video_track"]) == len(edl["audio_track"]) == 3
+    assert "音楽設計と同期した映像編集タイムライン" in video_response.text
+    assert edl["render_status"] == "not_rendered"

@@ -92,6 +92,8 @@ def test_complete_requires_claim_token_and_is_idempotently_rejected_after_first_
     first = client.post("/internal/goal-jobs/complete", headers=headers, json=payload)
     second = client.post("/internal/goal-jobs/complete", headers=headers, json=payload)
     assert first.status_code == 200
+    assert first.get_json()["continuation"]["decision"] == "GOAL_ACHIEVED"
+    assert goal_job_store.get_goal("route-goal")["status"] == "achieved"
     assert second.status_code == 409
 
 

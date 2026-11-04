@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from agents.video.intents import is_video_intent
 from agents.video.scenario import build_scenario
+from agents.video.edit_decision_list import build_edit_decision_list
 from core.agents import AgentRequest, AgentResponse
 
 
@@ -21,16 +22,20 @@ class VideoAgent:
         if any(k in text for k in ("シナリオ", "scenario", "台本", "脚本", "script")):
             mode = "scenario" if any(k in text for k in ("シナリオ", "scenario")) else "script"
             try:
-                scenario = build_scenario(
-                    request.message,
-                    duration_seconds=metadata.get("duration_seconds", 180),
-                    scene_count=metadata.get("scene_count", 4),
-                    genre=metadata.get("genre", "未指定"),
-                    audience=metadata.get("target_audience", "一般視聴者"),
-                    tone=metadata.get("tone", "わかりやすく、印象に残る"),
-                    premise=metadata.get("premise"),
-                    title=metadata.get("title"),
-                )
+                scenario = metadata.get("scenario")
+                if not isinstance(scenario, dict):
+                    scenario = build_scenario(
+                        request.message,
+                        duration_seconds=metadata.get("duration_seconds", 180),
+                        scene_count=metadata.get("scene_count", 4),
+                        genre=metadata.get("genre", "未指定"),
+                        audience=metadata.get("target_audience", "一般視聴者"),
+                        tone=metadata.get("tone", "わかりやすく、印象に残る"),
+                        premise=metadata.get("premise"),
+                        title=metadata.get("title"),
+                    )
+                music_plan = metadata.get("music_plan")
+                edl = build_edit_decision_list(scenario, music_plan) if isinstance(music_plan, dict) else None
             except ValueError as exc:
                 return AgentResponse(
                     text=f"シナリオを作成できませんでした。尺・シーン数・入力内容を確認してください：{exc}",
@@ -54,6 +59,8 @@ class VideoAgent:
                     "",
                 ])
             lines.append("次工程：脚本詳細化 → 連続性レビュー → 絵コンテ → ショットリスト → 音響設計")
+            if edl is not None:
+                lines.append("音楽設計と同期した映像編集タイムライン（EDL）も作成しました。実際の映像書き出しは未実施です。")
             reply = "\n".join(lines)
             return AgentResponse(
                 text=reply,
@@ -61,6 +68,7 @@ class VideoAgent:
                     "feature": self.name, "status": "online", "mode": mode,
                     "scenario": scenario,
                     "next_artifacts": scenario["next_artifacts"],
+                    "edit_decision_list": edl,
                 },
             )
         if any(k in text for k in ("絵コンテ", "storyboard", "ショット")):
