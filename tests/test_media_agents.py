@@ -1,3 +1,5 @@
+import base64
+
 from core.agents import AgentRequest
 from agents.music.node import MusicAgent
 from agents.video.node import VideoAgent
@@ -52,6 +54,13 @@ def test_music_agent_accepts_video_scenario_and_returns_synchronized_score_plan(
     assert plan["source_scenario_title"] == scenario["title"]
     assert len(plan["cues"]) == len(scenario["scenes"])
     assert plan["rendering_status"] == "not_generated"
+    artifact = response.metadata["midi_artifact"]
+    midi_bytes = base64.b64decode(artifact["content"], validate=True)
+    assert artifact["filename"].endswith(".mid")
+    assert artifact["status"] == "generated"
+    assert artifact["tracks"] == 4
+    assert midi_bytes.startswith(b"MThd")
+    assert int.from_bytes(midi_bytes[10:12], "big") == 4
 
 
 def test_music_agent_uses_real_line_breaks_for_scenario_reply():
