@@ -159,4 +159,3 @@ For a 16 GB unified-memory machine, avoid loading multiple large models simultan
 - No inbound public listener or paid service is required.
 - Artifact hashes, tool versions, licenses, and test/review evidence are persisted.
 - A render failure creates a repair JOB with bounded scope, not an unbounded retry loop.
-
