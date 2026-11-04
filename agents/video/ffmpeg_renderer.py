@@ -1,8 +1,8 @@
 """Local FFmpeg assembly for an authored audiovisual EDL.
 
 All media inputs must already exist locally. No assets are downloaded and no
-shell is used. This first renderer uses sequential hard cuts; authored
-transitions remain in the EDL for later renderer support.
+shell is used. The renderer uses sequential hard cuts; sync edit suggestions
+are returned as advisory metadata and never force additional cuts.
 """
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
+
+from agents.video.sync_edit_plan import build_sync_aware_edit_plan
 
 _VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm"}
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -97,6 +99,7 @@ def render_video_from_edl(
     if abs(expected_start - float(duration)) > 0.001:
         raise ValueError("EDL scene durations must cover the full timeline")
 
+    sync_edit_plan = build_sync_aware_edit_plan(edl, fps=fps)
     audio = Path(audio_path).expanduser().resolve()
     if not audio.is_file() or audio.suffix.lower() != ".wav":
         raise ValueError("audio_path must be an existing WAV file")
@@ -166,6 +169,7 @@ def render_video_from_edl(
             "duration_seconds": duration, "resolution": f"{width}x{height}",
             "fps": fps, "scenes": len(scenes),
             "transition_mode": "sequential_hard_cuts",
+            "sync_edit_plan": sync_edit_plan,
             "renderer": "FFmpeg", "bytes": output.stat().st_size,
         }
     finally:
