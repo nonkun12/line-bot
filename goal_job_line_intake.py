@@ -34,9 +34,15 @@ def init_goal_line_intake() -> None:
                 status TEXT NOT NULL DEFAULT 'pending',
                 expires_at TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                approved_goal_id TEXT
+                approved_goal_id TEXT,
+                approval_started_at TEXT
             )
         """)
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(goal_line_proposals)").fetchall()
+        }
+        if "approval_started_at" not in columns:
+            conn.execute("ALTER TABLE goal_line_proposals ADD COLUMN approval_started_at TEXT")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_goal_line_proposals_user_status "
             "ON goal_line_proposals(user_id,status,created_at)"
@@ -184,10 +190,11 @@ def approve_goal_proposal(user_id: str, proposal_id: str) -> dict[str, Any]:
     if not _authorized_approver(user_id):
         raise PermissionError("LINE user is not configured as an authorized Goal approver")
     init_goal_line_intake()
+    resume_existing = False
     with db.get_conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
-            "SELECT user_id,proposal_json,status,expires_at,approved_goal_id "
+            "SELECT user_id,proposal_json,status,expires_at,approved_goal_id,approval_started_at "
             "FROM goal_line_proposals WHERE proposal_id=?",
             (proposal_id,),
         ).fetchone()
@@ -195,27 +202,65 @@ def approve_goal_proposal(user_id: str, proposal_id: str) -> dict[str, Any]:
             raise PermissionError("proposal not found for this LINE user")
         if row[2] == "approved" and row[4]:
             return {"goal_id": row[4], "already_approved": True}
-        if row[2] != "pending":
-            raise ValueError("proposal is no longer pending")
-        expiry = datetime.fromisoformat(row[3])
-        if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
-            conn.execute(
-                "UPDATE goal_line_proposals SET status='expired' WHERE proposal_id=? AND status='pending'",
-                (proposal_id,),
-            )
-            raise ValueError("proposal expired; submit the Goal again")
         proposal = json.loads(row[1])
         goal_id = proposal["goal_id"]
-        reserved = conn.execute(
-            "UPDATE goal_line_proposals SET status='approving' "
-            "WHERE proposal_id=? AND status='pending'",
-            (proposal_id,),
-        )
-        if reserved.rowcount != 1:
-            raise ValueError("proposal approval is already in progress")
+        if row[2] == "approving":
+            started = datetime.fromisoformat(row[5]) if row[5] else None
+            lease_expired = (
+                started is not None
+                and started.tzinfo is not None
+                and started <= datetime.now(timezone.utc) - timedelta(minutes=5)
+            )
+            if not lease_expired:
+                raise ValueError("proposal approval is already in progress; retry shortly")
+            existing_goal = conn.execute(
+                "SELECT goal_id FROM goal_chains WHERE goal_id=?",
+                (goal_id,),
+            ).fetchone()
+            if existing_goal:
+                conn.execute(
+                    "UPDATE goal_line_proposals SET status='approved',approved_goal_id=?,approval_started_at=NULL "
+                    "WHERE proposal_id=? AND status='approving'",
+                    (goal_id, proposal_id),
+                )
+                resume_existing = True
+            else:
+                conn.execute(
+                    "UPDATE goal_line_proposals SET status='pending',approval_started_at=NULL "
+                    "WHERE proposal_id=? AND status='approving'",
+                    (proposal_id,),
+                )
+                row = (*row[:2], "pending", *row[3:])
+        if not resume_existing:
+            if row[2] != "pending":
+                raise ValueError("proposal is no longer pending")
+            expiry = datetime.fromisoformat(row[3])
+            if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
+                conn.execute(
+                    "UPDATE goal_line_proposals SET status='expired' WHERE proposal_id=? AND status='pending'",
+                    (proposal_id,),
+                )
+                raise ValueError("proposal expired; submit the Goal again")
+            reserved = conn.execute(
+                "UPDATE goal_line_proposals SET status='approving',approval_started_at=? "
+                "WHERE proposal_id=? AND status='pending'",
+                (datetime.now(timezone.utc).isoformat(), proposal_id),
+            )
+            if reserved.rowcount != 1:
+                raise ValueError("proposal approval is already in progress")
 
     # Do not hold the proposal DB transaction while create_goal opens its own
     # connection; that would deadlock SQLite's writer lock.
+    if resume_existing:
+        queued = advance_goal(goal_id)
+        return {
+            "goal_id": goal_id,
+            "already_approved": True,
+            "decision": queued.get("decision"),
+            "reason": queued.get("reason"),
+            "job_id": (queued.get("job_record") or {}).get("job_id"),
+        }
+
     grant = {
         "grant_id": f"line-grant-{proposal_id}",
         "goal_id": goal_id,
@@ -233,14 +278,14 @@ def approve_goal_proposal(user_id: str, proposal_id: str) -> dict[str, Any]:
         goal_job_store.create_goal(proposal, user_id, grant)
         with db.get_conn() as conn:
             conn.execute(
-                "UPDATE goal_line_proposals SET status='approved',approved_goal_id=? "
+                "UPDATE goal_line_proposals SET status='approved',approved_goal_id=?,approval_started_at=NULL "
                 "WHERE proposal_id=? AND status='approving'",
                 (goal_id, proposal_id),
             )
     except Exception:
         with db.get_conn() as conn:
             conn.execute(
-                "UPDATE goal_line_proposals SET status='pending' "
+                "UPDATE goal_line_proposals SET status='pending',approval_started_at=NULL "
                 "WHERE proposal_id=? AND status='approving'",
                 (proposal_id,),
             )
