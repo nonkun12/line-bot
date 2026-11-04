@@ -93,3 +93,73 @@ def test_worker_rejects_duplicate_criterion_ids():
     }
     with pytest.raises(ReviewWorkerError, match="unique"):
         _bounded_review_input(review)
+
+
+def _valid_review():
+    return {
+        "objective": "verify artifact",
+        "success_criteria": [{"id": "artifact", "description": "Artifact is verified"}],
+        "children": [{
+            "goal_job_key": "job-1",
+            "status": "completed",
+            "evidence": {"checks": [{"name": "test", "status": "PASS", "source": "pytest"}]},
+            "result": "verified",
+        }],
+    }
+
+
+def test_bonsai_review_rejects_extra_or_missing_criterion_keys(monkeypatch):
+    import scripts.mac_bonsai_goal_review_worker as worker
+
+    monkeypatch.setattr(worker, "_post_json", lambda *a, **k: {
+        "choices": [{"message": {"content": '{"artifact":"PASS","extra":"PASS"}'}}]
+    })
+    with pytest.raises(ReviewWorkerError, match="cover every criterion"):
+        worker._review_with_bonsai(_valid_review(), "http://127.0.0.1:8081/v1", "local")
+
+
+def test_bonsai_review_rejects_non_json_response(monkeypatch):
+    import scripts.mac_bonsai_goal_review_worker as worker
+
+    monkeypatch.setattr(worker, "_post_json", lambda *a, **k: {
+        "choices": [{"message": {"content": "PASS, looks good"}}]
+    })
+    with pytest.raises(ReviewWorkerError, match="strict JSON"):
+        worker._review_with_bonsai(_valid_review(), "http://127.0.0.1:8081/v1", "local")
+
+
+def test_configuration_rejects_non_local_bonsai_endpoint(monkeypatch):
+    import scripts.mac_bonsai_goal_review_worker as worker
+
+    monkeypatch.setenv("LINE_BOT_BASE_URL", "https://example.invalid")
+    monkeypatch.setenv("INTERNAL_PUSH_KEY", "x" * 32)
+    monkeypatch.setenv("BONSAI_BASE_URL", "http://192.168.1.20:8081/v1")
+    with pytest.raises(ReviewWorkerError, match="localhost"):
+        worker._configuration()
+
+
+def test_configuration_rejects_non_https_server_origin(monkeypatch):
+    import scripts.mac_bonsai_goal_review_worker as worker
+
+    monkeypatch.setenv("LINE_BOT_BASE_URL", "http://example.invalid")
+    monkeypatch.setenv("INTERNAL_PUSH_KEY", "x" * 32)
+    with pytest.raises(ReviewWorkerError, match="HTTPS origin"):
+        worker._configuration()
+
+
+def test_post_json_rejects_oversized_response(monkeypatch):
+    import scripts.mac_bonsai_goal_review_worker as worker
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, limit):
+            return b"x" * limit
+
+    monkeypatch.setattr(worker, "urlopen", lambda *a, **k: FakeResponse())
+    with pytest.raises(ReviewWorkerError, match="size limit"):
+        worker._post_json("https://example.invalid", {})
