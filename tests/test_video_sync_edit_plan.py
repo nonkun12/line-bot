@@ -32,10 +32,8 @@ def test_sync_edit_plan_maps_authored_events_to_output_frames_without_moving_the
 
 def test_sync_edit_plan_preserves_expressive_offsets_without_forced_cuts():
     edl = _edl()
-    expressive = next(
-        event for event in edl["beat_sync"]["events"]
-        if event["alignment"] == "expressive_offset"
-    )
+    expressive = edl["beat_sync"]["events"][0]
+    expressive["alignment"] = "expressive_offset"
     plan = build_sync_aware_edit_plan(edl, fps=30)
     suggestion = next(
         item for item in plan["suggestions"]
