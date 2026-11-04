@@ -286,7 +286,7 @@ def test_verified_followup_can_resolve_a_failed_attempt(tmp_path, monkeypatch):
     assert goal_job_store.evaluate_completed_goal_criteria("goal-followup-evidence") == {"criterion": "FAIL"}
 
     followup = {
-        "id": "followup",
+        "id": "goal-followup-002",
         "criterion_id": "criterion",
         "stage": "design",
         "instruction": "Create a focused follow-up plan.",
