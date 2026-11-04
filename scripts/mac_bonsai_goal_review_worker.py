@@ -99,7 +99,7 @@ def _bounded_review_input(review: dict) -> dict:
             "evidence": child.get("evidence") if isinstance(child.get("evidence"), dict) else {},
             "result": str(child.get("result", ""))[:5000],
         })
-    return {
+    bounded = {
         "objective": str(review.get("objective", ""))[:2000],
         "criteria": [
             {"id": str(item.get("id", ""))[:100], "description": str(item.get("description", ""))[:1000]}
@@ -107,6 +107,15 @@ def _bounded_review_input(review: dict) -> dict:
         ],
         "completed_job_evidence": compact_children,
     }
+    encoded_size = len(json.dumps(bounded, ensure_ascii=False).encode("utf-8"))
+    if encoded_size > 24 * 1024:
+        raise ReviewWorkerError("bounded review evidence exceeded 24 KiB")
+    if any(
+        len(json.dumps(child.get("evidence", {}), ensure_ascii=False).encode("utf-8")) > 8192
+        for child in compact_children
+    ):
+        raise ReviewWorkerError("one child evidence item exceeded 8 KiB")
+    return bounded
 
 
 def _review_with_bonsai(review: dict, bonsai_url: str, model: str) -> dict[str, str]:
