@@ -22,6 +22,7 @@ from agents.media.goal_job_chain_store import (
     record_goal_chain_evidence,
 )
 from goal_job_orchestrator import advance_goal
+from goal_job_review import review_completed_goal
 from goal_job_generation import generate_bounded_followup_job
 
 
@@ -85,7 +86,7 @@ _MEDIA_EVIDENCE_CHECKS = {
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
-def register_goal_job_routes(app, internal_key: str | None) -> None:
+def register_goal_job_routes(app, internal_key: str | None, *, independent_goal_evaluator=None) -> None:
     def authorized() -> bool:
         supplied = request.headers.get("x-internal-key", "")
         return bool(internal_key and supplied and hmac.compare_digest(str(supplied), str(internal_key)))
@@ -399,12 +400,19 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
             try:
                 goal_id = goal_job_store.get_goal_id_for_child_job(job_id)
                 if goal_id:
-                    criterion_results = goal_job_store.evaluate_completed_goal_criteria(goal_id)
-                    goal_job_store.update_goal_evidence(goal_id, criterion_results)
-                    continuation = advance_goal(
-                        goal_id,
-                        job_generator=generate_bounded_followup_job,
-                    )
+                    if independent_goal_evaluator is not None:
+                        continuation = review_completed_goal(
+                            goal_id,
+                            evaluator=independent_goal_evaluator,
+                            job_generator=generate_bounded_followup_job,
+                        )
+                    else:
+                        criterion_results = goal_job_store.evaluate_completed_goal_criteria(goal_id)
+                        goal_job_store.update_goal_evidence(goal_id, criterion_results)
+                        continuation = advance_goal(
+                            goal_id,
+                            job_generator=generate_bounded_followup_job,
+                        )
             except Exception as exc:
                 # Completion is already durable. Preserve it and expose a
                 # continuation HOLD rather than returning a false worker failure.

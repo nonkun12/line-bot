@@ -303,3 +303,28 @@ def test_verified_followup_can_resolve_a_failed_attempt(tmp_path, monkeypatch):
         {"checks": [{"name": "review", "status": "PASS", "source": "independent evidence"}]},
     )
     assert goal_job_store.evaluate_completed_goal_criteria("goal-followup-evidence") == {"criterion": "PASS"}
+
+def test_get_goal_child_jobs_exposes_persisted_evidence_to_independent_reviewer(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    goal_job_store.create_goal(_goal(), "U-review-evidence", _grant())
+    child = goal_job_store.persist_child_job("goal-autonomy-demo", _job())
+    evidence = {
+        "checks": [{"name": "pytest", "status": "PASS", "source": "exact-SHA CI"}],
+        "produced_sha": "a" * 40,
+    }
+    with db.get_conn() as conn:
+        conn.execute(
+            "UPDATE jobs SET status='completed',result=? WHERE id=?",
+            ('{"summary":"focused routing tests added"}', child["job_id"]),
+        )
+    assert goal_job_store.save_child_evidence(child["job_id"], evidence) is True
+
+    reviewed_children = goal_job_store.get_goal_child_jobs("goal-autonomy-demo")
+
+    assert reviewed_children == [{
+        "goal_job_key": "routing-tests",
+        "job_id": child["job_id"],
+        "status": "done",
+        "evidence": evidence,
+        "result": '{"summary":"focused routing tests added"}',
+    }]
