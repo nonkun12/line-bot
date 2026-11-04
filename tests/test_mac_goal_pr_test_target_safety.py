@@ -128,13 +128,14 @@ class MacGoalPRTestTargetSafetyTests(unittest.TestCase):
 
         git = self.bin_dir / "git"
         git.write_text(
-            '#!/usr/bin/env bash\\n'
-            'printf "%s\\\\n" "$*" >> "$GIT_CALL_LOG"\\n'
-            'case "$*" in\\n'
-            '  "rev-parse --show-toplevel") echo "$FAKE_REPO_ROOT" ;;\\n'
-            '  *"remote get-url origin"*) echo "https://github.com/nonkun12/line-bot.git" ;;\\n'
-            '  *) exit 0 ;;\\n'
-            'esac\\n',
+            """#!/usr/bin/env bash
+printf "%s\\n" "$*" >> "$GIT_CALL_LOG"
+case "$*" in
+  "rev-parse --show-toplevel") echo "$FAKE_REPO_ROOT" ;;
+  *"remote get-url origin"*) echo "https://github.com/nonkun12/line-bot.git" ;;
+  *) exit 0 ;;
+esac
+""",
             encoding="utf-8",
         )
         git.chmod(0o755)
