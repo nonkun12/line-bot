@@ -24,6 +24,7 @@ from agents.media.goal_job_chain_store import (
     record_goal_chain_evidence,
 )
 from goal_job_orchestrator import advance_goal
+from goal_job_generation import generate_bounded_followup_job
 
 _GOAL_PREFIX = re.compile(r"^(?:goal\s*[:：]|目標\s*[:：]|goal\s+ai\s*[:：])\s*(.+)$", re.IGNORECASE | re.DOTALL)
 _APPROVE = re.compile(r"^goal\s*(?:承認|approve)\s+([A-Za-z0-9._-]{6,100})$", re.IGNORECASE)
