@@ -266,9 +266,14 @@ def analyze_audiovisual_bundle(
         item["scene_id"] for item in comparison["scenes"]
         if item["video_sample_count"] == 0
     ]
+    partially_covered_scene_ids = [
+        item["scene_id"] for item in comparison["scenes"]
+        if item["video_sample_count"] > 0 and item["end_seconds"] > sampled_through
+    ]
     coverage_complete = (
         sampled_through >= duration
         and not uncovered_scene_ids
+        and not partially_covered_scene_ids
         and not video.get("sampling_limit_reached", False)
     )
     # Exactly 90 seconds can still be fully sampled; the cap is only a
@@ -281,6 +286,7 @@ def analyze_audiovisual_bundle(
         "sampling_limit_reached": bool(video.get("sampling_limit_reached", False)),
         "scenario_coverage_complete": coverage_complete,
         "uncovered_scene_ids": uncovered_scene_ids,
+        "partially_covered_scene_ids": partially_covered_scene_ids,
     }
     guidance = [
         "Compare the measured scene features with the authored emotional arc.",
