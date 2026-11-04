@@ -163,3 +163,62 @@ def test_post_json_rejects_oversized_response(monkeypatch):
     monkeypatch.setattr(worker, "urlopen", lambda *a, **k: FakeResponse())
     with pytest.raises(ReviewWorkerError, match="size limit"):
         worker._post_json("https://example.invalid", {})
+
+
+def test_bonsai_timeout_is_submitted_as_unknown_not_pass(monkeypatch):
+    import scripts.mac_bonsai_goal_review_worker as worker
+
+    calls = []
+
+    def fake_post(url, payload, *, key=None, timeout=30):
+        calls.append((url, payload, key, timeout))
+        if url.endswith("/claim"):
+            return {
+                "claimed": True,
+                "review": {
+                    "review_id": 7,
+                    "claim_token": "t" * 32,
+                    "goal_id": "goal-7",
+                    "success_criteria": [{"id": "artifact", "description": "verified"}],
+                    "children": [],
+                },
+            }
+        return {"decision": {"decision": "HOLD"}}
+
+    monkeypatch.setattr(worker, "_post_json", fake_post)
+    monkeypatch.setattr(
+        worker, "_review_with_bonsai",
+        lambda *args: (_ for _ in ()).throw(worker.ReviewWorkerError("Bonsai timeout")),
+    )
+
+    assert worker.run_once("https://line.example", "k" * 32, "http://127.0.0.1:8081/v1", "local")
+    assert calls[-1][1]["criterion_results"] == {"artifact": "UNKNOWN"}
+    assert calls[-1][2] == "k" * 32
+
+
+def test_bonsai_completion_transport_failure_is_not_silently_retried(monkeypatch):
+    import scripts.mac_bonsai_goal_review_worker as worker
+
+    calls = []
+
+    def fake_post(url, payload, *, key=None, timeout=30):
+        calls.append(url)
+        if url.endswith("/claim"):
+            return {
+                "claimed": True,
+                "review": {
+                    "review_id": 8,
+                    "claim_token": "u" * 32,
+                    "goal_id": "goal-8",
+                    "success_criteria": [{"id": "artifact", "description": "verified"}],
+                    "children": [],
+                },
+            }
+        raise worker.ReviewWorkerError("completion endpoint unavailable")
+
+    monkeypatch.setattr(worker, "_post_json", fake_post)
+    monkeypatch.setattr(worker, "_review_with_bonsai", lambda *args: {"artifact": "PASS"})
+
+    with pytest.raises(ReviewWorkerError, match="completion endpoint unavailable"):
+        worker.run_once("https://line.example", "k" * 32, "http://127.0.0.1:8081/v1", "local")
+    assert len(calls) == 2
