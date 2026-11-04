@@ -182,6 +182,10 @@ def analyze_video_signal(
         "sample_fps": _VIDEO_SAMPLE_FPS,
         "sample_width": _VIDEO_WIDTH,
         "sample_height": _VIDEO_HEIGHT,
+        "sampled_through_seconds": round(
+            samples[-1]["at_seconds"] + 1 / _VIDEO_SAMPLE_FPS, 3
+        ) if samples else 0.0,
+        "sampling_limit_reached": len(samples) >= _MAX_VIDEO_FRAMES,
         "samples": samples,
         "limitations": ["One frame per second at 64x36 is a coarse visual proxy.", "Frame-change luminance does not detect semantic scene changes or artistic quality."],
     }
@@ -252,18 +256,50 @@ def analyze_audiovisual_bundle(
     if type(duration) is not int or audio["duration_seconds"] + 0.5 < duration:
         raise ValueError("audio must cover the full scenario duration")
     comparison = compare_scene_signals(audio, video, scenes)
+    sampled_through = video.get("sampled_through_seconds")
+    if type(sampled_through) not in (int, float):
+        samples = video.get("samples", [])
+        sampled_through = (
+            max((item["at_seconds"] for item in samples), default=-1) + 1
+        )
+    uncovered_scene_ids = [
+        item["scene_id"] for item in comparison["scenes"]
+        if item["video_sample_count"] == 0
+    ]
+    coverage_complete = (
+        sampled_through >= duration
+        and not uncovered_scene_ids
+        and not video.get("sampling_limit_reached", False)
+    )
+    # Exactly 90 seconds can still be fully sampled; the cap is only a
+    # coverage warning when the authored scenario extends beyond the window.
+    if duration <= _MAX_SECONDS and sampled_through >= duration:
+        coverage_complete = not uncovered_scene_ids
+    video_coverage = {
+        "scenario_duration_seconds": duration,
+        "sampled_through_seconds": round(float(sampled_through), 3),
+        "sampling_limit_reached": bool(video.get("sampling_limit_reached", False)),
+        "scenario_coverage_complete": coverage_complete,
+        "uncovered_scene_ids": uncovered_scene_ids,
+    }
+    guidance = [
+        "Compare the measured scene features with the authored emotional arc.",
+        "Higher loudness, brightness, saturation, or frame change is not inherently better.",
+        "Use findings as listening/viewing prompts; do not infer emotion or approve publication automatically.",
+    ]
+    if not coverage_complete:
+        guidance.append(
+            "Video signal coverage is incomplete; inspect uncovered scenes manually before drawing conclusions."
+        )
     return {
         "schema_version": "audiovisual-bundle-signal-report.v1",
         "scenario_title": scenario.get("title"),
         "scenario_duration_seconds": duration,
         "audio": audio,
         "video": video,
+        "video_coverage": video_coverage,
         "scene_comparison": comparison,
-        "review_guidance": [
-            "Compare the measured scene features with the authored emotional arc.",
-            "Higher loudness, brightness, saturation, or frame change is not inherently better.",
-            "Use findings as listening/viewing prompts; do not infer emotion or approve publication automatically.",
-        ],
+        "review_guidance": guidance,
         "publication_authorized": False,
         "assets_modified": False,
     }
