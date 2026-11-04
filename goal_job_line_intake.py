@@ -15,6 +15,7 @@ from typing import Any
 
 import db
 import goal_job_store
+from agents.video.scenario import build_scenario
 from goal_job_orchestrator import advance_goal
 
 _GOAL_PREFIX = re.compile(r"^(?:goal\s*[:：]|目標\s*[:：]|goal\s+ai\s*[:：])\s*(.+)$", re.IGNORECASE | re.DOTALL)
@@ -118,15 +119,43 @@ def _build_proposal(objective: str, proposal_id: str) -> dict[str, Any]:
             ),
         },
     ]
+    scenario = build_scenario(
+        objective[:500],
+        title=objective[:120],
+        premise=objective[:1000],
+        duration_seconds=30,
+        scene_count=4,
+    )
+    media_job = {
+        "id": "media-01-audiovisual-draft",
+        "criterion_id": "audiovisual_draft",
+        "stage": "design",
+        "instruction": (
+            "Create the first local-only audiovisual draft bundle from this approved scenario: "
+            "produce the scenario JSON, original music plan, MIDI, WAV preview, and edit decision list. "
+            "Keep the outputs as drafts; do not publish or download external assets."
+        ),
+        "allowed_paths": [f"docs/goal-plans/{goal_id}/00-audiovisual-draft.md"],
+        "depends_on": [],
+        "executor": "mac_local_media.v1",
+        "operation": "create_audiovisual_bundle",
+        "scenario": scenario,
+    }
     criteria = [
         {
-            "id": phase["criterion_id"],
-            "description": f"An independently reviewable Sprint plan exists: {phase['title']}.",
-        }
-        for phase in phases
+            "id": "audiovisual_draft",
+            "description": "A local draft scenario, original MIDI, WAV preview, music plan, and EDL have verified hashes.",
+        },
+        *[
+            {
+                "id": phase["criterion_id"],
+                "description": f"An independently reviewable Sprint plan exists: {phase['title']}.",
+            }
+            for phase in phases
+        ],
     ]
-    jobs = []
-    previous_job = None
+    jobs = [media_job]
+    previous_job = media_job["id"]
     for phase in phases:
         path = f"docs/goal-plans/{goal_id}/{phase['filename']}"
         dependencies = [previous_job] if previous_job else []
