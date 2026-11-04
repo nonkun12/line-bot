@@ -33,3 +33,56 @@ def test_bridge_registers_explicit_news_executor():
     )
     assert result.success is True
     assert result.summary == "news-ready"
+
+def test_distributed_video_executor_runs_scenario_music_pipeline(monkeypatch):
+    from agents.video.node import VideoAgent
+    from core.multi_agent import AgentTask
+
+    class Registry:
+        def get(self, name):
+            if name == "video":
+                return VideoAgent()
+            raise KeyError(name)
+
+    monkeypatch.setattr(
+        "core.distributed_agent_bridge.assert_specialist_approved",
+        lambda role: None,
+    )
+    executors = build_agent_registry(Registry()).build()
+    result = executors[AgentRole.VIDEO].execute(
+        AgentTask(
+            task_id="video-scenario-1",
+            role=AgentRole.VIDEO,
+            instruction="海辺の短編映像シナリオを作って",
+        )
+    )
+    assert result.success is True
+    assert "Video AI → Music AI 連携完了" in result.summary
+    assert "MIDI作曲データ：生成済み" in result.summary
+
+
+def test_distributed_video_executor_keeps_non_scenario_behavior(monkeypatch):
+    from agents.video.node import VideoAgent
+    from core.multi_agent import AgentTask
+
+    class Registry:
+        def get(self, name):
+            if name == "video":
+                return VideoAgent()
+            raise KeyError(name)
+
+    monkeypatch.setattr(
+        "core.distributed_agent_bridge.assert_specialist_approved",
+        lambda role: None,
+    )
+    executors = build_agent_registry(Registry()).build()
+    result = executors[AgentRole.VIDEO].execute(
+        AgentTask(
+            task_id="video-edit-1",
+            role=AgentRole.VIDEO,
+            instruction="動画を編集して",
+        )
+    )
+    assert result.success is True
+    assert "動画の実編集" in result.summary
+    assert "Video AI → Music AI 連携完了" not in result.summary
