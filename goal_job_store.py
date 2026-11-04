@@ -533,29 +533,35 @@ def evaluate_completed_goal_criteria(goal_id: str) -> dict[str, str]:
             results[criterion_id] = "FAIL"
             continue
         all_terminal = True
-        has_verified_success = False
+        original_jobs_pass = True
+        recovery_job_pass = False
         for key in job_keys:
             row = persisted.get(key)
             if row is None or row[0] != criterion_id:
                 all_terminal = False
-                break
+                original_jobs_pass = False
+                continue
             if row[1] not in {"done", "completed", "failed", "held"}:
                 all_terminal = False
-                break
-            if row[1] not in {"done", "completed"} or not row[2]:
-                continue
-            try:
-                checks = json.loads(row[2]).get("checks", [])
-            except (TypeError, json.JSONDecodeError, AttributeError):
-                continue
-            if checks and all(
-                isinstance(check, dict) and check.get("status") == "PASS"
-                for check in checks
-            ):
-                has_verified_success = True
-        # Failed attempts may be superseded by a later bounded follow-up JOB,
-        # but no criterion passes while any declared work remains unfinished.
-        results[criterion_id] = "PASS" if all_terminal and has_verified_success else "FAIL"
+            evidence_passed = False
+            if row[1] in {"done", "completed"} and row[2]:
+                try:
+                    checks = json.loads(row[2]).get("checks", [])
+                except (TypeError, json.JSONDecodeError, AttributeError):
+                    checks = []
+                evidence_passed = bool(checks) and all(
+                    isinstance(check, dict) and check.get("status") == "PASS"
+                    for check in checks
+                )
+            if key.startswith("goal-followup-"):
+                recovery_job_pass = recovery_job_pass or evidence_passed
+            else:
+                original_jobs_pass = original_jobs_pass and evidence_passed
+        # All original work must pass, or all attempts must be terminal and a
+        # specifically named bounded follow-up must pass as the recovery.
+        results[criterion_id] = (
+            "PASS" if all_terminal and (original_jobs_pass or recovery_job_pass) else "FAIL"
+        )
     return results
 
 
