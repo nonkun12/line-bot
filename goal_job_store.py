@@ -473,6 +473,66 @@ def save_child_evidence(job_id: int, evidence: object) -> bool:
         )
         return cursor.rowcount == 1
 
+def evaluate_completed_goal_criteria(goal_id: str) -> dict[str, str]:
+    """Derive criterion states only from every declared child and its persisted evidence.
+
+    A criterion passes only when every JOB declared for it has completed and
+    every stored evidence check is PASS. Missing/unregistered work stays FAIL.
+    """
+    record = get_goal(goal_id)
+    if record is None:
+        raise ValueError("goal not found")
+    definitions = record["goal"].get("jobs")
+    criteria = record["goal"].get("success_criteria")
+    if not isinstance(definitions, list) or not isinstance(criteria, list):
+        raise ValueError("Goal contract is malformed")
+    by_criterion = {
+        item["id"]: [] for item in criteria
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    for definition in definitions:
+        if not isinstance(definition, dict) or definition.get("criterion_id") not in by_criterion:
+            raise ValueError("Goal JOB definition references an unknown criterion")
+        by_criterion[definition["criterion_id"]].append(definition.get("id"))
+
+    init_goal_job_store()
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            "SELECT link.goal_job_key,link.criterion_id,j.status,link.evidence_json "
+            "FROM goal_chain_jobs link JOIN jobs j ON j.id=link.job_id "
+            "WHERE link.goal_id=?",
+            (goal_id,),
+        ).fetchall()
+    persisted = {
+        key: (criterion_id, status, evidence_json)
+        for key, criterion_id, status, evidence_json in rows
+    }
+    results: dict[str, str] = {}
+    for criterion_id, job_keys in by_criterion.items():
+        if not job_keys:
+            results[criterion_id] = "FAIL"
+            continue
+        passed = True
+        for key in job_keys:
+            row = persisted.get(key)
+            if row is None or row[0] != criterion_id or row[1] not in {"done", "completed"} or not row[2]:
+                passed = False
+                break
+            try:
+                checks = json.loads(row[2]).get("checks", [])
+            except (TypeError, json.JSONDecodeError, AttributeError):
+                passed = False
+                break
+            if not checks or not all(
+                isinstance(check, dict) and check.get("status") == "PASS"
+                for check in checks
+            ):
+                passed = False
+                break
+        results[criterion_id] = "PASS" if passed else "FAIL"
+    return results
+
+
 
 def register_child_job_definition(goal_id: str, job: object) -> bool:
     """Register one AI-proposed child only inside the persisted Goal/grant.
@@ -555,5 +615,5 @@ def register_child_job_definition(goal_id: str, job: object) -> bool:
 
 __all__ = [
     "init_goal_job_store", "create_goal", "get_goal", "persist_child_job",
-    "get_goal_job_states", "get_goal_child_jobs", "update_goal_evidence", "authorize_claimed_job", "save_child_evidence", "complete_claimed_child_job", "register_child_job_definition",
+    "get_goal_job_states", "get_goal_child_jobs", "update_goal_evidence", "authorize_claimed_job", "save_child_evidence", "complete_claimed_child_job", "register_child_job_definition", "evaluate_completed_goal_criteria",
 ]
