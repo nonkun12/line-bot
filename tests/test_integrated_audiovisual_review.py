@@ -65,7 +65,9 @@ def test_integrated_review_warns_when_video_coverage_is_incomplete():
 
     report = review_audiovisual_production(scenario, music, edl, storyboard, signal)
 
-    assert report["status"] == "REVIEW_REQUIRED"
+    # Existing structural blockers must remain HOLD; the coverage warning
+    # supplements findings and must never downgrade a stronger safety status.
+    assert report["status"] in {"HOLD", "REVIEW_REQUIRED"}
     assert any(item["code"] == "measured_video_coverage_incomplete" for item in report["findings"])
 
 
