@@ -38,7 +38,14 @@ def test_video_music_pipeline_hands_off_same_scenario_and_matches_every_cue():
         assert cue["end_seconds"] == scene["time_start_seconds"] + scene["duration_seconds"]
         assert cue["emotional_intent"] == scene["music_sync"]["emotional_intent"]
         assert cue["energy"] == scene["music_sync"]["energy"]
-    assert response.metadata["rendering_status"] == "not_generated"
+    assert response.metadata["rendering_status"] == "midi_generated_audio_not_rendered"
+    artifact = response.metadata["midi_artifact"]
+    import base64
+    midi_bytes = base64.b64decode(artifact["content_base64"])
+    assert midi_bytes.startswith(b"MThd")
+    assert midi_bytes[14:18] == b"MTrk"
+    assert artifact["mime_type"] == "audio/midi"
+    assert artifact["size_bytes"] == len(midi_bytes)
 
 
 def test_pipeline_rejects_non_video_request():
@@ -180,3 +187,32 @@ def test_script_request_also_chains_video_scenario_into_music():
     assert response.metadata["mode"] == "video_music_pipeline"
     assert response.metadata["handoff"]["to"] == "music"
     assert response.metadata["scenario"]["status"] == "draft"
+
+def test_midi_generator_rejects_invalid_or_overlapping_cues():
+    from agents.music.midi import build_midi_bytes
+
+    with pytest.raises(ValueError, match="invalid timing"):
+        build_midi_bytes({
+            "duration_seconds": 10,
+            "cues": [
+                {"scene_id": "SC01", "start_seconds": 0, "end_seconds": 8, "energy": "low"},
+                {"scene_id": "SC02", "start_seconds": 7, "end_seconds": 10, "energy": "medium"},
+            ],
+        })
+
+
+def test_midi_generator_emits_standard_midi_type_zero_header():
+    from agents.music.midi import build_midi_bytes
+
+    midi = build_midi_bytes({
+        "duration_seconds": 12,
+        "source_scenario_title": "test",
+        "cues": [
+            {"scene_id": "SC01", "start_seconds": 0, "end_seconds": 6, "energy": "low"},
+            {"scene_id": "SC02", "start_seconds": 6, "end_seconds": 12, "energy": "high"},
+        ],
+    })
+    assert midi[:4] == b"MThd"
+    assert midi[8:10] == b"\\x00\\x00"
+    assert midi[10:12] == b"\\x00\\x01"
+    assert midi[14:18] == b"MTrk"
