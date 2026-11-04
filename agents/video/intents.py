@@ -15,9 +15,13 @@ def is_video_intent(message: str) -> bool:
 def is_video_scenario_request(message: str) -> bool:
     """Identify scenario/script requests that require ordered Video→Music work."""
     normalized = str(message or "").casefold()
-    return is_video_intent(message) and any(
+    has_scenario = any(
         keyword in normalized for keyword in ("シナリオ", "台本", "脚本", "script", "scenario")
     )
+    has_music = any(
+        keyword in normalized for keyword in ("音楽", "作曲", "bgm", "music", "score", "soundtrack")
+    )
+    return is_video_intent(message) and has_scenario and has_music
 
 
 __all__ = ["is_video_intent", "is_video_scenario_request"]
