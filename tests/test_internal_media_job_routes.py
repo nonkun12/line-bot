@@ -144,8 +144,9 @@ def test_media_completion_requires_matching_receipt_and_artifact_hashes(tmp_path
             evidence,
             artifact_sha256=inconsistent_video["artifact_sha256"],
             receipt_sha256=hashlib.sha256(
-                (json.dumps(unimplemented_video, ensure_ascii=False, sort_keys=True) + "\\n").encode()
+                (json.dumps(inconsistent_video, ensure_ascii=False, sort_keys=True) + "\\n").encode()
             ).hexdigest(),
+            video_render_status="not_rendered",
         ),
     })
     assert rejected_video.status_code == 400
