@@ -20,7 +20,8 @@ def test_production_can_opt_in_to_blender_animatic_and_ffmpeg_mp4(tmp_path, monk
             frames.append(str(frame))
         return {"status": "rendered", "frame_paths": frames, "frame_count": len(frames)}
 
-    def fake_ffmpeg(edl, scene_media, audio_path, output_path):
+    def fake_ffmpeg(edl, scene_media, audio_path, output_path, **kwargs):
+        assert kwargs == {"width": 640, "height": 360, "fps": 24, "timeout_seconds": 600}
         assert set(scene_media) == {"SC01", "SC02", "SC03"}
         assert Path(audio_path).is_file()
         Path(output_path).write_bytes(b"mp4")
