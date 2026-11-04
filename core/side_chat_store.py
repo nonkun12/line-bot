@@ -5,6 +5,8 @@ or merge side-chat content into the main conversation automatically.
 """
 from __future__ import annotations
 
+import json
+import re
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -16,7 +18,10 @@ MAX_TITLE_LENGTH = 120
 MAX_PURPOSE_LENGTH = 1000
 MAX_MESSAGE_LENGTH = 12000
 MAX_HANDOFF_LENGTH = 8000
+MAX_CONTEXT_REFS = 20
+MAX_CONTEXT_REF_LENGTH = 512
 _ALLOWED_ROLES = {"user", "assistant"}
+_SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 class SideChatError(ValueError):
@@ -34,6 +39,36 @@ def _required_text(value: Any, field: str, limit: int) -> str:
     if len(value) > limit:
         raise SideChatError(f"{field} exceeds the maximum length")
     return value
+
+
+def _optional_slug(value: Any, field: str) -> str | None:
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str) or not _SLUG_RE.fullmatch(value):
+        raise SideChatError(f"{field} is invalid")
+    return value
+
+
+def _context_refs(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, (list, tuple)) or len(value) > MAX_CONTEXT_REFS:
+        raise SideChatError("context_refs must be a bounded list")
+    refs: list[str] = []
+    for item in value:
+        ref = _required_text(item, "context_ref", MAX_CONTEXT_REF_LENGTH)
+        if ref not in refs:
+            refs.append(ref)
+    return refs
+
+
+def _chat_dict(row: sqlite3.Row) -> dict:
+    result = dict(row)
+    try:
+        result["context_refs"] = json.loads(result.get("context_refs_json") or "[]")
+    except (TypeError, json.JSONDecodeError):
+        result["context_refs"] = []
+    return result
 
 
 class SideChatStore:
@@ -97,12 +132,38 @@ class SideChatStore:
                     ON side_chat_handoffs(user_id, status, created_at DESC);
                 """
             )
+            # Backward-compatible migration for databases created before project scoping.
+            columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(side_chats)").fetchall()
+            }
+            migrations = {
+                "project_id": "ALTER TABLE side_chats ADD COLUMN project_id TEXT",
+                "workspace_id": "ALTER TABLE side_chats ADD COLUMN workspace_id TEXT",
+                "context_refs_json": (
+                    "ALTER TABLE side_chats ADD COLUMN context_refs_json TEXT NOT NULL DEFAULT '[]'"
+                ),
+            }
+            for column, statement in migrations.items():
+                if column not in columns:
+                    conn.execute(statement)
 
-    def create(self, user_id: str, title: str, purpose: str = "") -> dict:
+    def create(
+        self,
+        user_id: str,
+        title: str,
+        purpose: str = "",
+        *,
+        project_id: str | None = None,
+        workspace_id: str | None = None,
+        context_refs: list[str] | None = None,
+    ) -> dict:
         user_id = _required_text(user_id, "user_id", 128)
         title = _required_text(title, "title", MAX_TITLE_LENGTH)
         if not isinstance(purpose, str) or len(purpose) > MAX_PURPOSE_LENGTH:
             raise SideChatError("purpose is invalid or too long")
+        project_id = _optional_slug(project_id, "project_id")
+        workspace_id = _optional_slug(workspace_id, "workspace_id")
+        refs = _context_refs(context_refs)
         side_chat_id = uuid.uuid4().hex
         with self._session() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -113,13 +174,18 @@ class SideChatStore:
             if active >= MAX_ACTIVE_SIDE_CHATS:
                 raise SideChatError("maximum active side chats reached")
             conn.execute(
-                "INSERT INTO side_chats(id, user_id, title, purpose) VALUES (?, ?, ?, ?)",
-                (side_chat_id, user_id, title, purpose.strip()),
+                "INSERT INTO side_chats("
+                "id, user_id, title, purpose, project_id, workspace_id, context_refs_json"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    side_chat_id, user_id, title, purpose.strip(), project_id,
+                    workspace_id, json.dumps(refs, ensure_ascii=False),
+                ),
             )
             row = conn.execute(
                 "SELECT * FROM side_chats WHERE id=?", (side_chat_id,)
             ).fetchone()
-        return dict(row)
+        return _chat_dict(row)
 
     def list_for_user(self, user_id: str) -> list[dict]:
         user_id = _required_text(user_id, "user_id", 128)
@@ -128,7 +194,19 @@ class SideChatStore:
                 "SELECT * FROM side_chats WHERE user_id=? ORDER BY updated_at DESC, id",
                 (user_id,),
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [_chat_dict(row) for row in rows]
+
+    def list_for_project(self, user_id: str, project_id: str) -> list[dict]:
+        """List only the requesting user's side chats for one project."""
+        user_id = _required_text(user_id, "user_id", 128)
+        project_id = _required_text(project_id, "project_id", 64)
+        with self._session() as conn:
+            rows = conn.execute(
+                "SELECT * FROM side_chats WHERE user_id=? AND project_id=? "
+                "ORDER BY updated_at DESC, id",
+                (user_id, project_id),
+            ).fetchall()
+        return [_chat_dict(row) for row in rows]
 
     def get(self, user_id: str, side_chat_id: str) -> dict:
         user_id = _required_text(user_id, "user_id", 128)
@@ -145,7 +223,7 @@ class SideChatStore:
                 "WHERE side_chat_id=? ORDER BY id",
                 (side_chat_id,),
             ).fetchall()
-        result = dict(chat)
+        result = _chat_dict(chat)
         result["messages"] = [dict(row) for row in messages]
         return result
 
@@ -164,7 +242,7 @@ class SideChatStore:
             row = conn.execute(
                 "SELECT * FROM side_chats WHERE id=?", (side_chat_id,)
             ).fetchone()
-        return dict(row)
+        return _chat_dict(row)
 
     def append_message(
         self, user_id: str, side_chat_id: str, role: str, content: str
