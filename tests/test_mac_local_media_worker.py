@@ -64,3 +64,34 @@ def test_configuration_rejects_non_https_endpoint_before_claim(monkeypatch):
     monkeypatch.setenv("INTERNAL_PUSH_KEY", "e" * 32)
     with pytest.raises(worker.WorkerError, match="HTTPS"):
         worker._configuration()
+
+def test_invalid_animatic_setting_fails_before_claim(monkeypatch):
+    monkeypatch.setenv("LOCAL_MEDIA_RENDER_ANIMATIC", "yes")
+    monkeypatch.setattr(worker, "_request", lambda *args, **kwargs: pytest.fail("must not claim"))
+    with pytest.raises(worker.WorkerError, match="must be 0 or 1"):
+        worker.run_once("https://line-bot-yvea.onrender.com", "k" * 32)
+
+
+def test_animatic_opt_in_is_forwarded_to_local_executor(monkeypatch):
+    monkeypatch.setenv("LOCAL_MEDIA_RENDER_ANIMATIC", "1")
+    calls = []
+    job = {
+        "id": 7, "job_type": "goal_child", "claim_token": "t" * 32,
+        "payload": {"executor": "mac_local_media.v1"},
+    }
+
+    def fake_request(base_url, internal_key, endpoint, payload=None):
+        if endpoint == "/internal/media-jobs/claim":
+            return {"ok": True, "claimed": True, "job": job}
+        calls.append((endpoint, payload))
+        return {"ok": True}
+
+    def fake_execute(received_job, received_payload, **kwargs):
+        assert received_job is job
+        assert kwargs["render_animatic"] is True
+        return {"result": "{}", "evidence": {}}
+
+    monkeypatch.setattr(worker, "_request", fake_request)
+    monkeypatch.setattr(worker, "execute_local_media_job", fake_execute)
+    assert worker.run_once("https://line-bot-yvea.onrender.com", "k" * 32) is True
+    assert calls[0][0] == "/internal/media-jobs/complete"
