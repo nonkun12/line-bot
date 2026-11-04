@@ -220,3 +220,21 @@ def test_midi_generator_emits_standard_midi_type_zero_header():
     assert midi[8:10] == bytes((0, 0))
     assert midi[10:12] == bytes((0, 1))
     assert midi[14:18] == b"MTrk"
+
+def test_midi_generator_rejects_non_finite_timing_and_blank_scene_ids():
+    from agents.music.midi import build_midi_bytes
+
+    with pytest.raises(ValueError, match="invalid timing"):
+        build_midi_bytes({
+            "duration_seconds": 10,
+            "cues": [
+                {"scene_id": "SC01", "start_seconds": float("nan"), "end_seconds": 10, "energy": "low"},
+            ],
+        })
+    with pytest.raises(ValueError, match="scene_id missing"):
+        build_midi_bytes({
+            "duration_seconds": 10,
+            "cues": [
+                {"scene_id": "  ", "start_seconds": 0, "end_seconds": 10, "energy": "low"},
+            ],
+        })
