@@ -38,6 +38,11 @@ def clear_scene():
     for block in bpy.data.materials:
         bpy.data.materials.remove(block)
 
+def wrap_caption(value, width):
+    text = str(value).replace("\\r", " ").replace("\\n", " ").strip()
+    return "\\n".join(text[offset:offset + width] for offset in range(0, len(text), width))
+
+
 def add_caption(body, name, location, size, font=None):
     if not body:
         return
@@ -123,10 +128,10 @@ for index, panel in enumerate(panels, start=1):
 
     # Burn in a readable title and narration subtitle. Japanese font is used
     # when present; Blender's bundled font remains a safe fallback.
-    title = str(panel.get("focal_subject", ""))[:42]
-    narration = str(panel.get("dialogue_or_narration", ""))[:64]
-    add_caption(title, "Title", (-5.2, 4.35, 0.9), 0.48, font)
-    add_caption(narration, "Narration", (-5.2, -4.45, 0.9), 0.30, font)
+    title = wrap_caption(str(panel.get("focal_subject", ""))[:48], 24)
+    narration = wrap_caption(str(panel.get("dialogue_or_narration", ""))[:72], 24)
+    add_caption(title, "Title", (-5.2, 4.35, 0.9), 0.42, font)
+    add_caption(narration, "Narration", (-5.2, -4.35, 0.9), 0.28, font)
 
     scene.render.filepath = str(destination / ("scene_%02d.png" % index))
     bpy.ops.render.render(write_still=True)
