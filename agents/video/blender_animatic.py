@@ -45,8 +45,8 @@ def clear_scene():
         bpy.data.materials.remove(block)
 
 def wrap_caption(value, width):
-    text = str(value).replace("\\r", " ").replace("\\n", " ").strip()
-    return "\\n".join(text[offset:offset + width] for offset in range(0, len(text), width))
+    text = str(value).replace("\r", " ").replace("\n", " ").strip()
+    return "\n".join(text[offset:offset + width] for offset in range(0, len(text), width))
 
 
 def add_caption(body, name, location, size, font=None):
