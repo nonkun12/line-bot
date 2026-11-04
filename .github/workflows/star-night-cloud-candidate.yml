@@ -31,11 +31,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Install cloud rendering tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender ffmpeg fonts-noto-cjk
+
       - name: Build cloud-native draft bundle
         run: |
           python -m scripts.build_star_night_cloud_candidate \
             --output-dir "artifacts/ci/star-night-${GITHUB_RUN_ID}" \
-            --bpm 76
+            --bpm 76 \
+            --render-animatic
 
       - name: Verify candidate contract
         run: |
