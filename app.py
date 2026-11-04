@@ -71,6 +71,7 @@ from bot_tools import (
 from debug_agent import run_debug_agent
 from internal_ask_route import register_internal_ask_route
 from internal_goal_job_routes import register_goal_job_routes
+from goal_intake import handle_goal_intake
 from n8n_delegate import _delegate_to_n8n
 from e2e_status import init_e2e_table, record_step, StepTimer
 from core.channel import handle_channel_request
@@ -414,6 +415,12 @@ def _handle_ai_gateway_request(ai_request):
             return f"Obsidianへの保存依頼を受け付けました。Macで「実行」を選ぶと保存します。（Job {job_id}）"
         except Exception:
             return "Obsidianへの保存依頼を受け付けられませんでした。設定を確認してください。"
+
+    # Explicit Goal commands are separate from ordinary chat, read-only status,
+    # and app-creation routing. Only the Goal owner can approve its proposal.
+    goal_reply = handle_goal_intake(user_id, message)
+    if goal_reply is not None:
+        return goal_reply
 
     app_development_requirement = extract_app_development_request(message)
     if app_development_requirement is not None:
