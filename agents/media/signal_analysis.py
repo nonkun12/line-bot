@@ -233,4 +233,40 @@ def compare_scene_signals(
     }
 
 
-__all__ = ["analyze_wav_signal", "analyze_video_signal", "compare_scene_signals"]
+def analyze_audiovisual_bundle(
+    scenario: dict[str, Any],
+    audio_path: str | Path,
+    video_path: str | Path,
+    *,
+    ffmpeg_executable: str | None = None,
+) -> dict[str, Any]:
+    """Analyze local WAV/MP4 assets and align measured features to scenario scenes."""
+    if not isinstance(scenario, dict) or scenario.get("schema_version") != "video-scenario.v1":
+        raise ValueError("scenario must use video-scenario.v1")
+    scenes = scenario.get("scenes")
+    if not isinstance(scenes, list) or not scenes:
+        raise ValueError("scenario must contain scenes")
+    audio = analyze_wav_signal(audio_path)
+    video = analyze_video_signal(video_path, ffmpeg_executable=ffmpeg_executable)
+    duration = scenario.get("creative_brief", {}).get("duration_seconds")
+    if type(duration) is not int or audio["duration_seconds"] + 0.5 < duration:
+        raise ValueError("audio must cover the full scenario duration")
+    comparison = compare_scene_signals(audio, video, scenes)
+    return {
+        "schema_version": "audiovisual-bundle-signal-report.v1",
+        "scenario_title": scenario.get("title"),
+        "scenario_duration_seconds": duration,
+        "audio": audio,
+        "video": video,
+        "scene_comparison": comparison,
+        "review_guidance": [
+            "Compare the measured scene features with the authored emotional arc.",
+            "Higher loudness, brightness, saturation, or frame change is not inherently better.",
+            "Use findings as listening/viewing prompts; do not infer emotion or approve publication automatically.",
+        ],
+        "publication_authorized": False,
+        "assets_modified": False,
+    }
+
+
+__all__ = ["analyze_wav_signal", "analyze_video_signal", "compare_scene_signals", "analyze_audiovisual_bundle"]
