@@ -384,16 +384,29 @@ def _run_distributed_video_music_request(
     user_id: str, message: str, *, channel: str, metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Run the approved Video→Music handoff as one ordered distributed task."""
-    from agents.video_music_pipeline import run_video_music_pipeline
+    from agents.video_music_pipeline import VideoMusicPipeline
     from core.agents import AgentRequest
     from core.multi_agent import AgentRole
     from core.specialist_gate import assert_all_approved
 
     # Validate both capabilities before either specialist executes.
     assert_all_approved((AgentRole.VIDEO, AgentRole.MUSIC))
-    response = run_video_music_pipeline(AgentRequest(
+    registry = build_core_agent_registry()
+    video_agent = registry.get("video")
+    music_agent = registry.get("music")
+    if not bool(getattr(video_agent, "enabled", True)):
+        raise RuntimeError("required specialist disabled: video")
+    if not bool(getattr(music_agent, "enabled", True)):
+        raise RuntimeError("required specialist disabled: music")
+    request = AgentRequest(
         user_id=user_id, message=message, channel=channel, metadata=dict(metadata),
-    ))
+    )
+    if not video_agent.can_handle(request):
+        raise RuntimeError("required specialist rejected request: video")
+    response = VideoMusicPipeline(
+        video_agent=video_agent,
+        music_agent=music_agent,
+    ).run(request)
     response_metadata = dict(response.metadata)
     return {
         "user_id": user_id,
