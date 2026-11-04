@@ -160,6 +160,48 @@ For a 16 GB unified-memory machine, avoid loading multiple large models simultan
 - Artifact hashes, tool versions, licenses, and test/review evidence are persisted.
 - A render failure creates a repair JOB with bounded scope, not an unbounded retry loop.
 
+## Product development sequence: audiovisual first, then games
+
+The product roadmap is intentionally staged. Do not start full-scale game production before the audiovisual pipeline and a small game prototype have been validated.
+
+### Phase 1 — Create music and video first
+
+1. Develop a short scenario and define its emotional arc before generating visuals.
+2. Compose the musical structure as MIDI, using free sound libraries and/or original recordings.
+3. Create visual assets and shots with Blender; edit and synchronize picture and sound in the free edition of DaVinci Resolve.
+4. Complete a short audiovisual work and review narrative clarity, emotional impact, sound-picture harmony, reproducibility, and production time.
+5. Preserve reusable scenario, MIDI, asset, render, and review workflows as production capabilities.
+
+Exit gate: at least one complete short work can be produced with a repeatable, documented, free workflow. A technically rendered clip alone is not sufficient; the scenario and audiovisual relationship must be reviewed.
+
+### Phase 2 — Build a simple game
+
+1. Use Godot to build a small, bounded game with one core mechanic and a short play session.
+2. Reuse Phase 1 music, visual assets, motifs, and production pipeline where appropriate.
+3. Test controls, readability, accessibility, game feel, and whether audio-visual feedback improves play.
+4. Run short development sprints; keep scope small and record reproducible test/playtest evidence.
+
+Exit gate: a complete playable prototype demonstrates a fun or compelling core loop in playtests, with known limitations and a stable build.
+
+### Phase 3 — Build a full-scale game
+
+Only after Phase 2 passes its exit gate, expand into a larger game. Establish the scenario, world, mechanics, art direction, music language, and production plan before parallel production. Use bounded Goal/JOB chains, independent verification, failure learning, and staged integration. Expand scope incrementally; do not assume that the prototype's architecture is automatically suitable for a full game.
+
+### Fixed free stack for all phases
+
+- Game engine: Godot.
+- 3D/visual production: Blender.
+- Video editing: DaVinci Resolve (free edition).
+- Music: MIDI generation, free sound libraries, and original recordings.
+- AI execution: GitHub Actions and local small models in GGUF format.
+- User-facing orchestration and delivery: LINE Bot.
+
+No paid API, paid cloud service, metered model, or paid asset dependency may be introduced as a prerequisite. Verify licensing and redistribution terms for every external free asset or sound library. Prefer original assets where licensing is unclear.
+
+### Cross-phase engineering principle
+
+The same evidence-first Goal planning and failure-learning foundation supports all three phases, but each phase has its own measurable exit gate. Do not let progress in tooling or asset generation masquerade as a finished creative result.
+
 ## Evidence-first Goal planning and failure learning
 
 The next reliability increment should combine the Muse proposals S1 (falsifiable experiments) and S3 (failure immune memory), while reusing existing Goal and Recovery components rather than creating parallel planners.
