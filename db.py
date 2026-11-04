@@ -299,10 +299,11 @@ def claim_pending_job_by_type(job_type, *, stale_after_seconds=900):
             SELECT id
             FROM jobs
             WHERE job_type=? AND status='pending'
+              AND (? != 'goal_child' OR CASE WHEN json_valid(message) THEN json_extract(message, '$.executor') ELSE NULL END IS NULL)
             ORDER BY id
             LIMIT 1
             """,
-            (job_type.strip(),),
+            (job_type.strip(), job_type.strip()),
         ).fetchone()
         if row is None:
             return None
@@ -314,8 +315,9 @@ def claim_pending_job_by_type(job_type, *, stale_after_seconds=900):
                 claim_token=?,
                 updated_at=CURRENT_TIMESTAMP
             WHERE id=? AND job_type=? AND status='pending'
+              AND (? != 'goal_child' OR CASE WHEN json_valid(message) THEN json_extract(message, '$.executor') ELSE NULL END IS NULL)
             """,
-            (token, job_id, job_type.strip()),
+            (token, job_id, job_type.strip(), job_type.strip()),
         )
         if cursor.rowcount != 1:
             return None
@@ -365,8 +367,9 @@ def claim_pending_media_goal_child_job(executor_id):
         cursor = conn.execute(
             "UPDATE jobs SET status='running',claim_token=?,updated_at=CURRENT_TIMESTAMP "
             "WHERE id=? AND job_type='goal_child' AND "
-            "(status='pending' OR (status='running' AND updated_at < datetime('now', '-30 minutes')))",
-            (token, row[0]),
+            "(status='pending' OR (status='running' AND updated_at < datetime('now', '-30 minutes'))) "
+            "AND CASE WHEN json_valid(message) THEN json_extract(message, '$.executor') ELSE NULL END=?",
+            (token, row[0], executor_id),
         )
         if cursor.rowcount != 1:
             return None
