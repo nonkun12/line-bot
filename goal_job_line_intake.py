@@ -133,7 +133,7 @@ def _build_proposal(objective: str, proposal_id: str) -> dict[str, Any]:
         "instruction": (
             "Create the first local-only audiovisual draft bundle from this approved scenario: "
             "produce the scenario JSON, original music plan, MIDI, WAV preview, and edit decision list. "
-            "Keep the outputs as drafts; do not publish or download external assets."
+            "Keep outputs as drafts; do not distribute externally or retrieve outside assets."
         ),
         "allowed_paths": [f"docs/goal-plans/{goal_id}/00-audiovisual-draft.md"],
         "depends_on": [],
