@@ -107,6 +107,8 @@ def derive_goal_job_chain_state(
         if sid in held or any(state[dep] == "HOLD" for dep in stage["depends_on"]):
             state[sid] = "HOLD"
         elif sid in completed:
+            if not all(state[dep] == "COMPLETED" for dep in stage["depends_on"]):
+                raise ValueError(f"completed stage {sid} has incomplete or unapproved dependencies")
             if stage.get("human_gate") and sid not in approved:
                 state[sid] = "AWAITING_HUMAN_APPROVAL"
             else:
