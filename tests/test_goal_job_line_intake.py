@@ -135,7 +135,8 @@ def test_stale_approval_lease_recovers_existing_goal_without_duplicate_job(tmp_p
         )
     resumed = intake.approve_goal_proposal("U-authorized", proposal["proposal_id"])
     assert resumed["already_approved"] is True
-    assert resumed["decision"] == "CHILD_JOB_QUEUED"
+    assert resumed["decision"] == "HOLD"
+    assert resumed["reason"] == "waiting_for_registered_jobs"
     assert len(goal_job_store.get_goal_child_jobs(proposal["goal_id"])) == 1
 
 
