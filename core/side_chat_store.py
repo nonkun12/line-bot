@@ -149,6 +149,23 @@ class SideChatStore:
         result["messages"] = [dict(row) for row in messages]
         return result
 
+    def archive(self, user_id: str, side_chat_id: str) -> dict:
+        """Archive an owned side chat so it no longer occupies an active slot."""
+        user_id = _required_text(user_id, "user_id", 128)
+        side_chat_id = _required_text(side_chat_id, "side_chat_id", 64)
+        with self._session() as conn:
+            cursor = conn.execute(
+                "UPDATE side_chats SET status='archived', updated_at=CURRENT_TIMESTAMP "
+                "WHERE id=? AND user_id=? AND status='active'",
+                (side_chat_id, user_id),
+            )
+            if cursor.rowcount != 1:
+                raise SideChatNotFound("active side chat not found")
+            row = conn.execute(
+                "SELECT * FROM side_chats WHERE id=?", (side_chat_id,)
+            ).fetchone()
+        return dict(row)
+
     def append_message(
         self, user_id: str, side_chat_id: str, role: str, content: str
     ) -> dict:
