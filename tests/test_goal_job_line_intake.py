@@ -5,6 +5,7 @@ import db
 import goal_job_orchestrator
 import goal_job_line_intake as intake
 import goal_job_store
+from agents.media.local_executor import EXECUTOR_ID, execute_local_media_job
 
 
 def _init_db(tmp_path, monkeypatch):
