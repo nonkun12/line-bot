@@ -73,34 +73,50 @@ def _approve(user_id, proposal_id):
     if not _allowed(user_id):
         return "Goalの実行承認権限がありません。"
     with db.get_conn() as conn:
-        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
-            "SELECT user_id,goal_json,status FROM goal_intake_proposals WHERE proposal_id=?",
+            "SELECT user_id,goal_json,status,created_at FROM goal_intake_proposals WHERE proposal_id=?",
             (proposal_id,)
         ).fetchone()
         if row is None:
             return "Goal提案が見つかりません。"
-        owner, goal_json, status = row
+        owner, goal_json, status, created_at = row
         if owner != user_id:
             return "作成者本人のみ承認できます。"
         if status == "approved":
             return f"Goal {proposal_id} は既に承認済みです。"
-        if status != "pending":
+        if status not in {"pending", "approving"}:
             return "このGoal提案は承認できません。"
-        goal = json.loads(goal_json)
-        grant = {
-            "grant_id": "grant-" + uuid.uuid4().hex[:16], "goal_id": proposal_id,
-            "active": True, "approved_by": user_id,
-            "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
-            "auto_approve_registered_jobs": True, "max_jobs": 1,
-            "allowed_stages": ["requirements"], "allowed_path_prefixes": ["docs/"],
-            "auto_merge": False, "auto_deploy": False
-        }
+        if status == "pending":
+            changed = conn.execute(
+                "UPDATE goal_intake_proposals SET status='approving' "
+                "WHERE proposal_id=? AND status='pending'", (proposal_id,)
+            ).rowcount
+            if changed != 1:
+                return "Goal提案の承認状態が変わりました。もう一度確認してください。"
+
+    # Keep this grant deterministic so an interrupted approval can safely resume.
+    created = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    goal = json.loads(goal_json)
+    grant = {
+        "grant_id": "grant-" + proposal_id.removeprefix("goal-"),
+        "goal_id": proposal_id, "active": True, "approved_by": user_id,
+        "expires_at": (created + timedelta(days=7)).isoformat(),
+        "auto_approve_registered_jobs": True, "max_jobs": 1,
+        "allowed_stages": ["requirements"], "allowed_path_prefixes": ["docs/"],
+        "auto_merge": False, "auto_deploy": False
+    }
+    try:
         goal_job_store.create_goal(goal, user_id, grant)
         queued = goal_job_store.persist_child_job(proposal_id, goal["jobs"][0])
+    except Exception:
+        # Leave the proposal in 'approving'; the same owner can retry safely.
+        raise
+    with db.get_conn() as conn:
         conn.execute(
             "UPDATE goal_intake_proposals SET status='approved',approved_at=CURRENT_TIMESTAMP "
-            "WHERE proposal_id=? AND status='pending'", (proposal_id,)
+            "WHERE proposal_id=? AND status='approving'", (proposal_id,)
         )
     return (f"Goal {proposal_id} を承認し、Sprint計画JOB {queued['job_id']} を登録しました。"
             "範囲は docs/goal_sprints/ の計画文書のみ、期限7日・最大1 JOBです。")
