@@ -67,7 +67,7 @@ def _verify_exact_sha_checks(evidence: dict, produced_sha: str) -> bool:
 _MEDIA_EXECUTOR_ID = "mac_local_media.v1"
 _MEDIA_OPERATION = "create_audiovisual_bundle"
 _MEDIA_ARTIFACT_KEYS = {
-    "scenario", "music_plan", "midi", "audio_preview",
+    "scenario", "storyboard", "shot_list", "music_plan", "midi", "audio_preview",
     "video_edit_decision_list", "video",
 }
 _MEDIA_REQUIRED_ARTIFACT_KEYS = _MEDIA_ARTIFACT_KEYS - {"video"}
