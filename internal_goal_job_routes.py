@@ -234,6 +234,7 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
             if not completed:
                 return jsonify({"ok": False, "error": "claim is stale or already completed"}), 409
             continuation = {"decision": "NOT_STARTED"}
+            media_chain_status = None
             try:
                 goal_id = goal_job_store.get_goal_id_for_child_job(job_id)
                 if goal_id:
@@ -258,7 +259,7 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
                                 held_job_ids=snapshot["held_job_ids"],
                                 event_type="stage_completed",
                             )
-                            continuation["media_chain_state"] = {
+                            media_chain_status = {
                                 "version": media_chain["version"],
                                 "ready_job_ids": media_chain["state"]["ready_job_ids"],
                                 "awaiting_human_approval_job_ids": media_chain["state"]["awaiting_human_approval_job_ids"],
@@ -267,6 +268,8 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
                     continuation = advance_goal(
                         goal_id, job_generator=generate_bounded_followup_job
                     )
+                    if media_chain_status is not None:
+                        continuation["media_chain_state"] = media_chain_status
             except Exception as exc:
                 app.logger.exception("Media Goal continuation failed after durable completion")
                 continuation = {
