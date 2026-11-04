@@ -87,8 +87,14 @@ def execute_local_media_job(
     for logical_name, relative_name in sorted(artifact_names.items()):
         if not isinstance(logical_name, str) or not isinstance(relative_name, str):
             raise RuntimeError("media artifact inventory is malformed")
-        artifact = (destination / relative_name).resolve()
-        if artifact.parent != destination or not artifact.is_file() or artifact.is_symlink():
+        relative_path = Path(relative_name)
+        if relative_path.name != relative_name or relative_path.is_absolute():
+            raise RuntimeError("media artifact names must be flat filenames")
+        candidate = destination / relative_path
+        if candidate.is_symlink():
+            raise RuntimeError("symbolic-link artifacts are not accepted")
+        artifact = candidate.resolve()
+        if artifact.parent != destination or not artifact.is_file():
             raise RuntimeError("media artifact is missing or escaped the bundle directory")
         artifact_hashes[logical_name] = _sha256(artifact)
 
