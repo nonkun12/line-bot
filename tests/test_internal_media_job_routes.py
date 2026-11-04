@@ -223,3 +223,52 @@ def test_media_claim_recovers_expired_lease_with_new_token(tmp_path, monkeypatch
         "reason": "stale worker",
     })
     assert stale.status_code == 409
+
+def test_media_completion_accepts_verified_optional_mp4_artifact(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    job_id = _create_media_job()
+    headers = {"x-internal-key": "media-test-key"}
+    claimed = client.post("/internal/media-jobs/claim", headers=headers, json={}).get_json()["job"]
+    hashes = {
+        "scenario": "a" * 64,
+        "screenplay": "9" * 64,
+        "storyboard": "f" * 64,
+        "shot_list": "0" * 64,
+        "music_plan": "b" * 64,
+        "midi": "c" * 64,
+        "audio_preview": "d" * 64,
+        "video_edit_decision_list": "e" * 64,
+        "video": "8" * 64,
+    }
+    receipt = {
+        "schema_version": "mac-local-media-receipt.v1",
+        "executor": "mac_local_media.v1",
+        "operation": "create_audiovisual_bundle",
+        "goal_job_id": job_id,
+        "idempotency_key": hashlib.sha256(f"mac_local_media.v1:{job_id}".encode()).hexdigest(),
+        "status": "draft",
+        "artifact_sha256": hashes,
+        "video_render_status": "rendered",
+        "publication": "not_performed",
+    }
+    result = json.dumps(receipt, ensure_ascii=False, sort_keys=True)
+    evidence = {
+        "executor": "mac_local_media.v1",
+        "goal_job_id": job_id,
+        "artifact_sha256": hashes,
+        "receipt_sha256": hashlib.sha256((result + "\\n").encode()).hexdigest(),
+        "video_render_status": "rendered",
+        "checks": [
+            {"name": "typed_local_executor_authorization", "status": "PASS", "source": "mac_local_media.v1"},
+            {"name": "scenario_validation", "status": "PASS", "source": "mac_local_media.v1"},
+            {"name": "output_confined_to_configured_root", "status": "PASS", "source": "mac_local_media.v1"},
+            {"name": "artifact_inventory_and_sha256", "status": "PASS", "source": "mac_local_media.v1"},
+            {"name": "no_publish_or_external_download", "status": "PASS", "source": "mac_local_media.v1"},
+        ],
+    }
+    completed = client.post("/internal/media-jobs/complete", headers=headers, json={
+        "job_id": job_id, "claim_token": claimed["claim_token"],
+        "result": result, "evidence": evidence,
+    })
+    assert completed.status_code == 200
+    assert completed.get_json()["completed"] is True
