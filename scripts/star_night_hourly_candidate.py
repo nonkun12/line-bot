@@ -123,16 +123,6 @@ def _build_hourly_focus_artifact(task_id: str) -> tuple[str, dict[str, Any]]:
                 {"id": "NODE_LIGHTS", "outcome": "街の非常灯を優先し、暗い通路を照らす", "unlocks": "LOC_OLD_STATION_TUNNEL"},
                 {"id": "NODE_TRUST", "outcome": "ミナとの信頼を優先し、案内機の協力を得る", "unlocks": "LOC_OLD_STATION_CONTROL"},
             ],
-            "reachability": _analyze_reachability("NODE_START", [
-                {"id": "NODE_START"}, {"id": "NODE_MEMORY"}, {"id": "NODE_LIGHTS"}, {"id": "NODE_TRUST"}
-            ], [
-                {"id": branch["id"], "source_node": branch["source_node"], "next_node": branch["next_node"]}
-                for branch in [
-                    {"id": "CHOICE_LUMINA_01A", "source_node": "NODE_START", "next_node": "NODE_MEMORY"},
-                    {"id": "CHOICE_LUMINA_01B", "source_node": "NODE_START", "next_node": "NODE_LIGHTS"},
-                    {"id": "CHOICE_LUMINA_01C", "source_node": "NODE_START", "next_node": "NODE_TRUST"}
-                ]
-            ]),
             "validation": "breadth_first_graph_traversal",
         }),
         "visual_design": ("visual_design.json", {
@@ -166,7 +156,12 @@ def _build_hourly_focus_artifact(task_id: str) -> tuple[str, dict[str, Any]]:
     }
     if task_id not in deliverables:
         raise ValueError(f"Unknown hourly focus: {task_id}")
-    return deliverables[task_id]
+    filename, payload = deliverables[task_id]
+    if task_id == "branch_graph":
+        payload["reachability"] = _analyze_reachability(
+            payload["start_node"], payload["nodes"], payload["branches"]
+        )
+    return filename, payload
 
 
 def _vlq(value: int) -> bytes:
