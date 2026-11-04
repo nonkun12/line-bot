@@ -117,7 +117,7 @@ def create_goal_proposal(user_id: str, objective: str) -> dict[str, Any]:
 def _authorized_approver(user_id: str) -> bool:
     allowed = {
         item.strip()
-        for item in os.environ.get("GOAL_APPROVER_USER_IDS", os.environ.get("DEV_ALLOWED_USER_IDS", "")).split(",")
+        for item in (os.environ.get("GOAL_APPROVER_USER_IDS") or os.environ.get("DEV_ALLOWED_USER_IDS", "")).split(",")
         if item.strip()
     }
     return bool(user_id and user_id in allowed)
