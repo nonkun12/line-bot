@@ -29,7 +29,7 @@ def build_audiovisual_game_sprint_plan(
         or not 1 <= max_revision_iterations <= _MAX_REVISION_ITERATIONS
     ):
         raise ValueError(f"max_revision_iterations must be between 1 and {_MAX_REVISION_ITERATIONS}")
-    if target_platform not in {"desktop", "web"}:
+    if not isinstance(target_platform, str) or target_platform not in {"desktop", "web"}:
         raise ValueError("target_platform must be desktop or web")
 
     stages = [
