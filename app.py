@@ -74,7 +74,7 @@ from internal_goal_job_routes import register_goal_job_routes
 from n8n_delegate import _delegate_to_n8n
 from e2e_status import init_e2e_table, record_step, StepTimer
 from core.channel import handle_channel_request
-from core.gateway import AIGateway
+from core.gateway import AIGateway, AIResponse
 from core.request_path import run_core_request, extract_core_reply
 from core.management_bridge import should_route_to_management_ai, run_management_request
 from core.line_runtime_audit import record_line_runtime
@@ -459,7 +459,21 @@ def _handle_ai_gateway_request(ai_request):
         metadata=ai_request.metadata,
         call_mcp_tool=call_mcp_tool,
     )
-    return extract_core_reply(result)
+    # Keep LINE's user-facing reply text-only, while authenticated API clients
+    # can consume generated audiovisual artifacts from response metadata.
+    response_metadata = {
+        "intent": result.get("intent"),
+        "route": result.get("route"),
+        "specialists": result.get("specialists", []),
+    }
+    result_metadata = result.get("metadata")
+    if isinstance(result_metadata, dict) and "video_music_artifacts" in result_metadata:
+        response_metadata["video_music_artifacts"] = result_metadata["video_music_artifacts"]
+        response_metadata["video_music_handoff"] = result_metadata.get("video_music_handoff")
+    return AIResponse(
+        text=extract_core_reply(result),
+        metadata=response_metadata,
+    )
 
 
 app.ai_gateway = AIGateway(_handle_ai_gateway_request)
