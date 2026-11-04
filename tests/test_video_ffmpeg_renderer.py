@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from agents.music.score_plan import build_music_plan
-from agents.video.ffmpeg_renderer import render_video_from_edl
+from agents.video.ffmpeg_renderer import _camera_motion_filter, render_video_from_edl
 from agents.video.edit_decision_list import build_edit_decision_list
 from agents.video.scenario import build_scenario
 
@@ -90,3 +90,14 @@ def test_requires_local_ffmpeg_and_wav_audio(tmp_path, monkeypatch):
         render_video_from_edl(edl, assets, audio, tmp_path / "no-ffmpeg.mp4")
     with pytest.raises(ValueError, match="WAV"):
         render_video_from_edl(edl, assets, tmp_path / "not-audio.mp3", tmp_path / "bad.mp4")
+
+def test_camera_motion_filter_uses_only_fixed_allowlisted_expressions():
+    push = _camera_motion_filter("slow_push_in", 10, 30, 640, 360)
+    pull = _camera_motion_filter("slow_pull_back", 10, 30, 640, 360)
+    reveal = _camera_motion_filter("decisive_reveal", 10, 30, 640, 360)
+    fallback = _camera_motion_filter("untrusted-expression", 10, 30, 640, 360)
+    assert r"\\," in push and "min(" in push
+    assert r"\\," in pull and "max(" in pull
+    assert r"\\," in reveal and "min(" in reveal
+    assert "untrusted-expression" not in fallback
+    assert "zoompan=z='1.0'" in fallback
