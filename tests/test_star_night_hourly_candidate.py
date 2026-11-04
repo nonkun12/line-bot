@@ -78,3 +78,29 @@ def test_critic_fails_when_structural_check_fails(tmp_path, monkeypatch):
     critic = json.loads((out / "critic_review.json").read_text())
     assert critic["status"] == "FAIL"
     assert critic["checks"]["five_unique_scene_ids"] is False
+
+
+def test_each_hourly_focus_creates_a_distinct_deliverable(tmp_path):
+    from datetime import timedelta
+
+    expected = {
+        "continuity": "continuity_sheet.json",
+        "episode_002": "episode_002_outline.json",
+        "branch_graph": "branch_reachability.json",
+        "visual_design": "visual_design.json",
+        "music_variation": "music_variations.json",
+        "game_loop": "game_loop_design.json",
+    }
+    start = datetime(2026, 11, 4, 0, 0, tzinfo=timezone.utc)
+    seen = set()
+    for offset in range(6):
+        out = tmp_path / f"hour-{offset}"
+        result = build_candidate(out, now=start + timedelta(hours=offset))
+        focus = result["task_focus"]
+        assert focus in expected
+        artifact = out / expected[focus]
+        assert artifact.is_file()
+        payload = json.loads(artifact.read_text())
+        assert payload["focus_id"] == focus
+        seen.add(focus)
+    assert seen == set(expected)
