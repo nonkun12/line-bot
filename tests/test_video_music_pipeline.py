@@ -169,3 +169,14 @@ def test_pipeline_reply_uses_actual_line_breaks():
     ))
     assert "\\n" not in response.text
     assert "\n" in response.text
+
+def test_script_request_also_chains_video_scenario_into_music():
+    from agents.video_music_pipeline import handle_video_request
+
+    response = handle_video_request(AgentRequest(
+        "user-1", "短編映画の台本を作って",
+        metadata={"duration_seconds": 60, "scene_count": 3},
+    ))
+    assert response.metadata["mode"] == "video_music_pipeline"
+    assert response.metadata["handoff"]["to"] == "music"
+    assert response.metadata["scenario"]["status"] == "draft"
