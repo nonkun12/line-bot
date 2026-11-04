@@ -18,6 +18,9 @@ def test_candidate_contains_editable_story_and_game_assets(tmp_path):
     assert (out / "storyboard.json").is_file()
     assert (out / "shot_list.json").is_file()
     assert (out / "game_story_graph.json").is_file()
+    critic = json.loads((out / "critic_review.json").read_text())
+    assert critic["status"] == "PASS"
+    assert all(critic["checks"].values())
 
 
 def test_candidate_generates_original_midi_and_valid_wav(tmp_path):
