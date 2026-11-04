@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from scripts.goal_job_chain import MAX_AUTONOMOUS_JOBS_PER_GOAL, plan_next_job
+from scripts.goal_job_chain import plan_next_job
 
 MAX_SPRINT_JOBS = 10
 
