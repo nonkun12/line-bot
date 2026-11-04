@@ -1,0 +1,67 @@
+name: LINE Full Control Hourly Readiness
+
+on:
+  schedule:
+    # Hourly readiness check for Side 4; offset from the top of the hour.
+    - cron: "37 * * * *"
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "line_development.py"
+      - "tests/test_line_development.py"
+      - "app.py"
+      - ".github/workflows/line-development-dispatch.yml"
+      - ".github/workflows/line-full-control-hourly.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: line-full-control-hourly-readiness
+  cancel-in-progress: false
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install project dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run LINE command-routing regression tests
+        shell: bash
+        run: |
+          set -o pipefail
+          pytest -q tests/test_line_development.py 2>&1 | tee line-full-control-hourly.log
+      - name: Record readiness evidence
+        if: always()
+        run: |
+          {
+            echo "LINE Full Control Hourly Readiness"
+            echo "UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "Commit: $GITHUB_SHA"
+            echo "Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            if [ -f line-full-control-hourly.log ]; then
+              cat line-full-control-hourly.log
+            else
+              echo "Focused test step did not produce a log."
+            fi
+          } > line-full-control-readiness.txt
+      - name: Upload hourly readiness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: line-full-control-readiness-${{ github.run_id }}
+          path: |
+            line-full-control-readiness.txt
+            line-full-control-hourly.log
+          if-no-files-found: warn
+          retention-days: 14
