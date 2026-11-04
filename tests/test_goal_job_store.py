@@ -226,3 +226,31 @@ def test_successful_child_completion_rejects_any_failing_evidence_check(tmp_path
         result="verified work",
         evidence=passing_evidence,
     ) is True
+
+
+def test_completed_criterion_requires_every_declared_job_and_passing_evidence(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    goal_job_store.create_goal(_goal(), "U-test", _grant())
+    first = goal_job_store.persist_child_job("goal-autonomy-demo", _job())
+    assert goal_job_store.evaluate_completed_goal_criteria("goal-autonomy-demo") == {
+        "routing-tests": "FAIL",
+        "evidence-review": "FAIL",
+    }
+    with db.get_conn() as conn:
+        conn.execute("UPDATE jobs SET status='completed' WHERE id=?", (first["job_id"],))
+    goal_job_store.save_child_evidence(
+        first["job_id"],
+        {"checks": [{"name": "pytest", "status": "PASS", "source": "verified CI"}]},
+    )
+    assert goal_job_store.evaluate_completed_goal_criteria("goal-autonomy-demo") == {
+        "routing-tests": "PASS",
+        "evidence-review": "FAIL",
+    }
+
+
+def test_goal_id_can_be_resolved_from_registered_child(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    goal_job_store.create_goal(_goal(), "U-test", _grant())
+    child = goal_job_store.persist_child_job("goal-autonomy-demo", _job())
+    assert goal_job_store.get_goal_id_for_child_job(child["job_id"]) == "goal-autonomy-demo"
+    assert goal_job_store.get_goal_id_for_child_job(999999) is None
