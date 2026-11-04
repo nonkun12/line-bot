@@ -120,6 +120,10 @@ def test_normal_langgraph_video_node_runs_music_handoff_for_scenario_request():
     assert "Video AI → Music AI 連携完了" in result["final_reply"]
     assert result["agent_results"]["video"] == result["final_reply"]
     assert result["metadata"]["video_music_handoff"]["scenario_validated"] is True
+    artifacts = result["metadata"]["video_music_artifacts"]
+    assert artifacts["rendering_status"] == "midi_generated_audio_not_rendered"
+    assert artifacts["midi_artifact"]["mime_type"] == "audio/midi"
+    assert artifacts["midi_artifact"]["content_base64"].startswith("TVRoZ")
 
 
 def test_normal_langgraph_video_node_preserves_non_scenario_video_behavior():
