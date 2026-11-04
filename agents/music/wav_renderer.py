@@ -10,16 +10,13 @@ import struct
 import wave
 from array import array
 from pathlib import Path
+
+from agents.music.motif import motif_pitch
 from typing import Any
 
 
 _SAMPLE_RATE = 22050
 _MAX_RENDER_SECONDS = 90
-_MELODY_INTERVALS = {
-    "low": (0, 2, 4, 2),
-    "medium": (0, 2, 5, 4),
-    "high": (0, 4, 7, 9),
-}
 _CHORDS = (
     (60, (60, 64, 67)),
     (65, (65, 69, 72)),
@@ -45,10 +42,9 @@ def _events(music_plan: dict[str, Any], bpm: int) -> list[tuple[float, float, in
         step = beat / 2.0
         cursor = start
         note_index = 0
-        intervals = _MELODY_INTERVALS[energy]
         while cursor < end:
             note_end = min(cursor + step * 0.78, end)
-            pitch = 72 + intervals[note_index % len(intervals)]
+            pitch = motif_pitch(energy, note_index)
             events.append((cursor, note_end, pitch, velocity, 0.0))
             cursor += step
             note_index += 1
@@ -88,7 +84,7 @@ def build_wav_bytes(
         if (
             type(start) not in (int, float) or type(end) not in (int, float)
             or start < previous_end or end <= start or end > duration
-            or energy not in _MELODY_INTERVALS
+            or energy not in {"low", "medium", "high"}
         ):
             raise ValueError(f"cue {index + 1} has invalid timing or energy")
         previous_end = float(end)
