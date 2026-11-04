@@ -37,6 +37,9 @@ def test_assembles_local_assets_with_ffmpeg_without_shell_or_overwrite(tmp_path,
     result = render_video_from_edl(edl, assets, audio, output, width=640, height=360, fps=24)
     assert result["status"] == "rendered"
     assert result["transition_mode"] == "sequential_hard_cuts"
+    assert result["sync_edit_plan"]["schema_version"] == "audiovisual-sync-edit-plan.v1"
+    assert result["sync_edit_plan"]["event_count"] == len(edl["sync_events"])
+    assert all(item["automatic_cut"] is False for item in result["sync_edit_plan"]["suggestions"])
     assert output.read_bytes() == b"mp4-data"
     args, kwargs = calls[0]
     assert args[0] == "/usr/bin/ffmpeg"
