@@ -25,12 +25,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Install test runner
-        run: python -m pip install --upgrade pytest
+      - name: Install cloud media tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
+          python -m pip install --upgrade pytest pillow
       - name: Validate candidate builder
         run: python -m pytest -q tests/test_star_night_hourly_candidate.py
       - name: Build hourly candidate
-        run: python -m scripts.star_night_hourly_candidate --output-dir "artifacts/star-night-${GITHUB_RUN_ID}"
+        run: python -m scripts.star_night_hourly_candidate --output-dir "artifacts/star-night-${GITHUB_RUN_ID}" --render-animatic
       - name: Upload candidate bundle
         uses: actions/upload-artifact@v4
         with:
