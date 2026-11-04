@@ -101,8 +101,9 @@ class VideoMusicPipeline:
             f"尺：{plan['duration_seconds']}秒 / シーン：{len(scenario['scenes'])}",
             f"音楽キュー：{len(plan['cues'])}件",
             f"MIDI作曲データ：生成済み（{midi_artifact['size_bytes']} bytes）",
+            f"試聴用WAV：生成済み（先頭{midi_artifact['preview_audio']['duration_seconds']}秒）",
             "シナリオのシーンID・感情・同期点をMusic AIへ引き継ぎました。",
-            "これは演奏データです。音声・映像ファイルのレンダリングはまだ行っていません。",
+            "WAVは無料の簡易合成プレビューです。完成音源・実楽器音源・映像レンダリングは未実装です。",
         ]
         return AgentResponse(
             text="\n".join(lines),
