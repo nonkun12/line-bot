@@ -76,3 +76,47 @@ For audiovisual work, lock the scenario and emotional arc before detailed produc
 5. Connect the Control Tower and LINE intake only after the standalone contract and tests are stable.
 
 Do not duplicate the existing Goal planner or worker. Reuse the current Goal JOB chain and add sprint-level planning, review, and learning around it.
+
+## Local Mac media worker
+
+Video and audiovisual rendering should use the user's existing Apple Silicon Mac as an optional local execution worker. Keep Goal orchestration, sprint state, permissions, and durable JOB records in the existing control plane; do not move orchestration authority onto the Mac.
+
+### Responsibility split
+
+- **Control plane**: accepts the Goal, plans the sprint, issues a narrowly scoped media JOB, tracks status, verifies returned evidence, and decides the next step.
+- **Mac media worker**: claims only explicitly authorized media JOBs, performs local asset preparation, compositing, audio mixing, encoding, preview generation, and local quality checks, then returns artifact metadata and verification evidence.
+- **Specialist agents**: produce the scenario, storyboard, shot list, visual direction, music brief, and timing map before rendering. The video worker must not invent or silently rewrite the approved scenario.
+
+### Mac worker safety contract
+
+- The worker is opt-in and on-demand; do not require a permanently running server or launch-at-login process.
+- Use a local authenticated bridge with expiring, single-purpose job grants. Validate job ID, allowed operation, input manifest, output directory, resource budget, and deadline before execution.
+- Restrict writes to a dedicated project workspace. Never expose arbitrary shell execution, general filesystem access, secrets, or unrelated personal files to a remote job.
+- The Mac may pull a queued job and report progress, but the control plane cannot issue unrestricted commands to the Mac.
+- Provide pause/cancel, graceful shutdown, disk-space checks, thermal/power-aware limits, and resumable checkpoints. Clean up only temporary files owned by that job.
+- Keep source media and rendered artifacts on the Mac by default. Return only status, hashes, dimensions, durations, test results, and user-approved preview references unless the user explicitly requests transfer.
+- Do not automatically publish, upload, merge, or deploy rendered content.
+
+### Free local media pipeline
+
+Prefer installed system capabilities and free/open-source tools, subject to local availability and license checks. Start with deterministic editing and rendering (timeline, transitions, titles, compositing, audio mixing, encoding) rather than requiring a paid generative-video service or a large local video model. Use Apple hardware acceleration only when the selected local tool exposes it and a capability check confirms it works. A model running locally for language/planning is not itself a video-generation engine.
+
+A practical first increment is a local render worker that can:
+1. validate a scenario/storyboard and asset manifest;
+2. assemble a short animatic from stills, text, timing, and audio cues;
+3. mix a locally generated or user-provided soundtrack with scene timing;
+4. render a preview and run duration/audio/video integrity checks;
+5. return evidence and a local artifact reference to the sprint review.
+
+Only after this reliable baseline passes should later sprints add more advanced animation or local generative models, gated by actual Mac memory, storage, thermals, speed, and license checks.
+
+### Incremental rollout
+
+1. Read-only capability discovery: OS/architecture, memory, free disk, installed media tools, hardware-encoding support, and worker reachability. Do not install or start persistent services.
+2. Local-only prototype: render a tiny test project manually/on-demand and record resource usage.
+3. Sandboxed worker: add job manifest validation, workspace isolation, bounded execution, cancellation, and evidence reporting.
+4. Control-plane integration: connect the worker through a narrow pull-based bridge and test disconnect/retry/idempotency.
+5. Sprint integration: let the Control Tower route only media/render jobs to the Mac; all planning, approval boundaries, and Goal completion remain centralized.
+
+The known environment includes Apple Silicon (arm64) on macOS 27.2 and an existing on-demand Bonsai MLX setup. Bonsai can assist local language tasks, but its presence does not establish that a video model or renderer is installed. Exact memory/GPU capacity and media-tool availability must be discovered before selecting workloads.
+
