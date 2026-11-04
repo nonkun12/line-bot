@@ -58,8 +58,8 @@ def _output_from_existing_receipt(receipt_path: Path, destination: Path, job_id:
         or receipt.get("status") != "draft"
         or receipt.get("publication") != "not_performed"
         or not isinstance(hashes, dict)
-        or not _REQUIRED_ARTIFACTS.issubset(hashes)
-        or set(hashes) - set(_ARTIFACT_FILENAMES)
+        or set(hashes) != _REQUIRED_ARTIFACTS
+        or receipt.get("video_render_status") != "not_rendered"
     ):
         raise RuntimeError("existing media receipt does not match this Goal job; keep it on HOLD")
     for logical_name, expected_hash in hashes.items():
