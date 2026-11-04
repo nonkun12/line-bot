@@ -45,3 +45,25 @@ def test_invalid_scenario_does_not_create_output_directory(tmp_path):
     with pytest.raises(ValueError, match="invalid scenario"):
         create_audiovisual_production_bundle({}, destination)
     assert not destination.exists()
+
+
+def test_bundle_can_render_wav_when_local_soundfont_is_supplied(tmp_path, monkeypatch):
+    from agents.media import production
+
+    def fake_render(midi_path, soundfont_path, output_path, **kwargs):
+        assert Path(midi_path).is_file()
+        assert Path(soundfont_path).is_file()
+        Path(output_path).write_bytes(b"RIFF" + b"\x00" * 64)
+        return {"status": "rendered", "path": str(output_path), "format": "WAV"}
+
+    soundfont = tmp_path / "free.sf2"
+    soundfont.write_bytes(b"SF2")
+    monkeypatch.setattr(production, "render_midi_to_wav", fake_render)
+    destination = tmp_path / "rendered-bundle"
+    result = production.create_audiovisual_production_bundle(
+        _scenario(), destination, soundfont_path=soundfont
+    )
+    assert result["audio_render_status"] == "rendered"
+    assert (destination / "original_music.wav").read_bytes().startswith(b"RIFF")
+    manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["audio_render_status"] == "rendered"
