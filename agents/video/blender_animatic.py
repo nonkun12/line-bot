@@ -1,0 +1,165 @@
+"""Deterministic Blender storyboard animatic renderer.
+
+Creates one procedural 3D frame per storyboard panel. These are visual
+blocking frames, not final character animation or photographed footage.
+"""
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Any
+
+
+_BLENDER_SCRIPT = r"""
+import bpy
+import json
+import math
+import sys
+from pathlib import Path
+
+args = sys.argv[sys.argv.index("--") + 1:]
+source = Path(args[0])
+destination = Path(args[1])
+data = json.loads(source.read_text(encoding="utf-8"))
+panels = data["panels"]
+
+def material(name, color):
+    mat = bpy.data.materials.new(name)
+    mat.diffuse_color = (*color, 1.0)
+    return mat
+
+def clear_scene():
+    bpy.ops.object.select_all(action="SELECT")
+    bpy.ops.object.delete(use_global=False)
+    for block in bpy.data.materials:
+        bpy.data.materials.remove(block)
+
+for index, panel in enumerate(panels, start=1):
+    clear_scene()
+    scene = bpy.context.scene
+    scene.render.engine = "BLENDER_EEVEE_NEXT"
+    scene.render.resolution_x = 1280
+    scene.render.resolution_y = 720
+    scene.render.resolution_percentage = 100
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.film_transparent = False
+    scene.world.color = (0.025, 0.03, 0.06)
+
+    palette = str(panel.get("color_palette", "")).lower()
+    if "warm" in palette or "dawn" in palette:
+        accent = (0.85, 0.38, 0.16)
+    elif "saturated" in palette:
+        accent = (0.15, 0.48, 0.85)
+    elif "cool" in palette:
+        accent = (0.12, 0.38, 0.62)
+    else:
+        accent = (0.42, 0.48, 0.58)
+    base = material("Base", (0.025, 0.04, 0.075))
+    highlight = material("Accent", accent)
+    secondary = material("Secondary", (0.22, 0.32, 0.43))
+
+    bpy.ops.mesh.primitive_plane_add(size=18, location=(0, 0, -0.5))
+    bpy.context.object.name = "Storyboard background"
+    bpy.context.object.data.materials.append(base)
+
+    # Three visual layers create a simple composition block, not literal scene content.
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.15))
+    subject = bpy.context.object
+    subject.name = "Focal subject placeholder"
+    subject.dimensions = (3.2, 2.2, 0.55)
+    subject.data.materials.append(highlight)
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=12, radius=0.7,
+                                         location=(1.35, 0.95, 0.7))
+    bpy.context.object.data.materials.append(secondary)
+
+    bpy.ops.object.camera_add(location=(0, 0, 12))
+    camera = bpy.context.object
+    camera.data.type = "ORTHO"
+    camera.data.ortho_scale = 12
+    scene.camera = camera
+    camera.rotation_euler = (0, 0, 0)
+
+    bpy.ops.object.light_add(type="AREA", location=(0, 2, 8))
+    light = bpy.context.object
+    light.data.energy = 1600
+    light.data.shape = "DISK"
+    light.data.size = 8
+
+    scene.render.filepath = str(destination / ("scene_%02d.png" % index))
+    bpy.ops.render.render(write_still=True)
+"""
+
+
+def render_storyboard_animatic(
+    storyboard: dict[str, Any],
+    output_dir: str | Path,
+    *,
+    blender_executable: str | None = None,
+    timeout_seconds: int = 900,
+) -> dict[str, Any]:
+    """Render bounded, procedural storyboard blocking frames with Blender."""
+    if not isinstance(storyboard, dict) or storyboard.get("schema_version") != "video-storyboard.v1":
+        raise ValueError("storyboard must use video-storyboard.v1")
+    panels = storyboard.get("panels")
+    if not isinstance(panels, list) or not 1 <= len(panels) <= 20:
+        raise ValueError("storyboard must contain 1 to 20 panels")
+    for panel in panels:
+        if not isinstance(panel, dict) or any(
+            not isinstance(panel.get(key), str) or not panel[key].strip()
+            for key in ("panel_id", "color_palette", "frame_description")
+        ):
+            raise ValueError("storyboard panel is incomplete")
+    if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 1800:
+        raise ValueError("timeout_seconds must be between 1 and 1800")
+    executable = blender_executable or shutil.which("blender")
+    if not isinstance(executable, str) or not executable:
+        raise RuntimeError("Blender is not installed; no storyboard frames were rendered")
+
+    destination = Path(output_dir).expanduser()
+    if destination.exists():
+        raise FileExistsError(str(destination))
+    destination.mkdir(parents=True, exist_ok=False)
+    try:
+        with tempfile.TemporaryDirectory(prefix="line-bot-blender-") as temp:
+            root = Path(temp)
+            storyboard_file = root / "storyboard.json"
+            script_file = root / "render.py"
+            storyboard_file.write_text(
+                json.dumps(storyboard, ensure_ascii=False), encoding="utf-8"
+            )
+            script_file.write_text(_BLENDER_SCRIPT, encoding="utf-8")
+            completed = subprocess.run(
+                [executable, "--background", "--factory-startup", "--python",
+                 str(script_file), "--", str(storyboard_file), str(destination.resolve())],
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, timeout=timeout_seconds, check=False,
+            )
+        frames = sorted(destination.glob("scene_*.png"))
+        if completed.returncode != 0 or len(frames) != len(panels) or any(
+            frame.is_symlink() or frame.stat().st_size <= 0 for frame in frames
+        ):
+            detail = (completed.stderr or completed.stdout or "Blender produced incomplete frames")[-1200:]
+            raise RuntimeError(f"Blender storyboard rendering failed: {detail}")
+        return {
+            "status": "rendered",
+            "renderer": "Blender",
+            "frame_count": len(frames),
+            "resolution": "1280x720",
+            "frame_paths": [str(frame) for frame in frames],
+            "visual_mode": "procedural_storyboard_blocking",
+            "final_animation": False,
+        }
+    except Exception:
+        for frame in destination.glob("scene_*.png"):
+            if frame.is_file() and not frame.is_symlink():
+                frame.unlink()
+        destination.rmdir()
+        raise
+
+
+__all__ = ["render_storyboard_animatic"]
