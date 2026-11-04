@@ -26,7 +26,7 @@ if [[ $# -lt 1 || $# -gt 2 || ! "${1:-}" =~ ^[0-9]+$ ]]; then
 fi
 
 PR="$1"
-TEST_TARGET="${2:-tests/test_mac_bonsai_goal_review_worker.py}"
+TEST_TARGET="${2-tests/test_mac_bonsai_goal_review_worker.py}"
 
 # Pytest targets must be plain relative paths inside the PR worktree.
 # Reject traversal, absolute paths, empty components, and option-like targets
