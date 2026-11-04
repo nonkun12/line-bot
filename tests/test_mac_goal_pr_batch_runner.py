@@ -22,10 +22,10 @@ class MacGoalPRBatchRunnerTests(unittest.TestCase):
         shutil.copy2(BATCH_RUNNER, self.scripts / BATCH_RUNNER.name)
         self.call_log = self.root / "calls.log"
         (self.scripts / "mac_goal_pr_test.sh").write_text(
-            '#!/usr/bin/env bash\n'
-            'printf "%s\\t%s\\n" "$1" "$2" >> "$CALL_LOG"\n'
-            'if [[ "${FAIL_PR:-}" == "$1" ]]; then exit 7; fi\n'
-            'exit 0\n',
+            '#!/usr/bin/env bash\\n'
+            'printf "%s\\\\t%s\\\\n" "$1" "$2" >> "$CALL_LOG"\\n'
+            'if [[ "${FAIL_PR:-}" == "$1" ]]; then exit 7; fi\\n'
+            'exit 0\\n',
             encoding="utf-8",
         )
 
@@ -59,10 +59,10 @@ class MacGoalPRBatchRunnerTests(unittest.TestCase):
         self.assertEqual(
             self.recorded_calls(),
             [
-                "1251\ttests/test_goal_job_chain.py",
-                "1252\ttests/test_goal_job_chain.py",
-                "1253\ttests/test_goal_job_chain.py",
-                "1255\ttests/test_goal_job_chain.py",
+                "1251\\ttests/test_goal_job_chain.py",
+                "1252\\ttests/test_goal_job_chain.py",
+                "1253\\ttests/test_goal_job_chain.py",
+                "1255\\ttests/test_goal_job_chain.py",
             ],
         )
         self.assertIn("TOTAL: 4  PASS: 4  FAIL: 0", result.stdout)
@@ -73,13 +73,30 @@ class MacGoalPRBatchRunnerTests(unittest.TestCase):
         self.assertEqual(
             self.recorded_calls(),
             [
-                "1251\ttests/example.py",
-                "1252\ttests/example.py",
-                "1253\ttests/example.py",
+                "1251\\ttests/example.py",
+                "1252\\ttests/example.py",
+                "1253\\ttests/example.py",
             ],
         )
         self.assertIn("#1252 FAIL (exit 7)", result.stdout)
         self.assertIn("TOTAL: 3  PASS: 2  FAIL: 1", result.stdout)
+
+    def test_rejects_overlapping_ranges_before_running_any_pr(self) -> None:
+        result = self.run_batch("1251-1253,1253-1255")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertEqual(self.recorded_calls(), [])
+        self.assertIn("duplicate PR number: 1253", result.stderr)
+
+    def test_accepts_nine_digit_pr_number_and_rejects_ten_digits(self) -> None:
+        accepted = self.run_batch("999999999")
+        self.assertEqual(accepted.returncode, 0, accepted.stdout + accepted.stderr)
+        self.assertEqual(self.recorded_calls(), ["999999999\\ttests/example.py"])
+
+        self.call_log.unlink(missing_ok=True)
+        rejected = self.run_batch("1000000000")
+        self.assertEqual(rejected.returncode, 2, rejected.stdout + rejected.stderr)
+        self.assertEqual(self.recorded_calls(), [])
+        self.assertIn("ERROR:", rejected.stderr)
 
 
 if __name__ == "__main__":
