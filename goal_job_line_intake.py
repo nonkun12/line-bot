@@ -381,13 +381,23 @@ def handle_goal_line_message(user_id: str, message: str) -> tuple[bool, str | No
         if chain is None:
             return True, "このLINEユーザーが参照できるGoal連鎖は見つかりません。"
         snapshot = chain["state"]["snapshot"]
+        stage_state = chain["state"]["state"].get(stage_id)
+        completed_ids = list(snapshot["completed_job_ids"])
+        approved_ids = list(snapshot["approved_gate_job_ids"])
+        # The initial media bundle already contains the music and storyboard
+        # artifacts. Once the scenario gate is approved, an explicit human
+        # confirmation can complete and approve these two review stages.
+        if stage_state == "READY" and stage_id in {"music", "visual"}:
+            completed_ids.append(stage_id)
+        elif stage_state != "AWAITING_HUMAN_APPROVAL":
+            return True, "このステージはまだ人間レビュー可能な状態ではありません。"
         try:
             updated = record_goal_chain_evidence(
                 user_id,
                 goal_id,
                 expected_version=chain["version"],
-                completed_job_ids=snapshot["completed_job_ids"],
-                approved_gate_job_ids=[*snapshot["approved_gate_job_ids"], stage_id],
+                completed_job_ids=completed_ids,
+                approved_gate_job_ids=[*approved_ids, stage_id],
                 held_job_ids=snapshot["held_job_ids"],
                 event_type="human_approved",
             )
