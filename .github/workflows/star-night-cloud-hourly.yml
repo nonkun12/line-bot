@@ -7,8 +7,8 @@ on:
     paths:
       - .github/workflows/star-night-cloud-hourly.yml
   schedule:
-    # Every hour on the hour (UTC; covers every JST hour).
-    - cron: "0 * * * *"
+    # Offset from the top of the hour to reduce GitHub Actions schedule congestion.
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 permissions:
