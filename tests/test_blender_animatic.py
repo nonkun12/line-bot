@@ -60,3 +60,9 @@ def test_blender_animatic_rejects_non_contiguous_timeline(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="contiguous"):
         renderer.render_storyboard_animatic(storyboard, tmp_path / "frames")
     assert not (tmp_path / "frames").exists()
+
+def test_blender_script_includes_wrapped_narration_and_optional_japanese_font():
+    assert "wrap_caption" in renderer._BLENDER_SCRIPT
+    assert "dialogue_or_narration" in renderer._BLENDER_SCRIPT
+    assert "NotoSansCJK-Regular.ttc" in renderer._BLENDER_SCRIPT
+    assert "ヒラギノ角ゴシック" in renderer._BLENDER_SCRIPT
