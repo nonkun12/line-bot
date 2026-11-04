@@ -14,6 +14,7 @@ from typing import Any
 import db
 import goal_job_store
 from goal_job_review import review_completed_goal
+from goal_job_generation import generate_bounded_followup_job
 
 _LEASE_MINUTES = 10
 
@@ -146,11 +147,18 @@ def complete_goal_review(
             (review_id,),
         )
 
-    decision = review_completed_goal(
-        row[0],
-        evaluator=lambda _record, _children: criterion_results,
-        job_generator=None,
-    )
+    try:
+        decision = review_completed_goal(
+            row[0],
+            evaluator=lambda _record, _children: criterion_results,
+            job_generator=generate_bounded_followup_job,
+        )
+    except Exception as exc:
+        decision = {
+            "decision": "HOLD",
+            "reason": "review_processing_failed",
+            "error_type": type(exc).__name__,
+        }
     status = "completed" if decision.get("decision") != "HOLD" else "held"
     with db.get_conn() as conn:
         conn.execute(
