@@ -203,6 +203,9 @@ def _build_proposal(objective: str, proposal_id: str) -> dict[str, Any]:
         "objective": objective,
         "success_criteria": criteria,
         "jobs": jobs,
+        "audiovisual_sprint_plan": build_audiovisual_game_sprint_plan(
+            goal_id, objective[:1000], max_revision_iterations=2, target_platform="web"
+        ),
     }
 
 def create_goal_proposal(user_id: str, objective: str) -> dict[str, Any]:
