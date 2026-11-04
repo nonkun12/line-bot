@@ -298,6 +298,9 @@ def attach_signal_evidence_to_critic(
     enriched["review_limits"] = list(enriched.get("review_limits", [])) + [
         "Signal evidence is objective low-level measurement, not a determination of emotional impact or artistic quality."
     ]
+    # Preserve the fail-closed publication boundary at the top level as well.
+    enriched["publication_authorized"] = False
+    enriched["assets_modified"] = False
     return enriched
 
 
