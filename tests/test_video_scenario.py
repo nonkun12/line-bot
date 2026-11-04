@@ -125,3 +125,49 @@ def test_scenario_validator_fails_closed_on_malformed_scene_duration():
     draft = build_scenario("検証", duration_seconds=60, scene_count=3)
     draft["scenes"][0]["duration_seconds"] = None
     assert validate_scenario(draft)
+
+
+def test_scene_act_allocation_preserves_progression_for_two_to_five_scenes():
+    expected = {
+        2: ["opening", "resolution"],
+        3: ["opening", "development", "resolution"],
+        4: ["opening", "development", "climax", "resolution"],
+        5: ["opening", "development", "climax", "climax", "resolution"],
+    }
+    for count, acts in expected.items():
+        draft = build_scenario("感情のある短編", duration_seconds=60, scene_count=count)
+        assert [scene["act"] for scene in draft["scenes"]] == acts
+
+
+def test_validator_enforces_imported_scenario_bounds_and_scene_count():
+    draft = build_scenario("境界検証", duration_seconds=60, scene_count=3)
+    draft["creative_brief"]["duration_seconds"] = 10
+    draft["creative_brief"]["scene_count"] = 4
+    errors = validate_scenario(draft)
+    assert "duration_out_of_bounds" in errors
+    assert "scene_count_mismatch_or_out_of_bounds" in errors
+
+
+def test_validator_rejects_missing_music_fields_before_music_plan_dereference():
+    from agents.music.score_plan import build_music_plan
+
+    draft = build_scenario("音楽連携検証", duration_seconds=60, scene_count=3)
+    del draft["scenes"][0]["music_sync"]["motif"]
+    errors = validate_scenario(draft)
+    assert "scene_1_motif_invalid" in errors
+    try:
+        build_music_plan(draft)
+    except ValueError as exc:
+        assert "scene_1_motif_invalid" in str(exc)
+    else:
+        raise AssertionError("malformed music metadata must fail closed")
+
+
+def test_validator_rejects_unsorted_or_missing_sync_boundaries():
+    draft = build_scenario("同期点検証", duration_seconds=60, scene_count=3)
+    draft["scenes"][0]["music_sync"]["sync_points"] = [
+        {"at_seconds": 10, "event": "遅い開始"},
+        {"at_seconds": 0, "event": "開始"},
+    ]
+    errors = validate_scenario(draft)
+    assert "scene_1_sync_points_order_or_boundaries_invalid" in errors
