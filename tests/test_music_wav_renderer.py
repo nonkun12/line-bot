@@ -19,7 +19,7 @@ def _plan():
 def test_renders_original_cues_as_valid_pcm_wav():
     data = build_wav_bytes(_plan(), bpm=96)
     with wave.open(io.BytesIO(data), "rb") as reader:
-        assert reader.getnchannels() == 1
+        assert reader.getnchannels() == 2
         assert reader.getsampwidth() == 2
         assert reader.getframerate() == 22050
         assert reader.getnframes() == 12 * 22050
