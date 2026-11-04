@@ -346,7 +346,8 @@ def claim_pending_media_goal_child_job(executor_id):
         row = conn.execute(
             """
             SELECT id FROM jobs
-            WHERE job_type='goal_child' AND status='pending'
+            WHERE job_type='goal_child'
+              AND (status='pending' OR (status='running' AND updated_at < datetime('now', '-30 minutes')))
               AND CASE WHEN json_valid(message)
                        THEN json_extract(message, '$.executor')
                        ELSE NULL END = ?
@@ -359,7 +360,8 @@ def claim_pending_media_goal_child_job(executor_id):
             return None
         cursor = conn.execute(
             "UPDATE jobs SET status='running',claim_token=?,updated_at=CURRENT_TIMESTAMP "
-            "WHERE id=? AND job_type='goal_child' AND status='pending'",
+            "WHERE id=? AND job_type='goal_child' AND "
+            "(status='pending' OR (status='running' AND updated_at < datetime('now', '-30 minutes')))",
             (token, row[0]),
         )
         if cursor.rowcount != 1:
