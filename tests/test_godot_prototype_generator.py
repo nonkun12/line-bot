@@ -20,7 +20,7 @@ def sample_design():
 def test_builds_runnable_godot_project_file_set():
     files = build_godot_project_files(sample_design())
     assert {"project.godot", "scenes/main.tscn", "scripts/main.gd",
-            "scripts/audio_controller.gd", "data/story.json"} <= set(files)
+            "scripts/audio_controller.gd", "scripts/visual_controller.gd", "data/story.json"} <= set(files)
     story = json.loads(files["data/story.json"])
     assert [item["scene_id"] for item in story["scenes"]] == ["opening", "ending"]
     assert "request_scene_cue" in files["scripts/main.gd"]
@@ -30,7 +30,7 @@ def test_generation_creates_new_project_without_media_or_network(tmp_path):
     destination = tmp_path / "new-game"
     result = generate_godot_project(sample_design(), destination)
     assert result["status"] == "CREATED"
-    assert result["file_count"] == 6
+    assert result["file_count"] == 7
     assert result["assets_copied"] is False and result["network_used"] is False
     assert (destination / "project.godot").is_file()
     assert (destination / "data/story.json").is_file()
@@ -66,3 +66,42 @@ def test_rejects_duplicate_scene_ids():
 
 def test_deterministic_file_contents():
     assert build_godot_project_files(sample_design()) == build_godot_project_files(sample_design())
+
+def approved_manifest():
+    return {
+        "schema_version": "godot-approved-assets.v1",
+        "human_approved": True,
+        "publication_authorized": False,
+        "scenes": [{
+            "scene_id": "opening",
+            "approval_note": "Original locally created assets reviewed by the user",
+            "audio_path": "res://assets/opening.ogg",
+            "image_path": "res://assets/opening.png",
+            "video_path": "res://assets/opening.ogv",
+        }],
+    }
+
+def test_approved_local_assets_are_bound_to_matching_story_scene():
+    files = build_godot_project_files(sample_design(), approved_manifest())
+    story = json.loads(files["data/story.json"])
+    opening = story["scenes"][0]
+    assert opening["audio_path"] == "res://assets/opening.ogg"
+    assert opening["image_path"] == "res://assets/opening.png"
+    assert opening["video_path"] == "res://assets/opening.ogv"
+    assert "player.play()" in files["scripts/audio_controller.gd"]
+    assert "video_node.play()" in files["scripts/visual_controller.gd"]
+
+@pytest.mark.parametrize("changes", [
+    {"human_approved": False},
+    {"publication_authorized": True},
+    {"scenes": [{"scene_id": "unknown", "approval_note": "approved", "audio_path": "res://assets/a.ogg"}]},
+    {"scenes": [{"scene_id": "opening", "approval_note": "", "audio_path": "res://assets/a.ogg"}]},
+    {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://outside/a.ogg"}]},
+    {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://assets/../secret.ogg"}]},
+    {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://assets/a.exe"}]},
+])
+def test_rejects_unapproved_or_unsafe_asset_manifest(changes):
+    manifest = approved_manifest()
+    manifest.update(changes)
+    with pytest.raises(ValueError):
+        build_godot_project_files(sample_design(), manifest)
