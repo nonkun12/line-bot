@@ -130,3 +130,28 @@ def test_scenario_validator_rejects_non_string_energy_without_crashing():
     draft = build_scenario("不正な入力", duration_seconds=60, scene_count=3)
     draft["scenes"][0]["music_sync"]["energy"] = ["low"]
     assert "scene_1_energy_invalid" in validate_scenario(draft)
+
+
+def test_scenario_contains_concrete_editable_screenplay_and_shot_direction():
+    draft = build_scenario(
+        "星明かりの下で再会する二人",
+        premise="離れて暮らした二人が小さな駅で再会する",
+        duration_seconds=120,
+        scene_count=4,
+    )
+    scenes = draft["scenes"]
+    assert all(scene["dialogue_or_narration"] for scene in scenes)
+    assert all(scene["action"] and scene["visual_direction"] for scene in scenes)
+    assert all(scene["shot_plan"]["camera_motion"] for scene in scenes)
+    assert "星明かり" in scenes[0]["shot_plan"]["focal_subject"]
+    assert scenes[0]["shot_plan"]["shot_size"] == "wide_to_medium"
+    assert scenes[2]["shot_plan"]["camera_motion"] == "decisive_reveal"
+    assert len(scenes[1]["music_sync"]["sync_points"]) == 3
+    assert draft["creative_assumptions"]
+    assert validate_scenario(draft) == ()
+
+
+def test_scenario_validator_rejects_missing_shot_plan():
+    draft = build_scenario("短い物語", duration_seconds=60, scene_count=3)
+    draft["scenes"][1]["shot_plan"]["camera_motion"] = ""
+    assert "scene_2_shot_plan_invalid" in validate_scenario(draft)
