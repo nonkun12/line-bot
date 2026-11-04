@@ -24,6 +24,7 @@ from agents.media.goal_job_chain_store import (
     record_goal_chain_evidence,
 )
 from goal_job_orchestrator import advance_goal
+from goal_job_generation import generate_bounded_followup_job
 
 _GOAL_PREFIX = re.compile(r"^(?:goal\s*[:：]|目標\s*[:：]|goal\s+ai\s*[:：])\s*(.+)$", re.IGNORECASE | re.DOTALL)
 _APPROVE = re.compile(r"^goal\s*(?:承認|approve)\s+([A-Za-z0-9._-]{6,100})$", re.IGNORECASE)
@@ -407,10 +408,28 @@ def handle_goal_line_message(user_id: str, message: str) -> tuple[bool, str | No
         except (ValueError, GoalChainConflictError, KeyError) as exc:
             return True, f"Goalステージを承認できませんでした: {exc}"
         ready = updated["state"]["ready_job_ids"]
-        return True, (
+        required_reviews = {"scenario", "music", "visual"}
+        approved_reviews = set(updated["state"]["snapshot"]["approved_gate_job_ids"])
+        continuation = None
+        if required_reviews.issubset(approved_reviews):
+            # The first Sprint JOB may proceed only after the initial local
+            # scenario, music, and visual artifacts have all been reviewed.
+            continuation = advance_goal(
+                goal_id, job_generator=generate_bounded_followup_job
+            )
+        reply = (
             f"Goalステージを承認しました: {stage_id}\n"
             f"次に実行可能なステージ: {', '.join(ready) or 'なし'}"
         )
+        if continuation is not None:
+            reply += (
+                f"\n初期クリエイティブ確認完了。次のJOB: "
+                f"{continuation.get('decision')}"
+            )
+            job_record = continuation.get("job_record") or {}
+            if job_record.get("job_id") is not None:
+                reply += f" / JOB ID: {job_record['job_id']}"
+        return True, reply
 
     proposal_id = parse_goal_approval(message)
     if proposal_id:

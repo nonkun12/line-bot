@@ -235,6 +235,8 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
                 return jsonify({"ok": False, "error": "claim is stale or already completed"}), 409
             continuation = {"decision": "NOT_STARTED"}
             media_chain_status = None
+            media_review_ready = False
+            media_plan_present = False
             try:
                 goal_id = goal_job_store.get_goal_id_for_child_job(job_id)
                 if goal_id:
@@ -242,6 +244,9 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
                     goal_job_store.update_goal_evidence(goal_id, criterion_results)
                     goal_record = goal_job_store.get_goal(goal_id)
                     if goal_record is not None:
+                        media_plan_present = isinstance(goal_record.get("goal"), dict) and (
+                            "audiovisual_sprint_plan" in goal_record["goal"]
+                        )
                         media_chain = get_goal_chain(goal_record["user_id"], goal_id)
                         if media_chain is not None:
                             snapshot = media_chain["state"]["snapshot"]
@@ -263,9 +268,28 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
                                 "awaiting_human_approval_job_ids": media_chain["state"]["awaiting_human_approval_job_ids"],
                                 "held_job_ids": media_chain["state"]["held_job_ids"],
                             }
-                    continuation = advance_goal(
-                        goal_id, job_generator=generate_bounded_followup_job
-                    )
+                            required_reviews = {"scenario", "music", "visual"}
+                            media_review_ready = (
+                                required_reviews.issubset(
+                                    set(media_chain["state"]["snapshot"]["approved_gate_job_ids"])
+                                )
+                                and not media_chain["state"]["held_job_ids"]
+                            )
+                    if media_plan_present and media_chain_status is None:
+                        continuation = {
+                            "decision": "HOLD",
+                            "reason": "media_chain_state_missing",
+                        }
+                    elif media_chain_status is None or media_review_ready:
+                        continuation = advance_goal(
+                            goal_id, job_generator=generate_bounded_followup_job
+                        )
+                    else:
+                        continuation = {
+                            "decision": "WAITING_HUMAN_APPROVAL",
+                            "reason": "media_review_gates_pending",
+                            "required_reviews": ["scenario", "music", "visual"],
+                        }
                     if media_chain_status is not None:
                         continuation["media_chain_state"] = media_chain_status
             except Exception as exc:

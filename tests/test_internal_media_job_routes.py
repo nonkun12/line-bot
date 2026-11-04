@@ -350,3 +350,22 @@ def test_verified_line_goal_media_completion_checkpoints_scenario_gate(tmp_path,
     assert chain["state"]["state"]["scenario"] == "AWAITING_HUMAN_APPROVAL"
     assert chain["state"]["ready_job_ids"] == []
     assert chain["state"]["awaiting_human_approval_job_ids"] == ["scenario"]
+
+    # Completing the local bundle must not queue the next Sprint before
+    # scenario, music, and visual have each received explicit human approval.
+    from goal_job_store import get_goal_child_jobs
+    children_before_review = get_goal_child_jobs(proposal["goal_id"])
+    assert len(children_before_review) == 1
+    assert completed.get_json()["continuation"]["decision"] == "WAITING_HUMAN_APPROVAL"
+
+    for stage_id in ("scenario", "music", "visual"):
+        handled, reply = goal_job_line_intake.handle_goal_line_message(
+            "U-media-test", f"Goalステージ承認 {proposal['goal_id']} {stage_id}"
+        )
+        assert handled is True
+        assert "Goalステージを承認しました" in reply
+
+    children_after_review = get_goal_child_jobs(proposal["goal_id"])
+    assert len(children_after_review) == 2
+    assert children_after_review[1]["goal_job_key"] == "sprint-01-music-video"
+    assert children_after_review[1]["status"] == "pending"
