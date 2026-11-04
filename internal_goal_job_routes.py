@@ -120,6 +120,39 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
             app.logger.exception("Local media Goal claim failed")
             return jsonify({"ok": False, "error": "media job claim failed"}), 500
 
+    @app.route("/internal/media-jobs/hold", methods=["POST"])
+    def hold_local_media_job():
+        if not authorized():
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+        data = request.get_json(silent=True) or {}
+        job_id = data.get("job_id")
+        claim_token = data.get("claim_token")
+        reason = data.get("reason")
+        if type(job_id) is not int or job_id <= 0:
+            return jsonify({"ok": False, "error": "job_id must be a positive integer"}), 400
+        if not isinstance(claim_token, str) or len(claim_token) < 20:
+            return jsonify({"ok": False, "error": "claim_token is invalid"}), 400
+        if not isinstance(reason, str) or not reason.strip() or len(reason) > 1000:
+            return jsonify({"ok": False, "error": "a bounded HOLD reason is required"}), 400
+        claimed = db.get_job(job_id)
+        if not claimed or claimed.get("status") != "running" or claimed.get("claim_token") != claim_token:
+            return jsonify({"ok": False, "error": "claim is stale or already completed"}), 409
+        try:
+            goal_job_store.authorize_claimed_media_job(
+                claimed, _MEDIA_EXECUTOR_ID, _MEDIA_OPERATION
+            )
+            held = db.hold_claimed_goal_child_job(job_id, claim_token, reason)
+            if not held:
+                return jsonify({"ok": False, "error": "claim is stale or already completed"}), 409
+            return jsonify({"ok": True, "held": True, "status": "HOLD"}), 200
+        except PermissionError:
+            return jsonify({"ok": False, "error": "media Goal authorization failed"}), 403
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except Exception:
+            app.logger.exception("Local media Goal HOLD failed")
+            return jsonify({"ok": False, "error": "media job HOLD failed"}), 500
+
     @app.route("/internal/media-jobs/complete", methods=["POST"])
     def complete_local_media_job():
         if not authorized():
