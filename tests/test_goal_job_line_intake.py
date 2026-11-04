@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 
 import db
 import goal_job_orchestrator
@@ -119,3 +120,37 @@ def test_approved_goal_runs_four_sequential_sprint_plans_to_goal(tmp_path, monke
         "sprint-04-full-game",
     ]
     assert goal_job_store.get_goal(proposal["goal_id"])["status"] == "achieved"
+
+
+def test_stale_approval_lease_recovers_existing_goal_without_duplicate_job(tmp_path, monkeypatch):
+    _init_db(tmp_path, monkeypatch)
+    monkeypatch.setenv("GOAL_APPROVER_USER_IDS", "U-authorized")
+    proposal = intake.create_goal_proposal("U-authorized", "Build a free original game")
+    first = intake.approve_goal_proposal("U-authorized", proposal["proposal_id"])
+    assert first["decision"] == "CHILD_JOB_QUEUED"
+    with db.get_conn() as conn:
+        conn.execute(
+            "UPDATE goal_line_proposals SET status='approving',approval_started_at=? WHERE proposal_id=?",
+            ("2000-01-01T00:00:00+00:00", proposal["proposal_id"]),
+        )
+    resumed = intake.approve_goal_proposal("U-authorized", proposal["proposal_id"])
+    assert resumed["already_approved"] is True
+    assert resumed["decision"] == "CHILD_JOB_QUEUED"
+    assert len(goal_job_store.get_goal_child_jobs(proposal["goal_id"])) == 1
+
+
+def test_active_approval_lease_prevents_concurrent_duplicate_approval(tmp_path, monkeypatch):
+    _init_db(tmp_path, monkeypatch)
+    monkeypatch.setenv("GOAL_APPROVER_USER_IDS", "U-authorized")
+    proposal = intake.create_goal_proposal("U-authorized", "Build a safe creative pipeline")
+    with db.get_conn() as conn:
+        conn.execute(
+            "UPDATE goal_line_proposals SET status='approving',approval_started_at=? WHERE proposal_id=?",
+            (datetime.now(timezone.utc).isoformat(), proposal["proposal_id"]),
+        )
+    try:
+        intake.approve_goal_proposal("U-authorized", proposal["proposal_id"])
+    except ValueError as exc:
+        assert "already in progress" in str(exc)
+    else:
+        raise AssertionError("active approval lease must prevent concurrent approval")
