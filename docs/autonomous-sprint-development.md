@@ -166,6 +166,19 @@ The product roadmap is intentionally staged. Do not start full-scale game produc
 
 ### Phase 1 — Create music and video first
 
+### Phase 1 production slices and acceptance evidence
+
+Build Phase 1 in this order; each slice must produce a reviewable artifact before the next begins:
+
+1. **Scenario contract:** premise, audience, duration, scene beats, emotional arc, continuity, and intended audience response. Review the scenario before asset production.
+2. **Music composition plan:** define the global motif, tempo/energy curve, instrumentation, cue timing, silence, transitions, and dialogue/music priority from the approved scenario.
+3. **MIDI prototype:** export an original short score as a standard MIDI file. Validate that it opens, has the expected duration/tempo/track structure, and aligns to the scene cue map. Do not claim audio is produced until a playable render exists.
+4. **Blender visual prototype:** create a small number of original shots or a simple animatic first. Validate shot duration, framing, continuity, render reproducibility, and local hardware limits before increasing complexity.
+5. **DaVinci Resolve assembly:** combine the approved shots, rendered audio, titles/subtitles if needed, and transitions. Check synchronization, intelligibility, loudness consistency, and export integrity.
+6. **Creative review:** assess story clarity, emotional arc, music-picture harmony, pacing, and whether the result works as a complete short piece. Record issues as follow-up JOBs, not informal PASS claims.
+
+Current foundation note: the scenario and scenario-aware music cue-plan modules are present in the draft video-foundation workstream, but they are planning contracts only. They do not yet create MIDI files, synthesize audio, render Blender footage, or edit/export a finished video. Those capabilities must be implemented and tested as separate increments.
+
 1. Develop a short scenario and define its emotional arc before generating visuals.
 2. Compose the musical structure as MIDI, using free sound libraries and/or original recordings.
 3. Create visual assets and shots with Blender; edit and synchronize picture and sound in the free edition of DaVinci Resolve.
