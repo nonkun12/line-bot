@@ -160,7 +160,11 @@ def test_post_json_rejects_oversized_response(monkeypatch):
         def read(self, limit):
             return b"x" * limit
 
-    monkeypatch.setattr(worker, "urlopen", lambda *a, **k: FakeResponse())
+    class FakeOpener:
+        def open(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr(worker, "build_opener", lambda *handlers: FakeOpener())
     with pytest.raises(ReviewWorkerError, match="size limit"):
         worker._post_json("https://example.invalid", {})
 
@@ -251,3 +255,21 @@ def test_worker_rejects_child_without_persisted_evidence():
     review["children"][0]["evidence"] = None
     with pytest.raises(ReviewWorkerError, match="persisted evidence"):
         _bounded_review_input(review)
+
+
+def test_post_json_rejects_redirects_without_following_them(monkeypatch):
+    import scripts.mac_bonsai_goal_review_worker as worker
+    from urllib.error import HTTPError
+
+    class FakeOpener:
+        def open(self, request, timeout=30):
+            assert request.get_header("X-internal-key") == "s" * 32
+            raise HTTPError(request.full_url, 302, "redirect rejected", {}, None)
+
+    monkeypatch.setattr(worker, "build_opener", lambda *handlers: FakeOpener())
+    with pytest.raises(ReviewWorkerError, match="HTTP 302"):
+        worker._post_json(
+            "https://line.example/internal/goal-review/claim",
+            {},
+            key="s" * 32,
+        )
