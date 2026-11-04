@@ -102,6 +102,8 @@ def test_approved_local_assets_are_bound_to_matching_story_scene():
     {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://assets/a\\\\b.ogg"}]},
     {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://assets/a\\nb.ogg"}]},
     {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://assets/a b.ogg"}]},
+    {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://assets/a" + chr(92) + "b.ogg"}]},
+    {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://assets/a\nb.ogg"}]},
     {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://assets/a.exe"}]},
 ])
 def test_rejects_unapproved_or_unsafe_asset_manifest(changes):
