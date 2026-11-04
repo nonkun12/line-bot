@@ -29,7 +29,13 @@ panels = data["panels"]
 
 def material(name, color):
     mat = bpy.data.materials.new(name)
-    mat.diffuse_color = (*color, 1.0)
+    rgba = (*color, 1.0)
+    mat.diffuse_color = rgba
+    mat.use_nodes = True
+    shader = mat.node_tree.nodes.get("Principled BSDF")
+    if shader is not None:
+        shader.inputs["Base Color"].default_value = rgba
+        shader.inputs["Roughness"].default_value = 0.82
     return mat
 
 def clear_scene():
@@ -76,7 +82,10 @@ for font_path in (
 for index, panel in enumerate(panels, start=1):
     clear_scene()
     scene = bpy.context.scene
-    scene.render.engine = "BLENDER_EEVEE_NEXT"
+    try:
+        scene.render.engine = "BLENDER_EEVEE_NEXT"
+    except TypeError:
+        scene.render.engine = "BLENDER_EEVEE"
     scene.render.resolution_x = 1280
     scene.render.resolution_y = 720
     scene.render.resolution_percentage = 100
