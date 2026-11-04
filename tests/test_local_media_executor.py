@@ -31,7 +31,7 @@ def test_local_executor_creates_hashed_bundle_under_fixed_root(tmp_path):
     assert all(item["status"] == "PASS" for item in evidence["checks"])
     assert evidence["output_directory"] == str(tmp_path.resolve() / "goal-child-42")
     assert set(evidence["artifact_sha256"]) == {
-        "scenario", "music_plan", "midi", "audio_preview", "video_edit_decision_list"
+        "scenario", "storyboard", "shot_list", "music_plan", "midi", "audio_preview", "video_edit_decision_list"
     }
     assert all(len(value) == 64 for value in evidence["artifact_sha256"].values())
     receipt = json.loads((tmp_path / "goal-child-42" / "executor_receipt.json").read_text())
