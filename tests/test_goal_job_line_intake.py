@@ -1,4 +1,7 @@
+import json
+
 import db
+import goal_job_orchestrator
 import goal_job_line_intake as intake
 import goal_job_store
 
@@ -75,3 +78,44 @@ def test_read_only_message_is_not_routed_to_goal_flow(tmp_path, monkeypatch):
     handled, reply = intake.handle_goal_line_message("U-user", "今のGoalの状態を教えて")
     assert handled is False
     assert reply is None
+
+
+
+def test_approved_goal_runs_four_sequential_sprint_plans_to_goal(tmp_path, monkeypatch):
+    _init_db(tmp_path, monkeypatch)
+    monkeypatch.setenv("GOAL_APPROVER_USER_IDS", "U-authorized")
+    proposal = intake.create_goal_proposal("U-authorized", "Build an original browser game")
+    approved = intake.approve_goal_proposal("U-authorized", proposal["proposal_id"])
+    assert approved["decision"] == "CHILD_JOB_QUEUED"
+
+    executed = []
+
+    def executor(_job, payload):
+        executed.append(payload["goal_job_key"])
+        return {
+            "result": f"Created {payload['goal_job_key']} Sprint plan.",
+            "evidence": {
+                "checks": [{"name": "plan_artifact", "status": "PASS", "source": "test executor"}]
+            },
+        }
+
+    def evaluator(goal_record, completed_job):
+        payload = json.loads(completed_job["message"])
+        results = dict(goal_record["criterion_results"])
+        results[payload["criterion_id"]] = "PASS"
+        return results
+
+    result = goal_job_orchestrator.run_until_blocked(
+        proposal["goal_id"],
+        executor=executor,
+        evidence_evaluator=evaluator,
+        max_steps=4,
+    )
+    assert result["decision"] == "GOAL_ACHIEVED"
+    assert executed == [
+        "sprint-01-music-video",
+        "sprint-02-interactive",
+        "sprint-03-game-prototype",
+        "sprint-04-full-game",
+    ]
+    assert goal_job_store.get_goal(proposal["goal_id"])["status"] == "achieved"
