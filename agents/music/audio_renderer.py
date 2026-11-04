@@ -61,6 +61,7 @@ def render_midi_to_wav(
             text=True,
             timeout=timeout_seconds,
             check=False,
+            shell=False,
         )
         if completed.returncode != 0 or not temporary.is_file() or temporary.stat().st_size <= 44:
             detail = (completed.stderr or completed.stdout or "FluidSynth produced no audio")[-1000:]
