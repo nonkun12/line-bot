@@ -311,3 +311,15 @@ def test_expired_reviewing_claim_is_recoverable_and_old_token_is_rejected(tmp_pa
     )
     assert completed.status_code == 200
     assert completed.get_json()["decision"]["decision"] == "HOLD"
+
+
+
+def test_goal_review_completion_rejects_oversized_payload(tmp_path, monkeypatch):
+    client = _app(tmp_path, monkeypatch)
+    response = client.post(
+        "/internal/goal-review/complete",
+        headers={"x-internal-key": "test-internal-key"},
+        data=b" " * (16 * 1024 + 1),
+        content_type="application/json",
+    )
+    assert response.status_code == 413
