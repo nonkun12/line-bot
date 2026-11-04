@@ -122,6 +122,7 @@ def dispatch_development_workflow(
         "inputs": {
             "instruction": instruction,
             "user_id": str(user_id),
+            "request_id": request_id,
         },
     }
 
