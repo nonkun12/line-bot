@@ -9,7 +9,7 @@ from core.agents import AgentRequest, AgentResponse
 class VideoAgent:
     name = "video"
     description = "Scenario-first video planning, scripting, storyboarding, shot design, and editing plans."
-    priority = 84
+    priority = 86
     enabled = True
 
     def can_handle(self, request: AgentRequest) -> bool:
