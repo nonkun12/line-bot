@@ -155,3 +155,29 @@ def test_active_approval_lease_prevents_concurrent_duplicate_approval(tmp_path, 
         assert "already in progress" in str(exc)
     else:
         raise AssertionError("active approval lease must prevent concurrent approval")
+
+
+def test_expired_proposal_persists_terminal_expired_status(tmp_path, monkeypatch):
+    _init_db(tmp_path, monkeypatch)
+    monkeypatch.setenv("GOAL_APPROVER_USER_IDS", "U-authorized")
+    proposal = intake.create_goal_proposal("U-authorized", "Build a free audiovisual prototype")
+    with db.get_conn() as conn:
+        conn.execute(
+            "UPDATE goal_line_proposals SET expires_at=? WHERE proposal_id=?",
+            ("2000-01-01T00:00:00+00:00", proposal["proposal_id"]),
+        )
+
+    try:
+        intake.approve_goal_proposal("U-authorized", proposal["proposal_id"])
+    except ValueError as exc:
+        assert "proposal expired" in str(exc)
+    else:
+        raise AssertionError("expired proposals must not be approved")
+
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT status FROM goal_line_proposals WHERE proposal_id=?",
+            (proposal["proposal_id"],),
+        ).fetchone()
+    assert row == ("expired",)
+    assert goal_job_store.get_goal(proposal["goal_id"]) is None
