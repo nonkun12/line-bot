@@ -258,3 +258,56 @@ def test_local_goal_review_unknown_fails_closed(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert response.get_json()["decision"]["decision"] == "HOLD"
     assert goal_job_store.get_goal("route-goal")["status"] == "active"
+
+
+def test_expired_reviewing_claim_is_recoverable_and_old_token_is_rejected(tmp_path, monkeypatch):
+    client = _app(tmp_path, monkeypatch)
+    job_id = _create_goal()
+    headers = {"x-internal-key": "test-internal-key"}
+    claimed_job = client.post(
+        "/internal/goal-jobs/claim", headers=headers, json={"job_id": job_id}
+    ).get_json()["job"]
+    assert goal_job_store.complete_claimed_child_job(
+        job_id,
+        claimed_job["claim_token"],
+        success=True,
+        result=json.dumps({"artifact": "verified"}),
+        evidence={"checks": [{"name": "persisted_evidence", "status": "PASS", "source": "test"}]},
+    )
+    first = client.post(
+        "/internal/goal-review/claim", headers=headers, json={}
+    ).get_json()["review"]
+    with db.get_conn() as conn:
+        conn.execute(
+            "UPDATE goal_review_claims SET status='reviewing',lease_expires_at=? WHERE id=?",
+            ("2000-01-01T00:00:00+00:00", first["review_id"]),
+        )
+
+    reclaimed = client.post(
+        "/internal/goal-review/claim", headers=headers, json={}
+    ).get_json()["review"]
+    assert reclaimed["review_id"] == first["review_id"]
+    assert reclaimed["claim_token"] != first["claim_token"]
+
+    stale = client.post(
+        "/internal/goal-review/complete",
+        headers=headers,
+        json={
+            "review_id": first["review_id"],
+            "claim_token": first["claim_token"],
+            "criterion_results": {"criterion": "PASS"},
+        },
+    )
+    assert stale.status_code == 409
+
+    completed = client.post(
+        "/internal/goal-review/complete",
+        headers=headers,
+        json={
+            "review_id": reclaimed["review_id"],
+            "claim_token": reclaimed["claim_token"],
+            "criterion_results": {"criterion": "UNKNOWN"},
+        },
+    )
+    assert completed.status_code == 200
+    assert completed.get_json()["decision"]["decision"] == "HOLD"
