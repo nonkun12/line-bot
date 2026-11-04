@@ -107,11 +107,13 @@ def test_media_completion_requires_matching_receipt_and_artifact_hashes(tmp_path
         "goal_job_id": job_id,
         "artifact_sha256": hashes,
         "receipt_sha256": "f" * 64,
-        "checks": [{
-            "name": "artifact_inventory_and_sha256",
-            "status": "PASS",
-            "source": "mac_local_media.v1",
-        }],
+        "checks": [
+            {"name": "typed_local_executor_authorization", "status": "PASS", "source": "mac_local_media.v1"},
+            {"name": "scenario_validation", "status": "PASS", "source": "mac_local_media.v1"},
+            {"name": "output_confined_to_configured_root", "status": "PASS", "source": "mac_local_media.v1"},
+            {"name": "artifact_inventory_and_sha256", "status": "PASS", "source": "mac_local_media.v1"},
+            {"name": "no_publish_or_external_download", "status": "PASS", "source": "mac_local_media.v1"},
+        ],
     }
     invalid = dict(evidence, artifact_sha256={"midi": "0" * 64})
     rejected = client.post("/internal/media-jobs/complete", headers=headers, json={
