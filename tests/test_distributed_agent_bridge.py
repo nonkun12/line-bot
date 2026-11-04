@@ -53,7 +53,7 @@ def test_distributed_video_executor_runs_scenario_music_pipeline(monkeypatch):
         AgentTask(
             task_id="video-scenario-1",
             role=AgentRole.VIDEO,
-            instruction="海辺の短編映像シナリオを作って",
+            instruction="海辺の短編映像と音楽のシナリオを作って",
         )
     )
     assert result.success is True
