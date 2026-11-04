@@ -84,3 +84,16 @@ def test_invalid_user_and_title_are_rejected(store):
         store.create("user-a", " ")
 
 
+
+
+def test_archiving_releases_active_slot_and_preserves_history(store):
+    first = store.create("user-a", "First")
+    second = store.create("user-a", "Second")
+    store.append_message("user-a", first["id"], "user", "keep this history")
+    archived = store.archive("user-a", first["id"])
+    assert archived["status"] == "archived"
+    third = store.create("user-a", "Third")
+    assert third["status"] == "active"
+    assert store.get("user-a", first["id"])["messages"][0]["content"] == "keep this history"
+    with pytest.raises(SideChatNotFound):
+        store.archive("other-user", second["id"])
