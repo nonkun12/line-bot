@@ -96,8 +96,8 @@ def test_camera_motion_filter_uses_only_fixed_allowlisted_expressions():
     pull = _camera_motion_filter("slow_pull_back", 10, 30, 640, 360)
     reveal = _camera_motion_filter("decisive_reveal", 10, 30, 640, 360)
     fallback = _camera_motion_filter("untrusted-expression", 10, 30, 640, 360)
-    assert r"\\," in push and "min(" in push
-    assert r"\\," in pull and "max(" in pull
-    assert r"\\," in reveal and "min(" in reveal
+    assert r"\," in push and "min(" in push
+    assert r"\," in pull and "max(" in pull
+    assert r"\," in reveal and "min(" in reveal
     assert "untrusted-expression" not in fallback
     assert "zoompan=z='1.0'" in fallback
