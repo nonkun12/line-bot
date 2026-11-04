@@ -4,7 +4,7 @@ The first production increment is music and video together. The eventual game is
 
 ## Local, free-only workflow
 
-1. Create and review a `video-scenario.v1` scenario JSON.
+1. Create a `video-scenario.v1` scenario and an editable Japanese screenplay draft; review the story before production.
 2. Build a scenario-aware music cue plan and synchronized video EDL.
 3. Generate an original editable MIDI sketch and a dependency-free 16-bit stereo WAV preview. The shared melodic motif stays recognizable while scene energy changes its register and dynamics.
 4. Supply local scene clips or still images and assemble a draft MP4 with FFmpeg.
@@ -21,6 +21,7 @@ python -m scripts.create_audiovisual_bundle scenario.json ./artifacts/short-film
 The output directory must not already exist. It contains:
 
 - `scenario.json` — structured story and scene timings
+- `screenplay.md` — editable Japanese scene-by-scene screenplay, narration, camera and music cues
 - `music_plan.json` — emotional arc, cues, sync points and mix intent
 - `original_music.mid` — editable four-track MIDI
 - `original_music.wav` — synthesized preview (first 90 seconds maximum)
