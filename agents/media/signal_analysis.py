@@ -269,4 +269,36 @@ def analyze_audiovisual_bundle(
     }
 
 
-__all__ = ["analyze_wav_signal", "analyze_video_signal", "compare_scene_signals", "analyze_audiovisual_bundle"]
+def attach_signal_evidence_to_critic(
+    critic_report: dict[str, Any],
+    signal_report: dict[str, Any],
+) -> dict[str, Any]:
+    """Return a critic report enriched with measured scene features, without mutation."""
+    import copy
+
+    if critic_report.get("schema_version") != "audiovisual-creator-critic.v1":
+        raise ValueError("critic_report must use audiovisual-creator-critic.v1")
+    if signal_report.get("schema_version") != "audiovisual-bundle-signal-report.v1":
+        raise ValueError("signal_report must use audiovisual-bundle-signal-report.v1")
+    comparison = signal_report.get("scene_comparison")
+    if not isinstance(comparison, dict) or not isinstance(comparison.get("scenes"), list):
+        raise ValueError("signal_report must contain scene comparison data")
+    enriched = copy.deepcopy(critic_report)
+    enriched["signal_evidence"] = {
+        "schema_version": "audiovisual-scene-signal-report.v1",
+        "scenes": copy.deepcopy(comparison["scenes"]),
+        "review_prompts": [
+            "Listen to each scene and compare measured loudness/brightness with its authored music energy.",
+            "Watch each scene and compare measured luminance, saturation, and frame change with its visual direction.",
+            "Check whether transitions and emotional peaks feel intentional; signal measurements alone cannot decide this.",
+        ],
+        "is_artistic_quality_score": False,
+        "publication_authorized": False,
+    }
+    enriched["review_limits"] = list(enriched.get("review_limits", [])) + [
+        "Signal evidence is objective low-level measurement, not a determination of emotional impact or artistic quality."
+    ]
+    return enriched
+
+
+__all__ = ["analyze_wav_signal", "analyze_video_signal", "compare_scene_signals", "analyze_audiovisual_bundle", "attach_signal_evidence_to_critic"]
