@@ -48,6 +48,11 @@ def test_goal_proposal_is_inert_until_same_user_approves(tmp_path, monkeypatch):
     children = goal_job_store.get_goal_child_jobs(proposal["goal_id"])
     assert len(children) == 1
     assert children[0]["status"] == "pending"
+    persisted = db.get_job(children[0]["job_id"])
+    payload = json.loads(persisted["message"])
+    assert payload["executor"] == "mac_local_media.v1"
+    assert payload["operation"] == "create_audiovisual_bundle"
+    assert payload["scenario"]["schema_version"] == "video-scenario.v1"
 
 
 def test_goal_proposal_cannot_be_approved_by_another_user(tmp_path, monkeypatch):
