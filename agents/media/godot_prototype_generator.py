@@ -39,10 +39,58 @@ def _scenes(design: object) -> list[dict[str, str]]:
         result.append({"scene_id": sid, "story_intent": intent.strip(), "visual_motif": visual, "music_motif": music})
     return result
 
-def build_godot_project_files(design: object) -> dict[str, str]:
+_ASSET_EXTENSIONS = {
+    "audio": {".wav", ".ogg", ".mp3"},
+    "image": {".png", ".jpg", ".jpeg", ".webp"},
+    "video": {".ogv"},
+}
+
+def _approved_assets(design_scenes: list[dict[str, str]], manifest: object | None) -> dict[str, dict[str, str]]:
+    if manifest is None:
+        return {}
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != "godot-approved-assets.v1":
+        raise ValueError("asset manifest must use godot-approved-assets.v1")
+    if manifest.get("human_approved") is not True or manifest.get("publication_authorized") is not False:
+        raise ValueError("assets require explicit human approval and publication must remain unauthorized")
+    entries = manifest.get("scenes")
+    if not isinstance(entries, list) or len(entries) > 40:
+        raise ValueError("asset manifest scenes must be a list of at most 40 items")
+    known = {scene["scene_id"] for scene in design_scenes}
+    result: dict[str, dict[str, str]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("asset manifest entries must be objects")
+        sid = entry.get("scene_id")
+        if not isinstance(sid, str) or sid not in known or sid in result:
+            raise ValueError("asset manifest contains an unknown or duplicate scene ID")
+        approval_note = entry.get("approval_note")
+        if not isinstance(approval_note, str) or not approval_note.strip() or len(approval_note) > 500:
+            raise ValueError("each asset entry requires a concise approval note")
+        normalized: dict[str, str] = {}
+        for kind in ("audio", "image", "video"):
+            path = entry.get(f"{kind}_path")
+            if path is None:
+                continue
+            if not isinstance(path, str) or not path.startswith("res://assets/") or len(path) > 240:
+                raise ValueError(f"{kind}_path must be a project-local res://assets path")
+            relative = path[len("res://assets/"):]
+            parts = relative.split("/")
+            if not relative or any(part in {"", ".", ".."} for part in parts) or "\\\\" in path or ":" in relative:
+                raise ValueError(f"{kind}_path contains an unsafe path segment")
+            if Path(relative).suffix.lower() not in _ASSET_EXTENSIONS[kind]:
+                raise ValueError(f"unsupported {kind} asset extension")
+            normalized[f"{kind}_path"] = path
+        if normalized:
+            result[sid] = normalized
+    return result
+
+def build_godot_project_files(design: object, approved_assets: object | None = None) -> dict[str, str]:
     """Build a deterministic file map; no filesystem or network side effects."""
     scenes = _scenes(design)
-    story = json.dumps({"schema_version": "godot-prototype-story.v1", "scenes": scenes}, ensure_ascii=False, indent=2) + "\n"
+    asset_map = _approved_assets(scenes, approved_assets)
+    for item in scenes:
+        item.update(asset_map.get(item["scene_id"], {}))
+    story = json.dumps({"schema_version": "godot-prototype-story.v1", "scenes": scenes}, ensure_ascii=False, indent=2) + "\\n"
     project = """; Generated Godot 4 project
 config_version=5
 
@@ -211,9 +259,9 @@ modified. Existing output directories are never overwritten.
         "README.md": readme,
     }
 
-def generate_godot_project(design: object, output_dir: str | Path) -> dict[str, Any]:
+def generate_godot_project(design: object, output_dir: str | Path, approved_assets: object | None = None) -> dict[str, Any]:
     """Create a brand-new project directory, refusing existing destinations."""
-    files = build_godot_project_files(design)
+    files = build_godot_project_files(design, approved_assets)
     destination = Path(output_dir).expanduser()
     if destination.exists() or destination.is_symlink():
         raise FileExistsError("output directory already exists; refusing to overwrite")
