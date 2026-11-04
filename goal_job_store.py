@@ -523,24 +523,30 @@ def evaluate_completed_goal_criteria(goal_id: str) -> dict[str, str]:
         if not job_keys:
             results[criterion_id] = "FAIL"
             continue
-        passed = True
+        all_terminal = True
+        has_verified_success = False
         for key in job_keys:
             row = persisted.get(key)
-            if row is None or row[0] != criterion_id or row[1] not in {"done", "completed"} or not row[2]:
-                passed = False
+            if row is None or row[0] != criterion_id:
+                all_terminal = False
                 break
+            if row[1] not in {"done", "completed", "failed", "held"}:
+                all_terminal = False
+                break
+            if row[1] not in {"done", "completed"} or not row[2]:
+                continue
             try:
                 checks = json.loads(row[2]).get("checks", [])
             except (TypeError, json.JSONDecodeError, AttributeError):
-                passed = False
-                break
-            if not checks or not all(
+                continue
+            if checks and all(
                 isinstance(check, dict) and check.get("status") == "PASS"
                 for check in checks
             ):
-                passed = False
-                break
-        results[criterion_id] = "PASS" if passed else "FAIL"
+                has_verified_success = True
+        # Failed attempts may be superseded by a later bounded follow-up JOB,
+        # but no criterion passes while any declared work remains unfinished.
+        results[criterion_id] = "PASS" if all_terminal and has_verified_success else "FAIL"
     return results
 
 
