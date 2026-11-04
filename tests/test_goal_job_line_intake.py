@@ -44,6 +44,10 @@ def test_goal_proposal_is_inert_until_same_user_approves(tmp_path, monkeypatch):
     assert result["job_id"] is not None
     goal = goal_job_store.get_goal(proposal["goal_id"])
     assert goal is not None
+    assert goal["goal"]["audiovisual_sprint_plan"]["schema_version"] == "audiovisual-to-game-sprint-plan.v1"
+    from agents.media.goal_job_chain_store import get_goal_chain
+    media_chain = get_goal_chain("U-authorized", proposal["goal_id"])
+    assert media_chain["state"]["ready_job_ids"] == ["scenario"]
     assert goal["autonomy_grant"]["approved_by"] == "U-authorized"
     assert goal["autonomy_grant"]["allowed_path_prefixes"] == ["docs/"]
     children = goal_job_store.get_goal_child_jobs(proposal["goal_id"])
@@ -85,6 +89,73 @@ def test_read_only_message_is_not_routed_to_goal_flow(tmp_path, monkeypatch):
     handled, reply = intake.handle_goal_line_message("U-user", "今のGoalの状態を教えて")
     assert handled is False
     assert reply is None
+
+
+def test_goal_chain_status_and_human_stage_gates_are_owner_scoped(tmp_path, monkeypatch):
+    _init_db(tmp_path, monkeypatch)
+    monkeypatch.setenv("GOAL_APPROVER_USER_IDS", "U-authorized")
+    proposal = intake.create_goal_proposal("U-authorized", "音楽と映像からゲームを作る")
+    intake.approve_goal_proposal("U-authorized", proposal["proposal_id"])
+
+    from agents.media.goal_job_chain_store import (
+        get_goal_chain,
+        record_goal_chain_evidence,
+    )
+    chain = get_goal_chain("U-authorized", proposal["goal_id"])
+    assert chain["state"]["ready_job_ids"] == ["scenario"]
+
+    handled, reply = intake.handle_goal_line_message(
+        "U-authorized", f"Goal状態 {proposal['goal_id']}"
+    )
+    assert handled is True
+    assert "READY: scenario" in reply
+
+    # Only the verified media executor completion can advance the scenario
+    # stage; this direct store call represents that durable completion event.
+    chain = record_goal_chain_evidence(
+        "U-authorized", proposal["goal_id"], expected_version=chain["version"],
+        completed_job_ids=["scenario"], event_type="stage_completed",
+    )
+    assert chain["state"]["awaiting_human_approval_job_ids"] == ["scenario"]
+
+    denied, denied_reply = intake.handle_goal_line_message(
+        "U-other", f"Goalステージ承認 {proposal['goal_id']} scenario"
+    )
+    assert denied is True
+    assert "許可されていません" in denied_reply
+
+    approved, approval_reply = intake.handle_goal_line_message(
+        "U-authorized", f"Goalステージ承認 {proposal['goal_id']} scenario"
+    )
+    assert approved is True
+    assert "承認しました" in approval_reply
+
+    chain = get_goal_chain("U-authorized", proposal["goal_id"])
+    assert chain["state"]["ready_job_ids"] == ["music", "visual"]
+
+    assert intake.handle_goal_line_message(
+        "U-authorized", f"Goalステージ承認 {proposal['goal_id']} music"
+    )[0] is True
+    chain = get_goal_chain("U-authorized", proposal["goal_id"])
+    assert chain["state"]["ready_job_ids"] == ["visual"]
+
+    intake.handle_goal_line_message(
+        "U-authorized", f"Goalステージ承認 {proposal['goal_id']} visual"
+    )
+    chain = get_goal_chain("U-authorized", proposal["goal_id"])
+    assert chain["state"]["ready_job_ids"] == ["sync"]
+
+
+def test_goal_stage_approval_cannot_skip_uncompleted_stage(tmp_path, monkeypatch):
+    _init_db(tmp_path, monkeypatch)
+    monkeypatch.setenv("GOAL_APPROVER_USER_IDS", "U-authorized")
+    proposal = intake.create_goal_proposal("U-authorized", "Create original audiovisual game")
+    intake.approve_goal_proposal("U-authorized", proposal["proposal_id"])
+    handled, reply = intake.handle_goal_line_message(
+        "U-authorized", f"Goalステージ承認 {proposal['goal_id']} music"
+    )
+    assert handled is True
+    assert "まだ人間レビュー可能" in reply
 
 
 
