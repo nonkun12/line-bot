@@ -40,6 +40,15 @@ def record_human_creative_decision(
         by_id[item["candidate_id"]] = item
 
     candidate_id = decision.get("candidate_id")
+    global_findings = comparison_report.get("global_critic_findings", [])
+    if not isinstance(global_findings, list):
+        raise ValueError("global_critic_findings must be a list")
+    unresolved_global = [
+        item for item in global_findings
+        if isinstance(item, dict) and item.get("severity") in {"blocker", "warning"}
+    ]
+    if action == "select_candidate" and unresolved_global:
+        raise ValueError("global Critic findings must be resolved before candidate selection")
     if action == "select_candidate":
         if not isinstance(candidate_id, str) or candidate_id not in by_id:
             raise ValueError("selected candidate must exist in comparison report")
