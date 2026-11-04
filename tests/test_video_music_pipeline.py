@@ -141,3 +141,31 @@ def test_core_registry_prefers_video_for_combined_audiovisual_scenario_request()
     selected = build_core_agent_registry().resolve(request)
     assert selected is not None
     assert selected.name == "video"
+
+def test_pipeline_rejects_music_cue_that_does_not_match_source_scene():
+    class WrongCueMusicAgent(MusicAgent):
+        def handle(self, request):
+            response = super().handle(request)
+            metadata = dict(response.metadata)
+            plan = dict(metadata["music_plan"])
+            cues = [dict(cue) for cue in plan["cues"]]
+            cues[0]["start_seconds"] += 1
+            plan["cues"] = cues
+            metadata["music_plan"] = plan
+            return AgentResponse(response.text, metadata)
+
+    request = AgentRequest(
+        "user-1", "短編映像のシナリオを作って",
+        metadata={"duration_seconds": 60, "scene_count": 3},
+    )
+    with pytest.raises(ValueError, match="does not match source scene"):
+        VideoMusicPipeline(music_agent=WrongCueMusicAgent()).run(request)
+
+
+def test_pipeline_reply_uses_actual_line_breaks():
+    response = run_video_music_pipeline(AgentRequest(
+        "user-1", "短編映像のシナリオを作って",
+        metadata={"duration_seconds": 60, "scene_count": 3},
+    ))
+    assert "\\\\n" not in response.text
+    assert "\\n" in response.text
