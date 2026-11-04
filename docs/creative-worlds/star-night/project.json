@@ -109,5 +109,28 @@
     "video_and_music_jobs": "independent_cloud_jobs",
     "paid_fallback": "disabled_without_explicit_user_approval",
     "unavailable_cloud_capacity": "hold_and_retry_later"
+  },
+  "cloud_candidate_producer": {
+    "workflow": ".github/workflows/star-night-cloud-candidate.yml",
+    "entrypoint": "scripts.build_star_night_cloud_candidate",
+    "schedule": "hourly",
+    "execution": "github_actions_ubuntu",
+    "outputs": [
+      "scenario.json",
+      "screenplay.md",
+      "storyboard.json",
+      "shot_list.json",
+      "music_plan.json",
+      "edit_decision_list.json",
+      "original_music.mid",
+      "original_music.wav",
+      "critic_review.json",
+      "manifest.json"
+    ],
+    "artifact_retention_days": 14,
+    "video_status": "not_rendered",
+    "publication_authorized": false,
+    "paid_provider_fallback": false,
+    "mac_dependency": false
   }
 }
