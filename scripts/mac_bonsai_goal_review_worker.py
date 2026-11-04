@@ -98,14 +98,19 @@ def _bounded_review_input(review: dict) -> dict:
     ]
     if len(criterion_ids) != len(criteria) or len(set(criterion_ids)) != len(criterion_ids):
         raise ReviewWorkerError("success criteria must have unique non-empty ids")
+    if len(children) > 12:
+        raise ReviewWorkerError("child evidence exceeds the 12-job review limit")
     compact_children = []
-    for child in children[:12]:
+    for child in children:
         if not isinstance(child, dict):
-            continue
+            raise ReviewWorkerError("child evidence contains a malformed job")
+        evidence = child.get("evidence")
+        if not isinstance(evidence, dict):
+            raise ReviewWorkerError("child job is missing persisted evidence")
         compact_children.append({
             "goal_job_key": str(child.get("goal_job_key", ""))[:120],
             "status": str(child.get("status", ""))[:40],
-            "evidence": child.get("evidence") if isinstance(child.get("evidence"), dict) else {},
+            "evidence": evidence,
             "result": str(child.get("result", ""))[:5000],
         })
     if any(
