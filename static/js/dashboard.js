@@ -42,8 +42,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const lr=await fetch(api('/api/dashboard/loop')); const ld=await lr.json();
         const l=ld.loop||{}, s=ld.safety||{}, h=ld.hand_sign||{};
         loopLastRun = l.last_run || {};
+        const streamStatus = status => ({
+          in_development: '🔵 実装中・未稼働確認',
+          partial: '🟡 一部実装・継続改善中',
+          planned: '⚪ 計画',
+          verified: '🟢 定期実行を検証済み'
+        }[status] || '⚪ 状態未確認');
+        const streams = Array.isArray(l.streams) ? l.streams : [];
+        const streamGrid = document.getElementById('developmentStreams');
+        if (streamGrid) {
+          streamGrid.innerHTML = streams.map(item => {
+            const prs = Array.isArray(item.related_prs) ? item.related_prs.map(n => '#'+Number(n)).join(' / ') : '';
+            const cadence = item.cadence === 'hourly_target' ? '目標：毎時（稼働未確認）' : '頻度未確認';
+            return `<div class="system-card"><div class="system-card-title">${esc(item.label||item.key)}</div><div class="system-status">${streamStatus(item.status)}</div><div class="system-details">${esc(item.detail||'')}</div><div class="system-details">${esc(cadence)}${prs ? ' ・ 関連PR '+esc(prs) : ''}</div></div>`;
+          }).join('') || '<div class="system-details">系統情報は未取得です</div>';
+        }
+        const cadenceNote = l.target_cadence_verified ? '毎時実行を検証済み' : '毎時は目標・未検証';
         const cards=[
-          ['🔄 Loop','🟢 自動運転設定済み',`1日 ${l.frequency_per_day||4}回 ・ ${(l.schedule_jst||[]).join(' / ')} JST`],
+          ['🔄 Loop',l.frequency_per_day?'🟡 スケジュール設定あり':'⚪ 未確認',`現在：1日 ${l.frequency_per_day||0}回 ・ ${(l.schedule_jst||[]).join(' / ')} JST ・ ${cadenceNote}`],
           ['🛡️ Safety Gate',s.fail_closed||l.fail_closed?'🟢 FAIL_CLOSED 有効':'⚪ 未確認',`Auto Merge: ${s.auto_merge?'有':'無'} ・ Auto Deploy: ${s.auto_deploy?'有':'無'}`],
           ['📋 Sheets監査',l.sheets_audit?'🟢 有効':'⚪ 未確認',`Runtime telemetry: ${esc(l.runtime_telemetry||'unknown')}`],
           ['🧭 Hermes Adviser',s.hermes_role==='adviser'?'🟢 Adviser':'⚪ 未確認',s.hermes_is_auxiliary?'補助系統・Loop本体とは分離':'状態確認要'],
@@ -55,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
               : '未取得のRunを成功扱いしません'],
         ];
         document.getElementById('loopGrid').innerHTML=cards.map(x=>'<div class="system-card"><div class="system-card-title">'+x[0]+'</div><div class="system-status">'+x[1]+'</div><div class="system-details">'+esc(x[2])+'</div></div>').join('');
-        document.getElementById('loopSummary').textContent=`自動Loop ${l.frequency_per_day||4}回/日 ・ 安全設定確認済み`;
+        document.getElementById('loopSummary').textContent=`本線1＋サイド${Math.max(0,streams.length-1)} ・ 現行Loop ${l.frequency_per_day||0}回/日 ・ ${cadenceNote}`;
       } catch(e) {
         document.getElementById('loopSummary').textContent='状態取得失敗';
         document.getElementById('loopGrid').innerHTML='<div class="system-details">Loop状態を取得できません。未確認の稼働を断定しません。</div>';
