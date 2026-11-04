@@ -1,4 +1,4 @@
-"""LINE Goal intake. Proposals are inert until an allowlisted owner approves them."""
+""""LINE Goal intake. Proposals are inert until an allowlisted owner approves them."""
 from __future__ import annotations
 
 import json
@@ -10,8 +10,8 @@ from datetime import datetime, timedelta, timezone
 import db
 import goal_job_store
 
-_GOAL = re.compile(r"^\s*(?:goal\s*[:：]|目標\s*[:：])\s*(.+?)\s*$", re.IGNORECASE)
-_APPROVE = re.compile(r"^\s*(?:goal\s*approve|goal承認|目標承認)\s+([A-Za-z0-9_-]{8,40})\s*$", re.IGNORECASE)
+_GOAL = re.compile(r"^\\s*(?:goal\\s*[:：]|目標\\s*[:：])\\s*(.+?)\\s*$", re.IGNORECASE)
+_APPROVE = re.compile(r"^\\s*(?:goal\\s*approve|goal承認|目標承認)\\s+([A-Za-z0-9_-]{8,40})\\s*$", re.IGNORECASE)
 
 
 def _allowed(user_id):
@@ -31,6 +31,7 @@ def _init():
 
 def _contract(goal_id, objective):
     criterion = "sprint_plan_reviewed"
+    plan_path = f"docs/goal_sprints/{goal_id}.md"
     return {
         "goal_id": goal_id,
         "objective": objective,
@@ -43,12 +44,12 @@ def _contract(goal_id, objective):
             "instruction": (
                 "Create a concise Sprint 1 plan for this Goal. Include Sprint Goal, one small "
                 "reviewable increment, acceptance criteria, dependencies, free-only tools, risks, "
-                "and verification steps. Write only under docs/goal_sprints/ using a filename "
-                "derived from the Goal ID. Limit all edits to the Sprint plan document; leave source code and service configuration untouched. "
+                f"and verification steps. Write only to {plan_path}. "
+                "Limit all edits to this single Sprint plan document; leave source code and service configuration untouched. "
                 "Preserve the product sequence: original music and scenario-led audiovisual work, "
                 "interactive narrative, simple game, then a full original game."
             ),
-            "allowed_paths": ["docs/goal_sprints/"], "depends_on": []
+            "allowed_paths": [plan_path], "depends_on": []
         }]
     }
 
@@ -119,7 +120,7 @@ def _approve(user_id, proposal_id):
             "WHERE proposal_id=? AND status='approving'", (proposal_id,)
         )
     return (f"Goal {proposal_id} を承認し、Sprint計画JOB {queued['job_id']} を登録しました。"
-            "範囲は docs/goal_sprints/ の計画文書のみ、期限7日・最大1 JOBです。")
+            f"範囲は {goal['jobs'][0]['allowed_paths'][0]} のみ、期限7日・最大1 JOBです。")
 
 
 def handle_goal_intake(user_id, message):
@@ -135,7 +136,7 @@ def handle_goal_intake(user_id, message):
         proposal_id = _create(str(user_id), objective)
     except Exception:
         return "Goal提案を保存できませんでした。"
-    return (f"Goal提案 {proposal_id} を作成しました: {objective}\n"
+    return (f"Goal提案 {proposal_id} を作成しました: {objective}\\n"
             f"未実行です。承認する場合は「Goal承認 {proposal_id}」と送信してください。")
 
 
