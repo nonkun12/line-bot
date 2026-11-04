@@ -61,8 +61,8 @@ def test_music_agent_uses_real_line_breaks_for_scenario_reply():
     response = MusicAgent().handle(AgentRequest(
         "u1", "映像に合わせて作曲", metadata={"scenario": scenario}
     ))
-    assert "\\\\n" not in response.text
-    assert "\\n" in response.text
+    assert "\\n" not in response.text
+    assert "\n" in response.text
 
 
 def test_music_agent_returns_validation_message_for_invalid_scenario():
