@@ -106,14 +106,25 @@ def render_storyboard_animatic(
     if not isinstance(storyboard, dict) or storyboard.get("schema_version") != "video-storyboard.v1":
         raise ValueError("storyboard must use video-storyboard.v1")
     panels = storyboard.get("panels")
+    duration = storyboard.get("duration_seconds")
     if not isinstance(panels, list) or not 1 <= len(panels) <= 20:
         raise ValueError("storyboard must contain 1 to 20 panels")
+    if type(duration) is not int or duration <= 0:
+        raise ValueError("storyboard duration_seconds must be a positive integer")
+    expected_start = 0
     for panel in panels:
         if not isinstance(panel, dict) or any(
             not isinstance(panel.get(key), str) or not panel[key].strip()
             for key in ("panel_id", "color_palette", "frame_description")
         ):
             raise ValueError("storyboard panel is incomplete")
+        start = panel.get("time_start_seconds")
+        length = panel.get("duration_seconds")
+        if type(start) is not int or start != expected_start or type(length) is not int or length <= 0:
+            raise ValueError("storyboard panel timeline must be contiguous and positive")
+        expected_start = start + length
+    if expected_start != duration:
+        raise ValueError("storyboard panels must cover the declared duration")
     if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 1800:
         raise ValueError("timeout_seconds must be between 1 and 1800")
     executable = blender_executable or shutil.which("blender")
