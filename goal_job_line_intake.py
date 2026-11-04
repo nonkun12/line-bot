@@ -64,30 +64,87 @@ def parse_goal_approval(message: object) -> str | None:
 
 def _build_proposal(objective: str, proposal_id: str) -> dict[str, Any]:
     goal_id = f"line-goal-{proposal_id}"
-    criterion_id = "goal_plan_ready"
+    phases = [
+        {
+            "criterion_id": "music_video_foundation",
+            "job_id": "sprint-01-music-video",
+            "filename": "01-music-video-foundation.md",
+            "title": "Sprint 1: Original music and audiovisual short work",
+            "instruction": (
+                "Define the first tangible increment: one original music piece and one short "
+                "video whose scenario, emotional arc, pacing, color, motion, silence, and musical "
+                "cues are designed together. Include composition, arrangement, MIDI/free soundfont "
+                "workflow, storyboard, shot plan, free Blender/DaVinci/FFmpeg options, rights checks, "
+                "acceptance criteria, and a small testable backlog."
+            ),
+        },
+        {
+            "criterion_id": "interactive_narrative",
+            "job_id": "sprint-02-interactive",
+            "filename": "02-interactive-narrative.md",
+            "title": "Sprint 2: Interactive audiovisual narrative",
+            "instruction": (
+                "Design the next increment where viewer choices change story, visuals, and music. "
+                "Specify branching narrative data, state transitions, audiovisual synchronization, "
+                "prototype boundaries, acceptance criteria, and regression tests."
+            ),
+        },
+        {
+            "criterion_id": "simple_game_prototype",
+            "job_id": "sprint-03-game-prototype",
+            "filename": "03-simple-game-prototype.md",
+            "title": "Sprint 3: Simple playable game",
+            "instruction": (
+                "Design a small browser-playable game prototype that grows from the established "
+                "music, video, and interactive narrative foundations. Prefer free Godot tooling; "
+                "define one core mechanic, a playable loop, input, UI, asset pipeline, and tests."
+            ),
+        },
+        {
+            "criterion_id": "full_game_roadmap",
+            "job_id": "sprint-04-full-game",
+            "filename": "04-full-game-roadmap.md",
+            "title": "Sprint 4: Full original game roadmap",
+            "instruction": (
+                "Define the staged roadmap toward the final original full-featured game: distinctive "
+                "ideas, world, mechanics, progression, content pipeline, music and video direction, "
+                "browser delivery where feasible, quality gates, risks, and future Sprints."
+            ),
+        },
+    ]
+    criteria = [
+        {
+            "id": phase["criterion_id"],
+            "description": f"An independently reviewable Sprint plan exists: {phase['title']}.",
+        }
+        for phase in phases
+    ]
+    jobs = []
+    previous_job = None
+    for phase in phases:
+        path = f"docs/goal-plans/{goal_id}/{phase['filename']}"
+        dependencies = [previous_job] if previous_job else []
+        jobs.append({
+            "id": phase["job_id"],
+            "criterion_id": phase["criterion_id"],
+            "stage": "design",
+            "instruction": (
+                f"Create a concise Sprint plan at {path}. Overall objective: {objective} "
+                f"Sprint: {phase['title']} {phase['instruction']} "
+                "Include a Sprint Goal, small dependency-ordered JOBs, measurable acceptance "
+                "criteria, free-only tools, resource limits, safety boundaries, and verification. "
+                "This JOB writes only its one plan document."
+            ),
+            "allowed_paths": [path],
+            "depends_on": dependencies,
+        })
+        previous_job = phase["job_id"]
     return {
         "goal_id": goal_id,
         "objective": objective,
-        "success_criteria": [{
-            "id": criterion_id,
-            "description": "A scoped, dependency-ordered implementation plan exists and is independently reviewed.",
-        }],
-        "jobs": [{
-            "id": "goal-plan",
-            "criterion_id": criterion_id,
-            "stage": "design",
-            "instruction": (
-                "Create a concise, sprint-oriented implementation plan for this Goal in "
-                f"docs/goal-plans/{goal_id}.md. Objective: {objective}\n"
-                "Include a Sprint Goal, small dependency-ordered JOBs, acceptance criteria, "
-                "free-only tool choices, scope boundaries, and verification steps. "
-                "This planning JOB writes only its plan document."
-            ),
-            "allowed_paths": [f"docs/goal-plans/{goal_id}.md"],
-            "depends_on": [],
-        }],
+        "success_criteria": criteria,
+        "jobs": jobs,
     }
-
 
 def create_goal_proposal(user_id: str, objective: str) -> dict[str, Any]:
     if not isinstance(user_id, str) or not user_id.strip():
