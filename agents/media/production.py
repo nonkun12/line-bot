@@ -19,6 +19,8 @@ from agents.music.wav_renderer import write_wav_file
 from agents.video.edit_decision_list import build_edit_decision_list
 from agents.video.ffmpeg_renderer import render_video_from_edl
 from agents.video.scenario import validate_scenario
+from agents.video.storyboard import build_storyboard
+from agents.video.shot_list import build_shot_list
 
 
 def _write_json_exclusive(path: Path, payload: dict[str, Any]) -> None:
@@ -52,6 +54,10 @@ def create_audiovisual_production_bundle(
 
     try:
         _write_json_exclusive(destination / "scenario.json", scenario)
+        storyboard = build_storyboard(scenario)
+        shot_list = build_shot_list(storyboard)
+        _write_json_exclusive(destination / "storyboard.json", storyboard)
+        _write_json_exclusive(destination / "shot_list.json", shot_list)
         _write_json_exclusive(destination / "music_plan.json", music_plan)
         _write_json_exclusive(destination / "edit_decision_list.json", edl)
         midi = write_midi_file(music_plan, destination / "original_music.mid", bpm=bpm)
@@ -98,6 +104,8 @@ def create_audiovisual_production_bundle(
 
         artifacts = {
             "scenario": "scenario.json",
+            "storyboard": "storyboard.json",
+            "shot_list": "shot_list.json",
             "music_plan": "music_plan.json",
             "midi": "original_music.mid",
             "audio_preview": "original_music.wav",
