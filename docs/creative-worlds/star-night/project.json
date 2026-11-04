@@ -99,5 +99,15 @@
       "contract": "shared_timeline_and_explicit_sync_markers",
       "may_rewrite_source_tracks": false
     }
+  },
+  "execution_policy": {
+    "architecture": "cloud_first",
+    "production_execution": "cloud_only",
+    "mac_role": "optional_advisor_only",
+    "mac_may_execute_production_jobs": false,
+    "mac_required_for_hourly_cycle": false,
+    "video_and_music_jobs": "independent_cloud_jobs",
+    "paid_fallback": "disabled_without_explicit_user_approval",
+    "unavailable_cloud_capacity": "hold_and_retry_later"
   }
 }
