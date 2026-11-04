@@ -64,3 +64,28 @@ def test_duplicate_node_ids_are_rejected():
         apply_choice("NODE_START", STATE, {
             "id": "C", "source_node": "NODE_START", "next_node": "NODE_START"
         }, [{"id": "NODE_START"}, {"id": "NODE_START"}])
+
+
+def test_generated_story_graph_drives_all_three_playable_routes(tmp_path):
+    import json
+
+    from scripts.star_night_game_state import apply_choice
+
+    out = tmp_path / "candidate"
+    build_candidate(out)
+    graph = json.loads((out / "game_story_graph.json").read_text(encoding="utf-8"))
+    expected = {
+        "CHOICE_LUMINA_01A": ("NODE_MEMORY", "noa_memory", "LOC_OLD_STATION_ARCHIVE"),
+        "CHOICE_LUMINA_01B": ("NODE_LIGHTS", "city_lights", "LOC_OLD_STATION_TUNNEL"),
+        "CHOICE_LUMINA_01C": ("NODE_TRUST", "trust_mina", "LOC_OLD_STATION_CONTROL"),
+    }
+
+    for choice in graph["choices"]:
+        target, state_key, location = expected[choice["id"]]
+        result = apply_choice(graph["start_node"], graph["initial_state"], choice, graph["nodes"])
+        assert result["current_node"] == target
+        assert result["state"][state_key] == 1
+        assert result["state"]["choice_history"] == [choice["id"]]
+        assert result["state"]["discovered_locations"] == [location]
+
+    assert graph["initial_state"] == {"trust_mina": 0, "city_lights": 0, "noa_memory": 0}
