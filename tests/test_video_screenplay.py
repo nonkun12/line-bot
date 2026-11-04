@@ -23,3 +23,9 @@ def test_screenplay_contains_scene_timing_visual_narration_and_music_sync():
 def test_screenplay_rejects_invalid_scenario():
     with pytest.raises(ValueError, match="invalid scenario"):
         render_screenplay_markdown({"schema_version": "invalid"})
+
+def test_screenplay_rejects_incomplete_creative_brief():
+    scenario = build_scenario("夜明けの街", duration_seconds=15, scene_count=3)
+    del scenario["creative_brief"]["premise"]
+    with pytest.raises(ValueError, match="creative_brief is incomplete"):
+        render_screenplay_markdown(scenario)
