@@ -34,7 +34,7 @@ def test_renders_with_explicit_local_assets_and_never_uses_a_shell(tmp_path, mon
     assert args[0] == "/usr/bin/fluidsynth"
     assert str(soundfont) in args
     assert str(midi.resolve()) in args
-    assert kwargs["shell"] is False or "shell" not in kwargs
+    assert kwargs["shell"] is False
     assert kwargs["stdin"] is audio_renderer.subprocess.DEVNULL
 
 
