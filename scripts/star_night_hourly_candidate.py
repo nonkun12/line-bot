@@ -110,7 +110,133 @@ def _write_wav(path: Path, duration: float = 15.0, sample_rate: int = 22050) -> 
         wav.writeframes(frames)
 
 
-def build_candidate(output_dir: str | Path, *, now: datetime | None = None) -> dict[str, Any]:
+def _render_animatic(destination: Path) -> Path:
+    """Render a 15-second illustrated storyboard animatic with local open tools."""
+    import shutil
+    import subprocess
+
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError as exc:
+        raise RuntimeError("Pillow is required for animatic rendering") from exc
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg is required for animatic rendering")
+
+    width, height = 1280, 720
+    frame_dir = destination / "animatic_frames"
+    frame_dir.mkdir(exist_ok=True)
+    font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+    bold_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
+    def font(size: int, bold: bool = False):
+        candidate = bold_path if bold else font_path
+        try:
+            return ImageFont.truetype(candidate, size)
+        except OSError:
+            return ImageFont.load_default()
+
+    titles = ["雨の街", "星のかけら", "小さな選択", "街に戻る光", "胸に残る星"]
+    captions = [
+        "雨に沈む街で、ノアは小さな光に気づく",
+        "水たまりのそばに、星のかけらルミナ",
+        "誰かのための光が、最初の灯りになる",
+        "ひとつの灯りが、街へと広がっていく",
+        "雲の向こうに星。ノアの胸にも小さな光",
+    ]
+    durations = [scene["duration"] for scene in SCENES]
+    for index, scene in enumerate(SCENES):
+        image = Image.new("RGB", (width, height), (8, 16, 34))
+        pixels = image.load()
+        for y in range(height):
+            blend = y / height
+            color = (int(10 + 10 * blend), int(22 + 18 * blend), int(48 + 25 * blend))
+            for x in range(width):
+                pixels[x, y] = color
+        draw = ImageDraw.Draw(image, "RGBA")
+
+        # Distant skyline and wet street, built from simple graphic shapes.
+        for b in range(9):
+            x = b * 155 - 20
+            top = 205 + ((b * 37) % 110)
+            draw.rectangle((x, top, x + 115, 570), fill=(15, 29, 54, 235), outline=(48, 76, 112, 150), width=2)
+            for wy in range(top + 24, 535, 42):
+                for wx in range(x + 18, x + 100, 30):
+                    lit = index >= 3 and ((b + wy + wx) % 4 == 0)
+                    draw.rectangle((wx, wy, wx + 8, wy + 13),
+                                   fill=(255, 204, 125, 190) if lit else (45, 78, 112, 100))
+        draw.polygon([(0, 560), (width, 520), (width, height), (0, height)], fill=(12, 20, 34, 255))
+        for r in range(14):
+            y = 575 + r * 12
+            draw.line((0, y, width, y - 34), fill=(70, 104, 145, 65), width=2)
+        # Rain strokes.
+        for r in range(95):
+            x = (r * 137 + index * 29) % width
+            y = (r * 83 + index * 41) % 570
+            draw.line((x, y, x - 8, y + 23), fill=(140, 190, 225, 95), width=2)
+
+        # Small explorer robot silhouette, consistent across all shots.
+        robot_x = 475 if index < 3 else 560
+        robot_y = 478
+        draw.ellipse((robot_x - 42, robot_y - 104, robot_x + 42, robot_y - 20),
+                     fill=(91, 132, 158, 255), outline=(185, 215, 224, 255), width=4)
+        draw.rounded_rectangle((robot_x - 55, robot_y - 24, robot_x + 55, robot_y + 88),
+                               radius=25, fill=(62, 101, 127, 255), outline=(185, 215, 224, 255), width=4)
+        draw.ellipse((robot_x - 18, robot_y - 75, robot_x - 4, robot_y - 61), fill=(125, 226, 255, 255))
+        draw.ellipse((robot_x + 4, robot_y - 75, robot_x + 18, robot_y - 61), fill=(125, 226, 255, 255))
+        draw.ellipse((robot_x - 16, robot_y + 10, robot_x + 16, robot_y + 42),
+                     fill=(255, 221, 130, 230) if index >= 2 else (90, 125, 151, 255))
+
+        # Lumina moves from the ground to the robot and then the city.
+        lumina_x = [700, 700, 625, 820, 820][index]
+        lumina_y = [530, 525, 420, 320, 245][index]
+        glow = 26 if index < 3 else 42
+        draw.ellipse((lumina_x - glow * 2, lumina_y - glow * 2,
+                      lumina_x + glow * 2, lumina_y + glow * 2), fill=(78, 190, 255, 35))
+        draw.ellipse((lumina_x - glow, lumina_y - glow, lumina_x + glow, lumina_y + glow),
+                     fill=(112, 218, 255, 105), outline=(210, 247, 255, 230), width=3)
+        # Star glyph.
+        draw.text((lumina_x, lumina_y), "✦", font=font(58, True), fill=(255, 246, 198, 255), anchor="mm")
+        if index >= 3:
+            for lx in [160, 330, 1020, 1150]:
+                draw.ellipse((lx - 13, 300, lx + 13, 326), fill=(255, 210, 132, 220))
+                draw.line((lx, 326, lx, 505), fill=(255, 210, 132, 160), width=5)
+        if index == 4:
+            draw.ellipse((965, 92, 1000, 127), fill=(255, 245, 207, 245))
+            draw.ellipse((950, 78, 1015, 141), outline=(255, 232, 172, 140), width=3)
+
+        # Title plate and lower caption.
+        draw.rounded_rectangle((55, 45, 490, 132), radius=18, fill=(5, 13, 28, 190),
+                               outline=(122, 176, 211, 100), width=2)
+        draw.text((82, 63), "星を拾った夜", font=font(39, True), fill=(235, 245, 255, 255))
+        draw.text((84, 112), f"EPISODE 01  /  CUT 0{index + 1}", font=font(15), fill=(151, 195, 224, 255))
+        draw.rounded_rectangle((55, 620, 1225, 685), radius=14, fill=(4, 11, 24, 205))
+        draw.text((82, 638), captions[index], font=font(25), fill=(236, 243, 251, 255))
+        draw.text((1190, 92), titles[index], font=font(22), fill=(190, 222, 245, 230), anchor="ra")
+        image.save(frame_dir / f"cut_{index + 1:02d}.png", optimize=True)
+
+    concat_file = frame_dir / "frames.txt"
+    lines = []
+    for index, duration in enumerate(durations, start=1):
+        lines.extend([f"file 'cut_{index:02d}.png'", f"duration {duration}"])
+    lines.append(f"file 'cut_{len(durations):02d}.png'")
+    concat_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    output = destination / "star-night-episode-01-animatic.mp4"
+    command = [
+        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+        "-f", "concat", "-safe", "0", "-i", str(concat_file),
+        "-i", str(destination / "original_music.wav"),
+        "-vf", "fps=24,format=yuv420p", "-t", "15",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+        "-c:a", "aac", "-b:a", "160k", "-shortest",
+        "-movflags", "+faststart", str(output),
+    ]
+    subprocess.run(command, cwd=frame_dir, check=True, capture_output=True, text=True)
+    if not output.is_file() or output.stat().st_size < 10_000:
+        raise RuntimeError("ffmpeg did not produce a valid animatic")
+    return output
+
+
+def build_candidate(output_dir: str | Path, *, now: datetime | None = None, render_animatic: bool = False) -> dict[str, Any]:
     moment = now or datetime.now(timezone.utc)
     if moment.tzinfo is None:
         raise ValueError("now must be timezone-aware")
@@ -169,15 +295,16 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None) -> d
             (destination / name).write_text(content, encoding="utf-8")
         (destination / "original_music.mid").write_bytes(_midi_bytes())
         _write_wav(destination / "original_music.wav")
+        video_path = _render_animatic(destination) if render_animatic else None
         hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(destination.iterdir()) if p.is_file()}
         manifest = {"schema_version": "star-night-candidate-manifest.v1", "created_at": moment.isoformat(),
                     "project_id": PROJECT, "episode_id": "SN-E001", "status": "draft",
                     "cloud_execution": True, "mac_required": False, "paid_api_used": False,
-                    "video_render_status": "not_rendered", "publication_authorized": False,
+                    "video_render_status": "animatic_rendered" if video_path else "not_rendered", "publication_authorized": False,
                     "canon_modified": False, "hourly_task": task, "sha256": hashes}
         (destination / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return {"status": "candidate_created", "directory": str(destination), "artifact_count": len(hashes) + 1,
-                "midi": "generated", "wav": "generated", "video": "not_rendered",
+                "midi": "generated", "wav": "generated", "video": str(video_path) if video_path else "not_rendered",
                 "task_focus": task_id, "publication_authorized": False}
     except Exception:
         import shutil
@@ -188,8 +315,9 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None) -> d
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--render-animatic", action="store_true")
     args = parser.parse_args()
-    print(json.dumps(build_candidate(args.output_dir), ensure_ascii=False, sort_keys=True))
+    print(json.dumps(build_candidate(args.output_dir, render_animatic=args.render_animatic), ensure_ascii=False, sort_keys=True))
     return 0
 
 
