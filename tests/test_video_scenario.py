@@ -130,3 +130,97 @@ def test_scenario_validator_rejects_non_string_energy_without_crashing():
     draft = build_scenario("不正な入力", duration_seconds=60, scene_count=3)
     draft["scenes"][0]["music_sync"]["energy"] = ["low"]
     assert "scene_1_energy_invalid" in validate_scenario(draft)
+
+
+def test_scenario_contains_concrete_editable_screenplay_and_shot_direction():
+    draft = build_scenario(
+        "星明かりの下で再会する二人",
+        premise="離れて暮らした二人が小さな駅で再会する",
+        duration_seconds=120,
+        scene_count=4,
+    )
+    scenes = draft["scenes"]
+    assert all(scene["dialogue_or_narration"] for scene in scenes)
+    assert all(scene["action"] and scene["visual_direction"] for scene in scenes)
+    assert all(scene["shot_plan"]["camera_motion"] for scene in scenes)
+    assert "星明かり" in scenes[0]["shot_plan"]["focal_subject"]
+    assert scenes[0]["shot_plan"]["shot_size"] == "wide_to_medium"
+    assert scenes[2]["shot_plan"]["camera_motion"] == "decisive_reveal"
+    assert len(scenes[1]["music_sync"]["sync_points"]) == 3
+    assert draft["creative_assumptions"]
+    assert validate_scenario(draft) == ()
+
+
+def test_scenario_validator_rejects_missing_shot_plan():
+    draft = build_scenario("短い物語", duration_seconds=60, scene_count=3)
+    draft["scenes"][1]["shot_plan"]["camera_motion"] = ""
+    assert "scene_2_shot_plan_invalid" in validate_scenario(draft)
+
+
+def test_storyboard_and_shot_list_are_generated_from_scenario():
+    from agents.video.storyboard import build_storyboard
+    from agents.video.shot_list import build_shot_list
+
+    scenario = build_scenario(
+        "星明かりの下で再会する二人",
+        premise="離れて暮らした二人が小さな駅で再会する",
+        duration_seconds=60,
+        scene_count=4,
+    )
+    storyboard = build_storyboard(scenario)
+    shot_list = build_shot_list(storyboard)
+    assert storyboard["schema_version"] == "video-storyboard.v1"
+    assert len(storyboard["panels"]) == 4
+    assert shot_list["schema_version"] == "video-shot-list.v1"
+    assert shot_list["duration_seconds"] == 60
+    assert shot_list["shots"][0]["start_seconds"] == 0
+    assert shot_list["shots"][-1]["end_seconds"] == 60
+    assert all(shot["asset_status"] == "needs_rights_cleared_asset" for shot in shot_list["shots"])
+    assert shot_list["external_assets_downloaded"] is False
+
+
+def test_video_agent_returns_storyboard_and_shot_list_with_scenario():
+    from agents.video.node import VideoAgent
+    from core.agents import AgentRequest
+
+    response = VideoAgent().handle(AgentRequest(
+        "user-1", "シナリオを作って",
+        metadata={"duration_seconds": 90, "scene_count": 3},
+    ))
+    assert len(response.metadata["storyboard"]["panels"]) == 3
+    assert response.metadata["shot_list"]["duration_seconds"] == 90
+    assert "ショット設計" in response.text
+
+
+def test_storyboard_rejects_invalid_scenario_and_shot_list_rejects_incomplete_panel():
+    from agents.video.storyboard import build_storyboard
+    from agents.video.shot_list import build_shot_list
+
+    try:
+        build_storyboard({})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid scenario must not produce a storyboard")
+
+    try:
+        build_shot_list({"schema_version": "video-storyboard.v1", "panels": [{}]})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("incomplete panel must not produce a shot list")
+
+
+def test_shot_list_rejects_non_contiguous_storyboard_timeline():
+    from agents.video.storyboard import build_storyboard
+    from agents.video.shot_list import build_shot_list
+
+    scenario = build_scenario("時を越える手紙", duration_seconds=60, scene_count=3)
+    storyboard = build_storyboard(scenario)
+    storyboard["panels"][1]["time_start_seconds"] += 1
+    try:
+        build_shot_list(storyboard)
+    except ValueError as exc:
+        assert "contiguous timeline" in str(exc)
+    else:
+        raise AssertionError("shot list must reject storyboard timeline gaps")

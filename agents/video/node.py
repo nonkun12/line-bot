@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from agents.video.intents import is_video_intent
 from agents.video.scenario import build_scenario
+from agents.video.storyboard import build_storyboard
+from agents.video.shot_list import build_shot_list
 from agents.video.edit_decision_list import build_edit_decision_list
 from core.agents import AgentRequest, AgentResponse
 
@@ -34,6 +36,8 @@ class VideoAgent:
                         premise=metadata.get("premise"),
                         title=metadata.get("title"),
                     )
+                storyboard = build_storyboard(scenario)
+                shot_list = build_shot_list(storyboard)
                 music_plan = metadata.get("music_plan")
                 edl = build_edit_decision_list(scenario, music_plan) if isinstance(music_plan, dict) else None
             except ValueError as exc:
@@ -59,6 +63,7 @@ class VideoAgent:
                     "",
                 ])
             lines.append("次工程：脚本詳細化 → 連続性レビュー → 絵コンテ → ショットリスト → 音響設計")
+            lines.append(f"絵コンテ：{len(storyboard['panels'])}パネル / ショット設計：{len(shot_list['shots'])}カット（いずれも編集可能な草案）")
             if edl is not None:
                 lines.append("音楽設計と同期した映像編集タイムライン（EDL）も作成しました。実際の映像書き出しは未実施です。")
             reply = "\n".join(lines)
@@ -67,6 +72,8 @@ class VideoAgent:
                 metadata={
                     "feature": self.name, "status": "online", "mode": mode,
                     "scenario": scenario,
+                    "storyboard": storyboard,
+                    "shot_list": shot_list,
                     "next_artifacts": scenario["next_artifacts"],
                     "edit_decision_list": edl,
                 },

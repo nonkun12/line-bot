@@ -62,13 +62,53 @@ def build_scenario(
     if duration_seconds < scene_count:
         raise ValueError("duration_seconds must be at least scene_count to give every scene positive duration")
 
+    # A useful first screenplay pass should contain editable, scene-specific
+    # direction rather than generic "fill this in later" placeholders. These
+    # are clearly draft creative assumptions, not claims about real locations.
+    scene_craft = {
+        "opening": {
+            "visual": "導入の広い establishing shot から主題へゆっくり寄る。低い位置の柔らかな自然光、余白の多い構図、寒色寄りの静かな色調。",
+            "action": "主題を象徴する対象を静止状態から見せ、最後に小さな動きまたは変化を一つ起こす。",
+            "line": f"「{subject}」。まだ何も始まっていないように見える場所にも、物語の種はある。",
+            "audio": "冒頭は短い環境音と余白。主題モチーフを控えめに提示し、最初の画面変化に合わせて柔らかな音の輪郭を加える。",
+            "shot_size": "wide_to_medium", "camera_motion": "slow_push_in",
+            "light": "soft_low_contrast", "palette": "cool_muted",
+        },
+        "development": {
+            "visual": "対象の手元・表情・細部を medium close-up でつなぐ。斜めの構図と少し強い明暗で変化の兆しを見せる。",
+            "action": "対象が目的に向けて一歩進み、障害または選択に直面する。冒頭で示した象徴的な対象を再登場させる。",
+            "line": f"小さな選択が、{premise}の景色を少しずつ変えていく。",
+            "audio": "一定の脈動を持つリズムを加え、動作の節目に短い効果音を置く。台詞の直前は編成を薄くする。",
+            "shot_size": "medium_close_up", "camera_motion": "measured_tracking",
+            "light": "directional_soft", "palette": "neutral_warm",
+        },
+        "climax": {
+            "visual": "最重要の変化を close-up と wide shot の対比で見せる。光量と色彩のコントラストを最大にし、決定的瞬間は短く間を取る。",
+            "action": "積み重ねた選択の結果が一つの決定的な行動として現れ、画面内の状態が明確に変わる。",
+            "line": f"その瞬間、{subject}に込められた意味が形になる。",
+            "audio": "主題モチーフを最も豊かな編成で変奏する。決定的な動作に音楽のアクセントを同期させ、直後に短い無音または残響を置く。",
+            "shot_size": "close_up_to_wide", "camera_motion": "decisive_reveal",
+            "light": "high_contrast_backlight", "palette": "accent_saturated",
+        },
+        "resolution": {
+            "visual": "冒頭と呼応する構図に戻し、変化した点を静かな wide shot で示す。光を柔らかく戻し、落ち着いた色調で余韻を残す。",
+            "action": "対象の変化を一つの具体的な画面要素で確認し、動きをゆっくり収束させて次の余白を残す。",
+            "line": f"物語はここで一区切りを迎える。{premise}の続きは、見る人それぞれの中に残される。",
+            "audio": "主題モチーフを簡素な音色に戻し、最後の画面変化から自然に減衰させる。終端に短い無音を設ける。",
+            "shot_size": "returning_wide", "camera_motion": "slow_pull_back",
+            "light": "soft_dawn_like", "palette": "warm_resolved",
+        },
+    }
+
     scenes = []
     base, remainder = divmod(duration_seconds, scene_count)
     for index in range(scene_count):
         act_index = round(index * 3 / (scene_count - 1))
         act, act_label, purpose = _ACTS[act_index]
+        craft = scene_craft[act]
         start = index * base + min(index, remainder)
         length = base + (1 if index < remainder else 0)
+        midpoint = max(1, length // 2)
         scenes.append({
             "scene_id": f"SC{index + 1:02d}",
             "act": act,
@@ -80,10 +120,18 @@ def build_scenario(
                 f"{subject}について、{purpose}。"
                 if index == 0 else f"{premise}を軸に、{purpose}。"
             ),
-            "visual_direction": "場所・被写体・構図・光・色調を具体化する",
-            "action": "人物や対象の動きと、前後の状態変化を記述する",
-            "dialogue_or_narration": "必要な台詞またはナレーションを作成する",
-            "audio_direction": "環境音・効果音・音楽の役割と開始終了位置を指定する",
+            "visual_direction": craft["visual"],
+            "shot_plan": {
+                "shot_size": craft["shot_size"],
+                "camera_motion": craft["camera_motion"],
+                "focal_subject": subject,
+                "lighting": craft["light"],
+                "color_palette": craft["palette"],
+                "composition_note": "前後のシーンとの構図の呼応を保ち、主題が一目で伝わる画面にする",
+            },
+            "action": craft["action"],
+            "dialogue_or_narration": craft["line"],
+            "audio_direction": craft["audio"],
             "music_sync": {
                 "emotional_intent": "このシーンで視聴者に届ける感情",
                 "energy": {"opening": "low", "development": "medium", "climax": "high", "resolution": "low"}[act],
@@ -91,8 +139,9 @@ def build_scenario(
                 "cue_in_seconds": 0,
                 "cue_out_seconds": length,
                 "sync_points": [
-                    {"at_seconds": 0, "event": "シーン開始に合わせて音楽を導入"},
-                    {"at_seconds": length, "event": "次シーンへの余韻または自然な接続"},
+                    {"at_seconds": 0, "event": "画面の導入と音楽の呼吸を合わせる"},
+                    {"at_seconds": midpoint, "event": "台詞または主要動作に合わせて音楽の密度を調整"},
+                    {"at_seconds": length, "event": "次シーンへの余韻または意図した無音で接続"},
                 ],
                 "motif": "作品全体で一貫性を持たせる主題モチーフ",
                 "mix_priority": "dialogue_first",
@@ -145,6 +194,11 @@ def build_scenario(
             "登場人物・小道具・衣装・場所の連続性が保たれている",
             "映像・台詞・音響が各シーンの目的に貢献している",
             "権利・安全・事実関係に問題がない",
+        ],
+        "creative_assumptions": [
+            "シーンごとの画作り・動作・ナレーションはGoal文から構成した編集可能な初稿",
+            "固有の人物・実在ロケーション・事実関係は指定されていないため創作していない",
+            "本制作前に脚本レビューで人物設定・具体的出来事・台詞の自然さを確定する",
         ],
         "next_artifacts": ["screenplay", "storyboard", "shot_list", "audio_plan"],
         "human_review_required_for": ["公開・配信", "第三者の肖像・声・著作物の利用"],
@@ -212,6 +266,12 @@ def validate_scenario(scenario: object) -> tuple[str, ...]:
                 errors.append(f"scene_{index + 1}_{key}_invalid")
         if not isinstance(scene.get("continuity"), dict):
             errors.append(f"scene_{index + 1}_continuity_invalid")
+        shot = scene.get("shot_plan")
+        if not isinstance(shot, dict) or any(
+            not isinstance(shot.get(key), str) or not shot[key].strip()
+            for key in ("shot_size", "camera_motion", "focal_subject", "lighting", "color_palette")
+        ):
+            errors.append(f"scene_{index + 1}_shot_plan_invalid")
 
         sync = scene.get("music_sync")
         if not isinstance(sync, dict):

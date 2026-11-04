@@ -213,10 +213,11 @@ def has_pending_job_by_type(job_type: str) -> bool:
             SELECT 1
             FROM jobs
             WHERE job_type=? AND status='pending'
+              AND (? != 'goal_child' OR CASE WHEN json_valid(message) THEN json_extract(message, '$.executor') ELSE NULL END IS NULL)
             ORDER BY id
             LIMIT 1
             """,
-            (job_type.strip(),),
+            (job_type.strip(), job_type.strip()),
         ).fetchone()
     return row is not None
 
@@ -271,11 +272,12 @@ def claim_pending_job_by_type(job_type, *, stale_after_seconds=900):
                 claim_token=NULL,
                 updated_at=CURRENT_TIMESTAMP
             WHERE job_type=?
+              AND (? != 'goal_child' OR CASE WHEN json_valid(message) THEN json_extract(message, '$.executor') ELSE NULL END IS NULL)
               AND status='running'
               AND updated_at < datetime('now', ?)
               AND retry_count >= max_retries
             """,
-            (job_type.strip(), stale_expr),
+            (job_type.strip(), job_type.strip(), stale_expr),
         )
         conn.execute(
             """
@@ -285,21 +287,23 @@ def claim_pending_job_by_type(job_type, *, stale_after_seconds=900):
                 retry_count=retry_count + 1,
                 updated_at=CURRENT_TIMESTAMP
             WHERE job_type=?
+              AND (? != 'goal_child' OR CASE WHEN json_valid(message) THEN json_extract(message, '$.executor') ELSE NULL END IS NULL)
               AND status='running'
               AND updated_at < datetime('now', ?)
               AND retry_count < max_retries
             """,
-            (job_type.strip(), stale_expr),
+            (job_type.strip(), job_type.strip(), stale_expr),
         )
         row = conn.execute(
             """
             SELECT id
             FROM jobs
             WHERE job_type=? AND status='pending'
+              AND (? != 'goal_child' OR CASE WHEN json_valid(message) THEN json_extract(message, '$.executor') ELSE NULL END IS NULL)
             ORDER BY id
             LIMIT 1
             """,
-            (job_type.strip(),),
+            (job_type.strip(), job_type.strip()),
         ).fetchone()
         if row is None:
             return None
@@ -311,8 +315,9 @@ def claim_pending_job_by_type(job_type, *, stale_after_seconds=900):
                 claim_token=?,
                 updated_at=CURRENT_TIMESTAMP
             WHERE id=? AND job_type=? AND status='pending'
+              AND (? != 'goal_child' OR CASE WHEN json_valid(message) THEN json_extract(message, '$.executor') ELSE NULL END IS NULL)
             """,
-            (token, job_id, job_type.strip()),
+            (token, job_id, job_type.strip(), job_type.strip()),
         )
         if cursor.rowcount != 1:
             return None
@@ -328,12 +333,64 @@ def claim_goal_child_job(job_id):
     with get_conn() as conn:
         cursor = conn.execute(
             "UPDATE jobs SET status='running',claim_token=?,updated_at=CURRENT_TIMESTAMP "
-            "WHERE id=? AND job_type='goal_child' AND status='pending'",
+            "WHERE id=? AND job_type='goal_child' AND status='pending' "
+            "AND CASE WHEN json_valid(message) THEN json_extract(message, '$.executor') ELSE NULL END IS NULL",
             (token, job_id),
         )
         if cursor.rowcount != 1:
             return None
     return get_job(job_id)
+
+
+def claim_pending_media_goal_child_job(executor_id):
+    """Atomically claim only a pending Goal child explicitly tagged for an executor."""
+    if not isinstance(executor_id, str) or not re.fullmatch(r"[a-z][a-z0-9_.-]{2,63}", executor_id):
+        raise ValueError("executor_id is invalid")
+    token = secrets.token_urlsafe(32)
+    with get_conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """
+            SELECT id FROM jobs
+            WHERE job_type='goal_child'
+              AND (status='pending' OR (status='running' AND updated_at < datetime('now', '-30 minutes')))
+              AND CASE WHEN json_valid(message)
+                       THEN json_extract(message, '$.executor')
+                       ELSE NULL END = ?
+            ORDER BY id
+            LIMIT 1
+            """,
+            (executor_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        cursor = conn.execute(
+            "UPDATE jobs SET status='running',claim_token=?,updated_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND job_type='goal_child' AND "
+            "(status='pending' OR (status='running' AND updated_at < datetime('now', '-30 minutes'))) "
+            "AND CASE WHEN json_valid(message) THEN json_extract(message, '$.executor') ELSE NULL END=?",
+            (token, row[0], executor_id),
+        )
+        if cursor.rowcount != 1:
+            return None
+    return get_job(row[0])
+
+
+def hold_claimed_goal_child_job(job_id, claim_token, reason):
+    """Move one exact claimed Goal child to HOLD without treating it as complete."""
+    if not _is_valid_job_id(job_id):
+        raise ValueError("job_id is invalid")
+    if not isinstance(claim_token, str) or len(claim_token) < 20:
+        raise ValueError("claim_token is invalid")
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("hold reason is required")
+    with get_conn() as conn:
+        cursor = conn.execute(
+            "UPDATE jobs SET status='held',last_error=?,claim_token=NULL,updated_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND job_type='goal_child' AND status='running' AND claim_token=?",
+            (reason.strip()[:2000], job_id, claim_token),
+        )
+        return cursor.rowcount == 1
 
 
 def complete_claimed_job(

@@ -17,6 +17,32 @@ _VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm"}
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
+def _camera_motion_filter(motion: str, duration: float, fps: int, width: int, height: int) -> str:
+    """Return a fixed, allowlisted Ken Burns filter; never interpolate user text."""
+    frames = max(1, round(duration * fps))
+    if motion == "slow_push_in":
+        zoom = f"min(1+on*0.12/{frames}\\,1.12)"
+        x = "(iw-iw/zoom)/2"
+        y = "(ih-ih/zoom)/2"
+    elif motion == "slow_pull_back":
+        zoom = f"max(1.12-on*0.12/{frames}\\,1.0)"
+        x = "(iw-iw/zoom)/2"
+        y = "(ih-ih/zoom)/2"
+    elif motion == "measured_tracking":
+        zoom = "1.08"
+        x = f"(iw-iw/zoom)/2+on*iw*0.04/{frames}"
+        y = "(ih-ih/zoom)/2"
+    elif motion == "decisive_reveal":
+        zoom = f"min(1+on*0.18/{frames}\\,1.18)"
+        x = "(iw-iw/zoom)/2"
+        y = "(ih-ih/zoom)/2"
+    else:
+        zoom = "1.0"
+        x = "(iw-iw/zoom)/2"
+        y = "(ih-ih/zoom)/2"
+    return f"zoompan=z='{zoom}':x='{x}':y='{y}':d=1:s={width}x{height}:fps={fps}"
+
+
 def render_video_from_edl(
     edl: dict[str, Any],
     scene_media: dict[str, str | Path],
@@ -107,10 +133,13 @@ def render_video_from_edl(
     filters = []
     for index, scene in enumerate(scenes):
         length = float(scene["duration_seconds"])
+        motion = scene.get("camera_motion", "")
+        motion_filter = _camera_motion_filter(motion, length, fps, width, height)
         filters.append(
             f"[{index}:v]trim=duration={length:.6f},setpts=PTS-STARTPTS,"
             f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,fps={fps},setsar=1[v{index}]"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,fps={fps},setsar=1,"
+            f"{motion_filter}[v{index}]"
         )
     labels = "".join(f"[v{index}]" for index in range(len(scenes)))
     filters.append(f"{labels}concat=n={len(scenes)}:v=1:a=0[vout]")

@@ -56,6 +56,25 @@ def build_edit_decision_list(
             or cue_start < start or cue_end > end or cue_end <= cue_start
         ):
             raise ValueError(f"music cue for {scene_id} falls outside its scene")
+        sync_points = cue.get("sync_points")
+        if not isinstance(sync_points, list) or not sync_points:
+            raise ValueError(f"music cue for {scene_id} must contain sync points")
+        normalized_sync_points = []
+        for point in sync_points:
+            if not isinstance(point, dict):
+                raise ValueError(f"music sync point for {scene_id} must be an object")
+            at_seconds = point.get("at_seconds")
+            event = point.get("event")
+            if (type(at_seconds) not in (int, float) or at_seconds < cue_start
+                    or at_seconds > cue_end or not isinstance(event, str)
+                    or not event.strip() or len(event) > 240):
+                raise ValueError(f"music sync point for {scene_id} is invalid")
+            normalized_sync_points.append({
+                "at_seconds": float(at_seconds),
+                "scene_offset_seconds": float(at_seconds) - float(start),
+                "event": event.strip(),
+            })
+        normalized_sync_points.sort(key=lambda item: item["at_seconds"])
         video_track.append({
             "scene_id": scene_id,
             "start_seconds": start,
@@ -63,9 +82,14 @@ def build_edit_decision_list(
             "duration_seconds": scene["duration_seconds"],
             "visual_direction": scene["visual_direction"],
             "action": scene["action"],
+            "shot_size": scene["shot_plan"]["shot_size"],
+            "camera_motion": scene["shot_plan"]["camera_motion"],
+            "focal_subject": scene["shot_plan"]["focal_subject"],
+            "dialogue_or_narration": scene["dialogue_or_narration"],
             "transition": scene["transition"],
             "continuity": scene["continuity"],
             "asset_status": "needs_rights_cleared_asset",
+            "visual_sync_points": normalized_sync_points,
         })
         audio_track.append({
             "scene_id": scene_id,
@@ -74,7 +98,7 @@ def build_edit_decision_list(
             "emotional_intent": cue["emotional_intent"],
             "energy": cue["energy"],
             "motif": cue["motif"],
-            "sync_points": cue["sync_points"],
+            "sync_points": normalized_sync_points,
             "mix_priority": cue["mix_priority"],
             "render_status": "not_rendered",
         })
@@ -90,9 +114,14 @@ def build_edit_decision_list(
         "duration_seconds": duration,
         "video_track": video_track,
         "audio_track": audio_track,
+        "sync_events": sorted(
+            [point for scene in video_track for point in scene["visual_sync_points"]],
+            key=lambda item: item["at_seconds"],
+        ),
         "sync_policy": [
             "preserve scenario scene boundaries",
             "align music cues to scene-level emotional intent",
+            "expose authored sync points to the video editor as visual timing anchors",
             "respect authored sync points and mix priorities",
             "use intentional silence when no cue is present",
         ],

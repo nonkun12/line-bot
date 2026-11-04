@@ -10,7 +10,7 @@ from pathlib import Path
 
 from typing import Any
 
-from agents.music.motif import motif_pitch
+from agents.music.expression import melody_events
 
 
 _TICKS_PER_BEAT = 480
@@ -76,7 +76,7 @@ def build_midi_bytes(music_plan: dict[str, Any], *, bpm: int = 120) -> bytes:
         raise ValueError("music plan must contain 1 to 100 cues")
 
     seconds_to_ticks = lambda seconds: round(seconds * bpm / 60 * _TICKS_PER_BEAT)
-    melody_events: list[tuple[int, int, bytes]] = [(0, 0, bytes((0xC0, 48)))]
+    melody_events_track: list[tuple[int, int, bytes]] = [(0, 0, bytes((0xC0, 48)))]
     harmony_events: list[tuple[int, int, bytes]] = [(0, 0, bytes((0xC1, 0)))]
     bass_events: list[tuple[int, int, bytes]] = [(0, 0, bytes((0xC2, 32)))]
     last_end = 0
@@ -103,25 +103,43 @@ def build_midi_bytes(music_plan: dict[str, Any], *, bpm: int = 120) -> bytes:
         velocity = {"low": 48, "medium": 68, "high": 88}[energy]
         bar_start = (start_tick // bar_ticks) * bar_ticks
 
-        # Sustain a simple original harmonic bed over this cue.
+        # Sustain a quiet chord pad across each bar.
         while bar_start < end_tick:
             chord_end = min(bar_start + bar_ticks, end_tick)
             if chord_end > max(bar_start, start_tick):
                 chord_start = max(bar_start, start_tick)
                 for pitch in chord_notes:
-                    _note(harmony_events, 1, pitch, chord_start, chord_end, max(35, velocity - 15))
-                _note(bass_events, 2, chord_root - 24, chord_start, chord_end, max(30, velocity - 5))
+                    _note(harmony_events, 1, pitch, chord_start, chord_end, max(28, int(velocity * 0.42)))
             bar_start += bar_ticks
 
-        step = beat_ticks // 2
+        # Rhythmic bass pulses and a scene-aware melodic phrase.
+        bass_step = beat_ticks * (2 if energy == "low" else 1)
         cursor = start_tick
-        note_index = 0
         while cursor < end_tick:
-            pitch = motif_pitch(energy, note_index)
-            note_end = min(cursor + int(step * 0.82), end_tick)
-            _note(melody_events, 0, pitch, cursor, note_end, velocity)
-            cursor += step
-            note_index += 1
+            _note(bass_events, 2, chord_root - 24, cursor,
+                  min(cursor + int(beat_ticks * 0.82), end_tick), max(25, int(velocity * 0.38)))
+            cursor += bass_step
+
+        for note_start, note_end, pitch, accent in melody_events(
+            float(start), float(end), energy, bpm, index
+        ):
+            _note(
+                melody_events_track, 0, pitch,
+                seconds_to_ticks(note_start), seconds_to_ticks(note_end),
+                max(1, min(127, int(velocity * accent))),
+            )
+
+        if energy in {"medium", "high"}:
+            arp_step = beat_ticks * (0.5 if energy == "high" else 1.0)
+            cursor = start_tick
+            arp_index = 0
+            while cursor < end_tick:
+                pitch = chord_notes[arp_index % len(chord_notes)] + 12
+                _note(harmony_events, 1, pitch, cursor,
+                      min(cursor + int(arp_step * 0.72), end_tick),
+                      max(20, int(velocity * (0.22 if energy == "medium" else 0.3))))
+                cursor += int(arp_step)
+                arp_index += 1
 
     tempo_us = round(60_000_000 / bpm)
     conductor = _track([
@@ -131,7 +149,7 @@ def build_midi_bytes(music_plan: dict[str, Any], *, bpm: int = 120) -> bytes:
     ])
     tracks = [
         conductor,
-        _track(melody_events),
+        _track(melody_events_track),
         _track(harmony_events),
         _track(bass_events),
     ]

@@ -20,6 +20,9 @@ def test_creates_complete_editable_music_and_video_production_bundle(tmp_path):
     result = create_audiovisual_production_bundle(_scenario(), destination, bpm=96)
     assert result["status"] == "draft_bundle_created"
     assert (destination / "scenario.json").is_file()
+    screenplay = (destination / "screenplay.md").read_text(encoding="utf-8")
+    assert "# A small journey from uncertainty to hope" in screenplay
+    assert "## Scene 01" in screenplay
     assert (destination / "music_plan.json").is_file()
     assert (destination / "edit_decision_list.json").is_file()
     assert (destination / "original_music.mid").read_bytes().startswith(b"MThd")

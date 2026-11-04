@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
+import shutil
 from typing import Any
 
 from agents.music.audio_renderer import render_midi_to_wav
@@ -17,14 +18,25 @@ from agents.music.midi_composer import write_midi_file
 from agents.music.score_plan import build_music_plan
 from agents.music.wav_renderer import write_wav_file
 from agents.video.edit_decision_list import build_edit_decision_list
+from agents.video.blender_animatic import render_storyboard_animatic
 from agents.video.ffmpeg_renderer import render_video_from_edl
 from agents.video.scenario import validate_scenario
+from agents.video.storyboard import build_storyboard
+from agents.video.shot_list import build_shot_list
+from agents.video.screenplay import render_screenplay_markdown
 
 
 def _write_json_exclusive(path: Path, payload: dict[str, Any]) -> None:
     with path.open("x", encoding="utf-8") as stream:
         json.dump(payload, stream, ensure_ascii=False, indent=2)
         stream.write("\n")
+
+
+def _write_text_exclusive(path: Path, content: str) -> None:
+    with path.open("x", encoding="utf-8") as stream:
+        stream.write(content)
+        if not content.endswith("\n"):
+            stream.write("\n")
 
 
 def create_audiovisual_production_bundle(
@@ -37,11 +49,16 @@ def create_audiovisual_production_bundle(
     soundfont_path: str | Path | None = None,
     scene_media: dict[str, str | Path] | None = None,
     audio_path: str | Path | None = None,
+    render_animatic: bool = False,
 ) -> dict[str, Any]:
     """Create a new local bundle. output_dir must be a new, exact directory."""
     errors = validate_scenario(scenario)
     if errors:
         raise ValueError("invalid scenario: " + ", ".join(errors))
+    if type(render_animatic) is not bool:
+        raise ValueError("render_animatic must be a boolean")
+    if render_animatic and scene_media is not None:
+        raise ValueError("choose generated Blender animatic or supplied scene_media, not both")
     music_plan = build_music_plan(scenario, genre=genre, instrumentation=instrumentation)
     edl = build_edit_decision_list(scenario, music_plan)
     destination = Path(output_dir).expanduser()
@@ -52,6 +69,12 @@ def create_audiovisual_production_bundle(
 
     try:
         _write_json_exclusive(destination / "scenario.json", scenario)
+        screenplay = render_screenplay_markdown(scenario)
+        _write_text_exclusive(destination / "screenplay.md", screenplay)
+        storyboard = build_storyboard(scenario)
+        shot_list = build_shot_list(storyboard)
+        _write_json_exclusive(destination / "storyboard.json", storyboard)
+        _write_json_exclusive(destination / "shot_list.json", shot_list)
         _write_json_exclusive(destination / "music_plan.json", music_plan)
         _write_json_exclusive(destination / "edit_decision_list.json", edl)
         midi = write_midi_file(music_plan, destination / "original_music.mid", bpm=bpm)
@@ -87,6 +110,21 @@ def create_audiovisual_production_bundle(
 
         selected_audio = Path(audio_path).expanduser() if audio_path is not None else destination / "original_music.wav"
         video = None
+        animatic = None
+        if render_animatic:
+            if audio_path is None and preview_duration < music_plan["duration_seconds"]:
+                raise ValueError(
+                    "animatic rendering needs a full-length WAV; provide audio_path or a soundfont renderer"
+                )
+            animatic = render_storyboard_animatic(storyboard, destination / "animatic_frames")
+            generated_media = {
+                scene["scene_id"]: animatic["frame_paths"][index]
+                for index, scene in enumerate(scenario["scenes"])
+            }
+            video = render_video_from_edl(
+                edl, generated_media, selected_audio, destination / "final_video.mp4",
+                width=640, height=360, fps=24, timeout_seconds=600,
+            )
         if scene_media is not None:
             if audio_path is None and preview_duration < music_plan["duration_seconds"]:
                 raise ValueError(
@@ -98,6 +136,9 @@ def create_audiovisual_production_bundle(
 
         artifacts = {
             "scenario": "scenario.json",
+            "screenplay": "screenplay.md",
+            "storyboard": "storyboard.json",
+            "shot_list": "shot_list.json",
             "music_plan": "music_plan.json",
             "midi": "original_music.mid",
             "audio_preview": "original_music.wav",
@@ -116,16 +157,14 @@ def create_audiovisual_production_bundle(
             "audio_preview_duration_seconds": preview_duration,
             "video_render_status": "rendered" if video else "not_rendered",
             "video": video,
+            "animatic": animatic,
             "external_assets_attached": scene_media is not None,
             "rights_review_required_before_publication": True,
         }
         _write_json_exclusive(destination / "manifest.json", manifest)
     except Exception:
         # Remove only files created inside this newly-created bundle directory.
-        for child in destination.iterdir():
-            if child.is_file() and not child.is_symlink():
-                child.unlink()
-        destination.rmdir()
+        shutil.rmtree(destination)
         raise
 
     return {
@@ -136,6 +175,7 @@ def create_audiovisual_production_bundle(
         "audio_render_status": audio_status,
         "audio_preview": audio,
         "video": video,
+        "animatic": animatic,
         "video_render_status": manifest["video_render_status"],
     }
 
