@@ -336,6 +336,37 @@ def claim_goal_child_job(job_id):
     return get_job(job_id)
 
 
+def claim_pending_media_goal_child_job(executor_id):
+    """Atomically claim only a pending Goal child explicitly tagged for an executor."""
+    if not isinstance(executor_id, str) or not re.fullmatch(r"[a-z][a-z0-9_.-]{2,63}", executor_id):
+        raise ValueError("executor_id is invalid")
+    token = secrets.token_urlsafe(32)
+    with get_conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """
+            SELECT id FROM jobs
+            WHERE job_type='goal_child' AND status='pending'
+              AND CASE WHEN json_valid(message)
+                       THEN json_extract(message, '$.executor')
+                       ELSE NULL END = ?
+            ORDER BY id
+            LIMIT 1
+            """,
+            (executor_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        cursor = conn.execute(
+            "UPDATE jobs SET status='running',claim_token=?,updated_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND job_type='goal_child' AND status='pending'",
+            (token, row[0]),
+        )
+        if cursor.rowcount != 1:
+            return None
+    return get_job(row[0])
+
+
 def complete_claimed_job(
     job_id,
     claim_token,
