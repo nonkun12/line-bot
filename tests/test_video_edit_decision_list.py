@@ -26,7 +26,7 @@ def test_builds_contiguous_video_and_music_tracks_with_scene_sync():
     assert edl["video_track"][0]["start_seconds"] == 0
     assert edl["video_track"][-1]["end_seconds"] == 45
     assert edl["video_track"][0]["camera_motion"] == "slow_push_in"
-    assert edl["video_track"][1]["camera_motion"] == "measured_tracking"
+    assert edl["video_track"][1]["camera_motion"] == "decisive_reveal"
     assert all(item["dialogue_or_narration"] for item in edl["video_track"])
     assert all(item["render_status"] == "not_rendered" for item in edl["audio_track"])
     assert edl["rights_status"] == "assets_not_attached"
