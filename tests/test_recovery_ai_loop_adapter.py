@@ -214,11 +214,18 @@ def test_preflight_blocked_does_not_increment_recovery_failure_streak(tmp_path, 
         "failure_reason": failure_reason,
     })
 
-    assert outcome == {
-        "recorded": False,
-        "reason": "preflight_blocked_not_task_failure",
-    }
+    assert outcome["recorded"] is False
+    assert outcome["reason"] == "preflight_blocked_not_task_failure"
+    assert outcome["persisted"] is True
+    assert outcome["requires_human_review"] is True
+    assert outcome["event_fingerprint"]
     assert store.task_status("task-a") == before
+    state = json.loads(path.read_text(encoding="utf-8"))
+    event = state["preflight_blocked"][outcome["event_fingerprint"]]
+    assert event["task_id"] == "task-a"
+    assert event["reason_code"] == failure_reason
+    assert event["status"] == "PENDING_PREREQUISITE_OR_REVIEW"
+    assert event["occurrences"] == 1
 
 
 def test_unclassified_runtime_failure_is_recorded_for_one_bounded_retry(tmp_path):
