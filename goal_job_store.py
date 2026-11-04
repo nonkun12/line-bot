@@ -198,7 +198,7 @@ def persist_child_job(goal_id: str, job: object, *, parent_job_key: str | None =
                                if isinstance(item, dict) and item.get("id") == key), None)
         if not isinstance(registered_job, dict):
             raise PermissionError("child JOB is not registered in the persisted Goal contract")
-        for field in ("criterion_id", "stage", "allowed_paths", "depends_on"):
+        for field in ("criterion_id", "stage", "allowed_paths", "depends_on", "executor", "operation", "scenario"):
             default = [] if field == "depends_on" else None
             if registered_job.get(field, default) != job.get(field, default):
                 raise PermissionError("child JOB differs from the persisted Goal contract")
@@ -246,7 +246,7 @@ def persist_child_job(goal_id: str, job: object, *, parent_job_key: str | None =
             if parent_job_id is None:
                 parent_job_id = parent[0]
 
-        message = _json({
+        message_payload = {
             "goal_id": goal_id,
             "goal_job_key": key,
             "criterion_id": criterion_id,
@@ -254,7 +254,11 @@ def persist_child_job(goal_id: str, job: object, *, parent_job_key: str | None =
             "instruction": job["instruction"],
             "allowed_paths": paths,
             "depends_on": job.get("depends_on", []),
-        })
+        }
+        for field in ("executor", "operation", "scenario"):
+            if field in job:
+                message_payload[field] = job[field]
+        message = _json(message_payload)
         cursor = conn.execute(
             "INSERT INTO jobs(user_id,job_type,source,parent_job_id,message,status,max_retries) "
             "SELECT user_id,'goal_child','goal_ai',?,?, 'pending', 2 FROM goal_chains WHERE goal_id=?",
@@ -444,7 +448,7 @@ def authorize_claimed_job(job: object) -> dict[str, Any]:
                            if isinstance(item, dict) and item.get("id") == payload.get("goal_job_key")), None)
     if not isinstance(registered_job, dict):
         raise PermissionError("claimed child JOB is not in the persisted Goal contract")
-    for field in ("criterion_id", "stage", "allowed_paths", "depends_on"):
+    for field in ("criterion_id", "stage", "allowed_paths", "depends_on", "executor", "operation", "scenario"):
         default = [] if field == "depends_on" else None
         if registered_job.get(field, default) != payload.get(field, default):
             raise PermissionError("claimed child JOB differs from the persisted Goal contract")
@@ -459,6 +463,18 @@ def authorize_claimed_job(job: object) -> dict[str, Any]:
                for path in payload.get("allowed_paths", []))
     ):
         raise PermissionError("Goal child no longer satisfies the autonomy policy")
+    return payload
+
+
+def authorize_claimed_media_job(job: object, executor_id: str, operation: str) -> dict[str, Any]:
+    """Authorize a media-only Goal child against its immutable Goal contract."""
+    payload = authorize_claimed_job(job)
+    if payload.get("executor") != executor_id or payload.get("operation") != operation:
+        raise PermissionError("Goal child is not registered for this media executor operation")
+    from agents.video.scenario import validate_scenario
+    scenario_errors = validate_scenario(payload.get("scenario"))
+    if scenario_errors:
+        raise PermissionError("registered media scenario is invalid: " + ", ".join(scenario_errors))
     return payload
 
 
@@ -647,5 +663,5 @@ def register_child_job_definition(goal_id: str, job: object) -> bool:
 
 __all__ = [
     "init_goal_job_store", "create_goal", "get_goal", "persist_child_job",
-    "get_goal_job_states", "get_goal_child_jobs", "update_goal_evidence", "authorize_claimed_job", "save_child_evidence", "complete_claimed_child_job", "register_child_job_definition", "evaluate_completed_goal_criteria", "get_goal_id_for_child_job",
+    "get_goal_job_states", "get_goal_child_jobs", "update_goal_evidence", "authorize_claimed_job", "authorize_claimed_media_job", "save_child_evidence", "complete_claimed_child_job", "register_child_job_definition", "evaluate_completed_goal_criteria", "get_goal_id_for_child_job",
 ]
