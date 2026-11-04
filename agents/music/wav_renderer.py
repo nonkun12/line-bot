@@ -11,7 +11,7 @@ import wave
 from array import array
 from pathlib import Path
 
-from agents.music.motif import motif_pitch
+from agents.music.expression import melody_events
 from typing import Any
 
 
@@ -38,23 +38,36 @@ def _events(music_plan: dict[str, Any], bpm: int) -> list[tuple[float, float, in
         energy = cue["energy"]
         velocity = {"low": 0.24, "medium": 0.34, "high": 0.43}[energy]
         chord_root, chord_notes = _CHORDS[index % len(_CHORDS)]
-        # Melody: syncopation is deliberately restrained for a first draft.
-        step = beat / 2.0
-        cursor = start
-        note_index = 0
-        while cursor < end:
-            note_end = min(cursor + step * 0.78, end)
-            pitch = motif_pitch(energy, note_index)
-            events.append((cursor, note_end, pitch, velocity, 0.0))
-            cursor += step
-            note_index += 1
-        # Sustained triad and bass anchor provide a simple harmonic foundation.
-        events.append((start, end, chord_root - 24, velocity * 0.42, 0.0))
-        for voice, pitch in enumerate(chord_notes):
-            pan = (-0.22, 0.0, 0.22)[voice]
-            events.append((start, end, pitch, velocity * 0.28, pan))
-    return events
 
+        # A scene-aware phrase changes note density and accents with the story.
+        for note_start, note_end, pitch, accent in melody_events(start, end, energy, bpm, index):
+            events.append((note_start, note_end, pitch, velocity * accent, 0.0))
+
+        # The bass breathes in two-beat pulses instead of holding one long drone.
+        bass_step = beat * (2.0 if energy == "low" else 1.0)
+        cursor = start
+        while cursor < end:
+            bass_end = min(cursor + beat * 0.82, end)
+            events.append((cursor, bass_end, chord_root - 24, velocity * 0.34, 0.0))
+            cursor += bass_step
+
+        # Keep a quiet harmonic bed; add a restrained arpeggio in active scenes.
+        pad_amplitude = velocity * (0.2 if energy == "low" else 0.14)
+        for voice, pitch in enumerate(chord_notes):
+            pan = (-0.28, 0.0, 0.28)[voice]
+            events.append((start, end, pitch, pad_amplitude, pan))
+        if energy in {"medium", "high"}:
+            arp_step = beat * (0.5 if energy == "high" else 1.0)
+            cursor = start
+            arp_index = 0
+            while cursor < end:
+                pitch = chord_notes[arp_index % len(chord_notes)] + 12
+                arp_end = min(cursor + arp_step * 0.72, end)
+                events.append((cursor, arp_end, pitch, velocity * (0.12 if energy == "medium" else 0.16),
+                               (-0.2, 0.2)[arp_index % 2]))
+                cursor += arp_step
+                arp_index += 1
+    return events
 
 def build_wav_bytes(
     music_plan: dict[str, Any],
