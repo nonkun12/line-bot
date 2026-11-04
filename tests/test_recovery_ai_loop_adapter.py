@@ -437,7 +437,7 @@ def test_preflight_blocked_events_are_deduplicated_without_failure_counts(tmp_pa
     assert len(state["preflight_blocked"]) == 1
     event = next(iter(state["preflight_blocked"].values()))
     assert event["prerequisite_id"] == "docs-review"
-    assert event["requires_human_review"] if "requires_human_review" in event else True
+    assert event["requires_human_review"] is True
     assert event["status"] == "PENDING_PREREQUISITE_OR_REVIEW"
 
 
