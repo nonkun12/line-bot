@@ -241,7 +241,8 @@ def test_ai_gateway_falls_back_to_core_when_management_returns_none(monkeypatch)
         AIRequest("u1", "AIニュースと株価を調べて", channel="slack")
     )
 
-    assert response == "従来Core結果"
+    assert response.text == "従来Core結果"
+    assert response.metadata["intent"] is None
 
 
 def test_run_management_request_does_not_retry_failed_execution(monkeypatch) -> None:
@@ -292,3 +293,47 @@ def test_management_bridge_detects_news_and_toyota_stock_as_two_specialists() ->
     roles = specialist_roles_for_message("AI NEWSとトヨタの株価を教えて")
     assert roles == frozenset({AgentRole.NEWS, AgentRole.STOCKS})
     assert should_route_to_management_ai("AI NEWSとトヨタの株価を教えて")
+
+def test_management_bridge_keeps_audiovisual_scenario_on_ordered_video_music_route() -> None:
+    message = "映像と音楽を組み合わせた短編のシナリオを作って"
+    assert specialist_roles_for_message(message) == frozenset({AgentRole.VIDEO})
+    assert not should_route_to_management_ai(message)
+
+
+def test_ai_gateway_routes_audiovisual_scenario_to_core_and_preserves_artifacts(monkeypatch) -> None:
+    import app as app_module
+    from core.gateway import AIRequest, AIResponse
+
+    monkeypatch.setattr(
+        app_module,
+        "run_management_request",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("ordered audiovisual scenario must bypass parallel Management AI")
+        ),
+    )
+    monkeypatch.setattr(
+        app_module,
+        "run_core_request",
+        lambda *args, **kwargs: {
+            "intent": "distributed_video_music_pipeline",
+            "route": "distributed:video→music",
+            "specialists": ["video", "music"],
+            "final_reply": "VideoからMusicへ連携しました",
+            "metadata": {
+                "video_music_artifacts": {
+                    "rendering_status": "midi_generated_audio_not_rendered",
+                    "midi_artifact": {"mime_type": "audio/midi", "content_base64": "TVRoZ"},
+                },
+                "video_music_handoff": {"scenario_validated": True},
+            },
+        },
+    )
+
+    response = app_module._handle_ai_gateway_request(
+        AIRequest("u1", "映像と音楽を組み合わせた短編のシナリオを作って", channel="line")
+    )
+
+    assert isinstance(response, AIResponse)
+    assert response.text == "VideoからMusicへ連携しました"
+    assert response.metadata["route"] == "distributed:video→music"
+    assert response.metadata["video_music_artifacts"]["midi_artifact"]["mime_type"] == "audio/midi"
