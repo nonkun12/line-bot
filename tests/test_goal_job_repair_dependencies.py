@@ -50,7 +50,7 @@ def test_verified_repair_satisfies_downstream_dependency(tmp_path, monkeypatch):
         conn.execute("UPDATE jobs SET status='failed' WHERE id=?", (initial["job_id"],))
 
     repair = {
-        "id": "phase-one-repair",
+        "id": "goal-followup-003",
         "criterion_id": "phase-one",
         "stage": "design",
         "instruction": "Create a revised phase one plan.",
