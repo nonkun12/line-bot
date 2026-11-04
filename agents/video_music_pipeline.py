@@ -102,7 +102,7 @@ class VideoMusicPipeline:
             "音源・映像ファイル自体はまだ生成していません。",
         ]
         return AgentResponse(
-            text="\\n".join(lines),
+            text="\n".join(lines),
             metadata={
                 "feature": self.name,
                 "status": "online",
