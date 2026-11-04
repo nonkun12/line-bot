@@ -49,7 +49,15 @@ def _build_handler(role: AgentRole, agent: Agent):
         )
         if not agent.can_handle(request):
             raise RuntimeError(f"agent rejected distributed request: {agent.name}")
-        response = agent.handle(request)
+        if role is AgentRole.VIDEO:
+            # The real channel path dispatches through this distributed bridge,
+            # not graph.graph.video_agent_node. Keep scenario->music orchestration
+            # on the active path so LINE requests cannot silently skip the handoff.
+            from agents.video_music_pipeline import handle_video_request
+
+            response = handle_video_request(request)
+        else:
+            response = agent.handle(request)
         if not isinstance(response.text, str):
             raise TypeError("core agent response text must be str")
         return response.text
