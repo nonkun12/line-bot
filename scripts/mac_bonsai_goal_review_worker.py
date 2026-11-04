@@ -51,8 +51,12 @@ def _configuration() -> tuple[str, str, str, str]:
     api_origin = os.environ.get("LINE_BOT_BASE_URL", "").strip().rstrip("/")
     internal_key = os.environ.get("INTERNAL_PUSH_KEY", "").strip() or _keychain_secret()
     parsed = urlparse(api_origin)
-    if parsed.scheme != "https" or not parsed.netloc or parsed.path or parsed.query or parsed.fragment:
-        raise ReviewWorkerError("LINE_BOT_BASE_URL must be an HTTPS origin")
+    if (
+        parsed.scheme != "https" or not parsed.hostname or parsed.path
+        or parsed.query or parsed.fragment or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise ReviewWorkerError("LINE_BOT_BASE_URL must be an HTTPS origin without embedded credentials")
     if len(internal_key) < 24:
         raise ReviewWorkerError("INTERNAL_PUSH_KEY is unavailable in environment or macOS Keychain")
     bonsai_url = os.environ.get("BONSAI_BASE_URL", DEFAULT_BONSAI_URL).strip().rstrip("/")
