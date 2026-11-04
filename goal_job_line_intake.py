@@ -150,25 +150,45 @@ def approve_goal_proposal(user_id: str, proposal_id: str) -> dict[str, Any]:
             raise ValueError("proposal expired; submit the Goal again")
         proposal = json.loads(row[1])
         goal_id = proposal["goal_id"]
-        grant = {
-            "grant_id": f"line-grant-{proposal_id}",
-            "goal_id": goal_id,
-            "active": True,
-            "auto_approve_registered_jobs": True,
-            "approved_by": user_id,
-            "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
-            "max_jobs": 4,
-            "allowed_stages": ["requirements", "design", "test", "review", "verify"],
-            "allowed_path_prefixes": ["docs/"],
-            "auto_merge": False,
-            "auto_deploy": False,
-        }
-        goal_job_store.create_goal(proposal, user_id, grant)
-        conn.execute(
-            "UPDATE goal_line_proposals SET status='approved',approved_goal_id=? "
+        reserved = conn.execute(
+            "UPDATE goal_line_proposals SET status='approving' "
             "WHERE proposal_id=? AND status='pending'",
-            (goal_id, proposal_id),
+            (proposal_id,),
         )
+        if reserved.rowcount != 1:
+            raise ValueError("proposal approval is already in progress")
+
+    # Do not hold the proposal DB transaction while create_goal opens its own
+    # connection; that would deadlock SQLite's writer lock.
+    grant = {
+        "grant_id": f"line-grant-{proposal_id}",
+        "goal_id": goal_id,
+        "active": True,
+        "auto_approve_registered_jobs": True,
+        "approved_by": user_id,
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+        "max_jobs": 4,
+        "allowed_stages": ["requirements", "design", "test", "review", "verify"],
+        "allowed_path_prefixes": ["docs/"],
+        "auto_merge": False,
+        "auto_deploy": False,
+    }
+    try:
+        goal_job_store.create_goal(proposal, user_id, grant)
+        with db.get_conn() as conn:
+            conn.execute(
+                "UPDATE goal_line_proposals SET status='approved',approved_goal_id=? "
+                "WHERE proposal_id=? AND status='approving'",
+                (goal_id, proposal_id),
+            )
+    except Exception:
+        with db.get_conn() as conn:
+            conn.execute(
+                "UPDATE goal_line_proposals SET status='pending' "
+                "WHERE proposal_id=? AND status='approving'",
+                (proposal_id,),
+            )
+        raise
     queued = advance_goal(goal_id)
     return {
         "goal_id": goal_id,
@@ -177,7 +197,6 @@ def approve_goal_proposal(user_id: str, proposal_id: str) -> dict[str, Any]:
         "reason": queued.get("reason"),
         "job_id": (queued.get("job_record") or {}).get("job_id"),
     }
-
 
 def handle_goal_line_message(user_id: str, message: str) -> tuple[bool, str | None]:
     """Return (handled, reply); unrelated/read-only messages are untouched."""
