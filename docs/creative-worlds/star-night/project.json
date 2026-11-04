@@ -62,6 +62,12 @@
       "context_refs",
       "artifact_refs",
       "parent_handoff_id"
-    ]
+    ],
+    "concurrency_policy": {
+      "current_foundation_active_side_chats_per_user": 2,
+      "target_concurrent_project_workspaces": 6,
+      "quota_change_requires_explicit_migration": true,
+      "no_implicit_limit_bypass": true
+    }
   }
 }
