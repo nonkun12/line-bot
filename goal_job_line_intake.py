@@ -364,7 +364,7 @@ def handle_goal_line_message(user_id: str, message: str) -> tuple[bool, str | No
         "Goal提案を作成しました。まだ実行・コード変更は行っていません。\n"
         f"目的: {proposal['objective']}\n"
         f"Goal ID: {proposal['goal_id']}\n"
-        f"初回JOB: {proposal['initial_job']}（docs/ 配下のSprint計画作成のみ）\n"
+        f"初回JOB: {proposal['initial_job']}（承認後、Macで映像・音楽のローカル下書きを生成。外部配信なし）\n"
         f"承認する場合は「Goal承認 {proposal['proposal_id']}」と送信してください。\n"
         "承認期限: 24時間。マージ・デプロイ・秘密情報変更は対象外です。"
     )
