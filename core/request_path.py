@@ -16,7 +16,7 @@ from agents.stocks.intents import is_stock_intent
 from agents.english.intents import is_english_learning_intent
 from agents.voice.intents import is_voice_intent
 from agents.music.intents import is_music_intent
-from agents.video.intents import is_video_intent
+from agents.video.intents import is_video_intent, is_video_scenario_request
 from agents.jobs.intents import is_job_seeking_intent
 from agents.market.intents import is_market_intent
 from e2e_status import StepTimer
@@ -380,14 +380,6 @@ def _run_distributed_music_request(
     }
 
 
-def _is_video_scenario_request(message: str) -> bool:
-    """Recognize scenario/script requests before generic multi-agent fan-out."""
-    normalized = (message or "").casefold()
-    return is_video_intent(message) and any(
-        keyword in normalized for keyword in ("シナリオ", "台本", "脚本", "script")
-    )
-
-
 def _run_distributed_video_music_request(
     user_id: str, message: str, *, channel: str, metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -572,7 +564,7 @@ def run_core_request(
 
     # A scenario request is an ordered Video→Music workflow, not two
     # independent parallel specialists. Route it before generic fan-out.
-    if _is_video_scenario_request(message):
+    if is_video_scenario_request(message):
         with StepTimer("core") as core_timer:
             try:
                 result = _run_distributed_video_music_request(
