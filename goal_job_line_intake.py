@@ -417,12 +417,12 @@ def handle_goal_line_message(user_id: str, message: str) -> tuple[bool, str | No
                 goal_id, job_generator=generate_bounded_followup_job
             )
         reply = (
-            f"Goalステージを承認しました: {stage_id}\\n"
+            f"Goalステージを承認しました: {stage_id}\n"
             f"次に実行可能なステージ: {', '.join(ready) or 'なし'}"
         )
         if continuation is not None:
             reply += (
-                f"\\n初期クリエイティブ確認完了。次のJOB: "
+                f"\n初期クリエイティブ確認完了。次のJOB: "
                 f"{continuation.get('decision')}"
             )
             job_record = continuation.get("job_record") or {}
