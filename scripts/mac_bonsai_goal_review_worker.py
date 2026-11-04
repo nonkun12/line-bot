@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 KEYCHAIN_SERVICE = "line-bot-mac-media-worker"
 KEYCHAIN_ACCOUNT = "INTERNAL_PUSH_KEY"
@@ -24,6 +24,13 @@ DEFAULT_BONSAI_URL = "http://127.0.0.1:8081/v1"
 
 class ReviewWorkerError(RuntimeError):
     pass
+
+
+class _RejectRedirectHandler(HTTPRedirectHandler):
+    """Never forward authenticated worker requests to a redirect target."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def _keychain_secret() -> str:
@@ -67,7 +74,7 @@ def _post_json(url: str, payload: dict, *, key: str | None = None, timeout: int 
         headers=headers, method="POST",
     )
     try:
-        with urlopen(request, timeout=timeout) as response:
+        with build_opener(_RejectRedirectHandler).open(request, timeout=timeout) as response:
             raw = response.read(256 * 1024 + 1)
     except HTTPError as exc:
         raise ReviewWorkerError(f"HTTP {exc.code} from configured endpoint") from exc
