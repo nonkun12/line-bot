@@ -3,7 +3,7 @@ from __future__ import annotations
 
 _VIDEO_KEYWORDS = (
     "動画", "映像", "video", "movie", "ショート動画", "youtube",
-    "ユーチューブ", "編集", "絵コンテ", "台本", "動画制作",
+    "ユーチューブ", "編集", "絵コンテ", "台本", "シナリオ", "脚本", "scenario", "動画制作",
 )
 
 
