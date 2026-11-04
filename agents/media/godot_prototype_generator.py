@@ -75,7 +75,7 @@ def _approved_assets(design_scenes: list[dict[str, str]], manifest: object | Non
                 raise ValueError(f"{kind}_path must be a project-local res://assets path")
             relative = path[len("res://assets/"):]
             parts = relative.split("/")
-            if not relative or any(part in {"", ".", ".."} for part in parts) or "\\\\" in path or ":" in relative:
+            if not relative or any(part in {"", ".", ".."} for part in parts) or not re.fullmatch(r"[A-Za-z0-9._/-]+", relative):
                 raise ValueError(f"{kind}_path contains an unsafe path segment")
             if Path(relative).suffix.lower() not in _ASSET_EXTENSIONS[kind]:
                 raise ValueError(f"unsupported {kind} asset extension")
@@ -285,9 +285,9 @@ func show_scene(item: Dictionary, parent_layout: VBoxContainer) -> void:
         parent_layout.move_child(image_node, 3)
     var image_path := str(item.get("image_path", ""))
     if _safe_asset_path(image_path) and ResourceLoader.exists(image_path):
-        var texture: Texture2D = load(image_path)
-        if texture != null:
-            image_node.texture = texture
+        var loaded_image: Resource = load(image_path)
+        if loaded_image is Texture2D:
+            image_node.texture = loaded_image
             image_node.visible = true
         else:
             image_node.visible = false
@@ -303,14 +303,14 @@ func show_scene(item: Dictionary, parent_layout: VBoxContainer) -> void:
             video_node.custom_minimum_size = Vector2(0, 240)
             parent_layout.add_child(video_node)
             parent_layout.move_child(video_node, 4)
-        var stream: VideoStream = load(video_path)
-        if stream != null:
-            video_node.stream = stream
+        var loaded_video: Resource = load(video_path)
+        if loaded_video is VideoStream:
+            video_node.stream = loaded_video
             video_node.visible = true
             video_node.play()
 
 func _safe_asset_path(path: String) -> bool:
-    return path.begins_with("res://assets/") and not ".." in path and not "\\" in path
+    return path.begins_with("res://assets/") and not ".." in path and not path.contains(char(92))
 
 func stop() -> void:
     if image_node != null:
@@ -325,14 +325,14 @@ func stop() -> void:
 Requires Godot 4.x. Open this folder in Godot and press F5. Advance through
 the approved story scenes to reach the prototype ending.
 
-The prototype preserves scene IDs, story intent, visual motifs and music motifs.
-Each scene transition emits a scene-linked audio cue signal. It uses no network,
-paid service, downloaded asset or external runtime dependency.
+An optional `godot-approved-assets.v1` manifest connects explicitly approved
+local audio, still-image, and Ogg Theora video files to matching scene IDs.
+Place the files manually under `assets/`; the generator never copies or downloads
+media. Audio and visual playback starts together on each scene transition.
 
-This is a first playable narrative loop, not final art or final sound. The audio
-controller emits a cue signal but does not play music. Integrate only approved
-local audio assets in a later reviewed step. No media assets are copied or
-modified. Existing output directories are never overwritten.
+This is a first playable narrative loop, not final art or final sound. No network,
+paid service, or external runtime dependency is used. Existing output directories
+are never overwritten, and publication remains unauthorized.
 """
     return {
         "project.godot": project,

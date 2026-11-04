@@ -90,6 +90,7 @@ def test_approved_local_assets_are_bound_to_matching_story_scene():
     assert opening["video_path"] == "res://assets/opening.ogv"
     assert "player.play()" in files["scripts/audio_controller.gd"]
     assert "video_node.play()" in files["scripts/visual_controller.gd"]
+    assert "path.contains(char(92))" in files["scripts/visual_controller.gd"]
 
 @pytest.mark.parametrize("changes", [
     {"human_approved": False},
@@ -98,6 +99,11 @@ def test_approved_local_assets_are_bound_to_matching_story_scene():
     {"scenes": [{"scene_id": "opening", "approval_note": "", "audio_path": "res://assets/a.ogg"}]},
     {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://outside/a.ogg"}]},
     {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://assets/../secret.ogg"}]},
+    {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://assets/a\\\\b.ogg"}]},
+    {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://assets/a\\nb.ogg"}]},
+    {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://assets/a b.ogg"}]},
+    {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://assets/a" + chr(92) + "b.ogg"}]},
+    {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://assets/a\nb.ogg"}]},
     {"scenes": [{"scene_id": "opening", "approval_note": "approved", "audio_path": "res://assets/a.exe"}]},
 ])
 def test_rejects_unapproved_or_unsafe_asset_manifest(changes):
