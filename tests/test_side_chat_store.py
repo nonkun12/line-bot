@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 from core.side_chat_store import (
@@ -33,6 +35,69 @@ def test_side_chats_keep_histories_separate_and_scoped_to_owner(store):
     ]
     assert [item["content"] for item in second_loaded["messages"]] == ["Write a scene"]
     assert [item["id"] for item in store.list_for_user("user-b")] == []
+
+
+def test_project_and_workspace_context_are_scoped_and_listable(store):
+    chat = store.create(
+        "user-a",
+        "Story",
+        "Develop episode one",
+        project_id="STAR-NIGHT",
+        workspace_id="story",
+        context_refs=[
+            "docs/creative-worlds/star-night/series-bible.md",
+            "docs/creative-worlds/star-night/game-story-graph.json",
+        ],
+    )
+    assert chat["project_id"] == "STAR-NIGHT"
+    assert chat["workspace_id"] == "story"
+    assert chat["context_refs"] == [
+        "docs/creative-worlds/star-night/series-bible.md",
+        "docs/creative-worlds/star-night/game-story-graph.json",
+    ]
+    assert [item["id"] for item in store.list_for_project("user-a", "STAR-NIGHT")] == [
+        chat["id"]
+    ]
+    assert store.list_for_project("user-b", "STAR-NIGHT") == []
+    assert store.list_for_project("user-a", "OTHER-PROJECT") == []
+
+
+def test_project_scope_and_context_refs_are_validated(store):
+    with pytest.raises(SideChatError, match="project_id"):
+        store.create("user-a", "Bad project", project_id="../other")
+    with pytest.raises(SideChatError, match="workspace_id"):
+        store.create("user-a", "Bad workspace", workspace_id="story/music")
+    with pytest.raises(SideChatError, match="context_refs"):
+        store.create("user-a", "Too many refs", context_refs=["x"] * 21)
+    with pytest.raises(SideChatError, match="context_ref"):
+        store.create("user-a", "Bad ref", context_refs=[" "])
+    with pytest.raises(SideChatError, match="maximum length"):
+        store.create("user-a", "Long ref", context_refs=["x" * 513])
+
+
+def test_existing_database_is_migrated_without_losing_side_chats(tmp_path):
+    path = tmp_path / "legacy.sqlite3"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE side_chats ("
+        "id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL, "
+        "purpose TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'active', "
+        "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    )
+    conn.execute(
+        "INSERT INTO side_chats(id,user_id,title) VALUES ('legacy-id','user-a','Legacy')"
+    )
+    conn.commit()
+    conn.close()
+
+    migrated = SideChatStore(path)
+    migrated.initialize()
+    loaded = migrated.get("user-a", "legacy-id")
+    assert loaded["title"] == "Legacy"
+    assert loaded["project_id"] is None
+    assert loaded["workspace_id"] is None
+    assert loaded["context_refs"] == []
 
 
 def test_user_cannot_read_or_append_to_another_users_side_chat(store):
@@ -82,8 +147,6 @@ def test_invalid_user_and_title_are_rejected(store):
         store.create("", "Title")
     with pytest.raises(SideChatError):
         store.create("user-a", " ")
-
-
 
 
 def test_archiving_releases_active_slot_and_preserves_history(store):
