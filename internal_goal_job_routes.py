@@ -24,6 +24,7 @@ from agents.media.goal_job_chain_store import (
 from goal_job_orchestrator import advance_goal
 from goal_job_review import review_completed_goal
 from goal_job_generation import generate_bounded_followup_job
+import goal_job_review_queue
 
 
 def _github_run_passed(run_url: str, expected_name: str, target_sha: str) -> bool:
@@ -433,6 +434,47 @@ def register_goal_job_routes(app, internal_key: str | None, *, independent_goal_
         except Exception:
             app.logger.exception("Goal child completion failed")
             return jsonify({"ok": False, "error": "goal job completion failed"}), 500
+
+
+    @app.route("/internal/goal-review/claim", methods=["POST"])
+    def claim_local_goal_review():
+        if not authorized():
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+        try:
+            review = goal_job_review_queue.claim_next_goal_review()
+            if review is None:
+                return jsonify({"ok": True, "claimed": False}), 200
+            return jsonify({"ok": True, "claimed": True, "review": review}), 200
+        except Exception:
+            app.logger.exception("Local Goal review claim failed")
+            return jsonify({"ok": False, "error": "goal review claim failed"}), 500
+
+    @app.route("/internal/goal-review/complete", methods=["POST"])
+    def complete_local_goal_review():
+        if not authorized():
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+        data = request.get_json(silent=True) or {}
+        review_id = data.get("review_id")
+        claim_token = data.get("claim_token")
+        criterion_results = data.get("criterion_results")
+        if type(review_id) is not int or review_id <= 0:
+            return jsonify({"ok": False, "error": "review_id must be a positive integer"}), 400
+        if not isinstance(claim_token, str) or len(claim_token) < 20:
+            return jsonify({"ok": False, "error": "claim_token is invalid"}), 400
+        if not isinstance(criterion_results, dict) or len(criterion_results) > 50:
+            return jsonify({"ok": False, "error": "criterion_results must be a bounded object"}), 400
+        try:
+            decision = goal_job_review_queue.complete_goal_review(
+                review_id, claim_token, criterion_results
+            )
+            return jsonify({"ok": True, "decision": decision}), 200
+        except PermissionError:
+            return jsonify({"ok": False, "error": "review claim is stale or expired"}), 409
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except Exception:
+            app.logger.exception("Local Goal review completion failed")
+            return jsonify({"ok": False, "error": "goal review completion failed"}), 500
 
 
 __all__ = ["register_goal_job_routes"]
