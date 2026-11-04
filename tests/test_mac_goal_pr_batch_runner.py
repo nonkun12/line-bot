@@ -143,6 +143,23 @@ class MacGoalPRBatchRunnerTests(unittest.TestCase):
         self.assertIn("single-PR runner not found", result.stderr)
         self.assertEqual(self.recorded_calls(), [])
 
+    def test_accepts_exactly_fifty_prs_in_a_range(self) -> None:
+        result = self.run_batch("2000-2049")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(len(self.recorded_calls()), 50)
+        self.assertEqual(self.recorded_calls()[0], "2000\ttests/example.py")
+        self.assertEqual(self.recorded_calls()[-1], "2049\ttests/example.py")
+        self.assertIn("TOTAL: 50  PASS: 50  FAIL: 0", result.stdout)
+
+    def test_rejects_empty_and_whitespace_padded_selectors_before_running_any_pr(self) -> None:
+        for selector in ("", " ", " 1260", "1260 ", "1260, 1261"):
+            with self.subTest(selector=selector):
+                self.call_log.unlink(missing_ok=True)
+                result = self.run_batch(selector)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertEqual(self.recorded_calls(), [])
+                self.assertIn("ERROR:", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
