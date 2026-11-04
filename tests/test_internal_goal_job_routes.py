@@ -177,3 +177,84 @@ def test_github_run_verifier_fails_closed_on_api_error(monkeypatch):
         "Pytest",
         "a" * 40,
     )
+
+
+
+def test_local_goal_review_claim_requires_internal_key_and_completes_once(tmp_path, monkeypatch):
+    client = _app(tmp_path, monkeypatch)
+    job_id = _create_goal()
+    headers = {"x-internal-key": "test-internal-key"}
+    claimed_job = client.post(
+        "/internal/goal-jobs/claim", headers=headers, json={"job_id": job_id}
+    ).get_json()["job"]
+    assert goal_job_store.complete_claimed_child_job(
+        job_id,
+        claimed_job["claim_token"],
+        success=True,
+        result=json.dumps({"artifact": "verified"}),
+        evidence={"checks": [{"name": "persisted_evidence", "status": "PASS", "source": "test"}]},
+    )
+    assert client.post("/internal/goal-review/claim", json={}).status_code == 401
+    claimed = client.post("/internal/goal-review/claim", headers=headers, json={})
+    body = claimed.get_json()
+    assert claimed.status_code == 200
+    assert body["claimed"] is True
+    review = body["review"]
+    assert review["goal_id"] == "route-goal"
+    assert review["children"][0]["evidence"]["checks"][0]["status"] == "PASS"
+
+    second = client.post("/internal/goal-review/claim", headers=headers, json={})
+    assert second.get_json()["claimed"] is False
+
+    completed = client.post(
+        "/internal/goal-review/complete",
+        headers=headers,
+        json={
+            "review_id": review["review_id"],
+            "claim_token": review["claim_token"],
+            "criterion_results": {"criterion": "PASS"},
+        },
+    )
+    assert completed.status_code == 200
+    assert completed.get_json()["decision"]["decision"] == "GOAL_ACHIEVED"
+    replay = client.post(
+        "/internal/goal-review/complete",
+        headers=headers,
+        json={
+            "review_id": review["review_id"],
+            "claim_token": review["claim_token"],
+            "criterion_results": {"criterion": "PASS"},
+        },
+    )
+    assert replay.status_code == 409
+
+
+def test_local_goal_review_unknown_fails_closed(tmp_path, monkeypatch):
+    client = _app(tmp_path, monkeypatch)
+    job_id = _create_goal()
+    headers = {"x-internal-key": "test-internal-key"}
+    claimed_job = client.post(
+        "/internal/goal-jobs/claim", headers=headers, json={"job_id": job_id}
+    ).get_json()["job"]
+    assert goal_job_store.complete_claimed_child_job(
+        job_id,
+        claimed_job["claim_token"],
+        success=True,
+        result=json.dumps({"artifact": "ambiguous"}),
+        evidence={"checks": [{"name": "persisted_evidence", "status": "PASS", "source": "test"}]},
+    )
+    review = client.post(
+        "/internal/goal-review/claim", headers=headers, json={}
+    ).get_json()["review"]
+    response = client.post(
+        "/internal/goal-review/complete",
+        headers=headers,
+        json={
+            "review_id": review["review_id"],
+            "claim_token": review["claim_token"],
+            "criterion_results": {"criterion": "UNKNOWN"},
+        },
+    )
+    assert response.status_code == 200
+    assert response.get_json()["decision"]["decision"] == "HOLD"
+    assert goal_job_store.get_goal("route-goal")["status"] == "active"
