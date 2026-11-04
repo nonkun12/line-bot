@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from agents.music.midi_composer import write_midi_file
+from agents.music.audio_renderer import render_midi_to_wav
 from agents.music.score_plan import build_music_plan
 from agents.video.edit_decision_list import build_edit_decision_list
 from agents.video.scenario import validate_scenario
@@ -29,6 +30,7 @@ def create_audiovisual_production_bundle(
     bpm: int = 120,
     genre: str = "映像に合わせたオリジナル音楽",
     instrumentation: str = "映像の世界観に合う編成",
+    soundfont_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Create a new, non-overwriting local production bundle.
 
@@ -53,6 +55,13 @@ def create_audiovisual_production_bundle(
         _write_json_exclusive(destination / "music_plan.json", music_plan)
         _write_json_exclusive(destination / "edit_decision_list.json", edl)
         midi = write_midi_file(music_plan, destination / "original_music.mid", bpm=bpm)
+        audio = None
+        if soundfont_path is not None:
+            audio = render_midi_to_wav(
+                destination / "original_music.mid",
+                soundfont_path,
+                destination / "original_music.wav",
+            )
         manifest = {
             "schema_version": "audiovisual-production-bundle.v1",
             "status": "draft",
@@ -85,6 +94,7 @@ def create_audiovisual_production_bundle(
         "artifacts": manifest["artifacts"],
         "midi": midi,
         "audio_render_status": manifest["audio_render_status"],
+        "audio": audio,
         "video_render_status": manifest["video_render_status"],
     }
 
