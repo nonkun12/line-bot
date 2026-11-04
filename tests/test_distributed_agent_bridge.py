@@ -84,5 +84,5 @@ def test_distributed_video_executor_keeps_non_scenario_behavior(monkeypatch):
         )
     )
     assert result.success is True
-    assert "動画の実編集" in result.summary
+    assert "動画ファイルの実編集" in result.summary
     assert "Video AI → Music AI 連携完了" not in result.summary
