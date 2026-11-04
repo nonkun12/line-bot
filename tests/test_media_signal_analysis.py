@@ -73,6 +73,8 @@ def test_video_analysis_uses_fixed_bounded_ffmpeg_command(tmp_path, monkeypatch)
     assert report["media_type"] == "video"
     assert len(report["samples"]) == 2
     assert report["samples"][0]["mean_luma"] < report["samples"][1]["mean_luma"]
+    assert report["sampled_through_seconds"] == 2.0
+    assert report["sampling_limit_reached"] is False
     args, kwargs = calls[0]
     assert "-frames:v" in args and "90" in args
     assert kwargs["timeout"] == 60
@@ -153,6 +155,8 @@ def test_bundle_analysis_connects_audio_video_and_scenario_by_scene(tmp_path, mo
     assert report["schema_version"] == "audiovisual-bundle-signal-report.v1"
     assert report["scene_comparison"]["scenes"][1]["audio_mean_rms_dbfs"] == -12.0
     assert report["scene_comparison"]["scenes"][1]["video_mean_luma"] == 150.0
+    assert report["video_coverage"]["scenario_coverage_complete"] is True
+    assert report["video_coverage"]["sampled_through_seconds"] == 2.0
     assert report["publication_authorized"] is False
     assert report["assets_modified"] is False
 
@@ -179,3 +183,46 @@ def test_signal_evidence_enriches_critic_report_without_mutation():
     assert critic == original_critic
     assert signal["scene_comparison"] == original_signal["scene_comparison"]
     assert enriched["publication_authorized"] is False
+
+
+def test_bundle_analysis_marks_scenes_beyond_video_sample_limit_uncovered(tmp_path, monkeypatch):
+    from agents.media import signal_analysis
+
+    audio_path = tmp_path / "draft.wav"
+    video_path = tmp_path / "draft.mp4"
+    audio_path.write_bytes(b"wav")
+    video_path.write_bytes(b"mp4")
+    scenario = {
+        "schema_version": "video-scenario.v1",
+        "title": "long sample",
+        "creative_brief": {"duration_seconds": 100},
+        "scenes": [
+            {"scene_id": "EARLY", "time_start_seconds": 0, "duration_seconds": 90},
+            {"scene_id": "LATE", "time_start_seconds": 90, "duration_seconds": 10},
+        ],
+    }
+    monkeypatch.setattr(signal_analysis, "analyze_wav_signal", lambda path: {
+        "schema_version": "audiovisual-signal-analysis.v1",
+        "media_type": "audio",
+        "duration_seconds": 100.0,
+        "windows": [
+            {"start_seconds": 0.0, "end_seconds": 100.0, "rms_dbfs": -20.0, "spectral_centroid_hz": 300.0},
+        ],
+    })
+    monkeypatch.setattr(signal_analysis, "analyze_video_signal", lambda path, ffmpeg_executable=None: {
+        "schema_version": "audiovisual-signal-analysis.v1",
+        "media_type": "video",
+        "sampled_through_seconds": 90.0,
+        "sampling_limit_reached": True,
+        "samples": [
+            {"at_seconds": index, "mean_luma": 40.0, "mean_saturation": 20.0, "frame_change_luma": 0.0}
+            for index in range(90)
+        ],
+    })
+
+    report = signal_analysis.analyze_audiovisual_bundle(scenario, audio_path, video_path)
+
+    assert report["video_coverage"]["scenario_coverage_complete"] is False
+    assert report["video_coverage"]["sampling_limit_reached"] is True
+    assert report["video_coverage"]["uncovered_scene_ids"] == ["LATE"]
+    assert any("coverage is incomplete" in item for item in report["review_guidance"])
