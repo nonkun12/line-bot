@@ -10,3 +10,14 @@ _VIDEO_KEYWORDS = (
 def is_video_intent(message: str) -> bool:
     text = str(message or "").casefold()
     return any(keyword.casefold() in text for keyword in _VIDEO_KEYWORDS)
+
+
+def is_video_scenario_request(message: str) -> bool:
+    """Identify scenario/script requests that require ordered Video→Music work."""
+    normalized = str(message or "").casefold()
+    return is_video_intent(message) and any(
+        keyword in normalized for keyword in ("シナリオ", "台本", "脚本", "script", "scenario")
+    )
+
+
+__all__ = ["is_video_intent", "is_video_scenario_request"]
