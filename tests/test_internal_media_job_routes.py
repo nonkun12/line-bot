@@ -113,6 +113,7 @@ def test_media_completion_requires_matching_receipt_and_artifact_hashes(tmp_path
         "goal_job_id": job_id,
         "artifact_sha256": hashes,
         "receipt_sha256": hashlib.sha256((result + "\n").encode()).hexdigest(),
+        "video_render_status": "not_rendered",
         "checks": [
             {"name": "typed_local_executor_authorization", "status": "PASS", "source": "mac_local_media.v1"},
             {"name": "scenario_validation", "status": "PASS", "source": "mac_local_media.v1"},
