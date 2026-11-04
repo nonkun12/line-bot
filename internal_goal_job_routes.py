@@ -185,8 +185,8 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
             or receipt.get("status") != "draft"
             or receipt.get("publication") != "not_performed"
             or not isinstance(artifact_hashes, dict)
-            or not _MEDIA_REQUIRED_ARTIFACT_KEYS.issubset(artifact_hashes)
-            or set(artifact_hashes) - _MEDIA_ARTIFACT_KEYS
+            or set(artifact_hashes) != _MEDIA_REQUIRED_ARTIFACT_KEYS
+            or receipt.get("video_render_status") != "not_rendered"
             or any(not isinstance(value, str) or not _SHA256_RE.fullmatch(value) for value in artifact_hashes.values())
             or receipt.get("idempotency_key") != hashlib.sha256(
                 f"{_MEDIA_EXECUTOR_ID}:{job_id}".encode()
