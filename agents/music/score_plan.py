@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from agents.video.scenario import validate_scenario
+from agents.music.motif import ENERGY_OCTAVE, MOTIF_INTERVALS
 
 
 def build_music_plan(
@@ -52,6 +53,11 @@ def build_music_plan(
         "genre": genre.strip(),
         "instrumentation": instrumentation.strip(),
         "global_motif": scenario["audiovisual_direction"]["global_music_motif"],
+        "motif_design": {
+            "intervals_from_root": list(MOTIF_INTERVALS),
+            "energy_register_semitones": dict(ENERGY_OCTAVE),
+            "variation_policy": "Keep the melodic interval identity across scenes; vary register and dynamics with scene energy.",
+        },
         "emotional_arc": scenario["audiovisual_direction"]["emotional_arc"],
         "cues": cues,
         "mixing_rules": scenario["audiovisual_direction"]["mixing_rules"],
