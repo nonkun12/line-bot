@@ -1,4 +1,4 @@
-""""LINE Goal intake. Proposals are inert until an allowlisted owner approves them."""
+"""LINE Goal intake. Proposals are inert until an allowlisted owner approves them."""
 from __future__ import annotations
 
 import json
@@ -10,8 +10,8 @@ from datetime import datetime, timedelta, timezone
 import db
 import goal_job_store
 
-_GOAL = re.compile(r"^\\s*(?:goal\\s*[:：]|目標\\s*[:：])\\s*(.+?)\\s*$", re.IGNORECASE)
-_APPROVE = re.compile(r"^\\s*(?:goal\\s*approve|goal承認|目標承認)\\s+([A-Za-z0-9_-]{8,40})\\s*$", re.IGNORECASE)
+_GOAL = re.compile(r"^\s*(?:goal\s*[:：]|目標\s*[:：])\s*(.+?)\s*$", re.IGNORECASE)
+_APPROVE = re.compile(r"^\s*(?:goal\s*approve|goal承認|目標承認)\s+([A-Za-z0-9_-]{8,40})\s*$", re.IGNORECASE)
 
 
 def _allowed(user_id):
@@ -136,7 +136,7 @@ def handle_goal_intake(user_id, message):
         proposal_id = _create(str(user_id), objective)
     except Exception:
         return "Goal提案を保存できませんでした。"
-    return (f"Goal提案 {proposal_id} を作成しました: {objective}\\n"
+    return (f"Goal提案 {proposal_id} を作成しました: {objective}\n"
             f"未実行です。承認する場合は「Goal承認 {proposal_id}」と送信してください。")
 
 
