@@ -95,6 +95,39 @@ def test_approved_goal_runs_four_sequential_sprint_plans_to_goal(tmp_path, monke
     approved = intake.approve_goal_proposal("U-authorized", proposal["proposal_id"])
     assert approved["decision"] == "CHILD_JOB_QUEUED"
 
+    media_job = db.claim_pending_media_goal_child_job(EXECUTOR_ID)
+    assert media_job is not None
+    media_payload = goal_job_store.authorize_claimed_media_job(
+        media_job, EXECUTOR_ID, "create_audiovisual_bundle"
+    )
+    media_evidence = {
+        "checks": [
+            {"name": name, "status": "PASS", "source": EXECUTOR_ID}
+            for name in (
+                "typed_local_executor_authorization",
+                "scenario_validation",
+                "output_confined_to_configured_root",
+                "artifact_inventory_and_sha256",
+                "no_publish_or_external_download",
+            )
+        ],
+        "executor": EXECUTOR_ID,
+        "goal_job_id": media_job["id"],
+        "artifact_sha256": {
+            "scenario": "a" * 64, "music_plan": "b" * 64, "midi": "c" * 64,
+            "audio_preview": "d" * 64, "video_edit_decision_list": "e" * 64,
+        },
+        "receipt_sha256": "f" * 64,
+    }
+    assert goal_job_store.complete_claimed_child_job(
+        media_job["id"], media_job["claim_token"], success=True,
+        result="verified media draft", evidence=media_evidence,
+    )
+    goal_job_store.update_goal_evidence(
+        proposal["goal_id"],
+        goal_job_store.evaluate_completed_goal_criteria(proposal["goal_id"]),
+    )
+
     executed = []
 
     def executor(_job, payload):
