@@ -32,10 +32,19 @@ def test_sync_edit_plan_maps_authored_events_to_output_frames_without_moving_the
 
 def test_sync_edit_plan_preserves_expressive_offsets_without_forced_cuts():
     edl = _edl()
-    expressive = next(
-        event for event in edl["beat_sync"]["events"]
-        if event["alignment"] == "expressive_offset"
+    # The generated default score intentionally places its current anchors on
+    # beats. Inject a deliberate authored pause to exercise the off-beat path.
+    expressive = edl["beat_sync"]["events"][0]
+    expressive["authored_at_seconds"] += 0.17
+    expressive["alignment"] = "expressive_offset"
+    visual_point = next(
+        point
+        for scene in edl["video_track"]
+        if scene["scene_id"] == expressive["scene_id"]
+        for point in scene["visual_sync_points"]
+        if point["event"] == expressive["event"]
     )
+    visual_point["at_seconds"] = expressive["authored_at_seconds"]
     plan = build_sync_aware_edit_plan(edl, fps=30)
     suggestion = next(
         item for item in plan["suggestions"]
