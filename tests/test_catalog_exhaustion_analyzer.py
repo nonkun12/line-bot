@@ -338,3 +338,23 @@ def test_analyzer_round_robins_targets_before_applying_candidate_cap(tmp_path: P
     ) == 3
     assert all(item["status"] == "REVIEW_REQUIRED" for item in report["candidates"])
     assert report["safety"]["candidates_executable"] is False
+
+
+
+def test_fingerprint_uses_nul_delimited_components(tmp_path: Path):
+    import hashlib
+
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    report = analyze(root, catalog, queue, state, runtime)
+    candidate = report["candidates"][0]
+    code_rel, line_text = candidate["evidence"].rsplit(":", 1)
+    code_source = (root / code_rel).read_text(encoding="utf-8")
+    test_source = (root / candidate["target_test"]).read_text(encoding="utf-8")
+    payload = chr(0).join([
+        code_rel,
+        candidate["source_function"],
+        line_text,
+        hashlib.sha256(code_source.encode()).hexdigest(),
+        hashlib.sha256(test_source.encode()).hexdigest(),
+    ])
+    assert candidate["fingerprint"] == hashlib.sha256(payload.encode()).hexdigest()
