@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from core.autonomy_policy import evaluate_job_autonomy
+from agents.video.scenario import validate_scenario
 
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 _STAGES = frozenset({"requirements", "design", "implementation", "test", "review", "fix", "verify"})
@@ -161,11 +162,28 @@ def plan_next_job(
             or not isinstance(dependencies, list) or not all(_valid_id(dep) for dep in dependencies)
         ):
             return _hold("job_definition_invalid_or_unsafe")
+        executor_fields = {"executor", "operation", "scenario"}
+        has_executor_contract = any(field in job for field in executor_fields)
+        executor_contract: dict[str, Any] = {}
+        if has_executor_contract:
+            if (
+                job.get("executor") != "mac_local_media.v1"
+                or job.get("operation") != "create_audiovisual_bundle"
+                or not isinstance(job.get("scenario"), dict)
+                or validate_scenario(job.get("scenario"))
+            ):
+                return _hold("typed_executor_contract_invalid", job_id=jid)
+            executor_contract = {
+                "executor": job["executor"],
+                "operation": job["operation"],
+                "scenario": job["scenario"],
+            }
         job_ids.add(jid)
         normalized.append({
             "id": jid, "criterion_id": cid, "stage": stage,
             "instruction": instruction.strip(), "allowed_paths": list(paths),
             "depends_on": list(dependencies),
+            **executor_contract,
         })
 
     if any(dep not in job_ids for job in normalized for dep in job["depends_on"]):
