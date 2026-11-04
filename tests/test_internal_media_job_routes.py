@@ -158,3 +158,42 @@ def test_media_claim_ignores_untyped_goal_child(tmp_path, monkeypatch):
     )
     assert response.status_code == 200
     assert response.get_json()["claimed"] is False
+
+
+def test_media_hold_releases_claim_and_keeps_goal_unachieved(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    job_id = _create_media_job()
+    headers = {"x-internal-key": "media-test-key"}
+    claimed = client.post("/internal/media-jobs/claim", headers=headers, json={}).get_json()["job"]
+    held = client.post("/internal/media-jobs/hold", headers=headers, json={
+        "job_id": job_id,
+        "claim_token": claimed["claim_token"],
+        "reason": "Mac output volume is unavailable",
+    })
+    assert held.status_code == 200
+    assert held.get_json()["status"] == "HOLD"
+    assert db.get_job(job_id)["status"] == "held"
+    assert goal_job_store.get_goal("media-route-goal")["status"] == "active"
+    next_claim = client.post("/internal/media-jobs/claim", headers=headers, json={})
+    assert next_claim.get_json()["claimed"] is False
+
+
+def test_media_claim_recovers_expired_lease_with_new_token(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    job_id = _create_media_job()
+    headers = {"x-internal-key": "media-test-key"}
+    first = client.post("/internal/media-jobs/claim", headers=headers, json={}).get_json()["job"]
+    with db.get_conn() as conn:
+        conn.execute(
+            "UPDATE jobs SET updated_at=datetime('now', '-31 minutes') WHERE id=?",
+            (job_id,),
+        )
+    recovered = client.post("/internal/media-jobs/claim", headers=headers, json={}).get_json()["job"]
+    assert recovered["id"] == job_id
+    assert recovered["claim_token"] != first["claim_token"]
+    stale = client.post("/internal/media-jobs/hold", headers=headers, json={
+        "job_id": job_id,
+        "claim_token": first["claim_token"],
+        "reason": "stale worker",
+    })
+    assert stale.status_code == 409
