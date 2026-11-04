@@ -84,8 +84,13 @@ def _build_hourly_focus_artifact(task_id: str) -> tuple[str, dict[str, Any]]:
                 {"id": "CHOICE_LUMINA_01B", "state_delta": {"city_lights": 1}, "next_node": "NODE_LIGHTS"},
                 {"id": "CHOICE_LUMINA_01C", "state_delta": {"trust_mina": 1}, "next_node": "NODE_TRUST"},
             ],
+            "nodes": [
+                {"id": "NODE_MEMORY", "outcome": "ノアの記憶を優先し、旧駅の記録区画を解放", "unlocks": "LOC_OLD_STATION_ARCHIVE"},
+                {"id": "NODE_LIGHTS", "outcome": "街の非常灯を優先し、暗い通路を照らす", "unlocks": "LOC_OLD_STATION_TUNNEL"},
+                {"id": "NODE_TRUST", "outcome": "ミナとの信頼を優先し、案内機の協力を得る", "unlocks": "LOC_OLD_STATION_CONTROL"},
+            ],
             "reachable_nodes": ["NODE_MEMORY", "NODE_LIGHTS", "NODE_TRUST"],
-            "all_branches_reachable": True, "validation": "static_proposal",
+            "all_branches_reachable": True, "validation": "declared_one_step_targets",
         }),
         "visual_design": ("visual_design.json", {
             "focus_id": task_id, "global_style": "雨の青を基調に、光だけを暖色で際立たせる",
@@ -341,9 +346,14 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
                       "rights_note": "Python合成のオリジナル試作。公開前に権利・音質レビュー必須。"}
         graph = {"schema_version": "interactive-story-graph.v1", "project_id": PROJECT,
                  "status": "draft", "initial_state": {"trust_mina": 0, "city_lights": 0, "noa_memory": 0},
-                 "choices": [{"id": "CHOICE_LUMINA_01A", "effect": {"noa_memory": 1}},
-                             {"id": "CHOICE_LUMINA_01B", "effect": {"city_lights": 1}},
-                             {"id": "CHOICE_LUMINA_01C", "effect": {"trust_mina": 1}}]}
+                 "nodes": [
+                     {"id": "NODE_MEMORY", "outcome": "ノアの記憶を優先し、旧駅の記録区画を解放", "unlocks": "LOC_OLD_STATION_ARCHIVE"},
+                     {"id": "NODE_LIGHTS", "outcome": "街の非常灯を優先し、暗い通路を照らす", "unlocks": "LOC_OLD_STATION_TUNNEL"},
+                     {"id": "NODE_TRUST", "outcome": "ミナとの信頼を優先し、案内機の協力を得る", "unlocks": "LOC_OLD_STATION_CONTROL"},
+                 ],
+                 "choices": [{"id": "CHOICE_LUMINA_01A", "effect": {"noa_memory": 1}, "next_node": "NODE_MEMORY"},
+                             {"id": "CHOICE_LUMINA_01B", "effect": {"city_lights": 1}, "next_node": "NODE_LIGHTS"},
+                             {"id": "CHOICE_LUMINA_01C", "effect": {"trust_mina": 1}, "next_node": "NODE_TRUST"}]}
         task_index = int(moment.timestamp() // 3600) % len(TASKS)
         task_id, task_title = TASKS[task_index]
         task = {"task_id": f"SN-HOURLY-{stamp}", "focus": task_id, "proposal": task_title,
@@ -354,7 +364,9 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
             "timeline_contiguous": all(SCENES[i]["start"] + SCENES[i]["duration"] == SCENES[i+1]["start"] for i in range(4)),
             "total_duration_15_seconds": sum(s["duration"] for s in SCENES) == 15,
             "all_scenes_have_location": all(s["location"] for s in SCENES),
-            "choice_ids_unique": len({c["id"] for c in graph["choices"]}) == 3}
+            "choice_ids_unique": len({c["id"] for c in graph["choices"]}) == 3,
+            "choice_targets_declared": all(c["next_node"] in {n["id"] for n in graph["nodes"]} for c in graph["choices"]),
+            "choice_effect_keys_valid": all(set(c["effect"]).issubset(graph["initial_state"]) for c in graph["choices"])}
         critic = {
             "status": "PASS" if all(critic_checks.values()) else "FAIL",
             "checks": critic_checks,
