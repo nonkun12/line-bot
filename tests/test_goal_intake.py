@@ -48,6 +48,7 @@ def test_only_allowlisted_owner_can_approve_and_job_is_bounded(tmp_path, monkeyp
     assert record["autonomy_grant"]["allowed_path_prefixes"] == ["docs/"]
     assert record["autonomy_grant"]["auto_merge"] is False
     assert record["autonomy_grant"]["auto_deploy"] is False
+    assert record["goal"]["jobs"][0]["allowed_paths"] == [f"docs/goal_sprints/{goal_id}.md"]
     with db.get_conn() as conn:
         row = conn.execute(
             "SELECT status FROM goal_intake_proposals WHERE proposal_id=?", (goal_id,)
