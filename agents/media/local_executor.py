@@ -110,9 +110,9 @@ def execute_local_media_job(
         "publication": "not_performed",
     }
     receipt_path = destination / "executor_receipt.json"
+    receipt_json = json.dumps(receipt, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     with receipt_path.open("x", encoding="utf-8") as stream:
-        json.dump(receipt, stream, ensure_ascii=False, sort_keys=True, indent=2)
-        stream.write("\n")
+        stream.write(receipt_json + "\n")
 
     evidence = {
         "checks": [
@@ -130,7 +130,7 @@ def execute_local_media_job(
         "video_render_status": receipt["video_render_status"],
     }
     return {
-        "result": json.dumps(receipt, ensure_ascii=False, sort_keys=True),
+        "result": receipt_json,
         "evidence": evidence,
     }
 
