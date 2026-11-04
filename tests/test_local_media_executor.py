@@ -34,7 +34,15 @@ def test_local_executor_creates_hashed_bundle_under_fixed_root(tmp_path):
         "scenario", "storyboard", "shot_list", "music_plan", "midi", "audio_preview", "video_edit_decision_list"
     }
     assert all(len(value) == 64 for value in evidence["artifact_sha256"].values())
-    receipt = json.loads((tmp_path / "goal-child-42" / "executor_receipt.json").read_text())
+    bundle = tmp_path / "goal-child-42"
+    storyboard = json.loads((bundle / "storyboard.json").read_text(encoding="utf-8"))
+    shot_list = json.loads((bundle / "shot_list.json").read_text(encoding="utf-8"))
+    assert storyboard["schema_version"] == "video-storyboard.v1"
+    assert shot_list["schema_version"] == "video-shot-list.v1"
+    assert shot_list["external_assets_downloaded"] is False
+    assert shot_list["render_status"] == "not_rendered"
+    assert sum(shot["duration_seconds"] for shot in shot_list["shots"]) == 15
+    receipt = json.loads((bundle / "executor_receipt.json").read_text())
     assert receipt["publication"] == "not_performed"
     assert receipt["video_render_status"] == "not_rendered"
 
