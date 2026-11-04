@@ -112,9 +112,81 @@ def build_midi_bytes(music_plan: dict[str, Any]) -> bytes:
     return header + b"MTrk" + struct.pack(">I", len(track)) + bytes(track)
 
 
+def build_wav_preview_bytes(music_plan: dict[str, Any], *, max_seconds: int = 15) -> bytes:
+    """Render a short, dependency-free synthesized preview (not a production mix).
+
+    The preview intentionally uses a simple sine-wave piano-like timbre. It is
+    bounded to 15 seconds and 11.025 kHz mono so API payloads and CPU remain small.
+    """
+    import wave
+    from array import array
+
+    if type(max_seconds) is not int or not 1 <= max_seconds <= 15:
+        raise ValueError("max_seconds must be between 1 and 15")
+    # Reuse MIDI validation so both artifacts accept exactly the same score.
+    build_midi_bytes(music_plan)
+    sample_rate = 11025
+    duration = min(float(music_plan["duration_seconds"]), float(max_seconds))
+    frame_count = int(duration * sample_rate)
+    mix = [0.0] * frame_count
+    cues = music_plan["cues"]
+
+    def add_note(note: int, start: float, end: float, velocity: int) -> None:
+        start = max(0.0, float(start))
+        end = min(duration, float(end))
+        first = max(0, int(start * sample_rate))
+        last = min(frame_count, int(end * sample_rate))
+        if last <= first:
+            return
+        frequency = 440.0 * (2.0 ** ((note - 69) / 12.0))
+        amplitude = (velocity / 127.0) * 0.11
+        length = last - first
+        attack = max(1, int(0.012 * sample_rate))
+        release = max(1, int(0.08 * sample_rate))
+        for index in range(length):
+            remaining = length - index
+            envelope = min(1.0, index / attack, remaining / release)
+            t = (first + index) / sample_rate
+            # Fundamental plus a quiet second harmonic for a soft bell/piano tint.
+            sample = math.sin(2.0 * math.pi * frequency * t)
+            sample += 0.18 * math.sin(4.0 * math.pi * frequency * t)
+            mix[first + index] += sample * amplitude * max(0.0, envelope)
+
+    motif = _MOTIF
+    for cue_index, cue in enumerate(cues):
+        start = float(cue["start_seconds"])
+        end = min(float(cue["end_seconds"]), duration)
+        if start >= duration:
+            continue
+        velocity = {"low": 42, "medium": 62, "high": 82}[cue["energy"]]
+        for note in _CHORDS[cue_index % len(_CHORDS)]:
+            add_note(note, start, end, max(1, velocity - 18))
+        count = _ENERGY_NOTES[cue["energy"]]
+        span = float(cue["end_seconds"]) - float(cue["start_seconds"])
+        for step in range(count):
+            note_start = start + span * step / count
+            note_end = start + span * (step + 1) / count
+            note = motif[(cue_index * 2 + step) % len(motif)]
+            if cue["energy"] == "high":
+                note += 12
+            add_note(note, note_start, note_end, min(120, velocity + (5 if step in (0, count - 1) else 0)))
+
+    pcm = array("h", (int(max(-1.0, min(1.0, value)) * 32767) for value in mix))
+    if __import__("sys").byteorder != "little":
+        pcm.byteswap()
+    output = __import__("io").BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        wav.writeframes(pcm.tobytes())
+    return output.getvalue()
+
+
 def build_midi_artifact(music_plan: dict[str, Any]) -> dict[str, Any]:
     """Return a JSON-safe base64 MIDI artifact for a LINE/API response."""
     midi = build_midi_bytes(music_plan)
+    preview_wav = build_wav_preview_bytes(music_plan)
     title = str(music_plan.get("source_scenario_title") or "audiovisual-score")
     safe_title = "".join(ch for ch in title if ch.isalnum() or ch in "-_")[:40] or "audiovisual-score"
     return {
@@ -123,10 +195,22 @@ def build_midi_artifact(music_plan: dict[str, Any]) -> dict[str, Any]:
         "encoding": "base64",
         "content_base64": base64.b64encode(midi).decode("ascii"),
         "size_bytes": len(midi),
+        "preview_audio": {
+            "filename": f"{safe_title}-preview.wav",
+            "mime_type": "audio/wav",
+            "encoding": "base64",
+            "content_base64": base64.b64encode(preview_wav).decode("ascii"),
+            "size_bytes": len(preview_wav),
+            "duration_seconds": min(music_plan["duration_seconds"], 15),
+            "sample_rate_hz": 11025,
+            "channels": 1,
+            "status": "short_synthesized_preview",
+            "limitations": "15秒以内の簡易合成プレビューです。完成音源・実楽器音源・最終ミックスではありません。",
+        },
         "duration_seconds": music_plan["duration_seconds"],
         "status": "generated_midi_sketch",
         "limitations": "MIDI演奏データです。音声ファイルではなく、再生にはMIDI音源が必要です。",
     }
 
 
-__all__ = ["build_midi_bytes", "build_midi_artifact"]
+__all__ = ["build_midi_bytes", "build_wav_preview_bytes", "build_midi_artifact"]
