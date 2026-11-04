@@ -120,3 +120,43 @@ Only after this reliable baseline passes should later sprints add more advanced 
 
 The known environment includes Apple Silicon (arm64) on macOS 27.2 and an existing on-demand Bonsai MLX setup. Bonsai can assist local language tasks, but its presence does not establish that a video model or renderer is installed. Exact memory/GPU capacity and media-tool availability must be discovered before selecting workloads.
 
+## Local Mac production worker
+
+Video, image, and audio production should use the user's existing Apple Silicon Mac as an on-demand local production worker. The current known target is an Apple Silicon MacBook Pro with 16 GB unified memory; verify current free disk, thermal/power state, installed tools, and model availability at task start rather than assuming capacity.
+
+### Responsibility split
+
+- **Control Tower / central orchestration:** owns Goals, sprint state, task dependencies, budgets, permissions, audit history, and review decisions. It does not assume that a cloud GPU or paid media API exists.
+- **Specialist agents:** create scenarios, storyboards, shot lists, asset manifests, timing maps, music briefs, and acceptance criteria. These are lightweight planning tasks and can run independently of the Mac renderer.
+- **Mac production worker:** performs local rendering, editing, image/audio processing, preview generation, and packaging using verified local tools and models.
+- **Critic / QA agents:** inspect outputs against the scenario, timing, audio-visual harmony, quality, and license requirements; request bounded repair JOBs when needed.
+
+### Power-conscious execution and connectivity
+
+- Do not require a permanently running renderer or model server. The Mac worker should be started on demand for an eligible media JOB, check readiness, launch only the required local process, and stop idle processes after the job.
+- Prefer an outbound, authenticated job-claim/poll or explicit user-triggered execution model. Do not expose the Mac to inbound public ports merely to receive jobs.
+- Use short-lived job leases, unique idempotency keys, bounded retries, and atomic artifact handoff. Interrupted renders must be resumable or safely restartable.
+- When the Mac is offline, keep the media JOB queued with a typed `WAITING_FOR_LOCAL_WORKER` state; do not mark it failed, burn retries, or silently route it to a paid cloud service.
+- Respect local power, thermal, storage, and memory limits. Use bounded render settings and temporary-file cleanup; never delete user assets.
+
+### Free-only and provenance requirements
+
+- Local execution is a hard preference for compute-heavy media work. No paid APIs, metered APIs, paid cloud rendering, paid models, or mandatory expiring free-tier services.
+- Detect and record the exact local tool/model versions and licenses used for each deliverable. Check model, code, font, sound, image, and video asset permissions before inclusion.
+- Generated assets should have a manifest recording source/provenance, license, prompt or production brief where applicable, tool version, and output hash.
+- If a required capability is unavailable locally, report a typed blocker and propose a free/local alternative; never silently introduce a paid dependency.
+
+### Memory-aware production stages
+
+For a 16 GB unified-memory machine, avoid loading multiple large models simultaneously. Schedule image, video, and audio stages sequentially where practical; generate low-resolution proxies/previews first, then render final output only after review. Model selection and resolution/frame-rate limits must be based on measured local capacity, not assumptions.
+
+### Mac worker acceptance tests
+
+- The worker starts only for an eligible authorized JOB and exits or idles safely afterward.
+- Offline Mac leaves work queued without consuming retry budget.
+- Duplicate delivery does not create duplicate final artifacts.
+- Cancellation and immediate-stop requests halt local work safely.
+- No inbound public listener or paid service is required.
+- Artifact hashes, tool versions, licenses, and test/review evidence are persisted.
+- A render failure creates a repair JOB with bounded scope, not an unbounded retry loop.
+
