@@ -81,3 +81,22 @@ def test_rejects_duplicate_scene_ids():
     edl["video_track"][1]["scene_id"] = "SC01"
     with pytest.raises(ValueError, match="unique"):
         build_audiovisual_sync_timeline(edl)
+
+
+
+def test_edl_keeps_visual_sync_anchors_alongside_beat_analysis():
+    from agents.music.score_plan import build_music_plan
+    from agents.video.edit_decision_list import build_edit_decision_list
+    from agents.video.scenario import build_scenario
+
+    scenario = build_scenario("夜明けに向かう小さな旅", duration_seconds=40, scene_count=4)
+    edl = build_edit_decision_list(scenario, build_music_plan(scenario), bpm=120)
+
+    assert len(edl["sync_events"]) == 12
+    assert edl["sync_events"] == sorted(
+        edl["sync_events"], key=lambda item: item["at_seconds"]
+    )
+    for scene, cue in zip(edl["video_track"], edl["audio_track"]):
+        assert scene["visual_sync_points"] == cue["sync_points"]
+        assert len(scene["visual_sync_points"]) == 3
+    assert edl["beat_sync"]["event_count"] == 12
