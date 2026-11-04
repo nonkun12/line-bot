@@ -61,8 +61,8 @@ def _output_from_existing_receipt(receipt_path: Path, destination: Path, job_id:
         or receipt.get("status") != "draft"
         or receipt.get("publication") != "not_performed"
         or not isinstance(hashes, dict)
-        or set(hashes) != _REQUIRED_ARTIFACTS
-        or receipt.get("video_render_status") != "not_rendered"
+        or set(hashes) not in (_REQUIRED_ARTIFACTS, _REQUIRED_ARTIFACTS | {"video"})
+        or receipt.get("video_render_status") != ("rendered" if "video" in hashes else "not_rendered")
     ):
         raise RuntimeError("existing media receipt does not match this Goal job; keep it on HOLD")
     for logical_name, expected_hash in hashes.items():
@@ -96,6 +96,7 @@ def execute_local_media_job(
     payload: dict[str, Any],
     *,
     output_root: str | Path | None = None,
+    render_animatic: bool = False,
     bundle_creator: Callable[..., dict[str, Any]] = create_audiovisual_production_bundle,
 ) -> dict[str, Any]:
     """Create one local-only media bundle from a claimed, typed Goal child.
@@ -116,6 +117,8 @@ def execute_local_media_job(
     claim_token = job.get("claim_token")
     if not isinstance(claim_token, str) or len(claim_token) < 20:
         raise PermissionError("a claimed Goal child token is required")
+    if type(render_animatic) is not bool:
+        raise ValueError("render_animatic must be a boolean")
     if not isinstance(payload, dict):
         raise ValueError("local media payload must be an object")
     if payload.get("executor") != EXECUTOR_ID or payload.get("operation") != OPERATION:
@@ -143,7 +146,9 @@ def execute_local_media_job(
 
     # The bundle creator creates a new directory exclusively. A partial or
     # pre-existing output is never overwritten; retries only reuse a verified receipt.
-    result = bundle_creator(scenario, destination, bpm=120)
+    result = bundle_creator(
+        scenario, destination, bpm=120, render_animatic=render_animatic
+    )
     if not isinstance(result, dict) or result.get("status") != "draft_bundle_created":
         raise RuntimeError("media bundle creator did not return a successful draft receipt")
 
