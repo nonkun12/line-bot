@@ -43,8 +43,8 @@ class MusicAgent:
             midi_base64 = base64.b64encode(midi_bytes).decode("ascii")
             return AgentResponse(
                 text=(
-                    f"🎵 映像連動の音楽設計：{plan['source_scenario_title']}\\n"
-                    f"尺：{plan['duration_seconds']}秒 / キュー：{len(plan['cues'])}件\\n"
+                    f"🎵 映像連動の音楽設計：{plan['source_scenario_title']}\n"
+                    f"尺：{plan['duration_seconds']}秒 / キュー：{len(plan['cues'])}件\n"
                     "シナリオの感情曲線・シーン時刻・同期点からオリジナルMIDIスケッチを生成しました。"
                     "4トラックのStandard MIDI Fileです。音源へのレンダリングは別工程です。"
                 ),
