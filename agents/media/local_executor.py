@@ -28,6 +28,66 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+_ARTIFACT_FILENAMES = {
+    "scenario": "scenario.json",
+    "music_plan": "music_plan.json",
+    "midi": "original_music.mid",
+    "audio_preview": "original_music.wav",
+    "video_edit_decision_list": "edit_decision_list.json",
+    "video": "final_video.mp4",
+}
+_REQUIRED_ARTIFACTS = set(_ARTIFACT_FILENAMES) - {"video"}
+
+
+def _output_from_existing_receipt(receipt_path: Path, destination: Path, job_id: int) -> dict[str, Any]:
+    if receipt_path.is_symlink() or not receipt_path.is_file():
+        raise RuntimeError("existing media output has no safe receipt; keep the Goal job on HOLD")
+    receipt_bytes = receipt_path.read_bytes()
+    try:
+        receipt = json.loads(receipt_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("existing media receipt is invalid; keep the Goal job on HOLD") from exc
+    hashes = receipt.get("artifact_sha256") if isinstance(receipt, dict) else None
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("schema_version") != "mac-local-media-receipt.v1"
+        or receipt.get("executor") != EXECUTOR_ID
+        or receipt.get("operation") != OPERATION
+        or receipt.get("goal_job_id") != job_id
+        or receipt.get("idempotency_key") != hashlib.sha256(f"{EXECUTOR_ID}:{job_id}".encode()).hexdigest()
+        or receipt.get("status") != "draft"
+        or receipt.get("publication") != "not_performed"
+        or not isinstance(hashes, dict)
+        or not _REQUIRED_ARTIFACTS.issubset(hashes)
+        or set(hashes) - set(_ARTIFACT_FILENAMES)
+    ):
+        raise RuntimeError("existing media receipt does not match this Goal job; keep it on HOLD")
+    for logical_name, expected_hash in hashes.items():
+        if not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+            raise RuntimeError("existing media receipt contains an invalid artifact hash")
+        artifact = destination / _ARTIFACT_FILENAMES[logical_name]
+        if artifact.is_symlink() or not artifact.is_file() or _sha256(artifact) != expected_hash:
+            raise RuntimeError("existing media artifact failed integrity verification; keep it on HOLD")
+    receipt_hash = hashlib.sha256(receipt_bytes).hexdigest()
+    result = receipt_bytes.decode("utf-8").rstrip("\n")
+    evidence = {
+        "checks": [
+            {"name": "typed_local_executor_authorization", "status": "PASS", "source": EXECUTOR_ID},
+            {"name": "scenario_validation", "status": "PASS", "source": EXECUTOR_ID},
+            {"name": "output_confined_to_configured_root", "status": "PASS", "source": EXECUTOR_ID},
+            {"name": "artifact_inventory_and_sha256", "status": "PASS", "source": EXECUTOR_ID},
+            {"name": "no_publish_or_external_download", "status": "PASS", "source": EXECUTOR_ID},
+        ],
+        "executor": EXECUTOR_ID,
+        "goal_job_id": job_id,
+        "output_directory": str(destination),
+        "artifact_sha256": hashes,
+        "receipt_sha256": receipt_hash,
+        "video_render_status": receipt.get("video_render_status", "not_rendered"),
+    }
+    return {"result": result, "evidence": evidence}
+
+
 def execute_local_media_job(
     job: dict[str, Any],
     payload: dict[str, Any],
@@ -74,8 +134,12 @@ def execute_local_media_job(
     if destination.parent != root:
         raise PermissionError("derived output path escaped the configured root")
 
-    # mkdir(exist_ok=False) inside the bundle creator is the idempotency guard:
-    # a retry cannot silently overwrite or duplicate an existing artifact set.
+    receipt_path = destination / "executor_receipt.json"
+    if destination.exists():
+        return _output_from_existing_receipt(receipt_path, destination, job_id)
+
+    # The bundle creator creates a new directory exclusively. A partial or
+    # pre-existing output is never overwritten; retries only reuse a verified receipt.
     result = bundle_creator(scenario, destination, bpm=120)
     if not isinstance(result, dict) or result.get("status") != "draft_bundle_created":
         raise RuntimeError("media bundle creator did not return a successful draft receipt")
@@ -109,30 +173,10 @@ def execute_local_media_job(
         "video_render_status": result.get("video_render_status", "not_rendered"),
         "publication": "not_performed",
     }
-    receipt_path = destination / "executor_receipt.json"
     receipt_json = json.dumps(receipt, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     with receipt_path.open("x", encoding="utf-8") as stream:
         stream.write(receipt_json + "\n")
-
-    evidence = {
-        "checks": [
-            {"name": "typed_local_executor_authorization", "status": "PASS", "source": EXECUTOR_ID},
-            {"name": "scenario_validation", "status": "PASS", "source": EXECUTOR_ID},
-            {"name": "output_confined_to_configured_root", "status": "PASS", "source": EXECUTOR_ID},
-            {"name": "artifact_inventory_and_sha256", "status": "PASS", "source": EXECUTOR_ID},
-            {"name": "no_publish_or_external_download", "status": "PASS", "source": EXECUTOR_ID},
-        ],
-        "executor": EXECUTOR_ID,
-        "goal_job_id": job_id,
-        "output_directory": str(destination),
-        "artifact_sha256": artifact_hashes,
-        "receipt_sha256": _sha256(receipt_path),
-        "video_render_status": receipt["video_render_status"],
-    }
-    return {
-        "result": receipt_json,
-        "evidence": evidence,
-    }
+    return _output_from_existing_receipt(receipt_path, destination, job_id)
 
 
 __all__ = ["EXECUTOR_ID", "OPERATION", "execute_local_media_job"]
