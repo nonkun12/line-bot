@@ -213,10 +213,11 @@ def has_pending_job_by_type(job_type: str) -> bool:
             SELECT 1
             FROM jobs
             WHERE job_type=? AND status='pending'
+              AND (? != 'goal_child' OR CASE WHEN json_valid(message) THEN json_extract(message, '$.executor') ELSE NULL END IS NULL)
             ORDER BY id
             LIMIT 1
             """,
-            (job_type.strip(),),
+            (job_type.strip(), job_type.strip()),
         ).fetchone()
     return row is not None
 
@@ -271,11 +272,12 @@ def claim_pending_job_by_type(job_type, *, stale_after_seconds=900):
                 claim_token=NULL,
                 updated_at=CURRENT_TIMESTAMP
             WHERE job_type=?
+              AND (? != 'goal_child' OR CASE WHEN json_valid(message) THEN json_extract(message, '$.executor') ELSE NULL END IS NULL)
               AND status='running'
               AND updated_at < datetime('now', ?)
               AND retry_count >= max_retries
             """,
-            (job_type.strip(), stale_expr),
+            (job_type.strip(), job_type.strip(), stale_expr),
         )
         conn.execute(
             """
@@ -285,11 +287,12 @@ def claim_pending_job_by_type(job_type, *, stale_after_seconds=900):
                 retry_count=retry_count + 1,
                 updated_at=CURRENT_TIMESTAMP
             WHERE job_type=?
+              AND (? != 'goal_child' OR CASE WHEN json_valid(message) THEN json_extract(message, '$.executor') ELSE NULL END IS NULL)
               AND status='running'
               AND updated_at < datetime('now', ?)
               AND retry_count < max_retries
             """,
-            (job_type.strip(), stale_expr),
+            (job_type.strip(), job_type.strip(), stale_expr),
         )
         row = conn.execute(
             """
@@ -328,7 +331,8 @@ def claim_goal_child_job(job_id):
     with get_conn() as conn:
         cursor = conn.execute(
             "UPDATE jobs SET status='running',claim_token=?,updated_at=CURRENT_TIMESTAMP "
-            "WHERE id=? AND job_type='goal_child' AND status='pending'",
+            "WHERE id=? AND job_type='goal_child' AND status='pending' "
+            "AND CASE WHEN json_valid(message) THEN json_extract(message, '$.executor') ELSE NULL END IS NULL",
             (token, job_id),
         )
         if cursor.rowcount != 1:
