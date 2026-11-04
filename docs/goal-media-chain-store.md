@@ -22,3 +22,16 @@ This is durable state/checkpoint persistence, not a worker or dispatcher. It doe
 - get_goal_chain(user_id, goal_id)
 - record_goal_chain_evidence(user_id, goal_id, expected_version=..., completed_job_ids=..., approved_gate_job_ids=..., held_job_ids=...)
 - get_goal_chain_history(user_id, goal_id)
+
+
+## LINE integration
+
+An approved explicit Goal proposal also creates its audiovisual sprint-chain snapshot. The verified Mac media completion endpoint records the scenario stage as completed; its required human gate remains pending.
+
+Commands are deliberately narrow and owner-scoped:
+
+- `Goal状態 <goal_id>` or `Goal status <goal_id>` reads the chain state.
+- `Goalステージ承認 <goal_id> <stage_id>` explicitly approves a reviewable stage, and is accepted only from a configured Goal approver.
+- The scenario gate must be approved before the already-generated music and visual artifacts become reviewable. Their approval is an explicit human confirmation, not an automatic quality inference.
+
+The status command is read-only. Stage approval changes only the approval evidence; it does not itself enqueue or execute the next stage.
