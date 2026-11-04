@@ -67,11 +67,25 @@ def video_agent_node(state: AgentState) -> AgentState:
     response = handle_video_request(request)
     results = dict(state.get("agent_results", {}))
     results["video"] = response.text
+    updated_metadata = {
+        **dict(state.get("metadata", {})),
+        "video_music_handoff": response.metadata.get("handoff"),
+    }
+    # Keep generated artifacts in graph state for downstream delivery adapters.
+    # The LINE text reply remains compact; binary/base64 data is not sent as text.
+    if response.metadata.get("mode") == "video_music_pipeline":
+        updated_metadata["video_music_artifacts"] = {
+            "scenario": response.metadata.get("scenario"),
+            "music_plan": response.metadata.get("music_plan"),
+            "midi_artifact": response.metadata.get("midi_artifact"),
+            "goal_jobs": response.metadata.get("goal_jobs"),
+            "rendering_status": response.metadata.get("rendering_status"),
+        }
     return {
         **state,
         "final_reply": response.text,
         "agent_results": results,
-        "metadata": {**dict(state.get("metadata", {})), "video_music_handoff": response.metadata.get("handoff")},
+        "metadata": updated_metadata,
     }
 
 
