@@ -138,7 +138,7 @@ def build_star_night_scenario() -> dict[str, Any]:
     return scenario
 
 
-def build_candidate(output_dir: str | Path, *, bpm: int = 76) -> dict[str, Any]:
+def build_candidate(\n    output_dir: str | Path, *, bpm: int = 76, render_animatic: bool = False\n) -> dict[str, Any]:
     """Create one non-overwriting cloud candidate and its structural review."""
     scenario = build_star_night_scenario()
     result = create_audiovisual_production_bundle(
@@ -147,7 +147,7 @@ def build_candidate(output_dir: str | Path, *, bpm: int = 76) -> dict[str, Any]:
         bpm=bpm,
         genre="静かなSFファンタジーのオリジナル劇伴",
         instrumentation="ピアノ、柔らかなパッド、控えめな弦、ガラス質の電子音",
-        render_animatic=False,
+        render_animatic=render_animatic,
     )
     root = Path(result["directory"])
     music_plan = json.loads((root / "music_plan.json").read_text(encoding="utf-8"))
@@ -177,7 +177,7 @@ def build_candidate(output_dir: str | Path, *, bpm: int = 76) -> dict[str, Any]:
         "artifact_names": sorted(manifest["artifacts"]),
         "midi_status": result["midi"]["status"],
         "audio_status": result["audio_render_status"],
-        "video_status": "not_rendered",
+        "video_status": result["video_render_status"],\n        "video_path": result["video"]["path"] if result.get("video") else None,
         "critic_status": critic["status"],
         "publication_authorized": False,
     }
