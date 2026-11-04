@@ -34,8 +34,8 @@ class VideoMusicPipeline:
             raise ValueError("request is not a video-production request")
 
         video_response = self.video_agent.handle(request)
-        if video_response.metadata.get("mode") != "scenario":
-            raise ValueError("video request must explicitly ask for a scenario")
+        if video_response.metadata.get("mode") not in {"scenario", "script"}:
+            raise ValueError("video request must explicitly ask for a scenario or script")
         scenario = video_response.metadata.get("scenario")
         errors = validate_scenario(scenario)
         if errors:
@@ -138,7 +138,8 @@ def handle_video_request(request: AgentRequest) -> AgentResponse:
     """
     if not isinstance(request, AgentRequest):
         raise TypeError("request must be an AgentRequest")
-    if "シナリオ" in request.message.casefold():
+    message = request.message.casefold()
+    if any(keyword in message for keyword in ("シナリオ", "台本", "脚本", "script")):
         return VideoMusicPipeline().run(request)
     return VideoAgent().handle(request)
 
