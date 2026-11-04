@@ -60,3 +60,13 @@ def test_creator_critic_rejects_unknown_artifact_schemas():
         assert "scenario" in str(exc)
     else:
         raise AssertionError("unknown scenario schema must fail closed")
+
+def test_creator_critic_is_deterministic_and_does_not_mutate_inputs():
+    scenario, music, edl, storyboard = _bundle()
+    before = deepcopy((scenario, music, edl, storyboard))
+
+    first = review_audiovisual_draft(scenario, music, edl, storyboard)
+    second = review_audiovisual_draft(scenario, music, edl, storyboard)
+
+    assert first == second
+    assert (scenario, music, edl, storyboard) == before
