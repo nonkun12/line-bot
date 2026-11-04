@@ -10,8 +10,8 @@ from datetime import datetime, timedelta, timezone
 import db
 import goal_job_store
 
-_GOAL = re.compile(r"^\s*(?:goal\s*[:：]|目標\s*[:：])\s*(.+?)\s*$", re.IGNORECASE)
-_APPROVE = re.compile(r"^\s*(?:goal\s*approve|goal承認|目標承認)\s+([A-Za-z0-9_-]{8,40})\s*$", re.IGNORECASE)
+_GOAL = re.compile(r"^\\s*(?:goal\\s*[:：]|目標\\s*[:：])\\s*(.+?)\\s*$", re.IGNORECASE)
+_APPROVE = re.compile(r"^\\s*(?:goal\\s*approve|goal承認|目標承認)\\s+([A-Za-z0-9_-]{8,40})\\s*$", re.IGNORECASE)
 
 
 def _allowed(user_id):
@@ -44,7 +44,7 @@ def _contract(goal_id, objective):
                 "Create a concise Sprint 1 plan for this Goal. Include Sprint Goal, one small "
                 "reviewable increment, acceptance criteria, dependencies, free-only tools, risks, "
                 "and verification steps. Write only under docs/goal_sprints/ using a filename "
-                "derived from the Goal ID. Do not change application code or deployment settings. "
+                "derived from the Goal ID. Do not modify application code or service configuration. "
                 "Preserve the product sequence: original music and scenario-led audiovisual work, "
                 "interactive narrative, simple game, then a full original game."
             ),
@@ -135,7 +135,7 @@ def handle_goal_intake(user_id, message):
         proposal_id = _create(str(user_id), objective)
     except Exception:
         return "Goal提案を保存できませんでした。"
-    return (f"Goal提案 {proposal_id} を作成しました: {objective}\n"
+    return (f"Goal提案 {proposal_id} を作成しました: {objective}\\n"
             f"未実行です。承認する場合は「Goal承認 {proposal_id}」と送信してください。")
 
 
