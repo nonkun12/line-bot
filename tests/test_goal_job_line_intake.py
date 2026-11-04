@@ -57,7 +57,7 @@ def test_goal_approval_is_idempotent(tmp_path, monkeypatch):
     proposal = intake.create_goal_proposal("U-authorized", "Create a safe sprint workflow")
     first = intake.approve_goal_proposal("U-authorized", proposal["proposal_id"])
     second = intake.approve_goal_proposal("U-authorized", proposal["proposal_id"])
-    assert first["job_id"] == second["goal_id"] if False else first["goal_id"] == second["goal_id"]
+    assert first["goal_id"] == second["goal_id"]
     assert second["already_approved"] is True
     assert len(goal_job_store.get_goal_child_jobs(proposal["goal_id"])) == 1
 
