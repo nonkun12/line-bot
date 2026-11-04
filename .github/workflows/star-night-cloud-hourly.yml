@@ -1,6 +1,9 @@
 name: Star Night Cloud Hourly Candidate
 
 on:
+  push:
+    branches:
+      - feat/star-night-cloud-first-main-20261104
   schedule:
     # Every hour, UTC 00:00–23:00 (JST 09:00–08:00).
     - cron: "0 * * * *"
