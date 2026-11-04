@@ -13,6 +13,7 @@ from typing import Any
 from agents.music.midi_composer import write_midi_file
 from agents.music.audio_renderer import render_midi_to_wav
 from agents.music.score_plan import build_music_plan
+from agents.music.wav_renderer import write_wav_file
 from agents.video.edit_decision_list import build_edit_decision_list
 from agents.video.scenario import validate_scenario
 
@@ -55,6 +56,7 @@ def create_audiovisual_production_bundle(
         _write_json_exclusive(destination / "music_plan.json", music_plan)
         _write_json_exclusive(destination / "edit_decision_list.json", edl)
         midi = write_midi_file(music_plan, destination / "original_music.mid", bpm=bpm)
+        audio = write_wav_file(music_plan, destination / "original_music.wav", bpm=bpm)
         audio = None
         if soundfont_path is not None:
             audio = render_midi_to_wav(
@@ -70,10 +72,12 @@ def create_audiovisual_production_bundle(
                 "scenario": "scenario.json",
                 "music_plan": "music_plan.json",
                 "midi": "original_music.mid",
+                "audio_preview": "original_music.wav",
                 "video_edit_decision_list": "edit_decision_list.json",
             },
             "midi": midi,
-            "audio_render_status": "not_rendered",
+            "audio_preview": audio,
+            "audio_render_status": "synthesized_preview",
             "video_render_status": "not_rendered",
             "external_assets_attached": False,
             "rights_review_required_before_publication": True,
@@ -94,6 +98,7 @@ def create_audiovisual_production_bundle(
         "artifacts": manifest["artifacts"],
         "midi": midi,
         "audio_render_status": manifest["audio_render_status"],
+        "audio_preview": audio,
         "audio": audio,
         "video_render_status": manifest["video_render_status"],
     }
