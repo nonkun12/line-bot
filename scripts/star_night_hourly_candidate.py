@@ -371,7 +371,7 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
         for name, content in files.items():
             (destination / name).write_text(content, encoding="utf-8")
         (destination / focus_filename).write_text(
-            json.dumps(focus_artifact, ensure_ascii=False, indent=2) + "\\n",
+            json.dumps(focus_artifact, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
         (destination / "original_music.mid").write_bytes(_midi_bytes())
