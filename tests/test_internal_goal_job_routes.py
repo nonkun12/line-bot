@@ -192,7 +192,7 @@ def test_local_goal_review_claim_requires_internal_key_and_completes_once(tmp_pa
         claimed_job["claim_token"],
         success=True,
         result=json.dumps({"artifact": "verified"}),
-        evidence={"checks": [{"name": "persisted_evidence", "status": "PASS"}]},
+        evidence={"checks": [{"name": "persisted_evidence", "status": "PASS", "source": "test"}]},
     )
     assert client.post("/internal/goal-review/claim", json={}).status_code == 401
     claimed = client.post("/internal/goal-review/claim", headers=headers, json={})
@@ -241,7 +241,7 @@ def test_local_goal_review_unknown_fails_closed(tmp_path, monkeypatch):
         claimed_job["claim_token"],
         success=True,
         result=json.dumps({"artifact": "ambiguous"}),
-        evidence={"checks": [{"name": "persisted_evidence", "status": "PASS"}]},
+        evidence={"checks": [{"name": "persisted_evidence", "status": "PASS", "source": "test"}]},
     )
     review = client.post(
         "/internal/goal-review/claim", headers=headers, json={}
