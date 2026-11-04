@@ -7,6 +7,8 @@ recordings. Audio rendering remains a separate local-tool step.
 from __future__ import annotations
 
 from pathlib import Path
+
+from agents.music.motif import motif_pitch
 from typing import Any
 
 
@@ -18,11 +20,6 @@ _CHORDS = (
     (57, (57, 60, 64)),
     (67, (67, 71, 74)),
 )
-_MELODY_INTERVALS = {
-    "low": (0, 2, 4, 2),
-    "medium": (0, 2, 5, 4),
-    "high": (0, 4, 7, 9),
-}
 
 
 def _vlq(value: int) -> bytes:
@@ -94,7 +91,7 @@ def build_midi_bytes(music_plan: dict[str, Any], *, bpm: int = 120) -> bytes:
             type(start) not in (int, float) or type(end) not in (int, float)
             or start < 0 or end <= start or end > duration
             or start < last_end
-            or energy not in _MELODY_INTERVALS
+            or energy not in {"low", "medium", "high"}
         ):
             raise ValueError(f"cue {index + 1} has invalid timing or energy")
         last_end = end
@@ -121,7 +118,7 @@ def build_midi_bytes(music_plan: dict[str, Any], *, bpm: int = 120) -> bytes:
         cursor = start_tick
         note_index = 0
         while cursor < end_tick:
-            pitch = 72 + intervals[note_index % len(intervals)]
+            pitch = motif_pitch(energy, note_index)
             note_end = min(cursor + int(step * 0.82), end_tick)
             _note(melody_events, 0, pitch, cursor, note_end, velocity)
             cursor += step
