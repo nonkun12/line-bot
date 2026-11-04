@@ -100,9 +100,29 @@ def test_readiness_holds_for_goal_mismatch_or_invalid_budget():
     assert over_budget["reason"] == "sprint_budget_invalid"
 
 
-def test_readiness_holds_when_grant_is_missing_or_expired():
+def test_readiness_holds_when_grant_is_missing():
     result = assess_sprint_readiness(
         _goal(), None, {"tests": "FAIL", "review": "FAIL"}, {}, _candidate()
+    )
+    assert result["decision"] == "HOLD"
+    assert result["reason"] == "goal_planner_did_not_authorize_sprint_job"
+
+
+def test_readiness_holds_when_grant_is_expired():
+    grant = _grant()
+    grant["expires_at"] = "2000-01-01T00:00:00Z"
+    result = assess_sprint_readiness(
+        _goal(), grant, {"tests": "FAIL", "review": "FAIL"}, {}, _candidate()
+    )
+    assert result["decision"] == "HOLD"
+    assert result["reason"] == "goal_planner_did_not_authorize_sprint_job"
+
+
+def test_readiness_holds_when_sprint_budget_exceeds_grant_budget():
+    grant = _grant()
+    grant["max_jobs"] = 1
+    result = assess_sprint_readiness(
+        _goal(), grant, {"tests": "FAIL", "review": "FAIL"}, {}, _candidate()
     )
     assert result["decision"] == "HOLD"
     assert result["reason"] == "goal_planner_did_not_authorize_sprint_job"
