@@ -29,10 +29,18 @@ In Terminal, set the HTTPS service origin and a dedicated local output folder:
 ```bash
 export LINE_BOT_BASE_URL="https://line-bot-yvea.onrender.com"
 export LOCAL_MEDIA_OUTPUT_ROOT="$HOME/Movies/LINE-AI-Media"
+export LOCAL_MEDIA_RENDER_ANIMATIC="0"
 ```
 
 The output folder is local to this Mac. Ensure it has enough free disk space.
 No external asset download or publication is performed.
+
+Set LOCAL_MEDIA_RENDER_ANIMATIC to 1 only when Blender and FFmpeg are installed
+and you want this Mac run to create an MP4 blocking animatic as well as the
+planning/music files. The default is 0. The optional render is bounded to
+640x360 at 24 fps and must finish within the worker's 30-minute claim lease.
+A successful MP4 is included in the receipt's SHA-256 inventory; a failed render
+places the Goal JOB on HOLD. The generated video remains a draft and is not published.
 
 ## 3. Run one claim attempt
 
