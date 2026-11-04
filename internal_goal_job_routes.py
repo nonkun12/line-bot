@@ -194,6 +194,7 @@ def register_goal_job_routes(app, internal_key: str | None) -> None:
             or evidence_hashes != artifact_hashes
             or not isinstance(evidence.get("receipt_sha256"), str)
             or not _SHA256_RE.fullmatch(evidence["receipt_sha256"])
+            or evidence.get("receipt_sha256") != hashlib.sha256((result + "\\n").encode("utf-8")).hexdigest()
             or evidence.get("executor") != _MEDIA_EXECUTOR_ID
             or evidence.get("goal_job_id") != job_id
         ):
