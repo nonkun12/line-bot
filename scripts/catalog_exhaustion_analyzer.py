@@ -108,6 +108,31 @@ def _public_functions(source: str) -> list[tuple[str, int]]:
     return found
 
 
+def _referenced_symbols(test_source: str) -> set[str]:
+    """Collect executable Python name/attribute references, not comments or strings."""
+    try:
+        tree = ast.parse(test_source)
+    except SyntaxError as exc:
+        raise ValueError("test source AST is invalid") from exc
+
+    imported_names: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                imported_names[alias.asname or alias.name] = alias.name.rsplit(".", 1)[-1]
+
+    referenced: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            referenced.add(node.id)
+            original = imported_names.get(node.id)
+            if original:
+                referenced.add(original)
+        elif isinstance(node, ast.Attribute):
+            referenced.add(node.attr)
+    return referenced
+
+
 def _existing_issue_task_ids(issues_path: Path | None) -> set[str]:
     """Exclude every previously issued review candidate before selecting the next batch."""
     if issues_path is None:
@@ -197,13 +222,15 @@ def analyze(
             continue
         code_source = code_path.read_text(encoding="utf-8")
         test_source = test_path.read_text(encoding="utf-8")
+        referenced_symbols = _referenced_symbols(test_source)
         for function, line in _public_functions(code_source):
             if len(candidates) >= MAX_CANDIDATES:
                 break
             leaf = function.rsplit(".", 1)[-1]
-            # Conservative textual heuristic only. It is explicitly marked as
-            # review-only because indirect/parameterized coverage is possible.
-            if re.search(r"\b" + re.escape(leaf) + r"\b", test_source):
+            # AST references avoid false "covered" matches in comments and
+            # string literals. This remains a heuristic: indirect coverage
+            # may still exist, so every candidate requires human review.
+            if leaf in referenced_symbols:
                 continue
             # Stable across line movement; source location remains in evidence/fingerprint.
             suffix = hashlib.sha256(f"{code_rel}:{function}".encode()).hexdigest()[:10]
@@ -216,12 +243,12 @@ def analyze(
             ).hexdigest()
             candidates.append({
                 "id": task_id,
-                "instruction": f"人手レビュー後に限り、{test_rel} に {code_rel} の {function} ({evidence}) の境界条件を検証する新しい回帰テストを1件追加してください。既存テストを変更せず、指定テストファイルのみ変更してください。候補生成はテスト未参照の文字列ヒューリスティックに基づくため、間接カバレッジや既存テストとの重複を先に確認してください。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+                "instruction": f"人手レビュー後に限り、{test_rel} に {code_rel} の {function} ({evidence}) の境界条件を検証する新しい回帰テストを1件追加してください。既存テストを変更せず、指定テストファイルのみ変更してください。候補生成はテスト内のAST参照に基づくヒューリスティックのため、間接カバレッジや既存テストとの重複を先に確認してください。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
                 "target_test": test_rel,
                 "evidence": evidence,
                 "source_function": function,
                 "status": "REVIEW_REQUIRED",
-                "heuristic": "public-symbol-name-not-found-in-test-source; may have indirect coverage",
+                "heuristic": "public-symbol-name-not-found-in-test-ast; may have indirect coverage",
                 "fingerprint": fingerprint,
             })
     return {
