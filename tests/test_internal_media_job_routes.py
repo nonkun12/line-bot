@@ -58,6 +58,9 @@ def _create_media_job():
 def test_media_claim_requires_internal_key_and_claims_only_typed_executor(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
     job_id = _create_media_job()
+    # Code-edit workers must never claim an executor-tagged media job.
+    assert db.claim_pending_job_by_type("goal_child") is None
+    assert db.claim_goal_child_job(job_id) is None
     assert client.post("/internal/media-jobs/claim").status_code == 401
     response = client.post(
         "/internal/media-jobs/claim",
