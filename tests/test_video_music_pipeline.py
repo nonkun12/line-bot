@@ -97,3 +97,47 @@ def test_pipeline_exposes_dependency_ordered_goal_jobs_after_handoff():
     assert set(jobs["audiovisual_sync_review"]["depends_on"]) == {
         "shot_list", "music_composition"
     }
+
+
+def test_normal_langgraph_video_node_runs_music_handoff_for_scenario_request():
+    from graph.graph import video_agent_node
+
+    state = {
+        "user_id": "user-1",
+        "raw_message": "海辺の短編映像シナリオを作って",
+        "channel": "line",
+        "metadata": {"duration_seconds": 90, "scene_count": 3},
+        "agent_results": {},
+    }
+    result = video_agent_node(state)
+    assert "Video AI → Music AI 連携完了" in result["final_reply"]
+    assert result["agent_results"]["video"] == result["final_reply"]
+    assert result["metadata"]["video_music_handoff"]["scenario_validated"] is True
+
+
+def test_normal_langgraph_video_node_preserves_non_scenario_video_behavior():
+    from graph.graph import video_agent_node
+
+    state = {
+        "user_id": "user-1",
+        "raw_message": "動画を編集して",
+        "channel": "line",
+        "metadata": {},
+        "agent_results": {},
+    }
+    result = video_agent_node(state)
+    assert "動画の実編集" in result["final_reply"]
+    assert result["metadata"]["video_music_handoff"] is None
+
+
+def test_core_registry_prefers_video_for_combined_audiovisual_scenario_request():
+    from graph.core_registry import build_core_agent_registry
+    from core.agents import AgentRequest
+
+    request = AgentRequest(
+        "user-1",
+        "映像と音楽のシナリオを作って",
+    )
+    selected = build_core_agent_registry().resolve(request)
+    assert selected is not None
+    assert selected.name == "video"
