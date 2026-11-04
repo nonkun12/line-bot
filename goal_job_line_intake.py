@@ -240,6 +240,9 @@ def approve_goal_proposal(user_id: str, proposal_id: str) -> dict[str, Any]:
                     "UPDATE goal_line_proposals SET status='expired' WHERE proposal_id=? AND status='pending'",
                     (proposal_id,),
                 )
+                # Commit the terminal state before raising: sqlite3 rolls back
+                # the connection context when an exception escapes it.
+                conn.commit()
                 raise ValueError("proposal expired; submit the Goal again")
             reserved = conn.execute(
                 "UPDATE goal_line_proposals SET status='approving',approval_started_at=? "
