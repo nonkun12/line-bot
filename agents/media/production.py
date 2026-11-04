@@ -23,12 +23,20 @@ from agents.video.ffmpeg_renderer import render_video_from_edl
 from agents.video.scenario import validate_scenario
 from agents.video.storyboard import build_storyboard
 from agents.video.shot_list import build_shot_list
+from agents.video.screenplay import render_screenplay_markdown
 
 
 def _write_json_exclusive(path: Path, payload: dict[str, Any]) -> None:
     with path.open("x", encoding="utf-8") as stream:
         json.dump(payload, stream, ensure_ascii=False, indent=2)
         stream.write("\n")
+
+
+def _write_text_exclusive(path: Path, content: str) -> None:
+    with path.open("x", encoding="utf-8") as stream:
+        stream.write(content)
+        if not content.endswith("\n"):
+            stream.write("\n")
 
 
 def create_audiovisual_production_bundle(
@@ -61,6 +69,8 @@ def create_audiovisual_production_bundle(
 
     try:
         _write_json_exclusive(destination / "scenario.json", scenario)
+        screenplay = render_screenplay_markdown(scenario)
+        _write_text_exclusive(destination / "screenplay.md", screenplay)
         storyboard = build_storyboard(scenario)
         shot_list = build_shot_list(storyboard)
         _write_json_exclusive(destination / "storyboard.json", storyboard)
@@ -125,6 +135,7 @@ def create_audiovisual_production_bundle(
 
         artifacts = {
             "scenario": "scenario.json",
+            "screenplay": "screenplay.md",
             "storyboard": "storyboard.json",
             "shot_list": "shot_list.json",
             "music_plan": "music_plan.json",
