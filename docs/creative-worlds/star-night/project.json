@@ -1,0 +1,67 @@
+{
+  "schema_version": "creative-project.v1",
+  "project_id": "STAR-NIGHT",
+  "title": "星を拾った夜",
+  "status": "active_draft",
+  "canon_ref": "docs/creative-worlds/star-night/series-bible.md",
+  "episode_refs": [
+    "docs/creative-worlds/star-night/episode-001.md"
+  ],
+  "story_graph_ref": "docs/creative-worlds/star-night/game-story-graph.json",
+  "hourly_policy_ref": "docs/creative-worlds/star-night/hourly-cycle.md",
+  "side_chat_contract": {
+    "compatible_with": "Muse-style independent side conversations",
+    "project_scope": "STAR-NIGHT",
+    "shared_context_refs": [
+      "docs/creative-worlds/star-night/series-bible.md",
+      "docs/creative-worlds/star-night/game-story-graph.json"
+    ],
+    "workspaces": [
+      {
+        "id": "director",
+        "title": "総合制作",
+        "purpose": "作品全体の方針、進行、採用判断"
+      },
+      {
+        "id": "story",
+        "title": "シナリオ",
+        "purpose": "世界観、脚本、キャラクター、伏線、分岐"
+      },
+      {
+        "id": "visual",
+        "title": "映像",
+        "purpose": "絵コンテ、ショット、画面演出、映像素材"
+      },
+      {
+        "id": "music",
+        "title": "音楽",
+        "purpose": "作曲、編曲、効果音、映像同期"
+      },
+      {
+        "id": "game",
+        "title": "ゲーム設計",
+        "purpose": "探索、クエスト、状態遷移、Godot実装"
+      },
+      {
+        "id": "critic",
+        "title": "独立レビュー",
+        "purpose": "整合性、品質、実装可能性の検証"
+      }
+    ],
+    "isolation": {
+      "independent_histories": true,
+      "shared_project_context": true,
+      "cross_workspace_messages": "explicit_handoff_only",
+      "side_chat_may_edit_canon": false,
+      "tool_execution_requires_main_goal_approval": true
+    },
+    "handoff_artifact_schema": "creative-handoff.v1",
+    "future_storage_fields": [
+      "project_id",
+      "workspace_id",
+      "context_refs",
+      "artifact_refs",
+      "parent_handoff_id"
+    ]
+  }
+}
