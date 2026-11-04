@@ -274,3 +274,79 @@ def test_media_completion_accepts_verified_optional_mp4_artifact(tmp_path, monke
     })
     assert completed.status_code == 200
     assert completed.get_json()["completed"] is True
+
+
+def test_verified_line_goal_media_completion_checkpoints_scenario_gate(tmp_path, monkeypatch):
+    import goal_job_line_intake
+    from agents.media.goal_job_chain_store import get_goal_chain
+
+    client = _client(tmp_path, monkeypatch)
+    monkeypatch.setenv("GOAL_APPROVER_USER_IDS", "U-media-test")
+    proposal = goal_job_line_intake.create_goal_proposal(
+        "U-media-test", "Create an original music and video story that becomes a game"
+    )
+    approved = goal_job_line_intake.approve_goal_proposal(
+        "U-media-test", proposal["proposal_id"]
+    )
+    assert approved["decision"] == "CHILD_JOB_QUEUED"
+
+    headers = {"x-internal-key": "media-test-key"}
+    claimed = client.post(
+        "/internal/media-jobs/claim", headers=headers, json={}
+    ).get_json()["job"]
+    hashes = {
+        "scenario": "a" * 64,
+        "screenplay": "9" * 64,
+        "storyboard": "f" * 64,
+        "shot_list": "0" * 64,
+        "music_plan": "b" * 64,
+        "midi": "c" * 64,
+        "audio_preview": "d" * 64,
+        "video_edit_decision_list": "e" * 64,
+    }
+    receipt = {
+        "schema_version": "mac-local-media-receipt.v1",
+        "executor": "mac_local_media.v1",
+        "operation": "create_audiovisual_bundle",
+        "goal_job_id": claimed["id"],
+        "idempotency_key": hashlib.sha256(
+            f"mac_local_media.v1:{claimed['id']}".encode()
+        ).hexdigest(),
+        "status": "draft",
+        "artifact_sha256": hashes,
+        "video_render_status": "not_rendered",
+        "publication": "not_performed",
+    }
+    result = json.dumps(receipt, ensure_ascii=False, sort_keys=True)
+    evidence = {
+        "executor": "mac_local_media.v1",
+        "goal_job_id": claimed["id"],
+        "artifact_sha256": hashes,
+        "receipt_sha256": hashlib.sha256((result + "\n").encode()).hexdigest(),
+        "video_render_status": "not_rendered",
+        "checks": [
+            {"name": name, "status": "PASS", "source": "mac_local_media.v1"}
+            for name in (
+                "typed_local_executor_authorization",
+                "scenario_validation",
+                "output_confined_to_configured_root",
+                "artifact_inventory_and_sha256",
+                "no_publish_or_external_download",
+            )
+        ],
+    }
+    completed = client.post(
+        "/internal/media-jobs/complete",
+        headers=headers,
+        json={
+            "job_id": claimed["id"],
+            "claim_token": claimed["claim_token"],
+            "result": result,
+            "evidence": evidence,
+        },
+    )
+    assert completed.status_code == 200
+    chain = get_goal_chain("U-media-test", proposal["goal_id"])
+    assert chain["state"]["state"]["scenario"] == "AWAITING_HUMAN_APPROVAL"
+    assert chain["state"]["ready_job_ids"] == []
+    assert chain["state"]["awaiting_human_approval_job_ids"] == ["scenario"]
