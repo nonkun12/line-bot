@@ -87,8 +87,17 @@ def _post_json(url: str, payload: dict, *, key: str | None = None, timeout: int 
 def _bounded_review_input(review: dict) -> dict:
     criteria = review.get("success_criteria")
     children = review.get("children")
-    if not isinstance(criteria, list) or not criteria or not isinstance(children, list):
-        raise ReviewWorkerError("review payload is incomplete")
+    if (
+        not isinstance(criteria, list) or not criteria or len(criteria) > 50
+        or not isinstance(children, list) or review.get("children_truncated") is True
+    ):
+        raise ReviewWorkerError("review payload is incomplete or truncated")
+    criterion_ids = [
+        item.get("id") for item in criteria
+        if isinstance(item, dict) and isinstance(item.get("id"), str) and item.get("id")
+    ]
+    if len(criterion_ids) != len(criteria) or len(set(criterion_ids)) != len(criterion_ids):
+        raise ReviewWorkerError("success criteria must have unique non-empty ids")
     compact_children = []
     for child in children[:12]:
         if not isinstance(child, dict):
@@ -99,6 +108,12 @@ def _bounded_review_input(review: dict) -> dict:
             "evidence": child.get("evidence") if isinstance(child.get("evidence"), dict) else {},
             "result": str(child.get("result", ""))[:5000],
         })
+    if any(
+        child.get("evidence", {}).get("truncated") is True
+        for child in compact_children
+        if isinstance(child.get("evidence"), dict)
+    ):
+        raise ReviewWorkerError("one or more child evidence snapshots were truncated")
     bounded = {
         "objective": str(review.get("objective", ""))[:2000],
         "criteria": [
