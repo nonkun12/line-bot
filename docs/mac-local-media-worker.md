@@ -37,10 +37,12 @@ No external asset download or publication is performed.
 
 Set LOCAL_MEDIA_RENDER_ANIMATIC to 1 only when Blender and FFmpeg are installed
 and you want this Mac run to create an MP4 blocking animatic as well as the
-planning/music files. The default is 0. The optional render is bounded to
+planning/music files. The default is 0. When set to 1, the worker checks both
+executables before claiming a JOB; missing tools therefore leave the queue untouched.
+The optional render is bounded to
 640x360 at 24 fps and must finish within the worker's 30-minute claim lease.
-A successful MP4 is included in the receipt's SHA-256 inventory; a failed render
-places the Goal JOB on HOLD. The generated video remains a draft and is not published.
+A successful MP4 is included in the receipt's SHA-256 inventory; a render failure
+after the claim places the Goal JOB on HOLD. The generated video remains a draft and is not published.
 
 ## 3. Run one claim attempt
 
