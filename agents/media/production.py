@@ -56,14 +56,18 @@ def create_audiovisual_production_bundle(
         _write_json_exclusive(destination / "music_plan.json", music_plan)
         _write_json_exclusive(destination / "edit_decision_list.json", edl)
         midi = write_midi_file(music_plan, destination / "original_music.mid", bpm=bpm)
-        audio = write_wav_file(music_plan, destination / "original_music.wav", bpm=bpm)
-        audio = None
-        if soundfont_path is not None:
+        if soundfont_path is None:
+            audio = write_wav_file(
+                music_plan, destination / "original_music.wav", bpm=bpm
+            )
+            audio_render_status = "synthesized_preview"
+        else:
             audio = render_midi_to_wav(
                 destination / "original_music.mid",
                 soundfont_path,
                 destination / "original_music.wav",
             )
+            audio_render_status = "rendered"
         manifest = {
             "schema_version": "audiovisual-production-bundle.v1",
             "status": "draft",
@@ -77,7 +81,7 @@ def create_audiovisual_production_bundle(
             },
             "midi": midi,
             "audio_preview": audio,
-            "audio_render_status": "synthesized_preview",
+            "audio_render_status": audio_render_status,
             "video_render_status": "not_rendered",
             "external_assets_attached": False,
             "rights_review_required_before_publication": True,
