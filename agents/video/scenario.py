@@ -59,6 +59,8 @@ def build_scenario(
         raise ValueError("duration_seconds must be an integer from 15 to 3600")
     if type(scene_count) is not int or not MIN_SCENES <= scene_count <= MAX_SCENES:
         raise ValueError("scene_count must be an integer from 2 to 20")
+    if scene_count > duration_seconds:
+        raise ValueError("scene_count cannot exceed duration_seconds; every scene needs at least one second")
 
     scenes = []
     base, remainder = divmod(duration_seconds, scene_count)
@@ -83,8 +85,13 @@ def build_scenario(
             "dialogue_or_narration": "必要な台詞またはナレーションを作成する",
             "audio_direction": "環境音・効果音・音楽の役割と開始終了位置を指定する",
             "music_sync": {
-                "emotional_intent": "このシーンで視聴者に届ける感情",
-                "energy": "low",
+                "emotional_intent": {
+                    "opening": "期待と好奇心を静かに立ち上げる",
+                    "development": "発見と葛藤を通じて期待を高める",
+                    "climax": "最も強い感情と変化を鮮明に届ける",
+                    "resolution": "安心感と余韻へ自然に収束させる",
+                }[act],
+                "energy": {"opening": "low", "development": "medium", "climax": "high", "resolution": "low"}[act],
                 "tempo_relation": "映像の動きと自然に呼吸を合わせる",
                 "cue_in_seconds": 0,
                 "cue_out_seconds": length,
@@ -174,8 +181,22 @@ def validate_scenario(scenario: object) -> tuple[str, ...]:
     ):
         errors.append("scene_duration_total_mismatch")
     ids = [item.get("scene_id") for item in scenes if isinstance(item, dict)]
-    if len(ids) != len(scenes) or len(ids) != len(set(ids)):
+    if (
+        len(ids) != len(scenes)
+        or any(not isinstance(value, str) or not value.strip() for value in ids)
+        or (all(isinstance(value, str) for value in ids) and len(ids) != len(set(ids)))
+    ):
         errors.append("scene_ids_invalid_or_duplicate")
+    expected_start = 0
+    for index, scene in enumerate(scenes):
+        if not isinstance(scene, dict):
+            continue
+        start = scene.get("time_start_seconds")
+        length = scene.get("duration_seconds")
+        if type(start) is not int or type(length) is not int or start != expected_start:
+            errors.append(f"scene_{index + 1}_timeline_invalid")
+        if type(length) is int and length > 0:
+            expected_start += length
     required = ("purpose", "story_beat", "visual_direction", "action",
                 "dialogue_or_narration", "audio_direction", "music_sync",
                 "transition", "continuity")
@@ -199,7 +220,7 @@ def validate_scenario(scenario: object) -> tuple[str, ...]:
         if sync.get("mix_priority") not in {"dialogue_first", "music_first", "balanced", "intentional_silence"}:
             errors.append(f"scene_{index + 1}_mix_priority_invalid")
         points = sync.get("sync_points")
-        if not isinstance(points, list) or any(
+        if type(scene_duration) is not int or not isinstance(points, list) or any(
             not isinstance(point, dict)
             or type(point.get("at_seconds")) is not int
             or point["at_seconds"] < 0
