@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - .github/workflows/star-night-cloud-hourly.yml
+      - scripts/star_night_hourly_candidate.py
+      - tests/test_star_night_hourly_candidate.py
   schedule:
     # Offset from the top of the hour to reduce GitHub Actions schedule congestion.
     - cron: "17 * * * *"
