@@ -20,6 +20,13 @@ on:
 jobs:
   orca-status-tests:
     runs-on: ubuntu-latest
+    env:
+      CHANNEL_ACCESS_TOKEN: test-channel-token
+      CHANNEL_SECRET: test-channel-secret
+      GROQ_API_KEY: test-groq-key
+      MCP_SERVER_URL: http://127.0.0.1:8000
+      MCP_API_KEY: test-mcp-key
+      INTERNAL_PUSH_KEY: test-internal-key
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
