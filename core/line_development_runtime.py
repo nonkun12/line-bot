@@ -2202,16 +2202,16 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
         anchor = "def test_public_function_discovery_skips_protocol_and_abstract_stubs():"
         addition = (
-            "def test_main_fails_closed_on_malformed_recovery_state(tmp_path, monkeypatch, capsys):\\n"
-            "    root, catalog, queue, state, runtime = _fixture(tmp_path)\\n"
-            "    _write(state, {\\"completed\\": [], \\"recovery_ai\\": {\\"schema_version\\": 999, \\"tasks\\": {}, \\"checkpoint\\": None}})\\n"
-            "    from types import SimpleNamespace\\n"
-            "    monkeypatch.setattr(\\"scripts.catalog_exhaustion_analyzer.argparse.parse_args\\", lambda: SimpleNamespace(repo_root=root, catalog=catalog, queue=queue, state=state, runtime=runtime, existing_issues=None, output=tmp_path / \\"report.json\\"))\\n"
-            "    from scripts.catalog_exhaustion_analyzer import main\\n"
-            "    assert main() == 2\\n"
-            "    assert capsys.readouterr().out.strip() == \\"CATALOG_EXHAUSTION_ANALYZER_BLOCKED: ValueError\\"\\n"
-            "    assert not (tmp_path / \\"report.json\\").exists()\\n"
-            "\\n\\n"
+            "def test_main_fails_closed_on_malformed_recovery_state(tmp_path, monkeypatch, capsys):\n"
+            "    root, catalog, queue, state, runtime = _fixture(tmp_path)\n"
+            "    _write(state, {\"completed\": [], \"recovery_ai\": {\"schema_version\": 999, \"tasks\": {}, \"checkpoint\": None}})\n"
+            "    from types import SimpleNamespace\n"
+            "    monkeypatch.setattr(\"scripts.catalog_exhaustion_analyzer.argparse.parse_args\", lambda: SimpleNamespace(repo_root=root, catalog=catalog, queue=queue, state=state, runtime=runtime, existing_issues=None, output=tmp_path / \"report.json\"))\n"
+            "    from scripts.catalog_exhaustion_analyzer import main\n"
+            "    assert main() == 2\n"
+            "    assert capsys.readouterr().out.strip() == \"CATALOG_EXHAUSTION_ANALYZER_BLOCKED: ValueError\"\n"
+            "    assert not (tmp_path / \"report.json\").exists()\n"
+            "\n\n"
         )
         if text.count(anchor) != 1:
             return None, "deterministic_anchor_not_unique:catalog_exhaustion_fail_closed"
