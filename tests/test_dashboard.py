@@ -204,8 +204,18 @@ def test_dashboard_loop_api_matches_current_workflow_limits(auth_headers):
         response = client.get("/api/dashboard/loop", headers=auth_headers)
     assert response.status_code == 200
     data = response.get_json()
-    assert data["loop"]["schedule_jst"] == ["04:30", "10:30", "16:30", "22:30"]
+    assert data["loop"]["schedule_jst"] == ["01:30", "07:30", "13:30", "19:30"]
     assert data["loop"]["frequency_per_day"] == 4
+    assert data["loop"]["target_cadence"] == "hourly"
+    assert data["loop"]["target_cadence_verified"] is False
+    streams = data["loop"]["streams"]
+    assert [item["key"] for item in streams] == [
+        "main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement"
+    ]
+    assert streams[0]["kind"] == "main"
+    assert all(item["kind"] == "side" for item in streams[1:])
+    assert all(item["cadence"] == "hourly_target" for item in streams)
+    assert all(item["status"] != "verified" for item in streams)
     assert data["loop"]["max_tasks_per_run"] == 4
     assert data["loop"]["last_run"] == runs
     assert data["safety"]["auto_merge"] is False
