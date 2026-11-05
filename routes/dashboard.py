@@ -113,6 +113,23 @@ def _init_oracle_status_table():
 _init_oracle_status_table()
 
 
+def _init_orca_status_table():
+    try:
+        with get_conn() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS orca_status (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    payload TEXT NOT NULL,
+                    received_at REAL NOT NULL
+                )
+            """)
+    except Exception:
+        current_app.logger.exception("DASHBOARD ORCA STATUS TABLE INIT ERROR")
+
+
+_init_orca_status_table()
+
+
 def _require_user_id(user_id):
     if not user_id:
         return jsonify({"ok": False, "error": "user_id is required"}), 400
@@ -221,6 +238,63 @@ def receive_oracle_status():
     except Exception:
         current_app.logger.exception("DASHBOARD INVALID ORACLE STATUS")
         return jsonify({"ok": False, "error": "invalid payload"}), 400
+
+
+@dashboard_bp.route("/internal/orca/status", methods=["POST"])
+def receive_orca_status():
+    raw = request.get_data(cache=False)
+    if len(raw) > 65536:
+        return jsonify({"ok": False, "error": "payload_too_large"}), 413
+    secret = os.environ.get("ORCA_STATUS_SECRET", "")
+    signature = request.headers.get("X-Orca-Signature", "")
+    expected = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest() if secret else ""
+    if not expected or not signature or not hmac.compare_digest(expected, signature):
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        for key in ("tasks", "dispatches", "workers"):
+            value = payload.get(key, [])
+            if not isinstance(value, list) or len(value) > 100 or any(not isinstance(item, dict) for item in value):
+                raise ValueError(f"{key} must be an array of at most 100 objects")
+        received_at = time.time()
+        with get_conn() as conn:
+            conn.execute("""
+                INSERT INTO orca_status(id, payload, received_at) VALUES(1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, received_at=excluded.received_at
+            """, (json.dumps(payload, ensure_ascii=False), received_at))
+        return jsonify({"ok": True, "received_at": received_at})
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return jsonify({"ok": False, "error": "invalid_payload"}), 400
+    except Exception:
+        current_app.logger.exception("DASHBOARD ORCA STATUS WRITE ERROR")
+        return jsonify({"ok": False, "error": "storage_error"}), 500
+
+
+@dashboard_bp.route("/api/dashboard/orca", methods=["GET"])
+@requires_dashboard_access
+def orca_status():
+    now = time.time()
+    try:
+        with get_conn() as conn:
+            row = conn.execute("SELECT payload, received_at FROM orca_status WHERE id=1").fetchone()
+        if not row:
+            return jsonify({"ok": True, "status": "offline", "age_sec": None, "tasks": [], "dispatches": [], "workers": []})
+        payload = json.loads(row[0])
+        age = max(0, now - float(row[1]))
+        status = "online" if age <= 90 else ("stale" if age <= 300 else "offline")
+        return jsonify({
+            "ok": True, "status": status, "age_sec": round(age),
+            "received_at": row[1],
+            "tasks": payload.get("tasks", []),
+            "dispatches": payload.get("dispatches", []),
+            "workers": payload.get("workers", []),
+            "streams": payload.get("streams", []),
+        })
+    except Exception:
+        current_app.logger.exception("DASHBOARD ORCA STATUS READ ERROR")
+        return jsonify({"ok": False, "status": "error"}), 500
 
 
 @dashboard_bp.route("/api/dashboard/system", methods=["GET"])
