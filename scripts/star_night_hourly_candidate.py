@@ -531,18 +531,27 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
             "checks": critic_checks,
         }
         files = {
-            "scenario.json": json.dumps(scenario, ensure_ascii=False, indent=2) + "\n",
-            "screenplay.md": "\n".join(screenplay),
-            "storyboard.json": json.dumps(storyboard, ensure_ascii=False, indent=2) + "\n",
-            "shot_list.json": json.dumps(shot_list, ensure_ascii=False, indent=2) + "\n",
-            "music_plan.json": json.dumps(music_plan, ensure_ascii=False, indent=2) + "\n",
-            "game_story_graph.json": json.dumps(graph, ensure_ascii=False, indent=2) + "\n",
-            "hourly_task.json": json.dumps(task, ensure_ascii=False, indent=2) + "\n",
-            "critic_review.json": json.dumps(critic, ensure_ascii=False, indent=2) + "\n"}
+            "scenario.json": json.dumps(scenario, ensure_ascii=False, indent=2) + "
+",
+            "screenplay.md": "
+".join(screenplay),
+            "storyboard.json": json.dumps(storyboard, ensure_ascii=False, indent=2) + "
+",
+            "shot_list.json": json.dumps(shot_list, ensure_ascii=False, indent=2) + "
+",
+            "music_plan.json": json.dumps(music_plan, ensure_ascii=False, indent=2) + "
+",
+            "game_story_graph.json": json.dumps(graph, ensure_ascii=False, indent=2) + "
+",
+            "hourly_task.json": json.dumps(task, ensure_ascii=False, indent=2) + "
+",
+            "critic_review.json": json.dumps(critic, ensure_ascii=False, indent=2) + "
+"}
         for name, content in files.items():
             (destination / name).write_text(content, encoding="utf-8")
         (destination / focus_filename).write_text(
-            json.dumps(focus_artifact, ensure_ascii=False, indent=2) + "\n",
+            json.dumps(focus_artifact, ensure_ascii=False, indent=2) + "
+",
             encoding="utf-8",
         )
         (destination / "original_music.mid").write_bytes(_midi_bytes())
@@ -552,9 +561,12 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
         manifest = {"schema_version": "star-night-candidate-manifest.v1", "created_at": moment.isoformat(),
                     "project_id": PROJECT, "episode_id": "SN-E001", "status": "draft",
                     "cloud_execution": True, "mac_required": False, "paid_api_used": False,
-                    "video_render_status": "character_motion_animatic_rendered" if video_path else "not_rendered",\n                    "motion_profile": {"source_fps": 12, "output_fps": 24, "character_motion": ["arm_swing", "alternating_steps", "body_bob", "eye_blink"], "lumina_motion": "pulsing_glow", "full_character_animation": False},\n                    "publication_authorized": False,
+                    "video_render_status": "character_motion_animatic_rendered" if video_path else "not_rendered",
+                    "motion_profile": {"source_fps": 12, "output_fps": 24, "character_motion": ["arm_swing", "alternating_steps", "body_bob", "eye_blink"], "lumina_motion": "pulsing_glow", "full_character_animation": False},
+                    "publication_authorized": False,
                     "canon_modified": False, "hourly_task": task, "sha256": hashes}
-        (destination / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        (destination / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "
+", encoding="utf-8")
         return {"status": "candidate_created", "directory": str(destination), "artifact_count": len(hashes) + 1,
                 "midi": "generated", "wav": "generated", "video": str(video_path) if video_path else "not_rendered",
                 "task_focus": task_id, "publication_authorized": False}
