@@ -225,7 +225,7 @@ def _midi_bytes() -> bytes:
         track.extend(payload)
         previous = tick
     track.extend(b"\\x00\\xff\\x2f\\x00")
-    return b"MThd" + struct.pack(">IHHH", 6, 1, 3, 480) + b"MTrk" + struct.pack(">I", len(track)) + track
+    return b"MThd" + struct.pack(">IHHH", 6, 0, 1, 480) + b"MTrk" + struct.pack(">I", len(track)) + track
 
 
 def _write_wav(path: Path, duration: float = 15.0, sample_rate: int = 22050) -> None:
