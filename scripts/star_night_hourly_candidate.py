@@ -224,7 +224,7 @@ def _midi_bytes() -> bytes:
         track.extend(_vlq(tick - previous))
         track.extend(payload)
         previous = tick
-    track.extend(b"\\x00\\xff\\x2f\\x00")
+    track.extend(b"\x00\xff\x2f\x00")
     return b"MThd" + struct.pack(">IHHH", 6, 0, 1, 480) + b"MTrk" + struct.pack(">I", len(track)) + track
 
 
