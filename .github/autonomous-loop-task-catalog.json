@@ -498,6 +498,14 @@
       "allowed_paths": [
         "tests/test_confirm_recovery_resume_review.py"
       ]
+    },
+    {
+      "id": "catalog-exhaustion-analyzer-main-fail-closed-20261105",
+      "instruction": "tests/test_catalog_exhaustion_analyzer.py のみに、新しい固有名の回帰テストを1件追加してください。scripts.catalog_exhaustion_analyzer.main() の失敗経路を検証します。既存の _fixture() を使い、Recovery AI state の schema_version を不正値にして main() を呼び、戻り値が 2、標準出力が CATALOG_EXHAUSTION_ANALYZER_BLOCKED: ValueError、出力レポートが作成されないことを確認してください。argparse の parse_args はテスト内で Namespace(repo_root, catalog, queue, state, runtime, existing_issues=None, output) を返すように monkeypatch してください。既存テストとの重複がないことを確認し、既存テストは変更しないでください。外部通信、シークレット参照、OS操作は禁止。変更は指定テストファイル1つだけ。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_catalog_exhaustion_analyzer.py"
+      ],
+      "execution_approved": true
     }
   ]
 }
