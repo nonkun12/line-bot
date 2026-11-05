@@ -39,7 +39,10 @@ def snapshot(**overrides):
             "workers": [{"id": "w1", "status": "live", "argv": ["SECRET"]}],
             "streams": [{"key": "main_star_night", "label": "STAR-NIGHT", "kind": "main",
                          "status": "observed", "task_count": 1, "dispatch_count": 0,
-                         "worker_count": 0, "evidence": "matched_runtime_records"}]}
+                         "worker_count": 0, "evidence": "matched_runtime_records"},
+                        {"key": "side_media_ai", "label": "映像・音楽AI", "kind": "side",
+                         "status": "observed", "task_count": 1, "dispatch_count": 0,
+                         "worker_count": 0}]}
     data.update(overrides)
     return data
 
@@ -57,6 +60,7 @@ def test_orca_status_accepts_signed_snapshot_and_redacts_unlisted_fields(orca_cl
     assert "prompt" not in body["tasks"][0] and "payload" not in body["dispatches"][0]
     assert "argv" not in body["workers"][0]
     assert body["streams"][0]["status"] == "observed"
+    assert [item["key"] for item in body["streams"]] == ["main_star_night"]
 
 
 def test_orca_status_rejects_oversized_and_invalid_collections(orca_client):
@@ -83,3 +87,10 @@ def test_orca_status_reports_stale_based_on_capture_time(orca_client, monkeypatc
     assert post_snapshot(orca_client, snapshot(captured_at=old)).status_code == 200
     read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3Jk"})
     assert read.get_json()["status"] == "stale"
+
+
+def test_dashboard_loop_lists_only_the_four_retained_streams(orca_client):
+    response = orca_client.get("/api/dashboard/loop", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3Jk"})
+    assert response.status_code == 200
+    keys = [item["key"] for item in response.get_json()["loop"]["streams"]]
+    assert keys == ["main_star_night", "side_task_supply", "side_self_improvement", "side_line_full_control"]
