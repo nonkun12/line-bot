@@ -1,4 +1,5 @@
 from functools import wraps
+from datetime import datetime, timezone
 import httpx
 import hashlib
 import hmac
@@ -113,6 +114,23 @@ def _init_oracle_status_table():
 _init_oracle_status_table()
 
 
+def _init_orca_status_table():
+    try:
+        with get_conn() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS orca_status (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    payload TEXT NOT NULL,
+                    received_at REAL NOT NULL
+                )
+            """)
+    except Exception:
+        current_app.logger.exception("DASHBOARD ORCA STATUS TABLE INIT ERROR")
+
+
+_init_orca_status_table()
+
+
 def _require_user_id(user_id):
     if not user_id:
         return jsonify({"ok": False, "error": "user_id is required"}), 400
@@ -223,6 +241,126 @@ def receive_oracle_status():
         return jsonify({"ok": False, "error": "invalid payload"}), 400
 
 
+def _orca_snapshot_timestamp(value):
+    from datetime import datetime, timezone
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("captured_at is required")
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("captured_at timezone is required")
+    captured = parsed.timestamp()
+    age = time.time() - captured
+    if age < -60 or age > 300:
+        raise ValueError("snapshot timestamp outside accepted window")
+    return captured
+
+
+_ORCA_ALLOWED_FIELDS = {
+    "tasks": {"id", "task_id", "status", "state", "stage", "created_at", "updated_at", "dispatch_id", "worker_id", "stream_key"},
+    "dispatches": {"id", "dispatch_id", "task_id", "status", "state", "stage", "created_at", "updated_at", "worker_id", "stream_key"},
+    "workers": {"id", "worker_id", "dispatch_id", "task_id", "status", "state", "stage", "addressable", "exactWorker", "created_at", "updated_at", "stream_key"},
+}
+_ORCA_STREAM_KEYS = {"main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement", "side_line_full_control"}
+
+
+def _sanitize_orca_payload(payload):
+    captured = _orca_snapshot_timestamp(payload.get("captured_at"))
+    clean = {"captured_at": datetime.fromtimestamp(captured, tz=timezone.utc).isoformat(),
+             "run_id": str(payload.get("run_id") or "")[:100]}
+    for group, allowed in _ORCA_ALLOWED_FIELDS.items():
+        items = payload.get(group, [])
+        if not isinstance(items, list) or len(items) > 100 or any(not isinstance(item, dict) for item in items):
+            raise ValueError(f"invalid {group} collection")
+        clean[group] = [{k: v for k, v in item.items() if k in allowed
+                         and isinstance(v, (str, int, float, bool)) and len(str(v)) <= 300}
+                        for item in items]
+    streams = payload.get("streams", [])
+    if not isinstance(streams, list) or len(streams) > 5:
+        raise ValueError("invalid streams collection")
+    clean["streams"] = []
+    for item in streams:
+        if not isinstance(item, dict) or item.get("key") not in _ORCA_STREAM_KEYS:
+            raise ValueError("invalid stream record")
+        clean["streams"].append({
+            "key": item["key"], "label": str(item.get("label") or "")[:80],
+            "kind": "main" if item.get("kind") == "main" else "side",
+            "status": "observed" if item.get("status") == "observed" else "unknown",
+            "task_count": max(0, min(int(item.get("task_count", 0)), 100)),
+            "dispatch_count": max(0, min(int(item.get("dispatch_count", 0)), 100)),
+            "worker_count": max(0, min(int(item.get("worker_count", 0)), 100)),
+            "evidence": "matched_runtime_records" if item.get("evidence") == "matched_runtime_records" else "no_matching_stream_metadata",
+        })
+    return clean, captured
+
+
+@dashboard_bp.route("/internal/orca/status", methods=["POST"])
+def receive_orca_status():
+    raw = request.get_data(cache=False)
+    if len(raw) > 65536:
+        return jsonify({"ok": False, "error": "payload_too_large"}), 413
+    secret = os.environ.get("ORCA_STATUS_SECRET", "")
+    signature = request.headers.get("X-Orca-Signature", "")
+    expected = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest() if secret else ""
+    if not expected or not signature or not hmac.compare_digest(expected, signature):
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        clean, captured_at = _sanitize_orca_payload(payload)
+        with get_conn() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT payload FROM orca_status WHERE id=1").fetchone()
+            if row:
+                previous = json.loads(row[0])
+                previous_at = _orca_snapshot_timestamp_allow_stale(previous.get("captured_at"))
+                if captured_at <= previous_at:
+                    conn.rollback()
+                    return jsonify({"ok": False, "error": "snapshot_out_of_order"}), 409
+            received_at = time.time()
+            conn.execute("""INSERT INTO orca_status(id, payload, received_at) VALUES(1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, received_at=excluded.received_at""",
+                (json.dumps(clean, ensure_ascii=False), received_at))
+            conn.commit()
+        return jsonify({"ok": True, "received_at": received_at})
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError, OverflowError):
+        return jsonify({"ok": False, "error": "invalid_payload"}), 400
+    except Exception:
+        current_app.logger.exception("DASHBOARD ORCA STATUS WRITE ERROR")
+        return jsonify({"ok": False, "error": "storage_error"}), 500
+
+
+def _orca_snapshot_timestamp_allow_stale(value):
+    from datetime import datetime
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("timestamp timezone missing")
+    return parsed.timestamp()
+
+
+@dashboard_bp.route("/api/dashboard/orca", methods=["GET"])
+@requires_dashboard_access
+def orca_status():
+    now = time.time()
+    try:
+        with get_conn() as conn:
+            row = conn.execute("SELECT payload, received_at FROM orca_status WHERE id=1").fetchone()
+        if not row:
+            return jsonify({"ok": True, "status": "offline", "age_sec": None,
+                            "tasks": [], "dispatches": [], "workers": [], "streams": []})
+        payload = json.loads(row[0])
+        captured = _orca_snapshot_timestamp_allow_stale(payload.get("captured_at"))
+        age = max(0, now - captured)
+        status = "online" if age <= 90 else ("stale" if age <= 300 else "offline")
+        return jsonify({"ok": True, "status": status, "age_sec": round(age),
+                        "received_at": row[1], "captured_at": payload.get("captured_at"),
+                        "tasks": payload.get("tasks", []), "dispatches": payload.get("dispatches", []),
+                        "workers": payload.get("workers", []), "streams": payload.get("streams", [])})
+    except Exception:
+        current_app.logger.exception("DASHBOARD ORCA STATUS READ ERROR")
+        return jsonify({"ok": False, "status": "error"}), 500
+
+
 @dashboard_bp.route("/api/dashboard/system", methods=["GET"])
 @requires_dashboard_access
 def system_status():
@@ -315,6 +453,15 @@ def autonomous_loop_status():
             "status": "configured",
             "schedule_jst": ["04:30", "10:30", "16:30", "22:30"],
             "frequency_per_day": 4,
+            "target_cadence": "hourly",
+            "target_cadence_verified": False,
+            "streams": [
+                {"key": "main_star_night", "kind": "main", "label": "本線：STAR-NIGHT", "status": "in_development", "cadence": "hourly_target", "detail": "物語・シナリオ・音楽・映像の継続制作。毎時実行は未検証。", "related_prs": [1285]},
+                {"key": "side_task_supply", "kind": "side", "label": "サイド1：分散Loop・タスク枯渇対策", "status": "in_development", "cadence": "hourly_target", "detail": "候補補充・重複防止・失敗復旧候補。毎時実行は未検証。", "related_prs": [1276]},
+                {"key": "side_media_ai", "kind": "side", "label": "サイド2：映像・音楽AI", "status": "in_development", "cadence": "hourly_target", "detail": "映像・音楽生成と継続改善。毎時実行は未検証。", "related_prs": [1285]},
+                {"key": "side_self_improvement", "kind": "side", "label": "サイド3：自己改善AI", "status": "in_development", "cadence": "hourly_target", "detail": "失敗分析・改善候補・開発効率改善。安全ゲートは維持。", "related_prs": [1278]},
+                {"key": "side_line_full_control", "kind": "side", "label": "サイド4：LINE全指示化", "status": "in_development", "cadence": "hourly_target", "detail": "LINEから4サイドを含む開発指示を受付。読み取り依頼は開発へ送らない。", "related_prs": [1282, 1283, 1284]},
+            ],
             "manual_run_available": True,
             "manual_default_tasks": 1,
             "max_tasks_per_run": 4,
