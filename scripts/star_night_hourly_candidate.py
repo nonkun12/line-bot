@@ -1,8 +1,8 @@
 """Cloud-only, dependency-light STAR-NIGHT candidate builder.
 
-Uses Python standard library only. Produces editable story artifacts and
-original MIDI/WAV previews. It does not call external APIs, use a Mac worker,
-render character animation, publish, or modify story canon.
+Uses Python standard library for story/music assets and optional Pillow/FFmpeg
+for a private procedural-motion animatic. It does not call external APIs, use
+a Mac worker, publish, or modify story canon.
 """
 from __future__ import annotations
 
@@ -402,7 +402,7 @@ def _render_animatic(destination: Path) -> Path:
         "-c:a", "aac", "-b:a", "192k", "-shortest",
         "-movflags", "+faststart", str(output),
     ]
-    process = subprocess.Popen(ffmpeg_command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+    process = subprocess.Popen(ffmpeg_command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                                stderr=subprocess.PIPE)
     assert process.stdin is not None
     try:
@@ -531,27 +531,18 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
             "checks": critic_checks,
         }
         files = {
-            "scenario.json": json.dumps(scenario, ensure_ascii=False, indent=2) + "
-",
-            "screenplay.md": "
-".join(screenplay),
-            "storyboard.json": json.dumps(storyboard, ensure_ascii=False, indent=2) + "
-",
-            "shot_list.json": json.dumps(shot_list, ensure_ascii=False, indent=2) + "
-",
-            "music_plan.json": json.dumps(music_plan, ensure_ascii=False, indent=2) + "
-",
-            "game_story_graph.json": json.dumps(graph, ensure_ascii=False, indent=2) + "
-",
-            "hourly_task.json": json.dumps(task, ensure_ascii=False, indent=2) + "
-",
-            "critic_review.json": json.dumps(critic, ensure_ascii=False, indent=2) + "
-"}
+            "scenario.json": json.dumps(scenario, ensure_ascii=False, indent=2) + "\n",
+            "screenplay.md": "\n".join(screenplay),
+            "storyboard.json": json.dumps(storyboard, ensure_ascii=False, indent=2) + "\n",
+            "shot_list.json": json.dumps(shot_list, ensure_ascii=False, indent=2) + "\n",
+            "music_plan.json": json.dumps(music_plan, ensure_ascii=False, indent=2) + "\n",
+            "game_story_graph.json": json.dumps(graph, ensure_ascii=False, indent=2) + "\n",
+            "hourly_task.json": json.dumps(task, ensure_ascii=False, indent=2) + "\n",
+            "critic_review.json": json.dumps(critic, ensure_ascii=False, indent=2) + "\n"}
         for name, content in files.items():
             (destination / name).write_text(content, encoding="utf-8")
         (destination / focus_filename).write_text(
-            json.dumps(focus_artifact, ensure_ascii=False, indent=2) + "
-",
+            json.dumps(focus_artifact, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
         (destination / "original_music.mid").write_bytes(_midi_bytes())
@@ -565,8 +556,7 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
                     "motion_profile": {"source_fps": 12, "output_fps": 24, "character_motion": ["arm_swing", "alternating_steps", "body_bob", "eye_blink"], "lumina_motion": "pulsing_glow", "full_character_animation": False},
                     "publication_authorized": False,
                     "canon_modified": False, "hourly_task": task, "sha256": hashes}
-        (destination / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "
-", encoding="utf-8")
+        (destination / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return {"status": "candidate_created", "directory": str(destination), "artifact_count": len(hashes) + 1,
                 "midi": "generated", "wav": "generated", "video": str(video_path) if video_path else "not_rendered",
                 "task_focus": task_id, "publication_authorized": False}
