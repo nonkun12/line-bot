@@ -143,7 +143,7 @@ def _build_hourly_focus_artifact(task_id: str) -> tuple[str, dict[str, Any]]:
                 {"scene_id": "SC04", "notes": ["G4", "C5", "D5"], "texture": "街灯の連鎖に合わせて上昇"},
                 {"scene_id": "SC05", "notes": ["G4", "D4"], "texture": "静かに余韻を残す"},
             ],
-            "production_note": "次工程で弦とパッドを加える候補。現行WAVは単純な合成プレビュー。",
+            "production_note": "現行プレビューは旋律・和音パッド・ベースを重ねたオリジナル仮音源。次工程で音色とミックスを磨く。",
         }),
         "game_loop": ("game_loop_design.json", {
             "focus_id": task_id,
@@ -181,47 +181,104 @@ def _vlq(value: int) -> bytes:
 
 
 def _midi_bytes() -> bytes:
-    # 76 BPM, 4/4, original three-note ascending motif.
-    events = [(0, bytes([0xFF, 0x51, 0x03, 0x0C, 0x16, 0x15])),
-              (0, bytes([0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08]))]
+    # Original 76 BPM score: melody, sustained triads, and a bass line.
+    events = [
+        (0, 0, bytes([0xFF, 0x51, 0x03, 0x0C, 0x16, 0x15])),
+        (0, 0, bytes([0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08])),
+    ]
     ticks_per_second = 480 * 76 / 60
-    motif = [(60, 0.8), (62, 1.2), (67, 2.4), (72, 2.8), (67, 2.2), (62, 1.5)]
-    for start_sec, (note, duration_seconds) in zip([0, 1, 3, 6, 10, 13], motif):
-        start = round(start_sec * ticks_per_second)
-        end = start + round(duration_seconds * ticks_per_second)
-        events.append((start, bytes([0x90, note, 72])))
-        events.append((end, bytes([0x80, note, 0])))
-    events.sort(key=lambda item: item[0])
+    melody = [(60, 0.8), (62, 1.2), (67, 2.4), (72, 2.8), (67, 2.2), (62, 1.5)]
+    melody_starts = [0, 1, 3, 6, 10, 13]
+    for start_sec, (note, duration_seconds) in zip(melody_starts, melody):
+        start_tick = round(start_sec * ticks_per_second)
+        end_tick = start_tick + round(duration_seconds * ticks_per_second)
+        events.append((start_tick, 1, bytes([0x90, note, 82])))
+        events.append((end_tick, 0, bytes([0x80, note, 0])))
+
+    chords = [
+        (0.0, 3.0, (48, 52, 55)),
+        (3.0, 3.0, (45, 48, 52)),
+        (6.0, 4.0, (41, 45, 48)),
+        (10.0, 3.0, (43, 47, 50)),
+        (13.0, 2.0, (48, 52, 55)),
+    ]
+    for start_sec, duration, notes in chords:
+        for note in notes:
+            begin = round(start_sec * ticks_per_second)
+            finish = begin + round(duration * ticks_per_second)
+            events.append((begin, 1, bytes([0x91, note, 48])))
+            events.append((finish, 0, bytes([0x81, note, 0])))
+
+    bass = [(0.0, 3.0, 36), (3.0, 3.0, 33), (6.0, 4.0, 29),
+            (10.0, 3.0, 31), (13.0, 2.0, 36)]
+    for start_sec, duration, note in bass:
+        begin = round(start_sec * ticks_per_second)
+        finish = begin + round(duration * ticks_per_second)
+        events.append((begin, 1, bytes([0x92, note, 62])))
+        events.append((finish, 0, bytes([0x82, note, 0])))
+
+    events.sort(key=lambda item: (item[0], item[1]))
     track = bytearray()
     previous = 0
-    for tick, payload in events:
+    for tick, _priority, payload in events:
         track.extend(_vlq(tick - previous))
         track.extend(payload)
         previous = tick
-    track.extend(b"\x00\xff\x2f\x00")
-    return b"MThd" + struct.pack(">IHHH", 6, 0, 1, 480) + b"MTrk" + struct.pack(">I", len(track)) + track
+    track.extend(b"\\x00\\xff\\x2f\\x00")
+    return b"MThd" + struct.pack(">IHHH", 6, 1, 3, 480) + b"MTrk" + struct.pack(">I", len(track)) + track
 
 
 def _write_wav(path: Path, duration: float = 15.0, sample_rate: int = 22050) -> None:
-    notes = [(0.0, 1.0, 261.63), (1.0, 2.0, 293.66), (3.0, 3.0, 392.00),
-             (6.0, 4.0, 493.88), (10.0, 3.0, 392.00), (13.0, 2.0, 293.66)]
+    # Lightweight additive synthesis: bell-like melody, warm chord pad, and bass.
+    melody = [(0.0, 1.0, 261.63), (1.0, 2.0, 293.66), (3.0, 3.0, 392.00),
+              (6.0, 4.0, 493.88), (10.0, 3.0, 392.00), (13.0, 2.0, 293.66)]
+    chord_roots = [(0.0, 3.0, (130.81, 164.81, 196.00)),
+                   (3.0, 3.0, (110.00, 130.81, 164.81)),
+                   (6.0, 4.0, (87.31, 110.00, 130.81)),
+                   (10.0, 3.0, (98.00, 123.47, 146.83)),
+                   (13.0, 2.0, (130.81, 164.81, 196.00))]
+    bass = [(0.0, 3.0, 65.41), (3.0, 3.0, 55.00), (6.0, 4.0, 43.65),
+            (10.0, 3.0, 49.00), (13.0, 2.0, 65.41)]
+    samples = []
+    for index in range(int(duration * sample_rate)):
+        t = index / sample_rate
+        sample = 0.0
+        for start_sec, length, frequency in melody:
+            local = t - start_sec
+            if 0 <= local < length:
+                attack = min(1.0, local / 0.10)
+                release = min(1.0, (length - local) / 0.28)
+                envelope = max(0.0, min(attack, release))
+                vibrato = 1.0 + 0.002 * math.sin(2 * math.pi * 5.0 * local)
+                tone = math.sin(2 * math.pi * frequency * vibrato * local)
+                sample += envelope * (tone + 0.16 * math.sin(4 * math.pi * frequency * local)) * 0.22
+        for start_sec, length, frequencies in chord_roots:
+            local = t - start_sec
+            if 0 <= local < length:
+                attack = min(1.0, local / 0.45)
+                release = min(1.0, (length - local) / 0.55)
+                envelope = max(0.0, min(attack, release))
+                pad = sum(math.sin(2 * math.pi * frequency * local) for frequency in frequencies) / 3
+                sample += envelope * pad * 0.12
+        for start_sec, length, frequency in bass:
+            local = t - start_sec
+            if 0 <= local < length:
+                attack = min(1.0, local / 0.06)
+                release = min(1.0, (length - local) / 0.30)
+                envelope = max(0.0, min(attack, release))
+                sample += envelope * math.sin(2 * math.pi * frequency * local) * 0.15
+        samples.append(sample)
+
+    peak = max((abs(value) for value in samples), default=0.0)
+    gain = min(1.0, 0.88 / peak) if peak else 1.0
+    frames = bytearray()
+    for sample in samples:
+        value = max(-32767, min(32767, int(sample * gain * 32767)))
+        frames.extend(struct.pack("<h", value))
     with wave.open(str(path), "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)
         wav.setframerate(sample_rate)
-        frames = bytearray()
-        for index in range(int(duration * sample_rate)):
-            t = index / sample_rate
-            sample = 0.0
-            for start, length, frequency in notes:
-                local = t - start
-                if 0 <= local < length:
-                    attack = min(1.0, local / 0.12)
-                    release = min(1.0, (length - local) / 0.35)
-                    envelope = max(0.0, min(attack, release))
-                    sample += envelope * (math.sin(2 * math.pi * frequency * local)
-                                           + 0.18 * math.sin(4 * math.pi * frequency * local)) * 0.16
-            frames.extend(struct.pack("<h", max(-32767, min(32767, int(sample * 32767)))))
         wav.writeframes(frames)
 
 
