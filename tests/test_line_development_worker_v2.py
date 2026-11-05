@@ -1558,3 +1558,27 @@ def test_append_only_generation_failure_includes_safe_api_error_detail(monkeypat
     assert "status=400:code=invalid_request:param=max_tokens:" in error
     assert "message=Requested token budget exceeds limit" in error
     assert target.read_text(encoding="utf-8") == "def test_existing():\n    assert True\n"
+
+def test_catalog_exhaustion_fail_closed_task_has_deterministic_plan(monkeypatch, tmp_path):
+    from core.line_development_runtime import _deterministic_autonomous_test_plan
+
+    chosen = "tests/test_catalog_exhaustion_analyzer.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True)
+    anchor = "def test_public_function_discovery_skips_protocol_and_abstract_stubs():"
+    target.write_text(anchor + "\n    pass\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    plan, error = _deterministic_autonomous_test_plan(
+        chosen, "catalog-exhaustion-analyzer-main-fail-closed-20261105"
+    )
+
+    assert error is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    candidate = target.read_text(encoding="utf-8").replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert "test_main_fails_closed_on_malformed_recovery_state" in candidate
+
