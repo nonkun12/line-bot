@@ -1,6 +1,7 @@
 import pytest
 
 from scripts.star_night_game_state import TransitionError, apply_choice
+from scripts.star_night_hourly_candidate import build_candidate
 
 
 NODES = [
