@@ -85,9 +85,9 @@ on:
   pull_request_target:
     types: [labeled]
   schedule:
-    # Same four daily fire times, expressed as one cron entry.
+    # Run once per hour at minute 17 Japan time.
     # Changing the cron expression also reactivates a deactivated scheduled workflow.
-    - cron: '30 4,10,16,22 * * *'
+    - cron: '17 * * * *'
       timezone: 'Asia/Tokyo'
 
 permissions:
