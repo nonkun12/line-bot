@@ -352,10 +352,12 @@ def orca_status():
         captured = _orca_snapshot_timestamp_allow_stale(payload.get("captured_at"))
         age = max(0, now - captured)
         status = "online" if age <= 90 else ("stale" if age <= 300 else "offline")
+        visible_streams = [item for item in payload.get("streams", [])
+                           if item.get("key") != "side_media_ai"]
         return jsonify({"ok": True, "status": status, "age_sec": round(age),
                         "received_at": row[1], "captured_at": payload.get("captured_at"),
                         "tasks": payload.get("tasks", []), "dispatches": payload.get("dispatches", []),
-                        "workers": payload.get("workers", []), "streams": payload.get("streams", [])})
+                        "workers": payload.get("workers", []), "streams": visible_streams})
     except Exception:
         current_app.logger.exception("DASHBOARD ORCA STATUS READ ERROR")
         return jsonify({"ok": False, "status": "error"}), 500
@@ -458,7 +460,6 @@ def autonomous_loop_status():
             "streams": [
                 {"key": "main_star_night", "kind": "main", "label": "本線：STAR-NIGHT", "status": "in_development", "cadence": "hourly_target", "detail": "物語・シナリオ・音楽・映像の継続制作。毎時実行は未検証。", "related_prs": [1285]},
                 {"key": "side_task_supply", "kind": "side", "label": "サイド1：分散Loop・タスク枯渇対策", "status": "in_development", "cadence": "hourly_target", "detail": "候補補充・重複防止・失敗復旧候補。毎時実行は未検証。", "related_prs": [1276]},
-                {"key": "side_media_ai", "kind": "side", "label": "サイド2：映像・音楽AI", "status": "in_development", "cadence": "hourly_target", "detail": "映像・音楽生成と継続改善。毎時実行は未検証。", "related_prs": [1285]},
                 {"key": "side_self_improvement", "kind": "side", "label": "サイド3：自己改善AI", "status": "in_development", "cadence": "hourly_target", "detail": "失敗分析・改善候補・開発効率改善。安全ゲートは維持。", "related_prs": [1278]},
                 {"key": "side_line_full_control", "kind": "side", "label": "サイド4：LINE全指示化", "status": "in_development", "cadence": "hourly_target", "detail": "LINEから4サイドを含む開発指示を受付。読み取り依頼は開発へ送らない。", "related_prs": [1282, 1283, 1284]},
             ],
