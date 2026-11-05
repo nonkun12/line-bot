@@ -72,6 +72,7 @@ def test_append_only_test_generation_uses_reasoning_completion_budget(monkeypatc
     assert captured["max_completion_tokens"] == worker.MAX_APPEND_ONLY_RESPONSE_TOKENS
     assert captured["reasoning_effort"] == "low"
     assert "max_tokens" not in captured
+    assert "response_format" not in captured
 
 
 
@@ -1543,7 +1544,7 @@ def test_append_only_generation_failure_includes_safe_api_error_detail(monkeypat
     def fail_ask(*args, **kwargs):
         raise BadRequestError("provider rejected request")
 
-    monkeypatch.setattr(worker, "ask", fail_ask)
+    monkeypatch.setattr(worker, "ask_text", fail_ask)
     plan, error = worker.build_append_only_test_plan(
         FakeClient([]), "Add one boundary regression", "tests/test_sample.py",
         target.read_text(encoding="utf-8"),
