@@ -36,12 +36,12 @@ def test_candidate_generates_original_midi_and_valid_wav(tmp_path):
     build_candidate(out)
     midi = (out / "original_music.mid").read_bytes()
     assert midi.startswith(b"MThd")
-    assert midi[8:10] == b"\\x00\\x00"  # single-track MIDI format 0
-    assert midi[10:12] == b"\\x00\\x01"
-    assert midi.endswith(b"\\x00\\xff\\x2f\\x00")
+    assert midi[8:10] == b"\x00\x00"  # single-track MIDI format 0
+    assert midi[10:12] == b"\x00\x01"
+    assert midi.endswith(b"\x00\xff\x2f\x00")
     assert len(midi) > 150  # melody plus chord and bass note events
     track = candidate_builder._midi_bytes()
-    for status in (b"\\x90", b"\\x91", b"\\x92", b"\\x80", b"\\x81", b"\\x82"):
+    for status in (b"\x90", b"\x91", b"\x92", b"\x80", b"\x81", b"\x82"):
         assert status in track
     with wave.open(str(out / "original_music.wav"), "rb") as wav:
         assert wav.getnchannels() == 1
