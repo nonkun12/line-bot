@@ -78,7 +78,7 @@ jobs:
               "Artifacts are retained for 14 days. Download the video artifact to watch the MP4; download the audio artifact to listen to the WAV.",
           ]
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
-              handle.write("\\n".join(lines) + "\\n")
+              handle.write("\n".join(lines) + "\n")
           PY
       - name: Upload standalone video preview
         uses: actions/upload-artifact@v4
