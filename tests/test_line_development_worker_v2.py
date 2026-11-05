@@ -1582,3 +1582,16 @@ def test_catalog_exhaustion_fail_closed_task_has_deterministic_plan(monkeypatch,
     compile(candidate, chosen, "exec")
     assert "test_main_fails_closed_on_malformed_recovery_state" in candidate
 
+def test_every_deterministic_task_mapping_has_an_executable_plan():
+    from core.line_development_runtime import (
+        _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS,
+        _deterministic_autonomous_test_plan,
+    )
+
+    missing = []
+    for task_id, target in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.items():
+        plan, error = _deterministic_autonomous_test_plan(target, task_id)
+        if plan is None and error is None:
+            missing.append(task_id)
+    assert missing == []
+
