@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 MAX_OUTPUT_BYTES = 1_000_000
+MAX_RECORDS_PER_GROUP = 100
 COMMAND_TIMEOUT_SECONDS = 30
 # Never forward arbitrary --full records. These are display-only operational fields.
 TASK_FIELDS = {"id", "task_id", "status", "state", "stage", "created_at", "updated_at", "dispatch_id", "worker_id", "stream_key"}
@@ -102,9 +103,15 @@ def collect_snapshot(terminal_handle: str) -> dict[str, Any]:
         raise CollectionError("ORCA_TERMINAL_HANDLE is required")
     task_payload = run_orca(["task-list", "--json", "--full", "--from", terminal_handle])
     task_result = result_object(task_payload)
-    tasks = [_safe_record(x, TASK_FIELDS) for x in result_list(task_payload, "tasks")]
+    raw_tasks = result_list(task_payload, "tasks")
+    if len(raw_tasks) > MAX_RECORDS_PER_GROUP:
+        raise CollectionError(f"Orca returned more than {MAX_RECORDS_PER_GROUP} tasks")
+    tasks = [_safe_record(x, TASK_FIELDS) for x in raw_tasks]
     worker_payload = run_orca(["worker-list", "--json", "--full", "--include-remote"])
-    workers = [_safe_record(x, WORKER_FIELDS) for x in result_list(worker_payload, "workers")]
+    raw_workers = result_list(worker_payload, "workers")
+    if len(raw_workers) > MAX_RECORDS_PER_GROUP:
+        raise CollectionError(f"Orca returned more than {MAX_RECORDS_PER_GROUP} workers")
+    workers = [_safe_record(x, WORKER_FIELDS) for x in raw_workers]
     dispatches = []
     seen = set()
     for task in tasks:

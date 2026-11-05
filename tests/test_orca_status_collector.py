@@ -68,3 +68,25 @@ def test_stream_mapping_does_not_infer_from_free_form_names_or_titles():
     assert _stream_key({"name": "LINE Secretary"}) is None
     assert _stream_key({"stream_key": "main_star_night"}) == "main_star_night"
     assert _stream_key({"stream_key": "unrecognized"}) is None
+
+
+def test_collector_rejects_oversized_task_and_worker_collections():
+    def fake_run(args, timeout=30):
+        if args[0] == "task-list":
+            return envelope({"tasks": [{"id": f"t{i}"} for i in range(101)]})
+        if args[0] == "worker-list":
+            return envelope({"workers": []})
+        raise AssertionError(args)
+    with patch("scripts.orca_status_collector.run_orca", side_effect=fake_run):
+        with pytest.raises(CollectionError, match="more than 100 tasks"):
+            collect_snapshot("term-coordinator")
+
+    def fake_workers(args, timeout=30):
+        if args[0] == "task-list":
+            return envelope({"tasks": []})
+        if args[0] == "worker-list":
+            return envelope({"workers": [{"id": f"w{i}"} for i in range(101)]})
+        raise AssertionError(args)
+    with patch("scripts.orca_status_collector.run_orca", side_effect=fake_workers):
+        with pytest.raises(CollectionError, match="more than 100 workers"):
+            collect_snapshot("term-coordinator")
