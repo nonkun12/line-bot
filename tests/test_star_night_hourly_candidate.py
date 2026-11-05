@@ -84,7 +84,7 @@ def test_cloud_animatic_renders_video_and_includes_music(tmp_path):
     assert video.is_file()
     assert video.stat().st_size > 10_000
     manifest = json.loads((out / "manifest.json").read_text())
-    assert manifest["video_render_status"] == "animatic_rendered"
+    assert manifest["video_render_status"] == "character_motion_animatic_rendered"\n    assert manifest["motion_profile"]["output_fps"] == 24\n    assert "arm_swing" in manifest["motion_profile"]["character_motion"]\n    assert manifest["motion_profile"]["lumina_motion"] == "pulsing_glow"\n    assert manifest["motion_profile"]["full_character_animation"] is False
     assert "star-night-episode-01-animatic.mp4" in manifest["sha256"]
     assert result["video"] == str(video)
 
