@@ -36,10 +36,18 @@ def test_candidate_generates_original_midi_and_valid_wav(tmp_path):
     build_candidate(out)
     midi = (out / "original_music.mid").read_bytes()
     assert midi.startswith(b"MThd")
+    assert len(midi) > 150  # melody plus chord and bass note events
     with wave.open(str(out / "original_music.wav"), "rb") as wav:
         assert wav.getnchannels() == 1
         assert wav.getframerate() == 22050
         assert wav.getnframes() == 15 * 22050
+        import array
+        samples = array.array("h")
+        samples.frombytes(wav.readframes(wav.getnframes()))
+    peak = max(abs(value) for value in samples)
+    rms = (sum(value * value for value in samples) / len(samples)) ** 0.5
+    assert 5000 < peak < 30000
+    assert rms > 1000
 
 
 def test_hourly_focus_rotates_and_requires_review(tmp_path):
