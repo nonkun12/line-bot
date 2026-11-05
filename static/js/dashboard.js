@@ -147,11 +147,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const groups=[['Tasks',data.tasks],['Dispatches',data.dispatches],['Workers',data.workers]];
       const summary=groups.map(([name,items])=>'<div class="system-card"><div class="system-card-title">'+name+'</div><div class="history-metric-value">'+(Array.isArray(items)?items.length:0)+'</div><div class="system-details">受信データ件数</div></div>').join('');
       const rows=groups.map(([name,items])=>(items||[]).slice(0,5).map(item=>{
-        const title=esc(item.title||item.name||item.task_id||item.dispatch_id||item.worker_id||'ID未取得');
+        const title=esc(item.title||item.name||item.task_id||item.dispatch_id||item.worker_id||item.id||'ID未取得');
         const state=esc(item.status||item.state||'状態未取得');
         return '<div class="system-details">'+name+'：'+title+' ・ '+state+'</div>';
       }).join('')).join('');
-      panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">'+statusLabel+'</div><div class="system-details">'+esc(age)+'</div></div>'+summary+(rows||'<div class="system-details">実データはまだ受信していません。Mac側Orca送信Workerの接続が必要です。</div>');
+      const streamLabels={main_star_night:'本線：STAR-NIGHT',side_task_supply:'サイド1：タスク枯渇対策',side_media_ai:'サイド2：映像・音楽AI',side_self_improvement:'サイド3：自己改善AI',side_line_full_control:'サイド4：LINE全指示化'};
+      const streamRows=(Array.isArray(data.streams)?data.streams:[]).map(item=>{
+        const observed=item.status==='observed';
+        const counts='Task '+Number(item.task_count||0)+' / Dispatch '+Number(item.dispatch_count||0)+' / Worker '+Number(item.worker_count||0);
+        return '<div class="system-card"><div class="system-card-title">'+esc(streamLabels[item.key]||item.label||item.key)+'</div><div class="system-status">'+(observed?'🟢 実データ観測あり':'⚪ 未確認')+'</div><div class="system-details">'+esc(counts)+'</div><div class="system-details">'+(observed?'実レコードとの一致あり':'対応する系統メタデータ未検出')+'</div></div>';
+      }).join('');
+      panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">'+statusLabel+'</div><div class="system-details">'+esc(age)+'</div></div>'+summary+'<div class="section-subtitle">5系統の実データ照合</div>'+(streamRows||'<div class="system-details">系統データ未取得</div>')+(rows||'<div class="system-details">Task / Dispatch / Workerの明細は未受信です。</div>');
     }catch(error){
       panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">⚪ 未確認</div><div class="system-details">'+esc(error.message)+'</div></div>';
     }

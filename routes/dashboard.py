@@ -1,4 +1,5 @@
 from functools import wraps
+from datetime import datetime, timezone
 import httpx
 import hashlib
 import hmac
@@ -264,7 +265,7 @@ _ORCA_STREAM_KEYS = {"main_star_night", "side_task_supply", "side_media_ai", "si
 
 def _sanitize_orca_payload(payload):
     captured = _orca_snapshot_timestamp(payload.get("captured_at"))
-    clean = {"captured_at": datetime.fromtimestamp(captured, tz=__import__("datetime").timezone.utc).isoformat(),
+    clean = {"captured_at": datetime.fromtimestamp(captured, tz=timezone.utc).isoformat(),
              "run_id": str(payload.get("run_id") or "")[:100]}
     for group, allowed in _ORCA_ALLOWED_FIELDS.items():
         items = payload.get(group, [])
