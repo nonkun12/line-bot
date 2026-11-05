@@ -162,6 +162,14 @@ def test_continuation_stops_when_another_loop_is_queued_or_running(tmp_path):
     assert "next_depth=" not in output
 
 
+def test_distributed_loop_is_scheduled_hourly_in_tokyo_and_stays_bounded():
+    path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml"
+    source = path.read_text(encoding="utf-8")
+    assert "timezone: 'Asia/Tokyo'" in source
+    assert "- cron: '17 * * * *'" in source
+    assert "github.event_name == 'schedule' && '1'" in source
+
+
 def test_only_continuous_workflow_owns_automatic_dispatch():
     root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
     continuous = (root / "continuous-distributed-loop.yml").read_text(encoding="utf-8")
