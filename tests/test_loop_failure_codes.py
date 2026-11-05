@@ -33,3 +33,20 @@ def test_extracts_invalid_change_count_as_a_safe_failure_code():
 )
 def test_extract_safe_transient_provider_signals(evidence, expected):
     assert extract_safe_failure_code(evidence) == expected
+
+def test_extracts_provider_json_validation_as_non_task_failure():
+    from core.loop_failure_codes import failure_code_category
+
+    code = extract_safe_failure_code(
+        "BadRequestError: status=400 code=json_validate_failed"
+    )
+    assert code == "provider_request_invalid"
+    assert failure_code_category(code) == "provider_error"
+
+
+def test_provider_authentication_failures_are_not_task_failures():
+    from core.loop_failure_codes import failure_code_category
+
+    code = extract_safe_failure_code("AuthenticationError: provider rejected credentials")
+    assert code == "provider_authentication_failed"
+    assert failure_code_category(code) == "provider_error"
