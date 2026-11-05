@@ -14,9 +14,9 @@ from typing import Any
 MAX_OUTPUT_BYTES = 1_000_000
 COMMAND_TIMEOUT_SECONDS = 30
 # Never forward arbitrary --full records. These are display-only operational fields.
-TASK_FIELDS = {"id", "task_id", "title", "name", "status", "state", "stage", "created_at", "updated_at", "dispatch_id", "worker_id", "stream_key", "project", "kind"}
+TASK_FIELDS = {"id", "task_id", "status", "state", "stage", "created_at", "updated_at", "dispatch_id", "worker_id", "stream_key"}
 DISPATCH_FIELDS = {"id", "dispatch_id", "task_id", "status", "state", "stage", "created_at", "updated_at", "worker_id", "stream_key"}
-WORKER_FIELDS = {"id", "worker_id", "dispatch_id", "task_id", "status", "state", "stage", "observation", "addressable", "exactWorker", "created_at", "updated_at", "stream_key"}
+WORKER_FIELDS = {"id", "worker_id", "dispatch_id", "task_id", "status", "state", "stage", "addressable", "exactWorker", "created_at", "updated_at", "stream_key"}
 STREAMS = {
     "main_star_night": ("STAR-NIGHT", "main"),
     "side_task_supply": ("タスク枯渇対策", "side"),
@@ -30,8 +30,14 @@ class CollectionError(RuntimeError):
 
 
 def _safe_record(record: dict[str, Any], allowed: set[str]) -> dict[str, Any]:
-    return {key: value for key, value in record.items()
-            if key in allowed and isinstance(value, (str, int, float, bool)) and len(str(value)) <= 300}
+    safe = {key: value for key, value in record.items()
+            if key in allowed and isinstance(value, (str, int, float, bool)) and len(str(value)) <= 160}
+    # Derive the stream association locally from source metadata, but never
+    # transmit free-form titles, names, project labels, prompts, or descriptions.
+    stream_key = _stream_key(record)
+    if stream_key:
+        safe["stream_key"] = stream_key
+    return safe
 
 
 def run_orca(args: list[str], *, timeout: int = COMMAND_TIMEOUT_SECONDS) -> dict[str, Any]:

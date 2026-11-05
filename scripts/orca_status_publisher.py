@@ -17,9 +17,9 @@ MAX_PAYLOAD_BYTES = 65536
 MAX_ITEMS_PER_GROUP = 100
 GROUPS = ("tasks", "dispatches", "workers")
 ALLOWED_FIELDS = {
-    "tasks": {"id", "task_id", "title", "name", "status", "state", "stage", "created_at", "updated_at", "dispatch_id", "worker_id", "stream_key", "project", "kind"},
+    "tasks": {"id", "task_id", "status", "state", "stage", "created_at", "updated_at", "dispatch_id", "worker_id", "stream_key"},
     "dispatches": {"id", "dispatch_id", "task_id", "status", "state", "stage", "created_at", "updated_at", "worker_id", "stream_key"},
-    "workers": {"id", "worker_id", "dispatch_id", "task_id", "status", "state", "stage", "observation", "addressable", "exactWorker", "created_at", "updated_at", "stream_key"},
+    "workers": {"id", "worker_id", "dispatch_id", "task_id", "status", "state", "stage", "addressable", "exactWorker", "created_at", "updated_at", "stream_key"},
 }
 STREAM_KEYS = {"main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement", "side_line_full_control"}
 
