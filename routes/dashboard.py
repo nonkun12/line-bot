@@ -240,6 +240,58 @@ def receive_oracle_status():
         return jsonify({"ok": False, "error": "invalid payload"}), 400
 
 
+def _orca_snapshot_timestamp(value):
+    from datetime import datetime, timezone
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("captured_at is required")
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("captured_at timezone is required")
+    captured = parsed.timestamp()
+    age = time.time() - captured
+    if age < -60 or age > 300:
+        raise ValueError("snapshot timestamp outside accepted window")
+    return captured
+
+
+_ORCA_ALLOWED_FIELDS = {
+    "tasks": {"id", "task_id", "title", "name", "status", "state", "stage", "created_at", "updated_at", "dispatch_id", "worker_id", "stream_key", "project", "kind"},
+    "dispatches": {"id", "dispatch_id", "task_id", "status", "state", "stage", "created_at", "updated_at", "worker_id", "stream_key"},
+    "workers": {"id", "worker_id", "dispatch_id", "task_id", "status", "state", "stage", "observation", "addressable", "exactWorker", "created_at", "updated_at", "stream_key"},
+}
+_ORCA_STREAM_KEYS = {"main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement", "side_line_full_control"}
+
+
+def _sanitize_orca_payload(payload):
+    captured = _orca_snapshot_timestamp(payload.get("captured_at"))
+    clean = {"captured_at": datetime.fromtimestamp(captured, tz=__import__("datetime").timezone.utc).isoformat(),
+             "run_id": str(payload.get("run_id") or "")[:100]}
+    for group, allowed in _ORCA_ALLOWED_FIELDS.items():
+        items = payload.get(group, [])
+        if not isinstance(items, list) or len(items) > 100 or any(not isinstance(item, dict) for item in items):
+            raise ValueError(f"invalid {group} collection")
+        clean[group] = [{k: v for k, v in item.items() if k in allowed
+                         and isinstance(v, (str, int, float, bool)) and len(str(v)) <= 300}
+                        for item in items]
+    streams = payload.get("streams", [])
+    if not isinstance(streams, list) or len(streams) > 5:
+        raise ValueError("invalid streams collection")
+    clean["streams"] = []
+    for item in streams:
+        if not isinstance(item, dict) or item.get("key") not in _ORCA_STREAM_KEYS:
+            raise ValueError("invalid stream record")
+        clean["streams"].append({
+            "key": item["key"], "label": str(item.get("label") or "")[:80],
+            "kind": "main" if item.get("kind") == "main" else "side",
+            "status": "observed" if item.get("status") == "observed" else "unknown",
+            "task_count": max(0, min(int(item.get("task_count", 0)), 100)),
+            "dispatch_count": max(0, min(int(item.get("dispatch_count", 0)), 100)),
+            "worker_count": max(0, min(int(item.get("worker_count", 0)), 100)),
+            "evidence": "matched_runtime_records" if item.get("evidence") == "matched_runtime_records" else "no_matching_stream_metadata",
+        })
+    return clean, captured
+
+
 @dashboard_bp.route("/internal/orca/status", methods=["POST"])
 def receive_orca_status():
     raw = request.get_data(cache=False)
@@ -254,22 +306,35 @@ def receive_orca_status():
         payload = json.loads(raw.decode("utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("payload must be an object")
-        for key in ("tasks", "dispatches", "workers"):
-            value = payload.get(key, [])
-            if not isinstance(value, list) or len(value) > 100 or any(not isinstance(item, dict) for item in value):
-                raise ValueError(f"{key} must be an array of at most 100 objects")
-        received_at = time.time()
+        clean, captured_at = _sanitize_orca_payload(payload)
         with get_conn() as conn:
-            conn.execute("""
-                INSERT INTO orca_status(id, payload, received_at) VALUES(1, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, received_at=excluded.received_at
-            """, (json.dumps(payload, ensure_ascii=False), received_at))
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT payload FROM orca_status WHERE id=1").fetchone()
+            if row:
+                previous = json.loads(row[0])
+                previous_at = _orca_snapshot_timestamp_allow_stale(previous.get("captured_at"))
+                if captured_at <= previous_at:
+                    conn.rollback()
+                    return jsonify({"ok": False, "error": "snapshot_out_of_order"}), 409
+            received_at = time.time()
+            conn.execute("""INSERT INTO orca_status(id, payload, received_at) VALUES(1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, received_at=excluded.received_at""",
+                (json.dumps(clean, ensure_ascii=False), received_at))
+            conn.commit()
         return jsonify({"ok": True, "received_at": received_at})
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError, OverflowError):
         return jsonify({"ok": False, "error": "invalid_payload"}), 400
     except Exception:
         current_app.logger.exception("DASHBOARD ORCA STATUS WRITE ERROR")
         return jsonify({"ok": False, "error": "storage_error"}), 500
+
+
+def _orca_snapshot_timestamp_allow_stale(value):
+    from datetime import datetime
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("timestamp timezone missing")
+    return parsed.timestamp()
 
 
 @dashboard_bp.route("/api/dashboard/orca", methods=["GET"])
@@ -280,18 +345,16 @@ def orca_status():
         with get_conn() as conn:
             row = conn.execute("SELECT payload, received_at FROM orca_status WHERE id=1").fetchone()
         if not row:
-            return jsonify({"ok": True, "status": "offline", "age_sec": None, "tasks": [], "dispatches": [], "workers": []})
+            return jsonify({"ok": True, "status": "offline", "age_sec": None,
+                            "tasks": [], "dispatches": [], "workers": [], "streams": []})
         payload = json.loads(row[0])
-        age = max(0, now - float(row[1]))
+        captured = _orca_snapshot_timestamp_allow_stale(payload.get("captured_at"))
+        age = max(0, now - captured)
         status = "online" if age <= 90 else ("stale" if age <= 300 else "offline")
-        return jsonify({
-            "ok": True, "status": status, "age_sec": round(age),
-            "received_at": row[1],
-            "tasks": payload.get("tasks", []),
-            "dispatches": payload.get("dispatches", []),
-            "workers": payload.get("workers", []),
-            "streams": payload.get("streams", []),
-        })
+        return jsonify({"ok": True, "status": status, "age_sec": round(age),
+                        "received_at": row[1], "captured_at": payload.get("captured_at"),
+                        "tasks": payload.get("tasks", []), "dispatches": payload.get("dispatches", []),
+                        "workers": payload.get("workers", []), "streams": payload.get("streams", [])})
     except Exception:
         current_app.logger.exception("DASHBOARD ORCA STATUS READ ERROR")
         return jsonify({"ok": False, "status": "error"}), 500
