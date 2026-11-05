@@ -31,3 +31,20 @@ def test_cloud_snapshot_does_not_invent_stream_attribution_for_unmapped_task():
     )
     assert all(item["status"] == "unknown" for item in payload["streams"])
     assert "stream_key" not in payload["tasks"][0]
+
+
+def test_cloud_status_publisher_is_optional_and_non_blocking():
+    from pathlib import Path
+
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "distributed-autonomous-loop.yml"
+    ).read_text(encoding="utf-8")
+    step = workflow.split("      - name: Publish cloud Orca runtime snapshot to Render", 1)[1].split("      - name:", 1)[0]
+    assert "secrets.ORCA_STATUS_URL" in step
+    assert "secrets.ORCA_STATUS_SECRET" in step
+    assert "continue-on-error: true" in step
+    assert "scripts.orca_github_status_snapshot" in step
+    assert "scripts/orca_status_publisher.py" in step
