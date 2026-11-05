@@ -552,7 +552,7 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
         manifest = {"schema_version": "star-night-candidate-manifest.v1", "created_at": moment.isoformat(),
                     "project_id": PROJECT, "episode_id": "SN-E001", "status": "draft",
                     "cloud_execution": True, "mac_required": False, "paid_api_used": False,
-                    "video_render_status": "animatic_rendered" if video_path else "not_rendered", "publication_authorized": False,
+                    "video_render_status": "character_motion_animatic_rendered" if video_path else "not_rendered",\n                    "motion_profile": {"source_fps": 12, "output_fps": 24, "character_motion": ["arm_swing", "alternating_steps", "body_bob", "eye_blink"], "lumina_motion": "pulsing_glow", "full_character_animation": False},\n                    "publication_authorized": False,
                     "canon_modified": False, "hourly_task": task, "sha256": hashes}
         (destination / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return {"status": "candidate_created", "directory": str(destination), "artifact_count": len(hashes) + 1,
