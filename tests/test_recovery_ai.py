@@ -203,3 +203,11 @@ def test_existing_hold_cause_is_not_overwritten_by_later_failure(tmp_path):
     assert decision.reason == "previous_hold_requires_explicit_resume"
     assert status["hold_reason"] == first
     assert status["last_category"] == "unknown"
+
+def test_provider_error_holds_immediately_without_repair_retry(tmp_path):
+    decision = RecoveryStore(tmp_path / "state.json").record_failure(
+        "task-provider", "provider_error"
+    )
+    assert decision.action == "HOLD"
+    assert decision.reason == "non_repairable_failure"
+    assert decision.requires_human is True
