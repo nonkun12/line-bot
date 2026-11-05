@@ -404,3 +404,16 @@ def test_stop_requested_token_inside_other_failure_reason_is_not_operator_stop(t
     assert outcome["recorded"] is True
     assert outcome["decision"]["action"] == "REPAIR_ONCE"
     assert RecoveryStore(path).task_status("task-stop-token-in-diagnostic")["last_category"] == "unknown"
+
+def test_provider_json_validation_failure_is_recorded_as_provider_error(tmp_path):
+    path = tmp_path / "recovery.json"
+    outcome = record_loop_outcome(path, {
+        "task_id": "task-provider",
+        "status": "FAIL",
+        "exit_code": 1,
+        "failure_reason": "BadRequestError: status=400 code=json_validate_failed",
+        "failure_code": "provider_request_invalid",
+    })
+    assert outcome["recorded"] is True
+    assert outcome["decision"]["action"] == "HOLD"
+    assert RecoveryStore(path).task_status("task-provider")["last_category"] == "provider_error"

@@ -72,6 +72,7 @@ def test_append_only_test_generation_uses_reasoning_completion_budget(monkeypatc
     assert captured["max_completion_tokens"] == worker.MAX_APPEND_ONLY_RESPONSE_TOKENS
     assert captured["reasoning_effort"] == "low"
     assert "max_tokens" not in captured
+    assert "response_format" not in captured
 
 
 
@@ -1543,7 +1544,7 @@ def test_append_only_generation_failure_includes_safe_api_error_detail(monkeypat
     def fail_ask(*args, **kwargs):
         raise BadRequestError("provider rejected request")
 
-    monkeypatch.setattr(worker, "ask", fail_ask)
+    monkeypatch.setattr(worker, "ask_text", fail_ask)
     plan, error = worker.build_append_only_test_plan(
         FakeClient([]), "Add one boundary regression", "tests/test_sample.py",
         target.read_text(encoding="utf-8"),
@@ -1557,3 +1558,40 @@ def test_append_only_generation_failure_includes_safe_api_error_detail(monkeypat
     assert "status=400:code=invalid_request:param=max_tokens:" in error
     assert "message=Requested token budget exceeds limit" in error
     assert target.read_text(encoding="utf-8") == "def test_existing():\n    assert True\n"
+
+def test_catalog_exhaustion_fail_closed_task_has_deterministic_plan(monkeypatch, tmp_path):
+    from core.line_development_runtime import _deterministic_autonomous_test_plan
+
+    chosen = "tests/test_catalog_exhaustion_analyzer.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True)
+    anchor = "def test_public_function_discovery_skips_protocol_and_abstract_stubs():"
+    target.write_text(anchor + "\n    pass\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    plan, error = _deterministic_autonomous_test_plan(
+        chosen, "catalog-exhaustion-analyzer-main-fail-closed-20261105"
+    )
+
+    assert error is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    candidate = target.read_text(encoding="utf-8").replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert "test_main_fails_closed_on_malformed_recovery_state" in candidate
+
+def test_every_deterministic_task_mapping_has_an_executable_plan():
+    from core.line_development_runtime import (
+        _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS,
+        _deterministic_autonomous_test_plan,
+    )
+
+    missing = []
+    for task_id, target in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.items():
+        plan, error = _deterministic_autonomous_test_plan(target, task_id)
+        if plan is None and error is None:
+            missing.append(task_id)
+    assert missing == []
+

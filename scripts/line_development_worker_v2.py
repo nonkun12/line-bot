@@ -158,6 +158,18 @@ def ask(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOK
     )
     return response.choices[0].message.content or ""
 
+def ask_text(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOKENS) -> str:
+    """Request bounded plain text without enabling the provider's JSON mode."""
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        temperature=0.0,
+        max_completion_tokens=max_tokens,
+        reasoning_effort=os.environ.get("DEV_AI_REASONING_EFFORT", "low"),
+        include_reasoning=False,
+    )
+    return response.choices[0].message.content or ""
+
 
 def is_test_instruction(instruction: str) -> bool:
     normalized = str(instruction or "").strip()
@@ -567,7 +579,7 @@ The function name must start with test_. Keep the test focused and concise."""
         "Return one complete test function, or NO_CHANGE."
     )
     try:
-        generated = ask(
+        generated = ask_text(
             client, system, prompt, max_tokens=MAX_APPEND_ONLY_RESPONSE_TOKENS
         ).strip()
     except Exception as exc:

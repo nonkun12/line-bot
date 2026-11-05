@@ -120,3 +120,19 @@ def test_augment_instruction_with_history_preserves_instruction_when_no_recurrin
 
     instruction = "make one safe improvement"
     assert guarded_runtime._augment_instruction_with_history(instruction, history_path) == instruction
+
+def test_guarded_ask_text_omits_json_mode_and_keeps_token_bound():
+    completions = FakeCompletions(["def test_generated():\\n    assert True\\n"])
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+
+    result = guarded_runtime.guarded_ask_text(
+        client, "return Python source only", "generate a test", max_tokens=9000
+    )
+
+    assert result.startswith("def test_generated")
+    kwargs = completions.calls[0]
+    assert "response_format" not in kwargs
+    assert kwargs["max_completion_tokens"] == guarded_runtime.MAX_COMPLETION_TOKENS
+    assert kwargs["reasoning_effort"] == "low"
+    assert kwargs["include_reasoning"] is False
+

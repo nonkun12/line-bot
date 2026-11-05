@@ -304,6 +304,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "safe-continuation-depth-four-regression-20261026": "tests/test_continuous_distributed_loop_workflow.py",
     "catalog-exhaustion-adapter-deduplicates-duplicate-findings-20261031": "tests/test_catalog_exhaustion_candidate_adapter.py",
     "review-coverage-gap-703fa3c06b": "tests/test_project_registry.py",
+    "catalog-exhaustion-analyzer-main-fail-closed-20261105": "tests/test_catalog_exhaustion_analyzer.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -756,6 +757,42 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "        {\"kind\": \"success\", \"task_id\": \"task-a\"},",
             "        {\"kind\": \"failure\", \"task_id\": \"task-b\"},",
             "    ]",
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "distributed-loop-queue-progress-empty-queue-regression" and chosen == "tests/test_distributed_loop_queue_progress.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_empty_runtime_queue_reports_zero_progress_for_not_run"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        newline = chr(10)
+        anchor = "def test_progress_uses_runtime_queue_and_counts_refill_tasks(tmp_path: Path):" + newline
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = newline.join([
+            "def test_empty_runtime_queue_reports_zero_progress_for_not_run(tmp_path: Path):",
+            "    queue = tmp_path / \"runtime-queue.json\"",
+            "    state = tmp_path / \"state.json\"",
+            "    results = tmp_path / \"results.jsonl\"",
+            "    queue.write_text(json.dumps({\"tasks\": []}), encoding=\"utf-8\")",
+            "    state.write_text(json.dumps({\"completed\": [\"prior-task\"]}), encoding=\"utf-8\")",
+            "    results.write_text(json.dumps({\"task_id\": \"\", \"status\": \"NOT_RUN\", \"failure_reason\": \"queue_empty\"}), encoding=\"utf-8\")",
+            "    assert calculate_progress(queue, state, results) == {\"queue_total\": 0, \"queue_completed\": 0}",
             "",
             "",
         ]) + newline
@@ -2191,6 +2228,41 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "no_change": False,
             "source": "deterministic_autonomous_task",
             "changes": [{"file": chosen, "old": old, "new": new}],
+        }, None
+
+    if task_id == "catalog-exhaustion-analyzer-main-fail-closed-20261105" and chosen == "tests/test_catalog_exhaustion_analyzer.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_main_fails_closed_on_malformed_recovery_state"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_public_function_discovery_skips_protocol_and_abstract_stubs():"
+        addition = (
+            "def test_main_fails_closed_on_malformed_recovery_state(tmp_path, monkeypatch, capsys):\n"
+            "    root, catalog, queue, state, runtime = _fixture(tmp_path)\n"
+            "    _write(state, {\"completed\": [], \"recovery_ai\": {\"schema_version\": 999, \"tasks\": {}, \"checkpoint\": None}})\n"
+            "    from types import SimpleNamespace\n"
+            "    monkeypatch.setattr(\"scripts.catalog_exhaustion_analyzer.argparse.parse_args\", lambda: SimpleNamespace(repo_root=root, catalog=catalog, queue=queue, state=state, runtime=runtime, existing_issues=None, output=tmp_path / \"report.json\"))\n"
+            "    from scripts.catalog_exhaustion_analyzer import main\n"
+            "    assert main() == 2\n"
+            "    assert capsys.readouterr().out.strip() == \"CATALOG_EXHAUSTION_ANALYZER_BLOCKED: ValueError\"\n"
+            "    assert not (tmp_path / \"report.json\").exists()\n"
+            "\n\n"
+        )
+        if text.count(anchor) != 1:
+            return None, "deterministic_anchor_not_unique:catalog_exhaustion_fail_closed"
+        replacement = addition + anchor
+        if len(anchor) > 1200 or len(replacement) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(replacement)}"
+        candidate = text.replace(anchor, replacement, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": replacement}],
         }, None
 
     return None, None
