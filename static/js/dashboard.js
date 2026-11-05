@@ -42,6 +42,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const lr=await fetch(api('/api/dashboard/loop')); const ld=await lr.json();
         const l=ld.loop||{}, s=ld.safety||{}, h=ld.hand_sign||{};
         loopLastRun = l.last_run || {};
+        const streams = Array.isArray(l.streams) ? l.streams : [];
+        const streamStatus = status => ({
+          in_development: '🔵 開発中・稼働未確認',
+          partial: '🟡 一部実装',
+          planned: '⚪ 計画',
+          verified: '🟢 実行検証済み'
+        }[status] || '⚪ 未確認');
+        const streamGrid = document.getElementById('developmentStreams');
+        if (streamGrid) {
+          streamGrid.innerHTML = streams.map(item => {
+            const prs = Array.isArray(item.related_prs) ? item.related_prs.map(n => '#'+Number(n)).join(' / ') : '';
+            const cadence = item.cadence === 'hourly_target' ? '目標：毎時（未検証）' : '頻度未確認';
+            return '<div class="system-card"><div class="system-card-title">'+esc(item.label||item.key)+'</div><div class="system-status">'+streamStatus(item.status)+'</div><div class="system-details">'+esc(item.detail||'')+'</div><div class="system-details">'+esc(cadence)+(prs ? ' ・ 関連PR '+esc(prs) : '')+'</div></div>';
+          }).join('') || '<div class="system-details">系統情報は未取得です</div>';
+        }
         const cards=[
           ['🔄 Loop','🟢 自動運転設定済み',`1日 ${l.frequency_per_day||4}回 ・ ${(l.schedule_jst||[]).join(' / ')} JST`],
           ['🛡️ Safety Gate',s.fail_closed||l.fail_closed?'🟢 FAIL_CLOSED 有効':'⚪ 未確認',`Auto Merge: ${s.auto_merge?'有':'無'} ・ Auto Deploy: ${s.auto_deploy?'有':'無'}`],
