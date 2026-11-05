@@ -59,3 +59,12 @@ def test_build_streams_never_claims_unmatched_streams_are_active():
     streams = build_streams([], [], [])
     assert len(streams) == 5
     assert all(item["status"] == "unknown" for item in streams)
+
+
+def test_stream_mapping_does_not_infer_from_free_form_names_or_titles():
+    from scripts.orca_status_collector import _stream_key
+
+    assert _stream_key({"title": "STAR-NIGHT", "project": "STAR-NIGHT"}) is None
+    assert _stream_key({"name": "LINE Secretary"}) is None
+    assert _stream_key({"stream_key": "main_star_night"}) == "main_star_night"
+    assert _stream_key({"stream_key": "unrecognized"}) is None

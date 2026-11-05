@@ -72,21 +72,10 @@ def result_list(payload: dict[str, Any], key: str) -> list[dict[str, Any]]:
 
 
 def _stream_key(record: dict[str, Any]) -> str | None:
+    # Only an explicit, allowlisted runtime key is evidence. Do not infer a
+    # stream from free-form titles, project names, prompts, or descriptions.
     explicit = record.get("stream_key")
-    if explicit in STREAMS:
-        return explicit
-    haystack = " ".join(str(record.get(k, "")) for k in ("project", "kind", "title", "name")).casefold()
-    aliases = {
-        "main_star_night": ("star-night", "star night"),
-        "side_task_supply": ("タスク枯渇対策", "task supply"),
-        "side_media_ai": ("映像・音楽ai", "映像ai", "音楽ai", "video/music"),
-        "side_self_improvement": ("自己改善ai", "self-improvement"),
-        "side_line_full_control": ("line全指示化", "line secretary"),
-    }
-    for key, terms in aliases.items():
-        if any(term.casefold() in haystack for term in terms):
-            return key
-    return None
+    return explicit if isinstance(explicit, str) and explicit in STREAMS else None
 
 
 def build_streams(tasks: list[dict[str, Any]], dispatches: list[dict[str, Any]],
