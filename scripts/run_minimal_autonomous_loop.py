@@ -65,6 +65,68 @@ def retry_is_safe(result: dict[str, object], *, current_head: str, working_tree_
     )
 
 
+def run_task_with_transient_recovery(
+    task: dict[str, object],
+    index: int,
+    stop_file: Path,
+    *,
+    expected_base_sha: str,
+) -> tuple[dict[str, object], int]:
+    """Run a task and retry only verified transient provider failures."""
+    result = run_task(task, index, stop_file, expected_base_sha=expected_base_sha)
+    retry_count = 0
+    while retry_count < MAX_TRANSIENT_TASK_RETRIES:
+        current_head = _git_head()
+        try:
+            clean_rc, clean_output = _git_checked(
+                "status", "--porcelain", "--untracked-files=all"
+            )
+            worktree_clean = clean_rc == 0 and not clean_output.strip()
+        except Exception:
+            worktree_clean = False
+        if not retry_is_safe(
+            result,
+            current_head=current_head,
+            working_tree_clean=worktree_clean,
+        ):
+            break
+        if stopped(stop_file):
+            break
+        delay = TRANSIENT_RETRY_DELAYS_SECONDS[retry_count]
+        print(
+            f"MINIMAL_LOOP=TRANSIENT_RETRY task={task['id']} "
+            f"attempt={retry_count + 2}/{MAX_TRANSIENT_TASK_RETRIES + 1} "
+            f"code={transient_retry_code(result)} delay={delay}s",
+            flush=True,
+        )
+        time.sleep(delay)
+
+        # Revalidate every safety condition after the wait. A stop signal or
+        # worktree mutation may arrive while sleeping; never dispatch on stale
+        # pre-wait evidence.
+        if stopped(stop_file):
+            break
+        retry_base_sha = _git_head()
+        if retry_base_sha != current_head:
+            break
+        try:
+            clean_rc, clean_output = _git_checked(
+                "status", "--porcelain", "--untracked-files=all"
+            )
+            retry_worktree_clean = clean_rc == 0 and not clean_output.strip()
+        except Exception:
+            retry_worktree_clean = False
+        if not retry_worktree_clean:
+            break
+
+        # Count only retries that are actually dispatched.
+        result = run_task(
+            task, index, stop_file, expected_base_sha=retry_base_sha
+        )
+        retry_count += 1
+    return result, retry_count
+
+
 EXIT_NOT_RUN = 78
 NOT_RUN_REASON_QUEUE_EMPTY = "queue_empty"
 VALID_RUNTIME_STATUSES = frozenset({"PASS", "NO_CHANGE"})
@@ -1271,44 +1333,9 @@ def main() -> int:
                 print("MINIMAL_LOOP=BLOCKED reason=control_tower_rea", flush=True)
             else:
                 print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
-                result = run_task(
+                result, retry_count = run_task_with_transient_recovery(
                     task, index, args.stop_file, expected_base_sha=control_tower_head
                 )
-                # Retry only explicit transient provider failures. Never retry
-                # invalid requests, authorization/security failures, test failures,
-                # changed worktrees, or any result without verified unchanged HEAD.
-                while retry_count < MAX_TRANSIENT_TASK_RETRIES:
-                    current_head = _git_head()
-                    try:
-                        clean_rc, clean_output = _git_checked(
-                            "status", "--porcelain", "--untracked-files=all"
-                        )
-                        worktree_clean = clean_rc == 0 and not clean_output.strip()
-                    except Exception:
-                        worktree_clean = False
-                    if not retry_is_safe(
-                        result,
-                        current_head=current_head,
-                        working_tree_clean=worktree_clean,
-                    ):
-                        break
-                    if stopped(args.stop_file):
-                        break
-                    delay = TRANSIENT_RETRY_DELAYS_SECONDS[retry_count]
-                    print(
-                        f"MINIMAL_LOOP=TRANSIENT_RETRY task={task['id']} "
-                        f"attempt={retry_count + 2}/{MAX_TRANSIENT_TASK_RETRIES + 1} "
-                        f"code={transient_retry_code(result)} delay={delay}s",
-                        flush=True,
-                    )
-                    time.sleep(delay)
-                    retry_count += 1
-                    retry_base_sha = _git_head()
-                    if retry_base_sha != current_head:
-                        break
-                    result = run_task(
-                        task, index, args.stop_file, expected_base_sha=retry_base_sha
-                    )
         # Carry the exact preflight REA evidence into the Control Tower decision.
         # This is diagnostic metadata only and grants no execution or repair authority.
         if not isinstance(result.get("rea"), dict):
