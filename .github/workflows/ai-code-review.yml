@@ -1,4 +1,4 @@
-name: AI Code Review
+name: PR Diff Snapshot (No AI Inference)
 
 on:
   pull_request:
@@ -6,8 +6,11 @@ on:
       - opened
       - synchronize
 
+permissions:
+  contents: read
+
 jobs:
-  review:
+  diff-snapshot:
     runs-on: ubuntu-latest
 
     steps:
@@ -16,11 +19,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get changed files
+      - name: Generate PR diff
         run: |
           git fetch origin main
           git diff origin/main...HEAD > diff.txt
 
-      - name: Show diff
+      - name: Display diff for human review
         run: |
+          echo "## Review status" >> "$GITHUB_STEP_SUMMARY"
+          echo "This workflow does **not** invoke an AI model or perform an automated code review." >> "$GITHUB_STEP_SUMMARY"
+          echo "It only generates and displays the pull-request diff for human inspection." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Changed diff" >> "$GITHUB_STEP_SUMMARY"
+          cat diff.txt >> "$GITHUB_STEP_SUMMARY"
           cat diff.txt
