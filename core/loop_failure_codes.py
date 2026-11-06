@@ -61,6 +61,7 @@ _CATEGORY_SEVERITY = {
 # Prefix aliases normalize human-readable diagnostics emitted by legacy stages.
 _FAILURE_PATTERNS = (
     (re.compile(r"(?<![A-Za-z0-9_])json_validate_failed(?![A-Za-z0-9_])"), "provider_request_invalid"),
+    (re.compile(r"(?<![A-Za-z0-9_])(?:BadRequestError|code\s*=\s*invalid_request)(?![A-Za-z0-9_])"), "provider_request_invalid"),
     (re.compile(r"(?<![A-Za-z0-9_])(?:AuthenticationError|PermissionDeniedError)(?![A-Za-z0-9_])"), "provider_authentication_failed"),
     (re.compile(r"(?<![A-Za-z0-9_])change_path_outside_root(?![A-Za-z0-9_])"), "change_path_outside_root"),
     (re.compile(r"(?<![A-Za-z0-9_])self_improvement_policy(?=[:\s]|$)"), "self_improvement_policy"),
