@@ -47,25 +47,28 @@
     },
     {
       "id": "CONT-004",
-      "severity": "HOLD",
+      "severity": "PASS",
       "area": "episode_1_adaptation_boundary",
-      "finding": "Episode 1's short-film screenplay fixes the Lumina outcome as restoring a streetlight, while the draft game graph offers three alternative choices before Episode 2. The project must explicitly distinguish the fixed short-film cut from the interactive adaptation so they are not treated as simultaneous canon events.",
-      "resolution": "Approve an adaptation-boundary note in the series bible/project manifest before canon adoption.",
+      "finding": "The fixed Episode 1 short-film cut and the mutually exclusive Episode 1 interactive-game alternatives are explicitly separated by adaptation track; they are not sequential events in one continuity.",
+      "resolution": "Recorded in adaptation-boundary.json and registered by project.json.",
       "evidence": [
         "episode-001.md",
-        "game-story-graph.json"
+        "game-story-graph.json",
+        "adaptation-boundary.json",
+        "project.json"
       ]
     },
     {
       "id": "CONT-005",
       "severity": "HOLD",
       "area": "lumina_resource_ledger",
-      "finding": "Episode 2 refers to one remaining output, but the project does not yet define a machine-readable Lumina charge/resource ledger across episodes. The screenplay is plausible, but gameplay must not infer unlimited re-use.",
-      "resolution": "Define charge accounting and transition rules in the game state schema before gameplay release.",
+      "finding": "A machine-readable Lumina ledger and transition guard now exist, but the initial interactive-game balance and Episode 1 cost mapping remain unspecified. Gameplay execution is explicitly blocked until human confirmation; no unlimited reuse or recharge is inferred.",
+      "resolution": "Human must confirm the initial game-track output count and Episode 1 cost mapping before gameplay execution. Keep HOLD until then.",
       "evidence": [
         "episode-002.md",
         "game-story-graph.json",
-        "series-bible.md"
+        "series-bible.md",
+        "lumina-resource-ledger.json"
       ]
     },
     {
@@ -81,7 +84,7 @@
     }
   ],
   "next_gates": [
-    "Resolve CONT-004 and CONT-005",
+    "Confirm the interactive-game Lumina baseline and Episode 1 cost mapping to resolve CONT-005",
     "Run graph reachability and state-transition tests across all three episodes",
     "Obtain separate story, game, and audiovisual Critic approvals",
     "Human approval before canon update or publication"
