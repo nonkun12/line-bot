@@ -79,13 +79,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        if args.state.exists():
-            state = json.loads(args.state.read_text(encoding="utf-8"))
-            if not isinstance(state, dict):
-                raise ValueError("durable state must be an object")
-            records = state.get("self_improvement_history", [])
-        else:
-            records = []
+        if not args.state.is_file():
+            raise ValueError("durable state file is missing; refusing to emit an empty candidate pool")
+        state = json.loads(args.state.read_text(encoding="utf-8"))
+        if not isinstance(state, dict):
+            raise ValueError("durable state must be an object")
+        records = state.get("self_improvement_history")
+        if not isinstance(records, list):
+            raise ValueError("durable self-improvement history is missing or invalid")
         rows = candidates_from_history(records)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(rows, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
