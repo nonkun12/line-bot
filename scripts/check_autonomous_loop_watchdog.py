@@ -53,7 +53,8 @@ def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
     # Keep the scheduler discovery window shorter than the hourly slot interval
     # so adjacent scheduled runs cannot match the same expected slot.
     window_end = slot + timedelta(minutes=SLOT_DISCOVERY_WINDOW_MINUTES)
-    window_start = slot - timedelta(minutes=10)    for run in data.get("workflow_runs", []):
+    window_start = slot - timedelta(minutes=10)
+    for run in data.get("workflow_runs", []):
         # The workflow uses run-name, so the API name field may contain
         # a title such as "Distributed Loop (continuation_depth=0)" rather than
         # the workflow name. The endpoint is already scoped to this workflow;
@@ -97,6 +98,7 @@ def run_is_pending_within_grace(run: dict | None, slot: datetime, now: datetime)
         # Wait only through the same non-overlapping scheduler discovery window.
         return elapsed <= timedelta(minutes=SLOT_DISCOVERY_WINDOW_MINUTES)
 
+    status = run.get("status")
     if status == "queued":
         # A queued hourly run must not remain pending beyond its audit deadline.
         return elapsed < timedelta(minutes=SLOT_CHECK_DELAY_MINUTES)
