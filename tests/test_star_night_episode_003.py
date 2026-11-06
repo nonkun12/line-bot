@@ -39,3 +39,28 @@ def test_project_registers_episode_003():
     project = load("project.json")
     assert "docs/creative-worlds/star-night/episode-003.md" in project["episode_refs"]
     assert "docs/creative-worlds/star-night/episode-003.json" in project["episode_data_refs"]
+
+
+def test_episode_001_short_film_and_game_are_separate_adaptation_tracks():
+    boundary = load("adaptation-boundary.json")
+    assert boundary["tracks"]["short_film"]["canon_scope"] == "short_film_cut_only"
+    game = boundary["tracks"]["interactive_game"]
+    assert game["canon_scope"] == "interactive_adaptation_only"
+    assert len(game["option_ids"]) == 3
+    assert any("Never apply" in rule for rule in boundary["cross_track_rules"])
+
+def test_lumina_ledger_blocks_unverified_gameplay_balance():
+    ledger = load("lumina-resource-ledger.json")
+    assert ledger["status"] == "HOLD_UNVERIFIED_BASELINE"
+    assert ledger["gameplay_execution_enabled"] is False
+    assert ledger["adaptation_tracks"]["interactive_game"]["episode_001_cost"] is None
+    assert ledger["adaptation_tracks"]["interactive_game"]["episode_002_declared_available_output"] == 1
+    assert ledger["canon_update_authorized"] is False
+    assert ledger["publication_authorized"] is False
+
+def test_continuity_review_only_closes_adaptation_boundary():
+    review = load("continuity-review-e001-e003.json")
+    findings = {item["id"]: item["severity"] for item in review["findings"]}
+    assert findings["CONT-004"] == "PASS"
+    assert findings["CONT-005"] == "HOLD"
+    assert review["status"] == "HOLD"
