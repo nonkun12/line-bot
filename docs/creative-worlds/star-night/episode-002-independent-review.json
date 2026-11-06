@@ -1,0 +1,58 @@
+{
+  "schema_version": "star-night-independent-review.v1",
+  "project_id": "STAR-NIGHT",
+  "episode_id": "SN-E002",
+  "candidate": "docs/creative-worlds/star-night/episode-002.md",
+  "machine_readable_candidate": "docs/creative-worlds/star-night/episode-002.json",
+  "status": "PENDING_INDEPENDENT_REVIEW",
+  "canon_change": false,
+  "publication_authorized": false,
+  "reviewers": [
+    {
+      "role": "continuity_critic",
+      "independence": "must not be the screenplay author",
+      "checks": [
+        "series bible compatibility",
+        "Noa, Mina, and Oldo motivation and characterization",
+        "Lumina rules and cost",
+        "foreshadowing ledger consistency",
+        "unknown Star Eater remains unidentified"
+      ]
+    },
+    {
+      "role": "game_critic",
+      "independence": "must not be the screenplay author",
+      "checks": [
+        "three choices are mutually exclusive",
+        "each choice has a meaningful tradeoff",
+        "state updates are valid and non-destructive",
+        "all branch destinations resolve",
+        "branch convergence preserves choice history"
+      ]
+    },
+    {
+      "role": "audiovisual_critic",
+      "independence": "must not be the screenplay author",
+      "checks": [
+        "27-second timeline and scene transitions",
+        "shot readability and visual continuity",
+        "MOTIF_STAR variation and intentional unresolved ending",
+        "dialogue timing and sound mix feasibility"
+      ]
+    }
+  ],
+  "decision_policy": {
+    "pass": "all reviewers approve with evidence and no unresolved blocking issue",
+    "hold": "review evidence is incomplete or a non-blocking question remains",
+    "fail": "canon contradiction, broken branch logic, or critical production issue",
+    "canon_update": "requires explicit human approval after PASS",
+    "publication": "requires separate rights and human approval"
+  },
+  "evidence_required": [
+    "reviewer identity and role",
+    "reviewed candidate commit SHA",
+    "per-check PASS/HOLD/FAIL with rationale",
+    "blocking findings and resolution references",
+    "final decision timestamp"
+  ]
+}
