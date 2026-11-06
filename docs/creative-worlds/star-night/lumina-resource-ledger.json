@@ -1,0 +1,40 @@
+{
+  "schema_version": "star-night-lumina-ledger.v1",
+  "project_id": "STAR-NIGHT",
+  "status": "HOLD_UNVERIFIED_BASELINE",
+  "gameplay_execution_enabled": false,
+  "unit": "one_output",
+  "adaptation_tracks": {
+    "short_film": {
+      "episode_001_event": "Lumina restores one streetlight in the fixed short-film cut.",
+      "quantified_cost": null,
+      "ledger_status": "qualitative_only",
+      "note": "The screenplay does not define a numeric charge quantity."
+    },
+    "interactive_game": {
+      "episode_001_choice": "Exactly one of CHOICE_LUMINA_01A/B/C is selected.",
+      "episode_001_cost": null,
+      "episode_002_declared_available_output": 1,
+      "episode_002_choice": "Exactly one of CHOICE_E002_MEMORY/LIGHTS/TRUST consumes or commits the single declared output.",
+      "episode_002_after_state": "DEPLETED_OR_COMMITTED",
+      "episode_003_lumina_spend": 0,
+      "ledger_status": "BLOCKED_PENDING_BASELINE_CONFIRMATION",
+      "note": "The current source material does not define the initial game-track charge quantity or prove how Episode 1's selected alternative maps to Episode 2's 'one remaining output'. Do not infer or replenish charges."
+    }
+  },
+  "transition_rules": [
+    "Keep short-film and interactive-game resource histories separate.",
+    "A playthrough may select only one option for each exclusive choice ID.",
+    "Episode 2's dialogue declares one remaining output; record this as a story assertion, not proof of a verified initial balance.",
+    "Do not execute a Lumina-consuming gameplay transition until a human-approved initial game-track balance and Episode 1 cost mapping exist.",
+    "Episode 3 does not spend or restore Lumina.",
+    "Never infer unlimited reuse, automatic recharge, or an unshown resource refill."
+  ],
+  "required_human_decisions": [
+    "Confirm the interactive game's initial Lumina output count.",
+    "Confirm whether and how the selected Episode 1 alternative consumes or reserves an output.",
+    "Confirm that Episode 2 begins with exactly one available output, or revise the Episode 2 line and transition."
+  ],
+  "canon_update_authorized": false,
+  "publication_authorized": false
+}

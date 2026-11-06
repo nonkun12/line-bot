@@ -166,7 +166,131 @@
       "scene_id": "SC05",
       "event_id": "EVENT_UNKNOWN_BLACKOUT_001",
       "description": "地図の遠い区画の光が消える。原因と星喰いの正体は未確定。",
-      "terminal": true
+      "terminal": false,
+      "next": "SN_E003_SC01"
+    },
+    {
+      "id": "SN_E003_SC01",
+      "type": "scene",
+      "episode_id": "SN-E003",
+      "scene_id": "SC01",
+      "next": "SN_E003_ROUTE_GATE"
+    },
+    {
+      "id": "SN_E003_ROUTE_GATE",
+      "type": "conditional_route",
+      "episode_id": "SN-E003",
+      "scene_id": "SC02",
+      "routes": [
+        {
+          "when_choice": "CHOICE_E002_MEMORY",
+          "next": "SN_E003_ARCHIVE_CLUE"
+        },
+        {
+          "when_choice": "CHOICE_E002_LIGHTS",
+          "next": "SN_E003_CURRENT_CLUE"
+        },
+        {
+          "when_choice": "CHOICE_E002_TRUST",
+          "next": "SN_E003_RELAY_CLUE"
+        }
+      ]
+    },
+    {
+      "id": "SN_E003_ARCHIVE_CLUE",
+      "type": "branch_entry",
+      "episode_id": "SN-E003",
+      "clue_id": "CLUE_E003_ARCHIVE_PULSE",
+      "next": "SN_E003_SC03"
+    },
+    {
+      "id": "SN_E003_CURRENT_CLUE",
+      "type": "branch_entry",
+      "episode_id": "SN-E003",
+      "clue_id": "CLUE_E003_REVERSE_CURRENT",
+      "next": "SN_E003_SC03"
+    },
+    {
+      "id": "SN_E003_RELAY_CLUE",
+      "type": "branch_entry",
+      "episode_id": "SN-E003",
+      "clue_id": "CLUE_E003_RELAY_TRACE",
+      "next": "SN_E003_SC03"
+    },
+    {
+      "id": "SN_E003_SC03",
+      "type": "scene",
+      "episode_id": "SN-E003",
+      "scene_id": "SC03",
+      "event_id": "EVENT_SKY_CALL_MEMORY_001",
+      "next": "SN_E003_SC04"
+    },
+    {
+      "id": "SN_E003_SC04",
+      "type": "choice",
+      "episode_id": "SN-E003",
+      "scene_id": "SC04",
+      "choice_id": "CHOICE_E003",
+      "prompt": "ミナの声の記憶をどう扱う？",
+      "options": [
+        {
+          "id": "CHOICE_E003_RECORD",
+          "label": "声の断片を記録する",
+          "effects": {
+            "noa_memory": 1
+          },
+          "unlock": "LOC_WATERWAY_ARCHIVE_GATE",
+          "next": "SN_E003_RECORD_OUTCOME"
+        },
+        {
+          "id": "CHOICE_E003_TRACE",
+          "label": "信号の流れを追う",
+          "effects": {
+            "city_lights": 1
+          },
+          "unlock": "LOC_WATERWAY_PUMP_ROOM",
+          "next": "SN_E003_TRACE_OUTCOME"
+        },
+        {
+          "id": "CHOICE_E003_SHARE",
+          "label": "ミナと一緒に確かめる",
+          "effects": {
+            "trust_mina": 1
+          },
+          "unlock": "LOC_WATERWAY_RELAY_ALCOVE",
+          "next": "SN_E003_SHARE_OUTCOME"
+        }
+      ]
+    },
+    {
+      "id": "SN_E003_RECORD_OUTCOME",
+      "type": "branch_outcome",
+      "episode_id": "SN-E003",
+      "next": "SN_E003_SC05",
+      "description": "声の波形を保存する。発信元の方向は不明のまま。"
+    },
+    {
+      "id": "SN_E003_TRACE_OUTCOME",
+      "type": "branch_outcome",
+      "episode_id": "SN-E003",
+      "next": "SN_E003_SC05",
+      "description": "水路の信号方向を追う。声の記録は残らない。"
+    },
+    {
+      "id": "SN_E003_SHARE_OUTCOME",
+      "type": "branch_outcome",
+      "episode_id": "SN-E003",
+      "next": "SN_E003_SC05",
+      "description": "ミナと波形を照合する。波形の一部は失われる。"
+    },
+    {
+      "id": "SN_E003_SC05",
+      "type": "scene",
+      "episode_id": "SN-E003",
+      "scene_id": "SC05",
+      "event_id": "EVENT_UPLINK_UNRESOLVED_001",
+      "terminal": true,
+      "description": "上り信号を検出するが発信元は照合不能。声の主と星喰いの関係は未確定。"
     }
   ],
   "invariants": [
@@ -178,7 +302,12 @@
     "episode 2 branch choice is exclusive and appends exactly one choice_history entry",
     "episode 2 branch effects do not decrement any existing state",
     "episode 2 branch outcomes converge at SN_E002_SC05",
-    "EVENT_UNKNOWN_BLACKOUT_001 does not identify the Star Eater"
+    "EVENT_UNKNOWN_BLACKOUT_001 does not identify the Star Eater",
+    "episode 2 choice routes to exactly one episode 3 clue node",
+    "episode 3 clue nodes converge at SN_E003_SC03 without deleting prior evidence",
+    "episode 3 choice is exclusive and appends exactly one choice_history entry",
+    "episode 3 branch outcomes converge at SN_E003_SC05",
+    "EVENT_UPLINK_UNRESOLVED_001 does not identify the voice source or Star Eater"
   ],
   "review_required": [
     "branch reachability",
@@ -187,6 +316,11 @@
     "future episode compatibility",
     "episode 2 screenplay continuity",
     "episode 2 branch balance",
-    "episode 2 timeline and audiovisual sync"
-  ]
+    "episode 2 timeline and audiovisual sync",
+    "episode 3 route-dependent clue continuity",
+    "episode 3 branch balance",
+    "Lumina resource baseline confirmation before gameplay execution"
+  ],
+  "adaptation_boundary_ref": "docs/creative-worlds/star-night/adaptation-boundary.json",
+  "lumina_resource_ledger_ref": "docs/creative-worlds/star-night/lumina-resource-ledger.json"
 }

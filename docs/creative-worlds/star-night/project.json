@@ -6,7 +6,8 @@
   "canon_ref": "docs/creative-worlds/star-night/series-bible.md",
   "episode_refs": [
     "docs/creative-worlds/star-night/episode-001.md",
-    "docs/creative-worlds/star-night/episode-002.md"
+    "docs/creative-worlds/star-night/episode-002.md",
+    "docs/creative-worlds/star-night/episode-003.md"
   ],
   "story_graph_ref": "docs/creative-worlds/star-night/game-story-graph.json",
   "hourly_policy_ref": "docs/creative-worlds/star-night/hourly-cycle.md",
@@ -140,11 +141,17 @@
     ]
   },
   "episode_data_refs": [
-    "docs/creative-worlds/star-night/episode-002.json"
+    "docs/creative-worlds/star-night/episode-002.json",
+    "docs/creative-worlds/star-night/episode-003.json"
   ],
   "production_status": {
     "episode_001": "candidate",
     "episode_002": "candidate_for_independent_review",
-    "canon_update_requires_human_approval": true
-  }
+    "canon_update_requires_human_approval": true,
+    "episode_003": "candidate_for_independent_review",
+    "cross_episode_continuity": "hold_pending_lumina_baseline_confirmation"
+  },
+  "continuity_review_ref": "docs/creative-worlds/star-night/continuity-review-e001-e003.json",
+  "adaptation_boundary_ref": "docs/creative-worlds/star-night/adaptation-boundary.json",
+  "lumina_resource_ledger_ref": "docs/creative-worlds/star-night/lumina-resource-ledger.json"
 }

@@ -1,0 +1,167 @@
+{
+  "schema_version": "star-night-episode.v1",
+  "project_id": "STAR-NIGHT",
+  "episode_id": "SN-E003",
+  "title": "水路に残る星の声",
+  "status": "candidate_for_independent_review",
+  "duration_seconds": 30,
+  "scene_order": [
+    "SC01",
+    "SC02",
+    "SC03",
+    "SC04",
+    "SC05"
+  ],
+  "characters": [
+    "CHAR_NOA",
+    "CHAR_MINA",
+    "CHAR_OLDO"
+  ],
+  "locations": [
+    "LOC_OLD_STATION",
+    "LOC_UNDERGROUND_WATERWAY",
+    "LOC_WATERWAY_ARCHIVE_GATE",
+    "LOC_WATERWAY_PUMP_ROOM",
+    "LOC_WATERWAY_RELAY_ALCOVE"
+  ],
+  "scenes": [
+    {
+      "id": "SC01",
+      "start": 0,
+      "duration": 5,
+      "title": "地図の下へ",
+      "location": "LOC_UNDERGROUND_WATERWAY",
+      "beats": [
+        "消えた光の位置から地下へ点滅が走る",
+        "ノアとミナが水路へ降りる"
+      ],
+      "music": "MOTIF_STAR low three-note motif"
+    },
+    {
+      "id": "SC02",
+      "start": 5,
+      "duration": 6,
+      "title": "選んだ道の手掛かり",
+      "conditional_on": "episode_002_choice",
+      "variants": [
+        {
+          "when": "CHOICE_E002_MEMORY",
+          "clue_id": "CLUE_E003_ARCHIVE_PULSE",
+          "evidence": "古い記録端末に残る時刻付き上向き波形"
+        },
+        {
+          "when": "CHOICE_E002_LIGHTS",
+          "clue_id": "CLUE_E003_REVERSE_CURRENT",
+          "evidence": "足元灯の反射に同期する逆向きの水流"
+        },
+        {
+          "when": "CHOICE_E002_TRUST",
+          "clue_id": "CLUE_E003_RELAY_TRACE",
+          "evidence": "ミナの修理した計測器が検出する中継器の振動"
+        }
+      ]
+    },
+    {
+      "id": "SC03",
+      "start": 11,
+      "duration": 6,
+      "title": "空から呼ぶ声",
+      "dialogue": [
+        {
+          "character": "CHAR_MINA",
+          "text": "星脈が止まる前……空から、誰かに呼ばれた気がした。"
+        },
+        {
+          "character": "CHAR_MINA",
+          "text": "でも、声だったのか、機械の音だったのかも分からない。"
+        }
+      ],
+      "event_id": "EVENT_SKY_CALL_MEMORY_001",
+      "canon_constraint": "Mina's memory is testimony, not proof."
+    },
+    {
+      "id": "SC04",
+      "start": 17,
+      "duration": 7,
+      "title": "声をどう残すか",
+      "choice_id": "CHOICE_E003",
+      "exclusive": true,
+      "choices": [
+        {
+          "id": "CHOICE_E003_RECORD",
+          "label": "声の断片を記録する",
+          "effect": {
+            "noa_memory": 1
+          },
+          "unlock": "LOC_WATERWAY_ARCHIVE_GATE",
+          "cost": "発信元の方向は分からない"
+        },
+        {
+          "id": "CHOICE_E003_TRACE",
+          "label": "信号の流れを追う",
+          "effect": {
+            "city_lights": 1
+          },
+          "unlock": "LOC_WATERWAY_PUMP_ROOM",
+          "cost": "声の記録は残らない"
+        },
+        {
+          "id": "CHOICE_E003_SHARE",
+          "label": "ミナと一緒に確かめる",
+          "effect": {
+            "trust_mina": 1
+          },
+          "unlock": "LOC_WATERWAY_RELAY_ALCOVE",
+          "cost": "波形の一部が失われる"
+        }
+      ]
+    },
+    {
+      "id": "SC05",
+      "start": 24,
+      "duration": 6,
+      "title": "水面の向こう",
+      "event_id": "EVENT_UPLINK_UNRESOLVED_001",
+      "dialogue": [
+        {
+          "character": "CHAR_OLDO",
+          "text": "上り信号を検出。発信元……照合不能。"
+        },
+        {
+          "character": "CHAR_MINA",
+          "text": "今度は、聞き間違いじゃない。"
+        }
+      ],
+      "canon_constraints": [
+        "Do not identify the Star Eater",
+        "Do not identify the voice or signal source"
+      ]
+    }
+  ],
+  "initial_state_keys": [
+    "trust_mina",
+    "city_lights",
+    "noa_memory",
+    "discovered_locations",
+    "choice_history",
+    "lumina_fragments"
+  ],
+  "invariants": [
+    "episode 2 choice history is preserved",
+    "episode 3 branch is exclusive and appends one choice",
+    "no state is decremented or deleted",
+    "episode 2 route selects exactly one episode 3 clue variant",
+    "Mina's sky-call memory is not objective proof",
+    "signal source and Star Eater remain unidentified"
+  ],
+  "review_gates": [
+    "episode_1_to_3_continuity",
+    "character_motivation",
+    "branch_state_validity",
+    "timeline_contiguous",
+    "motif_continuity",
+    "canon_protection"
+  ],
+  "publication_authorized": false,
+  "canon_update_authorized": false
+}
