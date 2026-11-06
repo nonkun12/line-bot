@@ -619,3 +619,34 @@ def test_refill_selects_exactly_four_new_catalog_tasks_when_older_tasks_are_comp
         strict=True,
     ))
     assert queue.read_text(encoding="utf-8") == queue_before
+
+def test_refill_cli_emits_json_report_and_runtime_queue(tmp_path: Path, monkeypatch, capsys):
+    import sys
+    from scripts.autonomous_task_refill import main
+
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        candidates=[{**_task("task-cli"), "execution_approved": True}],
+    )
+    output = tmp_path / "runtime.json"
+    monkeypatch.setattr(sys, "argv", [
+        "autonomous_task_refill",
+        "--queue", str(queue),
+        "--catalog", str(catalog),
+        "--completed-state", str(completed),
+        "--output", str(output),
+    ])
+
+    assert main() == 0
+    report = json.loads(capsys.readouterr().out)
+    runtime = json.loads(output.read_text(encoding="utf-8"))
+    assert report["added_ids"] == ["task-cli"]
+    assert [task["id"] for task in runtime["tasks"]] == ["task-cli"]
+
+def test_read_json_rejects_non_object_root(tmp_path: Path):
+    from scripts.autonomous_task_refill import read_json
+
+    path = tmp_path / "queue.json"
+    path.write_text("[]", encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON root must be an object"):
+        read_json(path)

@@ -77,3 +77,10 @@ def test_project_record_to_dict_serializes_supported_agents_as_list():
     assert serialized["repository"] == "nonkun12/sample-app"
     assert serialized["supported_agents"] == ["implementer", "tester"]
     assert isinstance(serialized["supported_agents"], list)
+
+def test_registry_list_projects_returns_records_in_registration_order():
+    first = ProjectRecord(name="first", repository="nonkun12/first")
+    second = ProjectRecord(name="second", repository="nonkun12/second")
+    registry = ProjectRegistry([first, second])
+
+    assert registry.list_projects() == [first, second]
