@@ -30,7 +30,8 @@ on:
         type: choice
         options: ["1", "2", "3"]
   schedule:
-    - cron: "17 */6 * * *"
+    # Hourly independent Creator-Critic review; offset from the main loop.
+    - cron: "37 * * * *"
 
 permissions:
   contents: read
