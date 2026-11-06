@@ -1,0 +1,32 @@
+{
+  "schema_version": "star-night-adaptation-boundary.v1",
+  "project_id": "STAR-NIGHT",
+  "status": "candidate_for_human_approval",
+  "tracks": {
+    "short_film": {
+      "episode_id": "SN-E001",
+      "source": "episode-001.md",
+      "rule": "The fixed short-film cut depicts Lumina restoring a streetlight. This is the short-film presentation and is not a selectable game outcome.",
+      "canon_scope": "short_film_cut_only"
+    },
+    "interactive_game": {
+      "episode_id": "SN-E001",
+      "source": "game-story-graph.json",
+      "rule": "CHOICE_LUMINA_01A, CHOICE_LUMINA_01B, and CHOICE_LUMINA_01C are mutually exclusive alternative adaptations. Exactly one may be selected in a game playthrough; none is an additional event in the fixed short-film cut.",
+      "canon_scope": "interactive_adaptation_only",
+      "exclusive_choice_id": "CHOICE_LUMINA_01",
+      "option_ids": [
+        "CHOICE_LUMINA_01A",
+        "CHOICE_LUMINA_01B",
+        "CHOICE_LUMINA_01C"
+      ]
+    }
+  },
+  "cross_track_rules": [
+    "Never apply the short-film streetlight restoration and one of the interactive Episode 1 alternatives as two sequential Lumina expenditures in the same continuity.",
+    "Episode 2 and later game-state transitions must use the interactive-game track only.",
+    "Do not merge short-film and interactive-game resource histories without an explicit adaptation mapping approved by a human."
+  ],
+  "canon_update_authorized": false,
+  "publication_authorized": false
+}
