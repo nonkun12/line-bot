@@ -165,3 +165,27 @@ def test_yahoo_japan_html_fallback(monkeypatch):
     assert quote["currency"] == "JPY"
     assert calls[-1] == "https://finance.yahoo.co.jp/quote/7203.T"
 
+def test_normalize_stock_ticker_handles_japanese_codes_and_global_symbols():
+    from core.stocks import normalize_stock_ticker
+
+    assert normalize_stock_ticker(" 7203 ") == "7203.T"
+    assert normalize_stock_ticker(" aapl ") == "AAPL"
+    assert normalize_stock_ticker(None) == ""
+
+
+def test_stock_quote_display_ticker_removes_only_japanese_suffix():
+    from core.stocks import StockQuote
+
+    assert StockQuote(ticker="7203.T", price=1.0).display_ticker == "7203"
+    assert StockQuote(ticker="AAPL", price=1.0).display_ticker == "AAPL"
+
+
+def test_safe_stock_quote_rejects_provider_ticker_mismatch():
+    from core.stocks import StockQuote, safe_stock_quote
+
+    class MismatchedProvider:
+        def get_quote(self, ticker: str):
+            assert ticker == "7203.T"
+            return StockQuote(ticker="AAPL", price=1.0)
+
+    assert safe_stock_quote(MismatchedProvider(), "7203") is None
