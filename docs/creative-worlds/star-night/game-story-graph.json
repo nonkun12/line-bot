@@ -319,6 +319,8 @@
     "episode 2 timeline and audiovisual sync",
     "episode 3 route-dependent clue continuity",
     "episode 3 branch balance",
-    "three-episode Lumina resource ledger"
-  ]
+    "Lumina resource baseline confirmation before gameplay execution"
+  ],
+  "adaptation_boundary_ref": "docs/creative-worlds/star-night/adaptation-boundary.json",
+  "lumina_resource_ledger_ref": "docs/creative-worlds/star-night/lumina-resource-ledger.json"
 }
