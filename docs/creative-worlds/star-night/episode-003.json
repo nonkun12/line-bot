@@ -1,1 +1,167 @@
-"# 第3話「水路に残る星の声」制作シナリオ v1\n\n- 状態: 完成候補（独立Critic・映像音声レビュー待ち）\n- 作品ID: STAR-NIGHT\n- エピソードID: SN-E003\n- 尺: 約30秒（5シーン）\n- 前話: SN-E002「旧駅の案内機」\n- 共有世界設定: series-bible.md\n- 主題: 声を聞くことと、その声の意味を決めつけないことは両立できる。\n- 物語上の役割: ミナが覚えている「空から呼ぶ声」を再提示し、星脈が記憶だけでなく、街の水と光の流れにも関係する可能性を示す。\n\n## ログライン\n\n旧駅の地図から消えた光を追い、ノアとミナは地下水路へ降りる。第2話で選んだ道に応じて、ノアは記録・水流・修理痕のいずれかから異なる手掛かりを得る。水路の奥で、ミナは星脈停止の前に聞いた「空から呼ぶ声」を思い出す。声はノアの胸のランプに反応するが、誰の声か、何を求めているのかは分からない。二人は声をどう扱うか選ぶ。\n\n## 固定表現・連続性\n\n- ノアは発話しない。感情は視線・手・姿勢・胸部ランプで表す。\n- ミナは現実的で口数が少ない。過去の声について、知っている以上の説明をしない。\n- オルドの記録は欠損した資料であり、声の正体を説明する権威として使わない。\n- ルミナは万能電源ではない。第2話で選んだ用途の結果を保持し、第3話で都合よく全回復させない。\n- 星喰いの正体・意思・起源は確定しない。\n- 第2話の分岐結果は消さず、第3話の手掛かりの違いとして反映する。\n\n## シーン構成\n\n### SC01 — 地図の下へ（0–5秒）\n- 映像: 旧駅の路線図。消えた光の位置から、地下水路へ細い点滅が一度だけ走る。\n- 動作: ノアが地図を見上げ、ミナが携帯ランタンを持って階段の扉を開く。\n- カメラ: 地図の俯瞰から、暗い階段を降りる二人の後ろ姿へティルトダウン。\n- 音: 雨音が遠のき、水滴と低い水流音へ移る。MOTIF_STARは低音の3音だけで提示。\n- ゲーム接続: LOC_UNDERGROUND_WATERWAY の入口を発見。第2話の選択履歴を読み込む。\n\n### SC02 — 選んだ道の手掛かり（5–11秒）\n第2話の選択に応じて、同じ場所・同じ人物デザインのまま短い差分を再生する。\n\n- CHOICE_E002_MEMORY（記憶保管庫）: 古い記録端末から、時刻だけが残った波形が水路の地図に重なる。手掛かりIDは CLUE_E003_ARCHIVE_PULSE。消灯直前に地下から上向き信号が一度送られたことだけを示す。\n- CHOICE_E002_LIGHTS（駅の灯り）: 足元灯の反射が水面に揺れ、一定間隔で水流が逆向きに動く。手掛かりIDは CLUE_E003_REVERSE_CURRENT。水路の流れが通常の排水方向とは異なる順序で変化したことを示す。\n- CHOICE_E002_TRUST（ミナとの協力）: ミナが工房で直した携帯計測器を水面に近づけ、古い中継器の振動を検出する。手掛かりIDは CLUE_E003_RELAY_TRACE。停止後も中継器が一度だけ動いた形跡を示す。\n- 音: どの差分も同じMOTIF_STARを使い、音色だけを変える。差分で新しい歴史的事実を断定しない。\n- ゲーム接続: 手掛かりIDを追記専用ログに追加する。第2話の選択履歴は変更しない。\n\n### SC03 — 空から呼ぶ声（11–17秒）\n- 映像: 水路の天井に星明かりのような反射が揺れる。ミナが足を止め、遠くを聞くように顔を上げる。\n- 台詞（ミナ）: 「星脈が止まる前……空から、誰かに呼ばれた気がした。」\n- 台詞（ミナ・続き）: 「でも、声だったのか、機械の音だったのかも分からない。」\n- 動作: ノアの胸のランプが一度だけ反応する。ミナはノアを見るが、答えを求めない。\n- カメラ: 水面の反射からミナの横顔、ノアのランプへゆっくりフォーカスを移す。\n- 音: 人の声とも機械音とも断定できない短い倍音を一度だけ鳴らす。言葉として聞き取れる音声は入れない。\n- ゲーム接続: EVENT_SKY_CALL_MEMORY_001 を未確定の証言として記録する。\n\n### SC04 — 声をどう残すか（17–24秒）\n- 映像: 水路の奥に、停止した中継器と三つの操作部が見える。ノアがミナを見る。ミナは選択を急がせない。\n- 共通台詞（ミナ）: 「聞こえたものを、どう残すかはあなたが決めて。」\n- 選択A CHOICE_E003_RECORD — 声の断片を記録する: ノアがオルドの携帯記録端末へ波形を保存。noa_memory +1、LOC_WATERWAY_ARCHIVE_GATE を解放。代償は発信元の方向が分からないこと。\n- 選択B CHOICE_E003_TRACE — 信号の流れを追う: ノアが水路の流量計を起動し、反応した方向へ小さな灯りを送る。city_lights +1、LOC_WATERWAY_PUMP_ROOM を解放。代償は声の記録が残らないこと。\n- 選択C CHOICE_E003_SHARE — ミナと一緒に確かめる: ノアが記録端末をミナへ渡し、二人で同じ波形を聞く。trust_mina +1、LOC_WATERWAY_RELAY_ALCOVE を解放。代償は波形の一部が失われること。\n- ゲーム接続: 3選択は排他的。選択IDと手掛かりIDを追記し、過去の状態は減算・削除しない。\n\n### SC05 — 水面の向こう（24–30秒）\n- 映像: どの選択でも、水面の反射が一瞬だけ星空のように並ぶ。水路の奥に小さな光が一つ現れ、すぐに遮られる。\n- 台詞（オルドの記録音声）: 「上り信号を検出。発信元……照合不能。」\n- 台詞（ミナ）: 「今度は、聞き間違いじゃない。」\n- 動作: ノアは水路の奥へ一歩進み、ミナは携帯ランタンを少し下げて道を照らす。\n- カメラ: 水面の星形反射から、二人の後ろ姿へ静かに引く。光の正体は見せない。\n- 音: MOTIF_STARの3音に未解決の高音を重ねて止め、水音だけを残す。\n- ゲーム接続: EVENT_UPLINK_UNRESOLVED_001 を追加。信号の発信元・声の主・星喰いとの関係は未確定のままにする。\n\n## 分岐・状態仕様\n\n| 選択ID | 更新 | 解放地点 | 失われる情報 |\n|---|---|---|---|\n| CHOICE_E003_RECORD | noa_memory +1 | LOC_WATERWAY_ARCHIVE_GATE | 発信元の方向 |\n| CHOICE_E003_TRACE | city_lights +1 | LOC_WATERWAY_PUMP_ROOM | 声の記録 |\n| CHOICE_E003_SHARE | trust_mina +1 | LOC_WATERWAY_RELAY_ALCOVE | 波形の一部 |\n\n- choice_history と discovered_locations は追記専用。\n- 第2話と第3話の選択IDは別であり、前話の履歴を保持する。\n- 既存状態を減算・削除しない。代償は今回残せない情報として扱う。\n- ミナの「空から呼ぶ声」は本人の記憶であり、正体の確定情報ではない。\n- 上り信号を星喰いの発信と断定しない。\n\n## 次話への引き\n\n第3話で選んだ地点に応じて、次話は記録保管庫のゲート、ポンプ室、旧中継器のいずれかから始まる。3つの道はやがて屋上の星脈観測設備へつながるが、そこで見つかるのは答えではなく、星脈が街の外からも信号を受け取っていた可能性を示す記録である。\n\n## 制作・品質チェック\n\n- [ ] 第2話の選択履歴を保持し、SC02の差分が正しく選ばれる\n- [ ] ノアは発話せず、ミナは知っている以上のことを語らない\n- [ ] 星喰い・声の主・信号発信元を特定しない\n- [ ] 5シーン合計30秒でタイムラインが連続\n- [ ] 3分岐は排他的で、各代償が異なる\n- [ ] 既存状態を減算・削除しない\n- [ ] 第1話のMOTIF_STARを一貫して変奏する\n- [ ] 映像・音楽・ゲームでscene_id / choice_id / event_idを共有する\n- [ ] 独立Criticと人間承認前に正史へ反映しない\n"
+{
+  "schema_version": "star-night-episode.v1",
+  "project_id": "STAR-NIGHT",
+  "episode_id": "SN-E003",
+  "title": "水路に残る星の声",
+  "status": "candidate_for_independent_review",
+  "duration_seconds": 30,
+  "scene_order": [
+    "SC01",
+    "SC02",
+    "SC03",
+    "SC04",
+    "SC05"
+  ],
+  "characters": [
+    "CHAR_NOA",
+    "CHAR_MINA",
+    "CHAR_OLDO"
+  ],
+  "locations": [
+    "LOC_OLD_STATION",
+    "LOC_UNDERGROUND_WATERWAY",
+    "LOC_WATERWAY_ARCHIVE_GATE",
+    "LOC_WATERWAY_PUMP_ROOM",
+    "LOC_WATERWAY_RELAY_ALCOVE"
+  ],
+  "scenes": [
+    {
+      "id": "SC01",
+      "start": 0,
+      "duration": 5,
+      "title": "地図の下へ",
+      "location": "LOC_UNDERGROUND_WATERWAY",
+      "beats": [
+        "消えた光の位置から地下へ点滅が走る",
+        "ノアとミナが水路へ降りる"
+      ],
+      "music": "MOTIF_STAR low three-note motif"
+    },
+    {
+      "id": "SC02",
+      "start": 5,
+      "duration": 6,
+      "title": "選んだ道の手掛かり",
+      "conditional_on": "episode_002_choice",
+      "variants": [
+        {
+          "when": "CHOICE_E002_MEMORY",
+          "clue_id": "CLUE_E003_ARCHIVE_PULSE",
+          "evidence": "古い記録端末に残る時刻付き上向き波形"
+        },
+        {
+          "when": "CHOICE_E002_LIGHTS",
+          "clue_id": "CLUE_E003_REVERSE_CURRENT",
+          "evidence": "足元灯の反射に同期する逆向きの水流"
+        },
+        {
+          "when": "CHOICE_E002_TRUST",
+          "clue_id": "CLUE_E003_RELAY_TRACE",
+          "evidence": "ミナの修理した計測器が検出する中継器の振動"
+        }
+      ]
+    },
+    {
+      "id": "SC03",
+      "start": 11,
+      "duration": 6,
+      "title": "空から呼ぶ声",
+      "dialogue": [
+        {
+          "character": "CHAR_MINA",
+          "text": "星脈が止まる前……空から、誰かに呼ばれた気がした。"
+        },
+        {
+          "character": "CHAR_MINA",
+          "text": "でも、声だったのか、機械の音だったのかも分からない。"
+        }
+      ],
+      "event_id": "EVENT_SKY_CALL_MEMORY_001",
+      "canon_constraint": "Mina's memory is testimony, not proof."
+    },
+    {
+      "id": "SC04",
+      "start": 17,
+      "duration": 7,
+      "title": "声をどう残すか",
+      "choice_id": "CHOICE_E003",
+      "exclusive": true,
+      "choices": [
+        {
+          "id": "CHOICE_E003_RECORD",
+          "label": "声の断片を記録する",
+          "effect": {
+            "noa_memory": 1
+          },
+          "unlock": "LOC_WATERWAY_ARCHIVE_GATE",
+          "cost": "発信元の方向は分からない"
+        },
+        {
+          "id": "CHOICE_E003_TRACE",
+          "label": "信号の流れを追う",
+          "effect": {
+            "city_lights": 1
+          },
+          "unlock": "LOC_WATERWAY_PUMP_ROOM",
+          "cost": "声の記録は残らない"
+        },
+        {
+          "id": "CHOICE_E003_SHARE",
+          "label": "ミナと一緒に確かめる",
+          "effect": {
+            "trust_mina": 1
+          },
+          "unlock": "LOC_WATERWAY_RELAY_ALCOVE",
+          "cost": "波形の一部が失われる"
+        }
+      ]
+    },
+    {
+      "id": "SC05",
+      "start": 24,
+      "duration": 6,
+      "title": "水面の向こう",
+      "event_id": "EVENT_UPLINK_UNRESOLVED_001",
+      "dialogue": [
+        {
+          "character": "CHAR_OLDO",
+          "text": "上り信号を検出。発信元……照合不能。"
+        },
+        {
+          "character": "CHAR_MINA",
+          "text": "今度は、聞き間違いじゃない。"
+        }
+      ],
+      "canon_constraints": [
+        "Do not identify the Star Eater",
+        "Do not identify the voice or signal source"
+      ]
+    }
+  ],
+  "initial_state_keys": [
+    "trust_mina",
+    "city_lights",
+    "noa_memory",
+    "discovered_locations",
+    "choice_history",
+    "lumina_fragments"
+  ],
+  "invariants": [
+    "episode 2 choice history is preserved",
+    "episode 3 branch is exclusive and appends one choice",
+    "no state is decremented or deleted",
+    "episode 2 route selects exactly one episode 3 clue variant",
+    "Mina's sky-call memory is not objective proof",
+    "signal source and Star Eater remain unidentified"
+  ],
+  "review_gates": [
+    "episode_1_to_3_continuity",
+    "character_motivation",
+    "branch_state_validity",
+    "timeline_contiguous",
+    "motif_continuity",
+    "canon_protection"
+  ],
+  "publication_authorized": false,
+  "canon_update_authorized": false
+}
