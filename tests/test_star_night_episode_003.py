@@ -33,7 +33,8 @@ def test_three_episode_critic_does_not_claim_independent_execution_or_pass():
     assert critic["independent_agent_execution"] is False
     assert critic["canon_change"] is False
     assert critic["publication_authorized"] is False
-    assert {f["id"] for f in critic["findings"] if f["severity"] == "HOLD"} == {"CONT-004", "CONT-005"}
+    assert {f["id"] for f in critic["findings"] if f["severity"] == "HOLD"} == {"CONT-005"}
+    assert {f["id"] for f in critic["findings"] if f["severity"] == "PASS"} == {"CONT-004"}
 
 def test_project_registers_episode_003():
     project = load("project.json")
