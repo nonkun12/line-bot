@@ -75,8 +75,10 @@ def test_existing_output_is_never_overwritten(tmp_path):
 
 def test_cloud_animatic_renders_video_and_includes_music(tmp_path):
     import shutil
-    if not shutil.which("ffmpeg"):
-        pytest.skip("ffmpeg is not installed")
+    import subprocess
+
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        pytest.skip("ffmpeg and ffprobe are required")
     pytest.importorskip("PIL")
     out = tmp_path / "candidate"
     result = build_candidate(out, render_animatic=True)
@@ -84,9 +86,27 @@ def test_cloud_animatic_renders_video_and_includes_music(tmp_path):
     assert video.is_file()
     assert video.stat().st_size > 10_000
     manifest = json.loads((out / "manifest.json").read_text())
-    assert manifest["video_render_status"] == "animatic_rendered"
+    assert manifest["video_render_status"] == "motion_animatic_rendered"
+    assert manifest["motion_profile"]["camera"] == "per-shot slow pan and 4.5% zoom"
+    assert manifest["motion_profile"]["fps"] == 24
+    assert manifest["motion_profile"]["character_animation"] is False
     assert "star-night-episode-01-animatic.mp4" in manifest["sha256"]
     assert result["video"] == str(video)
+
+    probe = subprocess.run(
+        [
+            shutil.which("ffprobe"), "-v", "error", "-show_streams",
+            "-show_format", "-of", "json", str(video),
+        ],
+        check=True, capture_output=True, text=True,
+    )
+    metadata = json.loads(probe.stdout)
+    video_stream = next(stream for stream in metadata["streams"] if stream["codec_type"] == "video")
+    audio_stream = next(stream for stream in metadata["streams"] if stream["codec_type"] == "audio")
+    assert (video_stream["width"], video_stream["height"]) == (1280, 720)
+    assert video_stream["avg_frame_rate"] == "24/1"
+    assert audio_stream["codec_name"] == "aac"
+    assert 14.9 <= float(metadata["format"]["duration"]) <= 15.1
 
 
 def test_critic_fails_when_structural_check_fails(tmp_path, monkeypatch):
