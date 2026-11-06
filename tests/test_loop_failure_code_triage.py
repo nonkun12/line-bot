@@ -8,7 +8,7 @@ from core.loop_failure_codes import (
     failure_code_category,
     is_safe_failure_code,
 )
-from scripts.recovery_ai_loop_adapter import _category
+from scripts.recovery_ai_loop_adapter import _category, record_loop_outcome
 from scripts.recovery_ai import RecoveryStore
 
 
@@ -149,3 +149,34 @@ def test_legacy_hold_category_is_never_inferred_from_last_category(tmp_path):
     decision = store.record_failure("legacy", "unknown")
     assert decision.action == "HOLD"
     assert store.task_status("legacy")["hold_category"] == "legacy_hold_category_unavailable"
+
+
+def test_explicit_provider_invalid_request_flows_to_recovery_hold_without_retry(tmp_path):
+    diagnostic = (
+        "append_only_test_generation_failed:BadRequestError:"
+        "status=400:code=invalid_request:param=max_tokens"
+    )
+    failure_code = extract_safe_failure_code(diagnostic)
+    result = {
+        "task_id": "provider-invalid-request",
+        "status": "FAIL",
+        "failure_reason": "task_runtime_failed",
+        "failure_code": failure_code,
+    }
+
+    assert failure_code == "provider_request_invalid"
+    assert _category(result) == "provider_error"
+
+    outcome = record_loop_outcome(
+        tmp_path / "recovery.json",
+        result,
+        transient_attempt=1,
+    )
+    decision = outcome["decision"]
+
+    assert outcome["recorded"] is True
+    assert decision["action"] == "HOLD"
+    assert decision["reason"] == "non_repairable_failure"
+    assert decision["requires_human"] is True
+    assert decision["retry_after_seconds"] == 0
+    assert result["status"] == "FAIL"
