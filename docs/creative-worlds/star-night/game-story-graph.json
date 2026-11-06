@@ -61,21 +61,112 @@
     },
     {
       "id": "SN_E002_MEMORY",
-      "type": "story_hook",
+      "type": "branch_entry",
       "episode_id": "SN-E002",
-      "description": "ノアの記憶の断片が先に戻る。街の復旧は遅れる。"
+      "description": "ノアの記憶の断片が先に戻る。街の復旧は遅れる。",
+      "next": "SN_E002_SC01"
     },
     {
       "id": "SN_E002_STATION",
-      "type": "story_hook",
+      "type": "branch_entry",
       "episode_id": "SN-E002",
-      "description": "旧駅前の灯りが戻り、オルドの案内記録へアクセスできる。"
+      "description": "旧駅前の灯りが戻り、オルドの案内記録へアクセスできる。",
+      "next": "SN_E002_SC01"
     },
     {
       "id": "SN_E002_WORKSHOP",
-      "type": "story_hook",
+      "type": "branch_entry",
       "episode_id": "SN-E002",
-      "description": "ミナとの信頼が深まり、工房でルミナの安全な使い方を調べる。"
+      "description": "ミナとの信頼が深まり、工房でルミナの安全な使い方を調べる。",
+      "next": "SN_E002_SC01"
+    },
+    {
+      "id": "SN_E002_SC01",
+      "type": "scene",
+      "episode_id": "SN-E002",
+      "scene_id": "SC01",
+      "next": "SN_E002_SC02"
+    },
+    {
+      "id": "SN_E002_SC02",
+      "type": "scene",
+      "episode_id": "SN-E002",
+      "scene_id": "SC02",
+      "next": "SN_E002_SC03"
+    },
+    {
+      "id": "SN_E002_SC03",
+      "type": "scene",
+      "episode_id": "SN-E002",
+      "scene_id": "SC03",
+      "next": "SN_E002_SC04"
+    },
+    {
+      "id": "SN_E002_SC04",
+      "type": "choice",
+      "episode_id": "SN-E002",
+      "scene_id": "SC04",
+      "choice_id": "CHOICE_E002",
+      "prompt": "残存出力を何に使う？",
+      "options": [
+        {
+          "id": "CHOICE_E002_MEMORY",
+          "label": "自分の記憶をたどる",
+          "effects": {
+            "noa_memory": 1
+          },
+          "unlock": "LOC_STATION_ARCHIVE",
+          "next": "SN_E002_MEMORY_OUTCOME"
+        },
+        {
+          "id": "CHOICE_E002_LIGHTS",
+          "label": "駅の灯りを戻す",
+          "effects": {
+            "city_lights": 1
+          },
+          "unlock": "LOC_STATION_TUNNEL",
+          "next": "SN_E002_LIGHTS_OUTCOME"
+        },
+        {
+          "id": "CHOICE_E002_TRUST",
+          "label": "ミナと一緒に調べる",
+          "effects": {
+            "trust_mina": 1
+          },
+          "unlock": "LOC_STATION_WORKSHOP",
+          "next": "SN_E002_TRUST_OUTCOME"
+        }
+      ]
+    },
+    {
+      "id": "SN_E002_MEMORY_OUTCOME",
+      "type": "branch_outcome",
+      "episode_id": "SN-E002",
+      "next": "SN_E002_SC05",
+      "description": "記録保管庫でノアの製作者らしき手の断片映像を得る。人物の正体は不明。"
+    },
+    {
+      "id": "SN_E002_LIGHTS_OUTCOME",
+      "type": "branch_outcome",
+      "episode_id": "SN-E002",
+      "next": "SN_E002_SC05",
+      "description": "駅の足元灯が戻り、地下通路の入口が開く。"
+    },
+    {
+      "id": "SN_E002_TRUST_OUTCOME",
+      "type": "branch_outcome",
+      "episode_id": "SN-E002",
+      "next": "SN_E002_SC05",
+      "description": "ミナが手動回路を安定させ、整備区画の記録を利用できる。"
+    },
+    {
+      "id": "SN_E002_SC05",
+      "type": "scene",
+      "episode_id": "SN-E002",
+      "scene_id": "SC05",
+      "event_id": "EVENT_UNKNOWN_BLACKOUT_001",
+      "description": "地図の遠い区画の光が消える。原因と星喰いの正体は未確定。",
+      "terminal": true
     }
   ],
   "invariants": [
@@ -83,12 +174,19 @@
     "state values remain within documented bounds",
     "all next references resolve to existing node IDs",
     "no choice silently deletes previously discovered locations or collected fragments",
-    "branch outcomes must preserve the established series bible"
+    "branch outcomes must preserve the established series bible",
+    "episode 2 branch choice is exclusive and appends exactly one choice_history entry",
+    "episode 2 branch effects do not decrement any existing state",
+    "episode 2 branch outcomes converge at SN_E002_SC05",
+    "EVENT_UNKNOWN_BLACKOUT_001 does not identify the Star Eater"
   ],
   "review_required": [
     "branch reachability",
     "state transition validity",
     "character continuity",
-    "future episode compatibility"
+    "future episode compatibility",
+    "episode 2 screenplay continuity",
+    "episode 2 branch balance",
+    "episode 2 timeline and audiovisual sync"
   ]
 }
