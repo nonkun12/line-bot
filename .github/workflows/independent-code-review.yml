@@ -1,0 +1,72 @@
+name: Independent Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact workflow ref
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Inspect changed files
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            git fetch origin "${{ github.event.pull_request.base.sha }}"
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="$(git rev-parse HEAD^)"
+          fi
+          git diff --check "$BASE...HEAD"
+          git diff --name-only "$BASE...HEAD" > /tmp/changed-files.txt
+          cat /tmp/changed-files.txt
+          if [ ! -s /tmp/changed-files.txt ]; then
+            echo "No changed files to review."
+          fi
+
+      - name: Run independent static review
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib
+          import re
+          import subprocess
+          import sys
+
+          changed = [line.strip() for line in pathlib.Path("/tmp/changed-files.txt").read_text().splitlines() if line.strip()]
+          forbidden = re.compile(r"(?:ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-[A-Za-z0-9]{24,})")
+          failures = []
+          for name in changed:
+              path = pathlib.Path(name)
+              if not path.is_file():
+                  continue
+              data = path.read_text(encoding="utf-8", errors="replace")
+              if forbidden.search(data):
+                  failures.append(f"possible credential in {name}")
+              if path.suffix == ".py":
+                  try:
+                      compile(data, name, "exec")
+                  except SyntaxError as exc:
+                      failures.append(f"Python syntax error in {name}:{exc.lineno}")
+          if failures:
+              print("\n".join(failures), file=sys.stderr)
+              raise SystemExit(1)
+          print(f"Independent static review passed for {len(changed)} changed paths.")
+          PY

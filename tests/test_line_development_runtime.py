@@ -1468,3 +1468,98 @@ def test_new_refill_cli_tasks_use_bounded_deterministic_plans(monkeypatch, tmp_p
         assert expected_name in candidate
         assert expected_marker in candidate
         assert runtime.worker.validate_plan(plan, chosen) == (True, chosen)
+
+
+import pytest
+
+
+@pytest.mark.parametrize(
+    "paths",
+    [
+        [],
+        ["../secrets.env"],
+        ["/etc/passwd"],
+        [".github/workflows/deploy.yml"],
+        ["core/../secrets.py"],
+        ["core\\\\private.py"],
+        ["unknown/private.py"],
+        ["core/private.py", "core/private.py"],
+    ],
+)
+def test_goal_allowed_paths_reject_unsafe_or_ambiguous_paths(paths):
+    with pytest.raises(ValueError):
+        runtime._validate_goal_allowed_paths(paths)
+
+
+def test_goal_allowed_paths_accepts_only_exact_supported_repository_paths():
+    assert runtime._validate_goal_allowed_paths(
+        ["core/line_development_runtime.py", "tests/test_line_development_runtime.py"]
+    ) == (
+        "core/line_development_runtime.py",
+        "tests/test_line_development_runtime.py",
+    )
+
+
+def test_goal_scoped_manager_selects_only_from_granted_paths(monkeypatch):
+    granted = "tests/test_line_development_runtime.py"
+    ungranted = "core/line_development_runtime.py"
+    monkeypatch.setattr(runtime.worker, "repo_files", lambda: [ungranted, granted])
+
+    def choose_file(client, instruction, files):
+        assert files == [granted]
+        return files[0]
+
+    monkeypatch.setattr(runtime.worker, "choose_file", choose_file)
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Improve the runtime",
+        allowed_paths=(granted,),
+    )
+    result = runtime.DevelopmentExecutor(state).execute(
+        AgentTask("manager", AgentRole.MANAGER, "Select a safe target.")
+    )
+
+    assert result.success is True
+    assert state.chosen == granted
+
+
+def test_goal_scoped_manager_blocks_when_granted_paths_are_not_in_repository(monkeypatch):
+    monkeypatch.setattr(runtime.worker, "repo_files", lambda: ["core/line_development_runtime.py"])
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Improve the runtime",
+        allowed_paths=("tests/test_line_development_runtime.py",),
+    )
+    result = runtime.DevelopmentExecutor(state).execute(
+        AgentTask("manager", AgentRole.MANAGER, "Select a safe target.")
+    )
+
+    assert result.success is False
+    assert "inside the Goal grant" in result.summary
+
+
+def test_goal_allowed_paths_accepts_directory_prefixes():
+    assert runtime._validate_goal_allowed_paths(["core/", "tests/"]) == ("core/", "tests/")
+
+
+def test_goal_scoped_manager_selects_from_directory_grant(monkeypatch):
+    granted = "tests/test_line_development_runtime.py"
+    ungranted = "core/line_development_runtime.py"
+    monkeypatch.setattr(runtime.worker, "repo_files", lambda: [ungranted, granted])
+
+    def choose_file(client, instruction, files):
+        assert files == [granted]
+        return files[0]
+
+    monkeypatch.setattr(runtime.worker, "choose_file", choose_file)
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Improve tests",
+        allowed_paths=("tests/",),
+    )
+    result = runtime.DevelopmentExecutor(state).execute(
+        AgentTask("manager", AgentRole.MANAGER, "Select a safe target.")
+    )
+
+    assert result.success is True
+    assert state.chosen == granted

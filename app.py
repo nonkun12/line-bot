@@ -70,6 +70,7 @@ from bot_tools import (
 
 from debug_agent import run_debug_agent
 from internal_ask_route import register_internal_ask_route
+from internal_goal_job_routes import register_goal_job_routes
 from n8n_delegate import _delegate_to_n8n
 from e2e_status import init_e2e_table, record_step, StepTimer
 from core.channel import handle_channel_request
@@ -241,6 +242,8 @@ def _line_push(user_id, text):
 print("===== APP VERSION CHECK =====")
 print("search_notes enabled")
 init_db()
+from goal_job_store import init_goal_job_store
+init_goal_job_store()
 init_e2e_table()
 
 
@@ -474,6 +477,7 @@ def _gateway_reply(user_id, message):
 
 
 register_internal_ask_route(app, INTERNAL_PUSH_KEY, _gateway_reply)
+register_goal_job_routes(app, INTERNAL_PUSH_KEY)
 register_slack_command(app)
 
 

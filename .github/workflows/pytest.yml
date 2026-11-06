@@ -1,6 +1,7 @@
 name: Pytest
 
 on:
+  workflow_dispatch:
   # Run the full test suite for code changes on development branches too,
   # not only after a PR is opened or changes reach main.
   push:

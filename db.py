@@ -224,8 +224,10 @@ def has_pending_job_by_type(job_type: str) -> bool:
 def claim_pending_job():
     """最古のpending Jobを1件だけrunningへ移す。SQLite向けの最小claim実装。"""
     with get_conn() as conn:
+        # Goal child jobs have a dedicated typed executor. Keep them out of
+        # this legacy generic worker so they cannot be dry-run completed.
         row = conn.execute(
-            "SELECT id FROM jobs WHERE status='pending' ORDER BY id LIMIT 1"
+            "SELECT id FROM jobs WHERE status='pending' AND job_type != 'goal_child' ORDER BY id LIMIT 1"
         ).fetchone()
         if row is None:
             return None
@@ -234,7 +236,7 @@ def claim_pending_job():
             """
             UPDATE jobs
             SET status='running', updated_at=CURRENT_TIMESTAMP
-            WHERE id=? AND status='pending'
+            WHERE id=? AND status='pending' AND job_type != 'goal_child'
             """,
             (job_id,),
         )
@@ -311,6 +313,23 @@ def claim_pending_job_by_type(job_type, *, stale_after_seconds=900):
             WHERE id=? AND job_type=? AND status='pending'
             """,
             (token, job_id, job_type.strip()),
+        )
+        if cursor.rowcount != 1:
+            return None
+    return get_job(job_id)
+
+
+
+def claim_goal_child_job(job_id):
+    """Atomically claim one exact pending Goal child for its typed executor."""
+    if not _is_valid_job_id(job_id):
+        raise ValueError("job_id is invalid")
+    token = secrets.token_urlsafe(32)
+    with get_conn() as conn:
+        cursor = conn.execute(
+            "UPDATE jobs SET status='running',claim_token=?,updated_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND job_type='goal_child' AND status='pending'",
+            (token, job_id),
         )
         if cursor.rowcount != 1:
             return None
