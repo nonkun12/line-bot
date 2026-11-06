@@ -5,7 +5,8 @@
   "status": "active_draft",
   "canon_ref": "docs/creative-worlds/star-night/series-bible.md",
   "episode_refs": [
-    "docs/creative-worlds/star-night/episode-001.md"
+    "docs/creative-worlds/star-night/episode-001.md",
+    "docs/creative-worlds/star-night/episode-002.md"
   ],
   "story_graph_ref": "docs/creative-worlds/star-night/game-story-graph.json",
   "hourly_policy_ref": "docs/creative-worlds/star-night/hourly-cycle.md",
@@ -137,5 +138,13 @@
       "Blender",
       "FFmpeg"
     ]
+  },
+  "episode_data_refs": [
+    "docs/creative-worlds/star-night/episode-002.json"
+  ],
+  "production_status": {
+    "episode_001": "candidate",
+    "episode_002": "candidate_for_independent_review",
+    "canon_update_requires_human_approval": true
   }
 }

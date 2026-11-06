@@ -1,0 +1,168 @@
+{
+  "schema_version": "star-night-episode.v1",
+  "project_id": "STAR-NIGHT",
+  "episode_id": "SN-E002",
+  "title": "旧駅の案内機",
+  "status": "candidate_for_independent_review",
+  "duration_seconds": 27,
+  "scene_order": [
+    "SC01",
+    "SC02",
+    "SC03",
+    "SC04",
+    "SC05"
+  ],
+  "characters": [
+    "CHAR_NOA",
+    "CHAR_MINA",
+    "CHAR_OLDO"
+  ],
+  "locations": [
+    "LOC_OLD_STATION",
+    "LOC_STATION_ARCHIVE",
+    "LOC_STATION_TUNNEL",
+    "LOC_STATION_WORKSHOP"
+  ],
+  "scenes": [
+    {
+      "id": "SC01",
+      "start": 0,
+      "duration": 4,
+      "title": "路線図の先",
+      "location": "LOC_OLD_STATION",
+      "beats": [
+        "胸のランプに途切れた路線図",
+        "ノアが旧駅入口で立ち止まる"
+      ],
+      "music": "MOTIF_STAR piano, final note missing"
+    },
+    {
+      "id": "SC02",
+      "start": 4,
+      "duration": 5,
+      "title": "待っていた整備士",
+      "location": "LOC_OLD_STATION",
+      "beats": [
+        "ミナが携帯ランタンを持って現れる",
+        "ルミナの使い道を先に決めるよう促す"
+      ],
+      "dialogue": [
+        {
+          "character": "CHAR_MINA",
+          "text": "その光……駅の中で使うなら、先に何を起こすか決めて。"
+        }
+      ]
+    },
+    {
+      "id": "SC03",
+      "start": 9,
+      "duration": 6,
+      "title": "案内機オルド",
+      "location": "LOC_OLD_STATION",
+      "beats": [
+        "オルドが起動",
+        "欠損した路線図に3区画が示される"
+      ],
+      "dialogue": [
+        {
+          "character": "CHAR_OLDO",
+          "text": "ご利用ありがとうございます。星脈停止記録を……照合中。記録の欠損を確認しました。"
+        },
+        {
+          "character": "CHAR_MINA",
+          "text": "全部を信じないで。オルドの記録は、いつも途中で切れてる。"
+        }
+      ]
+    },
+    {
+      "id": "SC04",
+      "start": 15,
+      "duration": 7,
+      "title": "ルミナの使い道",
+      "location": "LOC_OLD_STATION",
+      "choice_id": "CHOICE_E002",
+      "exclusive": true,
+      "choices": [
+        {
+          "id": "CHOICE_E002_MEMORY",
+          "label": "自分の記憶をたどる",
+          "effect": {
+            "noa_memory": 1
+          },
+          "unlock": "LOC_STATION_ARCHIVE",
+          "cost": "駅の非常灯は復旧しない"
+        },
+        {
+          "id": "CHOICE_E002_LIGHTS",
+          "label": "駅の灯りを戻す",
+          "effect": {
+            "city_lights": 1
+          },
+          "unlock": "LOC_STATION_TUNNEL",
+          "cost": "記憶保管庫は起動しない"
+        },
+        {
+          "id": "CHOICE_E002_TRUST",
+          "label": "ミナと一緒に調べる",
+          "effect": {
+            "trust_mina": 1
+          },
+          "unlock": "LOC_STATION_WORKSHOP",
+          "cost": "記憶保管庫と非常灯は完全復旧しない"
+        }
+      ]
+    },
+    {
+      "id": "SC05",
+      "start": 22,
+      "duration": 5,
+      "title": "消えた一つの光",
+      "location": "LOC_OLD_STATION",
+      "event_id": "EVENT_UNKNOWN_BLACKOUT_001",
+      "beats": [
+        "地図の遠い区画の光が消える",
+        "原因不明の影を一瞬だけ見せる",
+        "ノアとミナが並んで地図を見る"
+      ],
+      "dialogue": [
+        {
+          "character": "CHAR_OLDO",
+          "text": "警告。記録にない停電を検出。原因は……判定できません。"
+        },
+        {
+          "character": "CHAR_MINA",
+          "text": "今の、駅の故障じゃない。"
+        }
+      ],
+      "canon_constraints": [
+        "星喰いの正体を断定しない",
+        "オルドの記録を確定事実にしない"
+      ]
+    }
+  ],
+  "initial_state_keys": [
+    "trust_mina",
+    "city_lights",
+    "noa_memory",
+    "discovered_locations",
+    "choice_history"
+  ],
+  "invariants": [
+    "choice_history is append-only",
+    "choice effects are mutually exclusive for this episode",
+    "no existing state is decremented",
+    "all unlocked locations are declared",
+    "unknown blackout does not identify the Star Eater"
+  ],
+  "review_gates": [
+    "story_continuity",
+    "character_motivation",
+    "branch_balance",
+    "state_transition_validity",
+    "timeline_contiguous",
+    "music_motif_continuity",
+    "canon_protection"
+  ],
+  "publication_authorized": false,
+  "canon_update_authorized": false
+}
