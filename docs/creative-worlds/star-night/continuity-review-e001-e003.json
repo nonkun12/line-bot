@@ -1,0 +1,89 @@
+{
+  "schema_version": "star-night-continuity-review.v1",
+  "project_id": "STAR-NIGHT",
+  "reviewed_episodes": [
+    "SN-E001",
+    "SN-E002",
+    "SN-E003"
+  ],
+  "review_type": "static_cross_episode_critic",
+  "status": "HOLD",
+  "independent_agent_execution": false,
+  "canon_change": false,
+  "publication_authorized": false,
+  "findings": [
+    {
+      "id": "CONT-001",
+      "severity": "PASS",
+      "area": "character",
+      "finding": "Noa remains nonverbal; Mina remains practical and guarded; Oldo's incomplete records are not treated as absolute truth.",
+      "evidence": [
+        "episode-001.md",
+        "episode-002.md",
+        "episode-003.md"
+      ]
+    },
+    {
+      "id": "CONT-002",
+      "severity": "PASS",
+      "area": "motif",
+      "finding": "MOTIF_STAR progresses from a clear three-note upward motif in Episode 1 to an incomplete form in Episode 2 and an ambiguous low signal in Episode 3.",
+      "evidence": [
+        "episode-001.md",
+        "episode-002.md",
+        "episode-003.md"
+      ]
+    },
+    {
+      "id": "CONT-003",
+      "severity": "PASS",
+      "area": "mystery",
+      "finding": "The Star Eater, the sky-call speaker, and the uplink source remain unidentified; testimony and damaged records remain uncertain.",
+      "evidence": [
+        "series-bible.md",
+        "episode-002.md",
+        "episode-003.md"
+      ]
+    },
+    {
+      "id": "CONT-004",
+      "severity": "HOLD",
+      "area": "episode_1_adaptation_boundary",
+      "finding": "Episode 1's short-film screenplay fixes the Lumina outcome as restoring a streetlight, while the draft game graph offers three alternative choices before Episode 2. The project must explicitly distinguish the fixed short-film cut from the interactive adaptation so they are not treated as simultaneous canon events.",
+      "resolution": "Approve an adaptation-boundary note in the series bible/project manifest before canon adoption.",
+      "evidence": [
+        "episode-001.md",
+        "game-story-graph.json"
+      ]
+    },
+    {
+      "id": "CONT-005",
+      "severity": "HOLD",
+      "area": "lumina_resource_ledger",
+      "finding": "Episode 2 refers to one remaining output, but the project does not yet define a machine-readable Lumina charge/resource ledger across episodes. The screenplay is plausible, but gameplay must not infer unlimited re-use.",
+      "resolution": "Define charge accounting and transition rules in the game state schema before gameplay release.",
+      "evidence": [
+        "episode-002.md",
+        "game-story-graph.json",
+        "series-bible.md"
+      ]
+    },
+    {
+      "id": "CONT-006",
+      "severity": "PASS",
+      "area": "branch_state",
+      "finding": "Episode 2 and Episode 3 use distinct choice IDs, preserve append-only choice history, and describe non-destructive state updates.",
+      "evidence": [
+        "episode-002.json",
+        "episode-003.json",
+        "game-story-graph.json"
+      ]
+    }
+  ],
+  "next_gates": [
+    "Resolve CONT-004 and CONT-005",
+    "Run graph reachability and state-transition tests across all three episodes",
+    "Obtain separate story, game, and audiovisual Critic approvals",
+    "Human approval before canon update or publication"
+  ]
+}
