@@ -534,7 +534,7 @@ def test_apply_plan_with_bounded_anchor_repair_retries_non_unique_anchor(monkeyp
 
 def test_anchor_repair_invalid_change_counts_fail_closed_with_diagnostics(monkeypatch, tmp_path):
     target = tmp_path / "app.py"
-    original = "x\\nx\\nexact\\n"
+    original = "x\nx\nexact\n"
     target.write_text(original, encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
 
