@@ -245,10 +245,10 @@ def test_in_progress_run_uses_actual_start_time_after_slot_delay():
     assert run_is_pending_within_grace(run, slot, now)
 
 
-def test_in_progress_run_fails_after_90_minutes_from_actual_start():
+def test_in_progress_run_fails_after_40_minute_job_timeout():
     slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
     now = slot + timedelta(hours=3)
-    started = now - timedelta(minutes=91)
+    started = now - timedelta(minutes=41)
     run = {"status": "in_progress", "run_started_at": started.isoformat()}
     assert not run_is_pending_within_grace(run, slot, now)
 
