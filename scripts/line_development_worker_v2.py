@@ -778,8 +778,9 @@ def apply_plan_with_bounded_anchor_repair(
         return plan, False, detail, touched
 
     repair_plan = plan
+    initial_apply_detail = detail
     size_repair_used = False
-    for _ in range(MAX_APPLY_REPAIR_ATTEMPTS):
+    for repair_attempt in range(MAX_APPLY_REPAIR_ATTEMPTS):
         repair_plan = repair_anchor_plan(
             client,
             instruction,
@@ -801,7 +802,26 @@ def apply_plan_with_bounded_anchor_repair(
             )
             ok, repair_detail = validate_plan(repair_plan, chosen)
         if not ok or repair_detail == "no_change":
-            return repair_plan, False, repair_detail, []
+            if repair_detail == "invalid_change_count":
+                changes = (
+                    repair_plan.get("changes")
+                    if isinstance(repair_plan, dict)
+                    else None
+                )
+                changes_count = (
+                    len(changes) if isinstance(changes, list) else "invalid"
+                )
+                detail = (
+                    "anchor_repair_invalid_change_count: "
+                    f"initial_apply={initial_apply_detail}; "
+                    f"latest_apply={detail}; "
+                    f"repair_attempt={repair_attempt + 1}; "
+                    f"repair_validation={repair_detail}; "
+                    f"changes_count={changes_count}"
+                )
+            else:
+                detail = repair_detail
+            return repair_plan, False, detail, []
         target = ROOT / chosen
         old_value = repair_plan["changes"][0]["old"]
         if target.read_text(encoding="utf-8").count(old_value) != 1:
