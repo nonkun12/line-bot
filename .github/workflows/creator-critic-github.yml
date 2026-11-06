@@ -32,6 +32,7 @@ on:
   schedule:
     # Hourly independent Creator-Critic review; offset from the main loop.
     - cron: "37 * * * *"
+      timezone: "Asia/Tokyo"
 
 permissions:
   contents: read
