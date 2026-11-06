@@ -17,8 +17,10 @@ from agents.sheets.autonomous_ledger import (
 from agents.sheets.client import GoogleSheetsClient
 
 JST = ZoneInfo("Asia/Tokyo")
-SLOT_HOURS = (4, 10, 16, 22)
-SLOT_MINUTE = 30
+SLOT_MINUTE = 17
+SLOT_CHECK_DELAY_MINUTES = 115
+SLOT_DISCOVERY_WINDOW_MINUTES = 50
+MAX_RUN_RUNTIME_MINUTES = 60
 INVALID_TASK_IDS = {"", "NOT_RUN", "QUEUE_EMPTY", "QUEUE_EXHAUSTED_NO_TASKS"}
 
 
@@ -32,17 +34,13 @@ def github_json(url: str) -> dict:
 
 
 def expected_slot(now: datetime) -> datetime:
+    """Select the latest hourly loop slot old enough for its bounded run window."""
     local = now.astimezone(JST).replace(second=0, microsecond=0)
-    candidates = [
-        local.replace(hour=hour, minute=SLOT_MINUTE)
-        for hour in SLOT_HOURS
-        if local.replace(hour=hour, minute=SLOT_MINUTE) <= local
-    ]
-    if candidates:
-        return max(candidates)
-    return (local - timedelta(days=1)).replace(
-        hour=SLOT_HOURS[-1], minute=SLOT_MINUTE
-    )
+    cutoff = local - timedelta(minutes=SLOT_CHECK_DELAY_MINUTES)
+    candidate = local.replace(minute=SLOT_MINUTE)
+    while candidate > cutoff:
+        candidate -= timedelta(hours=1)
+    return candidate
 
 
 def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
@@ -52,11 +50,10 @@ def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
         + quote(repo, safe="/")
         + f"/actions/workflows/{workflow}/runs?event=schedule&per_page=20"
     )
-    # GitHub Actions can delay scheduled workflows substantially. Allow up to
-    # four hours of lateness (still less than the six-hour slot interval).
-    window_end = slot + timedelta(minutes=240)
-    window_start = slot - timedelta(minutes=10)
-    for run in data.get("workflow_runs", []):
+    # Keep the scheduler discovery window shorter than the hourly slot interval
+    # so adjacent scheduled runs cannot match the same expected slot.
+    window_end = slot + timedelta(minutes=SLOT_DISCOVERY_WINDOW_MINUTES)
+    window_start = slot - timedelta(minutes=10)    for run in data.get("workflow_runs", []):
         # The workflow uses run-name, so the API name field may contain
         # a title such as "Distributed Loop (continuation_depth=0)" rather than
         # the workflow name. The endpoint is already scoped to this workflow;
@@ -97,15 +94,13 @@ def run_is_pending_within_grace(run: dict | None, slot: datetime, now: datetime)
         return False
 
     if run is None:
-        # Scheduled events can be published late; the run lookup uses the same
-        # four-hour discovery window. Do not report a missing run before it ends.
-        return elapsed <= timedelta(minutes=240)
+        # Wait only through the same non-overlapping scheduler discovery window.
+        return elapsed <= timedelta(minutes=SLOT_DISCOVERY_WINDOW_MINUTES)
 
-    status = run.get("status")
     if status == "queued":
-        # LINE dispatch admits at most two outstanding loop runs. This bounded
-        # grace also covers the next scheduled run waiting behind them.
-        return elapsed <= timedelta(minutes=360)
+        # A queued hourly run must not remain pending beyond its audit deadline.
+        return elapsed < timedelta(minutes=SLOT_CHECK_DELAY_MINUTES)
+
     if status != "in_progress":
         return False
 
@@ -117,12 +112,11 @@ def run_is_pending_within_grace(run: dict | None, slot: datetime, now: datetime)
             started = None
         if started is not None:
             running_for = now.astimezone(JST) - started.astimezone(JST)
-            return timedelta(0) <= running_for <= timedelta(minutes=90)
+            return timedelta(0) <= running_for < timedelta(minutes=MAX_RUN_RUNTIME_MINUTES)
 
     # Older API/test fixtures may not provide run_started_at. Keep a bounded
-    # fallback rather than silently treating a malformed timestamp as healthy.
-    return elapsed <= timedelta(minutes=360)
-
+    # fallback tied to the expected hourly slot.
+    return elapsed < timedelta(minutes=SLOT_CHECK_DELAY_MINUTES)
 
 def has_audit_row(client: GoogleSheetsClient, run_id: str) -> bool:
     """Find this run ID under the ledger's run_id header, not a hard-coded column."""

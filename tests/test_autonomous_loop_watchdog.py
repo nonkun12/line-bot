@@ -11,19 +11,19 @@ from scripts.check_autonomous_loop_watchdog import (
 )
 
 
-def test_expected_slot_selects_latest_completed_jst_slot():
-    now = datetime(2026, 9, 23, 7, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
-    assert expected_slot(now) == datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+def test_expected_slot_selects_latest_hourly_slot_older_than_audit_delay():
+    now = datetime(2026, 9, 23, 7, 12, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert expected_slot(now) == datetime(2026, 9, 23, 5, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
 
 
-def test_expected_slot_selects_evening_slot():
-    now = datetime(2026, 9, 23, 17, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
-    assert expected_slot(now) == datetime(2026, 9, 23, 16, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+def test_expected_slot_selects_previous_hour_at_hour_boundary():
+    now = datetime(2026, 9, 23, 17, 12, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert expected_slot(now) == datetime(2026, 9, 23, 15, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
 
 
-def test_expected_slot_rolls_back_to_previous_day_before_first_slot():
-    now = datetime(2026, 9, 23, 3, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
-    assert expected_slot(now) == datetime(2026, 9, 22, 22, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+def test_expected_slot_rolls_back_across_midnight():
+    now = datetime(2026, 9, 23, 1, 12, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert expected_slot(now) == datetime(2026, 9, 22, 23, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
 
 
 def test_find_scheduled_run_accepts_workflow_run_name_override(monkeypatch):
@@ -55,12 +55,12 @@ def test_find_scheduled_run_accepts_workflow_run_name_override(monkeypatch):
         "/actions/workflows/distributed-autonomous-loop.yml/runs?event=schedule&per_page=20"
     )
 
-def test_find_scheduled_run_accepts_delayed_run_within_four_hours(monkeypatch):
+def test_find_scheduled_run_accepts_delayed_run_within_discovery_window(monkeypatch):
     scheduled = {
         "name": "Distributed Autonomous Development Loop",
         "event": "schedule",
         "id": 789,
-        "created_at": "2026-09-22T22:26:00Z",
+        "created_at": "2026-09-22T20:06:00Z",
         "status": "completed",
         "conclusion": "failure",
     }
@@ -68,16 +68,16 @@ def test_find_scheduled_run_accepts_delayed_run_within_four_hours(monkeypatch):
         "scripts.check_autonomous_loop_watchdog.github_json",
         lambda _url: {"workflow_runs": [scheduled]},
     )
-    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
     assert find_scheduled_run("nonkun12/line-bot", slot) == scheduled
 
 
-def test_find_scheduled_run_rejects_run_after_four_hour_window(monkeypatch):
+def test_find_scheduled_run_rejects_run_after_discovery_window(monkeypatch):
     too_late = {
         "name": "Distributed Autonomous Development Loop",
         "event": "schedule",
         "id": 790,
-        "created_at": "2026-09-22T23:31:00Z",
+        "created_at": "2026-09-22T20:08:00Z",
         "status": "completed",
         "conclusion": "success",
     }
@@ -85,25 +85,8 @@ def test_find_scheduled_run_rejects_run_after_four_hour_window(monkeypatch):
         "scripts.check_autonomous_loop_watchdog.github_json",
         lambda _url: {"workflow_runs": [too_late]},
     )
-    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
     assert find_scheduled_run("nonkun12/line-bot", slot) is None
-
-
-def test_find_scheduled_run_accepts_small_scheduler_delay(monkeypatch):
-    scheduled = {
-        "name": "Distributed Autonomous Development Loop",
-        "event": "schedule",
-        "id": 456,
-        "created_at": "2026-09-22T19:41:00Z",
-        "status": "completed",
-        "conclusion": "success",
-    }
-    monkeypatch.setattr(
-        "scripts.check_autonomous_loop_watchdog.github_json",
-        lambda _url: {"workflow_runs": [scheduled]},
-    )
-    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
-    assert find_scheduled_run("nonkun12/line-bot", slot) == scheduled
 
 
 class FakeSheetsClient:
@@ -226,15 +209,15 @@ def test_active_run_is_pending_inside_90_minute_grace():
         assert run_is_pending_within_grace({"status": status}, slot, now)
 
 
-def test_queued_run_remains_pending_during_bounded_queue_grace():
-    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
-    now = slot + timedelta(hours=3)
+def test_queued_run_remains_pending_before_hourly_audit_deadline():
+    slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
+    now = slot + timedelta(minutes=114)
     assert run_is_pending_within_grace({"status": "queued"}, slot, now)
 
 
-def test_queued_run_is_not_pending_after_bounded_queue_grace():
-    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
-    now = slot + timedelta(minutes=361)
+def test_queued_run_is_not_pending_at_hourly_audit_deadline():
+    slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
+    now = slot + timedelta(minutes=115)
     assert not run_is_pending_within_grace({"status": "queued"}, slot, now)
 
 
@@ -259,21 +242,14 @@ def test_completed_run_is_never_classified_as_pending():
     assert not run_is_pending_within_grace({"status": "completed"}, slot, slot)
 
 
-def test_missing_scheduled_run_is_pending_within_90_minute_grace():
-    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
-    for minutes in (0, 30, 90):
-        now = slot + timedelta(minutes=minutes)
-        assert run_is_pending_within_grace(None, slot, now)
-
-
-def test_missing_scheduled_run_remains_pending_through_discovery_window():
-    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
-    for minutes in (0, 30, 90, 239, 240):
+def test_missing_scheduled_run_is_pending_only_through_discovery_window():
+    slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
+    for minutes in (0, 30, 50):
         now = slot + timedelta(minutes=minutes)
         assert run_is_pending_within_grace(None, slot, now)
 
 
 def test_missing_scheduled_run_is_not_pending_after_discovery_window():
-    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
-    now = slot + timedelta(minutes=241)
+    slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
+    now = slot + timedelta(minutes=51)
     assert not run_is_pending_within_grace(None, slot, now)
