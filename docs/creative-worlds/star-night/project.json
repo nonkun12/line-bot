@@ -149,7 +149,9 @@
     "episode_002": "candidate_for_independent_review",
     "canon_update_requires_human_approval": true,
     "episode_003": "candidate_for_independent_review",
-    "cross_episode_continuity": "hold_pending_two_clarifications"
+    "cross_episode_continuity": "hold_pending_lumina_baseline_confirmation"
   },
-  "continuity_review_ref": "docs/creative-worlds/star-night/continuity-review-e001-e003.json"
+  "continuity_review_ref": "docs/creative-worlds/star-night/continuity-review-e001-e003.json",
+  "adaptation_boundary_ref": "docs/creative-worlds/star-night/adaptation-boundary.json",
+  "lumina_resource_ledger_ref": "docs/creative-worlds/star-night/lumina-resource-ledger.json"
 }
