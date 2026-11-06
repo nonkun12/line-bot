@@ -808,7 +808,9 @@ def apply_plan_with_bounded_anchor_repair(
                     if isinstance(repair_plan, dict)
                     else None
                 )
-                changes_count = len(changes) if isinstance(changes, list) else "invalid"
+                changes_count = (
+                    len(changes) if isinstance(changes, list) else "invalid"
+                )
                 detail = (
                     "anchor_repair_invalid_change_count: "
                     f"initial_apply={initial_apply_detail}; "
@@ -817,7 +819,9 @@ def apply_plan_with_bounded_anchor_repair(
                     f"repair_validation={repair_detail}; "
                     f"changes_count={changes_count}"
                 )
-            return repair_plan, False, detail if repair_detail == "invalid_change_count" else repair_detail, []
+            else:
+                detail = repair_detail
+            return repair_plan, False, detail, []
         target = ROOT / chosen
         old_value = repair_plan["changes"][0]["old"]
         if target.read_text(encoding="utf-8").count(old_value) != 1:
