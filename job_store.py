@@ -42,3 +42,8 @@ def save_checkpoint(job_id, step_name, step_status, output_snapshot=None):
 
 def get_latest_checkpoint(job_id):
     return db.get_latest_checkpoint(job_id)
+
+
+def create_job_chain(user_id, steps, *, source="goal_ai"):
+    """Persist a bounded sequential Goal AI job chain atomically."""
+    return db.create_job_chain(user_id, steps, source=source)
