@@ -49,7 +49,7 @@ def test_find_scheduled_run_accepts_workflow_run_name_override(monkeypatch):
 
     monkeypatch.setattr("scripts.check_autonomous_loop_watchdog.github_json", fake_github_json)
 
-    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
     assert find_scheduled_run("nonkun12/line-bot", slot) == scheduled
     assert captured["url"].endswith(
         "/actions/workflows/distributed-autonomous-loop.yml/runs?event=schedule&per_page=20"
@@ -88,6 +88,22 @@ def test_find_scheduled_run_rejects_run_after_discovery_window(monkeypatch):
     slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
     assert find_scheduled_run("nonkun12/line-bot", slot) is None
 
+
+def test_find_scheduled_run_accepts_small_scheduler_delay(monkeypatch):
+    scheduled = {
+        "name": "Distributed Autonomous Development Loop",
+        "event": "schedule",
+        "id": 456,
+        "created_at": "2026-09-22T19:41:00Z",
+        "status": "completed",
+        "conclusion": "success",
+    }
+    monkeypatch.setattr(
+        "scripts.check_autonomous_loop_watchdog.github_json",
+        lambda _url: {"workflow_runs": [scheduled]},
+    )
+    slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert find_scheduled_run("nonkun12/line-bot", slot) == scheduled
 
 class FakeSheetsClient:
     def __init__(self, rows):
@@ -203,7 +219,7 @@ def test_audit_row_outcome_accepts_no_change_with_valid_shas():
 
 
 def test_active_run_is_pending_inside_90_minute_grace():
-    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
     now = slot + timedelta(minutes=30)
     for status in ("queued", "in_progress"):
         assert run_is_pending_within_grace({"status": status}, slot, now)
@@ -222,7 +238,7 @@ def test_queued_run_is_not_pending_at_hourly_audit_deadline():
 
 
 def test_in_progress_run_uses_actual_start_time_after_slot_delay():
-    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
     now = slot + timedelta(hours=3)
     started = now - timedelta(minutes=30)
     run = {"status": "in_progress", "run_started_at": started.isoformat()}
@@ -230,7 +246,7 @@ def test_in_progress_run_uses_actual_start_time_after_slot_delay():
 
 
 def test_in_progress_run_fails_after_90_minutes_from_actual_start():
-    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
     now = slot + timedelta(hours=3)
     started = now - timedelta(minutes=91)
     run = {"status": "in_progress", "run_started_at": started.isoformat()}
@@ -238,7 +254,7 @@ def test_in_progress_run_fails_after_90_minutes_from_actual_start():
 
 
 def test_completed_run_is_never_classified_as_pending():
-    slot = datetime(2026, 9, 23, 4, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+    slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
     assert not run_is_pending_within_grace({"status": "completed"}, slot, slot)
 
 
