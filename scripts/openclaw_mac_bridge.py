@@ -28,7 +28,17 @@ POLL_SECONDS = 5
 HTTP_TIMEOUT_SECONDS = 15
 MAX_MESSAGE_CHARS = 4000
 MAX_REPLY_CHARS = 12000
+OPENCLAW_TIMEOUT_GRACE_SECONDS = 60
 DEFAULT_WORKSPACE = "~/line-bot"
+
+
+class OpenClawExecutionError(RuntimeError):
+    """Sanitized OpenClaw failure category safe to report to the bridge API."""
+
+    def __init__(self, category: str):
+        self.category = category
+        message = "unsuccessful" if category in {"openclaw_reported_error", "process_exit"} else category
+        super().__init__(message)
 
 
 def validate_config(server_url: str, key: str) -> str:
@@ -82,7 +92,7 @@ def run_openclaw(message: str, timeout_seconds: int, job_id: int = 1) -> str:
          "--json", prompt],
         capture_output=True,
         text=True,
-        timeout=timeout_seconds + 30,
+        timeout=timeout_seconds + OPENCLAW_TIMEOUT_GRACE_SECONDS,
         check=False,
     )
     # Parse the JSON even on a nonzero exit: OpenClaw can emit a valid final
@@ -95,9 +105,16 @@ def run_openclaw(message: str, timeout_seconds: int, job_id: int = 1) -> str:
     if not isinstance(envelope, dict):
         raise RuntimeError("openclaw agent returned an invalid response envelope")
     output = envelope.get("final")
-    if not isinstance(output, str) or not output.strip():
-        raise RuntimeError("openclaw agent returned an empty response")
     error = envelope.get("error")
+    error_kind = error.get("kind") if isinstance(error, dict) else None
+    if error_kind in {"timeout", "model_timeout", "provider_timeout"}:
+        raise OpenClawExecutionError("model_timeout")
+    if error_kind in {"rate_limit", "overloaded"}:
+        raise OpenClawExecutionError("provider_overloaded")
+    if error_kind and error_kind != "cleanup":
+        raise OpenClawExecutionError("openclaw_reported_error")
+    if not isinstance(output, str) or not output.strip():
+        raise OpenClawExecutionError("empty_response")
     cleanup_only = (
         envelope.get("ok") is False
         and isinstance(error, dict)
@@ -105,10 +122,10 @@ def run_openclaw(message: str, timeout_seconds: int, job_id: int = 1) -> str:
     )
     if completed.returncode != 0 and not cleanup_only:
         # Do not forward local stderr; it may contain paths or configuration details.
-        raise RuntimeError("openclaw agent exited unsuccessfully")
+        raise OpenClawExecutionError("process_exit")
     # Never accept arbitrary failures merely because a final field exists.
     if envelope.get("ok") is not True and not cleanup_only:
-        raise RuntimeError("openclaw agent reported an unsuccessful run")
+        raise OpenClawExecutionError("openclaw_reported_error")
     if cleanup_only:
         output = (
             "（警告：OpenClawの一時領域の後片付けでエラーが発生しました。"
@@ -141,17 +158,32 @@ def process_one(client: httpx.Client, base_url: str, headers: dict[str, str], ti
         or len(message) > MAX_MESSAGE_CHARS
     ):
         raise RuntimeError("server returned an invalid job payload")
+    started_at = time.monotonic()
+    outcome = "success"
     try:
         reply = run_openclaw(message, timeout, job_id=job_id)
         result = {"job_id": job_id, "claim_token": token, "success": True, "reply": reply}
     except subprocess.TimeoutExpired:
+        outcome = "process_timeout"
         result = {"job_id": job_id, "claim_token": token, "success": False,
-                  "error": "OpenClaw execution timed out"}
+                  "error": "OpenClaw process_timeout"}
+    except OpenClawExecutionError as exc:
+        outcome = exc.category
+        result = {"job_id": job_id, "claim_token": token, "success": False,
+                  "error": f"OpenClaw {exc.category}"}
     except Exception as exc:
         # Send only a stable category; never expose exception details or local output.
-        category = "timeout" if "timeout" in type(exc).__name__.lower() else "execution_error"
+        outcome = "timeout" if "timeout" in type(exc).__name__.lower() else "execution_error"
         result = {"job_id": job_id, "claim_token": token, "success": False,
-                  "error": f"OpenClaw {category}"}
+                  "error": f"OpenClaw {outcome}"}
+    elapsed_ms = int((time.monotonic() - started_at) * 1000)
+    # Correlate each claimed job with its duration and sanitized outcome only.
+    # Never log the LINE prompt, reply, claim token, environment, or subprocess output.
+    print(
+        f"openclaw_job job_id={job_id} outcome={outcome} timeout_seconds={timeout} elapsed_ms={elapsed_ms}",
+        file=sys.stderr,
+        flush=True,
+    )
     done = client.post(f"{base_url}/complete", headers=headers, json=result)
     done.raise_for_status()
     return True

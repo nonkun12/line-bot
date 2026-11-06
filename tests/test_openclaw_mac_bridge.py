@@ -59,7 +59,7 @@ def test_run_openclaw_uses_exec_and_explicit_workspace(monkeypatch, tmp_path):
     assert "--message" not in args
     assert "Do not merge, push, deploy" in args[-1]
     assert "inspect repository" in args[-1]
-    assert captured["kwargs"]["timeout"] == 90
+    assert captured["kwargs"]["timeout"] == 60 + worker.OPENCLAW_TIMEOUT_GRACE_SECONDS
     assert "shell" not in captured["kwargs"]
 
 
@@ -196,3 +196,73 @@ def test_run_openclaw_rejects_nonzero_exit_for_non_cleanup_error(monkeypatch, tm
     )
     with pytest.raises(RuntimeError, match="unsuccessful"):
         worker.run_openclaw("test", 60)
+
+
+
+def test_run_openclaw_classifies_model_timeout_envelope(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCLAW_WORKSPACE_DIR", str(tmp_path))
+    monkeypatch.setattr(worker.shutil, "which", lambda name: "/usr/local/bin/openclaw")
+    monkeypatch.setattr(
+        worker.subprocess, "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(
+            args, 0, stdout=json.dumps({
+                "ok": False,
+                "final": "",
+                "error": {"kind": "timeout", "message": "provider timed out"},
+            }), stderr=""
+        ),
+    )
+    with pytest.raises(worker.OpenClawExecutionError) as exc:
+        worker.run_openclaw("inspect", 60)
+    assert exc.value.category == "model_timeout"
+
+
+def test_run_openclaw_uses_explicit_timeout_grace(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCLAW_WORKSPACE_DIR", str(tmp_path))
+    monkeypatch.setattr(worker.shutil, "which", lambda name: "/usr/local/bin/openclaw")
+    captured = {}
+
+    def fake_run(args, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(
+            args, 0, stdout=json.dumps({"ok": True, "final": "completed"}), stderr=""
+        )
+
+    monkeypatch.setattr(worker.subprocess, "run", fake_run)
+    assert worker.run_openclaw("inspect", 120) == "completed"
+    assert captured["timeout"] == 120 + worker.OPENCLAW_TIMEOUT_GRACE_SECONDS
+
+
+
+def test_process_one_logs_only_sanitized_job_timing(monkeypatch, capsys):
+    class FakeResponse:
+        def __init__(self, payload=None):
+            self.payload = payload or {}
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return self.payload
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+        def post(self, url, headers=None, json=None):
+            self.calls.append((url, json))
+            if url.endswith("/claim"):
+                return FakeResponse({
+                    "ok": True,
+                    "job": {"id": 73, "claim_token": "do-not-log-this", "message": "private prompt"},
+                })
+            return FakeResponse()
+
+    monkeypatch.setattr(worker, "run_openclaw", lambda *args, **kwargs: "private reply")
+    client = FakeClient()
+    assert worker.process_one(client, "https://example.test/api/openclaw", {}, 60)
+    logged = capsys.readouterr().err
+    assert "job_id=73" in logged
+    assert "outcome=success" in logged
+    assert "timeout_seconds=60" in logged
+    assert "elapsed_ms=" in logged
+    assert "private prompt" not in logged
+    assert "private reply" not in logged
+    assert "do-not-log-this" not in logged
