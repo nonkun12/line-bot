@@ -28,7 +28,7 @@ def test_digest_counts_legacy_and_explicit_hold_reasons():
         }
     })
 
-    assert "Currently held tasks (BLOCKED / human review): **2**" in report
+    assert "Currently held tasks: **2**" in report
     assert f"| {LEGACY_REASON} | 1 |" in report
     assert "| repair_budget_exhausted | 1 |" in report
     assert "historical cause is unknown" in report
@@ -86,5 +86,71 @@ def test_empty_held_set_is_reported():
     report = build_digest({
         "recovery_ai": {"schema_version": 1, "tasks": {"active": {"held": False}}}
     })
-    assert "Currently held tasks (BLOCKED / human review): **0**" in report
+    assert "Currently held tasks: **0**" in report
     assert "| — | — | — | — | — |" in report
+
+
+
+def test_digest_separates_blocked_failed_and_post_resume_review_backlogs():
+    report = build_digest({
+        "recovery_ai": {
+            "schema_version": 1,
+            "tasks": {
+                "blocked-task": {
+                    "held": True,
+                    "consecutive_failures": 3,
+                    "last_category": "timeout",
+                    "last_decision_action": "HOLD",
+                    "last_decision_reason": "failure_threshold_reached",
+                    "updated_at": "2026-11-05T00:00:00+00:00",
+                    "hold_reason": "failure_threshold_reached",
+                },
+                "failed-task": {
+                    "held": False,
+                    "consecutive_failures": 1,
+                    "last_category": "test_regression",
+                    "last_decision_action": "REPAIR_ONCE",
+                    "last_decision_reason": "bounded_repair_attempt",
+                    "updated_at": "2026-11-05T00:10:00+00:00",
+                },
+                "review-task": {
+                    "held": False,
+                    "consecutive_failures": 0,
+                    "resume_requires_review": True,
+                    "updated_at": "2026-11-05T00:20:00+00:00",
+                },
+                "healthy-task": {
+                    "held": False,
+                    "consecutive_failures": 0,
+                },
+            },
+        }
+    })
+
+    assert "Currently held tasks (BLOCKED / human review): **1**" in report
+    assert "Failed tasks awaiting bounded recovery or review: **1**" in report
+    assert "Tasks awaiting post-resume human review: **1**" in report
+    assert "| BLOCKED | blocked-task |" in report
+    assert "| FAILED | failed-task |" in report
+    assert "| REVIEW_REQUIRED | review-task |" in report
+    assert "runtime must still enforce cooldowns" in report
+    assert "healthy-task" not in report
+
+
+def test_digest_does_not_treat_recovery_decision_as_execution_approval():
+    report = build_digest({
+        "recovery_ai": {
+            "schema_version": 1,
+            "tasks": {
+                "retry-task": {
+                    "held": False,
+                    "consecutive_failures": 1,
+                    "last_category": "rate_limited",
+                    "last_decision_action": "RETRY",
+                    "last_decision_reason": "bounded_transient_retry",
+                },
+            },
+        }
+    })
+    assert "| RETRY | 1 |" in report
+    assert "not permission to execute" in report
