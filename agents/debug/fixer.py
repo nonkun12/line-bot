@@ -3,7 +3,7 @@ def generate_fix_suggestion(error_info: dict) -> str:
     エラー情報から修正案を生成する
     """
 
-    error_type = error_info.get("error_type")
+    error_type = error_info.get("error_type") or "Unknown"
     file = error_info.get("file")
     line = error_info.get("line")
     message = error_info.get("message")
