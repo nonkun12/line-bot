@@ -197,6 +197,54 @@ class RecoveryStore:
         self._write(data)
         return RecoveryDecision(action, reason, task_id, fingerprint, count, delay, human)
 
+    def record_preflight_blocked(
+        self, task_id: str, reason_code: str, prerequisite_id: str | None = None
+    ) -> dict:
+        """Persist a preflight block separately, without counting a task failure.
+
+        This is evidence of a gate decision, not permission to retry or resume.
+        Repeated identical events are deduplicated and counted, with bounded history.
+        """
+        task_id = _safe_id(task_id)
+        if not isinstance(reason_code, str) or not re.fullmatch(
+            r"(?:control_tower_gate|control_tower_rea|control_tower_selector):[A-Za-z0-9._-]{1,80}|control_tower_head_changed",
+            reason_code,
+        ):
+            raise ValueError("invalid preflight blocked reason code")
+        if prerequisite_id is not None:
+            prerequisite_id = _safe_id(prerequisite_id)
+        identity = {
+            "task_id": task_id,
+            "reason_code": reason_code,
+            "prerequisite_id": prerequisite_id,
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        data = self._read()
+        events = data.setdefault("preflight_blocked", {})
+        if not isinstance(events, dict):
+            raise RecoveryStateError("preflight blocked event state invalid")
+        previous = events.get(fingerprint)
+        if previous is not None and not isinstance(previous, dict):
+            raise RecoveryStateError("preflight blocked event record invalid")
+        now = utc_now()
+        occurrences = int(previous.get("occurrences", 0)) + 1 if previous else 1
+        events[fingerprint] = {
+            **identity,
+            "fingerprint": fingerprint,
+            "status": "PENDING_PREREQUISITE_OR_REVIEW",
+            "requires_human_review": True,
+            "first_seen_at": previous.get("first_seen_at", now) if previous else now,
+            "last_seen_at": now,
+            "occurrences": occurrences,
+        }
+        if len(events) > 200:
+            ordered = sorted(events.items(), key=lambda item: str(item[1].get("last_seen_at", "")))
+            data["preflight_blocked"] = dict(ordered[-200:])
+        self._write(data)
+        return dict(data["preflight_blocked"][fingerprint])
+
     def record_success(
         self, task_id: str, *, verified: bool, evidence: dict | None = None
     ) -> None:

@@ -221,6 +221,56 @@ def test_preflight_blocked_does_not_increment_recovery_failure_streak(tmp_path, 
     assert store.task_status("task-a") == before
 
 
+
+@pytest.mark.parametrize("failure_reason", [
+    "control_tower_selector:unregistered_task",
+    "control_tower_selector:duplicate_task",
+])
+def test_registry_selector_blocked_is_persisted_without_counting_task_failure(tmp_path, failure_reason):
+    path = tmp_path / "recovery.json"
+    payload = {
+        "task_id": "task-selector",
+        "status": "BLOCKED",
+        "exit_code": 80,
+        "failure_reason": failure_reason,
+    }
+    first = record_loop_outcome(path, dict(payload))
+    second = record_loop_outcome(path, dict(payload))
+    assert first["persisted"] is True
+    assert first["requires_human_review"] is True
+    assert second["occurrences"] == 2
+    state = json.loads(path.read_text(encoding="utf-8"))
+    assert state["tasks"] == {}
+    assert len(state["preflight_blocked"]) == 1
+
+
+def test_selector_preflight_rejects_unsafe_reason_code(tmp_path):
+    store = RecoveryStore(tmp_path / "recovery.json")
+    with pytest.raises(ValueError, match="reason code"):
+        store.record_preflight_blocked("task-selector", "control_tower_selector:../../secret")
+
+
+def test_registry_preflight_runner_persists_each_rejected_item_as_blocked(tmp_path):
+    from scripts.run_minimal_autonomous_loop import persist_registry_preflight_events
+
+    state_path = tmp_path / "recovery-ai-state.json"
+    outcomes = persist_registry_preflight_events(
+        state_path,
+        [
+            {"id": "stale-task", "reason": "unregistered_task"},
+            {"id": "<invalid>", "reason": "invalid_queue_task"},
+        ],
+        "a" * 40,
+    )
+    assert len(outcomes) == 2
+    assert all(item["persisted"] is True for item in outcomes)
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["tasks"] == {}
+    assert len(state["preflight_blocked"]) == 2
+    assert all(item["requires_human_review"] is True for item in state["preflight_blocked"].values())
+    assert all(item["reason_code"].startswith("control_tower_selector:") for item in state["preflight_blocked"].values())
+    assert all(item["task_id"] != "<invalid>" for item in state["preflight_blocked"].values())
+
 def test_unclassified_runtime_failure_is_recorded_for_one_bounded_retry(tmp_path):
     path = tmp_path / "recovery.json"
     outcome = record_loop_outcome(path, {

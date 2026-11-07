@@ -1,0 +1,26 @@
+name: Recovery digest focused tests
+
+on:
+  pull_request:
+    paths:
+      - "scripts/recovery_hold_digest.py"
+      - "tests/test_recovery_preflight_digest.py"
+      - ".github/workflows/recovery-digest-focused.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  recovery-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test runner
+        run: python -m pip install pytest
+      - name: Run focused digest tests
+        run: python -m pytest -q tests/test_recovery_preflight_digest.py

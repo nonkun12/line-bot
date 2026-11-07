@@ -8,8 +8,10 @@ next task.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import signal
 import subprocess
 import time
@@ -356,6 +358,36 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
                 raise ValueError("conflicting versioned task definitions")
             definitions[task_id] = normalized
     return list(definitions.values())
+
+
+def persist_registry_preflight_events(
+    state_path: str | Path,
+    rejected_tasks: list[dict[str, str]],
+    evidence_sha: str,
+) -> list[dict[str, object]]:
+    """Persist each rejected queue entry as BLOCKED evidence, not task failure."""
+    from scripts.recovery_ai_loop_adapter import record_loop_outcome
+
+    outcomes = []
+    for rejected in rejected_tasks:
+        raw_id = str(rejected.get("id", ""))
+        if re.fullmatch(r"[A-Za-z0-9._-]{1,100}", raw_id):
+            incident_task_id = raw_id
+        else:
+            # Invalid queue identifiers are represented by a stable synthetic
+            # ID; the invalid value itself is never copied into durable state.
+            seed = f"{rejected.get('reason', 'invalid_queue_task')}:{evidence_sha}"
+            incident_task_id = "preflight-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+        outcomes.append(record_loop_outcome(
+            state_path,
+            {
+                "task_id": incident_task_id,
+                "status": "BLOCKED",
+                "exit_code": 80,
+                "failure_reason": f"control_tower_selector:{rejected.get('reason', 'invalid_queue_task')}",
+            },
+        ))
+    return outcomes
 
 
 def registry_preflight(
@@ -884,11 +916,27 @@ def main() -> int:
             "task_count": 0,
             "exit_code": 80,
             "failure_reason": reason,
+            "evidence_sha": selection_evidence_sha,
             "registry_preflight": {
                 **preflight,
                 "evidence_sha": selection_evidence_sha,
             },
         }
+        try:
+            persisted_events = persist_registry_preflight_events(
+                args.state.parent / "recovery-ai-state.json",
+                preflight["rejected_tasks"],
+                selection_evidence_sha,
+            )
+            record["recovery_ai"] = {
+                "recorded": all(item.get("persisted") is True for item in persisted_events),
+                "incidents": persisted_events,
+            }
+        except Exception:
+            # The run remains BLOCKED; expose persistence failure and never
+            # continue into task selection when its incident cannot be stored.
+            record["recovery_ai"] = {"recorded": False, "reason": "state_persistence_failed"}
+            record["persistence_failure"] = "recovery_ai_state_persist_failed"
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
         print(
