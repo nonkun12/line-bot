@@ -19,8 +19,10 @@ from agents.sheets.autonomous_ledger import (
 from agents.sheets.client import GoogleSheetsClient
 
 JST = ZoneInfo("Asia/Tokyo")
-SLOT_HOURS = (4, 10, 16, 22)
-SLOT_MINUTE = 30
+SLOT_MINUTE = 17
+SLOT_CHECK_DELAY_MINUTES = 115
+SLOT_DISCOVERY_WINDOW_MINUTES = 50
+MAX_RUN_RUNTIME_MINUTES = 40
 INVALID_TASK_IDS = {"", "NOT_RUN", "QUEUE_EMPTY", "QUEUE_EXHAUSTED_NO_TASKS"}
 
 
@@ -79,17 +81,13 @@ def load_previous_audit_cursor(repo: str) -> datetime | None:
 
 
 def expected_slot(now: datetime) -> datetime:
+    """Select the latest hourly loop slot old enough for its bounded run window."""
     local = now.astimezone(JST).replace(second=0, microsecond=0)
-    candidates = [
-        local.replace(hour=hour, minute=SLOT_MINUTE)
-        for hour in SLOT_HOURS
-        if local.replace(hour=hour, minute=SLOT_MINUTE) <= local
-    ]
-    if candidates:
-        return max(candidates)
-    return (local - timedelta(days=1)).replace(
-        hour=SLOT_HOURS[-1], minute=SLOT_MINUTE
-    )
+    cutoff = local - timedelta(minutes=SLOT_CHECK_DELAY_MINUTES)
+    candidate = local.replace(minute=SLOT_MINUTE)
+    while candidate > cutoff:
+        candidate -= timedelta(hours=1)
+    return candidate
 
 
 def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
@@ -99,9 +97,9 @@ def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
         + quote(repo, safe="/")
         + f"/actions/workflows/{workflow}/runs?event=schedule&per_page=20"
     )
-    # GitHub Actions can delay scheduled workflows substantially. Allow up to
-    # four hours of lateness (still less than the six-hour slot interval).
-    window_end = slot + timedelta(minutes=240)
+    # Keep the scheduler discovery window shorter than the hourly slot interval
+    # so adjacent scheduled runs cannot match the same expected slot.
+    window_end = slot + timedelta(minutes=SLOT_DISCOVERY_WINDOW_MINUTES)
     window_start = slot - timedelta(minutes=10)
     for run in data.get("workflow_runs", []):
         # The workflow uses run-name, so the API name field may contain
@@ -144,15 +142,14 @@ def run_is_pending_within_grace(run: dict | None, slot: datetime, now: datetime)
         return False
 
     if run is None:
-        # Scheduled events can be published late; the run lookup uses the same
-        # four-hour discovery window. Do not report a missing run before it ends.
-        return elapsed <= timedelta(minutes=240)
+        # Wait only through the same non-overlapping scheduler discovery window.
+        return elapsed <= timedelta(minutes=SLOT_DISCOVERY_WINDOW_MINUTES)
 
     status = run.get("status")
     if status == "queued":
-        # LINE dispatch admits at most two outstanding loop runs. This bounded
-        # grace also covers the next scheduled run waiting behind them.
-        return elapsed <= timedelta(minutes=360)
+        # A queued hourly run must not remain pending beyond its audit deadline.
+        return elapsed < timedelta(minutes=SLOT_CHECK_DELAY_MINUTES)
+
     if status != "in_progress":
         return False
 
@@ -164,12 +161,11 @@ def run_is_pending_within_grace(run: dict | None, slot: datetime, now: datetime)
             started = None
         if started is not None:
             running_for = now.astimezone(JST) - started.astimezone(JST)
-            return timedelta(0) <= running_for <= timedelta(minutes=90)
+            return timedelta(0) <= running_for < timedelta(minutes=MAX_RUN_RUNTIME_MINUTES)
 
     # Older API/test fixtures may not provide run_started_at. Keep a bounded
-    # fallback rather than silently treating a malformed timestamp as healthy.
-    return elapsed <= timedelta(minutes=360)
-
+    # fallback tied to the expected hourly slot.
+    return elapsed < timedelta(minutes=SLOT_CHECK_DELAY_MINUTES)
 
 def has_audit_row(client: GoogleSheetsClient, run_id: str) -> bool:
     """Find this run ID under the ledger's run_id header, not a hard-coded column."""
@@ -257,8 +253,7 @@ def _audit_slot(repo: str, slot: datetime, now: datetime) -> dict:
             except Exception as exc:
                 problems.append(f"Sheets audit check failed: {type(exc).__name__}: {exc}")
     return {
-        "slot": slot.isoformat(),
-        "pending": pending,
+        "slot": slot.isoformat(), "pending": pending,
         "run_id": str(run["id"]) if run else None,
         "run_status": run.get("status") if run else None,
         "run_conclusion": run.get("conclusion") if run else None,
@@ -273,8 +268,7 @@ def main() -> int:
     cursor = load_previous_audit_cursor(repo)
     cursor_initialized = cursor is None
     if cursor is None:
-        # First deployment/backfill: inspect the latest 24 hourly slots. Further
-        # history is processed in bounded batches on subsequent scheduled runs.
+        # Bootstrap the first deployment with a bounded 24-slot backfill.
         cursor = latest_slot - timedelta(hours=24)
 
     audited: list[dict] = []
@@ -282,19 +276,18 @@ def main() -> int:
     pending = False
     audited_through = cursor
     slot = cursor + timedelta(hours=1)
-    # Bound each run to 24 slots. If more remain, the artifact cursor lets the
-    # next scheduled run continue from the oldest unprocessed slot.
+    # Bounded catch-up: older unprocessed slots are handled first on the next run.
     while slot <= latest_slot and len(audited) < 24:
         try:
-            result = _audit_slot(repo, slot, now)
+            item = _audit_slot(repo, slot, now)
         except Exception as exc:
             problems.append(f"audit failed for {slot.isoformat()}: {type(exc).__name__}: {exc}")
             break
-        audited.append(result)
-        if result["pending"]:
+        audited.append(item)
+        if item["pending"]:
             pending = True
             break
-        problems.extend(result["problems"])
+        problems.extend(item["problems"])
         audited_through = slot
         slot += timedelta(hours=1)
 
