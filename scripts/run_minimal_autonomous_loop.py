@@ -8,6 +8,7 @@ next task.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import signal
@@ -892,9 +893,29 @@ def main() -> int:
         }
         try:
             from scripts.recovery_ai_loop_adapter import record_loop_outcome
-            record["recovery_ai"] = record_loop_outcome(
-                args.state.parent / "recovery-ai-state.json", record
-            )
+            persisted_events = []
+            for rejected in preflight["rejected_tasks"]:
+                raw_id = str(rejected.get("id", ""))
+                if re.fullmatch(r"[A-Za-z0-9._-]{1,100}", raw_id):
+                    incident_task_id = raw_id
+                else:
+                    # Invalid queue identifiers are represented by a stable,
+                    # non-sensitive synthetic ID; they are never executable.
+                    seed = f"{rejected.get('reason', 'invalid_queue_task')}:{selection_evidence_sha}"
+                    incident_task_id = "preflight-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+                persisted_events.append(record_loop_outcome(
+                    args.state.parent / "recovery-ai-state.json",
+                    {
+                        "task_id": incident_task_id,
+                        "status": "BLOCKED",
+                        "exit_code": 80,
+                        "failure_reason": f"control_tower_selector:{rejected.get('reason', 'invalid_queue_task')}",
+                    },
+                ))
+            record["recovery_ai"] = {
+                "recorded": all(item.get("persisted") is True for item in persisted_events),
+                "incidents": persisted_events,
+            }
         except Exception:
             # The run remains BLOCKED; expose persistence failure and never
             # continue into task selection when its incident cannot be stored.
