@@ -95,7 +95,7 @@ def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
     data = github_json(
         "https://api.github.com/repos/"
         + quote(repo, safe="/")
-        + f"/actions/workflows/{workflow}/runs?event=schedule&per_page=20"
+        + f"/actions/workflows/{workflow}/runs?event=schedule&per_page=100"
     )
     # Keep the scheduler discovery window shorter than the hourly slot interval
     # so adjacent scheduled runs cannot match the same expected slot.
