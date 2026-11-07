@@ -197,42 +197,53 @@ class RecoveryStore:
         self._write(data)
         return RecoveryDecision(action, reason, task_id, fingerprint, count, delay, human)
 
-    def record_preflight_incident(self, reason: str, *, evidence_sha: str) -> dict:
-        """Persist a selector denial as an incident, never as a task failure."""
-        if not isinstance(reason, str) or not re.fullmatch(r"control_tower_selector:[a-z0-9_.:-]{1,160}", reason):
-            raise ValueError("preflight incident reason is invalid")
-        if not isinstance(evidence_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", evidence_sha):
-            raise ValueError("preflight incident evidence SHA is invalid")
-        data = self._read()
-        incidents = data.setdefault("preflight_incidents", {})
-        if not isinstance(incidents, dict):
-            raise RecoveryStateError("preflight incident state invalid")
-        fingerprint = hashlib.sha256(
-            json.dumps({"reason": reason, "evidence_sha": evidence_sha}, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
-        previous = incidents.get(fingerprint, {})
-        if not isinstance(previous, dict):
-            raise RecoveryStateError("preflight incident record invalid")
-        now = utc_now()
-        record = {
-            "status": "BLOCKED",
-            "reason": reason,
-            "evidence_sha": evidence_sha,
-            "fingerprint": fingerprint,
-            "occurrences": int(previous.get("occurrences", 0)) + 1,
-            "first_seen_at": previous.get("first_seen_at", now),
-            "last_seen_at": now,
-            "requires_human_review": True,
+    def record_preflight_blocked(
+        self, task_id: str, reason_code: str, prerequisite_id: str | None = None
+    ) -> dict:
+        """Persist a preflight block separately, without counting a task failure.
+
+        This is evidence of a gate decision, not permission to retry or resume.
+        Repeated identical events are deduplicated and counted, with bounded history.
+        """
+        task_id = _safe_id(task_id)
+        if not isinstance(reason_code, str) or not re.fullmatch(
+            r"(?:control_tower_gate|control_tower_rea|control_tower_selector):[A-Za-z0-9._-]{1,80}|control_tower_head_changed",
+            reason_code,
+        ):
+            raise ValueError("invalid preflight blocked reason code")
+        if prerequisite_id is not None:
+            prerequisite_id = _safe_id(prerequisite_id)
+        identity = {
+            "task_id": task_id,
+            "reason_code": reason_code,
+            "prerequisite_id": prerequisite_id,
         }
-        incidents[fingerprint] = record
-        if len(incidents) > 200:
-            oldest = sorted(
-                incidents.items(), key=lambda item: str(item[1].get("last_seen_at", ""))
-            )[:len(incidents) - 200]
-            for key, _ in oldest:
-                incidents.pop(key, None)
+        fingerprint = hashlib.sha256(
+            json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        data = self._read()
+        events = data.setdefault("preflight_blocked", {})
+        if not isinstance(events, dict):
+            raise RecoveryStateError("preflight blocked event state invalid")
+        previous = events.get(fingerprint)
+        if previous is not None and not isinstance(previous, dict):
+            raise RecoveryStateError("preflight blocked event record invalid")
+        now = utc_now()
+        occurrences = int(previous.get("occurrences", 0)) + 1 if previous else 1
+        events[fingerprint] = {
+            **identity,
+            "fingerprint": fingerprint,
+            "status": "PENDING_PREREQUISITE_OR_REVIEW",
+            "requires_human_review": True,
+            "first_seen_at": previous.get("first_seen_at", now) if previous else now,
+            "last_seen_at": now,
+            "occurrences": occurrences,
+        }
+        if len(events) > 200:
+            ordered = sorted(events.items(), key=lambda item: str(item[1].get("last_seen_at", "")))
+            data["preflight_blocked"] = dict(ordered[-200:])
         self._write(data)
-        return dict(record)
+        return dict(data["preflight_blocked"][fingerprint])
 
     def record_success(
         self, task_id: str, *, verified: bool, evidence: dict | None = None
