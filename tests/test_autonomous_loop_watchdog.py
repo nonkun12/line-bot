@@ -106,6 +106,48 @@ def test_find_scheduled_run_accepts_small_scheduler_delay(monkeypatch):
     assert find_scheduled_run("nonkun12/line-bot", slot) == scheduled
 
 
+
+def test_load_previous_audit_cursor_reads_latest_artifact(monkeypatch):
+    import io
+    import json
+    import zipfile
+    from scripts.check_autonomous_loop_watchdog import load_previous_audit_cursor
+
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr("watchdog_result.json", json.dumps({
+            "audited_through": "2026-11-06T12:17:00+09:00"
+        }))
+    archive_bytes = archive.getvalue()
+
+    def fake_json(url):
+        if "/workflows/" in url:
+            return {"workflow_runs": [{"id": 456, "status": "completed"}]}
+        if "/artifacts" in url:
+            return {"artifacts": [{
+                "name": "autonomous-watchdog-456",
+                "expired": False,
+                "archive_download_url": "https://example.invalid/archive",
+            }]}
+        raise AssertionError(url)
+
+    monkeypatch.setattr("scripts.check_autonomous_loop_watchdog.github_json", fake_json)
+    monkeypatch.setattr("scripts.check_autonomous_loop_watchdog.github_bytes", lambda _url: archive_bytes)
+    monkeypatch.setenv("GITHUB_RUN_ID", "999")
+    cursor = load_previous_audit_cursor("nonkun12/line-bot")
+    assert cursor == datetime(2026, 11, 6, 12, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+
+def test_load_previous_audit_cursor_ignores_current_run(monkeypatch):
+    from scripts.check_autonomous_loop_watchdog import load_previous_audit_cursor
+
+    monkeypatch.setenv("GITHUB_RUN_ID", "456")
+    monkeypatch.setattr(
+        "scripts.check_autonomous_loop_watchdog.github_json",
+        lambda _url: {"workflow_runs": [{"id": 456, "status": "completed"}]},
+    )
+    assert load_previous_audit_cursor("nonkun12/line-bot") is None
+
 class FakeSheetsClient:
     def __init__(self, rows):
         self.rows = rows
