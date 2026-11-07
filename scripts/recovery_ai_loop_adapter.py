@@ -138,17 +138,6 @@ def record_loop_outcome(
         raise ValueError("transient attempt is outside the bounded retry policy")
     status = str(result.get("status", "")).upper()
     failure_reason = str(result.get("failure_reason", "")).strip().lower()
-    if status == "BLOCKED" and failure_reason.startswith("control_tower_selector:"):
-        store = RecoveryStore(state_path)
-        incident = store.record_preflight_incident(
-            failure_reason, evidence_sha=str(result.get("evidence_sha", "")).strip()
-        )
-        return {
-            "recorded": True,
-            "status": "BLOCKED",
-            "kind": "preflight_incident",
-            "incident": incident,
-        }
     task_id = str(result.get("task_id", "")).strip()
     if not task_id:
         # Synthetic queue/incident summaries are not task outcomes.
@@ -160,11 +149,19 @@ def record_loop_outcome(
     if status == "BLOCKED" and (
         failure_reason.startswith("control_tower_gate:")
         or failure_reason.startswith("control_tower_rea:")
+        or failure_reason.startswith("control_tower_selector:")
         or failure_reason == "control_tower_head_changed"
     ):
+        event = store.record_preflight_blocked(
+            task_id, failure_reason, result.get("prerequisite_id")
+        )
         return {
             "recorded": False,
             "reason": "preflight_blocked_not_task_failure",
+            "persisted": True,
+            "event_fingerprint": event["fingerprint"],
+            "occurrences": event["occurrences"],
+            "requires_human_review": True,
         }
     # Operator-requested stops are control-flow outcomes, not task failures.
     # Do not create a Recovery AI HOLD merely because the operator stopped a run.
