@@ -20,14 +20,16 @@ _DEV_PREFIX = re.compile(r"^(?:開発|dev)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.
 # a software target. Questions and exploratory wording remain ordinary chat.
 _NATURAL_DEV_TARGET = re.compile(
     r"(?:アプリ|システム|機能|コード|リポジトリ|プログラム|ワークフロー|"
-    r"LINE\s*AI\s*Secretary|line-bot|\.py)",
+    r"LINE\s*AI\s*Secretary|line-bot|\.py|STAR[- ]?NIGHT|タスク枯渇対策|"
+    r"分散Loop|分散ループ|自己改善(?:AI)?|映像・音楽AI|映像AI|音楽AI)",
     re.IGNORECASE,
 )
 _NATURAL_DEV_ACTION = re.compile(
     r"(?:改善して|改善してください|改良して|改良してください|修正して|修正してください|"
     r"直して|直してください|追加して|追加してください|実装して|実装してください|"
     r"開発して|開発してください|構築して|構築してください|保守して|テストして|"
-    r"テストを実行して|調査して)",
+    r"テストを実行して|調査して|進めて|続けて|実行して|更新して|"
+    r"ブラッシュアップして|改善を続けて)",
 )
 _NATURAL_DEV_QUESTION = re.compile(
     r"(?:教えて|方法|やり方|どうやって|できますか|可能ですか|おすすめ|比較|とは)",

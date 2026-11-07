@@ -1,0 +1,51 @@
+name: LINE Development Routing Focused Tests
+
+on:
+  pull_request:
+    paths:
+      - "line_development.py"
+      - "core/request_safety.py"
+      - "tests/test_line_development.py"
+      - ".github/workflows/line-development-routing-focused.yml"
+  push:
+    branches:
+      - "feat/line-four-stream-natural-commands-20261105"
+    paths:
+      - "line_development.py"
+      - "core/request_safety.py"
+      - "tests/test_line_development.py"
+      - ".github/workflows/line-development-routing-focused.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: line-development-routing-focused-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  focused-routing-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install project dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run focused LINE routing tests
+        shell: bash
+        run: |
+          set -o pipefail
+          pytest -q tests/test_line_development.py 2>&1 | tee line-routing-focused.log
+      - name: Upload focused test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: line-routing-focused-${{ github.run_id }}
+          path: line-routing-focused.log
+          if-no-files-found: warn
+          retention-days: 14
