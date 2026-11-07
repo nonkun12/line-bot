@@ -136,13 +136,24 @@ def record_loop_outcome(
         raise ValueError("loop result must be an object")
     if type(transient_attempt) is not int or not 1 <= transient_attempt <= MAX_TRANSIENT_RETRIES + 1:
         raise ValueError("transient attempt is outside the bounded retry policy")
+    status = str(result.get("status", "")).upper()
+    failure_reason = str(result.get("failure_reason", "")).strip().lower()
+    if status == "BLOCKED" and failure_reason.startswith("control_tower_selector:"):
+        store = RecoveryStore(state_path)
+        incident = store.record_preflight_incident(
+            failure_reason, evidence_sha=str(result.get("evidence_sha", "")).strip()
+        )
+        return {
+            "recorded": True,
+            "status": "BLOCKED",
+            "kind": "preflight_incident",
+            "incident": incident,
+        }
     task_id = str(result.get("task_id", "")).strip()
     if not task_id:
         # Synthetic queue/incident summaries are not task outcomes.
         return {"recorded": False, "reason": "no_task_id"}
     store = RecoveryStore(state_path)
-    status = str(result.get("status", "")).upper()
-    failure_reason = str(result.get("failure_reason", "")).strip().lower()
     # A preflight authorization denial or launch-time HEAD race means no task
     # actually ran. Record it in the loop report, but do not count it as a task
     # failure or trip Recovery AI's repeated-failure HOLD circuit breaker.
