@@ -222,38 +222,32 @@ def test_preflight_blocked_does_not_increment_recovery_failure_streak(tmp_path, 
 
 
 
-def test_registry_selector_blocked_without_task_id_is_persisted_as_incident(tmp_path):
+@pytest.mark.parametrize("failure_reason", [
+    "control_tower_selector:unregistered_task",
+    "control_tower_selector:duplicate_task",
+])
+def test_registry_selector_blocked_is_persisted_without_counting_task_failure(tmp_path, failure_reason):
     path = tmp_path / "recovery.json"
     payload = {
-        "task_id": "",
+        "task_id": "task-selector",
         "status": "BLOCKED",
         "exit_code": 80,
-        "failure_reason": "control_tower_selector:unregistered_task",
-        "evidence_sha": "a" * 40,
+        "failure_reason": failure_reason,
     }
-
     first = record_loop_outcome(path, dict(payload))
     second = record_loop_outcome(path, dict(payload))
-
-    assert first["recorded"] is True
-    assert first["status"] == "BLOCKED"
-    assert first["kind"] == "preflight_incident"
-    assert first["incident"]["requires_human_review"] is True
-    assert second["incident"]["occurrences"] == 2
+    assert first["persisted"] is True
+    assert first["requires_human_review"] is True
+    assert second["occurrences"] == 2
     state = json.loads(path.read_text(encoding="utf-8"))
     assert state["tasks"] == {}
-    assert len(state["preflight_incidents"]) == 1
+    assert len(state["preflight_blocked"]) == 1
 
 
-def test_registry_selector_incident_rejects_invalid_evidence_sha(tmp_path):
-    with pytest.raises(ValueError, match="evidence SHA"):
-        record_loop_outcome(tmp_path / "recovery.json", {
-            "task_id": "",
-            "status": "BLOCKED",
-            "exit_code": 80,
-            "failure_reason": "control_tower_selector:unregistered_task",
-            "evidence_sha": "not-a-sha",
-        })
+def test_selector_preflight_rejects_unsafe_reason_code(tmp_path):
+    store = RecoveryStore(tmp_path / "recovery.json")
+    with pytest.raises(ValueError, match="reason code"):
+        store.record_preflight_blocked("task-selector", "control_tower_selector:../../secret")
 
 def test_unclassified_runtime_failure_is_recorded_for_one_bounded_retry(tmp_path):
     path = tmp_path / "recovery.json"
