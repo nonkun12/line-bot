@@ -377,6 +377,8 @@ def test_shared_read_only_guard_blocks_app_style_constraints_too():
         "分散Loopを実行して",
         "自己改善AIを更新して",
         "映像・音楽AIをブラッシュアップして",
+        "LINE AI Secretaryを進めて",
+        "line_development.pyを改善して",
     ],
 )
 def test_four_stream_natural_commands_are_dispatched(message):
