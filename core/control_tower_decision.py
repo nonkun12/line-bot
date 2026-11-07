@@ -102,6 +102,22 @@ class ControlTowerDecisionRecord:
             and self.task_template_id in registered_task_ids
         )
 
+    def safe_fallback(self) -> "ControlTowerDecisionRecord":
+        """Return a minimal safe fallback decision.
+
+        This helper can be used by callers that need a deterministic
+        fallback when the current decision cannot be executed.  It
+        conservatively sets the next action to ``NOT_RUN`` and the
+        reason code to ``no_eligible_task``.
+        """
+        return ControlTowerDecisionRecord(
+            reason_code="no_eligible_task",
+            confidence=0.0,
+            priority=0,
+            next_action="NOT_RUN",
+            gate_status="NOT_RUN",
+        )
+
 
 __all__ = [
     "ControlTowerDecisionRecord",
