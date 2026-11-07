@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from line_development import extract_development_instruction, dispatch_development_workflow
@@ -87,10 +89,12 @@ def test_dispatch_uses_guarded_secretary_development_workflow(monkeypatch):
 
     assert "/actions/workflows/line-development-dispatch.yml" in captured["url"]
     assert captured["url"].endswith("/actions/workflows/line-development-dispatch.yml/dispatches")
-    assert captured["json"] == {
-        "ref": "main",
-        "inputs": {"instruction": "line_development.py にコメントを追加して", "user_id": "U123"},
-    }
+    assert captured["json"]["ref"] == "main"
+    inputs = captured["json"]["inputs"]
+    assert inputs["instruction"] == "line_development.py にコメントを追加して"
+    assert inputs["user_id"] == "U123"
+    assert re.fullmatch(r"[0-9a-f]{12}", inputs["request_id"])
+    assert inputs["request_id"] in reply
     assert captured["headers"]["Authorization"] == "Bearer secret"
     assert captured["timeout"] == 10.0
     assert "受け付けました" in reply
