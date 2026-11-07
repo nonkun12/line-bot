@@ -884,11 +884,22 @@ def main() -> int:
             "task_count": 0,
             "exit_code": 80,
             "failure_reason": reason,
+            "evidence_sha": selection_evidence_sha,
             "registry_preflight": {
                 **preflight,
                 "evidence_sha": selection_evidence_sha,
             },
         }
+        try:
+            from scripts.recovery_ai_loop_adapter import record_loop_outcome
+            record["recovery_ai"] = record_loop_outcome(
+                args.state.parent / "recovery-ai-state.json", record
+            )
+        except Exception:
+            # The run remains BLOCKED; expose persistence failure and never
+            # continue into task selection when its incident cannot be stored.
+            record["recovery_ai"] = {"recorded": False, "reason": "state_persistence_failed"}
+            record["persistence_failure"] = "recovery_ai_state_persist_failed"
         with args.results.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
         print(
