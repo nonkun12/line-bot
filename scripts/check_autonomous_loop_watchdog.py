@@ -1,9 +1,11 @@
 """Verify that each distributed-loop schedule slot executed a verified task and was audited."""
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
+import zipfile
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -29,6 +31,51 @@ def github_json(url: str) -> dict:
     req = Request(url, headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
     with urlopen(req, timeout=20) as response:
         return json.load(response)
+
+
+def github_bytes(url: str) -> bytes:
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("GITHUB_TOKEN is not configured")
+    req = Request(url, headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
+    with urlopen(req, timeout=30) as response:
+        return response.read()
+
+
+def load_previous_audit_cursor(repo: str) -> datetime | None:
+    """Recover the last completed audit cursor from the previous run artifact."""
+    current_run_id = os.environ.get("GITHUB_RUN_ID", "").strip()
+    workflow = "autonomous-development-watchdog.yml"
+    data = github_json(
+        "https://api.github.com/repos/" + quote(repo, safe="/")
+        + f"/actions/workflows/{workflow}/runs?per_page=100"
+    )
+    for run in data.get("workflow_runs", []):
+        run_id = str(run.get("id", ""))
+        if not run_id or run_id == current_run_id or run.get("status") != "completed":
+            continue
+        artifacts = github_json(
+            "https://api.github.com/repos/" + quote(repo, safe="/")
+            + f"/actions/runs/{run_id}/artifacts?per_page=100"
+        )
+        artifact = next((item for item in artifacts.get("artifacts", [])
+                         if item.get("name") == f"autonomous-watchdog-{run_id}"
+                         and item.get("expired") is not True), None)
+        if artifact is None:
+            continue
+        archive = github_bytes(artifact["archive_download_url"])
+        with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+            candidates = [name for name in bundle.namelist() if name.endswith("watchdog_result.json")]
+            if len(candidates) != 1:
+                continue
+            payload = json.loads(bundle.read(candidates[0]).decode("utf-8"))
+        raw_cursor = payload.get("audited_through")
+        if isinstance(raw_cursor, str) and raw_cursor:
+            parsed = datetime.fromisoformat(raw_cursor)
+            if parsed.tzinfo is None:
+                raise RuntimeError("previous watchdog cursor is missing timezone")
+            return parsed.astimezone(JST)
+    return None
 
 
 def expected_slot(now: datetime) -> datetime:
@@ -179,20 +226,14 @@ def audit_row_outcome(client: GoogleSheetsClient, run_id: str) -> tuple[bool, st
     return True, "verified_task_passed"
 
 
-def main() -> int:
-    now = datetime.now(timezone.utc)
-    slot = expected_slot(now)
-    repo = os.environ["GITHUB_REPOSITORY"]
+def _audit_slot(repo: str, slot: datetime, now: datetime) -> dict:
     problems: list[str] = []
     run = find_scheduled_run(repo, slot)
     pending = False
-
     if run is None:
         pending = run_is_pending_within_grace(None, slot, now)
         if not pending:
-            problems.append(
-                f"distributed scheduled run missing after grace for {slot.isoformat()}"
-            )
+            problems.append(f"distributed scheduled run missing after grace for {slot.isoformat()}")
     else:
         run_id = str(run["id"])
         if run.get("status") in {"queued", "in_progress"}:
@@ -215,14 +256,58 @@ def main() -> int:
                     problems.append(outcome)
             except Exception as exc:
                 problems.append(f"Sheets audit check failed: {type(exc).__name__}: {exc}")
-
-    result = {
-        "ok": not problems,
+    return {
+        "slot": slot.isoformat(),
         "pending": pending,
-        "expected_slot": slot.isoformat(),
         "run_id": str(run["id"]) if run else None,
         "run_status": run.get("status") if run else None,
         "run_conclusion": run.get("conclusion") if run else None,
+        "problems": problems,
+    }
+
+
+def main() -> int:
+    now = datetime.now(timezone.utc)
+    latest_slot = expected_slot(now)
+    repo = os.environ["GITHUB_REPOSITORY"]
+    cursor = load_previous_audit_cursor(repo)
+    cursor_initialized = cursor is None
+    if cursor is None:
+        # First deployment/backfill: inspect the latest 24 hourly slots. Further
+        # history is processed in bounded batches on subsequent scheduled runs.
+        cursor = latest_slot - timedelta(hours=24)
+
+    audited: list[dict] = []
+    problems: list[str] = []
+    pending = False
+    audited_through = cursor
+    slot = cursor + timedelta(hours=1)
+    # Bound each run to 24 slots. If more remain, the artifact cursor lets the
+    # next scheduled run continue from the oldest unprocessed slot.
+    while slot <= latest_slot and len(audited) < 24:
+        try:
+            result = _audit_slot(repo, slot, now)
+        except Exception as exc:
+            problems.append(f"audit failed for {slot.isoformat()}: {type(exc).__name__}: {exc}")
+            break
+        audited.append(result)
+        if result["pending"]:
+            pending = True
+            break
+        problems.extend(result["problems"])
+        audited_through = slot
+        slot += timedelta(hours=1)
+
+    backlog_remaining = audited_through < latest_slot and not pending
+    result = {
+        "ok": not problems,
+        "pending": pending,
+        "cursor_initialized": cursor_initialized,
+        "audited_slots": audited,
+        "audited_count": len(audited),
+        "audited_through": audited_through.isoformat(),
+        "latest_expected_slot": latest_slot.isoformat(),
+        "backlog_remaining": backlog_remaining,
         "problems": problems,
     }
     print(json.dumps(result, ensure_ascii=False))
