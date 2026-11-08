@@ -214,12 +214,47 @@ def test_preflight_blocked_does_not_increment_recovery_failure_streak(tmp_path, 
         "failure_reason": failure_reason,
     })
 
-    assert outcome == {
-        "recorded": False,
-        "reason": "preflight_blocked_not_task_failure",
-    }
+    assert outcome["recorded"] is False
+    assert outcome["reason"] == "preflight_blocked_not_task_failure"
+    assert outcome["persisted"] is True
     assert store.task_status("task-a") == before
+    state = json.loads(path.read_text(encoding="utf-8"))
+    assert state["tasks"]["task-a"] == before
+    event = next(iter(state["preflight_blocked"].values()))
+    assert event["requires_human_review"] is True
+    assert event["status"] == "PENDING_PREREQUISITE_OR_REVIEW"
 
+
+
+def test_preflight_event_resolution_requires_both_explicit_confirmations(tmp_path):
+    store = RecoveryStore(tmp_path / "recovery.json")
+    store.record_preflight_blocked("task-review", "control_tower_gate:missing_prerequisite")
+
+    with pytest.raises(ValueError, match="prerequisite-resolution"):
+        store.resolve_preflight_blocked("task-review", prerequisites_fixed=False, reviewed=True)
+    with pytest.raises(ValueError, match="human review"):
+        store.resolve_preflight_blocked("task-review", prerequisites_fixed=True, reviewed=False)
+
+    assert store.resolve_preflight_blocked(
+        "task-review", prerequisites_fixed=True, reviewed=True
+    ) == 1
+    state = json.loads(store.path.read_text(encoding="utf-8"))
+    event = next(iter(state["preflight_blocked"].values()))
+    assert event["status"] == "RESOLVED"
+    assert event["resolution"] == "prerequisites_fixed_and_human_reviewed"
+    assert event["requires_human_review"] is False
+
+
+def test_malformed_preflight_reason_is_sanitized_and_still_requires_review(tmp_path):
+    path = tmp_path / "recovery.json"
+    outcome = record_loop_outcome(path, {
+        "task_id": "task-sanitize", "status": "BLOCKED", "exit_code": 80,
+        "failure_reason": "control_tower_selector:../../unsafe reason",
+    })
+    assert outcome["persisted"] is True
+    event = next(iter(json.loads(path.read_text(encoding="utf-8"))["preflight_blocked"].values()))
+    assert event["reason_code"] == "control_tower_selector:unsafe_reason"
+    assert event["requires_human_review"] is True
 
 
 @pytest.mark.parametrize("failure_reason", [
