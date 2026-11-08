@@ -40,18 +40,32 @@ def guarded_ask(
             retry_system += "\nIMPORTANT: Return a single valid JSON object only. No prose, markdown, comments, or extra keys."
         elif attempt == 2:
             retry_system += "\nIMPORTANT: Return the smallest valid JSON object that satisfies the requested schema. No prose or markdown."
-        response = client.chat.completions.create(
-            model=worker.MODEL,
-            messages=[
-                {"role": "system", "content": retry_system},
-                {"role": "user", "content": user},
-            ],
-            temperature=0.0,
-            max_completion_tokens=effective_max_completion_tokens,
-            reasoning_effort="low",
-            include_reasoning=False,
-            response_format={"type": "json_object"},
-        )
+        try:
+            response = client.chat.completions.create(
+                model=worker.MODEL,
+                messages=[
+                    {"role": "system", "content": retry_system},
+                    {"role": "user", "content": user},
+                ],
+                temperature=0.0,
+                max_completion_tokens=effective_max_completion_tokens,
+                reasoning_effort="low",
+                include_reasoning=False,
+                response_format={"type": "json_object"},
+            )
+        except Exception as exc:
+            # Groq can reject a generated JSON-mode completion before returning
+            # a response object. Retry only this documented, content-specific
+            # failure; authentication, quota, network, and other API errors
+            # remain fail-fast and are never hidden by a retry.
+            body = getattr(exc, "body", None)
+            error_body = body.get("error", body) if isinstance(body, dict) else {}
+            error_code = error_body.get("code") if isinstance(error_body, dict) else None
+            if error_code != "json_validate_failed" and getattr(exc, "code", None) != "json_validate_failed":
+                raise
+            last_error = "provider rejected constrained JSON generation (json_validate_failed)"
+            print("[guarded_ask] provider JSON validation failed; retrying with stricter bounded prompt", flush=True)
+            continue
         choice = response.choices[0]
         content = choice.message.content or ""
         finish_reason = getattr(choice, "finish_reason", "") or "unknown"
