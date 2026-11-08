@@ -17,8 +17,9 @@ from agents.sheets.autonomous_ledger import (
 from agents.sheets.client import GoogleSheetsClient
 
 JST = ZoneInfo("Asia/Tokyo")
-SLOT_HOURS = (4, 10, 16, 22)
-SLOT_MINUTE = 30
+SLOT_MINUTE = 17
+DISCOVERY_GRACE_MINUTES = 50
+QUEUED_GRACE_MINUTES = 120
 INVALID_TASK_IDS = {"", "NOT_RUN", "QUEUE_EMPTY", "QUEUE_EXHAUSTED_NO_TASKS"}
 
 
@@ -32,17 +33,12 @@ def github_json(url: str) -> dict:
 
 
 def expected_slot(now: datetime) -> datetime:
+    """Return the most recent hourly loop slot (minute 17 JST)."""
     local = now.astimezone(JST).replace(second=0, microsecond=0)
-    candidates = [
-        local.replace(hour=hour, minute=SLOT_MINUTE)
-        for hour in SLOT_HOURS
-        if local.replace(hour=hour, minute=SLOT_MINUTE) <= local
-    ]
-    if candidates:
-        return max(candidates)
-    return (local - timedelta(days=1)).replace(
-        hour=SLOT_HOURS[-1], minute=SLOT_MINUTE
-    )
+    candidate = local.replace(minute=SLOT_MINUTE)
+    if candidate > local:
+        candidate -= timedelta(hours=1)
+    return candidate
 
 
 def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
@@ -52,21 +48,21 @@ def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
         + quote(repo, safe="/")
         + f"/actions/workflows/{workflow}/runs?event=schedule&per_page=20"
     )
-    # GitHub Actions can delay scheduled workflows substantially. Allow up to
-    # four hours of lateness (still less than the six-hour slot interval).
-    window_end = slot + timedelta(minutes=240)
+    # The loop is hourly. A four-hour window overlaps several slots and can
+    # attach an old run to the current slot, creating false watchdog failures.
+    window_end = slot + timedelta(minutes=DISCOVERY_GRACE_MINUTES)
     window_start = slot - timedelta(minutes=10)
+    matches = []
     for run in data.get("workflow_runs", []):
-        # The workflow uses run-name, so the API name field may contain
-        # a title such as "Distributed Loop (continuation_depth=0)" rather than
-        # the workflow name. The endpoint is already scoped to this workflow;
-        # filter by event only and rely on the bounded timestamp window.
         if run.get("event") != "schedule":
             continue
-        created = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00")).astimezone(JST)
+        try:
+            created = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00")).astimezone(JST)
+        except (KeyError, TypeError, ValueError):
+            continue
         if window_start <= created <= window_end:
-            return run
-    return None
+            matches.append((abs((created - slot).total_seconds()), run))
+    return min(matches, key=lambda item: item[0])[1] if matches else None
 
 
 def _ledger_rows(client: GoogleSheetsClient) -> tuple[list[list], int, int]:
@@ -97,15 +93,14 @@ def run_is_pending_within_grace(run: dict | None, slot: datetime, now: datetime)
         return False
 
     if run is None:
-        # Scheduled events can be published late; the run lookup uses the same
-        # four-hour discovery window. Do not report a missing run before it ends.
-        return elapsed <= timedelta(minutes=240)
+        # Scheduled events may be delayed, but only within this slot's
+        # non-overlapping discovery window.
+        return elapsed <= timedelta(minutes=DISCOVERY_GRACE_MINUTES)
 
     status = run.get("status")
     if status == "queued":
-        # LINE dispatch admits at most two outstanding loop runs. This bounded
-        # grace also covers the next scheduled run waiting behind them.
-        return elapsed <= timedelta(minutes=360)
+        # Allow two hourly slots for a run queued behind existing work.
+        return elapsed <= timedelta(minutes=QUEUED_GRACE_MINUTES)
     if status != "in_progress":
         return False
 
@@ -119,9 +114,9 @@ def run_is_pending_within_grace(run: dict | None, slot: datetime, now: datetime)
             running_for = now.astimezone(JST) - started.astimezone(JST)
             return timedelta(0) <= running_for <= timedelta(minutes=90)
 
-    # Older API/test fixtures may not provide run_started_at. Keep a bounded
-    # fallback rather than silently treating a malformed timestamp as healthy.
-    return elapsed <= timedelta(minutes=360)
+    # Older API/test fixtures may not provide run_started_at. Keep the
+    # fallback bounded to the normal execution grace.
+    return elapsed <= timedelta(minutes=90)
 
 
 def has_audit_row(client: GoogleSheetsClient, run_id: str) -> bool:
@@ -159,6 +154,12 @@ def audit_row_outcome(client: GoogleSheetsClient, run_id: str) -> tuple[bool, st
     task_id = str(values[positions["task_id"]]).strip()
     if re.sub(r"[^A-Z0-9]+", "_", task_id.upper()).strip("_") in INVALID_TASK_IDS or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,99}", task_id):
         reason = str(values[positions["blocked_failed_reason"]]).strip() or "invalid_or_missing_task_id"
+        if reason == "queue_empty" or reason.startswith((
+            "catalog_exhausted_held:",
+            "catalog_exhausted_review_pending:",
+            "catalog_exhausted_mixed:",
+        )):
+            return False, f"queue_waiting_review:{reason}"
         return False, f"scheduled workflow did not execute a valid task: run_id={run_id} task_id={task_id or '(empty)'} reason={reason}"
     gate = str(values[positions["safety_gate_result"]]).strip().upper()
     if gate != "PASS":
@@ -184,6 +185,7 @@ def main() -> int:
     slot = expected_slot(now)
     repo = os.environ["GITHUB_REPOSITORY"]
     problems: list[str] = []
+    degraded_reasons: list[str] = []
     run = find_scheduled_run(repo, slot)
     pending = False
 
@@ -212,12 +214,18 @@ def main() -> int:
                 client = GoogleSheetsClient()
                 ok, outcome = audit_row_outcome(client, run_id)
                 if not ok:
-                    problems.append(outcome)
+                    if outcome.startswith("queue_waiting_review:"):
+                        degraded_reasons.append(outcome)
+                    else:
+                        problems.append(outcome)
             except Exception as exc:
                 problems.append(f"Sheets audit check failed: {type(exc).__name__}: {exc}")
 
     result = {
         "ok": not problems,
+        "status": "BLOCKED" if problems else ("DEGRADED" if degraded_reasons else ("PENDING" if pending else "PASS")),
+        "degraded": bool(degraded_reasons),
+        "degraded_reasons": degraded_reasons,
         "pending": pending,
         "expected_slot": slot.isoformat(),
         "run_id": str(run["id"]) if run else None,
