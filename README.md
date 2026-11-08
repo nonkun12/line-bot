@@ -199,3 +199,39 @@ venv/bin/pytest -q
 ## 9. 自律開発Loopの明示実行
 
 自律開発Loopは通常のmainへのpushでは起動せず、明示的なコミットメッセージが `[run-autonomous-loop]` で始まる場合だけ起動します。実行は1件の guarded development runtimeとして行い、pytest・実体Safety Gate・PR作成・自己改良履歴・Google Sheets監査記録を順に検証します。自動マージは行いません。
+
+
+## Orca status publisher: macOS hourly schedule
+
+The Mac-side publisher can be run hourly by `launchd`. It performs only the
+read-only Orca `task-list`, `worker-list`, and `dispatch-show` collection,
+then sends an allowlisted, HMAC-signed snapshot over HTTPS.
+
+1. Create `~/.config/orca-status.env` with these values (do not commit this file):
+   ```sh
+   ORCA_STATUS_REPO="$HOME/path/to/line-bot"
+   ORCA_TERMINAL_HANDLE="your-coordinator-terminal-handle"
+   ORCA_STATUS_URL="https://your-dashboard-host"
+   ORCA_STATUS_SECRET="same-random-secret-configured-on-Render"
+   ```
+   Protect it with `chmod 600 ~/.config/orca-status.env`.
+2. In `launchd/com.nonkun.orca-status-publisher.plist`, replace
+   `/ABSOLUTE/PATH/TO/line-bot` with the absolute path to this checkout.
+3. Copy the plist to `~/Library/LaunchAgents/` and load it:
+   ```sh
+   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.nonkun.orca-status-publisher.plist
+   ```
+   It runs once at login and then every 3600 seconds. To stop it:
+   ```sh
+   launchctl bootout gui/$(id -u)/com.nonkun.orca-status-publisher
+   ```
+4. Review `/tmp/orca-status-publisher.log` and
+   `/tmp/orca-status-publisher-error.log`. Source timestamps older than five
+   minutes, more than 60 seconds in the future, and snapshots older than the
+   last accepted snapshot are rejected. A stream is shown as observed only
+   when explicit runtime metadata links records to that stream; this does not
+   by itself prove a worker is currently executing.
+
+This PR does not install the LaunchAgent on the Mac, configure Render secrets,
+or deploy the application. Live telemetry remains unavailable until those
+external setup steps are completed.
