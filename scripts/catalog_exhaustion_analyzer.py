@@ -234,7 +234,7 @@ def analyze(
                 continue
             evidence = f"{code_rel}:{line}"
             fingerprint = hashlib.sha256(
-                f"{code_rel}\\0{function}\\0{line}\\0{hashlib.sha256(code_source.encode()).hexdigest()}\\0{hashlib.sha256(test_source.encode()).hexdigest()}".encode()
+                f"{code_rel}\0{function}\0{line}\0{hashlib.sha256(code_source.encode()).hexdigest()}\0{hashlib.sha256(test_source.encode()).hexdigest()}".encode()
             ).hexdigest()
             group.append({
                 "id": task_id,

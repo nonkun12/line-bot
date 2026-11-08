@@ -291,7 +291,7 @@ def test_name_is_only_data():
 def test_invalid_test_python_blocks_discovery_without_guessing(tmp_path: Path):
     root, catalog, queue, state, runtime = _fixture(tmp_path)
     (root / "tests" / "test_agent_runtime.py").write_text(
-        "def test_broken(:\\n    pass\\n",
+        "def test_broken(:\n    pass\n",
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="test source AST is invalid"):
@@ -304,17 +304,17 @@ def test_analyzer_round_robins_targets_before_applying_candidate_cap(tmp_path: P
     (root / "tests").mkdir()
     first_names = [f"first_target_gap_{index}" for index in range(6)]
     (root / "core" / "agent_events.py").write_text(
-        "".join(f"def {name}(value):\\n    return value\\n\\n" for name in first_names),
+        "".join(f"def {name}(value):\n    return value\n\n" for name in first_names),
         encoding="utf-8",
     )
     (root / "tests" / "test_agent_events.py").write_text(
-        "def test_existing():\\n    assert True\\n", encoding="utf-8"
+        "def test_existing():\n    assert True\n", encoding="utf-8"
     )
     (root / "core" / "github_integration_status.py").write_text(
-        "def later_target_gap(value):\\n    return value\\n", encoding="utf-8"
+        "def later_target_gap(value):\n    return value\n", encoding="utf-8"
     )
     (root / "tests" / "test_github_integration_status.py").write_text(
-        "def test_existing():\\n    assert True\\n", encoding="utf-8"
+        "def test_existing():\n    assert True\n", encoding="utf-8"
     )
     catalog = _write(tmp_path / "catalog.json", {"tasks": []})
     queue = _write(tmp_path / "queue.json", {"tasks": []})
@@ -323,7 +323,7 @@ def test_analyzer_round_robins_targets_before_applying_candidate_cap(tmp_path: P
         {"completed": [], "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None}},
     )
     runtime = root / "core" / "line_development_runtime.py"
-    runtime.write_text("_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {}\\n", encoding="utf-8")
+    runtime.write_text("_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {}\n", encoding="utf-8")
 
     report = analyze(root, catalog, queue, state, runtime)
 
