@@ -98,6 +98,8 @@ def test_dispatch_uses_guarded_secretary_development_workflow(monkeypatch):
     assert captured["headers"]["Authorization"] == "Bearer secret"
     assert captured["timeout"] == 10.0
     assert "受け付けました" in reply
+    assert "\n" in reply
+    assert "\\n" not in reply
 
 
 def test_dispatch_retries_transient_github_failure(monkeypatch):
