@@ -44,7 +44,7 @@ def test_queue_is_nonempty_and_run_limit_is_bounded():
 
 
 def test_registry_preflight_reports_queue_catalog_counts_and_unregistered_ids():
-    registered = [{"id": "known-task", "instruction": "test", "allowed_paths": ["tests/test_known.py"]}]
+    registered = [{"id": "known-task", "instruction": "test", "allowed_paths": ["tests/test_known.py"], "execution_approved": True}]
     queued = [
         {"id": "known-task", "instruction": "test", "allowed_paths": ["tests/test_known.py"]},
         {"id": "ghost-task", "instruction": "test", "allowed_paths": ["tests/test_ghost.py"]},
@@ -61,7 +61,7 @@ def test_registry_preflight_reports_queue_catalog_counts_and_unregistered_ids():
 
 
 def test_registry_preflight_rejects_duplicate_and_definition_mismatch():
-    registered = [{"id": "known-task", "instruction": "trusted", "allowed_paths": ["tests/test_known.py"]}]
+    registered = [{"id": "known-task", "instruction": "trusted", "allowed_paths": ["tests/test_known.py"], "execution_approved": True}]
     queued = [
         {"id": "known-task", "instruction": "untrusted", "allowed_paths": ["tests/test_known.py"]},
         {"id": "known-task", "instruction": "trusted", "allowed_paths": ["tests/test_known.py"]},
@@ -78,7 +78,7 @@ def test_registry_preflight_rejects_duplicate_and_definition_mismatch():
 
 def test_registry_preflight_passes_exact_registered_queue():
     task = {"id": "known-task", "instruction": "trusted", "allowed_paths": ["tests/test_known.py"]}
-    result = loop.registry_preflight([task], [task])
+    result = loop.registry_preflight([task], [{**task, "execution_approved": True}])
 
     assert result == {
         "status": "PASS",
@@ -87,6 +87,23 @@ def test_registry_preflight_passes_exact_registered_queue():
         "rejected_tasks": [],
         "remediation": None,
     }
+
+
+
+
+@pytest.mark.parametrize("approval", [None, False, "true", 1, 0])
+def test_registry_preflight_rejects_non_boolean_execution_approval(approval):
+    task = {"id": "known-task", "instruction": "trusted", "allowed_paths": ["tests/test_known.py"]}
+    catalog_task = {**task, "execution_approved": approval}
+    result = loop.registry_preflight([task], [catalog_task])
+    assert result["status"] == "BLOCKED"
+    assert result["rejected_tasks"] == [{"id": "known-task", "reason": "execution_not_approved"}]
+
+
+def test_registry_preflight_accepts_exact_true_and_runtime_schema_without_flag():
+    task = {"id": "known-task", "instruction": "trusted", "allowed_paths": ["tests/test_known.py"]}
+    result = loop.registry_preflight([task], [{**task, "execution_approved": True}])
+    assert result["status"] == "PASS"
 
 
 def test_unregistered_queue_task_writes_actionable_block_before_recovery_read(monkeypatch, tmp_path: Path, capsys):
@@ -102,7 +119,7 @@ def test_unregistered_queue_task_writes_actionable_block_before_recovery_read(mo
     monkeypatch.setattr(loop, "_git_head", lambda: "a" * 40)
     monkeypatch.setattr(loop, "load_completed", lambda _path: set())
     monkeypatch.setattr(loop, "load_tasks", lambda: [queued])
-    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [registered])
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [{**registered, "execution_approved": True}])
     monkeypatch.setattr(loop.sys, "argv", [
         "run_minimal_autonomous_loop", "--results", str(results), "--state", str(tmp_path / "state.json")
     ])
@@ -780,7 +797,7 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
     monkeypatch.setattr(loop, "load_completed", lambda _path: set())
     monkeypatch.setattr(loop, "load_tasks", lambda: [task])
     monkeypatch.setattr(loop, "_git_head", lambda: sha)
-    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [task])
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [{**task, "execution_approved": True}])
     monkeypatch.setattr(
         loop.sys,
         "argv",
@@ -1169,6 +1186,7 @@ def test_registered_catalog_never_trusts_queue_entries(monkeypatch):
             "id": reviewed_id,
             "instruction": "Use dummy data and change one test only.",
             "allowed_paths": ["tests/test_example.py"],
+            "execution_approved": True,
         }],
     }
     calls = []
@@ -1183,6 +1201,7 @@ def test_registered_catalog_never_trusts_queue_entries(monkeypatch):
     registered = loop._load_registered_catalog(sha)
 
     assert [task["id"] for task in registered] == [reviewed_id]
+    assert registered[0]["execution_approved"] is True
     assert queue_only_id not in {task["id"] for task in registered}
     assert len(calls) == 1
 

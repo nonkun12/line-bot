@@ -151,15 +151,26 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     # Recovery AI. A resumed task is not eligible until explicit review clears
     # resume_requires_review; queue refill must not reintroduce it prematurely.
     ineligible_ids = held_ids | review_required_ids | completed_ids
-    # Existing tracked queue entries are not implicitly trusted: only an exact
-    # boolean True approval survives refill. Missing/null/malformed values fail closed.
-    eligible_existing = [
-        task for task in normalized_existing
-        if task["id"] not in ineligible_ids and task["execution_approved"]
-    ]
-    skipped_unapproved_ids = sorted(
-        task["id"] for task in normalized_existing if not task["execution_approved"]
-    )
+    # The version-controlled catalog is the sole approval authority. Runtime
+    # queue files intentionally omit approval metadata, so reconcile each
+    # existing entry by ID and exact definition against the catalog on every run.
+    catalog_by_id = {task["id"]: task for task in normalized_catalog}
+    eligible_existing = []
+    skipped_unapproved_ids = []
+    skipped_definition_mismatch_ids = []
+    for task in normalized_existing:
+        trusted = catalog_by_id.get(task["id"])
+        same_definition = trusted is not None and all(
+            task[key] == trusted[key] for key in ("id", "instruction", "allowed_paths")
+        )
+        if not same_definition:
+            skipped_definition_mismatch_ids.append(task["id"])
+        elif trusted.get("execution_approved") is not True:
+            skipped_unapproved_ids.append(task["id"])
+        elif task["id"] not in ineligible_ids:
+            eligible_existing.append(trusted)
+    skipped_unapproved_ids = sorted(skipped_unapproved_ids)
+    skipped_definition_mismatch_ids = sorted(skipped_definition_mismatch_ids)
     skipped_held_ids = sorted(original_ids.intersection(held_ids))
     skipped_review_ids = sorted(original_ids.intersection(review_required_ids))
     skipped_completed_ids = sorted(original_ids.intersection(completed_ids))

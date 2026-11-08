@@ -350,6 +350,8 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
                 "id": task_id,
                 "instruction": instruction,
                 "allowed_paths": [item.strip() for item in allowed_paths],
+                # Preserve approval only in this trusted catalog representation.
+                "execution_approved": entry.get("execution_approved") is True,
             }
             previous = definitions.get(task_id)
             if previous is not None and previous != normalized:
@@ -382,7 +384,9 @@ def registry_preflight(
         registered = registered_by_id.get(task_id)
         if registered is None:
             rejected.append({"id": task_id, "reason": "unregistered_task"})
-        elif task != registered:
+        elif registered.get("execution_approved") is not True:
+            rejected.append({"id": task_id, "reason": "execution_not_approved"})
+        elif any(task.get(key) != registered.get(key) for key in ("id", "instruction", "allowed_paths")):
             rejected.append({"id": task_id, "reason": "definition_mismatch"})
 
     return {
@@ -432,7 +436,11 @@ def reselect_registered_task(
         (task for task in registered_catalog if str(task.get("id", "")) == expected_task_id),
         None,
     )
-    if queued is None or registered is None or queued != registered:
+    if queued is None or registered is None:
+        return None, "definition_mismatch"
+    if registered.get("execution_approved") is not True:
+        return None, "execution_not_approved"
+    if any(queued.get(key) != registered.get(key) for key in ("id", "instruction", "allowed_paths")):
         return None, "definition_mismatch"
     return queued, ""
 
