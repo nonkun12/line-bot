@@ -230,7 +230,16 @@ class RecoveryStore:
             raise RecoveryStateError("preflight blocked event record invalid")
         now = utc_now()
         occurrences = int(previous.get("occurrences", 0)) + 1 if previous else 1
-        events[fingerprint] = {
+        resolution_history = list(previous.get("resolution_history", [])) if previous else []
+        if previous and previous.get("status") == "RESOLVED":
+            # Preserve the prior human resolution as immutable audit evidence;
+            # a recurrence is a new pending incident, not a still-resolved one.
+            resolution_history.append({
+                "resolution": previous.get("resolution"),
+                "resolved_at": previous.get("resolved_at"),
+            })
+            resolution_history = resolution_history[-20:]
+        event = {
             **identity,
             "fingerprint": fingerprint,
             "status": "PENDING_PREREQUISITE_OR_REVIEW",
@@ -238,7 +247,9 @@ class RecoveryStore:
             "first_seen_at": previous.get("first_seen_at", now) if previous else now,
             "last_seen_at": now,
             "occurrences": occurrences,
+            "resolution_history": resolution_history,
         }
+        events[fingerprint] = event
         if len(events) > 200:
             resolved = sorted(
                 ((key, value) for key, value in events.items()
