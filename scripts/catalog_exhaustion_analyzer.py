@@ -108,6 +108,34 @@ def _public_functions(source: str) -> list[tuple[str, int]]:
     return found
 
 
+def _referenced_symbols(test_source: str) -> set[str]:
+    """Collect executable Python name/attribute references, not comments or strings.
+
+    Imported aliases are retained alongside their original symbol names.
+    """
+    try:
+        tree = ast.parse(test_source)
+    except SyntaxError as exc:
+        raise ValueError("test source AST is invalid") from exc
+
+    imported_names: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                imported_names[alias.asname or alias.name] = alias.name.rsplit(".", 1)[-1]
+
+    referenced: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            referenced.add(node.id)
+            original = imported_names.get(node.id)
+            if original:
+                referenced.add(original)
+        elif isinstance(node, ast.Attribute):
+            referenced.add(node.attr)
+    return referenced
+
+
 def _existing_issue_task_ids(issues_path: Path | None) -> set[str]:
     """Exclude every previously issued review candidate before selecting the next batch."""
     if issues_path is None:
@@ -183,10 +211,8 @@ def analyze(
     # Exclude old candidates during discovery; otherwise the bounded first batch
     # is rediscovered forever and issue creation filters every result as duplicate.
     excluded = queued_ids | completed | held | review | catalog_ids | _existing_issue_task_ids(existing_issues_path)
-    candidates = []
+    candidate_groups = []
     for code_rel, test_rel in TARGETS:
-        if len(candidates) >= MAX_CANDIDATES:
-            break
         code_path, test_path = repo_root / code_rel, repo_root / test_rel
         # Never follow repository-controlled symlinks while scanning source or tests.
         if code_path.is_symlink() or test_path.is_symlink():
@@ -197,33 +223,54 @@ def analyze(
             continue
         code_source = code_path.read_text(encoding="utf-8")
         test_source = test_path.read_text(encoding="utf-8")
+        referenced_symbols = _referenced_symbols(test_source)
+        group = []
         for function, line in _public_functions(code_source):
-            if len(candidates) >= MAX_CANDIDATES:
-                break
             leaf = function.rsplit(".", 1)[-1]
-            # Conservative textual heuristic only. It is explicitly marked as
-            # review-only because indirect/parameterized coverage is possible.
-            if re.search(r"\b" + re.escape(leaf) + r"\b", test_source):
+            # AST references avoid false "covered" matches in comments and
+            # string literals. This remains a heuristic: indirect coverage
+            # may still exist, so every candidate requires human review.
+            if leaf in referenced_symbols:
                 continue
-            # Stable across line movement; source location remains in evidence/fingerprint.
             suffix = hashlib.sha256(f"{code_rel}:{function}".encode()).hexdigest()[:10]
             task_id = f"review-coverage-gap-{suffix}"
             if task_id in excluded:
                 continue
             evidence = f"{code_rel}:{line}"
             fingerprint = hashlib.sha256(
-                f"{code_rel}\0{function}\0{line}\0{hashlib.sha256(code_source.encode()).hexdigest()}\0{hashlib.sha256(test_source.encode()).hexdigest()}".encode()
+                f"{code_rel}\\0{function}\\0{line}\\0{hashlib.sha256(code_source.encode()).hexdigest()}\\0{hashlib.sha256(test_source.encode()).hexdigest()}".encode()
             ).hexdigest()
-            candidates.append({
+            group.append({
                 "id": task_id,
-                "instruction": f"人手レビュー後に限り、{test_rel} に {code_rel} の {function} ({evidence}) の境界条件を検証する新しい回帰テストを1件追加してください。既存テストを変更せず、指定テストファイルのみ変更してください。候補生成はテスト未参照の文字列ヒューリスティックに基づくため、間接カバレッジや既存テストとの重複を先に確認してください。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+                "instruction": f"人手レビュー後に限り、{test_rel} に {code_rel} の {function} ({evidence}) の境界条件を検証する新しい回帰テストを1件追加してください。既存テストを変更せず、指定テストファイルのみ変更してください。候補生成はテスト内のAST参照に基づくヒューリスティックのため、間接カバレッジや既存テストとの重複を先に確認してください。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
                 "target_test": test_rel,
                 "evidence": evidence,
                 "source_function": function,
                 "status": "REVIEW_REQUIRED",
-                "heuristic": "public-symbol-name-not-found-in-test-source; may have indirect coverage",
+                "heuristic": "public-symbol-name-not-found-in-test-ast; may have indirect coverage",
                 "fingerprint": fingerprint,
             })
+            if len(group) >= MAX_CANDIDATES:
+                break
+        if group:
+            candidate_groups.append(group)
+
+    # Round-robin across allowlisted target pairs so a large early module cannot
+    # consume the entire review batch and starve later modules indefinitely.
+    candidates = []
+    depth = 0
+    while len(candidates) < MAX_CANDIDATES:
+        added_at_depth = False
+        for group in candidate_groups:
+            if depth < len(group):
+                candidates.append(group[depth])
+                added_at_depth = True
+                if len(candidates) >= MAX_CANDIDATES:
+                    break
+        if not added_at_depth:
+            break
+        depth += 1
+
     return {
         "version": 1,
         "status": "REVIEW_REQUIRED" if candidates else "NO_SAFE_CANDIDATE",
