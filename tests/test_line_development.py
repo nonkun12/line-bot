@@ -367,3 +367,35 @@ def test_shared_read_only_guard_blocks_app_style_constraints_too():
     assert extract_development_instruction(
         "line-botのコードを改善して。ただしGitHub Actions起動はしないでください。"
     ) is None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "STAR-NIGHTを進めて",
+        "タスク枯渇対策を続けて",
+        "分散Loopを実行して",
+        "自己改善AIを更新して",
+        "映像・音楽AIをブラッシュアップして",
+        "LINE全指示化を進めて",
+    ],
+)
+def test_five_stream_natural_commands_are_dispatched(message):
+    assert extract_development_instruction(message) == message
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "STAR-NIGHTの状況を教えて",
+        "自己改善AIの状態を確認して",
+        "タスク枯渇対策の説明をして",
+    ],
+)
+def test_five_stream_read_only_questions_are_not_dispatched(message):
+    assert extract_development_instruction(message) is None
+
+
+def test_five_stream_command_with_read_only_constraint_is_not_dispatched():
+    message = "STAR-NIGHTを進めて。コード変更は行わず結果だけ報告して"
+    assert extract_development_instruction(message) is None

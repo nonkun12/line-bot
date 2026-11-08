@@ -28,10 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
         ['ai_news','AI NEWS','取得・要約・配信'],
         ['voice','AIスピーカー / Voice','音声入力・音声出力'],
         ['jobs','求職AI','求人検索・応募支援'],
-        ['music','音楽AI','選曲・作曲/作詞補助・プレイリスト'],
-        ['video','映像AI','企画・台本・絵コンテ・編集'],
       ];
-      const icons={management_ai:'🧠',general:'🧩',english_learning:'🇬🇧',stocks:'📈',global_market:'🌎',ai_news:'📰',voice:'🎙️',jobs:'💼',music:'🎵',video:'🎬'};
+      const icons={management_ai:'🧠',general:'🧩',english_learning:'🇬🇧',stocks:'📈',global_market:'🌎',ai_news:'📰',voice:'🎙️',jobs:'💼',};
       const featureGrid=document.getElementById('featureGrid');
       featureGrid.innerHTML=featureOrder.map(([key,title,baseDetail])=>{
         const f=features[key]||{}, status=f.status||'unknown';
@@ -42,6 +40,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const lr=await fetch(api('/api/dashboard/loop')); const ld=await lr.json();
         const l=ld.loop||{}, s=ld.safety||{}, h=ld.hand_sign||{};
         loopLastRun = l.last_run || {};
+        const streams = Array.isArray(l.streams) ? l.streams : [];
+        const streamStatus = status => ({
+          in_development: '🔵 開発中・稼働未確認',
+          partial: '🟡 一部実装',
+          planned: '⚪ 計画',
+          verified: '🟢 実行検証済み'
+        }[status] || '⚪ 未確認');
+        const streamGrid = document.getElementById('developmentStreams');
+        if (streamGrid) {
+          streamGrid.innerHTML = streams.map(item => {
+            const prs = Array.isArray(item.related_prs) ? item.related_prs.map(n => '#'+Number(n)).join(' / ') : '';
+            const cadence = item.cadence === 'hourly_target' ? '目標：毎時（未検証）' : '頻度未確認';
+            return '<div class="system-card"><div class="system-card-title">'+esc(item.label||item.key)+'</div><div class="system-status">'+streamStatus(item.status)+'</div><div class="system-details">'+esc(item.detail||'')+'</div><div class="system-details">'+esc(cadence)+(prs ? ' ・ 関連PR '+esc(prs) : '')+'</div></div>';
+          }).join('') || '<div class="system-details">系統情報は未取得です</div>';
+        }
         const cards=[
           ['🔄 Loop','🟢 自動運転設定済み',`1日 ${l.frequency_per_day||4}回 ・ ${(l.schedule_jst||[]).join(' / ')} JST`],
           ['🛡️ Safety Gate',s.fail_closed||l.fail_closed?'🟢 FAIL_CLOSED 有効':'⚪ 未確認',`Auto Merge: ${s.auto_merge?'有':'無'} ・ Auto Deploy: ${s.auto_deploy?'有':'無'}`],
@@ -120,6 +133,34 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch(e) { const el=document.getElementById('systemError'); document.getElementById('systemErrorMessage').textContent=`システム情報の取得に失敗: ${e.message}`; el.classList.remove('hidden'); }
   }
 
+  async function fetchOrcaStatus(){
+    const panel=document.getElementById('orcaLiveBoard');
+    if(!panel) return;
+    try{
+      const response=await fetch(api('/api/dashboard/orca'));
+      const data=await response.json();
+      if(!response.ok||!data.ok) throw new Error(data.error||'HTTP '+response.status);
+      const statusLabel={online:'🟢 接続中',stale:'🟡 データ遅延',offline:'⚪ 未接続',error:'🔴 エラー'}[data.status]||'⚪ 未確認';
+      const age=data.age_sec==null?'送信元未接続':(data.age_sec+'秒前に受信');
+      const groups=[['Tasks',data.tasks],['Dispatches',data.dispatches],['Workers',data.workers]];
+      const summary=groups.map(([name,items])=>'<div class="system-card"><div class="system-card-title">'+name+'</div><div class="history-metric-value">'+(Array.isArray(items)?items.length:0)+'</div><div class="system-details">受信データ件数</div></div>').join('');
+      const rows=groups.map(([name,items])=>(items||[]).slice(0,5).map(item=>{
+        const title=esc(item.title||item.name||item.task_id||item.dispatch_id||item.worker_id||item.id||'ID未取得');
+        const state=esc(item.status||item.state||'状態未取得');
+        return '<div class="system-details">'+name+'：'+title+' ・ '+state+'</div>';
+      }).join('')).join('');
+      const streamLabels={main_star_night:'本線：STAR-NIGHT',side_task_supply:'サイド1：タスク枯渇対策',side_media_ai:'サイド2：映像・音楽AI',side_self_improvement:'サイド3：自己改善AI',side_line_full_control:'サイド4：LINE全指示化'};
+      const streamRows=(Array.isArray(data.streams)?data.streams:[]).map(item=>{
+        const observed=item.status==='observed';
+        const counts='Task '+Number(item.task_count||0)+' / Dispatch '+Number(item.dispatch_count||0)+' / Worker '+Number(item.worker_count||0);
+        return '<div class="system-card"><div class="system-card-title">'+esc(streamLabels[item.key]||item.label||item.key)+'</div><div class="system-status">'+(observed?'🟢 実データ観測あり':'⚪ 未確認')+'</div><div class="system-details">'+esc(counts)+'</div><div class="system-details">'+(observed?'実レコードとの一致あり':'対応する系統メタデータ未検出')+'</div></div>';
+      }).join('');
+      panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">'+statusLabel+'</div><div class="system-details">'+esc(age)+'</div></div>'+summary+'<div class="section-subtitle">5系統の実データ照合</div>'+(streamRows||'<div class="system-details">系統データ未取得</div>')+(rows||'<div class="system-details">Task / Dispatch / Workerの明細は未受信です。</div>');
+    }catch(error){
+      panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">⚪ 未確認</div><div class="system-details">'+esc(error.message)+'</div></div>';
+    }
+  }
+
   let allNotes=[];
   const tbody=document.getElementById('notesTableBody'), loading=document.getElementById('loadingState'), empty=document.getElementById('emptyState'), error=document.getElementById('errorAlert');
   function cat(c){ const x=String(c||'').toLowerCase(); return x.includes('予定')?'cat-schedule':x.includes('技術')?'cat-tech':x.includes('学習')?'cat-study':x.includes('生活')?'cat-life':'cat-general'; }
@@ -129,7 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function deleteNote(id){if(!id||id==='-'||!confirm('このメモを削除してよろしいですか？'))return;try{const r=await fetch(api('/api/dashboard/notes/'+encodeURIComponent(id)),{method:'DELETE'});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||`HTTP ${r.status}`);fetchNotes();}catch(e){document.getElementById('errorMessage').textContent=`削除に失敗しました: ${e.message}`;error.classList.remove('hidden');}}
   async function addNote(title,body,category){try{const r=await fetch(api('/api/dashboard/notes'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,body,category})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||`HTTP ${r.status}`);closeModal();fetchNotes();}catch(e){document.getElementById('modalErrorMessage').textContent=e.message;document.getElementById('modalErrorAlert').classList.remove('hidden');}}
   const modal=document.getElementById('newNoteModal'); const closeModal=()=>modal.classList.add('hidden');
-  document.getElementById('refreshBtn').onclick=fetchNotes; document.getElementById('searchInput').oninput=filterNotes; document.getElementById('systemRefreshBtn').onclick=fetchSystem; document.getElementById('newNoteBtn').onclick=()=>{document.getElementById('newNoteForm').reset();modal.classList.remove('hidden');document.getElementById('noteTitle').focus();}; document.getElementById('closeModalBtn').onclick=closeModal; document.getElementById('cancelModalBtn').onclick=closeModal; modal.onclick=e=>{if(e.target===modal)closeModal();};
+  document.getElementById('refreshBtn').onclick=fetchNotes; document.getElementById('searchInput').oninput=filterNotes; document.getElementById('systemRefreshBtn').onclick=()=>{fetchSystem();fetchOrcaStatus();}; document.getElementById('newNoteBtn').onclick=()=>{document.getElementById('newNoteForm').reset();modal.classList.remove('hidden');document.getElementById('noteTitle').focus();}; document.getElementById('closeModalBtn').onclick=closeModal; document.getElementById('cancelModalBtn').onclick=closeModal; modal.onclick=e=>{if(e.target===modal)closeModal();};
   document.getElementById('newNoteForm').onsubmit=e=>{e.preventDefault();const t=document.getElementById('noteTitle').value.trim(),b=document.getElementById('noteBody').value.trim(),c=document.getElementById('noteCategory').value;if(t&&b)addNote(t,b,c);};
-  fetchSystem(); fetchNotes();
+  fetchSystem(); fetchNotes(); fetchOrcaStatus(); window.setInterval(fetchOrcaStatus, 60000);
 });

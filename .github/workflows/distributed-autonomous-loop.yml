@@ -1365,6 +1365,38 @@ jobs:
             "https://line-bot-yvea.onrender.com/health"; then
             echo "::warning::Render health warm-up failed; continuing to the single LINE push attempt."
           fi
+      - name: Publish cloud Orca runtime snapshot to Render
+        if: always()
+        continue-on-error: true
+        env:
+          ORCA_STATUS_URL: ${{ secrets.ORCA_STATUS_URL }}
+          ORCA_STATUS_SECRET: ${{ secrets.ORCA_STATUS_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ORCA_STATUS_URL:-}" ] || [ -z "${ORCA_STATUS_SECRET:-}" ]; then
+            echo "Cloud Orca telemetry skipped: configure ORCA_STATUS_URL and ORCA_STATUS_SECRET in GitHub Actions secrets."
+            exit 0
+          fi
+          outcome="$(python - <<'PY'
+          from pathlib import Path
+          report = Path("/tmp/distributed-final-report.txt")
+          value = "BLOCKED"
+          if report.is_file():
+              for line in report.read_text(encoding="utf-8").splitlines():
+                  if line.startswith("- 結果: **") and line.endswith("**"):
+                      candidate = line[len("- 結果: **"):-2]
+                      if candidate in {"PASS", "NO_CHANGE", "FAIL", "BLOCKED", "NOT_RUN"}:
+                          value = candidate
+                      break
+          print(value)
+          PY
+          )"
+          python -m scripts.orca_github_status_snapshot \
+            --results /tmp/minimal-autonomous-loop.jsonl \
+            --run-id "$GITHUB_RUN_ID" \
+            --outcome "$outcome" \
+            | python scripts/orca_status_publisher.py
+
       - name: Notify LINE of distributed loop final report
         if: always()
         continue-on-error: true
