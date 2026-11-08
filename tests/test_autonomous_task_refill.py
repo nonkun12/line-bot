@@ -133,6 +133,7 @@ def test_refill_skips_catalog_task_without_explicit_execution_approval(tmp_path:
 
     assert report["added_ids"] == ["explicitly-approved-task"]
     assert report["eligible_catalog_ids"] == ["explicitly-approved-task"]
+    assert report["skipped_catalog_unapproved_ids"] == ["legacy-unapproved-task", "task-review-only"]
     assert [task["id"] for task in result["tasks"]] == ["explicitly-approved-task"]
 
 
@@ -146,6 +147,7 @@ def test_refill_treats_malformed_catalog_execution_approval_as_unapproved(tmp_pa
     report = build_queue(queue, catalog, completed, output)
     assert report["added_ids"] == []
     assert report["eligible_catalog_ids"] == []
+    assert report["skipped_catalog_unapproved_ids"] == ["task-invalid-approval"]
     assert json.loads(output.read_text(encoding="utf-8"))["tasks"] == []
 
 
@@ -156,6 +158,7 @@ def test_refill_treats_missing_catalog_execution_approval_as_unapproved(tmp_path
     report = build_queue(queue, catalog, completed, tmp_path / "runtime.json")
     assert report["added_ids"] == []
     assert report["eligible_catalog_ids"] == []
+    assert report["skipped_catalog_unapproved_ids"] == ["task-missing-approval"]
 
 
 def test_refill_drops_existing_queue_entries_without_explicit_execution_approval(tmp_path: Path):

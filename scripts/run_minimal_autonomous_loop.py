@@ -395,8 +395,8 @@ def registry_preflight(
         "registered_count": len(registered_by_id),
         "rejected_tasks": rejected,
         "remediation": (
-            "Register the exact task ID, instruction, and allowed_paths in "
-            ".github/autonomous-loop-task-catalog.json through a reviewed change, "
+            "Register the exact task ID, instruction, allowed_paths, and execution_approved=true "
+            "in .github/autonomous-loop-task-catalog.json through a reviewed change, "
             "or remove the stale task from the runtime queue. Do not bypass registry validation."
             if rejected else None
         ),

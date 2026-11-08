@@ -202,8 +202,9 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     skipped_catalog_completed_ids = sorted(catalog_ids_set.intersection(completed_ids))
     skipped_catalog_already_queued_ids = sorted(catalog_ids_set.intersection(original_ids))
     execution_approved_catalog_ids = {
-        task["id"] for task in normalized_catalog if task["execution_approved"]
+        task["id"] for task in normalized_catalog if task["execution_approved"] is True
     }
+    skipped_catalog_unapproved_ids = sorted(catalog_ids_set - execution_approved_catalog_ids)
     eligible_catalog_ids = sorted(
         catalog_ids_set
         - original_ids
@@ -225,6 +226,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         "skipped_catalog_held_ids": skipped_catalog_held_ids,
         "skipped_catalog_review_ids": skipped_catalog_review_ids,
         "skipped_catalog_completed_ids": skipped_catalog_completed_ids,
+        "skipped_catalog_unapproved_ids": skipped_catalog_unapproved_ids,
         "skipped_catalog_already_queued_ids": skipped_catalog_already_queued_ids,
         "eligible_catalog_count": len(eligible_catalog_ids),
         "eligible_catalog_ids": eligible_catalog_ids,
