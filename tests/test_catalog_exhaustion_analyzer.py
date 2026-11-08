@@ -145,7 +145,7 @@ def test_registry_current_and_rollback_target():
     assert len(candidates) == 1
     assert candidates[0]["target_test"] == "tests/test_agent_versioning.py"
     assert candidates[0]["status"] == "REVIEW_REQUIRED"
-    assert candidates[0]["heuristic"] == "public-symbol-name-not-found-in-test-source; may have indirect coverage"
+    assert candidates[0]["heuristic"] == "public-symbol-name-not-found-in-test-ast; may have indirect coverage"
     assert report["safety"]["candidates_executable"] is False
 
 
