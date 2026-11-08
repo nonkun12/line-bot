@@ -28,7 +28,10 @@ class _Completions:
 
     def create(self, **kwargs):
         self.calls.append(kwargs)
-        return _Response(self.responses.pop(0))
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return _Response(response)
 
 
 class _Client:
@@ -88,6 +91,47 @@ def test_guarded_ask_recovers_on_third_attempt_and_uses_stricter_prompt():
     assert len(client.completions.calls) == 3
     assert "smallest valid JSON object" in client.completions.calls[2]["messages"][0]["content"]
 
+
+
+class _ProviderError(Exception):
+    def __init__(self, code):
+        super().__init__(code)
+        self.body = {"error": {"code": code, "message": "provider JSON validation failed"}}
+
+
+def test_guarded_ask_retries_provider_json_validate_failed():
+    client = _Client([
+        _ProviderError("json_validate_failed"),
+        '{"file":"tests/test_catalog_exhaustion_analyzer.py"}',
+    ])
+
+    content = guarded_ask(client, "return JSON", "select a file")
+
+    assert json.loads(content) == {"file": "tests/test_catalog_exhaustion_analyzer.py"}
+    assert len(client.completions.calls) == 2
+    assert "single valid JSON object only" in client.completions.calls[1]["messages"][0]["content"]
+
+
+def test_guarded_ask_does_not_retry_other_provider_errors():
+    client = _Client([_ProviderError("rate_limit_exceeded"), '{"file":null}'])
+
+    with pytest.raises(_ProviderError):
+        guarded_ask(client, "return JSON", "select a file")
+
+    assert len(client.completions.calls) == 1
+
+
+def test_guarded_ask_fails_closed_after_three_provider_json_validate_failures():
+    client = _Client([
+        _ProviderError("json_validate_failed"),
+        _ProviderError("json_validate_failed"),
+        _ProviderError("json_validate_failed"),
+    ])
+
+    with pytest.raises(ValueError, match="unusable after bounded JSON retry"):
+        guarded_ask(client, "return JSON", "select a file")
+
+    assert len(client.completions.calls) == 3
 
 
 def test_common_runtime_rea_block_prevents_development_execution(monkeypatch, tmp_path):
