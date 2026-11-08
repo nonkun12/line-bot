@@ -211,3 +211,38 @@ def test_provider_error_holds_immediately_without_repair_retry(tmp_path):
     assert decision.action == "HOLD"
     assert decision.reason == "non_repairable_failure"
     assert decision.requires_human is True
+
+
+
+def test_preflight_recurrence_reopens_after_resolution_and_preserves_audit_history(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    first = store.record_preflight_blocked(
+        "task-preflight", "control_tower_selector:missing_prerequisite", "task-parent"
+    )
+    assert first["status"] == "PENDING_PREREQUISITE_OR_REVIEW"
+    assert store.resolve_preflight_blocked(
+        "task-preflight", prerequisites_fixed=True, reviewed=True
+    ) == 1
+
+    reopened = store.record_preflight_blocked(
+        "task-preflight", "control_tower_selector:missing_prerequisite", "task-parent"
+    )
+
+    assert reopened["status"] == "PENDING_PREREQUISITE_OR_REVIEW"
+    assert reopened["requires_human_review"] is True
+    assert reopened["occurrences"] == 2
+    assert "resolved_at" not in reopened
+    assert "resolution" not in reopened
+    assert reopened["resolution_history"] == [{
+        "resolution": "prerequisites_fixed_and_human_reviewed",
+        "resolved_at": reopened["resolution_history"][0]["resolved_at"],
+    }]
+
+
+def test_preflight_repeated_pending_event_does_not_create_false_resolution_history(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    store.record_preflight_blocked("task-preflight", "control_tower_head_changed")
+    repeated = store.record_preflight_blocked("task-preflight", "control_tower_head_changed")
+    assert repeated["occurrences"] == 2
+    assert repeated["resolution_history"] == []
+    assert repeated["status"] == "PENDING_PREREQUISITE_OR_REVIEW"
