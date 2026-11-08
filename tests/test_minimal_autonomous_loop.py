@@ -907,7 +907,7 @@ def test_rea_adapter_exception_blocks_minimal_loop_task_execution(monkeypatch, t
     monkeypatch.setattr(loop, "load_completed", lambda _path: set())
     monkeypatch.setattr(loop, "load_tasks", lambda: [task])
     monkeypatch.setattr(loop, "_git_head", lambda: sha)
-    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [task])
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [{**task, "execution_approved": True}])
     monkeypatch.setattr(
         loop.sys,
         "argv",
@@ -991,7 +991,7 @@ def test_authorization_denial_skips_rea_and_clears_task_evidence(monkeypatch, tm
     monkeypatch.setattr(loop, "load_completed", lambda _path: set())
     monkeypatch.setattr(loop, "load_tasks", lambda: [task])
     monkeypatch.setattr(loop, "_git_head", lambda: sha)
-    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [task])
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [{**task, "execution_approved": True}])
     monkeypatch.setattr(
         loop.sys,
         "argv",
@@ -1077,7 +1077,7 @@ def test_orchestrator_gates_successful_loop_on_exact_evidence(monkeypatch, tmp_p
     monkeypatch.setattr(loop, "load_completed", lambda _path: set())
     monkeypatch.setattr(loop, "load_tasks", lambda: [task])
     monkeypatch.setattr(loop, "_git_head", lambda: sha)
-    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [task])
+    monkeypatch.setattr(loop, "_load_registered_catalog", lambda _sha: [{**task, "execution_approved": True}])
     monkeypatch.setattr(
         loop.sys,
         "argv",

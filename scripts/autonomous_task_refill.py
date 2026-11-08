@@ -46,9 +46,8 @@ def _validate_task(task: object) -> dict:
         if not isinstance(path, str) or not ALLOWED_TEST_PATH.fullmatch(path):
             raise ValueError("forbidden allowed path")
         clean_paths.append(path)
+    # Exact boolean True is the only affirmative approval value.
     execution_approved = task.get("execution_approved") is True
-    if not isinstance(execution_approved, bool):
-        raise ValueError("invalid task execution approval flag")
     return {
         "id": task_id,
         "instruction": instruction.strip(),
@@ -164,7 +163,10 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
             task[key] == trusted[key] for key in ("id", "instruction", "allowed_paths")
         )
         if not same_definition:
-            skipped_definition_mismatch_ids.append(task["id"])
+            if task.get("execution_approved") is not True:
+                skipped_unapproved_ids.append(task["id"])
+            else:
+                skipped_definition_mismatch_ids.append(task["id"])
         elif trusted.get("execution_approved") is not True:
             skipped_unapproved_ids.append(task["id"])
         elif task["id"] not in ineligible_ids:
@@ -216,6 +218,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         "retained_existing": len(eligible_existing),
         "skipped_held_ids": skipped_held_ids,
         "skipped_unapproved_ids": skipped_unapproved_ids,
+        "skipped_definition_mismatch_ids": sorted(skipped_definition_mismatch_ids),
         "skipped_review_ids": skipped_review_ids,
         "skipped_completed_ids": skipped_completed_ids,
         # Explain catalog exhaustion separately from the legacy queue fields.

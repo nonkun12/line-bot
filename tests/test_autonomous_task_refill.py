@@ -28,7 +28,7 @@ def test_refill_adds_only_uncompleted_catalog_tasks_within_cap(tmp_path: Path):
     queue, catalog, completed = _inputs(
         tmp_path,
         existing=[_task("task-existing")],
-        candidates=[_task("task-new-one"), _task("task-new-two"), _task("task-new-three")],
+        candidates=[_task("task-existing"), _task("task-new-one"), _task("task-new-two"), _task("task-new-three")],
     )
     state = _write(tmp_path / "state.json", {"version": 1, "completed": ["task-new-two"], "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None}})
     output = tmp_path / "runtime.json"
@@ -169,6 +169,29 @@ def test_refill_drops_existing_queue_entries_without_explicit_execution_approval
     assert json.loads(output.read_text(encoding="utf-8"))["tasks"] == []
 
 
+
+
+def test_refill_retains_catalog_approved_existing_task_across_two_runs(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        existing=[_task("task-approved-existing")],
+        candidates=[_task("task-approved-existing"), _task("task-new")],
+    )
+    first_output = tmp_path / "runtime-first.json"
+    second_output = tmp_path / "runtime-second.json"
+
+    first = build_queue(queue, catalog, completed, first_output)
+    second = build_queue(first_output, catalog, completed, second_output)
+
+    first_tasks = json.loads(first_output.read_text(encoding="utf-8"))["tasks"]
+    second_tasks = json.loads(second_output.read_text(encoding="utf-8"))["tasks"]
+    assert first["retained_existing"] == 1
+    assert second["retained_existing"] == 2
+    assert [task["id"] for task in first_tasks] == ["task-approved-existing", "task-new"]
+    assert [task["id"] for task in second_tasks] == ["task-approved-existing", "task-new"]
+    assert all("execution_approved" not in task for task in second_tasks)
+
+
 def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):
     queue, catalog, completed = _inputs(
         tmp_path,
@@ -192,7 +215,7 @@ def test_refill_omits_held_existing_queue_entries_without_clearing_hold(tmp_path
     queue, catalog, completed = _inputs(
         tmp_path,
         existing=[_task("task-held-existing")],
-        candidates=[_task("task-ready-new")],
+        candidates=[_task("task-held-existing"), _task("task-ready-new")],
     )
     state = _write(
         tmp_path / "state.json",
@@ -342,7 +365,7 @@ def test_refill_skips_tasks_requiring_post_resume_review(tmp_path: Path):
     queue, catalog, completed = _inputs(
         tmp_path,
         existing=[_task("task-review-existing")],
-        candidates=[_task("task-review-new"), _task("task-ready-new")],
+        candidates=[_task("task-review-existing"), _task("task-review-new"), _task("task-ready-new")],
     )
     state = _write(
         tmp_path / "state.json",
