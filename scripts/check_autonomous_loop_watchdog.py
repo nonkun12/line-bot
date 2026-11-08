@@ -8,7 +8,7 @@ import re
 import zipfile
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 from zoneinfo import ZoneInfo
 
 from agents.sheets.autonomous_ledger import (
@@ -21,7 +21,7 @@ from agents.sheets.client import GoogleSheetsClient
 JST = ZoneInfo("Asia/Tokyo")
 SLOT_MINUTE = 17
 SLOT_CHECK_DELAY_MINUTES = 115
-SLOT_DISCOVERY_WINDOW_MINUTES = 50
+SLOT_DISCOVERY_WINDOW_MINUTES = 55
 MAX_RUN_RUNTIME_MINUTES = 40
 INVALID_TASK_IDS = {"", "NOT_RUN", "QUEUE_EMPTY", "QUEUE_EXHAUSTED_NO_TASKS"}
 
@@ -35,12 +35,26 @@ def github_json(url: str) -> dict:
         return json.load(response)
 
 
+class _StripAuthorizationRedirectHandler(HTTPRedirectHandler):
+    """Never forward GitHub credentials to an artifact storage redirect host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Artifact download URLs are signed and do not need the API bearer token.
+        return Request(
+            newurl,
+            headers={"Accept": "application/vnd.github+json"},
+            origin_req_host=req.origin_req_host,
+            unverifiable=True,
+        )
+
+
 def github_bytes(url: str) -> bytes:
     token = os.environ.get("GITHUB_TOKEN", "").strip()
     if not token:
         raise RuntimeError("GITHUB_TOKEN is not configured")
     req = Request(url, headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
-    with urlopen(req, timeout=30) as response:
+    opener = build_opener(_StripAuthorizationRedirectHandler())
+    with opener.open(req, timeout=30) as response:
         return response.read()
 
 
@@ -97,8 +111,8 @@ def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
         + quote(repo, safe="/")
         + f"/actions/workflows/{workflow}/runs?event=schedule&per_page=100"
     )
-    # Keep the scheduler discovery window shorter than the hourly slot interval
-    # so adjacent scheduled runs cannot match the same expected slot.
+    # Keep the scheduler discovery window below the hourly slot interval
+    # while allowing up to 55 minutes of scheduler delay.
     window_end = slot + timedelta(minutes=SLOT_DISCOVERY_WINDOW_MINUTES)
     window_start = slot - timedelta(minutes=10)
     for run in data.get("workflow_runs", []):
