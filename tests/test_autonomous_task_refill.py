@@ -117,6 +117,35 @@ def test_refill_accepts_only_allowlisted_test_files(tmp_path: Path, path: str):
     assert result["tasks"][0]["allowed_paths"] == [path]
 
 
+def test_refill_skips_catalog_task_without_explicit_execution_approval(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        candidates=[
+            {**_task("task-review-only"), "execution_approved": False},
+            _task("legacy-reviewed-task"),
+        ],
+    )
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, output)
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["added_ids"] == ["legacy-reviewed-task"]
+    assert report["eligible_catalog_ids"] == ["legacy-reviewed-task"]
+    assert [task["id"] for task in result["tasks"]] == ["legacy-reviewed-task"]
+
+
+@pytest.mark.parametrize("approval", ["true", 1, None, [], {}])
+def test_refill_rejects_malformed_catalog_execution_approval(tmp_path: Path, approval):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        candidates=[{**_task("task-invalid-approval"), "execution_approved": approval}],
+    )
+    with pytest.raises(ValueError, match="execution approval flag"):
+        build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+    assert not (tmp_path / "runtime.json").exists()
+
+
 def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):
     queue, catalog, completed = _inputs(
         tmp_path,

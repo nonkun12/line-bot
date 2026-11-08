@@ -80,15 +80,49 @@ def test_distributed_workflow_creates_only_review_candidate_issues():
 
 
 
-def test_distributed_workflow_paginates_all_issues_for_deduplication():
+def test_distributed_workflow_loads_existing_issues_before_candidate_analysis():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
     workflow = (root / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
-    start = workflow.index("- name: Create bounded review-only task issues from analyzer findings")
-    end = workflow.index("- name: Run one bounded autonomous task", start)
-    step = workflow[start:end]
-    assert "gh api --paginate" in step
-    assert "--jq" not in step
-    assert "state=all&per_page=100" in step
-    assert "jq -s 'add | map(select(has(\"pull_request\") | not) | {number,title,body,state,labels})'" in step
+    load_start = workflow.index("- name: Load all existing issues for candidate deduplication")
+    analyze_start = workflow.index("- name: Analyze catalog exhaustion without changing execution state", load_start)
+    create_start = workflow.index("- name: Create bounded review-only task issues from analyzer findings", analyze_start)
+    create_end = workflow.index("- name: Run one bounded autonomous task", create_start)
+    load_step = workflow[load_start:analyze_start]
+    analyze_step = workflow[analyze_start:create_start]
+    create_step = workflow[create_start:create_end]
+    assert "gh api --paginate" in load_step
+    assert "state=all&per_page=100" in load_step
+    assert "pull_request" in load_step
+    assert "--existing-issues /tmp/autonomous-loop-all-issues.json" in analyze_step
+    assert "--issues /tmp/autonomous-loop-all-issues.json" in create_step
+    assert "gh api --paginate" not in create_step
+
+
+def _open_review_issue(task_id="review-coverage-gap-0123456789", approved=False):
+    body = "<!-- autonomous-task-spec -->\n" + json.dumps({"id": task_id}) + "\n<!-- autonomous-task-spec -->"
+    labels = [{"name": "autonomous-task-candidate"}]
+    if approved:
+        labels.append({"name": "autonomous-task-execution-approved"})
+    return {"state": "open", "labels": labels, "body": body}
+
+
+def test_stops_candidate_generation_when_four_review_issues_are_open():
+    issues = [_open_review_issue(f"review-coverage-gap-{i:010d}") for i in range(4)]
+    assert build_issue_drafts(_report(), issues) == []
+
+
+def test_caps_new_candidates_to_remaining_review_backlog_capacity():
+    report = _report()
+    report["candidate_count"] = 1
+    issues = [_open_review_issue(f"review-coverage-gap-{i:010d}") for i in range(3)]
+    drafts = build_issue_drafts(report, issues)
+    assert len(drafts) == 1
+
+
+def test_closed_or_execution_approved_issues_do_not_consume_review_capacity():
+    closed = _open_review_issue("review-coverage-gap-2222222222")
+    closed["state"] = "closed"
+    approved = _open_review_issue("review-coverage-gap-1111111111", approved=True)
+    assert build_issue_drafts(_report(), [closed, approved])

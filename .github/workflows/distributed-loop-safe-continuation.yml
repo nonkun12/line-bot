@@ -14,10 +14,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Automatic continuation is owned exclusively by continuous-distributed-loop.yml.
+  # Keeping two workflow_run dispatchers creates competing decisions and can
+  # enqueue duplicate follow-up runs after the same successful task.
   decide-and-dispatch:
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      contains(fromJSON('["schedule","workflow_dispatch","issue_comment"]'), github.event.workflow_run.event)
+    if: github.event.workflow_run.run_attempt < 0
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

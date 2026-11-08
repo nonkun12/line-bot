@@ -9,6 +9,8 @@ import argparse
 import json
 import re
 from pathlib import Path
+
+from scripts.autonomous_task_target_allowlist import TARGETS
 from typing import Any
 
 MAX_HISTORY_CANDIDATES = 200
@@ -16,14 +18,6 @@ MAX_ANALYZER_CANDIDATES = 4
 ID_PATTERN = re.compile(r"^review-coverage-gap-[a-f0-9]{10}$")
 FINGERPRINT_PATTERN = re.compile(r"^[a-f0-9]{64}$")
 FUNCTION_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
-TARGETS = {
-    ("core/line_development_runtime.py", "tests/test_line_development_runtime.py"),
-    ("core/agent_runtime.py", "tests/test_agent_runtime.py"),
-    ("core/management_router.py", "tests/test_management_router.py"),
-    ("core/control_tower_orchestrator.py", "tests/test_control_tower_orchestrator.py"),
-    ("core/recovery_ai.py", "tests/test_recovery_ai.py"),
-}
-
 
 def merge_candidates(history: object, report: object) -> list[dict[str, Any]]:
     if not isinstance(history, list):

@@ -356,6 +356,7 @@ def test_mcp_service_session_waits_for_free_hibernate_wake_without_resume(monkey
 def test_mcp_service_session_does_not_resume_on_other_429(monkeypatch):
     monkeypatch.setenv("MCP_RENDER_ON_DEMAND", "true")
     monkeypatch.setenv("MCP_RENDER_SERVICE_ID", "srv-mcp123")
+    monkeypatch.setenv("MCP_HEALTH_429_MAX_SEC", "0")
 
     resumed = []
     monkeypatch.setattr(

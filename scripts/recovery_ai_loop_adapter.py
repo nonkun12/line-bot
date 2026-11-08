@@ -12,16 +12,46 @@ from pathlib import Path
 import re
 from typing import Any
 
-from scripts.recovery_ai import RecoveryStore, failure_fingerprint
+from scripts.recovery_ai import MAX_TRANSIENT_RETRIES, RecoveryStore, failure_fingerprint
+from core.loop_failure_codes import extract_safe_failure_code, failure_code_category, is_safe_failure_code
 
 
 def _category(result: dict[str, Any]) -> str:
-    reason = str(result.get("failure_reason", "")).lower()
-    status = str(result.get("status", "")).upper()
+    raw_reason = result.get("failure_reason", "")
+    reason = raw_reason.lower() if isinstance(raw_reason, str) else ""
+    raw_status = result.get("status", "")
+    status = raw_status.upper() if isinstance(raw_status, str) else ""
+    failure_code_present = "failure_code" in result
+    failure_code = result.get("failure_code")
+
+    # Security evidence outranks task-planning codes and generic failure labels.
+    if any(token in reason for token in (
+        "sha_mismatch", "nonce_mismatch", "outside_allowed_paths",
+        "protected_file", "change_outside_selected_file",
+        "existing_test_modified", "security",
+    )):
+        return "security_violation"
+
+    # A supplied but malformed/unrecognized code is invalid evidence, never
+    # silently downgraded to the repairable "unknown" category.
+    if failure_code_present and not is_safe_failure_code(failure_code):
+        return "invalid_evidence"
+    if failure_code_present:
+        category = failure_code_category(failure_code)
+        if category is not None and status in {"FAIL", "BLOCKED", "STOPPED"}:
+            return category
+        if status not in {"FAIL", "BLOCKED", "STOPPED"}:
+            return "invalid_evidence"
+    if not failure_code_present and status in {"FAIL", "BLOCKED", "STOPPED"}:
+        inferred_code = extract_safe_failure_code(raw_reason)
+        inferred_category = failure_code_category(inferred_code)
+        if inferred_category is not None:
+            return inferred_category
+
     if status == "TIMEOUT" or "timeout" in reason:
         return "timeout"
-    if any(token in reason for token in ("sha_mismatch", "nonce_mismatch", "outside_allowed_paths", "security")):
-        return "security_violation"
+    if status in {"BLOCKED", "STOPPED"}:
+        return "invalid_evidence"
     if any(token in reason for token in ("evidence", "summary_missing", "summary_invalid")):
         return "invalid_evidence"
     if status == "FAIL" and any(token in reason for token in ("pytest", "test_regression")):
@@ -95,10 +125,17 @@ def _attach_rag_advisory(
     return outcome
 
 
-def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[str, Any]:
+def record_loop_outcome(
+    state_path: str | Path,
+    result: dict[str, Any],
+    *,
+    transient_attempt: int = 1,
+) -> dict[str, Any]:
     """Persist one verified outcome; fail closed if state cannot be trusted."""
     if not isinstance(result, dict):
         raise ValueError("loop result must be an object")
+    if type(transient_attempt) is not int or not 1 <= transient_attempt <= MAX_TRANSIENT_RETRIES + 1:
+        raise ValueError("transient attempt is outside the bounded retry policy")
     task_id = str(result.get("task_id", "")).strip()
     if not task_id:
         # Synthetic queue/incident summaries are not task outcomes.
@@ -118,15 +155,27 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
             "recorded": False,
             "reason": "preflight_blocked_not_task_failure",
         }
+    # Operator-requested stops are control-flow outcomes, not task failures.
+    # Do not create a Recovery AI HOLD merely because the operator stopped a run.
+    if failure_reason.startswith("stop_requested") and "failure_code" not in result:
+        return {"recorded": False, "reason": "operator_stop_not_task_failure"}
+
     run_identity_verified = _has_verified_run_identity(result, status)
     success_like = status in {"PASS", "NO_CHANGE"}
-    if success_like and (type(result.get("exit_code")) is not int or result.get("exit_code") != 0 or not run_identity_verified):
+    supplied_failure_code = "failure_code" in result
+    if success_like and (
+        supplied_failure_code
+        or type(result.get("exit_code")) is not int
+        or result.get("exit_code") != 0
+        or not run_identity_verified
+    ):
         decision = store.record_failure(task_id, "invalid_evidence", ())
         # Invalid run identity must invalidate the task result itself; logging a
         # HOLD decision while leaving status=PASS could falsely complete a task.
         result["status"] = "FAIL"
         result["exit_code"] = 1
         result["failure_reason"] = "recovery_ai_invalid_evidence"
+        result["failure_code"] = "invalid_failure_code_evidence"
         outcome = {"recorded": True, "status": "FAIL", "decision": asdict(decision)}
         return _attach_rag_advisory(
             outcome, task_id=task_id, status="FAIL", category="invalid_evidence"
@@ -157,7 +206,7 @@ def record_loop_outcome(state_path: str | Path, result: dict[str, Any]) -> dict[
             task_id=task_id, status=status, category="unknown",
         )
     category = _category(result)
-    decision = store.record_failure(task_id, category, ())
+    decision = store.record_failure(task_id, category, (), transient_attempt=transient_attempt)
     return _attach_rag_advisory(
         {"recorded": True, "status": status, "decision": asdict(decision)},
         task_id=task_id, status=status, category=category,

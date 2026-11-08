@@ -6,6 +6,7 @@ Security-sensitive files are never editable by this worker.
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -33,6 +34,10 @@ MAX_FILE_CHARS = 12000
 # A 3,500-token completion plus the observed ~4,808-token prompt was rejected
 # at 8,308 TPM. Keep the default completion budget at 2,500 to leave headroom.
 MAX_RESPONSE_TOKENS = 2500
+# Keep this endpoint within the observed Groq TPM budget: a 3,500-token
+# completion plus a ~4,808-token prompt was rejected. Bound both sides.
+MAX_APPEND_ONLY_RESPONSE_TOKENS = 2500
+MAX_APPEND_ONLY_CONTEXT_CHARS = 3000
 MAX_INSTRUCTION_LENGTH = 2000
 MAX_REPAIR_ATTEMPTS = 1
 MAX_APPLY_REPAIR_ATTEMPTS = 2
@@ -65,6 +70,19 @@ def run(cmd: list[str], timeout: int = 900, input_text: str | None = None) -> su
 
 def is_protected(path: str) -> bool:
     return path in PROTECTED_PATHS or any(path.startswith(prefix) for prefix in PROTECTED_PREFIXES)
+
+
+def is_test_path(path: str) -> bool:
+    """Recognize pytest files in root, nested test directories, and conftest modules."""
+    normalized = str(path or "").replace("\\", "/").strip("/")
+    parts = normalized.split("/") if normalized else []
+    name = parts[-1] if parts else ""
+    return (
+        "tests" in parts[:-1]
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+        or name == "conftest.py"
+    )
 
 
 @lru_cache(maxsize=512)
@@ -134,7 +152,20 @@ def ask(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOK
         model=MODEL,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.0,
-        max_tokens=max_tokens,
+        max_completion_tokens=max_tokens,
+        reasoning_effort=os.environ.get("DEV_AI_REASONING_EFFORT", "low"),
+        include_reasoning=False,
+    )
+    return response.choices[0].message.content or ""
+
+def ask_text(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOKENS) -> str:
+    """Request bounded plain text without enabling the provider's JSON mode."""
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        temperature=0.0,
+        max_completion_tokens=max_tokens,
+        reasoning_effort=os.environ.get("DEV_AI_REASONING_EFFORT", "low"),
         include_reasoning=False,
     )
     return response.choices[0].message.content or ""
@@ -169,6 +200,11 @@ _E2E_TEST_KEYWORDS = (
     "接続テスト",
     "開発テスト",
     "自動開発テスト",
+    # Operational validation requests must use the dedicated E2E harness,
+    # not the generic implementation-file selector.
+    "実運用テスト",
+    "実運用検証",
+    "基盤検証",
 )
 
 _E2E_TEST_TARGETS = (
@@ -187,13 +223,19 @@ def choose_file(client: Groq, instruction: str, files: list[str]) -> str | None:
             if candidate in files:
                 return candidate
 
-    prompt = f"Instruction:\n{instruction}\n\nEligible files:\n" + "\n".join(files)
+    # Generic implementation requests must not be steered into tests. Explicit
+    # test paths and the dedicated E2E targets above remain available.
+    candidates = [path for path in files if not is_test_path(path)]
+    if not candidates:
+        return None
+    prompt = f"Instruction:\n{instruction}\n\nEligible files:\n" + "\n".join(candidates)
     try:
         data = parse_plan(ask(client, "Select exactly one eligible file and return JSON only: {\"file\":\"path\"} or {\"file\":null}", prompt))
-    except Exception:
+    except Exception as exc:
+        print(f"[FILE-SELECTION] model selection failed: {type(exc).__name__}", flush=True)
         return None
     chosen = data.get("file")
-    if isinstance(chosen, str) and chosen in files and _is_shared_policy_autonomous(chosen):
+    if isinstance(chosen, str) and chosen in candidates and _is_shared_policy_autonomous(chosen):
         return chosen
     return None
 
@@ -295,6 +337,362 @@ If the requested change cannot be expressed as a small safe search/replace, retu
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
 
 
+def repair_existing_test_modified_plan(
+    client: Groq,
+    instruction: str,
+    chosen: str,
+    context: str,
+    rejected_plan: dict,
+) -> dict:
+    """Regenerate one test-only plan as a strictly additive test insertion."""
+    rejected = json.dumps(rejected_plan, ensure_ascii=False)
+    system = '''Repair ONE rejected test-file plan. Return JSON only.
+The selected file is the ONLY file that may change. Add exactly ONE new pytest test function.
+Do not edit, rename, delete, reorder, or weaken any existing test function, assertion,
+fixture, parametrization, or class. Preserve all existing test definitions byte-for-byte
+at the AST level. Prefer appending the new test at the end of the current file.
+Return one search/replace change with an exact, unique old anchor from the supplied current
+file and a new value that preserves that anchor verbatim and appends only the new test.
+Do not rewrite the full file, modify imports or fixtures, change production code, or use
+diff markers or markdown fences. If this cannot be done safely, return {"no_change":true}.'''
+    prompt = (
+        f"Instruction:\n{instruction}\n\nSelected file (ONLY editable file):\n{chosen}"
+        f"\n\nCurrent file context:\n{context}"
+        f"\n\nRejected validation reason: existing_test_modified"
+        f"\n\nRejected plan:\n{rejected}"
+    )
+    return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
+
+
+def _test_definition_signatures(source: str, path: str) -> list[str] | None:
+    """Return AST signatures for all pytest test functions, including class methods."""
+    try:
+        tree = ast.parse(source, filename=path)
+    except SyntaxError:
+        return None
+    signatures = []
+
+    def visit(node):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name.startswith("test"):
+                signatures.append(ast.dump(child, include_attributes=False))
+            visit(child)
+
+    visit(tree)
+    return signatures
+
+
+def _adds_exactly_one_test(path: str, old: str, new: str) -> bool:
+    """Require exactly one new test and byte-for-byte-equivalent ASTs for existing tests."""
+    target = ROOT / path
+    try:
+        original = target.read_text(encoding="utf-8")
+        if not old or original.count(old) != 1:
+            return False
+        candidate = original.replace(old, new, 1)
+    except OSError:
+        return False
+    before = _test_definition_signatures(original, path)
+    after = _test_definition_signatures(candidate, path)
+    if before is None or after is None or len(after) != len(before) + 1:
+        return False
+    remaining = list(after)
+    for signature in before:
+        try:
+            remaining.remove(signature)
+        except ValueError:
+            return False
+    return len(remaining) == 1
+
+
+def _salvage_additive_test_plan(path: str, rejected_plan: dict) -> dict | None:
+    """Extract one new top-level test from a rejected rewrite and append it safely.
+
+    The model may return a replacement that rewrites existing tests while adding
+    the requested regression. Never keep that replacement. Extract only one new
+    test function, then build a fresh append-only patch against the current file.
+    """
+    if not is_test_path(path) or not path.endswith(".py"):
+        return None
+    changes = rejected_plan.get("changes")
+    if not isinstance(changes, list) or len(changes) != 1:
+        return None
+    change = changes[0]
+    if not isinstance(change, dict) or change.get("file") != path:
+        return None
+    old, new = change.get("old"), change.get("new")
+    if not isinstance(old, str) or not old or not isinstance(new, str):
+        return None
+
+    target = ROOT / path
+    try:
+        original = target.read_text(encoding="utf-8")
+        if original.count(old) != 1:
+            return None
+        candidate = original.replace(old, new, 1)
+        original_tree = ast.parse(original, filename=path)
+        candidate_tree = ast.parse(candidate, filename=path)
+    except (OSError, SyntaxError, ValueError):
+        return None
+
+    original_names = {
+        node.name for node in original_tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test")
+    }
+    candidate_tests = [
+        node for node in candidate_tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test")
+    ]
+    candidate_names = [node.name for node in candidate_tests]
+    if (
+        not original_names.issubset(set(candidate_names))
+        or len(candidate_names) != len(set(candidate_names))
+    ):
+        return None
+    additions = [node for node in candidate_tests if node.name not in original_names]
+    if len(additions) != 1:
+        return None
+
+    added = additions[0]
+    start_line = min(
+        [added.lineno, *(decorator.lineno for decorator in added.decorator_list)]
+    )
+    if added.end_lineno is None:
+        return None
+    candidate_lines = candidate.splitlines(keepends=True)
+    addition = "".join(candidate_lines[start_line - 1 : added.end_lineno]).strip("\r\n")
+    if not addition or len(addition) > 1200:
+        return None
+    addition += "\n"
+
+    original_lines = original.splitlines(keepends=True)
+    for start in range(len(original_lines) - 1, -1, -1):
+        anchor = "".join(original_lines[start:])
+        if len(anchor) > 1200:
+            break
+        if not anchor.strip() or original.count(anchor) != 1:
+            continue
+        replacement = anchor.rstrip("\r\n") + "\n\n" + addition
+        if len(replacement) > 1800:
+            continue
+        plan = {
+            "no_change": False,
+            "changes": [{"file": path, "old": anchor, "new": replacement}],
+        }
+        valid, detail = validate_plan(plan, path)
+        if (
+            valid
+            and detail != "no_change"
+            and _adds_exactly_one_test(path, anchor, replacement)
+        ):
+            return plan
+    return None
+
+
+
+
+def _safe_api_error_detail(exc: Exception) -> str:
+    """Expose bounded provider error metadata without leaking credentials or prompts."""
+    parts: list[str] = []
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        parts.append(f"status={status}")
+    body = getattr(exc, "body", None)
+    provider_error = body.get("error", body) if isinstance(body, dict) else {}
+    for key in ("code", "param"):
+        value = getattr(exc, key, None)
+        if not isinstance(value, str) and isinstance(provider_error, dict):
+            value = provider_error.get(key)
+        if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", value):
+            parts.append(f"{key}={value}")
+    failed_generation = (
+        provider_error.get("failed_generation")
+        if isinstance(provider_error, dict)
+        else None
+    )
+    if isinstance(failed_generation, str) and failed_generation:
+        safe_failure = re.sub(r"(?i)bearer\s+\S+", "Bearer [REDACTED]", failed_generation)
+        safe_failure = re.sub(r"\b(?:gsk[_-]|sk-)[A-Za-z0-9_-]{8,}\b", "[REDACTED]", safe_failure)
+        safe_failure = re.sub(
+            r"(?i)(api[_ -]?key|token|secret)(\s*[:=]\s*)[^\s,;]+",
+            r"\1\2[REDACTED]",
+            safe_failure,
+        )
+        safe_failure = re.sub(r"[\r\n\t]+", " ", safe_failure)
+        safe_failure = re.sub(r"\s{2,}", " ", safe_failure).strip()
+        if safe_failure:
+            parts.append(f"failed_generation={safe_failure[:160]}")
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is not None:
+        for header, label in (
+            ("x-request-id", "request_id"),
+            ("request-id", "request_id"),
+            ("x-groq-region", "region"),
+        ):
+            try:
+                value = headers.get(header)
+            except Exception:
+                value = None
+            if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", value):
+                if not any(part.startswith(f"{label}=") for part in parts):
+                    parts.append(f"{label}={value}")
+    message = getattr(exc, "message", None)
+    if isinstance(message, str) and message:
+        safe = re.sub(r"(?i)bearer\s+\S+", "Bearer [REDACTED]", message)
+        safe = re.sub(r"\b(?:gsk|sk)-[A-Za-z0-9_-]{8,}\b", "[REDACTED]", safe)
+        safe = re.sub(r"[\r\n\t]+", " ", safe)
+        safe = re.sub(r"\s{2,}", " ", safe).strip()
+        if safe:
+            parts.append(f"message={safe[:180]}")
+    return ":".join(parts)
+
+
+def build_append_only_test_plan(
+    client: Groq,
+    instruction: str,
+    chosen: str,
+    context: str,
+) -> tuple[dict | None, str]:
+    """Generate one test function, then construct an append-only EOF patch."""
+    if not is_test_path(chosen) or not chosen.endswith(".py"):
+        return None, "append_only_test_target_invalid"
+    system = """Write exactly ONE pytest test function for the requested boundary condition.
+Return Python source only: no JSON, markdown fences, or explanation.
+If existing coverage already makes a new test unnecessary, return exactly NO_CHANGE.
+Use only imports and fixtures already visible in the current test file.
+Do not add imports, decorators, helper functions, classes, or module-level statements.
+Do not access the network, environment variables, secrets, files, processes, or the OS.
+Do not weaken, edit, rename, reorder, or copy any existing test.
+The function name must start with test_. Keep the test focused and concise."""
+    if len(context) > MAX_APPEND_ONLY_CONTEXT_CHARS:
+        marker = "\n...[middle omitted; append-only context bounded]...\n"
+        budget = MAX_APPEND_ONLY_CONTEXT_CHARS - len(marker)
+        head_size = budget // 2
+        context = context[:head_size] + marker + context[-(budget - head_size):]
+    prompt = (
+        f"Task:\n{instruction}\n\n"
+        f"Only editable file:\n{chosen}\n\n"
+        f"Current test file:\n{context}\n\n"
+        "Return one complete test function, or NO_CHANGE."
+    )
+    try:
+        generated = ask_text(
+            client, system, prompt, max_tokens=MAX_APPEND_ONLY_RESPONSE_TOKENS
+        ).strip()
+    except Exception as exc:
+        detail = _safe_api_error_detail(exc)
+        try:
+            from importlib.metadata import version as package_version
+
+            sdk_version = package_version("groq")
+        except Exception:
+            sdk_version = "unknown"
+        model = re.sub(r"[^A-Za-z0-9_./-]", "", MODEL)[:100] or "unknown"
+        suffix = f":{detail}" if detail else ""
+        return None, (
+            f"append_only_test_generation_failed:{type(exc).__name__}:"
+            f"model={model}:groq_sdk={sdk_version}{suffix}"
+        )
+    if generated == "NO_CHANGE":
+        return {"no_change": True, "source": "append_only_review_task"}, ""
+    if not generated or (chr(96) * 3) in generated or len(generated) > 1400:
+        return None, "append_only_test_output_invalid"
+    try:
+        tree = ast.parse(generated, filename=chosen)
+    except SyntaxError:
+        return None, "append_only_test_invalid_syntax"
+    if (
+        len(tree.body) != 1
+        or not isinstance(tree.body[0], ast.FunctionDef)
+        or not tree.body[0].name.startswith("test_")
+        or tree.body[0].decorator_list
+        or not tree.body[0].body
+    ):
+        return None, "append_only_test_not_single_function"
+
+    function = tree.body[0]
+    forbidden_names = {
+        "__builtins__", "__import__", "builtins", "compile", "ctypes",
+        "eval", "exec", "globals", "getattr", "getenv", "locals",
+        "multiprocessing", "open", "os", "pathlib", "Path", "PurePath",
+        "requests", "setattr", "shutil", "socket", "subprocess", "tempfile",
+        "threading", "urllib", "vars",
+    }
+    forbidden_attributes = {
+        "Popen", "call", "chdir", "check_call", "check_output", "chmod",
+        "connect", "cwd", "environ", "exists", "getenv", "glob", "home",
+        "is_dir", "is_file", "iterdir", "mkdir", "open", "read", "read_bytes",
+        "read_text", "remove", "rename", "replace", "resolve", "rmdir",
+        "rglob", "run", "send", "spawn", "stat", "system", "touch", "unlink",
+        "urlopen", "write", "write_bytes", "write_text",
+    }
+    for node in ast.walk(function):
+        if isinstance(node, (ast.Import, ast.ImportFrom, ast.Global, ast.Nonlocal)):
+            return None, "append_only_test_unsafe_operation"
+        # Reject references to powerful modules already imported by the test
+        # module; generated code must not inherit ambient OS/network capabilities.
+        if isinstance(node, ast.Name) and node.id in forbidden_names:
+            return None, "append_only_test_unsafe_operation"
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in forbidden_names:
+                return None, "append_only_test_unsafe_operation"
+            if isinstance(node.func, ast.Attribute) and node.func.attr in forbidden_attributes:
+                return None, "append_only_test_unsafe_operation"
+        if isinstance(node, ast.Attribute) and (
+            node.attr in forbidden_attributes or node.attr.startswith("__")
+        ):
+            return None, "append_only_test_unsafe_operation"
+
+    target = ROOT / chosen
+    try:
+        original = target.read_text(encoding="utf-8")
+        original_tree = ast.parse(original, filename=chosen)
+    except (OSError, SyntaxError):
+        return None, "append_only_test_source_unavailable"
+    existing_names = {
+        node.name
+        for node in ast.walk(original_tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+    }
+    if function.name in existing_names:
+        return None, "append_only_test_name_exists"
+
+    addition_text = generated.rstrip("\r\n") + "\n"
+    original_lines = original.splitlines(keepends=True)
+    for start in range(len(original_lines) - 1, -1, -1):
+        old = "".join(original_lines[start:])
+        if len(old) > 1200:
+            break
+        if not old.strip() or original.count(old) != 1:
+            continue
+        new = old.rstrip("\r\n") + "\n\n" + addition_text
+        if len(new) > 1800:
+            continue
+        candidate = original.replace(old, new, 1)
+        prefix = original[: -len(old)]
+        if not candidate.startswith(prefix) or candidate != prefix + new:
+            continue
+        try:
+            ast.parse(candidate, filename=chosen)
+        except SyntaxError:
+            continue
+        if not _adds_exactly_one_test(chosen, old, new):
+            continue
+        plan = {
+            "no_change": False,
+            "source": "append_only_review_task",
+            "changes": [{"file": chosen, "old": old, "new": new}],
+        }
+        valid, detail = validate_plan(plan, chosen)
+        if valid and detail != "no_change":
+            return plan, ""
+    return None, "append_only_test_anchor_or_size_invalid"
+
+
 def validate_plan_with_bounded_repairs(
     client: Groq,
     instruction: str,
@@ -326,6 +724,41 @@ def validate_plan_with_bounded_repairs(
         ok, detail = validate_plan(repair_plan, chosen)
         if ok:
             plan = repair_plan
+    if not ok and detail == "existing_test_modified":
+        repair_plan = repair_existing_test_modified_plan(
+            client, instruction, chosen, context, plan
+        )
+        ok, detail = validate_plan(repair_plan, chosen)
+        if (
+            ok
+            and detail != "no_change"
+            and isinstance(repair_plan.get("changes"), list)
+            and len(repair_plan["changes"]) == 1
+            and _adds_exactly_one_test(
+                chosen,
+                repair_plan["changes"][0].get("old", ""),
+                repair_plan["changes"][0].get("new", ""),
+            )
+        ):
+            plan = repair_plan
+        else:
+            salvaged_plan = _salvage_additive_test_plan(chosen, repair_plan)
+            if salvaged_plan is not None:
+                ok, detail = validate_plan(salvaged_plan, chosen)
+                if (
+                    ok
+                    and detail != "no_change"
+                    and _adds_exactly_one_test(
+                        chosen,
+                        salvaged_plan["changes"][0]["old"],
+                        salvaged_plan["changes"][0]["new"],
+                    )
+                ):
+                    plan = salvaged_plan
+                else:
+                    ok, detail = False, "existing_test_modified_repair_failed"
+            else:
+                ok, detail = False, "existing_test_modified_repair_failed"
     return plan, ok, detail
 
 
@@ -427,6 +860,46 @@ def _is_allowed_comment_test_change(plan: dict, chosen: str) -> bool:
     return bool(suffix) and re.fullmatch(r"# [^\r\n]{1,120}\n", suffix) is not None
 
 
+def _test_definitions_unchanged(path: str, old: str, new: str) -> bool:
+    """Reject autonomous edits that alter or remove existing pytest test bodies.
+
+    New test functions may be added, but existing tests must remain byte-for-byte
+    equivalent at the AST level so an agent cannot make a failing test pass by
+    weakening or rewriting its assertion.
+    """
+    if not is_test_path(path) or not path.endswith(".py"):
+        return True
+    target = ROOT / path
+    try:
+        original = target.read_text(encoding="utf-8")
+        # The normal anchor validator handles missing/ambiguous snippets.
+        # This guard only runs when the exact replacement target is present once.
+        if original.count(old) != 1:
+            return True
+        candidate = original.replace(old, new, 1)
+        before = ast.parse(original, filename=path)
+        after = ast.parse(candidate, filename=path)
+    except (OSError, SyntaxError, ValueError):
+        return False
+
+    def tests(tree):
+        found = {}
+        def visit(node, scope=()):
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    name = (*scope, child.name)
+                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name.startswith("test"):
+                        found[".".join(name)] = ast.dump(child, include_attributes=False)
+                    visit(child, name)
+                else:
+                    visit(child, scope)
+        visit(tree)
+        return found
+
+    old_tests, new_tests = tests(before), tests(after)
+    return all(new_tests.get(name) == body for name, body in old_tests.items())
+
+
 def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
     if plan.get("no_change") is True:
         return True, "no_change"
@@ -450,6 +923,8 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
             return False, "invalid_old_new"
         if old == new:
             return False, "no_op_change"
+        if is_test_path(path) and not _test_definitions_unchanged(path, old, new):
+            return False, "existing_test_modified"
         if any(line.strip() in {"+", "-"} for line in new.splitlines()):
             return False, "diff_marker_in_replacement"
         if len(old) > 1200 or len(new) > 1800:
@@ -458,17 +933,62 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
 
 
 def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
+    """Preflight every bounded change before writing any file."""
+    if not isinstance(plan, dict):
+        return False, "invalid_plan", []
     if plan.get("no_change") is True:
         return True, "NO_CHANGE", []
-    touched: list[str] = []
-    for change in plan["changes"]:
-        target = ROOT / change["file"]
-        text = target.read_text(encoding="utf-8")
-        count = text.count(change["old"])
+    changes = plan.get("changes")
+    if not isinstance(changes, list) or not 1 <= len(changes) <= MAX_FILES:
+        return False, "invalid_change_count", []
+
+    prepared: list[tuple[str, Path, str, str, str]] = []
+    seen_paths: set[str] = set()
+    for change in changes:
+        if not isinstance(change, dict):
+            return False, "invalid_change", []
+        path, old, new = change.get("file"), change.get("old"), change.get("new")
+        if not isinstance(path, str) or not path or not isinstance(old, str) or not old:
+            return False, "invalid_old_new", []
+        if not isinstance(new, str) or old == new:
+            return False, "invalid_old_new", []
+        if path in seen_paths:
+            return False, "duplicate_change_path", []
+        seen_paths.add(path)
+        target = (ROOT / path).resolve()
+        try:
+            target.relative_to(ROOT.resolve())
+        except ValueError:
+            return False, "change_path_outside_root", []
+        try:
+            original = target.read_text(encoding="utf-8")
+        except OSError:
+            return False, f"change_target_unreadable:{path}", []
+        count = original.count(old)
         if count != 1:
-            return False, f"anchor_count_{change['file']}:{count}", touched
-        target.write_text(text.replace(change["old"], change["new"], 1), encoding="utf-8")
-        touched.append(change["file"])
+            return False, f"anchor_count_{path}:{count}", []
+        prepared.append((path, target, original, old, new))
+
+    touched: list[str] = []
+    current_index = -1
+    try:
+        for current_index, (path, target, original, old, new) in enumerate(prepared):
+            target.write_text(original.replace(old, new, 1), encoding="utf-8")
+            touched.append(path)
+    except OSError as exc:
+        rollback_errors: list[str] = []
+        # Include the failing target: write_text may truncate/write partially
+        # before raising, even though it was not appended to touched.
+        rollback_targets = prepared[: current_index + 1]
+        for path, target, original, _, _ in reversed(rollback_targets):
+            try:
+                target.write_text(original, encoding="utf-8")
+            except OSError:
+                rollback_errors.append(path)
+        detail = f"apply_write_failed:{type(exc).__name__}"
+        if rollback_errors:
+            detail += f":rollback_failed={','.join(rollback_errors)}"
+        return False, detail, touched
     return True, "applied", touched
 
 

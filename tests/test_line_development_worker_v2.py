@@ -34,6 +34,79 @@ class FakeClient:
         self.chat = type("Chat", (), {"completions": FakeCompletions(responses)})()
 
 
+def test_ask_uses_low_reasoning_effort_by_default(monkeypatch):
+    monkeypatch.delenv("DEV_AI_REASONING_EFFORT", raising=False)
+    captured = {}
+
+    class CaptureCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return _Response("ok")
+
+    client = type("Client", (), {"chat": type("Chat", (), {"completions": CaptureCompletions()})()})()
+
+    assert worker.ask(client, "system", "prompt") == "ok"
+    assert captured["reasoning_effort"] == "low"
+
+
+def test_append_only_test_generation_uses_reasoning_completion_budget(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_existing_contract():\n    assert True\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    captured = {}
+
+    class CaptureCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return _Response("def test_new_boundary():\n    assert True\n")
+
+    client = type("Client", (), {"chat": type("Chat", (), {"completions": CaptureCompletions()})()})()
+    plan, error = worker.build_append_only_test_plan(
+        client, "Add one focused boundary regression", "tests/test_sample.py", original
+    )
+
+    assert error == ""
+    assert plan is not None
+    assert captured["max_completion_tokens"] == worker.MAX_APPEND_ONLY_RESPONSE_TOKENS
+    assert captured["reasoning_effort"] == "low"
+    assert "max_tokens" not in captured
+    assert "response_format" not in captured
+
+
+
+
+
+def test_append_only_test_generation_bounds_context_before_larger_completion(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_existing_contract():\n    assert True\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    captured = {}
+
+    class CaptureCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return _Response("def test_new_boundary():\n    assert True\n")
+
+    client = type("Client", (), {"chat": type("Chat", (), {"completions": CaptureCompletions()})()})()
+    oversized_context = "HEAD\n" + ("x" * 9000) + "\nTAIL"
+    plan, error = worker.build_append_only_test_plan(
+        client, "Add one focused boundary regression", "tests/test_sample.py",
+        oversized_context,
+    )
+
+    assert error == ""
+    assert plan is not None
+    prompt = captured["messages"][1]["content"]
+    assert len(prompt) < worker.MAX_APPEND_ONLY_CONTEXT_CHARS + 1000
+    assert "HEAD" in prompt and "TAIL" in prompt
+    assert "append-only context bounded" in prompt
+    assert captured["max_completion_tokens"] == worker.MAX_APPEND_ONLY_RESPONSE_TOKENS
+
+
 def test_protected_worker_files_are_never_editable():
     assert worker.is_protected("scripts/line_development_worker_v2.py")
     assert worker.is_protected(".github/workflows/line-development.yml")
@@ -55,6 +128,27 @@ def test_test_instruction_requires_no_file_target():
     assert not worker.is_test_instruction(
         "README.md に「自動開発テスト」を1行追加して"
     )
+
+
+def test_choose_file_routes_operational_validation_to_e2e_harness(monkeypatch):
+    def forbidden_ask(*args, **kwargs):
+        raise AssertionError("operational validation must not use generic model file selection")
+
+    monkeypatch.setattr(worker, "ask", forbidden_ask)
+    files = [
+        "core/line_development_runtime.py",
+        "tests/test_line_development.py",
+        "tests/test_app_development_dispatch.py",
+    ]
+
+    for instruction in (
+        "LINE AI Secretaryの自動開発基盤を実運用テストしてください",
+        "自動開発基盤の実運用検証をしてください",
+        "分散AI基盤検証を実施してください",
+    ):
+        assert worker.choose_file(FakeClient([]), instruction, files) == (
+            "tests/test_line_development.py"
+        )
 
 
 def test_choose_file_rejects_unknown_path():
@@ -843,3 +937,661 @@ def test_apply_anchor_size_repair_is_used_only_once_across_anchor_retries(monkey
     assert size_calls == [1]
     assert plan == size_repaired_but_ambiguous
     assert target.read_text(encoding="utf-8") == original
+
+
+
+def test_test_file_plan_rejects_rewriting_existing_assertions(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_contract():\n    assert route() == 'english'\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    plan = {
+        "no_change": False,
+        "changes": [{
+            "file": "tests/test_sample.py",
+            "old": "assert route() == 'english'",
+            "new": "assert route() == 'general'",
+        }],
+    }
+
+    assert worker.validate_plan(plan, "tests/test_sample.py") == (
+        False, "existing_test_modified"
+    )
+
+
+def test_test_file_plan_allows_adding_a_new_test_without_changing_existing_tests(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_contract():\n    assert route() == 'english'\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    addition = "\n\ndef test_new_regression():\n    assert route() == 'general'\n"
+    plan = {
+        "no_change": False,
+        "changes": [{
+            "file": "tests/test_sample.py",
+            "old": original,
+            "new": original + addition,
+        }],
+    }
+
+    assert worker.validate_plan(plan, "tests/test_sample.py") == (
+        True, "tests/test_sample.py"
+    )
+
+
+
+def test_bounded_repair_recovers_rejected_test_rewrite_with_one_additive_test(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_contract():\n    assert route() == 'english'\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    chosen = "tests/test_sample.py"
+    rejected = {
+        "no_change": False,
+        "changes": [{
+            "file": chosen,
+            "old": "assert route() == 'english'",
+            "new": "assert route() == 'general'",
+        }],
+    }
+    addition = "\n\ndef test_new_regression():\n    assert route() == 'general'\n"
+    repaired = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": original, "new": original + addition}],
+    }
+    client = FakeClient([json.dumps(repaired)])
+
+    plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+        client, "Add one focused regression test", chosen, rejected, original
+    )
+
+    assert ok
+    assert detail == chosen
+    assert plan == repaired
+    assert target.read_text(encoding="utf-8") == original
+    assert worker._adds_exactly_one_test(chosen, original, original + addition)
+
+
+def test_bounded_repair_salvages_one_new_test_without_rewriting_existing_tests(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_contract():\n    assert route() == 'english'\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    chosen = "tests/test_sample.py"
+    rejected = {
+        "no_change": False,
+        "changes": [{
+            "file": chosen,
+            "old": "assert route() == 'english'",
+            "new": "assert route() == 'general'",
+        }],
+    }
+    unsafe_repair = {
+        "no_change": False,
+        "changes": [{
+            "file": chosen,
+            "old": original,
+            "new": (
+                "def test_contract():\n    assert route() == 'general'\n"
+                "\ndef test_new_regression():\n    assert route() == 'general'\n"
+            ),
+        }],
+    }
+
+    plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+        FakeClient([json.dumps(unsafe_repair)]),
+        "Add one focused regression test",
+        chosen,
+        rejected,
+        original,
+    )
+
+    assert ok
+    assert detail == chosen
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert change["new"].endswith("def test_new_regression():\n    assert route() == 'general'\n")
+    assert worker._adds_exactly_one_test(chosen, change["old"], change["new"])
+    assert target.read_text(encoding="utf-8") == original
+
+
+def test_additive_test_salvage_rejects_multiple_new_test_functions(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_contract():\n    assert route() == 'english'\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    chosen = "tests/test_sample.py"
+    rewritten = {
+        "no_change": False,
+        "changes": [{
+            "file": chosen,
+            "old": original,
+            "new": (
+                "def test_contract():\n    assert route() == 'general'\n"
+                "\ndef test_new_one():\n    assert route() == 'general'\n"
+                "\ndef test_new_two():\n    assert route() == 'general'\n"
+            ),
+        }],
+    }
+
+    assert worker._salvage_additive_test_plan(chosen, rewritten) is None
+    assert target.read_text(encoding="utf-8") == original
+
+
+
+def test_append_only_test_plan_constructs_eof_patch_without_rewriting_existing_tests(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_existing_contract():\n    assert normalize(' aapl ') == 'AAPL'\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    generated = "def test_blank_ticker_is_rejected():\n    assert normalize('   ') == ''\n"
+
+    plan, error = worker.build_append_only_test_plan(
+        FakeClient([generated]),
+        "Add one boundary regression for a blank ticker",
+        "tests/test_sample.py",
+        original,
+    )
+
+    assert error == ""
+    assert plan is not None
+    assert plan["source"] == "append_only_review_task"
+    change = plan["changes"][0]
+    assert change["file"] == "tests/test_sample.py"
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    candidate = original.replace(change["old"], change["new"], 1)
+    assert candidate.startswith(original)
+    assert "def test_blank_ticker_is_rejected():" in candidate
+    assert worker.validate_plan(plan, "tests/test_sample.py") == (True, "tests/test_sample.py")
+    assert target.read_text(encoding="utf-8") == original
+
+
+def test_append_only_test_plan_fails_closed_on_imports_and_multiple_functions(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_existing_contract():\n    assert True\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    unsafe = "import os\n\ndef test_reads_environment():\n    assert os.getenv('TOKEN')\n"
+    plan, error = worker.build_append_only_test_plan(
+        FakeClient([unsafe]),
+        "Add a regression test",
+        "tests/test_sample.py",
+        original,
+    )
+    assert plan is None
+    assert error == "append_only_test_not_single_function"
+
+    multiple = (
+        "def test_first():\n    assert True\n\n"
+        "def test_second():\n    assert True\n"
+    )
+    plan, error = worker.build_append_only_test_plan(
+        FakeClient([multiple]),
+        "Add a regression test",
+        "tests/test_sample.py",
+        original,
+    )
+    assert plan is None
+    assert error == "append_only_test_not_single_function"
+    assert target.read_text(encoding="utf-8") == original
+
+
+
+def test_append_only_test_plan_rejects_preimported_process_and_network_modules(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_existing_contract():\n    assert True\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    for generated in (
+        "def test_reads_environment():\n    assert os.getenv('TOKEN')\n",
+        "def test_starts_process():\n    subprocess.run(['echo', 'unsafe'])\n",
+        "def test_calls_network():\n    requests.get('https://example.invalid')\n",
+    ):
+        plan, error = worker.build_append_only_test_plan(
+            FakeClient([generated]),
+            "Add a regression test",
+            "tests/test_sample.py",
+            original,
+        )
+        assert plan is None
+        assert error == "append_only_test_unsafe_operation"
+
+    assert target.read_text(encoding="utf-8") == original
+
+
+
+
+def test_append_only_test_plan_rejects_dunder_attribute_traversal(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_existing_contract():\n    assert True\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    generated = "def test_escapes_restrictions():\n    assert ().__class__.__base__\n"
+    plan, error = worker.build_append_only_test_plan(
+        FakeClient([generated]),
+        "Add a regression test",
+        "tests/test_sample.py",
+        original,
+    )
+
+    assert plan is None
+    assert error == "append_only_test_unsafe_operation"
+    assert target.read_text(encoding="utf-8") == original
+
+
+def test_append_only_test_plan_rejects_os_and_filesystem_calls(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    original = "def test_existing_contract():\n    assert True\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    generated = "def test_reads_file():\n    assert open('secret.txt').read()\n"
+    plan, error = worker.build_append_only_test_plan(
+        FakeClient([generated]),
+        "Add a regression test",
+        "tests/test_sample.py",
+        original,
+    )
+
+    assert plan is None
+    assert error == "append_only_test_unsafe_operation"
+    assert target.read_text(encoding="utf-8") == original
+
+
+
+def test_is_test_path_recognizes_root_nested_and_conftest_paths():
+    assert worker.is_test_path("test_app.py")
+    assert worker.is_test_path("tests/test_app.py")
+    assert worker.is_test_path("uhip/tests/test_schema_contracts.py")
+    assert worker.is_test_path("pkg/conftest.py")
+    assert worker.is_test_path("pkg/sample_test.py")
+    assert not worker.is_test_path("core/management_router.py")
+
+
+def test_choose_file_excludes_tests_from_generic_model_candidates(monkeypatch):
+    captured = {}
+
+    def fake_ask(client, system, prompt, max_tokens=1024):
+        captured["prompt"] = prompt
+        return json.dumps({"file": "core/management_router.py"})
+
+    monkeypatch.setattr(worker, "ask", fake_ask)
+    files = [
+        "tests/test_management_router.py",
+        "uhip/tests/test_schema_contracts.py",
+        "core/management_router.py",
+    ]
+
+    selected = worker.choose_file(
+        FakeClient([]), "一般的なルーティング処理を改善してください", files
+    )
+
+    assert selected == "core/management_router.py"
+    assert "core/management_router.py" in captured["prompt"]
+    assert "tests/test_management_router.py" not in captured["prompt"]
+    assert "uhip/tests/test_schema_contracts.py" not in captured["prompt"]
+
+
+def test_choose_file_fails_closed_when_only_test_candidates_exist(monkeypatch):
+    def forbidden_ask(*args, **kwargs):
+        raise AssertionError("model must not be asked to select a test file")
+
+    monkeypatch.setattr(worker, "ask", forbidden_ask)
+    selected = worker.choose_file(
+        FakeClient([]),
+        "通常の実装を修正してください",
+        ["tests/test_management_router.py", "uhip/tests/test_schema_contracts.py"],
+    )
+    assert selected is None
+
+
+def test_existing_test_guard_covers_root_and_nested_test_files(monkeypatch, tmp_path):
+    cases = [
+        ("test_app.py", "def test_contract():\n    assert value() == 1\n"),
+        ("uhip/tests/test_schema_contracts.py", "def test_contract():\n    assert value() == 1\n"),
+    ]
+    for relative_path, original in cases:
+        target = tmp_path / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(original, encoding="utf-8")
+        monkeypatch.setattr(worker, "ROOT", tmp_path)
+        plan = {
+            "no_change": False,
+            "changes": [{
+                "file": relative_path,
+                "old": "assert value() == 1",
+                "new": "assert value() == 2",
+            }],
+        }
+        assert worker.validate_plan(plan, relative_path) == (
+            False, "existing_test_modified"
+        )
+
+
+
+def test_apply_plan_rejects_empty_or_oversized_change_lists_without_writes(tmp_path, monkeypatch):
+    target = tmp_path / "app.py"
+    target.write_text("before\\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.setattr(worker, "MAX_FILES", 1)
+
+    empty_ok, empty_detail, empty_touched = worker.apply_plan(
+        {"no_change": False, "changes": []}
+    )
+    oversized_ok, oversized_detail, oversized_touched = worker.apply_plan(
+        {
+            "no_change": False,
+            "changes": [
+                {"file": "app.py", "old": "before", "new": "after"},
+                {"file": "app.py", "old": "before", "new": "after-again"},
+            ],
+        }
+    )
+
+    assert (empty_ok, empty_detail, empty_touched) == (False, "invalid_change_count", [])
+    assert (oversized_ok, oversized_detail, oversized_touched) == (
+        False,
+        "invalid_change_count",
+        [],
+    )
+    assert target.read_text(encoding="utf-8") == "before\\n"
+
+
+def test_apply_plan_preflights_all_anchors_before_any_write(tmp_path, monkeypatch):
+    first = tmp_path / "first.py"
+    second = tmp_path / "second.py"
+    first.write_text("first-original\\n", encoding="utf-8")
+    second.write_text("second-original\\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.setattr(worker, "MAX_FILES", 2)
+
+    ok, detail, touched = worker.apply_plan(
+        {
+            "no_change": False,
+            "changes": [
+                {"file": "first.py", "old": "first-original", "new": "first-updated"},
+                {"file": "second.py", "old": "missing-anchor", "new": "second-updated"},
+            ],
+        }
+    )
+
+    assert ok is False
+    assert detail == "anchor_count_second.py:0"
+    assert touched == []
+    assert first.read_text(encoding="utf-8") == "first-original\\n"
+    assert second.read_text(encoding="utf-8") == "second-original\\n"
+
+
+def test_apply_plan_rejects_paths_outside_repository_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    ok, detail, touched = worker.apply_plan(
+        {
+            "no_change": False,
+            "changes": [
+                {"file": "../outside.py", "old": "before", "new": "after"}
+            ],
+        }
+    )
+
+    assert ok is False
+    assert detail == "change_path_outside_root"
+    assert touched == []
+
+
+
+def test_apply_plan_rolls_back_target_when_write_fails_midway(tmp_path, monkeypatch):
+    first = tmp_path / "first.py"
+    second = tmp_path / "second.py"
+    first.write_text("first-original\\n", encoding="utf-8")
+    second.write_text("second-original\\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.setattr(worker, "MAX_FILES", 2)
+
+    original_write_text = type(second).write_text
+    failed_once = False
+
+    def partial_then_fail(path, data, *args, **kwargs):
+        nonlocal failed_once
+        if path == second and data.startswith("second-updated") and not failed_once:
+            failed_once = True
+            original_write_text(path, data[:6], *args, **kwargs)
+            raise OSError("simulated interrupted write")
+        return original_write_text(path, data, *args, **kwargs)
+
+    monkeypatch.setattr(type(second), "write_text", partial_then_fail)
+
+    ok, detail, touched = worker.apply_plan(
+        {
+            "no_change": False,
+            "changes": [
+                {"file": "first.py", "old": "first-original", "new": "first-updated"},
+                {"file": "second.py", "old": "second-original", "new": "second-updated"},
+            ],
+        }
+    )
+
+    assert ok is False
+    assert detail == "apply_write_failed:OSError"
+    assert touched == ["first.py"]
+    assert first.read_text(encoding="utf-8") == "first-original\\n"
+    assert second.read_text(encoding="utf-8") == "second-original\\n"
+
+def test_refill_deterministic_test_insertions_preserve_suffix_and_converge(tmp_path, monkeypatch):
+    from core.line_development_runtime import _deterministic_autonomous_test_plan
+
+    target = "tests/test_autonomous_task_refill.py"
+    target_dir = tmp_path / "tests"
+    target_dir.mkdir()
+    target_path = target_dir / "test_autonomous_task_refill.py"
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    eof_anchor = '    assert queue.read_text(encoding="utf-8") == queue_before'
+    unrelated_tail = "\n\n\ndef test_unrelated_tail_must_survive():\n    assert True\n"
+    initial = (
+        "from pathlib import Path\nimport json\nimport pytest\n\n"
+        "def test_existing_refill_behavior():\n"
+        "    queue = Path('queue.json')\n"
+        "    queue_before = queue.read_text(encoding='utf-8')\n"
+        + eof_anchor + unrelated_tail
+    )
+
+    def apply_task(source, task_id):
+        target_path.write_text(source, encoding="utf-8")
+        plan, error = _deterministic_autonomous_test_plan(target, task_id)
+        assert error is None
+        assert plan is not None and plan.get("no_change") is not True
+        change = plan["changes"][0]
+        assert change["file"] == target
+        assert source.count(change["old"]) == 1
+        return source.replace(change["old"], change["new"], 1)
+
+    cli_task = "task-refill-cli-test-20261102"
+    read_json_task = "task-refill-read-json-test-20261102"
+    cli_then_read = apply_task(apply_task(initial, cli_task), read_json_task)
+    read_then_cli = apply_task(apply_task(initial, read_json_task), cli_task)
+
+    assert cli_then_read == read_then_cli
+    assert cli_then_read.count("def test_unrelated_tail_must_survive():") == 1
+    assert cli_then_read.endswith("    assert True\n")
+
+def test_refill_cli_insertion_fails_closed_on_intervening_test(tmp_path, monkeypatch):
+    from core.line_development_runtime import _deterministic_autonomous_test_plan
+
+    target = "tests/test_autonomous_task_refill.py"
+    target_dir = tmp_path / "tests"
+    target_dir.mkdir()
+    target_path = target_dir / "test_autonomous_task_refill.py"
+    anchor = '    assert queue.read_text(encoding="utf-8") == queue_before'
+    intervening = "\n\n\ndef test_existing_intervening_test():\n    assert True\n\n\n"
+    source = (
+        "from pathlib import Path\n"
+        "def test_existing():\n"
+        "    queue = Path('queue.json')\n"
+        "    queue_before = queue.read_text(encoding='utf-8')\n"
+        + anchor + intervening
+        + "def test_read_json_rejects_non_object_root(tmp_path: Path):\n    pass\n"
+    )
+    target_path.write_text(source, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    plan, error = _deterministic_autonomous_test_plan(
+        target, "task-refill-cli-test-20261102"
+    )
+
+    assert plan is None
+    assert error == "deterministic_anchor_intervening_content:refill_cli"
+    assert target_path.read_text(encoding="utf-8") == source
+
+
+
+def test_safe_api_error_detail_reports_provider_metadata_without_secrets():
+    class BadRequestError(Exception):
+        status_code = 400
+        code = "invalid_request"
+        param = "max_tokens"
+        message = "Invalid request for gsk-abcdefghijklmnopqrstuvwxyz1234567890"
+
+    detail = worker._safe_api_error_detail(BadRequestError("do not expose this"))
+
+    assert detail.startswith("status=400:code=invalid_request:param=max_tokens:")
+    assert "Invalid request" in detail
+    assert "gsk-" not in detail
+    assert "abcdefghijklmnopqrstuvwxyz" not in detail
+
+
+
+
+def test_safe_api_error_detail_exposes_only_known_provider_failure_metadata():
+    class BadRequestError(Exception):
+        status_code = 400
+        body = {
+            "error": {
+                "code": "json_validate_failed",
+                "failed_generation": (
+                    "max completion tokens reached before generating a valid document"
+                ),
+            }
+        }
+
+    detail = worker._safe_api_error_detail(BadRequestError("provider rejected request"))
+
+    assert "code=json_validate_failed" in detail
+    assert (
+        "failed_generation=max completion tokens reached before generating a valid document"
+        in detail
+    )
+
+
+
+def test_safe_api_error_detail_includes_request_id_and_redacted_generation():
+    class FakeResponse:
+        headers = {
+            "x-request-id": "req_abc123",
+            "x-groq-region": "us-east-1",
+            "authorization": "Bearer must-not-appear",
+        }
+
+    class BadRequestError(Exception):
+        status_code = 400
+        body = {
+            "error": {
+                "code": "json_validate_failed",
+                "failed_generation": (
+                    "invalid output gsk_abcdefghijklmnopqrstuvwxyz1234567890 "
+                    "and api_key=supersecret"
+                ),
+            }
+        }
+        response = FakeResponse()
+
+    detail = worker._safe_api_error_detail(BadRequestError("provider rejected request"))
+
+    assert "request_id=req_abc123" in detail
+    assert "region=us-east-1" in detail
+    assert "failed_generation=invalid output [REDACTED] and api_key=[REDACTED]" in detail
+    assert "supersecret" not in detail
+    assert "must-not-appear" not in detail
+
+
+
+def test_append_only_generation_failure_includes_safe_api_error_detail(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_sample.py"
+    target.parent.mkdir()
+    target.write_text("def test_existing():\n    assert True\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    class BadRequestError(Exception):
+        status_code = 400
+        code = "invalid_request"
+        param = "max_tokens"
+        message = "Requested token budget exceeds limit"
+
+    def fail_ask(*args, **kwargs):
+        raise BadRequestError("provider rejected request")
+
+    monkeypatch.setattr(worker, "ask_text", fail_ask)
+    plan, error = worker.build_append_only_test_plan(
+        FakeClient([]), "Add one boundary regression", "tests/test_sample.py",
+        target.read_text(encoding="utf-8"),
+    )
+
+    assert plan is None
+    assert error.startswith(
+        "append_only_test_generation_failed:BadRequestError:"
+        "model=openai/gpt-oss-20b:groq_sdk="
+    )
+    assert "status=400:code=invalid_request:param=max_tokens:" in error
+    assert "message=Requested token budget exceeds limit" in error
+    assert target.read_text(encoding="utf-8") == "def test_existing():\n    assert True\n"
+
+def test_catalog_exhaustion_fail_closed_task_has_deterministic_plan(monkeypatch, tmp_path):
+    from core.line_development_runtime import _deterministic_autonomous_test_plan
+
+    chosen = "tests/test_catalog_exhaustion_analyzer.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True)
+    anchor = "def test_public_function_discovery_skips_protocol_and_abstract_stubs():"
+    target.write_text(anchor + "\n    pass\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    plan, error = _deterministic_autonomous_test_plan(
+        chosen, "catalog-exhaustion-analyzer-main-fail-closed-20261105"
+    )
+
+    assert error is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    candidate = target.read_text(encoding="utf-8").replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert "test_main_fails_closed_on_malformed_recovery_state" in candidate
+
+def test_every_deterministic_task_mapping_has_an_executable_plan():
+    from core.line_development_runtime import (
+        _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS,
+        _deterministic_autonomous_test_plan,
+    )
+
+    missing = []
+    for task_id, target in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.items():
+        plan, error = _deterministic_autonomous_test_plan(target, task_id)
+        if plan is None and error is None:
+            missing.append(task_id)
+    assert missing == []
+

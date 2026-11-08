@@ -12,19 +12,14 @@ import json
 import re
 from pathlib import Path
 
+from scripts.autonomous_task_target_allowlist import TARGETS
+
 MAX_CANDIDATES = 4
 TEST_PATH = re.compile(r"^(tests|uhip/tests)/test_[A-Za-z0-9_]+\.py$")
 TASK_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,99}$")
+REVIEW_TASK_ID = re.compile(r"^review-coverage-gap-[a-f0-9]{10}$")
+SPEC_MARKER = "<!-- autonomous-task-spec -->"
 # Explicit code-to-test map: no paths are derived from untrusted input.
-TARGETS = (
-    ("core/line_development_runtime.py", "tests/test_line_development_runtime.py"),
-    ("core/agent_runtime.py", "tests/test_agent_runtime.py"),
-    ("core/management_router.py", "tests/test_management_router.py"),
-    ("core/control_tower_orchestrator.py", "tests/test_control_tower_orchestrator.py"),
-    ("core/recovery_ai.py", "tests/test_recovery_ai.py"),
-    ("core/agent_versioning.py", "tests/test_agent_versioning.py"),
-)
-
 
 def _read_json(path: Path):
     try:
@@ -66,6 +61,32 @@ def _planned_ids(runtime_source: str) -> set[str]:
     return planned
 
 
+def _is_non_executable_stub(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Ignore Protocol/ABC-style declarations that have no executable body."""
+    decorator_names = {
+        item.id if isinstance(item, ast.Name) else item.attr if isinstance(item, ast.Attribute) else ""
+        for item in node.decorator_list
+    }
+    if decorator_names.intersection({"abstractmethod", "overload"}):
+        return True
+    body = list(node.body)
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str):
+        body = body[1:]
+    if not body:
+        return True
+    return all(
+        isinstance(item, ast.Pass)
+        or (isinstance(item, ast.Expr) and isinstance(item.value, ast.Constant) and item.value.value is Ellipsis)
+        or (
+            isinstance(item, ast.Raise)
+            and isinstance(item.exc, ast.Call)
+            and isinstance(item.exc.func, ast.Name)
+            and item.exc.func.id == "NotImplementedError"
+        )
+        for item in body
+    )
+
+
 def _public_functions(source: str) -> list[tuple[str, int]]:
     try:
         tree = ast.parse(source)
@@ -74,15 +95,52 @@ def _public_functions(source: str) -> list[tuple[str, int]]:
     found = []
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith("_"):
-            found.append((node.name, node.lineno))
+            if not _is_non_executable_stub(node):
+                found.append((node.name, node.lineno))
         elif isinstance(node, ast.ClassDef):
             for member in node.body:
-                if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and not member.name.startswith("_"):
+                if (
+                    isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and not member.name.startswith("_")
+                    and not _is_non_executable_stub(member)
+                ):
                     found.append((f"{node.name}.{member.name}", member.lineno))
     return found
 
 
-def analyze(repo_root: Path, catalog_path: Path, queue_path: Path, state_path: Path, runtime_path: Path) -> dict:
+def _existing_issue_task_ids(issues_path: Path | None) -> set[str]:
+    """Exclude every previously issued review candidate before selecting the next batch."""
+    if issues_path is None:
+        return set()
+    issues = _read_json(issues_path)
+    if not isinstance(issues, list):
+        raise ValueError("existing issues must be a list")
+    found: set[str] = set()
+    for issue in issues:
+        if not isinstance(issue, dict):
+            raise ValueError("existing issue entry is invalid")
+        body = issue.get("body")
+        if not isinstance(body, str) or body.count(SPEC_MARKER) != 2:
+            continue
+        try:
+            _, raw_spec, _ = body.split(SPEC_MARKER)
+            spec = json.loads(raw_spec.strip())
+        except (ValueError, TypeError):
+            continue
+        task_id = spec.get("id") if isinstance(spec, dict) else None
+        if isinstance(task_id, str) and REVIEW_TASK_ID.fullmatch(task_id):
+            found.add(task_id)
+    return found
+
+
+def analyze(
+    repo_root: Path,
+    catalog_path: Path,
+    queue_path: Path,
+    state_path: Path,
+    runtime_path: Path,
+    existing_issues_path: Path | None = None,
+) -> dict:
     catalog = _read_json(catalog_path)
     queue = _read_json(queue_path)
     state = _read_json(state_path)
@@ -122,15 +180,20 @@ def analyze(repo_root: Path, catalog_path: Path, queue_path: Path, state_path: P
     runtime_source = runtime_path.read_text(encoding="utf-8")
     planned = _planned_ids(runtime_source)
     missing_plan = sorted(catalog_ids - planned)
-    excluded = queued_ids | completed | held | review | catalog_ids
+    # Exclude old candidates during discovery; otherwise the bounded first batch
+    # is rediscovered forever and issue creation filters every result as duplicate.
+    excluded = queued_ids | completed | held | review | catalog_ids | _existing_issue_task_ids(existing_issues_path)
     candidates = []
     for code_rel, test_rel in TARGETS:
         if len(candidates) >= MAX_CANDIDATES:
             break
         code_path, test_path = repo_root / code_rel, repo_root / test_rel
+        # Never follow repository-controlled symlinks while scanning source or tests.
+        if code_path.is_symlink() or test_path.is_symlink():
+            continue
         if not code_path.is_file() or not test_path.is_file():
             continue
-        if test_path.is_symlink() or not TEST_PATH.fullmatch(test_rel):
+        if not TEST_PATH.fullmatch(test_rel):
             continue
         code_source = code_path.read_text(encoding="utf-8")
         test_source = test_path.read_text(encoding="utf-8")
@@ -186,10 +249,11 @@ def main() -> int:
     parser.add_argument("--queue", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--runtime", type=Path, required=True)
+    parser.add_argument("--existing-issues", type=Path, default=None)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
-        report = analyze(args.repo_root, args.catalog, args.queue, args.state, args.runtime)
+        report = analyze(args.repo_root, args.catalog, args.queue, args.state, args.runtime, args.existing_issues)
     except (ValueError, OSError) as exc:
         print(f"CATALOG_EXHAUSTION_ANALYZER_BLOCKED: {type(exc).__name__}")
         return 2

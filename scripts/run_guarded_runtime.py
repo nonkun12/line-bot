@@ -74,6 +74,30 @@ def guarded_ask(
     raise ValueError(f"AI response is unusable after bounded JSON retry: {last_error}")
 
 
+def guarded_ask_text(
+    client: Groq,
+    system: str,
+    user: str,
+    max_tokens: int = worker.MAX_RESPONSE_TOKENS,
+) -> str:
+    """Request bounded plain text while retaining the guarded runtime's provider limits."""
+    response = client.chat.completions.create(
+        model=worker.MODEL,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=0.0,
+        max_completion_tokens=min(max(1, int(max_tokens)), MAX_COMPLETION_TOKENS),
+        reasoning_effort="low",
+        include_reasoning=False,
+    )
+    content = response.choices[0].message.content or ""
+    if not content.strip():
+        raise ValueError("AI text response is empty")
+    return content
+
+
 def _git(*args: str) -> str:
     completed = subprocess.run(("git", "-C", str(ROOT), *args), capture_output=True, text=True, timeout=15)
     return completed.stdout.strip() if completed.returncode == 0 else ""
@@ -157,6 +181,9 @@ def _augment_with_hermes_advice(instruction: str, history_path: Path) -> str:
     return f"{instruction}\n\nUNTRUSTED HERMES ADVISORY:\n{bounded_advice}"
 
 
+from core.loop_failure_codes import extract_safe_failure_code
+
+
 def _write_summary(
     status: str,
     exit_code: int,
@@ -179,6 +206,9 @@ def _write_summary(
     }
     if rea_evidence is not None:
         payload["rea"] = rea_evidence
+    failure_code = extract_safe_failure_code(os.environ.get("AUTONOMOUS_FAILURE_CODE", ""))
+    if failure_code is not None:
+        payload["failure_code"] = failure_code
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     github_env = os.environ.get("GITHUB_ENV")
@@ -190,6 +220,8 @@ def _write_summary(
 
 
 def main() -> int:
+    # Each guarded task owns its own failure evidence; never inherit a stale code.
+    os.environ.pop("AUTONOMOUS_FAILURE_CODE", None)
     start_sha = _git("rev-parse", "HEAD")
     if not start_sha:
         return 1
@@ -232,6 +264,7 @@ def main() -> int:
         return 80
 
     worker.ask = guarded_ask
+    worker.ask_text = guarded_ask_text
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
     history_path = Path(os.environ.get("SELF_IMPROVEMENT_HISTORY_PATH", "/tmp/line-bot-self-improvement.jsonl"))
     instruction = _augment_instruction_with_history(instruction, history_path)

@@ -12,6 +12,7 @@ import json
 import os
 import signal
 import subprocess
+import time
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -24,9 +25,45 @@ ROOT = Path(__file__).resolve().parents[1]
 # fail-closed Recovery AI imports work in GitHub Actions and local invocations.
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from core.loop_failure_codes import extract_safe_failure_code, is_safe_failure_code
 QUEUE = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", str(ROOT / ".github" / "autonomous-loop-tasks.json"))).resolve()
 DEFAULT_STOP_FILE = Path("/tmp/line-bot-autonomous-loop.stop")
 ACTIVE_PROCESS: subprocess.Popen[str] | None = None
+
+MAX_TRANSIENT_TASK_RETRIES = 2
+TRANSIENT_RETRY_DELAYS_SECONDS = (2, 5)
+
+
+def transient_retry_code(result: dict[str, object]) -> str | None:
+    """Return only an explicitly recognized transient provider failure code."""
+    if not isinstance(result, dict) or result.get("status") != "FAIL":
+        return None
+    evidence = " ".join(
+        str(result.get(key, ""))
+        for key in ("failure_code", "failure_reason", "error", "provider_error")
+    )
+    code = extract_safe_failure_code(evidence)
+    return code if code in {
+        "provider_rate_limited",
+        "provider_service_unavailable",
+        "provider_network_transient",
+    } else None
+
+
+def retry_is_safe(result: dict[str, object], *, current_head: str, working_tree_clean: bool) -> bool:
+    """Retry only known transient failures with unchanged repository state."""
+    base_sha = result.get("base_sha")
+    produced_sha = result.get("produced_sha")
+    return bool(
+        transient_retry_code(result)
+        and working_tree_clean is True
+        and isinstance(base_sha, str)
+        and isinstance(produced_sha, str)
+        and _valid_sha(base_sha)
+        and base_sha == produced_sha == current_head
+    )
+
 
 EXIT_NOT_RUN = 78
 NOT_RUN_REASON_QUEUE_EMPTY = "queue_empty"
@@ -474,6 +511,24 @@ def _deterministic_target_for_task(task: dict[str, object]) -> str | None:
     return expected_target
 
 
+def _is_review_coverage_gap_model_task(task: dict[str, object]) -> bool:
+    """Recognize tightly-scoped review-gap tests that need a model for one new test."""
+    task_id = str(task.get("id", "")).strip()
+    instruction = str(task.get("instruction", ""))
+    allowed_paths = task.get("allowed_paths")
+    return (
+        task_id.startswith("review-coverage-gap-")
+        and "新しい回帰テストを1件追加" in instruction
+        and "変更は指定テストファイル1つだけ" in instruction
+        and isinstance(allowed_paths, list)
+        and len(allowed_paths) == 1
+        and isinstance(allowed_paths[0], str)
+        and allowed_paths[0].startswith("tests/")
+        and allowed_paths[0].endswith(".py")
+        and ".." not in Path(allowed_paths[0]).parts
+    )
+
+
 def run_task(
     task: dict[str, object],
     run_index: int,
@@ -499,7 +554,7 @@ def run_task(
             "failure_reason": "control_tower_head_changed",
         }
     env = os.environ.copy()
-    if _deterministic_target_for_task(task) is not None:
+    if _deterministic_target_for_task(task) is not None and not _is_review_coverage_gap_model_task(task):
         # Do not expose provider credentials to deterministic test-only tasks.
         for key in (
             "GROQ_API_KEY",
@@ -685,11 +740,18 @@ def run_task(
             status = "NO_CHANGE"
         elif failure_reason == "task_timeout":
             status = "TIMEOUT"
-        elif "stop_requested" in failure_reason:
+        elif failure_reason.startswith("stop_requested"):
             status = "STOPPED"
         else:
             status = "FAIL"
 
+    raw_failure_code = payload.get("failure_code")
+    if "failure_code" in payload and not is_safe_failure_code(raw_failure_code):
+        # Preserve the fact that malformed machine-readable evidence was supplied.
+        # The adapter maps this sentinel to non-repairable invalid_evidence.
+        safe_failure_code = "invalid_failure_code_evidence"
+    else:
+        safe_failure_code = raw_failure_code if is_safe_failure_code(raw_failure_code) else None
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "run_index": run_index,
@@ -700,6 +762,7 @@ def run_task(
         "base_sha": base_sha,
         "produced_sha": produced_sha,
         "failure_reason": (str(payload.get("failure_reason", "")) if status == "BLOCKED" else failure_reason),
+        **({"failure_code": safe_failure_code} if safe_failure_code is not None else {}),
         **({"rea": payload["rea"]} if status == "BLOCKED" and isinstance(payload.get("rea"), dict) else {}),
     }
 
@@ -1146,6 +1209,7 @@ def main() -> int:
         except Exception:
             authorized, authorization_reason = False, "control_tower_adapter_error"
 
+        retry_count = 0
         if not authorized:
             result = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -1210,6 +1274,41 @@ def main() -> int:
                 result = run_task(
                     task, index, args.stop_file, expected_base_sha=control_tower_head
                 )
+                # Retry only explicit transient provider failures. Never retry
+                # invalid requests, authorization/security failures, test failures,
+                # changed worktrees, or any result without verified unchanged HEAD.
+                while retry_count < MAX_TRANSIENT_TASK_RETRIES:
+                    current_head = _git_head()
+                    try:
+                        clean_rc, clean_output = _git_checked(
+                            "status", "--porcelain", "--untracked-files=all"
+                        )
+                        worktree_clean = clean_rc == 0 and not clean_output.strip()
+                    except Exception:
+                        worktree_clean = False
+                    if not retry_is_safe(
+                        result,
+                        current_head=current_head,
+                        working_tree_clean=worktree_clean,
+                    ):
+                        break
+                    if stopped(args.stop_file):
+                        break
+                    delay = TRANSIENT_RETRY_DELAYS_SECONDS[retry_count]
+                    print(
+                        f"MINIMAL_LOOP=TRANSIENT_RETRY task={task['id']} "
+                        f"attempt={retry_count + 2}/{MAX_TRANSIENT_TASK_RETRIES + 1} "
+                        f"code={transient_retry_code(result)} delay={delay}s",
+                        flush=True,
+                    )
+                    time.sleep(delay)
+                    retry_count += 1
+                    retry_base_sha = _git_head()
+                    if retry_base_sha != current_head:
+                        break
+                    result = run_task(
+                        task, index, args.stop_file, expected_base_sha=retry_base_sha
+                    )
         # Carry the exact preflight REA evidence into the Control Tower decision.
         # This is diagnostic metadata only and grants no execution or repair authority.
         if not isinstance(result.get("rea"), dict):
@@ -1218,7 +1317,8 @@ def main() -> int:
         try:
             from scripts.recovery_ai_loop_adapter import record_loop_outcome
             result["recovery_ai"] = record_loop_outcome(
-                args.state.parent / "recovery-ai-state.json", result
+                args.state.parent / "recovery-ai-state.json", result,
+                transient_attempt=retry_count + 1,
             )
         except Exception:
             # Do not report PASS or proceed to another task unless the recovery

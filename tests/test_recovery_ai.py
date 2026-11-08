@@ -31,6 +31,28 @@ def test_same_deterministic_failure_is_not_repaired_repeatedly(tmp_path):
     assert second.reason == "repair_budget_exhausted"
 
 
+def test_unknown_failure_gets_one_bounded_retry_then_holds(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    first = store.record_failure("task-unknown", "unknown")
+    second = store.record_failure("task-unknown", "unknown")
+
+    assert first.action == "REPAIR_ONCE"
+    assert first.requires_human is False
+    assert second.action == "HOLD"
+    assert second.requires_human is True
+    assert second.reason == "repair_budget_exhausted"
+
+
+def test_unknown_failure_streak_holds_after_three_distinct_fingerprints(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    store.record_failure("task-unknown", "unknown", ["test.one"])
+    store.record_failure("task-unknown", "unknown", ["test.two"])
+    third = store.record_failure("task-unknown", "unknown", ["test.three"])
+
+    assert third.action == "HOLD"
+    assert third.consecutive_failures == 3
+
+
 def test_three_failures_hold_task_even_if_fingerprints_change(tmp_path):
     store = RecoveryStore(tmp_path / "state.json")
     store.record_failure("task-a", "test_regression", ["test.one"])
@@ -130,3 +152,62 @@ def test_elapsed_seconds_requires_aware_nonnegative_timestamps():
         elapsed_seconds("2026-10-11T00:00:00", "2026-10-11T00:00:01+00:00")
     with pytest.raises(ValueError):
         elapsed_seconds("2026-10-11T00:00:02+00:00", "2026-10-11T00:00:01+00:00")
+
+
+def test_hold_reason_and_last_decision_are_persisted(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    decision = store.record_failure("task-held", "security_violation")
+    status = store.task_status("task-held")
+
+    assert decision.action == "HOLD"
+    assert status["held"] is True
+    assert status["hold_reason"] == "non_repairable_failure"
+    assert status["last_decision_action"] == "HOLD"
+    assert status["last_decision_reason"] == "non_repairable_failure"
+
+
+def test_legacy_hold_is_preserved_and_reported_without_inventing_cause(tmp_path):
+    path = tmp_path / "state.json"
+    path.write_text(json.dumps({
+        "schema_version": 1,
+        "checkpoint": None,
+        "tasks": {
+            "legacy-task": {
+                "consecutive_failures": 1,
+                "fingerprints": [],
+                "held": True,
+            }
+        },
+    }), encoding="utf-8")
+    store = RecoveryStore(path)
+
+    decision = store.record_failure("legacy-task", "unknown")
+    status = store.task_status("legacy-task")
+
+    assert decision.action == "HOLD"
+    assert decision.reason == "previous_hold_requires_explicit_resume"
+    assert status["held"] is True
+    assert status["hold_reason"] == "legacy_hold_reason_unavailable"
+    assert status["last_decision_action"] == "HOLD"
+
+
+def test_existing_hold_cause_is_not_overwritten_by_later_failure(tmp_path):
+    path = tmp_path / "state.json"
+    store = RecoveryStore(path)
+    store.record_failure("task-held", "security_violation")
+    first = store.task_status("task-held")["hold_reason"]
+
+    decision = store.record_failure("task-held", "unknown")
+    status = store.task_status("task-held")
+
+    assert decision.reason == "previous_hold_requires_explicit_resume"
+    assert status["hold_reason"] == first
+    assert status["last_category"] == "unknown"
+
+def test_provider_error_holds_immediately_without_repair_retry(tmp_path):
+    decision = RecoveryStore(tmp_path / "state.json").record_failure(
+        "task-provider", "provider_error"
+    )
+    assert decision.action == "HOLD"
+    assert decision.reason == "non_repairable_failure"
+    assert decision.requires_human is True

@@ -428,6 +428,84 @@
       "allowed_paths": [
         "tests/test_catalog_exhaustion_candidate_adapter.py"
       ]
+    },
+    {
+      "id": "review-coverage-gap-52488722b5",
+      "instruction": "人手レビュー後に限り、tests/test_control_tower.py に task_hash (core/control_tower.py:194) の境界条件を検証する新しい回帰テストを1件追加してください。まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_control_tower.py"
+      ]
+    },
+    {
+      "id": "review-coverage-gap-8bd35ce404",
+      "instruction": "人手レビュー後に限り、tests/test_management_safety.py に CapabilityGrant.is_valid_at (core/management_safety.py:86) の境界条件を検証する新しい回帰テストを1件追加してください。まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_management_safety.py"
+      ],
+      "execution_approved": false
+    },
+    {
+      "id": "review-coverage-gap-703fa3c06b",
+      "instruction": "人手レビュー後に限り、tests/test_project_registry.py に ProjectRegistry.list_projects (core/project_registry.py:119) の境界条件を検証する新しい回帰テストを1件追加してください。まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_project_registry.py"
+      ],
+      "execution_approved": false
+    },
+    {
+      "id": "review-coverage-gap-4d4b38db3b",
+      "instruction": "人手レビュー後に限り、tests/test_obsidian.py に ObsidianVault.search_notes (core/obsidian.py:73) の境界条件を検証する新しい回帰テストを1件追加してください。まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_obsidian.py"
+      ],
+      "execution_approved": true
+    },
+    {
+      "id": "recovery-resume-review-cli-test-20261102",
+      "instruction": "Add exactly one new pytest test function only to tests/test_confirm_recovery_resume_review.py. Exercise scripts.confirm_recovery_resume_review.main as a CLI boundary: provide --state-file and --task-id through monkeypatched sys.argv, monkeypatch confirm_in_durable_state to capture calls, and assert main returns 0, called['state_path'] == str(state_file), and called['task_id'] == task_id. The CLI normalizes state_path to str, so do not compare it to a Path object. Append the new test at the end of the file. Do not edit, rename, delete, reorder, reformat, or weaken any existing test, assertion, fixture, or class. Do not change production code or any other file. If an equivalent test already exists or safe append-only editing is not possible, make no change and report why. No external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_confirm_recovery_resume_review.py"
+      ],
+      "execution_approved": true
+    },
+    {
+      "id": "catalog-exhaustion-analyzer-cli-test-20261102",
+      "instruction": "Add exactly one new pytest test function only to tests/test_catalog_exhaustion_analyzer.py. Exercise scripts.catalog_exhaustion_analyzer.main on its successful CLI path using the existing _fixture(tmp_path) helper. Monkeypatch sys.argv with --repo-root, --catalog, --queue, --state, --runtime, and --output using the paths returned by _fixture; assert main returns 0, the output JSON status is REVIEW_REQUIRED, candidate_count is 1, and catalog_ids_without_runtime_plan is an empty list. Append the new test at the end of the file. Do not edit, rename, delete, reorder, reformat, or weaken any existing test, assertion, fixture, or class. Do not change production code or any other file. If equivalent CLI coverage already exists or safe append-only editing is not possible, make no change and report why. No external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_catalog_exhaustion_analyzer.py"
+      ],
+      "execution_approved": true
+    },
+    {
+      "id": "task-refill-cli-test-20261102",
+      "instruction": "Add exactly one new pytest test function only to tests/test_autonomous_task_refill.py. Exercise scripts.autonomous_task_refill.main on its successful CLI path using the existing _inputs(tmp_path) helper with candidates=[{**_task('task-cli-new'), 'execution_approved': True}]. Monkeypatch sys.argv with --queue, --catalog, --completed-state, and --output using the returned paths; assert main returns 0, parse its single stdout JSON line with capsys, assert added_ids == ['task-cli-new'] and added == 1, and assert the output runtime queue contains task-cli-new. Append the new test at the end of the file. Do not edit, rename, delete, reorder, reformat, or weaken any existing test, assertion, fixture, or class. Do not change production code or any other file. If equivalent CLI coverage already exists or safe append-only editing is not possible, make no change and report why. No external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ],
+      "execution_approved": true
+    },
+    {
+      "id": "task-refill-read-json-test-20261102",
+      "instruction": "Add exactly one new pytest test function only to tests/test_autonomous_task_refill.py for scripts.autonomous_task_refill.read_json. Import read_json from scripts.autonomous_task_refill. Use tmp_path to write a JSON array such as [] (not an object), call read_json, and assert it raises ValueError with message 'JSON root must be an object'. Append the new test at the end of the file. Do not edit, rename, delete, reorder, reformat, or weaken any existing test, assertion, fixture, or class. Do not change production code or any other file. If equivalent direct read_json coverage already exists or safe append-only editing is not possible, make no change and report why. No external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ],
+      "execution_approved": true
+    },
+    {
+      "id": "review-coverage-gap-e0739f9841",
+      "instruction": "人手レビュー後に限り、tests/test_confirm_recovery_resume_review.py に main (scripts/confirm_recovery_resume_review.py:106) の境界条件を検証する新しい回帰テストを1件追加してください。まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_confirm_recovery_resume_review.py"
+      ]
+    },
+    {
+      "id": "catalog-exhaustion-analyzer-main-fail-closed-20261105",
+      "instruction": "tests/test_catalog_exhaustion_analyzer.py のみに、新しい固有名の回帰テストを1件追加してください。scripts.catalog_exhaustion_analyzer.main() の失敗経路を検証します。既存の _fixture() を使い、Recovery AI state の schema_version を不正値にして main() を呼び、戻り値が 2、標準出力が CATALOG_EXHAUSTION_ANALYZER_BLOCKED: ValueError、出力レポートが作成されないことを確認してください。argparse の parse_args はテスト内で Namespace(repo_root, catalog, queue, state, runtime, existing_issues=None, output) を返すように monkeypatch してください。既存テストとの重複がないことを確認し、既存テストは変更しないでください。外部通信、シークレット参照、OS操作は禁止。変更は指定テストファイル1つだけ。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_catalog_exhaustion_analyzer.py"
+      ],
+      "execution_approved": true
     }
   ]
 }

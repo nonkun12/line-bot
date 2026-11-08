@@ -424,6 +424,37 @@ def _capture_task_provider_env(monkeypatch, tmp_path: Path, task: dict[str, obje
     return observed, result
 
 
+def test_review_coverage_gap_model_task_retains_provider_credentials(monkeypatch, tmp_path: Path):
+    task = {
+        "id": "review-coverage-gap-703fa3c06b",
+        "instruction": (
+            "新しい回帰テストを1件追加してください。"
+            "変更は指定テストファイル1つだけ。"
+        ),
+        "allowed_paths": ["tests/test_project_registry.py"],
+    }
+    monkeypatch.setenv("GROQ_API_KEY", "test-only-sentinel")
+
+    provider_env, result = _capture_task_provider_env(monkeypatch, tmp_path, task)
+
+    assert result["status"] == "NO_CHANGE"
+    assert provider_env["GROQ_API_KEY"] == "test-only-sentinel"
+
+
+def test_malformed_review_coverage_gap_does_not_retain_provider_credentials(monkeypatch, tmp_path: Path):
+    task = {
+        "id": "review-coverage-gap-703fa3c06b",
+        "instruction": "Run a generic task.",
+        "allowed_paths": ["tests/test_project_registry.py"],
+    }
+    monkeypatch.setenv("GROQ_API_KEY", "test-only-sentinel")
+
+    provider_env, result = _capture_task_provider_env(monkeypatch, tmp_path, task)
+
+    assert result["status"] == "NO_CHANGE"
+    assert provider_env == {}
+
+
 def test_deterministic_task_subprocess_has_no_provider_credentials(monkeypatch, tmp_path: Path):
     task = {
         "id": "uhip-confidence-out-of-range-rejection",
@@ -809,12 +840,12 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
     monkeypatch.setattr(
         recovery_ai_loop_adapter,
         "record_loop_outcome",
-        lambda _path, result: persisted.append(("recovery", result["status"])) or {"recorded": False, "reason": "preflight_blocked_not_task_failure"},
+        lambda _path, result, **_kwargs: persisted.append(("recovery", result["status"])) or {"recorded": False, "reason": "preflight_blocked_not_task_failure"},
     )
     monkeypatch.setattr(
         control_tower_loop_observer,
         "record_loop_observation",
-        lambda _path, result: persisted.append(("control_tower", result["status"])) or {"recorded": True, "proposal_executable": False},
+        lambda _path, result, **_kwargs: persisted.append(("control_tower", result["status"])) or {"recorded": True, "proposal_executable": False},
     )
     monkeypatch.setattr(
         control_tower_orchestrator,
@@ -1101,7 +1132,7 @@ def test_orchestrator_gates_successful_loop_on_exact_evidence(monkeypatch, tmp_p
     monkeypatch.setattr(
         recovery_ai_loop_adapter,
         "record_loop_outcome",
-        lambda _path, result: {
+        lambda _path, result, **_kwargs: {
             "recorded": True,
             "verified": True,
             "status": result["status"],
@@ -1111,7 +1142,7 @@ def test_orchestrator_gates_successful_loop_on_exact_evidence(monkeypatch, tmp_p
     monkeypatch.setattr(
         control_tower_loop_observer,
         "record_loop_observation",
-        lambda _path, result: {
+        lambda _path, result, **_kwargs: {
             "recorded": True,
             "observed_status": result["status"],
             "proposal_executable": False,
@@ -1154,3 +1185,57 @@ def test_registered_catalog_never_trusts_queue_entries(monkeypatch):
     assert [task["id"] for task in registered] == [reviewed_id]
     assert queue_only_id not in {task["id"] for task in registered}
     assert len(calls) == 1
+
+
+def test_distributed_loop_workflow_normalizes_empty_held_catalog_to_not_run():
+    from pathlib import Path
+
+    workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert 'held_queue = Path("/tmp/autonomous-loop-held-tasks").is_file()' in workflow
+    assert '(queue_empty or held_queue) and not statuses' in workflow
+    assert 'statuses = ["NOT_RUN"]' in workflow
+
+
+def test_postrun_verifier_distinguishes_catalog_block_from_invalid_evidence():
+    from pathlib import Path
+
+    workflow = Path(".github/workflows/distributed-loop-postrun.yml").read_text(encoding="utf-8")
+    assert '"catalog_exhausted_held:"' in workflow
+    assert '"catalog_exhausted_review_pending:"' in workflow
+    assert '"catalog_exhausted_mixed:"' in workflow
+    assert 'CATALOG_BLOCKED: ${{ steps.verify.outputs.catalog_blocked }}' in workflow
+    assert 'BLOCKED（保留・レビュー待ち。人の確認が必要）' in workflow
+
+
+@pytest.mark.parametrize(
+    "result,expected",
+    [
+        ({"status": "FAIL", "failure_reason": "provider_rate_limited"}, "provider_rate_limited"),
+        ({"status": "FAIL", "failure_reason": "HTTP status=503"}, "provider_service_unavailable"),
+        ({"status": "FAIL", "failure_reason": "APIConnectionError"}, "provider_network_transient"),
+        ({"status": "FAIL", "failure_reason": "HTTP status=400"}, None),
+        ({"status": "FAIL", "failure_reason": "unauthorized status=401"}, None),
+        ({"status": "FAIL", "failure_reason": "pytest failed"}, None),
+        ({"status": "BLOCKED", "failure_reason": "status=503"}, None),
+    ],
+)
+def test_transient_retry_code_is_allowlisted_and_fail_closed(result, expected):
+    from scripts.run_minimal_autonomous_loop import transient_retry_code
+
+    assert transient_retry_code(result) == expected
+
+
+def test_transient_retry_requires_unchanged_head_and_clean_worktree():
+    from scripts.run_minimal_autonomous_loop import retry_is_safe
+
+    result = {
+        "status": "FAIL",
+        "failure_reason": "provider_service_unavailable status=503",
+        "base_sha": "a" * 40,
+        "produced_sha": "a" * 40,
+    }
+    assert retry_is_safe(result, current_head="a" * 40, working_tree_clean=True)
+    assert not retry_is_safe(result, current_head="b" * 40, working_tree_clean=True)
+    assert not retry_is_safe(result, current_head="a" * 40, working_tree_clean=False)
+    result["failure_reason"] = "HTTP status=400"
+    assert not retry_is_safe(result, current_head="a" * 40, working_tree_clean=True)

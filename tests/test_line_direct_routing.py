@@ -5,9 +5,9 @@ from types import SimpleNamespace
 import app as app_module
 
 
-def test_openclaw_prefixed_line_request_uses_server_ai(monkeypatch):
-    """Legacy OpenClaw prefix must not enqueue work for a Mac-local worker."""
-    seen = {}
+def test_openclaw_prefixed_line_request_uses_mac_queue(monkeypatch):
+    """Explicit OpenClaw requests are queued for the Mac-local worker."""
+    queued = []
 
     monkeypatch.setattr(
         app_module, "request_recovery_resume_review", lambda user_id, message: (False, "")
@@ -17,19 +17,12 @@ def test_openclaw_prefixed_line_request_uses_server_ai(monkeypatch):
     )
     monkeypatch.setattr(app_module, "is_control_tower_status_command", lambda message: False)
     monkeypatch.setattr(app_module, "handle_core_image_command", lambda message: None)
-    monkeypatch.setattr(app_module, "is_obsidian_intent", lambda message: False)
-    monkeypatch.setattr(app_module, "extract_app_development_request", lambda message: None)
-    monkeypatch.setattr(app_module, "handle_self_introduction", lambda message: None)
-    monkeypatch.setattr(app_module, "extract_development_instruction", lambda message: None)
-    monkeypatch.setattr(app_module, "_core_dynamic_enabled", lambda: True)
-    monkeypatch.setattr(app_module, "should_route_to_management_ai", lambda message: False)
-
-    def fake_run_core_request(user_id, message, **kwargs):
-        seen["message"] = message
-        return "server-side-result"
-
-    monkeypatch.setattr(app_module, "run_core_request", fake_run_core_request)
-    monkeypatch.setattr(app_module, "extract_core_reply", lambda result: result)
+    monkeypatch.setattr(app_module, "enqueue_openclaw_request",
+                        lambda user_id, message: queued.append((user_id, message)) or 23)
+    monkeypatch.setattr(
+        app_module, "run_core_request",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("must not use server AI")),
+    )
 
     request = SimpleNamespace(
         message="OpenClaw: summarize the latest repository status",
@@ -39,5 +32,8 @@ def test_openclaw_prefixed_line_request_uses_server_ai(monkeypatch):
     )
     reply = app_module._handle_ai_gateway_request(request)
 
-    assert reply == "server-side-result"
-    assert seen["message"] == "summarize the latest repository status"
+    assert queued == [
+        ("test-user", "OpenClaw: summarize the latest repository status")
+    ]
+    assert "Job 23" in reply
+    assert "Bonsaiワーカー" in reply

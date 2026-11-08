@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
-from scripts.catalog_exhaustion_analyzer import analyze, _planned_ids
+from scripts.catalog_exhaustion_analyzer import analyze, _planned_ids, _public_functions
 
 
 def _write(path: Path, value) -> Path:
@@ -64,6 +65,30 @@ def test_analyzer_reports_catalog_ids_without_plan_and_excludes_held_or_complete
     assert all(c["id"] != candidate_id for c in held_report["candidates"])
     assert held_report["candidate_count"] == 0
     assert held_report["catalog_ids_without_runtime_plan"] == ["missing-plan"]
+
+
+def test_analyzer_skips_already_issued_candidates_and_fills_next_batch(tmp_path: Path):
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    code = root / "core" / "agent_runtime.py"
+    names = [f"uncovered_boundary_{index}" for index in range(6)]
+    code.write_text(
+        "".join(f"def {name}(value):\n    return value\n\n" for name in names),
+        encoding="utf-8",
+    )
+    marker = "<!-- autonomous-task-spec -->"
+    existing = []
+    for name in names[:4]:
+        suffix = hashlib.sha256(f"core/agent_runtime.py:{name}".encode()).hexdigest()[:10]
+        spec = {"id": f"review-coverage-gap-{suffix}"}
+        existing.append({"state": "open", "body": f"{marker}\n{json.dumps(spec)}\n{marker}"})
+    issues = _write(tmp_path / "existing-issues.json", existing)
+
+    report = analyze(root, catalog, queue, state, runtime, issues)
+
+    assert report["candidate_count"] == 2
+    assert [item["source_function"] for item in report["candidates"]] == names[4:]
+    assert all(item["status"] == "REVIEW_REQUIRED" for item in report["candidates"])
+    assert report["safety"]["candidates_executable"] is False
 
 
 def test_planned_ids_include_mapping_and_explicit_plan_branches():
@@ -143,3 +168,75 @@ def test_history_is_returned_unchanged():
     )
     report = analyze(root, catalog, queue, state, runtime)
     assert all(item["source_function"] != "AgentVersionRegistry.history" for item in report["candidates"])
+
+
+def test_analyzer_discovers_unmentioned_symbols_across_the_shared_allowlist(tmp_path: Path):
+    root = tmp_path / "repo"
+    (root / "core").mkdir(parents=True)
+    (root / "tests").mkdir()
+    (root / "core" / "control_tower.py").write_text(
+        "class ControlTowerDecision:\n"
+        "    def approved_task_matches(self, task):\n"
+        "        return task is not None\n"
+        "\n"
+        "def task_hash(task_id):\n"
+        "    return str(task_id)\n",
+        encoding="utf-8",
+    )
+    (root / "tests" / "test_control_tower.py").write_text(
+        "def test_control_tower_exists():\n"
+        "    assert True\n",
+        encoding="utf-8",
+    )
+    catalog = _write(tmp_path / "catalog.json", {"tasks": []})
+    queue = _write(tmp_path / "queue.json", {"tasks": []})
+    state = _write(
+        tmp_path / "state.json",
+        {"completed": [], "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None}},
+    )
+    runtime = root / "core" / "line_development_runtime.py"
+    runtime.write_text("_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {}\n", encoding="utf-8")
+
+    report = analyze(root, catalog, queue, state, runtime)
+    assert report["candidate_count"] == 2
+    assert {item["source_function"] for item in report["candidates"]} == {
+        "ControlTowerDecision.approved_task_matches",
+        "task_hash",
+    }
+    assert all(item["target_test"] == "tests/test_control_tower.py" for item in report["candidates"])
+    assert report["safety"]["candidates_executable"] is False
+
+
+def test_analyzer_does_not_follow_symlinked_source_or_test_targets(tmp_path: Path):
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    external = tmp_path / "outside.py"
+    external.write_text("def should_not_be_scanned():\n    return True\\n", encoding="utf-8")
+    source = root / "core" / "agent_runtime.py"
+    source.unlink()
+    source.symlink_to(external)
+
+    report = analyze(root, catalog, queue, state, runtime)
+
+    assert report["candidate_count"] == 0
+    assert report["candidates"] == []
+
+
+def test_public_function_discovery_skips_protocol_and_abstract_stubs():
+    source = '''
+from abc import abstractmethod
+from typing import Protocol
+
+class VoicePipeline(Protocol):
+    def handle(self, request):
+        ...
+
+class Base:
+    @abstractmethod
+    def execute(self):
+        raise NotImplementedError
+
+class Concrete:
+    def handle(self, request):
+        return request
+'''
+    assert _public_functions(source) == [("Concrete.handle", 15)]

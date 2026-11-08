@@ -71,6 +71,11 @@ on:
         required: false
         default: false
         type: boolean
+      confirm_resume_review:
+        description: 'Confirm that the resumed task has been reviewed and may re-enter the queue'
+        required: false
+        default: false
+        type: boolean
   # ChatGPT can request a bounded run by creating an authorized PR comment.
   # The trigger defaults to four tasks and remains fail-closed.
   issue_comment:
@@ -80,12 +85,13 @@ on:
   pull_request_target:
     types: [labeled]
   schedule:
-    # Same four daily fire times, expressed as one cron entry.
+    # Run once per hour at minute 17 Japan time.
     # Changing the cron expression also reactivates a deactivated scheduled workflow.
-    - cron: '30 4,10,16,22 * * *'
+    - cron: '17 * * * *'
       timezone: 'Asia/Tokyo'
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
   issues: write
@@ -110,7 +116,7 @@ jobs:
          github.event.comment.body == '/distributed-loop max_tasks=2' ||
          github.event.comment.body == '/distributed-loop max_tasks=3' ||
          github.event.comment.body == '/distributed-loop max_tasks=4' ||
-         github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true') &&
+         startsWith(github.event.comment.body, '/distributed-loop resume_task_id=')) &&
         (
           github.event.comment.author_association == 'OWNER' ||
           github.event.comment.author_association == 'MEMBER' ||
@@ -127,7 +133,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || github.event_name == 'pull_request_target' && '4' || '1' }}
+      MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id=') && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || github.event_name == 'pull_request_target' && '4' || '1' }}
       TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'normal' }}
       INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_category || '' }}
       INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_detail || '' }}
@@ -196,6 +202,14 @@ jobs:
         with:
           python-version: '3.13'
 
+      - name: Publish read-only Recovery AI HOLD digest
+        run: |
+          set -euo pipefail
+          python -m scripts.recovery_hold_digest \
+            --state /tmp/autonomous-loop-state.json \
+            --output /tmp/recovery-hold-digest.md
+          cat /tmp/recovery-hold-digest.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -226,8 +240,13 @@ jobs:
               "/distributed-loop max_tasks=2") expected="2" ;;
               "/distributed-loop max_tasks=3") expected="3" ;;
               "/distributed-loop max_tasks=4") expected="4" ;;
-              "/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true") expected="1" ;;
-              *) echo "::error::Unexpected issue-comment trigger"; exit 1 ;;
+              *)
+                if [[ "${COMMENT_BODY}" =~ ^/distributed-loop[[:space:]]resume_task_id=([A-Za-z0-9._-]{1,100})[[:space:]]confirm_cause_fixed=true[[:space:]]reviewed=true$ ]]; then
+                  expected="1"
+                else
+                  echo "::error::Unexpected issue-comment trigger"; exit 1
+                fi
+                ;;
             esac
           elif [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
             expected="${DISPATCH_INPUT:-1}"
@@ -292,35 +311,55 @@ jobs:
         if: >-
           success() && (
             (github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id != '') ||
-            (github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true')
+            (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id='))
           )
+        id: validate_resume_request
         env:
-          RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true' && 'ai-speaker-empty-transcript-no-brain-call' || '' }}
-          CONFIRM_CAUSE_FIXED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_cause_fixed || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true' && 'true' || 'false' }}
+          EVENT_NAME: ${{ github.event_name }}
+          RESUME_TASK_ID_INPUT: ${{ github.event.inputs.resume_task_id || '' }}
+          CONFIRM_CAUSE_FIXED_INPUT: ${{ github.event.inputs.confirm_cause_fixed || 'false' }}
+          CONFIRM_RESUME_REVIEW_INPUT: ${{ github.event.inputs.confirm_resume_review || 'false' }}
+          RESUME_COMMENT: ${{ github.event_name == 'issue_comment' && github.event.comment.body || '' }}
         run: |
           set -euo pipefail
-          if [ -n "$RESUME_TASK_ID" ]; then
-            if [ "$CONFIRM_CAUSE_FIXED" != "true" ]; then
-              echo "::error::A held task can resume only with explicit cause-fixed confirmation."
-              exit 1
-            fi
-            if ! [[ "$RESUME_TASK_ID" =~ ^[A-Za-z0-9._-]{1,100}$ ]]; then
-              echo "::error::Invalid task ID."
-              exit 1
-            fi
-          elif [ "$CONFIRM_CAUSE_FIXED" = "true" ]; then
-            echo "::error::Cause-fixed confirmation requires a task ID."
-            exit 1
-          fi
+          python - <<'PY'
+          import os, re
+          event = os.environ.get("EVENT_NAME", "")
+          task_id = ""
+          cause_fixed = False
+          reviewed = False
+          if event == "issue_comment":
+              match = re.fullmatch(
+                  r"/distributed-loop resume_task_id=([A-Za-z0-9._-]{1,100}) confirm_cause_fixed=true reviewed=true",
+                  os.environ.get("RESUME_COMMENT", ""),
+              )
+              if not match:
+                  raise SystemExit("resume comment must explicitly confirm cause_fixed and reviewed")
+              task_id = match.group(1)
+              cause_fixed = reviewed = True
+          elif event == "workflow_dispatch":
+              task_id = os.environ.get("RESUME_TASK_ID_INPUT", "")
+              cause_fixed = os.environ.get("CONFIRM_CAUSE_FIXED_INPUT", "false").lower() == "true"
+              reviewed = os.environ.get("CONFIRM_RESUME_REVIEW_INPUT", "false").lower() == "true"
+          if task_id:
+              if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", task_id):
+                  raise SystemExit("invalid resume task ID")
+              if not cause_fixed or not reviewed:
+                  raise SystemExit("resume requires explicit cause-fixed and post-resume review confirmations")
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+                  out.write("task_id=" + task_id + "\n")
+          elif cause_fixed or reviewed:
+              raise SystemExit("resume confirmations require a task ID")
+          PY
 
       - name: Resume one explicitly approved held task
         if: >-
           success() && (
             (github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id != '') ||
-            (github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true')
-          )
+            (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id='))
+          ) && steps.validate_resume_request.outputs.task_id != ''
         env:
-          RESUME_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop resume_task_id=ai-speaker-empty-transcript-no-brain-call confirm_cause_fixed=true' && 'ai-speaker-empty-transcript-no-brain-call' || '' }}
+          RESUME_TASK_ID: ${{ steps.validate_resume_request.outputs.task_id }}
         run: |
           set -euo pipefail
           # Resume validates membership against the reviewed catalog, because
@@ -331,6 +370,10 @@ jobs:
             --queue .github/autonomous-loop-task-catalog.json \
             --task-id "$RESUME_TASK_ID" \
             --cause-fixed
+          python -m scripts.confirm_recovery_resume_review \
+            --state-file /tmp/autonomous-loop-state.json \
+            --recovery-state-file /tmp/recovery-ai-state.json \
+            --task-id "$RESUME_TASK_ID"
 
       - name: Restore durable Recovery RAG history
         if: success()
@@ -362,13 +405,33 @@ jobs:
             | tee /tmp/autonomous-loop-refill-report.json
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
 
+      - name: Load all existing issues for candidate deduplication
+        if: success() && env.TRIGGER_MODE == 'normal'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Include closed issues too: candidate IDs are immutable and must not be re-issued.
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" \
+            | jq -s 'add | map(select(has("pull_request") | not) | {number,title,body,state,labels})' > /tmp/autonomous-loop-all-issues.json
+          jq '[.[] | select(.state == "open")]' /tmp/autonomous-loop-all-issues.json > /tmp/autonomous-loop-open-issues.json
+
+      - name: Publish read-only task review backlog digest
+        if: success() && env.TRIGGER_MODE == 'normal'
+        run: |
+          set -euo pipefail
+          python -m scripts.autonomous_task_review_digest \
+            --issues /tmp/autonomous-loop-all-issues.json \
+            --output /tmp/autonomous-task-review-backlog.md
+          cat /tmp/autonomous-task-review-backlog.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Generate review-only task proposals when catalog is exhausted
         if: success() && env.TRIGGER_MODE == 'normal'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&per_page=100" > /tmp/autonomous-loop-open-issues.json
           python -m scripts.autonomous_task_proposals \
             --issues /tmp/autonomous-loop-open-issues.json \
             --queue /tmp/autonomous-loop-runtime-queue.json \
@@ -379,29 +442,26 @@ jobs:
           cat /tmp/autonomous-loop-task-proposals.json >> "$GITHUB_STEP_SUMMARY"
           echo "TASK_PROPOSALS_PATH=/tmp/autonomous-loop-task-proposals.json" >> "$GITHUB_ENV"
 
-      - name: Analyze catalog exhaustion without changing execution state
+      - name: Analyze catalog exhaustion without changing execution state (Work Finder AI)
         if: success() && env.TRIGGER_MODE == 'normal'
         continue-on-error: true
         run: |
           set -euo pipefail
-          if ! python -c 'import json; from pathlib import Path; raise SystemExit(0 if json.loads(Path("/tmp/autonomous-loop-refill-report.json").read_text(encoding="utf-8")).get("eligible_catalog_count") == 0 else 1)'; then
-            echo "CATALOG_EXHAUSTION_ANALYZER_SKIPPED: catalog still has eligible tasks"
-            exit 0
-          fi
-          if python -m scripts.catalog_exhaustion_analyzer \
+          if python -m scripts.work_finder_ai \
             --repo-root . \
             --catalog .github/autonomous-loop-task-catalog.json \
             --queue /tmp/autonomous-loop-runtime-queue.json \
             --state /tmp/autonomous-loop-state.json \
             --runtime core/line_development_runtime.py \
+            --existing-issues /tmp/autonomous-loop-all-issues.json \
             --output /tmp/catalog-exhaustion-report.json \
             | tee /tmp/catalog-exhaustion-summary.json; then
             cat /tmp/catalog-exhaustion-report.json >> "$GITHUB_STEP_SUMMARY"
             echo "CATALOG_EXHAUSTION_REPORT_PATH=/tmp/catalog-exhaustion-report.json" >> "$GITHUB_ENV"
           else
             rc=$?
-            printf '{"status":"ANALYZER_BLOCKED","reason":"analyzer_failed","exit_code":%s}\\n' "$rc" >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::Catalog exhaustion analyzer failed (exit=$rc); bounded loop outcome classification will continue."
+            printf '{"status":"WORK_FINDER_BLOCKED","reason":"discovery_failed","exit_code":%s}\\n' "$rc" >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Work Finder AI discovery failed (exit=$rc); bounded loop outcome classification will continue."
           fi
 
       - name: Create bounded review-only task issues from analyzer findings
@@ -414,10 +474,6 @@ jobs:
             echo "No validated catalog-exhaustion report; issue generation skipped."
             exit 0
           fi
-          # Paginate every issue (closed included) so old candidate IDs cannot be re-created.
-          gh api --paginate \
-            "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" \
-            | jq -s 'add | map(select(has("pull_request") | not) | {number,title,body,state,labels})' > /tmp/autonomous-loop-all-issues.json
           python -m scripts.autonomous_task_issue_drafts \
             --report /tmp/catalog-exhaustion-report.json \
             --issues /tmp/autonomous-loop-all-issues.json \
@@ -474,7 +530,7 @@ jobs:
               loop_args+=(--incident-job-id "$INCIDENT_JOB_ID")
             fi
           fi
-          rm -f /tmp/autonomous-loop-not-run
+          rm -f /tmp/autonomous-loop-not-run /tmp/autonomous-loop-held-tasks
           set +e
           python scripts/run_minimal_autonomous_loop.py "${loop_args[@]}"
           loop_rc=$?
@@ -504,10 +560,10 @@ jobs:
               else:
                   reason = f"catalog_exhausted_held:{held_count}"
                   print(f"::warning::BLOCKED: {reason}; human review is required.")
-              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\\n", encoding="utf-8")
+              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + chr(10), encoding="utf-8")
           elif type(eligible) is int and eligible == 0 and review_count:
               reason = f"catalog_exhausted_review_pending:{review_count}"
-              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\\n", encoding="utf-8")
+              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + chr(10), encoding="utf-8")
               print(f"::warning::BLOCKED: {reason}; post-resume review is required.")
           else:
               Path("/tmp/autonomous-loop-not-run").write_text("queue_empty\n", encoding="utf-8")
@@ -532,6 +588,8 @@ jobs:
           fi
           python scripts/maintenance_ai.py \
             --results /tmp/minimal-autonomous-loop.jsonl \
+            --not-run-marker /tmp/autonomous-loop-not-run \
+            --held-marker /tmp/autonomous-loop-held-tasks \
             --output artifacts/maintenance-ai/diagnosis.json
           cat artifacts/maintenance-ai/diagnosis.json >> "$GITHUB_STEP_SUMMARY"
 
@@ -541,6 +599,27 @@ jobs:
         with:
           name: maintenance-ai-diagnosis-${{ github.run_id }}
           path: artifacts/maintenance-ai/diagnosis.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Debug Agent read-only failure analysis
+        id: debug_agent
+        if: ${{ always() && steps.run_task.conclusion != 'skipped' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python scripts/distributed_loop_debug_agent.py \
+            --results /tmp/minimal-autonomous-loop.jsonl \
+            --output artifacts/debug-agent/diagnosis.json
+          cat artifacts/debug-agent/diagnosis.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Debug Agent diagnosis
+        if: ${{ always() && steps.debug_agent.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-agent-diagnosis-${{ github.run_id }}
+          path: artifacts/debug-agent/diagnosis.json
           if-no-files-found: error
           retention-days: 14
 
@@ -925,6 +1004,7 @@ jobs:
           name: creator-critic-loop-advisory-${{ github.run_id }}
           path: artifacts/creator-critic-github/
           if-no-files-found: ignore
+
           retention-days: 14
 
       - name: Build review-only self-improvement candidate pool
@@ -1208,9 +1288,11 @@ jobs:
                   if isinstance(row, dict):
                       statuses.append(str(row.get("status") or ""))
           queue_empty = Path("/tmp/autonomous-loop-not-run").exists()
-          # The loop exits 78 without writing a result row when its queue is empty.
-          # Normalize that explicit sentinel into the classifier's documented evidence.
-          if queue_empty and not statuses:
+          held_queue = Path("/tmp/autonomous-loop-held-tasks").is_file()
+          # The runner emits no JSONL row when refill finds no executable task.
+          # Normalize both explicit empty-queue and held/review-gated sentinels to
+          # NOT_RUN evidence; all_tasks_held keeps the latter BLOCKED in the classifier.
+          if (queue_empty or held_queue) and not statuses:
               statuses = ["NOT_RUN"]
           try:
               if os.getenv("QUEUE_PROGRESS_INVALID", "").lower() == "true":
@@ -1307,8 +1389,41 @@ jobs:
             "https://line-bot-yvea.onrender.com/health"; then
             echo "::warning::Render health warm-up failed; continuing to the single LINE push attempt."
           fi
+      - name: Publish cloud Orca runtime snapshot to Render
+        if: always()
+        continue-on-error: true
+        env:
+          ORCA_STATUS_URL: ${{ secrets.ORCA_STATUS_URL }}
+          ORCA_STATUS_SECRET: ${{ secrets.ORCA_STATUS_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ORCA_STATUS_URL:-}" ] || [ -z "${ORCA_STATUS_SECRET:-}" ]; then
+            echo "Cloud Orca telemetry skipped: configure ORCA_STATUS_URL and ORCA_STATUS_SECRET in GitHub Actions secrets."
+            exit 0
+          fi
+          outcome="$(python - <<'PY'
+          from pathlib import Path
+          report = Path("/tmp/distributed-final-report.txt")
+          value = "BLOCKED"
+          if report.is_file():
+              for line in report.read_text(encoding="utf-8").splitlines():
+                  if line.startswith("- 結果: **") and line.endswith("**"):
+                      candidate = line[len("- 結果: **"):-2]
+                      if candidate in {"PASS", "NO_CHANGE", "FAIL", "BLOCKED", "NOT_RUN"}:
+                          value = candidate
+                      break
+          print(value)
+          PY
+          )"
+          python -m scripts.orca_github_status_snapshot \
+            --results /tmp/minimal-autonomous-loop.jsonl \
+            --run-id "$GITHUB_RUN_ID" \
+            --outcome "$outcome" \
+            | python scripts/orca_status_publisher.py
+
       - name: Notify LINE of distributed loop final report
         if: always()
+        continue-on-error: true
         env:
           LINE_INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
           DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
