@@ -23,7 +23,8 @@ def test_digest_lists_preflight_blocked_without_counting_failure():
             },
         },
     })
-    assert "Persisted preflight BLOCKED events (separate from failures): **1**" in report
+    assert "Pending preflight BLOCKED events (separate from failures): **1**" in report
+    assert "Resolved preflight BLOCKED events retained for audit: **0**" in report
     assert "| PREFLIGHT_BLOCKED | blocked-before-run |" in report
     assert "control_tower_gate:missing_prerequisite" in report
     assert "| 0 | preflight | HUMAN_REVIEW_REQUIRED |" in report
@@ -42,3 +43,29 @@ def test_digest_lists_preflight_blocked_without_counting_failure():
 def test_digest_rejects_malformed_preflight_ledger(ledger):
     with pytest.raises(ValueError):
         build_digest({"recovery_ai": {"schema_version": 1, "tasks": {}, "preflight_blocked": ledger}})
+
+
+def test_digest_retains_resolved_preflight_event_only_after_explicit_review():
+    report = build_digest({
+        "recovery_ai": {
+            "schema_version": 1,
+            "tasks": {},
+            "preflight_blocked": {
+                "a" * 64: {
+                    "task_id": "resolved-task",
+                    "reason_code": "control_tower_gate:missing_prerequisite",
+                    "prerequisite_id": "setup-task",
+                    "status": "RESOLVED",
+                    "requires_human_review": False,
+                    "resolution": "prerequisites_fixed_and_human_reviewed",
+                    "first_seen_at": "2026-11-05T00:00:00+00:00",
+                    "last_seen_at": "2026-11-05T01:00:00+00:00",
+                    "resolved_at": "2026-11-05T02:00:00+00:00",
+                    "occurrences": 2,
+                },
+            },
+        },
+    })
+    assert "Pending preflight BLOCKED events (separate from failures): **0**" in report
+    assert "Resolved preflight BLOCKED events retained for audit: **1**" in report
+    assert "| PREFLIGHT_RESOLVED | resolved-task |" in report
