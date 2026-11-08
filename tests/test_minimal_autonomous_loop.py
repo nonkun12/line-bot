@@ -106,6 +106,50 @@ def test_registry_preflight_accepts_exact_true_and_runtime_schema_without_flag()
     assert result["status"] == "PASS"
 
 
+
+
+@pytest.mark.parametrize("approval", [None, False, "true", 1, 0])
+def test_reselect_registered_task_rejects_unapproved_catalog_entry(monkeypatch, approval):
+    from types import SimpleNamespace
+
+    task = {"id": "selected-task", "instruction": "trusted", "allowed_paths": ["tests/test_known.py"]}
+    monkeypatch.setattr(
+        "core.control_tower_selector.select_next_task",
+        lambda *args, **kwargs: SimpleNamespace(next_action="SELECT_REGISTERED_TASK", task_template_id="selected-task", reason_code="selected"),
+    )
+    selected, reason = loop.reselect_registered_task(
+        [task],
+        [{**task, "execution_approved": approval}],
+        set(),
+        set(),
+        expected_task_id="selected-task",
+        evidence_sha="a" * 40,
+        current_head_sha="a" * 40,
+    )
+    assert selected is None
+    assert reason == "execution_not_approved"
+
+
+def test_reselect_registered_task_accepts_exact_approved_catalog_entry(monkeypatch):
+    from types import SimpleNamespace
+
+    task = {"id": "selected-task", "instruction": "trusted", "allowed_paths": ["tests/test_known.py"]}
+    monkeypatch.setattr(
+        "core.control_tower_selector.select_next_task",
+        lambda *args, **kwargs: SimpleNamespace(next_action="SELECT_REGISTERED_TASK", task_template_id="selected-task", reason_code="selected"),
+    )
+    selected, reason = loop.reselect_registered_task(
+        [task],
+        [{**task, "execution_approved": True}],
+        set(),
+        set(),
+        expected_task_id="selected-task",
+        evidence_sha="a" * 40,
+        current_head_sha="a" * 40,
+    )
+    assert selected == task
+    assert reason == ""
+
 def test_unregistered_queue_task_writes_actionable_block_before_recovery_read(monkeypatch, tmp_path: Path, capsys):
     queued = {"id": "ghost-task", "instruction": "unregistered", "allowed_paths": ["tests/test_ghost.py"]}
     registered = {"id": "known-task", "instruction": "trusted", "allowed_paths": ["tests/test_known.py"]}
