@@ -28,7 +28,7 @@ def issue(root, labels=("autonomous-task-candidate", "autonomous-task-catalog-ap
     source_text = (root / SOURCE).read_text(encoding="utf-8")
     test_text = (root / TEST).read_text(encoding="utf-8")
     fingerprint = hashlib.sha256(
-        f"{SOURCE}\\0{FUNCTION}\\0{2}\\0{hashlib.sha256(source_text.encode()).hexdigest()}\\0{hashlib.sha256(test_text.encode()).hexdigest()}".encode()
+        f"{SOURCE}\0{FUNCTION}\0{2}\0{hashlib.sha256(source_text.encode()).hexdigest()}\0{hashlib.sha256(test_text.encode()).hexdigest()}".encode()
     ).hexdigest()
     task_id = "review-coverage-gap-" + hashlib.sha256(f"{SOURCE}:{FUNCTION}".encode()).hexdigest()[:10]
     evidence = f"{SOURCE}:2"
@@ -61,7 +61,7 @@ def _issue_with_path(candidate, path):
     end = body.index("<!-- autonomous-task-spec -->", start)
     spec = json.loads(body[start:end].strip())
     spec["allowed_paths"] = [path]
-    candidate["body"] = body[:start] + "\\n" + json.dumps(spec, ensure_ascii=False) + "\\n" + body[end:]
+    candidate["body"] = body[:start] + "\n" + json.dumps(spec, ensure_ascii=False) + "\n" + body[end:]
     return candidate
 
 def catalog(tasks=None):
@@ -277,10 +277,10 @@ def test_generated_issue_instruction_is_accepted_by_registration_validator(tmp_p
 def test_comment_and_string_mentions_do_not_make_candidate_stale(tmp_path):
     root = repository(tmp_path)
     (root / TEST).write_text(
-        '# AgentRuntime.handle is mentioned in a comment\\n'
-        'def test_documentation():\\n'
-        '    """AgentRuntime.handle will be tested later."""\\n'
-        '    assert "AgentRuntime.handle" in "AgentRuntime.handle"\\n',
+        '# AgentRuntime.handle is mentioned in a comment\n'
+        'def test_documentation():\n'
+        '    """AgentRuntime.handle will be tested later."""\n'
+        '    assert "AgentRuntime.handle" in "AgentRuntime.handle"\n',
         encoding="utf-8",
     )
     candidate = issue(root)
@@ -292,9 +292,9 @@ def test_comment_and_string_mentions_do_not_make_candidate_stale(tmp_path):
 def test_actual_ast_reference_makes_candidate_stale(tmp_path):
     root = repository(tmp_path)
     (root / TEST).write_text(
-        'from core.agent_runtime import handle as runtime_handle\\n'
-        'def test_handle():\\n'
-        '    assert runtime_handle() is True\\n',
+        'from core.agent_runtime import handle as runtime_handle\n'
+        'def test_handle():\n'
+        '    assert runtime_handle() is True\n',
         encoding="utf-8",
     )
     candidate = issue(root)
@@ -304,7 +304,7 @@ def test_actual_ast_reference_makes_candidate_stale(tmp_path):
 
 def test_invalid_test_syntax_blocks_registration(tmp_path):
     root = repository(tmp_path)
-    (root / TEST).write_text("def test_broken(:\\n    pass\\n", encoding="utf-8")
+    (root / TEST).write_text("def test_broken(:\n    pass\n", encoding="utf-8")
     candidate = issue(root)
     with pytest.raises(ValueError, match="invalid Python syntax"):
         register_approved_candidate(candidate, catalog(), state(), root)
