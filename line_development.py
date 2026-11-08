@@ -105,8 +105,6 @@ def dispatch_development_workflow(
 
     # 新規アプリ作成も既存システムの保守・機能追加も受け付ける。
     # すべて同じ認可・GitHub Actionsの管理された開発フローへ送り、安全性は実行側で検査する。
-
-    # 通常のLINE開発指示は、分類器の汎用判定に関わらず既存リポジトリへ送る。
     repository = repository or os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
     dispatch_url = (
         f"https://api.github.com/repos/{repository}"
@@ -164,9 +162,9 @@ def dispatch_development_workflow(
                 else "継続コンテキストは保存できませんでした。"
             )
             return (
-                "🚀 開発指示を受け付けました。GitHub Actionsで開発・テストを開始しました。\\n"
-                "通常のLINE会話とは分離して実行します。\\n"
-                f"{continuation_note}\\n受付ID: {request_id}"
+                "🚀 開発指示を受け付けました。GitHub Actionsで開発・テストを開始しました。\n"
+                "通常のLINE会話とは分離して実行します。\n"
+                f"{continuation_note}\n受付ID: {request_id}"
             )
 
         if response.status_code in _RETRYABLE_STATUS_CODES and attempt < _DISPATCH_ATTEMPTS:
