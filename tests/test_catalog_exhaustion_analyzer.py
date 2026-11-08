@@ -240,3 +240,24 @@ class Concrete:
         return request
 '''
     assert _public_functions(source) == [("Concrete.handle", 15)]
+
+def test_analyzer_cli_fails_closed_on_malformed_state_without_report(tmp_path: Path, monkeypatch, capsys):
+    import sys
+    from scripts.catalog_exhaustion_analyzer import main
+
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    _write(state, {"completed": [], "recovery_ai": {"schema_version": 2, "tasks": {}, "checkpoint": None}})
+    output = tmp_path / "report.json"
+    monkeypatch.setattr(sys, "argv", [
+        "catalog_exhaustion_analyzer",
+        "--repo-root", str(root),
+        "--catalog", str(catalog),
+        "--queue", str(queue),
+        "--state", str(state),
+        "--runtime", str(runtime),
+        "--output", str(output),
+    ])
+
+    assert main() == 2
+    assert capsys.readouterr().out.strip() == "CATALOG_EXHAUSTION_ANALYZER_BLOCKED: ValueError"
+    assert not output.exists()

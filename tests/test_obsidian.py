@@ -44,3 +44,12 @@ def test_missing_vault_fails_closed(tmp_path: Path):
     vault = ObsidianVault(tmp_path / "missing")
     with pytest.raises(ObsidianError):
         vault.list_notes()
+
+def test_search_notes_is_case_insensitive_and_respects_limit(tmp_path: Path):
+    vault = ObsidianVault(tmp_path)
+    vault.write_note("a.md", "Needle in the first note")
+    vault.write_note("nested/b.md", "needle in the second note")
+    vault.write_note("c.md", "no match here")
+
+    assert vault.search_notes("NEEDLE") == ["a.md", "nested/b.md"]
+    assert vault.search_notes("needle", limit=1) == ["a.md"]

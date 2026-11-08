@@ -182,3 +182,19 @@ def test_protected_scope_needs_human_before_execution() -> None:
         build_request(plan, changed_paths=("core/control_tower.py",))
     )
     assert result.decision is GateDecision.NEEDS_HUMAN
+
+def test_capability_grant_validity_uses_inclusive_start_and_exclusive_expiry() -> None:
+    grant = CapabilityGrant(
+        issuer="management",
+        subject="english-agent",
+        scopes=frozenset({"tests/"}),
+        issued_at=100,
+        expires_at=200,
+        parent_task="task-1",
+        nonce="nonce-1",
+    )
+
+    assert grant.is_valid_at(100) is True
+    assert grant.is_valid_at(199) is True
+    assert grant.is_valid_at(99) is False
+    assert grant.is_valid_at(200) is False
