@@ -4,12 +4,16 @@ on:
   workflow_dispatch:
   schedule:
     # Hourly progress/safety audit, offset from the main loop and Creator-Critic.
-    - cron: '47 * * * *'
+    - cron: '12 * * * *'
       timezone: 'Asia/Tokyo'
 
 permissions:
   contents: read
   actions: read
+
+concurrency:
+  group: autonomous-development-watchdog
+  cancel-in-progress: false
 
 jobs:
   watchdog:

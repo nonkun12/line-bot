@@ -125,6 +125,18 @@ def _attach_rag_advisory(
     return outcome
 
 
+def _safe_preflight_reason_code(reason: str) -> str:
+    """Keep the recognized gate namespace while sanitizing untrusted reason text."""
+    if reason == "control_tower_head_changed":
+        return reason
+    for prefix in ("control_tower_gate", "control_tower_rea", "control_tower_selector"):
+        marker = prefix + ":"
+        if reason.startswith(marker):
+            suffix = re.sub(r"[^A-Za-z0-9._-]", "_", reason[len(marker):])[:80].strip("._-")
+            return marker + (suffix or "unclassified")
+    raise ValueError("unrecognized preflight reason namespace")
+
+
 def record_loop_outcome(
     state_path: str | Path,
     result: dict[str, Any],
@@ -136,24 +148,36 @@ def record_loop_outcome(
         raise ValueError("loop result must be an object")
     if type(transient_attempt) is not int or not 1 <= transient_attempt <= MAX_TRANSIENT_RETRIES + 1:
         raise ValueError("transient attempt is outside the bounded retry policy")
+    status = str(result.get("status", "")).upper()
+    failure_reason = str(result.get("failure_reason", "")).strip().lower()
     task_id = str(result.get("task_id", "")).strip()
     if not task_id:
         # Synthetic queue/incident summaries are not task outcomes.
         return {"recorded": False, "reason": "no_task_id"}
     store = RecoveryStore(state_path)
-    status = str(result.get("status", "")).upper()
-    failure_reason = str(result.get("failure_reason", "")).strip().lower()
     # A preflight authorization denial or launch-time HEAD race means no task
     # actually ran. Record it in the loop report, but do not count it as a task
     # failure or trip Recovery AI's repeated-failure HOLD circuit breaker.
     if status == "BLOCKED" and (
         failure_reason.startswith("control_tower_gate:")
         or failure_reason.startswith("control_tower_rea:")
+        or failure_reason.startswith("control_tower_selector:")
         or failure_reason == "control_tower_head_changed"
     ):
+        reason_code = _safe_preflight_reason_code(failure_reason)
+        prerequisite_id = result.get("prerequisite_id")
+        if not isinstance(prerequisite_id, str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", prerequisite_id):
+            prerequisite_id = None
+        event = store.record_preflight_blocked(
+            task_id, reason_code, prerequisite_id
+        )
         return {
             "recorded": False,
             "reason": "preflight_blocked_not_task_failure",
+            "persisted": True,
+            "event_fingerprint": event["fingerprint"],
+            "occurrences": event["occurrences"],
+            "requires_human_review": True,
         }
     # Operator-requested stops are control-flow outcomes, not task failures.
     # Do not create a Recovery AI HOLD merely because the operator stopped a run.

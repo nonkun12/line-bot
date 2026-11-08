@@ -197,6 +197,107 @@ class RecoveryStore:
         self._write(data)
         return RecoveryDecision(action, reason, task_id, fingerprint, count, delay, human)
 
+    def record_preflight_blocked(
+        self, task_id: str, reason_code: str, prerequisite_id: str | None = None
+    ) -> dict:
+        """Persist a preflight block separately, without counting a task failure.
+
+        This is evidence of a gate decision, not permission to retry or resume.
+        Repeated identical events are deduplicated and counted, with bounded history.
+        """
+        task_id = _safe_id(task_id)
+        if not isinstance(reason_code, str) or not re.fullmatch(
+            r"(?:control_tower_gate|control_tower_rea|control_tower_selector):[A-Za-z0-9._-]{1,80}|control_tower_head_changed",
+            reason_code,
+        ):
+            raise ValueError("invalid preflight blocked reason code")
+        if prerequisite_id is not None:
+            prerequisite_id = _safe_id(prerequisite_id)
+        identity = {
+            "task_id": task_id,
+            "reason_code": reason_code,
+            "prerequisite_id": prerequisite_id,
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        data = self._read()
+        events = data.setdefault("preflight_blocked", {})
+        if not isinstance(events, dict):
+            raise RecoveryStateError("preflight blocked event state invalid")
+        previous = events.get(fingerprint)
+        if previous is not None and not isinstance(previous, dict):
+            raise RecoveryStateError("preflight blocked event record invalid")
+        now = utc_now()
+        occurrences = int(previous.get("occurrences", 0)) + 1 if previous else 1
+        resolution_history = list(previous.get("resolution_history", [])) if previous else []
+        if previous and previous.get("status") == "RESOLVED":
+            # Preserve the prior human resolution as immutable audit evidence;
+            # a recurrence is a new pending incident, not a still-resolved one.
+            resolution_history.append({
+                "resolution": previous.get("resolution"),
+                "resolved_at": previous.get("resolved_at"),
+            })
+            resolution_history = resolution_history[-20:]
+        event = {
+            **identity,
+            "fingerprint": fingerprint,
+            "status": "PENDING_PREREQUISITE_OR_REVIEW",
+            "requires_human_review": True,
+            "first_seen_at": previous.get("first_seen_at", now) if previous else now,
+            "last_seen_at": now,
+            "occurrences": occurrences,
+            "resolution_history": resolution_history,
+        }
+        events[fingerprint] = event
+        if len(events) > 200:
+            resolved = sorted(
+                ((key, value) for key, value in events.items()
+                 if isinstance(value, dict) and value.get("status") == "RESOLVED"),
+                key=lambda item: str(item[1].get("resolved_at", "")),
+            )
+            for key, _value in resolved:
+                if len(events) <= 200:
+                    break
+                events.pop(key, None)
+            if len(events) > 200:
+                raise RecoveryStateError(
+                    "preflight BLOCKED ledger is full of unresolved events; refusing to discard audit history"
+                )
+        self._write(data)
+        return dict(data["preflight_blocked"][fingerprint])
+
+    def resolve_preflight_blocked(
+        self, task_id: str, *, prerequisites_fixed: bool, reviewed: bool
+    ) -> int:
+        """Resolve matching preflight events only after explicit prerequisite and human-review confirmation."""
+        task_id = _safe_id(task_id)
+        if prerequisites_fixed is not True:
+            raise ValueError("explicit prerequisite-resolution confirmation is required")
+        if reviewed is not True:
+            raise ValueError("explicit human review confirmation is required")
+        data = self._read()
+        events = data.get("preflight_blocked", {})
+        if not isinstance(events, dict):
+            raise RecoveryStateError("preflight blocked event state invalid")
+        resolved_at = utc_now()
+        count = 0
+        for event in events.values():
+            if (
+                isinstance(event, dict)
+                and event.get("task_id") == task_id
+                and event.get("status") == "PENDING_PREREQUISITE_OR_REVIEW"
+            ):
+                event["status"] = "RESOLVED"
+                event["requires_human_review"] = False
+                event["resolution"] = "prerequisites_fixed_and_human_reviewed"
+                event["resolved_at"] = resolved_at
+                count += 1
+        if not count:
+            raise ValueError("no pending preflight BLOCKED event exists for task")
+        self._write(data)
+        return count
+
     def record_success(
         self, task_id: str, *, verified: bool, evidence: dict | None = None
     ) -> None:
