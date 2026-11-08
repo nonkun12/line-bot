@@ -13,6 +13,7 @@ STREAMS = {
     "side_self_improvement": ("自己改善AI", "side"),
     "side_line_full_control": ("LINE AI Secretary", "side"),
     "side_media_ai": ("Muse（動画・音楽）", "side"),
+    "side_core_vocabulary": ("英単語コア語彙", "side"),
 }
 ALLOWED_STATUS = {"PASS", "NO_CHANGE", "FAIL", "BLOCKED", "NOT_RUN"}
 
