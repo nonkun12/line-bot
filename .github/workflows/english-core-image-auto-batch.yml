@@ -36,13 +36,54 @@ jobs:
         with:
           python-version: "3.12"
       - name: Add next reviewed batch
+        id: batch
         env:
           BATCH_SIZE: ${{ inputs.batch_size || '20' }}
         run: |
           python -m json.tool agents/english/core_image_candidates.json > /dev/null
-          python scripts/english_core_image_auto_batch.py --batch-size "$BATCH_SIZE"
+          python scripts/english_core_image_auto_batch.py --batch-size "$BATCH_SIZE" 2>&1 | tee /tmp/english-core-image-batch.log
           git diff --check
           python -m pytest -q tests/test_english_core_image.py
+      - name: Publish English Core Vocabulary status to Orca
+        if: always()
+        env:
+          BATCH_OUTCOME: ${{ steps.batch.outcome }}
+          RUN_ID: ${{ github.run_id }}
+          ORCA_STATUS_URL: ${{ secrets.ORCA_STATUS_URL }}
+          ORCA_STATUS_SECRET: ${{ secrets.ORCA_STATUS_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ORCA_STATUS_URL" ] || [ -z "$ORCA_STATUS_SECRET" ]; then
+            echo "Orca Side 5 status not sent: ORCA_STATUS_URL/ORCA_STATUS_SECRET are not configured."
+            exit 0
+          fi
+          python - <<'PY' > /tmp/english-core-vocabulary-orca.json
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          outcome = os.environ.get("BATCH_OUTCOME", "failure")
+          log = Path("/tmp/english-core-image-batch.log")
+          output = log.read_text(encoding="utf-8", errors="replace") if log.exists() else ""
+          if outcome != "success":
+              status = "FAIL"
+          elif "NO_CHANGE:" in output:
+              status = "NO_CHANGE"
+          elif "Added " in output and " reviewed candidates:" in output:
+              status = "PASS"
+          else:
+              status = "NOT_RUN"
+          now = datetime.now(timezone.utc).isoformat()
+          task_id = "english-core-vocabulary-" + os.environ["RUN_ID"]
+          print(json.dumps({
+              "captured_at": now,
+              "run_id": os.environ["RUN_ID"],
+              "tasks": [{"task_id": task_id, "status": status, "stage": "completed" if status in {"PASS", "NO_CHANGE"} else "reported", "stream_key": "side_core_vocabulary"}],
+              "dispatches": [],
+              "workers": [],
+              "streams": [{"key": "side_core_vocabulary", "label": "英単語コア語彙", "kind": "side", "status": "observed", "task_count": 1, "dispatch_count": 0, "worker_count": 0, "evidence": "matched_runtime_records"}],
+          }, ensure_ascii=False))
+          PY
+          python -m scripts.orca_status_publisher --input /tmp/english-core-vocabulary-orca.json
       - name: Open or update review PR
         uses: peter-evans/create-pull-request@v7
         with:
