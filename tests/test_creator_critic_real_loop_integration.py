@@ -75,7 +75,7 @@ class CreatorCriticRealLoopIntegrationTests(unittest.TestCase):
                 patch.object(loop, "load_completed", return_value=set()),
                 patch.object(loop, "load_tasks", return_value=[task]),
                 patch.object(loop, "_git_head", return_value=base_sha),
-                patch.object(loop, "_load_registered_catalog", return_value=[task]),
+                patch.object(loop, "_load_registered_catalog", return_value=[{**task, "execution_approved": True}]),
                 patch.object(loop, "run_task", return_value=dict(failed_result)),
                 patch.object(loop.signal, "signal"),
                 patch.object(
