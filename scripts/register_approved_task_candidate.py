@@ -6,6 +6,7 @@ clears Recovery AI state, or creates a merge/deployment action.
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import re
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from scripts.autonomous_task_target_allowlist import TARGETS
+from scripts.autonomous_task_candidate_contract import build_review_instruction
 from scripts.catalog_exhaustion_analyzer import _public_functions
 
 SPEC_MARKER = "<!-- autonomous-task-spec -->"
@@ -113,7 +115,26 @@ def _validated_spec(issue: object, repo_root: Path) -> tuple[dict[str, Any], int
     test_text = test_file.read_text(encoding="utf-8")
     if (source_function, line) not in _public_functions(source_text):
         raise ValueError("candidate source function or line no longer matches current source")
-    if re.search(r"\b" + re.escape(source_function.rsplit(".", 1)[-1]) + r"\b", test_text):
+    try:
+        test_tree = ast.parse(test_text)
+    except SyntaxError as exc:
+        raise ValueError("candidate test file has invalid Python syntax") from exc
+    referenced_symbols: set[str] = set()
+    imported_names: dict[str, str] = {}
+    for node in ast.walk(test_tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                imported_names[alias.asname or alias.name] = alias.name.rsplit(".", 1)[-1]
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                imported_names[alias.asname or alias.name.split(".", 1)[0]] = alias.name.split(".", 1)[0]
+        elif isinstance(node, ast.Name):
+            referenced_symbols.add(node.id)
+        elif isinstance(node, ast.Attribute):
+            referenced_symbols.add(node.attr)
+    referenced_symbols.update(imported_names)
+    referenced_symbols.update(imported_names.values())
+    if source_function.rsplit(".", 1)[-1] in referenced_symbols:
         raise ValueError("candidate is stale: target test now references the source function")
     expected_fingerprint = hashlib.sha256(
         f"{source_path}\0{source_function}\0{line}\0{hashlib.sha256(source_text.encode()).hexdigest()}\0{hashlib.sha256(test_text.encode()).hexdigest()}".encode()
@@ -121,13 +142,7 @@ def _validated_spec(issue: object, repo_root: Path) -> tuple[dict[str, Any], int
     if fingerprint != expected_fingerprint:
         raise ValueError("candidate analyzer fingerprint does not match current source and test files")
 
-    expected_instruction = (
-        f"人手レビュー後に限り、{paths[0]} に {source_function} ({evidence}) の"
-        "境界条件を検証する新しい回帰テストを1件追加してください。"
-        "まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。"
-        "変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。"
-        "外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。"
-    )
+    expected_instruction = build_review_instruction(paths[0], source_function, evidence)
     if instruction.strip() != expected_instruction:
         raise ValueError("candidate instruction differs from the validated test-only template")
 

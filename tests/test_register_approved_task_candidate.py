@@ -4,6 +4,7 @@ import json
 import pytest
 
 from scripts.register_approved_task_candidate import register_approved_candidate, main
+from scripts.autonomous_task_issue_drafts import build_issue_drafts
 
 
 SOURCE = "core/agent_runtime.py"
@@ -23,7 +24,7 @@ def repository(tmp_path):
     return root
 
 
-def issue(root, labels=("autonomous-task-candidate", "autonomous-task-catalog-approved"), path=TEST):
+def issue(root, labels=("autonomous-task-candidate", "autonomous-task-catalog-approved")):
     source_text = (root / SOURCE).read_text(encoding="utf-8")
     test_text = (root / TEST).read_text(encoding="utf-8")
     fingerprint = hashlib.sha256(
@@ -31,32 +32,37 @@ def issue(root, labels=("autonomous-task-candidate", "autonomous-task-catalog-ap
     ).hexdigest()
     task_id = "review-coverage-gap-" + hashlib.sha256(f"{SOURCE}:{FUNCTION}".encode()).hexdigest()[:10]
     evidence = f"{SOURCE}:2"
-    instruction = (
-        f"人手レビュー後に限り、{path} に {FUNCTION} ({evidence}) の"
-        "境界条件を検証する新しい回帰テストを1件追加してください。"
-        "まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。"
-        "変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。"
-        "外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。"
-    )
-    spec = {"id": task_id, "instruction": instruction, "allowed_paths": [path]}
-    body = (
-        "## Review-only task candidate\n"
-        f"- Source evidence: {TICK}{evidence}{TICK}\n"
-        f"- Source function: {TICK}{FUNCTION}{TICK}\n"
-        f"- Analyzer fingerprint: {TICK}{fingerprint}{TICK}\n"
-        "- Allowed change: 指定されたテストファイル1つのみ\n"
-        "- Queue admission: not authorized\n"
-        "<!-- autonomous-task-spec -->\n"
-        + json.dumps(spec, ensure_ascii=False)
-        + "\n<!-- autonomous-task-spec -->"
-    )
+    report = {
+        "status": "REVIEW_REQUIRED",
+        "candidate_count": 1,
+        "safety": {"read_only": True, "requires_human_review": True, "candidates_executable": False},
+        "candidates": [{
+            "id": task_id,
+            "target_test": TEST,
+            "evidence": evidence,
+            "source_function": FUNCTION,
+            "fingerprint": fingerprint,
+            "status": "REVIEW_REQUIRED",
+        }],
+    }
+    drafts = build_issue_drafts(report, [])
+    assert len(drafts) == 1
     return {
         "number": 123,
         "state": "open",
         "labels": [{"name": name} for name in labels],
-        "body": body,
+        "body": drafts[0]["body"],
     }
 
+
+def _issue_with_path(candidate, path):
+    body = candidate["body"]
+    start = body.index("<!-- autonomous-task-spec -->") + len("<!-- autonomous-task-spec -->")
+    end = body.index("<!-- autonomous-task-spec -->", start)
+    spec = json.loads(body[start:end].strip())
+    spec["allowed_paths"] = [path]
+    candidate["body"] = body[:start] + "\n" + json.dumps(spec, ensure_ascii=False) + "\n" + body[end:]
+    return candidate
 
 def catalog(tasks=None):
     return {"version": 1, "tasks": list(tasks or [])}
@@ -121,7 +127,7 @@ def test_legacy_approval_label_remains_catalog_registration_only(tmp_path):
 def test_non_allowlisted_path_cannot_register(tmp_path):
     root = repository(tmp_path)
     with pytest.raises(ValueError, match="not in the analyzer allowlist"):
-        register_approved_candidate(issue(root, path="../secrets.env"), catalog(), state(), root)
+        register_approved_candidate(_issue_with_path(issue(root), "../secrets.env"), catalog(), state(), root)
 
 
 def test_source_evidence_must_match_the_allowlisted_test_target(tmp_path):
@@ -258,3 +264,47 @@ def test_catalog_candidate_workflow_only_creates_draft_registration_pr():
     assert 'branch="automation/register-approved-task-${ISSUE_NUMBER}"' in workflow
     assert '--head "${branch}"' in workflow
     assert 'git push origin "${branch}"' in workflow
+
+
+def test_generated_issue_instruction_is_accepted_by_registration_validator(tmp_path):
+    root = repository(tmp_path)
+    candidate = issue(root)
+    result, changed = register_approved_candidate(candidate, catalog(), state(), root)
+    assert changed is True
+    assert result["status"] == "REGISTERED_FOR_REVIEW"
+
+
+def test_comment_and_string_mentions_do_not_make_candidate_stale(tmp_path):
+    root = repository(tmp_path)
+    (root / TEST).write_text(
+        '# AgentRuntime.handle is mentioned in a comment\n'
+        'def test_documentation():\n'
+        '    """AgentRuntime.handle will be tested later."""\n'
+        '    assert "AgentRuntime.handle" in "AgentRuntime.handle"\n',
+        encoding="utf-8",
+    )
+    candidate = issue(root)
+    result, changed = register_approved_candidate(candidate, catalog(), state(), root)
+    assert changed is True
+    assert result["status"] == "REGISTERED_FOR_REVIEW"
+
+
+def test_actual_ast_reference_makes_candidate_stale(tmp_path):
+    root = repository(tmp_path)
+    (root / TEST).write_text(
+        'from core.agent_runtime import handle as runtime_handle\n'
+        'def test_handle():\n'
+        '    assert runtime_handle() is True\n',
+        encoding="utf-8",
+    )
+    candidate = issue(root)
+    with pytest.raises(ValueError, match="candidate is stale"):
+        register_approved_candidate(candidate, catalog(), state(), root)
+
+
+def test_invalid_test_syntax_blocks_registration(tmp_path):
+    root = repository(tmp_path)
+    (root / TEST).write_text("def test_broken(:\n    pass\n", encoding="utf-8")
+    candidate = issue(root)
+    with pytest.raises(ValueError, match="invalid Python syntax"):
+        register_approved_candidate(candidate, catalog(), state(), root)
