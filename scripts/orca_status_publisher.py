@@ -21,7 +21,7 @@ ALLOWED_FIELDS = {
     "dispatches": {"id", "dispatch_id", "task_id", "status", "state", "stage", "created_at", "updated_at", "worker_id", "stream_key"},
     "workers": {"id", "worker_id", "dispatch_id", "task_id", "status", "state", "stage", "addressable", "exactWorker", "created_at", "updated_at", "stream_key"},
 }
-STREAM_KEYS = {"main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement", "side_line_full_control"}
+STREAM_KEYS = {"main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement", "side_line_full_control", "side_core_vocabulary"}
 
 
 def _timestamp(value: object) -> datetime:
@@ -59,8 +59,8 @@ def validate_snapshot(payload: object) -> dict:
             for item in items
         ]
     streams = payload.get("streams", [])
-    if not isinstance(streams, list) or len(streams) > 5:
-        raise ValueError("streams must be an array of at most five objects")
+    if not isinstance(streams, list) or len(streams) > 6:
+        raise ValueError("streams must be an array of at most six objects")
     clean["streams"] = []
     for item in streams:
         if not isinstance(item, dict) or item.get("key") not in STREAM_KEYS:

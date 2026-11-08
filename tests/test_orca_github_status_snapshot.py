@@ -18,6 +18,7 @@ def test_cloud_snapshot_marks_only_explicitly_attributed_streams_observed():
     assert streams["side_self_improvement"]["status"] == "unknown"
     assert streams["side_line_full_control"]["status"] == "unknown"
     assert streams["side_media_ai"]["status"] == "unknown"
+    assert streams["side_core_vocabulary"]["status"] == "unknown"
     assert payload["tasks"][1]["status"] == "FAIL"
     assert payload["dispatches"][0]["status"] == "BLOCKED"
 
@@ -48,3 +49,16 @@ def test_cloud_status_publisher_is_optional_and_non_blocking():
     assert "continue-on-error: true" in step
     assert "scripts.orca_github_status_snapshot" in step
     assert "scripts/orca_status_publisher.py" in step
+
+
+def test_cloud_snapshot_attributes_core_vocabulary_only_with_explicit_stream_metadata():
+    payload = build_snapshot(
+        [{"task_id": "english-batch-1", "status": "NO_CHANGE", "stream_key": "side_core_vocabulary"}],
+        "13579",
+        "PASS",
+        "2026-11-05T12:00:00+00:00",
+    )
+    streams = {item["key"]: item for item in payload["streams"]}
+    assert streams["side_core_vocabulary"]["status"] == "observed"
+    assert streams["side_core_vocabulary"]["task_count"] == 1
+    assert payload["tasks"][0]["stream_key"] == "side_core_vocabulary"

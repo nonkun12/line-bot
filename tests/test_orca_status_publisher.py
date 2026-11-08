@@ -60,3 +60,15 @@ def test_publish_snapshot_signs_sanitized_payload_and_posts_https():
 def test_publish_snapshot_refuses_http_and_missing_secret():
     with pytest.raises(ValueError): publish_snapshot("http://dashboard.example", "secret", payload())
     with pytest.raises(ValueError): publish_snapshot("https://dashboard.example", "", payload())
+
+
+def test_validate_snapshot_accepts_sixth_core_vocabulary_stream():
+    data = payload()
+    data["streams"].append({
+        "key": "side_core_vocabulary", "label": "英単語コア語彙", "kind": "side",
+        "status": "observed", "task_count": 1, "dispatch_count": 0,
+        "worker_count": 0, "evidence": "matched_runtime_records",
+    })
+    clean = validate_snapshot(data)
+    assert len(clean["streams"]) == 2
+    assert clean["streams"][1]["key"] == "side_core_vocabulary"
