@@ -578,9 +578,10 @@ def test_reselection_uses_fresh_head_and_registered_definition():
         {"id": "t1", "instruction": "one", "allowed_paths": ["tests/test_one.py"]},
         {"id": "t2", "instruction": "two", "allowed_paths": ["tests/test_two.py"]},
     ]
+    catalog = [{**task, "execution_approved": True} for task in queued]
     selected, reason = loop.reselect_registered_task(
         queued,
-        list(queued),
+        catalog,
         {"t1"},
         set(),
         expected_task_id="t2",
@@ -617,7 +618,7 @@ def test_reselection_blocks_if_recovery_hold_appears_between_tasks():
 
 def test_reselection_blocks_if_queue_definition_differs_from_catalog():
     queued = [{"id": "t2", "instruction": "unreviewed", "allowed_paths": ["tests/test_two.py"]}]
-    catalog = [{"id": "t2", "instruction": "reviewed", "allowed_paths": ["tests/test_two.py"]}]
+    catalog = [{"id": "t2", "instruction": "reviewed", "allowed_paths": ["tests/test_two.py"], "execution_approved": True}]
     selected, reason = loop.reselect_registered_task(
         queued, catalog, set(), set(),
         expected_task_id="t2",
