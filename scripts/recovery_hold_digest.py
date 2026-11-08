@@ -57,11 +57,25 @@ def build_digest(state: dict) -> str:
             or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", prerequisite_id)
         ):
             raise ValueError("Recovery AI preflight prerequisite ID is invalid")
-        if event.get("requires_human_review") is not True:
-            raise ValueError("Recovery AI preflight event must require human review")
-        if event.get("status") != "PENDING_PREREQUISITE_OR_REVIEW":
+        status = event.get("status")
+        if status == "PENDING_PREREQUISITE_OR_REVIEW":
+            if event.get("requires_human_review") is not True:
+                raise ValueError("pending Recovery AI preflight event must require human review")
+        elif status == "RESOLVED":
+            if event.get("requires_human_review") is not False or event.get("resolution") != "prerequisites_fixed_and_human_reviewed":
+                raise ValueError("resolved Recovery AI preflight event lacks explicit review evidence")
+        else:
             raise ValueError("Recovery AI preflight event status is invalid")
         preflight_events.append((task_id, event))
+
+    pending_preflight_events = [
+        (task_id, event) for task_id, event in preflight_events
+        if event.get("status") == "PENDING_PREREQUISITE_OR_REVIEW"
+    ]
+    resolved_preflight_events = [
+        (task_id, event) for task_id, event in preflight_events
+        if event.get("status") == "RESOLVED"
+    ]
 
     reasons = Counter(
         str(record.get("hold_reason") or LEGACY_REASON)
@@ -104,7 +118,8 @@ def build_digest(state: dict) -> str:
         f"- Failed tasks awaiting bounded recovery or review: **{len(failed)}**",
         f"- Tasks awaiting post-resume human review: **{len(review_required)}**",
         f"- Held tasks missing decision action/reason: **{missing_decision}**",
-        f"- Persisted preflight BLOCKED events (separate from failures): **{len(preflight_events)}**",
+        f"- Pending preflight BLOCKED events (separate from failures): **{len(pending_preflight_events)}**",
+        f"- Resolved preflight BLOCKED events retained for audit: **{len(resolved_preflight_events)}**",
         "",
         "## HOLD reasons",
         "",
@@ -139,9 +154,15 @@ def build_digest(state: dict) -> str:
     inventory.extend(("FAILED", task_id, record) for task_id, record in failed)
     inventory.extend(("REVIEW_REQUIRED", task_id, record) for task_id, record in review_required if not record.get("held"))
     for task_id, event in preflight_events:
+        pending = event.get("status") == "PENDING_PREREQUISITE_OR_REVIEW"
         values = [
-            "PREFLIGHT_BLOCKED", task_id, str(event.get("last_seen_at") or "unknown"),
-            "0", "preflight", "HUMAN_REVIEW_REQUIRED", str(event.get("reason_code")),
+            "PREFLIGHT_BLOCKED" if pending else "PREFLIGHT_RESOLVED",
+            task_id,
+            str(event.get("last_seen_at") or "unknown"),
+            "0",
+            "preflight",
+            "HUMAN_REVIEW_REQUIRED" if pending else "PREREQUISITES_FIXED_AND_REVIEWED",
+            str(event.get("reason_code")),
         ]
         lines.append("| " + " | ".join(value.replace("|", "\\|") for value in values) + " |")
     for state, task_id, record in sorted(inventory, key=lambda item: (item[0], item[1])):
