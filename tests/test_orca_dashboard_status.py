@@ -93,4 +93,4 @@ def test_dashboard_loop_lists_all_five_development_streams(orca_client):
     response = orca_client.get("/api/dashboard/loop", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3Jk"})
     assert response.status_code == 200
     keys = [item["key"] for item in response.get_json()["loop"]["streams"]]
-    assert keys == ["main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement", "side_line_full_control"]
+    assert keys == ["main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement", "side_line_full_control", "side_core_vocabulary"]
