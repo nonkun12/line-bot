@@ -260,7 +260,7 @@ _ORCA_ALLOWED_FIELDS = {
     "dispatches": {"id", "dispatch_id", "task_id", "status", "state", "stage", "created_at", "updated_at", "worker_id", "stream_key"},
     "workers": {"id", "worker_id", "dispatch_id", "task_id", "status", "state", "stage", "addressable", "exactWorker", "created_at", "updated_at", "stream_key"},
 }
-_ORCA_STREAM_KEYS = {"main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement", "side_line_full_control"}
+_ORCA_STREAM_KEYS = {"main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement", "side_line_full_control", "side_core_vocabulary"}
 
 
 def _sanitize_orca_payload(payload):
@@ -461,6 +461,7 @@ def autonomous_loop_status():
                 {"key": "side_media_ai", "kind": "side", "label": "サイド2：映像・音楽AI", "status": "in_development", "cadence": "hourly_target", "detail": "映像・音楽の生成と品質改善。毎時実行・実稼働は未検証。", "related_prs": []},
                 {"key": "side_self_improvement", "kind": "side", "label": "サイド3：自己改善AI", "status": "in_development", "cadence": "hourly_target", "detail": "失敗分析・改善候補・開発効率改善。安全ゲートは維持。", "related_prs": [1278]},
                 {"key": "side_line_full_control", "kind": "side", "label": "サイド4：LINE全指示化", "status": "in_development", "cadence": "hourly_target", "detail": "LINEから4サイドを含む開発指示を受付。読み取り依頼は開発へ送らない。", "related_prs": [1282, 1283, 1284]},
+                {"key": "side_core_vocabulary", "kind": "side", "label": "サイド5：英単語コア語彙", "status": "in_development", "cadence": "every_5_hours_target", "detail": "既存のコアイメージ辞書を再利用し、レビュー済みユニーク語数を1,000語へ拡張。5時間ごとの実行はCI証跡で確認するまで未検証。", "related_prs": [368]}
             ],
             "manual_run_available": True,
             "manual_default_tasks": 1,
