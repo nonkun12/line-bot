@@ -481,10 +481,12 @@ jobs:
             --report /tmp/catalog-exhaustion-report.json \
             --issues /tmp/autonomous-loop-all-issues.json \
             --pull-requests /tmp/autonomous-loop-open-pulls.json \
-            --output /tmp/autonomous-loop-task-issue-drafts.json
+            --output /tmp/autonomous-loop-task-issue-drafts.json \
+            | tee /tmp/autonomous-loop-task-issue-draft-summary.json
+          cat /tmp/autonomous-loop-task-issue-draft-summary.json >> "$GITHUB_STEP_SUMMARY"
           count="$(python -c 'import json; from pathlib import Path; print(len(json.loads(Path("/tmp/autonomous-loop-task-issue-drafts.json").read_text(encoding="utf-8"))))')"
           if [ "$count" -eq 0 ]; then
-            echo "No new review-only task issues to create."
+            echo "No new review-only task issues to create; see status and backlog diagnostics above."
             exit 0
           fi
           gh label create autonomous-task-candidate --color 0E8A16 --description "AI-generated task candidate; human review required" --force
