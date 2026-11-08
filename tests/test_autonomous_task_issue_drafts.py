@@ -95,8 +95,10 @@ def test_distributed_workflow_loads_existing_issues_before_candidate_analysis():
     assert "gh api --paginate" in load_step
     assert "state=all&per_page=100" in load_step
     assert "pull_request" in load_step
+    assert "pulls?state=open&per_page=100" in load_step
     assert "--existing-issues /tmp/autonomous-loop-all-issues.json" in analyze_step
     assert "--issues /tmp/autonomous-loop-all-issues.json" in create_step
+    assert "--pull-requests /tmp/autonomous-loop-open-pulls.json" in create_step
     assert "gh api --paginate" not in create_step
 
 
@@ -126,3 +128,43 @@ def test_closed_or_execution_approved_issues_do_not_consume_review_capacity():
     closed["state"] = "closed"
     approved = _open_review_issue("review-coverage-gap-1111111111", approved=True)
     assert build_issue_drafts(_report(), [closed, approved])
+
+
+def test_open_pr_closing_candidate_issue_does_not_consume_review_capacity():
+    issues = [_open_review_issue(f"review-coverage-gap-{i:010d}") for i in range(4)]
+    for number, issue in enumerate(issues, start=1155):
+        issue["number"] = number
+    pull_requests = [{
+        "number": 1300,
+        "state": "open",
+        "merged_at": None,
+        "body": "Fixes #1155; Closes #1156; Resolves #1157",
+    }]
+    drafts = build_issue_drafts(_report(), issues, pull_requests)
+    assert len(drafts) == 1
+
+
+def test_closed_pr_does_not_release_review_backlog_capacity():
+    issues = [_open_review_issue(f"review-coverage-gap-{i:010d}") for i in range(4)]
+    for number, issue in enumerate(issues, start=1155):
+        issue["number"] = number
+    pull_requests = [{
+        "number": 1300,
+        "state": "closed",
+        "merged_at": None,
+        "body": "Fixes #1155",
+    }]
+    assert build_issue_drafts(_report(), issues, pull_requests) == []
+
+
+def test_non_closing_pr_reference_does_not_release_review_backlog_capacity():
+    issues = [_open_review_issue(f"review-coverage-gap-{i:010d}") for i in range(4)]
+    for number, issue in enumerate(issues, start=1155):
+        issue["number"] = number
+    pull_requests = [{
+        "number": 1300,
+        "state": "open",
+        "merged_at": None,
+        "body": "Related to #1155",
+    }]
+    assert build_issue_drafts(_report(), issues, pull_requests) == []
