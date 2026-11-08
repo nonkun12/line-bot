@@ -14,7 +14,7 @@ def _write(path: Path, data: dict) -> Path:
 
 
 def _task(task_id: str) -> dict:
-    return {"id": task_id, "instruction": "Run a focused regression test.", "allowed_paths": ["tests/test_example.py"]}
+    return {"id": task_id, "instruction": "Run a focused regression test.", "allowed_paths": ["tests/test_example.py"], "execution_approved": True}
 
 
 def _inputs(tmp_path: Path, *, max_tasks=4, existing=None, candidates=None):
@@ -122,7 +122,8 @@ def test_refill_skips_catalog_task_without_explicit_execution_approval(tmp_path:
         tmp_path,
         candidates=[
             {**_task("task-review-only"), "execution_approved": False},
-            _task("legacy-reviewed-task"),
+            {key: value for key, value in _task("legacy-unapproved-task").items() if key != "execution_approved"},
+            _task("explicitly-approved-task"),
         ],
     )
     output = tmp_path / "runtime.json"
@@ -130,20 +131,42 @@ def test_refill_skips_catalog_task_without_explicit_execution_approval(tmp_path:
     report = build_queue(queue, catalog, completed, output)
     result = json.loads(output.read_text(encoding="utf-8"))
 
-    assert report["added_ids"] == ["legacy-reviewed-task"]
-    assert report["eligible_catalog_ids"] == ["legacy-reviewed-task"]
-    assert [task["id"] for task in result["tasks"]] == ["legacy-reviewed-task"]
+    assert report["added_ids"] == ["explicitly-approved-task"]
+    assert report["eligible_catalog_ids"] == ["explicitly-approved-task"]
+    assert [task["id"] for task in result["tasks"]] == ["explicitly-approved-task"]
 
 
 @pytest.mark.parametrize("approval", ["true", 1, None, [], {}])
-def test_refill_rejects_malformed_catalog_execution_approval(tmp_path: Path, approval):
+def test_refill_treats_malformed_catalog_execution_approval_as_unapproved(tmp_path: Path, approval):
     queue, catalog, completed = _inputs(
         tmp_path,
         candidates=[{**_task("task-invalid-approval"), "execution_approved": approval}],
     )
-    with pytest.raises(ValueError, match="execution approval flag"):
-        build_queue(queue, catalog, completed, tmp_path / "runtime.json")
-    assert not (tmp_path / "runtime.json").exists()
+    output = tmp_path / "runtime.json"
+    report = build_queue(queue, catalog, completed, output)
+    assert report["added_ids"] == []
+    assert report["eligible_catalog_ids"] == []
+    assert json.loads(output.read_text(encoding="utf-8"))["tasks"] == []
+
+
+def test_refill_treats_missing_catalog_execution_approval_as_unapproved(tmp_path: Path):
+    unapproved = _task("task-missing-approval")
+    unapproved.pop("execution_approved")
+    queue, catalog, completed = _inputs(tmp_path, candidates=[unapproved])
+    report = build_queue(queue, catalog, completed, tmp_path / "runtime.json")
+    assert report["added_ids"] == []
+    assert report["eligible_catalog_ids"] == []
+
+
+def test_refill_drops_existing_queue_entries_without_explicit_execution_approval(tmp_path: Path):
+    unapproved = _task("task-existing-missing-approval")
+    unapproved.pop("execution_approved")
+    queue, catalog, completed = _inputs(tmp_path, existing=[unapproved])
+    output = tmp_path / "runtime.json"
+    report = build_queue(queue, catalog, completed, output)
+    assert report["retained_existing"] == 0
+    assert report["skipped_unapproved_ids"] == ["task-existing-missing-approval"]
+    assert json.loads(output.read_text(encoding="utf-8"))["tasks"] == []
 
 
 def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):

@@ -46,7 +46,7 @@ def _validate_task(task: object) -> dict:
         if not isinstance(path, str) or not ALLOWED_TEST_PATH.fullmatch(path):
             raise ValueError("forbidden allowed path")
         clean_paths.append(path)
-    execution_approved = task.get("execution_approved", True)
+    execution_approved = task.get("execution_approved") is True
     if not isinstance(execution_approved, bool):
         raise ValueError("invalid task execution approval flag")
     return {
@@ -151,7 +151,15 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     # Recovery AI. A resumed task is not eligible until explicit review clears
     # resume_requires_review; queue refill must not reintroduce it prematurely.
     ineligible_ids = held_ids | review_required_ids | completed_ids
-    eligible_existing = [task for task in normalized_existing if task["id"] not in ineligible_ids]
+    # Existing tracked queue entries are not implicitly trusted: only an exact
+    # boolean True approval survives refill. Missing/null/malformed values fail closed.
+    eligible_existing = [
+        task for task in normalized_existing
+        if task["id"] not in ineligible_ids and task["execution_approved"]
+    ]
+    skipped_unapproved_ids = sorted(
+        task["id"] for task in normalized_existing if not task["execution_approved"]
+    )
     skipped_held_ids = sorted(original_ids.intersection(held_ids))
     skipped_review_ids = sorted(original_ids.intersection(review_required_ids))
     skipped_completed_ids = sorted(original_ids.intersection(completed_ids))
@@ -196,6 +204,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         "existing": len(existing),
         "retained_existing": len(eligible_existing),
         "skipped_held_ids": skipped_held_ids,
+        "skipped_unapproved_ids": skipped_unapproved_ids,
         "skipped_review_ids": skipped_review_ids,
         "skipped_completed_ids": skipped_completed_ids,
         # Explain catalog exhaustion separately from the legacy queue fields.
