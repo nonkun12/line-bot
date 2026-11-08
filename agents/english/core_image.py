@@ -398,6 +398,16 @@ _ENTRIES: dict[str, WordEntry] = {
         example="This book is interesting.（この本は興味深い。）",
         note="interesting は、物事が興味を引き起こす側。人が興味を感じている状態は interested を使います。",
     ),
+    "adapt": WordEntry(word="adapt", pronunciation="アダプト", core_image="周囲や条件に合わせて形を変える → 適応する・適合させる", parts="語源の細かな分解は断定せず、状況に合わせて変える動きで覚える。", related=("adaptation（適応）","adjust（調整する）","adopt（採用する）",), example="We must adapt to changing conditions.（私たちは変化する状況に適応しなければならない。）"),
+    "adopt": WordEntry(word="adopt", pronunciation="アダプト", core_image="自分のものとして受け入れる → 採用する・養子にする", parts="adapt（適応する）と綴りが似るが、意味を区別して覚える。", related=("adoption（採用・養子縁組）","adapt（適応する）","embrace（受け入れる）",), example="The company adopted a new policy.（その会社は新しい方針を採用した。）"),
+    "acquire": WordEntry(word="acquire", pronunciation="アクワイア", core_image="時間や努力をかけて自分のものにする → 習得する・獲得する", parts="acquire a skill / knowledge / company のように、技能・知識・企業などの獲得に使う。", related=("acquisition（獲得）","obtain（得る）","gain（獲得する）",), example="She acquired strong communication skills.（彼女は高いコミュニケーション能力を身につけた。）"),
+    "approach": WordEntry(word="approach", pronunciation="アプローチ", core_image="対象に近づいていく → 近づく・取り組み方", parts="動詞では「近づく／取り組む」、名詞では「接近／方法」。", related=("approach a problem（問題に取り組む）","method（方法）","近接する（近づく）",), example="We need a different approach to the problem.（その問題には別の取り組み方が必要だ。）"),
+    "assess": WordEntry(word="assess", pronunciation="アセス", core_image="情報を見て価値や状態を見積もる → 評価する・査定する", parts="assess risk / performance / damage のように、リスク・成果・損害の評価に使う。", related=("assessment（評価）","evaluate（評価する）","estimate（見積もる）",), example="The team assessed the risks before launch.（チームは公開前にリスクを評価した。）"),
+    "assume": WordEntry(word="assume", pronunciation="アスーム", core_image="確かめずにそうだと置く → 仮定する・思い込む", parts="assume that ... は「…と仮定する」。事実として確認済みとは限らない。", related=("assumption（仮定）","presume（推定する）","verify（確かめる）",), example="Do not assume that everyone agrees.（全員が同意していると思い込まないでください。）"),
+    "establish": WordEntry(word="establish", pronunciation="エスタブリッシュ", core_image="土台を作って安定させる → 設立する・確立する", parts="establish a company / rule / fact のように、組織・規則・事実の確立に使う。", related=("establishment（設立・確立）","found（設立する）","confirm（確認する）",), example="The study established a clear link between the factors.（その研究は要因間の明確な関連を確立した。）"),
+    "maintain": WordEntry(word="maintain", pronunciation="メインテイン", core_image="状態を保ち続ける → 維持する・主張する", parts="maintain quality / equipment / that ... など、状態の維持にも主張にも使う。", related=("maintenance（維持・保守）","preserve（保つ）","sustain（持続させる）",), example="It is important to maintain accurate records.（正確な記録を維持することが重要だ。）"),
+    "obtain": WordEntry(word="obtain", pronunciation="オブテイン", core_image="必要な手続きを経て手に入れる → 得る・取得する", parts="obtain permission / information / a degree のように、許可・情報・資格などに使う。", related=("obtainable（入手可能な）","acquire（獲得する）","receive（受け取る）",), example="You must obtain permission before entering.（入る前に許可を得なければならない。）"),
+    "require": WordEntry(word="require", pronunciation="リクワイア", core_image="必要条件として求める → 必要とする・要求する", parts="require A to do / require that ... の形に注意する。", related=("requirement（必要条件）","necessary（必要な）","demand（要求する）",), example="The job requires careful attention to detail.（その仕事には細部への注意が必要だ。）"),
 }
 
 _COMMAND_RE = re.compile(
