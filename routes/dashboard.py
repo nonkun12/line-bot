@@ -275,7 +275,7 @@ def _sanitize_orca_payload(payload):
                          and isinstance(v, (str, int, float, bool)) and len(str(v)) <= 300}
                         for item in items]
     streams = payload.get("streams", [])
-    if not isinstance(streams, list) or len(streams) > 5:
+    if not isinstance(streams, list) or len(streams) > 6:
         raise ValueError("invalid streams collection")
     clean["streams"] = []
     for item in streams:
