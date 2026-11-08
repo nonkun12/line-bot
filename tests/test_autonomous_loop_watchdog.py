@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 from agents.sheets.autonomous_ledger import HEADERS
 from scripts.check_autonomous_loop_watchdog import (
+    _StripAuthorizationRedirectHandler,
     audit_row_outcome,
     expected_slot,
     find_scheduled_run,
@@ -52,8 +53,25 @@ def test_find_scheduled_run_accepts_workflow_run_name_override(monkeypatch):
     slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
     assert find_scheduled_run("nonkun12/line-bot", slot) == scheduled
     assert captured["url"].endswith(
-        "/actions/workflows/distributed-autonomous-loop.yml/runs?event=schedule&per_page=20"
+        "/actions/workflows/distributed-autonomous-loop.yml/runs?event=schedule&per_page=100"
     )
+
+def test_github_artifact_redirect_does_not_forward_authorization_header():
+    from urllib.request import Request
+
+    request = Request(
+        "https://api.github.com/repos/example/actions/artifacts/1/zip",
+        headers={"Authorization": "Bearer secret-token", "Accept": "application/vnd.github+json"},
+    )
+    redirected = _StripAuthorizationRedirectHandler().redirect_request(
+        request, None, 302, "Found", {}, "https://blob.example/signed-download"
+    )
+
+    assert redirected.full_url == "https://blob.example/signed-download"
+    assert redirected.get_header("Authorization") is None
+    assert redirected.get_header("Proxy-authorization") is None
+    assert redirected.get_header("Accept") == "application/vnd.github+json"
+
 
 def test_find_scheduled_run_accepts_delayed_run_within_discovery_window(monkeypatch):
     scheduled = {
@@ -77,7 +95,7 @@ def test_find_scheduled_run_rejects_run_after_discovery_window(monkeypatch):
         "name": "Distributed Autonomous Development Loop",
         "event": "schedule",
         "id": 790,
-        "created_at": "2026-09-22T20:08:00Z",
+        "created_at": "2026-09-22T20:14:00Z",
         "status": "completed",
         "conclusion": "success",
     }
