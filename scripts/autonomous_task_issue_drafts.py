@@ -20,6 +20,10 @@ TASK_ID = re.compile(r"^review-coverage-gap-[a-f0-9]{10}$")
 FINGERPRINT = re.compile(r"^[a-f0-9]{64}$")
 FUNCTION = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
 SPEC_MARKER = "<!-- autonomous-task-spec -->"
+CLOSING_ISSUE_REFERENCE = re.compile(
+    r"\\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\\s+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#([1-9][0-9]*)\\b",
+    re.IGNORECASE,
+)
 
 def _load(path: Path) -> Any:
     try:
@@ -48,15 +52,19 @@ def _existing_task_ids(issues: object) -> set[str]:
     return found
 
 
-def _open_review_issue_count(issues: object) -> int:
+def _open_review_issue_count(issues: object, covered_issue_numbers: set[int] | None = None) -> int:
     """Count open candidate issues still awaiting human execution review."""
     if not isinstance(issues, list):
         raise ValueError("existing issues must be a list")
+    covered_issue_numbers = covered_issue_numbers or set()
     count = 0
     for issue in issues:
         if not isinstance(issue, dict):
             raise ValueError("existing issue entry must be an object")
         if issue.get("state") != "open":
+            continue
+        issue_number = issue.get("number")
+        if type(issue_number) is int and issue_number in covered_issue_numbers:
             continue
         labels = issue.get("labels", [])
         if not isinstance(labels, list):
@@ -82,7 +90,25 @@ def _open_review_issue_count(issues: object) -> int:
     return count
 
 
-def build_issue_drafts(report: object, issues: object) -> list[dict[str, str]]:
+def _open_pr_closing_issue_numbers(pull_requests: object) -> set[int]:
+    """Return issue numbers already covered by an open PR using GitHub closing syntax."""
+    if not isinstance(pull_requests, list):
+        raise ValueError("pull requests must be a list")
+    covered: set[int] = set()
+    for pull_request in pull_requests:
+        if not isinstance(pull_request, dict):
+            raise ValueError("pull request entry must be an object")
+        if pull_request.get("state") != "open" or pull_request.get("merged_at") is not None:
+            continue
+        body = pull_request.get("body")
+        if isinstance(body, str):
+            covered.update(int(match) for match in CLOSING_ISSUE_REFERENCE.findall(body))
+    return covered
+
+
+def build_issue_drafts(
+    report: object, issues: object, pull_requests: object | None = None
+) -> list[dict[str, str]]:
     if not isinstance(report, dict):
         raise ValueError("analyzer report must be an object")
     if report.get("status") != "REVIEW_REQUIRED":
@@ -97,7 +123,10 @@ def build_issue_drafts(report: object, issues: object) -> list[dict[str, str]]:
         raise ValueError("analyzer candidate count is invalid")
 
     existing = _existing_task_ids(issues)
-    open_review_count = _open_review_issue_count(issues)
+    covered_issue_numbers = _open_pr_closing_issue_numbers(
+        [] if pull_requests is None else pull_requests
+    )
+    open_review_count = _open_review_issue_count(issues, covered_issue_numbers)
     remaining_capacity = MAX_OPEN_REVIEW_ISSUES - open_review_count
     if remaining_capacity <= 0:
         return []
@@ -164,10 +193,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--issues", type=Path, required=True)
+    parser.add_argument("--pull-requests", type=Path, default=None)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        drafts = build_issue_drafts(_load(args.report), _load(args.issues))
+        pull_requests = _load(args.pull_requests) if args.pull_requests is not None else []
+        drafts = build_issue_drafts(_load(args.report), _load(args.issues), pull_requests)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(drafts, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     except (OSError, ValueError) as exc:

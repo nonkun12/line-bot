@@ -416,6 +416,9 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" \
             | jq -s 'add | map(select(has("pull_request") | not) | {number,title,body,state,labels})' > /tmp/autonomous-loop-all-issues.json
           jq '[.[] | select(.state == "open")]' /tmp/autonomous-loop-all-issues.json > /tmp/autonomous-loop-open-issues.json
+          gh api --paginate \\
+            "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \\
+            | jq -s 'add | map({number,state,body,merged_at})' > /tmp/autonomous-loop-open-pulls.json
 
       - name: Publish read-only task review backlog digest
         if: success() && env.TRIGGER_MODE == 'normal'
@@ -477,6 +480,7 @@ jobs:
           python -m scripts.autonomous_task_issue_drafts \
             --report /tmp/catalog-exhaustion-report.json \
             --issues /tmp/autonomous-loop-all-issues.json \
+            --pull-requests /tmp/autonomous-loop-open-pulls.json \
             --output /tmp/autonomous-loop-task-issue-drafts.json
           count="$(python -c 'import json; from pathlib import Path; print(len(json.loads(Path("/tmp/autonomous-loop-task-issue-drafts.json").read_text(encoding="utf-8"))))')"
           if [ "$count" -eq 0 ]; then
