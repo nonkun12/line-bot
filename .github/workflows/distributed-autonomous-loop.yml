@@ -416,8 +416,8 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" \
             | jq -s 'add | map(select(has("pull_request") | not) | {number,title,body,state,labels})' > /tmp/autonomous-loop-all-issues.json
           jq '[.[] | select(.state == "open")]' /tmp/autonomous-loop-all-issues.json > /tmp/autonomous-loop-open-issues.json
-          gh api --paginate \\
-            "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \\
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
             | jq -s 'add | map({number,state,body,merged_at})' > /tmp/autonomous-loop-open-pulls.json
 
       - name: Publish read-only task review backlog digest

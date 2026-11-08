@@ -21,7 +21,7 @@ FINGERPRINT = re.compile(r"^[a-f0-9]{64}$")
 FUNCTION = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
 SPEC_MARKER = "<!-- autonomous-task-spec -->"
 CLOSING_ISSUE_REFERENCE = re.compile(
-    r"\\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\\s+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#([1-9][0-9]*)\\b",
+    r"\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\s+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#([1-9][0-9]*)\b",
     re.IGNORECASE,
 )
 
