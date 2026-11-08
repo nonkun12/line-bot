@@ -10,6 +10,7 @@ from linebot.v3.messaging import (
 )
 import unicodedata
 import json
+import hashlib
 import random
 import threading
 import httpx
@@ -80,11 +81,15 @@ from core.control_tower_status import (
     build_control_tower_status_reply,
     is_control_tower_status_command,
 )
+from core.github_integration_status import (
+    build_github_integration_status_reply,
+    is_github_integration_status_request,
+)
 from core.self_introduction import handle_self_introduction
 from routes.core_api import core_api_bp
 from routes.obsidian_bridge import obsidian_bridge_bp
 from routes.openclaw_bridge import openclaw_bridge_bp
-from core.openclaw_bridge import is_openclaw_intent, normalize_openclaw_message
+from core.openclaw_bridge import enqueue_openclaw_request, is_openclaw_intent
 from obsidian_loop_dispatch import dispatch_configuration_status
 from core.obsidian_bridge import enqueue_obsidian_request
 from agents.obsidian.intents import is_obsidian_intent
@@ -97,6 +102,17 @@ from recovery_review_trigger import request_recovery_resume_review
 from agents.english.core_image import handle_core_image_command
 
 app = Flask(__name__)
+
+# Safe OpenClaw Bridge configuration diagnostic; never log the secret itself.
+_openclaw_bridge_key = os.environ.get("OPENCLAW_BRIDGE_KEY", "")
+app.logger.info(
+    "OPENCLAW BRIDGE CONFIG key_present=%s key_length_ok=%s key_fp=%s",
+    bool(_openclaw_bridge_key),
+    len(_openclaw_bridge_key) >= 24,
+    hashlib.sha256(_openclaw_bridge_key.encode("utf-8")).hexdigest()[:16]
+    if _openclaw_bridge_key else "absent",
+)
+del _openclaw_bridge_key
 
 from routes.dashboard import dashboard_bp
 app.register_blueprint(dashboard_bp)
@@ -336,13 +352,24 @@ def _handle_ai_gateway_request(ai_request):
     message = str(ai_request.message)
     user_id = str(ai_request.user_id)
 
-    review_handled, review_reply = request_recovery_resume_review(user_id, message)
-    if review_handled:
-        return review_reply
+    # Report deployment configuration deterministically; never ask the chat model
+    # to guess whether GitHub integration is enabled, and never dispatch Actions here.
+    if is_github_integration_status_request(message):
+        return build_github_integration_status_reply(
+            token=GITHUB_TOKEN,
+            allowed_user_ids=os.environ.get("DEV_ALLOWED_USER_IDS", ""),
+        )
 
+    # Resolve explicit read-only status requests and bounded Loop commands before
+    # any general/development routing. Status aliases are handled by the same
+    # GitHub-evidence path as the Loop status command and never dispatch a run.
     loop_handled, loop_reply = request_distributed_loop(user_id, message)
     if loop_handled:
         return loop_reply
+
+    review_handled, review_reply = request_recovery_resume_review(user_id, message)
+    if review_handled:
+        return review_reply
 
     # Explicit status commands must bypass the general chat model. Report only
     # read-only GitHub Actions evidence and fail closed when it is unavailable.
@@ -356,14 +383,25 @@ def _handle_ai_gateway_request(ai_request):
     if core_image_reply is not None:
         return core_image_reply
 
-    # Legacy OpenClaw-prefixed prompts are handled by the server-side LINE AI
-    # pipeline. Do not enqueue them for a Mac-local worker: Mac availability
-    # must not determine whether a LINE request can be processed.
+    # Only explicitly prefixed OpenClaw requests enter the authenticated Mac queue.
+    # All ordinary LINE messages keep using the existing cloud/Core routing path.
+    # The durable queue preserves requests while the Mac worker is offline.
     if is_openclaw_intent(message):
         try:
-            message = normalize_openclaw_message(message)
-        except Exception:
-            return "指示を読み取れませんでした。内容を確認して再送してください。"
+            job_id = enqueue_openclaw_request(user_id, message)
+            return (
+                f"OpenClawへの依頼を受け付けました（Job {job_id}）。"
+                "Mac側のBonsaiワーカーが処理し、完了結果をこのLINEに返信します。"
+            )
+        except Exception as exc:
+            app.logger.warning(
+                "OPENCLAW BRIDGE ENQUEUE FAILED: %s",
+                type(exc).__name__,
+            )
+            return (
+                "OpenClawへの依頼を受け付けられませんでした。"
+                "Macブリッジ設定とキュー状態を確認してください。"
+            )
 
     # Route only explicit Obsidian commands to the authenticated Mac approval queue.
     # Never fall through to a cloud agent that cannot access the local vault.

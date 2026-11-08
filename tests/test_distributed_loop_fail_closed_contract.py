@@ -14,7 +14,11 @@ def test_invalid_queue_progress_fails_source_workflow():
 
 def test_postrun_flags_blocked_source_report_even_when_conclusion_is_success():
     workflow = (ROOT / ".github/workflows/distributed-loop-postrun.yml").read_text(encoding="utf-8")
-    assert 'if "- 結果: **BLOCKED**" in original_report:' in workflow
+    assert 'source_blocked = "- 結果: **BLOCKED**" in original_report' in workflow
+    assert 'catalog_blocked = source_blocked and result_reason.startswith((' in workflow
+    assert '"catalog_exhausted_held:"' in workflow
+    assert '"catalog_exhausted_review_pending:"' in workflow
+    assert '"catalog_exhausted_mixed:"' in workflow
     assert "Source workflow final report is BLOCKED" in workflow
 
 def test_publish_gate_uses_the_same_runtime_queue_as_task_execution():

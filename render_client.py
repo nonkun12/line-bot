@@ -4,6 +4,7 @@ load_dotenv()
 import os
 import re
 import requests
+import time
 from contextlib import contextmanager
 from urllib.parse import urlsplit
 
@@ -202,38 +203,75 @@ def _mcp_health_url() -> str:
 
 
 def _mcp_http_is_hibernate_rate_limited() -> bool:
-    """Detect Render's HTTP hibernation state independently of the control-plane flag."""
+    """Detect explicit Render hibernation and tolerate bounded transient 429s."""
+    max_wait = 20.0
     try:
-        response = requests.get(
-            _mcp_health_url(),
-            headers={"Accept": "application/json"},
-            timeout=8,
-            allow_redirects=False,
-        )
-    except requests.RequestException as exc:
-        raise RuntimeError(f"MCP health probe failed: {type(exc).__name__}") from exc
+        configured = float(os.getenv("MCP_HEALTH_429_MAX_SEC", "20"))
+        if configured == configured and configured not in (float("inf"), float("-inf")):
+            max_wait = min(max(configured, 0.0), 60.0)
+    except (TypeError, ValueError):
+        pass
 
-    try:
-        if response.status_code == 429:
-            routing = response.headers.get("x-render-routing", "").strip().lower()
-            if routing == "hibernate-rate-limited":
-                return True
+    deadline = time.monotonic() + max_wait
+    delay = 1.0
+    last_routing = ""
+    first_attempt = True
+    while True:
+        if not first_attempt and time.monotonic() >= deadline:
             raise RuntimeError(
-                f"MCP health probe returned unexpected 429 routing={routing}"
+                f"MCP health probe returned status=429 (routing={last_routing}) after bounded retry"
             )
-        if response.status_code == 200:
-            try:
-                payload = response.json()
-            except ValueError as exc:
-                raise RuntimeError("MCP health response is not valid JSON") from exc
-            if isinstance(payload, dict) and payload.get("ok") is True:
-                return False
-        raise RuntimeError(
-            f"MCP health probe returned status={response.status_code} "
-            f"routing={response.headers.get('x-render-routing', '')}"
-        )
-    finally:
-        response.close()
+        first_attempt = False
+        try:
+            response = requests.get(
+                _mcp_health_url(), headers={"Accept": "application/json"},
+                timeout=8, allow_redirects=False,
+            )
+        except requests.RequestException as exc:
+            raise RuntimeError(f"MCP health probe failed: {type(exc).__name__}") from exc
+        try:
+            last_routing = response.headers.get("x-render-routing", "").strip().lower()
+            if response.status_code == 429:
+                if last_routing == "hibernate-rate-limited":
+                    return True
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise RuntimeError(
+                        f"MCP health probe returned status=429 (routing={last_routing}) after bounded retry"
+                    )
+                retry_after = response.headers.get("Retry-After", "").strip()
+                try:
+                    wait_seconds = min(max(float(retry_after), 0.0), 10.0) if retry_after else delay
+                except ValueError:
+                    wait_seconds = delay
+            elif response.status_code == 200:
+                try:
+                    payload = response.json()
+                except ValueError as exc:
+                    raise RuntimeError("MCP health response is not valid JSON") from exc
+                if isinstance(payload, dict) and payload.get("ok") is True:
+                    return False
+                raise RuntimeError("MCP health probe returned status=200: response did not confirm readiness")
+            else:
+                raise RuntimeError(
+                    f"MCP health probe returned status={response.status_code} "
+                    f"routing={response.headers.get('x-render-routing', '')}"
+                )
+        finally:
+            close_response = getattr(response, "close", None)
+            if callable(close_response):
+                try:
+                    close_response()
+                except Exception:
+                    # requests.Response.close() may fail for lightweight mocked
+                    # responses with no underlying raw stream; the health result
+                    # has already been handled and this cleanup must not mask it.
+                    pass
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError(f"MCP health probe remained rate-limited (HTTP 429, routing={last_routing})")
+        time.sleep(min(wait_seconds, remaining))
+        delay = min(delay * 2.0, 8.0)
 
 
 def wait_for_service_running(

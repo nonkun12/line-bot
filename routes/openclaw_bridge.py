@@ -4,28 +4,89 @@ The Mac initiates outbound HTTPS requests; this service never opens a port on th
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import os
+import sqlite3
+from contextlib import closing
+from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request
 
 from core.openclaw_bridge import OPENCLAW_JOB_TYPE
-from db import claim_pending_job_by_type, complete_claimed_job, get_job
+from db import DB, claim_pending_job_by_type, complete_claimed_job, get_job
 
 openclaw_bridge_bp = Blueprint("openclaw_bridge", __name__, url_prefix="/api/openclaw")
 _MAX_REPLY_CHARS = 12000
 _MAX_ERROR_CHARS = 1000
 
 
+def _key_fingerprint(value: str) -> str:
+    """Return a short diagnostic fingerprint without exposing the credential."""
+    if not value:
+        return "absent"
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+
+
 def _authorized() -> bool:
     expected = os.environ.get("OPENCLAW_BRIDGE_KEY", "")
     provided = request.headers.get("X-OpenClaw-Bridge-Key", "")
     # Enforce the same minimum strength on the API as on the enqueue path.
-    return bool(
-        len(expected) >= 24
+    expected_length_ok = len(expected) >= 24
+    matched = bool(
+        expected_length_ok
         and provided
         and hmac.compare_digest(expected, provided)
     )
+    if not matched:
+        # Never log either secret value; lengths and presence are sufficient to
+        # distinguish a missing header from a mismatched credential.
+        current_app.logger.warning(
+            "OPENCLAW BRIDGE AUTH REJECTED expected_present=%s "
+            "expected_length_ok=%s header_present=%s header_length=%d "
+            "expected_fp=%s provided_fp=%s matched=%s",
+            bool(expected),
+            expected_length_ok,
+            bool(provided),
+            len(provided),
+            _key_fingerprint(expected),
+            _key_fingerprint(provided),
+            matched,
+        )
+    return matched
+
+
+def _read_queue_summary() -> dict[str, int]:
+    """Read aggregate OpenClaw queue counts using a SQLite-enforced read-only connection."""
+    uri = Path(DB).resolve().as_uri() + "?mode=ro"
+    with closing(sqlite3.connect(uri, uri=True)) as conn:
+        rows = conn.execute(
+            """
+            SELECT status, COUNT(*)
+            FROM jobs
+            WHERE job_type=?
+            GROUP BY status
+            """,
+            (OPENCLAW_JOB_TYPE,),
+        ).fetchall()
+    summary = {"pending": 0, "running": 0, "completed": 0, "failed": 0}
+    for status, count in rows:
+        if status in summary:
+            summary[status] = int(count)
+    return summary
+
+
+@openclaw_bridge_bp.route("/status", methods=["GET"])
+def status():
+    """Authenticate and inspect queue counts without claiming or changing jobs."""
+    if not _authorized():
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    try:
+        queue = _read_queue_summary()
+    except Exception:
+        current_app.logger.exception("OPENCLAW BRIDGE STATUS ERROR")
+        return jsonify({"ok": False, "error": "bridge unavailable"}), 503
+    return jsonify({"ok": True, "queue": queue}), 200
 
 
 @openclaw_bridge_bp.route("/claim", methods=["POST"])

@@ -1,0 +1,49 @@
+name: Star Night Cloud Hourly Candidate
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/star-night-cloud-hourly.yml
+      - scripts/star_night_hourly_candidate.py
+      - tests/test_star_night_hourly_candidate.py
+      - scripts/star_night_game_state.py
+      - tests/test_star_night_game_state.py
+  schedule:
+    # Offset from the top of the hour to reduce GitHub Actions schedule congestion.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: star-night-cloud-hourly-candidate
+  cancel-in-progress: false
+
+jobs:
+  build-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install cloud media tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
+          python -m pip install --upgrade pytest pillow
+      - name: Validate candidate builder
+        run: python -m pytest -q tests/test_star_night_hourly_candidate.py tests/test_star_night_game_state.py
+      - name: Build hourly candidate
+        run: python -m scripts.star_night_hourly_candidate --output-dir "artifacts/star-night-${GITHUB_RUN_ID}" --render-animatic
+      - name: Upload candidate bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: star-night-hourly-${{ github.run_id }}
+          path: artifacts/star-night-${{ github.run_id }}/
+          if-no-files-found: error
+          retention-days: 14

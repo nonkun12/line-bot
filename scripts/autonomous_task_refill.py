@@ -46,7 +46,15 @@ def _validate_task(task: object) -> dict:
         if not isinstance(path, str) or not ALLOWED_TEST_PATH.fullmatch(path):
             raise ValueError("forbidden allowed path")
         clean_paths.append(path)
-    return {"id": task_id, "instruction": instruction.strip(), "allowed_paths": clean_paths}
+    execution_approved = task.get("execution_approved", True)
+    if not isinstance(execution_approved, bool):
+        raise ValueError("invalid task execution approval flag")
+    return {
+        "id": task_id,
+        "instruction": instruction.strip(),
+        "allowed_paths": clean_paths,
+        "execution_approved": execution_approved,
+    }
 
 
 def _history_priority(history_path: Path | None, registered_ids: set[str]) -> tuple[dict[str, int], dict[str, dict[str, int]]]:
@@ -153,13 +161,17 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         if task["id"] not in original_ids
         and task["id"] not in completed_ids
         and task["id"] not in ineligible_ids
+        and task["execution_approved"]
     ]
     # Stable sort: recurring failures first; ties preserve reviewed catalog order.
     catalog_order = {task["id"]: index for index, task in enumerate(normalized_catalog)}
     eligible_additions.sort(key=lambda task: (-priority_scores.get(task["id"], 0), catalog_order[task["id"]]))
     additions = eligible_additions[:cap]
-    # Preserve eligible queued tasks, then append only a bounded catalog slice.
-    final_tasks = eligible_existing + additions
+    # Preserve the stable runtime task schema; approval metadata is catalog-only.
+    final_tasks = [
+        {"id": task["id"], "instruction": task["instruction"], "allowed_paths": task["allowed_paths"]}
+        for task in eligible_existing + additions
+    ]
     output = {"version": 1, "max_tasks_per_run": max_tasks, "tasks": final_tasks}
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -168,12 +180,16 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     skipped_catalog_review_ids = sorted(catalog_ids_set.intersection(review_required_ids))
     skipped_catalog_completed_ids = sorted(catalog_ids_set.intersection(completed_ids))
     skipped_catalog_already_queued_ids = sorted(catalog_ids_set.intersection(original_ids))
+    execution_approved_catalog_ids = {
+        task["id"] for task in normalized_catalog if task["execution_approved"]
+    }
     eligible_catalog_ids = sorted(
         catalog_ids_set
         - original_ids
         - completed_ids
         - held_ids
         - review_required_ids
+        - (catalog_ids_set - execution_approved_catalog_ids)
     )
     return {
         # Keep the original input-count field stable for existing consumers.

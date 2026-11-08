@@ -1,7 +1,7 @@
 Flask
 gunicorn
 line-bot-sdk==3.11.0
-groq
+groq==0.37.1
 python-dotenv
 pytest
 jsonschema

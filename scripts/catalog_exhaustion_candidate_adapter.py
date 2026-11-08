@@ -9,16 +9,15 @@ import argparse
 import json
 import re
 from pathlib import Path
-from typing import Any
 
 from scripts.autonomous_task_target_allowlist import TARGETS
+from typing import Any
 
 MAX_HISTORY_CANDIDATES = 200
 MAX_ANALYZER_CANDIDATES = 4
 ID_PATTERN = re.compile(r"^review-coverage-gap-[a-f0-9]{10}$")
 FINGERPRINT_PATTERN = re.compile(r"^[a-f0-9]{64}$")
 FUNCTION_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
-
 
 def merge_candidates(history: object, report: object) -> list[dict[str, Any]]:
     if not isinstance(history, list):

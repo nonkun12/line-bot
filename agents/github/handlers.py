@@ -365,17 +365,20 @@ def format_search_results(result: Any) -> str:
 
 
 def handle_github_search(message: str):
+    # Only treat an entire message as a search command. Matching an
+    # embedded phrase such as "github repo ..." inside a longer instruction
+    # turns the whole instruction into a repository-search query and hides
+    # the intended repo/commits/file commands.
     patterns = [
-        r"githubで(.+)探して",
-        r"githubで(.+)検索",
-        r"github search (.+)",
-        r"github repo (.+)",
+        r"^\s*githubで(.+)探して\s*$",
+        r"^\s*githubで(.+)検索\s*$",
+        r"^\s*github\s+search\s+(.+?)\s*$",
     ]
 
     query = None
 
     for pattern in patterns:
-        match = re.search(
+        match = re.fullmatch(
             pattern,
             message,
             re.IGNORECASE
@@ -413,20 +416,23 @@ def handle_github_message(
 
     client = GitHubClient()
 
-    if text.startswith("github repo"):
+    if re.fullmatch(r"github\s+repo", text, re.IGNORECASE):
         repo_info = client.get_repo_info()
+        if isinstance(repo_info, dict) and repo_info.get("error"):
+            status = repo_info.get("status")
+            suffix = f" (HTTP {status})" if status else ""
+            return f"GitHubリポジトリ取得でエラーが発生しました{suffix}。"
         return format_repo_info(repo_info)
 
-    if text.startswith("github commits"):
+    if re.fullmatch(r"github\s+commits", text, re.IGNORECASE):
         commits = client.get_latest_commits()
         return format_commits(commits)
 
-    if text.startswith("github file"):
-        parts = text.split()
-        if len(parts) >= 3:
-            filename = parts[2]
-            content = client.get_file_contents(filename)
-            return content
+    file_command = re.fullmatch(r"github\s+file(?:\s+(.+))?", text, re.IGNORECASE)
+    if file_command:
+        filename = (file_command.group(1) or "").strip()
+        if filename:
+            return client.get_file_contents(filename)
         return "ファイル名を指定してください。"
 
     latest_commits = handle_latest_commits(text)

@@ -99,6 +99,31 @@ def init_db():
         ON jobs(parent_job_id)
         """)
         conn.execute("""
+        CREATE TABLE IF NOT EXISTS agent_task_events(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT UNIQUE NOT NULL,
+            task_id TEXT NOT NULL,
+            parent_task_id TEXT,
+            request_id TEXT,
+            agent_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            next_agent TEXT,
+            result_sha TEXT,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_task_events_task_id
+        ON agent_task_events(task_id, id)
+        """)
+        conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_task_events_request_id
+        ON agent_task_events(request_id, id)
+        """)
+        conn.execute("""
         CREATE TABLE IF NOT EXISTS job_checkpoints(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             job_id INTEGER NOT NULL,
@@ -234,6 +259,22 @@ def claim_pending_job_by_type(job_type, *, stale_after_seconds=900):
     stale_expr = f"-{stale_after_seconds} seconds"
 
     with get_conn() as conn:
+        # A worker that has exhausted its retry budget must not remain running
+        # forever. Mark it terminal before re-queueing jobs that can still retry.
+        conn.execute(
+            """
+            UPDATE jobs
+            SET status='failed',
+                last_error='worker claim timed out after maximum retries',
+                claim_token=NULL,
+                updated_at=CURRENT_TIMESTAMP
+            WHERE job_type=?
+              AND status='running'
+              AND updated_at < datetime('now', ?)
+              AND retry_count >= max_retries
+            """,
+            (job_type.strip(), stale_expr),
+        )
         conn.execute(
             """
             UPDATE jobs
