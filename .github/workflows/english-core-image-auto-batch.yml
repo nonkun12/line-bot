@@ -2,8 +2,8 @@ name: English core-image automatic reviewed batches
 
 on:
   schedule:
-    # 08:15 JST daily; GitHub Actions schedules are UTC.
-    - cron: "15 23 * * *"
+    # Every five hours; GitHub Actions schedules are UTC.
+    - cron: "0 */5 * * *"
   workflow_dispatch:
     inputs:
       batch_size:
