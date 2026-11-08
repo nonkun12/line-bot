@@ -88,12 +88,25 @@ def build_digest(state: dict) -> str:
     # Recovery records are evidence, not authorization. A non-held task with a
     # persisted failure decision is reported as FAILED backlog; a held task or
     # a task awaiting post-resume review is reported as BLOCKED.
-    failed = [
-        (task_id, record) for task_id, record in tasks.items()
-        if not record.get("held", False)
-        and int(record.get("consecutive_failures", 0) or 0) > 0
-        and record.get("last_category")
-    ]
+    failed = []
+    for task_id, record in tasks.items():
+        raw_failures = record.get("consecutive_failures", 0)
+        # Do not silently coerce booleans, floats, negative values, or arbitrary
+        # strings into operational counters. Identify the corrupt record clearly.
+        if (
+            isinstance(raw_failures, bool)
+            or not isinstance(raw_failures, int)
+            or raw_failures < 0
+        ):
+            raise ValueError(
+                f"Recovery AI consecutive_failures is invalid for task: {task_id}"
+            )
+        if (
+            not record.get("held", False)
+            and raw_failures > 0
+            and record.get("last_category")
+        ):
+            failed.append((task_id, record))
     review_required = [
         (task_id, record) for task_id, record in tasks.items()
         if record.get("resume_requires_review") is True
