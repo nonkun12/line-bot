@@ -154,3 +154,21 @@ def test_digest_does_not_treat_recovery_decision_as_execution_approval():
     })
     assert "| RETRY | 1 |" in report
     assert "not permission to execute" in report
+
+
+
+@pytest.mark.parametrize("invalid_counter", [True, 1.5, -1, "not-a-number"])
+def test_digest_reports_malformed_failure_counter_with_task_identity(invalid_counter):
+    with pytest.raises(ValueError, match="consecutive_failures is invalid for task: corrupt-task"):
+        build_digest({
+            "recovery_ai": {
+                "schema_version": 1,
+                "tasks": {
+                    "corrupt-task": {
+                        "held": False,
+                        "consecutive_failures": invalid_counter,
+                        "last_category": "timeout",
+                    }
+                },
+            }
+        })
