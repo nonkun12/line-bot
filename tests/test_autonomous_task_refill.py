@@ -593,8 +593,8 @@ def test_refill_ignores_history_with_invalid_utf8_without_exposing_content(tmp_p
 
 def test_refill_selects_exactly_four_new_catalog_tasks_when_older_tasks_are_completed(tmp_path: Path):
     repo_root = Path(__file__).resolve().parents[1]
-    catalog = repo_root / ".github" / "autonomous-loop-task-catalog.json"
-    catalog_data = json.loads(catalog.read_text(encoding="utf-8"))
+    catalog_source = repo_root / ".github" / "autonomous-loop-task-catalog.json"
+    catalog_data = json.loads(catalog_source.read_text(encoding="utf-8"))
     expected_ids = [
         "control-tower-decision-malformed-evidence-sha",
         "control-tower-decision-priority-type-boundaries",
@@ -604,6 +604,12 @@ def test_refill_selects_exactly_four_new_catalog_tasks_when_older_tasks_are_comp
     assert catalog_data["max_additions_per_run"] == 4
     catalog_ids = [task["id"] for task in catalog_data["tasks"]]
     assert [task_id for task_id in catalog_ids if task_id in expected_ids] == expected_ids
+    # This test models four explicitly approved tasks without mutating the
+    # repository catalog or granting approval to real production entries.
+    for task in catalog_data["tasks"]:
+        if task["id"] in expected_ids:
+            task["execution_approved"] = True
+    catalog = _write(tmp_path / "catalog.json", catalog_data)
 
     queue = _write(
         tmp_path / "queue.json",
