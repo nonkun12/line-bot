@@ -28,7 +28,7 @@ def test_digest_counts_legacy_and_explicit_hold_reasons():
         }
     })
 
-    assert "Currently held tasks: **2**" in report
+    assert "Currently held tasks (BLOCKED / human review): **2**" in report
     assert f"| {LEGACY_REASON} | 1 |" in report
     assert "| repair_budget_exhausted | 1 |" in report
     assert "historical cause is unknown" in report
@@ -86,7 +86,7 @@ def test_empty_held_set_is_reported():
     report = build_digest({
         "recovery_ai": {"schema_version": 1, "tasks": {"active": {"held": False}}}
     })
-    assert "Currently held tasks: **0**" in report
+    assert "Currently held tasks (BLOCKED / human review): **0**" in report
     assert "| — | — | — | — | — |" in report
 
 
