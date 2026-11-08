@@ -109,10 +109,7 @@ def _public_functions(source: str) -> list[tuple[str, int]]:
 
 
 def _referenced_symbols(test_source: str) -> set[str]:
-    """Collect executable Python name/attribute references, not comments or strings.
-
-    Imported aliases are retained alongside their original symbol names.
-    """
+    """Collect executable Python name/attribute references, not comments or strings."""
     try:
         tree = ast.parse(test_source)
     except SyntaxError as exc:
@@ -227,9 +224,8 @@ def analyze(
         group = []
         for function, line in _public_functions(code_source):
             leaf = function.rsplit(".", 1)[-1]
-            # AST references avoid false "covered" matches in comments and
-            # string literals. This remains a heuristic: indirect coverage
-            # may still exist, so every candidate requires human review.
+            # AST references avoid false "covered" matches in comments and strings.
+            # Indirect coverage may still exist, so candidates remain review-only.
             if leaf in referenced_symbols:
                 continue
             suffix = hashlib.sha256(f"{code_rel}:{function}".encode()).hexdigest()[:10]

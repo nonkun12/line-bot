@@ -145,7 +145,7 @@ def test_registry_current_and_rollback_target():
     assert len(candidates) == 1
     assert candidates[0]["target_test"] == "tests/test_agent_versioning.py"
     assert candidates[0]["status"] == "REVIEW_REQUIRED"
-    assert candidates[0]["heuristic"] == "public-symbol-name-not-found-in-test-ast; may have indirect coverage"
+    assert candidates[0]["heuristic"] == "public-symbol-name-not-found-in-test-source; may have indirect coverage"
     assert report["safety"]["candidates_executable"] is False
 
 
@@ -304,17 +304,17 @@ def test_analyzer_round_robins_targets_before_applying_candidate_cap(tmp_path: P
     (root / "tests").mkdir()
     first_names = [f"first_target_gap_{index}" for index in range(6)]
     (root / "core" / "agent_events.py").write_text(
-        "".join(f"def {name}(value):\n    return value\n\n" for name in first_names),
+        "".join(f"def {name}(value):\\n    return value\\n\\n" for name in first_names),
         encoding="utf-8",
     )
     (root / "tests" / "test_agent_events.py").write_text(
-        "def test_existing():\n    assert True\n", encoding="utf-8"
+        "def test_existing():\\n    assert True\\n", encoding="utf-8"
     )
     (root / "core" / "github_integration_status.py").write_text(
-        "def later_target_gap(value):\n    return value\n", encoding="utf-8"
+        "def later_target_gap(value):\\n    return value\\n", encoding="utf-8"
     )
     (root / "tests" / "test_github_integration_status.py").write_text(
-        "def test_existing():\n    assert True\n", encoding="utf-8"
+        "def test_existing():\\n    assert True\\n", encoding="utf-8"
     )
     catalog = _write(tmp_path / "catalog.json", {"tasks": []})
     queue = _write(tmp_path / "queue.json", {"tasks": []})
@@ -323,7 +323,7 @@ def test_analyzer_round_robins_targets_before_applying_candidate_cap(tmp_path: P
         {"completed": [], "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None}},
     )
     runtime = root / "core" / "line_development_runtime.py"
-    runtime.write_text("_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {}\n", encoding="utf-8")
+    runtime.write_text("_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {}\\n", encoding="utf-8")
 
     report = analyze(root, catalog, queue, state, runtime)
 
