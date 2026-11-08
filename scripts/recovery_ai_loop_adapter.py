@@ -125,6 +125,18 @@ def _attach_rag_advisory(
     return outcome
 
 
+def _safe_preflight_reason_code(reason: str) -> str:
+    """Keep the recognized gate namespace while sanitizing untrusted reason text."""
+    if reason == "control_tower_head_changed":
+        return reason
+    for prefix in ("control_tower_gate", "control_tower_rea", "control_tower_selector"):
+        marker = prefix + ":"
+        if reason.startswith(marker):
+            suffix = re.sub(r"[^A-Za-z0-9._-]", "_", reason[len(marker):])[:80].strip("._-")
+            return marker + (suffix or "unclassified")
+    raise ValueError("unrecognized preflight reason namespace")
+
+
 def record_loop_outcome(
     state_path: str | Path,
     result: dict[str, Any],
@@ -152,8 +164,12 @@ def record_loop_outcome(
         or failure_reason.startswith("control_tower_selector:")
         or failure_reason == "control_tower_head_changed"
     ):
+        reason_code = _safe_preflight_reason_code(failure_reason)
+        prerequisite_id = result.get("prerequisite_id")
+        if not isinstance(prerequisite_id, str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", prerequisite_id):
+            prerequisite_id = None
         event = store.record_preflight_blocked(
-            task_id, failure_reason, result.get("prerequisite_id")
+            task_id, reason_code, prerequisite_id
         )
         return {
             "recorded": False,
