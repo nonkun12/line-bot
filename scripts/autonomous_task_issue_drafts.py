@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 from scripts.autonomous_task_target_allowlist import TARGETS
+from scripts.autonomous_task_candidate_contract import build_review_instruction
 from typing import Any
 
 MAX_DRAFTS = 4
@@ -21,7 +22,7 @@ FINGERPRINT = re.compile(r"^[a-f0-9]{64}$")
 FUNCTION = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
 SPEC_MARKER = "<!-- autonomous-task-spec -->"
 CLOSING_ISSUE_REFERENCE = re.compile(
-    r"\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\s+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#([1-9][0-9]*)\b",
+    r"\\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\\s+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#([1-9][0-9]*)\\b",
     re.IGNORECASE,
 )
 
@@ -157,16 +158,7 @@ def build_issue_drafts(
         if task_id in existing:
             continue
 
-        instruction = (
-            f"人手レビュー後に限り、{test_path} に {function} ({evidence}) の"
-            "境界条件を検証する新しい回帰テストを1件追加してください。"
-            "まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。"
-            "既存テスト関数・assert・fixture・parametrize・classは変更、削除、改名、並べ替え禁止。"
-            "ファイル末尾に新しいpytest test関数を1つだけ追記し、既存定義を一切変更しないでください。"
-            "安全な追記ができなければ変更せず理由を報告してください。"
-            "変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。"
-            "外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。"
-        )
+        instruction = build_review_instruction(test_path, function, evidence)
         spec = {"id": task_id, "instruction": instruction, "allowed_paths": [test_path]}
         body = (
             "## 自動生成されたレビュー専用タスク候補\n\n"

@@ -94,8 +94,8 @@ def test_distributed_workflow_loads_existing_issues_before_candidate_analysis():
     create_step = workflow[create_start:create_end]
     assert "gh api --paginate" in load_step
     assert "state=all&per_page=100" in load_step
-    assert "pulls?state=open&per_page=100" in load_step
     assert "pull_request" in load_step
+    assert "pulls?state=open&per_page=100" in load_step
     assert "--existing-issues /tmp/autonomous-loop-all-issues.json" in analyze_step
     assert "--issues /tmp/autonomous-loop-all-issues.json" in create_step
     assert "--pull-requests /tmp/autonomous-loop-open-pulls.json" in create_step
@@ -138,7 +138,7 @@ def test_open_pr_closing_candidate_issue_does_not_consume_review_capacity():
         "number": 1300,
         "state": "open",
         "merged_at": None,
-        "body": "## Reviewed candidate issues\\n- Fixes #1155\\n- Fixes #1156\\n- Fixes #1157",
+        "body": "Fixes #1155; Closes #1156; Resolves #1157",
     }]
     drafts = build_issue_drafts(_report(), issues, pull_requests)
     assert len(drafts) == 1
