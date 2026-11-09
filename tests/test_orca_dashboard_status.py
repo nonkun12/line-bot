@@ -58,7 +58,7 @@ def test_orca_status_rejects_missing_and_invalid_signatures(orca_client):
 
 def test_orca_status_accepts_signed_snapshot_and_redacts_unlisted_fields(orca_client):
     assert post_snapshot(orca_client, snapshot()).status_code == 200
-    read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3Jk"})
+    read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3JkLXBhc3N3b3Jk"})
     body = read.get_json()
     assert read.status_code == 200 and body["tasks"][0]["id"] == "t1"
     assert "prompt" not in body["tasks"][0] and "payload" not in body["dispatches"][0]
