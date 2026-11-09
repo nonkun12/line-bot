@@ -6,7 +6,7 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 
-from agents.english.core_image import _ENTRIES, get_core_image_quiz_entries
+from agents.english.core_image import _ENTRIES
 from agents.english.vocabulary_workflow import load_approved_entries
 
 DB_PATH = os.environ.get(
