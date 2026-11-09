@@ -142,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if(!response.ok||!data.ok) throw new Error(data.error||'HTTP '+response.status);
       const statusLabel={online:'🟢 接続中',stale:'🟡 データ遅延',offline:'⚪ 未接続',error:'🔴 エラー'}[data.status]||'⚪ 未確認';
       const age=data.age_sec==null?'送信元未接続':(data.age_sec+'秒前に受信');
+      const provenanceLabel=data.source==='orca_collector'?'Orca Collector / Runtime照合':data.source==='github_actions'?'GitHub Actions / Workflow自己報告':'旧形式・証拠種別未確認';
       const groups=[['Tasks',data.tasks],['Dispatches',data.dispatches],['Workers',data.workers]];
       const summary=groups.map(([name,items])=>'<div class="system-card"><div class="system-card-title">'+name+'</div><div class="history-metric-value">'+(Array.isArray(items)?items.length:0)+'</div><div class="system-details">受信データ件数</div></div>').join('');
       const rows=groups.map(([name,items])=>(items||[]).slice(0,5).map(item=>{
@@ -152,10 +153,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const streamLabels={main_star_night:'本線：STAR-NIGHT',side_task_supply:'サイド1：タスク枯渇対策',side_media_ai:'サイド2：映像・音楽AI',side_self_improvement:'サイド3：自己改善AI',side_line_full_control:'サイド4：LINE全指示化'};
       const streamRows=(Array.isArray(data.streams)?data.streams:[]).map(item=>{
         const observed=item.status==='observed';
+        const reported=item.status==='reported';
+        const stateLabel=observed?'🟢 Runtime観測あり':reported?'🔵 Workflow実行報告':'⚪ 未確認';
+        const evidenceLabel=observed?'Orcaの実レコード一致':reported?'Workflow自身による実行報告':'信頼できる系統証拠なし';
         const counts='Task '+Number(item.task_count||0)+' / Dispatch '+Number(item.dispatch_count||0)+' / Worker '+Number(item.worker_count||0);
-        return '<div class="system-card"><div class="system-card-title">'+esc(streamLabels[item.key]||item.label||item.key)+'</div><div class="system-status">'+(observed?'🟢 実データ観測あり':'⚪ 未確認')+'</div><div class="system-details">'+esc(counts)+'</div><div class="system-details">'+(observed?'実レコードとの一致あり':'対応する系統メタデータ未検出')+'</div></div>';
+        return '<div class="system-card"><div class="system-card-title">'+esc(streamLabels[item.key]||item.label||item.key)+'</div><div class="system-status">'+stateLabel+'</div><div class="system-details">'+esc(counts)+'</div><div class="system-details">'+evidenceLabel+'</div></div>';
       }).join('');
-      panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">'+statusLabel+'</div><div class="system-details">'+esc(age)+'</div></div>'+summary+'<div class="section-subtitle">5系統の実データ照合</div>'+(streamRows||'<div class="system-details">系統データ未取得</div>')+(rows||'<div class="system-details">Task / Dispatch / Workerの明細は未受信です。</div>');
+      panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">'+statusLabel+'</div><div class="system-details">'+esc(age)+'</div><div class="system-details">証拠元：'+esc(provenanceLabel)+'</div></div>'+summary+'<div class="section-subtitle">5系統の実データ照合</div>'+(streamRows||'<div class="system-details">系統データ未取得</div>')+(rows||'<div class="system-details">Task / Dispatch / Workerの明細は未受信です。</div>');
     }catch(error){
       panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">⚪ 未確認</div><div class="system-details">'+esc(error.message)+'</div></div>';
     }
