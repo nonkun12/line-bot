@@ -147,8 +147,10 @@ def grade_pending_quiz(user_id: str, answer: str) -> str | None:
             return None
         word, correct = row
         conn.execute("DELETE FROM english_pending_quiz WHERE user_id=?", (_user_key(user_id),))
-    entry = _ENTRIES.get(word)
-    explanation = entry.core_image if entry else word
+    explanation = next(
+        (core_image for candidate, core_image, _ in _lexicon() if candidate == word),
+        word,
+    )
     if value == correct:
         return f"✅ 正解！\n\n{word}\nコアイメージ: {explanation}\n\n次は「クイズ」または「単語」と送ってください。"
     return f"❌ 惜しい！正解は {correct.upper()}. {word} です。\n\nコアイメージ: {explanation}\n\n「クイズ」で再挑戦できます。"
