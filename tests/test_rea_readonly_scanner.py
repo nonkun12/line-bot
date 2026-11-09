@@ -79,6 +79,23 @@ class ReadonlyScannerTests(unittest.TestCase):
         self.assertNotIn("do-not-print-this-secret", rendered)
         self.assertNotIn("broken(:", rendered)
 
+    def test_workflow_write_all_permissions_are_high_severity_findings(self) -> None:
+        self._write(
+            ".github/workflows/broad-permissions.yml",
+            "name: broad\\npermissions: write-all\\njobs:\\n  check:\\n    runs-on: ubuntu-latest\\n",
+        )
+        self._commit()
+
+        report = scan_repository(self.root)
+        matches = [
+            item for item in report["findings"]
+            if item["category"] == "workflow_permission"
+        ]
+        self.assertEqual(report["status"], "FINDINGS")
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]["severity"], "HIGH")
+        self.assertEqual(matches[0]["evidence"]["line"], 2)
+
     def test_dirty_worktree_blocks_sha_bound_evidence(self) -> None:
         self._write("scripts/good.py", "VALUE = 2\n")
         with self.assertRaises(ScanBlocked):
