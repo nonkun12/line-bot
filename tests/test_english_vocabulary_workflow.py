@@ -212,3 +212,34 @@ def test_line_quiz_uses_approved_dynamic_words(isolated_vocabulary_db, monkeypat
         AgentRequest(user_id="learner-1", message="クイズ", channel="line", metadata={})
     )
     assert "novelwordxyz" in response.text
+
+def test_local_review_cli_fails_closed_without_allowlisted_reviewer(isolated_vocabulary_db, monkeypatch, capsys):
+    from agents.english.review_cli import main
+
+    monkeypatch.delenv("ENGLISH_VOCAB_REVIEWER_IDS", raising=False)
+    assert main(["--reviewer-id", "reviewer-1", "list"]) == 2
+    assert "拒否" in capsys.readouterr().err
+
+
+def test_local_review_cli_lists_candidates_for_allowlisted_reviewer(isolated_vocabulary_db, monkeypatch, capsys):
+    from agents.english.review_cli import main
+
+    workflow.submit_word_candidate("novelwordxyz", "learner-1")
+    monkeypatch.setenv("ENGLISH_VOCAB_REVIEWER_IDS", "reviewer-1,reviewer-2")
+    assert main(["--reviewer-id", "reviewer-1", "list"]) == 0
+    assert "novelwordxyz" in capsys.readouterr().out
+
+
+def test_local_review_cli_approves_reviewed_entry(isolated_vocabulary_db, monkeypatch, tmp_path, capsys):
+    from agents.english.review_cli import main
+
+    receipt = workflow.submit_word_candidate("novelwordxyz", "learner-1")
+    entry_file = tmp_path / "entry.json"
+    entry_file.write_text(__import__("json").dumps(_entry(receipt.word), ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("ENGLISH_VOCAB_REVIEWER_IDS", "reviewer-1")
+    assert main([
+        "--reviewer-id", "reviewer-1", "approve", str(receipt.candidate_id),
+        "--entry-file", str(entry_file),
+    ]) == 0
+    assert workflow.load_approved_entries()[0].word == receipt.word
+    assert "承認済み" in capsys.readouterr().out
