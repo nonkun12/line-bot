@@ -6,7 +6,8 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 
-from agents.english.core_image import get_core_image_quiz_entries
+from agents.english.core_image import _ENTRIES, get_core_image_quiz_entries
+from agents.english.vocabulary_workflow import load_approved_entries
 
 DB_PATH = os.environ.get(
     "CHAT_DB_PATH",
@@ -41,10 +42,13 @@ def _user_key(user_id: str) -> str:
 
 
 def _lexicon() -> list[tuple[str, str, str]]:
-    """Use only reviewed local entries; never synthesize an unreviewed definition."""
+    """Use reviewed static and approved dynamic entries; keep _ENTRIES patchable for callers."""
+    entries = dict(_ENTRIES)
+    for entry in load_approved_entries():
+        entries.setdefault(entry.word, entry)
     return [
         (entry.word, entry.core_image, entry.example)
-        for entry in sorted(get_core_image_quiz_entries(), key=lambda item: item.word)
+        for entry in sorted(entries.values(), key=lambda item: item.word)
         if entry.core_image.strip() and entry.example.strip()
     ]
 
