@@ -178,6 +178,10 @@ class AgentMessageCoordinator:
     KNOWN_AGENTS = frozenset({MANAGEMENT, *SPECIALISTS})
     RESULT_MESSAGE_TYPE = "task_result"
     RESULT_CONSTRAINTS = frozenset({"result-only", "no-permission-grant"})
+    ASSIGNMENT_MESSAGE_TYPE = "task_assignment"
+    ASSIGNMENT_CONSTRAINTS = frozenset({"task-only", "no-permission-grant"})
+    COLLABORATION_MESSAGE_TYPE = "collaboration_request"
+    COLLABORATION_CONSTRAINTS = frozenset({"task-only", "no-permission-grant"})
 
     @classmethod
     def _role_key(cls, agent_name: str) -> str:
@@ -249,7 +253,22 @@ class AgentMessageCoordinator:
             return tuple(dict.fromkeys(errors))
 
         if source == cls.MANAGEMENT and target in cls.SPECIALISTS:
-            errors.append("management-to-specialist messages are not approved")
+            if message_type != cls.ASSIGNMENT_MESSAGE_TYPE:
+                errors.append("management-to-specialist messages must be task_assignment")
+            if constraints != cls.ASSIGNMENT_CONSTRAINTS:
+                errors.append(
+                    "management-to-specialist assignments require exactly "
+                    "task-only and no-permission-grant"
+                )
+            return tuple(dict.fromkeys(errors))
+
+        if source in cls.SPECIALISTS and target in cls.SPECIALISTS and source != target:
+            if message_type != cls.COLLABORATION_MESSAGE_TYPE:
+                errors.append("specialist-to-specialist messages must be collaboration_request")
+            if constraints != cls.COLLABORATION_CONSTRAINTS:
+                errors.append(
+                    "specialist collaboration requires exactly task-only and no-permission-grant"
+                )
             return tuple(dict.fromkeys(errors))
 
         if not errors:
