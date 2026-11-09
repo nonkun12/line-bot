@@ -6,7 +6,7 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 
-from agents.english.core_image import _ENTRIES
+from agents.english.core_image import get_core_image_quiz_entries
 
 DB_PATH = os.environ.get(
     "CHAT_DB_PATH",
@@ -43,8 +43,8 @@ def _user_key(user_id: str) -> str:
 def _lexicon() -> list[tuple[str, str, str]]:
     """Use only reviewed local entries; never synthesize an unreviewed definition."""
     return [
-        (word, entry.core_image, entry.example)
-        for word, entry in sorted(_ENTRIES.items())
+        (entry.word, entry.core_image, entry.example)
+        for entry in sorted(get_core_image_quiz_entries(), key=lambda item: item.word)
         if entry.core_image.strip() and entry.example.strip()
     ]
 
