@@ -7,6 +7,7 @@ from ai_client import generate_chat_completion
 from agents.english.intents import classify_english_mode, is_english_learning_intent
 from core.agents import AgentRequest, AgentResponse
 from agents.english.progress import profile_prompt, record_observation
+from agents.english.core_image import handle_core_image_command
 from agents.english.quiz_state import select_daily_words
 from agents.english.quiz import grade_quiz, start_quiz
 import random
@@ -114,10 +115,14 @@ class EnglishLearningAgent:
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         original = request.message.strip()
+        core_image_result = handle_core_image_command(original)
         quiz_result = grade_quiz(request.user_id, original)
         mode = classify_english_mode(original)
 
-        if quiz_result is not None:
+        if core_image_result is not None:
+            text = core_image_result
+            mode = "core_image"
+        elif quiz_result is not None:
             text = quiz_result
             mode = "quiz_answer"
         elif mode == "ai_tutor":
