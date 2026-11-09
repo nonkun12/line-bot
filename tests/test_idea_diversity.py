@@ -13,6 +13,28 @@ def test_idea_agent_preserves_unconventional_and_positive_impact():
     assert all(item.positive_impact for item in ideas)
 
 
+def test_idea_agent_covers_five_distinct_opportunity_domains():
+    ideas = IdeaAgent().propose("distributed loop")
+    assert {idea.domain for idea in ideas} == {
+        "product-and-user-value",
+        "cross-agent-collaboration",
+        "learning-and-quality",
+        "new-capabilities",
+        "reliability-and-efficiency",
+    }
+    assert all(idea.assumption_to_test for idea in ideas)
+    assert all(idea.success_signal for idea in ideas)
+    assert len({idea.domain for idea in ideas}) == len(ideas)
+
+
+def test_idea_tasks_never_grant_execution_or_override_authority():
+    ideas = IdeaAgent().propose("cloud and Mac coordination")
+    for idea in ideas:
+        assert idea.task.resources == frozenset({"idea-proposals"})
+        assert "承認やHOLDの自己解除" in idea.task.instruction
+        assert "明示承認" in idea.safety_boundary
+
+
 def test_diversity_review_does_not_drop_tricky_ideas():
     ideas = IdeaAgent().propose("Loop")
     reviews = review_ideas(ideas)
@@ -29,3 +51,7 @@ def test_idea_agent_rejects_invalid_input():
         IdeaAgent().propose("")
     with pytest.raises(ValueError):
         IdeaAgent().propose("Loop", limit=6)
+    with pytest.raises(TypeError):
+        IdeaAgent().propose(123)
+    with pytest.raises(TypeError):
+        IdeaAgent().propose("Loop", context=("ok", 123))
