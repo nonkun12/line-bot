@@ -143,3 +143,26 @@ def test_approved_word_enters_daily_rotation(isolated_vocabulary_db, monkeypatch
 
     words = quiz_state._lexicon()
     assert "novelwordxyz" in {word for word, _, _ in words}
+
+def test_quiz_grading_resolves_approved_dynamic_word(isolated_vocabulary_db, monkeypatch):
+    from agents.english import quiz_state
+
+    monkeypatch.setattr(quiz_state, "DB_PATH", workflow.DB_PATH)
+    receipt = workflow.submit_word_candidate("novelwordxyz", "learner-1")
+    workflow.approve_word_candidate(
+        receipt.candidate_id,
+        _entry(receipt.word),
+        "reviewer-1",
+        authorize_reviewer=lambda _: True,
+    )
+
+    quiz_state.create_quiz("learner-1")
+    with quiz_state._connect() as conn:
+        correct = conn.execute(
+            "SELECT correct_option FROM english_pending_quiz WHERE user_id=?",
+            ("learner-1",),
+        ).fetchone()[0]
+
+    result = quiz_state.grade_pending_quiz("learner-1", correct)
+    assert result is not None
+    assert "意味をつかむための確認済みイメージ" in result
