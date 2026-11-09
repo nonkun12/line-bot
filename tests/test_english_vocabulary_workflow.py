@@ -191,7 +191,8 @@ def test_line_core_image_command_reaches_reviewed_dictionary(isolated_vocabulary
     assert response.metadata["mode"] == "core_image"
 
 
-def test_line_quiz_uses_approved_dynamic_words(isolated_vocabulary_db):
+def test_line_quiz_uses_approved_dynamic_words(isolated_vocabulary_db, monkeypatch):
+    from agents.english import quiz
     from agents.english.node import EnglishLearningAgent
     from core.agents import AgentRequest
 
@@ -201,6 +202,11 @@ def test_line_quiz_uses_approved_dynamic_words(isolated_vocabulary_db):
         _entry(receipt.word),
         "reviewer-1",
         authorize_reviewer=lambda _: True,
+    )
+    monkeypatch.setattr(
+        quiz.random,
+        "choice",
+        lambda pool: next(item for item in pool if item.word == receipt.word),
     )
     response = EnglishLearningAgent().handle(
         AgentRequest(user_id="learner-1", message="クイズ", channel="line", metadata={})
