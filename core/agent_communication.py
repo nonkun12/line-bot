@@ -419,9 +419,9 @@ class AgentMessageBus:
         recipient = self._coordinator.canonical_agent(message.recipient)
         with self._lock:
             queue = self._queues.setdefault(recipient, deque())
+            if len(queue) >= self._max_messages:
+                raise ValueError(f"mailbox full for {recipient}; message was not enqueued")
             queue.append(message)
-            while len(queue) > self._max_messages:
-                queue.popleft()
         return message
 
     def _receive(self, recipient: str, *, limit: int = 20) -> tuple[AgentMessage, ...]:
