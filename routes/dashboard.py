@@ -265,8 +265,14 @@ _ORCA_STREAM_KEYS = {"main_star_night", "side_task_supply", "side_media_ai", "si
 
 def _sanitize_orca_payload(payload):
     captured = _orca_snapshot_timestamp(payload.get("captured_at"))
+    source = payload.get("source", "legacy_unverified")
+    observation_type = payload.get("observation_type", "unverified")
+    allowed_provenance = {("orca_collector", "runtime_observation"), ("github_actions", "workflow_execution"), ("legacy_unverified", "unverified")}
+    if (source, observation_type) not in allowed_provenance:
+        raise ValueError("invalid evidence provenance")
     clean = {"captured_at": datetime.fromtimestamp(captured, tz=timezone.utc).isoformat(),
-             "run_id": str(payload.get("run_id") or "")[:100]}
+             "run_id": str(payload.get("run_id") or "")[:100],
+             "source": source, "observation_type": observation_type}
     for group, allowed in _ORCA_ALLOWED_FIELDS.items():
         items = payload.get(group, [])
         if not isinstance(items, list) or len(items) > 100 or any(not isinstance(item, dict) for item in items):
@@ -284,11 +290,11 @@ def _sanitize_orca_payload(payload):
         clean["streams"].append({
             "key": item["key"], "label": str(item.get("label") or "")[:80],
             "kind": "main" if item.get("kind") == "main" else "side",
-            "status": "observed" if item.get("status") == "observed" else "unknown",
+            "status": "observed" if item.get("status") == "observed" and source == "orca_collector" else ("reported" if item.get("status") == "observed" and source == "github_actions" else "unknown"),
             "task_count": max(0, min(int(item.get("task_count", 0)), 100)),
             "dispatch_count": max(0, min(int(item.get("dispatch_count", 0)), 100)),
             "worker_count": max(0, min(int(item.get("worker_count", 0)), 100)),
-            "evidence": "matched_runtime_records" if item.get("evidence") == "matched_runtime_records" else "no_matching_stream_metadata",
+            "evidence": ("matched_runtime_records" if item.get("evidence") == "matched_runtime_records" else "no_matching_stream_metadata") if source == "orca_collector" else ("workflow_self_report" if source == "github_actions" and item.get("status") == "observed" else "unverified"),
         })
     return clean, captured
 
@@ -354,6 +360,8 @@ def orca_status():
         status = "online" if age <= 90 else ("stale" if age <= 300 else "offline")
         return jsonify({"ok": True, "status": status, "age_sec": round(age),
                         "received_at": row[1], "captured_at": payload.get("captured_at"),
+                        "source": payload.get("source", "legacy_unverified"),
+                        "observation_type": payload.get("observation_type", "unverified"),
                         "tasks": payload.get("tasks", []), "dispatches": payload.get("dispatches", []),
                         "workers": payload.get("workers", []), "streams": payload.get("streams", [])})
     except Exception:
