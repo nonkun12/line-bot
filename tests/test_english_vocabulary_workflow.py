@@ -173,3 +173,36 @@ def test_quiz_grading_resolves_approved_dynamic_word(isolated_vocabulary_db, mon
     result = quiz_state.grade_pending_quiz("learner-1", correct)
     assert result is not None
     assert "意味をつかむための確認済みイメージ" in result
+
+def test_line_core_image_command_reaches_reviewed_dictionary(isolated_vocabulary_db):
+    from agents.english.node import EnglishLearningAgent
+    from core.agents import AgentRequest
+
+    response = EnglishLearningAgent().handle(
+        AgentRequest(
+            user_id="learner-1",
+            message="コアイメージ inspect",
+            channel="line",
+            metadata={},
+        )
+    )
+    assert "inspect" in response.text
+    assert "コアイメージ：" in response.text
+    assert response.metadata["mode"] == "core_image"
+
+
+def test_line_quiz_uses_approved_dynamic_words(isolated_vocabulary_db):
+    from agents.english.node import EnglishLearningAgent
+    from core.agents import AgentRequest
+
+    receipt = workflow.submit_word_candidate("novelwordxyz", "learner-1")
+    workflow.approve_word_candidate(
+        receipt.candidate_id,
+        _entry(receipt.word),
+        "reviewer-1",
+        authorize_reviewer=lambda _: True,
+    )
+    response = EnglishLearningAgent().handle(
+        AgentRequest(user_id="learner-1", message="クイズ", channel="line", metadata={})
+    )
+    assert "novelwordxyz" in response.text
