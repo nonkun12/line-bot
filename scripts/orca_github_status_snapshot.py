@@ -46,16 +46,18 @@ def build_snapshot(results: list[dict], run_id: str, outcome: str, captured_at: 
             "key": key,
             "label": label,
             "kind": kind,
-            "status": "observed" if count else "unknown",
+            "status": "reported" if count else "unknown",
             "task_count": count,
             "dispatch_count": 0,
             "worker_count": 0,
-            "evidence": "matched_runtime_records" if count else "no_matching_stream_metadata",
+            "evidence": "workflow_self_report" if count else "no_matching_stream_metadata",
         })
 
     return {
         "captured_at": now,
         "run_id": str(run_id)[:100],
+        "source": "github_actions",
+        "observation_type": "workflow_execution",
         "tasks": tasks,
         "dispatches": [{
             "dispatch_id": f"github-actions-run-{str(run_id)[:80]}",
