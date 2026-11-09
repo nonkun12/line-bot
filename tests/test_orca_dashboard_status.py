@@ -58,7 +58,7 @@ def test_orca_status_rejects_missing_and_invalid_signatures(orca_client):
 
 def test_orca_status_accepts_signed_snapshot_and_redacts_unlisted_fields(orca_client):
     assert post_snapshot(orca_client, snapshot()).status_code == 200
-    read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3JkLXBhc3N3b3Jk"})
+    read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3Jk"})
     body = read.get_json()
     assert read.status_code == 200 and body["tasks"][0]["id"] == "t1"
     assert "prompt" not in body["tasks"][0] and "payload" not in body["dispatches"][0]
@@ -118,7 +118,7 @@ def test_legacy_provenance_is_not_promoted_to_observed(orca_client):
     payload.pop("source")
     payload.pop("observation_type")
     assert post_snapshot(orca_client, payload).status_code == 200
-    read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJk"})
+    read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3Jk"})
     body = read.get_json()
     assert body["source"] == "legacy_unverified"
     assert body["streams"][0]["status"] == "unknown"
