@@ -156,12 +156,19 @@ def test_quiz_grading_resolves_approved_dynamic_word(isolated_vocabulary_db, mon
         authorize_reviewer=lambda _: True,
     )
 
+    with quiz_state._connect() as conn:
+        conn.execute(
+            "INSERT INTO english_word_history(user_id, word, shown_at) VALUES (?, ?, ?)",
+            ("learner-1", receipt.word, "2026-11-10T00:00:00+00:00"),
+        )
     quiz_state.create_quiz("learner-1")
     with quiz_state._connect() as conn:
-        correct = conn.execute(
-            "SELECT correct_option FROM english_pending_quiz WHERE user_id=?",
+        pending = conn.execute(
+            "SELECT word, correct_option FROM english_pending_quiz WHERE user_id=?",
             ("learner-1",),
-        ).fetchone()[0]
+        ).fetchone()
+    assert pending[0] == receipt.word
+    correct = pending[1]
 
     result = quiz_state.grade_pending_quiz("learner-1", correct)
     assert result is not None
