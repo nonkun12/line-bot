@@ -1,3 +1,5 @@
+import pytest
+
 from core.agent_communication import AgentMessage
 
 
@@ -70,3 +72,26 @@ def test_assignment_or_collaboration_cannot_grant_permissions():
         message_type="collaboration_request",
         safety_constraints=("task-only",),
     )
+
+
+def test_full_mailbox_rejects_new_message_without_dropping_assignment():
+    bus = AgentMessageBus(max_messages=1)
+    manager = bus.endpoint("management")
+    english = bus.endpoint("english")
+    news = bus.endpoint("news")
+
+    assignment = manager.send(
+        "english", message_id="protected-assignment", message_type="task_assignment",
+        content="Execute approved task", context={"task_id": "critical-task"},
+        safety_constraints=("task-only", "no-permission-grant"),
+    )
+    with pytest.raises(ValueError, match="mailbox full"):
+        news.send(
+            "english", message_id="overflow-collaboration",
+            message_type="collaboration_request", content="Please help",
+            context={"task_id": "other-task"},
+            safety_constraints=("task-only", "no-permission-grant"),
+        )
+
+    assert english.peek() == (assignment,)
+    assert english.receive() == (assignment,)
