@@ -15,10 +15,17 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-ALLOWED_ROOTS = (".github/workflows/", "core/", "scripts/", "tests/", "docs/rea/")
-ALLOWED_SUFFIXES = frozenset({".py", ".json", ".yml", ".yaml", ".md"})
+ALLOWED_ROOTS = (
+    ".github/workflows/", "core/", "scripts/", "tests/", "docs/rea/",
+    "routes/", "static/", "templates/", "apps/",
+)
+ALLOWED_SUFFIXES = frozenset({".py", ".json", ".yml", ".yaml", ".md", ".js", ".html"})
 MAX_FILE_BYTES = 512 * 1024
 MAX_FILES = 5000
+WORKFLOW_WRITE_ALL_RE = re.compile(
+    r"""^[ \\t]*permissions[ \\t]*:[ \\t]*write-all[ \\t]*(?:#.*)?$""",
+    re.IGNORECASE | re.MULTILINE,
+)
 DANGEROUS_FLAG_RE = re.compile(
     r"""^[ \t]*(AUTO_APPLY_PATCH|AUTO_DEPLOY)[ \t]*[:=][ \t]*["\']?(true|yes|1)["\']?[ \t]*(?:#.*)?$""",
     re.IGNORECASE | re.MULTILINE,
@@ -178,6 +185,20 @@ def scan_repository(repo_root: str | Path) -> dict[str, Any]:
                 ))
 
         if relative.startswith(".github/workflows/"):
+            for match in WORKFLOW_WRITE_ALL_RE.finditer(source):
+                line = source.count("\\n", 0, match.start()) + 1
+                findings.append(_finding(
+                    category="workflow_permission",
+                    severity="HIGH",
+                    confidence="HIGH",
+                    target_sha=target_sha,
+                    path=relative,
+                    line=line,
+                    evidence_code="workflow_write_all_permissions",
+                    hypothesis="The workflow grants every available GitHub Actions permission instead of using a least-privilege permission set.",
+                    suggested_fix="Replace write-all with the minimum explicit permissions required by each job.",
+                    required_tests=["Review job-level permissions and add a regression test for the required least-privilege policy."],
+                ))
             for match in DANGEROUS_FLAG_RE.finditer(source):
                 line = source.count("\n", 0, match.start()) + 1
                 flag_name = match.group(1).upper()
