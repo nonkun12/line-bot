@@ -107,6 +107,7 @@ def scan_repository(repo_root: str | Path) -> dict[str, Any]:
     # -z preserves filenames without Git's quoted-path display format.
     entries = _git(root, "ls-files", "-s", "-z", "--").split("\0")
     candidates: list[tuple[str, str]] = []
+    skipped_unsupported = 0
     for entry in entries:
         if not entry:
             continue
@@ -117,8 +118,12 @@ def scan_repository(repo_root: str | Path) -> dict[str, Any]:
         if len(parts) < 3:
             raise ScanBlocked("git_index_entry_invalid")
         mode = parts[0]
-        # Skip symlinks, submodules, and paths outside the explicit allowlist.
+        # In-scope symlinks/submodules are unsupported inputs, not clean omissions.
+        # Count them so incomplete coverage can never be reported as PASS.
+        in_scope = path.startswith(ALLOWED_ROOTS) and Path(path).suffix.lower() in ALLOWED_SUFFIXES
         if mode != "100644" and mode != "100755":
+            if in_scope:
+                skipped_unsupported += 1
             continue
         if not path.startswith(ALLOWED_ROOTS):
             continue
@@ -132,7 +137,8 @@ def scan_repository(repo_root: str | Path) -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
     scanned = 0
     skipped_large = 0
-    for relative, _blob_sha in sorted(candidates):
+    evidence_rows: list[str] = []
+    for relative, blob_sha in sorted(candidates):
         path = root / relative
         # Resolve and verify again to reject traversal and symlink tricks.
         resolved = path.resolve()
@@ -149,6 +155,7 @@ def scan_repository(repo_root: str | Path) -> dict[str, Any]:
             raise ScanBlocked("tracked_file_read_incomplete") from None
 
         scanned += 1
+        evidence_rows.append(f"{relative}\0{blob_sha}\0{hashlib.sha256(raw).hexdigest()}")
         suffix = path.suffix.lower()
         if suffix == ".py":
             try:
@@ -219,15 +226,20 @@ def scan_repository(repo_root: str | Path) -> dict[str, Any]:
         item["evidence"]["path"], item["evidence"]["line"] or 0,
         item["category"], item["finding_id"],
     ))
-    status = "BLOCKED" if skipped_large else ("FINDINGS" if findings else "PASS")
+    coverage_complete = skipped_large == 0 and skipped_unsupported == 0
+    status = "BLOCKED" if not coverage_complete else ("FINDINGS" if findings else "PASS")
+    evidence_material = "\n".join([target_sha, *evidence_rows]).encode("utf-8")
     return {
         "schema_version": 1,
         "scanner": "rea-readonly-mvp",
         "status": status,
         "target_sha": target_sha,
-        "complete": skipped_large == 0,
+        "complete": coverage_complete,
+        "coverage": "COMPLETE" if coverage_complete else "INCOMPLETE",
+        "evidence_sha256": hashlib.sha256(evidence_material).hexdigest(),
         "files_scanned": scanned,
         "files_skipped_oversize": skipped_large,
+        "files_skipped_unsupported": skipped_unsupported,
         "findings_count": len(findings),
         "findings": findings,
         "capabilities": {
