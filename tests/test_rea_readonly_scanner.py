@@ -82,7 +82,7 @@ class ReadonlyScannerTests(unittest.TestCase):
     def test_workflow_write_all_permissions_are_high_severity_findings(self) -> None:
         self._write(
             ".github/workflows/broad-permissions.yml",
-            "name: broad\\npermissions: write-all\\njobs:\\n  check:\\n    runs-on: ubuntu-latest\\n",
+            "name: broad\npermissions: write-all\njobs:\n  check:\n    runs-on: ubuntu-latest\n",
         )
         self._commit()
 
