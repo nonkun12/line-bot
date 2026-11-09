@@ -233,13 +233,17 @@ class AgentMessageCoordinator:
             and target in cls.SPECIALISTS
             and source != target
         ):
-            if message_type != cls.RESULT_MESSAGE_TYPE:
-                errors.append("specialist-to-specialist messages must be task_result")
-            if constraints != cls.RESULT_CONSTRAINTS:
+            if message_type == cls.RESULT_MESSAGE_TYPE:
+                expected = cls.RESULT_CONSTRAINTS
+            elif message_type == cls.COLLABORATION_MESSAGE_TYPE:
+                expected = cls.COLLABORATION_CONSTRAINTS
+            else:
+                expected = frozenset()
                 errors.append(
-                    "specialist-to-specialist messages require exactly "
-                    "result-only and no-permission-grant"
+                    "specialist-to-specialist messages must be task_result or collaboration_request"
                 )
+            if constraints != expected:
+                errors.append("specialist-to-specialist message safety constraints do not match message type")
             return tuple(dict.fromkeys(errors))
 
         if source in cls.SPECIALISTS and target == cls.MANAGEMENT:
@@ -259,15 +263,6 @@ class AgentMessageCoordinator:
                 errors.append(
                     "management-to-specialist assignments require exactly "
                     "task-only and no-permission-grant"
-                )
-            return tuple(dict.fromkeys(errors))
-
-        if source in cls.SPECIALISTS and target in cls.SPECIALISTS and source != target:
-            if message_type != cls.COLLABORATION_MESSAGE_TYPE:
-                errors.append("specialist-to-specialist messages must be collaboration_request")
-            if constraints != cls.COLLABORATION_CONSTRAINTS:
-                errors.append(
-                    "specialist collaboration requires exactly task-only and no-permission-grant"
                 )
             return tuple(dict.fromkeys(errors))
 
