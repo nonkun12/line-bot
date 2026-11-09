@@ -74,7 +74,7 @@ def validate_snapshot(payload: object) -> dict:
         clean["streams"].append({
             "key": item["key"], "label": str(item.get("label") or "")[:80],
             "kind": "main" if item.get("kind") == "main" else "side",
-            "status": "observed" if item.get("status") == "observed" and source == "orca_collector" else ("reported" if item.get("status") == "observed" and source == "github_actions" else "unknown"),
+            "status": "observed" if item.get("status") == "observed" and source == "orca_collector" else ("reported" if item.get("status") in {"observed", "reported"} and source == "github_actions" else "unknown"),
             "task_count": max(0, min(int(item.get("task_count", 0)), 100)),
             "dispatch_count": max(0, min(int(item.get("dispatch_count", 0)), 100)),
             "worker_count": max(0, min(int(item.get("worker_count", 0)), 100)),
