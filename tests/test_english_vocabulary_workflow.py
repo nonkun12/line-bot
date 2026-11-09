@@ -103,3 +103,43 @@ def test_line_command_submits_candidate_without_approving_it(isolated_vocabulary
     assert "審査待ち" in response.text
     assert "学習辞書には追加されません" in response.text
     assert workflow.list_pending_candidates()[0]["word"] == "novelwordxyz"
+
+
+def test_rejected_candidate_cannot_be_reopened(isolated_vocabulary_db):
+    receipt = workflow.submit_word_candidate("novelwordxyz", "learner-1")
+    workflow.reject_word_candidate(
+        receipt.candidate_id,
+        "reviewer-1",
+        "not suitable for the current curriculum",
+        authorize_reviewer=lambda reviewer: reviewer == "reviewer-1",
+    )
+    with pytest.raises(ValueError, match="already reviewed"):
+        workflow.submit_word_candidate("novelwordxyz", "learner-2")
+
+
+def test_approved_word_cannot_be_submitted_again(isolated_vocabulary_db):
+    receipt = workflow.submit_word_candidate("novelwordxyz", "learner-1")
+    workflow.approve_word_candidate(
+        receipt.candidate_id,
+        _entry(receipt.word),
+        "reviewer-1",
+        authorize_reviewer=lambda _: True,
+    )
+    with pytest.raises(ValueError, match="previously registered|already approved"):
+        workflow.submit_word_candidate("novelwordxyz", "learner-2")
+
+
+def test_approved_word_enters_daily_rotation(isolated_vocabulary_db, monkeypatch):
+    from agents.english import quiz_state
+
+    monkeypatch.setattr(quiz_state, "DB_PATH", workflow.DB_PATH)
+    receipt = workflow.submit_word_candidate("novelwordxyz", "learner-1")
+    workflow.approve_word_candidate(
+        receipt.candidate_id,
+        _entry(receipt.word),
+        "reviewer-1",
+        authorize_reviewer=lambda _: True,
+    )
+
+    words = quiz_state.select_daily_words("learner-2", limit=10)
+    assert "novelwordxyz" in {word for word, _, _ in words}
