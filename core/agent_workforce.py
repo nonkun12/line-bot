@@ -138,7 +138,7 @@ class AgentWorkforce:
     def approve(self, task_id: str) -> bool:
         with self._connect() as db:
             cur = db.execute(
-                "UPDATE workforce_tasks SET approved=1, updated_at=? WHERE task_id=? AND status='PENDING'",
+                "UPDATE workforce_tasks SET approved=1, updated_at=? WHERE task_id=? AND status='PENDING' AND approval_required=1 AND approved=0",
                 (_now(), task_id),
             )
         return cur.rowcount == 1
@@ -189,13 +189,13 @@ class AgentWorkforce:
         if status not in TERMINAL:
             raise ValueError("invalid terminal status")
         if not isinstance(evidence, str) or not evidence.strip() or len(evidence) > 4000:
-            raise ValueError("terminal result requires bounded evidence")
+            return False
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             cur = db.execute("""
                 UPDATE workforce_tasks SET status=?, evidence=?, updated_at=?
                 WHERE task_id=? AND assigned_agent=? AND status='RUNNING'
-            """, (status, evidence, _now(), task_id, agent_id))
+            """, (status, evidence.strip(), _now(), task_id, agent_id))
             if cur.rowcount == 1:
                 db.execute("UPDATE workforce_agents SET busy_task_id=NULL WHERE agent_id=? AND busy_task_id=?", (agent_id, task_id))
             db.commit()
@@ -249,3 +249,6 @@ class AgentWorkforce:
                              row["payload"], row["status"], row["assigned_agent"],
                              bool(row["approval_required"]), bool(row["approved"]),
                              row["attempts"], row["evidence"])
+
+
+__all__ = ["AgentStatus", "AgentWorkforce", "WorkforceTask"]
