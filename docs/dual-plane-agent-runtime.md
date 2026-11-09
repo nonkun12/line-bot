@@ -150,3 +150,18 @@ Documented but not yet proven as an end-to-end deployed path: durable shared clo
 - All retries are bounded and evidence-backed.
 - HOLD, missing evidence, expired approval, or unknown execution capability fails closed.
 - This architecture document does not enable a workflow, dispatch a job, change a secret, or deploy a service.
+
+
+## Agent workforce and idle-agent elimination
+
+`core/agent_workforce.py` adds a transactional registry and capability-aware task dispatcher:
+- Every agent has an explicit runtime, capability set, enabled flag, availability heartbeat, and current task.
+- Every task declares required capabilities and a separate approval state.
+- A worker can claim only approved work matching its capabilities and only while its heartbeat is fresh.
+- Assigned/running work is tracked; interrupted work can be requeued without being marked successful.
+- Terminal PASS / NO_CHANGE / BLOCKED / FAILED requires bounded evidence from the assigned agent.
+- Idle reasons are explicit: DISABLED, NO_HEARTBEAT_OR_OFFLINE, UNAVAILABLE, WORKING, READY_FOR_ASSIGNMENT, or NO_MATCHING_APPROVED_WORK.
+
+This registry is a coordination primitive, not proof that an AI model or provider is connected. It does not launch models, create cloud credentials, or make GitHub Actions runners share a database. Multi-host operation requires a genuinely shared durable database/transport and runtime adapters. Until those are connected, agents must be reported as unverified or offline rather than counted as working.
+
+The current in-process message bus remains process-local. The management runtime currently invokes configured executors directly and reports results; a durable cross-process message transport and full runtime integration remain separate acceptance criteria. No agent is marked active solely because it appears in the registry.
