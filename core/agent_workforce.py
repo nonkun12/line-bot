@@ -7,6 +7,7 @@ capabilities, claim work, and return evidence-backed results.
 from __future__ import annotations
 
 import json
+import secrets
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -46,6 +47,7 @@ class WorkforceTask:
     approved: bool
     attempts: int
     evidence: str | None
+    attempt_token: str
 
 
 class AgentWorkforce:
@@ -71,11 +73,14 @@ class AgentWorkforce:
                     payload TEXT NOT NULL, status TEXT NOT NULL,
                     assigned_agent TEXT, approval_required INTEGER NOT NULL,
                     approved INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
-                    evidence TEXT, updated_at TEXT NOT NULL
+                    evidence TEXT, attempt_token TEXT, updated_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS workforce_ready
                     ON workforce_tasks(status, approved, updated_at);
             """)
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(workforce_tasks)")}
+            if "attempt_token" not in columns:
+                db.execute("ALTER TABLE workforce_tasks ADD COLUMN attempt_token TEXT")
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.db_path, timeout=10)
@@ -164,11 +169,12 @@ class AgentWorkforce:
             if row is None:
                 db.commit()
                 return None
+            attempt_token = secrets.token_urlsafe(24)
             changed = db.execute("""
                 UPDATE workforce_tasks SET status='ASSIGNED', assigned_agent=?,
-                    attempts=attempts+1, updated_at=?
+                    attempts=attempts+1, attempt_token=?, updated_at=?
                 WHERE task_id=? AND status='PENDING'
-            """, (agent_id, _now(), row["task_id"])).rowcount
+            """, (agent_id, attempt_token, _now(), row["task_id"])).rowcount
             if changed != 1:
                 db.rollback()
                 return None
@@ -177,25 +183,29 @@ class AgentWorkforce:
             db.commit()
         return self._task(result)
 
-    def start(self, task_id: str, agent_id: str) -> bool:
+    def start(self, task_id: str, agent_id: str, *, attempt_token: str) -> bool:
+        if not isinstance(attempt_token, str) or not attempt_token:
+            return False
         with self._connect() as db:
             cur = db.execute(
-                "UPDATE workforce_tasks SET status='RUNNING', updated_at=? WHERE task_id=? AND assigned_agent=? AND status='ASSIGNED'",
-                (_now(), task_id, agent_id),
+                "UPDATE workforce_tasks SET status='RUNNING', updated_at=? WHERE task_id=? AND assigned_agent=? AND attempt_token=? AND status='ASSIGNED'",
+                (_now(), task_id, agent_id, attempt_token),
             )
         return cur.rowcount == 1
 
-    def finish(self, task_id: str, agent_id: str, *, status: str, evidence: str) -> bool:
+    def finish(self, task_id: str, agent_id: str, *, attempt_token: str, status: str, evidence: str) -> bool:
         if status not in TERMINAL:
             raise ValueError("invalid terminal status")
+        if not isinstance(attempt_token, str) or not attempt_token:
+            return False
         if not isinstance(evidence, str) or not evidence.strip() or len(evidence) > 4000:
             return False
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             cur = db.execute("""
                 UPDATE workforce_tasks SET status=?, evidence=?, updated_at=?
-                WHERE task_id=? AND assigned_agent=? AND status='RUNNING'
-            """, (status, evidence.strip(), _now(), task_id, agent_id))
+                WHERE task_id=? AND assigned_agent=? AND attempt_token=? AND status='RUNNING'
+            """, (status, evidence.strip(), _now(), task_id, agent_id, attempt_token))
             if cur.rowcount == 1:
                 db.execute("UPDATE workforce_agents SET busy_task_id=NULL WHERE agent_id=? AND busy_task_id=?", (agent_id, task_id))
             db.commit()
@@ -211,7 +221,7 @@ class AgentWorkforce:
                 return False
             db.execute("""
                 UPDATE workforce_tasks SET status='PENDING', assigned_agent=NULL,
-                    evidence=NULL, updated_at=? WHERE task_id=?
+                    evidence=NULL, attempt_token=NULL, updated_at=? WHERE task_id=?
             """, (_now(), task_id))
             db.execute("UPDATE workforce_agents SET busy_task_id=NULL WHERE agent_id=? AND busy_task_id=?", (row["assigned_agent"], task_id))
             db.commit()
@@ -248,7 +258,7 @@ class AgentWorkforce:
         return WorkforceTask(row["task_id"], frozenset(json.loads(row["required_capabilities"])),
                              row["payload"], row["status"], row["assigned_agent"],
                              bool(row["approval_required"]), bool(row["approved"]),
-                             row["attempts"], row["evidence"])
+                             row["attempts"], row["evidence"], row["attempt_token"] or "")
 
 
 __all__ = ["AgentStatus", "AgentWorkforce", "WorkforceTask"]
