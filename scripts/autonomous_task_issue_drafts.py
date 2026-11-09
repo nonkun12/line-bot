@@ -190,13 +190,44 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         pull_requests = _load(args.pull_requests) if args.pull_requests is not None else []
-        drafts = build_issue_drafts(_load(args.report), _load(args.issues), pull_requests)
+        report = _load(args.report)
+        issues = _load(args.issues)
+        covered = _open_pr_closing_issue_numbers(pull_requests)
+        open_review_count = _open_review_issue_count(issues, covered)
+        existing_ids = _existing_task_ids(issues)
+        candidate_ids = [
+            item.get("id") for item in report.get("candidates", [])
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        ] if isinstance(report, dict) else []
+        duplicate_count = sum(task_id in existing_ids for task_id in candidate_ids)
+        remaining_capacity = max(0, MAX_OPEN_REVIEW_ISSUES - open_review_count)
+        drafts = build_issue_drafts(report, issues, pull_requests)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(drafts, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     except (OSError, ValueError) as exc:
         print(f"AUTONOMOUS_TASK_ISSUE_DRAFTS_BLOCKED: {type(exc).__name__}: {exc}")
         return 2
-    print(json.dumps({"draft_count": len(drafts), "task_ids": [row["task_id"] for row in drafts]}, ensure_ascii=False))
+    if report.get("status") == "NO_SAFE_CANDIDATE":
+        status = "NO_SAFE_CANDIDATE"
+    elif remaining_capacity == 0:
+        status = "REVIEW_BACKLOG_FULL"
+    elif drafts:
+        status = "DRAFTS_READY"
+    elif candidate_ids and duplicate_count == len(candidate_ids):
+        status = "ALL_CANDIDATES_ALREADY_ISSUED"
+    else:
+        status = "NO_ELIGIBLE_DRAFTS"
+    print(json.dumps({
+        "status": status,
+        "candidate_count": len(candidate_ids),
+        "open_review_issue_count": open_review_count,
+        "review_issue_limit": MAX_OPEN_REVIEW_ISSUES,
+        "remaining_capacity": remaining_capacity,
+        "already_issued_candidate_count": duplicate_count,
+        "draft_count": len(drafts),
+        "task_ids": [row["task_id"] for row in drafts],
+        "execution_approval_granted": False,
+    }, ensure_ascii=False))
     return 0
 
 

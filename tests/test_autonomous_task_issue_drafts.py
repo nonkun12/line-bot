@@ -168,3 +168,41 @@ def test_non_closing_pr_reference_does_not_release_review_backlog_capacity():
         "body": "Related to #1155",
     }]
     assert build_issue_drafts(_report(), issues, pull_requests) == []
+
+
+def test_main_reports_review_backlog_limit_and_deduplication(tmp_path, capsys):
+    report = _report()
+    report_path = tmp_path / "report.json"
+    issues_path = tmp_path / "issues.json"
+    output_path = tmp_path / "drafts.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    issues = [_open_review_issue(f"review-coverage-gap-{i:010d}") for i in range(4)]
+    issues_path.write_text(json.dumps(issues), encoding="utf-8")
+
+    assert main([
+        "--report", str(report_path),
+        "--issues", str(issues_path),
+        "--output", str(output_path),
+    ]) == 0
+
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["status"] == "REVIEW_BACKLOG_FULL"
+    assert summary["candidate_count"] == 1
+    assert summary["open_review_issue_count"] == 4
+    assert summary["review_issue_limit"] == 4
+    assert summary["remaining_capacity"] == 0
+    assert summary["draft_count"] == 0
+    assert summary["execution_approval_granted"] is False
+
+
+def test_workflow_publishes_candidate_backlog_diagnostics():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    start = workflow.index("- name: Create bounded review-only task issues from analyzer findings")
+    end = workflow.index("- name: Run one bounded autonomous task", start)
+    step = workflow[start:end]
+    assert "autonomous-loop-task-issue-draft-summary.json" in step
+    assert "GITHUB_STEP_SUMMARY" in step
+    assert "backlog diagnostics" in step
