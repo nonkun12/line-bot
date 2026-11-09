@@ -188,16 +188,22 @@ def reject_word_candidate(
 
 def load_approved_entries():
     """Load only human-approved entries for runtime vocabulary and quizzes."""
-    from agents.english.core_image import WordEntry
+    from agents.english.core_image import WordEntry, _ENTRIES
 
     with _connect() as conn:
         rows = conn.execute(
             "SELECT word, entry_json FROM english_approved_vocabulary ORDER BY word"
         ).fetchall()
     entries = []
+    seen = set(_ENTRIES)
     for word, payload in rows:
         data = json.loads(payload)
-        if data.get("word") != word:
-            raise RuntimeError("approved vocabulary row failed integrity check")
-        entries.append(WordEntry(**{**data, "related": tuple(data["related"])}))
+        normalized = normalize_headword(word)
+        if data.get("word") != word or normalized != word or word in seen:
+            raise RuntimeError("approved vocabulary row failed integrity or duplicate check")
+        entry = WordEntry(**{**data, "related": tuple(data["related"])})
+        if not all((entry.pronunciation, entry.core_image, entry.parts, entry.example, *entry.related)):
+            raise RuntimeError("approved vocabulary entry is incomplete")
+        seen.add(word)
+        entries.append(entry)
     return tuple(entries)
