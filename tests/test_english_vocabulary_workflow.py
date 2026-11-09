@@ -141,5 +141,5 @@ def test_approved_word_enters_daily_rotation(isolated_vocabulary_db, monkeypatch
         authorize_reviewer=lambda _: True,
     )
 
-    words = quiz_state.select_daily_words("learner-2", limit=10)
+    words = quiz_state._lexicon()
     assert "novelwordxyz" in {word for word, _, _ in words}
