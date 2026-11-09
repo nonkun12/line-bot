@@ -130,19 +130,19 @@ class EnglishLearningAgent:
             from agents.english.vocabulary_workflow import submit_word_candidate
 
             match = re.fullmatch(
-                r"(?:単語追加|追加候補|add\\s+word)\\s*[:： ]\\s*([a-z][a-z'-]{0,63})",
+                r"(?:単語追加|追加候補|add\s+word)\s*[:： ]\s*([a-z][a-z'-]{0,63})",
                 original,
                 re.IGNORECASE,
             )
             try:
                 receipt = submit_word_candidate(match.group(1), request.user_id)
                 text = (
-                    f"📥 単語候補「{receipt.word}」を審査待ちとして登録しました。\\n"
-                    f"受付番号: #{receipt.candidate_id}\\n"
+                    f"📥 単語候補「{receipt.word}」を審査待ちとして登録しました。\n"
+                    f"受付番号: #{receipt.candidate_id}\n"
                     "重複確認と内容審査が終わるまで、学習辞書には追加されません。"
                 )
             except (ValueError, RuntimeError) as exc:
-                text = f"⚠️ 単語候補を受け付けられませんでした。\\n{exc}"
+                text = f"⚠️ 単語候補を受け付けられませんでした。\n{exc}"
         elif mode == "vocabulary":
             lines = ["📘 今日の英単語コアイメージ（確認済みローカル辞書）", ""]
             for word, core_image, example in select_daily_words(request.user_id, 3):
