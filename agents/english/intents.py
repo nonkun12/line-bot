@@ -11,6 +11,8 @@ def classify_english_mode(text: str) -> str:
         return "ai_tutor"
     if re.fullmatch(r"(?:answer\s*)?[abc](?:[.\)\s]+)?", lowered):
         return "quiz_answer"
+    if re.match(r"^(?:単語追加|追加候補|add\\s+word)\\s*[:： ]\\s*[a-z][a-z'-]{0,63}$", lowered, re.IGNORECASE):
+        return "add_word"
     if any(k in lowered for k in ("クイズ", "quiz", "問題")):
         return "quiz"
     if any(k in lowered for k in ("単語", "vocabulary", "word")):
