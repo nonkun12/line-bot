@@ -203,6 +203,7 @@ def test_line_quiz_uses_approved_dynamic_words(isolated_vocabulary_db, monkeypat
         "reviewer-1",
         authorize_reviewer=lambda _: True,
     )
+    monkeypatch.setattr(quiz.progress, "DB_PATH", workflow.DB_PATH)
     monkeypatch.setattr(
         quiz.random,
         "choice",
