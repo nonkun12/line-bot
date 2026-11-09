@@ -460,6 +460,12 @@ _ENTRIES: dict[str, WordEntry] = {
     "devote": WordEntry(word="devote", pronunciation="ディヴォウト", core_image="時間や努力を特定の対象に注ぎ込む → 捧げる・専念する", parts="devote time to ... / devote oneself to ...。", related=("devotion（献身）", "dedicate（捧げる）", "dedicated（専念した）",), example="He devoted his life to science.（彼は人生を科学に捧げた。）"),
 }
 
+from agents.english.vocabulary_registry import validate_current_headwords
+
+
+validate_current_headwords(_ENTRIES)
+
+
 _COMMAND_RE = re.compile(
     r"^(?:コアイメージ|語根|語幹|core\s*image|word\s*root)\s*[:：]?\s+([A-Za-z][A-Za-z'-]{0,63})\s*[?？。！!]*$",
     re.IGNORECASE,
