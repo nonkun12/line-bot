@@ -118,6 +118,8 @@ def approve_word_candidate(
     }
     if not all(clean[key] for key in ("pronunciation", "core_image", "parts", "example")):
         raise ValueError("reviewed entry contains empty required content")
+    if isinstance(entry["related"], (str, bytes)) or not isinstance(entry["related"], (list, tuple)):
+        raise ValueError("related must be a list or tuple of reviewed words")
     if not clean["related"] or any(not item for item in clean["related"]):
         raise ValueError("reviewed entry requires non-empty related words")
     validate_new_headwords([word])
