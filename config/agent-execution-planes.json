@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "architecture": "dual-plane-agent-runtime",
+  "status": "contract_only",
+  "last_updated": "2026-11-10",
+  "invariants": {
+    "cloud_plane_must_not_depend_on_mac": true,
+    "mac_local_models_must_not_be_advertised_as_cloud": true,
+    "mac_offline_task_state": "PENDING_MAC",
+    "result_messages_grant_permissions": false,
+    "auto_apply_patch": false,
+    "auto_deploy": false,
+    "auto_merge": false,
+    "fail_closed_on_hold_or_missing_evidence": true
+  },
+  "planes": {
+    "cloud": {
+      "purpose": "Always-available coordination and cloud-safe execution",
+      "current_foundations": [
+        ".github/workflows/distributed-autonomous-loop.yml",
+        ".github/workflows/distributed-loop-postrun.yml",
+        ".github/workflows/continuous-distributed-loop.yml",
+        ".github/workflows/hourly-self-improvement-sidecar.yml",
+        "core/management_ai.py",
+        "core/distributed_scheduler.py",
+        "core/agent_communication.py"
+      ],
+      "durable_cross_process_message_transport": "not_yet_verified",
+      "hosted_llm_inference": "not_enabled_or_not_verified",
+      "agents": [
+        {
+          "id": "orca-control-plane",
+          "display_name": "Orca / Control Tower",
+          "runtime": "github_actions_and_repository_state",
+          "status": "workflow_foundation_present",
+          "mac_dependency": false,
+          "scope": "coordination_and_gates"
+        },
+        {
+          "id": "rea-review",
+          "display_name": "REA",
+          "runtime": "unverified",
+          "status": "integration_unverified",
+          "mac_dependency": "unknown",
+          "scope": "read_only_review_only"
+        },
+        {
+          "id": "english-learning",
+          "display_name": "English Learning AI",
+          "runtime": "line_bot_application",
+          "status": "code_path_present_runtime_unverified",
+          "mac_dependency": "unknown",
+          "scope": "vocabulary_examples_quiz_review"
+        },
+        {
+          "id": "muse",
+          "display_name": "Muse",
+          "runtime": "cloud_candidate",
+          "status": "end_to_end_runtime_unverified",
+          "mac_dependency": "unknown",
+          "scope": "creative_media_candidates"
+        }
+      ]
+    },
+    "mac": {
+      "purpose": "Local models, desktop control, local files and applications",
+      "offline_policy": "queue_only_then_resume_after_reconnect",
+      "durable_queue_implementation": "end_to_end_unverified",
+      "agents": [
+        {
+          "id": "hermes",
+          "display_name": "Hermes / Computer Use",
+          "runtime": "mac_local",
+          "status": "local_setup_previously_observed",
+          "mac_dependency": true,
+          "scope": "desktop_and_local_operations"
+        },
+        {
+          "id": "openclaw",
+          "display_name": "OpenClaw Gateway",
+          "runtime": "mac_local",
+          "status": "local_setup_previously_observed",
+          "mac_dependency": true,
+          "scope": "local_agent_gateway"
+        },
+        {
+          "id": "opencode-host",
+          "display_name": "OpenCode Host",
+          "runtime": "mac_local",
+          "status": "agent_registered_execution_unverified",
+          "mac_dependency": true,
+          "scope": "local_development"
+        },
+        {
+          "id": "bonsai-9b",
+          "display_name": "Bonsai 2 9B",
+          "runtime": "mac_local_model",
+          "status": "local_model_setup_previously_observed",
+          "mac_dependency": true,
+          "scope": "local_inference"
+        },
+        {
+          "id": "lfm3-1_7b",
+          "display_name": "LFM3 1.7B QAD Q4_0",
+          "runtime": "ollama_local",
+          "status": "terminal_response_observed",
+          "mac_dependency": true,
+          "scope": "lightweight_local_inference"
+        },
+        {
+          "id": "obsidian-local",
+          "display_name": "Obsidian Local Knowledge",
+          "runtime": "mac_local",
+          "status": "installed_previously_reported_end_to_end_sync_unverified",
+          "mac_dependency": true,
+          "scope": "local_knowledge_vault"
+        }
+      ]
+    }
+  },
+  "handoff_contract": {
+    "schema_version": 1,
+    "required_fields": [
+      "task_id",
+      "correlation_id",
+      "execution_plane",
+      "required_capabilities",
+      "resource_scope",
+      "status",
+      "approval_state",
+      "idempotency_key",
+      "attempt_count",
+      "evidence_refs"
+    ],
+    "execution_plane_values": [
+      "cloud",
+      "mac"
+    ],
+    "status_values": [
+      "QUEUED",
+      "CLAIMED",
+      "RUNNING",
+      "REVIEW_PENDING",
+      "PASS",
+      "NO_CHANGE",
+      "BLOCKED",
+      "FAILED",
+      "PENDING_MAC"
+    ],
+    "rules": [
+      "status_and_approval_are_separate",
+      "result_messages_never_grant_permissions",
+      "mac_tasks_remain_pending_while_offline",
+      "no_pass_without_verifiable_evidence",
+      "idempotent_claim_and_bounded_retries"
+    ]
+  }
+}
