@@ -241,3 +241,33 @@ def test_core_image_dictionary_has_no_duplicate_literal_word_keys():
     assert len(keys) == len(set(keys))
     assert len(keys) >= 100
 
+
+
+def test_vocabulary_registry_rejects_current_and_historical_duplicates():
+    import pytest
+    from agents.english.vocabulary_registry import validate_new_headwords
+
+    for word in ("inspect", "interesting", "get"):
+        with pytest.raises(ValueError, match="previously registered"):
+            validate_new_headwords([word])
+
+
+def test_vocabulary_registry_accepts_a_genuinely_new_word():
+    from agents.english.vocabulary_registry import validate_new_headwords
+
+    assert validate_new_headwords(["brandnewword"]) == ("brandnewword",)
+
+
+def test_vocabulary_registry_rejects_duplicates_inside_a_batch():
+    import pytest
+    from agents.english.vocabulary_registry import validate_new_headwords
+
+    with pytest.raises(ValueError, match="duplicate headword"):
+        validate_new_headwords(["newword", "NEWWORD"])
+
+
+def test_core_dictionary_and_registry_are_exactly_synchronized():
+    from agents.english.core_image import _ENTRIES
+    from agents.english.vocabulary_registry import validate_current_headwords
+
+    validate_current_headwords(_ENTRIES)
