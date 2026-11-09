@@ -1,0 +1,105 @@
+from __future__ import annotations
+
+import pytest
+
+from agents.english import vocabulary_workflow as workflow
+
+
+@pytest.fixture
+def isolated_vocabulary_db(tmp_path, monkeypatch):
+    monkeypatch.setattr(workflow, "DB_PATH", str(tmp_path / "english-test.sqlite3"))
+
+
+def _entry(word: str) -> dict:
+    return {
+        "word": word,
+        "pronunciation": "テスト",
+        "core_image": "意味をつかむための確認済みイメージ",
+        "parts": "語源は未確認。語形成を断定しない。",
+        "related": ["related item", "another item"],
+        "example": "This is a reviewed example.",
+        "note": "Reviewed locally.",
+    }
+
+
+def test_candidate_submission_is_pending_and_not_live(isolated_vocabulary_db):
+    from agents.english.core_image import explain_core_image, get_core_image_quiz_entries
+
+    receipt = workflow.submit_word_candidate("novelwordxyz", "learner-1")
+
+    assert receipt.status == "pending"
+    assert receipt.word == "novelwordxyz"
+    assert "説明を保留" in explain_core_image("novelwordxyz")
+    assert "novelwordxyz" not in {entry.word for entry in get_core_image_quiz_entries()}
+    assert workflow.list_pending_candidates()[0]["candidate_id"] == receipt.candidate_id
+
+
+def test_registry_and_pending_queue_reject_duplicates(isolated_vocabulary_db):
+    with pytest.raises(ValueError, match="previously registered"):
+        workflow.submit_word_candidate("inspect", "learner-1")
+
+    workflow.submit_word_candidate("novelwordxyz", "learner-1")
+    with pytest.raises(ValueError, match="already pending"):
+        workflow.submit_word_candidate("NOVELWORDXYZ", "learner-2")
+
+
+def test_approval_requires_authorized_reviewer(isolated_vocabulary_db):
+    receipt = workflow.submit_word_candidate("novelwordxyz", "learner-1")
+
+    with pytest.raises(PermissionError):
+        workflow.approve_word_candidate(receipt.candidate_id, _entry(receipt.word), "reviewer")
+
+
+def test_approved_entry_is_atomically_added_to_explanation_and_quiz(isolated_vocabulary_db):
+    from agents.english.core_image import explain_core_image, get_core_image_quiz_entries
+
+    receipt = workflow.submit_word_candidate("novelwordxyz", "learner-1")
+    approved = workflow.approve_word_candidate(
+        receipt.candidate_id,
+        _entry(receipt.word),
+        "reviewer-1",
+        authorize_reviewer=lambda reviewer: reviewer == "reviewer-1",
+    )
+
+    assert approved == "novelwordxyz"
+    assert "意味をつかむための確認済みイメージ" in explain_core_image(approved)
+    assert approved in {entry.word for entry in get_core_image_quiz_entries()}
+    assert workflow.list_pending_candidates() == ()
+
+
+def test_approval_rejects_mismatched_or_incomplete_entry(isolated_vocabulary_db):
+    receipt = workflow.submit_word_candidate("novelwordxyz", "learner-1")
+    with pytest.raises(ValueError, match="candidate"):
+        workflow.approve_word_candidate(
+            receipt.candidate_id,
+            _entry("differentword"),
+            "reviewer-1",
+            authorize_reviewer=lambda _: True,
+        )
+
+    invalid = _entry(receipt.word)
+    invalid["related"] = "not-a-list"
+    with pytest.raises(ValueError, match="related must"):
+        workflow.approve_word_candidate(
+            receipt.candidate_id,
+            invalid,
+            "reviewer-1",
+            authorize_reviewer=lambda _: True,
+        )
+
+
+def test_line_command_submits_candidate_without_approving_it(isolated_vocabulary_db):
+    from agents.english.node import EnglishLearningAgent
+    from core.agents import AgentRequest
+
+    request = AgentRequest(
+        user_id="learner-1",
+        message="単語追加: novelwordxyz",
+        channel="line",
+        metadata={},
+    )
+    response = EnglishLearningAgent().handle(request)
+
+    assert "審査待ち" in response.text
+    assert "学習辞書には追加されません" in response.text
+    assert workflow.list_pending_candidates()[0]["word"] == "novelwordxyz"
