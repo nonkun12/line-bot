@@ -115,6 +115,7 @@ class IdeaAgent:
                 task_id=f"idea-{style}-{index}",
                 role=AgentRole.IDEA,
                 instruction=(
+                    "No implementation, execution, merge, deploy. "
                     "提案・仮説・検証方法のみを作成する。実装・実行・マージ・デプロイは禁止。"
                     "奇抜・非典型・前提破壊という理由だけで候補を捨てない。"
                     "危険な実行方法、権限拡大、承認やHOLDの自己解除は提案しない。"
