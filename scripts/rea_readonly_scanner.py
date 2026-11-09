@@ -23,7 +23,7 @@ ALLOWED_SUFFIXES = frozenset({".py", ".json", ".yml", ".yaml", ".md", ".js", ".h
 MAX_FILE_BYTES = 512 * 1024
 MAX_FILES = 5000
 WORKFLOW_WRITE_ALL_RE = re.compile(
-    r"""^[ \\t]*permissions[ \\t]*:[ \\t]*write-all[ \\t]*(?:#.*)?$""",
+    r"""^[ \t]*permissions[ \t]*:[ \t]*write-all[ \t]*(?:#.*)?$""",
     re.IGNORECASE | re.MULTILINE,
 )
 DANGEROUS_FLAG_RE = re.compile(
@@ -186,7 +186,7 @@ def scan_repository(repo_root: str | Path) -> dict[str, Any]:
 
         if relative.startswith(".github/workflows/"):
             for match in WORKFLOW_WRITE_ALL_RE.finditer(source):
-                line = source.count("\\n", 0, match.start()) + 1
+                line = source.count("\n", 0, match.start()) + 1
                 findings.append(_finding(
                     category="workflow_permission",
                     severity="HIGH",
