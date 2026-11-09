@@ -244,3 +244,16 @@ def test_local_review_cli_approves_reviewed_entry(isolated_vocabulary_db, monkey
     ]) == 0
     assert workflow.load_approved_entries()[0].word == receipt.word
     assert "承認済み" in capsys.readouterr().out
+
+def test_local_review_cli_rejects_with_reason(isolated_vocabulary_db, monkeypatch, capsys):
+    from agents.english.review_cli import main
+
+    receipt = workflow.submit_word_candidate("novelwordxyz", "learner-1")
+    monkeypatch.setenv("ENGLISH_VOCAB_REVIEWER_IDS", "reviewer-1")
+    assert main([
+        "--reviewer-id", "reviewer-1", "reject", str(receipt.candidate_id),
+        "--reason", "not in the current curriculum",
+    ]) == 0
+    with pytest.raises(ValueError, match="already reviewed"):
+        workflow.submit_word_candidate(receipt.word, "learner-2")
+    assert "却下済み" in capsys.readouterr().out
