@@ -496,6 +496,13 @@ def explain_core_image(word: str) -> str:
 
     entry = _ENTRIES.get(normalized)
     if entry is None:
+        from agents.english.vocabulary_workflow import load_approved_entries
+
+        entry = next(
+            (candidate for candidate in load_approved_entries() if candidate.word == normalized),
+            None,
+        )
+    if entry is None:
         return (
             f"「{normalized}」は、現在の無料ローカル辞書に確かな解説がありません。\n"
             "語源や語根を推測で断定しないため、今回は説明を保留します。\n"
@@ -523,4 +530,7 @@ def handle_core_image_command(message: str) -> str | None:
 
 def get_core_image_quiz_entries() -> tuple[WordEntry, ...]:
     """Return reviewed local entries for quiz generation without external API calls."""
-    return tuple(_ENTRIES.values())
+    from agents.english.vocabulary_workflow import load_approved_entries
+
+    approved = load_approved_entries()
+    return tuple(_ENTRIES.values()) + approved
