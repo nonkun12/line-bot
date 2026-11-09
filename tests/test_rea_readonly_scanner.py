@@ -57,6 +57,9 @@ class ReadonlyScannerTests(unittest.TestCase):
         )
         self.assertEqual(first, second)
         self.assertEqual(first["status"], "PASS")
+        self.assertEqual(first["coverage"], "COMPLETE")
+        self.assertEqual(len(first["evidence_sha256"]), 64)
+        self.assertEqual(first["evidence_sha256"], second["evidence_sha256"])
         self.assertTrue(first["capabilities"]["read_only"])
         self.assertFalse(first["capabilities"]["executes_project_code"])
         self.assertFalse(first["capabilities"]["patches_tasks_hold_merge_deploy"])
@@ -130,6 +133,10 @@ class ReadonlyScannerTests(unittest.TestCase):
             report = scan_repository(self.root)
             self.assertNotIn("private marker", json.dumps(report))
             self.assertNotIn("outside.py", [f["evidence"]["path"] for f in report["findings"]])
+            self.assertEqual(report["status"], "BLOCKED")
+            self.assertFalse(report["complete"])
+            self.assertEqual(report["coverage"], "INCOMPLETE")
+            self.assertEqual(report["files_skipped_unsupported"], 1)
         finally:
             outside.unlink(missing_ok=True)
 
