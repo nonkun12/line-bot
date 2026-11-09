@@ -42,14 +42,18 @@ def _user_key(user_id: str) -> str:
 
 
 def _lexicon() -> list[tuple[str, str, str]]:
-    """Use reviewed static and approved dynamic entries; keep _ENTRIES patchable for callers."""
+    """Use reviewed static and approved dynamic entries; preserve mapping-key compatibility."""
     entries = dict(_ENTRIES)
     for entry in load_approved_entries():
         entries.setdefault(entry.word, entry)
     return [
-        (entry.word, entry.core_image, entry.example)
-        for entry in sorted(entries.values(), key=lambda item: item.word)
-        if entry.core_image.strip() and entry.example.strip()
+        (word, entry.core_image, entry.example)
+        for word, entry in sorted(entries.items(), key=lambda item: item[0])
+        if isinstance(word, str)
+        and isinstance(entry.core_image, str)
+        and isinstance(entry.example, str)
+        and entry.core_image.strip()
+        and entry.example.strip()
     ]
 
 
