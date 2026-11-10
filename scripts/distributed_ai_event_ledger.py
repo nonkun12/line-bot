@@ -20,7 +20,7 @@ ALLOWED_EVENT_TYPES = {
     "task.failed",
     "task.blocked",
 }
-TERMINAL_RESULT_STATUSES = {"PASS", "FAIL", "BLOCKED", "NO_CHANGE"}
+TERMINAL_RESULT_STATUSES = {"PASS", "FAIL", "BLOCKED", "NO_CHANGE", "STOPPED"}
 
 
 def _read_json(path: Path, default: Any) -> Any:
@@ -101,7 +101,6 @@ def build_event_ledger(
         result = result_by_id.get(task_id)
         if result is None:
             continue
-        events.append(_event(run_id, task_id, "task.started", "runner", {}))
         raw_status = result.get("status") or result.get("outcome") or result.get("result")
         status = raw_status.upper() if isinstance(raw_status, str) else ""
         if status not in TERMINAL_RESULT_STATUSES:
@@ -111,7 +110,10 @@ def build_event_ledger(
             "NO_CHANGE": "task.completed",
             "FAIL": "task.failed",
             "BLOCKED": "task.blocked",
+            "STOPPED": "task.blocked",
         }[status]
+        if status not in {"BLOCKED", "STOPPED"}:
+            events.append(_event(run_id, task_id, "task.started", "runner", {}))
         evidence = {
             "status": status,
             "has_test_evidence": bool(result.get("tests") or result.get("test_result") or result.get("test_summary")),
