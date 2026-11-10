@@ -9,6 +9,8 @@ import os
 import re
 import subprocess
 import sys
+import shutil
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -213,6 +215,37 @@ Rules:
 """
 
 
+def run_isolated_tests(paths: list[str], app_slug: str):
+    """Test only copied app files in a read-only, networkless container."""
+    with tempfile.TemporaryDirectory(prefix="orca-app-test-") as temp_root:
+        staging = Path(temp_root)
+        staging.chmod(0o755)
+        for relative in paths:
+            source = Path(relative)
+            destination = staging / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            for parent in [destination.parent, *destination.parent.parents]:
+                if parent == staging.parent:
+                    break
+                parent.chmod(0o755)
+            shutil.copyfile(source, destination)
+            destination.chmod(0o644)
+        command = [
+            "docker", "run", "--rm", "--network", "none",
+            "--cpus=2", "--memory=4g", "--pids-limit=128",
+            "--cap-drop=ALL", "--security-opt=no-new-privileges",
+            "--read-only", "--user", "65534:65534",
+            "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
+            "-e", "PYTHONDONTWRITEBYTECODE=1",
+            "-v", f"{staging}:/workspace:ro",
+            "-w", "/workspace",
+            "python:3.13-slim", "python", "-m", "pytest",
+            "-q", "--tb=short", "-p", "no:cacheprovider",
+            f"apps/{app_slug}/tests",
+        ]
+        return run(command, timeout=300)
+
+
 def process(encoded_task: str) -> int:
     if not os.environ.get("ORCA_TASK_APPROVAL_GATE", "").strip():
         raise WorkerError(
@@ -287,11 +320,7 @@ def process(encoded_task: str) -> int:
             for path in paths
         }
         app_slug = paths[0].split("/")[1]
-        tests = run(
-            ["docker", "exec", "--user", "65534:65534", "orca-cpu-test", "python", "-m", "pytest",
-             "-q", "--tb=short", f"apps/{app_slug}/tests"],
-            timeout=300,
-        )
+        tests = run_isolated_tests(paths, app_slug)
         if tests.returncode:
             raise WorkerError("isolated app tests failed: " + (tests.stdout + tests.stderr)[-4000:])
 
