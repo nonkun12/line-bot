@@ -7,7 +7,7 @@ Groq, a paid inference API, a Mac, or a paid VM.
 ## What it does
 
 1. Every 15 minutes, a read-only job checks the existing Cloudflare D1 task API
-   for one queued task.
+   for one queued task whose request starts with the explicit `アプリ開発:` prefix.
 2. If a task exists, the execution job waits at the GitHub Environment named
    `orca-task-execution`.
 3. After an authorized reviewer approves that environment deployment, the worker
@@ -50,7 +50,7 @@ Do not run this workflow until required reviewers have been configured.
 - GitHub-hosted runner availability and free quotas are subject to GitHub's
   current plan and usage limits. The workflow is scheduled, not guaranteed to
   start at an exact minute.
-- The worker only creates a new self-contained Python app under apps/<slug>/;
+- The worker only processes `アプリ開発:` tasks and creates a new self-contained Python app under apps/<slug>/;
   it cannot change existing applications or line-bot source files. Every app must
   include a tests/test_*.py file. Generated tests run in a container with no network
   and no GitHub/D1 credentials.
