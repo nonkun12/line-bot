@@ -157,6 +157,7 @@ def test_isolated_test_runner_mounts_only_read_only_app_copy(monkeypatch, tmp_pa
     command = observed["command"]
     assert "--network" in command and command[command.index("--network") + 1] == "none"
     assert "--read-only" in command
+    assert "orca-app-test:local" in command
     assert "--user" in command and command[command.index("--user") + 1] == "65534:65534"
     assert observed["files"] == ["apps/demo/app.py", "apps/demo/tests/test_app.py"]
     assert observed["content"] == "VALUE = 1\n"
