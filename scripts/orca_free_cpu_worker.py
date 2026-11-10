@@ -239,7 +239,7 @@ def run_isolated_tests(paths: list[str], app_slug: str):
             "-e", "PYTHONDONTWRITEBYTECODE=1",
             "-v", f"{staging}:/workspace:ro",
             "-w", "/workspace",
-            "python:3.13-slim", "python", "-m", "pytest",
+            "orca-app-test:local", "python", "-m", "pytest",
             "-q", "--tb=short", "-p", "no:cacheprovider",
             f"apps/{app_slug}/tests",
         ]
