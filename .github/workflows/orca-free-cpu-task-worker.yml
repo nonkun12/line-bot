@@ -1,0 +1,83 @@
+name: ORCA Free CPU Task Worker
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: orca-free-cpu-task-worker
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      task_id: ${{ steps.poll.outputs.task_id }}
+      task_payload: ${{ steps.poll.outputs.task_payload }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Poll D1 task queue (read-only)
+        id: poll
+        env:
+          ORCA_TASK_API_URL: https://orca-test-api.norimitsu50.workers.dev
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python scripts/orca_free_cpu_worker.py poll
+
+  execute:
+    needs: poll
+    if: ${{ needs.poll.outputs.task_id != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    environment:
+      name: orca-task-execution
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install repository test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            python -m pip install -r requirements.txt
+          fi
+          python -m pip install pytest
+      - name: Install Ollama CPU runtime
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve >/tmp/ollama.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if ollama list >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          ollama pull qwen2.5-coder:1.5b
+      - name: Generate, test, and open a review-only PR
+        env:
+          ORCA_TASK_API_URL: https://orca-test-api.norimitsu50.workers.dev
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+          ORCA_TASK_APPROVAL_GATE: ${{ secrets.ORCA_TASK_APPROVAL_GATE }}
+          ORCA_TASK_PAYLOAD: ${{ needs.poll.outputs.task_payload }}
+          ORCA_CPU_MODEL: qwen2.5-coder:1.5b
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python scripts/orca_free_cpu_worker.py process
