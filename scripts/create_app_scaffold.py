@@ -12,6 +12,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from scripts.rea_preflight import require_rea_pass
+
 ROOT = Path(__file__).resolve().parents[1]
 NEW_APP_PATTERN = re.compile(
     r"(?:新規|新しい|新規の).{0,20}(?:アプリ|webアプリ|システム|サービス)|"
@@ -22,12 +24,26 @@ NEW_APP_PATTERN = re.compile(
 MAX_INSTRUCTION_LENGTH = 2000
 
 
-def is_new_app_request(instruction: str) -> bool:
-    """Classify only clear app-creation requests; maintenance stays on the normal path."""
+def _instruction_body(instruction: str) -> str:
     value = str(instruction or "").strip()
+    if not value.startswith("アプリ開発:"):
+        return ""
+    return value[len("アプリ開発:"):].strip()
+
+
+def looks_like_new_app_intent(instruction: str) -> bool:
+    """Detect new-app intent even when the required explicit prefix is missing."""
+    value = str(instruction or "").strip()
+    if value.startswith("アプリ開発:"):
+        value = value[len("アプリ開発:"):].strip()
     if not value or len(value) > MAX_INSTRUCTION_LENGTH:
         return False
     return bool(NEW_APP_PATTERN.search(value))
+
+
+def is_new_app_request(instruction: str) -> bool:
+    """Route new-app creation only when the explicit アプリ開発: prefix is present."""
+    return bool(_instruction_body(instruction)) and looks_like_new_app_intent(instruction)
 
 
 def safe_slug(instruction: str, run_id: str = "local") -> str:
@@ -132,9 +148,11 @@ def create_app(instruction: str, *, root: Path = ROOT, run_id: str = "local") ->
     """Create exactly two new files under the generated-app root, refusing overwrite."""
     instruction = str(instruction or "").strip()
     if not is_new_app_request(instruction):
-        raise ValueError("instruction is not an explicit new-app request")
+        raise ValueError("new-app requests must start with アプリ開発:")
+    instruction = _instruction_body(instruction)
     if len(instruction) > MAX_INSTRUCTION_LENGTH:
         raise ValueError("instruction exceeds the configured limit")
+    require_rea_pass(root)
     slug = safe_slug(instruction, run_id)
     root_resolved = root.resolve()
     allowed_root = (root / "apps" / "generated").resolve()
