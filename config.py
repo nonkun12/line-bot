@@ -1,4 +1,6 @@
 import os
+import uuid
+import httpx
 import certifi
 from dotenv import load_dotenv
 from linebot.v3.messaging import (
@@ -32,6 +34,8 @@ AI_REPORT_GITHUB_REPO = os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-b
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "")
 VOICE_PUBLIC_BASE_URL = os.environ.get("VOICE_PUBLIC_BASE_URL", "https://line-bot-yvea.onrender.com").rstrip("/")
+ORCA_TASK_API_URL = os.environ.get("ORCA_TASK_API_URL", "").strip()
+ORCA_TASK_API_TOKEN = os.environ.get("ORCA_TASK_API_TOKEN", "").strip()
 
 AI_APP_BUILDER_URL = os.environ.get("AI_APP_BUILDER_URL", "")
 AI_APP_BUILDER_SHARED_SECRET = os.environ.get("AI_APP_BUILDER_SHARED_SECRET", "")
@@ -46,6 +50,52 @@ MODEL = "openai/gpt-oss-20b"
 
 # Render deployment synchronization marker.
 DEPLOY_SYNC_MARKER = "2026-09-12-line-voice-e2e"
+
+
+def _register_orca_task(message: str, message_id: str):
+    """Explicit LINE task intake only; stores a task in Cloudflare D1 without executing it."""
+    prefixes = ("タスク登録:", "タスク登録：")
+    prefix = next((item for item in prefixes if message.startswith(item)), None)
+    if prefix is None:
+        return None
+
+    request_text = message[len(prefix):].strip()
+    if not request_text:
+        return False, "タスク内容が空です。「タスク登録: 依頼内容」の形式で送ってください。", False
+    if len(request_text.encode("utf-8")) > 6000:
+        return False, "依頼文が長すぎます。6,000バイト以内にしてください。", False
+    if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN:
+        return False, "Cloudflare受付設定が未完了です。依頼は登録されていません。", False
+
+    payload = {
+        "task_id": f"line-{uuid.uuid4().hex}",
+        "request_text": request_text,
+        "source_event_id": str(message_id),
+    }
+    try:
+        response = httpx.post(
+            ORCA_TASK_API_URL,
+            json=payload,
+            headers={"Authorization": f"Bearer {ORCA_TASK_API_TOKEN}"},
+            timeout=8.0,
+        )
+    except httpx.TransportError:
+        return False, "Cloudflareへの接続に失敗しました。依頼は未確認です。時間をおいて再送してください。", True
+
+    if response.status_code >= 500:
+        return False, "Cloudflare側で一時エラーが発生しました。依頼は未確認です。再送してください。", True
+    if response.status_code not in (200, 201):
+        return False, f"Cloudflare受付が拒否されました（HTTP {response.status_code}）。依頼は登録されていません。", False
+
+    try:
+        result = response.json()
+        task = result.get("task", result) if isinstance(result, dict) else {}
+        task_id = task.get("task_id") if isinstance(task, dict) else None
+        status = task.get("status", "queued") if isinstance(task, dict) else "queued"
+    except (ValueError, AttributeError):
+        return False, "Cloudflareの応答を確認できませんでした。登録状態を確認してから再送してください。", True
+
+    return True, f"Cloudflare D1に受付しました。状態: {status} / Task ID: {task_id or '受付済み'}（この段階では実行していません）", False
 
 
 # app.py 側の MessageEvent ハンドラーが誤って欠落しても、LINE webhook を
@@ -69,7 +119,7 @@ def handle_message_event(event):
         )
         from line_development import extract_development_instruction, dispatch_development_workflow
         from distributed_loop_trigger import request_distributed_loop
-        from db import is_processed_event, create_processed_event
+        from db import is_processed_event, create_processed_event, delete_processed_event
         from e2e_status import record_step
 
         with _processed_lock:
@@ -90,6 +140,24 @@ def handle_message_event(event):
             _processed_message_ids[message_id] = True
             if len(_processed_message_ids) > _MAX_TRACKED_IDS:
                 _processed_message_ids.popitem(last=False)
+
+        # Explicit Cloudflare intake is isolated from development and Distributed Loop dispatch.
+        intake_result = _register_orca_task(text, message_id)
+        if intake_result is not None:
+            accepted, intake_reply, retryable = intake_result
+            if retryable:
+                # Allow a LINE redelivery to retry a transient D1/API failure.
+                # source_event_id makes a timeout-after-commit retry idempotent.
+                with _processed_lock:
+                    _processed_message_ids.pop(message_id, None)
+                    delete_processed_event(message_id)
+            try:
+                _line_push(str(user_id), intake_reply)
+            except Exception:
+                import traceback
+                print("===== ORCA TASK INTAKE PUSH ERROR =====")
+                traceback.print_exc()
+            return
 
         # Development commands are an explicit, isolated LINE protocol.
         # Normal conversation, GitHub lookup commands, and n8n are untouched.
