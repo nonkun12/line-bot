@@ -81,3 +81,35 @@ def test_validate_patch_rejects_workflow_changes():
         assert "forbidden output path" in str(exc)
     else:
         raise AssertionError("workflow patch should be rejected")
+
+
+def test_isolated_test_runner_mounts_only_read_only_app_copy(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    app = tmp_path / "apps" / "demo"
+    tests_dir = app / "tests"
+    tests_dir.mkdir(parents=True)
+    (app / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (tests_dir / "test_app.py").write_text("def test_value():\n    assert True\n", encoding="utf-8")
+    observed = {}
+
+    def fake_run(command, *, timeout=120, input_text=None):
+        observed["command"] = command
+        mount = next(item for item in command if ":/workspace:ro" in item)
+        staged = Path(mount.split(":/workspace:ro")[0])
+        observed["files"] = sorted(str(p.relative_to(staged)) for p in staged.rglob("*") if p.is_file())
+        observed["content"] = (staged / "apps/demo/app.py").read_text(encoding="utf-8")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    result = worker.run_isolated_tests(
+        ["apps/demo/app.py", "apps/demo/tests/test_app.py"], "demo"
+    )
+    assert result.returncode == 0
+    command = observed["command"]
+    assert "--network" in command and command[command.index("--network") + 1] == "none"
+    assert "--read-only" in command
+    assert "--user" in command and command[command.index("--user") + 1] == "65534:65534"
+    assert observed["files"] == ["apps/demo/app.py", "apps/demo/tests/test_app.py"]
+    assert observed["content"] == "VALUE = 1\n"
