@@ -79,6 +79,12 @@ def test_existing_app_is_never_overwritten(tmp_path):
     assert paths[0].read_text(encoding="utf-8") == "keep"
 
 
+def test_unprefixed_new_app_cannot_create_files(tmp_path):
+    with pytest.raises(ValueError, match="アプリ開発:"):
+        create_app("TODO管理Webアプリを作って", root=tmp_path, run_id="42")
+    assert not (tmp_path / "apps").exists()
+
+
 def test_non_app_instruction_cannot_create_files(tmp_path):
     with pytest.raises(ValueError):
         create_app("既存アプリの通知機能を改善して", root=tmp_path, run_id="42")
