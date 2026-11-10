@@ -100,7 +100,7 @@ def test_autonomous_workflow_persists_self_improvement_history_between_runs():
     assert "branch: main" not in restore
 
 
-def test_autonomous_workflow_supports_explicit_on_demand_push_trigger():
+def test_autonomous_workflow_triggers_remain_declared_but_execution_is_held():
     text = WORKFLOW.read_text(encoding="utf-8")
     event_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
     assert "push:" in event_block
@@ -108,5 +108,5 @@ def test_autonomous_workflow_supports_explicit_on_demand_push_trigger():
     assert "- main" in event_block
     assert "schedule:" in event_block
     assert "workflow_dispatch:" in event_block
-    assert "[run-autonomous-loop]" in text
-    assert "github.event_name != 'push'" in text
+    assert "contains(fromJSON('[]'), github.event_name)" in text
+    assert "TEMPORARY FAIL-CLOSED HOLD" in text
