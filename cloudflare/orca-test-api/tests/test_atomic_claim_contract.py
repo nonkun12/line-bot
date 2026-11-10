@@ -77,24 +77,26 @@ class AtomicClaimContractTests(unittest.TestCase):
         self.claim("t-1", "valid", "2999-01-01T00:00:00.000Z")
         self.db.commit()
         self.db.execute("BEGIN")
+        update = self.db.execute(
+            """
+            UPDATE tasks SET status='pass'
+             WHERE task_id=? AND status='running' AND lease_token=?
+               AND datetime(lease_until) > CURRENT_TIMESTAMP
+            """,
+            ("t-1", "valid"),
+        )
         self.db.execute(
             """
             INSERT INTO notification_outbox(outbox_id, task_id, user_id, message)
             SELECT ?, task_id, user_id, ?
               FROM tasks
-             WHERE task_id=? AND status='running' AND lease_token=?
-               AND datetime(lease_until) > CURRENT_TIMESTAMP
+             WHERE task_id=? AND status='pass' AND lease_token=?
                AND user_id IS NOT NULL
             """,
             (str(uuid.uuid4()), "ORCA task passed", "t-1", "valid"),
         )
-        update = self.db.execute(
-            """
-            UPDATE tasks SET status='pass', lease_token=NULL, lease_until=NULL
-             WHERE task_id=? AND status='running' AND lease_token=?
-               AND datetime(lease_until) > CURRENT_TIMESTAMP
-            """,
-            ("t-1", "valid"),
+        self.db.execute(
+            "UPDATE tasks SET lease_token=NULL, lease_until=NULL WHERE task_id='t-1' AND status='pass' AND lease_token='valid'"
         )
         self.db.commit()
         self.assertEqual(update.rowcount, 1)
