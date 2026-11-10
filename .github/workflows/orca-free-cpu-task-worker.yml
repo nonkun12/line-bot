@@ -53,13 +53,19 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Install repository test dependencies
+      - name: Prepare isolated, network-disabled test container
         run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then
-            python -m pip install -r requirements.txt
-          fi
-          python -m pip install pytest
+          set -euo pipefail
+          docker run -d --name orca-cpu-test --network bridge --cpus=2 --memory=4g \
+            --pids-limit=256 --security-opt=no-new-privileges \
+            -e PYTHONDONTWRITEBYTECODE=1 -e PYTEST_ADDOPTS="-p no:cacheprovider" \
+            -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
+            python:3.13-slim sleep infinity
+          docker exec orca-cpu-test sh -c \
+            "apt-get update && apt-get install -y --no-install-recommends build-essential libffi-dev libssl-dev libpq-dev && rm -rf /var/lib/apt/lists/*"
+          docker exec orca-cpu-test python -m pip install --no-cache-dir -r requirements.txt
+          docker exec orca-cpu-test python -m pip install --no-cache-dir pytest
+          docker network disconnect bridge orca-cpu-test
       - name: Install Ollama CPU runtime
         run: |
           set -euo pipefail
