@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS notification_outbox (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   sent_at TEXT,
   last_error_code TEXT,
+  dispatch_token TEXT,
+  dispatch_until TEXT,
   FOREIGN KEY (task_id) REFERENCES tasks(task_id)
 );
 
