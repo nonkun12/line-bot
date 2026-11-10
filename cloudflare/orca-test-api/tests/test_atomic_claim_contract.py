@@ -75,6 +75,7 @@ class AtomicClaimContractTests(unittest.TestCase):
     def test_completion_and_outbox_are_bound_to_current_unexpired_claim(self):
         self.insert_task()
         self.claim("t-1", "valid", "2999-01-01T00:00:00.000Z")
+        self.db.commit()
         self.db.execute("BEGIN")
         self.db.execute(
             """
