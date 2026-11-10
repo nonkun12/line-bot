@@ -91,6 +91,51 @@ def handle_message_event(event):
             if len(_processed_message_ids) > _MAX_TRACKED_IDS:
                 _processed_message_ids.popitem(last=False)
 
+        # Explicit Cloudflare intake is opt-in and never dispatches Actions.
+        # Accepted prefixes: D1登録: / タスク登録: / Cloudflare登録:
+        from cloudflare_task_intake import extract_intake_request, submit_line_task
+
+        intake_request = extract_intake_request(text)
+        if intake_request is not None:
+            def _run_cloudflare_intake_async():
+                result = submit_line_task(
+                    message_id=str(message_id or ""),
+                    user_id=str(user_id or ""),
+                    request_text=intake_request,
+                )
+                if result.get("ok"):
+                    task_id = result.get("task_id", "unknown")
+                    duplicate = bool(result.get("duplicate"))
+                    reply = (
+                        f"Cloudflare D1に受付済みです。Task: {task_id}"
+                        + ("（重複イベントのため既存タスクを返しました）" if duplicate else "（承認待ちキューに登録しました）")
+                    )
+                else:
+                    reason = result.get("error", "unknown")
+                    messages = {
+                        "disabled": "Cloudflare受付は現在無効です。設定を確認してください。",
+                        "not_allowed": "このLINEユーザーにはCloudflare受付の権限がありません。",
+                        "missing_config": "Cloudflare受付の接続設定が不足しています。",
+                        "invalid_request": "依頼文またはLINEイベント情報が不正です。",
+                        "api_rejected": "Cloudflare受付が依頼を拒否しました。安全のため再送していません。",
+                        "network_error": "Cloudflareに接続できませんでした。依頼を自動再実行していません。",
+                    }
+                    reply = messages.get(reason, "Cloudflare受付に失敗しました。設定とログを確認してください。")
+                try:
+                    _line_push(str(user_id), reply)
+                except Exception:
+                    print("===== CLOUDFLARE INTAKE REPLY FAILED =====")
+                    import traceback
+                    traceback.print_exc()
+
+            threading = __import__("threading")
+            threading.Thread(
+                target=_run_cloudflare_intake_async,
+                daemon=True,
+                name="line-cloudflare-task-intake",
+            ).start()
+            return
+
         # Development commands are an explicit, isolated LINE protocol.
         # Normal conversation, GitHub lookup commands, and n8n are untouched.
         dev_instruction = extract_development_instruction(text)
