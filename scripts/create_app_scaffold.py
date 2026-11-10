@@ -183,7 +183,7 @@ def main() -> int:
         from scripts.rea_preflight import require_rea_pass
         require_rea_pass(ROOT)
         paths = create_app(args.instruction, run_id=args.run_id)
-    except (ValueError, FileExistsError, OSError) as exc:
+    except (ValueError, FileExistsError, OSError, RuntimeError) as exc:
         print(f"APP_SCAFFOLD=BLOCKED reason={type(exc).__name__}: {exc}")
         return 1
     for path in paths:
