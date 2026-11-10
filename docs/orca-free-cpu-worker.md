@@ -41,7 +41,7 @@ Do not run this workflow until required reviewers have been configured.
   documented atomic lease/claim endpoint. The worker verifies the `queued → running`
   transition before inference. A future API revision should add an atomic,
   lease-based claim before increasing worker concurrency.
-- The task intake schema currently stores `task_id`, `request_text`, and
+- If a task branch already has an open PR, the worker reuses its URL instead of creating a duplicate. If PR creation succeeds but the final D1 status update fails, it leaves the task `running` and emits a reconciliation warning rather than marking a reviewable PR as failed. This requires manual reconciliation; it is not an automatic lease/retry mechanism.\n- The task intake schema currently stores `task_id`, `request_text`, and
   `source_event_id`; it does not retain the LINE `user_id`. Therefore this
   first version cannot send a task-specific LINE completion message. The PR URL
   appears in the Actions log and the D1 status is updated.
