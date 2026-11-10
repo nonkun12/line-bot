@@ -96,3 +96,14 @@ def test_rejects_invalid_run_id(tmp_path: Path, run_id):
     queue = _write(tmp_path / "queue.json", {"tasks": []})
     with pytest.raises(ValueError, match="run ID"):
         build_event_ledger(queue, tmp_path / "missing.jsonl", tmp_path / "out.jsonl", run_id)
+
+def test_blocked_task_is_not_recorded_as_started(tmp_path: Path):
+    queue = _write(tmp_path / "queue.json", {"tasks": [{"id": "task-blocked"}]})
+    results = tmp_path / "results.jsonl"
+    results.write_text(json.dumps({"task_id": "task-blocked", "status": "BLOCKED"}) + "\\n")
+    output = tmp_path / "events.jsonl"
+
+    build_event_ledger(queue, results, output, "run-blocked")
+    events = [json.loads(line) for line in output.read_text().splitlines()]
+
+    assert [event["event_type"] for event in events] == ["task.assigned", "task.blocked"]
