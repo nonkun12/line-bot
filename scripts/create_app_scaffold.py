@@ -27,21 +27,21 @@ def has_new_app_intent(instruction: str) -> bool:
     value = str(instruction or "").strip()
     if not value or len(value) > MAX_INSTRUCTION_LENGTH:
         return False
-    payload = re.sub(r"^アプリ開発\\s*:\\s*", "", value, count=1)
+    payload = re.sub(r"^アプリ開発\s*:\s*", "", value, count=1)
     return bool(NEW_APP_PATTERN.search(payload))
 
 
 def is_new_app_request(instruction: str) -> bool:
     """Accept new-app creation only with the user's explicit routing prefix."""
     value = str(instruction or "").strip()
-    if not re.match(r"^アプリ開発\\s*:", value):
+    if not re.match(r"^アプリ開発\s*:", value):
         return False
     return has_new_app_intent(value)
 
 
 def safe_slug(instruction: str, run_id: str = "local") -> str:
     """Derive a filesystem-safe ASCII slug without trusting user-supplied paths."""
-    instruction = re.sub(r"^アプリ開発\\s*:\\s*", "", instruction.strip(), count=1)
+    instruction = re.sub(r"^アプリ開発\s*:\s*", "", instruction.strip(), count=1)
     words = re.findall(r"[A-Za-z0-9]+", instruction.lower())
     slug = "-".join(words[:5]).strip("-")[:48]
     if not slug:
@@ -161,7 +161,7 @@ def create_app(instruction: str, *, root: Path = ROOT, run_id: str = "local") ->
     if index_path.exists() or readme_path.exists() or base.exists():
         raise FileExistsError(f"generated app already exists: {slug}")
     base.mkdir(parents=True, exist_ok=False)
-    title = re.sub(r"^アプリ開発\\s*:\\s*", "", instruction, count=1)[:80]
+    title = re.sub(r"^アプリ開発\s*:\s*", "", instruction, count=1)[:80]
     index_path.write_text(render_index(title), encoding="utf-8")
     readme_path.write_text(
         f"# {title.replace(chr(10), ' ').replace(chr(13), ' ')}\n\n"
