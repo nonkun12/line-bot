@@ -8,7 +8,7 @@ def test_evaluate_rea_returns_sha_bound_evidence(monkeypatch, tmp_path):
     monkeypatch.setattr(
         rea_preflight.subprocess,
         "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "a" * 40 + "\\n", ""),
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "a" * 40, ""),
     )
     expected = {"gate": "PASS", "target_sha": "a" * 40}
     monkeypatch.setattr(rea_preflight, "prepare_rea_evidence", lambda root, expected_sha: expected)
