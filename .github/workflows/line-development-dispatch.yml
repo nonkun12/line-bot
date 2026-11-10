@@ -71,6 +71,10 @@ jobs:
             echo "test_only=true" >> "$GITHUB_OUTPUT"
             echo "app_creation=false" >> "$GITHUB_OUTPUT"
             python -m pytest -q --tb=native
+          elif python -c 'import sys; from scripts.create_app_scaffold import looks_like_new_app_intent, is_new_app_request; value=sys.argv[1]; sys.exit(0 if looks_like_new_app_intent(value) and not is_new_app_request(value) else 1)' "$DEV_INSTRUCTION"; then
+            echo "New-app requests must begin with the explicit アプリ開発: prefix." >&2
+            echo "APP_CREATION=BLOCKED reason=explicit_prefix_required" | tee -a /tmp/line-development-loop.log
+            exit 80
           elif python -c 'import sys; from scripts.create_app_scaffold import is_new_app_request; sys.exit(0 if is_new_app_request(sys.argv[1]) else 1)' "$DEV_INSTRUCTION"; then
             echo "test_only=false" >> "$GITHUB_OUTPUT"
             echo "app_creation=true" >> "$GITHUB_OUTPUT"
