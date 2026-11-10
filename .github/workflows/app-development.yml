@@ -61,16 +61,28 @@ jobs:
             echo "forwarded=false" >> "${GITHUB_OUTPUT}"
           fi
 
+      - name: Require explicit new-app prefix
+        id: app_prefix
+        if: ${{ steps.forward_e2e.outputs.forwarded != 'true' }}
+        env:
+          APP_REQUIREMENT: ${{ github.event.inputs.requirement }}
+        run: |
+          set -euo pipefail
+          if [[ "${APP_REQUIREMENT}" != "アプリ開発:"* ]]; then
+            echo "APP_CREATION=BLOCKED reason=explicit_prefix_required" >&2
+            exit 80
+          fi
+
       - name: REA preflight before independent app generation
         id: rea_preflight
-        if: ${{ steps.forward_e2e.outputs.forwarded != 'true' }}
+        if: ${{ steps.forward_e2e.outputs.forwarded != 'true' && steps.app_prefix.outcome == 'success' }}
         run: |
           set -euo pipefail
           python -m scripts.rea_preflight
 
       - name: Run independent-repository app builder
         id: app_development
-        if: ${{ steps.forward_e2e.outputs.forwarded != 'true' && steps.rea_preflight.outcome == 'success' }}
+        if: ${{ steps.forward_e2e.outputs.forwarded != 'true' && steps.app_prefix.outcome == 'success' && steps.rea_preflight.outcome == 'success' }}
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           APP_GITHUB_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
