@@ -11,6 +11,7 @@ def test_safe_app_path_allows_only_new_app_files():
     assert not safe_app_path("docs/proposals/demo.md")
     assert not safe_app_path("core/example.py")
     assert not safe_app_path("tests/test_example.py")
+    assert not safe_app_path("apps/demo/my app.py")
 
 
 def test_safe_app_path_rejects_sensitive_and_traversal_paths():
