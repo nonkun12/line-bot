@@ -64,7 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run -d --name orca-cpu-test --network bridge --cpus=2 --memory=4g \
-            --pids-limit=256 --security-opt=no-new-privileges \
+            --pids-limit=256 --cap-drop=ALL --security-opt=no-new-privileges \
             -e PYTHONDONTWRITEBYTECODE=1 -e PYTEST_ADDOPTS="-p no:cacheprovider" \
             -v "$GITHUB_WORKSPACE:/workspace" -v "$GITHUB_WORKSPACE/.git:/workspace/.git:ro" -w /workspace \
             python:3.13-slim sleep infinity
