@@ -248,6 +248,10 @@ def process(encoded_task: str) -> int:
     claimed = api_request("GET", "/tasks/" + encoded_id)
     claimed = claimed.get("task", claimed) if isinstance(claimed, dict) else {}
     if not isinstance(claimed, dict) or claimed.get("status") != "running":
+        try:
+            api_request("PUT", "/tasks/" + encoded_id, {"status": "fail"})
+        except Exception:
+            pass
         raise WorkerError("task claim could not be verified")
 
     try:
