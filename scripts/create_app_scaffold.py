@@ -12,7 +12,6 @@ import re
 import subprocess
 from pathlib import Path
 
-from scripts.rea_preflight import require_rea_pass
 
 ROOT = Path(__file__).resolve().parents[1]
 NEW_APP_PATTERN = re.compile(
@@ -22,6 +21,13 @@ NEW_APP_PATTERN = re.compile(
     re.IGNORECASE,
 )
 MAX_INSTRUCTION_LENGTH = 2000
+
+
+def require_rea_pass(repo_root: Path) -> dict[str, object]:
+    """Load the REA gate lazily so routing classification remains deterministic."""
+    from scripts.rea_preflight import require_rea_pass as run_rea_preflight
+
+    return run_rea_preflight(repo_root)
 
 
 def _instruction_body(instruction: str) -> str:
