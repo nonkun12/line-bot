@@ -22,8 +22,7 @@ concurrency:
 
 jobs:
   propose-reviewed-batch:
-    if: ${{ contains(fromJSON('[]'), github.event_name) }} # TEMPORARY FAIL-CLOSED HOLD: no automated code/PR generation until task-bound signed approval is implemented.
-    if: github.repository == 'nonkun12/line-bot'
+    if: ${{ github.repository == 'nonkun12/line-bot' && contains(fromJSON('[]'), github.event_name) }} # TEMPORARY FAIL-CLOSED HOLD: no automated code/PR generation until task-bound signed approval is implemented.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
