@@ -70,7 +70,7 @@ async function claimTask(id, request, env) {
        SET status = 'running', lease_token = ?, lease_until = ?,
            attempt_count = COALESCE(attempt_count, 0) + 1,
            updated_at = CURRENT_TIMESTAMP
-     WHERE task_id = ? AND (status = 'queued' OR (status = 'running' AND lease_until <= CURRENT_TIMESTAMP))
+     WHERE task_id = ? AND (status = 'queued' OR (status = 'running' AND datetime(lease_until) <= CURRENT_TIMESTAMP))
      RETURNING task_id, request_text, status, lease_until, attempt_count`
   ).bind(token, leaseUntil, id).first();
   if (!row) return json({ error: "task is not queued or does not exist" }, 409);
@@ -97,14 +97,14 @@ async function completeTask(id, request, env) {
        SELECT ?, task_id, user_id, ?
          FROM tasks
         WHERE task_id = ? AND status = 'running' AND lease_token = ?
-          AND lease_until > CURRENT_TIMESTAMP AND user_id IS NOT NULL`
+          AND datetime(lease_until) > CURRENT_TIMESTAMP AND user_id IS NOT NULL`
     ).bind(outboxId, message, id, token),
     env.DB.prepare(
       `UPDATE tasks
           SET status = ?, lease_token = NULL, lease_until = NULL,
               updated_at = CURRENT_TIMESTAMP
         WHERE task_id = ? AND status = 'running' AND lease_token = ?
-          AND lease_until > CURRENT_TIMESTAMP`
+          AND datetime(lease_until) > CURRENT_TIMESTAMP`
     ).bind(status, id, token),
   ]);
   if (!results[1]?.meta?.changes) return json({ error: "claim is invalid, expired, or already completed" }, 409);
