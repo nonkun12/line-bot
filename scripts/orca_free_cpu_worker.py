@@ -25,7 +25,7 @@ FORBIDDEN_NAMES = {
     ".env", "config.py", "requirements.txt", "pyproject.toml", "Dockerfile",
     "render.yaml", "wrangler.toml", "scripts/orca_free_cpu_worker.py",
 }
-WRITE_PREFIXES = ("apps/", "docs/proposals/")
+WRITE_PREFIXES = ("apps/",)
 
 
 class WorkerError(RuntimeError):
