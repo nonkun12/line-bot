@@ -61,9 +61,16 @@ jobs:
             echo "forwarded=false" >> "${GITHUB_OUTPUT}"
           fi
 
+      - name: REA preflight before independent app generation
+        id: rea_preflight
+        if: ${{ steps.forward_e2e.outputs.forwarded != 'true' }}
+        run: |
+          set -euo pipefail
+          python -m scripts.rea_preflight
+
       - name: Run independent-repository app builder
         id: app_development
-        if: ${{ steps.forward_e2e.outputs.forwarded != 'true' }}
+        if: ${{ steps.forward_e2e.outputs.forwarded != 'true' && steps.rea_preflight.outcome == 'success' }}
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           APP_GITHUB_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
