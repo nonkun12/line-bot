@@ -54,6 +54,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Verify protected execution environment is configured
+        env:
+          ORCA_TASK_APPROVAL_GATE: ${{ secrets.ORCA_TASK_APPROVAL_GATE }}
+        run: |
+          set -euo pipefail
+          test -n "$ORCA_TASK_APPROVAL_GATE" || { echo "Required reviewer environment gate is not configured."; exit 1; }
       - name: Prepare isolated, network-disabled test container
         run: |
           set -euo pipefail
@@ -68,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve >/tmp/ollama.log 2>&1 &
+          nohup ollama serve >/tmp/ollama.log 2>&1 </dev/null &
           for attempt in $(seq 1 30); do
             if ollama list >/dev/null 2>&1; then break; fi
             sleep 2
