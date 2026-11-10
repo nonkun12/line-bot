@@ -22,16 +22,26 @@ NEW_APP_PATTERN = re.compile(
 MAX_INSTRUCTION_LENGTH = 2000
 
 
-def is_new_app_request(instruction: str) -> bool:
-    """Classify only clear app-creation requests; maintenance stays on the normal path."""
+def has_new_app_intent(instruction: str) -> bool:
+    """Detect app-creation intent independently of the required explicit prefix."""
     value = str(instruction or "").strip()
     if not value or len(value) > MAX_INSTRUCTION_LENGTH:
         return False
-    return bool(NEW_APP_PATTERN.search(value))
+    payload = re.sub(r"^アプリ開発\\s*:\\s*", "", value, count=1)
+    return bool(NEW_APP_PATTERN.search(payload))
+
+
+def is_new_app_request(instruction: str) -> bool:
+    """Accept new-app creation only with the user's explicit routing prefix."""
+    value = str(instruction or "").strip()
+    if not re.match(r"^アプリ開発\\s*:", value):
+        return False
+    return has_new_app_intent(value)
 
 
 def safe_slug(instruction: str, run_id: str = "local") -> str:
     """Derive a filesystem-safe ASCII slug without trusting user-supplied paths."""
+    instruction = re.sub(r"^アプリ開発\\s*:\\s*", "", instruction.strip(), count=1)
     words = re.findall(r"[A-Za-z0-9]+", instruction.lower())
     slug = "-".join(words[:5]).strip("-")[:48]
     if not slug:
@@ -151,7 +161,7 @@ def create_app(instruction: str, *, root: Path = ROOT, run_id: str = "local") ->
     if index_path.exists() or readme_path.exists() or base.exists():
         raise FileExistsError(f"generated app already exists: {slug}")
     base.mkdir(parents=True, exist_ok=False)
-    title = instruction[:80]
+    title = re.sub(r"^アプリ開発\\s*:\\s*", "", instruction, count=1)[:80]
     index_path.write_text(render_index(title), encoding="utf-8")
     readme_path.write_text(
         f"# {title.replace(chr(10), ' ').replace(chr(13), ' ')}\n\n"
@@ -170,6 +180,8 @@ def main() -> int:
     parser.add_argument("--branch", default="")
     args = parser.parse_args()
     try:
+        from scripts.rea_preflight import require_rea_pass
+        require_rea_pass(ROOT)
         paths = create_app(args.instruction, run_id=args.run_id)
     except (ValueError, FileExistsError, OSError) as exc:
         print(f"APP_SCAFFOLD=BLOCKED reason={type(exc).__name__}: {exc}")
