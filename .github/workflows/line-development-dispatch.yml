@@ -73,6 +73,7 @@ jobs:
             python -m pytest -q --tb=native
           elif python -c 'import sys; from scripts.create_app_scaffold import looks_like_new_app_intent, is_new_app_request; value=sys.argv[1]; sys.exit(0 if looks_like_new_app_intent(value) and not is_new_app_request(value) else 1)' "$DEV_INSTRUCTION"; then
             echo "New-app requests must begin with the explicit アプリ開発: prefix." >&2
+            echo "app_creation_blocked=true" >> "$GITHUB_OUTPUT"
             echo "APP_CREATION=BLOCKED reason=explicit_prefix_required" | tee -a /tmp/line-development-loop.log
             exit 80
           elif python -c 'import sys; from scripts.create_app_scaffold import is_new_app_request; sys.exit(0 if is_new_app_request(sys.argv[1]) else 1)' "$DEV_INSTRUCTION"; then
@@ -144,7 +145,7 @@ jobs:
 
       - name: Create or reuse GitHub PR
         id: create_pr
-        if: ${{ steps.development.outputs.test_only != 'true' }}
+        if: ${{ steps.development.outputs.test_only != 'true' && steps.development.outputs.app_creation_blocked != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
@@ -178,7 +179,7 @@ jobs:
           cat /tmp/pr_url.txt
 
       - name: Record on-demand development result to Google Sheets
-        if: always() && steps.development.outputs.test_only != 'true'
+        if: always() && steps.development.outputs.test_only != 'true' && steps.development.outputs.app_creation_blocked != 'true'
         env:
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
