@@ -288,7 +288,7 @@ def process(encoded_task: str) -> int:
         }
         app_slug = paths[0].split("/")[1]
         tests = run(
-            ["docker", "exec", "orca-cpu-test", "python", "-m", "pytest",
+            ["docker", "exec", "--user", "65534:65534", "orca-cpu-test", "python", "-m", "pytest",
              "-q", "--tb=short", f"apps/{app_slug}/tests"],
             timeout=300,
         )
