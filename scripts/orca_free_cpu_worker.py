@@ -71,7 +71,7 @@ def unwrap_task_list(data: object) -> list[dict]:
 
 
 def poll() -> int:
-    tasks = unwrap_task_list(api_request("GET", "/tasks?status=queued&limit=1"))
+    tasks = unwrap_task_list(api_request("GET", "/tasks?status=queued&limit=100"))
     queued = [
         item for item in tasks
         if item.get("status") == "queued"
