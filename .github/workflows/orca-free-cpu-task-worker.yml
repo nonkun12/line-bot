@@ -63,16 +63,8 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$ORCA_TASK_APPROVAL_GATE" || { echo "Required reviewer environment gate is not configured."; exit 1; }
-      - name: Prepare isolated, network-disabled test container
-        run: |
-          set -euo pipefail
-          docker run -d --name orca-cpu-test --network bridge --cpus=2 --memory=4g \
-            --pids-limit=256 --cap-drop=ALL --security-opt=no-new-privileges \
-            -e PYTHONDONTWRITEBYTECODE=1 -e PYTEST_ADDOPTS="-p no:cacheprovider" \
-            -v "$GITHUB_WORKSPACE:/workspace" -v "$GITHUB_WORKSPACE/.git:/workspace/.git:ro" -w /workspace \
-            python:3.13-slim sleep infinity
-          docker exec orca-cpu-test python -m pip install --no-cache-dir pytest
-          docker network disconnect bridge orca-cpu-test
+      - name: Pull isolated app test image
+        run: docker pull python:3.13-slim
       - name: Install Ollama CPU runtime
         run: |
           set -euo pipefail
