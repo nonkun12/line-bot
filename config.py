@@ -107,8 +107,8 @@ def handle_message_event(event):
                     task_id = result.get("task_id", "unknown")
                     duplicate = bool(result.get("duplicate"))
                     reply = (
-                        f"Cloudflare D1に受付済みです。Task: {task_id}"
-                        + ("（重複イベントのため既存タスクを返しました）" if duplicate else "（承認待ちキューに登録しました）")
+                        f"Cloudflare D1に保存しました（未実行）。Task: {task_id}"
+                        + ("（重複イベントのため既存タスクを返しました）" if duplicate else "")
                     )
                 else:
                     reason = result.get("error", "unknown")
