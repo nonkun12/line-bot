@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import re
@@ -266,6 +267,10 @@ def process(encoded_task: str) -> int:
             if target.is_symlink() or any(parent.is_symlink() for parent in target.parents):
                 raise WorkerError("symlink output is not allowed")
 
+        before_hashes = {
+            path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
+            for path in paths
+        }
         app_slug = paths[0].split("/")[1]
         tests = run(
             ["docker", "exec", "orca-cpu-test", "python", "-m", "pytest",
@@ -277,12 +282,16 @@ def process(encoded_task: str) -> int:
 
         status = run(["git", "status", "--porcelain", "--untracked-files=all"], timeout=30)
         changed_paths = {line[3:] for line in status.stdout.splitlines() if len(line) > 3}
-        if changed_paths != set(paths):
+        if changed_paths != set(paths) or any(
+            not line.startswith("?? ") for line in status.stdout.splitlines()
+        ):
             raise WorkerError("tests changed files outside the generated app scope")
         for path in paths:
             target = Path(path)
             if target.is_symlink() or any(parent.is_symlink() for parent in target.parents):
                 raise WorkerError("tests introduced a symlink output")
+            if not target.is_file() or hashlib.sha256(target.read_bytes()).hexdigest() != before_hashes[path]:
+                raise WorkerError("tests modified generated source files after execution")
         if run(["git", "add", "--", *paths], timeout=30).returncode:
             raise WorkerError("git add failed")
         if run(["git", "diff", "--cached", "--check"], timeout=30).returncode:
