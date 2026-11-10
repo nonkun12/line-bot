@@ -97,13 +97,14 @@ async function completeTask(id, request, env) {
        SELECT ?, task_id, user_id, ?
          FROM tasks
         WHERE task_id = ? AND status = 'running' AND lease_token = ?
-          AND user_id IS NOT NULL`
+          AND lease_until > CURRENT_TIMESTAMP AND user_id IS NOT NULL`
     ).bind(outboxId, message, id, token),
     env.DB.prepare(
       `UPDATE tasks
           SET status = ?, lease_token = NULL, lease_until = NULL,
               updated_at = CURRENT_TIMESTAMP
-        WHERE task_id = ? AND status = 'running' AND lease_token = ?`
+        WHERE task_id = ? AND status = 'running' AND lease_token = ?
+          AND lease_until > CURRENT_TIMESTAMP`
     ).bind(status, id, token),
   ]);
   if (!results[1]?.meta?.changes) return json({ error: "claim is invalid, expired, or already completed" }, 409);
