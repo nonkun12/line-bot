@@ -33,7 +33,11 @@ def _enabled() -> bool:
 
 
 def _allowed_user_ids() -> set[str]:
-    raw = os.environ.get("CLOUDFLARE_TASK_INTAKE_LINE_USER_IDS", "")
+    # Reuse the existing trusted Loop allowlist unless a narrower intake list is set.
+    raw = (
+        os.environ.get("CLOUDFLARE_TASK_INTAKE_LINE_USER_IDS", "").strip()
+        or os.environ.get("DISTRIBUTED_LOOP_LINE_USER_IDS", "")
+    )
     return {item.strip() for item in raw.split(",") if item.strip()}
 
 
