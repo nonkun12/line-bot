@@ -72,7 +72,7 @@ def test_title_is_html_escaped():
 
 
 def test_existing_app_is_never_overwritten(tmp_path):
-    paths = create_app("TODO管理Webアプリを作って", root=tmp_path, run_id="42")
+    paths = create_app("アプリ開発: TODO管理Webアプリを作って", root=tmp_path, run_id="42")
     paths[0].write_text("keep", encoding="utf-8")
     with pytest.raises(FileExistsError):
         create_app("TODO管理Webアプリを作って", root=tmp_path, run_id="42")
