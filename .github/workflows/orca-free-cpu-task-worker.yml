@@ -49,6 +49,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+          persist-credentials: false
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -61,9 +62,6 @@ jobs:
             -e PYTHONDONTWRITEBYTECODE=1 -e PYTEST_ADDOPTS="-p no:cacheprovider" \
             -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
             python:3.13-slim sleep infinity
-          docker exec orca-cpu-test sh -c \
-            "apt-get update && apt-get install -y --no-install-recommends build-essential libffi-dev libssl-dev libpq-dev && rm -rf /var/lib/apt/lists/*"
-          docker exec orca-cpu-test python -m pip install --no-cache-dir -r requirements.txt
           docker exec orca-cpu-test python -m pip install --no-cache-dir pytest
           docker network disconnect bridge orca-cpu-test
       - name: Install Ollama CPU runtime
