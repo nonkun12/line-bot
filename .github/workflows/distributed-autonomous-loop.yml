@@ -105,7 +105,7 @@ concurrency:
 
 jobs:
   minimal-loop:
-    if: false # TEMPORARY SAFETY LOCK: remote execution stays disabled until task-bound signed approval is implemented and verified.
+    if: ${{ contains(fromJSON('[]'), github.event_name) }} # TEMPORARY FAIL-CLOSED HOLD: empty allowlist; do not enable before signed task-bound approval is implemented.
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
