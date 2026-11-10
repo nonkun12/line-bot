@@ -85,6 +85,50 @@ def test_validate_patch_rejects_workflow_changes():
         raise AssertionError("workflow patch should be rejected")
 
 
+
+def test_create_or_reuse_pr_returns_existing_open_pr(monkeypatch):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    calls = []
+
+    def fake_run(command, *, timeout=120, input_text=None):
+        calls.append(command)
+        return SimpleNamespace(
+            returncode=0,
+            stdout='[{"url":"https://github.com/nonkun12/line-bot/pull/77"}]',
+            stderr="",
+        )
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    url = worker.create_or_reuse_pr("orca/task-77", "title", "body")
+    assert url == "https://github.com/nonkun12/line-bot/pull/77"
+    assert len(calls) == 1
+    assert calls[0][:3] == ["gh", "pr", "list"]
+
+
+def test_create_or_reuse_pr_creates_when_none_exists(monkeypatch):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    calls = []
+
+    def fake_run(command, *, timeout=120, input_text=None):
+        calls.append(command)
+        if command[:3] == ["gh", "pr", "list"]:
+            return SimpleNamespace(returncode=0, stdout="[]", stderr="")
+        return SimpleNamespace(
+            returncode=0,
+            stdout="https://github.com/nonkun12/line-bot/pull/88\\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    url = worker.create_or_reuse_pr("orca/task-88", "title", "body")
+    assert url == "https://github.com/nonkun12/line-bot/pull/88"
+    assert len(calls) == 2
+    assert calls[1][:3] == ["gh", "pr", "create"]
+
 def test_isolated_test_runner_mounts_only_read_only_app_copy(monkeypatch, tmp_path):
     from types import SimpleNamespace
     import scripts.orca_free_cpu_worker as worker
