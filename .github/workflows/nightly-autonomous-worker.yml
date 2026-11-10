@@ -22,6 +22,7 @@ concurrency:
 
 jobs:
   autonomous-development:
+    if: false # TEMPORARY SAFETY LOCK: remote execution stays disabled until task-bound signed approval is implemented and verified.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
