@@ -89,6 +89,7 @@ def test_isolated_test_runner_mounts_only_read_only_app_copy(monkeypatch, tmp_pa
     from types import SimpleNamespace
     import scripts.orca_free_cpu_worker as worker
 
+    monkeypatch.chdir(tmp_path)
     app = tmp_path / "apps" / "demo"
     tests_dir = app / "tests"
     tests_dir.mkdir(parents=True)
