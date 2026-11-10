@@ -88,30 +88,34 @@ async function completeTask(id, request, env) {
     ? body.message.trim().slice(0, 1800)
     : `ORCA task ${id}: ${status}`;
   const outboxId = crypto.randomUUID();
-  // D1 batch is transactional. The INSERT can only select the row holding this
-  // exact lease; the following UPDATE consumes that same lease.
+  // D1 batch is transactional. First consume the lease into a terminal
+  // state, then create the outbox row only if that update actually succeeded.
+  // The claim token is cleared only after the outbox INSERT in this same batch.
   const results = await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE tasks
+          SET status = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE task_id = ? AND status = 'running' AND lease_token = ?
+          AND datetime(lease_until) > CURRENT_TIMESTAMP`
+    ).bind(status, id, token),
     env.DB.prepare(
       `INSERT INTO notification_outbox
          (outbox_id, task_id, user_id, message)
        SELECT ?, task_id, user_id, ?
          FROM tasks
-        WHERE task_id = ? AND status = 'running' AND lease_token = ?
-          AND datetime(lease_until) > CURRENT_TIMESTAMP AND user_id IS NOT NULL`
-    ).bind(outboxId, message, id, token),
+        WHERE task_id = ? AND status = ? AND lease_token = ?
+          AND user_id IS NOT NULL`
+    ).bind(outboxId, message, id, status, token),
     env.DB.prepare(
-      `UPDATE tasks
-          SET status = ?, lease_token = NULL, lease_until = NULL,
-              updated_at = CURRENT_TIMESTAMP
-        WHERE task_id = ? AND status = 'running' AND lease_token = ?
-          AND datetime(lease_until) > CURRENT_TIMESTAMP`
-    ).bind(status, id, token),
+      `UPDATE tasks SET lease_token = NULL, lease_until = NULL
+        WHERE task_id = ? AND status = ? AND lease_token = ?`
+    ).bind(id, status, token),
   ]);
-  if (!results[1]?.meta?.changes) return json({ error: "claim is invalid, expired, or already completed" }, 409);
+  if (!results[0]?.meta?.changes) return json({ error: "claim is invalid, expired, or already completed" }, 409);
   return json({
     task_id: id,
     status,
-    notification_queued: Boolean(results[0]?.meta?.changes),
+    notification_queued: Boolean(results[1]?.meta?.changes),
   });
 }
 
