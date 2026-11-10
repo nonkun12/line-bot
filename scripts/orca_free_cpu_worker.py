@@ -123,7 +123,11 @@ def safe_app_path(path: str) -> bool:
     if not safe_context_path(path) or not normalized.startswith("apps/"):
         return False
     parts = normalized.split("/")
-    return len(parts) >= 3 and re.fullmatch(r"[A-Za-z0-9_-]{1,40}", parts[1]) is not None
+    return (
+        len(parts) >= 3
+        and re.fullmatch(r"[A-Za-z0-9_-]{1,40}", parts[1]) is not None
+        and re.fullmatch(r"apps/[A-Za-z0-9_-]{1,40}/[A-Za-z0-9_./-]+", normalized) is not None
+    )
 
 
 def tracked_context() -> str:
