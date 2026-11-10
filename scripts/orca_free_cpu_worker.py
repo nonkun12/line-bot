@@ -246,6 +246,38 @@ def run_isolated_tests(paths: list[str], app_slug: str):
         return run(command, timeout=300)
 
 
+def create_or_reuse_pr(branch: str, title: str, body: str) -> str:
+    """Reuse an existing open PR for this task branch instead of duplicating it."""
+    listed = run(
+        ["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "url", "--limit", "1"],
+        timeout=60,
+    )
+    if listed.returncode:
+        raise WorkerError("could not check for an existing task PR")
+    try:
+        existing = json.loads(listed.stdout or "[]")
+    except json.JSONDecodeError:
+        raise WorkerError("GitHub CLI returned invalid PR list JSON") from None
+    if not isinstance(existing, list):
+        raise WorkerError("GitHub CLI returned an unexpected PR list")
+    if existing:
+        url = existing[0].get("url") if isinstance(existing[0], dict) else None
+        if not isinstance(url, str) or not url.startswith("https://github.com/"):
+            raise WorkerError("existing task PR has an invalid URL")
+        return url
+    created = run(
+        ["gh", "pr", "create", "--base", "main", "--head", branch,
+         "--title", title, "--body", body],
+        timeout=120,
+    )
+    if created.returncode:
+        raise WorkerError("PR creation failed: " + created.stderr[-1500:])
+    url = created.stdout.strip().splitlines()[-1] if created.stdout.strip() else ""
+    if not url.startswith("https://github.com/"):
+        raise WorkerError("GitHub CLI did not return a valid PR URL")
+    return url
+
+
 def process(encoded_task: str) -> int:
     if not os.environ.get("ORCA_TASK_APPROVAL_GATE", "").strip():
         raise WorkerError(
@@ -291,6 +323,7 @@ def process(encoded_task: str) -> int:
             pass
         raise WorkerError("task claim could not be verified")
 
+    pr_url = ""
     try:
         if run(["git", "status", "--porcelain"], timeout=30).stdout.strip():
             raise WorkerError("checkout is not clean")
@@ -363,21 +396,27 @@ def process(encoded_task: str) -> int:
             f"CPU inference: Ollama / {MODEL}\nApp tests: PASS\n\n"
             "Not merged or deployed. Human review is required.\n"
         )
-        created = run(
-            ["gh", "pr", "create", "--base", "main", "--head", branch,
-             "--title", "feat: ORCA task " + task_id, "--body", body],
-            timeout=120,
+        pr_url = create_or_reuse_pr(
+            branch, "feat: ORCA task " + task_id, body
         )
-        if created.returncode:
-            raise WorkerError("PR creation failed: " + created.stderr[-1500:])
-        print(created.stdout.strip())
+        print(pr_url)
         api_request("PUT", "/tasks/" + encoded_id, {"status": "pass"})
         return 0
     except Exception:
-        try:
-            api_request("PUT", "/tasks/" + encoded_id, {"status": "fail"})
-        except Exception:
-            pass
+        # Once a PR exists, do not mark the task failed if the final D1 update
+        # fails; that would hide a reviewable result. Leave it running for
+        # explicit reconciliation instead.
+        if not pr_url:
+            try:
+                api_request("PUT", "/tasks/" + encoded_id, {"status": "fail"})
+            except Exception:
+                pass
+        else:
+            print(
+                "ORCA_CPU_WORKER_RECONCILIATION_REQUIRED: PR exists at "
+                + pr_url + "; D1 status may still be running",
+                file=sys.stderr,
+            )
         raise
 
 
