@@ -119,7 +119,7 @@ def test_create_or_reuse_pr_creates_when_none_exists(monkeypatch):
             return SimpleNamespace(returncode=0, stdout="[]", stderr="")
         return SimpleNamespace(
             returncode=0,
-            stdout="https://github.com/nonkun12/line-bot/pull/88\\n",
+            stdout="https://github.com/nonkun12/line-bot/pull/88",
             stderr="",
         )
 
