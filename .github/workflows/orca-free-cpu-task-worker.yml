@@ -6,8 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: orca-free-cpu-task-worker
@@ -37,10 +36,14 @@ jobs:
           python scripts/orca_free_cpu_worker.py poll
 
   execute:
+    name: Execute approved ORCA app task ${{ needs.poll.outputs.task_id }}
     needs: poll
     if: ${{ needs.poll.outputs.task_id != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 50
+    permissions:
+      contents: write
+      pull-requests: write
     environment:
       name: orca-task-execution
     steps:
