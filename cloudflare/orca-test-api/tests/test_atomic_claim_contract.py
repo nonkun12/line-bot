@@ -104,6 +104,38 @@ class AtomicClaimContractTests(unittest.TestCase):
             self.db.execute("SELECT COUNT(*) FROM notification_outbox").fetchone()[0], 1
         )
 
+    def test_only_one_dispatcher_claims_an_outbox_row(self):
+        self.insert_task()
+        self.claim("t-1", "valid", "2999-01-01T00:00:00.000Z")
+        self.db.commit()
+        self.db.execute(
+            """
+            INSERT INTO notification_outbox(outbox_id, task_id, user_id, message)
+            VALUES ('out-1', 't-1', 'U123', 'done')
+            """
+        )
+        self.db.commit()
+        first = self.db.execute(
+            """
+            UPDATE notification_outbox
+               SET dispatch_token='sender-a', dispatch_until=datetime('now', '+5 minutes')
+             WHERE outbox_id='out-1' AND status='pending'
+               AND (dispatch_until IS NULL OR datetime(dispatch_until) <= CURRENT_TIMESTAMP)
+             RETURNING outbox_id
+            """
+        ).fetchone()
+        second = self.db.execute(
+            """
+            UPDATE notification_outbox
+               SET dispatch_token='sender-b', dispatch_until=datetime('now', '+5 minutes')
+             WHERE outbox_id='out-1' AND status='pending'
+               AND (dispatch_until IS NULL OR datetime(dispatch_until) <= CURRENT_TIMESTAMP)
+             RETURNING outbox_id
+            """
+        ).fetchone()
+        self.assertIsNotNone(first)
+        self.assertIsNone(second)
+
     def test_no_outbox_for_tasks_without_line_user_id(self):
         self.insert_task(user_id=None)
         self.claim("t-1", "valid", "2999-01-01T00:00:00.000Z")
