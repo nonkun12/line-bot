@@ -160,12 +160,24 @@ async function legacyUpdate(id, request, env) {
 async function dispatchOutbox(env) {
   if (!env.LINE_CHANNEL_ACCESS_TOKEN) return;
   const due = await env.DB.prepare(
-    `SELECT outbox_id, user_id, message, attempts
+    `SELECT outbox_id
        FROM notification_outbox
       WHERE status = 'pending' AND next_attempt_at <= CURRENT_TIMESTAMP
+        AND (dispatch_until IS NULL OR datetime(dispatch_until) <= CURRENT_TIMESTAMP)
       ORDER BY created_at LIMIT 20`
   ).all();
-  for (const item of due.results || []) {
+  for (const candidate of due.results || []) {
+    const dispatchToken = crypto.randomUUID();
+    const claimed = await env.DB.prepare(
+      `UPDATE notification_outbox
+          SET dispatch_token = ?, dispatch_until = datetime('now', '+5 minutes')
+        WHERE outbox_id = ? AND status = 'pending'
+          AND next_attempt_at <= CURRENT_TIMESTAMP
+          AND (dispatch_until IS NULL OR datetime(dispatch_until) <= CURRENT_TIMESTAMP)
+        RETURNING outbox_id, user_id, message, attempts`
+    ).bind(dispatchToken, candidate.outbox_id).first();
+    if (!claimed) continue;
+
     let response;
     try {
       response = await fetch("https://api.line.me/v2/bot/message/push", {
@@ -175,8 +187,8 @@ async function dispatchOutbox(env) {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          to: item.user_id,
-          messages: [{ type: "text", text: item.message }],
+          to: claimed.user_id,
+          messages: [{ type: "text", text: claimed.message }],
         }),
       });
     } catch {
@@ -184,21 +196,25 @@ async function dispatchOutbox(env) {
     }
     if (response?.ok) {
       await env.DB.prepare(
-        "UPDATE notification_outbox SET status = 'sent', sent_at = CURRENT_TIMESTAMP WHERE outbox_id = ? AND status = 'pending'"
-      ).bind(item.outbox_id).run();
+        `UPDATE notification_outbox
+            SET status = 'sent', sent_at = CURRENT_TIMESTAMP,
+                dispatch_token = NULL, dispatch_until = NULL
+          WHERE outbox_id = ? AND status = 'pending' AND dispatch_token = ?`
+      ).bind(claimed.outbox_id, dispatchToken).run();
       continue;
     }
-    const attempts = item.attempts + 1;
+    const attempts = claimed.attempts + 1;
     const dead = attempts >= 8;
     const delay = Math.min(3600, 30 * (2 ** Math.min(attempts, 7)));
     await env.DB.prepare(
       `UPDATE notification_outbox
           SET attempts = ?, status = ?, last_error_code = ?,
-              next_attempt_at = datetime('now', ?)
-        WHERE outbox_id = ? AND status = 'pending'`
+              next_attempt_at = datetime('now', ?),
+              dispatch_token = NULL, dispatch_until = NULL
+        WHERE outbox_id = ? AND status = 'pending' AND dispatch_token = ?`
     ).bind(attempts, dead ? "dead" : "pending",
       response ? `LINE_HTTP_${response.status}` : "NETWORK_ERROR",
-      `+${delay} seconds`, item.outbox_id).run();
+      `+${delay} seconds`, claimed.outbox_id, dispatchToken).run();
   }
 }
 
