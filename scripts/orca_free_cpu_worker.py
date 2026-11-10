@@ -77,6 +77,7 @@ def poll() -> int:
         if item.get("status") == "queued"
         and isinstance(item.get("task_id"), str)
         and isinstance(item.get("request_text"), str)
+        and item["request_text"].startswith(("アプリ開発:", "アプリ開発："))
     ]
     if not queued:
         print("No queued ORCA task.")
@@ -221,7 +222,13 @@ def process(encoded_task: str) -> int:
     if not isinstance(task, dict):
         raise WorkerError("invalid task payload")
     task_id = str(task.get("task_id") or "")
-    instruction = str(task.get("request_text") or "").strip()
+    raw_instruction = str(task.get("request_text") or "").strip()
+    if raw_instruction.startswith("アプリ開発:"):
+        instruction = raw_instruction.split(":", 1)[1].strip()
+    elif raw_instruction.startswith("アプリ開発："):
+        instruction = raw_instruction.split("：", 1)[1].strip()
+    else:
+        raise WorkerError("only explicit アプリ開発: tasks are accepted")
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
         raise WorkerError("invalid task_id")
     if not instruction or len(instruction.encode("utf-8")) > MAX_INSTRUCTION:
@@ -233,7 +240,7 @@ def process(encoded_task: str) -> int:
     if (
         not isinstance(current, dict)
         or current.get("status") != "queued"
-        or current.get("request_text") != instruction
+        or current.get("request_text") != raw_instruction
     ):
         raise WorkerError("task is no longer queued or payload mismatch; refusing execution")
 
