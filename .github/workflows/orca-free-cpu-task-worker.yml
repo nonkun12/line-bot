@@ -63,8 +63,13 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$ORCA_TASK_APPROVAL_GATE" || { echo "Required reviewer environment gate is not configured."; exit 1; }
-      - name: Pull isolated app test image
-        run: docker pull python:3.13-slim
+      - name: Build isolated app test image
+        run: |
+          set -euo pipefail
+          docker build --tag orca-app-test:local - <<'DOCKER'
+          FROM python:3.13-slim
+          RUN python -m pip install --no-cache-dir pytest==8.4.2
+          DOCKER
       - name: Install Ollama CPU runtime
         run: |
           set -euo pipefail
