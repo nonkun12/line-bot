@@ -279,6 +279,10 @@ def process(encoded_task: str) -> int:
         changed_paths = {line[3:] for line in status.stdout.splitlines() if len(line) > 3}
         if changed_paths != set(paths):
             raise WorkerError("tests changed files outside the generated app scope")
+        for path in paths:
+            target = Path(path)
+            if target.is_symlink() or any(parent.is_symlink() for parent in target.parents):
+                raise WorkerError("tests introduced a symlink output")
         if run(["git", "add", "--", *paths], timeout=30).returncode:
             raise WorkerError("git add failed")
         if run(["git", "diff", "--cached", "--check"], timeout=30).returncode:
