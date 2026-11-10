@@ -34,6 +34,18 @@ The environment reviewer rule is the actual per-run approval gate. The sentinel
 secret only detects incomplete setup; it is not itself an authentication token.
 Do not run this workflow until required reviewers have been configured.
 
+## Next API phase (not deployed by this PR)
+
+The current Cloudflare D1 API is a separate deployed Worker and is not changed here. Before enabling unattended task execution, a follow-up API change should:
+
+- Add an atomic claim operation implemented as one conditional D1 statement, such as UPDATE tasks SET status='running', lease_token=?, lease_until=? WHERE task_id=? AND status='queued' RETURNING task_id. A read followed by a separate update is not an atomic claim.
+- Require a unique claim token and bounded lease expiry; only the matching token may complete or release a claim. Expired claims should be recoverable without resetting terminal tasks.
+- Persist the originating LINE user_id when the task is accepted. Never return it in public task-list responses or write it to logs.
+- Add a durable notification outbox so a terminal D1 update and its notification intent are committed together. A separate retryable sender can deliver a task-specific LINE result without losing messages after transient failures.
+- Keep LINE channel credentials and the D1 API token in managed secrets; never expose them to the generated-app test container or model prompt.
+
+These are design requirements only. This PR does not edit or deploy the existing Cloudflare Worker, alter its D1 schema, add secrets, or change the LINE webhook.
+
 ## Current boundaries and known gaps
 
 - Only one workflow run can poll/execute at a time (`concurrency` group).
