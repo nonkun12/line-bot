@@ -70,7 +70,7 @@ async function claimTask(id, request, env) {
        SET status = 'running', lease_token = ?, lease_until = ?,
            attempt_count = COALESCE(attempt_count, 0) + 1,
            updated_at = CURRENT_TIMESTAMP
-     WHERE task_id = ? AND status = 'queued'
+     WHERE task_id = ? AND (status = 'queued' OR (status = 'running' AND lease_until <= CURRENT_TIMESTAMP))
      RETURNING task_id, request_text, status, lease_until, attempt_count`
   ).bind(token, leaseUntil, id).first();
   if (!row) return json({ error: "task is not queued or does not exist" }, 409);
