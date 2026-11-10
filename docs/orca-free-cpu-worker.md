@@ -11,8 +11,8 @@ Groq, a paid inference API, a Mac, or a paid VM.
 2. If a task exists, the execution job waits at the GitHub Environment named
    `orca-task-execution`.
 3. After an authorized reviewer approves that environment deployment, the worker
-   claims the task, runs local CPU inference, validates a tightly scoped patch,
-   runs pytest, and opens a review-only PR.
+   claims the task, runs local CPU inference, validates a patch containing only new app files,
+   runs the generated app's pytest suite in a network-disabled container, and opens a review-only PR.
 4. It updates the D1 task status to `pass` or `fail`. It never merges or deploys.
 
 ## Required one-time repository configuration
@@ -50,6 +50,10 @@ Do not run this workflow until required reviewers have been configured.
 - GitHub-hosted runner availability and free quotas are subject to GitHub's
   current plan and usage limits. The workflow is scheduled, not guaranteed to
   start at an exact minute.
+- The worker only creates a new self-contained Python app under apps/<slug>/;
+  it cannot change existing applications or line-bot source files. Every app must
+  include a tests/test_*.py file. Generated tests run in a container with no network
+  and no GitHub/D1 credentials.
 - The worker is not enabled until the required repository secret and protected
   environment are configured. No secret, webhook, Render service, Cloudflare
   Worker, or deployment is modified by this PR.
