@@ -242,7 +242,7 @@ def process(encoded_task: str) -> int:
         run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], timeout=30)
         if run(["git", "commit", "-m", f"feat: implement ORCA task {task_id}"], timeout=60).returncode:
             raise WorkerError("git commit failed")
-        pushed = run(["git", "push", "--set-upstream", "origin", branch], timeout=180)
+        auth = run(["gh", "auth", "setup-git"], timeout=30)\n        if auth.returncode:\n            raise WorkerError("could not configure short-lived GitHub CLI credentials")\n        pushed = run(["git", "push", "--set-upstream", "origin", branch], timeout=180)
         if pushed.returncode:
             raise WorkerError("git push failed: " + pushed.stderr[-1200:])
         body = (
