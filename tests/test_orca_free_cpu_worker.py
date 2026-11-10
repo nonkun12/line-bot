@@ -1,18 +1,19 @@
 from scripts.orca_free_cpu_worker import (
-    safe_repo_path,
+    safe_app_path,
     unwrap_task_list,
     validate_patch,
 )
 
 
-def test_safe_repo_path_allows_only_new_app_and_proposal_scopes():
-    assert safe_repo_path("apps/demo/app.py")
-    assert safe_repo_path("docs/proposals/demo.md")
-    assert not safe_repo_path("core/example.py")
-    assert not safe_repo_path("tests/test_example.py")
+def test_safe_app_path_allows_only_new_app_files():
+    assert safe_app_path("apps/demo/app.py")
+    assert safe_app_path("apps/demo/tests/test_app.py")
+    assert not safe_app_path("docs/proposals/demo.md")
+    assert not safe_app_path("core/example.py")
+    assert not safe_app_path("tests/test_example.py")
 
 
-def test_safe_repo_path_rejects_sensitive_and_traversal_paths():
+def test_safe_app_path_rejects_sensitive_and_traversal_paths():
     for path in (
         "../secrets/token.txt",
         ".github/workflows/unsafe.yml",
@@ -22,7 +23,7 @@ def test_safe_repo_path_rejects_sensitive_and_traversal_paths():
         "apps/demo/../secrets/key.txt",
         "apps/demo\\..\\secrets\\key.txt",
     ):
-        assert not safe_repo_path(path)
+        assert not safe_app_path(path)
 
 
 def test_unwrap_task_list_accepts_supported_container_shapes():
@@ -32,7 +33,7 @@ def test_unwrap_task_list_accepts_supported_container_shapes():
     assert unwrap_task_list({"items": [task]}) == [task]
 
 
-def test_validate_patch_accepts_only_new_files_in_allowed_scope():
+def test_validate_patch_accepts_only_new_files_with_required_tests():
     patch = (
         "diff --git a/apps/demo/app.py b/apps/demo/app.py\n"
         "new file mode 100644\n"
@@ -40,8 +41,15 @@ def test_validate_patch_accepts_only_new_files_in_allowed_scope():
         "+++ b/apps/demo/app.py\n"
         "@@ -0,0 +1 @@\n"
         "+print('hello')\n"
+        "diff --git a/apps/demo/tests/test_app.py b/apps/demo/tests/test_app.py\n"
+        "new file mode 100644\n"
+        "--- /dev/null\n"
+        "+++ b/apps/demo/tests/test_app.py\n"
+        "@@ -0,0 +1 @@\n"
+        "+def test_demo():\n"
+        "+    assert True\n"
     )
-    assert validate_patch(patch) == ["apps/demo/app.py"]
+    assert validate_patch(patch) == ["apps/demo/app.py", "apps/demo/tests/test_app.py"]
 
 
 def test_validate_patch_rejects_existing_file_modification():
