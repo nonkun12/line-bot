@@ -28,9 +28,11 @@ isolated integration tests and deployed-runtime evidence exist.
 
 ## Evidence workflow
 
-.github/workflows/rea-readonly-evidence.yml runs against the exact PR head
-SHA, tests the scanner, emits a SHA-bound JSON report, and uploads the report
-as a workflow artifact. The workflow is evidence-only and intentionally does
+.github/workflows/rea-readonly-evidence.yml scans the GitHub PR merge snapshot
+and records both the merge-tree SHA and exact PR head/base SHAs, tests the
+scanner, emits a SHA-bound JSON report, and uploads the report as a workflow
+artifact. This ensures the scanner implementation from the base branch is
+available when scanning later PRs that do not themselves contain REA code. The workflow is evidence-only and intentionally does
 not enforce branch protection or authorize any action. Findings are review
 items, not approvals.
 
