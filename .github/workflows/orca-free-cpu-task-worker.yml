@@ -40,7 +40,8 @@ jobs:
     needs: poll
     if: ${{ needs.poll.outputs.task_id != '' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    # Keep the job shorter than the API's 30-minute lease; expired work can be reclaimed.
+    timeout-minutes: 25
     permissions:
       contents: write
       pull-requests: write
