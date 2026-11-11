@@ -196,10 +196,16 @@ async function listTasks(url, env) {
   const status = url.searchParams.get("status");
   const rows = status
     ? await env.DB.prepare(
-        "SELECT task_id, request_text, status, created_at, updated_at FROM tasks WHERE status = ? ORDER BY created_at DESC LIMIT ?"
+        "SELECT task_id, request_text, status, created_at, updated_at, " +
+        "EXISTS (SELECT 1 FROM task_approvals a WHERE a.task_id = tasks.task_id AND a.status = 'approved' " +
+        "AND datetime(a.expires_at) > CURRENT_TIMESTAMP) AS approved " +
+        "FROM tasks WHERE status = ? ORDER BY created_at DESC LIMIT ?"
       ).bind(status, limit).all()
     : await env.DB.prepare(
-        "SELECT task_id, request_text, status, created_at, updated_at FROM tasks ORDER BY created_at DESC LIMIT ?"
+        "SELECT task_id, request_text, status, created_at, updated_at, " +
+        "EXISTS (SELECT 1 FROM task_approvals a WHERE a.task_id = tasks.task_id AND a.status = 'approved' " +
+        "AND datetime(a.expires_at) > CURRENT_TIMESTAMP) AS approved " +
+        "FROM tasks ORDER BY created_at DESC LIMIT ?"
       ).bind(limit).all();
   return json({ tasks: rows.results || [] });
 }
