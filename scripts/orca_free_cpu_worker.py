@@ -96,7 +96,7 @@ def oldest_queued_task(tasks: list[dict]) -> dict | None:
 
 
 def poll() -> int:
-    tasks = unwrap_task_list(api_request("GET", "/tasks?status=queued&limit=100"))
+    tasks = unwrap_task_list(api_request("GET", "/tasks?status=queued&approved=true&limit=100"))
     task = oldest_queued_task(tasks)
     if task is None:
         print("No queued ORCA task.")
