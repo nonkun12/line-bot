@@ -588,6 +588,4 @@ def test_worker_jobs_are_restricted_to_main_branch():
         / "workflows"
         / "orca-free-cpu-task-worker.yml"
     ).read_text(encoding="utf-8")
-    assert "poll:\\n    if:" in workflow
-    assert "execute:\\n    if:" in workflow
-    assert "github.ref == 'refs/heads/main'" in workflow
+    assert workflow.count("github.ref == 'refs/heads/main'") == 2
