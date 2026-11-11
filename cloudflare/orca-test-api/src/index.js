@@ -18,7 +18,7 @@ async function authorized(request, env) {
 }
 
 function taskIdFrom(path) {
-  const match = path.match(/^\/tasks\/([A-Za-z0-9_-]{1,100})(?:\/(claim|complete))?$/);
+  const match = path.match(/^\/tasks\/([A-Za-z0-9_-]{1,100})(?:\/(approve|claim|complete))?$/);
   return match ? { id: match[1], action: match[2] || null } : null;
 }
 
@@ -59,21 +59,86 @@ async function createTask(request, env) {
   }
 }
 
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function hmacHex(secret, value) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
+  return [...new Uint8Array(signature)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function allowedApprover(userId, env) {
+  return String(env.ORCA_TASK_APPROVER_USER_IDS || "").split(",").map((item) => item.trim()).includes(userId);
+}
+
+async function approveTask(id, request, env) {
+  const body = await readJson(request);
+  const userId = typeof body?.approver_user_id === "string" ? body.approver_user_id : "";
+  const requestHash = typeof body?.request_hash === "string" ? body.request_hash : "";
+  const issuedAt = typeof body?.issued_at === "string" ? body.issued_at : "";
+  const expiresAt = typeof body?.expires_at === "string" ? body.expires_at : "";
+  const signature = typeof body?.signature === "string" ? body.signature : "";
+  if (!env.ORCA_TASK_APPROVAL_HMAC_KEY || !allowedApprover(userId, env) ||
+      !/^U[0-9a-fA-F]{32}$/.test(userId) || !/^[0-9a-f]{64}$/.test(requestHash) ||
+      !/^[0-9a-f]{64}$/.test(signature)) return json({ error: "approval is not authorized" }, 403);
+  const issued = Date.parse(issuedAt), expires = Date.parse(expiresAt), now = Date.now();
+  if (!Number.isFinite(issued) || !Number.isFinite(expires) || issued > now + 60000 ||
+      issued < now - 5 * 60000 || expires <= now || expires > issued + 10 * 60000)
+    return json({ error: "approval timestamp is invalid or expired" }, 400);
+  const canonical = ["v1", id, requestHash, userId, issuedAt, expiresAt].join("\n");
+  if (!safeEqual(signature, await hmacHex(env.ORCA_TASK_APPROVAL_HMAC_KEY, canonical)))
+    return json({ error: "invalid approval signature" }, 403);
+  const task = await env.DB.prepare("SELECT task_id, request_text, status FROM tasks WHERE task_id = ?").bind(id).first();
+  if (!task || task.status !== "queued") return json({ error: "task is not awaiting approval" }, 409);
+  if (!safeEqual(await sha256Hex(task.request_text), requestHash))
+    return json({ error: "task content changed; approval rejected" }, 409);
+  const approvalId = crypto.randomUUID();
+  const saved = await env.DB.prepare(
+    "INSERT INTO task_approvals (task_id, approval_id, request_hash, approver_user_id, issued_at, expires_at, status) " +
+    "VALUES (?, ?, ?, ?, ?, ?, 'approved') ON CONFLICT(task_id) DO UPDATE SET " +
+    "approval_id=excluded.approval_id, request_hash=excluded.request_hash, " +
+    "approver_user_id=excluded.approver_user_id, issued_at=excluded.issued_at, " +
+    "expires_at=excluded.expires_at, status='approved' WHERE task_approvals.status != 'consumed'"
+  ).bind(id, approvalId, requestHash, userId, issuedAt, expiresAt).run();
+  if (!saved.meta?.changes) return json({ error: "task approval was already consumed" }, 409);
+  return json({ task_id: id, approved: true, expires_at: expiresAt });
+}
+
 async function claimTask(id, request, env) {
   const body = await readJson(request);
   const leaseSeconds = Number.isInteger(body?.lease_seconds)
     ? Math.min(1800, Math.max(60, body.lease_seconds)) : 900;
   const token = crypto.randomUUID();
   const leaseUntil = new Date(Date.now() + leaseSeconds * 1000).toISOString();
-  const row = await env.DB.prepare(
-    `UPDATE tasks
-       SET status = 'running', lease_token = ?, lease_until = ?,
-           attempt_count = COALESCE(attempt_count, 0) + 1,
-           updated_at = CURRENT_TIMESTAMP
-     WHERE task_id = ? AND (status = 'queued' OR (status = 'running' AND datetime(lease_until) <= CURRENT_TIMESTAMP))
-     RETURNING task_id, request_text, status, lease_until, attempt_count`
-  ).bind(token, leaseUntil, id).first();
-  if (!row) return json({ error: "task is not queued or does not exist" }, 409);
+  const approval = await env.DB.prepare(
+    "SELECT approval_id, request_hash, expires_at, status FROM task_approvals WHERE task_id = ?"
+  ).bind(id).first();
+  if (!approval || approval.status !== "approved" || Date.parse(approval.expires_at) <= Date.now())
+    return json({ error: "a valid task-bound LINE approval is required" }, 403);
+  const task = await env.DB.prepare("SELECT request_text FROM tasks WHERE task_id = ?").bind(id).first();
+  if (!task || !safeEqual(await sha256Hex(task.request_text), approval.request_hash))
+    return json({ error: "approved task fingerprint no longer matches" }, 409);
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE tasks SET status = 'running', lease_token = ?, lease_until = ?,
+          attempt_count = COALESCE(attempt_count, 0) + 1, updated_at = CURRENT_TIMESTAMP
+        WHERE task_id = ? AND (status = 'queued' OR (status = 'running' AND datetime(lease_until) <= CURRENT_TIMESTAMP))
+          AND EXISTS (SELECT 1 FROM task_approvals WHERE task_id = ? AND approval_id = ?
+                      AND status = 'approved' AND datetime(expires_at) > CURRENT_TIMESTAMP)
+        RETURNING task_id, request_text, status, lease_until, attempt_count`
+    ).bind(token, leaseUntil, id, id, approval.approval_id),
+    env.DB.prepare(
+      `UPDATE task_approvals SET status = 'consumed' WHERE task_id = ? AND approval_id = ? AND status = 'approved'
+        AND EXISTS (SELECT 1 FROM tasks WHERE task_id = ? AND status = 'running' AND lease_token = ?)`
+    ).bind(id, approval.approval_id, id, token),
+  ]);
+  const row = results[0]?.results?.[0];
+  if (!results[0]?.meta?.changes || !results[1]?.meta?.changes)
+    return json({ error: "task approval is missing, expired, consumed, or task is already claimed" }, 409);
   return json({ task: row, claim_token: token });
 }
 
@@ -209,6 +274,7 @@ export default {
     if (url.pathname === "/tasks" && request.method === "GET") return listTasks(url, env);
     const parsed = taskIdFrom(url.pathname);
     if (!parsed) return json({ error: "not found" }, 404);
+    if (parsed.action === "approve" && request.method === "POST") return approveTask(parsed.id, request, env);
     if (parsed.action === "claim" && request.method === "POST") return claimTask(parsed.id, request, env);
     if (parsed.action === "complete" && request.method === "POST") return completeTask(parsed.id, request, env);
     if (!parsed.action && request.method === "GET") return getTask(parsed.id, env);
