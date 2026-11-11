@@ -38,14 +38,18 @@ jobs:
           python-version: "3.12"
 
       - name: Run REA scanner contract tests
-        run: python -m unittest tests.test_rea_readonly_scanner
+        run: python -m unittest discover -s tests -p 'test_rea_readonly_scanner.py'
 
       - name: Generate SHA-bound REA report
         id: rea
         shell: bash
         run: |
           mkdir -p artifacts
+          set +e
           python -m scripts.rea_readonly_scanner --repo-root . > artifacts/rea-report.json
+          scan_rc=$?
+          set -e
+          echo "REA scanner exit code: $scan_rc (0=PASS, 1=FINDINGS, 2=BLOCKED)"
           python - <<'PY'
           import json, os
           from pathlib import Path
