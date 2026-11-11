@@ -283,6 +283,9 @@ class AtomicClaimContractTests(unittest.TestCase):
     def test_worker_claim_requires_approval_validation_and_hmac(self):
         source = (ROOT / "src" / "index.js").read_text(encoding="utf-8")
         self.assertIn("crypto.subtle.importKey", source)
+        self.assertIn("approval_nonce", source)
+        self.assertIn("excluded.approval_nonce != task_approvals.approval_nonce", source)
+        self.assertIn("expires > issued + 60 * 60000", source)
         self.assertIn("ORCA_TASK_APPROVAL_HMAC_KEY", source)
         self.assertIn("task.user_id !== userId", source)
         self.assertIn("only explicit app-development tasks can be approved", source)
