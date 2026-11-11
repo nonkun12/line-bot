@@ -89,7 +89,7 @@ async function approveTask(id, request, env) {
   const canonical = ["v1", id, requestHash, userId, issuedAt, expiresAt, nonce].join("\n");
   if (!safeEqual(signature, await hmacHex(env.ORCA_TASK_APPROVAL_HMAC_KEY, canonical)))
     return json({ error: "invalid approval signature" }, 403);
-  const task = await env.DB.prepare("SELECT task_id, request_text, status, lease_until FROM tasks WHERE task_id = ?").bind(id).first();
+  const task = await env.DB.prepare("SELECT task_id, request_text, status, lease_until, user_id FROM tasks WHERE task_id = ?").bind(id).first();
   const expiredRunning = task?.status === "running" && task.lease_until && Date.parse(task.lease_until) <= Date.now();
   if (!task || (task.status !== "queued" && !expiredRunning))
     return json({ error: "task is not awaiting approval or its prior lease is still active" }, 409);
