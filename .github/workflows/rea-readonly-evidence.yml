@@ -52,7 +52,7 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
-          report = json.loads(Path("artifacts/rea-report.json").read_text(encoding="utf-8"))
+          report = json.loads(Path(os.environ["RUNNER_TEMP"]) / "rea-report.json".read_text(encoding="utf-8"))
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"status={report.get('status', 'BLOCKED')}\n")
               output.write(f"target_sha={report.get('target_sha', '')}\n")
@@ -72,7 +72,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: rea-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
-          path: artifacts/rea-report.json
+          path: ${{ runner.temp }}/rea-report.json
           if-no-files-found: error
           retention-days: 14
 
