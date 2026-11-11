@@ -248,7 +248,7 @@ async function listTasks(url, env) {
     ? " AND (tasks.status = 'queued' OR (tasks.status = 'running' AND tasks.lease_until IS NOT NULL AND datetime(tasks.lease_until) <= CURRENT_TIMESTAMP))"
     : "";
   const order = approvedOnly ? "ASC" : "DESC";
-  const select = "SELECT task_id, request_text, status, created_at, updated_at, lease_until, " +
+  const select = "SELECT task_id, request_text, status, created_at, updated_at, " +
     "EXISTS (SELECT 1 FROM task_approvals a WHERE a.task_id = tasks.task_id AND a.status = 'approved' " +
     "AND datetime(a.expires_at) > CURRENT_TIMESTAMP) AS approved FROM tasks";
   const rows = status
