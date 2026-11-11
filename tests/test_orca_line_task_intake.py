@@ -1,4 +1,9 @@
+import pytest
+
 from core.orca_task_intake import build_task_payload
+
+
+USER = "U0123456789abcdef0123456789abcdef"
 
 
 def test_payload_includes_verified_line_user_id():
@@ -6,32 +11,38 @@ def test_payload_includes_verified_line_user_id():
         task_id="line-task-1",
         request_text="アプリ開発: sample",
         message_id="event-123",
-        user_id="U0123456789abcdef0123456789abcdef",
+        user_id=USER,
     )
 
     assert payload == {
         "task_id": "line-task-1",
         "request_text": "アプリ開発: sample",
         "source_event_id": "event-123",
-        "user_id": "U0123456789abcdef0123456789abcdef",
+        "user_id": USER,
     }
 
 
-def test_payload_omits_missing_or_invalid_user_id():
-    base = {
-        "task_id": "line-task-1",
-        "request_text": "task",
-        "source_event_id": "event-123",
-    }
+@pytest.mark.parametrize("user_id", [None, "", "Ubad/id", "U" * 129])
+def test_payload_rejects_missing_or_invalid_user_id(user_id):
+    with pytest.raises(ValueError, match="verified LINE user ID"):
+        build_task_payload("line-task-1", "task", "event-123", user_id)
 
-    assert build_task_payload("line-task-1", "task", "event-123") == base
-    assert build_task_payload("line-task-1", "task", "event-123", "") == base
-    assert build_task_payload("line-task-1", "task", "event-123", "Ubad/id") == base
-    assert build_task_payload("line-task-1", "task", "event-123", "U" * 129) == base
+
+@pytest.mark.parametrize(
+    "task_id,request_text,message_id",
+    [
+        ("../task", "task", "event-123"),
+        ("line-task-1", "", "event-123"),
+        ("line-task-1", "task", ""),
+    ],
+)
+def test_payload_rejects_invalid_task_metadata(task_id, request_text, message_id):
+    with pytest.raises(ValueError):
+        build_task_payload(task_id, request_text, message_id, USER)
 
 
 def test_payload_does_not_mutate_external_data():
-    payload = build_task_payload("line-task-1", "task", "event-123", "U" + "a" * 32)
+    payload = build_task_payload("line-task-1", "task", "event-123", USER)
     payload["user_id"] = "changed"
 
-    assert build_task_payload("line-task-1", "task", "event-123", "U" + "a" * 32)["user_id"] == "U" + "a" * 32
+    assert build_task_payload("line-task-1", "task", "event-123", USER)["user_id"] == USER
