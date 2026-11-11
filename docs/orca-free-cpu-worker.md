@@ -105,3 +105,16 @@ Do not manually dispatch this workflow as an integration test before those
 conditions are met. Use a disposable D1 database for pre-deployment contract
 tests; use a separately approved, non-sensitive end-to-end task only after
 the rollout checklist in the #1333 README is complete.
+
+## Global HOLD enforcement
+
+Before polling and processing, and again before claim, staging, commit, push, and
+PR creation, the worker queries the authenticated D1 `/control/global-hold`
+endpoint. Only an explicit `clear: true` response is accepted. HTTP errors,
+missing fields, unknown values, or unavailable D1 state stop the worker. If HOLD
+activates after a claim, the task is recorded as `blocked` when the lease is
+still valid; no later GitHub write is attempted.
+
+These checks reduce the time-of-check/time-of-use window but cannot make D1 state
+atomic with GitHub operations. The D1 API independently gates intake, approval,
+and claim. This worker creates review-only PRs and never merges or deploys.
