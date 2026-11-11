@@ -3,6 +3,7 @@
 CREATE TABLE IF NOT EXISTS task_approvals (
   task_id TEXT PRIMARY KEY,
   approval_id TEXT NOT NULL UNIQUE,
+  approval_nonce TEXT NOT NULL UNIQUE,
   request_hash TEXT NOT NULL,
   approver_user_id TEXT NOT NULL,
   issued_at TEXT NOT NULL,
