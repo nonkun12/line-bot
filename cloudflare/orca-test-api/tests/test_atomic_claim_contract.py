@@ -519,3 +519,10 @@ if __name__ == "__main__":
                  RETURNING outbox_id"""
         ).fetchone()
         self.assertIsNone(claimed)
+
+    def test_create_task_requires_a_verified_line_owner(self):
+        source = (ROOT / "src" / "index.js").read_text(encoding="utf-8")
+        self.assertIn("function isValidLineUserId(value)", source)
+        self.assertIn(r"/^U[0-9a-fA-F]{32}$/.test(value)", source)
+        self.assertIn("!isValidLineUserId(body.user_id)", source)
+        self.assertIn("const userId = body.user_id;", source)
