@@ -191,19 +191,19 @@ async function getTask(id, env) {
 async function listTasks(url, env) {
   const limit = Math.min(100, Math.max(1, Number.parseInt(url.searchParams.get("limit") || "20", 10) || 20));
   const status = url.searchParams.get("status");
+  const approvedOnly = url.searchParams.get("approved") === "true";
+  const approvalFilter = approvedOnly
+    ? " AND EXISTS (SELECT 1 FROM task_approvals a WHERE a.task_id = tasks.task_id AND a.status = 'approved' AND datetime(a.expires_at) > CURRENT_TIMESTAMP)"
+    : "";
+  const order = approvedOnly ? "ASC" : "DESC";
+  const select = "SELECT task_id, request_text, status, created_at, updated_at, " +
+    "EXISTS (SELECT 1 FROM task_approvals a WHERE a.task_id = tasks.task_id AND a.status = 'approved' " +
+    "AND datetime(a.expires_at) > CURRENT_TIMESTAMP) AS approved FROM tasks";
   const rows = status
-    ? await env.DB.prepare(
-        "SELECT task_id, request_text, status, created_at, updated_at, " +
-        "EXISTS (SELECT 1 FROM task_approvals a WHERE a.task_id = tasks.task_id AND a.status = 'approved' " +
-        "AND datetime(a.expires_at) > CURRENT_TIMESTAMP) AS approved " +
-        "FROM tasks WHERE status = ? ORDER BY created_at DESC LIMIT ?"
-      ).bind(status, limit).all()
-    : await env.DB.prepare(
-        "SELECT task_id, request_text, status, created_at, updated_at, " +
-        "EXISTS (SELECT 1 FROM task_approvals a WHERE a.task_id = tasks.task_id AND a.status = 'approved' " +
-        "AND datetime(a.expires_at) > CURRENT_TIMESTAMP) AS approved " +
-        "FROM tasks ORDER BY created_at DESC LIMIT ?"
-      ).bind(limit).all();
+    ? await env.DB.prepare(select + " WHERE status = ?" + approvalFilter +
+        " ORDER BY created_at " + order + " LIMIT ?").bind(status, limit).all()
+    : await env.DB.prepare(select + (approvedOnly ? " WHERE 1=1" + approvalFilter : "") +
+        " ORDER BY created_at " + order + " LIMIT ?").bind(limit).all();
   return json({ tasks: rows.results || [] });
 }
 
