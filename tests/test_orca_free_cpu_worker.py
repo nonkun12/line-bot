@@ -360,3 +360,39 @@ def test_existing_pr_reconciliation_rejects_wrong_request_fingerprint(monkeypatc
         assert "fingerprint does not match" in str(exc)
     else:
         raise AssertionError("a mismatched task PR must not be reconciled")
+
+
+
+def test_subprocess_secrets_are_scoped_to_github_operations(monkeypatch):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    observed = {}
+
+    def fake_subprocess_run(command, **kwargs):
+        observed["command"] = command
+        observed["env"] = kwargs["env"]
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker.subprocess, "run", fake_subprocess_run)
+    monkeypatch.setenv("ORCA_TASK_API_TOKEN", "api-secret")
+    monkeypatch.setenv("ORCA_TASK_APPROVAL_GATE", "approval-secret")
+    monkeypatch.setenv("GH_TOKEN", "github-secret")
+    monkeypatch.setenv("GITHUB_TOKEN", "fallback-secret")
+
+    worker.run(["ollama", "run", "qwen2.5-coder:1.5b"])
+    assert "ORCA_TASK_API_TOKEN" not in observed["env"]
+    assert "ORCA_TASK_APPROVAL_GATE" not in observed["env"]
+    assert "GH_TOKEN" not in observed["env"]
+    assert "GITHUB_TOKEN" not in observed["env"]
+
+    worker.run(["gh", "pr", "list"])
+    assert observed["env"]["GH_TOKEN"] == "github-secret"
+    assert "ORCA_TASK_API_TOKEN" not in observed["env"]
+    assert "ORCA_TASK_APPROVAL_GATE" not in observed["env"]
+    assert "GITHUB_TOKEN" not in observed["env"]
+
+    worker.run(["git", "push", "--set-upstream", "origin", "branch"])
+    assert observed["env"]["GH_TOKEN"] == "github-secret"
+    assert "ORCA_TASK_API_TOKEN" not in observed["env"]
+    assert "ORCA_TASK_APPROVAL_GATE" not in observed["env"]
