@@ -81,19 +81,25 @@ def unwrap_task_list(data: object) -> list[dict]:
     return [item for item in tasks if isinstance(item, dict)]
 
 
-def poll() -> int:
-    tasks = unwrap_task_list(api_request("GET", "/tasks?status=queued&limit=100"))
-    queued = [
+def oldest_queued_task(tasks: list[dict]) -> dict | None:
+    eligible = [
         item for item in tasks
         if item.get("status") == "queued"
         and isinstance(item.get("task_id"), str)
         and isinstance(item.get("request_text"), str)
         and item["request_text"].startswith(("アプリ開発:", "アプリ開発："))
     ]
-    if not queued:
+    # The API's normal listing is newest-first; choose the oldest eligible task
+    # within the returned page to reduce starvation during sustained intake.
+    return min(eligible, key=lambda item: str(item.get("created_at") or "")) if eligible else None
+
+
+def poll() -> int:
+    tasks = unwrap_task_list(api_request("GET", "/tasks?status=queued&limit=100"))
+    task = oldest_queued_task(tasks)
+    if task is None:
         print("No queued ORCA task.")
         return 0
-    task = queued[0]
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task["task_id"]):
         raise WorkerError("queued task has an invalid task_id")
     if not task["request_text"].strip() or len(task["request_text"].encode("utf-8")) > MAX_INSTRUCTION:
