@@ -8,12 +8,16 @@ Groq, a paid inference API, a Mac, or a paid VM.
 
 1. Every 15 minutes, a read-only job checks the existing Cloudflare D1 task API
    for one queued task whose request starts with the explicit `アプリ開発:` prefix.
-2. If a task exists, the execution job waits at the GitHub Environment named
-   `orca-task-execution`.
-3. After an authorized reviewer approves that environment deployment, the worker
+2. The read-only poll job writes the exact request into its workflow summary, HTML-escaped,
+   and records its SHA-256 fingerprint in the job outputs and execution job name.
+3. The execution job waits at the GitHub Environment named `orca-task-execution`.
+   Reviewers should compare the task ID, exact request, and fingerprint in the poll
+   summary before approving that specific workflow run. The worker recomputes the
+   fingerprint and refuses execution if the approved snapshot does not match.
+4. After an authorized reviewer approves that environment deployment, the worker
    claims the task, runs local CPU inference, validates a patch containing only new app files,
    runs the generated app's pytest suite in a network-disabled container that receives only a read-only copy of the new app files (not the repository workspace), and opens a review-only PR.
-4. It updates the D1 task status to `pass` or `fail`. It never merges or deploys.
+5. It updates the D1 task status to `pass` or `fail`. It never merges or deploys.
 
 ## Required one-time repository configuration
 
