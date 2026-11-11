@@ -107,7 +107,7 @@ or task contents into a ticket or chat.
 -- 1. Confirm the actual tasks columns and their defaults.
 PRAGMA table_info(tasks);
 
--- 2. Inspect migration bookkeeping and the two ORCA support tables and nonce history.
+-- 2. Inspect migration bookkeeping and the ORCA support tables, including nonce history.
 SELECT type, name, sql
   FROM sqlite_master
  WHERE name IN ('d1_migrations', 'task_approvals', 'notification_outbox', 'task_approval_nonces')
@@ -132,7 +132,7 @@ without `task_approvals` or `notification_outbox`. Treat this as an
 expectation to verify, not as proof of the live schema.
 
 **Stop without applying anything** if a required table/column is missing,
-one or more 0002 columns already exist, either support table already exists
+one or more 0002 columns already exist, any support table already exists
 with an unexpected shape, the migration history is unclear, or
 `foreign_key_check` returns rows. The repository currently has no 0001
 baseline migration; the original intake schema was created separately, so
@@ -141,7 +141,7 @@ history. Capture a protected D1 export/snapshot through the approved
 Cloudflare process before any write migration.
 
 Only after the schema, migration history, backup, and exact SQL diff have
-been reviewed should an operator apply 0002 and then 0003 exactly once.
+been reviewed should an operator apply 0002, 0003, and 0004 exactly once.
 Do not use `CREATE TABLE IF NOT EXISTS` as evidence that an existing table
 has the expected schema, and do not rerun 0002 to recover from a partial
 failure. If the observed state is mixed or partial, prepare a separately
@@ -157,7 +157,7 @@ are complete. Merging is not authorized by this proposal.
    autonomous execution entry points while the new path is prepared.
 2. **D1/API second — PR #1333.** Verify the live schema using the read-only
    preflight above, create and protect a backup, reconcile any differences,
-   then apply migrations 0002 and 0003 exactly once. Review and deploy this
+   then apply migrations 0002, 0003, and 0004 exactly once. Review and deploy this
    Worker source separately; configure and verify its required secrets.
 3. **LINE identity and approval third — PR #1334.** Review and deploy the
    Render bot code only after the API approval endpoint and HMAC key are ready.
