@@ -17,6 +17,19 @@ async function authorized(request, env) {
   return Boolean(env.API_TOKEN) && safeEqual(supplied, expected);
 }
 
+// D1 is the source of truth. Only the exact explicit value "off" releases HOLD.
+// Missing rows, unknown values, and database errors all fail closed.
+async function globalHoldState(env) {
+  try {
+    const row = await env.DB.prepare(
+      "SELECT value FROM system_controls WHERE control_key = 'global_hold'"
+    ).first();
+    return { clear: row?.value === "off", value: row?.value ?? null };
+  } catch {
+    return { clear: false, value: null };
+  }
+}
+
 function taskIdFrom(path) {
   const match = path.match(/^\/tasks\/([A-Za-z0-9_-]{1,100})(?:\/(approve|claim|complete|status))?$/);
   return match ? { id: match[1], action: match[2] || null } : null;
@@ -32,6 +45,7 @@ async function readJson(request) {
 }
 
 async function createTask(request, env) {
+  if (!(await globalHoldState(env)).clear) return json({ error: "global HOLD is active or unavailable" }, 423);
   const body = await readJson(request);
   if (!body || typeof body.task_id !== "string" ||
       !/^[A-Za-z0-9_-]{1,100}$/.test(body.task_id) ||
@@ -72,6 +86,7 @@ async function hmacHex(secret, value) {
 }
 
 async function approveTask(id, request, env) {
+  if (!(await globalHoldState(env)).clear) return json({ error: "global HOLD is active or unavailable" }, 423);
   const body = await readJson(request);
   const userId = typeof body?.approver_user_id === "string" ? body.approver_user_id : "";
   const requestHash = typeof body?.request_hash === "string" ? body.request_hash : "";
@@ -144,6 +159,7 @@ async function approveTask(id, request, env) {
 }
 
 async function claimTask(id, request, env) {
+  if (!(await globalHoldState(env)).clear) return json({ error: "global HOLD is active or unavailable" }, 423);
   const body = await readJson(request);
   const leaseSeconds = Number.isInteger(body?.lease_seconds)
     ? Math.min(1800, Math.max(60, body.lease_seconds)) : 900;
@@ -164,6 +180,7 @@ async function claimTask(id, request, env) {
         WHERE task_id = ? AND (status = 'queued' OR (status = 'running' AND datetime(lease_until) <= CURRENT_TIMESTAMP))
           AND EXISTS (SELECT 1 FROM task_approvals WHERE task_id = ? AND approval_id = ?
                       AND status = 'approved' AND datetime(expires_at) > CURRENT_TIMESTAMP)
+          AND EXISTS (SELECT 1 FROM system_controls WHERE control_key = 'global_hold' AND value = 'off')
         RETURNING task_id, request_text, status, lease_until, attempt_count`
     ).bind(token, leaseUntil, id, id, approval.approval_id),
     env.DB.prepare(
@@ -204,7 +221,8 @@ async function completeTask(id, request, env) {
        SELECT ?, task_id, user_id, ?
          FROM tasks
         WHERE task_id = ? AND status = ? AND lease_token = ?
-          AND user_id IS NOT NULL`
+          AND user_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM system_controls WHERE control_key = 'global_hold' AND value = 'off')`
     ).bind(outboxId, message, id, status, token),
     env.DB.prepare(
       `UPDATE tasks SET lease_token = NULL, lease_until = NULL
@@ -238,6 +256,7 @@ async function getTaskStatus(id, request, env) {
 }
 
 async function listTasks(url, env) {
+  if (!(await globalHoldState(env)).clear) return json({ tasks: [], blocked: true, reason: "global_hold" });
   const limit = Math.min(100, Math.max(1, Number.parseInt(url.searchParams.get("limit") || "20", 10) || 20));
   const status = url.searchParams.get("status");
   const approvedOnly = url.searchParams.get("approved") === "true";
@@ -261,12 +280,13 @@ async function listTasks(url, env) {
 
 
 async function dispatchOutbox(env) {
-  if (!env.LINE_CHANNEL_ACCESS_TOKEN) return;
+  if (!env.LINE_CHANNEL_ACCESS_TOKEN || !(await globalHoldState(env)).clear) return;
   const due = await env.DB.prepare(
     `SELECT outbox_id
        FROM notification_outbox
       WHERE status = 'pending' AND next_attempt_at <= CURRENT_TIMESTAMP
         AND (dispatch_until IS NULL OR datetime(dispatch_until) <= CURRENT_TIMESTAMP)
+        AND EXISTS (SELECT 1 FROM system_controls WHERE control_key = 'global_hold' AND value = 'off')
       ORDER BY created_at LIMIT 10`
   ).all();
   for (const candidate of due.results || []) {
@@ -277,10 +297,19 @@ async function dispatchOutbox(env) {
         WHERE outbox_id = ? AND status = 'pending'
           AND next_attempt_at <= CURRENT_TIMESTAMP
           AND (dispatch_until IS NULL OR datetime(dispatch_until) <= CURRENT_TIMESTAMP)
+          AND EXISTS (SELECT 1 FROM system_controls WHERE control_key = 'global_hold' AND value = 'off')
         RETURNING outbox_id, user_id, message, attempts`
     ).bind(dispatchToken, candidate.outbox_id).first();
     if (!claimed) continue;
 
+    // Recheck immediately before the external side effect. D1 cannot make a
+    // database state transition atomic with LINE's remote API call.
+    if (!(await globalHoldState(env)).clear) {
+      await env.DB.prepare(
+        "UPDATE notification_outbox SET dispatch_token = NULL, dispatch_until = NULL WHERE outbox_id = ? AND status = 'pending' AND dispatch_token = ?"
+      ).bind(claimed.outbox_id, dispatchToken).run();
+      return;
+    }
     let response;
     try {
       response = await fetch("https://api.line.me/v2/bot/message/push", {
@@ -327,6 +356,10 @@ export default {
   async fetch(request, env) {
     if (!await authorized(request, env)) return json({ error: "unauthorized" }, 401);
     const url = new URL(request.url);
+    if (url.pathname === "/control/global-hold" && request.method === "GET") {
+      const state = await globalHoldState(env);
+      return json({ clear: state.clear, value: state.value, blocked: !state.clear }, state.clear ? 200 : 423);
+    }
     if (url.pathname === "/tasks" && request.method === "POST") return createTask(request, env);
     if (url.pathname === "/tasks" && request.method === "GET") return listTasks(url, env);
     const parsed = taskIdFrom(url.pathname);
