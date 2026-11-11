@@ -30,7 +30,7 @@ def test_approval_signature_binds_task_text_and_identity():
     ))
     expected = hmac.new(SECRET.encode(), canonical.encode(), hashlib.sha256).hexdigest()
     assert hmac.compare_digest(payload["signature"], expected)
-    assert payload["expires_at"] == "2026-11-11T01:07:03Z"
+    assert payload["expires_at"] == "2026-11-11T02:02:03Z"
     assert len(payload["nonce"]) == 32
 
 
