@@ -526,3 +526,7 @@ if __name__ == "__main__":
         self.assertIn(r"/^U[0-9a-fA-F]{32}$/.test(value)", source)
         self.assertIn("!isValidLineUserId(body.user_id)", source)
         self.assertIn("const userId = body.user_id;", source)
+        self.assertIn('typeof body.source_event_id !== "string"', source)
+        self.assertIn("existing.user_id === userId", source)
+        self.assertIn("existing.request_text === body.request_text", source)
+        self.assertIn("source event ID conflicts with an existing task", source)
