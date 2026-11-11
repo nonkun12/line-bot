@@ -141,5 +141,80 @@ class ReadonlyScannerTests(unittest.TestCase):
             outside.unlink(missing_ok=True)
 
 
+    def test_cloudflare_worker_and_d1_migrations_are_in_scope(self) -> None:
+        self._write(
+            "cloudflare/orca-test-api/src/index.js",
+            """
+            function safeEqual(a, b) { return a === b; }
+            async function authorized() { return true; }
+            async function claim() { return env.DB.batch([]); }
+            const nonceLedger = "task_approval_nonces";
+            const ownerHeader = "x-orca-task-owner";
+            const claimToken = "claim_token";
+            const outbox = "notification_outbox";
+            const hmac = "crypto.subtle.sign";
+            """,
+        )
+        self._write(
+            "cloudflare/orca-test-api/migrations/0004_nonce.sql",
+            """
+            CREATE TABLE task_approval_nonces (
+              approval_nonce TEXT PRIMARY KEY,
+              task_id TEXT NOT NULL,
+              approval_id TEXT NOT NULL UNIQUE,
+              FOREIGN KEY (task_id) REFERENCES tasks(task_id)
+            );
+            """,
+        )
+        self._commit()
+
+        report = scan_repository(self.root)
+        self.assertEqual(report["coverage"], "COMPLETE")
+        self.assertFalse(report["scope"]["full_repository"])
+        self.assertGreaterEqual(report["files_scanned"], 5)
+        self.assertEqual(report["findings"], [])
+
+    def test_missing_worker_security_contract_is_reported(self) -> None:
+        self._write(
+            "cloudflare/orca-test-api/src/index.js",
+            "export default { fetch() { return new Response('ok'); } };\\n",
+        )
+        self._commit()
+        report = scan_repository(self.root)
+        findings = [
+            item for item in report["findings"]
+            if item["category"] == "cloudflare_worker_contract"
+        ]
+        self.assertEqual(report["status"], "FINDINGS")
+        self.assertGreaterEqual(len(findings), 7)
+        self.assertTrue(all(item["severity"] in {"HIGH", "CRITICAL"} for item in findings))
+
+    def test_nonce_migration_without_replay_constraints_is_reported(self) -> None:
+        self._write(
+            "cloudflare/orca-test-api/migrations/0004_nonce.sql",
+            "CREATE TABLE task_approval_nonces (approval_nonce TEXT, task_id TEXT);\\n",
+        )
+        self._commit()
+        report = scan_repository(self.root)
+        findings = [
+            item for item in report["findings"]
+            if item["category"] == "d1_migration_contract"
+        ]
+        self.assertEqual(len(findings), 3)
+        self.assertEqual({item["severity"] for item in findings}, {"CRITICAL"})
+
+    def test_root_config_is_scanned_for_verified_owner_header(self) -> None:
+        self._write(
+            "config.py",
+            "def _get_orca_task_status():\\n    return httpx.get(url)\\n",
+        )
+        self._commit()
+        report = scan_repository(self.root)
+        self.assertIn(
+            "missing_owner_header",
+            {item["evidence"]["check"] for item in report["findings"]},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
