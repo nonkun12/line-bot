@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   confirm-resume-review:
+    if: ${{ contains(fromJSON('[]'), github.event_name) }} # TEMPORARY FAIL-CLOSED HOLD: do not clear durable holds until task-bound approval and recovery review are integrated.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
