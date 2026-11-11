@@ -178,9 +178,10 @@ class AtomicClaimContractTests(unittest.TestCase):
         self.insert_task()
         self.db.execute(
             """INSERT INTO task_approvals
-               (task_id, approval_id, request_hash, approver_user_id, issued_at, expires_at)
-               VALUES ('t-1', 'approval-1', ?, 'U123', '2026-11-11T00:00:00Z', '2999-01-01T00:00:00Z')""",
-            ("a" * 64,),
+               (task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status)
+               VALUES ('t-1', 'approval-1', ?, ?, 'U123', '2026-11-11T00:00:00Z',
+                       '2999-01-01T00:00:00Z', 'approved')""",
+            ("C" * 32, "a" * 64),
         )
         self.db.commit()
         self.db.execute("BEGIN")
@@ -200,13 +201,30 @@ class AtomicClaimContractTests(unittest.TestCase):
         self.db.commit()
         self.assertEqual(claimed.rowcount, 1)
         self.assertEqual(consumed.rowcount, 1)
-        retry = self.db.execute(
-            """UPDATE tasks SET status='running', lease_token='claim-2'
-                 WHERE task_id='t-1' AND status='queued'
-                   AND EXISTS (SELECT 1 FROM task_approvals WHERE task_id='t-1' AND status='approved')"""
+        self.assertEqual(
+            self.db.execute("SELECT status FROM task_approvals WHERE task_id='t-1'").fetchone()[0],
+            "consumed",
         )
-        self.assertEqual(retry.rowcount, 0)
 
+    def _upsert_approval(self, approval_id, nonce, request_hash):
+        return self.db.execute(
+            """INSERT INTO task_approvals
+               (task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status)
+               VALUES ('t-1', ?, ?, ?, 'U123', '2026-11-11T00:02:00Z',
+                       '2999-01-01T00:00:00Z', 'approved')
+               ON CONFLICT(task_id) DO UPDATE SET
+                 approval_id=excluded.approval_id,
+                 approval_nonce=excluded.approval_nonce,
+                 request_hash=excluded.request_hash,
+                 issued_at=excluded.issued_at,
+                 expires_at=excluded.expires_at,
+                 status='approved'
+               WHERE task_approvals.status != 'consumed'
+                 OR (excluded.approval_nonce != task_approvals.approval_nonce
+                   AND EXISTS (SELECT 1 FROM tasks WHERE task_id=excluded.task_id
+                     AND status='running' AND datetime(lease_until) <= CURRENT_TIMESTAMP))""",
+            (approval_id, nonce, request_hash),
+        )
 
     def test_consumed_approval_can_be_reissued_only_after_lease_expiry(self):
         self.insert_task()
@@ -215,29 +233,36 @@ class AtomicClaimContractTests(unittest.TestCase):
         )
         self.db.execute(
             """INSERT INTO task_approvals
-               (task_id, approval_id, request_hash, approver_user_id, issued_at, expires_at, status)
+               (task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status)
                VALUES ('t-1', 'old-approval', ?, ?, 'U123', '2026-11-11T00:00:00Z',
                        '2026-11-11T00:01:00Z', 'consumed')""",
             ("A" * 32, "a" * 64),
         )
         self.db.commit()
-        result = self.db.execute(
-            """INSERT INTO task_approvals
-               (task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status)
-               VALUES ('t-1', 'new-approval', ?, ?, 'U123', '2026-11-11T00:02:00Z',
-                       '2999-01-01T00:00:00Z', 'approved')
-               ON CONFLICT(task_id) DO UPDATE SET
-                 approval_id=excluded.approval_id, status='approved'
-               WHERE task_approvals.status != 'consumed' OR EXISTS
-                 (SELECT 1 FROM tasks WHERE task_id=excluded.task_id
-                   AND status='running' AND datetime(lease_until) <= CURRENT_TIMESTAMP)""",
-            ("B" * 32, "b" * 64),
-        )
+        result = self._upsert_approval("new-approval", "B" * 32, "b" * 64)
         self.assertEqual(result.rowcount, 1)
         self.assertEqual(
             self.db.execute("SELECT status FROM task_approvals WHERE task_id='t-1'").fetchone()[0],
             "approved",
         )
+
+    def test_consumed_approval_cannot_be_replayed_after_lease_expiry(self):
+        self.insert_task()
+        self.db.execute(
+            "UPDATE tasks SET status='running', lease_until='2000-01-01T00:00:00Z' WHERE task_id='t-1'"
+        )
+        self.db.execute(
+            """INSERT INTO task_approvals
+               (task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status)
+               VALUES ('t-1', 'old-approval', ?, ?, 'U123', '2026-11-11T00:00:00Z',
+                       '2026-11-11T00:01:00Z', 'consumed')""",
+            ("A" * 32, "a" * 64),
+        )
+        self.db.commit()
+        replay = self._upsert_approval("replayed-approval", "A" * 32, "a" * 64)
+        self.assertEqual(replay.rowcount, 0)
+        fresh = self._upsert_approval("fresh-approval", "B" * 32, "b" * 64)
+        self.assertEqual(fresh.rowcount, 1)
 
     def test_consumed_approval_cannot_be_reissued_while_lease_is_active(self):
         self.insert_task()
@@ -246,24 +271,13 @@ class AtomicClaimContractTests(unittest.TestCase):
         )
         self.db.execute(
             """INSERT INTO task_approvals
-               (task_id, approval_id, request_hash, approver_user_id, issued_at, expires_at, status)
-               VALUES ('t-1', 'old-approval', ?, 'U123', '2026-11-11T00:00:00Z',
+               (task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status)
+               VALUES ('t-1', 'old-approval', ?, ?, 'U123', '2026-11-11T00:00:00Z',
                        '2026-11-11T00:01:00Z', 'consumed')""",
             ("A" * 32, "a" * 64),
         )
         self.db.commit()
-        result = self.db.execute(
-            """INSERT INTO task_approvals
-               (task_id, approval_id, request_hash, approver_user_id, issued_at, expires_at, status)
-               VALUES ('t-1', 'new-approval', ?, 'U123', '2026-11-11T00:02:00Z',
-                       '2999-01-01T00:00:00Z', 'approved')
-               ON CONFLICT(task_id) DO UPDATE SET
-                 approval_id=excluded.approval_id, status='approved'
-               WHERE task_approvals.status != 'consumed' OR EXISTS
-                 (SELECT 1 FROM tasks WHERE task_id=excluded.task_id
-                   AND status='running' AND datetime(lease_until) <= CURRENT_TIMESTAMP)""",
-            ("B" * 32, "b" * 64),
-        )
+        result = self._upsert_approval("new-approval", "B" * 32, "b" * 64)
         self.assertEqual(result.rowcount, 0)
 
     def test_worker_claim_requires_approval_validation_and_hmac(self):
