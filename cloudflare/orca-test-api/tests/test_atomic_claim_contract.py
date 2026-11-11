@@ -221,7 +221,11 @@ class AtomicClaimContractTests(unittest.TestCase):
             result = self.db.execute(
                 """INSERT INTO task_approvals
                    (task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status)
-                   VALUES ('t-1', ?, ?, ?, 'U123', ?, '2999-01-01T00:00:00Z', 'approved')
+                   SELECT 't-1', ?, ?, ?, 'U123', ?, '2999-01-01T00:00:00Z', 'approved'
+                     FROM tasks
+                    WHERE task_id='t-1' AND (status='queued' OR
+                      (status='running' AND lease_until IS NOT NULL
+                        AND datetime(lease_until) <= CURRENT_TIMESTAMP))
                    ON CONFLICT(task_id) DO UPDATE SET
                      approval_id=excluded.approval_id,
                      approval_nonce=excluded.approval_nonce,
@@ -341,6 +345,22 @@ class AtomicClaimContractTests(unittest.TestCase):
         # Even a stale nonce is recorded and cannot be retried.
         self.assertEqual(self._upsert_approval("replay-c", "C" * 32, "c" * 64,
                                                "2026-11-11T00:01:00Z"), 0)
+
+    def test_terminal_task_cannot_receive_a_new_approval(self):
+        self.insert_task()
+        self.db.execute("UPDATE tasks SET status='pass' WHERE task_id='t-1'")
+        self.db.commit()
+        result = self._upsert_approval("terminal-approval", "T" * 32, "t" * 64)
+        self.assertEqual(result, 0)
+        # The unused signed nonce is retained, so it cannot later be replayed.
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM task_approval_nonces WHERE approval_nonce=?",
+                            ("T" * 32,)).fetchone()[0],
+            1,
+        )
+        self.assertIsNone(self.db.execute(
+            "SELECT task_id FROM task_approvals WHERE task_id='t-1'"
+        ).fetchone())
 
     def test_nonce_history_enforces_foreign_keys(self):
         with self.assertRaises(sqlite3.IntegrityError):
