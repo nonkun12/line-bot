@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   poll:
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -35,6 +36,7 @@ jobs:
           python scripts/orca_free_cpu_worker.py poll
 
   execute:
+    if: ${{ github.ref == 'refs/heads/main' }}
     name: Execute signed-approved ORCA task ${{ needs.poll.outputs.task_id }}
     needs: poll
     if: ${{ needs.poll.outputs.task_id != '' }}
