@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 import hashlib
 import hmac
+from pathlib import Path
 
 import pytest
 
@@ -54,3 +55,10 @@ def test_approval_signature_changes_when_task_or_approver_changes():
 def test_invalid_approval_inputs_are_rejected(task_id, user_id, secret):
     with pytest.raises(ValueError):
         build_approval_payload(task_id, "task text", user_id, secret)
+
+
+def test_line_allows_running_task_to_reach_server_side_expired_lease_check():
+    source = (Path(__file__).resolve().parents[1] / "config.py").read_text(encoding="utf-8")
+    assert 'task.get("status") not in ("queued", "running")' in source
+    assert 'url + "/approve"' in source
+    assert "1時間以内" in source
