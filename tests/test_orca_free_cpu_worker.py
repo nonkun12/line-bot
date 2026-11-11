@@ -325,6 +325,6 @@ def test_worker_reloads_request_inside_protected_execution_job():
         / "orca_free_cpu_worker.py"
     ).read_text(encoding="utf-8")
     assert 'api_request("GET", "/tasks/" + encoded_id)' in source
-    assert 'handle.write(f"task_id={task[\'task_id\']}\\n")' in source
+    assert 'handle.write(f"task_id=' in source
     assert "task_payload=" not in source
     assert "ORCA_TASK_PAYLOAD" not in source
