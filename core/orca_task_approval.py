@@ -34,7 +34,7 @@ def build_approval_payload(
     if issued.tzinfo is None:
         raise ValueError("approval timestamp must be timezone-aware")
     issued = issued.astimezone(timezone.utc).replace(microsecond=0)
-    expires = issued + timedelta(minutes=5)
+    expires = issued + timedelta(hours=1)
     issued_at = issued.isoformat().replace("+00:00", "Z")
     expires_at = expires.isoformat().replace("+00:00", "Z")
     request_hash = hashlib.sha256(request_text.encode("utf-8")).hexdigest()
