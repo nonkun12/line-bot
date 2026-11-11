@@ -9,7 +9,10 @@ availability still apply; zero-cost or exact-time execution is not guaranteed.
 
 1. Every 15 minutes, a read-only job asks D1 for the oldest claimable (queued or expired-lease)
    `アプリ開発:` task with a valid, unexpired task-bound approval.
-   Unapproved tasks are not passed to the execution job.
+   Unapproved tasks are not passed to the execution job. Only the opaque
+   task ID crosses the Actions job boundary; the protected execution job
+   reloads the request from the authenticated API, so raw task text is not
+   embedded in workflow outputs.
 2. The same verified LINE account that submitted the task sends
    `タスク承認:<task_id>`. The Render bot fetches the exact queued task,
    hashes the full request text, and signs a versioned HMAC payload binding
@@ -78,7 +81,9 @@ secrets/protections have been configured.
 - Tests run in a network-disabled container with only a read-only copy of the
   generated app files, no repository workspace, and no GitHub/D1 credentials.
 - If a task PR is created but final D1 completion fails, the task remains
-  running until lease expiry and requires explicit reconciliation.
+  running until lease expiry. A retry first looks for the deterministic task
+  branch's existing open PR and reconciles its D1 completion rather than
+  blindly creating another branch or duplicate PR.
 - LINE notification delivery is at-least-once; duplicate pushes are possible
   if LINE accepts a message but the response is lost.
 - No secrets, webhook URL, Render service, Cloudflare Worker, D1 database,
