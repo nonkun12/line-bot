@@ -76,7 +76,9 @@ def _approve_orca_task(message: str, user_id: str | None):
         if response.status_code != 200:
             return False, f"タスクを取得できませんでした（HTTP {response.status_code}）。承認していません。"
         result = response.json()
-        task = result.get("task", {}) if isinstance(result, dict) else {}
+        task = result.get("task") if isinstance(result, dict) else None
+        if not isinstance(task, dict):
+            return False, "タスク応答の形式が不正です。承認していません。"
         if task.get("task_id") != task_id or task.get("status") != "queued":
             return False, "対象タスクがqueued状態ではありません。承認していません。"
         request_text = task.get("request_text")
