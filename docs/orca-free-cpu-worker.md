@@ -82,8 +82,9 @@ secrets/protections have been configured.
   generated app files, no repository workspace, and no GitHub/D1 credentials.
 - If a task PR is created but final D1 completion fails, the task remains
   running until lease expiry. A retry first looks for the deterministic task
-  branch's existing open PR and reconciles its D1 completion rather than
-  blindly creating another branch or duplicate PR.
+  branch's existing open PR and reconciles its D1 completion only after
+  checking the exact head branch, `main` base, task ID, and request hash.
+  A mismatched or unrelated PR is not treated as a successful result.
 - LINE notification delivery is at-least-once; duplicate pushes are possible
   if LINE accepts a message but the response is lost.
 - No secrets, webhook URL, Render service, Cloudflare Worker, D1 database,
