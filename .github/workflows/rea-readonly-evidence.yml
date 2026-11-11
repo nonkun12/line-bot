@@ -44,9 +44,8 @@ jobs:
         id: rea
         shell: bash
         run: |
-          mkdir -p artifacts
           set +e
-          python -m scripts.rea_readonly_scanner --repo-root . > artifacts/rea-report.json
+          python -m scripts.rea_readonly_scanner --repo-root . > $RUNNER_TEMP/rea-report.json
           scan_rc=$?
           set -e
           echo "REA scanner exit code: $scan_rc (0=PASS, 1=FINDINGS, 2=BLOCKED)"
