@@ -271,3 +271,36 @@ def test_task_text_is_not_written_to_action_summary_or_pr_body():
     assert "<pre>{html.escape(request_text)}</pre>" not in source
     assert '"Request:\\n{instruction[:MAX_INSTRUCTION]}"' not in source
     assert '"Request text is omitted from this PR body"' in source
+
+def test_existing_task_pr_can_be_found_for_retry_reconciliation(monkeypatch):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    calls = []
+
+    def fake_run(command, *, timeout=120, input_text=None):
+        calls.append(command)
+        return SimpleNamespace(
+            returncode=0,
+            stdout='[{"url":"https://github.com/nonkun12/line-bot/pull/99"}]',
+            stderr="",
+        )
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    assert worker.find_existing_pr("orca/task-line-99") == (
+        "https://github.com/nonkun12/line-bot/pull/99"
+    )
+    assert calls[0][:3] == ["gh", "pr", "list"]
+
+
+def test_worker_reconciles_existing_pr_before_creating_or_pushing_branch():
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "orca_free_cpu_worker.py"
+    ).read_text(encoding="utf-8")
+    process = source.split("def process(", 1)[1]
+    assert process.index("existing_pr = find_existing_pr(branch)") < process.index(
+        'run(["git", "switch", "-c", branch]'
+    )
+    assert "reconciled existing review PR" in process
