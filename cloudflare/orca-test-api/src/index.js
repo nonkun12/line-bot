@@ -92,6 +92,9 @@ async function approveTask(id, request, env) {
   const expiredRunning = task?.status === "running" && task.lease_until && Date.parse(task.lease_until) <= Date.now();
   if (!task || (task.status !== "queued" && !expiredRunning))
     return json({ error: "task is not awaiting approval or its prior lease is still active" }, 409);
+  if (typeof task.request_text !== "string" ||
+      !task.request_text.startsWith("アプリ開発:") && !task.request_text.startsWith("アプリ開発："))
+    return json({ error: "only explicit app-development tasks can be approved" }, 400);
   if (task.user_id !== userId) return json({ error: "only the verified task submitter may approve it" }, 403);
   if (!safeEqual(await sha256Hex(task.request_text), requestHash))
     return json({ error: "task content changed; approval rejected" }, 409);
