@@ -5,17 +5,28 @@ This directory is the source-controlled successor for the separately deployed
 
 ## Migration
 
-Review `migrations/0002_atomic_claims_and_outbox.sql` against the live D1
-schema before applying it. It adds optional LINE `user_id`, lease fields,
-attempt count, and a durable notification outbox. Do not run the migration
-until the live schema and migration history are confirmed.
+Review migrations `0002_atomic_claims_and_outbox.sql` and
+`0003_task_bound_approvals.sql` against the live D1 schema before applying
+both in order. Migration 0002 adds LINE `user_id`, lease fields, attempt count,
+and a durable notification outbox. Migration 0003 adds the one-use approval
+ledger. Do not apply either until the live schema and migration history are
+confirmed.
 
 ## API
 
 All routes require `Authorization: Bearer <API_TOKEN>`.
 
-- `POST /tasks/:id/claim` atomically changes `queued` tasks (or expired `running` leases) to `running`,
-  returns a random claim token and bounded lease expiry (60–1,800 seconds).
+- `POST /tasks/:id/approve` verifies an HMAC-SHA256 signature over version,
+  task ID, exact request SHA-256, allowlisted LINE user ID, issue time, and
+  five-minute expiry. It recomputes the task hash from D1 before storing a
+  one-use approval. The HMAC key and approver allowlist are separate Worker
+  secrets/vars and must match the Render configuration.
+- `GET /tasks` exposes only a boolean `approved` field for unexpired approvals;
+  it does not expose the approver ID, signature, or approval internals.
+- `POST /tasks/:id/claim` requires an unexpired approval and atomically consumes
+  it while changing `queued` (or expired `running`) to `running`, returning a
+  random claim token and bounded lease expiry (60–1,800 seconds). A task whose
+  lease expires needs a fresh LINE approval.
 - `POST /tasks/:id/complete` requires the claim token and a terminal state
   (`pass`, `fail`, or `blocked`). A D1 batch inserts a notification intent
   and consumes the lease in one transaction. A stale, expired, or replayed token is rejected. The completion batch first
@@ -41,13 +52,21 @@ notification.
 ## Required safeguards before deployment
 
 1. Confirm the actual production/test D1 schema and apply the migration once.
-2. Configure `API_TOKEN` and `LINE_CHANNEL_ACCESS_TOKEN` as Worker secrets.
-3. Update LINE intake to persist the verified event source user ID, without
-   logging it; do not change the webhook URL.
-4. Update the CPU worker to call `/claim` and `/complete` with the lease token.
-5. Add integration tests against a disposable D1 database, including concurrent
-   claims, stale-token completion, duplicate completion, and notification retry.
-6. Review the retry/dead-letter policy and LINE push-message limits. Delivery
+2. Configure `API_TOKEN`, `LINE_CHANNEL_ACCESS_TOKEN`, and
+   `ORCA_TASK_APPROVAL_HMAC_KEY` as Worker secrets; configure
+   `ORCA_TASK_APPROVER_USER_IDS` as a tightly controlled Worker variable.
+3. Configure the exact same high-entropy `ORCA_TASK_APPROVAL_HMAC_KEY` and
+   identical minimal `ORCA_TASK_APPROVER_USER_IDS` allowlist in Render. Do not
+   reuse the API bearer token as the HMAC key.
+4. Update LINE intake to persist the verified event source user ID and support
+   `タスク承認:<task_id>`, without logging identity or signatures; do not change
+   the webhook URL.
+5. Update the CPU worker to poll only approved tasks and call `/claim` and
+   `/complete` with the lease token.
+6. Add integration tests against a disposable D1 database, including signed
+   approval verification, one-use consumption, concurrent claims, stale-token
+   completion, duplicate completion, and notification retry.
+7. Review the retry/dead-letter policy and LINE push-message limits. Delivery
    is at-least-once: if LINE accepts a push but the network response is lost,
    a later retry may produce a duplicate notification.
 
