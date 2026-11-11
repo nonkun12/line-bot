@@ -56,10 +56,12 @@ async function createTask(request, env) {
   const userId = typeof body.user_id === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(body.user_id)
     ? body.user_id : null;
   try {
-    await env.DB.prepare(
+    const inserted = await env.DB.prepare(
       `INSERT INTO tasks (task_id, request_text, status, source_event_id, user_id)
-       VALUES (?, ?, 'queued', ?, ?)`
+       SELECT ?, ?, 'queued', ?, ?
+        WHERE EXISTS (SELECT 1 FROM system_controls WHERE control_key = 'global_hold' AND value = 'off')`
     ).bind(body.task_id, body.request_text, body.source_event_id || null, userId).run();
+    if (!inserted.meta?.changes) return json({ error: "global HOLD is active or unavailable" }, 423);
     return json({ task: { task_id: body.task_id, request_text: body.request_text, status: "queued" } }, 201);
   } catch (error) {
     if (body.source_event_id) {
@@ -133,6 +135,7 @@ async function approveTask(id, request, env) {
         "SELECT ?, ?, ?, ?, ?, ?, ?, 'approved' FROM tasks " +
         "WHERE task_id = ? AND (status = 'queued' OR " +
         "(status = 'running' AND lease_until IS NOT NULL AND datetime(lease_until) <= CURRENT_TIMESTAMP)) " +
+        "AND EXISTS (SELECT 1 FROM system_controls WHERE control_key = 'global_hold' AND value = 'off') " +
         "ON CONFLICT(task_id) DO UPDATE SET " +
         "approval_id=excluded.approval_id, approval_nonce=excluded.approval_nonce, " +
         "request_hash=excluded.request_hash, approver_user_id=excluded.approver_user_id, " +
