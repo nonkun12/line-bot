@@ -342,6 +342,75 @@ def find_existing_pr(
         raise WorkerError("existing task PR request fingerprint does not match")
     return url
 
+
+def reconcile_existing_pr(
+    branch: str,
+    task_id: str,
+    expected_request_hash: str,
+) -> tuple[str, list[str]]:
+    """Re-verify an existing task PR at its exact advertised head before completion."""
+    viewed = run(
+        ["gh", "pr", "view", branch, "--json",
+         "url,headRefName,baseRefName,body,state,headRefOid"],
+        timeout=60,
+    )
+    if viewed.returncode:
+        raise WorkerError("could not inspect existing task PR")
+    try:
+        item = json.loads(viewed.stdout or "{}")
+    except json.JSONDecodeError:
+        raise WorkerError("GitHub CLI returned invalid existing PR JSON") from None
+    if not isinstance(item, dict):
+        raise WorkerError("GitHub CLI returned an unexpected existing PR")
+    url = item.get("url")
+    head_sha = item.get("headRefOid")
+    if (
+        not isinstance(url, str) or not url.startswith("https://github.com/")
+        or item.get("headRefName") != branch
+        or item.get("baseRefName") != "main"
+        or item.get("state") != "OPEN"
+        or f"Task ID: {task_id}" not in str(item.get("body") or "")
+        or f"Request SHA-256: {expected_request_hash}" not in str(item.get("body") or "")
+        or not isinstance(head_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", head_sha)
+    ):
+        raise WorkerError("existing PR metadata does not match this task and request")
+    if run(["git", "fetch", "--no-tags", "origin", "main"], timeout=120).returncode:
+        raise WorkerError("could not refresh main for existing PR verification")
+    if run(["git", "fetch", "--no-tags", "origin", f"refs/heads/{branch}"], timeout=120).returncode:
+        raise WorkerError("could not fetch existing task PR head")
+    fetched = run(["git", "rev-parse", "FETCH_HEAD"], timeout=30)
+    if fetched.returncode or fetched.stdout.strip() != head_sha:
+        raise WorkerError("existing PR head changed during reconciliation")
+    diff = run(
+        ["git", "diff", "--no-ext-diff", "--binary", "--no-renames",
+         f"origin/main...{head_sha}"],
+        timeout=60,
+    )
+    if diff.returncode:
+        raise WorkerError("could not inspect existing PR file changes")
+    paths = validate_patch(diff.stdout)
+    if run(["git", "switch", "--detach", head_sha], timeout=30).returncode:
+        raise WorkerError("could not check out exact existing PR head")
+    checked_out = run(["git", "rev-parse", "HEAD"], timeout=30)
+    if checked_out.returncode or checked_out.stdout.strip() != head_sha:
+        raise WorkerError("checked-out PR head does not match reviewed metadata")
+    status = run(["git", "status", "--porcelain", "--untracked-files=all"], timeout=30)
+    if status.returncode or status.stdout.strip():
+        raise WorkerError("existing PR checkout is not clean")
+    for path in paths:
+        target = Path(path)
+        if target.is_symlink() or any(parent.is_symlink() for parent in target.parents):
+            raise WorkerError("existing PR contains a symlink output")
+    app_slug = paths[0].split("/")[1]
+    tests = run_isolated_tests(paths, app_slug)
+    if tests.returncode:
+        raise WorkerError("existing PR isolated tests failed: " + (tests.stdout + tests.stderr)[-3000:])
+    after = run(["git", "status", "--porcelain", "--untracked-files=all"], timeout=30)
+    if after.returncode or after.stdout.strip():
+        raise WorkerError("existing PR tests modified the checkout")
+    return url, paths
+
+
 def create_or_reuse_pr(
     branch: str,
     title: str,
@@ -425,20 +494,35 @@ def process(task_id: str) -> int:
             expected_request_hash=request_fingerprint,
         )
         if existing_pr:
-            # Do not infer that an existing PR is still tested or unchanged.
-            # This worker is checked out at main, not the PR head, so it cannot
-            # safely re-certify the current PR contents here. Keep the lease
-            # running and require fresh LINE approval after expiry; a terminal
-            # status would prevent the owner from retrying through the API.
-            pr_url = existing_pr
-            print(
-                "ORCA_CPU_WORKER_RECONCILIATION_REQUIRED: existing PR needs "
-                "fresh head verification; task remains running until lease "
-                "expiry, then the owner must issue a fresh LINE approval: "
-                + pr_url,
-                file=sys.stderr,
+            try:
+                verified_url, verified_paths = reconcile_existing_pr(
+                    branch, task_id, request_fingerprint
+                )
+            except Exception as exc:
+                try:
+                    api_request(
+                        "POST", "/tasks/" + encoded_id + "/complete",
+                        {"claim_token": claim_token, "status": "blocked",
+                         "message": "Existing task PR failed exact-head verification; manual review required."},
+                    )
+                except Exception:
+                    raise WorkerError(
+                        "existing PR could not be verified; task remains running until lease expiry"
+                    ) from None
+                print(
+                    "ORCA_CPU_WORKER_RECONCILIATION_BLOCKED: existing PR verification "
+                    f"failed ({type(exc).__name__}); manual review required: {existing_pr}",
+                    file=sys.stderr,
+                )
+                return 1
+            pr_url = verified_url
+            api_request(
+                "POST", "/tasks/" + encoded_id + "/complete",
+                {"claim_token": claim_token, "status": "pass",
+                 "message": f"ORCA task {task_id}: PASS — verified existing PR {pr_url}"},
             )
-            return 1
+            print(f"Verified existing PR and reconciled task: {pr_url}")
+            return 0
         if run(["git", "switch", "-c", branch], timeout=30).returncode:
             raise WorkerError("could not create task branch")
         prompt = make_prompt(instruction, tracked_context())
