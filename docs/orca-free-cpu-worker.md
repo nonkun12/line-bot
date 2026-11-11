@@ -7,7 +7,7 @@ availability still apply; zero-cost or exact-time execution is not guaranteed.
 
 ## What it does
 
-1. Every 15 minutes, a read-only job asks D1 for the oldest queued
+1. Every 15 minutes, a read-only job asks D1 for the oldest claimable (queued or expired-lease)
    `アプリ開発:` task with a valid, unexpired task-bound approval.
    Unapproved tasks are not passed to the execution job.
 2. The same verified LINE account that submitted the task sends
