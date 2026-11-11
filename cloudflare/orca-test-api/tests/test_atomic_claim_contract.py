@@ -347,14 +347,17 @@ class AtomicClaimContractTests(unittest.TestCase):
             self.db.execute(
                 """INSERT INTO task_approval_nonces
                    (approval_nonce, task_id, approval_id, request_hash, approver_user_id, issued_at, expires_at)
-                   VALUES ('N' * 32, 'missing-task', 'approval-x', 'a', 'U123', '2026-11-11T00:00:00Z', '2999-01-01T00:00:00Z')"""
+                   VALUES (?, 'missing-task', 'approval-x', 'a', 'U123', '2026-11-11T00:00:00Z', '2999-01-01T00:00:00Z')""",
+                ("N" * 32,),
             )
 
     def test_worker_claim_requires_approval_validation_and_hmac(self):
         source = (ROOT / "src" / "index.js").read_text(encoding="utf-8")
         self.assertIn("crypto.subtle.importKey", source)
         self.assertIn("approval_nonce", source)
-        self.assertIn("excluded.approval_nonce != task_approvals.approval_nonce", source)
+        self.assertIn("INSERT INTO task_approval_nonces", source)
+        self.assertIn("julianday(excluded.issued_at) > julianday(task_approvals.issued_at)", source)
+        self.assertIn("env.DB.batch([", source)
         self.assertIn("expires > issued + 60 * 60000", source)
         self.assertIn("ORCA_TASK_APPROVAL_HMAC_KEY", source)
         self.assertIn("new TextEncoder().encode(approvalKey).length < 32", source)
