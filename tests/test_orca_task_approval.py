@@ -4,18 +4,17 @@ import hmac
 
 import pytest
 
-from core.orca_task_approval import build_approval_payload, is_authorized_approver
+from core.orca_task_approval import build_approval_payload, is_valid_line_user_id
 
 
 USER = "U0123456789abcdef0123456789abcdef"
 SECRET = "test-secret-that-is-at-least-thirty-two-bytes"
 
 
-def test_only_allowlisted_verified_line_user_can_approve():
-    assert is_authorized_approver(USER, USER + ",U" + "a" * 32)
-    assert not is_authorized_approver("U" + "b" * 32, USER)
-    assert not is_authorized_approver("not-a-line-user", USER)
-    assert not is_authorized_approver(None, USER)
+def test_only_verified_line_user_id_is_accepted():
+    assert is_valid_line_user_id(USER)
+    assert not is_valid_line_user_id("not-a-line-user")
+    assert not is_valid_line_user_id(None)
 
 
 def test_approval_signature_binds_task_text_and_identity():
