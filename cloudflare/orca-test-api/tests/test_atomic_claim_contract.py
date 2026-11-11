@@ -10,6 +10,7 @@ import uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "migrations" / "0002_atomic_claims_and_outbox.sql"
+APPROVAL_MIGRATION = ROOT / "migrations" / "0003_task_bound_approvals.sql"
 
 
 class AtomicClaimContractTests(unittest.TestCase):
@@ -29,6 +30,7 @@ class AtomicClaimContractTests(unittest.TestCase):
             """
         )
         self.db.executescript(MIGRATION.read_text(encoding="utf-8"))
+        self.db.executescript(APPROVAL_MIGRATION.read_text(encoding="utf-8"))
 
     def tearDown(self):
         self.db.close()
@@ -154,6 +156,64 @@ class AtomicClaimContractTests(unittest.TestCase):
             self.db.execute("SELECT COUNT(*) FROM notification_outbox").fetchone()[0], 0
         )
 
+
+
+    def test_task_cannot_be_claimed_without_signed_approval_record(self):
+        self.insert_task()
+        token = "worker-token"
+        result = self.db.execute(
+            """
+            UPDATE tasks SET status='running', lease_token=?, lease_until='2999-01-01T00:00:00Z'
+             WHERE task_id='t-1' AND status='queued'
+               AND EXISTS (SELECT 1 FROM task_approvals
+                            WHERE task_id='t-1' AND status='approved'
+                              AND datetime(expires_at) > CURRENT_TIMESTAMP)
+            """,
+            (token,),
+        )
+        self.assertEqual(result.rowcount, 0)
+        self.assertEqual(self.db.execute("SELECT status FROM tasks WHERE task_id='t-1'").fetchone()[0], "queued")
+
+    def test_task_approval_is_consumed_atomically_with_claim(self):
+        self.insert_task()
+        self.db.execute(
+            """INSERT INTO task_approvals
+               (task_id, approval_id, request_hash, approver_user_id, issued_at, expires_at)
+               VALUES ('t-1', 'approval-1', ?, 'U123', '2026-11-11T00:00:00Z', '2999-01-01T00:00:00Z')""",
+            ("a" * 64,),
+        )
+        self.db.commit()
+        self.db.execute("BEGIN")
+        claimed = self.db.execute(
+            """UPDATE tasks SET status='running', lease_token='claim-1', lease_until='2999-01-01T00:00:00Z'
+                 WHERE task_id='t-1' AND status='queued'
+                   AND EXISTS (SELECT 1 FROM task_approvals WHERE task_id='t-1'
+                     AND approval_id='approval-1' AND status='approved'
+                     AND datetime(expires_at) > CURRENT_TIMESTAMP)"""
+        )
+        consumed = self.db.execute(
+            """UPDATE task_approvals SET status='consumed'
+                 WHERE task_id='t-1' AND approval_id='approval-1' AND status='approved'
+                   AND EXISTS (SELECT 1 FROM tasks WHERE task_id='t-1'
+                     AND status='running' AND lease_token='claim-1')"""
+        )
+        self.db.commit()
+        self.assertEqual(claimed.rowcount, 1)
+        self.assertEqual(consumed.rowcount, 1)
+        retry = self.db.execute(
+            """UPDATE tasks SET status='running', lease_token='claim-2'
+                 WHERE task_id='t-1' AND status='queued'
+                   AND EXISTS (SELECT 1 FROM task_approvals WHERE task_id='t-1' AND status='approved')"""
+        )
+        self.assertEqual(retry.rowcount, 0)
+
+    def test_worker_claim_requires_approval_validation_and_hmac(self):
+        source = (ROOT / "src" / "index.js").read_text(encoding="utf-8")
+        self.assertIn("crypto.subtle.importKey", source)
+        self.assertIn("ORCA_TASK_APPROVAL_HMAC_KEY", source)
+        self.assertIn("ORCA_TASK_APPROVER_USER_IDS", source)
+        self.assertIn('parsed.action === "approve"', source)
+        self.assertIn("a valid task-bound LINE approval is required", source)
 
     def test_outbox_dispatch_batch_stays_within_free_subrequest_budget(self):
         source = (ROOT / "src" / "index.js").read_text(encoding="utf-8")
