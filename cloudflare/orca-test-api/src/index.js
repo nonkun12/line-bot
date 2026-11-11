@@ -79,7 +79,8 @@ async function approveTask(id, request, env) {
   const expiresAt = typeof body?.expires_at === "string" ? body.expires_at : "";
   const signature = typeof body?.signature === "string" ? body.signature : "";
   const nonce = typeof body?.nonce === "string" ? body.nonce : "";
-  if (!env.ORCA_TASK_APPROVAL_HMAC_KEY ||
+  const approvalKey = env.ORCA_TASK_APPROVAL_HMAC_KEY || "";
+  if (new TextEncoder().encode(approvalKey).length < 32 ||
       !/^U[0-9a-fA-F]{32}$/.test(userId) || !/^[0-9a-f]{64}$/.test(requestHash) ||
       !/^[0-9a-f]{64}$/.test(signature) || !/^[A-Za-z0-9_-]{32}$/.test(nonce)) return json({ error: "approval is not authorized" }, 403);
   const issued = Date.parse(issuedAt), expires = Date.parse(expiresAt), now = Date.now();
@@ -87,7 +88,7 @@ async function approveTask(id, request, env) {
       issued < now - 5 * 60000 || expires <= now || expires > issued + 60 * 60000)
     return json({ error: "approval timestamp is invalid or expired" }, 400);
   const canonical = ["v1", id, requestHash, userId, issuedAt, expiresAt, nonce].join("\n");
-  if (!safeEqual(signature, await hmacHex(env.ORCA_TASK_APPROVAL_HMAC_KEY, canonical)))
+  if (!safeEqual(signature, await hmacHex(approvalKey, canonical)))
     return json({ error: "invalid approval signature" }, 403);
   const task = await env.DB.prepare("SELECT task_id, request_text, status, lease_until, user_id FROM tasks WHERE task_id = ?").bind(id).first();
   const expiredRunning = task?.status === "running" && task.lease_until && Date.parse(task.lease_until) <= Date.now();
