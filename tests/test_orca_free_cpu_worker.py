@@ -561,3 +561,14 @@ def test_worker_checks_global_hold_before_commit_push_and_pr():
     assert process.index('assert_global_hold_clear()\n        if run(["git", "commit"') < process.index('run(["git", "commit"')
     assert process.index('assert_global_hold_clear()\n        pushed = run(["git", "push"') < process.index('run(["git", "push"')
     assert process.index('assert_global_hold_clear()\n        pr_url = create_or_reuse_pr') < process.index("create_or_reuse_pr(")
+
+
+def test_scheduled_poll_is_idle_not_failed_during_global_hold(monkeypatch, capsys):
+    import scripts.orca_free_cpu_worker as worker
+
+    def held():
+        raise worker.GlobalHoldError("Global HOLD active")
+
+    monkeypatch.setattr(worker, "assert_global_hold_clear", held)
+    assert worker.poll() == 0
+    assert "ORCA_CPU_WORKER_IDLE" in capsys.readouterr().out
