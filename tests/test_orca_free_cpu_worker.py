@@ -470,9 +470,13 @@ def test_existing_pr_reconciliation_rejects_wrong_request_fingerprint(monkeypatc
         worker, "run",
         lambda *args, **kwargs: SimpleNamespace(
             returncode=0,
-            stdout='[{"url":"https://github.com/nonkun12/line-bot/pull/100",'
-                   '"headRefName":"orca/task-line-100","baseRefName":"main",'
-                   '"state":"OPEN","body":"Task ID: line-100\nRequest SHA-256: wrong"}]',
+            stdout=json.dumps([{
+                "url": "https://github.com/nonkun12/line-bot/pull/100",
+                "headRefName": "orca/task-line-100",
+                "baseRefName": "main",
+                "state": "OPEN",
+                "body": "Task ID: line-100\\nRequest SHA-256: wrong",
+            }]),
             stderr="",
         ),
     )
