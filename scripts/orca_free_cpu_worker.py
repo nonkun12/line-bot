@@ -53,6 +53,16 @@ class WorkerError(RuntimeError):
     pass
 
 
+class GlobalHoldError(WorkerError):
+    """Raised when the authoritative D1 Global HOLD is active or unavailable."""
+
+
+def assert_global_hold_clear() -> None:
+    state = api_request("GET", "/control/global-hold")
+    if not isinstance(state, dict) or state.get("clear") is not True:
+        raise GlobalHoldError("Global HOLD is active or D1 hold state is unavailable; execution blocked")
+
+
 def api_request(method: str, path: str, payload: dict | None = None):
     token = os.environ.get("ORCA_TASK_API_TOKEN", "").strip()
     if not token:
@@ -106,6 +116,7 @@ def oldest_queued_task(tasks: list[dict]) -> dict | None:
 
 
 def poll() -> int:
+    assert_global_hold_clear()
     tasks = unwrap_task_list(api_request("GET", "/tasks?approved=true&limit=100"))
     task = oldest_queued_task(tasks)
     if task is None:
@@ -462,6 +473,7 @@ def create_or_reuse_pr(
     return url
 
 def process(task_id: str) -> int:
+    assert_global_hold_clear()
     if not os.environ.get("ORCA_TASK_APPROVAL_GATE", "").strip():
         raise WorkerError(
             "execution held: configure required reviewers and ORCA_TASK_APPROVAL_GATE "
@@ -485,6 +497,7 @@ def process(task_id: str) -> int:
     if not instruction or len(instruction.encode("utf-8")) > MAX_INSTRUCTION:
         raise WorkerError("task instruction is empty or too long")
 
+    assert_global_hold_clear()
     claim_result = api_request(
         "POST", "/tasks/" + encoded_id + "/claim", {"lease_seconds": 1800}
     )
@@ -497,6 +510,15 @@ def process(task_id: str) -> int:
         or claimed.get("status") != "running"
     ):
         raise WorkerError("atomic task claim could not be verified")
+    try:
+        assert_global_hold_clear()
+    except GlobalHoldError:
+        api_request(
+            "POST", "/tasks/" + encoded_id + "/complete",
+            {"claim_token": claim_token, "status": "blocked",
+             "message": "Global HOLD activated after claim; execution stopped."},
+        )
+        raise
     if claimed.get("request_text") != raw_instruction:
         api_request(
             "POST", "/tasks/" + encoded_id + "/complete",
@@ -586,6 +608,7 @@ def process(task_id: str) -> int:
                 raise WorkerError("tests introduced a symlink output")
             if not target.is_file() or hashlib.sha256(target.read_bytes()).hexdigest() != before_hashes[path]:
                 raise WorkerError("tests modified generated source files after execution")
+        assert_global_hold_clear()
         if run(["git", "add", "--", *paths], timeout=30).returncode:
             raise WorkerError("git add failed")
         if run(["git", "diff", "--cached", "--check"], timeout=30).returncode:
@@ -600,8 +623,10 @@ def process(task_id: str) -> int:
         )
         if run(["gh", "auth", "setup-git"], timeout=30).returncode:
             raise WorkerError("could not configure GitHub CLI credentials")
+        assert_global_hold_clear()
         if run(["git", "commit", "-m", f"feat: implement ORCA task {task_id}"], timeout=60).returncode:
             raise WorkerError("git commit failed")
+        assert_global_hold_clear()
         pushed = run(["git", "push", "--set-upstream", "origin", branch], timeout=180)
         if pushed.returncode:
             raise WorkerError("git push failed: " + pushed.stderr[-1200:])
@@ -615,6 +640,7 @@ def process(task_id: str) -> int:
             "Request text is omitted from this PR body; retrieve it from the authenticated task record if needed.\n"
             "Not merged or deployed. Human review is required.\n"
         )
+        assert_global_hold_clear()
         pr_url = create_or_reuse_pr(
             branch, "feat: ORCA task " + task_id, body,
             expected_task_id=task_id,
@@ -629,7 +655,8 @@ def process(task_id: str) -> int:
         # explicit reconciliation instead.
         if not pr_url:
             try:
-                api_request("POST", "/tasks/" + encoded_id + "/complete", {"claim_token": claim_token, "status": "fail", "message": f"ORCA task {task_id}: FAIL — execution did not produce a reviewable PR"})
+                terminal_status = "blocked" if isinstance(sys.exc_info()[1], GlobalHoldError) else "fail"
+                api_request("POST", "/tasks/" + encoded_id + "/complete", {"claim_token": claim_token, "status": terminal_status, "message": f"ORCA task {task_id}: {terminal_status.upper()} — execution stopped before producing a reviewable PR"})
             except Exception:
                 pass
         else:
