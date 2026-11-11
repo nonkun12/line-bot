@@ -81,10 +81,13 @@ secrets/protections have been configured.
 - Tests run in a network-disabled container with only a read-only copy of the
   generated app files, no repository workspace, and no GitHub/D1 credentials.
 - If a task PR is created but final D1 completion fails, the task remains
-  running until lease expiry. A retry first looks for the deterministic task
-  branch's existing open PR and reconciles its D1 completion only after
-  checking the exact head branch, `main` base, task ID, and request hash.
-  A mismatched or unrelated PR is not treated as a successful result.
+  running until lease expiry. After fresh LINE approval, a retry checks the
+  existing PR's open state, exact head SHA, deterministic branch, `main` base,
+  task ID, and request hash; it fetches that exact commit, verifies that the
+  diff contains only the allowed new-app files, and reruns the isolated tests
+  before reconciling D1 completion. A changed head, mismatched PR, unsafe diff,
+  or failed test is blocked and reported; it is never treated as a successful
+  result.
 - LINE notification delivery is at-least-once; duplicate pushes are possible
   if LINE accepts a message but the response is lost.
 - No secrets, webhook URL, Render service, Cloudflare Worker, D1 database,
