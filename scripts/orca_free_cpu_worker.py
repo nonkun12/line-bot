@@ -121,6 +121,13 @@ def poll() -> int:
     return 0
 
 
+def verify_task_fingerprint(request_text: str, approved_fingerprint: str) -> bool:
+    actual = hashlib.sha256(request_text.encode("utf-8")).hexdigest()
+    return bool(
+        re.fullmatch(r"[0-9a-f]{64}", approved_fingerprint)
+        and hmac.compare_digest(actual, approved_fingerprint)
+    )
+
 def run(command: list[str], *, timeout: int = 120, input_text: str | None = None):
     return subprocess.run(
         command, text=True, input=input_text, capture_output=True, timeout=timeout
@@ -319,11 +326,7 @@ def process(encoded_task: str) -> int:
     task_id = str(task.get("task_id") or "")
     raw_instruction = str(task.get("request_text") or "").strip()
     approved_fingerprint = os.environ.get("ORCA_TASK_APPROVED_SHA256", "").strip()
-    actual_fingerprint = hashlib.sha256(raw_instruction.encode("utf-8")).hexdigest()
-    if (
-        not re.fullmatch(r"[0-9a-f]{64}", approved_fingerprint)
-        or not hmac.compare_digest(actual_fingerprint, approved_fingerprint)
-    ):
+    if not verify_task_fingerprint(raw_instruction, approved_fingerprint):
         raise WorkerError("task fingerprint does not match the reviewed approval snapshot")
     if raw_instruction.startswith("アプリ開発:"):
         instruction = raw_instruction.split(":", 1)[1].strip()
