@@ -5,11 +5,13 @@ This directory is the source-controlled successor for the separately deployed
 
 ## Migrations
 
-Review migrations `0002_atomic_claims_and_outbox.sql` and
-`0003_task_bound_approvals.sql` against the live D1 schema before applying
-them in order. Migration 0002 adds verified LINE user ID storage, lease fields,
-attempt count, and a durable notification outbox. Migration 0003 adds the
-one-use task approval ledger. Do not apply either migration until the live
+Review migrations `0002_atomic_claims_and_outbox.sql`,
+`0003_task_bound_approvals.sql`, and
+`0004_append_only_approval_nonce_history.sql` against the live D1 schema before
+applying them in order. Migration 0002 adds verified LINE user ID storage,
+lease fields, attempt count, and a durable notification outbox. Migration 0003
+adds the current task approval record. Migration 0004 adds the append-only
+nonce replay ledger and backfills the currently stored approval nonce. Do not apply either migration until the live
 schema and migration history are confirmed. Migration 0002 uses ALTER TABLE
 and is not safe to re-run blindly.
 
@@ -42,6 +44,23 @@ All routes require `Authorization: Bearer <API_TOKEN>`.
 - Legacy `PUT /tasks/:id` status changes return HTTP 410 to prevent bypassing
   the claim-token protocol.
 
+
+### Approval nonce replay protection
+
+Every accepted approval nonce is inserted into `task_approval_nonces`, whose
+primary key permanently rejects reuse. The nonce insert and current-approval
+upsert run in one D1 batch. A newer signed approval may replace an unconsumed
+approval; an older or equal-issued-at approval cannot roll the current record
+back. A fresh nonce is required to reauthorize after an expired running lease.
+A stale but previously unused nonce is retained in the ledger and cannot be
+retried.
+
+Migration 0004 can backfill only the nonce still present in
+`task_approvals`. Nonces overwritten before migration 0004 cannot be
+reconstructed; treat the pre-migration replay window as a residual risk and
+keep the API/worker disabled until the migration is applied and rollout
+checks pass. Do not infer historical nonce coverage from the backfilled row.
+
 ## LINE notification
 
 The scheduled handler uses a five-minute dispatch lease to prevent concurrent
@@ -55,7 +74,7 @@ task-specific notifications.
 ## Required safeguards before deployment
 
 1. Confirm the actual D1 schema and migration history; reconcile and apply
-   migrations 0002 and 0003 once, in order.
+   migrations 0002, 0003, and 0004 once, in order.
 2. Configure Worker secrets `API_TOKEN`, `LINE_CHANNEL_ACCESS_TOKEN`, and
    `ORCA_TASK_APPROVAL_HMAC_KEY`.
 3. Configure the same high-entropy `ORCA_TASK_APPROVAL_HMAC_KEY` in Render.
@@ -88,10 +107,10 @@ or task contents into a ticket or chat.
 -- 1. Confirm the actual tasks columns and their defaults.
 PRAGMA table_info(tasks);
 
--- 2. Inspect migration bookkeeping and the two ORCA support tables.
+-- 2. Inspect migration bookkeeping and the two ORCA support tables and nonce history.
 SELECT type, name, sql
   FROM sqlite_master
- WHERE name IN ('d1_migrations', 'task_approvals', 'notification_outbox')
+ WHERE name IN ('d1_migrations', 'task_approvals', 'notification_outbox', 'task_approval_nonces')
     OR name LIKE 'idx_tasks_%'
  ORDER BY type, name;
 
