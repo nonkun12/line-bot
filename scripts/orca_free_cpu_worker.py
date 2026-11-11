@@ -122,7 +122,7 @@ def poll() -> int:
         with open(output, "a", encoding="utf-8") as handle:
             # Only the opaque identifier crosses the Actions job boundary.
             # The request body is fetched again inside the protected job.
-            handle.write(f"task_id={task['task_id']}\\n")
+            handle.write(f"task_id={task['task_id']}\n")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as handle:
@@ -356,8 +356,6 @@ def process(task_id: str) -> int:
         instruction = raw_instruction.split("：", 1)[1].strip()
     else:
         raise WorkerError("only explicit アプリ開発: tasks are accepted")
-    if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
-        raise WorkerError("invalid task_id")
     if not instruction or len(instruction.encode("utf-8")) > MAX_INSTRUCTION:
         raise WorkerError("task instruction is empty or too long")
 
