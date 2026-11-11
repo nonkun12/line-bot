@@ -44,17 +44,21 @@ async function readJson(request) {
   }
 }
 
+function isValidLineUserId(value) {
+  return typeof value === "string" && /^U[0-9a-fA-F]{32}$/.test(value);
+}
+
 async function createTask(request, env) {
   if (!(await globalHoldState(env)).clear) return json({ error: "global HOLD is active or unavailable" }, 423);
   const body = await readJson(request);
   if (!body || typeof body.task_id !== "string" ||
       !/^[A-Za-z0-9_-]{1,100}$/.test(body.task_id) ||
       typeof body.request_text !== "string" ||
-      !body.request_text.trim() || new TextEncoder().encode(body.request_text).length > 6000) {
-    return json({ error: "invalid task payload" }, 400);
+      !body.request_text.trim() || new TextEncoder().encode(body.request_text).length > 6000 ||
+      !isValidLineUserId(body.user_id)) {
+    return json({ error: "invalid task payload or verified LINE owner is missing" }, 400);
   }
-  const userId = typeof body.user_id === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(body.user_id)
-    ? body.user_id : null;
+  const userId = body.user_id;
   try {
     const inserted = await env.DB.prepare(
       `INSERT INTO tasks (task_id, request_text, status, source_event_id, user_id)
