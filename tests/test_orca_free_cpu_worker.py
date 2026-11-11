@@ -303,7 +303,12 @@ def test_worker_reconciles_existing_pr_before_creating_or_pushing_branch():
     assert process.index("existing_pr = find_existing_pr(") < process.index(
         'run(["git", "switch", "-c", branch]'
     )
-    assert "reconciled existing review PR" in process
+    existing_branch = process.split("if existing_pr:", 1)[1].split(
+        "if run([\"git\", \"switch\", \"-c\", branch]", 1
+    )[0]
+    assert '"status": "blocked"' in existing_branch
+    assert "human reconciliation" in existing_branch
+    assert '"status": "pass"' not in existing_branch
 
 def test_workflow_passes_only_task_id_between_jobs():
     workflow = (
