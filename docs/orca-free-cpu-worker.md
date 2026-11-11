@@ -13,7 +13,7 @@ availability still apply; zero-cost or exact-time execution is not guaranteed.
 2. The same verified LINE account that submitted the task sends
    `タスク承認:<task_id>`. The Render bot fetches the exact queued task,
    hashes the full request text, and signs a versioned HMAC payload binding
-   task ID, request hash, LINE user ID, issue time, and five-minute expiry.
+   task ID, request hash, LINE user ID, issue time, and one-hour expiry.
 3. The Cloudflare API verifies the HMAC, confirms that the LINE user ID is
    the task's stored submitter identity, recomputes the live task hash, and
    stores a one-use approval record. The atomic claim consumes that approval
@@ -45,7 +45,7 @@ chat, source control, workflow summaries, or task text.
 5. Ensure Actions are allowed to create branches and pull requests. The
    execution job requests only `contents: write` and `pull-requests: write`.
 
-The LINE approval expires after five minutes and is consumed on the first
+The LINE approval expires after one hour and is consumed on the first
 successful claim. The task owner is the only permitted approver, so no separate
 LINE-user allowlist is required. Until the shared HMAC secret and required
 workflow protections are configured, execution remains fail-closed.
