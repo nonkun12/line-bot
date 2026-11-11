@@ -79,8 +79,6 @@ def _approve_orca_task(message: str, user_id: str | None):
         task = result.get("task", {}) if isinstance(result, dict) else {}
         if task.get("task_id") != task_id or task.get("status") != "queued":
             return False, "対象タスクがqueued状態ではありません。承認していません。"
-        if task.get("user_id") != user_id:
-            return False, "依頼を登録したLINEアカウント以外からは承認できません。"
         request_text = task.get("request_text")
         if not isinstance(request_text, str) or not request_text.startswith(("アプリ開発:", "アプリ開発：")):
             return False, "明示的なアプリ開発タスクではありません。承認していません。"
