@@ -163,7 +163,9 @@ def run(command: list[str], *, timeout: int = 120, input_text: str | None = None
         child_env.pop(name, None)
     # GitHub credentials are available only to the fixed GitHub CLI operations and git push.
     if command and (
-        command[0] == "gh" or command[:2] == ["git", "push"]
+        command[0] == "gh"
+        or (command[0] == "git" and len(command) > 1
+            and command[1] in {"fetch", "ls-remote", "push"})
     ):
         github_token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
         if github_token:
