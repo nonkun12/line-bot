@@ -408,6 +408,28 @@ def reconcile_existing_pr(
     after = run(["git", "status", "--porcelain", "--untracked-files=all"], timeout=30)
     if after.returncode or after.stdout.strip():
         raise WorkerError("existing PR tests modified the checkout")
+    final_view = run(
+        ["gh", "pr", "view", branch, "--json",
+         "url,headRefName,baseRefName,body,state,headRefOid"],
+        timeout=60,
+    )
+    if final_view.returncode:
+        raise WorkerError("could not recheck existing PR after isolated tests")
+    try:
+        final_item = json.loads(final_view.stdout or "{}")
+    except json.JSONDecodeError:
+        raise WorkerError("GitHub CLI returned invalid final PR JSON") from None
+    if (
+        not isinstance(final_item, dict)
+        or final_item.get("url") != url
+        or final_item.get("headRefName") != branch
+        or final_item.get("baseRefName") != "main"
+        or final_item.get("state") != "OPEN"
+        or final_item.get("headRefOid") != head_sha
+        or f"Task ID: {task_id}" not in str(final_item.get("body") or "")
+        or f"Request SHA-256: {expected_request_hash}" not in str(final_item.get("body") or "")
+    ):
+        raise WorkerError("existing PR changed during isolated verification")
     return url, paths
 
 
