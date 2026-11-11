@@ -361,7 +361,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/control/global-hold" && request.method === "GET") {
       const state = await globalHoldState(env);
-      return json({ clear: state.clear, value: state.value, blocked: !state.clear }, state.clear ? 200 : 423);
+      return json({ clear: state.clear, value: state.value, blocked: !state.clear }, 200);
     }
     if (url.pathname === "/tasks" && request.method === "POST") return createTask(request, env);
     if (url.pathname === "/tasks" && request.method === "GET") return listTasks(url, env);
