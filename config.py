@@ -73,8 +73,10 @@ def _get_orca_task_status(message: str, user_id: str | None):
     try:
         response = httpx.get(
             url,
-            params={"user_id": str(user_id)},
-            headers={"Authorization": f"Bearer {ORCA_TASK_API_TOKEN}"},
+            headers={
+                "Authorization": f"Bearer {ORCA_TASK_API_TOKEN}",
+                "X-ORCA-Task-Owner": str(user_id),
+            },
             timeout=8.0,
         )
         if response.status_code == 404:
