@@ -42,7 +42,7 @@ def build_approval_payload(
         ("v1", task_id, request_hash, user_id, issued_at, expires_at)
     )
     nonce = secrets.token_urlsafe(24)
-    canonical = "\\n".join((canonical, nonce))
+    canonical = "\n".join((canonical, nonce))
     signature = hmac.new(
         secret.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256
     ).hexdigest()
