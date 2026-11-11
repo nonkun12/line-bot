@@ -130,8 +130,8 @@ Keep all four related PRs in Draft until the review and deployment prerequisites
 are complete. Merging is not authorized by this proposal.
 
 1. **Safety hold first — PR #1331.** Review and merge the fail-closed hold
-   before enabling the new worker. This prevents the existing autonomous
-   execution entry points from continuing to run while the new path is prepared.
+   before enabling the new worker. This holds the identified existing
+   autonomous execution entry points while the new path is prepared.
 2. **D1/API second — PR #1333.** Verify the live schema using the read-only
    preflight above, create and protect a backup, reconcile any differences,
    then apply migrations 0002 and 0003 exactly once. Review and deploy this
