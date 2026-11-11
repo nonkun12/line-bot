@@ -215,6 +215,14 @@ class AtomicClaimContractTests(unittest.TestCase):
         self.assertIn('parsed.action === "approve"', source)
         self.assertIn("a valid task-bound LINE approval is required", source)
 
+
+    def test_task_list_exposes_only_boolean_approval_state(self):
+        source = (ROOT / "src" / "index.js").read_text(encoding="utf-8")
+        self.assertIn("AS approved", source)
+        self.assertIn("a.status = 'approved'", source)
+        self.assertIn("datetime(a.expires_at) > CURRENT_TIMESTAMP", source)
+        self.assertNotIn("approver_user_id FROM task_approvals", source)
+
     def test_outbox_dispatch_batch_stays_within_free_subrequest_budget(self):
         source = (ROOT / "src" / "index.js").read_text(encoding="utf-8")
         self.assertIn("ORDER BY created_at LIMIT 10", source)
