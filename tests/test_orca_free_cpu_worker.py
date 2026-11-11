@@ -53,7 +53,7 @@ def test_tracked_context_skips_symlink_files(monkeypatch, tmp_path):
     monkeypatch.setattr(
         worker, "run",
         lambda *args, **kwargs: SimpleNamespace(
-            returncode=0, stdout="public.md\\nprivate.md\\n", stderr=""
+            returncode=0, stdout="public.md\nprivate.md\n", stderr=""
         ),
     )
 
