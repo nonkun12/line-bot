@@ -26,10 +26,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout exact pull request head
+      - name: Checkout PR merge snapshot
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Python
@@ -42,6 +42,9 @@ jobs:
 
       - name: Generate SHA-bound REA report
         id: rea
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         shell: bash
         run: |
           set +e
@@ -52,15 +55,21 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
-          report = json.loads((Path(os.environ["RUNNER_TEMP"]) / "rea-report.json").read_text(encoding="utf-8"))
+          report_path = Path(os.environ["RUNNER_TEMP"]) / "rea-report.json"
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          report["pull_request_head_sha"] = os.environ["PR_HEAD_SHA"]
+          report["pull_request_base_sha"] = os.environ["PR_BASE_SHA"]
+          report_path.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"status={report.get('status', 'BLOCKED')}\n")
               output.write(f"target_sha={report.get('target_sha', '')}\n")
+              output.write(f"pr_head_sha={report.get('pull_request_head_sha', '')}\n")
               output.write(f"coverage={report.get('coverage', 'INCOMPLETE')}\n")
               output.write(f"reason_code={report.get('reason_code', '')}\n")
           print(json.dumps({
               "status": report.get("status"),
               "target_sha": report.get("target_sha"),
+              "pull_request_head_sha": report.get("pull_request_head_sha"),
               "coverage": report.get("coverage"),
               "files_scanned": report.get("files_scanned"),
               "findings_count": report.get("findings_count"),
@@ -81,13 +90,15 @@ jobs:
         env:
           REA_STATUS: ${{ steps.rea.outputs.status }}
           REA_SHA: ${{ steps.rea.outputs.target_sha }}
+          PR_HEAD_SHA: ${{ steps.rea.outputs.pr_head_sha }}
           REA_COVERAGE: ${{ steps.rea.outputs.coverage }}
           REA_REASON: ${{ steps.rea.outputs.reason_code }}
         run: |
           {
             echo "### REA read-only scan"
             echo "- Result: $REA_STATUS"
-            echo "- Target SHA: $REA_SHA"
+            echo "- Scanned tree SHA: $REA_SHA"
+            echo "- PR head SHA: $PR_HEAD_SHA"
             echo "- Coverage: $REA_COVERAGE"
             echo "- Block reason: $REA_REASON"
             echo "- Evidence-only: no approval, patch, merge, or deployment authority."
