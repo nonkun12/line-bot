@@ -6,54 +6,118 @@ Groq, a paid inference API, a Mac, or a paid VM.
 
 ## What it does
 
-1. Every 15 minutes, a read-only job checks the existing Cloudflare D1 task API
-   for one queued task whose request starts with the explicit `アプリ開発:` prefix.
-2. The read-only poll job writes the exact request into its workflow summary, HTML-escaped,
-   and records its SHA-256 fingerprint in the job outputs and execution job name.
-3. The execution job waits at the GitHub Environment named `orca-task-execution`.
-   Reviewers should compare the task ID, exact request, and fingerprint in the poll
-   summary before approving that specific workflow run. The worker recomputes the
-   fingerprint and refuses execution if the approved snapshot does not match.
-4. After an authorized reviewer approves that environment deployment, the worker
-   claims the task, runs local CPU inference, validates a patch containing only new app files,
-   runs the generated app's pytest suite in a network-disabled container that receives only a read-only copy of the new app files (not the repository workspace), and opens a review-only PR.
-5. It updates the D1 task status to `pass` or `fail`. It never merges or deploys.
+1. Every 15 minutes, a read-only job checks the Cloudflare D1 task API for
+   the oldest queued `アプリ開発:` task that has a valid, unexpired,
+   task-bound LINE approval. Unapproved tasks are not sent to the execution job.
+2. A verified LINE account on the explicit approver allowlist sends
+   `タスク承認:<task_id>`. The Render bot fetches the exact queued task,
+   hashes the full request text, and signs a versioned HMAC payload binding
+   task ID, request hash, LINE user ID, issue time, and five-minute expiry.
+3. The Cloudflare API verifies the HMAC, checks the LINE user ID against its
+   own allowlist, recomputes the live task hash, and stores one approval record.
+   The atomic claim consumes that approval in the same D1 transaction that
+   acquires the task lease. Replays, expired approvals, changed task text, and
+   unapproved claims are rejected.
+4. The execution job also waits at the GitHub Environment named
+   `orca-task-execution` when required reviewers are configured. This is an
+   additional gate; it is not a substitute for the signed, task-bound LINE
+   approval. A non-empty sentinel secret only detects incomplete setup.
+5. The worker claims the task, runs local CPU inference, validates a patch
+   containing only new app files, runs the generated app's pytest suite in a
+   network-disabled container that receives only a read-only copy of the new
+   app files (not the repository workspace), and opens a review-only PR.
+6. It updates D1 only with a lease-bound terminal result. It never merges or
+   deploys. A consumed approval is one-use; if a lease expires before a
+   successful completion, the task requires a fresh LINE approval.
 
-## Required one-time repository configuration
+## Atomic API dependency (PR #1333) and LINE approval dependency (PR #1334)
 
-These are manual GitHub settings; this PR does not create secrets or change
-repository/environment permissions.
-
-1. Add repository Actions secret `ORCA_TASK_API_TOKEN` with the existing
-   Cloudflare API token already held outside GitHub. Do not paste it into chat.
-2. Create the GitHub Environment `orca-task-execution`.
-3. Configure **required reviewers** for that environment (the task must wait
-   for human approval on every execution).
-4. Add environment secret `ORCA_TASK_APPROVAL_GATE` with any non-empty
-   sentinel value. The worker fails closed if this secret is absent.
-5. Ensure Actions are allowed to create branches and pull requests. The workflow
-   requests only `contents: write` and `pull-requests: write` for its job.
-
-The environment reviewer rule is the actual per-run approval gate. The sentinel
-secret only detects incomplete setup; it is not itself an authentication token.
-Do not run this workflow until required reviewers have been configured.
-
-## Atomic API dependency (separate PR #1333)
-
-The worker now uses the lease-based API proposed in
+The worker uses the lease and signed-approval API proposed in
 [PR #1333](https://github.com/nonkun12/line-bot/pull/1333):
 
-- It claims a task with `POST /tasks/:id/claim` and a 30-minute lease.
-- It verifies the claimed request text before inference.
-- It completes with `POST /tasks/:id/complete`, the claim token, and a terminal state.
-- It does not use legacy `PUT /tasks/:id` status updates.
+- `POST /tasks/:id/approve` accepts only an HMAC-signed approval from an
+  allowlisted LINE user and binds it to the current request-text SHA-256.
+- `GET /tasks` exposes only a boolean `approved` field for unexpired approvals.
+- `POST /tasks/:id/claim` requires and consumes the approval atomically with
+  the task lease. It returns 403/409 without a valid unconsumed approval.
+- `POST /tasks/:id/complete` requires the lease token and a terminal state.
+- Legacy `PUT /tasks/:id` status changes remain disabled.
 
-PR #1333 is source-only and is not merged or deployed. The existing deployed
-Worker does not yet expose these endpoints. Do not enable or dispatch this
-worker against the current API until the API PR has been reviewed, its D1
-migration has been safely applied, and the Worker is deployed through an
-explicitly approved rollout. The same rollout must separately add the LINE
-user ID at task intake and configure the LINE notification secret.
+[PR #1334](https://github.com/nonkun12/line-bot/pull/1334) adds the verified
+LINE source user ID to task intake and the explicit `タスク承認:<task_id>`
+command. Both PRs are source-only and are not merged or deployed. The current
+deployed Worker does not yet expose these endpoints. Do not enable or dispatch
+the worker against the current API until both PRs have been reviewed, migrations
+0002 and 0003 have been reconciled with the live D1 schema and safely applied,
+and the Worker is deployed through a separately approved rollout.
+
+## Current boundaries and known gaps
+
+- Only one workflow run can poll/execute at a time (`concurrency` group).
+  This serializes runs of this workflow only. The D1 lease in PR #1333 is the
+  cross-caller atomic claim mechanism; it is not active until that API revision
+  is deployed and the worker is enabled against it.
+- If a task branch already has an open PR, the worker reuses its URL instead of creating a duplicate. If PR creation succeeds but final D1 completion fails, it leaves the task running until lease expiry and emits a reconciliation warning rather than marking a reviewable PR as failed.\n- The deployed intake still does not retain LINE `user_id`; task-specific push
+  notifications remain unavailable until a separately reviewed intake update
+  stores the verified event source user ID.
+- The CPU model is small. It may fail to produce a valid patch; failures are
+  recorded and do not trigger a merge or deployment.
+- GitHub-hosted runner availability and free quotas are subject to GitHub's
+  current plan and usage limits. The workflow is scheduled, not guaranteed to
+  start at an exact minute.
+- The worker only processes `アプリ開発:` tasks and creates a new self-contained Python app under apps/<slug>/;
+  it cannot change existing applications or line-bot source files. Every app must
+  include a tests/test_*.py file. Generated tests run in a container with no network
+  and no GitHub/D1 credentials. The test container has a read-only filesystem apart from a temporary `/tmp`, runs as an unprivileged user, and mounts only the generated app files.
+- The worker is not enabled until the API dependency is deployed through an
+  approved rollout and the required repository secret and protected environment
+  are configured. No secret, webhook, Render service, Cloudflare
+  Worker, or deployment is modified by this PR.## Required one-time configuration before any rollout
+
+These settings are manual and are not changed by this PR. Never put secrets in
+chat, source control, workflow summaries, or task text.
+
+1. Add repository Actions secret `ORCA_TASK_API_TOKEN` for the existing API.
+2. Configure the same randomly generated, high-entropy (at least 32-byte)
+   `ORCA_TASK_APPROVAL_HMAC_KEY` as a Render environment secret and a
+   Cloudflare Worker secret. Do not reuse `API_TOKEN`.
+3. Configure `ORCA_TASK_APPROVER_USER_IDS` on both Render and Cloudflare with
+   the exact verified LINE user IDs authorized to approve tasks. Keep the
+   allowlists identical and minimal. Do not put these IDs in logs.
+4. Configure the Cloudflare Worker secrets `API_TOKEN`,
+   `LINE_CHANNEL_ACCESS_TOKEN`, and `ORCA_TASK_APPROVAL_HMAC_KEY`.
+5. Create GitHub Environment `orca-task-execution`, configure required
+   reviewers, and add non-empty sentinel `ORCA_TASK_APPROVAL_GATE`.
+   Required reviewers are an additional gate, not task-bound approval.
+6. Ensure Actions are allowed to create branches and pull requests. The
+   workflow requests only `contents: write` and `pull-requests: write`
+   for its execution job.
+
+The LINE approval expires after five minutes and is consumed on the first
+successful claim. If a worker lease expires, a fresh explicit LINE approval
+is required. Until the secrets and allowlists are configured on both sides,
+approval and execution fail closed.
+
+## Atomic API dependency (PR #1333) and LINE approval dependency (PR #1334)
+
+The worker uses the lease and signed-approval API proposed in
+[PR #1333](https://github.com/nonkun12/line-bot/pull/1333):
+
+- `POST /tasks/:id/approve` accepts only an HMAC-signed approval from an
+  allowlisted LINE user and binds it to the current request-text SHA-256.
+- `GET /tasks` exposes only a boolean `approved` field for unexpired approvals.
+- `POST /tasks/:id/claim` requires and consumes the approval atomically with
+  the task lease. It returns 403/409 without a valid unconsumed approval.
+- `POST /tasks/:id/complete` requires the lease token and a terminal state.
+- Legacy `PUT /tasks/:id` status changes remain disabled.
+
+[PR #1334](https://github.com/nonkun12/line-bot/pull/1334) adds the verified
+LINE source user ID to task intake and the explicit `タスク承認:<task_id>`
+command. Both PRs are source-only and are not merged or deployed. The current
+deployed Worker does not yet expose these endpoints. Do not enable or dispatch
+the worker against the current API until both PRs have been reviewed, migrations
+0002 and 0003 have been reconciled with the live D1 schema and safely applied,
+and the Worker is deployed through a separately approved rollout.
 
 ## Current boundaries and known gaps
 
