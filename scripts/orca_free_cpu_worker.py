@@ -415,13 +415,16 @@ def process(task_id: str) -> int:
         if existing_pr:
             # Do not infer that an existing PR is still tested or unchanged.
             # This worker is checked out at main, not the PR head, so it cannot
-            # safely re-certify the current PR contents here. Keep the result
-            # visible for human reconciliation instead of recording a false PASS.
+            # safely re-certify the current PR contents here. Keep the lease
+            # running and require fresh LINE approval after expiry; a terminal
+            # status would prevent the owner from retrying through the API.
             pr_url = existing_pr
-            api_request(
-                "POST", "/tasks/" + encoded_id + "/complete",
-                {"claim_token": claim_token, "status": "blocked",
-                 "message": f"ORCA task {task_id}: existing PR requires fresh head verification and human reconciliation: {pr_url}"},
+            print(
+                "ORCA_CPU_WORKER_RECONCILIATION_REQUIRED: existing PR needs "
+                "fresh head verification; task remains running until lease "
+                "expiry, then the owner must issue a fresh LINE approval: "
+                + pr_url,
+                file=sys.stderr,
             )
             return 1
         if run(["git", "switch", "-c", branch], timeout=30).returncode:
