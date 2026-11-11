@@ -330,11 +330,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         report = scan_repository(args.repo_root)
+    except ScanBlocked as exc:
+        print(json.dumps({
+            "schema_version": 2, "scanner": "rea-readonly-mvp",
+            "status": "BLOCKED", "complete": False,
+            "reason_code": str(exc),
+            "capabilities": {"read_only": True, "patches_tasks_hold_merge_deploy": False},
+        }, sort_keys=True))
+        return 2
     except Exception:
         print(json.dumps({
             "schema_version": 2, "scanner": "rea-readonly-mvp",
             "status": "BLOCKED", "complete": False,
-            "reason_code": "scan_evidence_incomplete",
+            "reason_code": "unexpected_scan_error",
             "capabilities": {"read_only": True, "patches_tasks_hold_merge_deploy": False},
         }, sort_keys=True))
         return 2
