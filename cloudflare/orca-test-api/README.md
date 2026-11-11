@@ -35,6 +35,10 @@ All routes require `Authorization: Bearer <API_TOKEN>`.
   notification outbox intent, and lease cleanup together.
 - `GET /tasks/:id` deliberately omits LINE user ID, lease token, and approval
   internals.
+- `GET /tasks/:id/status?user_id=<verified-line-user-id>` returns only task ID,
+  status, and timestamps when the supplied verified LINE user ID matches the
+  task owner. Missing tasks and owner mismatches both return HTTP 404. The
+  LINE bot exposes this as `タスク状態:<task_id>`; it is a read-only lookup.
 - Legacy `PUT /tasks/:id` status changes return HTTP 410 to prevent bypassing
   the claim-token protocol.
 
