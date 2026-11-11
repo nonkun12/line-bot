@@ -293,6 +293,8 @@ async function dispatchOutbox(env) {
           to: claimed.user_id,
           messages: [{ type: "text", text: claimed.message }],
         }),
+        // Bound network time so a stalled LINE API cannot consume the worker invocation.
+        signal: AbortSignal.timeout(10_000),
       });
     } catch {
       response = null;
