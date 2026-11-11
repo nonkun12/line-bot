@@ -413,16 +413,17 @@ def process(task_id: str) -> int:
             expected_request_hash=request_fingerprint,
         )
         if existing_pr:
-            # A prior attempt may have pushed and opened its PR but lost the
-            # final D1 completion response. Reconcile that already-tested PR
-            # instead of trying to push a conflicting branch from main.
+            # Do not infer that an existing PR is still tested or unchanged.
+            # This worker is checked out at main, not the PR head, so it cannot
+            # safely re-certify the current PR contents here. Keep the result
+            # visible for human reconciliation instead of recording a false PASS.
             pr_url = existing_pr
             api_request(
                 "POST", "/tasks/" + encoded_id + "/complete",
-                {"claim_token": claim_token, "status": "pass",
-                 "message": f"ORCA task {task_id}: reconciled existing review PR {pr_url}"},
+                {"claim_token": claim_token, "status": "blocked",
+                 "message": f"ORCA task {task_id}: existing PR requires fresh head verification and human reconciliation: {pr_url}"},
             )
-            return 0
+            return 1
         if run(["git", "switch", "-c", branch], timeout=30).returncode:
             raise WorkerError("could not create task branch")
         prompt = make_prompt(instruction, tracked_context())
