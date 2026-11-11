@@ -70,7 +70,8 @@ def test_line_status_command_is_read_only_and_owner_scoped():
     helper = source[start:end]
     assert '("タスク状態:", "タスク状態：")' in helper
     assert '"/status"' in helper
-    assert 'params={"user_id": str(user_id)}' in helper
+    assert '"X-ORCA-Task-Owner": str(user_id)' in helper
+    assert "params=" not in helper
     assert 'httpx.get(' in helper
     assert 'httpx.post(' not in helper
     assert '("queued", "running", "pass", "fail", "blocked")' in helper
