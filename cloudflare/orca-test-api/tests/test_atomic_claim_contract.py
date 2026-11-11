@@ -400,6 +400,7 @@ class AtomicClaimContractTests(unittest.TestCase):
         self.assertIn("a.status = 'approved'", source)
         self.assertIn("datetime(a.expires_at) > CURRENT_TIMESTAMP", source)
         self.assertNotIn("approver_user_id FROM task_approvals", source)
+        self.assertNotIn("updated_at, lease_until, ", source)
 
     def test_outbox_dispatch_batch_stays_within_free_subrequest_budget(self):
         source = (ROOT / "src" / "index.js").read_text(encoding="utf-8")
