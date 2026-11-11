@@ -19,7 +19,7 @@ All routes require `Authorization: Bearer <API_TOKEN>`.
 
 - `POST /tasks/:id/approve` verifies an HMAC-SHA256 signature over protocol
   version, task ID, exact request SHA-256, verified LINE user ID, issue time,
-  and five-minute expiry. It confirms the LINE user ID matches the task's
+  and one-hour expiry. It confirms the LINE user ID matches the task's
   stored submitter identity and recomputes the request hash from D1 before
   storing a one-use approval.
 - `GET /tasks` exposes only a boolean `approved` field for unexpired
