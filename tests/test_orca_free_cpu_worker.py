@@ -4,6 +4,7 @@ from scripts.orca_free_cpu_worker import (
     safe_app_path,
     unwrap_task_list,
     validate_patch,
+    verify_task_fingerprint,
 )
 
 
@@ -195,3 +196,14 @@ def test_isolated_test_runner_mounts_only_read_only_app_copy(monkeypatch, tmp_pa
     assert "--user" in command and command[command.index("--user") + 1] == "65534:65534"
     assert observed["files"] == ["apps/demo/app.py", "apps/demo/tests/test_app.py"]
     assert observed["content"] == "VALUE = 1\n"
+
+
+def test_task_fingerprint_matches_exact_reviewed_request():
+    import hashlib
+
+    request = "アプリ開発: 小さな計算アプリ"
+    fingerprint = hashlib.sha256(request.encode("utf-8")).hexdigest()
+    assert verify_task_fingerprint(request, fingerprint)
+    assert not verify_task_fingerprint(request + "改ざん", fingerprint)
+    assert not verify_task_fingerprint(request, "")
+    assert not verify_task_fingerprint(request, "A" * 64)
