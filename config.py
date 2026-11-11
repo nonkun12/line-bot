@@ -55,6 +55,51 @@ DEPLOY_SYNC_MARKER = "2026-09-12-line-voice-e2e"
 
 
 
+def _get_orca_task_status(message: str, user_id: str | None):
+    """Read one task status, restricted by the verified LINE submitter identity."""
+    prefixes = ("タスク状態:", "タスク状態：")
+    prefix = next((item for item in prefixes if message.startswith(item)), None)
+    if prefix is None:
+        return None
+    task_id = message[len(prefix):].strip()
+    if not task_id or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
+        return False, "タスクIDの形式が正しくありません。"
+    from core.orca_task_approval import is_valid_line_user_id
+    if not is_valid_line_user_id(user_id):
+        return False, "LINEユーザーを確認できないため状態を照会できません。"
+    if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN:
+        return False, "タスク状態照会の接続設定が未完了です。"
+    url = ORCA_TASK_API_URL.rstrip("/") + "/tasks/" + task_id + "/status"
+    try:
+        response = httpx.get(
+            url,
+            params={"user_id": str(user_id)},
+            headers={"Authorization": f"Bearer {ORCA_TASK_API_TOKEN}"},
+            timeout=8.0,
+        )
+        if response.status_code == 404:
+            return False, "タスクが見つからないか、照会権限がありません。"
+        if response.status_code != 200:
+            return False, f"タスク状態を取得できませんでした（HTTP {response.status_code}）。"
+        result = response.json()
+        task = result.get("task") if isinstance(result, dict) else None
+        if not isinstance(task, dict) or task.get("task_id") != task_id:
+            return False, "タスク状態の応答を確認できませんでした。"
+        status = task.get("status")
+        if status not in ("queued", "running", "pass", "fail", "blocked"):
+            return False, "タスク状態の応答が不正です。"
+    except (httpx.TransportError, ValueError, AttributeError):
+        return False, "タスク状態照会に失敗しました。時間をおいて再度お試しください。"
+    labels = {
+        "queued": "受付済み（未実行）",
+        "running": "実行中",
+        "pass": "完了",
+        "fail": "失敗",
+        "blocked": "停止・要確認",
+    }
+    return True, f"タスク {task_id} の状態: {labels[status]}（{status}）"
+
+
 def _approve_orca_task(message: str, user_id: str | None):
     """Approve one exact task from its verified LINE submitter."""
     prefixes = ("タスク承認:", "タスク承認：")
@@ -195,6 +240,13 @@ def handle_message_event(event):
             _processed_message_ids[message_id] = True
             if len(_processed_message_ids) > _MAX_TRACKED_IDS:
                 _processed_message_ids.popitem(last=False)
+
+        # Task status is read-only and scoped to the verified LINE submitter.
+        status_result = _get_orca_task_status(text, user_id)
+        if status_result is not None:
+            _, status_reply = status_result
+            _line_push(str(user_id), status_reply)
+            return
 
         # Task approval is a separate, allowlisted, signed LINE protocol.
         approval_result = _approve_orca_task(text, user_id)
