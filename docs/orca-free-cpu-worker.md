@@ -9,12 +9,12 @@ Groq, a paid inference API, a Mac, or a paid VM.
 1. Every 15 minutes, a read-only job checks the Cloudflare D1 task API for
    the oldest queued `アプリ開発:` task that has a valid, unexpired,
    task-bound LINE approval. Unapproved tasks are not sent to the execution job.
-2. A verified LINE account on the explicit approver allowlist sends
+2. The same verified LINE account that submitted the task sends
    `タスク承認:<task_id>`. The Render bot fetches the exact queued task,
    hashes the full request text, and signs a versioned HMAC payload binding
    task ID, request hash, LINE user ID, issue time, and five-minute expiry.
-3. The Cloudflare API verifies the HMAC, checks the LINE user ID against its
-   own allowlist, recomputes the live task hash, and stores one approval record.
+3. The Cloudflare API verifies the HMAC, checks the LINE user ID against the
+   task's stored submitter identity, recomputes the live task hash, and stores one approval record.
    The atomic claim consumes that approval in the same D1 transaction that
    acquires the task lease. Replays, expired approvals, changed task text, and
    unapproved claims are rejected.
