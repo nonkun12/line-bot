@@ -411,6 +411,8 @@ class AtomicClaimContractTests(unittest.TestCase):
         source = (ROOT / "src" / "index.js").read_text(encoding="utf-8")
         self.assertIn("complete|status", source)
         self.assertIn('parsed.action === "status" && request.method === "GET"', source)
+        self.assertIn("request.headers.get(\"x-orca-task-owner\")", source)
+        self.assertNotIn("searchParams.get(\"user_id\")", source)
         self.assertIn("WHERE task_id = ? AND user_id = ?", source)
         self.assertIn("SELECT task_id, status, created_at, updated_at FROM tasks", source)
         self.assertIn('json({ error: "not found" }, 404)', source)
