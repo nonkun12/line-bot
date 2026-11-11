@@ -473,3 +473,49 @@ class AtomicClaimContractTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+    def test_completion_keeps_evidence_but_suppresses_outbox_during_hold(self):
+        self.insert_task()
+        self.assertIsNotNone(self.claim("t-1", "valid", "2999-01-01T00:00:00.000Z"))
+        self.db.commit()
+        self.db.execute("UPDATE system_controls SET value='on' WHERE control_key='global_hold'")
+        self.db.commit()
+        self.db.execute("BEGIN")
+        completed = self.db.execute(
+            """UPDATE tasks SET status='pass'
+                 WHERE task_id='t-1' AND status='running' AND lease_token='valid'
+                   AND datetime(lease_until) > CURRENT_TIMESTAMP"""
+        )
+        self.db.execute(
+            """INSERT INTO notification_outbox(outbox_id, task_id, user_id, message)
+                 SELECT 'held-outbox', task_id, user_id, 'done'
+                   FROM tasks
+                  WHERE task_id='t-1' AND status='pass' AND lease_token='valid'
+                    AND user_id IS NOT NULL
+                    AND EXISTS (SELECT 1 FROM system_controls
+                                 WHERE control_key='global_hold' AND value='off')"""
+        )
+        self.db.execute(
+            "UPDATE tasks SET lease_token=NULL, lease_until=NULL WHERE task_id='t-1' AND status='pass' AND lease_token='valid'"
+        )
+        self.db.commit()
+        self.assertEqual(completed.rowcount, 1)
+        self.assertEqual(self.db.execute("SELECT status FROM tasks WHERE task_id='t-1'").fetchone()[0], "pass")
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM notification_outbox").fetchone()[0], 0)
+
+    def test_outbox_dispatch_claim_is_blocked_by_global_hold(self):
+        self.insert_task()
+        self.db.execute(
+            "INSERT INTO notification_outbox(outbox_id, task_id, user_id, message) VALUES ('out-1','t-1','U123','done')"
+        )
+        self.db.execute("UPDATE system_controls SET value='on' WHERE control_key='global_hold'")
+        self.db.commit()
+        claimed = self.db.execute(
+            """UPDATE notification_outbox SET dispatch_token='sender-a'
+                 WHERE outbox_id='out-1' AND status='pending'
+                   AND EXISTS (SELECT 1 FROM system_controls
+                                WHERE control_key='global_hold' AND value='off')
+                 RETURNING outbox_id"""
+        ).fetchone()
+        self.assertIsNone(claimed)
