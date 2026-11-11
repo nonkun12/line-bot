@@ -124,3 +124,33 @@ has the expected schema, and do not rerun 0002 to recover from a partial
 failure. If the observed state is mixed or partial, prepare a separately
 reviewed reconciliation migration instead. This PR does not execute any
 preflight query or migration against the live database.
+## Controlled rollout order (no automatic activation)
+
+Keep all four related PRs in Draft until the review and deployment prerequisites
+are complete. Merging is not authorized by this proposal.
+
+1. **Safety hold first — PR #1331.** Review and merge the fail-closed hold
+   before enabling the new worker. This prevents the existing autonomous
+   execution entry points from continuing to run while the new path is prepared.
+2. **D1/API second — PR #1333.** Verify the live schema using the read-only
+   preflight above, create and protect a backup, reconcile any differences,
+   then apply migrations 0002 and 0003 exactly once. Review and deploy this
+   Worker source separately; configure and verify its required secrets.
+3. **LINE identity and approval third — PR #1334.** Review and deploy the
+   Render bot code only after the API approval endpoint and HMAC key are ready.
+   Keep the existing LINE webhook URL unchanged. Confirm that a new test task
+   stores the verified LINE user ID without exposing it in normal task reads.
+4. **CPU worker last — PR #1332.** Before merging, create the
+   `orca-task-execution` GitHub Environment, configure at least one required
+   reviewer, add the non-empty sentinel secret, and configure the API token.
+   Verify the actual environment protection settings in GitHub; a sentinel
+   secret alone is not a human approval gate. Merging this PR activates its
+   15-minute schedule, so do not merge it early.
+5. **End-to-end test.** Submit a non-sensitive `アプリ開発:` test task, approve
+   it from the same LINE account, verify one successful claim, isolated test
+   result, review-only PR, D1 terminal state, and LINE notification. Confirm
+   replay, wrong-user, expired-approval, and duplicate-claim cases are rejected.
+
+At every stage, stop on missing evidence. Do not enable the CPU worker until
+all earlier stages are independently verified. No merge, deploy, migration,
+secret update, or webhook change is performed by this README update.
