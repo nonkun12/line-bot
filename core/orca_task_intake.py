@@ -3,7 +3,7 @@
 import re
 from typing import Any
 
-_LINE_USER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+_LINE_USER_ID_RE = re.compile(r"^U[0-9a-fA-F]{32}$")
 
 
 def build_task_payload(
