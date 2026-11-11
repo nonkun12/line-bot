@@ -132,8 +132,7 @@ def poll() -> int:
         with open(summary, "a", encoding="utf-8") as handle:
             handle.write("## ORCA task with verified LINE approval\n\n")
             handle.write(f"Task ID: {task['task_id']}\nSHA-256: {fingerprint}\n\n")
-            handle.write("Exact submitted request (HTML-escaped):\n")
-            handle.write(f"<pre>{html.escape(request_text)}</pre>\n")
+            handle.write("Request text is intentionally omitted from the run summary.\\n")
             handle.write("The API will revalidate the signed approval and exact task hash during atomic claim.\n")
     print(f"Queued task discovered: {task['task_id']} ({fingerprint})")
     return 0
@@ -447,11 +446,13 @@ def process(encoded_task: str) -> int:
             raise WorkerError("git push failed: " + pushed.stderr[-1200:])
 
         body = (
-            "## ORCA free CPU worker result\n\n"
-            f"Task ID: {task_id}\n\nRequest:\n{instruction[:MAX_INSTRUCTION]}\n\n"
-            f"Added paths: {', '.join(paths)}\n\n"
-            f"CPU inference: Ollama / {MODEL}\nApp tests: PASS\n\n"
-            "Not merged or deployed. Human review is required.\n"
+            "## ORCA free CPU worker result\\n\\n"
+            f"Task ID: {task_id}\\n"
+            f"Request SHA-256: {hashlib.sha256(raw_instruction.encode('utf-8')).hexdigest()}\\n\\n"
+            f"Added paths: {', '.join(paths)}\\n\\n"
+            f"CPU inference: Ollama / {MODEL}\\nApp tests: PASS\\n\\n"
+            "Request text is omitted from this PR body; retrieve it from the authenticated task record if needed.\\n"
+            "Not merged or deployed. Human review is required.\\n"
         )
         pr_url = create_or_reuse_pr(
             branch, "feat: ORCA task " + task_id, body
