@@ -83,3 +83,16 @@ secrets/protections have been configured.
   if LINE accepts a message but the response is lost.
 - No secrets, webhook URL, Render service, Cloudflare Worker, D1 database,
   workflow schedule, or deployment are changed by this source-only PR.
+## Activation warning
+
+This workflow declares a 15-minute schedule. **Merging this PR activates that
+schedule immediately.** Keep it in Draft until PRs #1331, #1333, and #1334
+have been reviewed and their required rollout steps are complete, the live D1
+migrations and Worker endpoints are verified, the Render HMAC signer is
+configured, and the GitHub Environment has an actual required reviewer.
+A non-empty sentinel secret does not enforce human approval by itself.
+
+Do not manually dispatch this workflow as an integration test before those
+conditions are met. Use a disposable D1 database for pre-deployment contract
+tests; use a separately approved, non-sensitive end-to-end task only after
+the rollout checklist in the #1333 README is complete.
