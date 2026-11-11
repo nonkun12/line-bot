@@ -23,11 +23,18 @@ MAX_PATCH = 16000
 MAX_FILES = 3
 MAX_CONTEXT = 24000
 ALLOWED_SUFFIXES = {".py", ".md", ".json", ".txt"}
-FORBIDDEN_PARTS = {".github", ".git", "secrets", "venv", ".venv"}
+FORBIDDEN_PARTS = {
+    ".github", ".git", "secrets", "venv", ".venv",
+    "credentials", "credential", "private", "private_keys",
+}
 FORBIDDEN_NAMES = {
     ".env", "config.py", "requirements.txt", "pyproject.toml", "Dockerfile",
     "render.yaml", "wrangler.toml", "scripts/orca_free_cpu_worker.py",
 }
+SENSITIVE_PATH_MARKERS = (
+    "secret", "credential", "token", "password", "private_key",
+    "apikey", "api_key", "access_key",
+)
 
 
 class WorkerError(RuntimeError):
@@ -114,7 +121,12 @@ def safe_context_path(path: str) -> bool:
         bool(normalized)
         and not normalized.startswith("/")
         and "\\" not in path
-        and not any(part in {"", ".", ".."} or part in FORBIDDEN_PARTS for part in parts)
+        and not any(
+            part in {"", ".", ".."}
+            or part.lower() in FORBIDDEN_PARTS
+            or any(marker in part.lower() for marker in SENSITIVE_PATH_MARKERS)
+            for part in parts
+        )
         and normalized not in FORBIDDEN_NAMES
         and Path(normalized).suffix.lower() in ALLOWED_SUFFIXES
     )
