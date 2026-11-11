@@ -12,6 +12,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "migrations" / "0002_atomic_claims_and_outbox.sql"
 APPROVAL_MIGRATION = ROOT / "migrations" / "0003_task_bound_approvals.sql"
 NONCE_MIGRATION = ROOT / "migrations" / "0004_append_only_approval_nonce_history.sql"
+GLOBAL_HOLD_MIGRATION = ROOT / "migrations" / "0005_global_hold.sql"
 
 
 class AtomicClaimContractTests(unittest.TestCase):
@@ -34,6 +35,10 @@ class AtomicClaimContractTests(unittest.TestCase):
         self.db.executescript(MIGRATION.read_text(encoding="utf-8"))
         self.db.executescript(APPROVAL_MIGRATION.read_text(encoding="utf-8"))
         self.db.executescript(NONCE_MIGRATION.read_text(encoding="utf-8"))
+        self.db.executescript(GLOBAL_HOLD_MIGRATION.read_text(encoding="utf-8"))
+        self.assertEqual(self.db.execute("SELECT value FROM system_controls WHERE control_key='global_hold'").fetchone()[0], "on")
+        self.db.execute("UPDATE system_controls SET value='off' WHERE control_key='global_hold'")
+        self.db.commit()
 
     def tearDown(self):
         self.db.close()
@@ -55,10 +60,20 @@ class AtomicClaimContractTests(unittest.TestCase):
                status='queued' OR
                (status='running' AND datetime(lease_until) <= CURRENT_TIMESTAMP)
              )
+               AND EXISTS (SELECT 1 FROM system_controls WHERE control_key='global_hold' AND value='off')
              RETURNING task_id, status, attempt_count
             """,
             (token, lease_until, task_id),
         ).fetchone()
+
+    def test_global_hold_defaults_on_and_blocks_claim_until_explicit_release(self):
+        self.insert_task()
+        self.db.execute("UPDATE system_controls SET value='on' WHERE control_key='global_hold'")
+        self.db.commit()
+        self.assertIsNone(self.claim("t-1", "blocked", "2999-01-01T00:00:00.000Z"))
+        self.db.execute("UPDATE system_controls SET value='off' WHERE control_key='global_hold'")
+        self.db.commit()
+        self.assertIsNotNone(self.claim("t-1", "released", "2999-01-01T00:00:00.000Z"))
 
     def test_only_one_claim_wins(self):
         self.insert_task()
@@ -390,6 +405,10 @@ class AtomicClaimContractTests(unittest.TestCase):
         self.assertIn("only explicit app-development tasks can be approved", source)
         self.assertIn('parsed.action === "approve"', source)
         self.assertIn("a valid task-bound LINE approval is required", source)
+        self.assertIn("globalHoldState", source)
+        self.assertIn("control_key = 'global_hold' AND value = 'off'", source)
+        self.assertIn('url.pathname === "/control/global-hold"', source)
+        self.assertIn("global HOLD is active or unavailable", source)
 
 
     def test_task_list_exposes_only_boolean_approval_state(self):
