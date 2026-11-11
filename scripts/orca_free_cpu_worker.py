@@ -445,13 +445,13 @@ def process(encoded_task: str) -> int:
             raise WorkerError("git push failed: " + pushed.stderr[-1200:])
 
         body = (
-            "## ORCA free CPU worker result\\n\\n"
-            f"Task ID: {task_id}\\n"
-            f"Request SHA-256: {hashlib.sha256(raw_instruction.encode('utf-8')).hexdigest()}\\n\\n"
-            f"Added paths: {', '.join(paths)}\\n\\n"
-            f"CPU inference: Ollama / {MODEL}\\nApp tests: PASS\\n\\n"
-            "Request text is omitted from this PR body; retrieve it from the authenticated task record if needed.\\n"
-            "Not merged or deployed. Human review is required.\\n"
+            "## ORCA free CPU worker result\n\n"
+            f"Task ID: {task_id}\n"
+            f"Request SHA-256: {hashlib.sha256(raw_instruction.encode('utf-8')).hexdigest()}\n\n"
+            f"Added paths: {', '.join(paths)}\n\n"
+            f"CPU inference: Ollama / {MODEL}\nApp tests: PASS\n\n"
+            "Request text is omitted from this PR body; retrieve it from the authenticated task record if needed.\n"
+            "Not merged or deployed. Human review is required.\n"
         )
         pr_url = create_or_reuse_pr(
             branch, "feat: ORCA task " + task_id, body
