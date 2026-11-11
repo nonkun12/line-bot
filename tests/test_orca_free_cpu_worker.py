@@ -527,3 +527,37 @@ def test_subprocess_secrets_are_scoped_to_github_operations(monkeypatch):
     assert observed["env"]["GH_TOKEN"] == "github-secret"
     assert "ORCA_TASK_API_TOKEN" not in observed["env"]
     assert "ORCA_TASK_APPROVAL_GATE" not in observed["env"]
+
+
+def test_global_hold_gate_fails_closed_when_active_or_unavailable(monkeypatch):
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.setattr(worker, "api_request", lambda method, path: {"clear": False})
+    try:
+        worker.assert_global_hold_clear()
+    except worker.GlobalHoldError as exc:
+        assert "Global HOLD" in str(exc)
+    else:
+        raise AssertionError("active Global HOLD must block the worker")
+
+    monkeypatch.setattr(worker, "api_request", lambda method, path: {})
+    try:
+        worker.assert_global_hold_clear()
+    except worker.GlobalHoldError:
+        pass
+    else:
+        raise AssertionError("missing D1 hold evidence must fail closed")
+
+
+def test_worker_checks_global_hold_before_commit_push_and_pr():
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "orca_free_cpu_worker.py"
+    ).read_text(encoding="utf-8")
+    process = source.split("def process(", 1)[1]
+    assert process.count("assert_global_hold_clear()") >= 6
+    assert process.index("assert_global_hold_clear()") < process.index('api_request("POST", "/tasks/" + encoded_id + "/claim"')
+    assert process.index('assert_global_hold_clear()\n        if run(["git", "commit"') < process.index('run(["git", "commit"')
+    assert process.index('assert_global_hold_clear()\n        pushed = run(["git", "push"') < process.index('run(["git", "push"')
+    assert process.index('assert_global_hold_clear()\n        pr_url = create_or_reuse_pr') < process.index("create_or_reuse_pr(")
