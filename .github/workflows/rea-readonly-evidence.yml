@@ -57,6 +57,7 @@ jobs:
               output.write(f"status={report.get('status', 'BLOCKED')}\n")
               output.write(f"target_sha={report.get('target_sha', '')}\n")
               output.write(f"coverage={report.get('coverage', 'INCOMPLETE')}\n")
+              output.write(f"reason_code={report.get('reason_code', '')}\n")
           print(json.dumps({
               "status": report.get("status"),
               "target_sha": report.get("target_sha"),
@@ -81,11 +82,13 @@ jobs:
           REA_STATUS: ${{ steps.rea.outputs.status }}
           REA_SHA: ${{ steps.rea.outputs.target_sha }}
           REA_COVERAGE: ${{ steps.rea.outputs.coverage }}
+          REA_REASON: ${{ steps.rea.outputs.reason_code }}
         run: |
           {
             echo "### REA read-only scan"
             echo "- Result: $REA_STATUS"
             echo "- Target SHA: $REA_SHA"
             echo "- Coverage: $REA_COVERAGE"
+            echo "- Block reason: $REA_REASON"
             echo "- Evidence-only: no approval, patch, merge, or deployment authority."
           } >> "$GITHUB_STEP_SUMMARY"
