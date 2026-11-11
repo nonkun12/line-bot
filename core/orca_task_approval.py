@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import re
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -27,7 +28,7 @@ def build_approval_payload(
         raise ValueError("invalid task id")
     if not _LINE_USER_ID_RE.fullmatch(user_id):
         raise ValueError("invalid LINE user id")
-    if not secret or len(secret) < 32:
+    if not secret or len(secret.encode("utf-8")) < 32:
         raise ValueError("approval HMAC secret is not configured securely")
     issued = now or datetime.now(timezone.utc)
     if issued.tzinfo is None:
@@ -40,6 +41,8 @@ def build_approval_payload(
     canonical = "\n".join(
         ("v1", task_id, request_hash, user_id, issued_at, expires_at)
     )
+    nonce = secrets.token_urlsafe(24)
+    canonical = "\\n".join((canonical, nonce))
     signature = hmac.new(
         secret.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256
     ).hexdigest()
@@ -49,4 +52,5 @@ def build_approval_payload(
         "issued_at": issued_at,
         "expires_at": expires_at,
         "signature": signature,
+        "nonce": nonce,
     }
