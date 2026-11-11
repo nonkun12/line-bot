@@ -142,8 +142,20 @@ def verify_task_fingerprint(request_text: str, approved_fingerprint: str) -> boo
     )
 
 def run(command: list[str], *, timeout: int = 120, input_text: str | None = None):
+    # Never expose task API or approval secrets to model, Docker, Git, or test subprocesses.
+    child_env = os.environ.copy()
+    for name in ("ORCA_TASK_API_TOKEN", "ORCA_TASK_APPROVAL_GATE", "GH_TOKEN", "GITHUB_TOKEN"):
+        child_env.pop(name, None)
+    # GitHub credentials are available only to the fixed GitHub CLI operations and git push.
+    if command and (
+        command[0] == "gh" or command[:2] == ["git", "push"]
+    ):
+        github_token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+        if github_token:
+            child_env["GH_TOKEN"] = github_token
     return subprocess.run(
-        command, text=True, input=input_text, capture_output=True, timeout=timeout
+        command, text=True, input=input_text, capture_output=True,
+        timeout=timeout, env=child_env,
     )
 
 
