@@ -147,7 +147,7 @@ async function dispatchOutbox(env) {
        FROM notification_outbox
       WHERE status = 'pending' AND next_attempt_at <= CURRENT_TIMESTAMP
         AND (dispatch_until IS NULL OR datetime(dispatch_until) <= CURRENT_TIMESTAMP)
-      ORDER BY created_at LIMIT 20`
+      ORDER BY created_at LIMIT 10`
   ).all();
   for (const candidate of due.results || []) {
     const dispatchToken = crypto.randomUUID();
