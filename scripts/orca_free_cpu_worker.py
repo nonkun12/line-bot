@@ -296,10 +296,16 @@ def run_isolated_tests(paths: list[str], app_slug: str):
         return run(command, timeout=300)
 
 
-def find_existing_pr(branch: str) -> str:
-    """Find an already-open review PR for this deterministic task branch."""
+def find_existing_pr(
+    branch: str,
+    *,
+    expected_task_id: str | None = None,
+    expected_request_hash: str | None = None,
+) -> str:
+    """Find and validate an already-open review PR for this deterministic task branch."""
     listed = run(
-        ["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "url", "--limit", "1"],
+        ["gh", "pr", "list", "--head", branch, "--state", "open",
+         "--json", "url,headRefName,baseRefName,body,state", "--limit", "1"],
         timeout=60,
     )
     if listed.returncode:
@@ -312,15 +318,32 @@ def find_existing_pr(branch: str) -> str:
         raise WorkerError("GitHub CLI returned an unexpected PR list")
     if not existing:
         return ""
-    url = existing[0].get("url") if isinstance(existing[0], dict) else None
+    item = existing[0] if isinstance(existing[0], dict) else {}
+    url = item.get("url")
     if not isinstance(url, str) or not url.startswith("https://github.com/"):
         raise WorkerError("existing task PR has an invalid URL")
+    if item.get("headRefName") != branch or item.get("baseRefName") != "main" or item.get("state") != "OPEN":
+        raise WorkerError("existing task PR does not match the expected branch and main base")
+    if expected_task_id is not None and f"Task ID: {expected_task_id}" not in str(item.get("body") or ""):
+        raise WorkerError("existing task PR does not identify this task")
+    if expected_request_hash is not None and f"Request SHA-256: {expected_request_hash}" not in str(item.get("body") or ""):
+        raise WorkerError("existing task PR request fingerprint does not match")
     return url
 
-
-def create_or_reuse_pr(branch: str, title: str, body: str) -> str:
-    """Reuse an existing open PR for this task branch instead of duplicating it."""
-    existing_url = find_existing_pr(branch)
+def create_or_reuse_pr(
+    branch: str,
+    title: str,
+    body: str,
+    *,
+    expected_task_id: str | None = None,
+    expected_request_hash: str | None = None,
+) -> str:
+    """Reuse only a matching open PR for this task branch."""
+    existing_url = find_existing_pr(
+        branch,
+        expected_task_id=expected_task_id,
+        expected_request_hash=expected_request_hash,
+    )
     if existing_url:
         return existing_url
     created = run(
@@ -383,8 +406,12 @@ def process(task_id: str) -> int:
     try:
         if run(["git", "status", "--porcelain"], timeout=30).stdout.strip():
             raise WorkerError("checkout is not clean")
+        request_fingerprint = hashlib.sha256(raw_instruction.encode("utf-8")).hexdigest()
         branch = "orca/task-" + task_id
-        existing_pr = find_existing_pr(branch)
+        existing_pr = find_existing_pr(
+            branch, expected_task_id=task_id,
+            expected_request_hash=request_fingerprint,
+        )
         if existing_pr:
             # A prior attempt may have pushed and opened its PR but lost the
             # final D1 completion response. Reconcile that already-tested PR
@@ -460,14 +487,16 @@ def process(task_id: str) -> int:
         body = (
             "## ORCA free CPU worker result\n\n"
             f"Task ID: {task_id}\n"
-            f"Request SHA-256: {hashlib.sha256(raw_instruction.encode('utf-8')).hexdigest()}\n\n"
+            f"Request SHA-256: {request_fingerprint}\n\n"
             f"Added paths: {', '.join(paths)}\n\n"
             f"CPU inference: Ollama / {MODEL}\nApp tests: PASS\n\n"
             "Request text is omitted from this PR body; retrieve it from the authenticated task record if needed.\n"
             "Not merged or deployed. Human review is required.\n"
         )
         pr_url = create_or_reuse_pr(
-            branch, "feat: ORCA task " + task_id, body
+            branch, "feat: ORCA task " + task_id, body,
+            expected_task_id=task_id,
+            expected_request_hash=request_fingerprint,
         )
         print(pr_url)
         api_request("POST", "/tasks/" + encoded_id + "/complete", {"claim_token": claim_token, "status": "pass", "message": f"ORCA task {task_id}: PASS — PR {pr_url}"})
