@@ -270,7 +270,7 @@ def test_task_text_is_not_written_to_action_summary_or_pr_body():
     assert "Exact submitted request (HTML-escaped)" not in source
     assert "<pre>{html.escape(request_text)}</pre>" not in source
     assert '"Request:\\n{instruction[:MAX_INSTRUCTION]}"' not in source
-    assert '"Request text is omitted from this PR body"' in source
+    assert "Request text is omitted from this PR body;" in source
 
 def test_existing_task_pr_can_be_found_for_retry_reconciliation(monkeypatch):
     from types import SimpleNamespace
