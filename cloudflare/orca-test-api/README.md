@@ -17,7 +17,7 @@ confirmed.
 All routes require `Authorization: Bearer <API_TOKEN>`.
 
 - `POST /tasks/:id/approve` verifies an HMAC-SHA256 signature over version,
-  task ID, exact request SHA-256, allowlisted LINE user ID, issue time, and
+  task ID, exact request SHA-256, verified LINE task submitter ID, issue time, and
   five-minute expiry. It recomputes the task hash from D1 before storing a
   one-use approval. The HMAC key and approver allowlist are separate Worker
   secrets/vars and must match the Render configuration.
@@ -53,10 +53,8 @@ notification.
 
 1. Confirm the actual production/test D1 schema and apply the migration once.
 2. Configure `API_TOKEN`, `LINE_CHANNEL_ACCESS_TOKEN`, and
-   `ORCA_TASK_APPROVAL_HMAC_KEY` as Worker secrets; configure
-   `ORCA_TASK_APPROVER_USER_IDS` as a tightly controlled Worker variable.
-3. Configure the exact same high-entropy `ORCA_TASK_APPROVAL_HMAC_KEY` and
-   identical minimal `ORCA_TASK_APPROVER_USER_IDS` allowlist in Render. Do not
+   `ORCA_TASK_APPROVAL_HMAC_KEY` as Worker secrets; verify the approval sender matches the stored task owner.
+3. Configure the exact same high-entropy `ORCA_TASK_APPROVAL_HMAC_KEY` and verify that the approving LINE user is the original task submitter. Do not
    reuse the API bearer token as the HMAC key.
 4. Update LINE intake to persist the verified event source user ID and support
    `タスク承認:<task_id>`, without logging identity or signatures; do not change
