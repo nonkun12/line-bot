@@ -73,3 +73,54 @@ D1 ID and must not be deployed as-is. No deployed Worker, D1 database, secret,
 Render service, LINE webhook, or workflow schedule is changed by this
 source-only proposal. Free GitHub runner and Cloudflare quotas still apply;
 scheduling is best-effort.
+
+## Read-only live-D1 preflight (required before any migration)
+
+Run these statements in the Cloudflare D1 console against **orca-test-ledger**
+before planning a rollout. They are inspection-only; do not paste credentials
+or task contents into a ticket or chat.
+
+```sql
+-- 1. Confirm the actual tasks columns and their defaults.
+PRAGMA table_info(tasks);
+
+-- 2. Inspect migration bookkeeping and the two ORCA support tables.
+SELECT type, name, sql
+  FROM sqlite_master
+ WHERE name IN ('d1_migrations', 'task_approvals', 'notification_outbox')
+    OR name LIKE 'idx_tasks_%'
+ ORDER BY type, name;
+
+-- 3. Check whether any of the columns introduced by migration 0002 already exist.
+-- Compare this result with PRAGMA table_info(tasks); do not infer from this query alone.
+SELECT name
+  FROM pragma_table_info('tasks')
+ WHERE name IN ('user_id', 'lease_token', 'lease_until', 'attempt_count')
+ ORDER BY name;
+
+-- 4. Read-only referential-integrity check.
+PRAGMA foreign_key_check;
+```
+
+Expected pre-migration baseline for the currently deployed intake is the
+original `tasks` table (including `task_id`, `request_text`, `status`,
+timestamps, and `source_event_id`), with none of the four 0002 columns and
+without `task_approvals` or `notification_outbox`. Treat this as an
+expectation to verify, not as proof of the live schema.
+
+**Stop without applying anything** if a required table/column is missing,
+one or more 0002 columns already exist, either support table already exists
+with an unexpected shape, the migration history is unclear, or
+`foreign_key_check` returns rows. The repository currently has no 0001
+baseline migration; the original intake schema was created separately, so
+the Wrangler migration ledger alone may not describe the full database
+history. Capture a protected D1 export/snapshot through the approved
+Cloudflare process before any write migration.
+
+Only after the schema, migration history, backup, and exact SQL diff have
+been reviewed should an operator apply 0002 and then 0003 exactly once.
+Do not use `CREATE TABLE IF NOT EXISTS` as evidence that an existing table
+has the expected schema, and do not rerun 0002 to recover from a partial
+failure. If the observed state is mixed or partial, prepare a separately
+reviewed reconciliation migration instead. This PR does not execute any
+preflight query or migration against the live database.
