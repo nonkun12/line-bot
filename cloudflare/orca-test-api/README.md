@@ -30,7 +30,8 @@ All routes require `Authorization: Bearer <API_TOKEN>`.
 ## LINE notification
 
 The scheduled handler uses a five-minute dispatch lease to prevent concurrent
-senders from claiming the same outbox row, retries due entries with backoff,
+senders from claiming the same outbox row, processes at most 10 rows per invocation
+to stay below the Workers free-plan subrequest ceiling, and retries due entries with backoff,
 and uses `LINE_CHANNEL_ACCESS_TOKEN` only in the Worker runtime. It never returns
 credentials or recipient IDs in API responses. The existing LINE intake code
 must separately be updated to submit `event.source.user_id`; until that
