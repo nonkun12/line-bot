@@ -132,7 +132,7 @@ def test_create_or_reuse_pr_returns_existing_open_pr(monkeypatch):
         calls.append(command)
         return SimpleNamespace(
             returncode=0,
-            stdout='[{"url":"https://github.com/nonkun12/line-bot/pull/77"}]',
+            stdout='[{"url":"https://github.com/nonkun12/line-bot/pull/77","headRefName":"orca/task-77","baseRefName":"main","state":"OPEN","body":"Task ID: line-77"}]',
             stderr="",
         )
 
@@ -282,7 +282,7 @@ def test_existing_task_pr_can_be_found_for_retry_reconciliation(monkeypatch):
         calls.append(command)
         return SimpleNamespace(
             returncode=0,
-            stdout='[{"url":"https://github.com/nonkun12/line-bot/pull/99"}]',
+            stdout='[{"url":"https://github.com/nonkun12/line-bot/pull/99","headRefName":"orca/task-line-99","baseRefName":"main","state":"OPEN","body":"Task ID: line-99"}]',
             stderr="",
         )
 
@@ -328,3 +328,28 @@ def test_worker_reloads_request_inside_protected_execution_job():
     assert 'handle.write(f"task_id=' in source
     assert "task_payload=" not in source
     assert "ORCA_TASK_PAYLOAD" not in source
+
+def test_existing_pr_reconciliation_rejects_wrong_request_fingerprint(monkeypatch):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.setattr(
+        worker, "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout='[{"url":"https://github.com/nonkun12/line-bot/pull/100",'
+                   '"headRefName":"orca/task-line-100","baseRefName":"main",'
+                   '"state":"OPEN","body":"Task ID: line-100\\nRequest SHA-256: wrong"}]',
+            stderr="",
+        ),
+    )
+    try:
+        worker.find_existing_pr(
+            "orca/task-line-100",
+            expected_task_id="line-100",
+            expected_request_hash="a" * 64,
+        )
+    except worker.WorkerError as exc:
+        assert "fingerprint does not match" in str(exc)
+    else:
+        raise AssertionError("a mismatched task PR must not be reconciled")
