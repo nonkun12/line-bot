@@ -71,10 +71,6 @@ async function hmacHex(secret, value) {
   return [...new Uint8Array(signature)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function allowedApprover(userId, env) {
-  return String(env.ORCA_TASK_APPROVER_USER_IDS || "").split(",").map((item) => item.trim()).includes(userId);
-}
-
 async function approveTask(id, request, env) {
   const body = await readJson(request);
   const userId = typeof body?.approver_user_id === "string" ? body.approver_user_id : "";
@@ -82,7 +78,7 @@ async function approveTask(id, request, env) {
   const issuedAt = typeof body?.issued_at === "string" ? body.issued_at : "";
   const expiresAt = typeof body?.expires_at === "string" ? body.expires_at : "";
   const signature = typeof body?.signature === "string" ? body.signature : "";
-  if (!env.ORCA_TASK_APPROVAL_HMAC_KEY || !allowedApprover(userId, env) ||
+  if (!env.ORCA_TASK_APPROVAL_HMAC_KEY ||
       !/^U[0-9a-fA-F]{32}$/.test(userId) || !/^[0-9a-f]{64}$/.test(requestHash) ||
       !/^[0-9a-f]{64}$/.test(signature)) return json({ error: "approval is not authorized" }, 403);
   const issued = Date.parse(issuedAt), expires = Date.parse(expiresAt), now = Date.now();
@@ -94,6 +90,7 @@ async function approveTask(id, request, env) {
     return json({ error: "invalid approval signature" }, 403);
   const task = await env.DB.prepare("SELECT task_id, request_text, status FROM tasks WHERE task_id = ?").bind(id).first();
   if (!task || task.status !== "queued") return json({ error: "task is not awaiting approval" }, 409);
+  if (task.user_id !== userId) return json({ error: "only the verified task submitter may approve it" }, 403);
   if (!safeEqual(await sha256Hex(task.request_text), requestHash))
     return json({ error: "task content changed; approval rejected" }, 409);
   const approvalId = crypto.randomUUID();
