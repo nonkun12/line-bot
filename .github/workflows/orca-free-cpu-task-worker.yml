@@ -73,7 +73,17 @@ jobs:
       - name: Install Ollama CPU runtime
         run: |
           set -euo pipefail
-          curl -fsSL https://ollama.com/install.sh | sh
+          OLLAMA_VERSION="0.40.16"
+          INSTALLER="$(mktemp)"
+          trap 'rm -f "$INSTALLER"' EXIT
+          curl --fail --show-error --location --retry 3 \
+            --output "$INSTALLER" \
+            "https://github.com/ollama/ollama/releases/download/v${OLLAMA_VERSION}/install.sh"
+          echo "25f64b810b947145095956533e1bdf56eacea2673c55a7e586be4515fc882c9f  $INSTALLER" | sha256sum --check --status || {
+            echo "Ollama installer checksum mismatch; refusing to execute."
+            exit 1
+          }
+          OLLAMA_VERSION="$OLLAMA_VERSION" sh "$INSTALLER"
           nohup ollama serve >/tmp/ollama.log 2>&1 </dev/null &
           for attempt in $(seq 1 30); do
             if ollama list >/dev/null 2>&1; then break; fi
