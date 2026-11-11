@@ -84,7 +84,7 @@ async function approveTask(id, request, env) {
       !/^[0-9a-f]{64}$/.test(signature) || !/^[A-Za-z0-9_-]{32}$/.test(nonce)) return json({ error: "approval is not authorized" }, 403);
   const issued = Date.parse(issuedAt), expires = Date.parse(expiresAt), now = Date.now();
   if (!Number.isFinite(issued) || !Number.isFinite(expires) || issued > now + 60000 ||
-      issued < now - 5 * 60000 || expires <= now || expires > issued + 10 * 60000)
+      issued < now - 5 * 60000 || expires <= now || expires > issued + 60 * 60000)
     return json({ error: "approval timestamp is invalid or expired" }, 400);
   const canonical = ["v1", id, requestHash, userId, issuedAt, expiresAt].join("\n");
   if (!safeEqual(signature, await hmacHex(env.ORCA_TASK_APPROVAL_HMAC_KEY, canonical)))
