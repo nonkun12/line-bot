@@ -62,3 +62,17 @@ def test_line_allows_running_task_to_reach_server_side_expired_lease_check():
     assert 'task.get("status") not in ("queued", "running")' in source
     assert 'url + "/approve"' in source
     assert "1時間以内" in source
+
+def test_line_status_command_is_read_only_and_owner_scoped():
+    source = (Path(__file__).resolve().parents[1] / "config.py").read_text(encoding="utf-8")
+    start = source.index("def _get_orca_task_status(")
+    end = source.index("def _approve_orca_task(", start)
+    helper = source[start:end]
+    assert '("タスク状態:", "タスク状態：")' in helper
+    assert '"/status"' in helper
+    assert 'params={"user_id": str(user_id)}' in helper
+    assert 'httpx.get(' in helper
+    assert 'httpx.post(' not in helper
+    assert '("queued", "running", "pass", "fail", "blocked")' in helper
+    assert '_get_orca_task_status(text, user_id)' in source
+
