@@ -52,7 +52,7 @@ MODEL = "openai/gpt-oss-20b"
 DEPLOY_SYNC_MARKER = "2026-09-12-line-voice-e2e"
 
 
-def _register_orca_task(message: str, message_id: str):
+def _register_orca_task(message: str, message_id: str, user_id: str | None = None):
     """Explicit LINE task intake only; stores a task in Cloudflare D1 without executing it."""
     prefixes = ("タスク登録:", "タスク登録：")
     prefix = next((item for item in prefixes if message.startswith(item)), None)
@@ -67,11 +67,14 @@ def _register_orca_task(message: str, message_id: str):
     if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN:
         return False, "Cloudflare受付設定が未完了です。依頼は登録されていません。", False
 
-    payload = {
-        "task_id": f"line-{uuid.uuid4().hex}",
-        "request_text": request_text,
-        "source_event_id": str(message_id),
-    }
+    from core.orca_task_intake import build_task_payload
+
+    payload = build_task_payload(
+        task_id=f"line-{uuid.uuid4().hex}",
+        request_text=request_text,
+        message_id=message_id,
+        user_id=user_id,
+    )
     try:
         response = httpx.post(
             ORCA_TASK_API_URL,
@@ -142,7 +145,7 @@ def handle_message_event(event):
                 _processed_message_ids.popitem(last=False)
 
         # Explicit Cloudflare intake is isolated from development and Distributed Loop dispatch.
-        intake_result = _register_orca_task(text, message_id)
+        intake_result = _register_orca_task(text, message_id, user_id=user_id)
         if intake_result is not None:
             accepted, intake_reply, retryable = intake_result
             if retryable:
