@@ -219,3 +219,41 @@ def test_oldest_eligible_task_is_selected_first():
     ]
     assert oldest_queued_task(tasks)["task_id"] == "old"
     assert oldest_queued_task([]) is None
+
+
+
+def test_sensitive_content_detector_rejects_common_credentials():
+    from scripts.orca_free_cpu_worker import contains_sensitive_content
+
+    fake_github_token = "ghp_" + "a" * 36
+    fake_slack_token = "xox" + "b-" + "a" * 24
+    assert contains_sensitive_content(f'API_TOKEN = "{fake_github_token}"')
+    assert contains_sensitive_content('password = "correct-horse-battery-staple"')
+    assert contains_sensitive_content("-----BEGIN RSA PRIVATE KEY-----")
+    assert contains_sensitive_content(f'token: "{fake_slack_token}"')
+    assert not contains_sensitive_content("This document explains API token rotation.")
+
+
+def test_tracked_context_skips_files_with_embedded_credentials(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "public.md").write_text("safe context", encoding="utf-8")
+    fake_github_token = "ghp_" + "a" * 36
+    (tmp_path / "sample.py").write_text(
+        f'API_TOKEN = "{fake_github_token}"\\n'
+        "def app():\\n    return 'hello'\\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        worker, "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0, stdout="public.md\\nsample.py\\n", stderr=""
+        ),
+    )
+
+    context = worker.tracked_context()
+    assert "safe context" in context
+    assert "sample.py" not in context
+    assert "ghp_" not in context
