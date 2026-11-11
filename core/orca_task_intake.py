@@ -12,12 +12,23 @@ def build_task_payload(
     message_id: str,
     user_id: str | None = None,
 ) -> dict[str, Any]:
-    """Build an intake payload; include only a validated LINE source user ID."""
-    payload: dict[str, Any] = {
+    """Build an intake payload only when the verified LINE owner is present.
+
+    Creating an ownerless task would make the later same-user approval and
+    owner-scoped status protocol impossible to enforce. Fail closed instead of
+    silently dropping an absent or malformed identity.
+    """
+    if not isinstance(user_id, str) or _LINE_USER_ID_RE.fullmatch(user_id) is None:
+        raise ValueError("verified LINE user ID is required for ORCA task intake")
+    if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
+        raise ValueError("invalid ORCA task ID")
+    if not isinstance(message_id, str) or not message_id.strip():
+        raise ValueError("LINE source event ID is required")
+    if not isinstance(request_text, str) or not request_text.strip():
+        raise ValueError("ORCA task request text is required")
+    return {
         "task_id": task_id,
         "request_text": request_text,
-        "source_event_id": str(message_id),
+        "source_event_id": message_id,
+        "user_id": user_id,
     }
-    if isinstance(user_id, str) and _LINE_USER_ID_RE.fullmatch(user_id):
-        payload["user_id"] = user_id
-    return payload
