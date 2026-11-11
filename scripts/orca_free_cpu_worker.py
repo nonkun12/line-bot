@@ -116,7 +116,11 @@ def oldest_queued_task(tasks: list[dict]) -> dict | None:
 
 
 def poll() -> int:
-    assert_global_hold_clear()
+    try:
+        assert_global_hold_clear()
+    except GlobalHoldError as exc:
+        print(f"ORCA_CPU_WORKER_IDLE: {exc}")
+        return 0
     tasks = unwrap_task_list(api_request("GET", "/tasks?approved=true&limit=100"))
     task = oldest_queued_task(tasks)
     if task is None:
