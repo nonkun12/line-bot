@@ -323,16 +323,16 @@ def test_reconcile_existing_pr_verifies_exact_head_and_reruns_isolated_tests(mon
     task_id = "line-99"
     request_hash = "b" * 64
     patch = (
-        "diff --git a/apps/demo/app.py b/apps/demo/app.py\\n"
-        "new file mode 100644\\n"
-        "--- /dev/null\\n"
-        "+++ b/apps/demo/app.py\\n"
-        "@@ -0,0 +1 @@\\n+VALUE = 1\\n"
-        "diff --git a/apps/demo/tests/test_app.py b/apps/demo/tests/test_app.py\\n"
-        "new file mode 100644\\n"
-        "--- /dev/null\\n"
-        "+++ b/apps/demo/tests/test_app.py\\n"
-        "@@ -0,0 +1 @@\\n+def test_value():\\n+    assert True\\n"
+        "diff --git a/apps/demo/app.py b/apps/demo/app.py\n"
+        "new file mode 100644\n"
+        "--- /dev/null\n"
+        "+++ b/apps/demo/app.py\n"
+        "@@ -0,0 +1 @@\n+VALUE = 1\n"
+        "diff --git a/apps/demo/tests/test_app.py b/apps/demo/tests/test_app.py\n"
+        "new file mode 100644\n"
+        "--- /dev/null\n"
+        "+++ b/apps/demo/tests/test_app.py\n"
+        "@@ -0,0 +1 @@\n+def test_value():\n+    assert True\n"
     )
     calls = []
 
@@ -343,12 +343,12 @@ def test_reconcile_existing_pr_verifies_exact_head_and_reruns_isolated_tests(mon
                 "url": "https://github.com/nonkun12/line-bot/pull/99",
                 "headRefName": "orca/task-line-99",
                 "baseRefName": "main",
-                "body": f"Task ID: {task_id}\\nRequest SHA-256: {request_hash}",
+                "body": f"Task ID: {task_id}\nRequest SHA-256: {request_hash}",
                 "state": "OPEN",
                 "headRefOid": head,
             }), stderr="")
         if command[:2] == ["git", "rev-parse"]:
-            return SimpleNamespace(returncode=0, stdout=head + "\\n", stderr="")
+            return SimpleNamespace(returncode=0, stdout=head + "\n", stderr="")
         if command[:3] == ["git", "diff", "--no-ext-diff"]:
             return SimpleNamespace(returncode=0, stdout=patch, stderr="")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
@@ -379,7 +379,7 @@ def test_reconcile_existing_pr_rejects_wrong_task_fingerprint(monkeypatch):
                 "url": "https://github.com/nonkun12/line-bot/pull/100",
                 "headRefName": "orca/task-line-100",
                 "baseRefName": "main",
-                "body": "Task ID: line-100\\nRequest SHA-256: wrong",
+                "body": "Task ID: line-100\nRequest SHA-256: wrong",
                 "state": "OPEN",
                 "headRefOid": "a" * 40,
             }),
@@ -402,12 +402,12 @@ def test_reconcile_existing_pr_requires_isolated_tests_to_pass(monkeypatch, tmp_
     monkeypatch.chdir(tmp_path)
     head = "c" * 40
     patch = (
-        "diff --git a/apps/demo/app.py b/apps/demo/app.py\\n"
-        "new file mode 100644\\n--- /dev/null\\n+++ b/apps/demo/app.py\\n"
-        "@@ -0,0 +1 @@\\n+VALUE = 1\\n"
-        "diff --git a/apps/demo/tests/test_app.py b/apps/demo/tests/test_app.py\\n"
-        "new file mode 100644\\n--- /dev/null\\n+++ b/apps/demo/tests/test_app.py\\n"
-        "@@ -0,0 +1 @@\\n+def test_value():\\n+    assert True\\n"
+        "diff --git a/apps/demo/app.py b/apps/demo/app.py\n"
+        "new file mode 100644\n--- /dev/null\n+++ b/apps/demo/app.py\n"
+        "@@ -0,0 +1 @@\n+VALUE = 1\n"
+        "diff --git a/apps/demo/tests/test_app.py b/apps/demo/tests/test_app.py\n"
+        "new file mode 100644\n--- /dev/null\n+++ b/apps/demo/tests/test_app.py\n"
+        "@@ -0,0 +1 @@\n+def test_value():\n+    assert True\n"
     )
 
     def fake_run(command, *, timeout=120, input_text=None):
@@ -416,12 +416,12 @@ def test_reconcile_existing_pr_requires_isolated_tests_to_pass(monkeypatch, tmp_
                 "url": "https://github.com/nonkun12/line-bot/pull/101",
                 "headRefName": "orca/task-line-101",
                 "baseRefName": "main",
-                "body": f"Task ID: line-101\\nRequest SHA-256: {'d' * 64}",
+                "body": f"Task ID: line-101\nRequest SHA-256: {'d' * 64}",
                 "state": "OPEN",
                 "headRefOid": head,
             }), stderr="")
         if command[:2] == ["git", "rev-parse"]:
-            return SimpleNamespace(returncode=0, stdout=head + "\\n", stderr="")
+            return SimpleNamespace(returncode=0, stdout=head + "\n", stderr="")
         if command[:3] == ["git", "diff", "--no-ext-diff"]:
             return SimpleNamespace(returncode=0, stdout=patch, stderr="")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
@@ -472,7 +472,7 @@ def test_existing_pr_reconciliation_rejects_wrong_request_fingerprint(monkeypatc
             returncode=0,
             stdout='[{"url":"https://github.com/nonkun12/line-bot/pull/100",'
                    '"headRefName":"orca/task-line-100","baseRefName":"main",'
-                   '"state":"OPEN","body":"Task ID: line-100\\nRequest SHA-256: wrong"}]',
+                   '"state":"OPEN","body":"Task ID: line-100\nRequest SHA-256: wrong"}]',
             stderr="",
         ),
     )
