@@ -78,9 +78,10 @@ async function approveTask(id, request, env) {
   const issuedAt = typeof body?.issued_at === "string" ? body.issued_at : "";
   const expiresAt = typeof body?.expires_at === "string" ? body.expires_at : "";
   const signature = typeof body?.signature === "string" ? body.signature : "";
+  const nonce = typeof body?.nonce === "string" ? body.nonce : "";
   if (!env.ORCA_TASK_APPROVAL_HMAC_KEY ||
       !/^U[0-9a-fA-F]{32}$/.test(userId) || !/^[0-9a-f]{64}$/.test(requestHash) ||
-      !/^[0-9a-f]{64}$/.test(signature)) return json({ error: "approval is not authorized" }, 403);
+      !/^[0-9a-f]{64}$/.test(signature) || !/^[A-Za-z0-9_-]{32}$/.test(nonce)) return json({ error: "approval is not authorized" }, 403);
   const issued = Date.parse(issuedAt), expires = Date.parse(expiresAt), now = Date.now();
   if (!Number.isFinite(issued) || !Number.isFinite(expires) || issued > now + 60000 ||
       issued < now - 5 * 60000 || expires <= now || expires > issued + 10 * 60000)
@@ -100,15 +101,15 @@ async function approveTask(id, request, env) {
     return json({ error: "task content changed; approval rejected" }, 409);
   const approvalId = crypto.randomUUID();
   const saved = await env.DB.prepare(
-    "INSERT INTO task_approvals (task_id, approval_id, request_hash, approver_user_id, issued_at, expires_at, status) " +
-    "VALUES (?, ?, ?, ?, ?, ?, 'approved') ON CONFLICT(task_id) DO UPDATE SET " +
-    "approval_id=excluded.approval_id, request_hash=excluded.request_hash, " +
-    "approver_user_id=excluded.approver_user_id, issued_at=excluded.issued_at, " +
-    "expires_at=excluded.expires_at, status='approved' " +
-    "WHERE task_approvals.status != 'consumed' OR EXISTS " +
-    "(SELECT 1 FROM tasks WHERE task_id = excluded.task_id AND status = 'running' " +
-    "AND lease_until IS NOT NULL AND datetime(lease_until) <= CURRENT_TIMESTAMP)"
-  ).bind(id, approvalId, requestHash, userId, issuedAt, expiresAt).run();
+    "INSERT INTO task_approvals (task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status) " +
+    "VALUES (?, ?, ?, ?, ?, ?, ?, 'approved') ON CONFLICT(task_id) DO UPDATE SET " +
+    "approval_id=excluded.approval_id, approval_nonce=excluded.approval_nonce, " +
+    "request_hash=excluded.request_hash, approver_user_id=excluded.approver_user_id, " +
+    "issued_at=excluded.issued_at, expires_at=excluded.expires_at, status='approved' " +
+    "WHERE task_approvals.status != 'consumed' OR (excluded.approval_nonce != task_approvals.approval_nonce " +
+    "AND EXISTS (SELECT 1 FROM tasks WHERE task_id = excluded.task_id AND status = 'running' " +
+    "AND lease_until IS NOT NULL AND datetime(lease_until) <= CURRENT_TIMESTAMP))"
+  ).bind(id, approvalId, nonce, requestHash, userId, issuedAt, expiresAt).run();
   if (!saved.meta?.changes) return json({ error: "task approval was already consumed" }, 409);
   return json({ task_id: id, approved: true, expires_at: expiresAt });
 }
