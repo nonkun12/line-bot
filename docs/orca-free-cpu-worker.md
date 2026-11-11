@@ -71,6 +71,7 @@ secrets/protections have been configured.
 
 - Only one workflow run can poll/execute at a time. The D1 lease is the
   cross-caller atomic claim mechanism, but it is inactive until the API rollout.
+- Repository context collection skips sensitive path names and excludes an entire file when its first 5,000 characters match common credential patterns (secret assignments, private-key headers, and common provider token formats). This is a conservative heuristic, not a complete DLP scanner; it cannot guarantee detection of every secret or encoded value. Keep credentials out of tracked source and documentation, and review model context handling before rollout.
 - The generated patch can add at most three new files under one
   `apps/<slug>/` directory, must include a `tests/test_*.py` file, uses only
   Python standard library code, and cannot modify existing files or workflows.
