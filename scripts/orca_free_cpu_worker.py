@@ -299,8 +299,8 @@ def run_isolated_tests(paths: list[str], app_slug: str):
         return run(command, timeout=300)
 
 
-def create_or_reuse_pr(branch: str, title: str, body: str) -> str:
-    """Reuse an existing open PR for this task branch instead of duplicating it."""
+def find_existing_pr(branch: str) -> str:
+    """Find an already-open review PR for this deterministic task branch."""
     listed = run(
         ["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "url", "--limit", "1"],
         timeout=60,
@@ -313,11 +313,19 @@ def create_or_reuse_pr(branch: str, title: str, body: str) -> str:
         raise WorkerError("GitHub CLI returned invalid PR list JSON") from None
     if not isinstance(existing, list):
         raise WorkerError("GitHub CLI returned an unexpected PR list")
-    if existing:
-        url = existing[0].get("url") if isinstance(existing[0], dict) else None
-        if not isinstance(url, str) or not url.startswith("https://github.com/"):
-            raise WorkerError("existing task PR has an invalid URL")
-        return url
+    if not existing:
+        return ""
+    url = existing[0].get("url") if isinstance(existing[0], dict) else None
+    if not isinstance(url, str) or not url.startswith("https://github.com/"):
+        raise WorkerError("existing task PR has an invalid URL")
+    return url
+
+
+def create_or_reuse_pr(branch: str, title: str, body: str) -> str:
+    """Reuse an existing open PR for this task branch instead of duplicating it."""
+    existing_url = find_existing_pr(branch)
+    if existing_url:
+        return existing_url
     created = run(
         ["gh", "pr", "create", "--base", "main", "--head", branch,
          "--title", title, "--body", body],
@@ -329,7 +337,6 @@ def create_or_reuse_pr(branch: str, title: str, body: str) -> str:
     if not url.startswith("https://github.com/"):
         raise WorkerError("GitHub CLI did not return a valid PR URL")
     return url
-
 
 def process(encoded_task: str) -> int:
     if not os.environ.get("ORCA_TASK_APPROVAL_GATE", "").strip():
@@ -383,6 +390,18 @@ def process(encoded_task: str) -> int:
         if run(["git", "status", "--porcelain"], timeout=30).stdout.strip():
             raise WorkerError("checkout is not clean")
         branch = "orca/task-" + task_id
+        existing_pr = find_existing_pr(branch)
+        if existing_pr:
+            # A prior attempt may have pushed and opened its PR but lost the
+            # final D1 completion response. Reconcile that already-tested PR
+            # instead of trying to push a conflicting branch from main.
+            pr_url = existing_pr
+            api_request(
+                "POST", "/tasks/" + encoded_id + "/complete",
+                {"claim_token": claim_token, "status": "pass",
+                 "message": f"ORCA task {task_id}: reconciled existing review PR {pr_url}"},
+            )
+            return 0
         if run(["git", "switch", "-c", branch], timeout=30).returncode:
             raise WorkerError("could not create task branch")
         prompt = make_prompt(instruction, tracked_context())
