@@ -523,6 +523,12 @@ def test_subprocess_secrets_are_scoped_to_github_operations(monkeypatch):
     assert "ORCA_TASK_APPROVAL_GATE" not in observed["env"]
     assert "GITHUB_TOKEN" not in observed["env"]
 
+    worker.run(["git", "fetch", "--no-tags", "origin", "main"])
+    assert observed["env"]["GH_TOKEN"] == "github-secret"
+    assert "ORCA_TASK_API_TOKEN" not in observed["env"]
+    assert "ORCA_TASK_APPROVAL_GATE" not in observed["env"]
+    assert "GITHUB_TOKEN" not in observed["env"]
+
     worker.run(["git", "push", "--set-upstream", "origin", "branch"])
     assert observed["env"]["GH_TOKEN"] == "github-secret"
     assert "ORCA_TASK_API_TOKEN" not in observed["env"]
