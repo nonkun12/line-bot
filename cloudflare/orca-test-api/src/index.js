@@ -88,8 +88,10 @@ async function approveTask(id, request, env) {
   const canonical = ["v1", id, requestHash, userId, issuedAt, expiresAt].join("\n");
   if (!safeEqual(signature, await hmacHex(env.ORCA_TASK_APPROVAL_HMAC_KEY, canonical)))
     return json({ error: "invalid approval signature" }, 403);
-  const task = await env.DB.prepare("SELECT task_id, request_text, status FROM tasks WHERE task_id = ?").bind(id).first();
-  if (!task || task.status !== "queued") return json({ error: "task is not awaiting approval" }, 409);
+  const task = await env.DB.prepare("SELECT task_id, request_text, status, lease_until FROM tasks WHERE task_id = ?").bind(id).first();
+  const expiredRunning = task?.status === "running" && task.lease_until && Date.parse(task.lease_until) <= Date.now();
+  if (!task || (task.status !== "queued" && !expiredRunning))
+    return json({ error: "task is not awaiting approval or its prior lease is still active" }, 409);
   if (task.user_id !== userId) return json({ error: "only the verified task submitter may approve it" }, 403);
   if (!safeEqual(await sha256Hex(task.request_text), requestHash))
     return json({ error: "task content changed; approval rejected" }, 409);
@@ -99,7 +101,10 @@ async function approveTask(id, request, env) {
     "VALUES (?, ?, ?, ?, ?, ?, 'approved') ON CONFLICT(task_id) DO UPDATE SET " +
     "approval_id=excluded.approval_id, request_hash=excluded.request_hash, " +
     "approver_user_id=excluded.approver_user_id, issued_at=excluded.issued_at, " +
-    "expires_at=excluded.expires_at, status='approved' WHERE task_approvals.status != 'consumed'"
+    "expires_at=excluded.expires_at, status='approved' " +
+    "WHERE task_approvals.status != 'consumed' OR EXISTS " +
+    "(SELECT 1 FROM tasks WHERE task_id = excluded.task_id AND status = 'running' " +
+    "AND lease_until IS NOT NULL AND datetime(lease_until) <= CURRENT_TIMESTAMP)"
   ).bind(id, approvalId, requestHash, userId, issuedAt, expiresAt).run();
   if (!saved.meta?.changes) return json({ error: "task approval was already consumed" }, 409);
   return json({ task_id: id, approved: true, expires_at: expiresAt });
@@ -195,14 +200,17 @@ async function listTasks(url, env) {
   const approvalFilter = approvedOnly
     ? " AND EXISTS (SELECT 1 FROM task_approvals a WHERE a.task_id = tasks.task_id AND a.status = 'approved' AND datetime(a.expires_at) > CURRENT_TIMESTAMP)"
     : "";
+  const claimableFilter = approvedOnly
+    ? " AND (tasks.status = 'queued' OR (tasks.status = 'running' AND tasks.lease_until IS NOT NULL AND datetime(tasks.lease_until) <= CURRENT_TIMESTAMP))"
+    : "";
   const order = approvedOnly ? "ASC" : "DESC";
-  const select = "SELECT task_id, request_text, status, created_at, updated_at, " +
+  const select = "SELECT task_id, request_text, status, created_at, updated_at, lease_until, " +
     "EXISTS (SELECT 1 FROM task_approvals a WHERE a.task_id = tasks.task_id AND a.status = 'approved' " +
     "AND datetime(a.expires_at) > CURRENT_TIMESTAMP) AS approved FROM tasks";
   const rows = status
-    ? await env.DB.prepare(select + " WHERE status = ?" + approvalFilter +
+    ? await env.DB.prepare(select + " WHERE status = ?" + approvalFilter + claimableFilter +
         " ORDER BY created_at " + order + " LIMIT ?").bind(status, limit).all()
-    : await env.DB.prepare(select + (approvedOnly ? " WHERE 1=1" + approvalFilter : "") +
+    : await env.DB.prepare(select + (approvedOnly ? " WHERE 1=1" + approvalFilter + claimableFilter : "") +
         " ORDER BY created_at " + order + " LIMIT ?").bind(limit).all();
   return json({ tasks: rows.results || [] });
 }
