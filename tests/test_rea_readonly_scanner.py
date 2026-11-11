@@ -177,7 +177,7 @@ class ReadonlyScannerTests(unittest.TestCase):
     def test_missing_worker_security_contract_is_reported(self) -> None:
         self._write(
             "cloudflare/orca-test-api/src/index.js",
-            "export default { fetch() { return new Response('ok'); } };\\n",
+            "export default { fetch() { return new Response('ok'); } };\n",
         )
         self._commit()
         report = scan_repository(self.root)
@@ -192,7 +192,7 @@ class ReadonlyScannerTests(unittest.TestCase):
     def test_nonce_migration_without_replay_constraints_is_reported(self) -> None:
         self._write(
             "cloudflare/orca-test-api/migrations/0004_nonce.sql",
-            "CREATE TABLE task_approval_nonces (approval_nonce TEXT, task_id TEXT);\\n",
+            "CREATE TABLE task_approval_nonces (approval_nonce TEXT, task_id TEXT);\n",
         )
         self._commit()
         report = scan_repository(self.root)
@@ -206,7 +206,7 @@ class ReadonlyScannerTests(unittest.TestCase):
     def test_root_config_is_scanned_for_verified_owner_header(self) -> None:
         self._write(
             "config.py",
-            "def _get_orca_task_status():\\n    return httpx.get(url)\\n",
+            "def _get_orca_task_status():\n    return httpx.get(url)\n",
         )
         self._commit()
         report = scan_repository(self.root)
