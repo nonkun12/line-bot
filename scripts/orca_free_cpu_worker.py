@@ -2,7 +2,6 @@
 """Approval-gated ORCA worker using free CPU inference and isolated app tests."""
 from __future__ import annotations
 
-import base64
 import hashlib
 import hmac
 import json
@@ -118,14 +117,12 @@ def poll() -> int:
         raise WorkerError("queued task instruction is empty or too long")
     request_text = task["request_text"]
     fingerprint = hashlib.sha256(request_text.encode("utf-8")).hexdigest()
-    encoded = base64.urlsafe_b64encode(
-        json.dumps(task, ensure_ascii=False).encode("utf-8")
-    ).decode("ascii")
     output = os.environ.get("GITHUB_OUTPUT")
     if output:
         with open(output, "a", encoding="utf-8") as handle:
-            handle.write(f"task_payload={encoded}\n")
-            handle.write(f"task_id={task['task_id']}\n")
+            # Only the opaque identifier crosses the Actions job boundary.
+            # The request body is fetched again inside the protected job.
+            handle.write(f"task_id={task['task_id']}\\n")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as handle:
@@ -338,19 +335,19 @@ def create_or_reuse_pr(branch: str, title: str, body: str) -> str:
         raise WorkerError("GitHub CLI did not return a valid PR URL")
     return url
 
-def process(encoded_task: str) -> int:
+def process(task_id: str) -> int:
     if not os.environ.get("ORCA_TASK_APPROVAL_GATE", "").strip():
         raise WorkerError(
             "execution held: configure required reviewers and ORCA_TASK_APPROVAL_GATE "
             "on environment orca-task-execution"
         )
-    try:
-        task = json.loads(base64.urlsafe_b64decode(encoded_task.encode("ascii")))
-    except Exception:
-        raise WorkerError("invalid task payload") from None
-    if not isinstance(task, dict):
-        raise WorkerError("invalid task payload")
-    task_id = str(task.get("task_id") or "")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
+        raise WorkerError("invalid task_id")
+    encoded_id = urllib.parse.quote(task_id, safe="")
+    task_result = api_request("GET", "/tasks/" + encoded_id)
+    task = task_result.get("task") if isinstance(task_result, dict) else None
+    if not isinstance(task, dict) or task.get("task_id") != task_id:
+        raise WorkerError("task could not be reloaded from the authenticated API")
     raw_instruction = str(task.get("request_text") or "").strip()
     # The API verifies signed LINE approval against live D1 task text during atomic claim.
     if raw_instruction.startswith("アプリ開発:"):
@@ -364,7 +361,6 @@ def process(encoded_task: str) -> int:
     if not instruction or len(instruction.encode("utf-8")) > MAX_INSTRUCTION:
         raise WorkerError("task instruction is empty or too long")
 
-    encoded_id = urllib.parse.quote(task_id, safe="")
     claim_result = api_request(
         "POST", "/tasks/" + encoded_id + "/claim", {"lease_seconds": 1800}
     )
@@ -503,10 +499,10 @@ def main() -> int:
     try:
         if sys.argv[1] == "poll":
             return poll()
-        payload = os.environ.get("ORCA_TASK_PAYLOAD", "")
-        if not payload:
-            raise WorkerError("ORCA_TASK_PAYLOAD is missing")
-        return process(payload)
+        task_id = os.environ.get("ORCA_TASK_ID", "")
+        if not task_id:
+            raise WorkerError("ORCA_TASK_ID is missing")
+        return process(task_id)
     except Exception as exc:
         print(f"ORCA_CPU_WORKER_BLOCKED: {exc}", file=sys.stderr)
         return 1
