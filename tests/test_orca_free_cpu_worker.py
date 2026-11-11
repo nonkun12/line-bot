@@ -257,3 +257,16 @@ def test_tracked_context_skips_files_with_embedded_credentials(monkeypatch, tmp_
     assert "safe context" in context
     assert "sample.py" not in context
     assert "ghp_" not in context
+
+def test_task_text_is_not_written_to_action_summary_or_pr_body():
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "orca_free_cpu_worker.py"
+    ).read_text(encoding="utf-8")
+
+    assert "Request text is intentionally omitted from the run summary." in source
+    assert "Request SHA-256:" in source
+    assert "Exact submitted request (HTML-escaped)" not in source
+    assert "<pre>{html.escape(request_text)}</pre>" not in source
+    assert "{instruction[:MAX_INSTRUCTION]}" not in source
