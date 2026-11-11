@@ -312,7 +312,7 @@ class AtomicClaimContractTests(unittest.TestCase):
         )
         self.db.commit()
         result = self._upsert_approval("new-approval", "B" * 32, "b" * 64)
-        self.assertEqual(result.rowcount, 0)
+        self.assertEqual(result, 0)
 
     def test_old_nonce_cannot_be_replayed_after_a_newer_approval(self):
         self.insert_task()
