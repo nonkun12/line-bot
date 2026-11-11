@@ -36,6 +36,8 @@ N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "")
 VOICE_PUBLIC_BASE_URL = os.environ.get("VOICE_PUBLIC_BASE_URL", "https://line-bot-yvea.onrender.com").rstrip("/")
 ORCA_TASK_API_URL = os.environ.get("ORCA_TASK_API_URL", "").strip()
 ORCA_TASK_API_TOKEN = os.environ.get("ORCA_TASK_API_TOKEN", "").strip()
+ORCA_TASK_APPROVAL_HMAC_KEY = os.environ.get("ORCA_TASK_APPROVAL_HMAC_KEY", "").strip()
+ORCA_TASK_APPROVER_USER_IDS = os.environ.get("ORCA_TASK_APPROVER_USER_IDS", "").strip()
 
 AI_APP_BUILDER_URL = os.environ.get("AI_APP_BUILDER_URL", "")
 AI_APP_BUILDER_SHARED_SECRET = os.environ.get("AI_APP_BUILDER_SHARED_SECRET", "")
@@ -50,6 +52,54 @@ MODEL = "openai/gpt-oss-20b"
 
 # Render deployment synchronization marker.
 DEPLOY_SYNC_MARKER = "2026-09-12-line-voice-e2e"
+
+
+
+def _approve_orca_task(message: str, user_id: str | None):
+    """Approve one exact queued task from an allowlisted, verified LINE account."""
+    prefixes = ("タスク承認:", "タスク承認：")
+    prefix = next((item for item in prefixes if message.startswith(item)), None)
+    if prefix is None:
+        return None
+    task_id = message[len(prefix):].strip()
+    if not task_id or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
+        return False, "タスクIDの形式が正しくありません。"
+    from core.orca_task_approval import build_approval_payload, is_authorized_approver
+    if not is_authorized_approver(user_id, ORCA_TASK_APPROVER_USER_IDS):
+        return False, "このLINEアカウントにはタスク承認権限がありません。"
+    if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN or len(ORCA_TASK_APPROVAL_HMAC_KEY) < 32:
+        return False, "タスク承認の安全設定が未完了です。承認は行っていません。"
+    url = ORCA_TASK_API_URL.rstrip("/") + "/tasks/" + task_id
+    headers = {"Authorization": f"Bearer {ORCA_TASK_API_TOKEN}"}
+    try:
+        response = httpx.get(url, headers=headers, timeout=8.0)
+        if response.status_code != 200:
+            return False, f"タスクを取得できませんでした（HTTP {response.status_code}）。承認していません。"
+        result = response.json()
+        task = result.get("task", {}) if isinstance(result, dict) else {}
+        if task.get("task_id") != task_id or task.get("status") != "queued":
+            return False, "対象タスクがqueued状態ではありません。承認していません。"
+        request_text = task.get("request_text")
+        if not isinstance(request_text, str) or not request_text.startswith(("アプリ開発:", "アプリ開発：")):
+            return False, "明示的なアプリ開発タスクではありません。承認していません。"
+        payload = build_approval_payload(
+            task_id, request_text, str(user_id), ORCA_TASK_APPROVAL_HMAC_KEY
+        )
+        approved = httpx.post(
+            url + "/approve", json=payload,
+            headers=headers, timeout=8.0,
+        )
+    except (httpx.TransportError, ValueError, KeyError):
+        return False, "承認APIとの通信または応答検証に失敗しました。承認していません。"
+    if approved.status_code != 200:
+        return False, f"承認は拒否されました（HTTP {approved.status_code}）。"
+    try:
+        approval_result = approved.json()
+    except ValueError:
+        return False, "承認結果を確認できませんでした。状態を確認してください。"
+    if not isinstance(approval_result, dict) or approval_result.get("approved") is not True:
+        return False, "承認結果を確認できませんでした。状態を確認してください。"
+    return True, f"タスク {task_id} を承認しました。有効期限: {approval_result.get('expires_at', '5分以内')}。実行後もPRレビューとマージは別途必要です。"
 
 
 def _register_orca_task(message: str, message_id: str, user_id: str | None = None):
@@ -143,6 +193,13 @@ def handle_message_event(event):
             _processed_message_ids[message_id] = True
             if len(_processed_message_ids) > _MAX_TRACKED_IDS:
                 _processed_message_ids.popitem(last=False)
+
+        # Task approval is a separate, allowlisted, signed LINE protocol.
+        approval_result = _approve_orca_task(text, user_id)
+        if approval_result is not None:
+            _, approval_reply = approval_result
+            _line_push(str(user_id), approval_reply)
+            return
 
         # Explicit Cloudflare intake is isolated from development and Distributed Loop dispatch.
         intake_result = _register_orca_task(text, message_id, user_id=user_id)
