@@ -2,6 +2,7 @@ from pathlib import Path
 
 from scripts.orca_free_cpu_worker import (
     safe_app_path,
+    oldest_queued_task,
     unwrap_task_list,
     validate_patch,
     verify_task_fingerprint,
@@ -207,3 +208,13 @@ def test_task_fingerprint_matches_exact_reviewed_request():
     assert not verify_task_fingerprint(request + "改ざん", fingerprint)
     assert not verify_task_fingerprint(request, "")
     assert not verify_task_fingerprint(request, "A" * 64)
+
+
+def test_oldest_eligible_task_is_selected_first():
+    tasks = [
+        {"task_id": "new", "request_text": "アプリ開発: new", "status": "queued", "created_at": "2026-11-11T02:00:00Z"},
+        {"task_id": "chat", "request_text": "普通の相談", "status": "queued", "created_at": "2026-11-11T00:00:00Z"},
+        {"task_id": "old", "request_text": "アプリ開発: old", "status": "queued", "created_at": "2026-11-10T23:00:00Z"},
+    ]
+    assert oldest_queued_task(tasks)["task_id"] == "old"
+    assert oldest_queued_task([]) is None
