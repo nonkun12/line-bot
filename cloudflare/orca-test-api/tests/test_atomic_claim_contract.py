@@ -313,3 +313,12 @@ class AtomicClaimContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+def test_status_endpoint_is_scoped_to_verified_line_owner():
+    source = (ROOT / "src" / "index.js").read_text(encoding="utf-8")
+    assert "complete|status" in source
+    assert 'parsed.action === "status" && request.method === "GET"' in source
+    assert "WHERE task_id = ? AND user_id = ?" in source
+    assert "SELECT task_id, status, created_at, updated_at FROM tasks" in source
+    assert 'json({ error: "not found" }, 404)' in source
+
