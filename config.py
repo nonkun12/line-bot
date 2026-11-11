@@ -56,7 +56,7 @@ DEPLOY_SYNC_MARKER = "2026-09-12-line-voice-e2e"
 
 
 def _approve_orca_task(message: str, user_id: str | None):
-    """Approve one exact queued task from an allowlisted, verified LINE account."""
+    """Approve one exact task from its verified LINE submitter."""
     prefixes = ("タスク承認:", "タスク承認：")
     prefix = next((item for item in prefixes if message.startswith(item)), None)
     if prefix is None:
