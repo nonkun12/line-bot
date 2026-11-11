@@ -271,6 +271,7 @@ class AtomicClaimContractTests(unittest.TestCase):
         self.assertIn("crypto.subtle.importKey", source)
         self.assertIn("ORCA_TASK_APPROVAL_HMAC_KEY", source)
         self.assertIn("task.user_id !== userId", source)
+        self.assertIn("only explicit app-development tasks can be approved", source)
         self.assertIn('parsed.action === "approve"', source)
         self.assertIn("a valid task-bound LINE approval is required", source)
 
