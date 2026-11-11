@@ -155,5 +155,10 @@ class AtomicClaimContractTests(unittest.TestCase):
         )
 
 
+    def test_outbox_dispatch_batch_stays_within_free_subrequest_budget(self):
+        source = (ROOT / "src" / "index.js").read_text(encoding="utf-8")
+        self.assertIn("ORDER BY created_at LIMIT 10", source)
+
+
 if __name__ == "__main__":
     unittest.main()
