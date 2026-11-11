@@ -464,6 +464,7 @@ def test_worker_reloads_request_inside_protected_execution_job():
 
 def test_existing_pr_reconciliation_rejects_wrong_request_fingerprint(monkeypatch):
     from types import SimpleNamespace
+    import json
     import scripts.orca_free_cpu_worker as worker
 
     monkeypatch.setattr(
