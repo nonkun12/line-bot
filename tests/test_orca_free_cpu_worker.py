@@ -42,6 +42,27 @@ def test_safe_context_path_rejects_sensitive_file_names():
         assert not safe_context_path(path)
 
 
+def test_tracked_context_skips_symlink_files(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "public.md").write_text("safe context", encoding="utf-8")
+    (tmp_path / "private.md").symlink_to(tmp_path / "secret.txt")
+    (tmp_path / "secret.txt").write_text("DO_NOT_EXPOSE", encoding="utf-8")
+    monkeypatch.setattr(
+        worker, "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0, stdout="public.md\\nprivate.md\\n", stderr=""
+        ),
+    )
+
+    context = worker.tracked_context()
+    assert "safe context" in context
+    assert "DO_NOT_EXPOSE" not in context
+    assert "private.md" not in context
+
+
 def test_unwrap_task_list_accepts_supported_container_shapes():
     task = {"task_id": "line-123", "request_text": "hello", "status": "queued"}
     assert unwrap_task_list({"tasks": [task]}) == [task]
