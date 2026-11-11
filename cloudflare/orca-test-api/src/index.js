@@ -115,7 +115,9 @@ async function approveTask(id, request, env) {
       env.DB.prepare(
         "INSERT INTO task_approvals " +
         "(task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status) " +
-        "VALUES (?, ?, ?, ?, ?, ?, ?, 'approved') " +
+        "SELECT ?, ?, ?, ?, ?, ?, ?, 'approved' FROM tasks " +
+        "WHERE task_id = ? AND (status = 'queued' OR " +
+        "(status = 'running' AND lease_until IS NOT NULL AND datetime(lease_until) <= CURRENT_TIMESTAMP)) " +
         "ON CONFLICT(task_id) DO UPDATE SET " +
         "approval_id=excluded.approval_id, approval_nonce=excluded.approval_nonce, " +
         "request_hash=excluded.request_hash, approver_user_id=excluded.approver_user_id, " +
@@ -125,11 +127,15 @@ async function approveTask(id, request, env) {
         "(task_approvals.status = 'consumed' AND EXISTS (" +
         "SELECT 1 FROM tasks WHERE task_id = excluded.task_id AND status = 'running' " +
         "AND lease_until IS NOT NULL AND datetime(lease_until) <= CURRENT_TIMESTAMP)))"
-      ).bind(id, approvalId, nonce, requestHash, userId, issuedAt, expiresAt),
+      ).bind(id, approvalId, nonce, requestHash, userId, issuedAt, expiresAt, id),
     ]);
-  } catch {
-    // A nonce/approval ID uniqueness conflict is a replay. Fail closed.
-    return json({ error: "approval nonce has already been used" }, 409);
+  } catch (error) {
+    // Only uniqueness conflicts are treated as replay; surface operational
+    // failures so they are not silently mislabeled as an invalid approval.
+    if (String(error).includes("UNIQUE constraint failed")) {
+      return json({ error: "approval nonce has already been used" }, 409);
+    }
+    throw error;
   }
   if (!results[0]?.meta?.changes) return json({ error: "approval nonce has already been used" }, 409);
   if (!results[1]?.meta?.changes)
