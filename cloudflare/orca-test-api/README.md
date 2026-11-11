@@ -23,9 +23,9 @@ All routes require `Authorization: Bearer <API_TOKEN>`.
   terminal transition, and finally clears the token.
 - `GET /tasks` and `GET /tasks/:id` deliberately omit `user_id`,
   `lease_token`, and lease internals.
-- Existing POST/GET/PUT routes remain for compatibility with the test MVP.
-  New workers must use claim/complete. The legacy PUT route is not a secure
-  substitute for lease-based execution.
+- Existing POST/GET read routes remain compatible. Legacy PUT status changes
+  return HTTP 410 so callers cannot bypass the claim-token lease protocol.
+  The CPU worker must be upgraded to claim/complete before this API is deployed.
 
 ## LINE notification
 
