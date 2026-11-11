@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: rea-readonly-\x24{{ github.event.pull_request.number }}
+  group: rea-readonly-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -29,7 +29,7 @@ jobs:
       - name: Checkout exact pull request head
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: \x24{{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
       - name: Set up Python
@@ -71,7 +71,7 @@ jobs:
       - name: Upload REA evidence artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: rea-\x24{{ github.event.pull_request.number }}-\x24{{ github.event.pull_request.head.sha }}
+          name: rea-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
           path: artifacts/rea-report.json
           if-no-files-found: error
           retention-days: 14
@@ -79,9 +79,9 @@ jobs:
       - name: Summarize REA result
         if: always()
         env:
-          REA_STATUS: \x24{{ steps.rea.outputs.status }}
-          REA_SHA: \x24{{ steps.rea.outputs.target_sha }}
-          REA_COVERAGE: \x24{{ steps.rea.outputs.coverage }}
+          REA_STATUS: ${{ steps.rea.outputs.status }}
+          REA_SHA: ${{ steps.rea.outputs.target_sha }}
+          REA_COVERAGE: ${{ steps.rea.outputs.coverage }}
         run: |
           {
             echo "### REA read-only scan"
