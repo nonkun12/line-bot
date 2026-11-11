@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import html
 import hmac
 import json
 import os
@@ -132,7 +131,7 @@ def poll() -> int:
         with open(summary, "a", encoding="utf-8") as handle:
             handle.write("## ORCA task with verified LINE approval\n\n")
             handle.write(f"Task ID: {task['task_id']}\nSHA-256: {fingerprint}\n\n")
-            handle.write("Request text is intentionally omitted from the run summary.\\n")
+            handle.write("Request text is intentionally omitted from the run summary.\n")
             handle.write("The API will revalidate the signed approval and exact task hash during atomic claim.\n")
     print(f"Queued task discovered: {task['task_id']} ({fingerprint})")
     return 0
