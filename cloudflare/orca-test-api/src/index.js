@@ -55,6 +55,7 @@ async function createTask(request, env) {
       !/^[A-Za-z0-9_-]{1,100}$/.test(body.task_id) ||
       typeof body.request_text !== "string" ||
       !body.request_text.trim() || new TextEncoder().encode(body.request_text).length > 6000 ||
+      typeof body.source_event_id !== "string" || !body.source_event_id.trim() ||
       !isValidLineUserId(body.user_id)) {
     return json({ error: "invalid task payload or verified LINE owner is missing" }, 400);
   }
@@ -70,9 +71,13 @@ async function createTask(request, env) {
   } catch (error) {
     if (body.source_event_id) {
       const existing = await env.DB.prepare(
-        "SELECT task_id, request_text, status FROM tasks WHERE source_event_id = ?"
+        "SELECT task_id, request_text, status, user_id FROM tasks WHERE source_event_id = ?"
       ).bind(body.source_event_id).first();
-      if (existing) return json({ task: existing, duplicate: true }, 200);
+      if (existing && existing.user_id === userId && existing.request_text === body.request_text) {
+        const { user_id: _owner, ...safeTask } = existing;
+        return json({ task: safeTask, duplicate: true }, 200);
+      }
+      if (existing) return json({ error: "source event ID conflicts with an existing task" }, 409);
     }
     if (String(error).includes("UNIQUE")) return json({ error: "task already exists" }, 409);
     throw error;
