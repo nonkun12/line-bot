@@ -174,7 +174,7 @@ class AtomicClaimContractTests(unittest.TestCase):
             """,
             (token,),
         )
-        self.assertEqual(result, 0)
+        self.assertEqual(result.rowcount, 0)
         self.assertEqual(self.db.execute("SELECT status FROM tasks WHERE task_id='t-1'").fetchone()[0], "queued")
 
     def test_task_approval_is_consumed_atomically_with_claim(self):
@@ -262,7 +262,7 @@ class AtomicClaimContractTests(unittest.TestCase):
         )
         self.db.commit()
         result = self._upsert_approval("new-approval", "B" * 32, "b" * 64)
-        self.assertEqual(result.rowcount, 1)
+        self.assertEqual(result, 1)
         self.assertEqual(
             self.db.execute("SELECT status FROM task_approvals WHERE task_id='t-1'").fetchone()[0],
             "approved",
@@ -290,7 +290,7 @@ class AtomicClaimContractTests(unittest.TestCase):
         replay = self._upsert_approval("replayed-approval", "A" * 32, "a" * 64)
         self.assertEqual(replay, 0)
         fresh = self._upsert_approval("fresh-approval", "B" * 32, "b" * 64)
-        self.assertEqual(fresh.rowcount, 1)
+        self.assertEqual(fresh, 1)
 
     def test_consumed_approval_cannot_be_reissued_while_lease_is_active(self):
         self.insert_task()
