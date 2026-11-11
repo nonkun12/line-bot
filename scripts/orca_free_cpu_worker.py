@@ -154,7 +154,8 @@ def tracked_context() -> str:
         if not safe_context_path(path):
             continue
         target = Path(path)
-        if not target.is_file():
+        # Never follow repository symlinks while constructing model context.
+        if target.is_symlink() or not target.is_file():
             continue
         try:
             body = target.read_text(encoding="utf-8")[:5000]
