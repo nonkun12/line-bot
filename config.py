@@ -79,8 +79,8 @@ def _approve_orca_task(message: str, user_id: str | None):
         task = result.get("task") if isinstance(result, dict) else None
         if not isinstance(task, dict):
             return False, "タスク応答の形式が不正です。承認していません。"
-        if task.get("task_id") != task_id or task.get("status") != "queued":
-            return False, "対象タスクがqueued状態ではありません。承認していません。"
+        if task.get("task_id") != task_id or task.get("status") not in ("queued", "running"):
+            return False, "対象タスクが承認可能な状態ではありません。承認していません。"
         request_text = task.get("request_text")
         if not isinstance(request_text, str) or not request_text.startswith(("アプリ開発:", "アプリ開発：")):
             return False, "明示的なアプリ開発タスクではありません。承認していません。"
@@ -101,7 +101,7 @@ def _approve_orca_task(message: str, user_id: str | None):
         return False, "承認結果を確認できませんでした。状態を確認してください。"
     if not isinstance(approval_result, dict) or approval_result.get("approved") is not True:
         return False, "承認結果を確認できませんでした。状態を確認してください。"
-    return True, f"タスク {task_id} を承認しました。有効期限: {approval_result.get('expires_at', '5分以内')}。実行後もPRレビューとマージは別途必要です。"
+    return True, f"タスク {task_id} を承認しました。有効期限: {approval_result.get('expires_at', '1時間以内')}。実行後もPRレビューとマージは別途必要です。"
 
 
 def _register_orca_task(message: str, message_id: str, user_id: str | None = None):
