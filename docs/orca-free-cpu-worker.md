@@ -34,29 +34,32 @@ The environment reviewer rule is the actual per-run approval gate. The sentinel
 secret only detects incomplete setup; it is not itself an authentication token.
 Do not run this workflow until required reviewers have been configured.
 
-## Next API phase (not deployed by this PR)
+## Atomic API dependency (separate PR #1333)
 
-The current Cloudflare D1 API is a separate deployed Worker and is not changed here. Before enabling unattended task execution, a follow-up API change should:
+The worker now uses the lease-based API proposed in
+[PR #1333](https://github.com/nonkun12/line-bot/pull/1333):
 
-- Add an atomic claim operation implemented as one conditional D1 statement, such as UPDATE tasks SET status='running', lease_token=?, lease_until=? WHERE task_id=? AND status='queued' RETURNING task_id. A read followed by a separate update is not an atomic claim.
-- Require a unique claim token and bounded lease expiry; only the matching token may complete or release a claim. Expired claims should be recoverable without resetting terminal tasks.
-- Persist the originating LINE user_id when the task is accepted. Never return it in public task-list responses or write it to logs.
-- Add a durable notification outbox so a terminal D1 update and its notification intent are committed together. A separate retryable sender can deliver a task-specific LINE result without losing messages after transient failures.
-- Keep LINE channel credentials and the D1 API token in managed secrets; never expose them to the generated-app test container or model prompt.
+- It claims a task with `POST /tasks/:id/claim` and a 30-minute lease.
+- It verifies the claimed request text before inference.
+- It completes with `POST /tasks/:id/complete`, the claim token, and a terminal state.
+- It does not use legacy `PUT /tasks/:id` status updates.
 
-These are design requirements only. This PR does not edit or deploy the existing Cloudflare Worker, alter its D1 schema, add secrets, or change the LINE webhook.
+PR #1333 is source-only and is not merged or deployed. The existing deployed
+Worker does not yet expose these endpoints. Do not enable or dispatch this
+worker against the current API until the API PR has been reviewed, its D1
+migration has been safely applied, and the Worker is deployed through an
+explicitly approved rollout. The same rollout must separately add the LINE
+user ID at task intake and configure the LINE notification secret.
 
 ## Current boundaries and known gaps
 
 - Only one workflow run can poll/execute at a time (`concurrency` group).
-  This reduces duplicate claims, but the current D1 API does not expose a
-  documented atomic lease/claim endpoint. The worker verifies the `queued → running`
-  transition before inference. A future API revision should add an atomic,
-  lease-based claim before increasing worker concurrency.
-- If a task branch already has an open PR, the worker reuses its URL instead of creating a duplicate. If PR creation succeeds but the final D1 status update fails, it leaves the task `running` and emits a reconciliation warning rather than marking a reviewable PR as failed. This requires manual reconciliation; it is not an automatic lease/retry mechanism.\n- The task intake schema currently stores `task_id`, `request_text`, and
-  `source_event_id`; it does not retain the LINE `user_id`. Therefore this
-  first version cannot send a task-specific LINE completion message. The PR URL
-  appears in the Actions log and the D1 status is updated.
+  This serializes runs of this workflow only. The D1 lease in PR #1333 is the
+  cross-caller atomic claim mechanism; it is not active until that API revision
+  is deployed and the worker is enabled against it.
+- If a task branch already has an open PR, the worker reuses its URL instead of creating a duplicate. If PR creation succeeds but final D1 completion fails, it leaves the task running until lease expiry and emits a reconciliation warning rather than marking a reviewable PR as failed.\n- The deployed intake still does not retain LINE `user_id`; task-specific push
+  notifications remain unavailable until a separately reviewed intake update
+  stores the verified event source user ID.
 - The CPU model is small. It may fail to produce a valid patch; failures are
   recorded and do not trigger a merge or deployment.
 - GitHub-hosted runner availability and free quotas are subject to GitHub's
@@ -66,6 +69,7 @@ These are design requirements only. This PR does not edit or deploy the existing
   it cannot change existing applications or line-bot source files. Every app must
   include a tests/test_*.py file. Generated tests run in a container with no network
   and no GitHub/D1 credentials. The test container has a read-only filesystem apart from a temporary `/tmp`, runs as an unprivileged user, and mounts only the generated app files.
-- The worker is not enabled until the required repository secret and protected
-  environment are configured. No secret, webhook, Render service, Cloudflare
+- The worker is not enabled until the API dependency is deployed through an
+  approved rollout and the required repository secret and protected environment
+  are configured. No secret, webhook, Render service, Cloudflare
   Worker, or deployment is modified by this PR.
