@@ -139,23 +139,6 @@ async function listTasks(url, env) {
   return json({ tasks: rows.results || [] });
 }
 
-async function legacyUpdate(id, request, env) {
-  const body = await readJson(request);
-  if (!["running", "pass", "fail", "blocked"].includes(body?.status)) {
-    return json({ error: "invalid status" }, 400);
-  }
-  // Legacy status transitions remain available for the existing test integration.
-  // New workers must use /claim and /complete for lease-bound state changes.
-  const result = await env.DB.prepare(
-    `UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE task_id = ? AND (
-        (status = 'queued' AND ? IN ('running', 'blocked')) OR
-        (status = 'running' AND ? IN ('pass', 'fail', 'blocked'))
-      )`
-  ).bind(body.status, id, body.status, body.status).run();
-  if (!result.meta.changes) return json({ error: "invalid transition or task not found" }, 409);
-  return getTask(id, env);
-}
 
 async function dispatchOutbox(env) {
   if (!env.LINE_CHANNEL_ACCESS_TOKEN) return;
@@ -229,7 +212,7 @@ export default {
     if (parsed.action === "claim" && request.method === "POST") return claimTask(parsed.id, request, env);
     if (parsed.action === "complete" && request.method === "POST") return completeTask(parsed.id, request, env);
     if (!parsed.action && request.method === "GET") return getTask(parsed.id, env);
-    if (!parsed.action && request.method === "PUT") return legacyUpdate(parsed.id, request, env);
+    if (!parsed.action && request.method === "PUT") return json({ error: "legacy status updates are disabled; use /claim and /complete with the lease token" }, 410);
     return json({ error: "method not allowed" }, 405);
   },
   async scheduled(_event, env, ctx) {
