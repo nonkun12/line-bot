@@ -219,6 +219,8 @@ class AtomicClaimContractTests(unittest.TestCase):
     def test_task_list_exposes_only_boolean_approval_state(self):
         source = (ROOT / "src" / "index.js").read_text(encoding="utf-8")
         self.assertIn("AS approved", source)
+        self.assertIn('url.searchParams.get("approved") === "true"', source)
+        self.assertIn("ORDER BY created_at \" + order", source)
         self.assertIn("a.status = 'approved'", source)
         self.assertIn("datetime(a.expires_at) > CURRENT_TIMESTAMP", source)
         self.assertNotIn("approver_user_id FROM task_approvals", source)
