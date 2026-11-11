@@ -322,3 +322,36 @@ def test_status_endpoint_is_scoped_to_verified_line_owner():
     assert "SELECT task_id, status, created_at, updated_at FROM tasks" in source
     assert 'json({ error: "not found" }, 404)' in source
 
+def test_status_query_returns_only_the_matching_task_owner():
+    db = sqlite3.connect(":memory:")
+    try:
+        db.executescript("""
+            CREATE TABLE tasks (
+              task_id TEXT PRIMARY KEY,
+              request_text TEXT NOT NULL,
+              status TEXT NOT NULL,
+              user_id TEXT
+            );
+        """)
+        db.execute(
+            "INSERT INTO tasks(task_id, request_text, status, user_id) VALUES (?, ?, ?, ?)",
+            ("owned-task", "private request", "queued", "U" + "a" * 32),
+        )
+        own = db.execute(
+            "SELECT task_id, status FROM tasks WHERE task_id = ? AND user_id = ?",
+            ("owned-task", "U" + "a" * 32),
+        ).fetchone()
+        other = db.execute(
+            "SELECT task_id, status FROM tasks WHERE task_id = ? AND user_id = ?",
+            ("owned-task", "U" + "b" * 32),
+        ).fetchone()
+        missing = db.execute(
+            "SELECT task_id, status FROM tasks WHERE task_id = ? AND user_id = ?",
+            ("missing-task", "U" + "a" * 32),
+        ).fetchone()
+        assert tuple(own) == ("owned-task", "queued")
+        assert other is None
+        assert missing is None
+    finally:
+        db.close()
+
