@@ -11,11 +11,8 @@ _LINE_USER_ID_RE = re.compile(r"^U[0-9a-fA-F]{32}$")
 _TASK_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
 
 
-def is_authorized_approver(user_id: str | None, allowed_ids: str) -> bool:
-    if not isinstance(user_id, str) or not _LINE_USER_ID_RE.fullmatch(user_id):
-        return False
-    allowed = {item.strip() for item in allowed_ids.split(",") if item.strip()}
-    return user_id in allowed
+def is_valid_line_user_id(user_id: str | None) -> bool:
+    return isinstance(user_id, str) and _LINE_USER_ID_RE.fullmatch(user_id) is not None
 
 
 def build_approval_payload(
