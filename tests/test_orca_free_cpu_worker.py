@@ -212,9 +212,9 @@ def test_task_fingerprint_matches_exact_reviewed_request():
 
 def test_oldest_eligible_task_is_selected_first():
     tasks = [
-        {"task_id": "new", "request_text": "アプリ開発: new", "status": "queued", "created_at": "2026-11-11T02:00:00Z"},
-        {"task_id": "chat", "request_text": "普通の相談", "status": "queued", "created_at": "2026-11-11T00:00:00Z"},
-        {"task_id": "old", "request_text": "アプリ開発: old", "status": "queued", "created_at": "2026-11-10T23:00:00Z"},
+        {"task_id": "new", "request_text": "アプリ開発: new", "status": "queued", "approved": True, "created_at": "2026-11-11T02:00:00Z"},
+        {"task_id": "chat", "request_text": "普通の相談", "status": "queued", "approved": False, "created_at": "2026-11-11T00:00:00Z"},
+        {"task_id": "old", "request_text": "アプリ開発: old", "status": "queued", "approved": True, "created_at": "2026-11-10T23:00:00Z"},
     ]
     assert oldest_queued_task(tasks)["task_id"] == "old"
     assert oldest_queued_task([]) is None
