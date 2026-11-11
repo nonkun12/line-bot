@@ -26,11 +26,12 @@ def test_approval_signature_binds_task_text_and_identity():
     assert payload["request_hash"] == expected_hash
     canonical = "\n".join((
         "v1", "line-task-1", expected_hash, USER,
-        payload["issued_at"], payload["expires_at"],
+        payload["issued_at"], payload["expires_at"], payload["nonce"],
     ))
     expected = hmac.new(SECRET.encode(), canonical.encode(), hashlib.sha256).hexdigest()
     assert hmac.compare_digest(payload["signature"], expected)
     assert payload["expires_at"] == "2026-11-11T01:07:03Z"
+    assert len(payload["nonce"]) == 32
 
 
 def test_approval_signature_changes_when_task_or_approver_changes():
@@ -41,6 +42,7 @@ def test_approval_signature_changes_when_task_or_approver_changes():
     third = build_approval_payload("line-task-1", "アプリ開発: sample", other_user, SECRET, now=now)
     assert first["signature"] != second["signature"]
     assert first["signature"] != third["signature"]
+    assert first["nonce"] != second["nonce"]
 
 
 @pytest.mark.parametrize("task_id,user_id,secret", [
