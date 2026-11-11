@@ -11,11 +11,13 @@ import uuid
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "migrations" / "0002_atomic_claims_and_outbox.sql"
 APPROVAL_MIGRATION = ROOT / "migrations" / "0003_task_bound_approvals.sql"
+NONCE_MIGRATION = ROOT / "migrations" / "0004_append_only_approval_nonce_history.sql"
 
 
 class AtomicClaimContractTests(unittest.TestCase):
     def setUp(self):
         self.db = sqlite3.connect(":memory:")
+        self.db.execute("PRAGMA foreign_keys=ON")
         self.db.row_factory = sqlite3.Row
         self.db.executescript(
             """
@@ -31,6 +33,7 @@ class AtomicClaimContractTests(unittest.TestCase):
         )
         self.db.executescript(MIGRATION.read_text(encoding="utf-8"))
         self.db.executescript(APPROVAL_MIGRATION.read_text(encoding="utf-8"))
+        self.db.executescript(NONCE_MIGRATION.read_text(encoding="utf-8"))
 
     def tearDown(self):
         self.db.close()
@@ -206,28 +209,47 @@ class AtomicClaimContractTests(unittest.TestCase):
             "consumed",
         )
 
-    def _upsert_approval(self, approval_id, nonce, request_hash):
-        return self.db.execute(
-            """INSERT INTO task_approvals
-               (task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status)
-               VALUES ('t-1', ?, ?, ?, 'U123', '2026-11-11T00:02:00Z',
-                       '2999-01-01T00:00:00Z', 'approved')
-               ON CONFLICT(task_id) DO UPDATE SET
-                 approval_id=excluded.approval_id,
-                 approval_nonce=excluded.approval_nonce,
-                 request_hash=excluded.request_hash,
-                 issued_at=excluded.issued_at,
-                 expires_at=excluded.expires_at,
-                 status='approved'
-               WHERE task_approvals.status != 'consumed'
-                 OR (excluded.approval_nonce != task_approvals.approval_nonce
-                   AND EXISTS (SELECT 1 FROM tasks WHERE task_id=excluded.task_id
-                     AND status='running' AND datetime(lease_until) <= CURRENT_TIMESTAMP))""",
-            (approval_id, nonce, request_hash),
-        )
+    def _upsert_approval(self, approval_id, nonce, request_hash, issued_at="2026-11-11T00:02:00Z"):
+        try:
+            self.db.execute("BEGIN")
+            self.db.execute(
+                """INSERT INTO task_approval_nonces
+                   (approval_nonce, task_id, approval_id, request_hash, approver_user_id, issued_at, expires_at)
+                   VALUES (?, 't-1', ?, ?, 'U123', ?, '2999-01-01T00:00:00Z')""",
+                (nonce, approval_id, request_hash, issued_at),
+            )
+            result = self.db.execute(
+                """INSERT INTO task_approvals
+                   (task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status)
+                   VALUES ('t-1', ?, ?, ?, 'U123', ?, '2999-01-01T00:00:00Z', 'approved')
+                   ON CONFLICT(task_id) DO UPDATE SET
+                     approval_id=excluded.approval_id,
+                     approval_nonce=excluded.approval_nonce,
+                     request_hash=excluded.request_hash,
+                     issued_at=excluded.issued_at,
+                     expires_at=excluded.expires_at,
+                     status='approved'
+                   WHERE julianday(excluded.issued_at) > julianday(task_approvals.issued_at)
+                     AND (task_approvals.status='approved' OR
+                       (task_approvals.status='consumed' AND EXISTS
+                         (SELECT 1 FROM tasks WHERE task_id=excluded.task_id
+                           AND status='running' AND datetime(lease_until) <= CURRENT_TIMESTAMP)))""",
+                (approval_id, nonce, request_hash, issued_at),
+            )
+            self.db.commit()
+            return result.rowcount
+        except sqlite3.IntegrityError:
+            self.db.rollback()
+            return 0
 
     def test_consumed_approval_can_be_reissued_only_after_lease_expiry(self):
         self.insert_task()
+        self.db.execute(
+            """INSERT INTO task_approval_nonces
+               (approval_nonce, task_id, approval_id, request_hash, approver_user_id, issued_at, expires_at)
+               VALUES (?, 't-1', 'old-approval', ?, 'U123', '2026-11-11T00:00:00Z', '2026-11-11T00:01:00Z')""",
+            ("A" * 32, "a" * 64),
+        )
         self.db.execute(
             "UPDATE tasks SET status='running', lease_until='2000-01-01T00:00:00Z' WHERE task_id='t-1'"
         )
@@ -249,6 +271,12 @@ class AtomicClaimContractTests(unittest.TestCase):
     def test_consumed_approval_cannot_be_replayed_after_lease_expiry(self):
         self.insert_task()
         self.db.execute(
+            """INSERT INTO task_approval_nonces
+               (approval_nonce, task_id, approval_id, request_hash, approver_user_id, issued_at, expires_at)
+               VALUES (?, 't-1', 'old-approval', ?, 'U123', '2026-11-11T00:00:00Z', '2026-11-11T00:01:00Z')""",
+            ("A" * 32, "a" * 64),
+        )
+        self.db.execute(
             "UPDATE tasks SET status='running', lease_until='2000-01-01T00:00:00Z' WHERE task_id='t-1'"
         )
         self.db.execute(
@@ -267,6 +295,12 @@ class AtomicClaimContractTests(unittest.TestCase):
     def test_consumed_approval_cannot_be_reissued_while_lease_is_active(self):
         self.insert_task()
         self.db.execute(
+            """INSERT INTO task_approval_nonces
+               (approval_nonce, task_id, approval_id, request_hash, approver_user_id, issued_at, expires_at)
+               VALUES (?, 't-1', 'old-approval', ?, 'U123', '2026-11-11T00:00:00Z', '2026-11-11T00:01:00Z')""",
+            ("A" * 32, "a" * 64),
+        )
+        self.db.execute(
             "UPDATE tasks SET status='running', lease_until='2999-01-01T00:00:00Z' WHERE task_id='t-1'"
         )
         self.db.execute(
@@ -279,6 +313,42 @@ class AtomicClaimContractTests(unittest.TestCase):
         self.db.commit()
         result = self._upsert_approval("new-approval", "B" * 32, "b" * 64)
         self.assertEqual(result.rowcount, 0)
+
+    def test_old_nonce_cannot_be_replayed_after_a_newer_approval(self):
+        self.insert_task()
+        self.assertEqual(self._upsert_approval("approval-a", "A" * 32, "a" * 64,
+                                               "2026-11-11T00:01:00Z"), 1)
+        self.assertEqual(self._upsert_approval("approval-b", "B" * 32, "b" * 64,
+                                               "2026-11-11T00:02:00Z"), 1)
+        self.assertEqual(self._upsert_approval("replay-a", "A" * 32, "a" * 64,
+                                               "2026-11-11T00:01:00Z"), 0)
+        self.assertEqual(self.db.execute(
+            "SELECT approval_nonce FROM task_approvals WHERE task_id='t-1'"
+        ).fetchone()[0], "B" * 32)
+        self.assertEqual(self.db.execute(
+            "SELECT COUNT(*) FROM task_approval_nonces WHERE task_id='t-1'"
+        ).fetchone()[0], 2)
+
+    def test_older_distinct_nonce_cannot_overwrite_newer_approval(self):
+        self.insert_task()
+        self.assertEqual(self._upsert_approval("approval-b", "B" * 32, "b" * 64,
+                                               "2026-11-11T00:02:00Z"), 1)
+        self.assertEqual(self._upsert_approval("approval-c", "C" * 32, "c" * 64,
+                                               "2026-11-11T00:01:00Z"), 0)
+        self.assertEqual(self.db.execute(
+            "SELECT approval_nonce FROM task_approvals WHERE task_id='t-1'"
+        ).fetchone()[0], "B" * 32)
+        # Even a stale nonce is recorded and cannot be retried.
+        self.assertEqual(self._upsert_approval("replay-c", "C" * 32, "c" * 64,
+                                               "2026-11-11T00:01:00Z"), 0)
+
+    def test_nonce_history_enforces_foreign_keys(self):
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO task_approval_nonces
+                   (approval_nonce, task_id, approval_id, request_hash, approver_user_id, issued_at, expires_at)
+                   VALUES ('N' * 32, 'missing-task', 'approval-x', 'a', 'U123', '2026-11-11T00:00:00Z', '2999-01-01T00:00:00Z')"""
+            )
 
     def test_worker_claim_requires_approval_validation_and_hmac(self):
         source = (ROOT / "src" / "index.js").read_text(encoding="utf-8")
@@ -311,47 +381,48 @@ class AtomicClaimContractTests(unittest.TestCase):
         self.assertIn("ORDER BY created_at LIMIT 10", source)
 
 
+    def test_status_endpoint_is_scoped_to_verified_line_owner(self):
+        source = (ROOT / "src" / "index.js").read_text(encoding="utf-8")
+        self.assertIn("complete|status", source)
+        self.assertIn('parsed.action === "status" && request.method === "GET"', source)
+        self.assertIn("WHERE task_id = ? AND user_id = ?", source)
+        self.assertIn("SELECT task_id, status, created_at, updated_at FROM tasks", source)
+        self.assertIn('json({ error: "not found" }, 404)', source)
+
+    def test_status_query_returns_only_the_matching_task_owner(self):
+        db = sqlite3.connect(":memory:")
+        try:
+            db.executescript("""
+                CREATE TABLE tasks (
+                  task_id TEXT PRIMARY KEY,
+                  request_text TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  user_id TEXT
+                );
+            """)
+            db.execute(
+                "INSERT INTO tasks(task_id, request_text, status, user_id) VALUES (?, ?, ?, ?)",
+                ("owned-task", "private request", "queued", "U" + "a" * 32),
+            )
+            own = db.execute(
+                "SELECT task_id, status FROM tasks WHERE task_id = ? AND user_id = ?",
+                ("owned-task", "U" + "a" * 32),
+            ).fetchone()
+            other = db.execute(
+                "SELECT task_id, status FROM tasks WHERE task_id = ? AND user_id = ?",
+                ("owned-task", "U" + "b" * 32),
+            ).fetchone()
+            missing = db.execute(
+                "SELECT task_id, status FROM tasks WHERE task_id = ? AND user_id = ?",
+                ("missing-task", "U" + "a" * 32),
+            ).fetchone()
+            self.assertEqual(tuple(own), ("owned-task", "queued"))
+            self.assertIsNone(other)
+            self.assertIsNone(missing)
+        finally:
+            db.close()
+
+
 if __name__ == "__main__":
     unittest.main()
-
-def test_status_endpoint_is_scoped_to_verified_line_owner():
-    source = (ROOT / "src" / "index.js").read_text(encoding="utf-8")
-    assert "complete|status" in source
-    assert 'parsed.action === "status" && request.method === "GET"' in source
-    assert "WHERE task_id = ? AND user_id = ?" in source
-    assert "SELECT task_id, status, created_at, updated_at FROM tasks" in source
-    assert 'json({ error: "not found" }, 404)' in source
-
-def test_status_query_returns_only_the_matching_task_owner():
-    db = sqlite3.connect(":memory:")
-    try:
-        db.executescript("""
-            CREATE TABLE tasks (
-              task_id TEXT PRIMARY KEY,
-              request_text TEXT NOT NULL,
-              status TEXT NOT NULL,
-              user_id TEXT
-            );
-        """)
-        db.execute(
-            "INSERT INTO tasks(task_id, request_text, status, user_id) VALUES (?, ?, ?, ?)",
-            ("owned-task", "private request", "queued", "U" + "a" * 32),
-        )
-        own = db.execute(
-            "SELECT task_id, status FROM tasks WHERE task_id = ? AND user_id = ?",
-            ("owned-task", "U" + "a" * 32),
-        ).fetchone()
-        other = db.execute(
-            "SELECT task_id, status FROM tasks WHERE task_id = ? AND user_id = ?",
-            ("owned-task", "U" + "b" * 32),
-        ).fetchone()
-        missing = db.execute(
-            "SELECT task_id, status FROM tasks WHERE task_id = ? AND user_id = ?",
-            ("missing-task", "U" + "a" * 32),
-        ).fetchone()
-        assert tuple(own) == ("owned-task", "queued")
-        assert other is None
-        assert missing is None
-    finally:
-        db.close()
 
