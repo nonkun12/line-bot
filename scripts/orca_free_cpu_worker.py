@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import html
+import hmac
 import json
 import os
 import re
@@ -96,6 +98,8 @@ def poll() -> int:
         raise WorkerError("queued task has an invalid task_id")
     if not task["request_text"].strip() or len(task["request_text"].encode("utf-8")) > MAX_INSTRUCTION:
         raise WorkerError("queued task instruction is empty or too long")
+    request_text = task["request_text"]
+    fingerprint = hashlib.sha256(request_text.encode("utf-8")).hexdigest()
     encoded = base64.urlsafe_b64encode(
         json.dumps(task, ensure_ascii=False).encode("utf-8")
     ).decode("ascii")
@@ -104,7 +108,16 @@ def poll() -> int:
         with open(output, "a", encoding="utf-8") as handle:
             handle.write(f"task_payload={encoded}\n")
             handle.write(f"task_id={task['task_id']}\n")
-    print(f"Queued task discovered: {task['task_id']}")
+            handle.write(f"task_fingerprint={fingerprint}\n")
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as handle:
+            handle.write("## ORCA task awaiting human approval\n\n")
+            handle.write(f"Task ID: {task['task_id']}\nSHA-256: {fingerprint}\n\n")
+            handle.write("Exact submitted request (HTML-escaped):\n")
+            handle.write(f"<pre>{html.escape(request_text)}</pre>\n")
+            handle.write("Approve only if this exact task is intended.\n")
+    print(f"Queued task discovered: {task['task_id']} ({fingerprint})")
     return 0
 
 
@@ -305,6 +318,13 @@ def process(encoded_task: str) -> int:
         raise WorkerError("invalid task payload")
     task_id = str(task.get("task_id") or "")
     raw_instruction = str(task.get("request_text") or "").strip()
+    approved_fingerprint = os.environ.get("ORCA_TASK_APPROVED_SHA256", "").strip()
+    actual_fingerprint = hashlib.sha256(raw_instruction.encode("utf-8")).hexdigest()
+    if (
+        not re.fullmatch(r"[0-9a-f]{64}", approved_fingerprint)
+        or not hmac.compare_digest(actual_fingerprint, approved_fingerprint)
+    ):
+        raise WorkerError("task fingerprint does not match the reviewed approval snapshot")
     if raw_instruction.startswith("アプリ開発:"):
         instruction = raw_instruction.split(":", 1)[1].strip()
     elif raw_instruction.startswith("アプリ開発："):
