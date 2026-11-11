@@ -19,7 +19,6 @@ jobs:
     outputs:
       task_id: ${{ steps.poll.outputs.task_id }}
       task_payload: ${{ steps.poll.outputs.task_payload }}
-      task_fingerprint: ${{ steps.poll.outputs.task_fingerprint }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,7 +36,7 @@ jobs:
           python scripts/orca_free_cpu_worker.py poll
 
   execute:
-    name: Execute approved ORCA task ${{ needs.poll.outputs.task_id }} / ${{ needs.poll.outputs.task_fingerprint }}
+    name: Execute signed-approved ORCA task ${{ needs.poll.outputs.task_id }}
     needs: poll
     if: ${{ needs.poll.outputs.task_id != '' }}
     runs-on: ubuntu-latest
@@ -88,7 +87,6 @@ jobs:
           ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
           ORCA_TASK_APPROVAL_GATE: ${{ secrets.ORCA_TASK_APPROVAL_GATE }}
           ORCA_TASK_PAYLOAD: ${{ needs.poll.outputs.task_payload }}
-          ORCA_TASK_APPROVED_SHA256: ${{ needs.poll.outputs.task_fingerprint }}
           ORCA_CPU_MODEL: qwen2.5-coder:1.5b
           GH_TOKEN: ${{ github.token }}
         run: |
