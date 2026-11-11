@@ -381,6 +381,7 @@ class AtomicClaimContractTests(unittest.TestCase):
         self.assertIn("expires > issued + 60 * 60000", source)
         self.assertIn("expires <= issued", source)
         self.assertIn("ORCA_TASK_APPROVAL_HMAC_KEY", source)
+        self.assertIn("AbortSignal.timeout(10_000)", source)
         self.assertIn("new TextEncoder().encode(approvalKey).length < 32", source)
         self.assertIn("task.user_id !== userId", source)
         self.assertIn("issuedAt, expiresAt, nonce].join", source)
