@@ -84,7 +84,7 @@ def unwrap_task_list(data: object) -> list[dict]:
 def oldest_queued_task(tasks: list[dict]) -> dict | None:
     eligible = [
         item for item in tasks
-        if item.get("status") == "queued"
+        if item.get("status") in ("queued", "running")
         and item.get("approved") in (1, True)
         and isinstance(item.get("task_id"), str)
         and isinstance(item.get("request_text"), str)
@@ -96,13 +96,13 @@ def oldest_queued_task(tasks: list[dict]) -> dict | None:
 
 
 def poll() -> int:
-    tasks = unwrap_task_list(api_request("GET", "/tasks?status=queued&approved=true&limit=100"))
+    tasks = unwrap_task_list(api_request("GET", "/tasks?approved=true&limit=100"))
     task = oldest_queued_task(tasks)
     if task is None:
         print("No queued ORCA task.")
         return 0
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task["task_id"]):
-        raise WorkerError("queued task has an invalid task_id")
+        raise WorkerError("approved task has an invalid task_id")
     if not task["request_text"].strip() or len(task["request_text"].encode("utf-8")) > MAX_INSTRUCTION:
         raise WorkerError("queued task instruction is empty or too long")
     request_text = task["request_text"]
