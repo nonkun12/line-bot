@@ -41,9 +41,9 @@ SENSITIVE_PATH_MARKERS = (
 # Exclude an entire context file when it contains credential-like material.
 # False positives reduce context rather than weakening the safety boundary.
 SENSITIVE_CONTENT_PATTERNS = (
-    re.compile(r"""(?im)^\\s*(?:export\\s+)?[A-Z0-9_]*(?:API[_-]?KEY|ACCESS[_-]?TOKEN|AUTH[_-]?TOKEN|PASSWORD|PASSWD|SECRET|PRIVATE[_-]?KEY|CLIENT[_-]?SECRET)[A-Z0-9_]*\\s*[:=]\\s*['"]?[^'"\\s#]{8,}"""),
+    re.compile(r"""(?im)^\s*(?:export\s+)?[A-Z0-9_]*(?:API[_-]?KEY|ACCESS[_-]?TOKEN|AUTH[_-]?TOKEN|PASSWORD|PASSWD|SECRET|PRIVATE[_-]?KEY|CLIENT[_-]?SECRET)[A-Z0-9_]*\s*[:=]\s*['"]?[^'"\s#]{8,}"""),
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
-    re.compile(r"\\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{16,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|sk-[A-Za-z0-9]{24,})\\b"),
+    re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{16,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|sk-[A-Za-z0-9]{24,})\b"),
 )
 
 
