@@ -101,17 +101,39 @@ async function approveTask(id, request, env) {
   if (!safeEqual(await sha256Hex(task.request_text), requestHash))
     return json({ error: "task content changed; approval rejected" }, 409);
   const approvalId = crypto.randomUUID();
-  const saved = await env.DB.prepare(
-    "INSERT INTO task_approvals (task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status) " +
-    "VALUES (?, ?, ?, ?, ?, ?, ?, 'approved') ON CONFLICT(task_id) DO UPDATE SET " +
-    "approval_id=excluded.approval_id, approval_nonce=excluded.approval_nonce, " +
-    "request_hash=excluded.request_hash, approver_user_id=excluded.approver_user_id, " +
-    "issued_at=excluded.issued_at, expires_at=excluded.expires_at, status='approved' " +
-    "WHERE task_approvals.status != 'consumed' OR (excluded.approval_nonce != task_approvals.approval_nonce " +
-    "AND EXISTS (SELECT 1 FROM tasks WHERE task_id = excluded.task_id AND status = 'running' " +
-    "AND lease_until IS NOT NULL AND datetime(lease_until) <= CURRENT_TIMESTAMP))"
-  ).bind(id, approvalId, nonce, requestHash, userId, issuedAt, expiresAt).run();
-  if (!saved.meta?.changes) return json({ error: "task approval was already consumed" }, 409);
+  // The nonce ledger is append-only. D1 batch is transactional: a duplicate
+  // nonce aborts the batch, while a stale-but-new nonce is retained in history
+  // even when it cannot replace the current approval.
+  let results;
+  try {
+    results = await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO task_approval_nonces " +
+        "(approval_nonce, task_id, approval_id, request_hash, approver_user_id, issued_at, expires_at) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?)"
+      ).bind(nonce, id, approvalId, requestHash, userId, issuedAt, expiresAt),
+      env.DB.prepare(
+        "INSERT INTO task_approvals " +
+        "(task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 'approved') " +
+        "ON CONFLICT(task_id) DO UPDATE SET " +
+        "approval_id=excluded.approval_id, approval_nonce=excluded.approval_nonce, " +
+        "request_hash=excluded.request_hash, approver_user_id=excluded.approver_user_id, " +
+        "issued_at=excluded.issued_at, expires_at=excluded.expires_at, status='approved' " +
+        "WHERE julianday(excluded.issued_at) > julianday(task_approvals.issued_at) " +
+        "AND (task_approvals.status = 'approved' OR " +
+        "(task_approvals.status = 'consumed' AND EXISTS (" +
+        "SELECT 1 FROM tasks WHERE task_id = excluded.task_id AND status = 'running' " +
+        "AND lease_until IS NOT NULL AND datetime(lease_until) <= CURRENT_TIMESTAMP)))"
+      ).bind(id, approvalId, nonce, requestHash, userId, issuedAt, expiresAt),
+    ]);
+  } catch {
+    // A nonce/approval ID uniqueness conflict is a replay. Fail closed.
+    return json({ error: "approval nonce has already been used" }, 409);
+  }
+  if (!results[0]?.meta?.changes) return json({ error: "approval nonce has already been used" }, 409);
+  if (!results[1]?.meta?.changes)
+    return json({ error: "approval is stale or the previous lease is still active" }, 409);
   return json({ task_id: id, approved: true, expires_at: expiresAt });
 }
 
