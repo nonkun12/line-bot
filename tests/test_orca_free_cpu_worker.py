@@ -242,14 +242,14 @@ def test_tracked_context_skips_files_with_embedded_credentials(monkeypatch, tmp_
     (tmp_path / "public.md").write_text("safe context", encoding="utf-8")
     fake_github_token = "ghp_" + "a" * 36
     (tmp_path / "sample.py").write_text(
-        f'API_TOKEN = "{fake_github_token}"\\n'
-        "def app():\\n    return 'hello'\\n",
+        f'API_TOKEN = "{fake_github_token}"\n'
+        "def app():\n    return 'hello'\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(
         worker, "run",
         lambda *args, **kwargs: SimpleNamespace(
-            returncode=0, stdout="public.md\\nsample.py\\n", stderr=""
+            returncode=0, stdout="public.md\nsample.py\n", stderr=""
         ),
     )
 
