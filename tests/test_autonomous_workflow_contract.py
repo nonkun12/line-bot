@@ -110,3 +110,11 @@ def test_autonomous_workflow_triggers_remain_declared_but_execution_is_held():
     assert "workflow_dispatch:" in event_block
     assert "contains(fromJSON('[]'), github.event_name)" in text
     assert "TEMPORARY FAIL-CLOSED HOLD" in text
+
+def test_recovery_resume_review_cannot_clear_holds_before_signed_approval():
+    workflow = ROOT / ".github" / "workflows" / "recovery-ai-resume-review.yml"
+    text = workflow.read_text(encoding="utf-8")
+    job = text.split("jobs:", 1)[1]
+    assert "confirm-resume-review:" in job
+    assert "contains(fromJSON('[]'), github.event_name)" in job
+    assert "TEMPORARY FAIL-CLOSED HOLD" in job
