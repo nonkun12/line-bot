@@ -18,7 +18,7 @@ async function authorized(request, env) {
 }
 
 function taskIdFrom(path) {
-  const match = path.match(/^\/tasks\/([A-Za-z0-9_-]{1,100})(?:\/(approve|claim|complete))?$/);
+  const match = path.match(/^\/tasks\/([A-Za-z0-9_-]{1,100})(?:\/(approve|claim|complete|status))?$/);
   return match ? { id: match[1], action: match[2] || null } : null;
 }
 
@@ -198,6 +198,17 @@ async function getTask(id, env) {
   return task ? json({ task }) : json({ error: "not found" }, 404);
 }
 
+async function getTaskStatus(id, url, env) {
+  // Status lookup is intentionally scoped to the verified LINE submitter.
+  // Return the same 404 for missing tasks and ownership mismatches.
+  const userId = url.searchParams.get("user_id") || "";
+  if (!/^U[0-9a-fA-F]{32}$/.test(userId)) return json({ error: "not found" }, 404);
+  const task = await env.DB.prepare(
+    "SELECT task_id, status, created_at, updated_at FROM tasks WHERE task_id = ? AND user_id = ?"
+  ).bind(id, userId).first();
+  return task ? json({ task }) : json({ error: "not found" }, 404);
+}
+
 async function listTasks(url, env) {
   const limit = Math.min(100, Math.max(1, Number.parseInt(url.searchParams.get("limit") || "20", 10) || 20));
   const status = url.searchParams.get("status");
@@ -293,6 +304,7 @@ export default {
     if (parsed.action === "approve" && request.method === "POST") return approveTask(parsed.id, request, env);
     if (parsed.action === "claim" && request.method === "POST") return claimTask(parsed.id, request, env);
     if (parsed.action === "complete" && request.method === "POST") return completeTask(parsed.id, request, env);
+    if (parsed.action === "status" && request.method === "GET") return getTaskStatus(parsed.id, url, env);
     if (!parsed.action && request.method === "GET") return getTask(parsed.id, env);
     if (!parsed.action && request.method === "PUT") return json({ error: "legacy status updates are disabled; use /claim and /complete with the lease token" }, 410);
     return json({ error: "method not allowed" }, 405);
