@@ -85,6 +85,7 @@ def oldest_queued_task(tasks: list[dict]) -> dict | None:
     eligible = [
         item for item in tasks
         if item.get("status") == "queued"
+        and item.get("approved") in (1, True)
         and isinstance(item.get("task_id"), str)
         and isinstance(item.get("request_text"), str)
         and item["request_text"].startswith(("アプリ開発:", "アプリ開発："))
@@ -122,7 +123,7 @@ def poll() -> int:
             handle.write(f"Task ID: {task['task_id']}\nSHA-256: {fingerprint}\n\n")
             handle.write("Exact submitted request (HTML-escaped):\n")
             handle.write(f"<pre>{html.escape(request_text)}</pre>\n")
-            handle.write("Approve only if this exact task is intended.\n")
+            handle.write("A valid task-bound LINE HMAC approval is required before claim.\n")
     print(f"Queued task discovered: {task['task_id']} ({fingerprint})")
     return 0
 
@@ -331,9 +332,7 @@ def process(encoded_task: str) -> int:
         raise WorkerError("invalid task payload")
     task_id = str(task.get("task_id") or "")
     raw_instruction = str(task.get("request_text") or "").strip()
-    approved_fingerprint = os.environ.get("ORCA_TASK_APPROVED_SHA256", "").strip()
-    if not verify_task_fingerprint(raw_instruction, approved_fingerprint):
-        raise WorkerError("task fingerprint does not match the reviewed approval snapshot")
+    # The API verifies signed LINE approval against live D1 task text during atomic claim.
     if raw_instruction.startswith("アプリ開発:"):
         instruction = raw_instruction.split(":", 1)[1].strip()
     elif raw_instruction.startswith("アプリ開発："):
