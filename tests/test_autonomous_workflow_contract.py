@@ -118,3 +118,21 @@ def test_recovery_resume_review_cannot_clear_holds_before_signed_approval():
     assert "confirm-resume-review:" in job
     assert "contains(fromJSON('[]'), github.event_name)" in job
     assert "TEMPORARY FAIL-CLOSED HOLD" in job
+
+
+def test_all_legacy_autonomous_entrypoints_remain_fail_closed():
+    workflows = (
+        "app-development.yml",
+        "continuous-distributed-loop.yml",
+        "distributed-autonomous-loop.yml",
+        "english-core-image-auto-batch.yml",
+        "line-development-dispatch.yml",
+        "line-development.yml",
+        "nightly-autonomous-worker.yml",
+        "overnight-development.yml",
+        "recovery-ai-resume-review.yml",
+    )
+    for filename in workflows:
+        source = (ROOT / ".github" / "workflows" / filename).read_text(encoding="utf-8")
+        assert "contains(fromJSON('[]'), github.event_name)" in source, filename
+        assert "TEMPORARY FAIL-CLOSED HOLD" in source, filename
