@@ -38,7 +38,6 @@ VOICE_PUBLIC_BASE_URL = os.environ.get("VOICE_PUBLIC_BASE_URL", "https://line-bo
 ORCA_TASK_API_URL = os.environ.get("ORCA_TASK_API_URL", "").strip()
 ORCA_TASK_API_TOKEN = os.environ.get("ORCA_TASK_API_TOKEN", "").strip()
 ORCA_TASK_APPROVAL_HMAC_KEY = os.environ.get("ORCA_TASK_APPROVAL_HMAC_KEY", "").strip()
-ORCA_TASK_APPROVER_USER_IDS = os.environ.get("ORCA_TASK_APPROVER_USER_IDS", "").strip()
 
 AI_APP_BUILDER_URL = os.environ.get("AI_APP_BUILDER_URL", "")
 AI_APP_BUILDER_SHARED_SECRET = os.environ.get("AI_APP_BUILDER_SHARED_SECRET", "")
@@ -65,9 +64,9 @@ def _approve_orca_task(message: str, user_id: str | None):
     task_id = message[len(prefix):].strip()
     if not task_id or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
         return False, "タスクIDの形式が正しくありません。"
-    from core.orca_task_approval import build_approval_payload, is_authorized_approver
-    if not is_authorized_approver(user_id, ORCA_TASK_APPROVER_USER_IDS):
-        return False, "このLINEアカウントにはタスク承認権限がありません。"
+    from core.orca_task_approval import build_approval_payload, is_valid_line_user_id
+    if not is_valid_line_user_id(user_id):
+        return False, "LINEユーザーを確認できないため承認できません。"
     if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN or len(ORCA_TASK_APPROVAL_HMAC_KEY) < 32:
         return False, "タスク承認の安全設定が未完了です。承認は行っていません。"
     url = ORCA_TASK_API_URL.rstrip("/") + "/tasks/" + task_id
@@ -80,6 +79,8 @@ def _approve_orca_task(message: str, user_id: str | None):
         task = result.get("task", {}) if isinstance(result, dict) else {}
         if task.get("task_id") != task_id or task.get("status") != "queued":
             return False, "対象タスクがqueued状態ではありません。承認していません。"
+        if task.get("user_id") != user_id:
+            return False, "依頼を登録したLINEアカウント以外からは承認できません。"
         request_text = task.get("request_text")
         if not isinstance(request_text, str) or not request_text.startswith(("アプリ開発:", "アプリ開発：")):
             return False, "明示的なアプリ開発タスクではありません。承認していません。"
