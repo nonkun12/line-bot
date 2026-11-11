@@ -177,3 +177,20 @@ are complete. Merging is not authorized by this proposal.
 At every stage, stop on missing evidence. Do not enable the CPU worker until
 all earlier stages are independently verified. No merge, deploy, migration,
 secret update, or webhook change is performed by this README update.
+
+## Global HOLD (migration 0005)
+
+Migration `0005_global_hold.sql` creates the D1 `system_controls` table and inserts
+`global_hold=on` by default. Apply it only after reviewing the existing D1 schema
+and taking the normal migration backup. Until the migration is applied and a human
+explicitly changes that row to the exact value `off`, intake, approval, claim,
+polling, and LINE outbox dispatch remain blocked. Missing or unreadable state is
+also treated as HOLD.
+
+Task completion may still record terminal evidence while HOLD is active, but it
+does not enqueue a LINE notification. Outbox dispatch checks HOLD before claiming
+and again immediately before the LINE request. A D1 state change cannot be made
+atomic with an already-starting external LINE API request; this boundary is
+documented rather than represented as cross-system atomicity.
+
+No production D1 migration or Worker deployment is performed by this PR.
