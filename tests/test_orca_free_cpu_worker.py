@@ -557,7 +557,8 @@ def test_worker_checks_global_hold_before_commit_push_and_pr():
     ).read_text(encoding="utf-8")
     process = source.split("def process(", 1)[1]
     assert process.count("assert_global_hold_clear()") >= 6
-    assert process.index("assert_global_hold_clear()") < process.index('api_request("POST", "/tasks/" + encoded_id + "/claim"')
+    assert process.index("assert_global_hold_clear()") < process.index('claim_result = api_request(')
+    assert '"/tasks/" + encoded_id + "/claim"' in process
     assert process.index('assert_global_hold_clear()\n        if run(["git", "commit"') < process.index('run(["git", "commit"')
     assert process.index('assert_global_hold_clear()\n        pushed = run(["git", "push"') < process.index('run(["git", "push"')
     assert process.index('assert_global_hold_clear()\n        pr_url = create_or_reuse_pr') < process.index("create_or_reuse_pr(")
