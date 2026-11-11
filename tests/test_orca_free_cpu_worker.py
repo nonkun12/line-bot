@@ -29,6 +29,19 @@ def test_safe_app_path_rejects_sensitive_and_traversal_paths():
         assert not safe_app_path(path)
 
 
+def test_safe_context_path_rejects_sensitive_file_names():
+    from scripts.orca_free_cpu_worker import safe_context_path
+
+    for path in (
+        "docs/api_token_reference.md",
+        "fixtures/credentials.json",
+        "config/private_key.txt",
+        "data/passwords.txt",
+        "secrets.txt",
+    ):
+        assert not safe_context_path(path)
+
+
 def test_unwrap_task_list_accepts_supported_container_shapes():
     task = {"task_id": "line-123", "request_text": "hello", "status": "queued"}
     assert unwrap_task_list({"tasks": [task]}) == [task]
