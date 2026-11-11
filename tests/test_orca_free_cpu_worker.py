@@ -304,3 +304,27 @@ def test_worker_reconciles_existing_pr_before_creating_or_pushing_branch():
         'run(["git", "switch", "-c", branch]'
     )
     assert "reconciled existing review PR" in process
+
+def test_workflow_passes_only_task_id_between_jobs():
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "orca-free-cpu-task-worker.yml"
+    ).read_text(encoding="utf-8")
+    assert "task_id: ${{ steps.poll.outputs.task_id }}" in workflow
+    assert "task_payload" not in workflow
+    assert "ORCA_TASK_PAYLOAD" not in workflow
+    assert "ORCA_TASK_ID: ${{ needs.poll.outputs.task_id }}" in workflow
+
+
+def test_worker_reloads_request_inside_protected_execution_job():
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "orca_free_cpu_worker.py"
+    ).read_text(encoding="utf-8")
+    assert 'api_request("GET", "/tasks/" + encoded_id)' in source
+    assert 'handle.write(f"task_id={task[\'task_id\']}\\n")' in source
+    assert "task_payload=" not in source
+    assert "ORCA_TASK_PAYLOAD" not in source
