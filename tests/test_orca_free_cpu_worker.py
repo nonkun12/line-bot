@@ -300,7 +300,7 @@ def test_worker_reconciles_existing_pr_before_creating_or_pushing_branch():
         / "orca_free_cpu_worker.py"
     ).read_text(encoding="utf-8")
     process = source.split("def process(", 1)[1]
-    assert process.index("existing_pr = find_existing_pr(branch)") < process.index(
+    assert process.index("existing_pr = find_existing_pr(") < process.index(
         'run(["git", "switch", "-c", branch]'
     )
     assert "reconciled existing review PR" in process
