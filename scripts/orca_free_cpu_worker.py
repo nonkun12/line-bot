@@ -304,24 +304,25 @@ def process(encoded_task: str) -> int:
         raise WorkerError("task instruction is empty or too long")
 
     encoded_id = urllib.parse.quote(task_id, safe="")
-    current = api_request("GET", "/tasks/" + encoded_id)
-    current = current.get("task", current) if isinstance(current, dict) else {}
+    claim_result = api_request(
+        "POST", "/tasks/" + encoded_id + "/claim", {"lease_seconds": 1800}
+    )
+    claimed = claim_result.get("task") if isinstance(claim_result, dict) else None
+    claim_token = claim_result.get("claim_token") if isinstance(claim_result, dict) else None
     if (
-        not isinstance(current, dict)
-        or current.get("status") != "queued"
-        or current.get("request_text") != raw_instruction
+        not isinstance(claimed, dict)
+        or not isinstance(claim_token, str)
+        or not claim_token
+        or claimed.get("status") != "running"
     ):
-        raise WorkerError("task is no longer queued or payload mismatch; refusing execution")
-
-    api_request("PUT", "/tasks/" + encoded_id, {"status": "running"})
-    claimed = api_request("GET", "/tasks/" + encoded_id)
-    claimed = claimed.get("task", claimed) if isinstance(claimed, dict) else {}
-    if not isinstance(claimed, dict) or claimed.get("status") != "running":
-        try:
-            api_request("PUT", "/tasks/" + encoded_id, {"status": "fail"})
-        except Exception:
-            pass
-        raise WorkerError("task claim could not be verified")
+        raise WorkerError("atomic task claim could not be verified")
+    if claimed.get("request_text") != raw_instruction:
+        api_request(
+            "POST", "/tasks/" + encoded_id + "/complete",
+            {"claim_token": claim_token, "status": "blocked",
+             "message": "Task payload mismatch; execution blocked."},
+        )
+        raise WorkerError("claimed task payload mismatch; refusing execution")
 
     pr_url = ""
     try:
@@ -400,7 +401,7 @@ def process(encoded_task: str) -> int:
             branch, "feat: ORCA task " + task_id, body
         )
         print(pr_url)
-        api_request("PUT", "/tasks/" + encoded_id, {"status": "pass"})
+        api_request("POST", "/tasks/" + encoded_id + "/complete", {"claim_token": claim_token, "status": "pass", "message": f"ORCA task {task_id}: PASS — PR {pr_url}"})
         return 0
     except Exception:
         # Once a PR exists, do not mark the task failed if the final D1 update
@@ -408,13 +409,13 @@ def process(encoded_task: str) -> int:
         # explicit reconciliation instead.
         if not pr_url:
             try:
-                api_request("PUT", "/tasks/" + encoded_id, {"status": "fail"})
+                api_request("POST", "/tasks/" + encoded_id + "/complete", {"claim_token": claim_token, "status": "fail", "message": f"ORCA task {task_id}: FAIL — execution did not produce a reviewable PR"})
             except Exception:
                 pass
         else:
             print(
                 "ORCA_CPU_WORKER_RECONCILIATION_REQUIRED: PR exists at "
-                + pr_url + "; D1 status may still be running",
+                + pr_url + "; D1 status may still be running until the 30-minute lease expires",
                 file=sys.stderr,
             )
         raise
