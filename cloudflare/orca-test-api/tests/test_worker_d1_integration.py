@@ -247,7 +247,7 @@ new_sqlite_classes = ["OrcaWriteBroker"]
         self.assertEqual(status, 200)
         status, state = self.api("/control/global-hold")
         self.assertEqual(status, 200)
-        self.assertEqual(state, {"clear": False, "value": "on", "blocked": True})
+        self.assertEqual(state, {"clear": False, "value": "on", "blocked": True, "unresolved_operations": 0})
         status, body = self.create("hold-blocked")
         self.assertEqual(status, 423)
         self.assertIn("global HOLD", body["error"])
