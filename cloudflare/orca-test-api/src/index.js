@@ -475,8 +475,16 @@ async function dispatchOutbox(env) {
 
 export default {
   async fetch(request, env) {
-    if (!await authorized(request, env)) return json({ error: "unauthorized" }, 401);
     const url = new URL(request.url);
+    const loopAdmissionRead = url.pathname === "/control/loop-admission" && request.method === "GET";
+    if (loopAdmissionRead) {
+      const supplied = request.headers.get("authorization") || "";
+      const expected = `Bearer ${env.ORCA_LOOP_PREFLIGHT_TOKEN || ""}`;
+      if (!env.ORCA_LOOP_PREFLIGHT_TOKEN || !safeEqual(supplied, expected))
+        return json({ error: "unauthorized" }, 401);
+    } else if (!await authorized(request, env)) {
+      return json({ error: "unauthorized" }, 401);
+    }
     if (url.pathname === "/control/loop-admission" && request.method === "GET") {
       // One read-only preflight for GitHub Actions: the Durable Object is the
       // authoritative Global HOLD source; D1 supplies the Budget Guardian state.
