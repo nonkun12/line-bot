@@ -160,7 +160,10 @@ export class OrcaWriteBroker {
   }
 
   async createReviewIssue(request) {
-    const body = await request.json().catch(() => null);
+    const raw = await request.text();
+    if (raw.length > 52000) return json({ error: "issue request exceeds the bounded payload limit" }, 413);
+    let body;
+    try { body = JSON.parse(raw); } catch { body = null; }
     if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "invalid JSON body" }, 400);
     const { task_id: taskId, claim_token: claimToken, idempotency_key: key } = body;
     const title = body.title;
@@ -192,6 +195,15 @@ export class OrcaWriteBroker {
 
     try {
       const token = await installationToken(this.env);
+      // Revalidate the task lease after token minting and immediately before
+      // the external write; expired or revoked claims never reach GitHub.
+      if (!(await this.validateClaim(taskId, claimToken))) {
+        await this.state.storage.put(recordKey, {
+          state: "rejected", updated_at: new Date().toISOString(),
+          reason: "task lease expired before GitHub write",
+        });
+        return json({ error: "task lease expired before GitHub write" }, 403);
+      }
       const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {
         method: "POST",
         headers: {
