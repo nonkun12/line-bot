@@ -133,15 +133,14 @@ export class OrcaWriteBroker {
     if (url.pathname === "/hold" && request.method === "PUT") {
       const body = await request.json().catch(() => null);
       if (!body || !["on", "off"].includes(body.value)) return json({ error: "value must be on or off" }, 400);
-      if (body.value === "off" &&
-          (typeof body.operator_id !== "string" || !body.operator_id.trim() ||
-           typeof body.reason !== "string" || body.reason.trim().length < 8)) {
-        return json({ error: "explicit operator_id and reason are required to release HOLD" }, 400);
+      if (typeof body.operator_id !== "string" || !body.operator_id.trim() ||
+          typeof body.reason !== "string" || body.reason.trim().length < 8) {
+        return json({ error: "explicit operator_id and reason are required for every HOLD transition" }, 400);
       }
       const unresolved = await this.unresolvedOperations();
       if (unresolved > 0) {
         const draining = {
-          value: "draining", operator_id: body.value === "off" ? body.operator_id.trim().slice(0, 128) : "system",
+          value: "draining", operator_id: body.operator_id.trim().slice(0, 128),
           reason: "unresolved GitHub write outcome; manual reconciliation required",
           changed_at: new Date().toISOString(),
         };
@@ -151,7 +150,7 @@ export class OrcaWriteBroker {
       }
       const event = {
         value: body.value,
-        operator_id: body.value === "off" ? body.operator_id.trim().slice(0, 128) : "system",
+        operator_id: body.operator_id.trim().slice(0, 128),
         reason: String(body.reason || (body.value === "on" ? "operator requested HOLD" : "")).trim().slice(0, 500),
         changed_at: new Date().toISOString(),
       };
