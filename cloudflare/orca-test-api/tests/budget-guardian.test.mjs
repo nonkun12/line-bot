@@ -1,18 +1,105 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { evaluateBudgetGuard } from "../src/budget-guardian.mjs";
+
 const now = "2026-11-12T03:00:00.000Z";
 const periodStart = "2026-11-01T00:00:00.000Z";
 const periodEnd = "2026-12-01T00:00:00.000Z";
-function snapshots(overrides = {}) { return ["cloudflare_workers", "cloudflare_d1", "github_actions"].map((name) => ({ name, enabled: true, used: 10, limit: 100, observed_at: now, period_start: periodStart, period_end: periodEnd, ...overrides[name] })); }
-function evaluate(sources = snapshots(), extra = {}) { return evaluateBudgetGuard({ now, sources, globalHoldClear: true, ...extra }); }
-test("allows new work only with fresh required sources below warning", () => { const r = evaluate(); assert.equal(r.status, "CLEAR"); assert.equal(r.allowActionsDispatch, true); });
-test("70 percent warns but does not suppress", () => { const r = evaluate(snapshots({ cloudflare_d1: { used: 70 } })); assert.equal(r.status, "WARN"); assert.equal(r.allowNewTasks, true); });
-test("80 percent suppresses new work", () => { const r = evaluate(snapshots({ github_actions: { used: 80 } })); assert.equal(r.status, "SUPPRESS"); assert.equal(r.allowNewTasks, false); assert.equal(r.allowActionsDispatch, false); });
-test("90 percent stops new work", () => { const r = evaluate(snapshots({ cloudflare_workers: { used: 90 } })); assert.equal(r.status, "STOP"); assert.equal(r.allowNewTasks, false); });
-test("missing telemetry and missing required sources fail closed", () => { assert.equal(evaluate(undefined).status, "BLOCKED"); assert.equal(evaluate(snapshots().slice(0, 2)).reason, "required_usage_source_missing"); });
-test("stale, future, malformed and out-of-period snapshots fail closed", () => { for (const override of [{ observed_at: "2026-11-12T00:00:00.000Z" }, { observed_at: "2026-11-12T04:00:00.000Z" }, { used: -1 }, { limit: 0 }, { period_start: "2026-12-01T00:00:00.000Z" }]) assert.equal(evaluate(snapshots({ cloudflare_workers: override })).status, "BLOCKED"); });
-test("unknown enabled state is not treated as disabled", () => { const s = snapshots(); delete s[0].enabled; assert.equal(evaluate(s).status, "BLOCKED"); });
-test("explicitly disabled spend path is accepted but all-disabled blocks", () => { assert.equal(evaluate(snapshots({ github_actions: { enabled: false } })).status, "CLEAR"); const s = snapshots().map((x) => ({ name: x.name, enabled: false })); assert.equal(evaluate(s).status, "BLOCKED"); });
-test("Global HOLD and three consecutive failures independently block", () => { assert.equal(evaluate(snapshots(), { globalHoldClear: false }).status, "BLOCKED"); assert.equal(evaluate(snapshots(), { consecutiveFailures: 3 }).status, "BLOCKED"); });
-test("duplicate sources and invalid thresholds fail closed", () => { const s = snapshots(); s.push({ ...s[0] }); assert.equal(evaluate(s).status, "BLOCKED"); assert.equal(evaluate(snapshots(), { thresholds: { warn: 80, suppress: 70, stop: 90 } }).status, "BLOCKED"); });
+const names = ["cloudflare_workers", "cloudflare_d1", "github_actions"];
+
+function snapshots(overrides = {}) {
+  return names.map((name) => ({
+    name, enabled: true, used: 10, limit: 100, observed_at: now,
+    period_start: periodStart, period_end: periodEnd, ...overrides[name],
+  }));
+}
+function evaluate(sources = snapshots(), extra = {}) {
+  return evaluateBudgetGuard({ now, sources, globalHoldClear: true, ...extra });
+}
+
+test("CLEAR permits new tasks and Actions dispatch with all fresh required sources", () => {
+  const result = evaluate();
+  assert.equal(result.status, "CLEAR");
+  assert.equal(result.allowNewTasks, true);
+  assert.equal(result.allowActionsDispatch, true);
+});
+test("70% is WARN and permits work; 69.99% remains CLEAR", () => {
+  assert.equal(evaluate(snapshots({ cloudflare_d1: { used: 69.99 } })).status, "CLEAR");
+  const result = evaluate(snapshots({ cloudflare_d1: { used: 70 } }));
+  assert.equal(result.status, "WARN");
+  assert.equal(result.allowNewTasks, true);
+  assert.equal(result.allowActionsDispatch, true);
+});
+test("80% and 89.99% suppress new tasks and dispatch", () => {
+  for (const percent of [80, 89.99]) {
+    const result = evaluate(snapshots({ github_actions: { used: percent } }));
+    assert.equal(result.status, "SUPPRESS");
+    assert.equal(result.allowNewTasks, false);
+    assert.equal(result.allowActionsDispatch, false);
+  }
+});
+test("90%, values above 90%, and 100% STOP both task admission and Actions dispatch", () => {
+  for (const percent of [90, 90.01, 95, 100]) {
+    const result = evaluate(snapshots({ cloudflare_workers: { used: percent } }));
+    assert.equal(result.status, "STOP", `percent=${percent}`);
+    assert.equal(result.allowNewTasks, false, `task admission percent=${percent}`);
+    assert.equal(result.allowActionsDispatch, false, `dispatch percent=${percent}`);
+    assert.equal(result.reason, "budget_stop_threshold_reached");
+  }
+});
+test("any one of the three spend domains at 90% stops the whole decision", () => {
+  for (const name of names) {
+    const result = evaluate(snapshots({ [name]: { used: 90 } }));
+    assert.equal(result.status, "STOP", name);
+    assert.equal(result.allowNewTasks, false, name);
+    assert.equal(result.allowActionsDispatch, false, name);
+  }
+});
+test("worst status wins when multiple sources cross thresholds", () => {
+  const result = evaluate(snapshots({
+    cloudflare_workers: { used: 70 },
+    cloudflare_d1: { used: 80 },
+    github_actions: { used: 90 },
+  }));
+  assert.equal(result.status, "STOP");
+  assert.equal(result.allowNewTasks, false);
+  assert.equal(result.allowActionsDispatch, false);
+});
+test("missing telemetry and missing required sources fail closed", () => {
+  assert.equal(evaluate(undefined).status, "BLOCKED");
+  assert.equal(evaluate(snapshots().slice(0, 2)).reason, "required_usage_source_missing");
+});
+test("stale, too-far-future, malformed and out-of-period snapshots fail closed", () => {
+  for (const override of [
+    { observed_at: "2026-11-12T01:29:59.999Z" },
+    { observed_at: "2026-11-12T03:05:00.001Z" },
+    { used: -1 }, { limit: 0 },
+    { period_start: "2026-12-01T00:00:00.000Z" },
+    { period_end: now },
+  ]) assert.equal(evaluate(snapshots({ cloudflare_workers: override })).status, "BLOCKED");
+});
+test("freshness and future-skew exact boundaries are accepted", () => {
+  assert.equal(evaluate(snapshots({ cloudflare_workers: { observed_at: "2026-11-12T01:30:00.000Z" } })).status, "CLEAR");
+  assert.equal(evaluate(snapshots({ cloudflare_workers: { observed_at: "2026-11-12T03:05:00.000Z" } })).status, "CLEAR");
+});
+test("unknown or telemetry-supplied disabled state blocks instead of bypassing a spend domain", () => {
+  const unknown = snapshots();
+  delete unknown[0].enabled;
+  assert.equal(evaluate(unknown).status, "BLOCKED");
+  const disabled = evaluate(snapshots({ github_actions: { enabled: false } }));
+  assert.equal(disabled.status, "BLOCKED");
+  assert.equal(disabled.allowNewTasks, false);
+  assert.equal(disabled.allowActionsDispatch, false);
+});
+test("Global HOLD, invalid failure count, and three consecutive failures block", () => {
+  assert.equal(evaluate(snapshots(), { globalHoldClear: false }).status, "BLOCKED");
+  assert.equal(evaluate(snapshots(), { consecutiveFailures: 2 }).status, "CLEAR");
+  assert.equal(evaluate(snapshots(), { consecutiveFailures: 3 }).status, "BLOCKED");
+  assert.equal(evaluate(snapshots(), { consecutiveFailures: -1 }).status, "BLOCKED");
+});
+test("duplicate sources and invalid thresholds fail closed", () => {
+  const duplicate = snapshots();
+  duplicate.push({ ...duplicate[0] });
+  assert.equal(evaluate(duplicate).status, "BLOCKED");
+  assert.equal(evaluate(snapshots(), { thresholds: { warn: 80, suppress: 70, stop: 90 } }).status, "BLOCKED");
+});
