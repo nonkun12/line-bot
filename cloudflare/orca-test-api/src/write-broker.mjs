@@ -111,8 +111,8 @@ export class OrcaWriteBroker {
   }
 
   async unresolvedOperations() {
-    const records = await this.state.storage.list({ prefix: "issue:", limit: 2001 });
-    if (records.size >= 2001) return 2001;
+    const records = await this.state.storage.list({ prefix: "issue:", limit: 1000 });
+    if (records.size >= 1000) return 1000;
     let count = 0;
     for (const record of records.values()) {
       if (record?.state === "in_flight" || record?.state === "uncertain") count += 1;
