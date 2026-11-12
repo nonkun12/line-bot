@@ -158,6 +158,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Check ORCA D1 Global HOLD before any loop work
+        id: global_hold_preflight
+        if: ${{ success() }}
+        env:
+          ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python -m scripts.check_orca_global_hold || { touch /tmp/orca-global-hold-blocked; exit 1; }
+
       - name: Record distributed run base commit
         run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
@@ -467,6 +477,16 @@ jobs:
             echo "::warning::Work Finder AI discovery failed (exit=$rc); bounded loop outcome classification will continue."
           fi
 
+      - name: Recheck ORCA D1 Global HOLD before creating review issues
+        id: global_hold_before_issues
+        if: ${{ success() }}
+        env:
+          ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python -m scripts.check_orca_global_hold || { touch /tmp/orca-global-hold-blocked; exit 1; }
+
       - name: Create bounded review-only task issues from analyzer findings
         if: success() && env.TRIGGER_MODE == 'normal'
         env:
@@ -496,6 +516,16 @@ jobs:
             gh issue create --title "$title" --body "$body" --label autonomous-task-candidate
           done < <(jq -c '.[]' /tmp/autonomous-loop-task-issue-drafts.json)
           echo "Created $count review-only task candidate issue(s); no execution approval was granted."
+
+      - name: Recheck ORCA D1 Global HOLD immediately before task execution
+        id: global_hold_before_task
+        if: ${{ success() }}
+        env:
+          ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python -m scripts.check_orca_global_hold || { touch /tmp/orca-global-hold-blocked; exit 1; }
 
       - name: Run one bounded autonomous task
         id: run_task
@@ -646,6 +676,16 @@ jobs:
           fi
           python -m scripts.recovery_rag_state --mode export --state /tmp/recovery-rag-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
 
+      - name: Recheck ORCA D1 Global HOLD before publishing a branch
+        id: global_hold_before_publish
+        if: ${{ success() }}
+        env:
+          ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python -m scripts.check_orca_global_hold || { touch /tmp/orca-global-hold-blocked; exit 1; }
+
       - name: Publish verified development branch
         id: publish
         if: success()
@@ -775,6 +815,16 @@ jobs:
           echo "PUBLISHED_BRANCH=$branch"
           echo "PUBLISHED_SHA=$head"
 
+      - name: Recheck ORCA D1 Global HOLD before durable completion writes
+        id: global_hold_before_state
+        if: ${{ success() }}
+        env:
+          ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python -m scripts.check_orca_global_hold || { touch /tmp/orca-global-hold-blocked; exit 1; }
+
       - name: Persist completed task state
         id: persist_state
         if: success()
@@ -859,9 +909,19 @@ jobs:
             git -C /tmp/autonomous-state-worktree push "$auth_url" HEAD:refs/heads/$state_branch
           fi
 
+      - name: Recheck ORCA D1 Global HOLD before Recovery AI state writes
+        id: global_hold_before_recovery
+        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
+        env:
+          ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python -m scripts.check_orca_global_hold || { touch /tmp/orca-global-hold-blocked; exit 1; }
+
       - name: Persist Recovery AI durable state
         id: persist_recovery_ai
-        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
+        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' && steps.global_hold_before_recovery.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
           PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
@@ -1068,9 +1128,19 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      - name: Check ORCA D1 Global HOLD before external ledger writes
+        id: global_hold_before_sheets
+        if: ${{ always() }}
+        env:
+          ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python -m scripts.check_orca_global_hold || { touch /tmp/orca-global-hold-blocked; exit 1; }
+
       - name: Record distributed run result to Google Sheets
         id: sheets
-        if: always()
+        if: ${{ always() && steps.global_hold_before_sheets.outcome == 'success' }}
         env:
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
@@ -1301,7 +1371,9 @@ jobs:
           if (queue_empty or held_queue) and not statuses:
               statuses = ["NOT_RUN"]
           try:
-              if os.getenv("QUEUE_PROGRESS_INVALID", "").lower() == "true":
+              if Path("/tmp/orca-global-hold-blocked").exists():
+                  outcome, reason = "BLOCKED", "orca_global_hold_active_or_unavailable"
+              elif os.getenv("QUEUE_PROGRESS_INVALID", "").lower() == "true":
                   outcome, reason = "BLOCKED", "queue_progress_evidence_invalid"
               else:
                   outcome, reason = classify_final_outcome(
@@ -1395,8 +1467,18 @@ jobs:
             "https://line-bot-yvea.onrender.com/health"; then
             echo "::warning::Render health warm-up failed; continuing to the single LINE push attempt."
           fi
+      - name: Recheck ORCA D1 Global HOLD before Render status publication
+        id: global_hold_before_render
+        if: ${{ always() && !cancelled() }}
+        env:
+          ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python -m scripts.check_orca_global_hold || { touch /tmp/orca-global-hold-blocked; exit 1; }
+
       - name: Publish cloud Orca runtime snapshot to Render
-        if: always()
+        if: ${{ always() && steps.global_hold_before_render.outcome == 'success' }}
         continue-on-error: true
         env:
           ORCA_STATUS_URL: ${{ secrets.ORCA_STATUS_URL }}
@@ -1427,8 +1509,18 @@ jobs:
             --outcome "$outcome" \
             | python scripts/orca_status_publisher.py
 
+      - name: Recheck ORCA D1 Global HOLD before LINE notification
+        id: global_hold_before_line
+        if: ${{ always() && !cancelled() }}
+        env:
+          ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python -m scripts.check_orca_global_hold || { touch /tmp/orca-global-hold-blocked; exit 1; }
+
       - name: Notify LINE of distributed loop final report
-        if: always()
+        if: ${{ always() && steps.global_hold_before_line.outcome == 'success' }}
         continue-on-error: true
         env:
           LINE_INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
