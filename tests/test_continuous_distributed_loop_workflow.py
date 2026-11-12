@@ -324,8 +324,8 @@ def test_adaptive_schedule_never_accumulates_an_unbounded_run_queue():
     source = path.read_text(encoding="utf-8")
     concurrency = source.split("concurrency:", 1)[1].split("\njobs:", 1)[0]
     assert "cancel-in-progress: false" in concurrency
-    assert "queue: 1" in concurrency
-    assert "queue: max" not in concurrency
+    # GitHub Actions permits one pending run by default for a concurrency group.
+    assert "queue:" not in concurrency
 
 
 def test_stop_watcher_fails_closed_when_remote_control_cannot_be_verified():
