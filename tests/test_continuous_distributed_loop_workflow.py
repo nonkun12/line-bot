@@ -172,6 +172,10 @@ def test_distributed_loop_uses_adaptive_30_or_60_minute_execution_cadence():
     assert "github.event_name != 'schedule' || needs.cadence-gate.outputs.run_loop == 'true'" in source
     assert "github.event_name == 'schedule' && '1'" in source
     assert "cadence evidence missing or invalid; refusing scheduled execution" in source
+    assert "if task_id not in recovery_tasks:" in source
+    assert 'held = record.get("held")' in source
+    assert 'review = record.get("resume_requires_review")' in source
+    assert "Recovery AI task state missing; refusing scheduled execution" in source
 
 
 def test_only_continuous_workflow_owns_automatic_dispatch():
