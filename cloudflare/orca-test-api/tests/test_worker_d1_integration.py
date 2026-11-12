@@ -27,14 +27,15 @@ import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 API_TOKEN = "local-integration-api-token"
+LOOP_PREFLIGHT_TOKEN = "local-integration-loop-preflight-token"
 HOLD_OPERATOR_TOKEN = "local-integration-hold-operator-token"
 HMAC_KEY = "local-integration-hmac-key-at-least-32-bytes"
 USER_A = "U" + "a" * 32
 USER_B = "U" + "b" * 32
 
 
-def request_json(url: str, method: str = "GET", body=None, owner=None, hold_operator=None):
-    headers = {"Authorization": f"Bearer {API_TOKEN}"}
+def request_json(url: str, method: str = "GET", body=None, owner=None, hold_operator=None, bearer_token=API_TOKEN):
+    headers = {"Authorization": f"Bearer {bearer_token}"}
     if body is not None:
         headers["Content-Type"] = "application/json"
     if owner:
@@ -77,6 +78,7 @@ compatibility_date = "2026-11-11"
 API_TOKEN = "{API_TOKEN}"
 ORCA_TASK_APPROVAL_HMAC_KEY = "{HMAC_KEY}"
 ORCA_HOLD_OPERATOR_TOKEN = "{HOLD_OPERATOR_TOKEN}"
+ORCA_LOOP_PREFLIGHT_TOKEN = "{LOOP_PREFLIGHT_TOKEN}"
 
 [[d1_databases]]
 binding = "DB"
@@ -206,7 +208,8 @@ new_sqlite_classes = ["OrcaWriteBroker"]
         )
 
     def api(self, path, method="GET", body=None, owner=None, hold_operator=None):
-        return request_json(self.base + path, method, body, owner, hold_operator)
+        bearer = LOOP_PREFLIGHT_TOKEN if path == "/control/loop-admission" else API_TOKEN
+        return request_json(self.base + path, method, body, owner, hold_operator, bearer)
 
     def set_hold(self, value):
         return self.api("/control/global-hold", "POST", {
