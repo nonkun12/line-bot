@@ -156,6 +156,10 @@ export class OrcaWriteBroker {
       };
       await this.state.storage.put("global_hold", event);
       await this.state.storage.put(`hold_event:${Date.now()}:${crypto.randomUUID()}`, event);
+      const history = await this.state.storage.list({ prefix: "hold_event:", limit: 101 });
+      for (const key of [...history.keys()].slice(0, Math.max(0, history.size - 100))) {
+        await this.state.storage.delete(key);
+      }
       return json({ clear: body.value === "off", value: body.value, blocked: body.value !== "off", acknowledged: true });
     }
 
