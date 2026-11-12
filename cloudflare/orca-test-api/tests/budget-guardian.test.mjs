@@ -180,3 +180,57 @@ test("invalid clock, missing sources array, and invalid freshness configuration 
     assert.equal(result.allowActionsDispatch, false);
   }
 });
+
+test("latched STOP cannot reopen after usage falls until explicit human release", () => {
+  const atStop = evaluate(snapshots({ cloudflare_workers: { used: 90 } }));
+  assert.equal(atStop.status, "STOP");
+  const belowStop = evaluate(snapshots({ cloudflare_workers: { used: 20 } }), { stopLatched: true });
+  assert.equal(belowStop.status, "STOP");
+  assert.equal(belowStop.reason, "budget_stop_latched_waiting_for_human_release");
+  assert.equal(belowStop.allowNewTasks, false);
+  assert.equal(belowStop.allowActionsDispatch, false);
+  const humanReleased = evaluate(snapshots({ cloudflare_workers: { used: 20 } }), {
+    stopLatched: true, stopReleaseApproved: true,
+  });
+  assert.equal(humanReleased.status, "CLEAR");
+  assert.equal(humanReleased.allowNewTasks, true);
+  assert.equal(humanReleased.allowActionsDispatch, true);
+});
+test("human release does not override a still-over-budget reading", () => {
+  const result = evaluate(snapshots({ cloudflare_d1: { used: 95 } }), {
+    stopLatched: true, stopReleaseApproved: true,
+  });
+  assert.equal(result.status, "STOP");
+  assert.equal(result.allowNewTasks, false);
+  assert.equal(result.allowActionsDispatch, false);
+});
+test("latched stop remains closed under concurrent admission decisions", async () => {
+  const decisions = await Promise.all(Array.from({ length: 64 }, () =>
+    Promise.resolve(evaluate(snapshots({ cloudflare_durable_objects: { used: 10 } }), {
+      stopLatched: true,
+    }))
+  ));
+  assert.equal(decisions.length, 64);
+  for (const result of decisions) {
+    assert.equal(result.status, "STOP");
+    assert.equal(result.allowNewTasks, false);
+    assert.equal(result.allowActionsDispatch, false);
+  }
+});
+test("telemetry recovery clears BLOCKED only with fresh complete snapshots; latched STOP still needs release", () => {
+  const stale = evaluate(snapshots({ cloudflare_workers: { observed_at: "2026-11-12T01:00:00.000Z" } }));
+  assert.equal(stale.status, "BLOCKED");
+  const recovered = evaluate(snapshots({ cloudflare_workers: { used: 30 } }));
+  assert.equal(recovered.status, "CLEAR");
+  const latched = evaluate(snapshots({ cloudflare_workers: { used: 30 } }), { stopLatched: true });
+  assert.equal(latched.status, "STOP");
+  assert.equal(latched.allowNewTasks, false);
+});
+test("invalid latch authorization state fails closed", () => {
+  for (const extra of [{ stopLatched: "yes" }, { stopReleaseApproved: 1 }]) {
+    const result = evaluate(snapshots(), extra);
+    assert.equal(result.status, "BLOCKED");
+    assert.equal(result.allowNewTasks, false);
+    assert.equal(result.allowActionsDispatch, false);
+  }
+});
