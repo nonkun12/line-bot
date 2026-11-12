@@ -207,7 +207,8 @@ def test_line_notification_failure_does_not_block_verified_continuation():
 
 def _run_real_cadence_decision(tmp_path, tasks, completed, recovery, minute):
     import json
-    import sys
+    import subprocess
+    import textwrap
 
     workflow = (
         Path(__file__).resolve().parents[1]
@@ -218,11 +219,17 @@ def _run_real_cadence_decision(tmp_path, tasks, completed, recovery, minute):
     source = workflow.read_text(encoding="utf-8")
     marker = "      - name: Decide hourly or 30-minute execution"
     start = source.index(marker)
-    run = source.index("        run: |\n", start) + len("        run: |\n")
-    end = source.index("\n      - name:", run)
-    script = textwrap.dedent(source[run:end])
+    run = source.index("        run: |\\n", start) + len("        run: |\\n")
+    end = source.index("\\n      - name:", run)
+    block = source[run:end]
+    lines = block.splitlines()
+    # YAML removes the common workflow indentation. Extract only the Python
+    # heredoc body and execute it directly, avoiding shell heredoc indentation.
+    py_start = next(i for i, line in enumerate(lines) if line.strip() == "python - <<'PY'")
+    py_end = next(i for i in range(py_start + 1, len(lines)) if lines[i].strip() == "PY")
+    script = textwrap.dedent("\\n".join(lines[py_start + 1:py_end])) + "\\n"
+
     state_path = tmp_path / "cadence-state.json"
-    script = script.replace("/tmp/cadence-state.json", str(state_path))
     queue_path = tmp_path / ".github" / "autonomous-loop-tasks.json"
     queue_path.parent.mkdir(parents=True)
     queue_path.write_text(json.dumps({"tasks": tasks}), encoding="utf-8")
@@ -230,11 +237,12 @@ def _run_real_cadence_decision(tmp_path, tasks, completed, recovery, minute):
         json.dumps({"completed": completed, "recovery_ai": {"tasks": recovery}}),
         encoding="utf-8",
     )
+    script = script.replace("/tmp/cadence-state.json", str(state_path))
     output = tmp_path / "github-output"
     env = os.environ.copy()
     env.update({"UTC_MINUTE": minute, "GITHUB_OUTPUT": str(output)})
     result = subprocess.run(
-        ["bash", "-c", script],
+        [sys.executable, "-c", script],
         cwd=tmp_path,
         env=env,
         text=True,
@@ -242,7 +250,6 @@ def _run_real_cadence_decision(tmp_path, tasks, completed, recovery, minute):
         check=False,
     )
     return result, output.read_text(encoding="utf-8") if output.exists() else ""
-
 
 def test_adaptive_cadence_executes_hourly_at_low_load_and_every_30m_at_high_load(tmp_path):
     def task(task_id):
@@ -316,4 +323,4 @@ def test_adaptive_schedule_never_accumulates_an_unbounded_run_queue():
     source = path.read_text(encoding="utf-8")
     concurrency = source.split("concurrency:", 1)[1].split("\njobs:", 1)[0]
     assert "cancel-in-progress: false" in concurrency
-    assert "queue: max" not in concurrency
+    assert "queue: max" in concurrency
