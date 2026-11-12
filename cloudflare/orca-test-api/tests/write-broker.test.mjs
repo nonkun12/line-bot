@@ -201,7 +201,7 @@ test("uncertain GitHub outcome is never automatically retried", async () => {
       reason: "manually verified no issue exists for this idempotency marker",
     });
     assert.equal(reconciled.status, 200);
-    const acknowledged = await call(broker, "/hold", "PUT", { value: "on", reason: "operator requested HOLD" });
+    const acknowledged = await call(broker, "/hold", "PUT", { value: "on", operator_id: "test-operator", reason: "operator requested HOLD" });
     assert.equal(acknowledged.status, 200);
     assert.equal((await (await call(broker, "/hold")).json()).value, "on");
   } finally {
