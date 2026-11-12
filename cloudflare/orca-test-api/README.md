@@ -254,8 +254,9 @@ ordered safely:
 when the D1 task is currently claimed, its lease token is valid, the consumed
 approval matches the task fingerprint, and the task is an
 `app_development` task. The broker fixes the repository from
-`GITHUB_REPOSITORY` and fixes the label to `orca-task-review`; clients
-cannot choose an API URL, method, repository, or label.
+`GITHUB_REPOSITORY`; clients cannot choose an API URL, method, repository,
+or labels. The first operation creates an unlabelled review Issue to avoid a
+runtime dependency on a pre-existing repository label.
 
 The broker mints a short-lived GitHub App installation token internally.
 Configure these Worker-only secrets/vars before using this operation:
