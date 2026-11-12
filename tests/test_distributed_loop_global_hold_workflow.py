@@ -25,15 +25,17 @@ class DistributedLoopGlobalHoldWorkflowTests(unittest.TestCase):
             ("id: global_hold_before_state", "- name: Persist completed task state"),
             ("id: global_hold_before_recovery", "- name: Persist Recovery AI durable state"),
             ("id: global_hold_before_sheets", "- name: Record distributed run result to Google Sheets"),
+            ("id: global_hold_before_render", "- name: Publish cloud Orca runtime snapshot to Render"),
+            ("id: global_hold_before_line", "- name: Notify LINE of distributed loop final report"),
         )
         for gate, action in pairs:
             with self.subTest(action=action):
                 self.assertLess(self.source.index(gate), self.source.index(action))
 
     def test_all_gates_use_required_d1_secrets_and_shared_checker(self):
-        self.assertGreaterEqual(self.source.count("secrets.ORCA_TASK_API_URL"), 6)
-        self.assertGreaterEqual(self.source.count("secrets.ORCA_TASK_API_TOKEN"), 6)
-        self.assertGreaterEqual(self.source.count("python -m scripts.check_orca_global_hold"), 6)
+        self.assertGreaterEqual(self.source.count("secrets.ORCA_TASK_API_URL"), 8)
+        self.assertGreaterEqual(self.source.count("secrets.ORCA_TASK_API_TOKEN"), 8)
+        self.assertGreaterEqual(self.source.count("python -m scripts.check_orca_global_hold"), 8)
 
     def test_sheets_write_is_skipped_when_hold_gate_does_not_pass(self):
         self.assertIn(
