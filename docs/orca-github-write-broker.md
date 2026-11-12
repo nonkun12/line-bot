@@ -98,3 +98,8 @@ Every operator-initiated HOLD ON and OFF transition requires the separate
 operator credential, an operator ID label, and a reason. The operator ID is
 an audit label supplied by the authenticated caller; it is not an independently
 verified GitHub identity.
+
+The first Issue operation is limited to one per approved task; changing the
+idempotency key cannot create a second Issue. The broker retains up to 100
+recent HOLD audit events. The operation ledger inspection is capped at 2,001
+records and fails closed at the ceiling, requiring operator maintenance.
