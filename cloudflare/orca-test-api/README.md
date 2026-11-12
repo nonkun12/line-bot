@@ -281,3 +281,12 @@ GitHub. Therefore this implementation does **not** yet justify enabling
 autonomous execution or claiming that Global HOLD drains every external side
 effect. Keep all replacement workflows disabled/held until each write path
 has been migrated and independently tested.
+
+If a GitHub request times out or returns an ambiguous 5xx/408/429, the
+operation is recorded as `uncertain` and the broker enters `DRAINING`.
+New writes are blocked, and a HOLD ON request is **not acknowledged** until
+the uncertain operation is manually reconciled. Use the separately
+authenticated `POST /control/global-hold/reconcile` route only after checking
+GitHub for the embedded task/idempotency marker. Then explicitly acknowledge
+HOLD ON or deliberately release HOLD. The ledger inspection limit is 2,001
+records; reaching it fails closed and requires manual maintenance.
