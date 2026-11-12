@@ -70,8 +70,6 @@ class WorkerD1IntegrationTests(unittest.TestCase):
 name = "orca-d1-integration-test"
 main = "src/index.js"
 compatibility_date = "2026-11-11"
-migrations_dir = "migrations"
-
 [vars]
 API_TOKEN = "{API_TOKEN}"
 ORCA_TASK_APPROVAL_HMAC_KEY = "{HMAC_KEY}"
@@ -149,7 +147,7 @@ migrations_dir = "migrations"
     @classmethod
     def _cli(cls, *args):
         command = [
-            cls.wrangler, *args, "--config", str(cls.config),
+            cls.wrangler, "--config", str(cls.config), *args,
         ]
         result = subprocess.run(
             command, cwd=ROOT, text=True, capture_output=True, timeout=90,
@@ -164,10 +162,15 @@ migrations_dir = "migrations"
 
     @classmethod
     def sql(cls, statement: str):
-        return cls._cli(
-            "d1", "execute", "orca-test-ledger-integration", "--local",
-            "--persist-to", str(cls.state), "--command", statement,
-        )
+        outputs = []
+        for sql_statement in (part.strip() for part in statement.split(";")):
+            if not sql_statement:
+                continue
+            outputs.append(cls._cli(
+                "d1", "execute", "orca-test-ledger-integration", "--local",
+                "--persist-to", str(cls.state), "--command", sql_statement,
+            ))
+        return "\n".join(outputs)
 
     def setUp(self):
         self.sql("UPDATE system_controls SET value='off' WHERE control_key='global_hold'")
