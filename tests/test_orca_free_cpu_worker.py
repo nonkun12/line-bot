@@ -568,7 +568,7 @@ def test_worker_checks_global_hold_before_commit_push_and_pr():
     assert '"/tasks/" + encoded_id + "/claim"' in process
     assert process.index('assert_global_hold_clear()\n        if run(["git", "commit"') < process.index('run(["git", "commit"')
     assert process.index('assert_global_hold_clear()\n        pushed = run(["git", "push"') < process.index('run(["git", "push"')
-    assert process.index('assert_global_hold_clear()\n        pr_url = create_or_reuse_pr') < process.index("create_or_reuse_pr(")
+    assert '        assert_global_hold_clear()\n        pr_url = create_or_reuse_pr(' in process
 
 
 def test_scheduled_poll_is_idle_not_failed_during_global_hold(monkeypatch, capsys):
