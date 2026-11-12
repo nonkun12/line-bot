@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed 30-minute distributed-loop safety gate."""
 from __future__ import annotations
-import json, os, urllib.error, urllib.parse, urllib.request
+import json, math, os, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -46,6 +46,7 @@ def evaluate_budget_snapshot(payload: Any, *, now: datetime) -> dict[str, Any]:
         used, limit = source.get("used"), source.get("limit")
         if (isinstance(used, bool) or not isinstance(used, (int, float))
                 or isinstance(limit, bool) or not isinstance(limit, (int, float))
+                or not math.isfinite(float(used)) or not math.isfinite(float(limit))
                 or used < 0 or limit <= 0):
             raise GateBlocked("budget_values_invalid")
         observed = parse_time(source.get("observed_at"))
