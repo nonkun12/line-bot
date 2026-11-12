@@ -208,7 +208,7 @@ jobs:
         github.event.label.name == 'distributed-loop-max4' &&
         github.event.sender.login == 'nonkun12' &&
         github.event.pull_request.user.login == 'nonkun12'
-      )) && (github.event_name != 'schedule' || needs.cadence-gate.outputs.run_loop == 'true')
+      )) && (github.event_name != 'schedule' || needs.cadence-gate.outputs.run_loop == 'true') && vars.CONTROL_TOWER_KILL_SWITCH != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -240,10 +240,17 @@ jobs:
       - name: Record distributed run base commit
         run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Check remote kill switch
+      - name: Check global and remote kill switches
+        env:
+          CONTROL_TOWER_KILL_SWITCH: ${{ vars.CONTROL_TOWER_KILL_SWITCH || 'false' }}
         run: |
+          set -euo pipefail
+          if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ]; then
+            echo "::error::CONTROL_TOWER_KILL_SWITCH is ON; refusing all task execution."
+            exit 1
+          fi
           if [ -f .autonomous-loop.stop ]; then
-            echo "REMOTE_KILL_SWITCH=ON"
+            echo "::error::REMOTE_KILL_SWITCH is ON; refusing all task execution."
             exit 1
           fi
 
