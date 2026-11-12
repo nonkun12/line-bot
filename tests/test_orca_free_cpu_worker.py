@@ -618,7 +618,7 @@ def test_orphan_branch_recovery_requires_exact_provenance_and_rechecks_remote(mo
         if command[:3] == ["git", "fetch", "--no-tags"]:
             return SimpleNamespace(returncode=0, stdout="", stderr="")
         if command[:2] == ["git", "rev-parse"]:
-            value = sha if command[2] == "FETCH_HEAD" else main_sha if command[2] == "origin/main" else main_sha
+            value = sha if command[2] in {"FETCH_HEAD", "HEAD"} else main_sha
             return SimpleNamespace(returncode=0, stdout=value + "\n", stderr="")
         if command[:3] == ["git", "show", "-s"]:
             return SimpleNamespace(
