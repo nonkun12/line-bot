@@ -46,3 +46,8 @@ def test_payload_does_not_mutate_external_data():
     payload["user_id"] = "changed"
 
     assert build_task_payload("line-task-1", "task", "event-123", USER)["user_id"] == USER
+
+@pytest.mark.parametrize("request_text", ["ordinary task", "分散Loop開始", ""])
+def test_payload_rejects_tasks_without_explicit_app_development_prefix(request_text):
+    with pytest.raises(ValueError, match="explicit アプリ開発"):
+        build_task_payload("line-task-1", request_text, "event-123", USER)
