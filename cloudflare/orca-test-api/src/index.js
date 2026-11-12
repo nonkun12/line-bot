@@ -56,6 +56,13 @@ function distributedLoopMaxTasks(value) {
     "分散AI回して", "distributedloopstart", "分散ループを起動",
     "分散Loopを起動", "分散AIループを起動", "分散AILoopを起動",
   ]);
+  const naturalFourTaskCommands = new Set([
+    "分散Loopを起動。4タスクまで安全に実行し、各タスクをSafetyGate付きで確認。問題があれば即停止し、最後にTaskID/PASS・FAIL/SHA/変更ファイル/成果を報告してください。",
+    "分散Loopを起動。4タスクまで安全に実行し、各タスクをSafetyGate付きで確認。問題があれば即停止し、最後にTaskID/PASS・FAIL/SHA/変更ファイル/成果を報告してください",
+    "分散Loopを起動。4タスクまで安全確認付きで実行し、各タスクをSafetyGate付きで確認。問題があれば即停止し、最後にTaskID/PASS・FAIL/SHA/変更ファイル/成果を報告してください。",
+    "分散Loopを起動。4タスクまで安全確認付きで実行し、各タスクをSafetyGate付きで確認。問題があれば即停止し、最後にTaskID/PASS・FAIL/SHA/変更ファイル/成果を報告してください",
+  ]);
+  if (naturalFourTaskCommands.has(command)) return 4;
   if (starts.has(command)) return command.includes("起動") ? 4 : 1;
   const match = command.match(/^(?:分散ループ|分散Loop|分散AIループ|分散AILoop)を([1-4])回、?安全確認付きで実行(?:してください)?$/);
   return match ? Number(match[1]) : null;
