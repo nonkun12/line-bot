@@ -52,9 +52,8 @@ def test_actionlint_has_no_queue_compatibility_ignore():
         / "actionlint.yaml"
     ).read_text(encoding="utf-8")
 
-    assert '".github/workflows/distributed-autonomous-loop.yml":' in config
-    assert 'unexpected key "queue" for "concurrency" section' in config
-    assert "ignore:" in config
+    assert 'unexpected key "queue"' not in config
+    assert "ignore:" not in config
 
 
 
