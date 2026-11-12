@@ -27,8 +27,10 @@ These are conservative ORCA policy thresholds, not vendor quota guarantees. Limi
 - Budget Guardian cannot release Global HOLD, Recovery HOLD, or its own BLOCKED state.
 - No automatic paid API, paid Cloudflare plan, paid runner, overage, or cloud-model fallback.
 - No AI inference is required for the safety decision. Any future AI component may explain findings only and cannot override the deterministic gate.
-- The evaluator's `allowNewTasks` and `allowActionsDispatch` outputs are decisions, not proof that production entry points enforce them.
-- Do not activate scheduling, apply D1 migrations, configure secrets, deploy, or change production settings as part of this PR.
+- The evaluator's `allowNewTasks` and `allowActionsDispatch` outputs are decisions, not proof that every production entry point enforces them.
+- This increment adds a D1-backed `budget_guard_state` admission gate to the Worker `POST /tasks`, `POST /tasks/:id/approve`, and `POST /tasks/:id/claim` paths. Each write repeats the gate predicate inside its SQL mutation. Only a fresh `CLEAR` or `WARN` state admits work; missing, stale, `SUPPRESS`, `STOP`, `BLOCKED`, or latched STOP state rejects it. The migration seeds the state as BLOCKED.
+- The state writer, vendor telemetry collectors, authenticated human release workflow, and GitHub Actions dispatch gate are NOT implemented in this increment. Until a trusted monitor populates the D1 state and the Actions path is separately gated, this is an isolated admission-gate integration, not an active production budget monitor or complete Actions stop switch.
+- Do not activate scheduling, apply D1 migrations to a remote database, configure secrets, deploy, or change production settings as part of this PR.
 
 ## Snapshot contract
 Each required source snapshot contains name, explicit `enabled: true`, used and positive verified limit in the same unit, and ISO timestamps `observed_at`, `period_start`, `period_end`.
