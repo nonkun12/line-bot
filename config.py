@@ -139,7 +139,7 @@ def _register_orca_distributed_loop_task(message: str, message_id: str, user_id:
             return False, "受付応答のタスク種別・上限を検証できません。実行していません。", True
     except (ValueError, AttributeError):
         return False, "受付応答を検証できません。状態確認が必要です。", True
-    return True, f"分散LoopをD1に登録しました（未実行）。Task ID: {task_id} / 上限: {payload['max_tasks']}。実行Workerは未接続です。承認する場合は「分散Loop承認: {task_id}」を送ってください。", False
+    return True, f"分散LoopをD1に登録しました（未実行）。Task ID: {task_id} / 上限: {payload['max_tasks']}。専用実行Workerは未接続のため、まだ実行されません。承認する場合は「分散Loop承認: {task_id}」を送ってください。", False
 
 
 def _approve_orca_distributed_loop_task(message: str, user_id: str | None):
