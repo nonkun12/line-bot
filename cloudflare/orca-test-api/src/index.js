@@ -461,12 +461,14 @@ export default {
         // OFF: mirror D1 first, then release the serialized broker last.
         if (body.value === "on") {
           const result = await brokerRequest(env, "/hold", "PUT", body);
-          if (!result.ok) return json({ error: "broker refused HOLD transition" }, 503);
+          const resultBody = await result.json().catch(() => ({}));
+          if (!result.ok) return json(resultBody, result.status);
           await mirror();
         } else {
           await mirror();
           const result = await brokerRequest(env, "/hold", "PUT", body);
-          if (!result.ok) return json({ error: "broker refused HOLD release; fail-closed state retained" }, 503);
+          const resultBody = await result.json().catch(() => ({}));
+          if (!result.ok) return json(resultBody, result.status);
         }
         return json({ value: body.value, acknowledged: true });
       } catch {
