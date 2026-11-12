@@ -138,7 +138,11 @@ async function createTask(request, env) {
         WHERE EXISTS (SELECT 1 FROM system_controls WHERE control_key = 'global_hold' AND value = 'off')
           AND ${BUDGET_ADMISSION_SQL}`
     ).bind(body.task_id, body.request_text, body.source_event_id, userId, taskType, maxTasks).run();
-    if (!inserted.meta?.changes) return json({ error: "global HOLD is active or unavailable" }, 423);
+    if (!inserted.meta?.changes) {
+      const currentBudget = await budgetGuardState(env);
+      if (!currentBudget.allowed) return json({ error: "budget gate blocks task admission", budget_status: currentBudget.status, reason: currentBudget.reason }, 423);
+      return json({ error: "global HOLD is active or unavailable" }, 423);
+    }
     return json({ task: { task_id: body.task_id, request_text: body.request_text, status: "queued", task_type: taskType, max_tasks: maxTasks } }, 201);
   } catch (error) {
     if (body.source_event_id) {
@@ -252,8 +256,11 @@ async function approveTask(id, request, env) {
     throw error;
   }
   if (!results[0]?.meta?.changes) return json({ error: "approval nonce has already been used" }, 409);
-  if (!results[1]?.meta?.changes)
+  if (!results[1]?.meta?.changes) {
+    const currentBudget = await budgetGuardState(env);
+    if (!currentBudget.allowed) return json({ error: "budget gate blocks task approval", budget_status: currentBudget.status, reason: currentBudget.reason }, 423);
     return json({ error: "approval is stale or the previous lease is still active" }, 409);
+  }
   return json({ task_id: id, approved: true, expires_at: expiresAt });
 }
 
@@ -296,8 +303,11 @@ async function claimTask(id, request, env) {
     ).bind(id, approval.approval_id, id, token),
   ]);
   const row = results[0]?.results?.[0];
-  if (!results[0]?.meta?.changes || !results[1]?.meta?.changes)
+  if (!results[0]?.meta?.changes || !results[1]?.meta?.changes) {
+    const currentBudget = await budgetGuardState(env);
+    if (!currentBudget.allowed) return json({ error: "budget gate blocks task claim", budget_status: currentBudget.status, reason: currentBudget.reason }, 423);
     return json({ error: "task approval is missing, expired, consumed, or task is already claimed" }, 409);
+  }
   return json({ task: row, claim_token: token });
 }
 
