@@ -449,29 +449,13 @@ export default {
           typeof body.reason !== "string" || body.reason.trim().length < 8) {
         return json({ error: "operator_id and reason are required for every HOLD transition" }, 400);
       }
-      const mirror = async () => {
-        const result = await env.DB.prepare(
-          "UPDATE system_controls SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE control_key = 'global_hold'"
-        ).bind(body.value).run();
-        if (result?.meta?.changes !== 1) throw new Error("D1 Global HOLD mirror row is missing");
-      };
       try {
-        // ON: block new writes first, then mirror to D1.
-        // OFF: mirror D1 first, then release the serialized broker last.
-        if (body.value === "on") {
-          const result = await brokerRequest(env, "/hold", "PUT", body);
-          const resultBody = await result.json().catch(() => ({}));
-          if (!result.ok) return json(resultBody, result.status);
-          await mirror();
-        } else {
-          await mirror();
-          const result = await brokerRequest(env, "/hold", "PUT", body);
-          const resultBody = await result.json().catch(() => ({}));
-          if (!result.ok) return json(resultBody, result.status);
-        }
-        return json({ value: body.value, acknowledged: true });
+        const result = await brokerRequest(env, "/hold", "PUT", body);
+        const resultBody = await result.json().catch(() => ({}));
+        return json(resultBody, result.status);
       } catch {
         return json({ error: "HOLD transition failed; broker state remains authoritative" }, 503);
+      }
       }
     }
     if (url.pathname === "/control/global-hold/reconcile" && request.method === "POST") {
