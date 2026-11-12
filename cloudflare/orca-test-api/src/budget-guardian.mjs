@@ -1,4 +1,4 @@
-const REQUIRED_SOURCES = Object.freeze(["cloudflare_workers", "cloudflare_d1", "github_actions"]);
+const REQUIRED_SOURCES = Object.freeze(["cloudflare_workers", "cloudflare_d1", "cloudflare_durable_objects"]);
 const DEFAULT_THRESHOLDS = Object.freeze({ warn: 70, suppress: 80, stop: 90 });
 const MAX_SNAPSHOT_AGE_MS = 90 * 60 * 1000;
 const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
