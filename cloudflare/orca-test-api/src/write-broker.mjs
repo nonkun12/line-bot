@@ -7,6 +7,7 @@ const encoder = new TextEncoder();
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)))
   .replaceAll("=", "").replaceAll("+", "-").replaceAll("/", "_");
 
+function pemBytes(pem) {
   const normalized = String(pem || "").split("\\n").join("\n");
   const body = normalized.split("-----BEGIN PRIVATE KEY-----").join("")
     .split("-----END PRIVATE KEY-----").join("").replaceAll("\r", "").replaceAll("\n", "").replaceAll(" ", "").replaceAll("\t", "");
@@ -159,7 +160,6 @@ export class OrcaWriteBroker {
       return json({ error: "fixed GitHub repository is not configured" }, 503);
     }
     const [owner, repo] = repositoryParts;
-    const [owner, repo] = repository.split("/");
     await this.state.storage.put(recordKey, {
       state: "in_flight", task_id: taskId, started_at: new Date().toISOString(),
     });
@@ -176,7 +176,7 @@ export class OrcaWriteBroker {
         },
         body: JSON.stringify({
           title: title.trim(),
-          body: `${description.trim()}\\n\\n<!-- ORCA_TASK_ID:${taskId} ORCA_IDEMPOTENCY_KEY:${key} -->`,
+          body: description.trim() + "\n\n<!-- ORCA_TASK_ID:" + taskId + " ORCA_IDEMPOTENCY_KEY:" + key + " -->",
           labels: ["orca-task-review"],
         }),
         signal: AbortSignal.timeout(7000),
