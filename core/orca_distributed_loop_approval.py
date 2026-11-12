@@ -12,6 +12,11 @@ _LINE_USER_ID_RE = re.compile(r"^U[0-9a-fA-F]{32}$")
 _TASK_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
 
 
+def is_valid_line_user_id(user_id: object) -> bool:
+    """Return true only for a verified LINE user identifier shape."""
+    return isinstance(user_id, str) and _LINE_USER_ID_RE.fullmatch(user_id) is not None
+
+
 def build_distributed_loop_approval_payload(
     task_id: str,
     request_text: str,
