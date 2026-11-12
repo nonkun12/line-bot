@@ -161,27 +161,34 @@ preflight query or migration against the live database.
 Keep all four related PRs in Draft until the review and deployment prerequisites
 are complete. Merging is not authorized by this proposal.
 
-1. **Safety hold first — PR #1331.** Review and merge the fail-closed hold
-   before enabling the new worker. This holds the identified existing
-   autonomous execution entry points while the new path is prepared.
-2. **D1/API second — PR #1333.** Verify the live schema using the read-only
+1. **D1/API first — PR #1333.** Verify the live schema using the read-only
    preflight above, create and protect a backup, reconcile any differences,
-   then apply migrations 0002, 0003, and 0004 exactly once. Review and deploy this
-   Worker source separately; configure and verify its required secrets.
-3. **LINE identity and approval third — PR #1334.** Review and deploy the
-   Render bot code only after the API approval endpoint and HMAC key are ready.
-   Keep the existing LINE webhook URL unchanged. Confirm that a new test task
-   stores the verified LINE user ID without exposing it in normal task reads.
-4. **CPU worker last — PR #1332.** Before merging, create the
+   then apply migrations 0002, 0003, 0004, and 0005 exactly once. Review and
+   deploy this Worker source separately; configure and verify its required
+   secrets. Keep initial Global HOLD engaged.
+2. **LINE identity and approval — PR #1334.** Review and deploy the Render bot
+   code only after the API approval endpoint and HMAC key are ready. Keep the
+   existing LINE webhook URL unchanged. Confirm that a test task stores the
+   verified LINE user ID without exposing it in normal task reads.
+3. **CPU worker — PR #1332.** Before merging, create the
    `orca-task-execution` GitHub Environment, configure at least one required
    reviewer, add the non-empty sentinel secret, and configure the API token.
    Verify the actual environment protection settings in GitHub; a sentinel
    secret alone is not a human approval gate. Merging this PR activates its
    15-minute schedule, so do not merge it early.
-5. **End-to-end test.** Submit a non-sensitive `アプリ開発:` test task, approve
-   it from the same LINE account, verify one successful claim, isolated test
-   result, review-only PR, D1 terminal state, and LINE notification. Confirm
-   replay, wrong-user, expired-approval, and duplicate-claim cases are rejected.
+4. **End-to-end verification.** With Global HOLD still engaged, verify the
+   worker remains idle. Then perform a separately approved controlled test:
+   submit a non-sensitive `アプリ開発:` task, approve it from the same LINE
+   account, and verify one claim, isolated test result, review-only PR, D1
+   terminal state, and LINE notification. Confirm replay, wrong-user,
+   expired-approval, stale-token, and duplicate-claim cases are rejected.
+5. **Legacy-loop cutover — PR #1331 only after replacement readiness.** This PR
+   disables nine existing autonomous workflows. It must remain Draft and
+   unmerged while those loops are still needed. Merge it only after the new
+   path has passed end-to-end verification and the operator explicitly accepts
+   the legacy-loop shutdown/cutover window. If uninterrupted legacy loops are
+   required, #1331 must be redesigned to route them safely rather than disable
+   them.
 
 At every stage, stop on missing evidence. Do not enable the CPU worker until
 all earlier stages are independently verified. No merge, deploy, migration,
