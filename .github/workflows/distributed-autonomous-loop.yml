@@ -477,6 +477,16 @@ jobs:
             echo "::warning::Work Finder AI discovery failed (exit=$rc); bounded loop outcome classification will continue."
           fi
 
+      - name: Recheck ORCA D1 Global HOLD before creating review issues
+        id: global_hold_before_issues
+        if: ${{ success() }}
+        env:
+          ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python -m scripts.check_orca_global_hold || { touch /tmp/orca-global-hold-blocked; exit 1; }
+
       - name: Create bounded review-only task issues from analyzer findings
         if: success() && env.TRIGGER_MODE == 'normal'
         env:
@@ -901,7 +911,7 @@ jobs:
 
       - name: Recheck ORCA D1 Global HOLD before Recovery AI state writes
         id: global_hold_before_recovery
-        if: ${{ success() }}
+        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
         env:
           ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
           ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
@@ -911,7 +921,7 @@ jobs:
 
       - name: Persist Recovery AI durable state
         id: persist_recovery_ai
-        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
+        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' && steps.global_hold_before_recovery.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
           PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
