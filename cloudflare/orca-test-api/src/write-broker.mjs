@@ -7,12 +7,38 @@ const encoder = new TextEncoder();
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)))
   .replaceAll("=", "").replaceAll("+", "-").replaceAll("/", "_");
 
+function concatBytes(...parts) {
+  const output = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+  let offset = 0;
+  for (const part of parts) { output.set(part, offset); offset += part.length; }
+  return output;
+}
+
+function der(tag, value) {
+  const length = value.length;
+  const size = length < 128 ? [length] : length < 256 ? [0x81, length] : [0x82, (length >> 8) & 255, length & 255];
+  return concatBytes(Uint8Array.of(tag), Uint8Array.from(size), value);
+}
+
 function pemBytes(pem) {
-  const normalized = String(pem || "").split("\\n").join("\n");
-  const body = normalized.split("-----BEGIN PRIVATE KEY-----").join("")
-    .split("-----END PRIVATE KEY-----").join("").replaceAll("\r", "").replaceAll("\n", "").replaceAll(" ", "").replaceAll("\t", "");
+  const normalized = String(pem || "").split("\\\\n").join("\\n");
+  const pkcs1 = normalized.includes("-----BEGIN RSA PRIVATE KEY-----");
+  const body = normalized
+    .split("-----BEGIN PRIVATE KEY-----").join("")
+    .split("-----END PRIVATE KEY-----").join("")
+    .split("-----BEGIN RSA PRIVATE KEY-----").join("")
+    .split("-----END RSA PRIVATE KEY-----").join("")
+    .replaceAll("\\r", "").replaceAll("\\n", "").replaceAll(" ", "").replaceAll("\\t", "");
   if (!body || !/^[A-Za-z0-9+/=]+$/.test(body)) throw new Error("invalid GitHub App private key");
-  return Uint8Array.from(atob(body), (char) => char.charCodeAt(0));
+  const decoded = Uint8Array.from(atob(body), (char) => char.charCodeAt(0));
+  if (!pkcs1) return decoded;
+  const rsaAlgorithm = der(0x30, concatBytes(
+    der(0x06, Uint8Array.from([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01])),
+    der(0x05, new Uint8Array()),
+  ));
+  return der(0x30, concatBytes(
+    der(0x02, Uint8Array.of(0)), rsaAlgorithm, der(0x04, decoded),
+  ));
 }
 
 async function appJwt(env) {
