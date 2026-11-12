@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHash, generateKeyPairSync, webcrypto } from "node:crypto";
+import { createHash, generateKeyPairSync, verify as verifySignature, webcrypto } from "node:crypto";
 import { OrcaWriteBroker } from "../src/write-broker.mjs";
 
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
@@ -25,7 +25,7 @@ class State {
   }
 }
 
-const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const privatePem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
 const requestText = "アプリ開発: broker integration test";
 const claimToken = "claim-token-which-is-long-enough-123";
@@ -78,6 +78,19 @@ function mockGithub(createIssue) {
   const original = globalThis.fetch;
   globalThis.fetch = async (url, options) => {
     if (String(url).includes("/app/installations/")) {
+      const authorization = options?.headers?.authorization || "";
+      assert.match(authorization, /^Bearer /);
+      const jwt = authorization.slice("Bearer ".length);
+      const segments = jwt.split(".");
+      assert.equal(segments.length, 3, "GitHub App JWT must have three segments");
+      for (const segment of segments) assert.match(segment, /^[A-Za-z0-9_-]+$/, "JWT segments must be unpadded Base64URL");
+      const decode = (segment) => Buffer.from(segment.replaceAll("-", "+").replaceAll("_", "/"), "base64");
+      assert.deepEqual(JSON.parse(decode(segments[0]).toString("utf8")), { alg: "RS256", typ: "JWT" });
+      const claims = JSON.parse(decode(segments[1]).toString("utf8"));
+      assert.equal(claims.iss, "12345");
+      assert.ok(Number.isInteger(claims.iat) && Number.isInteger(claims.exp) && claims.exp > claims.iat);
+      assert.equal(verifySignature("RSA-SHA256", Buffer.from(segments.slice(0, 2).join(".")), publicKey, decode(segments[2])), true,
+        "JWT signature must validate against the generated GitHub App key");
       return new Response(JSON.stringify({ token: "installation-token" }), { status: 201 });
     }
     if (String(url).endsWith("/issues")) return createIssue(url, options);
