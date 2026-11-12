@@ -20,6 +20,13 @@ class BudgetGateTests(unittest.TestCase):
         for used, reason in ((80, "budget_suppress"), (90, "budget_stop")):
             with self.assertRaisesRegex(GateBlocked, reason):
                 evaluate_budget_snapshot({"sources": snapshots({"cloudflare_d1": {"used": used}})}, now=NOW)
+    def test_non_finite_budget_values_block(self):
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaisesRegex(GateBlocked, "budget_values_invalid"):
+                evaluate_budget_snapshot(
+                    {"sources": snapshots({"cloudflare_d1": {"used": value}})}, now=NOW
+                )
+
     def test_missing_disabled_stale_and_out_of_period_block(self):
         cases = [
             (snapshots()[:2], "budget_source_missing"),
