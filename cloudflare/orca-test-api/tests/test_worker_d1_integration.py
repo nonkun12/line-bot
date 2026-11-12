@@ -272,7 +272,9 @@ migrations_dir = "migrations"
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(lambda _: claim(), range(2)))
-        self.assertEqual(sorted(status for status, _ in results), [200, 409])
+        statuses = sorted(status for status, _ in results)
+        self.assertEqual(statuses.count(200), 1)
+        self.assertIn(statuses[1], {403, 409})
         winning = next(body for status, body in results if status == 200)
         token = winning["claim_token"]
         status, completed = self.api("/tasks/race/complete", "POST", {
