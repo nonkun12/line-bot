@@ -99,8 +99,6 @@ permissions:
 concurrency:
   group: distributed-autonomous-loop
   cancel-in-progress: false
-  # Keep at most one pending run; never accumulate an unbounded backlog.
-  queue: 1
 
 jobs:
   # Read-only adaptive scheduler. Missing/invalid state fails closed.
@@ -454,6 +452,19 @@ jobs:
           RESUME_TASK_ID: ${{ steps.validate_resume_request.outputs.task_id }}
         run: |
           set -euo pipefail
+          # Recheck both stop controls immediately before held-task resume; network failure blocks.
+          if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ]; then
+            echo "::error::Global kill switch is ON; refusing held-task resume."
+            exit 1
+          fi
+          if ! git fetch --quiet --no-tags --depth=1 origin main; then
+            echo "::error::Unable to verify remote stop switch before held-task resume."
+            exit 1
+          fi
+          if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+            echo "::error::Remote stop switch is ON; refusing held-task resume."
+            exit 1
+          fi
           # Resume validates membership against the reviewed catalog, because
           # held tasks are intentionally absent from the tracked runtime queue.
           python -m scripts.resume_held_task \
@@ -580,6 +591,19 @@ jobs:
           if [ "$count" -eq 0 ]; then
             echo "No new review-only task issues to create; see status and backlog diagnostics above."
             exit 0
+          fi
+          # Recheck both stop controls immediately before review-only issue creation; network failure blocks.
+          if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ]; then
+            echo "::error::Global kill switch is ON; refusing review-only issue creation."
+            exit 1
+          fi
+          if ! git fetch --quiet --no-tags --depth=1 origin main; then
+            echo "::error::Unable to verify remote stop switch before review-only issue creation."
+            exit 1
+          fi
+          if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+            echo "::error::Remote stop switch is ON; refusing review-only issue creation."
+            exit 1
           fi
           gh label create autonomous-task-candidate --color 0E8A16 --description "AI-generated task candidate; human review required" --force
           while IFS= read -r draft; do
@@ -1041,6 +1065,19 @@ jobs:
                   or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
               raise SystemExit('invalid local Recovery AI state; durable update blocked')
           PY
+          # Recheck both stop controls immediately before Recovery AI durable state update; network failure blocks.
+          if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ]; then
+            echo "::error::Global kill switch is ON; refusing Recovery AI durable state update."
+            exit 1
+          fi
+          if ! git fetch --quiet --no-tags --depth=1 origin main; then
+            echo "::error::Unable to verify remote stop switch before Recovery AI durable state update."
+            exit 1
+          fi
+          if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+            echo "::error::Remote stop switch is ON; refusing Recovery AI durable state update."
+            exit 1
+          fi
           state_branch="autonomous-loop-state"
           auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
           if ! git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1; then
