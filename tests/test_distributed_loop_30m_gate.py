@@ -8,24 +8,38 @@ START, END, OBSERVED = "2026-11-01T00:00:00Z", "2026-12-01T00:00:00Z", "2026-11-
 def snapshots(overrides=None):
     overrides = overrides or {}
     return [{"name": name, "enabled": True, "used": 10, "limit": 100,
+             "unit": {"cloudflare_workers": "requests", "cloudflare_d1": "rows", "github_actions": "runner_minutes"}[name],
+             "limit_source": "verified_internal_limit",
              "observed_at": OBSERVED, "period_start": START, "period_end": END,
              **overrides.get(name, {})}
             for name in ("cloudflare_workers", "cloudflare_d1", "github_actions")]
 
 class BudgetGateTests(unittest.TestCase):
     def test_clear_and_warn_allow(self):
-        self.assertEqual(evaluate_budget_snapshot({"sources": snapshots()}, now=NOW)["status"], "CLEAR")
-        self.assertEqual(evaluate_budget_snapshot({"sources": snapshots({"cloudflare_d1": {"used": 70}})}, now=NOW)["status"], "WARN")
+        self.assertEqual(evaluate_budget_snapshot({"sources": snapshots(), "consecutive_failures": 0}, now=NOW)["status"], "CLEAR")
+        self.assertEqual(evaluate_budget_snapshot({"sources": snapshots({"cloudflare_d1": {"used": 70}}), "consecutive_failures": 0}, now=NOW)["status"], "WARN")
     def test_80_and_90_percent_block(self):
         for used, reason in ((80, "budget_suppress"), (90, "budget_stop")):
             with self.assertRaisesRegex(GateBlocked, reason):
-                evaluate_budget_snapshot({"sources": snapshots({"cloudflare_d1": {"used": used}})}, now=NOW)
+                evaluate_budget_snapshot({"sources": snapshots({"cloudflare_d1": {"used": used}}), "consecutive_failures": 0}, now=NOW)
     def test_non_finite_budget_values_block(self):
         for value in (float("nan"), float("inf"), float("-inf")):
             with self.assertRaisesRegex(GateBlocked, "budget_values_invalid"):
                 evaluate_budget_snapshot(
                     {"sources": snapshots({"cloudflare_d1": {"used": value}})}, now=NOW
                 )
+
+    def test_missing_unit_or_limit_evidence_blocks(self):
+        for field in ("unit", "limit_source"):
+            with self.assertRaisesRegex(GateBlocked, "budget_unit_or_limit_evidence_missing"):
+                evaluate_budget_snapshot(
+                    {"sources": snapshots({"cloudflare_d1": {field: ""}}), "consecutive_failures": 0},
+                    now=NOW,
+                )
+
+    def test_three_consecutive_failures_block(self):
+        with self.assertRaisesRegex(GateBlocked, "consecutive_failure_limit_reached"):
+            evaluate_budget_snapshot({"sources": snapshots(), "consecutive_failures": 3}, now=NOW)
 
     def test_missing_disabled_stale_and_out_of_period_block(self):
         cases = [
@@ -36,7 +50,7 @@ class BudgetGateTests(unittest.TestCase):
         ]
         for source_rows, reason in cases:
             with self.assertRaisesRegex(GateBlocked, reason):
-                evaluate_budget_snapshot({"sources": source_rows}, now=NOW)
+                evaluate_budget_snapshot({"sources": source_rows, "consecutive_failures": 0}, now=NOW)
 
 class SlotGateTests(unittest.TestCase):
     def test_first_slot_and_old_run_allow(self):
