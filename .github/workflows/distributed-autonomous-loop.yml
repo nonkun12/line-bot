@@ -162,11 +162,13 @@ jobs:
               seen.add(task_id)
               if task_id in completed_ids:
                   continue
-              record = recovery_tasks.get(task_id, {})
+              if task_id not in recovery_tasks:
+                  raise SystemExit("Recovery AI task state missing; refusing scheduled execution")
+              record = recovery_tasks[task_id]
               if not isinstance(record, dict):
                   raise SystemExit("Recovery AI task record invalid; refusing scheduled execution")
-              held = record.get("held", False)
-              review = record.get("resume_requires_review", False)
+              held = record.get("held")
+              review = record.get("resume_requires_review")
               if not isinstance(held, bool) or not isinstance(review, bool):
                   raise SystemExit("Recovery AI hold evidence ambiguous; refusing scheduled execution")
               if not held and not review:
