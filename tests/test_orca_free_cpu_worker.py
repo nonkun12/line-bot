@@ -321,6 +321,7 @@ def test_reconcile_existing_pr_verifies_exact_head_and_reruns_isolated_tests(mon
 
     monkeypatch.chdir(tmp_path)
     head = "a" * 40
+    main_sha = "c" * 40
     task_id = "line-99"
     request_hash = "b" * 64
     patch = (
@@ -349,7 +350,20 @@ def test_reconcile_existing_pr_verifies_exact_head_and_reruns_isolated_tests(mon
                 "headRefOid": head,
             }), stderr="")
         if command[:2] == ["git", "rev-parse"]:
-            return SimpleNamespace(returncode=0, stdout=head + "\n", stderr="")
+            value = main_sha if command[2] in {"origin/main", f"{head}^"} else head
+            return SimpleNamespace(returncode=0, stdout=value + "\n", stderr="")
+        if command[:4] == ["git", "show", "-s", "--format=%B"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"feat: ORCA task\n\nORCA-Task-ID: {task_id}\nORCA-Request-SHA256: {request_hash}\n",
+                stderr="",
+            )
+        if command[:2] == ["git", "ls-remote"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"{head}\trefs/heads/orca/task-{task_id}\n",
+                stderr="",
+            )
         if command[:3] == ["git", "diff", "--no-ext-diff"]:
             return SimpleNamespace(returncode=0, stdout=patch, stderr="")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
@@ -402,6 +416,7 @@ def test_reconcile_existing_pr_requires_isolated_tests_to_pass(monkeypatch, tmp_
 
     monkeypatch.chdir(tmp_path)
     head = "c" * 40
+    main_sha = "e" * 40
     patch = (
         "diff --git a/apps/demo/app.py b/apps/demo/app.py\n"
         "new file mode 100644\n--- /dev/null\n+++ b/apps/demo/app.py\n"
@@ -422,7 +437,20 @@ def test_reconcile_existing_pr_requires_isolated_tests_to_pass(monkeypatch, tmp_
                 "headRefOid": head,
             }), stderr="")
         if command[:2] == ["git", "rev-parse"]:
-            return SimpleNamespace(returncode=0, stdout=head + "\n", stderr="")
+            value = main_sha if command[2] in {"origin/main", f"{head}^"} else head
+            return SimpleNamespace(returncode=0, stdout=value + "\n", stderr="")
+        if command[:4] == ["git", "show", "-s", "--format=%B"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"feat: ORCA task\n\nORCA-Task-ID: line-101\nORCA-Request-SHA256: {'d' * 64}\n",
+                stderr="",
+            )
+        if command[:2] == ["git", "ls-remote"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"{head}\trefs/heads/orca/task-line-101\n",
+                stderr="",
+            )
         if command[:3] == ["git", "diff", "--no-ext-diff"]:
             return SimpleNamespace(returncode=0, stdout=patch, stderr="")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
