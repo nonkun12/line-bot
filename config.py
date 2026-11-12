@@ -230,7 +230,25 @@ def handle_message_event(event):
             if len(_processed_message_ids) > _MAX_TRACKED_IDS:
                 _processed_message_ids.popitem(last=False)
 
-        # Explicit Cloudflare intake is isolated from development and Distributed Loop dispatch.
+        # Distributed-loop registration and approval are separate from the
+        # legacy direct-dispatch command. Neither route executes a loop.
+        loop_approval_result = _approve_orca_distributed_loop_task(text, user_id)
+        if loop_approval_result is not None:
+            _, loop_approval_reply = loop_approval_result
+            _line_push(str(user_id or ""), loop_approval_reply)
+            return
+
+        loop_intake_result = _register_orca_distributed_loop_task(text, message_id, user_id)
+        if loop_intake_result is not None:
+            _, loop_intake_reply, retryable = loop_intake_result
+            if retryable:
+                with _processed_lock:
+                    _processed_message_ids.pop(message_id, None)
+                    delete_processed_event(message_id)
+            _line_push(str(user_id or ""), loop_intake_reply)
+            return
+
+        # Explicit Cloudflare app-development intake remains isolated.
         intake_result = _register_orca_task(text, message_id)
         if intake_result is not None:
             accepted, intake_reply, retryable = intake_result
