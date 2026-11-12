@@ -176,6 +176,9 @@ def test_distributed_loop_uses_adaptive_30_or_60_minute_execution_cadence():
     assert 'held = record.get("held")' in source
     assert 'review = record.get("resume_requires_review")' in source
     assert "Recovery AI task state missing; refusing scheduled execution" in source
+    assert "vars.CONTROL_TOWER_KILL_SWITCH != 'true'" in source
+    assert "CONTROL_TOWER_KILL_SWITCH is ON; refusing all task execution." in source
+    assert "REMOTE_KILL_SWITCH is ON; refusing all task execution." in source
 
 
 def test_only_continuous_workflow_owns_automatic_dispatch():
