@@ -40,13 +40,13 @@ const taskRow = {
   approval_max_tasks: 1,
 };
 
-function makeBroker() {
+function makeBroker(privateKeyPem = privatePem) {
   const state = new State();
   const env = {
     DB: { prepare: () => ({ bind: () => ({ first: async () => taskRow }) }) },
     GITHUB_APP_ID: "12345",
     GITHUB_APP_INSTALLATION_ID: "98765",
-    GITHUB_APP_PRIVATE_KEY: privatePem,
+    GITHUB_APP_PRIVATE_KEY: privateKeyPem,
     GITHUB_REPOSITORY: "nonkun12/line-bot",
   };
   return { state, broker: new OrcaWriteBroker(state, env) };
@@ -192,4 +192,22 @@ test("expired or mismatched claim cannot authorize a GitHub issue", async () => 
   const denied = await call(broker, "/issues/create", "POST", issueBody);
   assert.equal(denied.status, 403);
   broker.env.DB = original;
+});
+
+test("GitHub App RSA PKCS1 PEM is accepted", async () => {
+  const pkcs1Pem = privateKey.export({ type: "pkcs1", format: "pem" }).toString();
+  const { broker } = makeBroker(pkcs1Pem);
+  await releaseHold(broker);
+  const restore = mockGithub(async () => new Response(JSON.stringify({
+    number: 88, html_url: "https://github.com/nonkun12/line-bot/issues/88",
+    title: issueBody.title, state: "open",
+  }), { status: 201 }));
+  try {
+    const response = await call(broker, "/issues/create", "POST", {
+      ...issueBody, idempotency_key: "idem-key-pkcs1-00000001",
+    });
+    assert.equal(response.status, 201);
+  } finally {
+    restore();
+  }
 });
