@@ -97,8 +97,8 @@ export class OrcaWriteBroker {
 
   fetch(request) {
     // Every request, including HOLD transitions, enters the same serialized
-    // critical section. A HOLD=ON response is not returned until an earlier
-    // GitHub request has completed or reached a bounded failure outcome.
+    // critical section. Ambiguous remote outcomes enter DRAINING and prevent
+    // HOLD=ON acknowledgement until an operator reconciles the operation.
     return this.state.blockConcurrencyWhile(() => this.handle(request));
   }
 
@@ -163,7 +163,8 @@ export class OrcaWriteBroker {
     if (url.pathname === "/operations/reconcile" && request.method === "POST") {
       const body = await request.json().catch(() => null);
       if (!body || !["created", "not_created"].includes(body.outcome) ||
-          typeof body.task_id !== "string" || typeof body.idempotency_key !== "string" ||
+          typeof body.task_id !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(body.task_id) ||
+          typeof body.idempotency_key !== "string" || !/^[A-Za-z0-9_-]{16,100}$/.test(body.idempotency_key) ||
           typeof body.operator_id !== "string" || !body.operator_id.trim() ||
           typeof body.reason !== "string" || body.reason.trim().length < 12) {
         return json({ error: "manual reconciliation requires task_id, idempotency_key, outcome, operator_id, and reason" }, 400);
