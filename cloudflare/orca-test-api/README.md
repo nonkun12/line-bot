@@ -289,7 +289,7 @@ New writes are blocked, and a HOLD ON request is **not acknowledged** until
 the uncertain operation is manually reconciled. Use the separately
 authenticated `POST /control/global-hold/reconcile` route only after checking
 GitHub for the embedded task/idempotency marker. Then explicitly acknowledge
-HOLD ON or deliberately release HOLD. The ledger inspection limit is 2,001
+HOLD ON or deliberately release HOLD. The ledger inspection limit is 1,000
 records; reaching it fails closed and requires manual maintenance.
 
 Both HOLD ON and HOLD OFF require the separate operator credential, an
