@@ -36,8 +36,10 @@ def _text_event(text, *, user_id=USER_ID, message_id=MESSAGE_ID):
     }
     return {
         "type": "message",
-        "message": {"type": "text", "id": message_id, "text": text},
+        "message": {"type": "text", "id": message_id, "text": text, "quoteToken": "quote-token-123"},
         "timestamp": 1794441600000,
+        "webhookEventId": "01JCM000000000000000000000",
+        "deliveryContext": {"isRedelivery": False},
         "source": source,
         "replyToken": "a" * 32,
         "mode": "active",
@@ -53,6 +55,7 @@ def _prepare_handler(monkeypatch):
     )
     monkeypatch.setattr(db_module, "delete_processed_event", lambda message_id: None)
     monkeypatch.setattr(e2e_status_module, "record_step", lambda *args, **kwargs: None)
+    monkeypatch.setattr(app_module, "record_step", lambda *args, **kwargs: None)
     replies = []
     monkeypatch.setattr(app_module, "_line_push", lambda user_id, message: replies.append((user_id, message)))
     monkeypatch.setattr(config_module, "ORCA_TASK_API_URL", "https://orca.example.invalid")
