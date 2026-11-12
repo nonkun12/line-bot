@@ -322,10 +322,6 @@ migrations_dir = "migrations"
         self.assertIn("invalid", denied["error"])
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
-
     def test_expired_task_approval_is_rejected_by_real_worker(self):
         request_text = "アプリ開発: expired approval test"
         self.assertEqual(self.create("expired-approval", request_text=request_text)[0], 201)
@@ -340,3 +336,6 @@ if __name__ == "__main__":
         status, result = self.api("/tasks/expired-approval/claim", "POST", {})
         self.assertEqual(status, 403)
         self.assertIn("valid task-bound LINE approval", result["error"])
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
