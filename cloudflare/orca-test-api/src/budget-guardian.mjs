@@ -33,7 +33,7 @@ export function evaluateBudgetGuard({ now = new Date(), sources, globalHoldClear
   for (const name of requiredSources) {
     const source = byName.get(name);
     if (!source) return blocked("required_usage_source_missing", details.concat({ name }));
-    if (source.enabled === false) { details.push({ name, enabled: false, status: "DISABLED_BY_CONFIGURATION" }); continue; }
+    if (source.enabled === false) return blocked("usage_source_disabled_without_trusted_operator_config", details.concat({ name, enabled: false }));
     if (source.enabled !== true) return blocked("usage_source_enabled_state_unknown", details.concat({ name }));
     const used = source.used, limit = source.limit;
     const observedAt = validDate(source.observed_at), periodStart = validDate(source.period_start), periodEnd = validDate(source.period_end);
