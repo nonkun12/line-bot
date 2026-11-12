@@ -445,10 +445,9 @@ export default {
       }
       const body = await readJson(request);
       if (!body || !["on", "off"].includes(body.value)) return json({ error: "value must be on or off" }, 400);
-      if (body.value === "off" &&
-          (typeof body.operator_id !== "string" || !body.operator_id.trim() ||
-           typeof body.reason !== "string" || body.reason.trim().length < 8)) {
-        return json({ error: "operator_id and reason are required to release HOLD" }, 400);
+      if (typeof body.operator_id !== "string" || !body.operator_id.trim() ||
+          typeof body.reason !== "string" || body.reason.trim().length < 8) {
+        return json({ error: "operator_id and reason are required for every HOLD transition" }, 400);
       }
       const mirror = async () => {
         const result = await env.DB.prepare(
