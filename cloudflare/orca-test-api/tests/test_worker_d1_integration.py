@@ -27,17 +27,20 @@ import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 API_TOKEN = "local-integration-api-token"
+HOLD_OPERATOR_TOKEN = "local-integration-hold-operator-token"
 HMAC_KEY = "local-integration-hmac-key-at-least-32-bytes"
 USER_A = "U" + "a" * 32
 USER_B = "U" + "b" * 32
 
 
-def request_json(url: str, method: str = "GET", body=None, owner=None):
+def request_json(url: str, method: str = "GET", body=None, owner=None, hold_operator=None):
     headers = {"Authorization": f"Bearer {API_TOKEN}"}
     if body is not None:
         headers["Content-Type"] = "application/json"
     if owner:
         headers["X-ORCA-Task-Owner"] = owner
+    if hold_operator:
+        headers["X-ORCA-HOLD-Operator"] = hold_operator
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
@@ -73,12 +76,21 @@ compatibility_date = "2026-11-11"
 [vars]
 API_TOKEN = "{API_TOKEN}"
 ORCA_TASK_APPROVAL_HMAC_KEY = "{HMAC_KEY}"
+ORCA_HOLD_OPERATOR_TOKEN = "{HOLD_OPERATOR_TOKEN}"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "orca-test-ledger-integration"
 database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "migrations"
+
+[[durable_objects.bindings]]
+name = "ORCA_WRITE_BROKER"
+class_name = "OrcaWriteBroker"
+
+[[migrations]]
+tag = "v1-orca-write-broker"
+new_sqlite_classes = ["OrcaWriteBroker"]
 '''
         cls.config.write_text(config, encoding="utf-8")
         cls.wrangler = wrangler
@@ -173,12 +185,21 @@ migrations_dir = "migrations"
         return "\n".join(outputs)
 
     def setUp(self):
-        self.sql("UPDATE system_controls SET value='off' WHERE control_key='global_hold'")
         self.sql("DELETE FROM notification_outbox; DELETE FROM task_approval_nonces; "
                  "DELETE FROM task_approvals; DELETE FROM tasks;")
+        status, result = self.set_hold("off")
+        if status != 200:
+            raise RuntimeError(f"local Durable Object HOLD release failed: {result}")
 
-    def api(self, path, method="GET", body=None, owner=None):
-        return request_json(self.base + path, method, body, owner)
+    def api(self, path, method="GET", body=None, owner=None, hold_operator=None):
+        return request_json(self.base + path, method, body, owner, hold_operator)
+
+    def set_hold(self, value):
+        return self.api("/control/global-hold", "POST", {
+            "value": value,
+            "operator_id": "local-test-operator",
+            "reason": "isolated integration test control",
+        }, hold_operator=HOLD_OPERATOR_TOKEN)
 
     def create(self, task_id, owner=USER_A, request_text=None, event_id=None,
                task_type="app_development", max_tasks=1):
@@ -222,14 +243,15 @@ migrations_dir = "migrations"
         })
 
     def test_initial_global_hold_blocks_intake_until_explicit_local_release(self):
-        self.sql("UPDATE system_controls SET value='on' WHERE control_key='global_hold'")
+        status, _ = self.set_hold("on")
+        self.assertEqual(status, 200)
         status, state = self.api("/control/global-hold")
         self.assertEqual(status, 200)
         self.assertEqual(state, {"clear": False, "value": "on", "blocked": True})
         status, body = self.create("hold-blocked")
         self.assertEqual(status, 423)
         self.assertIn("global HOLD", body["error"])
-        self.sql("UPDATE system_controls SET value='off' WHERE control_key='global_hold'")
+        self.assertEqual(self.set_hold("off")[0], 200)
         self.assertEqual(self.create("hold-released")[0], 201)
 
     def test_invalid_or_missing_line_owner_is_rejected_by_real_worker(self):
@@ -360,7 +382,7 @@ migrations_dir = "migrations"
         status, claimed = self.api("/tasks/hold-midflight/claim", "POST", {})
         self.assertEqual(status, 200)
         token = claimed["claim_token"]
-        self.sql("UPDATE system_controls SET value='on' WHERE control_key='global_hold'")
+        self.assertEqual(self.set_hold("on")[0], 200)
         status, blocked = self.api("/tasks/hold-midflight/claim", "POST", {})
         self.assertEqual(status, 423)
         status, completed = self.api("/tasks/hold-midflight/complete", "POST", {
