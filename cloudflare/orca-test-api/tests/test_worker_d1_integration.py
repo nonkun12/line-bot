@@ -278,6 +278,10 @@ migrations_dir = "migrations"
         self.assertEqual(status, 201)
         self.assertEqual(created["task"]["task_type"], "distributed_loop")
         self.assertEqual(created["task"]["max_tasks"], 4)
+        status, fetched = self.api("/tasks/typed-loop")
+        self.assertEqual(status, 200)
+        self.assertEqual(fetched["task"]["task_type"], "distributed_loop")
+        self.assertEqual(fetched["task"]["max_tasks"], 4)
 
         status, app_tasks = self.api("/tasks?approved=true")
         self.assertEqual(status, 200)
