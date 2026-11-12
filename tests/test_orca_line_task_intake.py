@@ -42,7 +42,7 @@ def test_payload_rejects_invalid_task_metadata(task_id, request_text, message_id
 
 
 def test_payload_does_not_mutate_external_data():
-    payload = build_task_payload("line-task-1", "task", "event-123", USER)
+    payload = build_task_payload("line-task-1", "アプリ開発: task", "event-123", USER)
     payload["user_id"] = "changed"
 
     assert build_task_payload("line-task-1", "task", "event-123", USER)["user_id"] == USER
