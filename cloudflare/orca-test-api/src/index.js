@@ -449,9 +449,12 @@ export default {
            typeof body.reason !== "string" || body.reason.trim().length < 8)) {
         return json({ error: "operator_id and reason are required to release HOLD" }, 400);
       }
-      const mirror = () => env.DB.prepare(
-        "UPDATE system_controls SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE control_key = 'global_hold'"
-      ).bind(body.value).run();
+      const mirror = async () => {
+        const result = await env.DB.prepare(
+          "UPDATE system_controls SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE control_key = 'global_hold'"
+        ).bind(body.value).run();
+        if (result?.meta?.changes !== 1) throw new Error("D1 Global HOLD mirror row is missing");
+      };
       try {
         // ON: block new writes first, then mirror to D1.
         // OFF: mirror D1 first, then release the serialized broker last.
