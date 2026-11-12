@@ -26,3 +26,11 @@ jobs:
           python-version: "3.12"
       - name: Run SQLite migration contract tests
         run: python -m unittest discover -s cloudflare/orca-test-api/tests -v
+
+      - name: Install Wrangler for isolated local D1 integration tests
+        run: npm install --global wrangler@4
+
+      - name: Run Worker against temporary local D1
+        env:
+          ORCA_D1_INTEGRATION: "1"
+        run: python -m unittest cloudflare.orca-test-api.tests.test_worker_d1_integration -v
