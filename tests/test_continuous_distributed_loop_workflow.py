@@ -375,6 +375,7 @@ def test_distributed_loop_requires_fresh_budget_guardian_state_before_any_execut
     assert "secrets.ORCA_CLOUDFLARE_ACCOUNT_ID" in gate
     assert "secrets.ORCA_BUDGET_GUARD_D1_DATABASE_ID" in gate
     assert "budget_guard_state" in gate
+    assert 'candidates[0].get("success") is not True' in gate
     assert 'row.get("status") not in ("CLEAR", "WARN")' in gate
     assert 'row["stop_latched"] != 0' in gate
     assert "timedelta(minutes=90)" in gate
