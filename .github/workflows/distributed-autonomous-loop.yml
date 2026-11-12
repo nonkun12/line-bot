@@ -125,7 +125,7 @@ jobs:
           python -m json.tool /tmp/cadence-state.json >/dev/null
       - name: Capture scheduler minute
         id: clock
-        run: echo "minute=$(date -u +%M | sed 's/^0//')" >> "$GITHUB_OUTPUT"
+        run: echo "minute=$(date -u +%M)" >> "$GITHUB_OUTPUT"
       - name: Decide hourly or 30-minute execution
         id: cadence
         env:
