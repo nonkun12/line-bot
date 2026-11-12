@@ -18,7 +18,7 @@ The gate fails closed unless all of these are configured and return valid, fresh
 1. ORCA_TASK_API_URL and ORCA_TASK_API_TOKEN: authenticated GET /control/global-hold must return exactly clear=true, value="off", and blocked=false.
 2. ORCA_BUDGET_GATE_URL and ORCA_BUDGET_GATE_TOKEN: authenticated GET must return a JSON object with sources, containing one enabled snapshot each for cloudflare_workers, cloudflare_d1, and github_actions.
 
-Each snapshot must include used, positive verified limit, observed_at, period_start, and period_end. Values must use consistent units within each source. Snapshots must be no older than 90 minutes, no more than five minutes in the future, and cover the current period.
+Each snapshot must include used, positive verified limit, unit, limit_source, observed_at, period_start, and period_end. Values must use consistent units within each source. The response must also include a non-negative consecutive_failures integer; three or more blocks execution. Snapshots must be no older than 90 minutes, no more than five minutes in the future, and cover the current period.
 
 Thresholds are conservative internal policy, not vendor quota guarantees:
 - 70%: WARN; may continue with fresh evidence.
