@@ -14,8 +14,8 @@ def test_distributed_loop_uses_github_native_pending_run_queue():
     concurrency = workflow.split("concurrency:", 1)[1].split("\njobs:", 1)[0]
     assert "group: distributed-autonomous-loop" in concurrency
     assert "cancel-in-progress: false" in concurrency
-    assert "queue: 1" in concurrency
-    assert "queue: max" not in concurrency
+    # GitHub defaults to a single pending run; queue only accepts single|max.
+    assert "queue:" not in concurrency
 
 
 def test_line_request_correlation_id_is_optional_and_validated():
@@ -45,7 +45,7 @@ def test_queue_does_not_change_safety_limits_or_auto_deploy():
     assert "HERMES_ADVISOR_ENABLED: 'false'" in workflow
     assert "SELF_IMPROVEMENT_CREATOR_CRITIC: 'false'" in workflow
 
-def test_actionlint_compatibility_ignore_is_scoped_to_this_workflow():
+def test_actionlint_has_no_queue_compatibility_ignore():
     config = (
         Path(__file__).resolve().parents[1]
         / ".github"
@@ -85,3 +85,22 @@ def test_held_task_resume_stays_bounded_to_one_task():
 
     assert "startsWith(github.event.comment.body, '/distributed-loop resume_task_id=') && '1'" in workflow
     assert "resume_task_id=([A-Za-z0-9._-]{1,100})" in workflow
+
+
+def test_remote_stop_switch_is_rechecked_before_mutating_side_effects():
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "distributed-autonomous-loop.yml"
+    ).read_text(encoding="utf-8")
+
+    for purpose in (
+        "held-task resume",
+        "review-only issue creation",
+        "Recovery AI durable state update",
+    ):
+        assert f"before {purpose}" in workflow
+    assert workflow.count("git cat-file -e FETCH_HEAD:.autonomous-loop.stop") >= 6
+    assert "AUTO_APPLY_PATCH: 'false'" in workflow
+    assert "AUTO_DEPLOY: 'false'" in workflow
