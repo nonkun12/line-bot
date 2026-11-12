@@ -237,8 +237,9 @@ The Worker exports `OrcaWriteBroker` as a SQLite-backed Durable Object. The
 required; if the binding or stored state is missing, the broker reports
 Global HOLD=ON.
 
-The Durable Object serializes its own requests with
-`blockConcurrencyWhile`. Its HOLD state is authoritative; the D1
+The Durable Object serializes its own requests with a per-instance
+Promise queue. `blockConcurrencyWhile` is startup-only and is not used as a
+runtime mutex. Its HOLD state is authoritative; the D1
 `system_controls` row is a compatibility mirror. HOLD transitions are
 ordered safely:
 - ON is persisted in the broker before D1 is updated.
