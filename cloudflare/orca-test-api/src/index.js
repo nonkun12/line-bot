@@ -294,7 +294,7 @@ async function completeTask(id, request, env) {
 
 async function getTask(id, env) {
   const task = await env.DB.prepare(
-    "SELECT task_id, request_text, status, created_at, updated_at FROM tasks WHERE task_id = ?"
+    "SELECT task_id, request_text, status, task_type, max_tasks, created_at, updated_at FROM tasks WHERE task_id = ?"
   ).bind(id).first();
   return task ? json({ task }) : json({ error: "not found" }, 404);
 }
