@@ -1,5 +1,6 @@
 """Workflow wiring tests for the independent Chain Job AI continuation owner."""
 import os
+import sys
 from pathlib import Path
 import subprocess
 import textwrap
