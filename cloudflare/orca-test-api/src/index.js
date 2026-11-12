@@ -482,6 +482,7 @@ export default {
       }
       try {
         const body = await request.text();
+        if (body.length > 5000) return json({ error: "reconciliation payload too large" }, 413);
         const response = await (await brokerStub(env)).fetch("https://orca-write-broker.internal/operations/reconcile", {
           method: "POST", headers: { "content-type": "application/json" }, body,
         });
@@ -493,7 +494,10 @@ export default {
     }
     if (url.pathname === "/internal/github/issues" && request.method === "POST") {
       try {
+        const declaredLength = Number(request.headers.get("content-length") || 0);
+        if (declaredLength > 52000) return json({ error: "issue request too large" }, 413);
         const body = await request.text();
+        if (body.length > 52000) return json({ error: "issue request too large" }, 413);
         const response = await (await brokerStub(env)).fetch("https://orca-write-broker.internal/issues/create", {
           method: "POST", headers: { "content-type": "application/json" }, body,
         });
