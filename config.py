@@ -98,6 +98,95 @@ def _register_orca_task(message: str, message_id: str):
     return True, f"Cloudflare D1に受付しました。状態: {status} / Task ID: {task_id or '受付済み'}（この段階では実行していません）", False
 
 
+def _register_orca_distributed_loop_task(message: str, message_id: str, user_id: str | None):
+    """Register a bounded loop request in D1; never dispatch or execute it."""
+    prefixes = ("分散Loop登録:", "分散Loop登録：")
+    prefix = next((item for item in prefixes if message.startswith(item)), None)
+    if prefix is None:
+        return None
+    request_text = message[len(prefix):].strip()
+    if not request_text or len(request_text.encode("utf-8")) > 6000:
+        return False, "分散Loop依頼が空か、6,000バイトを超えています。", False
+    from core.orca_distributed_loop_intake import build_distributed_loop_task_payload
+    try:
+        payload = build_distributed_loop_task_payload(
+            task_id=f"line-loop-{uuid.uuid4().hex}",
+            request_text=request_text,
+            source_event_id=message_id,
+            user_id=user_id,
+        )
+    except ValueError as exc:
+        return False, f"分散Loop受付を拒否しました: {exc}", False
+    if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN:
+        return False, "Orca D1接続設定が未完了です。登録していません。", False
+    try:
+        response = httpx.post(
+            ORCA_TASK_API_URL, json=payload,
+            headers={"Authorization": f"Bearer {ORCA_TASK_API_TOKEN}"},
+            timeout=8.0,
+        )
+    except httpx.TransportError:
+        return False, "Orca D1への接続結果を確認できません。再送前に状態確認してください。", True
+    if response.status_code >= 500:
+        return False, "Orca D1が一時エラーです。登録状態を確認してから再送してください。", True
+    if response.status_code not in (200, 201):
+        return False, f"Orca D1受付が拒否されました（HTTP {response.status_code}）。", False
+    try:
+        result = response.json()
+        task = result.get("task", {}) if isinstance(result, dict) else {}
+        task_id = task.get("task_id")
+        if not isinstance(task_id, str) or task.get("task_type") != "distributed_loop" or task.get("max_tasks") != payload["max_tasks"]:
+            return False, "受付応答のタスク種別・上限を検証できません。実行していません。", True
+    except (ValueError, AttributeError):
+        return False, "受付応答を検証できません。状態確認が必要です。", True
+    return True, f"分散LoopをD1に登録しました（未実行）。Task ID: {task_id} / 上限: {payload['max_tasks']}。実行Workerは未接続です。承認する場合は「分散Loop承認: {task_id}」を送ってください。", False
+
+
+def _approve_orca_distributed_loop_task(message: str, user_id: str | None):
+    prefixes = ("分散Loop承認:", "分散Loop承認：")
+    prefix = next((item for item in prefixes if message.startswith(item)), None)
+    if prefix is None:
+        return None
+    task_id = message[len(prefix):].strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
+        return False, "Task IDの形式が正しくありません。"
+    from core.orca_task_approval import is_valid_line_user_id
+    from core.orca_distributed_loop_approval import build_distributed_loop_approval_payload
+    if not is_valid_line_user_id(user_id):
+        return False, "LINE本人確認ができないため承認できません。"
+    if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN or len(ORCA_TASK_APPROVAL_HMAC_KEY) < 32:
+        return False, "承認用の安全設定が未完了です。承認していません。"
+    url = ORCA_TASK_API_URL.rstrip("/") + "/tasks/" + task_id
+    headers = {"Authorization": f"Bearer {ORCA_TASK_API_TOKEN}"}
+    try:
+        response = httpx.get(url, headers=headers, timeout=8.0)
+        if response.status_code != 200:
+            return False, f"タスクを取得できません（HTTP {response.status_code}）。承認していません。"
+        result = response.json()
+        task = result.get("task") if isinstance(result, dict) else None
+        if not isinstance(task, dict) or task.get("task_id") != task_id:
+            return False, "タスク応答が不正です。承認していません。"
+        if task.get("status") != "queued" or task.get("task_type") != "distributed_loop":
+            return False, "対象は未承認の分散Loopタスクではありません。"
+        max_tasks = task.get("max_tasks")
+        payload = build_distributed_loop_approval_payload(
+            task_id, task.get("request_text"), user_id, max_tasks,
+            ORCA_TASK_APPROVAL_HMAC_KEY,
+        )
+        approved = httpx.post(url + "/approve", json=payload, headers=headers, timeout=8.0)
+    except (httpx.TransportError, ValueError, KeyError, TypeError):
+        return False, "承認APIとの通信または応答検証に失敗しました。承認していません。"
+    if approved.status_code != 200:
+        return False, f"承認は拒否されました（HTTP {approved.status_code}）。"
+    try:
+        result = approved.json()
+    except ValueError:
+        return False, "承認結果を確認できません。"
+    if not isinstance(result, dict) or result.get("approved") is not True:
+        return False, "承認結果を確認できません。"
+    return True, f"分散Loop Task {task_id} の本人承認を記録しました（上限 {max_tasks}）。ただし専用Worker未接続のため、まだ実行されません。"
+
+
 # app.py 側の MessageEvent ハンドラーが誤って欠落しても、LINE webhook を
 # 受信できるように、ここでハンドラーを登録する。
 # 実際の処理は app.py の _process_and_reply に委譲する。
