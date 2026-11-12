@@ -508,17 +508,8 @@ def reconcile_orphan_branch(branch: str, task_id: str, expected_request_hash: st
     if latest.returncode or len(latest_rows) != 1 or latest_rows[0][0] != remote_sha:
         raise WorkerError("orphan branch head changed during verification")
     assert_global_hold_clear()
-    body = (
-        "## ORCA free CPU worker result (recovered orphan branch)\\n\\n"
-        f"Task ID: {task_id}\\nRequest SHA-256: {expected_request_hash}\\n\\n"
-        f"Added paths: {', '.join(paths)}\\n\\n"
-        "App tests: PASS (re-run during orphan recovery)\\n"
-        "Request text omitted. Not merged or deployed; human review required.\\n"
-    )
-    url = create_or_reuse_pr(branch, "feat: ORCA task " + task_id, body,
-                             expected_task_id=task_id,
-                             expected_request_hash=expected_request_hash)
-    return url, paths
+    return remote_sha, paths
+
 
 
 def create_or_reuse_pr(
@@ -607,6 +598,7 @@ def process(task_id: str) -> int:
         raise WorkerError("claimed task payload mismatch; refusing execution")
 
     pr_url = ""
+    branch_pushed = False
     try:
         if run(["git", "status", "--porcelain"], timeout=30).stdout.strip():
             raise WorkerError("checkout is not clean")
@@ -648,8 +640,21 @@ def process(task_id: str) -> int:
             return 0
         orphan = reconcile_orphan_branch(branch, task_id, request_fingerprint)
         if orphan:
+            branch_pushed = True
+            _, recovered_paths = orphan
+            body = (
+                "## ORCA free CPU worker result (recovered orphan branch)\n\n"
+                f"Task ID: {task_id}\nRequest SHA-256: {request_fingerprint}\n\n"
+                f"Added paths: {', '.join(recovered_paths)}\n\n"
+                "App tests: PASS (re-run during orphan recovery)\n"
+                "Request text omitted. Not merged or deployed; human review required.\n"
+            )
             assert_global_hold_clear()
-            pr_url, _ = orphan
+            pr_url = create_or_reuse_pr(
+                branch, "feat: ORCA task " + task_id, body,
+                expected_task_id=task_id,
+                expected_request_hash=request_fingerprint,
+            )
             api_request("POST", "/tasks/" + encoded_id + "/complete",
                         {"claim_token": claim_token, "status": "pass",
                          "message": f"ORCA task {task_id}: PASS — recovered verified orphan PR {pr_url}"})
@@ -720,6 +725,7 @@ def process(task_id: str) -> int:
         pushed = run(["git", "push", "--set-upstream", "origin", branch], timeout=180)
         if pushed.returncode:
             raise WorkerError("git push failed: " + pushed.stderr[-1200:])
+        branch_pushed = True
 
         body = (
             "## ORCA free CPU worker result\n\n"
@@ -743,12 +749,18 @@ def process(task_id: str) -> int:
         # Once a PR exists, do not mark the task failed if the final D1 update
         # fails; that would hide a reviewable result. Leave it running for
         # explicit reconciliation instead.
-        if not pr_url:
+        if not pr_url and not branch_pushed:
             try:
                 terminal_status = "blocked" if isinstance(sys.exc_info()[1], GlobalHoldError) else "fail"
                 api_request("POST", "/tasks/" + encoded_id + "/complete", {"claim_token": claim_token, "status": terminal_status, "message": f"ORCA task {task_id}: {terminal_status.upper()} — execution stopped before producing a reviewable PR"})
             except Exception:
                 pass
+        elif branch_pushed:
+            print(
+                "ORCA_CPU_WORKER_ORPHAN_BRANCH_PENDING: verified task branch exists without a PR; "
+                "leave the lease to expire so a retry can verify provenance and create the PR",
+                file=sys.stderr,
+            )
         else:
             print(
                 "ORCA_CPU_WORKER_RECONCILIATION_REQUIRED: PR exists at "
