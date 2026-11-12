@@ -1,5 +1,5 @@
 name: Distributed Autonomous Development Loop
-run-name: Distributed Loop (continuation_depth=${{ inputs.continuation_depth || '0' }}, request_id=${{ inputs.request_id || 'scheduled' }})
+run-name: Distributed Loop 30m (continuation_depth=${{ inputs.continuation_depth || '0' }}, request_id=${{ inputs.request_id || 'scheduled' }})
 
 on:
   workflow_dispatch:
@@ -85,9 +85,9 @@ on:
   pull_request_target:
     types: [labeled]
   schedule:
-    # Run once per hour at minute 17 Japan time.
+    # 30-minute target cadence in Japan time. GitHub scheduling is best-effort.
     # Changing the cron expression also reactivates a deactivated scheduled workflow.
-    - cron: '17 * * * *'
+    - cron: '7,37 * * * *'
       timezone: 'Asia/Tokyo'
 
 permissions:
@@ -104,9 +104,43 @@ concurrency:
   queue: max
 
 jobs:
+  schedule-safety-gate:
+    name: 30-minute slot, Global HOLD, and Budget Guardian gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      allow: ${{ steps.gate.outputs.allow }}
+      reason: ${{ steps.gate.outputs.reason }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify 30-minute slot and live safety evidence
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          CONTINUATION_DEPTH: ${{ github.event.inputs.continuation_depth || '0' }}
+          ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+          ORCA_BUDGET_GATE_URL: ${{ secrets.ORCA_BUDGET_GATE_URL }}
+          ORCA_BUDGET_GATE_TOKEN: ${{ secrets.ORCA_BUDGET_GATE_TOKEN }}
+        run: python scripts/distributed_loop_30m_gate.py
+
   minimal-loop:
+    needs: schedule-safety-gate
     if: >-
-      github.event_name == 'schedule' ||
+      needs.schedule-safety-gate.outputs.allow == 'true' &&
+      (github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (
         github.event_name == 'issue_comment' &&
@@ -129,6 +163,7 @@ jobs:
         github.event.label.name == 'distributed-loop-max4' &&
         github.event.sender.login == 'nonkun12' &&
         github.event.pull_request.user.login == 'nonkun12'
+      )
       )
     runs-on: ubuntu-latest
     timeout-minutes: 40
