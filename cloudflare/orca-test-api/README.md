@@ -17,8 +17,8 @@ until an operator explicitly authorizes a controlled rollout. Migration 0006
 adds constrained `task_type` (`app_development` or `distributed_loop`) and
 `max_tasks` (1–4), backfilling existing tasks and approvals as
 `app_development` with `max_tasks=1`. Do not apply any migration until the live
-schema and migration history are confirmed. Migration 0002 uses ALTER TABLE
-and is not safe to re-run blindly.
+schema and migration history are confirmed. Migrations 0002 and 0006 use
+ALTER TABLE and are not safe to re-run blindly.
 
 ## API
 
@@ -150,8 +150,8 @@ PRAGMA foreign_key_check;
 
 Expected pre-migration baseline for the currently deployed intake is the
 original `tasks` table (including `task_id`, `request_text`, `status`,
-timestamps, and `source_event_id`), with none of the four 0002 columns and
-without `task_approvals` or `notification_outbox`. Treat this as an
+timestamps, and `source_event_id`), with none of the four 0002 columns or
+the two 0006 columns, and without `task_approvals` or `notification_outbox`. Treat this as an
 expectation to verify, not as proof of the live schema.
 
 **Stop without applying anything** if a required table/column is missing,
