@@ -324,3 +324,19 @@ migrations_dir = "migrations"
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+    def test_expired_task_approval_is_rejected_by_real_worker(self):
+        request_text = "アプリ開発: expired approval test"
+        self.assertEqual(self.create("expired-approval", request_text=request_text)[0], 201)
+        request_hash = hashlib.sha256(request_text.encode()).hexdigest()
+        self.sql(
+            "INSERT INTO task_approvals "
+            "(task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status) "
+            "VALUES ('expired-approval', 'expired-approval-id', '" + "n" * 32 + "', '" +
+            request_hash + "', '" + USER_A + "', '2000-01-01T00:00:00Z', "
+            "'2000-01-01T00:01:00Z', 'approved')"
+        )
+        status, result = self.api("/tasks/expired-approval/claim", "POST", {})
+        self.assertEqual(status, 403)
+        self.assertIn("valid task-bound LINE approval", result["error"])
