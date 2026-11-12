@@ -317,7 +317,7 @@ migrations_dir = "migrations"
             task_type="distributed_loop", max_tasks=2,
         )[0], 201)
         status, conflict = self.create(
-            "typed-duplicate-other", request_text=command, event_id="same-typed-event",
+            "typed-duplicate-other", request_text="分散Loop開始", event_id="same-typed-event",
             task_type="distributed_loop", max_tasks=1,
         )
         self.assertEqual(status, 409)
