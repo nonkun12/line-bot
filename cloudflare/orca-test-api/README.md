@@ -7,11 +7,13 @@ This directory is the source-controlled successor for the separately deployed
 
 Review migrations `0002_atomic_claims_and_outbox.sql`,
 `0003_task_bound_approvals.sql`, and
-`0004_append_only_approval_nonce_history.sql` against the live D1 schema before
-applying them in order. Migration 0002 adds verified LINE user ID storage,
+`0004_append_only_approval_nonce_history.sql`, and
+`0005_global_hold.sql` against the live D1 schema before applying them in order. Migration 0002 adds verified LINE user ID storage,
 lease fields, attempt count, and a durable notification outbox. Migration 0003
 adds the current task approval record. Migration 0004 adds the append-only
-nonce replay ledger and backfills the currently stored approval nonce. Do not apply either migration until the live
+nonce replay ledger and backfills the currently stored approval nonce. Migration
+0005 creates `system_controls` with `global_hold=on`; it must remain engaged
+until an operator explicitly authorizes a controlled rollout. Do not apply either migration until the live
 schema and migration history are confirmed. Migration 0002 uses ALTER TABLE
 and is not safe to re-run blindly.
 
@@ -90,6 +92,13 @@ task-specific notifications.
    owner mismatch, expiry, one-use consumption, concurrent claims, stale-token
    completion, duplicate completion, and notification retry.
 7. Review the retry/dead-letter policy and LINE push-message limits.
+8. Run the isolated local D1 integration suite in
+   `tests/test_worker_d1_integration.py`. It starts Wrangler/workerd against a
+   temporary local D1 store, seeds only the legacy baseline schema, applies
+   migrations 0002–0005 locally, and tests real HTTP handlers, signed approval,
+   owner binding, concurrent claims, stale tokens, and HOLD/outbox behavior.
+   The CI job installs Wrangler and runs this suite with no Cloudflare account,
+   remote binding, production database, or production secret.
 
 The `wrangler.toml.example` file is a template only; it contains a placeholder
 D1 ID and must not be deployed as-is. No deployed Worker, D1 database, secret,
@@ -141,7 +150,7 @@ history. Capture a protected D1 export/snapshot through the approved
 Cloudflare process before any write migration.
 
 Only after the schema, migration history, backup, and exact SQL diff have
-been reviewed should an operator apply 0002, 0003, and 0004 exactly once.
+been reviewed should an operator apply 0002, 0003, 0004, and 0005 exactly once.
 Do not use `CREATE TABLE IF NOT EXISTS` as evidence that an existing table
 has the expected schema, and do not rerun 0002 to recover from a partial
 failure. If the observed state is mixed or partial, prepare a separately
