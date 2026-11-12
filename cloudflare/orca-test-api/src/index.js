@@ -95,7 +95,7 @@ async function budgetGuardState(env) {
       "SELECT status, reason, stop_latched, release_approved, observed_at FROM budget_guard_state WHERE singleton = 1"
     ).first();
     if (!state) return { allowed: false, status: "BLOCKED", reason: "budget_guard_state_missing" };
-    if (state.stop_latched !== 0 || state.release_approved !== 0)
+    if (state.stop_latched !== 0)
       return { allowed: false, status: "STOP", reason: "budget_stop_latched" };
     const freshness = await env.DB.prepare(
       "SELECT CASE WHEN datetime(?) >= datetime('now','-90 minutes') AND datetime(?) <= datetime('now','+5 minutes') THEN 1 ELSE 0 END AS fresh"
@@ -109,7 +109,7 @@ async function budgetGuardState(env) {
   }
 }
 
-const BUDGET_ADMISSION_SQL = "EXISTS (SELECT 1 FROM budget_guard_state WHERE singleton = 1 AND status IN ('CLEAR','WARN') AND stop_latched = 0 AND release_approved = 0 AND observed_at IS NOT NULL AND datetime(observed_at) >= datetime('now','-90 minutes') AND datetime(observed_at) <= datetime('now','+5 minutes'))";
+const BUDGET_ADMISSION_SQL = "EXISTS (SELECT 1 FROM budget_guard_state WHERE singleton = 1 AND status IN ('CLEAR','WARN') AND stop_latched = 0 AND observed_at IS NOT NULL AND datetime(observed_at) >= datetime('now','-90 minutes') AND datetime(observed_at) <= datetime('now','+5 minutes'))";
 
 async function createTask(request, env) {
   if (!(await globalHoldState(env)).clear) return json({ error: "global HOLD is active or unavailable" }, 423);
