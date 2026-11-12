@@ -85,9 +85,9 @@ on:
   pull_request_target:
     types: [labeled]
   schedule:
-    # Run once per hour at minute 17 Japan time.
-    # Changing the cron expression also reactivates a deactivated scheduled workflow.
-    - cron: '17 * * * *'
+    # Tick every 30 minutes; cadence-gate controls actual loop execution.
+    # Low backlog runs hourly; high backlog runs every 30 minutes.
+    - cron: '0,30 * * * *'
       timezone: 'Asia/Tokyo'
 
 permissions:
@@ -104,9 +104,89 @@ concurrency:
   queue: max
 
 jobs:
+  # Read-only adaptive scheduler. Missing/invalid state fails closed.
+  cadence-gate:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_loop: ${{ steps.cadence.outputs.run_loop }}
+      backlog: ${{ steps.cadence.outputs.backlog }}
+    steps:
+      - name: Checkout scheduler policy
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Load durable state for cadence decision
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin refs/heads/autonomous-loop-state:refs/remotes/origin/autonomous-loop-state
+          git show origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/cadence-state.json
+          python -m json.tool /tmp/cadence-state.json >/dev/null
+      - name: Capture scheduler minute
+        id: clock
+        run: echo "minute=$(date -u +%M | sed 's/^0//')" >> "$GITHUB_OUTPUT"
+      - name: Decide hourly or 30-minute execution
+        id: cadence
+        env:
+          UTC_MINUTE: ${{ steps.clock.outputs.minute }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          queue = json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8"))
+          state = json.loads(Path("/tmp/cadence-state.json").read_text(encoding="utf-8"))
+          tasks = queue.get("tasks")
+          completed = state.get("completed")
+          recovery = state.get("recovery_ai")
+          if not isinstance(tasks, list) or not isinstance(completed, list) or not isinstance(recovery, dict):
+              raise SystemExit("cadence evidence missing or invalid; refusing scheduled execution")
+          if not all(isinstance(item, str) and item.strip() for item in completed):
+              raise SystemExit("completed task evidence invalid; refusing scheduled execution")
+          recovery_tasks = recovery.get("tasks")
+          if not isinstance(recovery_tasks, dict):
+              raise SystemExit("Recovery AI task state invalid; refusing scheduled execution")
+
+          completed_ids = set(completed)
+          seen = set()
+          pending = 0
+          for task in tasks:
+              if not isinstance(task, dict) or not isinstance(task.get("id"), str) or not task["id"].strip():
+                  raise SystemExit("queue task identity invalid; refusing scheduled execution")
+              task_id = task["id"]
+              if task_id in seen:
+                  raise SystemExit("duplicate queue task identity; refusing scheduled execution")
+              seen.add(task_id)
+              if task_id in completed_ids:
+                  continue
+              record = recovery_tasks.get(task_id, {})
+              if not isinstance(record, dict):
+                  raise SystemExit("Recovery AI task record invalid; refusing scheduled execution")
+              held = record.get("held", False)
+              review = record.get("resume_requires_review", False)
+              if not isinstance(held, bool) or not isinstance(review, bool):
+                  raise SystemExit("Recovery AI hold evidence ambiguous; refusing scheduled execution")
+              if not held and not review:
+                  pending += 1
+
+          # Two or more executable pending tasks is the high-workload threshold.
+          # At lower load, execute only on the hourly :00 tick.
+          minute = int(os.environ["UTC_MINUTE"])
+          run_loop = pending >= 2 or minute == 0
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"run_loop={'true' if run_loop else 'false'}\n")
+              output.write(f"backlog={pending}\n")
+          print(f"Adaptive cadence: backlog={pending}; interval={'30m' if pending >= 2 else '60m'}; run={run_loop}")
+          PY
+
   minimal-loop:
+    needs: cadence-gate
     if: >-
-      github.event_name == 'schedule' ||
+      always() && (
+        github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (
         github.event_name == 'issue_comment' &&
@@ -129,7 +209,7 @@ jobs:
         github.event.label.name == 'distributed-loop-max4' &&
         github.event.sender.login == 'nonkun12' &&
         github.event.pull_request.user.login == 'nonkun12'
-      )
+      ) && (github.event_name != 'schedule' || needs.cadence-gate.outputs.run_loop == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
