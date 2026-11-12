@@ -294,7 +294,7 @@ new_sqlite_classes = ["OrcaWriteBroker"]
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
             results = list(pool.map(lambda i: self.create(f"budget-race-{i}"), range(8)))
         self.assertEqual([status for status, _ in results], [423] * 8)
-        self.assertEqual(self.sql("SELECT COUNT(*) FROM tasks;").strip().splitlines()[-1], "0")
+        self.assertRegex(self.sql("SELECT COUNT(*) AS count FROM tasks;"), r'"count"\s*:\s*0')
 
     def test_initial_global_hold_blocks_intake_until_explicit_local_release(self):
         status, _ = self.set_hold("on")
