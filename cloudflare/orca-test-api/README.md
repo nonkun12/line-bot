@@ -290,3 +290,7 @@ authenticated `POST /control/global-hold/reconcile` route only after checking
 GitHub for the embedded task/idempotency marker. Then explicitly acknowledge
 HOLD ON or deliberately release HOLD. The ledger inspection limit is 2,001
 records; reaching it fails closed and requires manual maintenance.
+
+Both HOLD ON and HOLD OFF require the separate operator credential, an
+operator ID audit label, and a reason. The operator ID is supplied by the
+authenticated caller and is not an independently verified GitHub identity.
