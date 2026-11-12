@@ -157,8 +157,10 @@ def _approve_orca_distributed_loop_task(message: str, user_id: str | None):
     task_id = message[len(prefix):].strip()
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
         return False, "Task IDの形式が正しくありません。"
-    from core.orca_task_approval import is_valid_line_user_id
-    from core.orca_distributed_loop_approval import build_distributed_loop_approval_payload
+    from core.orca_distributed_loop_approval import (
+        build_distributed_loop_approval_payload,
+        is_valid_line_user_id,
+    )
     if not is_valid_line_user_id(user_id):
         return False, "LINE本人確認ができないため承認できません。"
     if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN or len(ORCA_TASK_APPROVAL_HMAC_KEY) < 32:
