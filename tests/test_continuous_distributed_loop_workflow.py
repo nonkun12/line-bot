@@ -301,3 +301,16 @@ def test_adaptive_cadence_fails_closed_on_duplicate_task_ids(tmp_path):
     )
     assert result.returncode != 0
     assert output == ""
+
+
+def test_adaptive_schedule_never_accumulates_an_unbounded_run_queue():
+    path = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "distributed-autonomous-loop.yml"
+    )
+    source = path.read_text(encoding="utf-8")
+    concurrency = source.split("concurrency:", 1)[1].split("\\njobs:", 1)[0]
+    assert "cancel-in-progress: false" in concurrency
+    assert "queue: max" not in concurrency
