@@ -4,12 +4,12 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), {
 });
 
 const encoder = new TextEncoder();
-const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)))
+  .replaceAll("=", "").replaceAll("+", "-").replaceAll("/", "_");
   .replace(/=/g, "").replace(/\\+/g, "-").replace(/\\//g, "_");
 
-function pemBytes(pem) {
-  const normalized = String(pem || "").replace(/\\\\n/g, "\n");
-  const body = normalized.replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\\s/g, "");
+  const normalized = String(pem || "").split("\\n").join("\n");
+  const body = normalized.split("-----BEGIN PRIVATE KEY-----").join("")
+    .split("-----END PRIVATE KEY-----").join("").replaceAll("\r", "").replaceAll("\n", "").replaceAll(" ", "").replaceAll("\t", "");
   if (!body || !/^[A-Za-z0-9+/=]+$/.test(body)) throw new Error("invalid GitHub App private key");
   return Uint8Array.from(atob(body), (char) => char.charCodeAt(0));
 }
@@ -152,9 +152,13 @@ export class OrcaWriteBroker {
     if (prior) return json({ error: "operation outcome is already recorded as in-flight or uncertain; manual reconciliation required" }, 409);
 
     const repository = String(this.env.GITHUB_REPOSITORY || "");
-    if (!/^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$/.test(repository)) {
+    const repositoryParts = repository.split("/");
+    if (repositoryParts.length !== 2 ||
+        !/^[A-Za-z0-9_.-]+$/.test(repositoryParts[0]) ||
+        !/^[A-Za-z0-9_.-]+$/.test(repositoryParts[1])) {
       return json({ error: "fixed GitHub repository is not configured" }, 503);
     }
+    const [owner, repo] = repositoryParts;
     const [owner, repo] = repository.split("/");
     await this.state.storage.put(recordKey, {
       state: "in_flight", task_id: taskId, started_at: new Date().toISOString(),
