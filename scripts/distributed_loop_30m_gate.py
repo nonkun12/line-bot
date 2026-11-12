@@ -48,6 +48,12 @@ def evaluate_budget_snapshot(payload: Any, *, now: datetime) -> dict[str, Any]:
             raise GateBlocked("budget_source_missing")
         if source.get("enabled") is not True:
             raise GateBlocked("budget_source_not_confirmed_enabled")
+        if (source.get("enforcement_eligible") is not True
+                or source.get("quality") != "exact"
+                or source.get("limit_verified") is not True
+                or not isinstance(source.get("limit_evidence_id"), str)
+                or not source["limit_evidence_id"].strip()):
+            raise GateBlocked("budget_limit_not_authoritatively_verified")
         if (not isinstance(source.get("unit"), str) or not source["unit"].strip()
                 or not isinstance(source.get("limit_source"), str) or not source["limit_source"].strip()):
             raise GateBlocked("budget_unit_or_limit_evidence_missing")
