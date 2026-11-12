@@ -52,7 +52,7 @@ MODEL = "openai/gpt-oss-20b"
 DEPLOY_SYNC_MARKER = "2026-09-12-line-voice-e2e"
 
 
-def _register_orca_task(message: str, message_id: str):
+def _register_orca_task(message: str, message_id: str, user_id: str | None = None):
     """Explicit LINE task intake only; stores a task in Cloudflare D1 without executing it."""
     prefixes = ("タスク登録:", "タスク登録：")
     prefix = next((item for item in prefixes if message.startswith(item)), None)
@@ -62,16 +62,21 @@ def _register_orca_task(message: str, message_id: str):
     request_text = message[len(prefix):].strip()
     if not request_text:
         return False, "タスク内容が空です。「タスク登録: 依頼内容」の形式で送ってください。", False
+    if not request_text.startswith(("アプリ開発:", "アプリ開発：")):
+        return False, "現在のOrca実行対象はアプリ開発のみです。「タスク登録: アプリ開発: 依頼内容」の形式で送ってください。", False
     if len(request_text.encode("utf-8")) > 6000:
         return False, "依頼文が長すぎます。6,000バイト以内にしてください。", False
     if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN:
         return False, "Cloudflare受付設定が未完了です。依頼は登録されていません。", False
 
-    payload = {
-        "task_id": f"line-{uuid.uuid4().hex}",
-        "request_text": request_text,
-        "source_event_id": str(message_id),
-    }
+    from core.orca_task_intake import build_task_payload
+
+    payload = build_task_payload(
+        task_id=f"line-{uuid.uuid4().hex}",
+        request_text=request_text,
+        message_id=message_id,
+        user_id=user_id,
+    )
     try:
         response = httpx.post(
             ORCA_TASK_API_URL,
@@ -249,7 +254,7 @@ def handle_message_event(event):
             return
 
         # Explicit Cloudflare app-development intake remains isolated.
-        intake_result = _register_orca_task(text, message_id)
+        intake_result = _register_orca_task(text, message_id, user_id=user_id)
         if intake_result is not None:
             accepted, intake_reply, retryable = intake_result
             if retryable:
