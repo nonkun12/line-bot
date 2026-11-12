@@ -9,6 +9,7 @@ class Storage {
   values = new Map();
   async get(key) { return this.values.get(key); }
   async put(key, value) { this.values.set(key, structuredClone(value)); }
+  async delete(key) { this.values.delete(key); }
   async list({ prefix = "", limit = 1000 } = {}) {
     return new Map([...this.values.entries()].filter(([key]) => key.startsWith(prefix)).slice(0, limit));
   }
