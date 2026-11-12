@@ -66,7 +66,7 @@ test("worst status wins when multiple sources cross thresholds", () => {
   assert.equal(result.allowActionsDispatch, false);
 });
 test("missing telemetry and missing required sources fail closed", () => {
-  assert.equal(evaluate(undefined).status, "BLOCKED");
+  assert.equal(evaluate(null).status, "BLOCKED");
   assert.equal(evaluate(snapshots().slice(0, 2)).reason, "required_usage_source_missing");
 });
 test("stale, too-far-future, malformed and out-of-period snapshots fail closed", () => {
