@@ -187,9 +187,23 @@ new_sqlite_classes = ["OrcaWriteBroker"]
     def setUp(self):
         self.sql("DELETE FROM notification_outbox; DELETE FROM task_approval_nonces; "
                  "DELETE FROM task_approvals; DELETE FROM tasks;")
+        self.set_budget_state("CLEAR", observed_at="now")
         status, result = self.set_hold("off")
         if status != 200:
             raise RuntimeError(f"local Durable Object HOLD release failed: {result}")
+
+    def set_budget_state(self, status, *, latched=False, observed_at="now", release_approved=False):
+        allowed = {"CLEAR", "WARN", "SUPPRESS", "STOP", "BLOCKED"}
+        if status not in allowed:
+            raise ValueError("invalid test budget status")
+        observed = "NULL" if observed_at is None else ("CURRENT_TIMESTAMP" if observed_at == "now" else f"'{observed_at}'")
+        self.sql(
+            "UPDATE budget_guard_state SET "
+            f"status='{status}', reason='integration fixture', "
+            f"stop_latched={1 if latched else 0}, "
+            f"release_approved={1 if release_approved else 0}, "
+            f"observed_at={observed}, updated_at=CURRENT_TIMESTAMP WHERE singleton=1"
+        )
 
     def api(self, path, method="GET", body=None, owner=None, hold_operator=None):
         return request_json(self.base + path, method, body, owner, hold_operator)
@@ -241,6 +255,46 @@ new_sqlite_classes = ["OrcaWriteBroker"]
             "task_type": task_type,
             "max_tasks": max_tasks,
         })
+
+
+    def test_budget_guard_blocks_real_worker_task_intake_at_80_90_and_100_percent_statuses(self):
+        for budget_status in ("SUPPRESS", "STOP", "BLOCKED"):
+            self.set_budget_state(budget_status, latched=(budget_status == "STOP"))
+            status, body = self.create(f"budget-intake-{budget_status.lower()}")
+            self.assertEqual(status, 423, body)
+            self.assertEqual(body["budget_status"], budget_status)
+
+    def test_budget_guard_blocks_approval_and_claim_after_state_changes(self):
+        request_text = "アプリ開発: budget gate stage test"
+        self.assertEqual(self.create("budget-approval", request_text=request_text)[0], 201)
+        self.set_budget_state("STOP", latched=True)
+        status, denied = self.approve("budget-approval", request_text=request_text)
+        self.assertEqual(status, 423, denied)
+        self.assertEqual(denied["reason"], "budget_stop_latched")
+
+        self.set_budget_state("CLEAR")
+        self.assertEqual(self.approve("budget-approval", request_text=request_text)[0], 200)
+        self.set_budget_state("STOP", latched=True)
+        status, denied = self.api("/tasks/budget-approval/claim", "POST", {})
+        self.assertEqual(status, 423, denied)
+        self.assertEqual(denied["reason"], "budget_stop_latched")
+
+    def test_budget_guard_missing_or_stale_telemetry_fails_closed(self):
+        self.set_budget_state("CLEAR", observed_at=None)
+        status, missing = self.create("budget-missing-snapshot")
+        self.assertEqual(status, 423, missing)
+        self.assertEqual(missing["budget_status"], "BLOCKED")
+        self.set_budget_state("CLEAR", observed_at="2000-01-01T00:00:00Z")
+        status, stale = self.create("budget-stale-snapshot")
+        self.assertEqual(status, 423, stale)
+        self.assertEqual(stale["reason"], "budget_telemetry_stale_or_missing")
+
+    def test_concurrent_task_intake_is_denied_while_budget_stop_is_latched(self):
+        self.set_budget_state("STOP", latched=True)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(lambda i: self.create(f"budget-race-{i}"), range(8)))
+        self.assertEqual([status for status, _ in results], [423] * 8)
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM tasks;").strip().splitlines()[-1], "0")
 
     def test_initial_global_hold_blocks_intake_until_explicit_local_release(self):
         status, _ = self.set_hold("on")
