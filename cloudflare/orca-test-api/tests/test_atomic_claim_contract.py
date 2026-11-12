@@ -400,7 +400,7 @@ class AtomicClaimContractTests(unittest.TestCase):
         self.assertIn("new TextEncoder().encode(approvalKey).length < 32", source)
         self.assertIn("task.user_id !== userId", source)
         self.assertIn("issuedAt, expiresAt, nonce].join", source)
-        self.assertIn("status, lease_until, user_id FROM tasks", source)
+        self.assertIn("status, lease_until, user_id, task_type, max_tasks FROM tasks", source)
         self.assertIn("approval_nonce", source)
         self.assertIn("only explicit app-development tasks can be approved", source)
         self.assertIn('parsed.action === "approve"', source)
