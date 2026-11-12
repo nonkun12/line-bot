@@ -318,3 +318,7 @@ migrations_dir = "migrations"
         })
         self.assertEqual(status, 409)
         self.assertIn("invalid", denied["error"])
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
