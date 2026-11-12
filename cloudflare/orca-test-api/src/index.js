@@ -457,7 +457,6 @@ export default {
         return json({ error: "HOLD transition failed; broker state remains authoritative" }, 503);
       }
       }
-    }
     if (url.pathname === "/control/global-hold/reconcile" && request.method === "POST") {
       const supplied = request.headers.get("x-orca-hold-operator") || "";
       if (!env.ORCA_HOLD_OPERATOR_TOKEN || !safeEqual(supplied, env.ORCA_HOLD_OPERATOR_TOKEN)) {
