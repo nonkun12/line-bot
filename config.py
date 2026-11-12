@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import httpx
 import certifi
@@ -36,6 +37,7 @@ N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "")
 VOICE_PUBLIC_BASE_URL = os.environ.get("VOICE_PUBLIC_BASE_URL", "https://line-bot-yvea.onrender.com").rstrip("/")
 ORCA_TASK_API_URL = os.environ.get("ORCA_TASK_API_URL", "").strip()
 ORCA_TASK_API_TOKEN = os.environ.get("ORCA_TASK_API_TOKEN", "").strip()
+ORCA_TASK_APPROVAL_HMAC_KEY = os.environ.get("ORCA_TASK_APPROVAL_HMAC_KEY", "").strip()
 
 AI_APP_BUILDER_URL = os.environ.get("AI_APP_BUILDER_URL", "")
 AI_APP_BUILDER_SHARED_SECRET = os.environ.get("AI_APP_BUILDER_SHARED_SECRET", "")
@@ -155,8 +157,10 @@ def _approve_orca_distributed_loop_task(message: str, user_id: str | None):
     task_id = message[len(prefix):].strip()
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
         return False, "Task IDの形式が正しくありません。"
-    from core.orca_task_approval import is_valid_line_user_id
-    from core.orca_distributed_loop_approval import build_distributed_loop_approval_payload
+    from core.orca_distributed_loop_approval import (
+        build_distributed_loop_approval_payload,
+        is_valid_line_user_id,
+    )
     if not is_valid_line_user_id(user_id):
         return False, "LINE本人確認ができないため承認できません。"
     if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN or len(ORCA_TASK_APPROVAL_HMAC_KEY) < 32:
