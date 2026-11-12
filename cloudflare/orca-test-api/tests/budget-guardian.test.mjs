@@ -5,7 +5,7 @@ import { evaluateBudgetGuard } from "../src/budget-guardian.mjs";
 const now = "2026-11-12T03:00:00.000Z";
 const periodStart = "2026-11-01T00:00:00.000Z";
 const periodEnd = "2026-12-01T00:00:00.000Z";
-const names = ["cloudflare_workers", "cloudflare_d1", "github_actions"];
+const names = ["cloudflare_workers", "cloudflare_d1", "cloudflare_durable_objects"];
 
 function snapshots(overrides = {}) {
   return names.map((name) => ({
@@ -32,7 +32,7 @@ test("70% is WARN and permits work; 69.99% remains CLEAR", () => {
 });
 test("80% and 89.99% suppress new tasks and dispatch", () => {
   for (const percent of [80, 89.99]) {
-    const result = evaluate(snapshots({ github_actions: { used: percent } }));
+    const result = evaluate(snapshots({ cloudflare_durable_objects: { used: percent } }));
     assert.equal(result.status, "SUPPRESS");
     assert.equal(result.allowNewTasks, false);
     assert.equal(result.allowActionsDispatch, false);
@@ -59,7 +59,7 @@ test("worst status wins when multiple sources cross thresholds", () => {
   const result = evaluate(snapshots({
     cloudflare_workers: { used: 70 },
     cloudflare_d1: { used: 80 },
-    github_actions: { used: 90 },
+    cloudflare_durable_objects: { used: 90 },
   }));
   assert.equal(result.status, "STOP");
   assert.equal(result.allowNewTasks, false);
@@ -86,7 +86,7 @@ test("unknown or telemetry-supplied disabled state blocks instead of bypassing a
   const unknown = snapshots();
   delete unknown[0].enabled;
   assert.equal(evaluate(unknown).status, "BLOCKED");
-  const disabled = evaluate(snapshots({ github_actions: { enabled: false } }));
+  const disabled = evaluate(snapshots({ cloudflare_durable_objects: { enabled: false } }));
   assert.equal(disabled.status, "BLOCKED");
   assert.equal(disabled.allowNewTasks, false);
   assert.equal(disabled.allowActionsDispatch, false);
