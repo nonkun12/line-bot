@@ -360,3 +360,25 @@ def test_publish_and_durable_state_updates_recheck_stop_controls():
         assert "CONTROL_TOWER_KILL_SWITCH,,}" in block
         assert "git fetch --quiet --no-tags --depth=1 origin main" in block
         assert "git cat-file -e FETCH_HEAD:.autonomous-loop.stop" in block
+
+
+def test_distributed_loop_requires_fresh_budget_guardian_state_before_any_execution():
+    path = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "distributed-autonomous-loop.yml"
+    )
+    source = path.read_text(encoding="utf-8")
+    gate = source.split("  budget-gate:", 1)[1].split("  cadence-gate:", 1)[0]
+    assert "secrets.ORCA_CLOUDFLARE_D1_READ_TOKEN" in gate
+    assert "secrets.ORCA_CLOUDFLARE_ACCOUNT_ID" in gate
+    assert "secrets.ORCA_BUDGET_GUARD_D1_DATABASE_ID" in gate
+    assert "budget_guard_state" in gate
+    assert 'row.get("status") not in ("CLEAR", "WARN")' in gate
+    assert 'row["stop_latched"] != 0' in gate
+    assert "timedelta(minutes=90)" in gate
+    assert "timedelta(minutes=5)" in gate
+    assert "needs: budget-gate" in source
+    assert "needs: [budget-gate, cadence-gate]" in source
+    assert "needs.budget-gate.result == 'success'" in source
