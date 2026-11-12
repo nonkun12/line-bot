@@ -324,4 +324,39 @@ def test_adaptive_schedule_never_accumulates_an_unbounded_run_queue():
     source = path.read_text(encoding="utf-8")
     concurrency = source.split("concurrency:", 1)[1].split("\njobs:", 1)[0]
     assert "cancel-in-progress: false" in concurrency
-    assert "queue: max" in concurrency
+    assert "queue: 1" in concurrency
+    assert "queue: max" not in concurrency
+
+
+def test_stop_watcher_fails_closed_when_remote_control_cannot_be_verified():
+    path = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "distributed-autonomous-loop.yml"
+    )
+    source = path.read_text(encoding="utf-8")
+    watcher = source.split("STOP_FILE=/tmp/line-bot-autonomous-loop.stop", 1)[1].split(
+        "POLLER_PID=$!", 1
+    )[0]
+    assert "if ! git fetch --quiet --no-tags --depth=1 origin main" in watcher
+    assert 'touch "$STOP_FILE"' in watcher
+    assert "git cat-file -e FETCH_HEAD:.autonomous-loop.stop" in watcher
+
+
+def test_publish_and_durable_state_updates_recheck_stop_controls():
+    path = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "distributed-autonomous-loop.yml"
+    )
+    source = path.read_text(encoding="utf-8")
+    publish = source.split("- name: Publish verified development branch", 1)[1].split(
+        "- name: Persist completed task state", 1
+    )[0]
+    persist = source.split("- name: Persist completed task state", 1)[1]
+    for block in (publish, persist):
+        assert "CONTROL_TOWER_KILL_SWITCH,,}" in block
+        assert "git fetch --quiet --no-tags --depth=1 origin main" in block
+        assert "git cat-file -e FETCH_HEAD:.autonomous-loop.stop" in block
