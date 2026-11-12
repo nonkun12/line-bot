@@ -27,6 +27,11 @@ def parse_time(value: Any) -> datetime:
 def evaluate_budget_snapshot(payload: Any, *, now: datetime) -> dict[str, Any]:
     if not isinstance(payload, dict) or not isinstance(payload.get("sources"), list):
         raise GateBlocked("budget_snapshot_missing")
+    failures = payload.get("consecutive_failures")
+    if isinstance(failures, bool) or not isinstance(failures, int) or failures < 0:
+        raise GateBlocked("failure_counter_invalid")
+    if failures >= 3:
+        raise GateBlocked("consecutive_failure_limit_reached")
     now = now.astimezone(timezone.utc)
     by_name = {}
     for source in payload["sources"]:
@@ -43,6 +48,9 @@ def evaluate_budget_snapshot(payload: Any, *, now: datetime) -> dict[str, Any]:
             raise GateBlocked("budget_source_missing")
         if source.get("enabled") is not True:
             raise GateBlocked("budget_source_not_confirmed_enabled")
+        if (not isinstance(source.get("unit"), str) or not source["unit"].strip()
+                or not isinstance(source.get("limit_source"), str) or not source["limit_source"].strip()):
+            raise GateBlocked("budget_unit_or_limit_evidence_missing")
         used, limit = source.get("used"), source.get("limit")
         if (isinstance(used, bool) or not isinstance(used, (int, float))
                 or isinstance(limit, bool) or not isinstance(limit, (int, float))
@@ -59,7 +67,7 @@ def evaluate_budget_snapshot(payload: Any, *, now: datetime) -> dict[str, Any]:
         percent = float(used) / float(limit) * 100.0
         state = ("STOP" if percent >= 90 else "SUPPRESS" if percent >= 80
                  else "WARN" if percent >= 70 else "CLEAR")
-        results.append({"name": name, "percent": percent, "status": state})
+        results.append({"name": name, "unit": source["unit"], "percent": percent, "status": state})
     rank = {"CLEAR": 0, "WARN": 1, "SUPPRESS": 2, "STOP": 3}
     worst = max(results, key=lambda row: rank[row["status"]])["status"]
     if worst in {"SUPPRESS", "STOP"}:
