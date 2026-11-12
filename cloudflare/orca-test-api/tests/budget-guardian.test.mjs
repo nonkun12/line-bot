@@ -71,7 +71,7 @@ test("missing telemetry and missing required sources fail closed", () => {
 });
 test("stale, too-far-future, malformed and out-of-period snapshots fail closed", () => {
   for (const override of [
-    { observed_at: "2026-11-12T01:29:59.999Z" },
+    { observed_at: "2026-11-12T02:49:59.999Z" },
     { observed_at: "2026-11-12T03:05:00.001Z" },
     { used: -1 }, { limit: 0 },
     { period_start: "2026-12-01T00:00:00.000Z" },
@@ -79,7 +79,7 @@ test("stale, too-far-future, malformed and out-of-period snapshots fail closed",
   ]) assert.equal(evaluate(snapshots({ cloudflare_workers: override })).status, "BLOCKED");
 });
 test("freshness and future-skew exact boundaries are accepted", () => {
-  assert.equal(evaluate(snapshots({ cloudflare_workers: { observed_at: "2026-11-12T01:30:00.000Z" } })).status, "CLEAR");
+  assert.equal(evaluate(snapshots({ cloudflare_workers: { observed_at: "2026-11-12T02:50:00.000Z" } })).status, "CLEAR");
   assert.equal(evaluate(snapshots({ cloudflare_workers: { observed_at: "2026-11-12T03:05:00.000Z" } })).status, "CLEAR");
 });
 test("unknown or telemetry-supplied disabled state blocks instead of bypassing a spend domain", () => {
