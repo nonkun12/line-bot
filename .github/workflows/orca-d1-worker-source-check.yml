@@ -27,6 +27,9 @@ jobs:
       - name: Run SQLite migration contract tests
         run: python -m unittest discover -s cloudflare/orca-test-api/tests -v
 
+      - name: Run ORCA Budget Guardian simulated-environment tests
+        run: node --test cloudflare/orca-test-api/tests/budget-guardian.test.mjs
+
       - name: Install Wrangler for isolated local D1 integration tests
         run: npm install --global wrangler@4
 
