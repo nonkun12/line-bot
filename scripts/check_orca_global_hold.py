@@ -6,6 +6,7 @@ import os
 import sys
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 from typing import Callable, Any
 
 
@@ -14,8 +15,12 @@ def read_global_hold(
     api_token: str,
     opener: Callable[..., Any] = urlopen,
 ) -> dict[str, object]:
-    if not isinstance(api_url, str) or not api_url.startswith(("https://", "http://")):
+    if not isinstance(api_url, str):
         raise RuntimeError("ORCA_TASK_API_URL is missing or invalid")
+    parsed = urlsplit(api_url)
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+            or parsed.query or parsed.fragment):
+        raise RuntimeError("ORCA_TASK_API_URL must be a clean HTTPS base URL")
     if not isinstance(api_token, str) or not api_token.strip():
         raise RuntimeError("ORCA_TASK_API_TOKEN is missing")
     endpoint = api_url.rstrip("/") + "/control/global-hold"
