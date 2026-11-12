@@ -65,7 +65,7 @@ workflow protections are configured, execution remains fail-closed.
 
 All three PRs are source-only and remain unmerged. The deployed Worker does
 not yet expose the proposed endpoints. Do not enable or dispatch this worker
-against the current API until the PRs have been reviewed, migrations 0002, 0003, and 0005 have been reconciled with the live D1 schema and applied once, the Worker
+against the current API until the PRs have been reviewed, migrations 0002, 0003, 0004, and 0005 have been reconciled with the live D1 schema and applied once, the Worker
 source has been deployed through a separately approved rollout, and required
 secrets/protections have been configured.
 
