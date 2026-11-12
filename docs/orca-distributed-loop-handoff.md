@@ -29,30 +29,36 @@ A distributed-loop task is distinct from app development:
 The pure payload builder and tests define this contract. They intentionally
 perform no network I/O.
 
-## Required implementation before activation
+## Implementation status
 
-1. Extend the D1 schema with a non-null, constrained task type and bounded
-   loop count. Existing app-development rows must migrate explicitly to
-   `app_development`; unknown or null legacy values must not become executable.
-2. Extend task creation and duplicate-event checks to include task type,
-   owner, command body, and loop count. A reused LINE event with different
-   data must return conflict.
-3. Extend LINE intake with a separate exact-command route. Read-only status
-   requests must remain read-only; app-development intake must remain unchanged.
-4. Extend approval signing so the signature binds task type and max task count
-   in addition to task ID, request hash, owner, issue/expiry, and nonce.
-5. Extend D1 claim SQL to require Global HOLD explicitly off, a valid unused
-   approval, the expected task type, and a bounded attempt count. Preserve
-   atomic lease acquisition and one-use approval consumption.
-6. Add a dedicated worker handler for `distributed_loop`. It must not pass
-   loop commands through the app generator. It must validate the 1–4 cap,
+Implemented in stacked Draft PR #1337 (based on #1333):
+
+1. Migration 0006 adds constrained task type and max-task count to tasks and
+   approvals. Existing rows default to `app_development` and `max_tasks=1`;
+   no legacy task is promoted to a loop.
+2. D1 task creation validates the exact recognized loop command and 1–4 bound.
+   Duplicate LINE event checks include owner, body, task type, and bound.
+3. App-development approval protocol v1 remains compatible. Distributed-loop
+   approval protocol v2 binds task ID, request hash, owner, task type, max-task
+   count, issue/expiry, and nonce.
+4. The generic worker list defaults to `app_development`. The generic claim
+   endpoint rejects `distributed_loop` with HTTP 409 until a dedicated
+   executor is implemented. This is an intentional fail-closed barrier.
+
+Still required before activation:
+
+5. Extend the actual LINE webhook intake with a separate exact-command route.
+   Read-only status requests must remain read-only; app-development intake
+   must remain unchanged. Bind the verified LINE event owner and event ID.
+6. Implement a dedicated distributed-loop worker handler. It must not pass
+   loop commands through the app generator. It must enforce the 1–4 cap,
    recheck Global HOLD before every external write, and produce Task ID-scoped
    evidence.
-7. Keep the existing direct-dispatch route available until the replacement
-   has passed signed webhook → D1 intake → owner approval → claim → bounded
-   execution → completion/outbox tests on an isolated environment.
-8. Only after operator-approved cutover may the legacy workflows be disabled.
-   Never merge #1331 as a shortcut around a missing replacement path.
+7. Add end-to-end isolated tests for signed webhook → D1 intake → owner
+   approval → dedicated claim → bounded execution → completion/outbox.
+8. Keep the existing direct-dispatch route available until replacement
+   verification is complete. Only after operator-approved cutover may the
+   legacy workflows be disabled. Never merge #1331 as a shortcut.
 
 ## Safety invariants
 
