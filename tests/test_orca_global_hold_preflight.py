@@ -51,7 +51,13 @@ class OrcaGlobalHoldPreflightTests(unittest.TestCase):
                 self.call(payload)
 
     def test_missing_api_url_or_token_fails_closed_without_network(self):
-        for url, token in (("", "secret"), ("https://orca.example", "")):
+        for url, token in (
+            ("", "secret"),
+            ("https://orca.example", ""),
+            ("http://orca.example", "secret"),
+            ("https://user:pass@orca.example", "secret"),
+            ("https://orca.example?token=leak", "secret"),
+        ):
             with self.subTest(url=url, token=token), self.assertRaises(RuntimeError):
                 read_global_hold(url, token, opener=lambda *_a, **_k: self.fail("network must not be called"))
 
