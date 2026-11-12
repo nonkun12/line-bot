@@ -200,3 +200,105 @@ def test_line_notification_failure_does_not_block_verified_continuation():
     source = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     notification = source.split("      - name: Notify LINE of distributed loop final report", 1)[1].split("      - name:", 1)[0]
     assert "continue-on-error: true" in notification
+
+
+def _run_real_cadence_decision(tmp_path, tasks, completed, recovery, minute):
+    import json
+    import sys
+
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "distributed-autonomous-loop.yml"
+    )
+    source = workflow.read_text(encoding="utf-8")
+    marker = "      - name: Decide hourly or 30-minute execution"
+    start = source.index(marker)
+    run = source.index("        run: |\\n", start) + len("        run: |\\n")
+    end = source.index("\\n      - name:", run)
+    script = textwrap.dedent(source[run:end])
+    state_path = tmp_path / "cadence-state.json"
+    script = script.replace("/tmp/cadence-state.json", str(state_path))
+    queue_path = tmp_path / ".github" / "autonomous-loop-tasks.json"
+    queue_path.parent.mkdir(parents=True)
+    queue_path.write_text(json.dumps({"tasks": tasks}), encoding="utf-8")
+    state_path.write_text(
+        json.dumps({"completed": completed, "recovery_ai": {"tasks": recovery}}),
+        encoding="utf-8",
+    )
+    output = tmp_path / "github-output"
+    env = os.environ.copy()
+    env.update({"UTC_MINUTE": minute, "GITHUB_OUTPUT": str(output)})
+    result = subprocess.run(
+        [sys.executable, "-"],
+        input=script,
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return result, output.read_text(encoding="utf-8") if output.exists() else ""
+
+
+def test_adaptive_cadence_executes_hourly_at_low_load_and_every_30m_at_high_load(tmp_path):
+    def task(task_id):
+        return {"id": task_id}
+
+    def ready(task_id):
+        return {"held": False, "resume_requires_review": False}
+
+    cases = [
+        (0, "00", "true", "0"),
+        (1, "30", "false", "1"),
+        (2, "30", "true", "2"),
+        (4, "30", "true", "4"),
+    ]
+    for count, minute, expected_run, expected_backlog in cases:
+        case_dir = tmp_path / f"case-{count}-{minute}"
+        case_dir.mkdir()
+        tasks = [task(f"task-{i}") for i in range(count)]
+        recovery = {f"task-{i}": ready(f"task-{i}") for i in range(count)}
+        result, output = _run_real_cadence_decision(
+            case_dir, tasks, [], recovery, minute
+        )
+        assert result.returncode == 0, result.stderr
+        assert f"run_loop={expected_run}" in output
+        assert f"backlog={expected_backlog}" in output
+
+
+def test_adaptive_cadence_excludes_completed_held_and_review_tasks(tmp_path):
+    tasks = [{"id": "done"}, {"id": "held"}, {"id": "review"}]
+    recovery = {
+        "held": {"held": True, "resume_requires_review": False},
+        "review": {"held": False, "resume_requires_review": True},
+    }
+    result, output = _run_real_cadence_decision(
+        tmp_path, tasks, ["done"], recovery, "30"
+    )
+    assert result.returncode == 0, result.stderr
+    assert "run_loop=false" in output
+    assert "backlog=0" in output
+
+
+def test_adaptive_cadence_fails_closed_on_missing_or_ambiguous_recovery_evidence(tmp_path):
+    tasks = [{"id": "pending"}]
+    for recovery in ({}, {"pending": {"held": False}}):
+        case_dir = tmp_path / f"case-{len(list(tmp_path.iterdir()))}"
+        case_dir.mkdir()
+        result, output = _run_real_cadence_decision(
+            case_dir, tasks, [], recovery, "30"
+        )
+        assert result.returncode != 0
+        assert output == ""
+
+
+def test_adaptive_cadence_fails_closed_on_duplicate_task_ids(tmp_path):
+    tasks = [{"id": "same"}, {"id": "same"}]
+    recovery = {"same": {"held": False, "resume_requires_review": False}}
+    result, output = _run_real_cadence_decision(
+        tmp_path, tasks, [], recovery, "30"
+    )
+    assert result.returncode != 0
+    assert output == ""
