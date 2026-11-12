@@ -10,6 +10,8 @@ def snapshots(overrides=None):
     return [{"name": name, "enabled": True, "used": 10, "limit": 100,
              "unit": {"cloudflare_workers": "requests", "cloudflare_d1": "rows", "github_actions": "runner_minutes"}[name],
              "limit_source": "verified_internal_limit",
+             "quality": "exact", "enforcement_eligible": True,
+             "limit_verified": True, "limit_evidence_id": "fixture-evidence-001",
              "observed_at": OBSERVED, "period_start": START, "period_end": END,
              **overrides.get(name, {})}
             for name in ("cloudflare_workers", "cloudflare_d1", "github_actions")]
@@ -36,6 +38,22 @@ class BudgetGateTests(unittest.TestCase):
                     {"sources": snapshots({"cloudflare_d1": {field: ""}}), "consecutive_failures": 0},
                     now=NOW,
                 )
+
+
+    def test_estimated_or_unverified_snapshots_never_allow(self):
+        invalid_overrides = [
+            {"quality": "estimated"},
+            {"enforcement_eligible": False},
+            {"limit_verified": False},
+            {"limit_evidence_id": ""},
+        ]
+        for override in invalid_overrides:
+            with self.subTest(override=override):
+                with self.assertRaisesRegex(GateBlocked, "budget_limit_not_authoritatively_verified"):
+                    evaluate_budget_snapshot(
+                        {"sources": snapshots({"cloudflare_workers": override}), "consecutive_failures": 0},
+                        now=NOW,
+                    )
 
     def test_three_consecutive_failures_block(self):
         with self.assertRaisesRegex(GateBlocked, "consecutive_failure_limit_reached"):
