@@ -102,6 +102,14 @@ export class OrcaWriteBroker {
     return this.state.blockConcurrencyWhile(() => this.handle(request));
   }
 
+  async mirrorGlobalHold(value) {
+    if (!this.env.DB) throw new Error("D1 Global HOLD mirror binding unavailable");
+    const result = await this.env.DB.prepare(
+      "UPDATE system_controls SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE control_key = 'global_hold'"
+    ).bind(value).run();
+    if (result?.meta?.changes !== 1) throw new Error("D1 Global HOLD mirror row is missing");
+  }
+
   async unresolvedOperations() {
     const records = await this.state.storage.list({ prefix: "issue:", limit: 2001 });
     if (records.size >= 2001) return 2001;
@@ -122,6 +130,7 @@ export class OrcaWriteBroker {
         value, operator_id: "system", reason: "unresolved GitHub write outcome",
         changed_at: new Date().toISOString(),
       });
+      try { await this.mirrorGlobalHold("on"); } catch { /* DO remains fail-closed */ }
     }
     return { clear: value === "off" && unresolved === 0, value, blocked: value !== "off", unresolved_operations: unresolved };
   }
@@ -145,6 +154,7 @@ export class OrcaWriteBroker {
           changed_at: new Date().toISOString(),
         };
         await this.state.storage.put("global_hold", draining);
+        try { await this.mirrorGlobalHold("on"); } catch { /* DO remains fail-closed */ }
         return json({ clear: false, value: "draining", blocked: true, acknowledged: false,
           unresolved_operations: unresolved, error: "uncertain GitHub writes must be reconciled before HOLD transition" }, 409);
       }
@@ -154,7 +164,17 @@ export class OrcaWriteBroker {
         reason: String(body.reason || (body.value === "on" ? "operator requested HOLD" : "")).trim().slice(0, 500),
         changed_at: new Date().toISOString(),
       };
-      await this.state.storage.put("global_hold", event);
+      if (body.value === "on") {
+        // Persist the restrictive broker state before mirroring to D1.
+        await this.state.storage.put("global_hold", event);
+        try { await this.mirrorGlobalHold("on"); }
+        catch { return json({ error: "broker HOLD is on but D1 mirror failed" }, 503); }
+      } else {
+        // D1 is made restrictive/consistent before the broker is released.
+        try { await this.mirrorGlobalHold("off"); }
+        catch { return json({ error: "D1 mirror failed; broker HOLD remains engaged" }, 503); }
+        await this.state.storage.put("global_hold", event);
+      }
       await this.state.storage.put(`hold_event:${Date.now()}:${crypto.randomUUID()}`, event);
       const history = await this.state.storage.list({ prefix: "hold_event:", limit: 101 });
       for (const key of [...history.keys()].slice(0, Math.max(0, history.size - 100))) {
