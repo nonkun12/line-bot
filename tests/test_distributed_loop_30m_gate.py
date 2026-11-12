@@ -26,7 +26,7 @@ class BudgetGateTests(unittest.TestCase):
         for value in (float("nan"), float("inf"), float("-inf")):
             with self.assertRaisesRegex(GateBlocked, "budget_values_invalid"):
                 evaluate_budget_snapshot(
-                    {"sources": snapshots({"cloudflare_d1": {"used": value}})}, now=NOW
+                    {"sources": snapshots({"cloudflare_d1": {"used": value}}), "consecutive_failures": 0}, now=NOW
                 )
 
     def test_missing_unit_or_limit_evidence_blocks(self):
