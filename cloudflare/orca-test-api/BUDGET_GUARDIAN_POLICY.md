@@ -33,6 +33,28 @@ These are conservative ORCA policy thresholds, not vendor quota guarantees. Limi
 - The state writer, vendor telemetry collectors, authenticated human release workflow, and GitHub Actions dispatch gate are NOT implemented in this increment. Until a trusted monitor populates the D1 state and the Actions path is separately gated, this is an isolated admission-gate integration, not an active production budget monitor or complete Actions stop switch.
 - Do not activate scheduling, apply D1 migrations to a remote database, configure secrets, deploy, or change production settings as part of this PR.
 
+## Workers Free quota reference (verify against the live account before activation)
+
+The following documented Workers Free limits are the initial reference only. The collector must verify the actual account plan and current limits; it must not silently substitute these values if the account's plan or limits differ.
+
+| Domain | Metered dimensions to monitor | Documented Workers Free allowance |
+|---|---|---|
+| Workers | Inbound requests per UTC day | 100,000/day |
+| Workers | CPU time per invocation | 10 ms/invocation (hard per-invocation limit, not a daily pool) |
+| D1 | Rows read per UTC day | 5,000,000/day |
+| D1 | Rows written per UTC day | 100,000/day |
+| D1 | Total storage | 5 GB |
+| Durable Objects (SQLite) | Requests per UTC day | 100,000/day |
+| Durable Objects (SQLite) | Compute duration per UTC day | 13,000 GB-s/day |
+| Durable Objects (SQLite) | Rows read / written per UTC day | 5,000,000 / 100,000 per day |
+| Durable Objects (SQLite) | Total storage | 5 GB |
+
+References: [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/), [D1 metrics and analytics](https://developers.cloudflare.com/d1/observability/metrics-analytics/), and [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/).
+
+D1 GraphQL datasets include `d1AnalyticsAdaptiveGroups` and `d1StorageAdaptiveGroups`, with a 31-day retention window. However, D1 analytics records requests only when SQL execution is reached; failures before SQL execution are absent. Per-query Workers Binding metadata provides precise row counts, but account-wide totals require complete coverage of every D1 database. The collector must validate account-wide coverage, the current UTC-day window, and the source watermark before publishing a usable snapshot. Missing or delayed coverage remains BLOCKED.
+
+The 15-second live admission watcher also consumes quota: at most one Worker request, one Durable Object request, and a small D1 state read per poll. At 160 polls in a 40-minute run, that is up to 160 requests in each request-metered domain and 160 D1 row reads per run. The collector must include guardian overhead in account-wide totals rather than treating monitoring as free of quota impact.
+
 ## Snapshot contract
 Each required source snapshot contains name, explicit `enabled: true`, used and positive verified limit in the same unit, and ISO timestamps `observed_at`, `period_start`, `period_end`.
 
