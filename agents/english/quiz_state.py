@@ -132,6 +132,22 @@ def has_pending_quiz(user_id: str) -> bool:
             "SELECT 1 FROM english_pending_quiz WHERE user_id=?", (_user_key(user_id),)
         ).fetchone() is not None
 
+def get_pending_quiz_info(user_id: str) -> dict | None:
+    """Return detailed pending quiz info for a user, or None if no quiz pending."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT word, options_json, correct_option, created_at FROM english_pending_quiz WHERE user_id=?",
+            (_user_key(user_id),),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "word": row[0],
+            "options_json": row[1],
+            "correct_option": row[2],
+            "created_at": row[3],
+        }
+
 
 def grade_pending_quiz(user_id: str, answer: str) -> str | None:
     """Grade only an active quiz, then clear it so stale answers cannot be marked correct."""
