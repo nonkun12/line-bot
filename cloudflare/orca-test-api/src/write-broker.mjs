@@ -302,6 +302,7 @@ export class OrcaWriteBroker {
         const uncertain = response.status >= 500 || response.status === 408 || response.status === 429;
         await this.state.storage.put(recordKey, {
           state: uncertain ? "uncertain" : "rejected",
+          task_id: taskId, idempotency_key: key,
           http_status: response.status,
           updated_at: new Date().toISOString(),
         });
@@ -327,7 +328,8 @@ export class OrcaWriteBroker {
       return json(saved, 201);
     } catch (error) {
       await this.state.storage.put(recordKey, {
-        state: "uncertain", task_id: taskId, updated_at: new Date().toISOString(),
+        state: "uncertain", task_id: taskId, idempotency_key: key,
+        updated_at: new Date().toISOString(),
         error: String(error).slice(0, 300),
       });
       await this.state.storage.put("global_hold", {
