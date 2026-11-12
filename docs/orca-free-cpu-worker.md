@@ -65,8 +65,7 @@ workflow protections are configured, execution remains fail-closed.
 
 All three PRs are source-only and remain unmerged. The deployed Worker does
 not yet expose the proposed endpoints. Do not enable or dispatch this worker
-against the current API until the PRs have been reviewed, migrations 0002 and
-0003 have been reconciled with the live D1 schema and applied once, the Worker
+against the current API until the PRs have been reviewed, migrations 0002, 0003, and 0005 have been reconciled with the live D1 schema and applied once, the Worker
 source has been deployed through a separately approved rollout, and required
 secrets/protections have been configured.
 
@@ -88,6 +87,16 @@ secrets/protections have been configured.
   before reconciling D1 completion. A changed head, mismatched PR, unsafe diff,
   or failed test is blocked and reported; it is never treated as a successful
   result.
+- A pushed task branch is not trusted by its deterministic name alone. New
+  worker commits include `ORCA-Task-ID` and `ORCA-Request-SHA256` commit
+  trailers. If push succeeds but PR creation fails, the worker leaves the task
+  lease to expire rather than marking the task failed. On retry it fetches the
+  remote branch and accepts it only when both trailers match the authenticated
+  task, the commit is exactly one child of current `origin/main`, the remote
+  head remains unchanged throughout verification, the full diff passes the
+  new-app allowlist, and isolated tests pass again. Legacy branches without
+  these trailers, branches based on a changed main, mismatched provenance, or
+  any unverifiable state are blocked for manual review; no force-push occurs.
 - LINE notification delivery is at-least-once; duplicate pushes are possible
   if LINE accepts a message but the response is lost.
 - No secrets, webhook URL, Render service, Cloudflare Worker, D1 database,
