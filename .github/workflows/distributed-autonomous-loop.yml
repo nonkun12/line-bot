@@ -99,6 +99,7 @@ permissions:
 concurrency:
   group: distributed-autonomous-loop
   cancel-in-progress: false
+  queue: max
 
 jobs:
   # Read-only adaptive scheduler. Missing/invalid state fails closed.
