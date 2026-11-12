@@ -101,84 +101,64 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Read-only Budget Guardian gate. Missing credentials/state or stale telemetry blocks every execution path.
+  # Read-only admission preflight. Worker checks authoritative Durable Object HOLD + fresh D1 budget state.
   budget-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require read-only Cloudflare D1 access
+      - name: Require authenticated ORCA preflight access
         env:
-          CF_API_TOKEN: ${{ secrets.ORCA_CLOUDFLARE_D1_READ_TOKEN }}
-          CF_ACCOUNT_ID: ${{ secrets.ORCA_CLOUDFLARE_ACCOUNT_ID }}
-          D1_DATABASE_ID: ${{ secrets.ORCA_BUDGET_GUARD_D1_DATABASE_ID }}
+          ORCA_CONTROL_API_URL: ${{ secrets.ORCA_CONTROL_API_URL }}
+          ORCA_CONTROL_API_TOKEN: ${{ secrets.ORCA_CONTROL_API_TOKEN }}
           CONTROL_TOWER_KILL_SWITCH: ${{ vars.CONTROL_TOWER_KILL_SWITCH || 'false' }}
         run: |
           set -euo pipefail
           if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ]; then
-            echo "::error::Global kill switch is ON; Budget Guardian denies execution."
+            echo "::error::Global kill switch is ON; ORCA denies execution."
             exit 1
           fi
-          if [ -z "${CF_API_TOKEN}" ] || [ -z "${CF_ACCOUNT_ID}" ] || [ -z "${D1_DATABASE_ID}" ]; then
-            echo "::error::Budget Guardian credentials are missing; refusing execution."
+          if [ -z "${ORCA_CONTROL_API_URL}" ] || [ -z "${ORCA_CONTROL_API_TOKEN}" ]; then
+            echo "::error::ORCA preflight credentials are missing; refusing execution."
             exit 1
           fi
+          case "${ORCA_CONTROL_API_URL}" in
+            https://*) ;;
+            *) echo "::error::ORCA preflight URL must use HTTPS."; exit 1 ;;
+          esac
           response_file="$(mktemp)"
           trap 'rm -f "$response_file"' EXIT
-          curl --silent --show-error --fail-with-body \
-            --request POST \
-            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/d1/database/${D1_DATABASE_ID}/query" \
-            --header "Authorization: Bearer ${CF_API_TOKEN}" \
-            --header "Content-Type: application/json" \
-            --data '{"sql":"SELECT status, reason, stop_latched, observed_at FROM budget_guard_state WHERE singleton = 1"}' \
-            --output "$response_file"
-          python - "$response_file" <<'PY'
+          http_code="$(curl --silent --show-error \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request GET "${ORCA_CONTROL_API_URL%/}/control/loop-admission" \
+            --header "Authorization: Bearer ${ORCA_CONTROL_API_TOKEN}" \
+            --header "Accept: application/json")"
+          python - "$response_file" "$http_code" <<'PY'
           import json
           import sys
-          from datetime import datetime, timezone, timedelta
           from pathlib import Path
 
           def deny(reason):
-              print(f"::error::Budget Guardian BLOCKED: {reason}")
+              print(f"::error::ORCA admission BLOCKED: {reason}")
               raise SystemExit(1)
 
           try:
               payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           except Exception:
-              deny("Cloudflare D1 response is not valid JSON")
-          if not isinstance(payload, dict) or payload.get("success") is not True:
-              deny("Cloudflare D1 query did not succeed")
-          result = payload.get("result")
-          candidates = []
-          if isinstance(result, list):
-              candidates = [item for item in result if isinstance(item, dict) and isinstance(item.get("results"), list)]
-          elif isinstance(result, dict) and isinstance(result.get("results"), list):
-              candidates = [result]
-          if len(candidates) != 1 or candidates[0].get("success") is not True or len(candidates[0]["results"]) != 1:
-              deny("budget_guard_state query result is missing, failed, or ambiguous")
-          row = candidates[0]["results"][0]
-          if not isinstance(row, dict):
-              deny("budget_guard_state row is malformed")
-          if row.get("status") not in ("CLEAR", "WARN"):
-              deny(f"budget state is {row.get('status', 'UNKNOWN')}; only CLEAR/WARN may proceed")
-          if type(row.get("stop_latched")) is not int or row["stop_latched"] != 0:
-              deny("budget STOP latch is active or invalid")
-          observed = row.get("observed_at")
-          if not isinstance(observed, str) or not observed:
-              deny("budget telemetry timestamp is missing")
-          try:
-              timestamp = datetime.fromisoformat(observed.replace("Z", "+00:00"))
-          except ValueError:
-              deny("budget telemetry timestamp is invalid")
-          if timestamp.tzinfo is None:
-              deny("budget telemetry timestamp has no timezone")
-          now = datetime.now(timezone.utc)
-          age = now - timestamp.astimezone(timezone.utc)
-          if age > timedelta(minutes=90) or age < -timedelta(minutes=5):
-              deny("budget telemetry is stale or future-dated")
-          print(f"Budget Guardian PASS: status={row['status']}; observed_at={observed}; age_seconds={int(age.total_seconds())}")
+              deny("preflight response is not valid JSON")
+          if sys.argv[2] != "200":
+              detail = payload.get("error") or payload.get("budget_guard", {}).get("reason") if isinstance(payload, dict) else "no response detail"
+              deny(f"preflight HTTP {sys.argv[2]}: {detail}")
+          if not isinstance(payload, dict) or payload.get("allowed") is not True:
+              deny("preflight did not explicitly allow execution")
+          hold = payload.get("global_hold")
+          if not isinstance(hold, dict) or hold.get("clear") is not True or hold.get("value") != "off" or hold.get("blocked") is not False:
+              deny("authoritative Durable Object Global HOLD is active or unknown")
+          budget = payload.get("budget_guard")
+          if not isinstance(budget, dict) or budget.get("allowed") is not True or budget.get("status") not in ("CLEAR", "WARN"):
+              deny("Budget Guardian is not explicitly CLEAR/WARN")
+          print(f"ORCA admission PASS: Global HOLD clear; Budget Guardian={budget['status']}")
           PY
 
-  # Read-only adaptive scheduler. Missing/invalid state fails closed.
   cadence-gate:
     needs: budget-gate
     if: github.event_name == 'schedule' && needs.budget-gate.result == 'success'
