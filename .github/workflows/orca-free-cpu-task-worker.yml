@@ -36,10 +36,9 @@ jobs:
           python scripts/orca_free_cpu_worker.py poll
 
   execute:
-    if: ${{ github.ref == 'refs/heads/main' }}
     name: Execute signed-approved ORCA task ${{ needs.poll.outputs.task_id }}
     needs: poll
-    if: ${{ needs.poll.outputs.task_id != '' }}
+    if: ${{ github.ref == 'refs/heads/main' && needs.poll.outputs.task_id != '' }}
     runs-on: ubuntu-latest
     # Keep the job shorter than the API's 30-minute lease; expired work can be reclaimed.
     timeout-minutes: 25
