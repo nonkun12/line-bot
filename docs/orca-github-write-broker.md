@@ -57,8 +57,8 @@ This document is a design contract only. No Durable Object, GitHub App, secret, 
 A separate Draft PR now implements the first slice in
 `cloudflare/orca-test-api/src/write-broker.mjs`:
 
-- A Durable Object stores Global HOLD and serializes its requests using
-  `blockConcurrencyWhile`.
+- A Durable Object stores Global HOLD and serializes its requests using a per-instance Promise queue; `blockConcurrencyWhile` is startup-only
+  and is not used as a runtime mutex.
 - The Worker reads HOLD from the Durable Object. Missing binding/state and
   transport failures remain blocked.
 - HOLD transitions update D1 and the broker in fail-closed order: ON is set
