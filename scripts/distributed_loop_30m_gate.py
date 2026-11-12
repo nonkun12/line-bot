@@ -98,6 +98,13 @@ def decide_slot(runs: Any, *, current_run_id: str, now: datetime,
         return False, "minimum_30_minute_interval_not_elapsed"
     return True, "slot_available"
 
+def requires_slot_gate(event_name: str, continuation_depth: str) -> bool:
+    return event_name == "schedule" or (
+        event_name == "workflow_dispatch"
+        and continuation_depth.isdigit()
+        and int(continuation_depth) > 0
+    )
+
 def request_json(url: str, token: str, *, github: bool = False) -> Any:
     if not isinstance(url, str) or not url.startswith("https://") or not token:
         raise GateBlocked("required_endpoint_or_token_missing")
