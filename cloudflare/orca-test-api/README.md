@@ -8,12 +8,15 @@ This directory is the source-controlled successor for the separately deployed
 Review migrations `0002_atomic_claims_and_outbox.sql`,
 `0003_task_bound_approvals.sql`, and
 `0004_append_only_approval_nonce_history.sql`, and
-`0005_global_hold.sql` against the live D1 schema before applying them in order. Migration 0002 adds verified LINE user ID storage,
+`0005_global_hold.sql`, and `0006_typed_task_execution.sql` against the live D1 schema before applying them in order. Migration 0002 adds verified LINE user ID storage,
 lease fields, attempt count, and a durable notification outbox. Migration 0003
 adds the current task approval record. Migration 0004 adds the append-only
 nonce replay ledger and backfills the currently stored approval nonce. Migration
 0005 creates `system_controls` with `global_hold=on`; it must remain engaged
-until an operator explicitly authorizes a controlled rollout. Do not apply either migration until the live
+until an operator explicitly authorizes a controlled rollout. Migration 0006
+adds constrained `task_type` (`app_development` or `distributed_loop`) and
+`max_tasks` (1–4), backfilling existing tasks and approvals as
+`app_development` with `max_tasks=1`. Do not apply any migration until the live
 schema and migration history are confirmed. Migration 0002 uses ALTER TABLE
 and is not safe to re-run blindly.
 
@@ -23,9 +26,10 @@ All routes require `Authorization: Bearer <API_TOKEN>`.
 
 - `POST /tasks/:id/approve` verifies an HMAC-SHA256 signature over protocol
   version, task ID, exact request SHA-256, verified LINE user ID, issue time,
-  and one-hour expiry. It confirms the LINE user ID matches the task's
-  stored submitter identity and recomputes the request hash from D1 before
-  storing a one-use approval.
+  and one-hour expiry. App-development approvals retain protocol v1 for
+  compatibility. Distributed-loop approvals use protocol v2, which also signs
+  the exact task type and max-task bound. The API checks owner, type, bound,
+  and request hash against D1 before storing a one-use approval.
 - `GET /tasks` exposes only a boolean `approved` field for unexpired
   approvals; it does not expose the submitter ID, signature, or approval
   internals. With `approved=true`, it returns the oldest eligible tasks first.
@@ -33,7 +37,13 @@ All routes require `Authorization: Bearer <API_TOKEN>`.
   consumes it while changing a queued task (or expired running lease) to
   running. It returns a random claim token and bounded lease expiry
   (60–1,800 seconds). If the lease expires before completion, a new LINE
-  approval is required.
+  approval is required. The generic CPU worker and claim endpoint currently
+  accept only `app_development`; `distributed_loop` claims return 409 until
+  a dedicated bounded executor is implemented and reviewed.
+- `GET /tasks?approved=true` defaults to `task_type=app_development`, so
+  existing pollers cannot see or starve on distributed-loop tasks. A future
+  dedicated executor may explicitly request `task_type=distributed_loop`; listing
+  does not grant claim permission.
 - `POST /tasks/:id/complete` requires the claim token and a terminal state
   (`pass`, `fail`, or `blocked`). A D1 batch commits the terminal transition,
   notification outbox intent, and lease cleanup together.
@@ -95,7 +105,7 @@ task-specific notifications.
 8. Run the isolated local D1 integration suite in
    `tests/test_worker_d1_integration.py`. It starts Wrangler/workerd against a
    temporary local D1 store, seeds only the legacy baseline schema, applies
-   migrations 0002–0005 locally, and tests real HTTP handlers, signed approval,
+   migrations 0002–0006 locally, and tests real HTTP handlers, signed approval,
    owner binding, concurrent claims, stale tokens, and HOLD/outbox behavior.
    The CI job installs Wrangler and runs this suite with no Cloudflare account,
    remote binding, production database, or production secret.
