@@ -266,6 +266,17 @@ new_sqlite_classes = ["OrcaWriteBroker"]
         self.assertIn("operator credential", denied["error"])
         self.assertEqual(self.api("/control/global-hold")[1]["value"], "on")
 
+
+    def test_concurrent_hold_transitions_keep_d1_mirror_consistent(self):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(self.set_hold, ["on", "off"]))
+        self.assertEqual([status for status, _ in results], [200, 200])
+        status, state = self.api("/control/global-hold")
+        self.assertEqual(status, 200)
+        mirror = self.sql("SELECT value FROM system_controls WHERE control_key='global_hold'")
+        self.assertIn(state["value"], mirror)
+        self.assertIn(state["value"], {"on", "off"})
+
     def test_invalid_or_missing_line_owner_is_rejected_by_real_worker(self):
         status, _ = self.api("/tasks", "POST", {
             "task_id": "no-owner", "request_text": "アプリ開発: no owner",
