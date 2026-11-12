@@ -450,6 +450,77 @@ def reconcile_existing_pr(
     return url, paths
 
 
+
+def reconcile_orphan_branch(branch: str, task_id: str, expected_request_hash: str):
+    """Return a PR for a verified orphan commit, or None if no remote branch exists."""
+    remote = run(["git", "ls-remote", "--heads", "origin", f"refs/heads/{branch}"], timeout=60)
+    if remote.returncode:
+        raise WorkerError("could not inspect remote task branch")
+    rows = [line.split() for line in remote.stdout.splitlines() if line.strip()]
+    if not rows:
+        return None
+    if len(rows) != 1 or len(rows[0]) != 2 or rows[0][1] != f"refs/heads/{branch}":
+        raise WorkerError("remote task branch returned ambiguous ref data")
+    remote_sha = rows[0][0]
+    if not re.fullmatch(r"[0-9a-f]{40}", remote_sha):
+        raise WorkerError("remote task branch has invalid SHA")
+    if run(["git", "fetch", "--no-tags", "origin", "main"], timeout=120).returncode:
+        raise WorkerError("could not refresh main")
+    if run(["git", "fetch", "--no-tags", "origin", f"refs/heads/{branch}"], timeout=120).returncode:
+        raise WorkerError("could not fetch orphan branch")
+    fetched = run(["git", "rev-parse", "FETCH_HEAD"], timeout=30)
+    parent = run(["git", "rev-parse", f"{remote_sha}^"], timeout=30)
+    main = run(["git", "rev-parse", "origin/main"], timeout=30)
+    if fetched.returncode or fetched.stdout.strip() != remote_sha:
+        raise WorkerError("orphan branch head changed while fetching")
+    if parent.returncode or main.returncode or parent.stdout.strip() != main.stdout.strip():
+        raise WorkerError("orphan branch is not exactly one commit on current main")
+    message = run(["git", "show", "-s", "--format=%B", remote_sha], timeout=30)
+    if message.returncode:
+        raise WorkerError("could not inspect orphan commit provenance")
+    lines = {line.strip() for line in message.stdout.splitlines()}
+    if (f"ORCA-Task-ID: {task_id}" not in lines
+            or f"ORCA-Request-SHA256: {expected_request_hash}" not in lines):
+        raise WorkerError("orphan branch provenance missing or mismatched; manual review required")
+    diff = run(["git", "diff", "--no-ext-diff", "--binary", "--no-renames",
+                f"origin/main...{remote_sha}"], timeout=60)
+    if diff.returncode:
+        raise WorkerError("could not inspect orphan branch diff")
+    paths = validate_patch(diff.stdout)
+    if run(["git", "switch", "--detach", remote_sha], timeout=30).returncode:
+        raise WorkerError("could not check out orphan branch head")
+    head = run(["git", "rev-parse", "HEAD"], timeout=30)
+    status = run(["git", "status", "--porcelain", "--untracked-files=all"], timeout=30)
+    if head.returncode or head.stdout.strip() != remote_sha or status.returncode or status.stdout.strip():
+        raise WorkerError("orphan checkout is not exact and clean")
+    for path in paths:
+        target = Path(path)
+        if target.is_symlink() or any(parent.is_symlink() for parent in target.parents):
+            raise WorkerError("orphan branch contains symlink output")
+    tests = run_isolated_tests(paths, paths[0].split("/")[1])
+    if tests.returncode:
+        raise WorkerError("orphan branch isolated tests failed: " + (tests.stdout + tests.stderr)[-3000:])
+    after = run(["git", "status", "--porcelain", "--untracked-files=all"], timeout=30)
+    latest = run(["git", "ls-remote", "--heads", "origin", f"refs/heads/{branch}"], timeout=60)
+    latest_rows = [line.split() for line in latest.stdout.splitlines() if line.strip()]
+    if after.returncode or after.stdout.strip():
+        raise WorkerError("orphan tests modified checkout")
+    if latest.returncode or len(latest_rows) != 1 or latest_rows[0][0] != remote_sha:
+        raise WorkerError("orphan branch head changed during verification")
+    assert_global_hold_clear()
+    body = (
+        "## ORCA free CPU worker result (recovered orphan branch)\\n\\n"
+        f"Task ID: {task_id}\\nRequest SHA-256: {expected_request_hash}\\n\\n"
+        f"Added paths: {', '.join(paths)}\\n\\n"
+        "App tests: PASS (re-run during orphan recovery)\\n"
+        "Request text omitted. Not merged or deployed; human review required.\\n"
+    )
+    url = create_or_reuse_pr(branch, "feat: ORCA task " + task_id, body,
+                             expected_task_id=task_id,
+                             expected_request_hash=expected_request_hash)
+    return url, paths
+
+
 def create_or_reuse_pr(
     branch: str,
     title: str,
@@ -575,6 +646,15 @@ def process(task_id: str) -> int:
             )
             print(f"Verified existing PR and reconciled task: {pr_url}")
             return 0
+        orphan = reconcile_orphan_branch(branch, task_id, request_fingerprint)
+        if orphan:
+            assert_global_hold_clear()
+            pr_url, _ = orphan
+            api_request("POST", "/tasks/" + encoded_id + "/complete",
+                        {"claim_token": claim_token, "status": "pass",
+                         "message": f"ORCA task {task_id}: PASS — recovered verified orphan PR {pr_url}"})
+            print(f"Recovered verified orphan branch PR: {pr_url}")
+            return 0
         if run(["git", "switch", "-c", branch], timeout=30).returncode:
             raise WorkerError("could not create task branch")
         prompt = make_prompt(instruction, tracked_context())
@@ -632,7 +712,9 @@ def process(task_id: str) -> int:
         if run(["gh", "auth", "setup-git"], timeout=30).returncode:
             raise WorkerError("could not configure GitHub CLI credentials")
         assert_global_hold_clear()
-        if run(["git", "commit", "-m", f"feat: implement ORCA task {task_id}"], timeout=60).returncode:
+        if run(["git", "commit", "-m", f"feat: implement ORCA task {task_id}",
+                 "-m", f"ORCA-Task-ID: {task_id}",
+                 "-m", f"ORCA-Request-SHA256: {request_fingerprint}"], timeout=60).returncode:
             raise WorkerError("git commit failed")
         assert_global_hold_clear()
         pushed = run(["git", "push", "--set-upstream", "origin", branch], timeout=180)
