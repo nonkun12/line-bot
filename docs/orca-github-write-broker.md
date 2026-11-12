@@ -91,7 +91,7 @@ acknowledged while any operation is `in_flight` or `uncertain`; the operator
 must inspect GitHub using the embedded task/idempotency marker and submit a
 separately authenticated manual reconciliation. After reconciliation, the
 operator must explicitly acknowledge HOLD ON or deliberately release it.
-If the durable operation ledger reaches its 2,001-record inspection ceiling,
+If the durable operation ledger reaches its 1,000-record inspection ceiling,
 the broker also fails closed for manual maintenance.
 
 Every operator-initiated HOLD ON and OFF transition requires the separate
@@ -101,5 +101,5 @@ verified GitHub identity.
 
 The first Issue operation is limited to one per approved task; changing the
 idempotency key cannot create a second Issue. The broker retains up to 100
-recent HOLD audit events. The operation ledger inspection is capped at 2,001
+recent HOLD audit events. The operation ledger inspection is capped at 1,000
 records and fails closed at the ceiling, requiring operator maintenance.
