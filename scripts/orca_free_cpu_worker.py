@@ -401,6 +401,24 @@ def reconcile_existing_pr(
     fetched = run(["git", "rev-parse", "FETCH_HEAD"], timeout=30)
     if fetched.returncode or fetched.stdout.strip() != head_sha:
         raise WorkerError("existing PR head changed during reconciliation")
+    parent = run(["git", "rev-parse", f"{head_sha}^"], timeout=30)
+    main = run(["git", "rev-parse", "origin/main"], timeout=30)
+    if (
+        parent.returncode or main.returncode
+        or parent.stdout.strip() != main.stdout.strip()
+    ):
+        raise WorkerError("existing PR is not exactly one commit on current main")
+    commit_message = run(
+        ["git", "show", "-s", "--format=%B", head_sha], timeout=30
+    )
+    if commit_message.returncode:
+        raise WorkerError("could not inspect existing PR commit provenance")
+    commit_lines = {line.strip() for line in commit_message.stdout.splitlines()}
+    if (
+        f"ORCA-Task-ID: {task_id}" not in commit_lines
+        or f"ORCA-Request-SHA256: {expected_request_hash}" not in commit_lines
+    ):
+        raise WorkerError("existing PR commit provenance does not match this task")
     diff = run(
         ["git", "diff", "--no-ext-diff", "--binary", "--no-renames",
          f"origin/main...{head_sha}"],
@@ -450,6 +468,18 @@ def reconcile_existing_pr(
         or f"Request SHA-256: {expected_request_hash}" not in str(final_item.get("body") or "")
     ):
         raise WorkerError("existing PR changed during isolated verification")
+    latest = run(
+        ["git", "ls-remote", "--heads", "origin", f"refs/heads/{branch}"],
+        timeout=60,
+    )
+    latest_rows = [line.split() for line in latest.stdout.splitlines() if line.strip()]
+    if (
+        latest.returncode or len(latest_rows) != 1
+        or len(latest_rows[0]) != 2
+        or latest_rows[0][0] != head_sha
+        or latest_rows[0][1] != f"refs/heads/{branch}"
+    ):
+        raise WorkerError("existing PR branch changed during final verification")
     return url, paths
 
 
