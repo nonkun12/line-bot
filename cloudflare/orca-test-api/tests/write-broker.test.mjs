@@ -9,6 +9,9 @@ class Storage {
   values = new Map();
   async get(key) { return this.values.get(key); }
   async put(key, value) { this.values.set(key, structuredClone(value)); }
+  async list({ prefix = "", limit = 1000 } = {}) {
+    return new Map([...this.values.entries()].filter(([key]) => key.startsWith(prefix)).slice(0, limit));
+  }
 }
 
 class State {
@@ -175,8 +178,24 @@ test("uncertain GitHub outcome is never automatically retried", async () => {
     const first = await call(broker, "/issues/create", "POST", issueBody);
     assert.equal(first.status, 503);
     const retry = await call(broker, "/issues/create", "POST", issueBody);
-    assert.equal(retry.status, 409);
+    assert.equal(retry.status, 423);
     assert.equal(writes, 1);
+    const holdState = await (await call(broker, "/hold")).json();
+    assert.equal(holdState.value, "draining");
+    assert.equal(holdState.blocked, true);
+    const holdAck = await call(broker, "/hold", "PUT", { value: "on", reason: "operator requested HOLD" });
+    assert.equal(holdAck.status, 409, "uncertain remote outcome must prevent HOLD acknowledgement");
+    const reconciled = await call(broker, "/operations/reconcile", "POST", {
+      task_id: taskId,
+      idempotency_key: issueBody.idempotency_key,
+      outcome: "not_created",
+      operator_id: "test-operator",
+      reason: "manually verified no issue exists for this idempotency marker",
+    });
+    assert.equal(reconciled.status, 200);
+    const acknowledged = await call(broker, "/hold", "PUT", { value: "on", reason: "operator requested HOLD" });
+    assert.equal(acknowledged.status, 200);
+    assert.equal((await (await call(broker, "/hold")).json()).value, "on");
   } finally {
     restore();
   }
