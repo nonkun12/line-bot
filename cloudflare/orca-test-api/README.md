@@ -133,14 +133,18 @@ SELECT type, name, sql
     OR name LIKE 'idx_tasks_%'
  ORDER BY type, name;
 
--- 3. Check whether any of the columns introduced by migration 0002 already exist.
+-- 3. Check whether columns introduced by migrations 0002 and 0006 already exist.
 -- Compare this result with PRAGMA table_info(tasks); do not infer from this query alone.
 SELECT name
   FROM pragma_table_info('tasks')
- WHERE name IN ('user_id', 'lease_token', 'lease_until', 'attempt_count')
+ WHERE name IN ('user_id', 'lease_token', 'lease_until', 'attempt_count',
+                'task_type', 'max_tasks')
  ORDER BY name;
 
--- 4. Read-only referential-integrity check.
+-- 4. Inspect the approval metadata columns added by migration 0006.
+PRAGMA table_info(task_approvals);
+
+-- 5. Read-only referential-integrity check.
 PRAGMA foreign_key_check;
 ```
 
@@ -151,7 +155,7 @@ without `task_approvals` or `notification_outbox`. Treat this as an
 expectation to verify, not as proof of the live schema.
 
 **Stop without applying anything** if a required table/column is missing,
-one or more 0002 columns already exist, any support table already exists
+one or more 0002 or 0006 columns already exist, any support table already exists
 with an unexpected shape, the migration history is unclear, or
 `foreign_key_check` returns rows. The repository currently has no 0001
 baseline migration; the original intake schema was created separately, so
