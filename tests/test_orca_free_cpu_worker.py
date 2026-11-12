@@ -590,3 +590,107 @@ def test_worker_jobs_are_restricted_to_main_branch():
         / "orca-free-cpu-task-worker.yml"
     ).read_text(encoding="utf-8")
     assert workflow.count("github.ref == 'refs/heads/main'") == 2
+
+
+def test_orphan_branch_recovery_requires_exact_provenance_and_rechecks_remote(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.chdir(tmp_path)
+    sha = "a" * 40
+    main_sha = "b" * 40
+    task_id = "line-202"
+    request_hash = "c" * 64
+    patch = (
+        "diff --git a/apps/demo/app.py b/apps/demo/app.py\n"
+        "new file mode 100644\n--- /dev/null\n+++ b/apps/demo/app.py\n"
+        "@@ -0,0 +1 @@\n+VALUE = 1\n"
+        "diff --git a/apps/demo/tests/test_app.py b/apps/demo/tests/test_app.py\n"
+        "new file mode 100644\n--- /dev/null\n+++ b/apps/demo/tests/test_app.py\n"
+        "@@ -0,0 +1 @@\n+def test_value():\n+    assert True\n"
+    )
+    commands = []
+
+    def fake_run(command, *, timeout=120, input_text=None):
+        commands.append(command)
+        if command[:2] == ["git", "ls-remote"]:
+            return SimpleNamespace(returncode=0, stdout=f"{sha}\trefs/heads/orca/task-{task_id}\n", stderr="")
+        if command[:3] == ["git", "fetch", "--no-tags"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if command[:2] == ["git", "rev-parse"]:
+            value = sha if command[2] == "FETCH_HEAD" else main_sha if command[2] == "origin/main" else main_sha
+            return SimpleNamespace(returncode=0, stdout=value + "\n", stderr="")
+        if command[:3] == ["git", "show", "-s"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"feat: task\n\nORCA-Task-ID: {task_id}\nORCA-Request-SHA256: {request_hash}\n",
+                stderr="",
+            )
+        if command[:3] == ["git", "diff", "--no-ext-diff"]:
+            return SimpleNamespace(returncode=0, stdout=patch, stderr="")
+        if command[:3] == ["git", "status", "--porcelain"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if command[:3] == ["git", "switch", "--detach"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    monkeypatch.setattr(
+        worker, "run_isolated_tests",
+        lambda *args: SimpleNamespace(returncode=0, stdout="2 passed", stderr=""),
+    )
+    monkeypatch.setattr(worker, "assert_global_hold_clear", lambda: None)
+    result = worker.reconcile_orphan_branch(f"orca/task-{task_id}", task_id, request_hash)
+    assert result == (sha, ["apps/demo/app.py", "apps/demo/tests/test_app.py"])
+    assert len([c for c in commands if c[:2] == ["git", "ls-remote"]]) == 2
+
+
+def test_orphan_branch_without_provenance_is_blocked(monkeypatch):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    sha = "d" * 40
+    def fake_run(command, *, timeout=120, input_text=None):
+        if command[:2] == ["git", "ls-remote"]:
+            return SimpleNamespace(returncode=0, stdout=f"{sha}\trefs/heads/orca/task-line-203\n", stderr="")
+        if command[:3] == ["git", "fetch", "--no-tags"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if command[:2] == ["git", "rev-parse"]:
+            value = sha if command[2] == "FETCH_HEAD" else "e" * 40
+            return SimpleNamespace(returncode=0, stdout=value + "\n", stderr="")
+        if command[:3] == ["git", "show", "-s"]:
+            return SimpleNamespace(returncode=0, stdout="legacy commit without trailers\n", stderr="")
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    try:
+        worker.reconcile_orphan_branch("orca/task-line-203", "line-203", "f" * 64)
+    except worker.WorkerError as exc:
+        assert "provenance" in str(exc)
+    else:
+        raise AssertionError("unverifiable orphan branch must be blocked")
+
+
+def test_orphan_branch_absence_allows_fresh_branch(monkeypatch):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.setattr(
+        worker, "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+    assert worker.reconcile_orphan_branch("orca/task-line-204", "line-204", "a" * 64) is None
+
+
+def test_worker_preserves_lease_after_push_until_orphan_pr_retry():
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "orca_free_cpu_worker.py"
+    ).read_text(encoding="utf-8")
+    process = source.split("def process(", 1)[1]
+    assert "branch_pushed = True" in process
+    assert "if not pr_url and not branch_pushed:" in process
+    assert "ORCA_CPU_WORKER_ORPHAN_BRANCH_PENDING" in process
+    assert "ORCA-Task-ID:" in source
+    assert "ORCA-Request-SHA256:" in source
