@@ -14,10 +14,12 @@ function blocked(reason, details = []) {
 
 /** Pure evaluator: no network, AI inference, retries, or state mutation. Unknown telemetry fails closed. */
 export function evaluateBudgetGuard({ now = new Date(), sources, globalHoldClear, consecutiveFailures = 0,
-  requiredSources = REQUIRED_SOURCES, thresholds = DEFAULT_THRESHOLDS, maxSnapshotAgeMs = MAX_SNAPSHOT_AGE_MS } = {}) {
+  requiredSources = REQUIRED_SOURCES, thresholds = DEFAULT_THRESHOLDS, maxSnapshotAgeMs = MAX_SNAPSHOT_AGE_MS, stopLatched = false, stopReleaseApproved = false } = {}) {
   const nowMs = validDate(now);
   if (nowMs === null) return blocked("clock_unavailable");
   if (globalHoldClear !== true) return blocked("global_hold_active_or_unknown");
+  if (typeof stopLatched !== "boolean" || typeof stopReleaseApproved !== "boolean") return blocked("stop_latch_state_invalid");
+  if (stopLatched && !stopReleaseApproved) return { status: "STOP", allowNewTasks: false, allowActionsDispatch: false, reason: "budget_stop_latched_waiting_for_human_release", sources: [] };
   if (!Number.isInteger(consecutiveFailures) || consecutiveFailures < 0) return blocked("failure_counter_invalid");
   if (consecutiveFailures >= 3) return blocked("consecutive_failure_limit_reached");
   if (!Array.isArray(requiredSources) || requiredSources.length === 0 || requiredSources.some((n) => typeof n !== "string" || !n) || new Set(requiredSources).size !== requiredSources.length) return blocked("required_source_configuration_invalid");
