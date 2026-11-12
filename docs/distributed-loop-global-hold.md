@@ -12,8 +12,8 @@ Both secrets are required. If either is missing, the endpoint is unavailable, th
 ## Gate placement
 
 1. Initial gate runs directly after checkout, before state reads, task selection, model execution, or queue refill.
-2. A second gate runs immediately before the bounded task runner.
-3. Further gates run immediately before publishing a development branch and before durable state / Recovery AI / Sheets writes.
+2. Additional gates run immediately before creating review-only GitHub issues and before the bounded task runner.
+3. Further gates run immediately before publishing a development branch and before durable state / Recovery AI / Sheets writes. Recovery AI persistence is explicitly skipped if its gate does not pass.
 4. A HOLD failure creates a local marker so the final report records `BLOCKED: orca_global_hold_active_or_unavailable`.
 5. Sheets ledger writes are skipped if the last Global HOLD check did not pass. Final status/report notifications and artifact upload remain available for observability; they do not authorize task execution.
 
