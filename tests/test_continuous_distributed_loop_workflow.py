@@ -231,8 +231,8 @@ def _run_real_cadence_decision(tmp_path, tasks, completed, recovery, minute):
     env = os.environ.copy()
     env.update({"UTC_MINUTE": minute, "GITHUB_OUTPUT": str(output)})
     result = subprocess.run(
-        [sys.executable, "-"],
-        input=script,
+        ["bash", "-c"],
+        args=[script],
         cwd=tmp_path,
         env=env,
         text=True,
