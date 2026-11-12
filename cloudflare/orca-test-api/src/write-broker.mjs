@@ -172,9 +172,9 @@ export class OrcaWriteBroker {
           typeof body.reason !== "string" || body.reason.trim().length < 12) {
         return json({ error: "manual reconciliation requires task_id, idempotency_key, outcome, operator_id, and reason" }, 400);
       }
-      const key = `issue:${body.task_id}:${body.idempotency_key}`;
+      const key = `issue:${body.task_id}`;
       const prior = await this.state.storage.get(key);
-      if (!prior || !["in_flight", "uncertain"].includes(prior.state)) {
+      if (!prior || prior.idempotency_key !== body.idempotency_key || !["in_flight", "uncertain"].includes(prior.state)) {
         return json({ error: "no unresolved operation matches this reconciliation request" }, 409);
       }
       await this.state.storage.put(key, {
@@ -231,10 +231,10 @@ export class OrcaWriteBroker {
     const task = await this.validateClaim(taskId, claimToken);
     if (!task) return json({ error: "a current claimed app-development task is required" }, 403);
 
-    const recordKey = `issue:${taskId}:${key}`;
+    const recordKey = `issue:${taskId}`;
     const prior = await this.state.storage.get(recordKey);
-    if (prior?.state === "completed") return json({ ...prior.result, idempotent_replay: true }, 200);
-    if (prior) return json({ error: "operation outcome is already recorded as in-flight or uncertain; manual reconciliation required" }, 409);
+    if (prior?.state === "completed" && prior.idempotency_key === key) return json({ ...prior.result, idempotent_replay: true }, 200);
+    if (prior) return json({ error: "this task already has a brokered Issue operation; manual reconciliation or a new task is required" }, 409);
 
     const repository = String(this.env.GITHUB_REPOSITORY || "");
     const repositoryParts = repository.split("/");
@@ -245,7 +245,7 @@ export class OrcaWriteBroker {
     }
     const [owner, repo] = repositoryParts;
     await this.state.storage.put(recordKey, {
-      state: "in_flight", task_id: taskId, started_at: new Date().toISOString(),
+      state: "in_flight", task_id: taskId, idempotency_key: key, started_at: new Date().toISOString(),
     });
 
     try {
@@ -298,7 +298,7 @@ export class OrcaWriteBroker {
         state: result.state,
       };
       await this.state.storage.put(recordKey, {
-        state: "completed", task_id: taskId, result: saved, completed_at: new Date().toISOString(),
+        state: "completed", task_id: taskId, idempotency_key: key, result: saved, completed_at: new Date().toISOString(),
       });
       return json(saved, 201);
     } catch (error) {
