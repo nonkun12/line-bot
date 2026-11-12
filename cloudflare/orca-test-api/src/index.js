@@ -48,32 +48,59 @@ function isValidLineUserId(value) {
   return typeof value === "string" && /^U[0-9a-fA-F]{32}$/.test(value);
 }
 
+function distributedLoopMaxTasks(value) {
+  if (typeof value !== "string") return null;
+  const command = value.normalize("NFKC").replace(/[\u200b-\u200d\ufeff]/g, "").replace(/\s+/g, "");
+  const starts = new Set([
+    "分散ループ開始", "分散Loop開始", "分散AIループ開始", "分散AILoop開始",
+    "分散AI回して", "distributedloopstart", "分散ループを起動",
+    "分散Loopを起動", "分散AIループを起動", "分散AILoopを起動",
+  ]);
+  const naturalFourTaskCommands = new Set([
+    "分散Loopを起動。4タスクまで安全に実行し、各タスクをSafetyGate付きで確認。問題があれば即停止し、最後にTaskID/PASS・FAIL/SHA/変更ファイル/成果を報告してください。",
+    "分散Loopを起動。4タスクまで安全に実行し、各タスクをSafetyGate付きで確認。問題があれば即停止し、最後にTaskID/PASS・FAIL/SHA/変更ファイル/成果を報告してください",
+    "分散Loopを起動。4タスクまで安全確認付きで実行し、各タスクをSafetyGate付きで確認。問題があれば即停止し、最後にTaskID/PASS・FAIL/SHA/変更ファイル/成果を報告してください。",
+    "分散Loopを起動。4タスクまで安全確認付きで実行し、各タスクをSafetyGate付きで確認。問題があれば即停止し、最後にTaskID/PASS・FAIL/SHA/変更ファイル/成果を報告してください",
+  ]);
+  if (naturalFourTaskCommands.has(command)) return 4;
+  if (starts.has(command)) return command.includes("起動") ? 4 : 1;
+  const match = command.match(/^(?:分散ループ|分散Loop|分散AIループ|分散AILoop)を([1-4])回、?安全確認付きで実行(?:してください)?$/);
+  return match ? Number(match[1]) : null;
+}
+
 async function createTask(request, env) {
   if (!(await globalHoldState(env)).clear) return json({ error: "global HOLD is active or unavailable" }, 423);
   const body = await readJson(request);
+  const taskType = body?.task_type ?? "app_development";
+  const maxTasks = body?.max_tasks ?? 1;
+  const validTaskType = taskType === "app_development" || taskType === "distributed_loop";
+  const validTaskKind = typeof body?.request_text === "string" && (taskType === "app_development"
+    ? maxTasks === 1 && (body.request_text.startsWith("アプリ開発:") || body.request_text.startsWith("アプリ開発："))
+    : Number.isInteger(maxTasks) && distributedLoopMaxTasks(body.request_text) === maxTasks);
   if (!body || typeof body.task_id !== "string" ||
       !/^[A-Za-z0-9_-]{1,100}$/.test(body.task_id) ||
       typeof body.request_text !== "string" ||
       !body.request_text.trim() || new TextEncoder().encode(body.request_text).length > 6000 ||
       typeof body.source_event_id !== "string" || !body.source_event_id.trim() ||
-      !isValidLineUserId(body.user_id)) {
-    return json({ error: "invalid task payload or verified LINE owner is missing" }, 400);
+      !isValidLineUserId(body.user_id) || !validTaskType || !validTaskKind) {
+    return json({ error: "invalid typed task payload, command, bound, or verified LINE owner is missing" }, 400);
   }
   const userId = body.user_id;
   try {
     const inserted = await env.DB.prepare(
-      `INSERT INTO tasks (task_id, request_text, status, source_event_id, user_id)
-       SELECT ?, ?, 'queued', ?, ?
+      `INSERT INTO tasks (task_id, request_text, status, source_event_id, user_id, task_type, max_tasks)
+       SELECT ?, ?, 'queued', ?, ?, ?, ?
         WHERE EXISTS (SELECT 1 FROM system_controls WHERE control_key = 'global_hold' AND value = 'off')`
-    ).bind(body.task_id, body.request_text, body.source_event_id || null, userId).run();
+    ).bind(body.task_id, body.request_text, body.source_event_id, userId, taskType, maxTasks).run();
     if (!inserted.meta?.changes) return json({ error: "global HOLD is active or unavailable" }, 423);
-    return json({ task: { task_id: body.task_id, request_text: body.request_text, status: "queued" } }, 201);
+    return json({ task: { task_id: body.task_id, request_text: body.request_text, status: "queued", task_type: taskType, max_tasks: maxTasks } }, 201);
   } catch (error) {
     if (body.source_event_id) {
       const existing = await env.DB.prepare(
-        "SELECT task_id, request_text, status, user_id FROM tasks WHERE source_event_id = ?"
+        "SELECT task_id, request_text, status, user_id, task_type, max_tasks FROM tasks WHERE source_event_id = ?"
       ).bind(body.source_event_id).first();
-      if (existing && existing.user_id === userId && existing.request_text === body.request_text) {
+      if (existing && existing.user_id === userId && existing.request_text === body.request_text &&
+          existing.task_type === taskType && existing.max_tasks === maxTasks) {
         const { user_id: _owner, ...safeTask } = existing;
         return json({ task: safeTask, duplicate: true }, 200);
       }
@@ -105,6 +132,8 @@ async function approveTask(id, request, env) {
   const expiresAt = typeof body?.expires_at === "string" ? body.expires_at : "";
   const signature = typeof body?.signature === "string" ? body.signature : "";
   const nonce = typeof body?.nonce === "string" ? body.nonce : "";
+  const requestedType = body?.task_type ?? "app_development";
+  const requestedMaxTasks = body?.max_tasks ?? 1;
   const approvalKey = env.ORCA_TASK_APPROVAL_HMAC_KEY || "";
   if (new TextEncoder().encode(approvalKey).length < 32 ||
       !/^U[0-9a-fA-F]{32}$/.test(userId) || !/^[0-9a-f]{64}$/.test(requestHash) ||
@@ -113,16 +142,24 @@ async function approveTask(id, request, env) {
   if (!Number.isFinite(issued) || !Number.isFinite(expires) || issued > now + 60000 ||
       issued < now - 5 * 60000 || expires <= issued || expires <= now || expires > issued + 60 * 60000)
     return json({ error: "approval timestamp is invalid or expired" }, 400);
-  const canonical = ["v1", id, requestHash, userId, issuedAt, expiresAt, nonce].join("\n");
+  const task = await env.DB.prepare("SELECT task_id, request_text, status, lease_until, user_id, task_type, max_tasks FROM tasks WHERE task_id = ?").bind(id).first();
+  if (!task || task.task_type !== requestedType || task.max_tasks !== requestedMaxTasks)
+    return json({ error: "approval task type or task bound does not match the stored task" }, 409);
+  const canonical = task.task_type === "distributed_loop"
+    ? ["v2", id, requestHash, userId, task.task_type, String(task.max_tasks), issuedAt, expiresAt, nonce].join("\n")
+    : ["v1", id, requestHash, userId, issuedAt, expiresAt, nonce].join("\n");
   if (!safeEqual(signature, await hmacHex(approvalKey, canonical)))
     return json({ error: "invalid approval signature" }, 403);
-  const task = await env.DB.prepare("SELECT task_id, request_text, status, lease_until, user_id FROM tasks WHERE task_id = ?").bind(id).first();
   const expiredRunning = task?.status === "running" && task.lease_until && Date.parse(task.lease_until) <= Date.now();
   if (!task || (task.status !== "queued" && !expiredRunning))
     return json({ error: "task is not awaiting approval or its prior lease is still active" }, 409);
-  if (typeof task.request_text !== "string" ||
-      !task.request_text.startsWith("アプリ開発:") && !task.request_text.startsWith("アプリ開発："))
+  if (task.task_type === "app_development" &&
+      (typeof task.request_text !== "string" ||
+       !task.request_text.startsWith("アプリ開発:") && !task.request_text.startsWith("アプリ開発：")))
     return json({ error: "only explicit app-development tasks can be approved" }, 400);
+  if (task.task_type === "distributed_loop" &&
+      distributedLoopMaxTasks(task.request_text) !== task.max_tasks)
+    return json({ error: "distributed-loop command or bound is invalid" }, 400);
   if (task.user_id !== userId) return json({ error: "only the verified task submitter may approve it" }, 403);
   if (!safeEqual(await sha256Hex(task.request_text), requestHash))
     return json({ error: "task content changed; approval rejected" }, 409);
@@ -140,15 +177,16 @@ async function approveTask(id, request, env) {
       ).bind(nonce, id, approvalId, requestHash, userId, issuedAt, expiresAt),
       env.DB.prepare(
         "INSERT INTO task_approvals " +
-        "(task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status) " +
-        "SELECT ?, ?, ?, ?, ?, ?, ?, 'approved' FROM tasks " +
+        "(task_id, approval_id, approval_nonce, request_hash, approver_user_id, issued_at, expires_at, status, task_type, max_tasks) " +
+        "SELECT ?, ?, ?, ?, ?, ?, ?, 'approved', task_type, max_tasks FROM tasks " +
         "WHERE task_id = ? AND (status = 'queued' OR " +
         "(status = 'running' AND lease_until IS NOT NULL AND datetime(lease_until) <= CURRENT_TIMESTAMP)) " +
         "AND EXISTS (SELECT 1 FROM system_controls WHERE control_key = 'global_hold' AND value = 'off') " +
         "ON CONFLICT(task_id) DO UPDATE SET " +
         "approval_id=excluded.approval_id, approval_nonce=excluded.approval_nonce, " +
         "request_hash=excluded.request_hash, approver_user_id=excluded.approver_user_id, " +
-        "issued_at=excluded.issued_at, expires_at=excluded.expires_at, status='approved' " +
+        "issued_at=excluded.issued_at, expires_at=excluded.expires_at, status='approved', " +
+        "task_type=excluded.task_type, max_tasks=excluded.max_tasks " +
         "WHERE julianday(excluded.issued_at) > julianday(task_approvals.issued_at) " +
         "AND (task_approvals.status = 'approved' OR " +
         "(task_approvals.status = 'consumed' AND EXISTS (" +
@@ -178,13 +216,18 @@ async function claimTask(id, request, env) {
   const token = crypto.randomUUID();
   const leaseUntil = new Date(Date.now() + leaseSeconds * 1000).toISOString();
   const approval = await env.DB.prepare(
-    "SELECT approval_id, request_hash, expires_at, status FROM task_approvals WHERE task_id = ?"
+    "SELECT approval_id, request_hash, expires_at, status, task_type, max_tasks FROM task_approvals WHERE task_id = ?"
   ).bind(id).first();
   if (!approval || approval.status !== "approved" || Date.parse(approval.expires_at) <= Date.now())
     return json({ error: "a valid task-bound LINE approval is required" }, 403);
-  const task = await env.DB.prepare("SELECT request_text FROM tasks WHERE task_id = ?").bind(id).first();
-  if (!task || !safeEqual(await sha256Hex(task.request_text), approval.request_hash))
-    return json({ error: "approved task fingerprint no longer matches" }, 409);
+  const task = await env.DB.prepare("SELECT request_text, task_type, max_tasks FROM tasks WHERE task_id = ?").bind(id).first();
+  if (!task || task.task_type !== approval.task_type || task.max_tasks !== approval.max_tasks ||
+      !safeEqual(await sha256Hex(task.request_text), approval.request_hash))
+    return json({ error: "approved task fingerprint or type no longer matches" }, 409);
+  // The generic CPU worker only implements app-development tasks. Keep loop
+  // tasks unclaimable until a dedicated distributed-loop handler is reviewed.
+  if (task.task_type !== "app_development")
+    return json({ error: "distributed-loop execution handler is not enabled" }, 409);
   const results = await env.DB.batch([
     env.DB.prepare(
       `UPDATE tasks SET status = 'running', lease_token = ?, lease_until = ?,
@@ -251,7 +294,7 @@ async function completeTask(id, request, env) {
 
 async function getTask(id, env) {
   const task = await env.DB.prepare(
-    "SELECT task_id, request_text, status, created_at, updated_at FROM tasks WHERE task_id = ?"
+    "SELECT task_id, request_text, status, task_type, max_tasks, created_at, updated_at FROM tasks WHERE task_id = ?"
   ).bind(id).first();
   return task ? json({ task }) : json({ error: "not found" }, 404);
 }
@@ -272,6 +315,10 @@ async function listTasks(url, env) {
   const limit = Math.min(100, Math.max(1, Number.parseInt(url.searchParams.get("limit") || "20", 10) || 20));
   const status = url.searchParams.get("status");
   const approvedOnly = url.searchParams.get("approved") === "true";
+  const requestedType = url.searchParams.get("task_type") || "app_development";
+  if (!["app_development", "distributed_loop"].includes(requestedType))
+    return json({ tasks: [], blocked: true, reason: "invalid_task_type" }, 400);
+  const typeFilter = " AND tasks.task_type = ?";
   const approvalFilter = approvedOnly
     ? " AND EXISTS (SELECT 1 FROM task_approvals a WHERE a.task_id = tasks.task_id AND a.status = 'approved' AND datetime(a.expires_at) > CURRENT_TIMESTAMP)"
     : "";
@@ -283,10 +330,10 @@ async function listTasks(url, env) {
     "EXISTS (SELECT 1 FROM task_approvals a WHERE a.task_id = tasks.task_id AND a.status = 'approved' " +
     "AND datetime(a.expires_at) > CURRENT_TIMESTAMP) AS approved FROM tasks";
   const rows = status
-    ? await env.DB.prepare(select + " WHERE status = ?" + approvalFilter + claimableFilter +
-        " ORDER BY created_at " + order + " LIMIT ?").bind(status, limit).all()
-    : await env.DB.prepare(select + (approvedOnly ? " WHERE 1=1" + approvalFilter + claimableFilter : "") +
-        " ORDER BY created_at " + order + " LIMIT ?").bind(limit).all();
+    ? await env.DB.prepare(select + " WHERE status = ?" + typeFilter + approvalFilter + claimableFilter +
+        " ORDER BY created_at " + order + " LIMIT ?").bind(status, requestedType, limit).all()
+    : await env.DB.prepare(select + " WHERE 1=1" + typeFilter + approvalFilter + claimableFilter +
+        " ORDER BY created_at " + order + " LIMIT ?").bind(requestedType, limit).all();
   return json({ tasks: rows.results || [] });
 }
 
