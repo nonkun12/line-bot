@@ -93,3 +93,8 @@ separately authenticated manual reconciliation. After reconciliation, the
 operator must explicitly acknowledge HOLD ON or deliberately release it.
 If the durable operation ledger reaches its 2,001-record inspection ceiling,
 the broker also fails closed for manual maintenance.
+
+Every operator-initiated HOLD ON and OFF transition requires the separate
+operator credential, an operator ID label, and a reason. The operator ID is
+an audit label supplied by the authenticated caller; it is not an independently
+verified GitHub identity.
