@@ -26,6 +26,8 @@ def build_task_payload(
         raise ValueError("LINE source event ID is required")
     if not isinstance(request_text, str) or not request_text.strip():
         raise ValueError("ORCA task request text is required")
+    if not request_text.startswith(("アプリ開発:", "アプリ開発：")):
+        raise ValueError("only explicit アプリ開発: tasks are accepted")
     return {
         "task_id": task_id,
         "request_text": request_text,
