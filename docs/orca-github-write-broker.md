@@ -67,7 +67,7 @@ A separate Draft PR now implements the first slice in
   reason.
 - One bounded operation is implemented: create a review Issue for a currently
   claimed, lease-valid, approved `app_development` task. The broker fixes the
-  repository and label, mints a GitHub App installation token internally,
+  repository and does not accept client-selected labels; it mints a GitHub App installation token internally,
   and uses a persistent idempotency record. Uncertain outcomes are never
   retried automatically.
 - Native Node contract tests cover initial HOLD, operator release, in-flight
