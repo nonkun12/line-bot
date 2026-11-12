@@ -51,3 +51,55 @@ This gives a precise guarantee: after the broker acknowledges HOLD ON, no broker
 ## Current status
 
 This document is a design contract only. No Durable Object, GitHub App, secret, D1 migration, production binding, deployment, or workflow permission change is created here. The preflight checks in PR #1340 remain defense in depth and must not be described as race-free.
+
+## Implementation progress: first slice
+
+A separate Draft PR now implements the first slice in
+`cloudflare/orca-test-api/src/write-broker.mjs`:
+
+- A Durable Object stores Global HOLD and serializes its requests using a per-instance Promise queue; `blockConcurrencyWhile` is startup-only
+  and is not used as a runtime mutex.
+- The Worker reads HOLD from the Durable Object. Missing binding/state and
+  transport failures remain blocked.
+- HOLD transitions update D1 and the broker in fail-closed order: ON is set
+  in the broker first; OFF is mirrored to D1 before the broker is released.
+  HOLD release requires a separate operator credential plus operator ID and
+  reason.
+- One bounded operation is implemented: create a review Issue for a currently
+  claimed, lease-valid, approved `app_development` task. The broker fixes the
+  repository and does not accept client-selected labels; it mints a GitHub App installation token internally,
+  and uses a persistent idempotency record. Uncertain outcomes are never
+  retried automatically.
+- Native Node contract tests cover initial HOLD, operator release, in-flight
+  write vs HOLD ON ordering, idempotent replay, uncertain outcomes, invalid
+  claims, and PKCS1 key handling. Wrangler local D1 integration tests now use
+  the Durable Object binding and the explicit operator route.
+
+This is **not** the full write broker migration. It does not yet broker
+branch pushes, PR creation/updates, autonomous-state writes, Sheets, Render,
+or LINE notifications. The legacy workflow still has direct GitHub write
+paths. The HOLD drain guarantee applies only to operations that actually pass
+through this Durable Object. Do not enable autonomous execution or remove
+legacy write permissions until every required side effect has been migrated.
+
+### Uncertain remote outcomes and DRAINING
+
+A client timeout or GitHub 5xx does not prove that GitHub did not create an
+Issue. Such outcomes are recorded as `uncertain` and automatically move the
+broker to `DRAINING`. New broker writes are blocked. HOLD ON is **not**
+acknowledged while any operation is `in_flight` or `uncertain`; the operator
+must inspect GitHub using the embedded task/idempotency marker and submit a
+separately authenticated manual reconciliation. After reconciliation, the
+operator must explicitly acknowledge HOLD ON or deliberately release it.
+If the durable operation ledger reaches its 1,000-record inspection ceiling,
+the broker also fails closed for manual maintenance.
+
+Every operator-initiated HOLD ON and OFF transition requires the separate
+operator credential, an operator ID label, and a reason. The operator ID is
+an audit label supplied by the authenticated caller; it is not an independently
+verified GitHub identity.
+
+The first Issue operation is limited to one per approved task; changing the
+idempotency key cannot create a second Issue. The broker retains up to 100
+recent HOLD audit events. The operation ledger inspection is capped at 1,000
+records and fails closed at the ceiling, requiring operator maintenance.

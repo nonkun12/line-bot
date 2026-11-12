@@ -1,3 +1,5 @@
+export { OrcaWriteBroker } from "./write-broker.mjs";
+
 const json = (value, status = 200) =>
   new Response(JSON.stringify(value), {
     status,
@@ -17,14 +19,30 @@ async function authorized(request, env) {
   return Boolean(env.API_TOKEN) && safeEqual(supplied, expected);
 }
 
-// D1 is the source of truth. Only the exact explicit value "off" releases HOLD.
-// Missing rows, unknown values, and database errors all fail closed.
+// The serialized Durable Object is authoritative. Missing binding/state or
+// any transport error is HOLD=ON; D1 is only a compatibility mirror.
+async function brokerStub(env) {
+  if (!env.ORCA_WRITE_BROKER) throw new Error("ORCA_WRITE_BROKER binding unavailable");
+  const id = env.ORCA_WRITE_BROKER.idFromName("nonkun12/line-bot");
+  return env.ORCA_WRITE_BROKER.get(id);
+}
+
+async function brokerRequest(env, path, method = "GET", body = null) {
+  const stub = await brokerStub(env);
+  return stub.fetch(`https://orca-write-broker.internal${path}`, {
+    method,
+    headers: { "content-type": "application/json" },
+    body: body === null ? undefined : JSON.stringify(body),
+  });
+}
+
 async function globalHoldState(env) {
   try {
-    const row = await env.DB.prepare(
-      "SELECT value FROM system_controls WHERE control_key = 'global_hold'"
-    ).first();
-    return { clear: row?.value === "off", value: row?.value ?? null };
+    const response = await brokerRequest(env, "/hold");
+    if (!response.ok) return { clear: false, value: null };
+    const state = await response.json();
+    return { clear: state.clear === true && state.value === "off" && state.blocked === false,
+      value: state.value ?? null, unresolved_operations: state.unresolved_operations ?? 0 };
   } catch {
     return { clear: false, value: null };
   }
@@ -417,7 +435,59 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/control/global-hold" && request.method === "GET") {
       const state = await globalHoldState(env);
-      return json({ clear: state.clear, value: state.value, blocked: !state.clear }, 200);
+      return json({ clear: state.clear, value: state.value, blocked: !state.clear,
+        unresolved_operations: state.unresolved_operations ?? 0 }, 200);
+    }
+    if (url.pathname === "/control/global-hold" && request.method === "POST") {
+      const supplied = request.headers.get("x-orca-hold-operator") || "";
+      if (!env.ORCA_HOLD_OPERATOR_TOKEN || !safeEqual(supplied, env.ORCA_HOLD_OPERATOR_TOKEN)) {
+        return json({ error: "separate human operator credential required" }, 403);
+      }
+      const body = await readJson(request);
+      if (!body || !["on", "off"].includes(body.value)) return json({ error: "value must be on or off" }, 400);
+      if (typeof body.operator_id !== "string" || !body.operator_id.trim() ||
+          typeof body.reason !== "string" || body.reason.trim().length < 8) {
+        return json({ error: "operator_id and reason are required for every HOLD transition" }, 400);
+      }
+      try {
+        const result = await brokerRequest(env, "/hold", "PUT", body);
+        const resultBody = await result.json().catch(() => ({}));
+        return json(resultBody, result.status);
+      } catch {
+        return json({ error: "HOLD transition failed; broker state remains authoritative" }, 503);
+      }
+      }
+    if (url.pathname === "/control/global-hold/reconcile" && request.method === "POST") {
+      const supplied = request.headers.get("x-orca-hold-operator") || "";
+      if (!env.ORCA_HOLD_OPERATOR_TOKEN || !safeEqual(supplied, env.ORCA_HOLD_OPERATOR_TOKEN)) {
+        return json({ error: "separate human operator credential required" }, 403);
+      }
+      try {
+        const body = await request.text();
+        if (body.length > 5000) return json({ error: "reconciliation payload too large" }, 413);
+        const response = await (await brokerStub(env)).fetch("https://orca-write-broker.internal/operations/reconcile", {
+          method: "POST", headers: { "content-type": "application/json" }, body,
+        });
+        return new Response(await response.text(), { status: response.status,
+          headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+      } catch {
+        return json({ error: "write broker unavailable; reconciliation blocked" }, 503);
+      }
+    }
+    if (url.pathname === "/internal/github/issues" && request.method === "POST") {
+      try {
+        const declaredLength = Number(request.headers.get("content-length") || 0);
+        if (declaredLength > 52000) return json({ error: "issue request too large" }, 413);
+        const body = await request.text();
+        if (body.length > 52000) return json({ error: "issue request too large" }, 413);
+        const response = await (await brokerStub(env)).fetch("https://orca-write-broker.internal/issues/create", {
+          method: "POST", headers: { "content-type": "application/json" }, body,
+        });
+        return new Response(await response.text(), { status: response.status,
+          headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+      } catch {
+        return json({ error: "write broker unavailable; GitHub mutation blocked" }, 503);
+      }
     }
     if (url.pathname === "/tasks" && request.method === "POST") return createTask(request, env);
     if (url.pathname === "/tasks" && request.method === "GET") return listTasks(url, env);

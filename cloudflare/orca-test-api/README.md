@@ -228,3 +228,75 @@ atomic with an already-starting external LINE API request; this boundary is
 documented rather than represented as cross-system atomicity.
 
 No production D1 migration or Worker deployment is performed by this PR.
+
+
+## Serialized GitHub write broker (Draft implementation)
+
+The Worker exports `OrcaWriteBroker` as a SQLite-backed Durable Object. The
+`ORCA_WRITE_BROKER` binding and its `v1-orca-write-broker` migration are
+required; if the binding or stored state is missing, the broker reports
+Global HOLD=ON.
+
+The Durable Object serializes its own requests with a per-instance
+Promise queue. `blockConcurrencyWhile` is startup-only and is not used as a
+runtime mutex. Its HOLD state is authoritative; the D1
+`system_controls` row is a compatibility mirror. HOLD transitions are
+ordered safely:
+- ON is persisted in the broker before D1 is updated.
+- OFF updates D1 first and releases the broker last.
+- The Worker requires both the normal API bearer and the separate
+  `ORCA_HOLD_OPERATOR_TOKEN` header to change HOLD. Releasing HOLD also
+  requires an operator ID and a reason. Keep this operator secret out of
+  GitHub Actions and task-worker environments.
+
+### Implemented operation: review Issue creation
+
+`POST /internal/github/issues` accepts a bounded review Issue request only
+when the D1 task is currently claimed, its lease token is valid, the consumed
+approval matches the task fingerprint, and the task is an
+`app_development` task. The broker fixes the repository from
+`GITHUB_REPOSITORY`; clients cannot choose an API URL, method, repository,
+or labels. The first operation creates an unlabelled review Issue to avoid a
+runtime dependency on a pre-existing repository label.
+
+The broker mints a short-lived GitHub App installation token internally.
+Configure these Worker-only secrets/vars before using this operation:
+`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`,
+`GITHUB_APP_INSTALLATION_ID`, and `GITHUB_REPOSITORY=nonkun12/line-bot`.
+The GitHub App should be installed only on this repository with **Issues:
+write** permission for this first operation. No App, installation, token, or
+secret has been created or configured by this PR.
+
+Every request requires an idempotency key. Completed results are replayed
+without another GitHub call. An in-flight, timed-out, or otherwise uncertain
+outcome is not retried automatically; it returns a conflict/manual-reconcile
+result to avoid duplicate Issues.
+
+### Explicit limitations of this phase
+
+This is the first broker slice, not the complete autonomous write migration.
+Only review Issue creation is brokered. Branch pushes, PR creation/updates,
+autonomous-state writes, Google Sheets, Render, and LINE notifications are
+not yet routed through this Durable Object. Existing legacy workflows still
+have direct write paths, and D1 task/LINE side effects are not atomic with
+GitHub. Therefore this implementation does **not** yet justify enabling
+autonomous execution or claiming that Global HOLD drains every external side
+effect. Keep all replacement workflows disabled/held until each write path
+has been migrated and independently tested.
+
+If a GitHub request times out or returns an ambiguous 5xx/408/429, the
+operation is recorded as `uncertain` and the broker enters `DRAINING`.
+New writes are blocked, and a HOLD ON request is **not acknowledged** until
+the uncertain operation is manually reconciled. Use the separately
+authenticated `POST /control/global-hold/reconcile` route only after checking
+GitHub for the embedded task/idempotency marker. Then explicitly acknowledge
+HOLD ON or deliberately release HOLD. The ledger inspection limit is 1,000
+records; reaching it fails closed and requires manual maintenance.
+
+Both HOLD ON and HOLD OFF require the separate operator credential, an
+operator ID audit label, and a reason. The operator ID is supplied by the
+authenticated caller and is not an independently verified GitHub identity.
+
+The broker allows at most one review Issue operation per task, even if a
+caller supplies a different idempotency key on a retry. A new Issue requires a
+new independently approved task.

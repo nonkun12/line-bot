@@ -1,0 +1,344 @@
+const json = (value, status = 200) => new Response(JSON.stringify(value), {
+  status,
+  headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+});
+
+const encoder = new TextEncoder();
+const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)))
+    .replaceAll("\r", "").replaceAll("\n", "").replaceAll(" ", "").replaceAll("\t", "");
+
+function concatBytes(...parts) {
+  const output = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+  let offset = 0;
+  for (const part of parts) { output.set(part, offset); offset += part.length; }
+  return output;
+}
+
+function der(tag, value) {
+  const length = value.length;
+  const size = length < 128 ? [length] : length < 256 ? [0x81, length] : [0x82, (length >> 8) & 255, length & 255];
+  return concatBytes(Uint8Array.of(tag), Uint8Array.from(size), value);
+}
+
+function pemBytes(pem) {
+  const normalized = String(pem || "").split("\\n").join("\n");
+  const pkcs1 = normalized.includes("-----BEGIN RSA PRIVATE KEY-----");
+  const body = normalized
+    .split("-----BEGIN PRIVATE KEY-----").join("")
+    .split("-----END PRIVATE KEY-----").join("")
+    .split("-----BEGIN RSA PRIVATE KEY-----").join("")
+    .split("-----END RSA PRIVATE KEY-----").join("")
+    .replaceAll("\r", "").replaceAll("\n", "").replaceAll(" ", "").replaceAll("\t", "");
+  if (!body || !/^[A-Za-z0-9+/=]+$/.test(body)) throw new Error("invalid GitHub App private key");
+  const decoded = Uint8Array.from(atob(body), (char) => char.charCodeAt(0));
+  if (!pkcs1) return decoded;
+  const rsaAlgorithm = der(0x30, concatBytes(
+    der(0x06, Uint8Array.from([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01])),
+    der(0x05, new Uint8Array()),
+  ));
+  return der(0x30, concatBytes(
+    der(0x02, Uint8Array.of(0)), rsaAlgorithm, der(0x04, decoded),
+  ));
+}
+
+async function appJwt(env) {
+  if (!env.GITHUB_APP_ID || !env.GITHUB_APP_PRIVATE_KEY) throw new Error("GitHub App credentials are not configured");
+  const now = Math.floor(Date.now() / 1000);
+  const unsigned = b64url(encoder.encode(JSON.stringify({ alg: "RS256", typ: "JWT" }))) + "." +
+    b64url(encoder.encode(JSON.stringify({ iat: now - 30, exp: now + 480, iss: String(env.GITHUB_APP_ID) })));
+  const key = await crypto.subtle.importKey(
+    "pkcs8", pemBytes(env.GITHUB_APP_PRIVATE_KEY),
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"],
+  );
+  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, encoder.encode(unsigned));
+  return unsigned + "." + b64url(signature);
+}
+
+async function installationToken(env) {
+  if (!env.GITHUB_APP_INSTALLATION_ID) throw new Error("GitHub App installation ID is not configured");
+  const jwt = await appJwt(env);
+  const response = await fetch(
+    `https://api.github.com/app/installations/${encodeURIComponent(env.GITHUB_APP_INSTALLATION_ID)}/access_tokens`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${jwt}`,
+        accept: "application/vnd.github+json",
+        "x-github-api-version": "2022-11-28",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+      signal: AbortSignal.timeout(7000),
+    },
+  );
+  if (!response.ok) throw new Error(`GitHub App token request failed: HTTP ${response.status}`);
+  const payload = await response.json();
+  if (typeof payload.token !== "string" || !payload.token) throw new Error("GitHub App token response was malformed");
+  return payload.token;
+}
+
+function equalSecret(left, right) {
+  if (typeof left !== "string" || typeof right !== "string" || left.length !== right.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < left.length; i++) mismatch |= left.charCodeAt(i) ^ right.charCodeAt(i);
+  return mismatch === 0;
+}
+
+async function sha256(value) {
+  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export class OrcaWriteBroker {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.serial = Promise.resolve();
+  }
+
+  fetch(request) {
+    // Durable Objects can interleave requests at await points. Keep a
+    // per-instance promise queue so HOLD transitions cannot overtake a
+    // brokered GitHub write. blockConcurrencyWhile is startup-only and is
+    // deliberately not used as a runtime mutex.
+    const operation = this.serial.then(() => this.handle(request));
+    this.serial = operation.then(() => undefined, () => undefined);
+    return operation;
+  }
+
+  async mirrorGlobalHold(value) {
+    if (!this.env.DB) throw new Error("D1 Global HOLD mirror binding unavailable");
+    const result = await this.env.DB.prepare(
+      "UPDATE system_controls SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE control_key = 'global_hold'"
+    ).bind(value).run();
+    if (result?.meta?.changes !== 1) throw new Error("D1 Global HOLD mirror row is missing");
+  }
+
+  async unresolvedOperations() {
+    const records = await this.state.storage.list({ prefix: "issue:", limit: 1000 });
+    if (records.size >= 1000) return 1000;
+    let count = 0;
+    for (const record of records.values()) {
+      if (record?.state === "in_flight" || record?.state === "uncertain") count += 1;
+    }
+    return count;
+  }
+
+  async holdState() {
+    const stored = await this.state.storage.get("global_hold");
+    let value = stored?.value === "off" ? "off" : stored?.value === "draining" ? "draining" : "on";
+    const unresolved = await this.unresolvedOperations();
+    if (unresolved > 0 && value === "off") {
+      value = "draining";
+      await this.state.storage.put("global_hold", {
+        value, operator_id: "system", reason: "unresolved GitHub write outcome",
+        changed_at: new Date().toISOString(),
+      });
+      try { await this.mirrorGlobalHold("on"); } catch { /* DO remains fail-closed */ }
+    }
+    return { clear: value === "off" && unresolved === 0, value, blocked: value !== "off", unresolved_operations: unresolved };
+  }
+
+  async handle(request) {
+    const url = new URL(request.url);
+    if (url.pathname === "/hold" && request.method === "GET") return json(await this.holdState());
+
+    if (url.pathname === "/hold" && request.method === "PUT") {
+      const body = await request.json().catch(() => null);
+      if (!body || !["on", "off"].includes(body.value)) return json({ error: "value must be on or off" }, 400);
+      if (typeof body.operator_id !== "string" || !body.operator_id.trim() ||
+          typeof body.reason !== "string" || body.reason.trim().length < 8) {
+        return json({ error: "explicit operator_id and reason are required for every HOLD transition" }, 400);
+      }
+      const unresolved = await this.unresolvedOperations();
+      if (unresolved > 0) {
+        const draining = {
+          value: "draining", operator_id: body.operator_id.trim().slice(0, 128),
+          reason: "unresolved GitHub write outcome; manual reconciliation required",
+          changed_at: new Date().toISOString(),
+        };
+        await this.state.storage.put("global_hold", draining);
+        try { await this.mirrorGlobalHold("on"); } catch { /* DO remains fail-closed */ }
+        return json({ clear: false, value: "draining", blocked: true, acknowledged: false,
+          unresolved_operations: unresolved, error: "uncertain GitHub writes must be reconciled before HOLD transition" }, 409);
+      }
+      const event = {
+        value: body.value,
+        operator_id: body.operator_id.trim().slice(0, 128),
+        reason: String(body.reason || (body.value === "on" ? "operator requested HOLD" : "")).trim().slice(0, 500),
+        changed_at: new Date().toISOString(),
+      };
+      if (body.value === "on") {
+        // Persist the restrictive broker state before mirroring to D1.
+        await this.state.storage.put("global_hold", event);
+        try { await this.mirrorGlobalHold("on"); }
+        catch { return json({ error: "broker HOLD is on but D1 mirror failed" }, 503); }
+      } else {
+        // D1 is made restrictive/consistent before the broker is released.
+        try { await this.mirrorGlobalHold("off"); }
+        catch { return json({ error: "D1 mirror failed; broker HOLD remains engaged" }, 503); }
+        await this.state.storage.put("global_hold", event);
+      }
+      await this.state.storage.put(`hold_event:${Date.now()}:${crypto.randomUUID()}`, event);
+      const history = await this.state.storage.list({ prefix: "hold_event:", limit: 101 });
+      for (const key of [...history.keys()].slice(0, Math.max(0, history.size - 100))) {
+        await this.state.storage.delete(key);
+      }
+      return json({ clear: body.value === "off", value: body.value, blocked: body.value !== "off", acknowledged: true });
+    }
+
+    if (url.pathname === "/operations/reconcile" && request.method === "POST") {
+      const body = await request.json().catch(() => null);
+      if (!body || !["created", "not_created"].includes(body.outcome) ||
+          typeof body.task_id !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(body.task_id) ||
+          typeof body.idempotency_key !== "string" || !/^[A-Za-z0-9_-]{16,100}$/.test(body.idempotency_key) ||
+          typeof body.operator_id !== "string" || !body.operator_id.trim() ||
+          typeof body.reason !== "string" || body.reason.trim().length < 12) {
+        return json({ error: "manual reconciliation requires task_id, idempotency_key, outcome, operator_id, and reason" }, 400);
+      }
+      const key = `issue:${body.task_id}`;
+      const prior = await this.state.storage.get(key);
+      if (!prior || prior.idempotency_key !== body.idempotency_key || !["in_flight", "uncertain"].includes(prior.state)) {
+        return json({ error: "no unresolved operation matches this reconciliation request" }, 409);
+      }
+      await this.state.storage.put(key, {
+        ...prior, state: body.outcome === "created" ? "reconciled_created" : "reconciled_not_created",
+        reconciled_at: new Date().toISOString(),
+        reconciled_by: body.operator_id.trim().slice(0, 128),
+        reconciliation_reason: body.reason.trim().slice(0, 500),
+      });
+      return json({ reconciled: true, outcome: body.outcome });
+    }
+
+    if (url.pathname === "/issues/create" && request.method === "POST") {
+      const hold = await this.holdState();
+      if (!hold.clear) return json({ error: "Global HOLD is active or unavailable" }, 423);
+      return this.createReviewIssue(request);
+    }
+    return json({ error: "not found" }, 404);
+  }
+
+  async validateClaim(taskId, claimToken) {
+    if (!this.env.DB || typeof taskId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(taskId) ||
+        typeof claimToken !== "string" || claimToken.length < 20 || claimToken.length > 100) return null;
+    const row = await this.env.DB.prepare(
+      `SELECT t.task_id, t.request_text, t.status, t.lease_token, t.lease_until,
+              t.task_type, t.max_tasks, a.request_hash, a.status AS approval_status,
+              a.task_type AS approval_task_type, a.max_tasks AS approval_max_tasks
+         FROM tasks t JOIN task_approvals a ON a.task_id = t.task_id
+        WHERE t.task_id = ?`
+    ).bind(taskId).first();
+    if (!row || row.status !== "running" || !equalSecret(row.lease_token, claimToken) ||
+        !Number.isFinite(Date.parse(row.lease_until)) || Date.parse(row.lease_until) <= Date.now() ||
+        row.task_type !== "app_development" || row.max_tasks !== 1 ||
+        row.approval_status !== "consumed" || row.approval_task_type !== row.task_type ||
+        row.approval_max_tasks !== row.max_tasks ||
+        !equalSecret(row.request_hash, await sha256(row.request_text)) ||
+        !(row.request_text.startsWith("アプリ開発:") || row.request_text.startsWith("アプリ開発："))) return null;
+    return row;
+  }
+
+  async createReviewIssue(request) {
+    const raw = await request.text();
+    if (raw.length > 52000) return json({ error: "issue request exceeds the bounded payload limit" }, 413);
+    let body;
+    try { body = JSON.parse(raw); } catch { body = null; }
+    if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "invalid JSON body" }, 400);
+    const { task_id: taskId, claim_token: claimToken, idempotency_key: key } = body;
+    const title = body.title;
+    const description = body.body;
+    if (typeof key !== "string" || !/^[A-Za-z0-9_-]{16,100}$/.test(key) ||
+        typeof title !== "string" || !title.trim() || title.length > 256 ||
+        typeof description !== "string" || !description.trim() || description.length > 50000) {
+      return json({ error: "invalid bounded issue payload or idempotency key" }, 400);
+    }
+    const task = await this.validateClaim(taskId, claimToken);
+    if (!task) return json({ error: "a current claimed app-development task is required" }, 403);
+
+    const recordKey = `issue:${taskId}`;
+    const prior = await this.state.storage.get(recordKey);
+    if (prior?.state === "completed" && prior.idempotency_key === key) return json({ ...prior.result, idempotent_replay: true }, 200);
+    if (prior) return json({ error: "this task already has a brokered Issue operation; manual reconciliation or a new task is required" }, 409);
+
+    const repository = String(this.env.GITHUB_REPOSITORY || "");
+    const repositoryParts = repository.split("/");
+    if (repositoryParts.length !== 2 ||
+        !/^[A-Za-z0-9_.-]+$/.test(repositoryParts[0]) ||
+        !/^[A-Za-z0-9_.-]+$/.test(repositoryParts[1])) {
+      return json({ error: "fixed GitHub repository is not configured" }, 503);
+    }
+    const [owner, repo] = repositoryParts;
+    await this.state.storage.put(recordKey, {
+      state: "in_flight", task_id: taskId, idempotency_key: key, started_at: new Date().toISOString(),
+    });
+
+    try {
+      const token = await installationToken(this.env);
+      // Revalidate the task lease after token minting and immediately before
+      // the external write; expired or revoked claims never reach GitHub.
+      if (!(await this.validateClaim(taskId, claimToken))) {
+        await this.state.storage.put(recordKey, {
+          state: "rejected", updated_at: new Date().toISOString(),
+          reason: "task lease expired before GitHub write",
+        });
+        return json({ error: "task lease expired before GitHub write" }, 403);
+      }
+      const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: "application/vnd.github+json",
+          "x-github-api-version": "2022-11-28",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          title: title.trim(),
+          body: description.trim() + "\n\n<!-- ORCA_TASK_ID:" + taskId + " ORCA_IDEMPOTENCY_KEY:" + key + " -->",
+        }),
+        signal: AbortSignal.timeout(7000),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const uncertain = response.status >= 500 || response.status === 408 || response.status === 429;
+        await this.state.storage.put(recordKey, {
+          state: uncertain ? "uncertain" : "rejected",
+          task_id: taskId, idempotency_key: key,
+          http_status: response.status,
+          updated_at: new Date().toISOString(),
+        });
+        if (uncertain) {
+          await this.state.storage.put("global_hold", {
+            value: "draining", operator_id: "system",
+            reason: "GitHub returned an uncertain write outcome",
+            changed_at: new Date().toISOString(),
+          });
+          try { await this.mirrorGlobalHold("on"); } catch { /* DO remains fail-closed */ }
+        }
+        return json({ error: `GitHub issue creation returned HTTP ${response.status}`, outcome: uncertain ? "uncertain" : "rejected" }, 502);
+      }
+      const saved = {
+        number: result.number,
+        html_url: result.html_url,
+        title: result.title,
+        state: result.state,
+      };
+      await this.state.storage.put(recordKey, {
+        state: "completed", task_id: taskId, idempotency_key: key, result: saved, completed_at: new Date().toISOString(),
+      });
+      return json(saved, 201);
+    } catch (error) {
+      await this.state.storage.put(recordKey, {
+        state: "uncertain", task_id: taskId, idempotency_key: key,
+        updated_at: new Date().toISOString(),
+        error: String(error).slice(0, 300),
+      });
+      await this.state.storage.put("global_hold", {
+        value: "draining", operator_id: "system",
+        reason: "GitHub write outcome is uncertain; manual reconciliation required",
+        changed_at: new Date().toISOString(),
+      });
+      try { await this.mirrorGlobalHold("on"); } catch { /* DO remains fail-closed */ }
+      return json({ error: "GitHub write outcome is uncertain; broker entered fail-closed DRAINING state" }, 503);
+    }
+  }
+}

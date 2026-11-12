@@ -10,5 +10,17 @@ database_name = "orca-test-ledger"
 database_id = "REPLACE_WITH_EXISTING_D1_DATABASE_ID"
 migrations_dir = "migrations"
 
+[vars]
+GITHUB_REPOSITORY = "nonkun12/line-bot"
+
 [triggers]
 crons = ["* * * * *"]
+
+# All GitHub mutations must use this serialized Durable Object.
+[[durable_objects.bindings]]
+name = "ORCA_WRITE_BROKER"
+class_name = "OrcaWriteBroker"
+
+[[migrations]]
+tag = "v1-orca-write-broker"
+new_sqlite_classes = ["OrcaWriteBroker"]
