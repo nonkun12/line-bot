@@ -93,7 +93,7 @@ migrations_dir = "migrations"
         )
         cls._cli(
             "d1", "migrations", "apply", "orca-test-ledger-integration",
-            "--local", "--persist-to", str(cls.state), "--yes",
+            "--local", "--persist-to", str(cls.state),
         )
         cls.log = cls.log_path.open("w+", encoding="utf-8")
         cls.server = subprocess.Popen(
