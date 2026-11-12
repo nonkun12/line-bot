@@ -20,6 +20,7 @@ class DistributedLoopGlobalHoldWorkflowTests(unittest.TestCase):
     def test_mutating_steps_have_immediate_global_hold_rechecks(self):
         pairs = (
             ("id: global_hold_before_task", "- name: Run one bounded autonomous task"),
+            ("id: global_hold_before_issues", "- name: Create bounded review-only task issues from analyzer findings"),
             ("id: global_hold_before_publish", "- name: Publish verified development branch"),
             ("id: global_hold_before_state", "- name: Persist completed task state"),
             ("id: global_hold_before_recovery", "- name: Persist Recovery AI durable state"),
