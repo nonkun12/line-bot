@@ -122,11 +122,14 @@ def register_distributed_loop(
     try:
         body = response.json()
         task = body.get("task", body) if isinstance(body, dict) else None
-        if (not isinstance(task, dict) or task.get("task_id") != task_id
+        returned_id = task.get("task_id") if isinstance(task, dict) else None
+        if (not isinstance(task, dict) or not isinstance(returned_id, str)
+                or not _TASK_ID_RE.fullmatch(returned_id)
                 or task.get("task_type") != "distributed_loop"
                 or task.get("max_tasks") != max_tasks
-                or task.get("status") != "queued"):
+                or task.get("status") not in ("queued", "running", "pass", "fail", "blocked")):
             raise ValueError("unexpected typed task response")
+        task_id = returned_id  # D1 may return the original row on LINE redelivery.
     except (ValueError, AttributeError):
         return ("D1応答を検証できませんでした。登録状態を確認してから再送してください。", True)
     return (
