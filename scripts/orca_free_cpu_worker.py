@@ -466,6 +466,8 @@ def create_or_reuse_pr(
     )
     if existing_url:
         return existing_url
+    # Recheck after PR lookup and immediately before the external GitHub write.
+    assert_global_hold_clear()
     created = run(
         ["gh", "pr", "create", "--base", "main", "--head", branch,
          "--title", title, "--body", body],
