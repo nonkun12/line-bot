@@ -102,10 +102,28 @@ export class OrcaWriteBroker {
     return this.state.blockConcurrencyWhile(() => this.handle(request));
   }
 
+  async unresolvedOperations() {
+    const records = await this.state.storage.list({ prefix: "issue:", limit: 2001 });
+    if (records.size >= 2001) return 2001;
+    let count = 0;
+    for (const record of records.values()) {
+      if (record?.state === "in_flight" || record?.state === "uncertain") count += 1;
+    }
+    return count;
+  }
+
   async holdState() {
     const stored = await this.state.storage.get("global_hold");
-    const value = stored?.value === "off" ? "off" : "on";
-    return { clear: value === "off", value, blocked: value !== "off" };
+    let value = stored?.value === "off" ? "off" : stored?.value === "draining" ? "draining" : "on";
+    const unresolved = await this.unresolvedOperations();
+    if (unresolved > 0 && value === "off") {
+      value = "draining";
+      await this.state.storage.put("global_hold", {
+        value, operator_id: "system", reason: "unresolved GitHub write outcome",
+        changed_at: new Date().toISOString(),
+      });
+    }
+    return { clear: value === "off" && unresolved === 0, value, blocked: value !== "off", unresolved_operations: unresolved };
   }
 
   async handle(request) {
@@ -120,6 +138,17 @@ export class OrcaWriteBroker {
            typeof body.reason !== "string" || body.reason.trim().length < 8)) {
         return json({ error: "explicit operator_id and reason are required to release HOLD" }, 400);
       }
+      const unresolved = await this.unresolvedOperations();
+      if (unresolved > 0) {
+        const draining = {
+          value: "draining", operator_id: body.value === "off" ? body.operator_id.trim().slice(0, 128) : "system",
+          reason: "unresolved GitHub write outcome; manual reconciliation required",
+          changed_at: new Date().toISOString(),
+        };
+        await this.state.storage.put("global_hold", draining);
+        return json({ clear: false, value: "draining", blocked: true, acknowledged: false,
+          unresolved_operations: unresolved, error: "uncertain GitHub writes must be reconciled before HOLD transition" }, 409);
+      }
       const event = {
         value: body.value,
         operator_id: body.value === "off" ? body.operator_id.trim().slice(0, 128) : "system",
@@ -129,6 +158,28 @@ export class OrcaWriteBroker {
       await this.state.storage.put("global_hold", event);
       await this.state.storage.put(`hold_event:${Date.now()}:${crypto.randomUUID()}`, event);
       return json({ clear: body.value === "off", value: body.value, blocked: body.value !== "off", acknowledged: true });
+    }
+
+    if (url.pathname === "/operations/reconcile" && request.method === "POST") {
+      const body = await request.json().catch(() => null);
+      if (!body || !["created", "not_created"].includes(body.outcome) ||
+          typeof body.task_id !== "string" || typeof body.idempotency_key !== "string" ||
+          typeof body.operator_id !== "string" || !body.operator_id.trim() ||
+          typeof body.reason !== "string" || body.reason.trim().length < 12) {
+        return json({ error: "manual reconciliation requires task_id, idempotency_key, outcome, operator_id, and reason" }, 400);
+      }
+      const key = `issue:${body.task_id}:${body.idempotency_key}`;
+      const prior = await this.state.storage.get(key);
+      if (!prior || !["in_flight", "uncertain"].includes(prior.state)) {
+        return json({ error: "no unresolved operation matches this reconciliation request" }, 409);
+      }
+      await this.state.storage.put(key, {
+        ...prior, state: body.outcome === "created" ? "reconciled_created" : "reconciled_not_created",
+        reconciled_at: new Date().toISOString(),
+        reconciled_by: body.operator_id.trim().slice(0, 128),
+        reconciliation_reason: body.reason.trim().slice(0, 500),
+      });
+      return json({ reconciled: true, outcome: body.outcome });
     }
 
     if (url.pathname === "/issues/create" && request.method === "POST") {
@@ -227,6 +278,13 @@ export class OrcaWriteBroker {
           http_status: response.status,
           updated_at: new Date().toISOString(),
         });
+        if (uncertain) {
+          await this.state.storage.put("global_hold", {
+            value: "draining", operator_id: "system",
+            reason: "GitHub returned an uncertain write outcome",
+            changed_at: new Date().toISOString(),
+          });
+        }
         return json({ error: `GitHub issue creation returned HTTP ${response.status}`, outcome: uncertain ? "uncertain" : "rejected" }, 502);
       }
       const saved = {
@@ -244,7 +302,12 @@ export class OrcaWriteBroker {
         state: "uncertain", task_id: taskId, updated_at: new Date().toISOString(),
         error: String(error).slice(0, 300),
       });
-      return json({ error: "GitHub write outcome is uncertain; automatic retry is disabled" }, 503);
+      await this.state.storage.put("global_hold", {
+        value: "draining", operator_id: "system",
+        reason: "GitHub write outcome is uncertain; manual reconciliation required",
+        changed_at: new Date().toISOString(),
+      });
+      return json({ error: "GitHub write outcome is uncertain; broker entered fail-closed DRAINING state" }, 503);
     }
   }
 }
