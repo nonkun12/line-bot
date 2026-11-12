@@ -73,6 +73,27 @@ class DistributedLoopLineRouteTests(unittest.TestCase):
         self.assertEqual(payload["source_event_id"], "line-event-2")
         self.assertEqual(payload["user_id"], USER)
 
+    @patch.dict("os.environ", {"DISTRIBUTED_LOOP_LINE_USER_IDS": USER})
+    @patch("core.orca_distributed_loop_intake.httpx.post")
+    def test_register_accepts_existing_d1_task_on_line_redelivery(self, post):
+        post.return_value = SimpleNamespace(
+            status_code=200,
+            json=lambda: {"task": {
+                "task_id": "line-loop-original",
+                "task_type": "distributed_loop",
+                "max_tasks": 1,
+                "status": "pass",
+            }, "duplicate": True},
+        )
+        with patch("core.orca_distributed_loop_intake.uuid.uuid4") as uuid4:
+            uuid4.return_value.hex = "new-retry-id"
+            reply, retryable = register_distributed_loop(
+                "分散Loop開始", "same-line-event", USER, API, TOKEN,
+            )
+        self.assertFalse(retryable)
+        self.assertIn("line-loop-original", reply)
+        self.assertNotIn("new-retry-id", reply)
+
     @patch.dict("os.environ", {"DISTRIBUTED_LOOP_LINE_USER_IDS": ""})
     def test_register_fails_closed_for_non_allowlisted_user(self):
         result = register_distributed_loop("分散Loop開始", "event", USER, API, TOKEN)
