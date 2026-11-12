@@ -342,6 +342,9 @@ def test_stop_watcher_fails_closed_when_remote_control_cannot_be_verified():
     assert "if ! git fetch --quiet --no-tags --depth=1 origin main" in watcher
     assert 'touch "$STOP_FILE"' in watcher
     assert "git cat-file -e FETCH_HEAD:.autonomous-loop.stop" in watcher
+    assert "/control/loop-admission" in watcher
+    assert "ORCA_LOOP_PREFLIGHT_TOKEN" in watcher
+    assert "jq -e '.allowed == true" in watcher
 
 
 def test_publish_and_durable_state_updates_recheck_stop_controls():
