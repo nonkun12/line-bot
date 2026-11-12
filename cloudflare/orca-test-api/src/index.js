@@ -42,7 +42,7 @@ async function globalHoldState(env) {
     if (!response.ok) return { clear: false, value: null };
     const state = await response.json();
     return { clear: state.clear === true && state.value === "off" && state.blocked === false,
-      value: state.value ?? null };
+      value: state.value ?? null, unresolved_operations: state.unresolved_operations ?? 0 };
   } catch {
     return { clear: false, value: null };
   }
@@ -435,7 +435,8 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/control/global-hold" && request.method === "GET") {
       const state = await globalHoldState(env);
-      return json({ clear: state.clear, value: state.value, blocked: !state.clear }, 200);
+      return json({ clear: state.clear, value: state.value, blocked: !state.clear,
+        unresolved_operations: state.unresolved_operations ?? 0 }, 200);
     }
     if (url.pathname === "/control/global-hold" && request.method === "POST") {
       const supplied = request.headers.get("x-orca-hold-operator") || "";
@@ -470,6 +471,22 @@ export default {
         return json({ value: body.value, acknowledged: true });
       } catch {
         return json({ error: "HOLD transition failed; broker state remains authoritative" }, 503);
+      }
+    }
+    if (url.pathname === "/control/global-hold/reconcile" && request.method === "POST") {
+      const supplied = request.headers.get("x-orca-hold-operator") || "";
+      if (!env.ORCA_HOLD_OPERATOR_TOKEN || !safeEqual(supplied, env.ORCA_HOLD_OPERATOR_TOKEN)) {
+        return json({ error: "separate human operator credential required" }, 403);
+      }
+      try {
+        const body = await request.text();
+        const response = await (await brokerStub(env)).fetch("https://orca-write-broker.internal/operations/reconcile", {
+          method: "POST", headers: { "content-type": "application/json" }, body,
+        });
+        return new Response(await response.text(), { status: response.status,
+          headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+      } catch {
+        return json({ error: "write broker unavailable; reconciliation blocked" }, 503);
       }
     }
     if (url.pathname === "/internal/github/issues" && request.method === "POST") {
