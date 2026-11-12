@@ -5,7 +5,7 @@
 - Changes the existing distributed autonomous loop target from hourly to every 30 minutes at :07 and :37 Japan time.
 - Adds a read-only gate job before the existing loop executor.
 - Serializes runs with the existing distributed-autonomous-loop concurrency group.
-- Checks the latest previous run and drops a scheduled invocation when 30 minutes have not elapsed. A delayed run is not replayed as a burst.
+- Checks the latest previous main-branch run and drops a scheduled or automatic continuation invocation when 30 minutes have not elapsed. A delayed run is not replayed as a burst.
 - Keeps scheduled runs at one task per tick. Manual bounded runs remain capped at four.
 - Does not alter the separate minutely notification-outbox Cron in wrangler.toml.example.
 
@@ -31,6 +31,7 @@ The budget endpoint and provider collectors are not part of this PR. Until a tru
 ## Runtime limits and safety
 
 - Scheduled run: one task per tick (within the four-task policy ceiling).
+- Automatic Chain Job AI continuations are also throttled to the same 30-minute minimum. Explicit manual starts at continuation depth zero still pass the cadence check, but must pass HOLD and budget gates.
 - Existing task-level SafetyGate, Recovery HOLD, Global HOLD checks, evidence requirements, and no-auto-merge/no-deploy rules remain in place.
 - AUTO_APPLY_PATCH=false and AUTO_DEPLOY=false remain unchanged.
 - This change does not apply migrations, configure secrets, dispatch Actions, deploy, merge, or release HOLD.
