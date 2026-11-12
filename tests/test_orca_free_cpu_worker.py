@@ -764,3 +764,37 @@ def test_orphan_recovery_rechecks_created_pr_head_before_task_completion():
     process = source.split("def process(", 1)[1]
     assert "expected_head_sha=orphan[0]" in process
     assert "verified_url, _ = reconcile_existing_pr(" in process
+
+
+def test_reconcile_existing_pr_rejects_commit_without_task_trailers(monkeypatch):
+    from types import SimpleNamespace
+    import json
+    import scripts.orca_free_cpu_worker as worker
+
+    head = "a" * 40
+    main_sha = "b" * 40
+
+    def fake_run(command, *, timeout=120, input_text=None):
+        if command[:3] == ["gh", "pr", "view"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps({
+                "url": "https://github.com/nonkun12/line-bot/pull/106",
+                "headRefName": "orca/task-line-106",
+                "baseRefName": "main",
+                "body": "Task ID: line-106\nRequest SHA-256: " + "c" * 64,
+                "state": "OPEN",
+                "headRefOid": head,
+            }), stderr="")
+        if command[:2] == ["git", "rev-parse"]:
+            value = main_sha if command[2] in {"origin/main", f"{head}^"} else head
+            return SimpleNamespace(returncode=0, stdout=value + "\n", stderr="")
+        if command[:4] == ["git", "show", "-s", "--format=%B"]:
+            return SimpleNamespace(returncode=0, stdout="unrelated commit without ORCA trailers\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    try:
+        worker.reconcile_existing_pr("orca/task-line-106", "line-106", "c" * 64)
+    except worker.WorkerError as exc:
+        assert "commit provenance" in str(exc)
+    else:
+        raise AssertionError("existing PR without exact task trailers must be blocked")
