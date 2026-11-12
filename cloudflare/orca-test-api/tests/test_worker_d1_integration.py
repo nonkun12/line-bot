@@ -206,7 +206,7 @@ migrations_dir = "migrations"
             if task_type == "distributed_loop"
             else ["v1", task_id, request_hash, owner, issued_at, expires_at, nonce]
         )
-        canonical = "\\n".join(canonical_fields)
+        canonical = "\n".join(canonical_fields)
         signature = hmac.new(
             HMAC_KEY.encode(), canonical.encode(), hashlib.sha256
         ).hexdigest()
