@@ -1467,8 +1467,18 @@ jobs:
             "https://line-bot-yvea.onrender.com/health"; then
             echo "::warning::Render health warm-up failed; continuing to the single LINE push attempt."
           fi
+      - name: Recheck ORCA D1 Global HOLD before Render status publication
+        id: global_hold_before_render
+        if: ${{ always() && !cancelled() }}
+        env:
+          ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python -m scripts.check_orca_global_hold || { touch /tmp/orca-global-hold-blocked; exit 1; }
+
       - name: Publish cloud Orca runtime snapshot to Render
-        if: always()
+        if: ${{ always() && steps.global_hold_before_render.outcome == 'success' }}
         continue-on-error: true
         env:
           ORCA_STATUS_URL: ${{ secrets.ORCA_STATUS_URL }}
@@ -1499,8 +1509,18 @@ jobs:
             --outcome "$outcome" \
             | python scripts/orca_status_publisher.py
 
+      - name: Recheck ORCA D1 Global HOLD before LINE notification
+        id: global_hold_before_line
+        if: ${{ always() && !cancelled() }}
+        env:
+          ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python -m scripts.check_orca_global_hold || { touch /tmp/orca-global-hold-blocked; exit 1; }
+
       - name: Notify LINE of distributed loop final report
-        if: always()
+        if: ${{ always() && steps.global_hold_before_line.outcome == 'success' }}
         continue-on-error: true
         env:
           LINE_INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
