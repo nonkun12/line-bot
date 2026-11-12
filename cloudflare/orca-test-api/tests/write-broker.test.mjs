@@ -47,7 +47,10 @@ const taskRow = {
 function makeBroker(privateKeyPem = privatePem) {
   const state = new State();
   const env = {
-    DB: { prepare: () => ({ bind: () => ({ first: async () => taskRow }) }) },
+    DB: { prepare: () => ({ bind: () => ({
+      first: async () => taskRow,
+      run: async () => ({ meta: { changes: 1 } }),
+    }) }) },
     GITHUB_APP_ID: "12345",
     GITHUB_APP_INSTALLATION_ID: "98765",
     GITHUB_APP_PRIVATE_KEY: privateKeyPem,
