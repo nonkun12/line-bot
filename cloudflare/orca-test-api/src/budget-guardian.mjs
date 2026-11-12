@@ -33,8 +33,9 @@ export function evaluateBudgetGuard({ now = new Date(), sources, globalHoldClear
   for (const name of requiredSources) {
     const source = byName.get(name);
     if (!source) return blocked("required_usage_source_missing", details.concat({ name }));
-    if (source.enabled === false) { details.push({ name, enabled: false, status: "DISABLED_BY_CONFIGURATION" }); continue; }
-    if (source.enabled !== true) return blocked("usage_source_enabled_state_unknown", details.concat({ name }));
+    // Telemetry cannot disable its own budget control. A disabled or unknown source
+    // makes the whole decision BLOCKED until an authenticated control plane exists.
+    if (source.enabled !== true) return blocked("usage_source_enabled_state_unknown_or_disabled", details.concat({ name }));
     const used = source.used, limit = source.limit;
     const observedAt = validDate(source.observed_at), periodStart = validDate(source.period_start), periodEnd = validDate(source.period_end);
     if (!Number.isFinite(used) || used < 0 || !Number.isFinite(limit) || limit <= 0 || observedAt === null || periodStart === null || periodEnd === null || periodStart >= periodEnd) return blocked("usage_snapshot_invalid", details.concat({ name }));
@@ -44,12 +45,15 @@ export function evaluateBudgetGuard({ now = new Date(), sources, globalHoldClear
     const status = percent >= thresholds.stop ? "STOP" : percent >= thresholds.suppress ? "SUPPRESS" : percent >= thresholds.warn ? "WARN" : "CLEAR";
     details.push({ name, enabled: true, used, limit, percent, status, observed_at: source.observed_at });
   }
-  if (!details.some((item) => item.enabled === true)) return blocked("no_enabled_budget_sources", details);
   const rank = { CLEAR: 0, WARN: 1, SUPPRESS: 2, STOP: 3 };
-  const worst = details.reduce((current, item) => item.enabled === true && rank[item.status] > rank[current] ? item.status : current, "CLEAR");
-  return { status: worst, allowNewTasks: worst === "CLEAR" || worst === "WARN", allowActionsDispatch: worst === "CLEAR" || worst === "WARN",
+  const worst = details.reduce((current, item) => rank[item.status] > rank[current] ? item.status : current, "CLEAR");
+  return {
+    status: worst,
+    allowNewTasks: worst === "CLEAR" || worst === "WARN",
+    allowActionsDispatch: worst === "CLEAR" || worst === "WARN",
     reason: worst === "CLEAR" ? "within_budget" : worst === "WARN" ? "budget_warning_threshold_reached" : worst === "SUPPRESS" ? "budget_suppression_threshold_reached" : "budget_stop_threshold_reached",
-    sources: details };
+    sources: details,
+  };
 }
 
 export { DEFAULT_THRESHOLDS, REQUIRED_SOURCES, MAX_SNAPSHOT_AGE_MS };
