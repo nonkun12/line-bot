@@ -163,6 +163,7 @@ jobs:
         github.event.sender.login == 'nonkun12' &&
         github.event.pull_request.user.login == 'nonkun12'
       )
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
