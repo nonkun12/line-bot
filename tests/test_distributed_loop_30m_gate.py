@@ -53,6 +53,14 @@ class BudgetGateTests(unittest.TestCase):
                 evaluate_budget_snapshot({"sources": source_rows, "consecutive_failures": 0}, now=NOW)
 
 class SlotGateTests(unittest.TestCase):
+    def test_auto_continuation_is_subject_to_slot_gate(self):
+        from scripts.distributed_loop_30m_gate import requires_slot_gate
+        self.assertTrue(requires_slot_gate("schedule", "0"))
+        self.assertTrue(requires_slot_gate("workflow_dispatch", "1"))
+        self.assertTrue(requires_slot_gate("workflow_dispatch", "12"))
+        self.assertFalse(requires_slot_gate("workflow_dispatch", "0"))
+        self.assertFalse(requires_slot_gate("issue_comment", "0"))
+
     def test_first_slot_and_old_run_allow(self):
         self.assertTrue(decide_slot([], current_run_id="2", now=NOW)[0])
         old = [{"id": 1, "run_started_at": (NOW-timedelta(minutes=31)).isoformat()}]
