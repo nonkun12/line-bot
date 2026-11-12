@@ -5,7 +5,7 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), {
 
 const encoder = new TextEncoder();
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)))
-  .replaceAll("=", "").replaceAll("+", "-").replaceAll("/", "_");
+    .replaceAll("\r", "").replaceAll("\n", "").replaceAll(" ", "").replaceAll("\t", "");
 
 function concatBytes(...parts) {
   const output = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
@@ -21,7 +21,7 @@ function der(tag, value) {
 }
 
 function pemBytes(pem) {
-  const normalized = String(pem || "").split("\\\\n").join("\\n");
+  const normalized = String(pem || "").split("\\n").join("\n");
   const pkcs1 = normalized.includes("-----BEGIN RSA PRIVATE KEY-----");
   const body = normalized
     .split("-----BEGIN PRIVATE KEY-----").join("")
