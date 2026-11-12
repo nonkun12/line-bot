@@ -33,4 +33,4 @@ jobs:
       - name: Run Worker against temporary local D1
         env:
           ORCA_D1_INTEGRATION: "1"
-        run: python -m unittest cloudflare.orca-test-api.tests.test_worker_d1_integration -v
+        run: python cloudflare/orca-test-api/tests/test_worker_d1_integration.py -v
