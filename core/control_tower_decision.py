@@ -102,6 +102,16 @@ class ControlTowerDecisionRecord:
             and self.task_template_id in registered_task_ids
         )
 
+    def is_fallback_safe(self) -> bool:
+        """Return True if the decision represents a safe fallback.
+
+        A safe fallback is defined as any action that does not attempt to
+        execute a task, such as ``HOLD`` or ``NOT_RUN``.  This helper can be
+        used by callers to decide whether to retry or to surface a user
+        message without risking unintended execution.
+        """
+        return self.next_action in {"HOLD", "NOT_RUN"}
+
 
 __all__ = [
     "ControlTowerDecisionRecord",
