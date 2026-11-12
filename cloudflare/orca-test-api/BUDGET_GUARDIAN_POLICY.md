@@ -8,12 +8,12 @@ Budget Guardian is a deterministic, fail-closed safety gate separate from task-g
 - Cloudflare D1
 - GitHub Actions
 
-Every required source must provide a current-period snapshot or be explicitly disabled by an operator because that spend path is not in use. Missing, malformed, stale, future-dated, or out-of-period telemetry is BLOCKED. Missing enabled state is not treated as disabled.
+Every required source must provide a current-period snapshot with enabled=true. Missing, disabled, malformed, stale, future-dated, or out-of-period telemetry is BLOCKED. Telemetry cannot disable its own budget check. A trusted operator-disable control is not implemented in this increment.
 
 ## Internal thresholds
 - 70%: WARN; continue only with fresh telemetry.
 - 80%: SUPPRESS new tasks and Actions dispatch.
-- 90%: STOP new work.
+- 90% or higher: STOP new work; both task registration and Actions dispatch must be rejected by every execution entry point.
 - Three consecutive monitor/collection failures: BLOCKED/HOLD.
 - Unknown usage or unknown configured limit: BLOCKED.
 
@@ -33,4 +33,4 @@ Each enabled source snapshot contains name, explicit enabled boolean, used and p
 Snapshots older than 90 minutes, more than five minutes in the future, or outside the current period are BLOCKED. All required sources must be supplied. The evaluator is pure and performs no network access.
 
 ## Scope and remaining work
-This PR adds the deterministic evaluator and unit tests only. Vendor-specific usage collectors, durable state/ledger, notifications, and integration with every ORCA execution gate remain separate work. Until implemented, verified, and explicitly activated, this code is not a live budget monitor.
+This PR adds the deterministic evaluator and unit tests only. Vendor-specific usage collectors, durable state/ledger, notifications, and integration with every ORCA execution gate remain separate work. Unit tests verify the evaluator returns STOP and both allow flags false at 90% and above, but do not prove that live task-registration or Actions-dispatch entry points are wired to this evaluator. Until those integration tests exist, real stop behavior remains unverified. Until implemented, verified, and explicitly activated, this code is not a live budget monitor.
