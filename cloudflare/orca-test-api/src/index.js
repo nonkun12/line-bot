@@ -1,3 +1,5 @@
+export { OrcaWriteBroker } from "./write-broker.mjs";
+
 const json = (value, status = 200) =>
   new Response(JSON.stringify(value), {
     status,
@@ -17,14 +19,30 @@ async function authorized(request, env) {
   return Boolean(env.API_TOKEN) && safeEqual(supplied, expected);
 }
 
-// D1 is the source of truth. Only the exact explicit value "off" releases HOLD.
-// Missing rows, unknown values, and database errors all fail closed.
+// The serialized Durable Object is authoritative. Missing binding/state or
+// any transport error is HOLD=ON; D1 is only a compatibility mirror.
+async function brokerStub(env) {
+  if (!env.ORCA_WRITE_BROKER) throw new Error("ORCA_WRITE_BROKER binding unavailable");
+  const id = env.ORCA_WRITE_BROKER.idFromName("nonkun12/line-bot");
+  return env.ORCA_WRITE_BROKER.get(id);
+}
+
+async function brokerRequest(env, path, method = "GET", body = null) {
+  const stub = await brokerStub(env);
+  return stub.fetch(`https://orca-write-broker.internal${path}`, {
+    method,
+    headers: { "content-type": "application/json" },
+    body: body === null ? undefined : JSON.stringify(body),
+  });
+}
+
 async function globalHoldState(env) {
   try {
-    const row = await env.DB.prepare(
-      "SELECT value FROM system_controls WHERE control_key = 'global_hold'"
-    ).first();
-    return { clear: row?.value === "off", value: row?.value ?? null };
+    const response = await brokerRequest(env, "/hold");
+    if (!response.ok) return { clear: false, value: null };
+    const state = await response.json();
+    return { clear: state.clear === true && state.value === "off" && state.blocked === false,
+      value: state.value ?? null };
   } catch {
     return { clear: false, value: null };
   }
@@ -418,6 +436,50 @@ export default {
     if (url.pathname === "/control/global-hold" && request.method === "GET") {
       const state = await globalHoldState(env);
       return json({ clear: state.clear, value: state.value, blocked: !state.clear }, 200);
+    }
+    if (url.pathname === "/control/global-hold" && request.method === "POST") {
+      const supplied = request.headers.get("x-orca-hold-operator") || "";
+      if (!env.ORCA_HOLD_OPERATOR_TOKEN || !safeEqual(supplied, env.ORCA_HOLD_OPERATOR_TOKEN)) {
+        return json({ error: "separate human operator credential required" }, 403);
+      }
+      const body = await readJson(request);
+      if (!body || !["on", "off"].includes(body.value)) return json({ error: "value must be on or off" }, 400);
+      if (body.value === "off" &&
+          (typeof body.operator_id !== "string" || !body.operator_id.trim() ||
+           typeof body.reason !== "string" || body.reason.trim().length < 8)) {
+        return json({ error: "operator_id and reason are required to release HOLD" }, 400);
+      }
+      const mirror = () => env.DB.prepare(
+        "UPDATE system_controls SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE control_key = 'global_hold'"
+      ).bind(body.value).run();
+      try {
+        // ON: block new writes first, then mirror to D1.
+        // OFF: mirror D1 first, then release the serialized broker last.
+        if (body.value === "on") {
+          const result = await brokerRequest(env, "/hold", "PUT", body);
+          if (!result.ok) return json({ error: "broker refused HOLD transition" }, 503);
+          await mirror();
+        } else {
+          await mirror();
+          const result = await brokerRequest(env, "/hold", "PUT", body);
+          if (!result.ok) return json({ error: "broker refused HOLD release; fail-closed state retained" }, 503);
+        }
+        return json({ value: body.value, acknowledged: true });
+      } catch {
+        return json({ error: "HOLD transition failed; broker state remains authoritative" }, 503);
+      }
+    }
+    if (url.pathname === "/internal/github/issues" && request.method === "POST") {
+      try {
+        const body = await request.text();
+        const response = await (await brokerStub(env)).fetch("https://orca-write-broker.internal/issues/create", {
+          method: "POST", headers: { "content-type": "application/json" }, body,
+        });
+        return new Response(await response.text(), { status: response.status,
+          headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+      } catch {
+        return json({ error: "write broker unavailable; GitHub mutation blocked" }, 503);
+      }
     }
     if (url.pathname === "/tasks" && request.method === "POST") return createTask(request, env);
     if (url.pathname === "/tasks" && request.method === "GET") return listTasks(url, env);
