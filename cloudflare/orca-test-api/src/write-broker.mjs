@@ -307,6 +307,7 @@ export class OrcaWriteBroker {
             reason: "GitHub returned an uncertain write outcome",
             changed_at: new Date().toISOString(),
           });
+          try { await this.mirrorGlobalHold("on"); } catch { /* DO remains fail-closed */ }
         }
         return json({ error: `GitHub issue creation returned HTTP ${response.status}`, outcome: uncertain ? "uncertain" : "rejected" }, 502);
       }
@@ -330,6 +331,7 @@ export class OrcaWriteBroker {
         reason: "GitHub write outcome is uncertain; manual reconciliation required",
         changed_at: new Date().toISOString(),
       });
+      try { await this.mirrorGlobalHold("on"); } catch { /* DO remains fail-closed */ }
       return json({ error: "GitHub write outcome is uncertain; broker entered fail-closed DRAINING state" }, 503);
     }
   }
