@@ -5,7 +5,7 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), {
 
 const encoder = new TextEncoder();
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)))
-    .replaceAll("\r", "").replaceAll("\n", "").replaceAll(" ", "").replaceAll("\t", "");
+    .replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "");
 
 function concatBytes(...parts) {
   const output = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
