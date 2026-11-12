@@ -219,15 +219,15 @@ def _run_real_cadence_decision(tmp_path, tasks, completed, recovery, minute):
     source = workflow.read_text(encoding="utf-8")
     marker = "      - name: Decide hourly or 30-minute execution"
     start = source.index(marker)
-    run = source.index("        run: |\\n", start) + len("        run: |\\n")
-    end = source.index("\\n      - name:", run)
+    run = source.index("        run: |\n", start) + len("        run: |\n")
+    end = source.index("\n      - name:", run)
     block = source[run:end]
     lines = block.splitlines()
     # YAML removes the common workflow indentation. Extract only the Python
     # heredoc body and execute it directly, avoiding shell heredoc indentation.
     py_start = next(i for i, line in enumerate(lines) if line.strip() == "python - <<'PY'")
     py_end = next(i for i in range(py_start + 1, len(lines)) if lines[i].strip() == "PY")
-    script = textwrap.dedent("\\n".join(lines[py_start + 1:py_end])) + "\\n"
+    script = textwrap.dedent("\n".join(lines[py_start + 1:py_end])) + "\n"
 
     state_path = tmp_path / "cadence-state.json"
     queue_path = tmp_path / ".github" / "autonomous-loop-tasks.json"
