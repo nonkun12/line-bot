@@ -364,6 +364,8 @@ def reconcile_existing_pr(
     branch: str,
     task_id: str,
     expected_request_hash: str,
+    *,
+    expected_head_sha: str | None = None,
 ) -> tuple[str, list[str]]:
     """Re-verify an existing task PR at its exact advertised head before completion."""
     viewed = run(
@@ -389,6 +391,7 @@ def reconcile_existing_pr(
         or f"Task ID: {task_id}" not in str(item.get("body") or "")
         or f"Request SHA-256: {expected_request_hash}" not in str(item.get("body") or "")
         or not isinstance(head_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", head_sha)
+        or (expected_head_sha is not None and head_sha != expected_head_sha)
     ):
         raise WorkerError("existing PR metadata does not match this task and request")
     if run(["git", "fetch", "--no-tags", "origin", "main"], timeout=120).returncode:
@@ -655,6 +658,13 @@ def process(task_id: str) -> int:
                 expected_task_id=task_id,
                 expected_request_hash=request_fingerprint,
             )
+            verified_url, _ = reconcile_existing_pr(
+                branch, task_id, request_fingerprint,
+                expected_head_sha=orphan[0],
+            )
+            if verified_url != pr_url:
+                raise WorkerError("recovered orphan PR URL changed during verification")
+            pr_url = verified_url
             api_request("POST", "/tasks/" + encoded_id + "/complete",
                         {"claim_token": claim_token, "status": "pass",
                          "message": f"ORCA task {task_id}: PASS — recovered verified orphan PR {pr_url}"})
