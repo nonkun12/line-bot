@@ -133,7 +133,7 @@ def check_slot(now: datetime) -> tuple[bool, str]:
         return False, "github_run_context_missing"
     repo = urllib.parse.quote(repo, safe="/")
     url = (f"https://api.github.com/repos/{repo}/actions/workflows/"
-           "distributed-autonomous-loop.yml/runs?per_page=100&exclude_pull_requests=true")
+           "distributed-autonomous-loop.yml/runs?branch=main&per_page=100&exclude_pull_requests=true")
     payload = request_json(url, token, github=True)
     if not isinstance(payload, dict) or not isinstance(payload.get("workflow_runs"), list):
         return False, "workflow_run_history_invalid"
@@ -158,12 +158,19 @@ def main() -> int:
     try:
         check_global_hold()
         budget = check_budget(now)
-        if os.environ.get("GITHUB_EVENT_NAME") == "schedule":
+        event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+        continuation_depth = os.environ.get("CONTINUATION_DEPTH", "0")
+        is_auto_continuation = (
+            event_name == "workflow_dispatch"
+            and continuation_depth.isdigit()
+            and int(continuation_depth) > 0
+        )
+        if event_name == "schedule" or is_auto_continuation:
             allow, reason = check_slot(now)
             if not allow:
                 raise GateBlocked(reason)
         else:
-            reason = "non_scheduled_trigger_passed_safety_gates"
+            reason = "manual_trigger_passed_safety_gates"
         detail = ", ".join(f"{x['name']}={x['percent']:.1f}%/{x['status']}" for x in budget["sources"])
         write_outputs(True, reason, detail)
         print("ORCA_30M_GATE_ALLOW: " + reason)
