@@ -81,3 +81,15 @@ or LINE notifications. The legacy workflow still has direct GitHub write
 paths. The HOLD drain guarantee applies only to operations that actually pass
 through this Durable Object. Do not enable autonomous execution or remove
 legacy write permissions until every required side effect has been migrated.
+
+### Uncertain remote outcomes and DRAINING
+
+A client timeout or GitHub 5xx does not prove that GitHub did not create an
+Issue. Such outcomes are recorded as `uncertain` and automatically move the
+broker to `DRAINING`. New broker writes are blocked. HOLD ON is **not**
+acknowledged while any operation is `in_flight` or `uncertain`; the operator
+must inspect GitHub using the embedded task/idempotency marker and submit a
+separately authenticated manual reconciliation. After reconciliation, the
+operator must explicitly acknowledge HOLD ON or deliberately release it.
+If the durable operation ledger reaches its 2,001-record inspection ceiling,
+the broker also fails closed for manual maintenance.
