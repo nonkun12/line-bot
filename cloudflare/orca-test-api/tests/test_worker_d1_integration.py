@@ -504,3 +504,28 @@ new_sqlite_classes = ["OrcaWriteBroker"]
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+    def test_loop_admission_preflight_requires_clear_durable_object_hold_and_fresh_budget(self):
+        status, result = self.api("/control/loop-admission")
+        self.assertEqual(status, 200, result)
+        self.assertTrue(result["allowed"])
+        self.assertTrue(result["global_hold"]["clear"])
+        self.assertEqual(result["budget_guard"]["status"], "CLEAR")
+
+        self.assertEqual(self.set_hold("on")[0], 200)
+        status, blocked = self.api("/control/loop-admission")
+        self.assertEqual(status, 423, blocked)
+        self.assertFalse(blocked["allowed"])
+        self.assertFalse(blocked["global_hold"]["clear"])
+
+        self.assertEqual(self.set_hold("off")[0], 200)
+        self.set_budget_state("BLOCKED")
+        status, blocked = self.api("/control/loop-admission")
+        self.assertEqual(status, 423, blocked)
+        self.assertEqual(blocked["budget_guard"]["status"], "BLOCKED")
+
+        self.set_budget_state("CLEAR", observed_at="2000-01-01T00:00:00Z")
+        status, blocked = self.api("/control/loop-admission")
+        self.assertEqual(status, 423, blocked)
+        self.assertFalse(blocked["allowed"])
