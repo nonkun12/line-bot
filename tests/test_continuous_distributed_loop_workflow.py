@@ -27,7 +27,7 @@ def _run_active_check(tmp_path, depth, *, active_count=0):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     gh = fake_bin / "gh"
-    gh.write_text(f"#!/bin/sh\nprintf '%s\\n' '{active_count}'\n", encoding="utf-8")
+    gh.write_text(f"#!/bin/sh\nprintf '%s\n' '{active_count}'\n", encoding="utf-8")
     gh.chmod(0o755)
     output = tmp_path / "github-output"
     env = os.environ.copy()
@@ -218,8 +218,8 @@ def _run_real_cadence_decision(tmp_path, tasks, completed, recovery, minute):
     source = workflow.read_text(encoding="utf-8")
     marker = "      - name: Decide hourly or 30-minute execution"
     start = source.index(marker)
-    run = source.index("        run: |\\n", start) + len("        run: |\\n")
-    end = source.index("\\n      - name:", run)
+    run = source.index("        run: |\n", start) + len("        run: |\n")
+    end = source.index("\n      - name:", run)
     script = textwrap.dedent(source[run:end])
     state_path = tmp_path / "cadence-state.json"
     script = script.replace("/tmp/cadence-state.json", str(state_path))
@@ -314,6 +314,6 @@ def test_adaptive_schedule_never_accumulates_an_unbounded_run_queue():
         / "distributed-autonomous-loop.yml"
     )
     source = path.read_text(encoding="utf-8")
-    concurrency = source.split("concurrency:", 1)[1].split("\\njobs:", 1)[0]
+    concurrency = source.split("concurrency:", 1)[1].split("\njobs:", 1)[0]
     assert "cancel-in-progress: false" in concurrency
     assert "queue: max" not in concurrency
