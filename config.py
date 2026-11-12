@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import httpx
 import certifi
@@ -36,6 +37,7 @@ N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "")
 VOICE_PUBLIC_BASE_URL = os.environ.get("VOICE_PUBLIC_BASE_URL", "https://line-bot-yvea.onrender.com").rstrip("/")
 ORCA_TASK_API_URL = os.environ.get("ORCA_TASK_API_URL", "").strip()
 ORCA_TASK_API_TOKEN = os.environ.get("ORCA_TASK_API_TOKEN", "").strip()
+ORCA_TASK_APPROVAL_HMAC_KEY = os.environ.get("ORCA_TASK_APPROVAL_HMAC_KEY", "").strip()
 
 AI_APP_BUILDER_URL = os.environ.get("AI_APP_BUILDER_URL", "")
 AI_APP_BUILDER_SHARED_SECRET = os.environ.get("AI_APP_BUILDER_SHARED_SECRET", "")
@@ -52,7 +54,7 @@ MODEL = "openai/gpt-oss-20b"
 DEPLOY_SYNC_MARKER = "2026-09-12-line-voice-e2e"
 
 
-def _register_orca_task(message: str, message_id: str):
+def _register_orca_task(message: str, message_id: str, user_id: str | None = None):
     """Explicit LINE task intake only; stores a task in Cloudflare D1 without executing it."""
     prefixes = ("タスク登録:", "タスク登録：")
     prefix = next((item for item in prefixes if message.startswith(item)), None)
@@ -62,16 +64,21 @@ def _register_orca_task(message: str, message_id: str):
     request_text = message[len(prefix):].strip()
     if not request_text:
         return False, "タスク内容が空です。「タスク登録: 依頼内容」の形式で送ってください。", False
+    if not request_text.startswith(("アプリ開発:", "アプリ開発：")):
+        return False, "現在のOrca実行対象はアプリ開発のみです。「タスク登録: アプリ開発: 依頼内容」の形式で送ってください。", False
     if len(request_text.encode("utf-8")) > 6000:
         return False, "依頼文が長すぎます。6,000バイト以内にしてください。", False
     if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN:
         return False, "Cloudflare受付設定が未完了です。依頼は登録されていません。", False
 
-    payload = {
-        "task_id": f"line-{uuid.uuid4().hex}",
-        "request_text": request_text,
-        "source_event_id": str(message_id),
-    }
+    from core.orca_task_intake import build_task_payload
+
+    payload = build_task_payload(
+        task_id=f"line-{uuid.uuid4().hex}",
+        request_text=request_text,
+        message_id=message_id,
+        user_id=user_id,
+    )
     try:
         response = httpx.post(
             ORCA_TASK_API_URL,
@@ -96,6 +103,97 @@ def _register_orca_task(message: str, message_id: str):
         return False, "Cloudflareの応答を確認できませんでした。登録状態を確認してから再送してください。", True
 
     return True, f"Cloudflare D1に受付しました。状態: {status} / Task ID: {task_id or '受付済み'}（この段階では実行していません）", False
+
+
+def _register_orca_distributed_loop_task(message: str, message_id: str, user_id: str | None):
+    """Register a bounded loop request in D1; never dispatch or execute it."""
+    prefixes = ("分散Loop登録:", "分散Loop登録：")
+    prefix = next((item for item in prefixes if message.startswith(item)), None)
+    if prefix is None:
+        return None
+    request_text = message[len(prefix):].strip()
+    if not request_text or len(request_text.encode("utf-8")) > 6000:
+        return False, "分散Loop依頼が空か、6,000バイトを超えています。", False
+    from core.orca_distributed_loop_intake import build_distributed_loop_task_payload
+    try:
+        payload = build_distributed_loop_task_payload(
+            task_id=f"line-loop-{uuid.uuid4().hex}",
+            request_text=request_text,
+            source_event_id=message_id,
+            user_id=user_id,
+        )
+    except ValueError as exc:
+        return False, f"分散Loop受付を拒否しました: {exc}", False
+    if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN:
+        return False, "Orca D1接続設定が未完了です。登録していません。", False
+    try:
+        response = httpx.post(
+            ORCA_TASK_API_URL, json=payload,
+            headers={"Authorization": f"Bearer {ORCA_TASK_API_TOKEN}"},
+            timeout=8.0,
+        )
+    except httpx.TransportError:
+        return False, "Orca D1への接続結果を確認できません。再送前に状態確認してください。", True
+    if response.status_code >= 500:
+        return False, "Orca D1が一時エラーです。登録状態を確認してから再送してください。", True
+    if response.status_code not in (200, 201):
+        return False, f"Orca D1受付が拒否されました（HTTP {response.status_code}）。", False
+    try:
+        result = response.json()
+        task = result.get("task", {}) if isinstance(result, dict) else {}
+        task_id = task.get("task_id")
+        if not isinstance(task_id, str) or task.get("task_type") != "distributed_loop" or task.get("max_tasks") != payload["max_tasks"]:
+            return False, "受付応答のタスク種別・上限を検証できません。実行していません。", True
+    except (ValueError, AttributeError):
+        return False, "受付応答を検証できません。状態確認が必要です。", True
+    return True, f"分散LoopをD1に登録しました（未実行）。Task ID: {task_id} / 上限: {payload['max_tasks']}。専用実行Workerは未接続のため、まだ実行されません。承認する場合は「分散Loop承認: {task_id}」を送ってください。", False
+
+
+def _approve_orca_distributed_loop_task(message: str, user_id: str | None):
+    prefixes = ("分散Loop承認:", "分散Loop承認：")
+    prefix = next((item for item in prefixes if message.startswith(item)), None)
+    if prefix is None:
+        return None
+    task_id = message[len(prefix):].strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
+        return False, "Task IDの形式が正しくありません。"
+    from core.orca_distributed_loop_approval import (
+        build_distributed_loop_approval_payload,
+        is_valid_line_user_id,
+    )
+    if not is_valid_line_user_id(user_id):
+        return False, "LINE本人確認ができないため承認できません。"
+    if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN or len(ORCA_TASK_APPROVAL_HMAC_KEY) < 32:
+        return False, "承認用の安全設定が未完了です。承認していません。"
+    url = ORCA_TASK_API_URL.rstrip("/") + "/tasks/" + task_id
+    headers = {"Authorization": f"Bearer {ORCA_TASK_API_TOKEN}"}
+    try:
+        response = httpx.get(url, headers=headers, timeout=8.0)
+        if response.status_code != 200:
+            return False, f"タスクを取得できません（HTTP {response.status_code}）。承認していません。"
+        result = response.json()
+        task = result.get("task") if isinstance(result, dict) else None
+        if not isinstance(task, dict) or task.get("task_id") != task_id:
+            return False, "タスク応答が不正です。承認していません。"
+        if task.get("status") != "queued" or task.get("task_type") != "distributed_loop":
+            return False, "対象は未承認の分散Loopタスクではありません。"
+        max_tasks = task.get("max_tasks")
+        payload = build_distributed_loop_approval_payload(
+            task_id, task.get("request_text"), user_id, max_tasks,
+            ORCA_TASK_APPROVAL_HMAC_KEY,
+        )
+        approved = httpx.post(url + "/approve", json=payload, headers=headers, timeout=8.0)
+    except (httpx.TransportError, ValueError, KeyError, TypeError):
+        return False, "承認APIとの通信または応答検証に失敗しました。承認していません。"
+    if approved.status_code != 200:
+        return False, f"承認は拒否されました（HTTP {approved.status_code}）。"
+    try:
+        result = approved.json()
+    except ValueError:
+        return False, "承認結果を確認できません。"
+    if not isinstance(result, dict) or result.get("approved") is not True:
+        return False, "承認結果を確認できません。"
+    return True, f"分散Loop Task {task_id} の本人承認を記録しました（上限 {max_tasks}）。ただし専用Worker未接続のため、まだ実行されません。"
 
 
 # app.py 側の MessageEvent ハンドラーが誤って欠落しても、LINE webhook を
@@ -141,8 +239,26 @@ def handle_message_event(event):
             if len(_processed_message_ids) > _MAX_TRACKED_IDS:
                 _processed_message_ids.popitem(last=False)
 
-        # Explicit Cloudflare intake is isolated from development and Distributed Loop dispatch.
-        intake_result = _register_orca_task(text, message_id)
+        # Distributed-loop registration and approval are separate from the
+        # legacy direct-dispatch command. Neither route executes a loop.
+        loop_approval_result = _approve_orca_distributed_loop_task(text, user_id)
+        if loop_approval_result is not None:
+            _, loop_approval_reply = loop_approval_result
+            _line_push(str(user_id or ""), loop_approval_reply)
+            return
+
+        loop_intake_result = _register_orca_distributed_loop_task(text, message_id, user_id)
+        if loop_intake_result is not None:
+            _, loop_intake_reply, retryable = loop_intake_result
+            if retryable:
+                with _processed_lock:
+                    _processed_message_ids.pop(message_id, None)
+                    delete_processed_event(message_id)
+            _line_push(str(user_id or ""), loop_intake_reply)
+            return
+
+        # Explicit Cloudflare app-development intake remains isolated.
+        intake_result = _register_orca_task(text, message_id, user_id=user_id)
         if intake_result is not None:
             accepted, intake_reply, retryable = intake_result
             if retryable:
