@@ -99,7 +99,8 @@ permissions:
 concurrency:
   group: distributed-autonomous-loop
   cancel-in-progress: false
-  queue: max
+  # Keep at most one pending run; never accumulate an unbounded backlog.
+  queue: 1
 
 jobs:
   # Read-only adaptive scheduler. Missing/invalid state fails closed.
@@ -250,7 +251,11 @@ jobs:
             echo "::error::CONTROL_TOWER_KILL_SWITCH is ON; refusing all task execution."
             exit 1
           fi
-          if [ -f .autonomous-loop.stop ]; then
+          if ! git fetch --no-tags --depth=1 origin main; then
+            echo "::error::Unable to verify remote stop switch; failing closed."
+            exit 1
+          fi
+          if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
             echo "::error::REMOTE_KILL_SWITCH is ON; refusing all task execution."
             exit 1
           fi
@@ -604,7 +609,13 @@ jobs:
 
           (
             while sleep 15; do
-              if git fetch --quiet origin main 2>/dev/null && git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+              # Any inability to verify the remote control is itself a stop
+              # signal. Never continue work on stale kill-switch evidence.
+              if ! git fetch --quiet --no-tags --depth=1 origin main 2>/dev/null; then
+                touch "$STOP_FILE"
+                exit 0
+              fi
+              if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
                 touch "$STOP_FILE"
                 exit 0
               fi
@@ -741,6 +752,19 @@ jobs:
           MAX_TASKS: ${{ env.MAX_TASKS }}
         run: |
           set -euo pipefail
+          # Recheck immediately before publishing. Fetch failure is BLOCKED.
+          if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ]; then
+            echo "::error::Global kill switch is ON; refusing publication."
+            exit 1
+          fi
+          if ! git fetch --quiet --no-tags --depth=1 origin main; then
+            echo "::error::Unable to verify remote stop switch before publication."
+            exit 1
+          fi
+          if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+            echo "::error::Remote stop switch is ON; refusing publication."
+            exit 1
+          fi
           branch="line-dev/$GITHUB_RUN_ID"
           head="$(git rev-parse HEAD)"
 
@@ -869,6 +893,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Recheck both controls before changing durable completion state.
+          if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ]; then
+            echo "::error::Global kill switch is ON; refusing durable state update."
+            exit 1
+          fi
+          if ! git fetch --quiet --no-tags --depth=1 origin main; then
+            echo "::error::Unable to verify remote stop switch before durable state update."
+            exit 1
+          fi
+          if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+            echo "::error::Remote stop switch is ON; refusing durable state update."
+            exit 1
+          fi
           if [ -f /tmp/autonomous-loop-not-run ] || [ -f /tmp/autonomous-loop-held-tasks ]; then
             echo "No task completed: durable completion state unchanged."
             exit 0
