@@ -5,10 +5,14 @@ This directory is the source-controlled successor for the separately deployed
 
 ## Migrations
 
-Review migrations `0002_atomic_claims_and_outbox.sql`,
-`0003_task_bound_approvals.sql`, and
-`0004_append_only_approval_nonce_history.sql`, and
-`0005_global_hold.sql`, and `0006_typed_task_execution.sql` against the live D1 schema before applying them in order. Migration 0002 adds verified LINE user ID storage,
+Review migrations:
+- `0002_atomic_claims_and_outbox.sql`
+- `0003_task_bound_approvals.sql`
+- `0004_append_only_approval_nonce_history.sql`
+- `0005_global_hold.sql`
+- `0006_typed_task_execution.sql`
+
+Review them against the live D1 schema before applying them in order. Migration 0002 adds verified LINE user ID storage,
 lease fields, attempt count, and a durable notification outbox. Migration 0003
 adds the current task approval record. Migration 0004 adds the append-only
 nonce replay ledger and backfills the currently stored approval nonce. Migration
