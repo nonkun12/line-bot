@@ -167,12 +167,7 @@ def main() -> int:
         budget = check_budget(now)
         event_name = os.environ.get("GITHUB_EVENT_NAME", "")
         continuation_depth = os.environ.get("CONTINUATION_DEPTH", "0")
-        is_auto_continuation = (
-            event_name == "workflow_dispatch"
-            and continuation_depth.isdigit()
-            and int(continuation_depth) > 0
-        )
-        if event_name == "schedule" or is_auto_continuation:
+        if requires_slot_gate(event_name, continuation_depth):
             allow, reason = check_slot(now)
             if not allow:
                 raise GateBlocked(reason)
