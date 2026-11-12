@@ -28,7 +28,7 @@ function pemBytes(pem) {
     .split("-----END PRIVATE KEY-----").join("")
     .split("-----BEGIN RSA PRIVATE KEY-----").join("")
     .split("-----END RSA PRIVATE KEY-----").join("")
-    .replaceAll("\\r", "").replaceAll("\\n", "").replaceAll(" ", "").replaceAll("\\t", "");
+    .replaceAll("\r", "").replaceAll("\n", "").replaceAll(" ", "").replaceAll("\t", "");
   if (!body || !/^[A-Za-z0-9+/=]+$/.test(body)) throw new Error("invalid GitHub App private key");
   const decoded = Uint8Array.from(atob(body), (char) => char.charCodeAt(0));
   if (!pkcs1) return decoded;
