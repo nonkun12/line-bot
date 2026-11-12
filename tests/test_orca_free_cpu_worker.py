@@ -160,6 +160,7 @@ def test_create_or_reuse_pr_creates_when_none_exists(monkeypatch):
         )
 
     monkeypatch.setattr(worker, "run", fake_run)
+    monkeypatch.setattr(worker, "assert_global_hold_clear", lambda: None)
     url = worker.create_or_reuse_pr("orca/task-88", "title", "body")
     assert url == "https://github.com/nonkun12/line-bot/pull/88"
     assert len(calls) == 2
