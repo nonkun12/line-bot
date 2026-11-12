@@ -93,7 +93,7 @@ const issueBody = {
 test("Durable Object starts fail-closed and rejects issue writes under HOLD", async () => {
   const { broker } = makeBroker();
   const state = await (await call(broker, "/hold")).json();
-  assert.deepEqual(state, { clear: false, value: "on", blocked: true });
+  assert.deepEqual(state, { clear: false, value: "on", blocked: true, unresolved_operations: 0 });
   const response = await call(broker, "/issues/create", "POST", issueBody);
   assert.equal(response.status, 423);
 });
@@ -125,7 +125,7 @@ test("HOLD ON waits for an in-flight GitHub write and blocks later writes", asyn
     const writePromise = call(broker, "/issues/create", "POST", issueBody);
     await started;
     let holdResolved = false;
-    const holdPromise = call(broker, "/hold", "PUT", { value: "on", reason: "operator requested hold" })
+    const holdPromise = call(broker, "/hold", "PUT", { value: "on", operator_id: "test-operator", reason: "operator requested hold" })
       .then((response) => { holdResolved = true; return response; });
     await new Promise((resolve) => setTimeout(resolve, 25));
     assert.equal(holdResolved, false, "HOLD must wait while the GitHub request is in flight");
@@ -183,7 +183,7 @@ test("uncertain GitHub outcome is never automatically retried", async () => {
     const holdState = await (await call(broker, "/hold")).json();
     assert.equal(holdState.value, "draining");
     assert.equal(holdState.blocked, true);
-    const holdAck = await call(broker, "/hold", "PUT", { value: "on", reason: "operator requested HOLD" });
+    const holdAck = await call(broker, "/hold", "PUT", { value: "on", operator_id: "test-operator", reason: "operator requested HOLD" });
     assert.equal(holdAck.status, 409, "uncertain remote outcome must prevent HOLD acknowledgement");
     const reconciled = await call(broker, "/operations/reconcile", "POST", {
       task_id: taskId,
