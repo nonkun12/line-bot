@@ -50,7 +50,7 @@ function isValidLineUserId(value) {
 
 function distributedLoopMaxTasks(value) {
   if (typeof value !== "string") return null;
-  const command = value.normalize("NFKC").replace(/[\\u200b-\\u200d\\ufeff]/g, "").replace(/\\s+/g, "");
+  const command = value.normalize("NFKC").replace(/[\u200b-\u200d\ufeff]/g, "").replace(/\s+/g, "");
   const starts = new Set([
     "分散ループ開始", "分散Loop開始", "分散AIループ開始", "分散AILoop開始",
     "分散AI回して", "distributedloopstart", "分散ループを起動",
