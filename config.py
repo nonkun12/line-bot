@@ -161,6 +161,8 @@ def _register_orca_task(message: str, message_id: str, user_id: str | None = Non
     request_text = message[len(prefix):].strip()
     if not request_text:
         return False, "タスク内容が空です。「タスク登録: 依頼内容」の形式で送ってください。", False
+    if not request_text.startswith(("アプリ開発:", "アプリ開発：")):
+        return False, "現在のOrca実行対象はアプリ開発のみです。「タスク登録: アプリ開発: 依頼内容」の形式で送ってください。", False
     if len(request_text.encode("utf-8")) > 6000:
         return False, "依頼文が長すぎます。6,000バイト以内にしてください。", False
     if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN:
