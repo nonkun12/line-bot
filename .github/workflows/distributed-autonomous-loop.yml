@@ -109,7 +109,7 @@ jobs:
       - name: Require authenticated ORCA preflight access
         env:
           ORCA_CONTROL_API_URL: ${{ secrets.ORCA_CONTROL_API_URL }}
-          ORCA_CONTROL_API_TOKEN: ${{ secrets.ORCA_CONTROL_API_TOKEN }}
+          ORCA_LOOP_PREFLIGHT_TOKEN: ${{ secrets.ORCA_LOOP_PREFLIGHT_TOKEN }}
           CONTROL_TOWER_KILL_SWITCH: ${{ vars.CONTROL_TOWER_KILL_SWITCH || 'false' }}
         run: |
           set -euo pipefail
@@ -117,7 +117,7 @@ jobs:
             echo "::error::Global kill switch is ON; ORCA denies execution."
             exit 1
           fi
-          if [ -z "${ORCA_CONTROL_API_URL}" ] || [ -z "${ORCA_CONTROL_API_TOKEN}" ]; then
+          if [ -z "${ORCA_CONTROL_API_URL}" ] || [ -z "${ORCA_LOOP_PREFLIGHT_TOKEN}" ]; then
             echo "::error::ORCA preflight credentials are missing; refusing execution."
             exit 1
           fi
@@ -130,7 +130,7 @@ jobs:
           http_code="$(curl --silent --show-error \
             --output "$response_file" --write-out '%{http_code}' \
             --request GET "${ORCA_CONTROL_API_URL%/}/control/loop-admission" \
-            --header "Authorization: Bearer ${ORCA_CONTROL_API_TOKEN}" \
+            --header "Authorization: Bearer ${ORCA_LOOP_PREFLIGHT_TOKEN}" \
             --header "Accept: application/json")"
           python - "$response_file" "$http_code" <<'PY'
           import json
@@ -146,7 +146,12 @@ jobs:
           except Exception:
               deny("preflight response is not valid JSON")
           if sys.argv[2] != "200":
-              detail = payload.get("error") or payload.get("budget_guard", {}).get("reason") if isinstance(payload, dict) else "no response detail"
+              detail = "no response detail"
+              if isinstance(payload, dict):
+                  detail = payload.get("error") or detail
+                  budget_detail = payload.get("budget_guard")
+                  if isinstance(budget_detail, dict):
+                      detail = budget_detail.get("reason") or detail
               deny(f"preflight HTTP {sys.argv[2]}: {detail}")
           if not isinstance(payload, dict) or payload.get("allowed") is not True:
               deny("preflight did not explicitly allow execution")
