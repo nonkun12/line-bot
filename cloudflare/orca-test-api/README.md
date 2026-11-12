@@ -294,3 +294,7 @@ records; reaching it fails closed and requires manual maintenance.
 Both HOLD ON and HOLD OFF require the separate operator credential, an
 operator ID audit label, and a reason. The operator ID is supplied by the
 authenticated caller and is not an independently verified GitHub identity.
+
+The broker allows at most one review Issue operation per task, even if a
+caller supplies a different idempotency key on a retry. A new Issue requires a
+new independently approved task.
