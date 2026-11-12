@@ -28,10 +28,14 @@ Thresholds are conservative internal policy, not vendor quota guarantees:
 
 The budget endpoint and provider collectors are not part of this PR. Until a trusted live collector provides the contract above, scheduled and manual runs are blocked by design. Do not set dummy values or bypass the gate.
 
+## Remaining rollout dependency
+
+This PR uses the existing GitHub Actions concurrency group plus the previous main-branch workflow-run history as a serialized 30-minute guard. It does not add the D1 atomic slot ledger described in the broader ORCA rollout plan. Keep this as the sole automatic loop scheduler; if another independent scheduler/dispatcher is introduced, add and verify a shared durable slot ledger before activation.
+
 ## Runtime limits and safety
 
 - Scheduled run: one task per tick (within the four-task policy ceiling).
-- Automatic Chain Job AI continuations are also throttled to the same 30-minute minimum. Explicit manual starts at continuation depth zero still pass the cadence check, but must pass HOLD and budget gates.
+- Automatic Chain Job AI continuations are also throttled to the same 30-minute minimum. Explicit manual starts (depth-zero workflow dispatch, owner issue-comment, or owner PR label) may start outside cadence but must pass HOLD and budget gates.
 - Existing task-level SafetyGate, Recovery HOLD, Global HOLD checks, evidence requirements, and no-auto-merge/no-deploy rules remain in place.
 - AUTO_APPLY_PATCH=false and AUTO_DEPLOY=false remain unchanged.
 - This change does not apply migrations, configure secrets, dispatch Actions, deploy, merge, or release HOLD.
