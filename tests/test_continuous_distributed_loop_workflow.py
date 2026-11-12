@@ -372,7 +372,7 @@ def test_distributed_loop_requires_fresh_budget_guardian_state_before_any_execut
     source = path.read_text(encoding="utf-8")
     gate = source.split("  budget-gate:", 1)[1].split("  cadence-gate:", 1)[0]
     assert "secrets.ORCA_CONTROL_API_URL" in gate
-    assert "secrets.ORCA_CONTROL_API_TOKEN" in gate
+    assert "secrets.ORCA_LOOP_PREFLIGHT_TOKEN" in gate
     assert "/control/loop-admission" in gate
     assert 'payload.get("allowed") is not True' in gate
     assert 'hold.get("clear") is not True' in gate
