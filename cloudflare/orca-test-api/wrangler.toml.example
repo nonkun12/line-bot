@@ -12,3 +12,12 @@ migrations_dir = "migrations"
 
 [triggers]
 crons = ["* * * * *"]
+
+# All GitHub mutations must use this serialized Durable Object.
+[[durable_objects.bindings]]
+name = "ORCA_WRITE_BROKER"
+class_name = "OrcaWriteBroker"
+
+[[migrations]]
+tag = "v1-orca-write-broker"
+new_sqlite_classes = ["OrcaWriteBroker"]
