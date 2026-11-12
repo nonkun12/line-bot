@@ -477,6 +477,27 @@ export default {
   async fetch(request, env) {
     if (!await authorized(request, env)) return json({ error: "unauthorized" }, 401);
     const url = new URL(request.url);
+    if (url.pathname === "/control/loop-admission" && request.method === "GET") {
+      // One read-only preflight for GitHub Actions: the Durable Object is the
+      // authoritative Global HOLD source; D1 supplies the Budget Guardian state.
+      const hold = await globalHoldState(env);
+      const budget = await budgetGuardState(env);
+      const allowed = hold.clear === true && budget.allowed === true;
+      return json({
+        allowed,
+        global_hold: {
+          clear: hold.clear === true,
+          value: hold.value ?? null,
+          blocked: hold.clear !== true,
+          unresolved_operations: hold.unresolved_operations ?? 0,
+        },
+        budget_guard: {
+          allowed: budget.allowed === true,
+          status: budget.status ?? "BLOCKED",
+          reason: budget.reason ?? "budget_state_unavailable",
+        },
+      }, allowed ? 200 : 423);
+    }
     if (url.pathname === "/control/global-hold" && request.method === "GET") {
       const state = await globalHoldState(env);
       return json({ clear: state.clear, value: state.value, blocked: !state.clear,
