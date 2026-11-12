@@ -694,3 +694,45 @@ def test_worker_preserves_lease_after_push_until_orphan_pr_retry():
     assert "ORCA_CPU_WORKER_ORPHAN_BRANCH_PENDING" in process
     assert "ORCA-Task-ID:" in source
     assert "ORCA-Request-SHA256:" in source
+
+
+def test_reconcile_existing_pr_rejects_head_changed_after_orphan_verification(monkeypatch):
+    from types import SimpleNamespace
+    import json
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.setattr(
+        worker, "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({
+                "url": "https://github.com/nonkun12/line-bot/pull/105",
+                "headRefName": "orca/task-line-105",
+                "baseRefName": "main",
+                "body": "Task ID: line-105\nRequest SHA-256: " + "b" * 64,
+                "state": "OPEN",
+                "headRefOid": "c" * 40,
+            }),
+            stderr="",
+        ),
+    )
+    try:
+        worker.reconcile_existing_pr(
+            "orca/task-line-105", "line-105", "b" * 64,
+            expected_head_sha="a" * 40,
+        )
+    except worker.WorkerError as exc:
+        assert "metadata does not match" in str(exc)
+    else:
+        raise AssertionError("PR head changed after orphan verification must be blocked")
+
+
+def test_orphan_recovery_rechecks_created_pr_head_before_task_completion():
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "orca_free_cpu_worker.py"
+    ).read_text(encoding="utf-8")
+    process = source.split("def process(", 1)[1]
+    assert "expected_head_sha=orphan[0]" in process
+    assert "verified_url, _ = reconcile_existing_pr(" in process
