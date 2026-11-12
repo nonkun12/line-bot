@@ -14,7 +14,8 @@ def test_distributed_loop_uses_github_native_pending_run_queue():
     concurrency = workflow.split("concurrency:", 1)[1].split("\njobs:", 1)[0]
     assert "group: distributed-autonomous-loop" in concurrency
     assert "cancel-in-progress: false" in concurrency
-    assert "queue: max" in concurrency
+    assert "queue: 1" in concurrency
+    assert "queue: max" not in concurrency
 
 
 def test_line_request_correlation_id_is_optional_and_validated():
