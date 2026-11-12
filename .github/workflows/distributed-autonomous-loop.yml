@@ -209,7 +209,7 @@ jobs:
         github.event.label.name == 'distributed-loop-max4' &&
         github.event.sender.login == 'nonkun12' &&
         github.event.pull_request.user.login == 'nonkun12'
-      ) && (github.event_name != 'schedule' || needs.cadence-gate.outputs.run_loop == 'true')
+      )) && (github.event_name != 'schedule' || needs.cadence-gate.outputs.run_loop == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
