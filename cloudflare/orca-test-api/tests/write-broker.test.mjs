@@ -161,6 +161,10 @@ test("completed idempotency key replays the saved result without a second GitHub
     const replay = await call(broker, "/issues/create", "POST", issueBody);
     assert.equal(replay.status, 200);
     assert.equal((await replay.json()).idempotent_replay, true);
+    const secondKey = await call(broker, "/issues/create", "POST", {
+      ...issueBody, idempotency_key: "idem-key-second-attempt-0001",
+    });
+    assert.equal(secondKey.status, 409, "one task cannot create multiple review Issues with fresh keys");
     assert.equal(writes, 1);
   } finally {
     restore();
