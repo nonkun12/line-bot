@@ -4,8 +4,8 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), {
 });
 
 const encoder = new TextEncoder();
+const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)))
   .replaceAll("=", "").replaceAll("+", "-").replaceAll("/", "_");
-  .replace(/=/g, "").replace(/\\+/g, "-").replace(/\\//g, "_");
 
   const normalized = String(pem || "").split("\\n").join("\n");
   const body = normalized.split("-----BEGIN PRIVATE KEY-----").join("")
