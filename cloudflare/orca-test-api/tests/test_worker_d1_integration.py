@@ -180,16 +180,20 @@ migrations_dir = "migrations"
     def api(self, path, method="GET", body=None, owner=None):
         return request_json(self.base + path, method, body, owner)
 
-    def create(self, task_id, owner=USER_A, request_text=None, event_id=None):
+    def create(self, task_id, owner=USER_A, request_text=None, event_id=None,
+               task_type="app_development", max_tasks=1):
         request_text = request_text or f"アプリ開発: integration test {task_id}"
         return self.api("/tasks", "POST", {
             "task_id": task_id,
             "request_text": request_text,
             "source_event_id": event_id or f"event-{task_id}",
             "user_id": owner,
+            "task_type": task_type,
+            "max_tasks": max_tasks,
         })
 
-    def approve(self, task_id, owner=USER_A, request_text=None):
+    def approve(self, task_id, owner=USER_A, request_text=None,
+                task_type="app_development", max_tasks=1):
         request_text = request_text or f"アプリ開発: integration test {task_id}"
         issued = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
         expires = issued + dt.timedelta(minutes=10)
@@ -197,9 +201,12 @@ migrations_dir = "migrations"
         expires_at = expires.isoformat().replace("+00:00", "Z")
         request_hash = hashlib.sha256(request_text.encode()).hexdigest()
         nonce = secrets.token_urlsafe(24)
-        canonical = "\n".join([
-            "v1", task_id, request_hash, owner, issued_at, expires_at, nonce,
-        ])
+        canonical_fields = (
+            ["v2", task_id, request_hash, owner, task_type, str(max_tasks), issued_at, expires_at, nonce]
+            if task_type == "distributed_loop"
+            else ["v1", task_id, request_hash, owner, issued_at, expires_at, nonce]
+        )
+        canonical = "\\n".join(canonical_fields)
         signature = hmac.new(
             HMAC_KEY.encode(), canonical.encode(), hashlib.sha256
         ).hexdigest()
@@ -210,6 +217,8 @@ migrations_dir = "migrations"
             "expires_at": expires_at,
             "nonce": nonce,
             "signature": signature,
+            "task_type": task_type,
+            "max_tasks": max_tasks,
         })
 
     def test_initial_global_hold_blocks_intake_until_explicit_local_release(self):
@@ -259,6 +268,59 @@ migrations_dir = "migrations"
         self.assertTrue(approved["approved"])
         self.assertEqual(self.api("/tasks/owner-bound/status", owner=USER_B)[0], 404)
         self.assertEqual(self.api("/tasks/owner-bound/status", owner=USER_A)[0], 200)
+
+    def test_distributed_loop_is_typed_approved_and_not_claimable_by_generic_worker(self):
+        command = "分散Loopを4回、安全確認付きで実行"
+        status, created = self.create(
+            "typed-loop", request_text=command, task_type="distributed_loop",
+            max_tasks=4, event_id="typed-loop-event",
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(created["task"]["task_type"], "distributed_loop")
+        self.assertEqual(created["task"]["max_tasks"], 4)
+
+        status, app_tasks = self.api("/tasks?approved=true")
+        self.assertEqual(status, 200)
+        self.assertNotIn("typed-loop", [task["task_id"] for task in app_tasks["tasks"]])
+
+        status, approved = self.approve(
+            "typed-loop", request_text=command, task_type="distributed_loop",
+            max_tasks=4,
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(approved["approved"])
+
+        status, blocked = self.api("/tasks/typed-loop/claim", "POST", {})
+        self.assertEqual(status, 409)
+        self.assertIn("handler is not enabled", blocked["error"])
+
+        status, loop_tasks = self.api("/tasks?approved=true&task_type=distributed_loop")
+        self.assertEqual(status, 200)
+        self.assertEqual([task["task_id"] for task in loop_tasks["tasks"]], ["typed-loop"])
+
+    def test_distributed_loop_rejects_unsafe_command_or_mismatched_bound(self):
+        for task_id, command, count in [
+            ("loop-five", "分散Loopを5回、安全確認付きで実行", 5),
+            ("loop-no-confirm", "分散Loopを4回", 4),
+            ("loop-mismatch", "分散Loopを2回、安全確認付きで実行", 4),
+        ]:
+            status, body = self.create(
+                task_id, request_text=command, task_type="distributed_loop",
+                max_tasks=count,
+            )
+            self.assertEqual(status, 400, body)
+
+    def test_duplicate_line_event_conflicts_on_task_type_or_bound(self):
+        command = "分散Loopを2回、安全確認付きで実行"
+        self.assertEqual(self.create(
+            "typed-duplicate", request_text=command, event_id="same-typed-event",
+            task_type="distributed_loop", max_tasks=2,
+        )[0], 201)
+        status, conflict = self.create(
+            "typed-duplicate-other", request_text=command, event_id="same-typed-event",
+            task_type="distributed_loop", max_tasks=1,
+        )
+        self.assertEqual(status, 409)
 
     def test_concurrent_claim_has_exactly_one_winner_and_consumes_approval(self):
         request_text = "アプリ開発: concurrent claim test"
