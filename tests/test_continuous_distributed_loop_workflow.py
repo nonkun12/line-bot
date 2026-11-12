@@ -162,12 +162,16 @@ def test_continuation_stops_when_another_loop_is_queued_or_running(tmp_path):
     assert "next_depth=" not in output
 
 
-def test_distributed_loop_is_scheduled_hourly_in_tokyo_and_stays_bounded():
+def test_distributed_loop_uses_adaptive_30_or_60_minute_execution_cadence():
     path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml"
     source = path.read_text(encoding="utf-8")
     assert "timezone: 'Asia/Tokyo'" in source
-    assert "- cron: '17 * * * *'" in source
+    assert "- cron: '0,30 * * * *'" in source
+    assert "cadence-gate:" in source
+    assert "pending >= 2 or minute == 0" in source
+    assert "github.event_name != 'schedule' || needs.cadence-gate.outputs.run_loop == 'true'" in source
     assert "github.event_name == 'schedule' && '1'" in source
+    assert "cadence evidence missing or invalid; refusing scheduled execution" in source
 
 
 def test_only_continuous_workflow_owns_automatic_dispatch():
