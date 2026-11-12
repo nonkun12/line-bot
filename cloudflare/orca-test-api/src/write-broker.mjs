@@ -93,13 +93,17 @@ export class OrcaWriteBroker {
   constructor(state, env) {
     this.state = state;
     this.env = env;
+    this.serial = Promise.resolve();
   }
 
   fetch(request) {
-    // Every request, including HOLD transitions, enters the same serialized
-    // critical section. Ambiguous remote outcomes enter DRAINING and prevent
-    // HOLD=ON acknowledgement until an operator reconciles the operation.
-    return this.state.blockConcurrencyWhile(() => this.handle(request));
+    // Durable Objects can interleave requests at await points. Keep a
+    // per-instance promise queue so HOLD transitions cannot overtake a
+    // brokered GitHub write. blockConcurrencyWhile is startup-only and is
+    // deliberately not used as a runtime mutex.
+    const operation = this.serial.then(() => this.handle(request));
+    this.serial = operation.then(() => undefined, () => undefined);
+    return operation;
   }
 
   async mirrorGlobalHold(value) {
