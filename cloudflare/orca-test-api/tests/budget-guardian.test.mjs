@@ -103,3 +103,38 @@ test("duplicate sources and invalid thresholds fail closed", () => {
   assert.equal(evaluate(duplicate).status, "BLOCKED");
   assert.equal(evaluate(snapshots(), { thresholds: { warn: 80, suppress: 70, stop: 90 } }).status, "BLOCKED");
 });
+
+test("each required source independently suppresses at 89.99% and stops at 90%", () => {
+  for (const name of names) {
+    const suppressed = evaluate(snapshots({ [name]: { used: 89.99 } }));
+    assert.equal(suppressed.status, "SUPPRESS", name);
+    assert.equal(suppressed.allowNewTasks, false, name);
+    assert.equal(suppressed.allowActionsDispatch, false, name);
+    const stopped = evaluate(snapshots({ [name]: { used: 90 } }));
+    assert.equal(stopped.status, "STOP", name);
+    assert.equal(stopped.allowNewTasks, false, name);
+    assert.equal(stopped.allowActionsDispatch, false, name);
+  }
+});
+test("a lower reading immediately below 90% does not resume work; below 80% returns WARN", () => {
+  const stopped = evaluate(snapshots({ cloudflare_workers: { used: 90 } }));
+  assert.equal(stopped.status, "STOP");
+  const justBelowStop = evaluate(snapshots({ cloudflare_workers: { used: 89.99 } }));
+  assert.equal(justBelowStop.status, "SUPPRESS");
+  assert.equal(justBelowStop.allowNewTasks, false);
+  assert.equal(justBelowStop.allowActionsDispatch, false);
+  const belowSuppress = evaluate(snapshots({ cloudflare_workers: { used: 79.99 } }));
+  assert.equal(belowSuppress.status, "WARN");
+  assert.equal(belowSuppress.allowNewTasks, true);
+  assert.equal(belowSuppress.allowActionsDispatch, true);
+});
+test("one source at the STOP threshold dominates two sources at zero usage", () => {
+  const result = evaluate(snapshots({
+    cloudflare_workers: { used: 0 },
+    cloudflare_d1: { used: 0 },
+    cloudflare_durable_objects: { used: 90 },
+  }));
+  assert.equal(result.status, "STOP");
+  assert.equal(result.allowNewTasks, false);
+  assert.equal(result.allowActionsDispatch, false);
+});
