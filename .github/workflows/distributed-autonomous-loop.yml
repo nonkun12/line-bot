@@ -129,6 +129,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
+          CONTINUATION_DEPTH: ${{ github.event.inputs.continuation_depth || '0' }}
           ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
           ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
           ORCA_BUDGET_GATE_URL: ${{ secrets.ORCA_BUDGET_GATE_URL }}
