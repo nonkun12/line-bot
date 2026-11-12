@@ -138,3 +138,45 @@ test("one source at the STOP threshold dominates two sources at zero usage", () 
   assert.equal(result.allowNewTasks, false);
   assert.equal(result.allowActionsDispatch, false);
 });
+
+test("every required source fails closed independently when missing, disabled, or stale", () => {
+  for (const name of names) {
+    const missing = snapshots().filter((source) => source.name !== name);
+    const missingResult = evaluate(missing);
+    assert.equal(missingResult.status, "BLOCKED", name);
+    assert.equal(missingResult.allowNewTasks, false, name);
+    assert.equal(missingResult.allowActionsDispatch, false, name);
+
+    const disabledResult = evaluate(snapshots({ [name]: { enabled: false } }));
+    assert.equal(disabledResult.status, "BLOCKED", name);
+    assert.equal(disabledResult.allowNewTasks, false, name);
+    assert.equal(disabledResult.allowActionsDispatch, false, name);
+
+    const staleResult = evaluate(snapshots({ [name]: { observed_at: "2026-11-12T01:29:59.999Z" } }));
+    assert.equal(staleResult.status, "BLOCKED", name);
+    assert.equal(staleResult.allowNewTasks, false, name);
+    assert.equal(staleResult.allowActionsDispatch, false, name);
+  }
+});
+test("over-limit usage remains STOP rather than wrapping, clamping, or reopening", () => {
+  for (const used of [100.01, 101, 150, 1000]) {
+    const result = evaluate(snapshots({ cloudflare_d1: { used } }));
+    assert.equal(result.status, "STOP", `used=${used}`);
+    assert.equal(result.allowNewTasks, false);
+    assert.equal(result.allowActionsDispatch, false);
+  }
+});
+test("invalid clock, missing sources array, and invalid freshness configuration all block both outputs", () => {
+  const cases = [
+    evaluate(snapshots(), { now: "not-a-date" }),
+    evaluate(null),
+    evaluate(snapshots(), { maxSnapshotAgeMs: 0 }),
+    evaluate(snapshots(), { maxSnapshotAgeMs: Number.NaN }),
+    evaluate(snapshots(), { requiredSources: [] }),
+  ];
+  for (const result of cases) {
+    assert.equal(result.status, "BLOCKED");
+    assert.equal(result.allowNewTasks, false);
+    assert.equal(result.allowActionsDispatch, false);
+  }
+});
