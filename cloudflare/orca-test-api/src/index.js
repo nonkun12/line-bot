@@ -86,8 +86,35 @@ function distributedLoopMaxTasks(value) {
   return match ? Number(match[1]) : null;
 }
 
+// D1-backed budget gate shared by all task admission paths. Missing or stale
+// telemetry and a latched STOP always fail closed. SQL predicates repeat the
+// check inside each mutation to prevent a read-then-write admission race.
+async function budgetGuardState(env) {
+  try {
+    const state = await env.DB.prepare(
+      "SELECT status, reason, stop_latched, release_approved, observed_at FROM budget_guard_state WHERE singleton = 1"
+    ).first();
+    if (!state) return { allowed: false, status: "BLOCKED", reason: "budget_guard_state_missing" };
+    if (state.stop_latched !== 0 || state.release_approved !== 0)
+      return { allowed: false, status: "STOP", reason: "budget_stop_latched" };
+    const freshness = await env.DB.prepare(
+      "SELECT CASE WHEN datetime(?) >= datetime('now','-90 minutes') AND datetime(?) <= datetime('now','+5 minutes') THEN 1 ELSE 0 END AS fresh"
+    ).bind(state.observed_at || "", state.observed_at || "").first();
+    if (freshness?.fresh !== 1)
+      return { allowed: false, status: "BLOCKED", reason: "budget_telemetry_stale_or_missing" };
+    const allowed = state.status === "CLEAR" || state.status === "WARN";
+    return { allowed, status: state.status, reason: allowed ? "budget_within_admission_limit" : (state.reason || "budget_gate_closed") };
+  } catch {
+    return { allowed: false, status: "BLOCKED", reason: "budget_guard_state_unavailable" };
+  }
+}
+
+const BUDGET_ADMISSION_SQL = "EXISTS (SELECT 1 FROM budget_guard_state WHERE singleton = 1 AND status IN ('CLEAR','WARN') AND stop_latched = 0 AND release_approved = 0 AND observed_at IS NOT NULL AND datetime(observed_at) >= datetime('now','-90 minutes') AND datetime(observed_at) <= datetime('now','+5 minutes'))";
+
 async function createTask(request, env) {
   if (!(await globalHoldState(env)).clear) return json({ error: "global HOLD is active or unavailable" }, 423);
+  const budget = await budgetGuardState(env);
+  if (!budget.allowed) return json({ error: "budget gate blocks task admission", budget_status: budget.status, reason: budget.reason }, 423);
   const body = await readJson(request);
   const taskType = body?.task_type ?? "app_development";
   const maxTasks = body?.max_tasks ?? 1;
@@ -108,7 +135,8 @@ async function createTask(request, env) {
     const inserted = await env.DB.prepare(
       `INSERT INTO tasks (task_id, request_text, status, source_event_id, user_id, task_type, max_tasks)
        SELECT ?, ?, 'queued', ?, ?, ?, ?
-        WHERE EXISTS (SELECT 1 FROM system_controls WHERE control_key = 'global_hold' AND value = 'off')`
+        WHERE EXISTS (SELECT 1 FROM system_controls WHERE control_key = 'global_hold' AND value = 'off')
+          AND ${BUDGET_ADMISSION_SQL}`
     ).bind(body.task_id, body.request_text, body.source_event_id, userId, taskType, maxTasks).run();
     if (!inserted.meta?.changes) return json({ error: "global HOLD is active or unavailable" }, 423);
     return json({ task: { task_id: body.task_id, request_text: body.request_text, status: "queued", task_type: taskType, max_tasks: maxTasks } }, 201);
@@ -143,6 +171,8 @@ async function hmacHex(secret, value) {
 
 async function approveTask(id, request, env) {
   if (!(await globalHoldState(env)).clear) return json({ error: "global HOLD is active or unavailable" }, 423);
+  const budget = await budgetGuardState(env);
+  if (!budget.allowed) return json({ error: "budget gate blocks task approval", budget_status: budget.status, reason: budget.reason }, 423);
   const body = await readJson(request);
   const userId = typeof body?.approver_user_id === "string" ? body.approver_user_id : "";
   const requestHash = typeof body?.request_hash === "string" ? body.request_hash : "";
@@ -200,6 +230,7 @@ async function approveTask(id, request, env) {
         "WHERE task_id = ? AND (status = 'queued' OR " +
         "(status = 'running' AND lease_until IS NOT NULL AND datetime(lease_until) <= CURRENT_TIMESTAMP)) " +
         "AND EXISTS (SELECT 1 FROM system_controls WHERE control_key = 'global_hold' AND value = 'off') " +
+        `AND ${BUDGET_ADMISSION_SQL} ` +
         "ON CONFLICT(task_id) DO UPDATE SET " +
         "approval_id=excluded.approval_id, approval_nonce=excluded.approval_nonce, " +
         "request_hash=excluded.request_hash, approver_user_id=excluded.approver_user_id, " +
@@ -228,6 +259,8 @@ async function approveTask(id, request, env) {
 
 async function claimTask(id, request, env) {
   if (!(await globalHoldState(env)).clear) return json({ error: "global HOLD is active or unavailable" }, 423);
+  const budget = await budgetGuardState(env);
+  if (!budget.allowed) return json({ error: "budget gate blocks task claim", budget_status: budget.status, reason: budget.reason }, 423);
   const body = await readJson(request);
   const leaseSeconds = Number.isInteger(body?.lease_seconds)
     ? Math.min(1800, Math.max(60, body.lease_seconds)) : 900;
@@ -254,6 +287,7 @@ async function claimTask(id, request, env) {
           AND EXISTS (SELECT 1 FROM task_approvals WHERE task_id = ? AND approval_id = ?
                       AND status = 'approved' AND datetime(expires_at) > CURRENT_TIMESTAMP)
           AND EXISTS (SELECT 1 FROM system_controls WHERE control_key = 'global_hold' AND value = 'off')
+          AND ${BUDGET_ADMISSION_SQL}
         RETURNING task_id, request_text, status, lease_until, attempt_count`
     ).bind(token, leaseUntil, id, id, approval.approval_id),
     env.DB.prepare(
