@@ -755,16 +755,16 @@ def process(task_id: str) -> int:
                 api_request("POST", "/tasks/" + encoded_id + "/complete", {"claim_token": claim_token, "status": terminal_status, "message": f"ORCA task {task_id}: {terminal_status.upper()} — execution stopped before producing a reviewable PR"})
             except Exception:
                 pass
+        elif pr_url:
+            print(
+                "ORCA_CPU_WORKER_RECONCILIATION_REQUIRED: PR exists at "
+                + pr_url + "; D1 status may still be running until the 30-minute lease expires",
+                file=sys.stderr,
+            )
         elif branch_pushed:
             print(
                 "ORCA_CPU_WORKER_ORPHAN_BRANCH_PENDING: verified task branch exists without a PR; "
                 "leave the lease to expire so a retry can verify provenance and create the PR",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                "ORCA_CPU_WORKER_RECONCILIATION_REQUIRED: PR exists at "
-                + pr_url + "; D1 status may still be running until the 30-minute lease expires",
                 file=sys.stderr,
             )
         raise
