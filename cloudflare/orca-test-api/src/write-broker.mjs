@@ -270,7 +270,6 @@ export class OrcaWriteBroker {
         body: JSON.stringify({
           title: title.trim(),
           body: description.trim() + "\n\n<!-- ORCA_TASK_ID:" + taskId + " ORCA_IDEMPOTENCY_KEY:" + key + " -->",
-          labels: ["orca-task-review"],
         }),
         signal: AbortSignal.timeout(7000),
       });
