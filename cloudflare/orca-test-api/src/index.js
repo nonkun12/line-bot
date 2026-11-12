@@ -67,9 +67,9 @@ async function createTask(request, env) {
   const taskType = body?.task_type ?? "app_development";
   const maxTasks = body?.max_tasks ?? 1;
   const validTaskType = taskType === "app_development" || taskType === "distributed_loop";
-  const validTaskKind = taskType === "app_development"
-    ? maxTasks === 1 && (body?.request_text?.startsWith("アプリ開発:") || body?.request_text?.startsWith("アプリ開発："))
-    : Number.isInteger(maxTasks) && distributedLoopMaxTasks(body?.request_text) === maxTasks;
+  const validTaskKind = typeof body?.request_text === "string" && (taskType === "app_development"
+    ? maxTasks === 1 && (body.request_text.startsWith("アプリ開発:") || body.request_text.startsWith("アプリ開発："))
+    : Number.isInteger(maxTasks) && distributedLoopMaxTasks(body.request_text) === maxTasks);
   if (!body || typeof body.task_id !== "string" ||
       !/^[A-Za-z0-9_-]{1,100}$/.test(body.task_id) ||
       typeof body.request_text !== "string" ||
