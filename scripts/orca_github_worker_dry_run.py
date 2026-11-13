@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from scripts.orca_github_task_queue import QueueRejected, _time, _validate
+from scripts.orca_github_emergency_stop import require_not_stopped
+from scripts.orca_github_runaway_guard import validate_worker_start
 
 
 MAX_PAYLOAD_BYTES = 64 * 1024
@@ -29,6 +31,10 @@ def dry_run_one(*, queue_state: Any, envelope: Any, now: datetime) -> dict[str, 
     except (QueueRejected, TypeError, AttributeError) as exc:
         raise WorkerDryRunRejected(f"queue_state_invalid:{exc}") from None
 
+    try:
+        require_not_stopped(queue_state)
+    except ValueError as exc:
+        raise WorkerDryRunRejected(str(exc)) from None
     if queue_state.get("global_hold") is not False:
         raise WorkerDryRunRejected("global_hold_active_or_unverifiable")
     if not isinstance(envelope, dict) or set(envelope) != _ENVELOPE_KEYS:
@@ -74,6 +80,13 @@ def dry_run_one(*, queue_state: Any, envelope: Any, now: datetime) -> dict[str, 
     if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
         raise WorkerDryRunRejected("worker_clock_timezone_missing")
     current = now.astimezone(timezone.utc)
+    try:
+        validate_worker_start(
+            state=queue_state, task_id=envelope["task_id"],
+            run_id=envelope["run_id"], now=now,
+        )
+    except ValueError as exc:
+        raise WorkerDryRunRejected(f"runaway_guard_blocked:{exc}") from None
     if current >= _time(lease.get("expires_at")):
         raise WorkerDryRunRejected("worker_lease_expired")
 
