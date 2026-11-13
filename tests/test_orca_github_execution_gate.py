@@ -76,7 +76,7 @@ def cycle():
 
 def queue():
     return {
-        "schema_version": 1, "revision": 4, "global_hold": False,
+        "schema_version": 1, "revision": 4, "global_hold": False, "emergency_stop": False,
         "tasks": [{
             "task_id": TASK_ID, "request_hash": REQUEST_HASH,
             "status": "queued", "created_at": "2026-11-13T09:00:00Z",
