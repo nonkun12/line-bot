@@ -22,6 +22,18 @@ class QueueStateMachineTests(unittest.TestCase):
         with self.assertRaisesRegex(QueueRejected, "global_hold_active"):
             claim_next(state, expected_revision=1, owner="worker", run_id="run-1", now=NOW)
 
+    def test_missing_global_hold_fails_closed(self):
+        state = self.queued()
+        del state["global_hold"]
+        with self.assertRaisesRegex(QueueRejected, "global_hold_missing_or_invalid"):
+            claim_next(state, expected_revision=1, owner="worker", run_id="run-1", now=NOW)
+
+    def test_non_boolean_global_hold_fails_closed(self):
+        state = self.queued()
+        state["global_hold"] = "false"
+        with self.assertRaisesRegex(QueueRejected, "global_hold_missing_or_invalid"):
+            claim_next(state, expected_revision=1, owner="worker", run_id="run-1", now=NOW)
+
     def test_unapproved_task_rejected(self):
         with self.assertRaisesRegex(QueueRejected, "explicit_approval_required"):
             enqueue(empty_state(), expected_revision=0, task_id="task-1",
