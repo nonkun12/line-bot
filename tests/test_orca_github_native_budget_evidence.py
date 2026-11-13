@@ -98,9 +98,9 @@ class GitHubNativeBudgetEvidenceTests(unittest.TestCase):
 
     def test_reserve_must_exceed_the_30_minute_worker_ceiling_with_headroom(self):
         with self.assertRaisesRegex(EvidenceRejected, "reserve_insufficient"):
-            self.verify(evidence(used=1956, limit=2000))  # 44 minutes remaining
+            self.verify(evidence(used=156, limit=200))  # 44 minutes remaining
 
-        result = self.verify(evidence(used=1955, limit=2000))  # 45 minutes remaining
+        result = self.verify(evidence(used=155, limit=200))  # 45 minutes remaining
         self.assertEqual(result["remaining_minutes"], 45)
 
     def test_80_percent_threshold_blocks(self):
