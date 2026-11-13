@@ -104,6 +104,7 @@ def evaluate_budget_snapshot(
     )
     if payload.get("schema_version") != 1:
         raise GateBlocked("budget_snapshot_schema_invalid")
+    attestation_issued_at = parse_time(payload["attestation"].get("issued_at"))
     failures = payload.get("consecutive_failures")
     if isinstance(failures, bool) or not isinstance(failures, int) or failures < 0:
         raise GateBlocked("failure_counter_invalid")
@@ -154,6 +155,10 @@ def evaluate_budget_snapshot(
             raise GateBlocked("budget_values_invalid")
         observed = parse_time(source.get("observed_at"))
         watermark = parse_time(source.get("watermark_at"))
+        if watermark > observed:
+            raise GateBlocked("budget_watermark_after_observation")
+        if observed > attestation_issued_at + MAX_FUTURE_SKEW:
+            raise GateBlocked("budget_observation_after_attestation")
         period_start = parse_time(source.get("period_start"))
         period_end = parse_time(source.get("period_end"))
         if (observed > now + MAX_FUTURE_SKEW or now - observed > MAX_SNAPSHOT_AGE
