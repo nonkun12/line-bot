@@ -16,9 +16,18 @@ GitHub scheduling is best-effort: it can be delayed or skipped. This is a 30-min
 The gate fails closed unless all of these are configured and return valid, fresh data:
 
 1. ORCA_TASK_API_URL and ORCA_TASK_API_TOKEN: authenticated GET /control/global-hold must return exactly clear=true, value="off", and blocked=false.
-2. ORCA_BUDGET_GATE_URL and ORCA_BUDGET_GATE_TOKEN: authenticated GET must return a JSON object with sources, containing exactly one enabled snapshot each for cloudflare_workers, cloudflare_d1, cloudflare_durable_objects, and github_actions. The three Cloudflare meters must identify the expected Cloudflare account; the GitHub Actions meter must identify its GitHub provider/account scope separately.
+2. ORCA_BUDGET_GATE_URL and ORCA_BUDGET_GATE_TOKEN: authenticated GET must return schema version 2 with a signed `meter_inventory` and `meters` array. The inventory must declare complete account coverage, the expected Cloudflare and GitHub account IDs, exactly the currently supported enabled products (`workers`, `workers_logs`, `d1`, `durable_objects`, `actions`), no unresolved products, and fresh inventory observation/watermark timestamps. Any newly discovered or unsupported product blocks execution until its dimensions are added to the allowlist.
 
-Each enforcement snapshot must include used, positive limit, unit, limit_source, observed_at, period_start, and period_end, plus `quality="exact"`, `enforcement_eligible=true`, `limit_verified=true`, and a non-empty `limit_evidence_id`. These fields are mandatory; a label such as `verified_internal_limit` alone is not evidence. Values must use consistent units within each source. The response must also include a non-negative consecutive_failures integer; three or more blocks execution. Snapshots and their source watermarks must be no older than 10 minutes, no more than five minutes in the future, and cover the current period.
+Schema v2 requires one unique meter record for each of these independent dimensions:
+
+- `cloudflare.workers.requests.daily`
+- `cloudflare.workers.cpu_ms_per_invocation.max`
+- `cloudflare.workers_logs.events.daily`
+- `cloudflare.d1.rows_read.daily`, `cloudflare.d1.rows_written.daily`, `cloudflare.d1.storage_bytes.total`
+- `cloudflare.durable_objects.requests.daily`, `cloudflare.durable_objects.duration_gb_seconds.daily`, `cloudflare.durable_objects.sqlite_rows_read.daily`, `cloudflare.durable_objects.sqlite_rows_written.daily`, `cloudflare.durable_objects.sqlite_storage_bytes.total`
+- `github.actions.compute_cost_usd.monthly`, `github.actions.artifact_storage_bytes.monthly`
+
+Each meter must include provider, product, account ID, enabled status, used quantity, positive authoritative limit, exact unit, limit source/evidence ID, exactness and complete-coverage flags, no-sampling declaration, observation time, source watermark, and `period_kind`. Daily/monthly meters must also provide current period boundaries. Total-capacity and per-invocation meters must not claim reset-period boundaries. The response must include a non-negative `consecutive_failures` integer; three or more blocks execution. All inventory and meter watermarks must be no older than 10 minutes and no more than five minutes in the future.
 
 Thresholds are conservative internal policy, not vendor quota guarantees:
 - 70%: WARN; may continue with fresh evidence.
@@ -61,7 +70,7 @@ Required schema-v2 rules:
 - Each meter is evaluated independently. Do not combine requests, rows, storage, duration, steps, money, or runner SKUs into one percentage.
 - Per-invocation hard ceilings are enforced at the individual task/runtime boundary, not averaged into an account-level daily quota.
 - The HMAC binds the entire inventory and meter array. A collector assertion alone is not sufficient unless its provider query, coverage, pagination, freshness, and exactness have been independently validated.
-- Until schema v2, its collector, and boundary tests exist, schema v1's four product-level rows remain non-admissible for production even if correctly signed.
+- The gate now parses schema v2 and tests per-meter inventory completeness. However, no production collector or signed endpoint emits this contract yet; a signed v1 four-row payload is rejected. Schema v2 is not production-admissible until its collector, authoritative provider coverage, and boundary tests are independently verified.
 
 ## Cloudflare telemetry admissibility findings (2026-11-13)
 
