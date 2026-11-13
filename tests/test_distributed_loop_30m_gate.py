@@ -115,6 +115,13 @@ class BudgetGateTests(unittest.TestCase):
             '{"a":[1,2.5,null],"nested":{"enabled":true,"label":"café"},"z":10.25}',
         )
 
+    def test_signed_payload_comparison_distinguishes_boolean_from_integer(self):
+        payload = signed_payload({"cloudflare_workers": {"used": 1}})
+        # Python considers True == 1; the canonical byte comparison must not.
+        payload["meters"][0]["used"] = True
+        with self.assertRaisesRegex(GateBlocked, "budget_attestation_canonical_payload_mismatch"):
+            evaluate(payload)
+
     def test_signed_clear_and_warn_allow(self):
         self.assertEqual(evaluate(signed_payload())["status"], "CLEAR")
         self.assertEqual(evaluate(signed_payload({"cloudflare_d1": {"used": 70}}))["status"], "WARN")
