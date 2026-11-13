@@ -83,6 +83,33 @@ class AtomicClaimTests(unittest.TestCase):
         self.store.write.assert_called_once()
 
     @patch("scripts.orca_github_atomic_claim.evaluate_execution_gate")
+    def test_claim_targets_the_approved_task_not_an_older_queued_task(self, gate):
+        gate.return_value = self.gate_result
+        older = {
+            "task_id": "older-task",
+            "request_hash": "c" * 64,
+            "status": "queued",
+            "created_at": "2026-11-13T10:00:00Z",
+        }
+        state = {
+            **self.state,
+            "tasks": [older, dict(self.state["tasks"][0])],
+        }
+        self.snapshot = StateSnapshot("b" * 40, state, "c" * 40)
+
+        def persist(*, snapshot, next_state, expected_revision):
+            claimed = [row["task_id"] for row in next_state["tasks"]
+                       if row["status"] == "claimed"]
+            self.assertEqual(claimed, ["task-1"])
+            self.assertEqual(next_state["active_lease"]["task_id"], "task-1")
+            return StateSnapshot("e" * 40, next_state, "f" * 40)
+
+        self.store.write.side_effect = persist
+        result = self.call()
+        self.assertEqual(result["lease"]["task_id"], "task-1")
+        self.store.write.assert_called_once()
+
+    @patch("scripts.orca_github_atomic_claim.evaluate_execution_gate")
     def test_gate_rejection_never_writes_or_claims(self, gate):
         gate.side_effect = ValueError("global_hold_active_or_unverifiable")
         with self.assertRaisesRegex(ValueError, "global_hold"):
