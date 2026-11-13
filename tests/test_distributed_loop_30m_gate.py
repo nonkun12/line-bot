@@ -25,6 +25,7 @@ METER_SPECS = {
     "cloudflare.durable_objects.sqlite_rows_read.daily": ("cloudflare", "durable_objects", "rows", "cloudflare_durable_objects"),
     "cloudflare.durable_objects.sqlite_rows_written.daily": ("cloudflare", "durable_objects", "rows", "cloudflare_durable_objects"),
     "cloudflare.durable_objects.sqlite_storage_bytes.total": ("cloudflare", "durable_objects", "bytes", "cloudflare_durable_objects"),
+    "github.actions.compute_cost_usd.monthly": ("github", "actions", "USD", "github_actions"),
     "github.actions_packages.shared_storage_gb_hours.monthly": ("github", "actions_packages", "GB-hours", "github_actions"),
     "github.actions.cache_storage_bytes.hourly_peak": ("github", "actions", "bytes", "github_actions"),
 }
