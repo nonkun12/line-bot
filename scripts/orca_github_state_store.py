@@ -93,7 +93,9 @@ class GitHubStateStore:
         if not isinstance(tree_sha, str):
             raise StateStoreError("state_commit_tree_missing")
         path = urllib.parse.quote(self.path, safe="/")
-        content = self._request("GET", f"/repos/{repo}/contents/{path}?ref={branch}")
+        # Bind the document read to the immutable commit observed above.
+        # Reading by branch name could mix a newer document with the older ref_sha.
+        content = self._request("GET", f"/repos/{repo}/contents/{path}?ref={ref_sha}")
         if content.get("encoding") != "base64" or not isinstance(content.get("content"), str):
             raise StateStoreError("state_document_missing_or_invalid")
         try:
