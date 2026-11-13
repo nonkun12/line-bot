@@ -77,13 +77,17 @@ class WorkerDryRunTests(unittest.TestCase):
             dry_run_one(queue_state=state, envelope=envelope, now=self.now)
 
     def test_unclaimed_task_blocks(self):
-        state = {**self.state, "tasks": [{**self.state["tasks"][0], "status": "queued"}]}
+        state = {
+            **self.state,
+            "tasks": [{**self.state["tasks"][0], "status": "queued"}],
+            "active_lease": None,
+        }
         with self.assertRaisesRegex(WorkerDryRunRejected, "not_claimed"):
             dry_run_one(queue_state=state, envelope=self.envelope, now=self.now)
 
     def test_missing_lease_blocks(self):
         state = dict(self.state, active_lease=None)
-        with self.assertRaisesRegex(WorkerDryRunRejected, "lease_missing"):
+        with self.assertRaisesRegex(WorkerDryRunRejected, "lease_task_state_mismatch"):
             dry_run_one(queue_state=state, envelope=self.envelope, now=self.now)
 
     def test_wrong_owner_or_run_blocks(self):
