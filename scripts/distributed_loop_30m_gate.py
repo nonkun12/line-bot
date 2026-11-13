@@ -311,6 +311,25 @@ def check_global_hold() -> None:
         raise GateBlocked("global_hold_active_or_unknown")
 
 
+def check_loop_admission() -> None:
+    base = os.environ.get("ORCA_CONTROL_API_URL", "").rstrip("/")
+    state = request_json(
+        base + "/control/loop-admission",
+        os.environ.get("ORCA_LOOP_PREFLIGHT_TOKEN", ""),
+    )
+    hold = state.get("global_hold") if isinstance(state, dict) else None
+    budget = state.get("budget_guard") if isinstance(state, dict) else None
+    if (not isinstance(state, dict) or state.get("allowed") is not True
+            or not isinstance(hold, dict)
+            or hold.get("clear") is not True
+            or hold.get("value") != "off"
+            or hold.get("blocked") is not False
+            or hold.get("unresolved_operations") != 0
+            or not isinstance(budget, dict)
+            or budget.get("allowed") is not True
+            or budget.get("status") not in {"CLEAR", "WARN"}):
+        raise GateBlocked("orca_loop_admission_or_stop_latch_blocked")
+
 def check_budget(now: datetime) -> dict[str, Any]:
     return evaluate_budget_snapshot(
         request_json(os.environ.get("ORCA_BUDGET_GATE_URL", ""),
@@ -357,6 +376,7 @@ def main() -> int:
     now = datetime.now(timezone.utc)
     try:
         check_global_hold()
+        check_loop_admission()
         budget = check_budget(now)
         event_name = os.environ.get("GITHUB_EVENT_NAME", "")
         continuation_depth = os.environ.get("CONTINUATION_DEPTH", "0")
