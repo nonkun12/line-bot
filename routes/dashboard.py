@@ -458,6 +458,9 @@ def autonomous_loop_status():
             "schedule_source": "PR #1354 branch only; not merged or enabled on main",
             "execution_enabled": False,
             "execution_status": "not_verified",
+            "budget_gate": {"status": "proposal_only", "evidence": "PR #1353; live quota evidence not connected; execution remains blocked"},
+            "runaway_guard": {"status": "partial", "evidence": "Outcome/queue CAS integration and full adversarial tests pending"},
+            "emergency_stop": {"status": "not_operational", "evidence": "Shared LINE/terminal path proposed; durable state config and ChatGPT entrypoint pending"},
             "streams": [
                 {
                     "key": "main_loop", "kind": "main",
