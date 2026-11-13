@@ -23,9 +23,9 @@ class AtomicClaimTests(unittest.TestCase):
             "active_lease": None,
             "consumed_approval_ids": [],
             "run_guard": {
-                "run_id": "run-1", "started_at": "2026-11-13T12:00:00Z",
-                "tasks_claimed": 0, "attempts_by_task": {},
-                "consecutive_failures": 0, "circuit_breaker_until": None,
+                "run_id": "previous-run", "started_at": "2026-11-13T11:30:00Z",
+                "tasks_claimed": 1, "attempts_by_task": {"old-task": 1},
+                "consecutive_failures": 1, "circuit_breaker_until": None,
                 "paid_services_enabled": False, "automatic_retry_enabled": False,
                 "outcomes_by_task": {},
             },
@@ -66,6 +66,13 @@ class AtomicClaimTests(unittest.TestCase):
             self.assertEqual(next_state["consumed_approval_ids"], ["d" * 64])
             self.assertEqual(next_state["tasks"][0]["status"], "claimed")
             self.assertEqual(next_state["active_lease"]["task_id"], "task-1")
+            guard = next_state["run_guard"]
+            self.assertEqual(guard["run_id"], "run-1")
+            self.assertEqual(guard["tasks_claimed"], 1)
+            self.assertEqual(guard["attempts_by_task"], {"task-1": 1})
+            self.assertEqual(guard["consecutive_failures"], 1)
+            self.assertFalse(guard["paid_services_enabled"])
+            self.assertFalse(guard["automatic_retry_enabled"])
             return StateSnapshot("e" * 40, next_state, "f" * 40)
         self.store.write.side_effect = persist
 
