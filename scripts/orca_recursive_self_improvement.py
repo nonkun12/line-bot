@@ -49,9 +49,7 @@ def new_cycle(*, observation: str, source_refs: list[str], created_at: str,
     refs = _evidence(source_refs, "observation")
     if isinstance(depth, bool) or not isinstance(depth, int) or not 0 <= depth <= _MAX_DEPTH:
         raise ImprovementRejected("recursion_depth_invalid")
-    if depth > 0 and (not isinstance(parent_id, str) or not _SHA.fullmatch(parent_id)):
-        raise ImprovementRejected("parent_cycle_id_invalid")
-    if depth == 0 and parent_cycle_id is not None:
+        if depth == 0 and parent_cycle_id is not None:
         raise ImprovementRejected("root_cycle_cannot_have_parent")
     if depth > 0 and (not isinstance(parent_cycle_id, str) or not _SHA.fullmatch(parent_cycle_id)):
         raise ImprovementRejected("parent_cycle_id_invalid")
@@ -62,7 +60,7 @@ def new_cycle(*, observation: str, source_refs: list[str], created_at: str,
         "schema_version": 1, "cycle_id": cycle_id,
         "parent_cycle_id": parent_cycle_id, "depth": depth,
         "stage": "observed", "observation": observation.strip(),
-        "evidence": {"observation": refs}, "created_at": timestamp,
+        "evidence": {"observed": refs}, "created_at": timestamp,
         "decision": None, "execution_authorized": False,
         "auto_apply": False, "auto_merge": False, "auto_deploy": False,
     }
