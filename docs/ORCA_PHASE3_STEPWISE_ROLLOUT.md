@@ -229,3 +229,13 @@ separate read-only job and execution remains disabled.
 - Rationale: the worker's hard wall-clock ceiling is 30 minutes and the separate read-only preflight job can consume up to 2 additional minutes; a 30-minute reserve would not leave any headroom. The 45-minute floor leaves at least 13 minutes beyond the combined 32-minute declared job ceilings.
 - Added boundary coverage: 44 minutes remaining is rejected; exactly 45 minutes passes the reserve check (subject to all other evidence checks).
 - This is a guardrail change only. No collector exists, no budget evidence was supplied, and execution remains disabled/BLOCKED.
+
+
+## CI verification checkpoint — 2026-11-14 (latest PR head)
+
+- Verified the latest PR head `0e132ee50c8283c64c75a5407f5fb0d2a9aff249`.
+- All four workflows associated with that exact commit completed successfully: full Pytest, Orca focused tests, Python syntax scan, and the AI Code Review workflow.
+- This supersedes the earlier note that the follow-up CI was still in progress. The workflow result named AI Code Review is a successful workflow run, not proof of independent human security approval.
+- A fresh comparison against `main` reports this branch 198 commits ahead and 0 behind. This is a large Draft PR; CI success alone is not merge-readiness evidence.
+- The default branch still retains its existing scheduled workflows and continuation trigger. This PR's 30-minute cron and sidecar schedule retirement remain branch-only until a separately approved merge.
+- The worker remains dry-run only; the trusted budget collector, provisioned durable state branch, and operational shared STOP evidence are still absent. `FREE_ONLY_EXECUTION_APPROVED=false`, `execution_enabled=false`, and no merge/deploy/production activation remain in force.
