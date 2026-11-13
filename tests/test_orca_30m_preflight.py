@@ -47,3 +47,12 @@ def test_execution_is_never_enabled_by_preflight_even_with_gate_pass(monkeypatch
     assert result["status"] == "BLOCKED"
     assert result["reason"] == "phase3_worker_runtime_not_integrated"
     assert result["execution_enabled"] is False
+
+def test_stale_scheduled_run_is_discarded():
+    from datetime import datetime, timedelta, timezone
+    from scripts.orca_30m_preflight import scheduled_run_is_fresh
+
+    now = datetime(2026, 11, 13, 12, 0, tzinfo=timezone.utc)
+    assert scheduled_run_is_fresh("2026-11-13T11:50:00Z", now=now) is True
+    assert scheduled_run_is_fresh("2026-11-13T11:40:00Z", now=now) is False
+    assert scheduled_run_is_fresh("invalid", now=now) is False
