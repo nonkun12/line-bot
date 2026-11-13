@@ -115,6 +115,21 @@ class BudgetGateTests(unittest.TestCase):
         with self.assertRaisesRegex(GateBlocked, "budget_snapshot_stale_or_future"):
             evaluate(signed_payload({"cloudflare_d1": {"watermark_at": "2026-11-12T23:40:00Z"}}))
 
+    def test_watermark_must_not_be_newer_than_observation_or_attestation(self):
+        with self.assertRaisesRegex(GateBlocked, "budget_watermark_after_observation"):
+            evaluate(signed_payload({"cloudflare_d1": {"watermark_at": "2026-11-13T00:01:00Z"}}))
+        with self.assertRaisesRegex(GateBlocked, "budget_observation_after_attestation"):
+            evaluate(signed_payload({"cloudflare_d1": {"observed_at": "2026-11-13T00:06:00Z",
+                                                       "watermark_at": "2026-11-13T00:05:00Z"}}))
+
+    def test_missing_trust_configuration_blocks(self):
+        from scripts.distributed_loop_30m_gate import evaluate_budget_snapshot
+        with self.assertRaisesRegex(GateBlocked, "budget_attestation_trust_configuration_missing"):
+            evaluate_budget_snapshot(signed_payload(), now=NOW, attestation_secret="",
+                                     expected_account_id=ACCOUNT,
+                                     trusted_collector_id=COLLECTOR,
+                                     expected_github_account_id=GITHUB_ACCOUNT)
+
     def test_missing_disabled_and_out_of_period_block(self):
         cases = [
             ({"cloudflare_d1": {"enabled": None}}, "budget_source_not_confirmed_enabled"),
