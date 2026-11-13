@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from scripts.orca_signed_budget_evidence import EvidenceRejected, REQUIRED_SOURCES, verify
 
+MAX_FUTURE_SKEW = timedelta(minutes=5)
 MIN_SLOT_INTERVAL = timedelta(minutes=30)
 
 class GateBlocked(RuntimeError):
