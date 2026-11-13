@@ -59,8 +59,22 @@ def test_workflow_and_legacy_loop_job_have_no_write_permissions():
     assert "pull-requests: write" not in source
 
 
-def test_legacy_runtime_remains_unreachable_without_explicit_free_only_gate():
+def test_unified_loop_job_is_inert_and_contains_no_legacy_or_external_side_effects():
     source = WORKFLOW.read_text(encoding="utf-8")
-    assert "FREE_ONLY_EXECUTION_APPROVED: 'false'" in source
-    assert "if: ${{ success() && steps.free_only_gate.outcome == 'success' && env.FREE_ONLY_EXECUTION_APPROVED == 'true' }}" in source
-    assert "python scripts/run_minimal_autonomous_loop.py" in source
+    worker = source.split("\\n  minimal-loop:", 1)[1]
+
+    assert "needs: safety-preflight" in worker
+    assert "needs.safety-preflight.outputs.execution_enabled == 'true' && false" in worker
+    assert "permissions:\\n      actions: read\\n      contents: read" in worker
+    forbidden = (
+        "run_minimal_autonomous_loop.py",
+        "autonomous_task_refill",
+        "autonomous_task_proposals",
+        "gh issue create",
+        "git push",
+        "INTERNAL_PUSH_KEY",
+        "ORCA_STATUS_SECRET",
+        "agents.sheets",
+        "curl ",
+    )
+    assert not any(token in worker for token in forbidden)
