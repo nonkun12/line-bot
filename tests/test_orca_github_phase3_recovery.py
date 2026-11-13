@@ -18,7 +18,8 @@ from scripts.orca_github_runaway_guard import RunawayGuardRejected, finish_with_
 
 NOW = "2026-11-13T12:00:00Z"
 NOW_DT = datetime(2026, 11, 13, 12, 0, tzinfo=timezone.utc)
-PAYLOAD = {"kind": "analysis", "input": "bounded-test"}
+TASK_ID = "ai-speaker-empty-transcript-no-brain-call"
+PAYLOAD = {"task_type": "add_regression_test", "target_path": "tests/test_ai_speaker.py", "contract_version": 1}
 PAYLOAD_BYTES = json.dumps(
     PAYLOAD, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
 ).encode("utf-8")
@@ -30,7 +31,7 @@ class Phase3RecoveryTests(unittest.TestCase):
         state = empty_state()
         state["global_hold"] = False
         return enqueue(
-            state, expected_revision=0, task_id="task-1",
+            state, expected_revision=0, task_id=TASK_ID,
             request_hash=PAYLOAD_HASH, approved=True, created_at=NOW,
         )
 
@@ -41,7 +42,7 @@ class Phase3RecoveryTests(unittest.TestCase):
         )
         state["run_guard"] = {
             "run_id": run_id, "started_at": NOW,
-            "tasks_claimed": 1, "attempts_by_task": {"task-1": 1},
+            "tasks_claimed": 1, "attempts_by_task": {TASK_ID: 1},
             "consecutive_failures": 0, "circuit_breaker_until": None,
             "paid_services_enabled": False, "automatic_retry_enabled": False,
             "outcomes_by_task": {},
@@ -50,7 +51,7 @@ class Phase3RecoveryTests(unittest.TestCase):
 
     def envelope(self, *, run_id="run-1", owner="worker-1"):
         return {
-            "task_id": "task-1", "request_hash": PAYLOAD_HASH,
+            "task_id": TASK_ID, "request_hash": PAYLOAD_HASH,
             "owner": owner, "run_id": run_id, "payload": copy.deepcopy(PAYLOAD),
         }
 
@@ -89,7 +90,7 @@ class Phase3RecoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(QueueRejected, "stale_revision_conflict"):
             finish(
                 claimed, expected_revision=claimed["revision"] - 1,
-                task_id="task-1", owner="worker-1", run_id="run-1",
+                task_id=TASK_ID, owner="worker-1", run_id="run-1",
                 now="2026-11-13T12:00:32Z", outcome="done",
             )
 
@@ -106,7 +107,7 @@ class Phase3RecoveryTests(unittest.TestCase):
         )
         new_claim["run_guard"] = {
             "run_id": "run-2", "started_at": "2026-11-13T12:00:32Z",
-            "tasks_claimed": 1, "attempts_by_task": {"task-1": 1},
+            "tasks_claimed": 1, "attempts_by_task": {TASK_ID: 1},
             "consecutive_failures": 0, "circuit_breaker_until": None,
             "paid_services_enabled": False, "automatic_retry_enabled": False,
         }
@@ -132,7 +133,7 @@ class Phase3RecoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(QueueRejected, "lease_expired"):
             finish(
                 state, expected_revision=state["revision"],
-                task_id="task-1", owner="worker-1", run_id="run-1",
+                task_id=TASK_ID, owner="worker-1", run_id="run-1",
                 now="2026-11-13T12:00:31Z", outcome="done",
             )
 
@@ -141,7 +142,7 @@ class Phase3RecoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(QueueRejected, "lease_owner_mismatch"):
             finish(
                 state, expected_revision=state["revision"],
-                task_id="task-1", owner="worker-2", run_id="run-1",
+                task_id=TASK_ID, owner="worker-2", run_id="run-1",
                 now="2026-11-13T12:00:01Z", outcome="done",
             )
         with self.assertRaisesRegex(QueueRejected, "no_expired_lease"):
@@ -154,14 +155,14 @@ class Phase3RecoveryTests(unittest.TestCase):
         state = self.claimed_state()
         done = finish(
             state, expected_revision=state["revision"],
-            task_id="task-1", owner="worker-1", run_id="run-1",
+            task_id=TASK_ID, owner="worker-1", run_id="run-1",
             now="2026-11-13T12:00:01Z", outcome="done",
         )
         self.assertEqual(done["tasks"][0]["status"], "done")
         with self.assertRaisesRegex(QueueRejected, "lease_owner_mismatch"):
             finish(
                 done, expected_revision=done["revision"],
-                task_id="task-1", owner="worker-1", run_id="run-1",
+                task_id=TASK_ID, owner="worker-1", run_id="run-1",
                 now="2026-11-13T12:00:02Z", outcome="done",
             )
 
@@ -170,7 +171,7 @@ class Phase3RecoveryTests(unittest.TestCase):
         state = self.claimed_state()
         state["run_guard"]["consecutive_failures"] = 1
         failed = finish_with_outcome(
-            state=state, expected_revision=state["revision"], task_id="task-1",
+            state=state, expected_revision=state["revision"], task_id=TASK_ID,
             owner="worker-1", run_id="run-1", now="2026-11-13T12:00:01Z",
             outcome="failed",
         )
@@ -178,7 +179,7 @@ class Phase3RecoveryTests(unittest.TestCase):
         self.assertEqual(failed["run_guard"]["consecutive_failures"], 2)
         self.assertEqual(failed["run_guard"]["circuit_breaker_until"], "2026-11-13T13:00:01Z")
         replay = finish_with_outcome(
-            state=failed, expected_revision=failed["revision"], task_id="task-1",
+            state=failed, expected_revision=failed["revision"], task_id=TASK_ID,
             owner="worker-1", run_id="run-1", now="2026-11-13T12:00:02Z",
             outcome="failed",
         )
@@ -187,13 +188,13 @@ class Phase3RecoveryTests(unittest.TestCase):
     def test_conflicting_outcome_replay_rejected(self):
         state = self.claimed_state()
         failed = finish_with_outcome(
-            state=state, expected_revision=state["revision"], task_id="task-1",
+            state=state, expected_revision=state["revision"], task_id=TASK_ID,
             owner="worker-1", run_id="run-1", now="2026-11-13T12:00:01Z",
             outcome="failed",
         )
         with self.assertRaisesRegex(RunawayGuardRejected, "conflicting_outcome_replay"):
             finish_with_outcome(
-                state=failed, expected_revision=failed["revision"], task_id="task-1",
+                state=failed, expected_revision=failed["revision"], task_id=TASK_ID,
                 owner="worker-1", run_id="run-1", now="2026-11-13T12:00:02Z",
                 outcome="done",
             )
