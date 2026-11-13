@@ -43,11 +43,14 @@ counter without a verified plan limit.
 2. A pure GitHub-native task queue state machine and lease transition tests are
    now included in this branch. It is a contract/reference model, NOT a durable
    queue or atomic claim backend. The persistence adapter is still missing.
-3. Add a GitHub ref-backed append-only state store. Writers must be serialized,
-   compare the exact state revision, and update a dedicated state ref with a
-   non-force fast-forward; reject conflicts and retry from the newest state.
-   GitHub Issues alone are not an atomic queue, and Actions concurrency alone
-   is not a durable FIFO queue.
+3. Implement the GitHub API persistence adapter. The new
+   scripts/orca_github_state_ref.py validates a write intent, parent SHA,
+   revision increment, state digest, and non-force policy, but it does not
+   perform GitHub API writes. The adapter must create a commit with the exact
+   observed parent, update the dedicated state ref without force, reject a
+   moved ref, and verify by read-after-write. Add real concurrent-writer and
+   crash/retry integration tests. GitHub Issues alone are not an atomic queue,
+   and Actions concurrency alone is not a durable FIFO queue.
 4. Add a common LINE identity + task-bound approval verifier.
 5. Add a latched GitHub-native Global HOLD. Missing/unreadable state blocks.
 6. Wire a single serialized workflow only after all preceding evidence exists.
