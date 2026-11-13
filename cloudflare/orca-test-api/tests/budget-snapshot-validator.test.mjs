@@ -75,7 +75,7 @@ test("accepts complete fresh signed schema-v2 snapshot and derives status", asyn
 test("rejects tampered payload after HMAC signing", async () => {
   const payload = await sign(makePayload());
   payload.meters[0].used = 99;
-  await assert.rejects(validateBudgetSnapshot(payload, options), { code: "budget_attestation_signature_invalid" });
+  await assert.rejects(validateBudgetSnapshot(payload, options), { code: "budget_attestation_canonical_payload_mismatch" });
 });
 test("rejects missing, duplicate, and unexpected meter identities", async () => {
   const missing = makePayload(); missing.meters.pop(); await sign(missing);
