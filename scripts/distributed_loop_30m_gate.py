@@ -241,6 +241,17 @@ def evaluate_budget_snapshot(
             period_end = parse_time(meter.get("period_end"))
             if period_start >= period_end or not (period_start <= now < period_end):
                 raise GateBlocked("budget_period_not_current")
+            duration = period_end - period_start
+            if period_kind == "daily" and (
+                    period_start.hour != 0 or period_start.minute != 0
+                    or period_start.second != 0 or duration != timedelta(days=1)):
+                raise GateBlocked("budget_daily_period_alignment_invalid")
+            if period_kind == "hourly" and (
+                    period_start.minute != 0 or period_start.second != 0
+                    or duration != timedelta(hours=1)):
+                raise GateBlocked("budget_hourly_period_alignment_invalid")
+            if period_kind == "monthly" and not (timedelta(days=27) <= duration <= timedelta(days=32)):
+                raise GateBlocked("budget_monthly_period_length_invalid")
         elif meter.get("period_start") is not None or meter.get("period_end") is not None:
             raise GateBlocked("budget_nonreset_meter_has_period_boundary")
         percent = float(used) / float(limit) * 100.0
