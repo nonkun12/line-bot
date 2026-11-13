@@ -77,6 +77,37 @@ class WorkerDryRunTests(unittest.TestCase):
                     "recovery-ai-loop-adapter-durable-state-readback": "tests/test_recovery_ai_loop_adapter.py",
                 }[item["id"]])
 
+    def test_emergency_stop_and_missing_stop_state_fail_closed(self):
+        stopped = dict(self.state, emergency_stop=True)
+        with self.assertRaisesRegex(WorkerDryRunRejected, "emergency_stop_active"):
+            dry_run_one(queue_state=stopped, envelope=self.envelope, now=self.now)
+
+        missing = dict(self.state)
+        missing.pop("emergency_stop")
+        with self.assertRaisesRegex(WorkerDryRunRejected, "emergency_stop_active"):
+            dry_run_one(queue_state=missing, envelope=self.envelope, now=self.now)
+
+    def test_runaway_guard_limits_are_rechecked_at_worker_boundary(self):
+        cases = [
+            ("paid_services_enabled", "paid_services_forbidden"),
+            ("automatic_retry_enabled", "automatic_retry_forbidden"),
+            ("consecutive_failures", "failure_circuit_breaker_open"),
+            ("tasks_claimed", "worker_run_task_count_invalid"),
+        ]
+        for field, expected in cases:
+            with self.subTest(field=field):
+                state = json.loads(json.dumps(self.state))
+                if field == "paid_services_enabled":
+                    state["run_guard"][field] = True
+                elif field == "automatic_retry_enabled":
+                    state["run_guard"][field] = True
+                elif field == "consecutive_failures":
+                    state["run_guard"][field] = 2
+                else:
+                    state["run_guard"][field] = 2
+                with self.assertRaisesRegex(WorkerDryRunRejected, expected):
+                    dry_run_one(queue_state=state, envelope=self.envelope, now=self.now)
+
     def test_global_hold_blocks(self):
         state = dict(self.state, global_hold=True)
         with self.assertRaisesRegex(WorkerDryRunRejected, "global_hold"):
