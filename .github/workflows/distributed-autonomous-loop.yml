@@ -137,6 +137,7 @@ jobs:
           ORCA_BUDGET_EVIDENCE_HMAC_SECRET: ${{ secrets.ORCA_BUDGET_EVIDENCE_HMAC_SECRET }}
           ORCA_BUDGET_EXPECTED_ACCOUNT_ID: ${{ vars.ORCA_BUDGET_EXPECTED_ACCOUNT_ID }}
           ORCA_BUDGET_TRUSTED_COLLECTOR_ID: ${{ vars.ORCA_BUDGET_TRUSTED_COLLECTOR_ID }}
+          ORCA_GITHUB_BILLING_ACCOUNT_ID: ${{ vars.ORCA_GITHUB_BILLING_ACCOUNT_ID }}
         run: python scripts/distributed_loop_30m_gate.py
 
   minimal-loop:
