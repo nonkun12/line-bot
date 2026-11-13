@@ -548,21 +548,42 @@ jobs:
           INCIDENT_CATEGORY: ${{ env.INCIDENT_CATEGORY }}
           INCIDENT_DETAIL: ${{ env.INCIDENT_DETAIL }}
           INCIDENT_JOB_ID: ${{ env.INCIDENT_JOB_ID }}
+          ORCA_CONTROL_API_URL: ${{ secrets.ORCA_CONTROL_API_URL }}
+          ORCA_LOOP_PREFLIGHT_TOKEN: ${{ secrets.ORCA_LOOP_PREFLIGHT_TOKEN }}
         run: |
           set -euo pipefail
           : > /tmp/minimal-autonomous-loop.jsonl
           STOP_FILE=/tmp/line-bot-autonomous-loop.stop
+          PREFLIGHT_FILE="$(mktemp)"
 
           (
             while sleep 15; do
-              if git fetch --quiet origin main 2>/dev/null && git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+              # Any failure to verify stop controls is itself a stop signal.
+              if ! git fetch --quiet --no-tags --depth=1 origin main 2>/dev/null; then
+                touch "$STOP_FILE"
+                exit 0
+              fi
+              if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+                touch "$STOP_FILE"
+                exit 0
+              fi
+              if [ -z "${ORCA_CONTROL_API_URL}" ] || [ -z "${ORCA_LOOP_PREFLIGHT_TOKEN}" ]; then
+                touch "$STOP_FILE"
+                exit 0
+              fi
+              http_code="$(curl --silent --show-error --connect-timeout 3 --max-time 8 \\
+                --output "$PREFLIGHT_FILE" --write-out '%{http_code}' \\
+                --request GET "${ORCA_CONTROL_API_URL%/}/control/loop-admission" \\
+                --header "Authorization: Bearer ${ORCA_LOOP_PREFLIGHT_TOKEN}" \\
+                --header "Accept: application/json" 2>/dev/null || true)"
+              if [ "$http_code" != "200" ] || ! jq -e '.allowed == true and .global_hold.clear == true and .global_hold.value == "off" and .global_hold.blocked == false and .budget_guard.allowed == true and (.budget_guard.status == "CLEAR" or .budget_guard.status == "WARN")' "$PREFLIGHT_FILE" >/dev/null 2>&1; then
                 touch "$STOP_FILE"
                 exit 0
               fi
             done
           ) &
           POLLER_PID=$!
-          trap 'kill "$POLLER_PID" 2>/dev/null || true' EXIT
+          trap 'kill "$POLLER_PID" 2>/dev/null || true; rm -f "$PREFLIGHT_FILE"' EXIT
 
           # Never let a reused self-hosted runner carry result rows into this run.
           # Stale PASS rows could otherwise inflate the final task count for NOT_RUN.
