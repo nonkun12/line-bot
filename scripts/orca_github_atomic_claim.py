@@ -86,6 +86,7 @@ def authorize_and_claim_one(
         run_id=run_id,
         now=now.isoformat(),
         lease_seconds=lease_seconds,
+        task_id=task_id,
     )
     # One state-store write commits the replay marker and lease together.
     persisted = store.write(
