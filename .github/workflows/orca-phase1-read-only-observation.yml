@@ -1,8 +1,8 @@
 name: Orca Phase 1 Read-only Observation
 
 on:
-  schedule:
-    - cron: "*/30 * * * *"
+  # Manual-only: the unified main loop owns the sole 30-minute scheduler.
+  workflow_dispatch:
 
 permissions:
   contents: read
