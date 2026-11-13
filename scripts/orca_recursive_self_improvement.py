@@ -166,10 +166,12 @@ def evaluate(cycle: dict[str, Any], *, expected_stage: str, tests_passed: bool,
 
 def start_next_cycle(previous: dict[str, Any], *, observation: str,
                      source_refs: list[str], created_at: str) -> dict[str, Any]:
-    _validate_cycle(previous, require_evaluated=True)
+    if not isinstance(previous, dict):
+        _validate_cycle(previous, require_evaluated=True)
     depth = previous.get("depth")
     if isinstance(depth, bool) or not isinstance(depth, int) or depth >= _MAX_DEPTH:
         raise ImprovementRejected("recursion_depth_limit_reached")
+    _validate_cycle(previous, require_evaluated=True)
     return new_cycle(observation=observation, source_refs=source_refs,
                      created_at=created_at, parent_cycle_id=previous["cycle_id"],
                      depth=depth + 1)
