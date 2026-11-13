@@ -14,6 +14,7 @@ from typing import Any
 from scripts.orca_github_task_queue import QueueRejected, _time, _validate
 from scripts.orca_github_emergency_stop import require_not_stopped
 from scripts.orca_github_runaway_guard import validate_worker_start
+from scripts.orca_github_task_registry import TaskContractRejected, validate_typed_task
 
 
 MAX_PAYLOAD_BYTES = 64 * 1024
@@ -58,6 +59,11 @@ def dry_run_one(*, queue_state: Any, envelope: Any, now: datetime) -> dict[str, 
     if digest != envelope["request_hash"]:
         raise WorkerDryRunRejected("worker_payload_hash_mismatch")
 
+    try:
+        task_contract = validate_typed_task(task_id=envelope["task_id"], payload=payload)
+    except TaskContractRejected as exc:
+        raise WorkerDryRunRejected(f"typed_task_rejected:{exc}") from None
+
     task_matches = [
         task for task in queue_state["tasks"]
         if task["task_id"] == envelope["task_id"]
@@ -98,5 +104,7 @@ def dry_run_one(*, queue_state: Any, envelope: Any, now: datetime) -> dict[str, 
         "lease_expires_at": lease["expires_at"],
         "side_effects_performed": False,
         "execution_started": False,
-        "required_next_action": "independent_phase3c_recovery_and_safety_tests",
+        "task_contract": task_contract,
+        "execution_supported": False,
+        "required_next_action": "implement_and_review_a_dedicated_handler_before_dispatch",
     }
