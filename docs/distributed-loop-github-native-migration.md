@@ -37,6 +37,33 @@ additional deterministic guardrails; they do not prove remaining free quota.
 Do not infer quota availability from recent successful runs or from a usage
 counter without a verified plan limit.
 
+
+## Phase 1 read-only observer
+
+The PR now contains `.github/workflows/orca-phase1-read-only-observation.yml`
+and `scripts/orca_github_phase1_observer.py`.
+
+- The workflow is scheduled every 30 minutes, uses the standard `ubuntu-slim`
+  hosted runner, has a 2-minute timeout, and serializes runs with
+  `cancel-in-progress: false`.
+- Its token is limited to `contents: read`; it performs only GET requests.
+  It does not create a claim, write state, dispatch a worker, or execute a task.
+- It reads the state document at the immutable commit SHA returned by the
+  state-ref API. Missing or malformed state is BLOCKED.
+- Observation success is reported separately from the execution gate. Even a
+  valid snapshot cannot open execution: budget evidence is deliberately
+  reported as MISSING and `execution_enabled` remains false.
+- No `workflow_dispatch` trigger is defined. The schedule in this Draft PR
+  does not run from this feature branch; it becomes active only if merged to
+  the default branch. Do not merge or activate it without separate approval.
+- The repository is public, so standard GitHub-hosted runners are free under
+  GitHub's current Actions billing rules. Larger runners are not used.
+
+At the time of this revision, the `orca-state` ref is not present. Therefore
+the observer will report BLOCKED until a separately approved state-provisioning
+step creates the required state with Global HOLD latched true. This PR never
+creates that ref or initializes state.
+
 ## Next phases
 
 1. Implement and independently validate the account-level collector.
