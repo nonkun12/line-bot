@@ -34,10 +34,17 @@ class Phase3RecoveryTests(unittest.TestCase):
         )
 
     def claimed_state(self, *, run_id="run-1", lease_seconds=60):
-        return claim_next(
+        state = claim_next(
             self.queued_state(), expected_revision=1, owner="worker-1",
             run_id=run_id, now=NOW, lease_seconds=lease_seconds,
         )
+        state["run_guard"] = {
+            "run_id": run_id, "started_at": NOW,
+            "tasks_claimed": 1, "attempts_by_task": {"task-1": 1},
+            "consecutive_failures": 0, "circuit_breaker_until": None,
+            "paid_services_enabled": False, "automatic_retry_enabled": False,
+        }
+        return state
 
     def envelope(self, *, run_id="run-1", owner="worker-1"):
         return {
