@@ -1,9 +1,7 @@
 name: Orca Phase 1 Read-only Observation
 
 on:
-  # Safe PR smoke trial: read-only observer only; never claims or executes tasks.
-  pull_request:
-    types: [opened, synchronize, reopened]
+  # Manual-only; this new workflow is not installed on main yet.
   workflow_dispatch:
 
 permissions:
@@ -15,7 +13,7 @@ concurrency:
 
 jobs:
   observe:
-    if: github.repository == 'nonkun12/line-bot' && (github.event_name != 'pull_request' || github.event.pull_request.user.login == 'nonkun12')
+    if: github.repository == 'nonkun12/line-bot'
     runs-on: ubuntu-slim
     timeout-minutes: 2
     permissions:
