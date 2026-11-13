@@ -44,7 +44,10 @@ def parse_time(value: Any) -> datetime:
 
 
 def _canonical_payload(payload: dict[str, Any]) -> bytes:
-    unsigned = {key: value for key, value in payload.items() if key != "attestation"}
+    unsigned = dict(payload)
+    attestation = dict(unsigned.get("attestation") or {})
+    attestation.pop("signature", None)
+    unsigned["attestation"] = attestation
     try:
         return json.dumps(
             unsigned, sort_keys=True, separators=(",", ":"),
