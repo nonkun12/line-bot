@@ -32,7 +32,7 @@ REQUIRED_METERS = {
     "cloudflare.durable_objects.sqlite_storage_bytes.total": ("cloudflare", "durable_objects"),
     "github.actions.compute_cost_usd.monthly": ("github", "actions"),
     "github.actions_packages.shared_storage_gb_hours.monthly": ("github", "actions_packages"),
-    "github.actions.cache_storage_bytes.hourly_peak": ("github", "actions"),
+    "github.actions.cache_storage_gb_hours.monthly": ("github", "actions"),
 }
 REQUIRED_PRODUCTS = frozenset({
     "workers", "workers_logs", "d1", "durable_objects", "actions", "actions_packages",
@@ -51,7 +51,7 @@ METER_UNITS = {
     "cloudflare.durable_objects.sqlite_storage_bytes.total": "bytes",
     "github.actions.compute_cost_usd.monthly": "USD",
     "github.actions_packages.shared_storage_gb_hours.monthly": "GB-hours",
-    "github.actions.cache_storage_bytes.hourly_peak": "bytes",
+    "github.actions.cache_storage_gb_hours.monthly": "GB-hours",
 }
 METER_PERIOD_KINDS = {
     "cloudflare.workers.requests.daily": "daily",
@@ -67,7 +67,7 @@ METER_PERIOD_KINDS = {
     "cloudflare.durable_objects.sqlite_storage_bytes.total": "total",
     "github.actions.compute_cost_usd.monthly": "monthly",
     "github.actions_packages.shared_storage_gb_hours.monthly": "monthly",
-    "github.actions.cache_storage_bytes.hourly_peak": "hourly",
+    "github.actions.cache_storage_gb_hours.monthly": "monthly",
 }
 MAX_SNAPSHOT_AGE = timedelta(minutes=10)
 MAX_FUTURE_SKEW = timedelta(minutes=5)
