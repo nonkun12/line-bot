@@ -80,8 +80,14 @@ def verify_task_approval(
     approval_id = approval.get("approval_id")
     if not isinstance(approval_id, str) or not _HEX_64.fullmatch(approval_id):
         raise ExecutionGateRejected("approval_id_invalid")
+    try:
+        approver_allowlist = set(allowed_approvers)
+    except (TypeError, ValueError):
+        raise ExecutionGateRejected("approver_allowlist_invalid") from None
+    if not approver_allowlist or any(not isinstance(value, str) or not value for value in approver_allowlist):
+        raise ExecutionGateRejected("approver_allowlist_invalid")
     approver = approval.get("approved_by")
-    if not isinstance(approver, str) or approver not in set(allowed_approvers):
+    if not isinstance(approver, str) or approver not in approver_allowlist:
         raise ExecutionGateRejected("approver_not_allowed")
     if approval.get("decision") != "approve":
         raise ExecutionGateRejected("approval_decision_not_approve")
@@ -176,8 +182,21 @@ def evaluate_execution_gate(
     if queue_state.get("global_hold") is not False:
         raise ExecutionGateRejected("global_hold_active_or_unverifiable")
     tasks = queue_state.get("tasks")
-    if not isinstance(tasks, list):
-        raise ExecutionGateRejected("queue_tasks_invalid")
+    if not isinstance(tasks, list) or "active_lease" not in queue_state:
+        raise ExecutionGateRejected("queue_tasks_or_lease_missing")
+    seen_task_ids = set()
+    for row in tasks:
+        if not isinstance(row, dict):
+            raise ExecutionGateRejected("queue_task_invalid")
+        row_id = row.get("task_id")
+        row_hash = row.get("request_hash")
+        if not isinstance(row_id, str) or not row_id or row_id in seen_task_ids:
+            raise ExecutionGateRejected("queue_task_identity_invalid")
+        if not isinstance(row_hash, str) or not _HEX_64.fullmatch(row_hash):
+            raise ExecutionGateRejected("queue_task_request_hash_invalid")
+        if row.get("status") not in {"queued", "claimed", "done", "failed"}:
+            raise ExecutionGateRejected("queue_task_status_invalid")
+        seen_task_ids.add(row_id)
     lease = queue_state.get("active_lease")
     if lease is not None:
         raise ExecutionGateRejected("active_lease_present")
@@ -196,9 +215,10 @@ def evaluate_execution_gate(
     if task.get("request_hash") != request_hash or not isinstance(request_hash, str) or not _HEX_64.fullmatch(request_hash):
         raise ExecutionGateRejected("task_request_hash_mismatch")
 
-    if not isinstance(consumed_approval_ids, list) or any(
-        not isinstance(value, str) for value in consumed_approval_ids
-    ):
+    if (not isinstance(consumed_approval_ids, list)
+            or any(not isinstance(value, str) or not _HEX_64.fullmatch(value)
+                   for value in consumed_approval_ids)
+            or len(consumed_approval_ids) != len(set(consumed_approval_ids))):
         raise ExecutionGateRejected("approval_replay_ledger_missing_or_invalid")
     approval_id = verify_task_approval(
         approval, approval_signing_key, repository=repository,
