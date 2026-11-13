@@ -102,6 +102,12 @@ class Phase3RecoveryTests(unittest.TestCase):
             owner="worker-2", run_id="run-2",
             now="2026-11-13T12:00:32Z",
         )
+        new_claim["run_guard"] = {
+            "run_id": "run-2", "started_at": "2026-11-13T12:00:32Z",
+            "tasks_claimed": 1, "attempts_by_task": {"task-1": 1},
+            "consecutive_failures": 0, "circuit_breaker_until": None,
+            "paid_services_enabled": False, "automatic_retry_enabled": False,
+        }
         with self.assertRaisesRegex(WorkerDryRunRejected, "lease_owner_or_run_mismatch"):
             dry_run_one(
                 queue_state=new_claim, envelope=self.envelope(),
