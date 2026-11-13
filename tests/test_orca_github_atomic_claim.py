@@ -22,6 +22,12 @@ class AtomicClaimTests(unittest.TestCase):
             }],
             "active_lease": None,
             "consumed_approval_ids": [],
+            "run_guard": {
+                "run_id": "run-1", "started_at": "2026-11-13T12:00:00Z",
+                "tasks_claimed": 0, "attempts_by_task": {},
+                "consecutive_failures": 0, "circuit_breaker_until": None,
+                "paid_services_enabled": False, "automatic_retry_enabled": False,
+            },
         }
         self.snapshot = StateSnapshot("b" * 40, self.state, "c" * 40)
         self.store = Mock()
