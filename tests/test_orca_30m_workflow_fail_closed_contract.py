@@ -35,3 +35,13 @@ def test_typed_worker_contracts_cannot_be_mistaken_for_executable_handlers():
     assert '"status": "BLOCKED_HANDLER_NOT_IMPLEMENTED"' in registry
     assert '"execution_started": False' in worker
     assert '"execution_supported": False' in worker
+
+
+def test_scheduled_runs_do_not_wake_render_or_consume_line_push_quota():
+    source = WORKFLOW.read_text(encoding="utf-8")
+    for step_name in (
+        "Wake Render before LINE final report",
+        "Notify LINE of distributed loop final report",
+    ):
+        section = source.split(f"      - name: {step_name}\\n", 1)[1].split("\\n      - name:", 1)[0]
+        assert "if: always() && github.event_name != 'schedule'" in section
