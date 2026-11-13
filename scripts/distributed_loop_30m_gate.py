@@ -13,14 +13,41 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-# Cloudflare meters are aligned with Budget Guardian; GitHub Actions is a
-# separate platform meter and must be attested by the same trusted collector.
-REQUIRED_SOURCES = (
-    "cloudflare_workers",
-    "cloudflare_d1",
-    "cloudflare_durable_objects",
-    "github_actions",
-)
+# Schema v2 models every independently limited dimension for the current
+# Workers/Pages + D1 + SQLite Durable Objects + GitHub Actions footprint.
+# If the signed product inventory discovers another enabled product, fail closed
+# until its complete meter set is added here.
+REQUIRED_METERS = {
+    "cloudflare.workers.requests.daily": ("cloudflare", "workers"),
+    "cloudflare.workers_logs.events.daily": ("cloudflare", "workers_logs"),
+    "cloudflare.d1.rows_read.daily": ("cloudflare", "d1"),
+    "cloudflare.d1.rows_written.daily": ("cloudflare", "d1"),
+    "cloudflare.d1.storage_bytes.total": ("cloudflare", "d1"),
+    "cloudflare.durable_objects.requests.daily": ("cloudflare", "durable_objects"),
+    "cloudflare.durable_objects.duration_gb_seconds.daily": ("cloudflare", "durable_objects"),
+    "cloudflare.durable_objects.sqlite_rows_read.daily": ("cloudflare", "durable_objects"),
+    "cloudflare.durable_objects.sqlite_rows_written.daily": ("cloudflare", "durable_objects"),
+    "cloudflare.durable_objects.sqlite_storage_bytes.total": ("cloudflare", "durable_objects"),
+    "github.actions.compute_cost_usd.monthly": ("github", "actions"),
+    "github.actions.artifact_storage_bytes.monthly": ("github", "actions"),
+}
+REQUIRED_PRODUCTS = frozenset({
+    "workers", "workers_logs", "d1", "durable_objects", "actions",
+})
+METER_UNITS = {
+    "cloudflare.workers.requests.daily": "requests",
+    "cloudflare.workers_logs.events.daily": "events",
+    "cloudflare.d1.rows_read.daily": "rows",
+    "cloudflare.d1.rows_written.daily": "rows",
+    "cloudflare.d1.storage_bytes.total": "bytes",
+    "cloudflare.durable_objects.requests.daily": "requests",
+    "cloudflare.durable_objects.duration_gb_seconds.daily": "GB-seconds",
+    "cloudflare.durable_objects.sqlite_rows_read.daily": "rows",
+    "cloudflare.durable_objects.sqlite_rows_written.daily": "rows",
+    "cloudflare.durable_objects.sqlite_storage_bytes.total": "bytes",
+    "github.actions.compute_cost_usd.monthly": "USD",
+    "github.actions.artifact_storage_bytes.monthly": "bytes",
+}
 MAX_SNAPSHOT_AGE = timedelta(minutes=10)
 MAX_FUTURE_SKEW = timedelta(minutes=5)
 MAX_ATTESTATION_LIFETIME = timedelta(minutes=15)
@@ -95,72 +122,97 @@ def evaluate_budget_snapshot(
     expected_account_id: str = "", trusted_collector_id: str = "",
     expected_github_account_id: str = "",
 ) -> dict[str, Any]:
-    if not isinstance(payload, dict) or not isinstance(payload.get("sources"), list):
-        raise GateBlocked("budget_snapshot_missing")
+    if not isinstance(payload, dict) or not isinstance(payload.get("meters"), list):
+        raise GateBlocked("budget_meter_inventory_v2_missing")
     verify_budget_attestation(
         payload, now=now, secret=attestation_secret,
         expected_account_id=expected_account_id,
         trusted_collector_id=trusted_collector_id,
     )
-    if payload.get("schema_version") != 1:
-        raise GateBlocked("budget_snapshot_schema_invalid")
+    if payload.get("schema_version") != 2:
+        raise GateBlocked("budget_meter_schema_unsupported")
+
     attestation_issued_at = parse_time(payload["attestation"].get("issued_at"))
+    now = now.astimezone(timezone.utc)
+    inventory = payload.get("meter_inventory")
+    if not isinstance(inventory, dict):
+        raise GateBlocked("budget_product_inventory_missing")
+    if (inventory.get("complete_account_coverage") is not True
+            or inventory.get("unresolved_products") != []
+            or inventory.get("cloudflare_account_id") != expected_account_id
+            or inventory.get("github_account_id") != expected_github_account_id):
+        raise GateBlocked("budget_product_inventory_incomplete")
+    products = inventory.get("enabled_products")
+    if (not isinstance(products, list)
+            or any(not isinstance(x, str) for x in products)
+            or len(products) != len(set(products))
+            or set(products) != REQUIRED_PRODUCTS):
+        raise GateBlocked("budget_product_inventory_unexpected_or_incomplete")
+    inventory_observed = parse_time(inventory.get("observed_at"))
+    inventory_watermark = parse_time(inventory.get("watermark_at"))
+    if (inventory_watermark > inventory_observed
+            or inventory_observed > attestation_issued_at + MAX_FUTURE_SKEW
+            or inventory_observed > now + MAX_FUTURE_SKEW
+            or inventory_watermark > now + MAX_FUTURE_SKEW
+            or now - inventory_observed > MAX_SNAPSHOT_AGE
+            or now - inventory_watermark > MAX_SNAPSHOT_AGE):
+        raise GateBlocked("budget_product_inventory_stale_or_future")
+
     failures = payload.get("consecutive_failures")
     if isinstance(failures, bool) or not isinstance(failures, int) or failures < 0:
         raise GateBlocked("failure_counter_invalid")
     if failures >= 3:
         raise GateBlocked("consecutive_failure_limit_reached")
 
-    now = now.astimezone(timezone.utc)
-    by_name = {}
-    for source in payload["sources"]:
-        if not isinstance(source, dict):
-            raise GateBlocked("budget_source_invalid")
-        name = source.get("name")
-        if not isinstance(name, str) or not name or name in by_name:
-            raise GateBlocked("budget_source_identity_invalid")
-        by_name[name] = source
-    if set(by_name) != set(REQUIRED_SOURCES):
-        raise GateBlocked("budget_source_set_incomplete_or_unexpected")
+    by_id = {}
+    for meter in payload["meters"]:
+        if not isinstance(meter, dict):
+            raise GateBlocked("budget_meter_invalid")
+        meter_id = meter.get("meter_id")
+        if not isinstance(meter_id, str) or not meter_id or meter_id in by_id:
+            raise GateBlocked("budget_meter_identity_invalid")
+        by_id[meter_id] = meter
+    if set(by_id) != set(REQUIRED_METERS):
+        raise GateBlocked("budget_meter_set_incomplete_or_unexpected")
 
     results = []
-    for name in REQUIRED_SOURCES:
-        source = by_name[name]
-        if source.get("enabled") is not True:
-            raise GateBlocked("budget_source_not_confirmed_enabled")
-        if (source.get("enforcement_eligible") is not True
-                or source.get("quality") != "exact"
-                or source.get("limit_verified") is not True
-                or not isinstance(source.get("limit_evidence_id"), str)
-                or not source["limit_evidence_id"].strip()):
+    for meter_id, (expected_provider, product_id) in REQUIRED_METERS.items():
+        meter = by_id[meter_id]
+        expected_account = expected_github_account_id if expected_provider == "github" else expected_account_id
+        if (meter.get("provider") != expected_provider
+                or meter.get("product_id") != product_id
+                or meter.get("account_id") != expected_account
+                or meter.get("enabled") is not True):
+            raise GateBlocked("budget_meter_provider_product_or_account_invalid")
+        if (meter.get("enforcement_eligible") is not True
+                or meter.get("quality") != "exact"
+                or meter.get("limit_verified") is not True
+                or not isinstance(meter.get("limit_evidence_id"), str)
+                or not meter["limit_evidence_id"].strip()):
             raise GateBlocked("budget_limit_not_authoritatively_verified")
-        if (not isinstance(source.get("unit"), str) or not source["unit"].strip()
-                or not isinstance(source.get("limit_source"), str) or not source["limit_source"].strip()
-                or not isinstance(source.get("dataset"), str) or not source["dataset"].strip()):
-            raise GateBlocked("budget_unit_dataset_or_limit_evidence_missing")
-        expected_provider = "github" if name == "github_actions" else "cloudflare"
-        expected_source_account = attestation_account_id(payload) if expected_provider == "cloudflare" else expected_github_account_id
-        if (not expected_source_account or source.get("provider") != expected_provider
-                or source.get("account_id") != expected_source_account
-                or source.get("complete_account_coverage") is not True
-                or source.get("exact_counter") is not True
-                or source.get("sampling_mode") != "none"
-                or source.get("coverage_status") != "complete"):
-            raise GateBlocked("budget_source_coverage_or_exactness_unproven")
-        used, limit = source.get("used"), source.get("limit")
+        if (meter.get("unit") != METER_UNITS[meter_id]
+                or not isinstance(meter.get("limit_source"), str) or not meter["limit_source"].strip()
+                or not isinstance(meter.get("dataset"), str) or not meter["dataset"].strip()):
+            raise GateBlocked("budget_meter_unit_dataset_or_limit_evidence_missing")
+        if (meter.get("complete_account_coverage") is not True
+                or meter.get("exact_counter") is not True
+                or meter.get("sampling_mode") != "none"
+                or meter.get("coverage_status") != "complete"):
+            raise GateBlocked("budget_meter_coverage_or_exactness_unproven")
+        used, limit = meter.get("used"), meter.get("limit")
         if (isinstance(used, bool) or not isinstance(used, (int, float))
                 or isinstance(limit, bool) or not isinstance(limit, (int, float))
                 or not math.isfinite(float(used)) or not math.isfinite(float(limit))
                 or used < 0 or limit <= 0):
             raise GateBlocked("budget_values_invalid")
-        observed = parse_time(source.get("observed_at"))
-        watermark = parse_time(source.get("watermark_at"))
+        observed = parse_time(meter.get("observed_at"))
+        watermark = parse_time(meter.get("watermark_at"))
         if watermark > observed:
             raise GateBlocked("budget_watermark_after_observation")
         if observed > attestation_issued_at + MAX_FUTURE_SKEW:
             raise GateBlocked("budget_observation_after_attestation")
-        period_start = parse_time(source.get("period_start"))
-        period_end = parse_time(source.get("period_end"))
+        period_start = parse_time(meter.get("period_start"))
+        period_end = parse_time(meter.get("period_end"))
         if (observed > now + MAX_FUTURE_SKEW or now - observed > MAX_SNAPSHOT_AGE
                 or watermark > now + MAX_FUTURE_SKEW or now - watermark > MAX_SNAPSHOT_AGE):
             raise GateBlocked("budget_snapshot_stale_or_future")
@@ -169,13 +221,13 @@ def evaluate_budget_snapshot(
         percent = float(used) / float(limit) * 100.0
         state = ("STOP" if percent >= 90 else "SUPPRESS" if percent >= 80
                  else "WARN" if percent >= 70 else "CLEAR")
-        results.append({"name": name, "unit": source["unit"], "percent": percent, "status": state})
+        results.append({"meter_id": meter_id, "unit": meter["unit"],
+                        "percent": percent, "status": state})
     rank = {"CLEAR": 0, "WARN": 1, "SUPPRESS": 2, "STOP": 3}
     worst = max(results, key=lambda row: rank[row["status"]])["status"]
     if worst in {"SUPPRESS", "STOP"}:
         raise GateBlocked("budget_" + worst.lower())
-    return {"status": worst, "sources": results}
-
+    return {"status": worst, "meters": results}
 
 def attestation_account_id(payload: dict[str, Any]) -> str:
     return str(payload.get("attestation", {}).get("account_id", ""))
