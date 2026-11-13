@@ -682,7 +682,7 @@ def test_provider_free_map_is_read_as_literal_and_excludes_review_coverage_tasks
     runtime.write_text(
         '_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {'
         '"task-free-one": "tests/test_example.py", '
-        '"review-coverage-gap-abc123": "tests/test_example.py"}\\n',
+        '"review-coverage-gap-abc123": "tests/test_example.py"}\n',
         encoding="utf-8",
     )
 
@@ -707,7 +707,7 @@ def test_provider_free_refill_filters_unknown_and_mismatched_task_targets(tmp_pa
         '_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {'
         '"task-free-existing": "tests/test_example.py", '
         '"task-free-new": "tests/test_example.py", '
-        '"task-wrong-path": "tests/test_example.py"}\\n',
+        '"task-wrong-path": "tests/test_example.py"}\n',
         encoding="utf-8",
     )
     output = tmp_path / "runtime-queue.json"
@@ -727,7 +727,7 @@ def test_provider_free_refill_filters_unknown_and_mismatched_task_targets(tmp_pa
 def test_provider_free_map_fails_closed_when_mapping_is_not_literal(tmp_path: Path):
     runtime = tmp_path / "runtime.py"
     runtime.write_text(
-        '_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = build_runtime_mapping()\\n',
+        '_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = build_runtime_mapping()\n',
         encoding="utf-8",
     )
 
