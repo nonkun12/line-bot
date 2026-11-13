@@ -36,10 +36,14 @@ def sign(payload):
     unsigned = dict(payload)
     attestation = dict(unsigned["attestation"])
     attestation.pop("signature", None)
+    attestation.pop("signed_payload", None)
     unsigned["attestation"] = attestation
     canonical = json.dumps(unsigned, sort_keys=True, separators=(",", ":"),
-                           ensure_ascii=False, allow_nan=False).encode()
-    payload["attestation"]["signature"] = hmac.new(SECRET.encode(), canonical, hashlib.sha256).hexdigest()
+                           ensure_ascii=False, allow_nan=False)
+    payload["attestation"]["signed_payload"] = canonical
+    payload["attestation"]["signature"] = hmac.new(
+        SECRET.encode(), canonical.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
     return payload
 
 
