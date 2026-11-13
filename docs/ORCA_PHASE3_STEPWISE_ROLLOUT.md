@@ -128,3 +128,38 @@ enable the schedule without explicit user approval.
 - Trusted budget collector and LINE approval identity/signing integration:
   not connected; live execution remains blocked.
 - State branch is not provisioned; no schedule is enabled.
+
+## Verified checkpoint — 2026-11-13 (PR #1354)
+
+This checkpoint supersedes older pending/optimistic statements above.
+
+### Step 1 — CI and recovery evidence
+- Commit `f02c1e280be42a8b6589c2fcff2970812543daf2`: Python syntax scan, Orca status focused tests, and full Pytest all completed successfully.
+- The prior stale assertion expecting `proposal_only` was changed to expect `blocked`; the corrected branch head is green.
+- The test suite passing does not prove a live worker or live cadence.
+
+### Step 2 — independent review
+- The workflow named “AI Code Review” completed successfully, but its recorded job steps only set up the job, check out the repository, collect changed files, and show the diff. It is not evidence of an independent semantic/safety review.
+- A separate review of the exact head remains required. Do not mark Step 3-D accepted based on that workflow status.
+
+### Step 3 — worker boundary
+- `scripts/orca_github_worker_dry_run.py` validates the queue state, STOP/HOLD, envelope, payload hash/size, lease, and runaway guard, then returns `DRY_RUN_PASS`.
+- It explicitly has no subprocess, HTTP, GitHub mutation, filesystem-write, dispatch, or task-handler implementation.
+- The current task catalog `.github/autonomous-loop-tasks.json` contains four narrowly scoped test-authoring instructions and allowed-path lists, but no executable handler contract. Do not interpret instruction text as executable task code.
+- Therefore no real Worker Adapter can be enabled yet. Add a finite typed handler registry and deterministic input/output schema first; never accept shell commands, arbitrary URLs, import paths, or source code from queue payloads.
+
+### Step 4 — free GitHub Actions budget evidence
+- `scripts/orca_github_native_budget_evidence.py` is a verifier only; it has no collector.
+- The current GitHub billing usage API documentation exposes user usage endpoints only for accounts with the enhanced billing platform, and organization usage endpoints require organization administrator access. Usage records report metered usage; they do not by themselves prove a universally available personal Free-plan included-minutes allowance or remaining free quota.
+- Do not synthesize included minutes from usage records, and do not self-sign workflow evidence. Until a trusted, read-only source proves the applicable plan allowance and complete usage coverage, budget remains BLOCKED.
+
+### Step 5 — Emergency Stop
+- LINE and terminal entrypoints both call the same durable GitHub-state STOP latch. LINE checks the configured user allowlist; the app comments identify LINE SDK signature validation before the handler.
+- Terminal entrypoint: `python -m scripts.orca_emergency_stop --reason "operator requested emergency stop"`.
+- LINE commands: `緊急停止`, `緊急停止: 理由`, `ORCA STOP`, `EMERGENCY STOP`.
+- These are code paths, not proof of operational availability. Both require valid state-store configuration and an existing state branch/document. The `orca-state` branch is not provisioned; STOP cannot yet be claimed operational. No ChatGPT STOP integration exists.
+
+### Overall status
+- 30-minute cron exists on the Draft PR branch only; it is not active on the default branch.
+- `execution_enabled=false` remains mandatory. No worker execution, state-branch provisioning, secret/permission changes, merge, deployment, or schedule activation has occurred.
+- Remaining acceptance gates: typed allowlisted worker and durable outcome/CAS integration; trusted budget collector/evidence; real independent review; operational shared STOP with state provisioned under separate authorization; then an explicitly approved non-production trial and separately approved cadence activation.
