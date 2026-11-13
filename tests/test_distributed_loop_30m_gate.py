@@ -107,6 +107,10 @@ class BudgetGateTests(unittest.TestCase):
                 with self.assertRaisesRegex(GateBlocked, "budget_source_coverage_or_exactness_unproven"):
                     evaluate(signed_payload({"cloudflare_workers": override}))
 
+    def test_wrong_github_billing_account_blocks(self):
+        with self.assertRaisesRegex(GateBlocked, "budget_source_coverage_or_exactness_unproven"):
+            evaluate(signed_payload({"github_actions": {"account_id": "untrusted-gh-owner"}}))
+
     def test_old_watermark_blocks_even_if_poll_is_recent(self):
         with self.assertRaisesRegex(GateBlocked, "budget_snapshot_stale_or_future"):
             evaluate(signed_payload({"cloudflare_d1": {"watermark_at": "2026-11-12T23:40:00Z"}}))
