@@ -1,17 +1,35 @@
 #!/usr/bin/env python3
 """Fail-closed 30-minute distributed-loop safety gate."""
 from __future__ import annotations
-import json, math, os, urllib.error, urllib.parse, urllib.request
+
+import hashlib
+import hmac
+import json
+import math
+import os
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-REQUIRED_SOURCES = ("cloudflare_workers", "cloudflare_d1", "github_actions")
-MAX_SNAPSHOT_AGE = timedelta(minutes=90)
+# Cloudflare meters are aligned with Budget Guardian; GitHub Actions is a
+# separate platform meter and must be attested by the same trusted collector.
+REQUIRED_SOURCES = (
+    "cloudflare_workers",
+    "cloudflare_d1",
+    "cloudflare_durable_objects",
+    "github_actions",
+)
+MAX_SNAPSHOT_AGE = timedelta(minutes=10)
 MAX_FUTURE_SKEW = timedelta(minutes=5)
+MAX_ATTESTATION_LIFETIME = timedelta(minutes=15)
 MIN_SLOT_INTERVAL = timedelta(minutes=30)
+
 
 class GateBlocked(RuntimeError):
     pass
+
 
 def parse_time(value: Any) -> datetime:
     if not isinstance(value, str) or not value.strip():
@@ -24,14 +42,70 @@ def parse_time(value: Any) -> datetime:
         raise GateBlocked("timestamp_timezone_missing")
     return parsed.astimezone(timezone.utc)
 
-def evaluate_budget_snapshot(payload: Any, *, now: datetime) -> dict[str, Any]:
+
+def _canonical_payload(payload: dict[str, Any]) -> bytes:
+    unsigned = {key: value for key, value in payload.items() if key != "attestation"}
+    try:
+        return json.dumps(
+            unsigned, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError):
+        raise GateBlocked("budget_attestation_payload_not_canonicalizable") from None
+
+
+def verify_budget_attestation(
+    payload: Any, *, now: datetime, secret: str,
+    expected_account_id: str, trusted_collector_id: str,
+) -> None:
+    """Verify a collector HMAC and bounded freshness before trusting any limits."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("attestation"), dict):
+        raise GateBlocked("budget_attestation_missing")
+    if not secret or not expected_account_id or not trusted_collector_id:
+        raise GateBlocked("budget_attestation_trust_configuration_missing")
+    attestation = payload["attestation"]
+    signature = attestation.get("signature")
+    if (attestation.get("algorithm") != "hmac-sha256"
+            or attestation.get("account_id") != expected_account_id
+            or attestation.get("collector_id") != trusted_collector_id
+            or not isinstance(signature, str) or len(signature) != 64):
+        raise GateBlocked("budget_attestation_identity_invalid")
+    try:
+        int(signature, 16)
+    except ValueError:
+        raise GateBlocked("budget_attestation_signature_invalid") from None
+    expected = hmac.new(secret.encode("utf-8"), _canonical_payload(payload), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature.lower(), expected):
+        raise GateBlocked("budget_attestation_signature_invalid")
+
+    now = now.astimezone(timezone.utc)
+    issued_at = parse_time(attestation.get("issued_at"))
+    expires_at = parse_time(attestation.get("expires_at"))
+    if (issued_at > now + MAX_FUTURE_SKEW or issued_at > expires_at
+            or expires_at <= now or expires_at - issued_at > MAX_ATTESTATION_LIFETIME
+            or now - issued_at > MAX_SNAPSHOT_AGE):
+        raise GateBlocked("budget_attestation_stale_or_out_of_window")
+
+
+def evaluate_budget_snapshot(
+    payload: Any, *, now: datetime, attestation_secret: str = "",
+    expected_account_id: str = "", trusted_collector_id: str = "",
+) -> dict[str, Any]:
     if not isinstance(payload, dict) or not isinstance(payload.get("sources"), list):
         raise GateBlocked("budget_snapshot_missing")
+    verify_budget_attestation(
+        payload, now=now, secret=attestation_secret,
+        expected_account_id=expected_account_id,
+        trusted_collector_id=trusted_collector_id,
+    )
+    if payload.get("schema_version") != 1:
+        raise GateBlocked("budget_snapshot_schema_invalid")
     failures = payload.get("consecutive_failures")
     if isinstance(failures, bool) or not isinstance(failures, int) or failures < 0:
         raise GateBlocked("failure_counter_invalid")
     if failures >= 3:
         raise GateBlocked("consecutive_failure_limit_reached")
+
     now = now.astimezone(timezone.utc)
     by_name = {}
     for source in payload["sources"]:
@@ -41,11 +115,12 @@ def evaluate_budget_snapshot(payload: Any, *, now: datetime) -> dict[str, Any]:
         if not isinstance(name, str) or not name or name in by_name:
             raise GateBlocked("budget_source_identity_invalid")
         by_name[name] = source
+    if set(by_name) != set(REQUIRED_SOURCES):
+        raise GateBlocked("budget_source_set_incomplete_or_unexpected")
+
     results = []
     for name in REQUIRED_SOURCES:
-        source = by_name.get(name)
-        if source is None:
-            raise GateBlocked("budget_source_missing")
+        source = by_name[name]
         if source.get("enabled") is not True:
             raise GateBlocked("budget_source_not_confirmed_enabled")
         if (source.get("enforcement_eligible") is not True
@@ -55,8 +130,15 @@ def evaluate_budget_snapshot(payload: Any, *, now: datetime) -> dict[str, Any]:
                 or not source["limit_evidence_id"].strip()):
             raise GateBlocked("budget_limit_not_authoritatively_verified")
         if (not isinstance(source.get("unit"), str) or not source["unit"].strip()
-                or not isinstance(source.get("limit_source"), str) or not source["limit_source"].strip()):
-            raise GateBlocked("budget_unit_or_limit_evidence_missing")
+                or not isinstance(source.get("limit_source"), str) or not source["limit_source"].strip()
+                or not isinstance(source.get("dataset"), str) or not source["dataset"].strip()):
+            raise GateBlocked("budget_unit_dataset_or_limit_evidence_missing")
+        if (source.get("account_id") != attestation_account_id(payload)
+                or source.get("complete_account_coverage") is not True
+                or source.get("exact_counter") is not True
+                or source.get("sampling_mode") != "none"
+                or source.get("coverage_status") != "complete"):
+            raise GateBlocked("budget_source_coverage_or_exactness_unproven")
         used, limit = source.get("used"), source.get("limit")
         if (isinstance(used, bool) or not isinstance(used, (int, float))
                 or isinstance(limit, bool) or not isinstance(limit, (int, float))
@@ -64,9 +146,11 @@ def evaluate_budget_snapshot(payload: Any, *, now: datetime) -> dict[str, Any]:
                 or used < 0 or limit <= 0):
             raise GateBlocked("budget_values_invalid")
         observed = parse_time(source.get("observed_at"))
+        watermark = parse_time(source.get("watermark_at"))
         period_start = parse_time(source.get("period_start"))
         period_end = parse_time(source.get("period_end"))
-        if observed > now + MAX_FUTURE_SKEW or now - observed > MAX_SNAPSHOT_AGE:
+        if (observed > now + MAX_FUTURE_SKEW or now - observed > MAX_SNAPSHOT_AGE
+                or watermark > now + MAX_FUTURE_SKEW or now - watermark > MAX_SNAPSHOT_AGE):
             raise GateBlocked("budget_snapshot_stale_or_future")
         if period_start >= period_end or not (period_start <= now < period_end):
             raise GateBlocked("budget_period_not_current")
@@ -79,6 +163,11 @@ def evaluate_budget_snapshot(payload: Any, *, now: datetime) -> dict[str, Any]:
     if worst in {"SUPPRESS", "STOP"}:
         raise GateBlocked("budget_" + worst.lower())
     return {"status": worst, "sources": results}
+
+
+def attestation_account_id(payload: dict[str, Any]) -> str:
+    return str(payload.get("attestation", {}).get("account_id", ""))
+
 
 def decide_slot(runs: Any, *, current_run_id: str, now: datetime,
                 minimum_interval: timedelta = MIN_SLOT_INTERVAL) -> tuple[bool, str]:
@@ -104,12 +193,14 @@ def decide_slot(runs: Any, *, current_run_id: str, now: datetime,
         return False, "minimum_30_minute_interval_not_elapsed"
     return True, "slot_available"
 
+
 def requires_slot_gate(event_name: str, continuation_depth: str) -> bool:
     return event_name == "schedule" or (
         event_name == "workflow_dispatch"
         and continuation_depth.isdigit()
         and int(continuation_depth) > 0
     )
+
 
 def request_json(url: str, token: str, *, github: bool = False) -> Any:
     if not isinstance(url, str) or not url.startswith("https://") or not token:
@@ -124,6 +215,7 @@ def request_json(url: str, token: str, *, github: bool = False) -> Any:
     except (urllib.error.URLError, TimeoutError, UnicodeError, json.JSONDecodeError):
         raise GateBlocked("safety_endpoint_unavailable_or_invalid") from None
 
+
 def check_global_hold() -> None:
     base = os.environ.get("ORCA_TASK_API_URL", "").rstrip("/")
     state = request_json(base + "/control/global-hold", os.environ.get("ORCA_TASK_API_TOKEN", ""))
@@ -131,12 +223,17 @@ def check_global_hold() -> None:
             or state.get("value") != "off" or state.get("blocked") is not False):
         raise GateBlocked("global_hold_active_or_unknown")
 
+
 def check_budget(now: datetime) -> dict[str, Any]:
     return evaluate_budget_snapshot(
         request_json(os.environ.get("ORCA_BUDGET_GATE_URL", ""),
                      os.environ.get("ORCA_BUDGET_GATE_TOKEN", "")),
         now=now,
+        attestation_secret=os.environ.get("ORCA_BUDGET_EVIDENCE_HMAC_SECRET", ""),
+        expected_account_id=os.environ.get("ORCA_BUDGET_EXPECTED_ACCOUNT_ID", ""),
+        trusted_collector_id=os.environ.get("ORCA_BUDGET_TRUSTED_COLLECTOR_ID", ""),
     )
+
 
 def check_slot(now: datetime) -> tuple[bool, str]:
     repo = os.environ.get("GITHUB_REPOSITORY", "")
@@ -152,6 +249,7 @@ def check_slot(now: datetime) -> tuple[bool, str]:
         return False, "workflow_run_history_invalid"
     return decide_slot(payload["workflow_runs"], current_run_id=current_run_id, now=now)
 
+
 def write_outputs(allow: bool, reason: str, detail: str = "") -> None:
     output = os.environ.get("GITHUB_OUTPUT")
     if output:
@@ -165,6 +263,7 @@ def write_outputs(allow: bool, reason: str, detail: str = "") -> None:
             if detail:
                 handle.write(f"- Budget: {detail}\n")
             handle.write("- No task was dispatched or executed by this gate.\n")
+
 
 def main() -> int:
     now = datetime.now(timezone.utc)
@@ -186,6 +285,7 @@ def main() -> int:
         write_outputs(False, str(exc))
         print("ORCA_30M_GATE_BLOCKED: " + str(exc))
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
