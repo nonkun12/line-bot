@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Fail-closed 30-minute distributed-loop safety gate."""
 from __future__ import annotations
-import json, math, os, urllib.error, urllib.parse, urllib.request
+import json, math, os, sys, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 from scripts.orca_signed_budget_evidence import EvidenceRejected, REQUIRED_SOURCES, verify
 
 MAX_FUTURE_SKEW = timedelta(minutes=5)
