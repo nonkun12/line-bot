@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-VALID_SOURCES = {"cloudflare_workers", "cloudflare_d1", "github_actions"}
+VALID_SOURCES = {"cloudflare_workers", "cloudflare_d1", "cloudflare_durable_objects", "github_actions"}
 VALID_QUALITIES = {"exact", "estimated", "delayed", "unavailable"}
 
 
