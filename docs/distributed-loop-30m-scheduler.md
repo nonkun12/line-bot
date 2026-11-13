@@ -31,6 +31,38 @@ The entire response must also carry an `attestation` object signed with HMAC-SHA
 The trusted live collector and signed budget endpoint are not part of this PR. Until they exist and produce independently verifiable evidence, scheduled and manual runs are blocked by design. Do not set dummy values or bypass the gate.
 
 
+## Multi-dimension quota inventory: current four-row schema is not sufficient
+
+The current signed schema's four product-level rows are a transitional contract only. They must not be interpreted as complete free-plan coverage and must not authorize production activation. One row per product cannot represent multiple independently limited dimensions, units, and reset periods. The next enforcement schema must use unique `meter_id` records and a signed account product inventory.
+
+Minimum dimensions to model when the corresponding product is enabled (verify the account's current plan and product-specific terms before assigning a limit):
+
+| Product | Separate dimensions / constraints |
+|---|---|
+| Workers / Pages Functions | Incoming Worker requests per day; per-invocation CPU ceiling (not a shared daily percentage); Worker count / other account-level hard limits where relevant |
+| Workers Logs | Log events written per day and retention |
+| D1 | Rows read per day; rows written per day; aggregate account storage; database count |
+| Durable Objects (SQLite) | Requests per day; active non-hibernated duration in GB-seconds per day; SQLite rows read/written per day; aggregate SQL storage |
+| Workers KV (if enabled) | Reads, writes, deletes, list operations per day; stored data; namespace count |
+| Hyperdrive (if enabled) | Database queries per day |
+| Queues (if enabled) | Operations per day, including write/read/delete and retry effects; queue count |
+| Workflows (if enabled) | Requests shared with Workers; per-invocation CPU ceiling; storage; steps per day |
+| R2 (if enabled) | Stored GB-months; Class A operations; Class B operations |
+| Vectorize / other usage products (if enabled) | Every product-specific query, storage, dimension, or compute meter, with its own unit and period |
+| GitHub Actions | Compute usage by runner SKU / billed amount, plus Actions artifact/cache storage; do not assume a fixed runner-minute allowance across plans and runner types |
+
+Cloudflare's current published pricing lists these dimensions separately. Examples include Workers request quota and per-invocation CPU, D1 rows read/written/storage, Durable Objects requests/duration/SQLite storage, and separate KV, Hyperdrive, Queues, Workflows, and R2 dimensions. Free daily quotas reset at 00:00 UTC; monthly periods have their own boundaries. See https://developers.cloudflare.com/workers/platform/pricing/ and https://developers.cloudflare.com/workers/platform/limits/.
+
+GitHub's current included-usage documentation expresses Free-plan Actions compute as a monetary allowance and separately lists storage. Billing usage reports are SKU- and date-based; access and scope vary by personal versus organization billing account. The collector must preserve SKU, quantity, unit, amount, billing account, date/period, and coverage rather than converting every runner into a single assumed minute quota. See https://docs.github.com/en/billing/reference/product-usage-included and https://docs.github.com/en/rest/billing/usage.
+
+Required schema-v2 rules:
+- Each meter has a unique immutable `meter_id`, provider/account identity, product/SKU, unit, authoritative limit evidence, exact used quantity, period start/end, observation time, and source watermark.
+- The signed account inventory must enumerate all enabled billable products and all their dimensions; unknown products, missing dimensions, duplicate meter IDs, partial pagination, or unresolved product inventory are BLOCKED.
+- Each meter is evaluated independently. Do not combine requests, rows, storage, duration, steps, money, or runner SKUs into one percentage.
+- Per-invocation hard ceilings are enforced at the individual task/runtime boundary, not averaged into an account-level daily quota.
+- The HMAC binds the entire inventory and meter array. A collector assertion alone is not sufficient unless its provider query, coverage, pagination, freshness, and exactness have been independently validated.
+- Until schema v2, its collector, and boundary tests exist, schema v1's four product-level rows remain non-admissible for production even if correctly signed.
+
 ## Cloudflare telemetry admissibility findings (2026-11-13)
 
 The provider documentation does not currently establish a free, account-wide, exact, unsampled usage counter with a watermark no older than ten minutes for all required meters:
