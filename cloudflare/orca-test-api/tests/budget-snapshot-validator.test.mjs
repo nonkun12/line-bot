@@ -60,6 +60,12 @@ function makePayload() {
 const options = { now: NOW, secret: SECRET, expectedAccountId: ACCOUNT,
   trustedCollectorId: COLLECTOR, expectedGithubAccountId: GH_ACCOUNT };
 
+test("cross-runtime canonical JSON vector preserves float and Unicode", () => {
+  const vector = { z: 10.25, nested: { label: "café", enabled: true }, a: [1, 2.5, null] };
+  assert.equal(JSON.stringify(stable(vector)),
+    '{"a":[1,2.5,null],"nested":{"enabled":true,"label":"café"},"z":10.25}');
+});
+
 test("accepts complete fresh signed schema-v2 snapshot and derives status", async () => {
   const result = await validateBudgetSnapshot(await sign(makePayload()), options);
   assert.equal(result.status, "CLEAR");
