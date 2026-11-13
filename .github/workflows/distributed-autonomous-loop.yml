@@ -86,11 +86,10 @@ on:
     - cron: '*/30 * * * *'
       timezone: 'Asia/Tokyo'
 
+# Default-deny write access for every job; jobs must opt into narrowly scoped permissions.
 permissions:
-  actions: write
-  contents: write
-  pull-requests: write
-  issues: write
+  actions: read
+  contents: read
 
 concurrency:
   group: distributed-autonomous-loop
@@ -186,6 +185,11 @@ jobs:
     runs-on: ubuntu-latest
     # Match the independent Runaway Guard's hard 30-minute wall-clock ceiling.
     timeout-minutes: 30
+    # Legacy runtime remains permanently blocked; this job has no write token.
+    # Any future publisher must be a separate job with artifact/SHA verification.
+    permissions:
+      actions: read
+      contents: read
     env:
       MAX_TASKS: '1'
       TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'normal' }}
