@@ -221,3 +221,11 @@ separate read-only job and execution remains disabled.
 - The 30-minute cron remains confined to this open Draft PR branch. No
   production cadence, execution, merge, deployment, secret, permission, or
   state-branch change is authorized or performed by this checkpoint.
+
+
+## Budget reserve hardening checkpoint — 2026-11-14
+
+- Raised the minimum verified GitHub Actions remaining-minute reserve from 30 to 45 minutes in both the budget verifier default and the execution gate.
+- Rationale: the worker's hard wall-clock ceiling is 30 minutes and the separate read-only preflight job can consume up to 2 additional minutes; a 30-minute reserve would not leave any headroom. The 45-minute floor leaves a 15-minute margin above those declared job ceilings.
+- Added boundary coverage: 44 minutes remaining is rejected; exactly 45 minutes passes the reserve check (subject to all other evidence checks).
+- This is a guardrail change only. No collector exists, no budget evidence was supplied, and execution remains disabled/BLOCKED.
