@@ -1,65 +1,4 @@
-jobs:
-  safety-preflight:
-    if: >-
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event_name == 'issue_comment' &&
-        github.event.issue.pull_request &&
-        (github.event.comment.body == '/distributed-loop' ||
-         github.event.comment.body == '/distributed-loop max_tasks=1' ||
-         github.event.comment.body == '/distributed-loop max_tasks=2' ||
-         github.event.comment.body == '/distributed-loop max_tasks=3' ||
-         github.event.comment.body == '/distributed-loop max_tasks=4' ||
-         startsWith(github.event.comment.body, '/distributed-loop resume_task_id=')) &&
-        (
-          github.event.comment.author_association == 'OWNER' ||
-          github.event.comment.author_association == 'MEMBER' ||
-          github.event.comment.author_association == 'COLLABORATOR'
-        )
-      ) ||
-      (
-        github.event_name == 'pull_request_target' &&
-        github.event.action == 'labeled' &&
-        github.event.label.name == 'distributed-loop-max4' &&
-        github.event.sender.login == 'nonkun12' &&
-        github.event.pull_request.user.login == 'nonkun12'
-      )
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    outputs:
-      execution_enabled: ${{ steps.preflight.outputs.execution_enabled }}
-    steps:
-      - name: Checkout without persistent git credentials
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Read-only activation preflight
-        id: preflight
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          ORCA_STATE_BRANCH: ${{ vars.ORCA_STATE_BRANCH || 'orca-state' }}
-          ORCA_STATE_PATH: ${{ vars.ORCA_STATE_PATH || 'state/queue.json' }}
-          ORCA_APPROVAL_JSON: ${{ secrets.ORCA_APPROVAL_JSON }}
-          ORCA_APPROVAL_SIGNING_KEY: ${{ secrets.ORCA_APPROVAL_SIGNING_KEY }}
-          ORCA_ALLOWED_APPROVERS: ${{ vars.ORCA_ALLOWED_APPROVERS }}
-          ORCA_BUDGET_EVIDENCE_JSON: ${{ secrets.ORCA_BUDGET_EVIDENCE_JSON }}
-          ORCA_BUDGET_SIGNING_KEY: ${{ secrets.ORCA_BUDGET_SIGNING_KEY }}
-          ORCA_BILLING_ACCOUNT_ID: ${{ vars.ORCA_BILLING_ACCOUNT_ID }}
-          ORCA_IMPROVEMENT_CYCLE_JSON: ${{ secrets.ORCA_IMPROVEMENT_CYCLE_JSON }}
-        run: python -m scripts.orca_30m_preflight
-
-  minimal-loop:
-    needs: safety-preflight
-    if: >-
-      needs.safety-preflight.outputs.execution_enabled == 'true' &&
-      (
-lopment Loop
+name: Distributed Autonomous Development Loop
 run-name: Distributed Loop (continuation_depth=${{ inputs.continuation_depth || '0' }}, request_id=${{ inputs.request_id || 'scheduled' }})
 
 on:
@@ -164,8 +103,66 @@ concurrency:
   queue: max
 
 jobs:
-  minimal-loop:
+  safety-preflight:
     if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        (github.event.comment.body == '/distributed-loop' ||
+         github.event.comment.body == '/distributed-loop max_tasks=1' ||
+         github.event.comment.body == '/distributed-loop max_tasks=2' ||
+         github.event.comment.body == '/distributed-loop max_tasks=3' ||
+         github.event.comment.body == '/distributed-loop max_tasks=4' ||
+         startsWith(github.event.comment.body, '/distributed-loop resume_task_id=')) &&
+        (
+          github.event.comment.author_association == 'OWNER' ||
+          github.event.comment.author_association == 'MEMBER' ||
+          github.event.comment.author_association == 'COLLABORATOR'
+        )
+      ) ||
+      (
+        github.event_name == 'pull_request_target' &&
+        github.event.action == 'labeled' &&
+        github.event.label.name == 'distributed-loop-max4' &&
+        github.event.sender.login == 'nonkun12' &&
+        github.event.pull_request.user.login == 'nonkun12'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      execution_enabled: ${{ steps.preflight.outputs.execution_enabled }}
+    steps:
+      - name: Checkout without persistent git credentials
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Read-only activation preflight
+        id: preflight
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          ORCA_STATE_BRANCH: ${{ vars.ORCA_STATE_BRANCH || 'orca-state' }}
+          ORCA_STATE_PATH: ${{ vars.ORCA_STATE_PATH || 'state/queue.json' }}
+          ORCA_APPROVAL_JSON: ${{ secrets.ORCA_APPROVAL_JSON }}
+          ORCA_APPROVAL_SIGNING_KEY: ${{ secrets.ORCA_APPROVAL_SIGNING_KEY }}
+          ORCA_ALLOWED_APPROVERS: ${{ vars.ORCA_ALLOWED_APPROVERS }}
+          ORCA_BUDGET_EVIDENCE_JSON: ${{ secrets.ORCA_BUDGET_EVIDENCE_JSON }}
+          ORCA_BUDGET_SIGNING_KEY: ${{ secrets.ORCA_BUDGET_SIGNING_KEY }}
+          ORCA_BILLING_ACCOUNT_ID: ${{ vars.ORCA_BILLING_ACCOUNT_ID }}
+          ORCA_IMPROVEMENT_CYCLE_JSON: ${{ secrets.ORCA_IMPROVEMENT_CYCLE_JSON }}
+        run: python -m scripts.orca_30m_preflight
+
+  minimal-loop:
+    needs: safety-preflight
+    if: >-
+      needs.safety-preflight.outputs.execution_enabled == 'true' &&
+      (
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (
