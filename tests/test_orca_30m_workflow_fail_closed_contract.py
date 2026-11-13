@@ -16,6 +16,10 @@ def test_preflight_is_read_only_and_execution_is_permanently_disabled():
     assert "needs: safety-preflight" in worker
     assert "needs.safety-preflight.outputs.execution_enabled == 'true' && false" in worker
     assert "permissions:\n      actions: read\n      contents: read" in worker
+    assert "MAX_TASKS: '1'" in worker
+    assert "AUTO_APPLY_PATCH: 'false'" in worker
+    assert "AUTO_DEPLOY: 'false'" in worker
+    assert "FREE_ONLY_EXECUTION_APPROVED: 'false'" in worker
 
 
 def test_preflight_code_never_enables_execution_until_worker_is_integrated():
