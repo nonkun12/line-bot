@@ -45,9 +45,9 @@ def validate_and_consume_claim(*, state: dict[str, Any], task_id: str,
     required = {
         "run_id", "started_at", "tasks_claimed", "attempts_by_task",
         "consecutive_failures", "circuit_breaker_until",
-        "paid_services_enabled", "automatic_retry_enabled",
+        "paid_services_enabled", "automatic_retry_enabled", "outcomes_by_task",
     }
-    if set(guard) != required:
+    if set(guard) != required or not isinstance(guard.get("outcomes_by_task"), dict):
         raise RunawayGuardRejected("durable_run_guard_schema_invalid")
     if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
         raise RunawayGuardRejected("guard_clock_timezone_missing")
