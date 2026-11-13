@@ -93,8 +93,15 @@ function validatePeriod(meter, kind, now) {
     const d = new Date(start);
     if (d.getUTCHours() !== 0 || d.getUTCMinutes() !== 0 || d.getUTCSeconds() !== 0 ||
         d.getUTCMilliseconds() !== 0 || duration !== 86400000) fail("budget_daily_period_alignment_invalid");
-  } else if (kind === "monthly" && (duration < 27 * 86400000 || duration > 32 * 86400000)) {
-    fail("budget_monthly_period_length_invalid");
+  } else if (kind === "monthly") {
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    const expectedEnd = Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() + 1, 1);
+    if (startDate.getUTCDate() !== 1 || startDate.getUTCHours() !== 0 ||
+        startDate.getUTCMinutes() !== 0 || startDate.getUTCSeconds() !== 0 ||
+        startDate.getUTCMilliseconds() !== 0 || end !== expectedEnd) {
+      fail("budget_monthly_period_alignment_invalid");
+    }
   }
 }
 
