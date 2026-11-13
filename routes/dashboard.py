@@ -457,10 +457,11 @@ def autonomous_loop_status():
             "frequency_per_day": 48,
             "schedule_source": "PR #1354 branch only; not merged or enabled on main",
             "execution_enabled": False,
-            "execution_status": "not_verified",
-            "budget_gate": {"status": "proposal_only", "evidence": "PR #1353; live quota evidence not connected; execution remains blocked"},
-            "runaway_guard": {"status": "partial", "evidence": "Outcome/queue CAS integration and full adversarial tests pending"},
-            "emergency_stop": {"status": "not_operational", "evidence": "Shared LINE/terminal path proposed; durable state config and ChatGPT entrypoint pending"},
+            "execution_status": "blocked_preflight_only",
+            "activation_preflight": {"status": "blocked", "execution_enabled": False, "evidence": "Read-only gate is connected; legacy worker remains disconnected; stale scheduled triggers older than 15 minutes are discarded"},
+            "budget_gate": {"status": "blocked", "evidence": "Signed live GitHub Actions quota evidence and independent collector are not connected"},
+            "runaway_guard": {"status": "partial", "evidence": "Durable limits and CAS helpers exist; legacy worker boundary and outcome persistence are not integrated"},
+            "emergency_stop": {"status": "not_operational", "evidence": "LINE and terminal share the proposed durable latch; orca-state is not provisioned and the legacy workflow stop-file is still separate"},
             "streams": [
                 {
                     "key": "main_loop", "kind": "main",
