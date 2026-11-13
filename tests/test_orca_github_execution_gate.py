@@ -81,7 +81,7 @@ def queue():
             "task_id": TASK_ID, "request_hash": REQUEST_HASH,
             "status": "queued", "created_at": "2026-11-13T09:00:00Z",
         }],
-        "active_lease": None,
+        "active_lease": None, "consumed_approval_ids": [],
     }
 
 
@@ -181,6 +181,11 @@ class ExecutionGateTests(unittest.TestCase):
     def test_empty_approver_allowlist_blocks(self):
         with self.assertRaisesRegex(ExecutionGateRejected, "approver_allowlist_invalid"):
             self.evaluate(allowed_approvers=[])
+
+
+    def test_replay_ledger_must_match_immutable_queue_snapshot(self):
+        with self.assertRaisesRegex(ExecutionGateRejected, "ledger_snapshot_mismatch"):
+            self.evaluate(consumed_approval_ids=["d" * 64])
 
 
 if __name__ == "__main__":
