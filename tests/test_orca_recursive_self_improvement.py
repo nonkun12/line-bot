@@ -1,3 +1,4 @@
+import math
 import unittest
 
 from scripts.orca_recursive_self_improvement import (
@@ -48,6 +49,23 @@ class RecursiveSelfImprovementTests(unittest.TestCase):
         self.assertFalse(result["auto_apply"])
         self.assertFalse(result["auto_merge"])
         self.assertFalse(result["auto_deploy"])
+
+
+    def test_non_finite_metrics_are_rejected(self):
+        cycle = complete_to_reviewed()
+        for value in (math.nan, math.inf, -math.inf):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ImprovementRejected, "metrics_invalid"):
+                    evaluate(cycle, expected_stage="reviewed", tests_passed=True,
+                             critic_verdict="pass", baseline_metric=1,
+                             candidate_metric=value,
+                             metric_evidence_refs=["metric:baseline", "metric:candidate"])
+
+    def test_malformed_cycle_is_rejected_without_crashing(self):
+        with self.assertRaisesRegex(ImprovementRejected, "cycle_invalid"):
+            evaluate(None, expected_stage="reviewed", tests_passed=True,
+                     critic_verdict="pass", baseline_metric=1, candidate_metric=2,
+                     metric_evidence_refs=["metric:baseline", "metric:candidate"])
 
     def test_non_improvement_is_deferred(self):
         result = evaluate(complete_to_reviewed(), expected_stage="reviewed",
