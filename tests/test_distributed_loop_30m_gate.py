@@ -265,7 +265,8 @@ class GateMainTests(unittest.TestCase):
     def test_blocked_gate_returns_nonzero_exit_status(self):
         with patch("scripts.distributed_loop_30m_gate.check_global_hold",
                    side_effect=GateBlocked("global_hold_active_or_unknown")):
-            self.assertEqual(main(), 1)
+            with patch("scripts.distributed_loop_30m_gate.write_outputs"):
+                self.assertEqual(main(), 1)
 
 
 class SlotGateTests(unittest.TestCase):
