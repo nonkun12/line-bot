@@ -189,3 +189,35 @@ inventory is rechecked.
 The proposed worker job timeout is now 30 minutes, matching the independent
 Runaway Guard's 1,800-second wall-clock ceiling. The preflight remains a
 separate read-only job and execution remains disabled.
+
+
+### Follow-up checkpoint — 2026-11-14 (PR #1354)
+
+- The refill path now has an explicit `--provider-free-only` mode. It parses
+  the deterministic task-to-test mapping in `core/line_development_runtime.py`
+  with Python AST literal evaluation; it does not import or execute that module.
+- Existing queue entries and new catalog candidates must match one exact
+  provider-free task ID and exactly one mapped test path. Review-coverage
+  tasks are excluded. Missing, malformed, or non-literal mapping data fails
+  closed.
+- Refill reporting distinguishes approved-but-non-provider-free catalog
+  entries from unapproved entries. The workflow reports those conditions as
+  BLOCKED instead of treating the queue as ordinary empty/exhausted.
+- Regression tests cover map parsing, unknown IDs, path mismatches,
+  non-literal map rejection, existing-queue filtering, and the distinction
+  between approved non-free and unapproved catalog tasks.
+- Worker dry-run tests now also cover Emergency Stop (including missing STOP
+  state) and worker-boundary rechecks for paid services, automatic retry,
+  failure circuit breaker, and the one-task-per-run limit.
+- The full Pytest suite passed on the preceding checkpoint after the held-marker
+  newline assertion was made branch-count resilient. The latest follow-up
+  commits are undergoing their own CI; do not transfer the previous PASS to
+  the newer head until those runs complete.
+- These are queue-selection and validation improvements only. The worker still
+  returns `execution_supported=false`; there is no real bounded task handler,
+  trusted budget collector, provisioned durable state branch, or operational
+  STOP proof. `FREE_ONLY_EXECUTION_APPROVED=false` and
+  `execution_enabled=false` remain unchanged.
+- The 30-minute cron remains confined to this open Draft PR branch. No
+  production cadence, execution, merge, deployment, secret, permission, or
+  state-branch change is authorized or performed by this checkpoint.
