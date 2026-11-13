@@ -148,6 +148,7 @@ jobs:
           ORCA_STATE_PATH: ${{ vars.ORCA_STATE_PATH || 'state/queue.json' }}
         run: python -m scripts.orca_30m_preflight
 
+  # Safety freeze: keep legacy steps for review, but never schedule or execute this job.
   minimal-loop:
     needs: safety-preflight
     if: ${{ needs.safety-preflight.outputs.execution_enabled == 'true' && false }}
