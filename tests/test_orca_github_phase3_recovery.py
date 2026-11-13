@@ -199,5 +199,43 @@ class Phase3RecoveryTests(unittest.TestCase):
             )
 
 
+    def test_new_run_guard_initialization_preserves_failure_history(self):
+        from scripts.orca_github_runaway_guard import initialize_run_guard
+        state = self.queued_state()
+        state["run_guard"] = {
+            "run_id": "old-run", "started_at": "2026-11-13T10:00:00Z",
+            "tasks_claimed": 1, "attempts_by_task": {"old-task": 1},
+            "consecutive_failures": 1, "circuit_breaker_until": None,
+            "paid_services_enabled": False, "automatic_retry_enabled": False,
+            "outcomes_by_task": {"old-task": "failed"},
+        }
+        guard = initialize_run_guard(state=state, run_id="new-run", now=NOW_DT)
+        self.assertEqual(guard["run_id"], "new-run")
+        self.assertEqual(guard["tasks_claimed"], 0)
+        self.assertEqual(guard["consecutive_failures"], 1)
+        self.assertEqual(guard["attempts_by_task"], {})
+        self.assertFalse(guard["paid_services_enabled"])
+        self.assertFalse(guard["automatic_retry_enabled"])
+
+    def test_new_run_guard_initialization_refuses_hold_stop_lease_and_cooldown(self):
+        from scripts.orca_github_runaway_guard import initialize_run_guard
+        state = self.queued_state()
+        with self.assertRaisesRegex(RunawayGuardRejected, "global_hold"):
+            initialize_run_guard(state={**state, "global_hold": True}, run_id="new", now=NOW_DT)
+        with self.assertRaisesRegex(RunawayGuardRejected, "emergency_stop"):
+            initialize_run_guard(state={**state, "emergency_stop": True}, run_id="new", now=NOW_DT)
+        with self.assertRaisesRegex(RunawayGuardRejected, "active_lease"):
+            initialize_run_guard(state={**state, "active_lease": {"task_id": "x"}}, run_id="new", now=NOW_DT)
+        state["run_guard"] = {
+            "run_id": "old", "started_at": NOW, "tasks_claimed": 1,
+            "attempts_by_task": {}, "consecutive_failures": 1,
+            "circuit_breaker_until": "2026-11-13T13:00:00Z",
+            "paid_services_enabled": False, "automatic_retry_enabled": False,
+            "outcomes_by_task": {},
+        }
+        with self.assertRaisesRegex(RunawayGuardRejected, "cooldown"):
+            initialize_run_guard(state=state, run_id="new", now=NOW_DT)
+
+
 if __name__ == "__main__":
     unittest.main()
