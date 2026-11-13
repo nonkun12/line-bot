@@ -77,6 +77,29 @@ class GitHubStateStoreTests(unittest.TestCase):
         patch = next(x for x in calls if x.get_method() == "PATCH")
         self.assertFalse(json.loads(patch.data)["force"])
 
+    def test_concurrent_ref_advance_rejects_non_force_write(self):
+        responses = [
+            {"sha": self.blob},
+            {"tree": {"sha": self.tree}},
+            {"sha": self.tree},
+            {"sha": self.commit},
+        ]
+        methods = []
+        def opener(request, timeout=15):
+            methods.append(request.get_method())
+            if request.get_method() == "PATCH":
+                raise __import__("urllib.error", fromlist=["HTTPError"]).HTTPError(
+                    request.full_url, 422, "non-fast-forward", {}, None
+                )
+            return Response(responses.pop(0))
+        store = GitHubStateStore(token="token", repository="o/r", branch="state",
+                                 path="state/queue.json", opener=opener)
+        snapshot = StateSnapshot(self.ref, self.current, self.blob)
+        with self.assertRaisesRegex(StateConflict, "github_ref_fast_forward_conflict"):
+            store.write(snapshot=snapshot, next_state=self.next_state, expected_revision=2)
+        self.assertEqual(methods[-1], "PATCH")
+        self.assertEqual(methods.count("PATCH"), 1)
+
     def test_stale_revision_rejected_before_api_calls(self):
         opener = Mock()
         store = GitHubStateStore(token="token", repository="o/r", branch="state",
