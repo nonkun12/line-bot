@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,46 @@ def _json_env(name: str) -> Any:
         return json.loads(raw)
     except json.JSONDecodeError:
         raise ValueError(f"{name.lower()}_invalid_json") from None
+
+
+def scheduled_run_is_fresh(created_at: str, *, now: datetime, max_age: timedelta = timedelta(minutes=15)) -> bool:
+    """Reject a scheduled run that waited too long in the Actions concurrency queue."""
+    try:
+        created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        return False
+    if created.tzinfo is None or now.tzinfo is None or now.utcoffset() is None:
+        return False
+    age = now.astimezone(timezone.utc) - created.astimezone(timezone.utc)
+    return timedelta(0) <= age <= max_age
+
+
+def _scheduled_run_freshness(values: Any) -> str | None:
+    if values.get("GITHUB_EVENT_NAME") != "schedule":
+        return None
+    token = values.get("GITHUB_TOKEN", "")
+    repository = values.get("GITHUB_REPOSITORY", "")
+    run_id = values.get("GITHUB_RUN_ID", "")
+    if not token or "/" not in repository or not run_id:
+        return "scheduled_run_metadata_unavailable"
+    import urllib.error
+    import urllib.request
+    url = f"https://api.github.com/repos/{repository}/actions/runs/{run_id}"
+    request = urllib.request.Request(url, headers={
+        "Authorization": "Bearer " + token,
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "orca-30m-schedule-freshness",
+    })
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read(256_000).decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, UnicodeError, json.JSONDecodeError):
+        return "scheduled_run_metadata_unavailable"
+    created_at = payload.get("created_at") if isinstance(payload, dict) else None
+    if not scheduled_run_is_fresh(created_at, now=datetime.now(timezone.utc)):
+        return "stale_scheduled_run_discarded"
+    return None
 
 
 def inspect_prerequisites(*, env: dict[str, str] | None = None, store: Any = None,
