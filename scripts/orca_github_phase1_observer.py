@@ -67,7 +67,8 @@ def read_state_snapshot(
         token=token, repository=repository,
         route=f"/repos/{repo}/git/ref/heads/{ref_name}", opener=opener,
     )
-    ref_sha = ref.get("object", {}).get("sha")
+    ref_object = ref.get("object")
+    ref_sha = ref_object.get("sha") if isinstance(ref_object, dict) else None
     if not isinstance(ref_sha, str) or len(ref_sha) != 40:
         raise ObservationError("state_ref_sha_missing_or_invalid")
     encoded_path = urllib.parse.quote(path, safe="/")
@@ -110,7 +111,7 @@ def summarize_state(state: Any) -> dict[str, Any]:
         status = task.get("status")
         if not isinstance(task_id, str) or not task_id or task_id in task_ids:
             raise ObservationError("queue_task_identity_invalid")
-        if status not in {"queued", "claimed", "done", "failed"}:
+        if not isinstance(status, str) or status not in {"queued", "claimed", "done", "failed"}:
             raise ObservationError("queue_task_status_invalid")
         task_ids.add(task_id)
         counts[status] += 1
@@ -120,7 +121,10 @@ def summarize_state(state: Any) -> dict[str, Any]:
     if (lease is None) != (counts["claimed"] == 0):
         raise ObservationError("active_lease_mismatch")
     if lease is not None:
-        if not isinstance(lease, dict) or lease.get("task_id") not in task_ids:
+        claimed_ids = {task["task_id"] for task in tasks if task["status"] == "claimed"}
+        if not isinstance(lease, dict) or not isinstance(lease.get("task_id"), str):
+            raise ObservationError("active_lease_invalid")
+        if lease["task_id"] not in task_ids or lease["task_id"] not in claimed_ids:
             raise ObservationError("active_lease_invalid")
         if not all(isinstance(lease.get(key), str) and lease[key]
                    for key in ("owner", "run_id", "expires_at")):
@@ -156,7 +160,8 @@ def observe(
         result.update({"status": "BLOCKED", "reason": str(exc)})
     else:
         result.update({
-            "status": "BLOCKED",
+            "observation_status": "OBSERVED",
+            "execution_gate": "BLOCKED",
             "reason": "budget_evidence_missing",
             "state_ref_sha": ref_sha,
             "state": summary,
@@ -181,7 +186,8 @@ def main() -> int:
         counts = state.get("task_counts", {})
         with open(summary_path, "a", encoding="utf-8") as summary:
             summary.write("# Orca Phase 1 — read-only observation\n\n")
-            summary.write(f"- Status: **{result['status']}**\n")
+            summary.write(f"- Observation: **{result['observation_status']}**\n")
+            summary.write(f"- Execution gate: **{result['execution_gate']}**\n")
             summary.write(f"- Reason: `{result['reason']}`\n")
             summary.write("- Execution enabled: **false**\n")
             summary.write(f"- Budget evidence: **{result['budget_evidence']}**\n")
