@@ -58,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const cards=[
           ['🔄 Loop',l.execution_enabled?'🟢 実行許可あり':'🟡 提案・未稼働確認',`${l.target_cadence||'未設定'}間隔目標 ・ ${l.frequency_per_day||'—'}回/日相当 ・ ${(l.schedule_jst||[]).join(' / ')} JST`],
           ['🛡️ Safety Gate',s.fail_closed||l.fail_closed?'🟢 FAIL_CLOSED 有効':'⚪ 未確認',`Auto Merge: ${s.auto_merge?'有':'無'} ・ Auto Deploy: ${s.auto_deploy?'有':'無'}`],
+          ['🚦 Activation Preflight',l.activation_preflight?.status==='ready'?'🟢 準備完了':'🔴 実行BLOCKED',l.activation_preflight?.evidence||'ワーカー統合・実行許可の検証待ち'],
           ['💰 Budget Gate',l.budget_gate?.status==='verified'?'🟢 検証済み':'🟡 実行BLOCKED',l.budget_gate?.evidence||'無料枠の実証拠は未接続'],
           ['🧯 Runaway Guard',l.runaway_guard?.status==='verified'?'🟢 検証済み':'🟡 部分実装・検証待ち',l.runaway_guard?.evidence||'結果台帳とBreakerを確認中'],
           ['✋ Emergency Stop',l.emergency_stop?.status==='operational'?'🟢 運用可能':'🔴 運用未準備',l.emergency_stop?.evidence||'永続状態と停止経路を未確認'],
