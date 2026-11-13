@@ -6,6 +6,7 @@ fail closed; each run adds at most the catalog's explicit cap.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 from collections import Counter
@@ -83,7 +84,41 @@ def _history_priority(history_path: Path | None, registered_ids: set[str]) -> tu
     return scores, details
 
 
-def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, output_path: Path, history_path: Path | None = None) -> dict:
+
+def load_provider_free_task_targets(runtime_path: Path) -> dict[str, str]:
+    """Read the deterministic task-to-test map without importing/executing it."""
+    try:
+        tree = ast.parse(runtime_path.read_text(encoding="utf-8"), filename=str(runtime_path))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        raise ValueError("provider-free runtime map is unavailable or invalid") from exc
+    for node in tree.body:
+        targets = []
+        if isinstance(node, ast.Assign):
+            targets = [target.id for target in node.targets if isinstance(target, ast.Name)]
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            targets = [node.target.id]
+        if "_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS" not in targets:
+            continue
+        try:
+            mapping = ast.literal_eval(node.value)
+        except (ValueError, TypeError) as exc:
+            raise ValueError("provider-free runtime map must be a literal dictionary") from exc
+        if not isinstance(mapping, dict) or not mapping:
+            raise ValueError("provider-free runtime map must be a non-empty dictionary")
+        validated = {}
+        for task_id, target_path in mapping.items():
+            if (not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id)
+                    or not isinstance(target_path, str) or not ALLOWED_TEST_PATH.fullmatch(target_path)):
+                raise ValueError("provider-free runtime map contains an invalid entry")
+            if not task_id.startswith("review-coverage-gap-"):
+                validated[task_id] = target_path
+        if not validated:
+            raise ValueError("provider-free runtime map has no eligible entries")
+        return validated
+    raise ValueError("provider-free deterministic task map was not found")
+
+
+def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, output_path: Path, history_path: Path | None = None, provider_free_targets: dict[str, str] | None = None) -> dict:
     queue = read_json(queue_path)
     catalog = read_json(catalog_path)
     state = read_json(completed_path)
@@ -157,6 +192,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     eligible_existing = []
     skipped_unapproved_ids = []
     skipped_definition_mismatch_ids = []
+    skipped_not_provider_free_ids = []
     for task in normalized_existing:
         trusted = catalog_by_id.get(task["id"])
         same_definition = trusted is not None and all(
@@ -169,6 +205,11 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
                 skipped_definition_mismatch_ids.append(task["id"])
         elif trusted.get("execution_approved") is not True:
             skipped_unapproved_ids.append(task["id"])
+        elif provider_free_targets is not None and (
+            provider_free_targets.get(task["id"]) != task["allowed_paths"][0]
+            or len(task["allowed_paths"]) != 1
+        ):
+            skipped_not_provider_free_ids.append(task["id"])
         elif task["id"] not in ineligible_ids:
             eligible_existing.append(trusted)
     skipped_unapproved_ids = sorted(skipped_unapproved_ids)
@@ -183,6 +224,13 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         and task["id"] not in completed_ids
         and task["id"] not in ineligible_ids
         and task["execution_approved"]
+        and (
+            provider_free_targets is None
+            or (
+                provider_free_targets.get(task["id"]) == task["allowed_paths"][0]
+                and len(task["allowed_paths"]) == 1
+            )
+        )
     ]
     # Stable sort: recurring failures first; ties preserve reviewed catalog order.
     catalog_order = {task["id"]: index for index, task in enumerate(normalized_catalog)}
@@ -220,6 +268,9 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         "skipped_held_ids": skipped_held_ids,
         "skipped_unapproved_ids": skipped_unapproved_ids,
         "skipped_definition_mismatch_ids": sorted(skipped_definition_mismatch_ids),
+        "skipped_not_provider_free_ids": sorted(skipped_not_provider_free_ids),
+        "provider_free_only": provider_free_targets is not None,
+        "provider_free_allowlist_count": len(provider_free_targets) if provider_free_targets is not None else None,
         "skipped_review_ids": skipped_review_ids,
         "skipped_completed_ids": skipped_completed_ids,
         # Explain catalog exhaustion separately from the legacy queue fields.
@@ -247,9 +298,18 @@ def main() -> int:
     parser.add_argument("--completed-state", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--history", type=Path, default=None)
+    parser.add_argument("--provider-free-only", action="store_true")
+    parser.add_argument("--provider-free-map", type=Path, default=Path("core/line_development_runtime.py"))
     args = parser.parse_args()
     try:
-        result = build_queue(args.queue, args.catalog, args.completed_state, args.output, args.history)
+        provider_free_targets = (
+            load_provider_free_task_targets(args.provider_free_map)
+            if args.provider_free_only else None
+        )
+        result = build_queue(
+            args.queue, args.catalog, args.completed_state, args.output,
+            args.history, provider_free_targets=provider_free_targets,
+        )
     except (ValueError, OSError) as exc:
         print(f"REFILL_BLOCKED: {type(exc).__name__}")
         return 2
