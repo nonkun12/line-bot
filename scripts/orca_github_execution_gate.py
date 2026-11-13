@@ -240,7 +240,7 @@ def evaluate_execution_gate(
             budget_evidence, budget_signing_key, now,
             expected_repository=repository,
             expected_billing_account_id=billing_account_id,
-            min_remaining_minutes=30,
+            min_remaining_minutes=45,
         )
     except BudgetEvidenceRejected as exc:
         raise ExecutionGateRejected(f"budget_gate_blocked:{exc}") from None
