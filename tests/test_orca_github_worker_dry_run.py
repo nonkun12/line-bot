@@ -26,6 +26,7 @@ class WorkerDryRunTests(unittest.TestCase):
                 "tasks_claimed": 1, "attempts_by_task": {"task-1": 1},
                 "consecutive_failures": 0, "circuit_breaker_until": None,
                 "paid_services_enabled": False, "automatic_retry_enabled": False,
+                "outcomes_by_task": {},
             },
             "tasks": [{
                 "task_id": "task-1",
