@@ -366,7 +366,7 @@ def main() -> int:
                 raise GateBlocked(reason)
         else:
             reason = "manual_trigger_passed_safety_gates"
-        detail = ", ".join(f"{x['name']}={x['percent']:.1f}%/{x['status']}" for x in budget["sources"])
+        detail = ', '.join(f"{x['meter_id']}={x['percent']:.1f}%/{x['status']}" for x in budget['meters'])
         write_outputs(True, reason, detail)
         print("ORCA_30M_GATE_ALLOW: " + reason)
     except GateBlocked as exc:
