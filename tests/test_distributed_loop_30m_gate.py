@@ -174,5 +174,15 @@ class RuntimeStopWatcherTests(unittest.TestCase):
         self.assertIn("--stop-file \"$STOP_FILE\"", workflow)
 
 
+    def test_final_admission_is_rechecked_before_publish(self):
+        from pathlib import Path
+        workflow = (Path(__file__).resolve().parents[1] / ".github" / "workflows"
+                    / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+        final_gate = workflow.split("id: final_admission", 1)[1].split("id: publish", 1)[0]
+        self.assertIn("python scripts/distributed_loop_30m_gate.py", final_gate)
+        self.assertIn("ORCA_30M_GATE_ALLOW:", final_gate)
+        self.assertIn("steps.final_admission.outputs.allow == 'true'", workflow)
+
+
 if __name__ == "__main__":
     unittest.main()
