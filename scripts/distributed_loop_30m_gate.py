@@ -136,7 +136,10 @@ def evaluate_budget_snapshot(
                 or not isinstance(source.get("limit_source"), str) or not source["limit_source"].strip()
                 or not isinstance(source.get("dataset"), str) or not source["dataset"].strip()):
             raise GateBlocked("budget_unit_dataset_or_limit_evidence_missing")
-        if (source.get("account_id") != attestation_account_id(payload)
+        expected_provider = "github" if name == "github_actions" else "cloudflare"
+        if (source.get("provider") != expected_provider
+                or not isinstance(source.get("account_id"), str) or not source.get("account_id").strip()
+                or (expected_provider == "cloudflare" and source.get("account_id") != attestation_account_id(payload))
                 or source.get("complete_account_coverage") is not True
                 or source.get("exact_counter") is not True
                 or source.get("sampling_mode") != "none"
