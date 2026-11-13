@@ -14,6 +14,7 @@ from scripts.orca_github_execution_gate import evaluate_execution_gate
 from scripts.orca_github_state_store import StateSnapshot
 from scripts.orca_github_task_queue import claim_next
 from scripts.orca_github_runaway_guard import validate_and_consume_claim
+from scripts.orca_github_emergency_stop import require_not_stopped
 
 
 def authorize_and_claim_one(
@@ -42,6 +43,7 @@ def authorize_and_claim_one(
     invoke the task, create a process, or make a network dispatch.
     """
     state = snapshot.state
+    require_not_stopped(state)
     gate = evaluate_execution_gate(
         repository=repository,
         queue_state=state,
