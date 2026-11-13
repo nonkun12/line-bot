@@ -2546,6 +2546,7 @@ class DevelopmentExecutor:
                         "invalid_old_new",
                         "diff_marker_in_replacement",
                         "change_too_large",
+                        "no_op_change",
                     }:
                         return AgentResult(
                             task.task_id,
