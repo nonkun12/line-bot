@@ -1,4 +1,5 @@
 export { OrcaWriteBroker } from "./write-broker.mjs";
+import { normalizeGlobalHoldState } from "./global-hold-state.mjs";
 
 const json = (value, status = 200) =>
   new Response(JSON.stringify(value), {
@@ -41,8 +42,7 @@ async function globalHoldState(env) {
     const response = await brokerRequest(env, "/hold");
     if (!response.ok) return { clear: false, value: null };
     const state = await response.json();
-    return { clear: state.clear === true && state.value === "off" && state.blocked === false,
-      value: state.value ?? null, unresolved_operations: state.unresolved_operations ?? 0 };
+    return normalizeGlobalHoldState(state);
   } catch {
     return { clear: false, value: null };
   }
@@ -497,7 +497,7 @@ export default {
           clear: hold.clear === true,
           value: hold.value ?? null,
           blocked: hold.clear !== true,
-          unresolved_operations: hold.unresolved_operations ?? 0,
+          unresolved_operations: hold.unresolved_operations,
         },
         budget_guard: {
           allowed: budget.allowed === true,
@@ -509,7 +509,7 @@ export default {
     if (url.pathname === "/control/global-hold" && request.method === "GET") {
       const state = await globalHoldState(env);
       return json({ clear: state.clear, value: state.value, blocked: !state.clear,
-        unresolved_operations: state.unresolved_operations ?? 0 }, 200);
+        unresolved_operations: state.unresolved_operations }, 200);
     }
     if (url.pathname === "/control/global-hold" && request.method === "POST") {
       const supplied = request.headers.get("x-orca-hold-operator") || "";
