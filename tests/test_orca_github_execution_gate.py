@@ -142,8 +142,10 @@ class ExecutionGateTests(unittest.TestCase):
             self.evaluate(approval=proof)
 
     def test_replayed_approval_blocks(self):
+        state = queue()
+        state["consumed_approval_ids"] = ["b" * 64]
         with self.assertRaisesRegex(ExecutionGateRejected, "approval_replay_detected"):
-            self.evaluate(consumed_approval_ids=["b" * 64])
+            self.evaluate(queue_state=state, consumed_approval_ids=["b" * 64])
 
     def test_missing_budget_evidence_blocks(self):
         with self.assertRaisesRegex(ExecutionGateRejected, "budget_gate_blocked"):
