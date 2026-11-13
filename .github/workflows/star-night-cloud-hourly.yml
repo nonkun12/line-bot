@@ -1,18 +1,6 @@
 name: Star Night Cloud Hourly Candidate
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/star-night-cloud-hourly.yml
-      - scripts/star_night_hourly_candidate.py
-      - tests/test_star_night_hourly_candidate.py
-      - scripts/star_night_game_state.py
-      - tests/test_star_night_game_state.py
-  schedule:
-    # Offset from the top of the hour to reduce GitHub Actions schedule congestion.
-    - cron: "17 * * * *"
   workflow_dispatch:
 
 permissions:
