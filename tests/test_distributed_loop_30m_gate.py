@@ -25,10 +25,10 @@ METER_SPECS = {
     "cloudflare.durable_objects.sqlite_rows_read.daily": ("cloudflare", "durable_objects", "rows", "cloudflare_durable_objects"),
     "cloudflare.durable_objects.sqlite_rows_written.daily": ("cloudflare", "durable_objects", "rows", "cloudflare_durable_objects"),
     "cloudflare.durable_objects.sqlite_storage_bytes.total": ("cloudflare", "durable_objects", "bytes", "cloudflare_durable_objects"),
-    "github.actions.compute_cost_usd.monthly": ("github", "actions", "USD", "github_actions"),
-    "github.actions.artifact_storage_bytes.monthly": ("github", "actions", "bytes", "github_actions"),
+    "github.actions_packages.shared_storage_gb_hours.monthly": ("github", "actions_packages", "GB-hours", "github_actions"),
+    "github.actions.cache_storage_bytes.hourly_peak": ("github", "actions", "bytes", "github_actions"),
 }
-REQUIRED_PRODUCTS = ["actions", "d1", "durable_objects", "workers", "workers_logs"]
+REQUIRED_PRODUCTS = ["actions", "actions_packages", "d1", "durable_objects", "workers", "workers_logs"]
 
 
 def sign(payload):
@@ -50,6 +50,8 @@ def signed_payload(overrides=None, *, attestation_overrides=None, inventory_over
             period_kind, period_start, period_end = "daily", DAILY_START, DAILY_END
         elif ".monthly" in meter_id:
             period_kind, period_start, period_end = "monthly", MONTH_START, MONTH_END
+        elif ".hourly_peak" in meter_id:
+            period_kind, period_start, period_end = "hourly", "2026-11-13T00:00:00Z", "2026-11-13T01:00:00Z"
         elif ".total" in meter_id:
             period_kind, period_start, period_end = "total", None, None
         else:
@@ -72,6 +74,8 @@ def signed_payload(overrides=None, *, attestation_overrides=None, inventory_over
         "complete_account_coverage": True,
         "cloudflare_account_id": ACCOUNT,
         "github_account_id": GITHUB_ACCOUNT,
+        "github_repository_visibility": "public",
+        "github_runner_policy": "standard_github_hosted_only",
         "enabled_products": list(REQUIRED_PRODUCTS),
         "unresolved_products": [],
         "observed_at": OBSERVED,
@@ -170,6 +174,18 @@ class BudgetGateTests(unittest.TestCase):
         })
         with self.assertRaisesRegex(GateBlocked, "budget_product_inventory_incomplete"):
             evaluate(wrong_account)
+
+    def test_github_public_runner_policy_and_account_inventory_are_enforced(self):
+        private_repo = signed_payload(inventory_overrides={
+            "github_repository_visibility": "private",
+        })
+        with self.assertRaisesRegex(GateBlocked, "budget_product_inventory_incomplete"):
+            evaluate(private_repo)
+        larger_runner = signed_payload(inventory_overrides={
+            "github_runner_policy": "larger_or_self_hosted_runner",
+        })
+        with self.assertRaisesRegex(GateBlocked, "budget_product_inventory_incomplete"):
+            evaluate(larger_runner)
 
     def test_duplicate_meter_id_blocks(self):
         payload = signed_payload()
