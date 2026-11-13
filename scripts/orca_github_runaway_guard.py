@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+import copy
+from datetime import timedelta
+
+from scripts.orca_github_task_queue import finish as queue_finish, QueueRejected
 
 MAX_TASKS_PER_RUN = 1
 MAX_RUN_SECONDS = 1800
@@ -118,3 +122,64 @@ def validate_worker_start(*, state: dict[str, Any], task_id: str,
     breaker = guard.get("circuit_breaker_until")
     if breaker is not None and current < _parse(breaker, "circuit_breaker_until"):
         raise RunawayGuardRejected("circuit_breaker_cooldown_active")
+
+
+def finish_with_outcome(*, state: dict[str, Any], expected_revision: int,
+                        task_id: str, owner: str, run_id: str, now: str,
+                        outcome: str) -> dict[str, Any]:
+    """Atomically derive terminal queue state and durable runaway outcome.
+
+    The caller MUST persist the returned whole snapshot in one CAS write.
+    Replaying the same terminal outcome is idempotent; a conflicting replay
+    is rejected. No retry or task execution is performed here.
+    """
+    guard = state.get("run_guard")
+    if not isinstance(guard, dict):
+        raise RunawayGuardRejected("durable_run_guard_missing")
+    required = {"run_id", "started_at", "tasks_claimed", "attempts_by_task",
+                "consecutive_failures", "circuit_breaker_until",
+                "paid_services_enabled", "automatic_retry_enabled",
+                "outcomes_by_task"}
+    if set(guard) != required or not isinstance(guard.get("outcomes_by_task"), dict):
+        raise RunawayGuardRejected("durable_run_guard_schema_invalid")
+    ledger = guard["outcomes_by_task"]
+    if outcome not in {"done", "failed"}:
+        raise RunawayGuardRejected("outcome_invalid")
+    prior = ledger.get(task_id)
+    if prior is not None:
+        task = next((row for row in state.get("tasks", [])
+                     if isinstance(row, dict) and row.get("task_id") == task_id), None)
+        if prior == outcome and task and task.get("status") == outcome:
+            if expected_revision != state.get("revision"):
+                raise RunawayGuardRejected("stale_revision_conflict")
+            return copy.deepcopy(state)
+        raise RunawayGuardRejected("conflicting_outcome_replay")
+    if guard.get("run_id") != run_id:
+        raise RunawayGuardRejected("guard_run_id_mismatch")
+    try:
+        updated = queue_finish(
+            state, expected_revision=expected_revision, task_id=task_id,
+            owner=owner, run_id=run_id, now=now, outcome=outcome,
+        )
+    except QueueRejected as exc:
+        raise RunawayGuardRejected(str(exc)) from None
+    updated_guard = copy.deepcopy(guard)
+    outcomes = dict(ledger)
+    outcomes[task_id] = outcome
+    updated_guard["outcomes_by_task"] = outcomes
+    if outcome == "failed":
+        failures = guard.get("consecutive_failures")
+        if isinstance(failures, bool) or not isinstance(failures, int) or failures < 0:
+            raise RunawayGuardRejected("failure_counter_invalid")
+        failures += 1
+        updated_guard["consecutive_failures"] = failures
+        if failures >= MAX_CONSECUTIVE_FAILURES:
+            current = _parse(now, "outcome_timestamp")
+            updated_guard["circuit_breaker_until"] = (
+                current + timedelta(seconds=MIN_COOLDOWN_SECONDS)
+            ).isoformat().replace("+00:00", "Z")
+    else:
+        updated_guard["consecutive_failures"] = 0
+        updated_guard["circuit_breaker_until"] = None
+    updated["run_guard"] = updated_guard
+    return updated
