@@ -174,6 +174,10 @@ def test_distributed_loop_is_scheduled_every_30_minutes_in_tokyo_and_stays_bound
     assert "free_only_provider_and_budget_evidence_missing" in source
     assert "steps.free_only_gate.outcome == 'success'" in source
     assert "GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}" not in source
+    resume = source.split("      - name: Resume one explicitly approved held task", 1)[1].split("      - name:", 1)[0]
+    assert "env.FREE_ONLY_EXECUTION_APPROVED == 'true'" in resume
+    issue_create = source.split("      - name: Create bounded review-only task issues from analyzer findings", 1)[1].split("      - name:", 1)[0]
+    assert "env.FREE_ONLY_EXECUTION_APPROVED == 'true'" in issue_create
 
 
 def test_only_continuous_workflow_owns_automatic_dispatch():
