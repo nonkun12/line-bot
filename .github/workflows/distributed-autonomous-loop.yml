@@ -133,7 +133,8 @@ jobs:
           ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
           ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
           ORCA_BUDGET_GATE_URL: ${{ secrets.ORCA_BUDGET_GATE_URL }}
-          ORCA_BUDGET_GATE_TOKEN: ${{ secrets.ORCA_BUDGET_GATE_TOKEN }}\n          ORCA_BUDGET_EVIDENCE_HMAC_KEY: ${{ secrets.ORCA_BUDGET_EVIDENCE_HMAC_KEY }}
+          ORCA_BUDGET_GATE_TOKEN: ${{ secrets.ORCA_BUDGET_GATE_TOKEN }}
+          ORCA_BUDGET_EVIDENCE_HMAC_KEY: ${{ secrets.ORCA_BUDGET_EVIDENCE_HMAC_KEY }}
         run: python scripts/distributed_loop_30m_gate.py
 
   minimal-loop:
