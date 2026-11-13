@@ -27,7 +27,7 @@ METER_SPECS = {
     "cloudflare.durable_objects.sqlite_storage_bytes.total": ("cloudflare", "durable_objects", "bytes", "cloudflare_durable_objects"),
     "github.actions.compute_cost_usd.monthly": ("github", "actions", "USD", "github_actions"),
     "github.actions_packages.shared_storage_gb_hours.monthly": ("github", "actions_packages", "GB-hours", "github_actions"),
-    "github.actions.cache_storage_bytes.hourly_peak": ("github", "actions", "bytes", "github_actions"),
+    "github.actions.cache_storage_gb_hours.monthly": ("github", "actions", "GB-hours", "github_actions"),
 }
 REQUIRED_PRODUCTS = ["actions", "actions_packages", "d1", "durable_objects", "workers", "workers_logs"]
 
@@ -51,8 +51,6 @@ def signed_payload(overrides=None, *, attestation_overrides=None, inventory_over
             period_kind, period_start, period_end = "daily", DAILY_START, DAILY_END
         elif ".monthly" in meter_id:
             period_kind, period_start, period_end = "monthly", MONTH_START, MONTH_END
-        elif ".hourly_peak" in meter_id:
-            period_kind, period_start, period_end = "hourly", "2026-11-13T00:00:00Z", "2026-11-13T01:00:00Z"
         elif ".total" in meter_id:
             period_kind, period_start, period_end = "total", None, None
         else:
@@ -243,10 +241,10 @@ class BudgetGateTests(unittest.TestCase):
                 "period_start": "2026-11-12T23:00:00Z",
                 "period_end": "2026-11-13T23:00:00Z",
             }}))
-        with self.assertRaisesRegex(GateBlocked, "budget_hourly_period_alignment_invalid"):
-            evaluate(signed_payload({"github.actions.cache_storage_bytes.hourly_peak": {
-                "period_start": "2026-11-12T23:15:00Z",
-                "period_end": "2026-11-13T00:15:00Z",
+        with self.assertRaisesRegex(GateBlocked, "budget_monthly_period_length_invalid"):
+            evaluate(signed_payload({"github.actions.cache_storage_gb_hours.monthly": {
+                "period_start": "2026-11-01T00:00:00Z",
+                "period_end": "2026-11-21T00:00:00Z",
             }}))
         with self.assertRaisesRegex(GateBlocked, "budget_monthly_period_length_invalid"):
             evaluate(signed_payload({"github.actions_packages.shared_storage_gb_hours.monthly": {
