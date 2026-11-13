@@ -16,9 +16,9 @@ GitHub scheduling is best-effort: it can be delayed or skipped. This is a 30-min
 The gate fails closed unless all of these are configured and return valid, fresh data:
 
 1. ORCA_TASK_API_URL and ORCA_TASK_API_TOKEN: authenticated GET /control/global-hold must return exactly clear=true, value="off", and blocked=false.
-2. ORCA_BUDGET_GATE_URL and ORCA_BUDGET_GATE_TOKEN: authenticated GET must return a JSON object with sources, containing one enabled snapshot each for cloudflare_workers, cloudflare_d1, and github_actions.
+2. ORCA_BUDGET_GATE_URL and ORCA_BUDGET_GATE_TOKEN: authenticated GET must return a JSON object with sources, containing exactly one enabled snapshot each for cloudflare_workers, cloudflare_d1, cloudflare_durable_objects, and github_actions. The three Cloudflare meters must identify the expected Cloudflare account; the GitHub Actions meter must identify its GitHub provider/account scope separately.
 
-Each enforcement snapshot must include used, positive limit, unit, limit_source, observed_at, period_start, and period_end, plus `quality="exact"`, `enforcement_eligible=true`, `limit_verified=true`, and a non-empty `limit_evidence_id`. These fields are mandatory; a label such as `verified_internal_limit` alone is not evidence. Values must use consistent units within each source. The response must also include a non-negative consecutive_failures integer; three or more blocks execution. Snapshots must be no older than 90 minutes, no more than five minutes in the future, and cover the current period.
+Each enforcement snapshot must include used, positive limit, unit, limit_source, observed_at, period_start, and period_end, plus `quality="exact"`, `enforcement_eligible=true`, `limit_verified=true`, and a non-empty `limit_evidence_id`. These fields are mandatory; a label such as `verified_internal_limit` alone is not evidence. Values must use consistent units within each source. The response must also include a non-negative consecutive_failures integer; three or more blocks execution. Snapshots and their source watermarks must be no older than 10 minutes, no more than five minutes in the future, and cover the current period.
 
 Thresholds are conservative internal policy, not vendor quota guarantees:
 - 70%: WARN; may continue with fresh evidence.
@@ -26,7 +26,9 @@ Thresholds are conservative internal policy, not vendor quota guarantees:
 - 90%: STOP; block new work.
 - Missing, unknown, or stale data: BLOCKED.
 
-The budget endpoint and provider collectors are not part of this PR. Until a trusted live collector provides the contract above, scheduled and manual runs are blocked by design. Do not set dummy values or bypass the gate.
+The entire response must also carry an `attestation` object signed with HMAC-SHA256 over canonical JSON of the response with only the signature field removed. The signed attestation binds `account_id`, `collector_id`, `issued_at`, and `expires_at`; the gate checks the expected account and collector IDs, signature, a maximum 15-minute attestation lifetime, and a 10-minute issue-time freshness window. Source records must declare provider, account scope, complete account coverage, exact counter semantics, no sampling, complete coverage status, dataset identity, and a current source watermark. The workflow reads `ORCA_BUDGET_EVIDENCE_HMAC_SECRET` from a GitHub Secret and the expected account/collector IDs from repository Variables. Missing configuration, invalid signatures, unknown providers, partial coverage, sampling, or stale watermarks BLOCK execution.
+
+The trusted live collector and signed budget endpoint are not part of this PR. Until they exist and produce independently verifiable evidence, scheduled and manual runs are blocked by design. Do not set dummy values or bypass the gate.
 
 ## Remaining rollout dependency
 
@@ -43,12 +45,12 @@ This PR uses the existing GitHub Actions concurrency group plus the previous mai
 
 ## Budget observation contract (follow-up)
 
-The observation record helper in `scripts/distributed_loop_budget_observation.py` is not a live provider collector. It normalizes measured values for reporting only and forcibly emits:
+The observation record helper in `scripts/distributed_loop_budget_observation.py` is not a live provider collector. It recognizes Workers, D1, Durable Objects, and GitHub Actions, but it does not create enforcement evidence. It normalizes measured values for reporting only and forcibly emits:
 
 - `enforcement_eligible=false`
 - `limit_verified=false`
 - `limit=null` and `limit_evidence_id=null`
 
-Caller-supplied limit values and authority flags are discarded. An `exact` measurement describes measurement quality only; it does not prove that the vendor quota or billing limit is authoritative. Observation records must never be passed as enforcement snapshots. The gate now rejects missing or unverified enforcement evidence with `budget_limit_not_authoritatively_verified`.
+Caller-supplied limit values and authority flags are discarded. An `exact` measurement describes measurement quality only; it does not prove that the vendor quota or billing limit is authoritative. Observation records must never be passed as enforcement snapshots. The gate now rejects missing or unverified enforcement evidence, unsigned/self-asserted authority, mismatched collector/account identity, incomplete or sampled coverage, and stale watermarks.
 
-No live Workers/D1/GitHub usage collector, budget endpoint, provider credentials, deployment, or secret configuration is added here. The 30-minute loop remains blocked until independently verified enforcement evidence is available.
+No live Workers/D1/Durable Objects/GitHub usage collector, signed budget endpoint, provider credentials, deployment, or secret configuration is added here. The 30-minute loop remains blocked until independently verified enforcement evidence is available.
