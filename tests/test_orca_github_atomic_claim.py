@@ -27,6 +27,7 @@ class AtomicClaimTests(unittest.TestCase):
                 "tasks_claimed": 0, "attempts_by_task": {},
                 "consecutive_failures": 0, "circuit_breaker_until": None,
                 "paid_services_enabled": False, "automatic_retry_enabled": False,
+                "outcomes_by_task": {},
             },
         }
         self.snapshot = StateSnapshot("b" * 40, self.state, "c" * 40)
