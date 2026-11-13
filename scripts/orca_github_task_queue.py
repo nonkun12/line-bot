@@ -37,7 +37,7 @@ def _iso(value: datetime) -> str:
 
 def empty_state() -> dict[str, Any]:
     return {"schema_version": 1, "revision": 0, "global_hold": True,
-            "tasks": [], "active_lease": None}
+            "tasks": [], "active_lease": None, "consumed_approval_ids": []}
 
 
 def _validate(state: Any) -> dict[str, Any]:
@@ -49,6 +49,11 @@ def _validate(state: Any) -> dict[str, Any]:
         raise QueueRejected("global_hold_missing_or_invalid")
     if not isinstance(state.get("tasks"), list):
         raise QueueRejected("queue_tasks_invalid")
+    consumed = state.get("consumed_approval_ids")
+    if (not isinstance(consumed, list)
+            or any(not isinstance(value, str) or not _HEX_64.fullmatch(value) for value in consumed)
+            or len(consumed) != len(set(consumed))):
+        raise QueueRejected("approval_replay_ledger_invalid")
     ids = set()
     claimed = []
     for task in state["tasks"]:
