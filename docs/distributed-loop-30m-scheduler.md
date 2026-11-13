@@ -13,6 +13,9 @@ GitHub scheduling is best-effort: it can be delayed or skipped. This is a 30-min
 
 ## Required live safety endpoints
 
+The workflow now requires three independent checks before task execution: `/control/global-hold`, `/control/loop-admission`, and the signed schema-v2 meter endpoint. `/control/loop-admission` must return HTTP 200 with `allowed=true`, Global HOLD `clear=true/value=off/blocked=false/unresolved_operations=0`, and Budget Guardian `allowed=true/status=CLEAR|WARN`. This endpoint also represents the D1 STOP-latch decision; a missing endpoint, missing token, HTTP 423, or malformed response is BLOCKED.
+
+The same admission endpoint is polled every 15 seconds during execution and rechecked immediately before task publication and durable-state writes. The separate `ORCA_CONTROL_API_URL` and `ORCA_LOOP_PREFLIGHT_TOKEN` GitHub secrets are required. The endpoint implementation is currently in Draft PR #1344 and is not present in this branch's Worker source; until that dependency is reviewed and integrated, this workflow is expected to remain BLOCKED.
 The gate fails closed unless all of these are configured and return valid, fresh data:
 
 1. ORCA_TASK_API_URL and ORCA_TASK_API_TOKEN: authenticated GET /control/global-hold must return exactly clear=true, value="off", and blocked=false.
@@ -37,7 +40,7 @@ Thresholds are conservative internal policy, not vendor quota guarantees:
 
 The entire response, including the product inventory and all meter records, must carry an `attestation` object signed with HMAC-SHA256 over canonical JSON with only the signature field removed. The signed attestation binds `account_id`, `collector_id`, `issued_at`, and `expires_at`; the gate checks the expected account and collector IDs, signature, a maximum 15-minute attestation lifetime, and a 10-minute issue-time freshness window. Every meter declares provider/account scope, complete coverage, exact counter semantics, no sampling, dataset identity, and a current source watermark. The workflow reads `ORCA_BUDGET_EVIDENCE_HMAC_SECRET` from a GitHub Secret and the expected Cloudflare account, GitHub billing account, and collector IDs from repository Variables. Missing configuration, invalid signatures, unknown products, partial coverage, sampling, or stale watermarks BLOCK execution.
 
-The trusted live collector and signed budget endpoint are not part of this PR. Until they exist and produce independently verifiable evidence, scheduled and manual runs are blocked by design. Do not set dummy values or bypass the gate.
+The trusted live collector and signed budget endpoint are not part of this branch. Until they exist and produce independently verifiable evidence, scheduled and manual runs are blocked by design. Do not set dummy values or bypass the gate.
 
 
 ## Multi-dimension quota inventory and account scope
