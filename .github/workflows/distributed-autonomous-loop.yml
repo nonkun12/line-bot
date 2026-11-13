@@ -410,7 +410,7 @@ jobs:
           success() && (
             (github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id != '') ||
             (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id='))
-          ) && steps.validate_resume_request.outputs.task_id != ''
+          ) && steps.validate_resume_request.outputs.task_id != '' && env.FREE_ONLY_EXECUTION_APPROVED == 'true'
         env:
           RESUME_TASK_ID: ${{ steps.validate_resume_request.outputs.task_id }}
         run: |
@@ -521,7 +521,7 @@ jobs:
           fi
 
       - name: Create bounded review-only task issues from analyzer findings
-        if: success() && env.TRIGGER_MODE == 'normal'
+        if: success() && env.TRIGGER_MODE == 'normal' && env.FREE_ONLY_EXECUTION_APPROVED == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
