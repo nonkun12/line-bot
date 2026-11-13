@@ -34,16 +34,13 @@ class GitHubStateStoreTests(unittest.TestCase):
     def test_write_uses_non_force_patch_and_verifies_readback(self):
         encoded = base64.b64encode(json.dumps(self.next_state).encode()).decode()
         responses = [
-            {"object": {"sha": self.ref}},
-            {"tree": {"sha": self.tree}},
-            {"encoding": "base64", "content": base64.b64encode(json.dumps(self.current).encode()).decode(), "sha": self.blob},
-            {"tree": {"sha": self.tree}},
-            {"sha": self.blob},
-            {"tree": {"sha": self.tree}},
-            {"sha": self.tree},
-            {"sha": self.commit},
-            {"object": {"sha": self.commit}},
-            {"tree": {"sha": self.tree}},
+            {"sha": self.blob},                 # create blob
+            {"tree": {"sha": self.tree}},      # read parent commit
+            {"sha": self.tree},                # create tree
+            {"sha": self.commit},              # create commit
+            {"object": {"sha": self.commit}},  # update ref response
+            {"object": {"sha": self.commit}},  # read-after-write ref
+            {"tree": {"sha": self.tree}},      # read-after-write commit
             {"encoding": "base64", "content": encoded, "sha": self.blob},
         ]
         calls = []
