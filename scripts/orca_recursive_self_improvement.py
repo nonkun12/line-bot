@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import math
 import re
 from datetime import datetime, timezone
 from typing import Any
@@ -67,7 +68,8 @@ def new_cycle(*, observation: str, source_refs: list[str], created_at: str,
 
 def advance(cycle: dict[str, Any], *, expected_stage: str, next_stage: str,
             evidence_refs: list[str], details: dict[str, Any] | None = None) -> dict[str, Any]:
-    if not isinstance(cycle, dict) or cycle.get("schema_version") != 1:
+    if (not isinstance(cycle, dict) or cycle.get("schema_version") != 1
+            or not isinstance(cycle.get("evidence"), dict)):
         raise ImprovementRejected("cycle_invalid")
     if cycle.get("stage") in _TERMINAL or cycle.get("stage") != expected_stage:
         raise ImprovementRejected("stage_conflict")
@@ -92,6 +94,9 @@ def advance(cycle: dict[str, Any], *, expected_stage: str, next_stage: str,
 def evaluate(cycle: dict[str, Any], *, expected_stage: str, tests_passed: bool,
              critic_verdict: str, baseline_metric: float | int,
              candidate_metric: float | int, metric_evidence_refs: list[str]) -> dict[str, Any]:
+    if (not isinstance(cycle, dict) or cycle.get("schema_version") != 1
+            or not isinstance(cycle.get("evidence"), dict)):
+        raise ImprovementRejected("cycle_invalid")
     if expected_stage != "reviewed" or cycle.get("stage") != "reviewed":
         raise ImprovementRejected("evaluation_requires_reviewed_stage")
     if tests_passed is not True:
@@ -99,7 +104,8 @@ def evaluate(cycle: dict[str, Any], *, expected_stage: str, tests_passed: bool,
     if critic_verdict != "pass":
         raise ImprovementRejected("independent_critic_not_passed")
     if (isinstance(baseline_metric, bool) or not isinstance(baseline_metric, (int, float))
-            or isinstance(candidate_metric, bool) or not isinstance(candidate_metric, (int, float))):
+            or isinstance(candidate_metric, bool) or not isinstance(candidate_metric, (int, float))
+            or not math.isfinite(baseline_metric) or not math.isfinite(candidate_metric)):
         raise ImprovementRejected("metrics_invalid")
     refs = _evidence(metric_evidence_refs, "metric")
     out = copy.deepcopy(cycle)
