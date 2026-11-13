@@ -92,8 +92,11 @@ def test_orca_status_reports_stale_based_on_capture_time(orca_client, monkeypatc
     assert read.get_json()["status"] == "stale"
 
 
-def test_dashboard_loop_lists_all_five_development_streams(orca_client):
+def test_dashboard_loop_lists_unified_main_loop_and_handoffs(orca_client):
     response = orca_client.get("/api/dashboard/loop", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3Jk"})
     assert response.status_code == 200
-    keys = [item["key"] for item in response.get_json()["loop"]["streams"]]
-    assert keys == ["main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement", "side_line_full_control", "side_core_vocabulary"]
+    body = response.get_json()["loop"]
+    keys = [item["key"] for item in body["streams"]]
+    assert keys == ["main_loop"]
+    assert {item["key"] for item in body["handoffs"]} == {"self_improvement", "line_readiness", "star_night", "muse"}
+    assert body["execution_enabled"] is False
