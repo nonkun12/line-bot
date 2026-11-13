@@ -92,16 +92,29 @@ def parse_time(value: Any) -> datetime:
 
 
 def _canonical_payload(payload: dict[str, Any]) -> bytes:
+    """Read the exact signed bytes shared with the JavaScript Worker.
+
+    The collector serializes the unsigned payload once and carries those exact
+    UTF-8 bytes in attestation.signed_payload. This avoids Python/ECMAScript
+    floating-point JSON rendering differences while still binding every field.
+    """
     unsigned = dict(payload)
     attestation = dict(unsigned.get("attestation") or {})
     attestation.pop("signature", None)
+    signed_payload = attestation.pop("signed_payload", None)
     unsigned["attestation"] = attestation
+    if not isinstance(signed_payload, str) or not signed_payload:
+        raise GateBlocked("budget_attestation_canonical_payload_missing")
     try:
-        return json.dumps(
+        parsed = json.loads(signed_payload)
+        expected = json.dumps(
             unsigned, sort_keys=True, separators=(",", ":"),
             ensure_ascii=False, allow_nan=False,
-        ).encode("utf-8")
-    except (TypeError, ValueError):
+        )
+        if parsed != unsigned or signed_payload != expected:
+            raise GateBlocked("budget_attestation_canonical_payload_mismatch")
+        return signed_payload.encode("utf-8")
+    except (TypeError, ValueError, json.JSONDecodeError):
         raise GateBlocked("budget_attestation_payload_not_canonicalizable") from None
 
 
