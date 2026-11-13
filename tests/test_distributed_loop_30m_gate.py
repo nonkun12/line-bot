@@ -2,9 +2,10 @@ import hashlib
 import hmac
 import json
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 
-from scripts.distributed_loop_30m_gate import GateBlocked, decide_slot, evaluate_budget_snapshot
+from scripts.distributed_loop_30m_gate import GateBlocked, decide_slot, evaluate_budget_snapshot, main
 
 NOW = datetime(2026, 11, 13, 0, 0, tzinfo=timezone.utc)
 START, END, OBSERVED = "2026-11-01T00:00:00Z", "2026-12-01T00:00:00Z", "2026-11-13T00:00:00Z"
@@ -146,6 +147,14 @@ class BudgetGateTests(unittest.TestCase):
         sign(payload)
         with self.assertRaisesRegex(GateBlocked, "consecutive_failure_limit_reached"):
             evaluate(payload)
+
+
+
+class GateMainTests(unittest.TestCase):
+    def test_blocked_gate_returns_nonzero_exit_status(self):
+        with patch("scripts.distributed_loop_30m_gate.check_global_hold",
+                   side_effect=GateBlocked("global_hold_active_or_unknown")):
+            self.assertEqual(main(), 1)
 
 
 class SlotGateTests(unittest.TestCase):
