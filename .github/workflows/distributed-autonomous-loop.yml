@@ -25,7 +25,6 @@ jobs:
         github.event.sender.login == 'nonkun12' &&
         github.event.pull_request.user.login == 'nonkun12'
       )
-      )
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
@@ -190,6 +189,7 @@ jobs:
         github.event.label.name == 'distributed-loop-max4' &&
         github.event.sender.login == 'nonkun12' &&
         github.event.pull_request.user.login == 'nonkun12'
+      )
       )
     runs-on: ubuntu-latest
     timeout-minutes: 40
