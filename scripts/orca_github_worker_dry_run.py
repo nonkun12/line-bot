@@ -71,6 +71,8 @@ def dry_run_one(*, queue_state: Any, envelope: Any, now: datetime) -> dict[str, 
         envelope["task_id"], envelope["owner"], envelope["run_id"]
     ):
         raise WorkerDryRunRejected("worker_lease_owner_or_run_mismatch")
+    if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
+        raise WorkerDryRunRejected("worker_clock_timezone_missing")
     current = now.astimezone(timezone.utc)
     if current >= _time(lease.get("expires_at")):
         raise WorkerDryRunRejected("worker_lease_expired")
