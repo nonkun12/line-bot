@@ -1,5 +1,7 @@
 from pathlib import Path
 
+# The legacy steps remain reviewable but must stay unreachable behind the hard-false job gate.
+
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "distributed-autonomous-loop.yml"
