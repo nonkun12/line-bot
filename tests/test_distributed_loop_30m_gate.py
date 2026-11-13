@@ -15,6 +15,7 @@ SECRET, ACCOUNT, COLLECTOR = "unit-test-only-secret", "account-test-001", "orca-
 GITHUB_ACCOUNT = "github-owner-test-001"
 METER_SPECS = {
     "cloudflare.workers.requests.daily": ("cloudflare", "workers", "requests", "cloudflare_workers"),
+    "cloudflare.workers.cpu_ms_per_invocation.max": ("cloudflare", "workers", "ms", "cloudflare_workers"),
     "cloudflare.workers_logs.events.daily": ("cloudflare", "workers_logs", "events", "cloudflare_workers_logs"),
     "cloudflare.d1.rows_read.daily": ("cloudflare", "d1", "rows", "cloudflare_d1"),
     "cloudflare.d1.rows_written.daily": ("cloudflare", "d1", "rows", "cloudflare_d1"),
@@ -45,9 +46,14 @@ def signed_payload(overrides=None, *, attestation_overrides=None, inventory_over
     overrides = overrides or {}
     meters = []
     for meter_id, (provider, product_id, unit, alias) in METER_SPECS.items():
-        period_start, period_end = (MONTH_START, MONTH_END) if (
-            meter_id.endswith(".total") or ".monthly" in meter_id
-        ) else (DAILY_START, DAILY_END)
+        if ".daily" in meter_id:
+            period_kind, period_start, period_end = "daily", DAILY_START, DAILY_END
+        elif ".monthly" in meter_id:
+            period_kind, period_start, period_end = "monthly", MONTH_START, MONTH_END
+        elif ".total" in meter_id:
+            period_kind, period_start, period_end = "total", None, None
+        else:
+            period_kind, period_start, period_end = "per_invocation", None, None
         meters.append({
             "meter_id": meter_id, "provider": provider, "product_id": product_id,
             "account_id": GITHUB_ACCOUNT if provider == "github" else ACCOUNT,
@@ -59,7 +65,7 @@ def signed_payload(overrides=None, *, attestation_overrides=None, inventory_over
             "complete_account_coverage": True, "exact_counter": True,
             "sampling_mode": "none", "coverage_status": "complete",
             "watermark_at": OBSERVED, "observed_at": OBSERVED,
-            "period_start": period_start, "period_end": period_end,
+            "period_kind": period_kind, "period_start": period_start, "period_end": period_end,
             **overrides.get(meter_id, overrides.get(alias, {})),
         })
     inventory = {
