@@ -1,9 +1,7 @@
 name: LINE Full Control Hourly Readiness
 
 on:
-  schedule:
-    # Hourly readiness check for Side 4; offset from the top of the hour.
-    - cron: "37 * * * *"
+  # Manual-only; readiness checks will be invoked by the unified loop after integration.
   workflow_dispatch:
   push:
     branches:
