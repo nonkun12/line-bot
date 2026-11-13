@@ -571,10 +571,10 @@ jobs:
                 touch "$STOP_FILE"
                 exit 0
               fi
-              http_code="$(curl --silent --show-error --connect-timeout 3 --max-time 8 \\
-                --output "$PREFLIGHT_FILE" --write-out '%{http_code}' \\
-                --request GET "${ORCA_CONTROL_API_URL%/}/control/loop-admission" \\
-                --header "Authorization: Bearer ${ORCA_LOOP_PREFLIGHT_TOKEN}" \\
+              http_code="$(curl --silent --show-error --connect-timeout 3 --max-time 8 \
+                --output "$PREFLIGHT_FILE" --write-out '%{http_code}' \
+                --request GET "${ORCA_CONTROL_API_URL%/}/control/loop-admission" \
+                --header "Authorization: Bearer ${ORCA_LOOP_PREFLIGHT_TOKEN}" \
                 --header "Accept: application/json" 2>/dev/null || true)"
               if [ "$http_code" != "200" ] || ! jq -e '.allowed == true and .global_hold.clear == true and .global_hold.value == "off" and .global_hold.blocked == false and .budget_guard.allowed == true and (.budget_guard.status == "CLEAR" or .budget_guard.status == "WARN")' "$PREFLIGHT_FILE" >/dev/null 2>&1; then
                 touch "$STOP_FILE"
