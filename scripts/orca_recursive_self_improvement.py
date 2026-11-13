@@ -86,6 +86,8 @@ def _validate_cycle(cycle: Any, *, require_evaluated: bool = False) -> None:
         raise ImprovementRejected("recursion_depth_invalid")
     if depth == 0 and parent_id is not None:
         raise ImprovementRejected("root_cycle_cannot_have_parent")
+    if depth > 0 and (not isinstance(parent_id, str) or not _SHA.fullmatch(parent_id)):
+        raise ImprovementRejected("parent_cycle_id_invalid")
     timestamp = _utc(created_at)
     expected_id = hashlib.sha256(
         f"{observation.strip()}\n{timestamp}\n{parent_id or ''}".encode("utf-8")
