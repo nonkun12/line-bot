@@ -40,16 +40,18 @@ counter without a verified plan limit.
 ## Next phases
 
 1. Implement and independently validate the account-level collector.
-2. A pure GitHub-native task queue state machine and lease transition tests are
-   now included in this branch. It is a contract/reference model, NOT a durable
-   queue or atomic claim backend. The persistence adapter is still missing.
-3. Implement the GitHub API persistence adapter. The new
-   scripts/orca_github_state_ref.py validates a write intent, parent SHA,
-   revision increment, state digest, and non-force policy, but it does not
-   perform GitHub API writes. The adapter must create a commit with the exact
-   observed parent, update the dedicated state ref without force, reject a
-   moved ref, and verify by read-after-write. Add real concurrent-writer and
-   crash/retry integration tests. GitHub Issues alone are not an atomic queue,
+2. A GitHub-native task queue state machine and lease transition model are
+   included. It enforces one active lease in the state model, but is not by
+   itself a durable queue.
+3. The GitHub API persistence adapter is now included in
+   scripts/orca_github_state_store.py. It reads a pre-provisioned state ref,
+   creates a blob/tree/commit whose parent is the exact observed ref, updates
+   the ref with force=false, and verifies the state by read-after-write.
+   Competing sibling commits are expected to fail GitHub's fast-forward check.
+   The adapter has mocked API tests; real concurrent-writer, crash/retry, and
+   protected-ref integration tests remain required. The state ref and JSON
+   document must be provisioned separately; the adapter never initializes
+   state or clears Global HOLD. GitHub Issues alone are not an atomic queue,
    and Actions concurrency alone is not a durable FIFO queue.
 4. Add a common LINE identity + task-bound approval verifier.
 5. Add a latched GitHub-native Global HOLD. Missing/unreadable state blocks.
@@ -57,6 +59,18 @@ counter without a verified plan limit.
 7. Run read-only, local contract, real concurrent-writer, replay, and
    failure-injection tests before any one-task canary. Keep auto-patch and
    auto-deploy disabled.
+
+## Cloudflare detachment boundary
+
+- The selected 30-minute LOOP candidate is PR #1353, based on main and using
+  GitHub-native contracts only.
+- Cloudflare-backed PRs #1348, #1349, and #1351 remain unmerged proposals and
+  are not dependencies of PR #1353. Do not merge their chained branch stack
+  into the new loop.
+- This migration does not delete, disable, or modify existing Workers, D1,
+  Durable Objects, Cloudflare secrets, or any existing production service.
+- No new Cloudflare endpoint, token, account, or deployment is required by the
+  GitHub-native candidate.
 
 ## Safety invariants
 
