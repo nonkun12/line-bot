@@ -30,9 +30,12 @@ def activate_from_terminal(*, reason: str) -> str:
         now=datetime.now(timezone.utc),
         human_authorized=True,
     )
-    if result["status"] == "EMERGENCY_STOPPED":
+    status = result.get("status") if isinstance(result, dict) else None
+    if status == "EMERGENCY_STOPPED":
         return "🛑 Orca Emergency Stopを有効化しました。共通の永続STOP状態を記録済みです。自動解除はされません。"
-    return "🛑 Orcaは既にEmergency Stop状態です。停止状態を維持しています。"
+    if status == "ALREADY_STOPPED":
+        return "🛑 Orcaは既にEmergency Stop状態です。停止状態を維持しています。"
+    raise RuntimeError("emergency_stop_persistence_not_confirmed")
 
 
 def main(argv: list[str] | None = None) -> int:

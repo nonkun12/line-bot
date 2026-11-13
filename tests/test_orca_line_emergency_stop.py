@@ -34,6 +34,17 @@ class LineEmergencyStopTests(unittest.TestCase):
         self.assertIn("拒否", reply)
         store_factory.assert_not_called()
 
+    @patch.dict(os.environ, {"DEV_ALLOWED_USER_IDS": "U-authorized"})
+    @patch("core.orca_emergency_stop.activate_emergency_stop")
+    @patch("core.orca_emergency_stop._store")
+    def test_unknown_store_result_is_not_reported_as_success(self, store_factory, activate):
+        store = MagicMock()
+        store.read.return_value = MagicMock()
+        store_factory.return_value = store
+        activate.return_value = {"status": "UNKNOWN"}
+        reply = activate_from_line(user_id="U-authorized", message="緊急停止")
+        self.assertIn("確認できません", reply)
+
     @patch.dict(os.environ, {"DEV_ALLOWED_USER_IDS": ""})
     @patch("core.orca_emergency_stop._store")
     def test_missing_allowlist_fails_closed(self, store_factory):

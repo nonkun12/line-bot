@@ -23,6 +23,16 @@ class TerminalEmergencyStopTests(unittest.TestCase):
         self.assertTrue(kwargs["human_authorized"])
         self.assertEqual(kwargs["requested_by"].split(":", 1)[0], "terminal")
 
+    @patch("scripts.orca_emergency_stop.activate_emergency_stop")
+    @patch("scripts.orca_emergency_stop._store")
+    def test_unknown_store_result_is_not_reported_as_success(self, store_factory, activate):
+        store = MagicMock()
+        store.read.return_value = MagicMock()
+        store_factory.return_value = store
+        activate.return_value = {"status": "UNKNOWN"}
+        with self.assertRaisesRegex(RuntimeError, "not_confirmed"):
+            activate_from_terminal(reason="uncertain result")
+
     def test_terminal_command_requires_reason(self):
         with self.assertRaisesRegex(ValueError, "stop_reason_required"):
             activate_from_terminal(reason="  ")

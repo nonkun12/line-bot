@@ -63,9 +63,12 @@ def activate_from_line(*, user_id: str, message: str) -> str:
             "緊急停止を永続状態へ記録できませんでした。安全のため実行は許可されません。"
             f" 原因: {type(exc).__name__}"
         )
-    return (
-        "🛑 Orca Emergency Stopを有効化しました。"
-        "共通の永続STOP状態を記録済みです。自動解除はされません。"
-        if result["status"] == "EMERGENCY_STOPPED"
-        else "🛑 Orcaは既にEmergency Stop状態です。停止状態を維持しています。"
-    )
+    status = result.get("status") if isinstance(result, dict) else None
+    if status == "EMERGENCY_STOPPED":
+        return (
+            "🛑 Orca Emergency Stopを有効化しました。"
+            "共通の永続STOP状態を記録済みです。自動解除はされません。"
+        )
+    if status == "ALREADY_STOPPED":
+        return "🛑 Orcaは既にEmergency Stop状態です。停止状態を維持しています。"
+    return "⚠️ Emergency Stopの永続化結果を確認できません。停止成功とは判定していません。実行は許可されません。"
