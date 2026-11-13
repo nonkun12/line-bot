@@ -131,6 +131,10 @@ jobs:
       )
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    # The preflight only reads Actions metadata and durable state; never grant the worker's write token here.
+    permissions:
+      actions: read
+      contents: read
     outputs:
       execution_enabled: ${{ steps.preflight.outputs.execution_enabled }}
     steps:
