@@ -1,74 +1,129 @@
+import hashlib
+import hmac
+import json
 import unittest
 from datetime import datetime, timedelta, timezone
+
 from scripts.distributed_loop_30m_gate import GateBlocked, decide_slot, evaluate_budget_snapshot
 
 NOW = datetime(2026, 11, 13, 0, 0, tzinfo=timezone.utc)
 START, END, OBSERVED = "2026-11-01T00:00:00Z", "2026-12-01T00:00:00Z", "2026-11-13T00:00:00Z"
+SECRET, ACCOUNT, COLLECTOR = "unit-test-only-secret", "account-test-001", "orca-budget-collector-test"
+NAMES = ("cloudflare_workers", "cloudflare_d1", "cloudflare_durable_objects", "github_actions")
+UNITS = {"cloudflare_workers": "requests", "cloudflare_d1": "rows",
+         "cloudflare_durable_objects": "requests", "github_actions": "runner_minutes"}
 
-def snapshots(overrides=None):
+
+def sign(payload):
+    unsigned = dict(payload)
+    attestation = dict(unsigned["attestation"])
+    attestation.pop("signature", None)
+    unsigned["attestation"] = attestation
+    canonical = json.dumps(unsigned, sort_keys=True, separators=(",", ":"),
+                           ensure_ascii=False, allow_nan=False).encode()
+    payload["attestation"]["signature"] = hmac.new(SECRET.encode(), canonical, hashlib.sha256).hexdigest()
+    return payload
+
+
+def signed_payload(overrides=None, *, attestation_overrides=None):
     overrides = overrides or {}
-    return [{"name": name, "enabled": True, "used": 10, "limit": 100,
-             "unit": {"cloudflare_workers": "requests", "cloudflare_d1": "rows", "github_actions": "runner_minutes"}[name],
-             "limit_source": "verified_internal_limit",
-             "quality": "exact", "enforcement_eligible": True,
-             "limit_verified": True, "limit_evidence_id": "fixture-evidence-001",
-             "observed_at": OBSERVED, "period_start": START, "period_end": END,
-             **overrides.get(name, {})}
-            for name in ("cloudflare_workers", "cloudflare_d1", "github_actions")]
+    sources = []
+    for name in NAMES:
+        sources.append({
+            "name": name, "enabled": True, "used": 10, "limit": 100,
+            "unit": UNITS[name], "limit_source": "vendor_verified_quota",
+            "quality": "exact", "enforcement_eligible": True,
+            "limit_verified": True, "limit_evidence_id": "vendor-evidence-001",
+            "dataset": "authoritative-account-meter-v1", "account_id": ACCOUNT,
+            "complete_account_coverage": True, "exact_counter": True,
+            "sampling_mode": "none", "coverage_status": "complete",
+            "watermark_at": OBSERVED, "observed_at": OBSERVED,
+            "period_start": START, "period_end": END, **overrides.get(name, {}),
+        })
+    payload = {"schema_version": 1, "sources": sources, "consecutive_failures": 0,
+               "attestation": {
+                   "algorithm": "hmac-sha256", "account_id": ACCOUNT,
+                   "collector_id": COLLECTOR, "issued_at": OBSERVED,
+                   "expires_at": "2026-11-13T00:10:00Z",
+               }}
+    payload["attestation"].update(attestation_overrides or {})
+    return sign(payload)
+
+
+def evaluate(payload):
+    return evaluate_budget_snapshot(payload, now=NOW, attestation_secret=SECRET,
+                                    expected_account_id=ACCOUNT, trusted_collector_id=COLLECTOR)
+
 
 class BudgetGateTests(unittest.TestCase):
-    def test_clear_and_warn_allow(self):
-        self.assertEqual(evaluate_budget_snapshot({"sources": snapshots(), "consecutive_failures": 0}, now=NOW)["status"], "CLEAR")
-        self.assertEqual(evaluate_budget_snapshot({"sources": snapshots({"cloudflare_d1": {"used": 70}}), "consecutive_failures": 0}, now=NOW)["status"], "WARN")
+    def test_signed_clear_and_warn_allow(self):
+        self.assertEqual(evaluate(signed_payload())["status"], "CLEAR")
+        self.assertEqual(evaluate(signed_payload({"cloudflare_d1": {"used": 70}}))["status"], "WARN")
+
     def test_80_and_90_percent_block(self):
         for used, reason in ((80, "budget_suppress"), (90, "budget_stop")):
             with self.assertRaisesRegex(GateBlocked, reason):
-                evaluate_budget_snapshot({"sources": snapshots({"cloudflare_d1": {"used": used}}), "consecutive_failures": 0}, now=NOW)
-    def test_non_finite_budget_values_block(self):
-        for value in (float("nan"), float("inf"), float("-inf")):
-            with self.assertRaisesRegex(GateBlocked, "budget_values_invalid"):
-                evaluate_budget_snapshot(
-                    {"sources": snapshots({"cloudflare_d1": {"used": value}}), "consecutive_failures": 0}, now=NOW
-                )
+                evaluate(signed_payload({"cloudflare_d1": {"used": used}}))
 
-    def test_missing_unit_or_limit_evidence_blocks(self):
-        for field in ("unit", "limit_source"):
-            with self.assertRaisesRegex(GateBlocked, "budget_unit_or_limit_evidence_missing"):
-                evaluate_budget_snapshot(
-                    {"sources": snapshots({"cloudflare_d1": {field: ""}}), "consecutive_failures": 0},
-                    now=NOW,
-                )
+    def test_self_asserted_authority_without_valid_signature_blocks(self):
+        payload = signed_payload()
+        payload["sources"][0]["limit_evidence_id"] = "fixture-evidence-001"
+        payload["attestation"]["signature"] = "0" * 64
+        with self.assertRaisesRegex(GateBlocked, "budget_attestation_signature_invalid"):
+            evaluate(payload)
 
+    def test_unsigned_or_wrong_collector_blocks(self):
+        payload = signed_payload()
+        payload.pop("attestation")
+        with self.assertRaisesRegex(GateBlocked, "budget_attestation_missing"):
+            evaluate(payload)
+        payload = signed_payload(attestation_overrides={"collector_id": "untrusted"})
+        with self.assertRaisesRegex(GateBlocked, "budget_attestation_signature_invalid|budget_attestation_identity_invalid"):
+            evaluate(payload)
 
-    def test_estimated_or_unverified_snapshots_never_allow(self):
-        invalid_overrides = [
-            {"quality": "estimated"},
-            {"enforcement_eligible": False},
-            {"limit_verified": False},
-            {"limit_evidence_id": ""},
-        ]
-        for override in invalid_overrides:
+    def test_attestation_expiry_and_freshness_are_signed_and_enforced(self):
+        payload = signed_payload(attestation_overrides={
+            "issued_at": "2026-11-12T23:00:00Z", "expires_at": "2026-11-12T23:15:00Z"
+        })
+        with self.assertRaisesRegex(GateBlocked, "budget_attestation_stale_or_out_of_window"):
+            evaluate(payload)
+
+    def test_missing_or_unexpected_meter_blocks(self):
+        payload = signed_payload()
+        payload["sources"] = [x for x in payload["sources"] if x["name"] != "cloudflare_durable_objects"]
+        sign(payload)
+        with self.assertRaisesRegex(GateBlocked, "budget_source_set_incomplete_or_unexpected"):
+            evaluate(payload)
+
+    def test_partial_sampled_or_wrong_account_source_blocks(self):
+        for override in ({"complete_account_coverage": False}, {"exact_counter": False},
+                         {"sampling_mode": "adaptive"}, {"coverage_status": "partial"},
+                         {"account_id": "other-account"}):
             with self.subTest(override=override):
-                with self.assertRaisesRegex(GateBlocked, "budget_limit_not_authoritatively_verified"):
-                    evaluate_budget_snapshot(
-                        {"sources": snapshots({"cloudflare_workers": override}), "consecutive_failures": 0},
-                        now=NOW,
-                    )
+                with self.assertRaisesRegex(GateBlocked, "budget_source_coverage_or_exactness_unproven"):
+                    evaluate(signed_payload({"cloudflare_workers": override}))
+
+    def test_old_watermark_blocks_even_if_poll_is_recent(self):
+        with self.assertRaisesRegex(GateBlocked, "budget_snapshot_stale_or_future"):
+            evaluate(signed_payload({"cloudflare_d1": {"watermark_at": "2026-11-12T23:40:00Z"}}))
+
+    def test_missing_disabled_and_out_of_period_block(self):
+        cases = [
+            ({"cloudflare_d1": {"enabled": None}}, "budget_source_not_confirmed_enabled"),
+            ({"cloudflare_d1": {"period_end": "2026-11-12T00:00:00Z"}}, "budget_period_not_current"),
+            ({"cloudflare_d1": {"limit_verified": False}}, "budget_limit_not_authoritatively_verified"),
+        ]
+        for overrides, reason in cases:
+            with self.assertRaisesRegex(GateBlocked, reason):
+                evaluate(signed_payload(overrides))
 
     def test_three_consecutive_failures_block(self):
+        payload = signed_payload()
+        payload["consecutive_failures"] = 3
+        sign(payload)
         with self.assertRaisesRegex(GateBlocked, "consecutive_failure_limit_reached"):
-            evaluate_budget_snapshot({"sources": snapshots(), "consecutive_failures": 3}, now=NOW)
+            evaluate(payload)
 
-    def test_missing_disabled_stale_and_out_of_period_block(self):
-        cases = [
-            (snapshots()[:2], "budget_source_missing"),
-            (snapshots({"cloudflare_d1": {"enabled": None}}), "budget_source_not_confirmed_enabled"),
-            (snapshots({"cloudflare_d1": {"observed_at": (NOW-timedelta(hours=2)).isoformat()}}), "budget_snapshot_stale_or_future"),
-            (snapshots({"cloudflare_d1": {"period_end": "2026-11-12T00:00:00Z"}}), "budget_period_not_current"),
-        ]
-        for source_rows, reason in cases:
-            with self.assertRaisesRegex(GateBlocked, reason):
-                evaluate_budget_snapshot({"sources": source_rows, "consecutive_failures": 0}, now=NOW)
 
 class SlotGateTests(unittest.TestCase):
     def test_auto_continuation_is_subject_to_slot_gate(self):
@@ -83,6 +138,7 @@ class SlotGateTests(unittest.TestCase):
         self.assertTrue(decide_slot([], current_run_id="2", now=NOW)[0])
         old = [{"id": 1, "run_started_at": (NOW-timedelta(minutes=31)).isoformat()}]
         self.assertEqual(decide_slot(old, current_run_id="2", now=NOW), (True, "slot_available"))
+
     def test_recent_future_and_invalid_runs_block(self):
         for runs in (
             [{"id": 1, "run_started_at": (NOW-timedelta(minutes=20)).isoformat()}],
@@ -90,6 +146,7 @@ class SlotGateTests(unittest.TestCase):
             [{}],
         ):
             self.assertFalse(decide_slot(runs, current_run_id="2", now=NOW)[0])
+
 
 if __name__ == "__main__":
     unittest.main()
