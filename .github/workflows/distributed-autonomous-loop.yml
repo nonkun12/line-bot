@@ -134,6 +134,7 @@ jobs:
           ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
           ORCA_BUDGET_GATE_URL: ${{ secrets.ORCA_BUDGET_GATE_URL }}
           ORCA_BUDGET_GATE_TOKEN: ${{ secrets.ORCA_BUDGET_GATE_TOKEN }}
+          ORCA_BUDGET_EVIDENCE_HMAC_KEY: ${{ secrets.ORCA_BUDGET_EVIDENCE_HMAC_KEY }}
         run: python scripts/distributed_loop_30m_gate.py
 
   minimal-loop:
@@ -545,21 +546,23 @@ jobs:
           INCIDENT_CATEGORY: ${{ env.INCIDENT_CATEGORY }}
           INCIDENT_DETAIL: ${{ env.INCIDENT_DETAIL }}
           INCIDENT_JOB_ID: ${{ env.INCIDENT_JOB_ID }}
+          ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+          ORCA_BUDGET_GATE_URL: ${{ secrets.ORCA_BUDGET_GATE_URL }}
+          ORCA_BUDGET_GATE_TOKEN: ${{ secrets.ORCA_BUDGET_GATE_TOKEN }}
+          ORCA_BUDGET_EVIDENCE_HMAC_KEY: ${{ secrets.ORCA_BUDGET_EVIDENCE_HMAC_KEY }}
         run: |
           set -euo pipefail
           : > /tmp/minimal-autonomous-loop.jsonl
           STOP_FILE=/tmp/line-bot-autonomous-loop.stop
 
-          (
-            while sleep 15; do
-              if git fetch --quiet origin main 2>/dev/null && git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
-                touch "$STOP_FILE"
-                exit 0
-              fi
-            done
-          ) &
+          python scripts/watch_distributed_loop_safety.py --stop-file "$STOP_FILE" --interval 15 &
           POLLER_PID=$!
-          trap 'kill "$POLLER_PID" 2>/dev/null || true' EXIT
+          ( while kill -0 "$POLLER_PID" 2>/dev/null; do sleep 1; done; touch "$STOP_FILE" ) &
+          SUPERVISOR_PID=$!
+          # Keep control-plane credentials in the watcher only; never inherit them into task runtime.
+          unset ORCA_TASK_API_TOKEN ORCA_BUDGET_GATE_TOKEN ORCA_BUDGET_EVIDENCE_HMAC_KEY
+          trap 'kill "$POLLER_PID" "$SUPERVISOR_PID" 2>/dev/null || true' EXIT
 
           # Never let a reused self-hosted runner carry result rows into this run.
           # Stale PASS rows could otherwise inflate the final task count for NOT_RUN.
