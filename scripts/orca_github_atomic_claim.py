@@ -13,7 +13,7 @@ from typing import Any, Iterable
 from scripts.orca_github_execution_gate import evaluate_execution_gate
 from scripts.orca_github_state_store import StateSnapshot
 from scripts.orca_github_task_queue import claim_next
-from scripts.orca_github_runaway_guard import validate_and_consume_claim
+from scripts.orca_github_runaway_guard import initialize_run_guard, validate_and_consume_claim
 from scripts.orca_github_emergency_stop import require_not_stopped
 
 
@@ -68,8 +68,12 @@ def authorize_and_claim_one(
     # Enforce durable hard caps before any claim; consume the run slot in the
     # same CAS write as the replay marker and lease.
     next_state = copy.deepcopy(state)
+    initialized = copy.deepcopy(state)
+    initialized["run_guard"] = initialize_run_guard(
+        state=state, run_id=run_id, now=now,
+    )
     next_state["run_guard"] = validate_and_consume_claim(
-        state=state, task_id=task_id, now=now,
+        state=initialized, task_id=task_id, now=now,
     )
     ledger = next_state.get("consumed_approval_ids")
     if not isinstance(ledger, list) or approval_id in ledger:
