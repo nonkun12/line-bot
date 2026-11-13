@@ -37,6 +37,7 @@ def _iso(value: datetime) -> str:
 
 def empty_state() -> dict[str, Any]:
     return {"schema_version": 1, "revision": 0, "global_hold": True,
+            "emergency_stop": False, "emergency_stop_event": None,
             "tasks": [], "active_lease": None, "consumed_approval_ids": []}
 
 
@@ -47,6 +48,8 @@ def _validate(state: Any) -> dict[str, Any]:
         raise QueueRejected("queue_revision_invalid")
     if not isinstance(state.get("global_hold"), bool):
         raise QueueRejected("global_hold_missing_or_invalid")
+    if not isinstance(state.get("emergency_stop"), bool):
+        raise QueueRejected("emergency_stop_missing_or_invalid")
     if not isinstance(state.get("tasks"), list):
         raise QueueRejected("queue_tasks_invalid")
     consumed = state.get("consumed_approval_ids")
@@ -109,6 +112,8 @@ def claim_next(state: dict[str, Any], *, expected_revision: int, owner: str,
                run_id: str, now: str, lease_seconds: int = 600) -> dict[str, Any]:
     _validate(state)
     _revision(state, expected_revision)
+    if state["emergency_stop"]:
+        raise QueueRejected("emergency_stop_active")
     if state["global_hold"]:
         raise QueueRejected("global_hold_active")
     if state["active_lease"] is not None:
