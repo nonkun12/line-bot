@@ -105,6 +105,16 @@ def evaluate(payload):
 
 
 class BudgetGateTests(unittest.TestCase):
+    def test_cross_runtime_canonical_payload_vector_preserves_float_and_unicode(self):
+        payload = {"z": 10.25, "nested": {"label": "café", "enabled": True},
+                   "a": [1, 2.5, None]}
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                               ensure_ascii=False, allow_nan=False)
+        self.assertEqual(
+            canonical,
+            '{"a":[1,2.5,null],"nested":{"enabled":true,"label":"café"},"z":10.25}',
+        )
+
     def test_signed_clear_and_warn_allow(self):
         self.assertEqual(evaluate(signed_payload())["status"], "CLEAR")
         self.assertEqual(evaluate(signed_payload({"cloudflare_d1": {"used": 70}}))["status"], "WARN")
