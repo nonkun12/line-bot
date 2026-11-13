@@ -46,3 +46,21 @@ def test_scheduled_runs_do_not_wake_render_or_consume_line_push_quota():
         lines = source.splitlines()
         step_index = lines.index(f"      - name: {step_name}")
         assert lines[step_index + 1].strip() == "if: always() && github.event_name != 'schedule'"
+
+def test_workflow_and_legacy_loop_job_have_no_write_permissions():
+    source = WORKFLOW.read_text(encoding="utf-8")
+    assert "permissions:\n  actions: read\n  contents: read" in source
+    worker = source.split("\n  minimal-loop:", 1)[1]
+    header = worker.split("\n    steps:", 1)[0]
+    assert "permissions:\n      actions: read\n      contents: read" in header
+    assert "actions: write" not in source
+    assert "contents: write" not in source
+    assert "issues: write" not in source
+    assert "pull-requests: write" not in source
+
+
+def test_legacy_runtime_remains_unreachable_without_explicit_free_only_gate():
+    source = WORKFLOW.read_text(encoding="utf-8")
+    assert "FREE_ONLY_EXECUTION_APPROVED: 'false'" in source
+    assert "if: ${{ success() && steps.free_only_gate.outcome == 'success' && env.FREE_ONLY_EXECUTION_APPROVED == 'true' }}" in source
+    assert "python scripts/run_minimal_autonomous_loop.py" in source
