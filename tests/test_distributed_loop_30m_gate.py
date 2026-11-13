@@ -150,6 +150,27 @@ class BudgetGateTests(unittest.TestCase):
         with self.assertRaisesRegex(GateBlocked, "budget_product_inventory_unexpected_or_incomplete"):
             evaluate(payload)
 
+    def test_legacy_v1_four_row_payload_is_rejected(self):
+        payload = signed_payload()
+        payload["schema_version"] = 1
+        payload["sources"] = [{"name": "cloudflare_workers"}]
+        sign(payload)
+        with self.assertRaisesRegex(GateBlocked, "budget_meter_schema_unsupported"):
+            evaluate(payload)
+
+    def test_inventory_freshness_and_account_scope_are_enforced(self):
+        stale = signed_payload(inventory_overrides={
+            "observed_at": "2026-11-12T23:40:00Z",
+            "watermark_at": "2026-11-12T23:40:00Z",
+        })
+        with self.assertRaisesRegex(GateBlocked, "budget_product_inventory_stale_or_future"):
+            evaluate(stale)
+        wrong_account = signed_payload(inventory_overrides={
+            "cloudflare_account_id": "another-account",
+        })
+        with self.assertRaisesRegex(GateBlocked, "budget_product_inventory_incomplete"):
+            evaluate(wrong_account)
+
     def test_duplicate_meter_id_blocks(self):
         payload = signed_payload()
         payload["meters"].append(dict(payload["meters"][0]))
