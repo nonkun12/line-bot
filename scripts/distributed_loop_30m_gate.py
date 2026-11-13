@@ -103,7 +103,8 @@ def check_budget(now: datetime) -> dict[str, Any]:
     return evaluate_budget_snapshot(
         request_json(os.environ.get("ORCA_BUDGET_GATE_URL", ""),
                      os.environ.get("ORCA_BUDGET_GATE_TOKEN", "")),
-        now=now,\n        evidence_key=os.environ.get("ORCA_BUDGET_EVIDENCE_HMAC_KEY", ""),
+        now=now,
+        evidence_key=os.environ.get("ORCA_BUDGET_EVIDENCE_HMAC_KEY", ""),
     )
 
 def check_slot(now: datetime) -> tuple[bool, str]:
