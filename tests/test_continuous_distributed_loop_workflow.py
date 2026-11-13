@@ -216,3 +216,24 @@ def test_line_notification_failure_does_not_block_verified_continuation():
     source = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     notification = source.split("      - name: Notify LINE of distributed loop final report", 1)[1].split("      - name:", 1)[0]
     assert "continue-on-error: true" in notification
+
+
+
+def test_unified_loop_is_the_only_scheduled_owner_in_pr_branch():
+    root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    unified = (root / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert unified.count("cron: '*/30 * * * *'") == 1
+
+    retired = [
+        "continuous-distributed-loop.yml",
+        "hourly-self-improvement-sidecar.yml",
+        "line-full-control-hourly.yml",
+        "star-night-cloud-hourly.yml",
+        "orca-phase1-read-only-observation.yml",
+    ]
+    for filename in retired:
+        source = (root / filename).read_text(encoding="utf-8")
+        event_block = source.split("\\njobs:", 1)[0]
+        assert "workflow_dispatch:" in event_block, filename
+        assert "schedule:" not in event_block, filename
+        assert "cron:" not in event_block, filename
