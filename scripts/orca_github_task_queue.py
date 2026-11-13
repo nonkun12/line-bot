@@ -109,7 +109,8 @@ def enqueue(state: dict[str, Any], *, expected_revision: int, task_id: str,
 
 
 def claim_next(state: dict[str, Any], *, expected_revision: int, owner: str,
-               run_id: str, now: str, lease_seconds: int = 600) -> dict[str, Any]:
+               run_id: str, now: str, lease_seconds: int = 600,
+               task_id: str | None = None) -> dict[str, Any]:
     _validate(state)
     _revision(state, expected_revision)
     if state["emergency_stop"]:
@@ -123,9 +124,17 @@ def claim_next(state: dict[str, Any], *, expected_revision: int, owner: str,
     current = _time(now)
     queued = sorted((t for t in state["tasks"] if t["status"] == "queued"),
                     key=lambda t: (t["created_at"], t["task_id"]))
-    if not queued:
-        raise QueueRejected("queue_empty")
-    task = queued[0]
+    if task_id is None:
+        if not queued:
+            raise QueueRejected("queue_empty")
+        task = queued[0]
+    else:
+        if not isinstance(task_id, str) or not task_id:
+            raise QueueRejected("claim_task_id_invalid")
+        matches = [item for item in queued if item["task_id"] == task_id]
+        if len(matches) != 1:
+            raise QueueRejected("requested_task_not_queued_or_ambiguous")
+        task = matches[0]
     out = copy.deepcopy(state)
     task_out = next(t for t in out["tasks"] if t["task_id"] == task["task_id"])
     task_out["status"] = "claimed"
