@@ -65,6 +65,12 @@ def initialize_run_guard(*, state: dict[str, Any], run_id: str,
                     "outcomes_by_task"}
         if not isinstance(previous, dict) or set(previous) != required:
             raise RunawayGuardRejected("durable_run_guard_schema_invalid")
+        if previous.get("run_id") == run_id:
+            raise RunawayGuardRejected("run_guard_already_initialized_for_run")
+        if previous.get("paid_services_enabled") is not False:
+            raise RunawayGuardRejected("paid_services_forbidden")
+        if previous.get("automatic_retry_enabled") is not False:
+            raise RunawayGuardRejected("automatic_retry_forbidden")
         failures = previous["consecutive_failures"]
         if isinstance(failures, bool) or not isinstance(failures, int) or failures < 0:
             raise RunawayGuardRejected("failure_counter_invalid")
