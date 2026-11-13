@@ -308,6 +308,10 @@ class RuntimeStopWatcherTests(unittest.TestCase):
         self.assertIn(".global_hold.clear == true", watcher)
         self.assertIn(".budget_guard.allowed == true", watcher)
         self.assertIn(".global_hold.unresolved_operations == 0", watcher)
+        initial_gate = workflow.split("id: gate", 1)[1].split("minimal-loop:", 1)[0]
+        self.assertIn("ORCA_CONTROL_API_URL", initial_gate)
+        self.assertIn("ORCA_LOOP_PREFLIGHT_TOKEN", initial_gate)
+        self.assertIn("ORCA_CONTROL_API_URL", workflow.split("id: final_admission", 1)[1].split("id: publish", 1)[0])
         self.assertIn("--stop-file \"$STOP_FILE\"", workflow)
 
 
