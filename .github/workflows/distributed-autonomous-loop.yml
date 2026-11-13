@@ -1467,7 +1467,7 @@ jobs:
           fi
 
       - name: Wake Render before LINE final report
-        if:always() && github.event_name != 'schedule'
+        if: always() && github.event_name != 'schedule'
         run: |
           set -euo pipefail
           # Free Render instances may need time to wake after inactivity.
@@ -1509,7 +1509,7 @@ jobs:
             | python scripts/orca_status_publisher.py
 
       - name: Notify LINE of distributed loop final report
-        if:always() && github.event_name != 'schedule'
+        if: always() && github.event_name != 'schedule'
         continue-on-error: true
         env:
           LINE_INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
