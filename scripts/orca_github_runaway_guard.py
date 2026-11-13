@@ -200,6 +200,8 @@ def finish_with_outcome(*, state: dict[str, Any], expected_revision: int,
     if set(guard) != required or not isinstance(guard.get("outcomes_by_task"), dict):
         raise RunawayGuardRejected("durable_run_guard_schema_invalid")
     ledger = guard["outcomes_by_task"]
+    if guard.get("run_id") != run_id:
+        raise RunawayGuardRejected("guard_run_id_mismatch")
     if outcome not in {"done", "failed"}:
         raise RunawayGuardRejected("outcome_invalid")
     prior = ledger.get(task_id)
@@ -211,8 +213,6 @@ def finish_with_outcome(*, state: dict[str, Any], expected_revision: int,
                 raise RunawayGuardRejected("stale_revision_conflict")
             return copy.deepcopy(state)
         raise RunawayGuardRejected("conflicting_outcome_replay")
-    if guard.get("run_id") != run_id:
-        raise RunawayGuardRejected("guard_run_id_mismatch")
     try:
         updated = queue_finish(
             state, expected_revision=expected_revision, task_id=task_id,
