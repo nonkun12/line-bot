@@ -23,7 +23,7 @@ def test_execution_is_never_enabled_by_preflight_even_with_gate_pass(monkeypatch
                        "status": "queued", "created_at": "2026-11-13T00:00:00Z"}],
             "consumed_approval_ids": [],
             "run_guard": {
-                "run_id": "test-run", "started_at": now.isoformat(),
+                "run_id": "previous-run", "started_at": now.isoformat(),
                 "tasks_claimed": 0, "attempts_by_task": {},
                 "consecutive_failures": 0, "circuit_breaker_until": None,
                 "paid_services_enabled": False, "automatic_retry_enabled": False,
