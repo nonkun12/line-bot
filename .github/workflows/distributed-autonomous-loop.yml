@@ -559,6 +559,8 @@ jobs:
           POLLER_PID=$!
           ( while kill -0 "$POLLER_PID" 2>/dev/null; do sleep 1; done; touch "$STOP_FILE" ) &
           SUPERVISOR_PID=$!
+          # Keep control-plane credentials in the watcher only; never inherit them into task runtime.
+          unset ORCA_TASK_API_TOKEN ORCA_BUDGET_GATE_TOKEN ORCA_BUDGET_EVIDENCE_HMAC_KEY
           trap 'kill "$POLLER_PID" "$SUPERVISOR_PID" 2>/dev/null || true' EXIT
 
           # Never let a reused self-hosted runner carry result rows into this run.
