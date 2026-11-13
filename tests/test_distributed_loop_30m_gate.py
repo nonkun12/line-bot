@@ -31,6 +31,13 @@ class BudgetGateTests(unittest.TestCase):
  def test_incomplete_or_sampled_data_blocks(self):
   for v in ({"quality":"estimated"},{"coverage_complete":False},{"exact_counter":False},{"sampling_mode":"adaptive"},{"limit_evidence_id":""},{"source_watermark_at":"2026-11-12T00:00:00Z"}):
    with self.subTest(v=v),self.assertRaises(GateBlocked): self.run_gate(signed({"cloudflare_d1":v}))
+ def test_source_period_boundaries_are_complete_and_current(self):
+  with self.assertRaisesRegex(GateBlocked,"budget_period_not_current"):
+   self.run_gate(signed({"cloudflare_d1":{"period_end":"2026-11-12T00:00:00Z"}}))
+  with self.assertRaisesRegex(GateBlocked,"budget_source_period_boundary_incomplete"):
+   self.run_gate(signed({"cloudflare_d1":{"period_start":"2026-11-01T00:00:00Z"}}))
+  with self.assertRaisesRegex(GateBlocked,"budget_period_not_current"):
+   self.run_gate(signed({"cloudflare_d1":{"period_start":"2026-11-12T00:00:00Z","period_end":"2026-11-13T00:00:00Z"}}))
  def test_missing_or_extra_sources_block(self):
   p=signed(); p["sources"]=p["sources"][:-1]
   with self.assertRaisesRegex(GateBlocked,"source_set_incomplete"): self.run_gate(resign(p))
