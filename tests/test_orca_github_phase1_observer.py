@@ -48,7 +48,7 @@ class Phase1ObserverTests(unittest.TestCase):
         with self.assertRaisesRegex(ObservationError, "multiple_claimed_tasks"):
             summarize_state(state)
 
-    def test_valid_state_is_observed_but_never_authorizes_execution(self):
+    def test_valid_state_summary_is_read_only(self):
         state = {
             "schema_version": 1, "revision": 4, "global_hold": False,
             "tasks": [{"task_id": "task-1", "status": "queued"}],
@@ -61,8 +61,30 @@ class Phase1ObserverTests(unittest.TestCase):
 
         result = observe(token="token", repository="owner/repo", opener=missing_ref)
         self.assertFalse(result["execution_enabled"])
-        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["observation_status"], "BLOCKED")
+        self.assertEqual(result["execution_gate"], "BLOCKED")
         self.assertEqual(result["reason"], "github_resource_not_found")
+
+
+    def test_valid_snapshot_is_observed_but_execution_stays_blocked(self):
+        state = {
+            "schema_version": 1, "revision": 1, "global_hold": True,
+            "tasks": [], "active_lease": None,
+        }
+        encoded = base64.b64encode(json.dumps(state).encode()).decode()
+        responses = [
+            _Response({"object": {"sha": "b" * 40}}),
+            _Response({"encoding": "base64", "content": encoded}),
+        ]
+
+        def opener(_request, _timeout):
+            return responses.pop(0)
+
+        result = observe(token="token", repository="owner/repo", opener=opener)
+        self.assertEqual(result["observation_status"], "OBSERVED")
+        self.assertEqual(result["execution_gate"], "BLOCKED")
+        self.assertEqual(result["reason"], "global_hold_active;budget_evidence_missing")
+        self.assertFalse(result["execution_enabled"])
 
     def test_state_document_read_is_pinned_to_observed_commit(self):
         state = {
