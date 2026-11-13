@@ -66,11 +66,55 @@ def new_cycle(*, observation: str, source_refs: list[str], created_at: str,
     }
 
 
+
+def _validate_cycle(cycle: Any, *, require_evaluated: bool = False) -> None:
+    if not isinstance(cycle, dict) or cycle.get("schema_version") != 1:
+        raise ImprovementRejected("cycle_invalid")
+    stage = cycle.get("stage")
+    if stage not in _STAGES:
+        raise ImprovementRejected("cycle_stage_invalid")
+    if require_evaluated and stage != "evaluated":
+        raise ImprovementRejected("previous_cycle_not_evaluated")
+    observation = cycle.get("observation")
+    created_at = cycle.get("created_at")
+    cycle_id = cycle.get("cycle_id")
+    parent_id = cycle.get("parent_cycle_id")
+    depth = cycle.get("depth")
+    if not isinstance(observation, str) or not observation.strip():
+        raise ImprovementRejected("cycle_observation_invalid")
+    if isinstance(depth, bool) or not isinstance(depth, int) or not 0 <= depth <= _MAX_DEPTH:
+        raise ImprovementRejected("recursion_depth_invalid")
+    if depth == 0 and parent_id is not None:
+        raise ImprovementRejected("root_cycle_cannot_have_parent")
+    if depth > 0 and (not isinstance(parent_id, str) or not _SHA.fullmatch(parent_id)):
+        raise ImprovementRejected("parent_cycle_id_invalid")
+    timestamp = _utc(created_at)
+    expected_id = hashlib.sha256(
+        f"{observation}\\n{timestamp}\\n{parent_id or ''}".encode("utf-8")
+    ).hexdigest()
+    if cycle_id != expected_id:
+        raise ImprovementRejected("cycle_identity_mismatch")
+    for flag in ("execution_authorized", "auto_apply", "auto_merge", "auto_deploy"):
+        if cycle.get(flag) is not False:
+            raise ImprovementRejected("unsafe_execution_flag")
+    evidence = cycle.get("evidence")
+    if not isinstance(evidence, dict):
+        raise ImprovementRejected("cycle_evidence_invalid")
+    last_index = _STAGES.index(stage)
+    for required_stage in _STAGES[:last_index + 1]:
+        _evidence(evidence.get(required_stage), required_stage)
+    if stage == "evaluated":
+        if cycle.get("decision") not in {"accepted_candidate", "deferred", "rejected"}:
+            raise ImprovementRejected("cycle_decision_invalid")
+    elif cycle.get("decision") is not None:
+        raise ImprovementRejected("premature_cycle_decision")
+    details = cycle.get("details", {})
+    if not isinstance(details, dict):
+        raise ImprovementRejected("cycle_details_invalid")
+
 def advance(cycle: dict[str, Any], *, expected_stage: str, next_stage: str,
             evidence_refs: list[str], details: dict[str, Any] | None = None) -> dict[str, Any]:
-    if (not isinstance(cycle, dict) or cycle.get("schema_version") != 1
-            or not isinstance(cycle.get("evidence"), dict)):
-        raise ImprovementRejected("cycle_invalid")
+    _validate_cycle(cycle)
     if cycle.get("stage") in _TERMINAL or cycle.get("stage") != expected_stage:
         raise ImprovementRejected("stage_conflict")
     try:
@@ -94,9 +138,7 @@ def advance(cycle: dict[str, Any], *, expected_stage: str, next_stage: str,
 def evaluate(cycle: dict[str, Any], *, expected_stage: str, tests_passed: bool,
              critic_verdict: str, baseline_metric: float | int,
              candidate_metric: float | int, metric_evidence_refs: list[str]) -> dict[str, Any]:
-    if (not isinstance(cycle, dict) or cycle.get("schema_version") != 1
-            or not isinstance(cycle.get("evidence"), dict)):
-        raise ImprovementRejected("cycle_invalid")
+    _validate_cycle(cycle)
     if expected_stage != "reviewed" or cycle.get("stage") != "reviewed":
         raise ImprovementRejected("evaluation_requires_reviewed_stage")
     if tests_passed is not True:
@@ -124,8 +166,7 @@ def evaluate(cycle: dict[str, Any], *, expected_stage: str, tests_passed: bool,
 
 def start_next_cycle(previous: dict[str, Any], *, observation: str,
                      source_refs: list[str], created_at: str) -> dict[str, Any]:
-    if not isinstance(previous, dict) or previous.get("stage") != "evaluated":
-        raise ImprovementRejected("previous_cycle_not_evaluated")
+    _validate_cycle(previous, require_evaluated=True)
     depth = previous.get("depth")
     if isinstance(depth, bool) or not isinstance(depth, int) or depth >= _MAX_DEPTH:
         raise ImprovementRejected("recursion_depth_limit_reached")
