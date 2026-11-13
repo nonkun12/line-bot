@@ -11,6 +11,9 @@ def test_missing_trusted_gate_configuration_fails_closed():
 def test_execution_is_never_enabled_by_preflight_even_with_gate_pass(monkeypatch):
     import scripts.orca_30m_preflight as preflight
 
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+
     class Snapshot:
         state = {
             "emergency_stop": False,
@@ -19,6 +22,13 @@ def test_execution_is_never_enabled_by_preflight_even_with_gate_pass(monkeypatch
             "tasks": [{"task_id": "task-1", "request_hash": "a" * 64,
                        "status": "queued", "created_at": "2026-11-13T00:00:00Z"}],
             "consumed_approval_ids": [],
+            "run_guard": {
+                "run_id": "test-run", "started_at": now.isoformat(),
+                "tasks_claimed": 0, "attempts_by_task": {},
+                "consecutive_failures": 0, "circuit_breaker_until": None,
+                "paid_services_enabled": False, "automatic_retry_enabled": False,
+                "outcomes_by_task": {},
+            },
         }
 
     class Store:
@@ -42,8 +52,9 @@ def test_execution_is_never_enabled_by_preflight_even_with_gate_pass(monkeypatch
         "ORCA_BILLING_ACCOUNT_ID": "billing-account",
         "ORCA_IMPROVEMENT_CYCLE_JSON": "{}",
         "GITHUB_REPOSITORY": "nonkun12/line-bot",
+        "GITHUB_RUN_ID": "test-run",
     }
-    result = inspect_prerequisites(env=env, store=Store())
+    result = inspect_prerequisites(env=env, store=Store(), now=now)
     assert result["status"] == "BLOCKED"
     assert result["reason"] == "phase3_worker_runtime_not_integrated"
     assert result["execution_enabled"] is False
