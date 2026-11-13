@@ -162,13 +162,37 @@ def test_continuation_stops_when_another_loop_is_queued_or_running(tmp_path):
     assert "next_depth=" not in output
 
 
-def test_distributed_loop_is_scheduled_hourly_in_tokyo_and_stays_bounded():
+def test_distributed_loop_is_scheduled_every_30_minutes_in_tokyo_and_stays_bounded():
     path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml"
     source = path.read_text(encoding="utf-8")
     assert "timezone: 'Asia/Tokyo'" in source
-    assert "- cron: '17 * * * *'" in source
-    assert "github.event_name == 'schedule' && '1'" in source
+    assert "- cron: '*/30 * * * *'" in source
+    assert "      MAX_TASKS: '1'" in source
+    assert "github.event_name == 'schedule' ||" in source
+    assert "FREE_ONLY_EXECUTION_APPROVED: 'false'" in source
+    assert "Enforce free-only provider evidence gate" in source
+    assert "free_only_provider_and_budget_evidence_missing" in source
+    assert "steps.free_only_gate.outcome == 'success'" in source
+    assert "GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}" not in source
+    refill = source.split("      - name: Prepare bounded runtime task refill", 1)[1].split("      - name:", 1)[0]
+    assert "--provider-free-only" in refill
+    assert "--provider-free-map core/line_development_runtime.py" in refill
+    assert "skipped_catalog_not_provider_free_ids" in source
+    assert "catalog_blocked_non_provider_free:" in source
+    assert "catalog_blocked_unapproved:" in source
+    resume = source.split("      - name: Resume one explicitly approved held task", 1)[1].split("      - name:", 1)[0]
+    assert "env.FREE_ONLY_EXECUTION_APPROVED == 'true'" in resume
+    issue_create = source.split("      - name: Create bounded review-only task issues from analyzer findings", 1)[1].split("      - name:", 1)[0]
+    assert "env.FREE_ONLY_EXECUTION_APPROVED == 'true'" in issue_create
 
+
+def test_orca_phase1_observer_is_manual_only_and_does_not_duplicate_scheduler():
+    path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "orca-phase1-read-only-observation.yml"
+    source = path.read_text(encoding="utf-8")
+    event_block = source.split("on:", 1)[1].split("permissions:", 1)[0]
+    assert "workflow_dispatch:" in event_block
+    assert "schedule:" not in event_block
+    assert 'cron: "*/30 * * * *"' not in event_block
 
 def test_only_continuous_workflow_owns_automatic_dispatch():
     root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
@@ -192,3 +216,24 @@ def test_line_notification_failure_does_not_block_verified_continuation():
     source = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     notification = source.split("      - name: Notify LINE of distributed loop final report", 1)[1].split("      - name:", 1)[0]
     assert "continue-on-error: true" in notification
+
+
+
+def test_unified_loop_is_the_only_scheduled_owner_in_pr_branch():
+    root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    unified = (root / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert unified.count("cron: '*/30 * * * *'") == 1
+
+    retired = [
+        "continuous-distributed-loop.yml",
+        "hourly-self-improvement-sidecar.yml",
+        "line-full-control-hourly.yml",
+        "star-night-cloud-hourly.yml",
+        "orca-phase1-read-only-observation.yml",
+    ]
+    for filename in retired:
+        source = (root / filename).read_text(encoding="utf-8")
+        event_block = source.split("permissions:", 1)[0]
+        assert "workflow_dispatch:" in event_block, filename
+        assert "schedule:" not in event_block, filename
+        assert "cron:" not in event_block, filename

@@ -260,7 +260,7 @@ _ORCA_ALLOWED_FIELDS = {
     "dispatches": {"id", "dispatch_id", "task_id", "status", "state", "stage", "created_at", "updated_at", "worker_id", "stream_key"},
     "workers": {"id", "worker_id", "dispatch_id", "task_id", "status", "state", "stage", "addressable", "exactWorker", "created_at", "updated_at", "stream_key"},
 }
-_ORCA_STREAM_KEYS = {"main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement", "side_line_full_control", "side_core_vocabulary"}
+_ORCA_STREAM_KEYS = {"main_loop", "main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement", "side_line_full_control", "side_core_vocabulary"}
 
 
 def _sanitize_orca_payload(payload):
@@ -446,26 +446,54 @@ def system_status():
 @dashboard_bp.route("/api/dashboard/loop", methods=["GET"])
 @requires_dashboard_access
 def autonomous_loop_status():
-    """Expose configured autonomous-loop controls without claiming unverified runtime activity."""
+    """Read-only dashboard contract for the proposed unified 30-minute loop."""
     return jsonify({
         "ok": True,
         "loop": {
-            "status": "configured",
-            "schedule_jst": ["04:30", "10:30", "16:30", "22:30"],
-            "frequency_per_day": 4,
-            "target_cadence": "hourly",
+            "status": "proposal_only",
+            "target_cadence": "30m",
             "target_cadence_verified": False,
+            "schedule_jst": ["毎時00分", "毎時30分"],
+            "frequency_per_day": 48,
+            "schedule_source": "PR #1354 branch only; not merged or enabled on main",
+            "schedule_configured_in_pr": True,
+            "schedule_enabled": False,
+            "schedule_enabled_on_main": False,
+            "schedule_owner": ".github/workflows/distributed-autonomous-loop.yml",
+            "scheduled_workflow_count": 1,
+            "sidecar_schedules_enabled": False,
+            "observer_schedule_enabled": False,
+            "start_readiness": "BLOCKED",
+            "start_blockers": [
+                "free_provider_and_independent_budget_evidence_missing",
+                "dedicated_worker_runtime_not_integrated",
+                "durable_orca_state_and_operator_approval_not_provisioned",
+                "shared_emergency_stop_not_operational",
+            ],
+            "execution_enabled": False,
+            "execution_status": "blocked_preflight_only",
+            "activation_preflight": {"status": "blocked", "execution_enabled": False, "evidence": "Read-only gate is connected; legacy worker remains disconnected; stale scheduled triggers older than 15 minutes are discarded"},
+            "budget_gate": {"status": "blocked", "evidence": "Signed live GitHub Actions quota evidence and independent collector are not connected"},
+            "runaway_guard": {"status": "partial", "evidence": "Durable limits and CAS helpers exist; legacy worker boundary and outcome persistence are not integrated"},
+            "emergency_stop": {"status": "not_operational", "evidence": "LINE and terminal share the proposed durable latch; orca-state is not provisioned and the legacy workflow stop-file is still separate"},
             "streams": [
-                {"key": "main_star_night", "kind": "main", "label": "本線：STAR-NIGHT", "status": "in_development", "cadence": "hourly_target", "detail": "物語・シナリオ・音楽・映像の継続制作。毎時実行は未検証。", "related_prs": [1285]},
-                {"key": "side_task_supply", "kind": "side", "label": "サイド1：分散Loop・タスク枯渇対策", "status": "in_development", "cadence": "hourly_target", "detail": "候補補充・重複防止・失敗復旧候補。毎時実行は未検証。", "related_prs": [1276]},
-                {"key": "side_media_ai", "kind": "side", "label": "サイド2：映像・音楽AI", "status": "in_development", "cadence": "hourly_target", "detail": "映像・音楽の生成と品質改善。毎時実行・実稼働は未検証。", "related_prs": []},
-                {"key": "side_self_improvement", "kind": "side", "label": "サイド3：自己改善AI", "status": "in_development", "cadence": "hourly_target", "detail": "失敗分析・改善候補・開発効率改善。安全ゲートは維持。", "related_prs": [1278]},
-                {"key": "side_line_full_control", "kind": "side", "label": "サイド4：LINE全指示化", "status": "in_development", "cadence": "hourly_target", "detail": "LINEから4サイドを含む開発指示を受付。読み取り依頼は開発へ送らない。", "related_prs": [1282, 1283, 1284]},
-                {"key": "side_core_vocabulary", "kind": "side", "label": "サイド5：英単語コア語彙", "status": "in_development", "cadence": "every_5_hours_target", "detail": "既存のコアイメージ辞書を再利用し、レビュー済みユニーク語数を1,000語へ拡張。5時間ごとの実行はCI証跡で確認するまで未検証。", "related_prs": [368]}
+                {
+                    "key": "main_loop", "kind": "main",
+                    "label": "統合メインLOOP（30分目標）",
+                    "status": "partial", "cadence": "30m_target",
+                    "detail": "Sidecar・LINE準備確認を統合する設計。スケジュール提案はPR内のみ。実行・完了は未検証。",
+                    "related_prs": [1353, 1354],
+                }
+            ],
+            "handoffs": [
+                {"key": "self_improvement", "label": "再帰的自己改善", "status": "integration_pending", "detail": "独立Sidecar停止案。メインLOOP内部への安全な呼び出し統合は未完了。"},
+                {"key": "line_readiness", "label": "LINE準備確認", "status": "integration_pending", "detail": "独立スケジュール停止案。メインLOOPへの統合は未完了。"},
+                {"key": "star_night", "label": "STAR-NIGHT", "status": "waiting", "detail": "30分LOOPの受け入れ完了後に再開。独立実行は行わない。"},
+                {"key": "muse", "label": "Muse", "status": "inactive", "detail": "引き継ぎ済み。独立した作業・スケジュールは稼働扱いしない。"},
             ],
             "manual_run_available": True,
             "manual_default_tasks": 1,
-            "max_tasks_per_run": 4,
+            "max_tasks_per_run": 1,
             "concurrency_cancel_in_progress": False,
             "auto_apply_patch": False,
             "auto_deploy": False,
@@ -473,7 +501,7 @@ def autonomous_loop_status():
             "sheets_audit": True,
             "runtime_telemetry": "github_actions",
             "last_run": _github_loop_runs(),
-            "note": "未取得のGitHub Actions実行を成功・実行済みとは表示しません。",
+            "note": "PR設定・CI成功・Workflow実行・タスクPASSを別々に表示します。未確認の稼働を成功扱いしません。",
         },
         "safety": {
             "auto_merge": False,

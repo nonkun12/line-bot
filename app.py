@@ -352,6 +352,13 @@ def _handle_ai_gateway_request(ai_request):
     message = str(ai_request.message)
     user_id = str(ai_request.user_id)
 
+    # Emergency Stop is a highest-priority control command. The LINE webhook
+    # signature is validated by the LINE SDK before this request reaches the
+    # gateway; the shared handler still enforces the authorized-user allowlist.
+    from core.orca_emergency_stop import is_emergency_stop_command, activate_from_line
+    if is_emergency_stop_command(message):
+        return activate_from_line(user_id=user_id, message=message)
+
     # Report deployment configuration deterministically; never ask the chat model
     # to guess whether GitHub integration is enabled, and never dispatch Actions here.
     if is_github_integration_status_request(message):

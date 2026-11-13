@@ -51,13 +51,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (streamGrid) {
           streamGrid.innerHTML = streams.map(item => {
             const prs = Array.isArray(item.related_prs) ? item.related_prs.map(n => '#'+Number(n)).join(' / ') : '';
-            const cadence = item.cadence === 'hourly_target' ? '目標：毎時（未検証）' : '頻度未確認';
+            const cadence = item.cadence === '30m_target' ? '目標：30分間隔（PR内設定・未稼働確認）' : '頻度未確認';
             return '<div class="system-card"><div class="system-card-title">'+esc(item.label||item.key)+'</div><div class="system-status">'+streamStatus(item.status)+'</div><div class="system-details">'+esc(item.detail||'')+'</div><div class="system-details">'+esc(cadence)+(prs ? ' ・ 関連PR '+esc(prs) : '')+'</div></div>';
           }).join('') || '<div class="system-details">系統情報は未取得です</div>';
         }
         const cards=[
-          ['🔄 Loop','🟢 自動運転設定済み',`1日 ${l.frequency_per_day||4}回 ・ ${(l.schedule_jst||[]).join(' / ')} JST`],
+          ['🔄 Loop',l.execution_enabled?'🟢 実行許可あり':'🟡 提案・未稼働確認',`${l.target_cadence||'未設定'}間隔目標 ・ ${l.frequency_per_day||'—'}回/日相当 ・ ${(l.schedule_jst||[]).join(' / ')} JST`],
           ['🛡️ Safety Gate',s.fail_closed||l.fail_closed?'🟢 FAIL_CLOSED 有効':'⚪ 未確認',`Auto Merge: ${s.auto_merge?'有':'無'} ・ Auto Deploy: ${s.auto_deploy?'有':'無'}`],
+          ['🚦 Activation Preflight',l.activation_preflight?.status==='ready'?'🟢 準備完了':'🔴 実行BLOCKED',l.activation_preflight?.evidence||'ワーカー統合・実行許可の検証待ち'],
+          ['💰 Budget Gate',l.budget_gate?.status==='verified'?'🟢 検証済み':'🟡 実行BLOCKED',l.budget_gate?.evidence||'無料枠の実証拠は未接続'],
+          ['🧯 Runaway Guard',l.runaway_guard?.status==='verified'?'🟢 検証済み':'🟡 部分実装・検証待ち',l.runaway_guard?.evidence||'結果台帳とBreakerを確認中'],
+          ['✋ Emergency Stop',l.emergency_stop?.status==='operational'?'🟢 運用可能':'🔴 運用未準備',l.emergency_stop?.evidence||'永続状態と停止経路を未確認'],
           ['📋 Sheets監査',l.sheets_audit?'🟢 有効':'⚪ 未確認',`Runtime telemetry: ${esc(l.runtime_telemetry||'unknown')}`],
           ['🧭 Hermes Adviser',s.hermes_role==='adviser'?'🟢 Adviser':'⚪ 未確認',s.hermes_is_auxiliary?'補助系統・Loop本体とは分離':'状態確認要'],
           ['✋ Hand Sign',h.camera_smoke_test==='implemented'?'🟢 Camera準備済み':'🔵 開発中',`Upload: ${h.camera_upload?'有':'無'} ・ Storage: ${h.camera_storage?'有':'無'}`],
@@ -67,8 +71,8 @@ document.addEventListener('DOMContentLoaded', () => {
               ? '最新: Run #'+(l.last_run.runs[0].run_number||'-')+' / '+(l.last_run.runs[0].status||'-')+' / '+(l.last_run.runs[0].conclusion||'実行中')
               : '未取得のRunを成功扱いしません'],
         ];
-        document.getElementById('loopGrid').innerHTML=cards.map(x=>'<div class="system-card"><div class="system-card-title">'+x[0]+'</div><div class="system-status">'+x[1]+'</div><div class="system-details">'+esc(x[2])+'</div></div>').join('');
-        document.getElementById('loopSummary').textContent=`自動Loop ${l.frequency_per_day||4}回/日 ・ 安全設定確認済み`;
+        document.getElementById('loopGrid').innerHTML=cards.map(x=>'<div class="system-card"><div class="system-card-title">'+x[0]+'</div><div class="system-status">'+x[1]+'</div><div class="system-details">'+esc(x[2])+'</div></div>').join('')+(Array.isArray(l.handoffs)?'<div class="system-card"><div class="system-card-title">引き継ぎ・統合状況</div>'+l.handoffs.map(h=>'<div class="system-details">'+esc(h.label)+'：'+esc(h.status)+' — '+esc(h.detail)+'</div>').join('')+'</div>':'');
+        document.getElementById('loopSummary').textContent=`30分LOOP：${l.execution_status==='active'?'実行確認済み':'未稼働・受け入れ前'} ・ ${l.schedule_source||'設定元未確認'}`;
       } catch(e) {
         document.getElementById('loopSummary').textContent='状態取得失敗';
         document.getElementById('loopGrid').innerHTML='<div class="system-details">Loop状態を取得できません。未確認の稼働を断定しません。</div>';
@@ -149,13 +153,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const state=esc(item.status||item.state||'状態未取得');
         return '<div class="system-details">'+name+'：'+title+' ・ '+state+'</div>';
       }).join('')).join('');
-      const streamLabels={main_star_night:'本線：STAR-NIGHT',side_task_supply:'サイド1：タスク枯渇対策',side_media_ai:'サイド2：映像・音楽AI',side_self_improvement:'サイド3：自己改善AI',side_line_full_control:'サイド4：LINE全指示化'};
+      const streamLabels={main_loop:'統合メインLOOP',main_star_night:'本線：STAR-NIGHT',side_task_supply:'サイド1：タスク枯渇対策',side_media_ai:'サイド2：映像・音楽AI',side_self_improvement:'サイド3：自己改善AI',side_line_full_control:'サイド4：LINE全指示化'};
       const streamRows=(Array.isArray(data.streams)?data.streams:[]).map(item=>{
         const observed=item.status==='observed';
         const counts='Task '+Number(item.task_count||0)+' / Dispatch '+Number(item.dispatch_count||0)+' / Worker '+Number(item.worker_count||0);
         return '<div class="system-card"><div class="system-card-title">'+esc(streamLabels[item.key]||item.label||item.key)+'</div><div class="system-status">'+(observed?'🟢 実データ観測あり':'⚪ 未確認')+'</div><div class="system-details">'+esc(counts)+'</div><div class="system-details">'+(observed?'実レコードとの一致あり':'対応する系統メタデータ未検出')+'</div></div>';
       }).join('');
-      panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">'+statusLabel+'</div><div class="system-details">'+esc(age)+'</div></div>'+summary+'<div class="section-subtitle">5系統の実データ照合</div>'+(streamRows||'<div class="system-details">系統データ未取得</div>')+(rows||'<div class="system-details">Task / Dispatch / Workerの明細は未受信です。</div>');
+      panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">'+statusLabel+'</div><div class="system-details">'+esc(age)+'</div></div>'+summary+'<div class="section-subtitle">統合LOOPの実データ照合</div>'+(streamRows||'<div class="system-details">系統データ未取得</div>')+(rows||'<div class="system-details">Task / Dispatch / Workerの明細は未受信です。</div>');
     }catch(error){
       panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">⚪ 未確認</div><div class="system-details">'+esc(error.message)+'</div></div>';
     }

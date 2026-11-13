@@ -1,34 +1,42 @@
 {
   "version": 1,
-  "max_tasks_per_run": 4,
+  "max_tasks_per_run": 1,
   "tasks": [
     {
       "id": "ai-speaker-empty-transcript-no-brain-call",
       "instruction": "tests/test_ai_speaker.py のみに新しい固有名の回帰テストを1件追加してください。空白だけの文字起こしを渡すと AISpeaker.handle_transcript が ValueError('speech transcript must not be empty') を返し、FakeBrain.requests が空のままであることを確認してください。既存テストを変更せず、変更は指定されたテストファイル1つだけにしてください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
       "allowed_paths": [
         "tests/test_ai_speaker.py"
-      ]
+      ],
+      "task_type": "add_regression_test",
+      "contract_version": 1
     },
     {
       "id": "recovery-ai-state-isolation",
       "instruction": "tests/test_recovery_ai.py のみに、新しい固有名の回帰テストを1件追加してください。RecoveryStore に異なる task_id の timeout 失敗を同じ state file へ記録し、fingerprint と failure state が task_id ごとに分離され、両方の初回判断が REPAIR_ONCE になることを検証してください。既存テストを変更せず、外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
       "allowed_paths": [
         "tests/test_recovery_ai.py"
-      ]
+      ],
+      "task_type": "add_regression_test",
+      "contract_version": 1
     },
     {
       "id": "router-regression-general-request-metadata",
       "instruction": "tests/test_management_router.py に、曖昧な一般依頼を GENERAL に振り分けたとき、routing=deterministic・matched_specialists=[]・routing_priority=null を保ち、channel='line' と metadata.source を失わない回帰テストを1件追加してください。新しい固有のテスト名を使い、既存テストと重複させず、テストファイルのみ変更してください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
       "allowed_paths": [
         "tests/test_management_router.py"
-      ]
+      ],
+      "task_type": "add_regression_test",
+      "contract_version": 1
     },
     {
       "id": "recovery-ai-loop-adapter-durable-state-readback",
       "instruction": "tests/test_recovery_ai_loop_adapter.py のみに、新しい固有名の回帰テストを1件追加してください。ダミーの task_id と失敗結果 (status=FAIL, exit_code=1, failure_reason=task_timeout) を record_loop_outcome() に渡し、決定が REPAIR_ONCE であること、同じ state path を使った新しい RecoveryStore インスタンスで状態を読み直せること、consecutive_failures=1・last_category=timeout・same_fingerprint_attempts=1 が保存されていることを確認してください。生の例外文やシークレットは使わず、既存テストを変更せず、変更は指定されたテストファイル1つだけにしてください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
       "allowed_paths": [
         "tests/test_recovery_ai_loop_adapter.py"
-      ]
+      ],
+      "task_type": "add_regression_test",
+      "contract_version": 1
     }
   ],
   "catalog_source": "reviewed deterministic target allowlist"

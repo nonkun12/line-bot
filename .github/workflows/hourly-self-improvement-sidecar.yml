@@ -1,9 +1,7 @@
 name: Hourly Self-Improvement Sidecar
 
 on:
-  schedule:
-    - cron: "0 * * * *"
-      timezone: "Asia/Tokyo"
+  # Manual-only until the bounded report is integrated and its dependency failure is fixed.
   workflow_dispatch:
 
 permissions:

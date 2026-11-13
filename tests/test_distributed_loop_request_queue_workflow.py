@@ -82,5 +82,6 @@ def test_held_task_resume_stays_bounded_to_one_task():
         / "distributed-autonomous-loop.yml"
     ).read_text(encoding="utf-8")
 
-    assert "startsWith(github.event.comment.body, '/distributed-loop resume_task_id=') && '1'" in workflow
+    assert "      MAX_TASKS: '1'" in workflow
+    assert "startsWith(github.event.comment.body, '/distributed-loop resume_task_id=')" in workflow
     assert "resume_task_id=([A-Za-z0-9._-]{1,100})" in workflow
