@@ -7,6 +7,7 @@ import hmac
 import json
 import math
 import os
+from pathlib import Path
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -316,6 +317,26 @@ def request_json(url: str, token: str, *, github: bool = False) -> Any:
         raise GateBlocked("safety_endpoint_unavailable_or_invalid") from None
 
 
+def check_github_runner_policy() -> None:
+    repository = os.environ.get("GITHUB_REPOSITORY", "")
+    token = os.environ.get("GH_TOKEN", "") or os.environ.get("GITHUB_TOKEN", "")
+    if not repository or "/" not in repository:
+        raise GateBlocked("github_repository_identity_missing")
+    metadata = request_json("https://api.github.com/repos/" + repository, token, github=True)
+    if (not isinstance(metadata, dict) or metadata.get("visibility") != "public"
+            or metadata.get("archived") is not False):
+        raise GateBlocked("github_public_repository_policy_unverified")
+    workflow_path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml"
+    try:
+        workflow_text = workflow_path.read_text(encoding="utf-8")
+    except OSError:
+        raise GateBlocked("github_runner_workflow_unavailable") from None
+    runners = [line.split(":", 1)[1].strip() for line in workflow_text.splitlines()
+               if line.strip().startswith("runs-on:") and ":" in line]
+    allowed = {"ubuntu-latest", "ubuntu-24.04", "ubuntu-22.04"}
+    if not runners or any(runner not in allowed for runner in runners):
+        raise GateBlocked("github_runner_must_be_standard_public_hosted")
+
 def check_global_hold() -> None:
     base = os.environ.get("ORCA_TASK_API_URL", "").rstrip("/")
     state = request_json(base + "/control/global-hold", os.environ.get("ORCA_TASK_API_TOKEN", ""))
@@ -388,6 +409,7 @@ def write_outputs(allow: bool, reason: str, detail: str = "") -> None:
 def main() -> int:
     now = datetime.now(timezone.utc)
     try:
+        check_github_runner_policy()
         check_global_hold()
         check_loop_admission()
         budget = check_budget(now)
