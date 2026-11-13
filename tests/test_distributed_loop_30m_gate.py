@@ -236,6 +236,23 @@ class BudgetGateTests(unittest.TestCase):
             with self.assertRaisesRegex(GateBlocked, reason):
                 evaluate(signed_payload(overrides))
 
+    def test_quota_reset_period_alignment_is_enforced(self):
+        with self.assertRaisesRegex(GateBlocked, "budget_daily_period_alignment_invalid"):
+            evaluate(signed_payload({"cloudflare.d1.rows_read.daily": {
+                "period_start": "2026-11-12T23:00:00Z",
+                "period_end": "2026-11-13T23:00:00Z",
+            }}))
+        with self.assertRaisesRegex(GateBlocked, "budget_hourly_period_alignment_invalid"):
+            evaluate(signed_payload({"github.actions.cache_storage_bytes.hourly_peak": {
+                "period_start": "2026-11-12T23:15:00Z",
+                "period_end": "2026-11-13T00:15:00Z",
+            }}))
+        with self.assertRaisesRegex(GateBlocked, "budget_monthly_period_length_invalid"):
+            evaluate(signed_payload({"github.actions_packages.shared_storage_gb_hours.monthly": {
+                "period_start": "2026-11-01T00:00:00Z",
+                "period_end": "2026-11-21T00:00:00Z",
+            }}))
+
     def test_meter_period_kind_and_total_boundaries_are_enforced(self):
         with self.assertRaisesRegex(GateBlocked, "budget_period_kind_invalid"):
             evaluate(signed_payload({"cloudflare.workers.requests.daily": {"period_kind": "monthly"}}))
