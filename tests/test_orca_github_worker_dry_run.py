@@ -11,7 +11,8 @@ from scripts.orca_github_worker_dry_run import (
 class WorkerDryRunTests(unittest.TestCase):
     def setUp(self):
         self.now = datetime(2026, 11, 13, 12, 0, tzinfo=timezone.utc)
-        self.payload = {"operation": "analyze", "input": "sample"}
+        self.task_id = "ai-speaker-empty-transcript-no-brain-call"
+        self.payload = {"task_type": "add_regression_test", "target_path": "tests/test_ai_speaker.py", "contract_version": 1}
         self.payload_bytes = json.dumps(
             self.payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
         ).encode()
@@ -23,7 +24,7 @@ class WorkerDryRunTests(unittest.TestCase):
             "emergency_stop": False,
             "run_guard": {
                 "run_id": "run-1", "started_at": "2026-11-13T12:00:00Z",
-                "tasks_claimed": 1, "attempts_by_task": {"task-1": 1},
+                "tasks_claimed": 1, "attempts_by_task": {ai-speaker-empty-transcript-no-brain-call: 1},
                 "consecutive_failures": 0, "circuit_breaker_until": None,
                 "paid_services_enabled": False, "automatic_retry_enabled": False,
                 "outcomes_by_task": {},
@@ -56,6 +57,8 @@ class WorkerDryRunTests(unittest.TestCase):
         self.assertFalse(result["side_effects_performed"])
         self.assertFalse(result["execution_started"])
         self.assertEqual(result["request_hash"], self.digest)
+        self.assertFalse(result["execution_supported"])
+        self.assertEqual(result["task_contract"]["status"], "BLOCKED_HANDLER_NOT_IMPLEMENTED")
 
     def test_global_hold_blocks(self):
         state = dict(self.state, global_hold=True)
@@ -69,7 +72,7 @@ class WorkerDryRunTests(unittest.TestCase):
                     dry_run_one(queue_state=self.state, envelope=envelope, now=self.now)
 
     def test_payload_hash_mismatch_blocks(self):
-        envelope = dict(self.envelope, payload={"operation": "different"})
+        envelope = dict(self.envelope, payload={"task_type": "add_regression_test", "target_path": "tests/test_ai_speaker.py", "contract_version": 2})
         with self.assertRaisesRegex(WorkerDryRunRejected, "payload_hash_mismatch"):
             dry_run_one(queue_state=self.state, envelope=envelope, now=self.now)
 
@@ -83,6 +86,17 @@ class WorkerDryRunTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(WorkerDryRunRejected, "payload_too_large"):
             dry_run_one(queue_state=state, envelope=envelope, now=self.now)
+
+    def test_unknown_task_id_and_free_form_payload_block(self):
+        unknown = dict(self.envelope, task_id="unknown-task")
+        with self.assertRaisesRegex(WorkerDryRunRejected, "task_id_not_in_typed_allowlist"):
+            dry_run_one(queue_state=self.state, envelope=unknown, now=self.now)
+        arbitrary = dict(self.envelope, payload={"operation": "shell", "command": "echo unsafe"})
+        raw = json.dumps(arbitrary["payload"], sort_keys=True, separators=(",", ":")).encode()
+        arbitrary["request_hash"] = hashlib.sha256(raw).hexdigest()
+        state = {**self.state, "tasks": [{**self.state["tasks"][0], "request_hash": arbitrary["request_hash"]}]}
+        with self.assertRaisesRegex(WorkerDryRunRejected, "typed_task_payload_shape_invalid"):
+            dry_run_one(queue_state=state, envelope=arbitrary, now=self.now)
 
     def test_unclaimed_task_blocks(self):
         state = {
