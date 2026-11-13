@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 
-from scripts.distributed_loop_30m_gate import GateBlocked, check_loop_admission, decide_slot, evaluate_budget_snapshot, main
+from scripts.distributed_loop_30m_gate import GateBlocked, check_github_runner_policy, check_loop_admission, decide_slot, evaluate_budget_snapshot, main
 
 NOW = datetime(2026, 11, 13, 0, 0, tzinfo=timezone.utc)
 DAILY_START, DAILY_END = "2026-11-13T00:00:00Z", "2026-11-14T00:00:00Z"
@@ -270,6 +270,20 @@ class BudgetGateTests(unittest.TestCase):
 
 
 
+class GitHubRunnerPolicyTests(unittest.TestCase):
+    def test_public_repo_and_standard_runners_are_required(self):
+        with patch.dict("os.environ", {
+            "GITHUB_REPOSITORY": "nonkun12/line-bot",
+            "GH_TOKEN": "unit-test-token",
+        }):
+            with patch("scripts.distributed_loop_30m_gate.request_json",
+                       return_value={"visibility": "public", "archived": False}):
+                check_github_runner_policy()
+            with patch("scripts.distributed_loop_30m_gate.request_json",
+                       return_value={"visibility": "private", "archived": False}):
+                with self.assertRaisesRegex(GateBlocked, "github_public_repository_policy_unverified"):
+                    check_github_runner_policy()
+
 class LoopAdmissionTests(unittest.TestCase):
     def test_loop_admission_requires_explicit_hold_and_budget_clear(self):
         good = {
@@ -296,10 +310,11 @@ class LoopAdmissionTests(unittest.TestCase):
 
 class GateMainTests(unittest.TestCase):
     def test_blocked_gate_returns_nonzero_exit_status(self):
-        with patch("scripts.distributed_loop_30m_gate.check_global_hold",
-                   side_effect=GateBlocked("global_hold_active_or_unknown")):
-            with patch("scripts.distributed_loop_30m_gate.write_outputs"):
-                self.assertEqual(main(), 1)
+        with patch("scripts.distributed_loop_30m_gate.check_github_runner_policy"):
+            with patch("scripts.distributed_loop_30m_gate.check_global_hold",
+                       side_effect=GateBlocked("global_hold_active_or_unknown")):
+                with patch("scripts.distributed_loop_30m_gate.write_outputs"):
+                    self.assertEqual(main(), 1)
 
 
 class SlotGateTests(unittest.TestCase):
