@@ -27,14 +27,15 @@ import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 API_TOKEN = "local-integration-api-token"
+LOOP_PREFLIGHT_TOKEN = "local-integration-loop-preflight-token"
 HOLD_OPERATOR_TOKEN = "local-integration-hold-operator-token"
 HMAC_KEY = "local-integration-hmac-key-at-least-32-bytes"
 USER_A = "U" + "a" * 32
 USER_B = "U" + "b" * 32
 
 
-def request_json(url: str, method: str = "GET", body=None, owner=None, hold_operator=None):
-    headers = {"Authorization": f"Bearer {API_TOKEN}"}
+def request_json(url: str, method: str = "GET", body=None, owner=None, hold_operator=None, bearer_token=API_TOKEN):
+    headers = {"Authorization": f"Bearer {bearer_token}"}
     if body is not None:
         headers["Content-Type"] = "application/json"
     if owner:
@@ -77,6 +78,7 @@ compatibility_date = "2026-11-11"
 API_TOKEN = "{API_TOKEN}"
 ORCA_TASK_APPROVAL_HMAC_KEY = "{HMAC_KEY}"
 ORCA_HOLD_OPERATOR_TOKEN = "{HOLD_OPERATOR_TOKEN}"
+ORCA_LOOP_PREFLIGHT_TOKEN = "{LOOP_PREFLIGHT_TOKEN}"
 
 [[d1_databases]]
 binding = "DB"
@@ -187,12 +189,27 @@ new_sqlite_classes = ["OrcaWriteBroker"]
     def setUp(self):
         self.sql("DELETE FROM notification_outbox; DELETE FROM task_approval_nonces; "
                  "DELETE FROM task_approvals; DELETE FROM tasks;")
+        self.set_budget_state("CLEAR", observed_at="now")
         status, result = self.set_hold("off")
         if status != 200:
             raise RuntimeError(f"local Durable Object HOLD release failed: {result}")
 
+    def set_budget_state(self, status, *, latched=False, observed_at="now", release_approved=False):
+        allowed = {"CLEAR", "WARN", "SUPPRESS", "STOP", "BLOCKED"}
+        if status not in allowed:
+            raise ValueError("invalid test budget status")
+        observed = "NULL" if observed_at is None else ("CURRENT_TIMESTAMP" if observed_at == "now" else f"'{observed_at}'")
+        self.sql(
+            "UPDATE budget_guard_state SET "
+            f"status='{status}', reason='integration fixture', "
+            f"stop_latched={1 if latched else 0}, "
+            f"release_approved={1 if release_approved else 0}, "
+            f"observed_at={observed}, updated_at=CURRENT_TIMESTAMP WHERE singleton=1"
+        )
+
     def api(self, path, method="GET", body=None, owner=None, hold_operator=None):
-        return request_json(self.base + path, method, body, owner, hold_operator)
+        bearer = LOOP_PREFLIGHT_TOKEN if path == "/control/loop-admission" else API_TOKEN
+        return request_json(self.base + path, method, body, owner, hold_operator, bearer)
 
     def set_hold(self, value):
         return self.api("/control/global-hold", "POST", {
@@ -241,6 +258,46 @@ new_sqlite_classes = ["OrcaWriteBroker"]
             "task_type": task_type,
             "max_tasks": max_tasks,
         })
+
+
+    def test_budget_guard_blocks_real_worker_task_intake_at_80_90_and_100_percent_statuses(self):
+        for budget_status in ("SUPPRESS", "STOP", "BLOCKED"):
+            self.set_budget_state(budget_status, latched=(budget_status == "STOP"))
+            status, body = self.create(f"budget-intake-{budget_status.lower()}")
+            self.assertEqual(status, 423, body)
+            self.assertEqual(body["budget_status"], budget_status)
+
+    def test_budget_guard_blocks_approval_and_claim_after_state_changes(self):
+        request_text = "アプリ開発: budget gate stage test"
+        self.assertEqual(self.create("budget-approval", request_text=request_text)[0], 201)
+        self.set_budget_state("STOP", latched=True)
+        status, denied = self.approve("budget-approval", request_text=request_text)
+        self.assertEqual(status, 423, denied)
+        self.assertEqual(denied["reason"], "budget_stop_latched")
+
+        self.set_budget_state("CLEAR")
+        self.assertEqual(self.approve("budget-approval", request_text=request_text)[0], 200)
+        self.set_budget_state("STOP", latched=True)
+        status, denied = self.api("/tasks/budget-approval/claim", "POST", {})
+        self.assertEqual(status, 423, denied)
+        self.assertEqual(denied["reason"], "budget_stop_latched")
+
+    def test_budget_guard_missing_or_stale_telemetry_fails_closed(self):
+        self.set_budget_state("CLEAR", observed_at=None)
+        status, missing = self.create("budget-missing-snapshot")
+        self.assertEqual(status, 423, missing)
+        self.assertEqual(missing["budget_status"], "BLOCKED")
+        self.set_budget_state("CLEAR", observed_at="2000-01-01T00:00:00Z")
+        status, stale = self.create("budget-stale-snapshot")
+        self.assertEqual(status, 423, stale)
+        self.assertEqual(stale["reason"], "budget_telemetry_stale_or_missing")
+
+    def test_concurrent_task_intake_is_denied_while_budget_stop_is_latched(self):
+        self.set_budget_state("STOP", latched=True)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(lambda i: self.create(f"budget-race-{i}"), range(8)))
+        self.assertEqual([status for status, _ in results], [423] * 8)
+        self.assertRegex(self.sql("SELECT COUNT(*) AS count FROM tasks;"), r'"count"\s*:\s*0')
 
     def test_initial_global_hold_blocks_intake_until_explicit_local_release(self):
         status, _ = self.set_hold("on")
@@ -447,6 +504,32 @@ new_sqlite_classes = ["OrcaWriteBroker"]
         status, result = self.api("/tasks/expired-approval/claim", "POST", {})
         self.assertEqual(status, 403)
         self.assertIn("valid task-bound LINE approval", result["error"])
+
+
+    def test_loop_admission_preflight_requires_clear_durable_object_hold_and_fresh_budget(self):
+        status, result = self.api("/control/loop-admission")
+        self.assertEqual(status, 200, result)
+        self.assertTrue(result["allowed"])
+        self.assertTrue(result["global_hold"]["clear"])
+        self.assertEqual(result["budget_guard"]["status"], "CLEAR")
+
+        self.assertEqual(self.set_hold("on")[0], 200)
+        status, blocked = self.api("/control/loop-admission")
+        self.assertEqual(status, 423, blocked)
+        self.assertFalse(blocked["allowed"])
+        self.assertFalse(blocked["global_hold"]["clear"])
+
+        self.assertEqual(self.set_hold("off")[0], 200)
+        self.set_budget_state("BLOCKED")
+        status, blocked = self.api("/control/loop-admission")
+        self.assertEqual(status, 423, blocked)
+        self.assertEqual(blocked["budget_guard"]["status"], "BLOCKED")
+
+        self.set_budget_state("CLEAR", observed_at="2000-01-01T00:00:00Z")
+        status, blocked = self.api("/control/loop-admission")
+        self.assertEqual(status, 423, blocked)
+        self.assertFalse(blocked["allowed"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
