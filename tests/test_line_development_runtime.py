@@ -1468,3 +1468,50 @@ def test_new_refill_cli_tasks_use_bounded_deterministic_plans(monkeypatch, tmp_p
         assert expected_name in candidate
         assert expected_marker in candidate
         assert runtime.worker.validate_plan(plan, chosen) == (True, chosen)
+
+
+def test_refactorer_treats_unchanged_optional_plan_as_safe_skip(monkeypatch):
+    chosen = "core/example.py"
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Fix the example implementation",
+    )
+    state.chosen = chosen
+    state.touched = [chosen]
+    state.test_output = "The focused tests passed"
+
+    unchanged_plan = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "same source", "new": "same source"}],
+    }
+    monkeypatch.setattr(
+        worker,
+        "build_plan",
+        lambda *args, **kwargs: unchanged_plan,
+    )
+    monkeypatch.setattr(worker, "context_for", lambda path: "current source context")
+    monkeypatch.setattr(
+        worker,
+        "validate_plan_with_bounded_repairs",
+        lambda *args, **kwargs: (unchanged_plan, False, "no_op_change"),
+    )
+    monkeypatch.setattr(
+        worker,
+        "apply_plan_with_bounded_anchor_repair",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("unchanged optional refactor must never be applied")
+        ),
+    )
+
+    result = runtime.DevelopmentExecutor(state).execute(
+        AgentTask(
+            "refactor:unchanged-plan",
+            AgentRole.REFACTORER,
+            "Optional cleanup after the implementation fix",
+            frozenset({"working-tree"}),
+        )
+    )
+
+    assert result.success is True
+    assert result.summary == "refactor skipped after bounded plan repair: no_op_change"
+    assert result.changed_resources == frozenset()
