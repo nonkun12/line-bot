@@ -177,6 +177,9 @@ def test_distributed_loop_is_scheduled_every_30_minutes_in_tokyo_and_stays_bound
     refill = source.split("      - name: Prepare bounded runtime task refill", 1)[1].split("      - name:", 1)[0]
     assert "--provider-free-only" in refill
     assert "--provider-free-map core/line_development_runtime.py" in refill
+    assert "skipped_catalog_not_provider_free_ids" in source
+    assert "catalog_blocked_non_provider_free:" in source
+    assert "catalog_blocked_unapproved:" in source
     resume = source.split("      - name: Resume one explicitly approved held task", 1)[1].split("      - name:", 1)[0]
     assert "env.FREE_ONLY_EXECUTION_APPROVED == 'true'" in resume
     issue_create = source.split("      - name: Create bounded review-only task issues from analyzer findings", 1)[1].split("      - name:", 1)[0]
