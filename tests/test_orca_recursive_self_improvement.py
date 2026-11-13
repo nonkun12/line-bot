@@ -95,7 +95,7 @@ class RecursiveSelfImprovementTests(unittest.TestCase):
         cycle = complete_to_reviewed()
         cycle["stage"] = "evaluated"
         cycle["decision"] = "accepted_candidate"
-        with self.assertRaisesRegex(ImprovementRejected, "cycle_identity_mismatch"):
+        with self.assertRaisesRegex(ImprovementRejected, "evaluated_evidence_required"):
             start_next_cycle(cycle, observation="next", source_refs=["run:2"],
                              created_at="2026-11-13T11:00:00Z")
 
