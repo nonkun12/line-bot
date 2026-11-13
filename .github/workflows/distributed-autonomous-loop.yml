@@ -160,10 +160,10 @@ jobs:
     timeout-minutes: 30
     env:
       MAX_TASKS: '1'
-      TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'normal' }}
-      INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_category || '' }}
-      INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_detail || '' }}
-      INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_job_id || '' }}
+      TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'normal' }}
+      INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && inputs.incident_category || '' }}
+      INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && inputs.incident_detail || '' }}
+      INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.incident_job_id || '' }}
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
       # Execution stays disabled until local/free provider and signed budget evidence are verified.
@@ -248,12 +248,12 @@ jobs:
           REQUESTED_TASK_LIMIT: ${{ env.MAX_TASKS }}
           EVENT_NAME: ${{ github.event_name }}
           COMMENT_BODY: ${{ github.event_name == 'issue_comment' && github.event.comment.body || '' }}
-          DISPATCH_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || '' }}
-          RESUME_TASK_ID: ${{ github.event.inputs.resume_task_id || '' }}
-          TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'normal' }}
-          INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_category || '' }}
-          INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_detail || '' }}
-          INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_job_id || '' }}
+          DISPATCH_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.max_tasks || '' }}
+          RESUME_TASK_ID: ${{ inputs.resume_task_id || '' }}
+          TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'normal' }}
+          INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && inputs.incident_category || '' }}
+          INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && inputs.incident_detail || '' }}
+          INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.incident_job_id || '' }}
         run: |
           set -euo pipefail
           case "${REQUESTED_TASK_LIMIT}" in
@@ -324,7 +324,7 @@ jobs:
       - name: Validate optional request correlation ID
         if: success() && github.event_name == 'workflow_dispatch'
         env:
-          REQUEST_ID: ${{ github.event.inputs.request_id || '' }}
+          REQUEST_ID: ${{ inputs.request_id || '' }}
         run: |
           set -euo pipefail
           if [ -n "${REQUEST_ID}" ] && ! [[ "${REQUEST_ID}" =~ ^[0-9a-f]{32}$ ]]; then
@@ -335,15 +335,15 @@ jobs:
       - name: Validate held-task resume request
         if: >-
           success() && (
-            (github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id != '') ||
+            (github.event_name == 'workflow_dispatch' && inputs.resume_task_id != '') ||
             (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id='))
           )
         id: validate_resume_request
         env:
           EVENT_NAME: ${{ github.event_name }}
-          RESUME_TASK_ID_INPUT: ${{ github.event.inputs.resume_task_id || '' }}
-          CONFIRM_CAUSE_FIXED_INPUT: ${{ github.event.inputs.confirm_cause_fixed || 'false' }}
-          CONFIRM_RESUME_REVIEW_INPUT: ${{ github.event.inputs.confirm_resume_review || 'false' }}
+          RESUME_TASK_ID_INPUT: ${{ inputs.resume_task_id || '' }}
+          CONFIRM_CAUSE_FIXED_INPUT: ${{ inputs.confirm_cause_fixed || 'false' }}
+          CONFIRM_RESUME_REVIEW_INPUT: ${{ inputs.confirm_resume_review || 'false' }}
           RESUME_COMMENT: ${{ github.event_name == 'issue_comment' && github.event.comment.body || '' }}
         run: |
           set -euo pipefail
@@ -380,7 +380,7 @@ jobs:
       - name: Resume one explicitly approved held task
         if: >-
           success() && (
-            (github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id != '') ||
+            (github.event_name == 'workflow_dispatch' && inputs.resume_task_id != '') ||
             (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id='))
           ) && steps.validate_resume_request.outputs.task_id != '' && env.FREE_ONLY_EXECUTION_APPROVED == 'true'
         env:
