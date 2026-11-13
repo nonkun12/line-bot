@@ -21,9 +21,12 @@ function stable(value) {
 async function sign(payload) {
   const unsigned = structuredClone(payload);
   delete unsigned.attestation.signature;
+  delete unsigned.attestation.signed_payload;
+  const canonical = JSON.stringify(stable(unsigned));
+  payload.attestation.signed_payload = canonical;
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(SECRET),
     { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const bytes = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(JSON.stringify(stable(unsigned))));
+  const bytes = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(canonical));
   payload.attestation.signature = [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
   return payload;
 }
