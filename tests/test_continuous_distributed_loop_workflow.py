@@ -180,6 +180,14 @@ def test_distributed_loop_is_scheduled_every_30_minutes_in_tokyo_and_stays_bound
     assert "env.FREE_ONLY_EXECUTION_APPROVED == 'true'" in issue_create
 
 
+def test_orca_phase1_observer_is_manual_only_and_does_not_duplicate_scheduler():
+    path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "orca-phase1-read-only-observation.yml"
+    source = path.read_text(encoding="utf-8")
+    event_block = source.split("on:", 1)[1].split("permissions:", 1)[0]
+    assert "workflow_dispatch:" in event_block
+    assert "schedule:" not in event_block
+    assert 'cron: "*/30 * * * *"' not in event_block
+
 def test_only_continuous_workflow_owns_automatic_dispatch():
     root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
     continuous = (root / "continuous-distributed-loop.yml").read_text(encoding="utf-8")
