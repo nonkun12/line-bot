@@ -724,6 +724,24 @@ def test_provider_free_refill_filters_unknown_and_mismatched_task_targets(tmp_pa
     assert report["added_ids"] == ["task-free-new"]
 
 
+def test_non_provider_free_report_counts_only_explicitly_approved_tasks(tmp_path: Path):
+    approved_non_free = _task("approved-non-free")
+    unapproved_non_free = {**_task("unapproved-non-free"), "execution_approved": False}
+    queue, catalog, completed = _inputs(
+        tmp_path, candidates=[approved_non_free, unapproved_non_free],
+    )
+    output = tmp_path / "runtime-queue.json"
+
+    report = build_queue(
+        queue, catalog, completed, output,
+        provider_free_targets={"some-other-task": "tests/test_example.py"},
+    )
+
+    assert report["skipped_catalog_not_provider_free_ids"] == ["approved-non-free"]
+    assert report["skipped_catalog_unapproved_ids"] == ["unapproved-non-free"]
+    assert report["eligible_catalog_count"] == 0
+
+
 def test_provider_free_map_fails_closed_when_mapping_is_not_literal(tmp_path: Path):
     runtime = tmp_path / "runtime.py"
     runtime.write_text(
