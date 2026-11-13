@@ -26,6 +26,27 @@ class GitHubStateStoreTests(unittest.TestCase):
         self.blob = "c" * 40
         self.commit = "d" * 40
 
+    def test_read_pins_state_document_to_observed_commit_sha(self):
+        encoded = base64.b64encode(json.dumps(self.current).encode()).decode()
+        responses = [
+            {"object": {"sha": self.ref}},
+            {"tree": {"sha": self.tree}},
+            {"encoding": "base64", "content": encoded, "sha": self.blob},
+        ]
+        calls = []
+        def opener(request, timeout=15):
+            calls.append(request)
+            return Response(responses.pop(0))
+        store = GitHubStateStore(token="token", repository="o/r", branch="state",
+                                 path="state/queue.json", opener=opener)
+
+        snapshot = store.read()
+
+        self.assertEqual(snapshot.ref_sha, self.ref)
+        self.assertEqual(snapshot.state, self.current)
+        self.assertIn(f"?ref={self.ref}", calls[2].full_url)
+        self.assertNotIn("?ref=state", calls[2].full_url)
+
     def test_missing_configuration_fails_closed(self):
         with self.assertRaises(StateStoreError):
             GitHubStateStore(token="", repository="owner/repo", branch="state",
