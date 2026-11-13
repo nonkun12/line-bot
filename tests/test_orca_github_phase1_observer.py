@@ -1,7 +1,7 @@
 import base64
 import json
 import unittest
-from unittest.mock import Mock
+import urllib.error
 
 from scripts.orca_github_phase1_observer import (
     ObservationError,
@@ -56,8 +56,13 @@ class Phase1ObserverTests(unittest.TestCase):
         }
         summary = summarize_state(state)
         self.assertEqual(summary["task_counts"]["queued"], 1)
-        result = observe(token="token", repository="owner/repo", opener=Mock())
+        def missing_ref(request, timeout):
+            raise urllib.error.HTTPError(request.full_url, 404, "not found", {}, None)
+
+        result = observe(token="token", repository="owner/repo", opener=missing_ref)
         self.assertFalse(result["execution_enabled"])
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["reason"], "github_resource_not_found")
 
     def test_state_document_read_is_pinned_to_observed_commit(self):
         state = {
