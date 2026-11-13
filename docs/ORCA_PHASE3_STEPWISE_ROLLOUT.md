@@ -163,3 +163,29 @@ This checkpoint supersedes older pending/optimistic statements above.
 - 30-minute cron exists on the Draft PR branch only; it is not active on the default branch.
 - `execution_enabled=false` remains mandatory. No worker execution, state-branch provisioning, secret/permission changes, merge, deployment, or schedule activation has occurred.
 - Remaining acceptance gates: typed allowlisted worker and durable outcome/CAS integration; trusted budget collector/evidence; real independent review; operational shared STOP with state provisioned under separate authorization; then an explicitly approved non-production trial and separately approved cadence activation.
+
+
+### Additional safety finding — existing default-branch schedules
+
+A read-only comparison of `main` against this Draft PR found that the default
+branch still has independent automatic triggers in:
+
+- `hourly-self-improvement-sidecar.yml`: hourly schedule.
+- `line-full-control-hourly.yml`: hourly schedule at minute 37 (plus scoped push trigger).
+- `star-night-cloud-hourly.yml`: hourly schedule at minute 17 (plus scoped push trigger).
+- `continuous-distributed-loop.yml`: `workflow_run` continuation after the main distributed loop completes.
+
+This PR branch changes the three sidecar workflows to manual-only and changes
+the continuous workflow to manual-only, but those changes do not affect
+`main` until an approved merge. The default branch's distributed loop itself
+still has its legacy hourly schedule at minute 17. Therefore the old schedules
+have **not** been retired in production, and the 30-minute unified cadence is
+not active. Do not report a single-scheduler state until the branch changes are
+merged under explicit approval and the resulting default-branch workflow
+inventory is rechecked.
+
+### Runtime ceiling alignment
+
+The proposed worker job timeout is now 30 minutes, matching the independent
+Runaway Guard's 1,800-second wall-clock ceiling. The preflight remains a
+separate read-only job and execution remains disabled.
