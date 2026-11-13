@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
@@ -134,6 +135,7 @@ def _validate_cycle_candidate(cycle: Any) -> None:
     candidate = evaluation.get("candidate_metric")
     if (isinstance(baseline, bool) or not isinstance(baseline, (int, float))
             or isinstance(candidate, bool) or not isinstance(candidate, (int, float))
+            or not math.isfinite(baseline) or not math.isfinite(candidate)
             or candidate <= baseline):
         raise ExecutionGateRejected("improvement_metric_not_positive")
     cycle_id = cycle.get("cycle_id")
