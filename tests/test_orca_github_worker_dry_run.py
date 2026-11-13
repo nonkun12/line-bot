@@ -1,6 +1,7 @@
 import hashlib
 import json
 import unittest
+from pathlib import Path
 from datetime import datetime, timezone
 
 from scripts.orca_github_worker_dry_run import (
@@ -59,6 +60,22 @@ class WorkerDryRunTests(unittest.TestCase):
         self.assertEqual(result["request_hash"], self.digest)
         self.assertFalse(result["execution_supported"])
         self.assertEqual(result["task_contract"]["status"], "BLOCKED_HANDLER_NOT_IMPLEMENTED")
+
+    def test_catalog_matches_finite_typed_registry_and_one_task_cap(self):
+        catalog_path = Path(__file__).resolve().parents[1] / ".github" / "autonomous-loop-tasks.json"
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        self.assertEqual(catalog["max_tasks_per_run"], 1)
+        for item in catalog["tasks"]:
+            with self.subTest(task_id=item["id"]):
+                self.assertEqual(item["task_type"], "add_regression_test")
+                self.assertEqual(item["contract_version"], 1)
+                self.assertEqual(len(item["allowed_paths"]), 1)
+                self.assertEqual(item["allowed_paths"][0], {
+                    "ai-speaker-empty-transcript-no-brain-call": "tests/test_ai_speaker.py",
+                    "recovery-ai-state-isolation": "tests/test_recovery_ai.py",
+                    "router-regression-general-request-metadata": "tests/test_management_router.py",
+                    "recovery-ai-loop-adapter-durable-state-readback": "tests/test_recovery_ai_loop_adapter.py",
+                }[item["id"]])
 
     def test_global_hold_blocks(self):
         state = dict(self.state, global_hold=True)
