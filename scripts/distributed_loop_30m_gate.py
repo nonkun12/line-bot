@@ -158,6 +158,7 @@ def main() -> int:
     except GateBlocked as exc:
         write_outputs(False, str(exc))
         print("ORCA_30M_GATE_BLOCKED: " + str(exc))
+        return 1
     return 0
 
 if __name__ == "__main__":
