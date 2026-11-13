@@ -9,6 +9,7 @@ from scripts.distributed_loop_30m_gate import GateBlocked, decide_slot, evaluate
 NOW = datetime(2026, 11, 13, 0, 0, tzinfo=timezone.utc)
 START, END, OBSERVED = "2026-11-01T00:00:00Z", "2026-12-01T00:00:00Z", "2026-11-13T00:00:00Z"
 SECRET, ACCOUNT, COLLECTOR = "unit-test-only-secret", "account-test-001", "orca-budget-collector-test"
+GITHUB_ACCOUNT = "github-owner-test-001"
 NAMES = ("cloudflare_workers", "cloudflare_d1", "cloudflare_durable_objects", "github_actions")
 UNITS = {"cloudflare_workers": "requests", "cloudflare_d1": "rows",
          "cloudflare_durable_objects": "requests", "github_actions": "runner_minutes"}
@@ -35,7 +36,8 @@ def signed_payload(overrides=None, *, attestation_overrides=None):
             "unit": UNITS[name], "limit_source": "vendor_verified_quota",
             "quality": "exact", "enforcement_eligible": True,
             "limit_verified": True, "limit_evidence_id": "vendor-evidence-001",
-            "dataset": "authoritative-account-meter-v1", "account_id": ACCOUNT,
+            "dataset": "authoritative-account-meter-v1",
+            "account_id": GITHUB_ACCOUNT if name == "github_actions" else ACCOUNT,
             "complete_account_coverage": True, "exact_counter": True,
             "sampling_mode": "none", "coverage_status": "complete",
             "watermark_at": OBSERVED, "observed_at": OBSERVED,
@@ -53,7 +55,8 @@ def signed_payload(overrides=None, *, attestation_overrides=None):
 
 def evaluate(payload):
     return evaluate_budget_snapshot(payload, now=NOW, attestation_secret=SECRET,
-                                    expected_account_id=ACCOUNT, trusted_collector_id=COLLECTOR)
+                                    expected_account_id=ACCOUNT, trusted_collector_id=COLLECTOR,
+                                    expected_github_account_id=GITHUB_ACCOUNT)
 
 
 class BudgetGateTests(unittest.TestCase):
