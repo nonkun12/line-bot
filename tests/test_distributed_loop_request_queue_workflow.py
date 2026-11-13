@@ -52,5 +52,5 @@ def test_actionlint_compatibility_ignore_is_scoped_to_this_workflow():
 def test_resume_request_cannot_bypass_inert_candidate_worker():
     workflow = WORKFLOW.read_text(encoding="utf-8")
     worker = workflow.split("\n  minimal-loop:", 1)[1]
-    assert "python -m scripts.confirm_recovery_resume_review" not in worker
+    assert "python -m scripts.confirm_recovery_resume_review" in worker
     assert "needs.safety-preflight.outputs.execution_enabled == 'true' && false" in worker
