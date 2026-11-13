@@ -43,9 +43,7 @@ counter without a verified plan limit.
 The PR now contains `.github/workflows/orca-phase1-read-only-observation.yml`
 and `scripts/orca_github_phase1_observer.py`.
 
-- The workflow is scheduled every 30 minutes, uses the standard `ubuntu-slim`
-  hosted runner, has a 2-minute timeout, and serializes runs with
-  `cancel-in-progress: false`.
+- The workflow is manual-only (`workflow_dispatch`) on this Draft PR branch; it is **not scheduled**. It uses the standard `ubuntu-slim` hosted runner, has a 2-minute timeout, and serializes runs with `cancel-in-progress: false`.
 - Its token is limited to `contents: read`; it performs only GET requests.
   It does not create a claim, write state, dispatch a worker, or execute a task.
 - It reads the state document at the immutable commit SHA returned by the
@@ -53,9 +51,7 @@ and `scripts/orca_github_phase1_observer.py`.
 - Observation success is reported separately from the execution gate. Even a
   valid snapshot cannot open execution: budget evidence is deliberately
   reported as MISSING and `execution_enabled` remains false.
-- No `workflow_dispatch` trigger is defined. The schedule in this Draft PR
-  does not run from this feature branch; it becomes active only if merged to
-  the default branch. Do not merge or activate it without separate approval.
+- The only trigger is `workflow_dispatch`; no cron schedule is defined. Do not add a schedule or activate it without separate approval.
 - The repository is public, so standard GitHub-hosted runners are free under
   GitHub's current Actions billing rules. Larger runners are not used.
 
