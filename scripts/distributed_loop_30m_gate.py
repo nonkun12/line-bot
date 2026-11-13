@@ -30,6 +30,7 @@ REQUIRED_METERS = {
     "cloudflare.durable_objects.sqlite_rows_read.daily": ("cloudflare", "durable_objects"),
     "cloudflare.durable_objects.sqlite_rows_written.daily": ("cloudflare", "durable_objects"),
     "cloudflare.durable_objects.sqlite_storage_bytes.total": ("cloudflare", "durable_objects"),
+    "github.actions.compute_cost_usd.monthly": ("github", "actions"),
     "github.actions_packages.shared_storage_gb_hours.monthly": ("github", "actions_packages"),
     "github.actions.cache_storage_bytes.hourly_peak": ("github", "actions"),
 }
@@ -48,6 +49,7 @@ METER_UNITS = {
     "cloudflare.durable_objects.sqlite_rows_read.daily": "rows",
     "cloudflare.durable_objects.sqlite_rows_written.daily": "rows",
     "cloudflare.durable_objects.sqlite_storage_bytes.total": "bytes",
+    "github.actions.compute_cost_usd.monthly": "USD",
     "github.actions_packages.shared_storage_gb_hours.monthly": "GB-hours",
     "github.actions.cache_storage_bytes.hourly_peak": "bytes",
 }
@@ -63,6 +65,7 @@ METER_PERIOD_KINDS = {
     "cloudflare.durable_objects.sqlite_rows_read.daily": "daily",
     "cloudflare.durable_objects.sqlite_rows_written.daily": "daily",
     "cloudflare.durable_objects.sqlite_storage_bytes.total": "total",
+    "github.actions.compute_cost_usd.monthly": "monthly",
     "github.actions_packages.shared_storage_gb_hours.monthly": "monthly",
     "github.actions.cache_storage_bytes.hourly_peak": "hourly",
 }
