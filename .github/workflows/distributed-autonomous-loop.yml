@@ -166,6 +166,13 @@ jobs:
     permissions:
       actions: read
       contents: read
+    env:
+      MAX_TASKS: '1'
+      AUTO_APPLY_PATCH: 'false'
+      AUTO_DEPLOY: 'false'
+      FREE_ONLY_EXECUTION_APPROVED: 'false'
+      HERMES_ADVISOR_ENABLED: 'false'
+      SELF_IMPROVEMENT_CREATOR_CRITIC: 'false'
     steps:
       - name: Keep unified LOOP execution disabled
         run: |
