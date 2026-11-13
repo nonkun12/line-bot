@@ -210,7 +210,7 @@ def test_dashboard_loop_api_matches_current_workflow_limits(auth_headers):
     assert data["loop"]["frequency_per_day"] == 48
     assert data["loop"]["max_tasks_per_run"] == 1
     assert data["loop"]["execution_enabled"] is False
-    assert data["loop"]["budget_gate"]["status"] == "proposal_only"
+    assert data["loop"]["budget_gate"]["status"] == "blocked"
     assert data["loop"]["runaway_guard"]["status"] == "partial"
     assert data["loop"]["emergency_stop"]["status"] == "not_operational"
     assert data["loop"]["streams"][0]["key"] == "main_loop"
