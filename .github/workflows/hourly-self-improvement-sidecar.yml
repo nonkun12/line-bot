@@ -1,9 +1,6 @@
 name: Hourly Self-Improvement Sidecar
 
 on:
-  schedule:
-    - cron: "0 * * * *"
-      timezone: "Asia/Tokyo"
   workflow_dispatch:
 
 permissions:
