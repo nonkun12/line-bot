@@ -30,7 +30,8 @@ def signed_payload(overrides=None, *, attestation_overrides=None):
     sources = []
     for name in NAMES:
         sources.append({
-            "name": name, "enabled": True, "used": 10, "limit": 100,
+            "name": name, "provider": "github" if name == "github_actions" else "cloudflare",
+            "enabled": True, "used": 10, "limit": 100,
             "unit": UNITS[name], "limit_source": "vendor_verified_quota",
             "quality": "exact", "enforcement_eligible": True,
             "limit_verified": True, "limit_evidence_id": "vendor-evidence-001",
