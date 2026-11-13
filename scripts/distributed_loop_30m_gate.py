@@ -29,11 +29,11 @@ REQUIRED_METERS = {
     "cloudflare.durable_objects.sqlite_rows_read.daily": ("cloudflare", "durable_objects"),
     "cloudflare.durable_objects.sqlite_rows_written.daily": ("cloudflare", "durable_objects"),
     "cloudflare.durable_objects.sqlite_storage_bytes.total": ("cloudflare", "durable_objects"),
-    "github.actions.compute_cost_usd.monthly": ("github", "actions"),
-    "github.actions.artifact_storage_bytes.monthly": ("github", "actions"),
+    "github.actions_packages.shared_storage_gb_hours.monthly": ("github", "actions_packages"),
+    "github.actions.cache_storage_bytes.hourly_peak": ("github", "actions"),
 }
 REQUIRED_PRODUCTS = frozenset({
-    "workers", "workers_logs", "d1", "durable_objects", "actions",
+    "workers", "workers_logs", "d1", "durable_objects", "actions", "actions_packages",
 })
 METER_UNITS = {
     "cloudflare.workers.requests.daily": "requests",
@@ -47,8 +47,8 @@ METER_UNITS = {
     "cloudflare.durable_objects.sqlite_rows_read.daily": "rows",
     "cloudflare.durable_objects.sqlite_rows_written.daily": "rows",
     "cloudflare.durable_objects.sqlite_storage_bytes.total": "bytes",
-    "github.actions.compute_cost_usd.monthly": "USD",
-    "github.actions.artifact_storage_bytes.monthly": "bytes",
+    "github.actions_packages.shared_storage_gb_hours.monthly": "GB-hours",
+    "github.actions.cache_storage_bytes.hourly_peak": "bytes",
 }
 METER_PERIOD_KINDS = {
     "cloudflare.workers.requests.daily": "daily",
@@ -62,8 +62,8 @@ METER_PERIOD_KINDS = {
     "cloudflare.durable_objects.sqlite_rows_read.daily": "daily",
     "cloudflare.durable_objects.sqlite_rows_written.daily": "daily",
     "cloudflare.durable_objects.sqlite_storage_bytes.total": "total",
-    "github.actions.compute_cost_usd.monthly": "monthly",
-    "github.actions.artifact_storage_bytes.monthly": "monthly",
+    "github.actions_packages.shared_storage_gb_hours.monthly": "monthly",
+    "github.actions.cache_storage_bytes.hourly_peak": "hourly",
 }
 MAX_SNAPSHOT_AGE = timedelta(minutes=10)
 MAX_FUTURE_SKEW = timedelta(minutes=5)
@@ -157,7 +157,9 @@ def evaluate_budget_snapshot(
     if (inventory.get("complete_account_coverage") is not True
             or inventory.get("unresolved_products") != []
             or inventory.get("cloudflare_account_id") != expected_account_id
-            or inventory.get("github_account_id") != expected_github_account_id):
+            or inventory.get("github_account_id") != expected_github_account_id
+            or inventory.get("github_repository_visibility") != "public"
+            or inventory.get("github_runner_policy") != "standard_github_hosted_only"):
         raise GateBlocked("budget_product_inventory_incomplete")
     products = inventory.get("enabled_products")
     if (not isinstance(products, list)
@@ -234,7 +236,7 @@ def evaluate_budget_snapshot(
         period_kind = METER_PERIOD_KINDS[meter_id]
         if meter.get("period_kind") != period_kind:
             raise GateBlocked("budget_period_kind_invalid")
-        if period_kind in {"daily", "monthly"}:
+        if period_kind in {"daily", "monthly", "hourly"}:
             period_start = parse_time(meter.get("period_start"))
             period_end = parse_time(meter.get("period_end"))
             if period_start >= period_end or not (period_start <= now < period_end):
