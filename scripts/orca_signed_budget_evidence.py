@@ -41,4 +41,16 @@ def verify(payload:Any,key:str,now:datetime):
         if isinstance(count,bool) or not isinstance(count,int) or count<0 or not isinstance(digest,str) or not re.fullmatch(r"[0-9a-f]{64}",digest): raise EvidenceRejected("budget_resource_coverage_invalid")
         watermark=_dt(row.get("source_watermark_at"))
         if watermark>now+timedelta(minutes=5) or now-watermark>MAX_AGE: raise EvidenceRejected("budget_source_watermark_stale_or_future")
+        # Some providers expose source-specific quota windows. If either boundary
+        # is supplied, require both and verify that the window contains `now`.
+        # This prevents a fresh poll from masking an expired source period.
+        has_start = "period_start" in row
+        has_end = "period_end" in row
+        if has_start != has_end:
+            raise EvidenceRejected("budget_source_period_boundary_incomplete")
+        if has_start:
+            source_start = _dt(row.get("period_start"))
+            source_end = _dt(row.get("period_end"))
+            if source_start >= source_end or not source_start <= now < source_end:
+                raise EvidenceRejected("budget_period_not_current")
     return payload
