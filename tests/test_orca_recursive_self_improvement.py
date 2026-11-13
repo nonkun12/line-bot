@@ -67,6 +67,38 @@ class RecursiveSelfImprovementTests(unittest.TestCase):
                      critic_verdict="pass", baseline_metric=1, candidate_metric=2,
                      metric_evidence_refs=["metric:baseline", "metric:candidate"])
 
+
+    def test_forged_reviewed_cycle_without_prior_evidence_is_rejected(self):
+        cycle = complete_to_reviewed()
+        del cycle["evidence"]["diagnosed"]
+        with self.assertRaisesRegex(ImprovementRejected, "diagnosed_evidence_required"):
+            evaluate(cycle, expected_stage="reviewed", tests_passed=True,
+                     critic_verdict="pass", baseline_metric=1, candidate_metric=2,
+                     metric_evidence_refs=["metric:baseline", "metric:candidate"])
+
+    def test_tampered_cycle_identity_is_rejected(self):
+        cycle = complete_to_reviewed()
+        cycle["observation"] = "different observation"
+        with self.assertRaisesRegex(ImprovementRejected, "cycle_identity_mismatch"):
+            evaluate(cycle, expected_stage="reviewed", tests_passed=True,
+                     critic_verdict="pass", baseline_metric=1, candidate_metric=2,
+                     metric_evidence_refs=["metric:baseline", "metric:candidate"])
+
+    def test_unsafe_flags_are_rejected_before_transition(self):
+        cycle = new_cycle(observation="failure", source_refs=["run:1"], created_at=NOW)
+        cycle["auto_apply"] = True
+        with self.assertRaisesRegex(ImprovementRejected, "unsafe_execution_flag"):
+            advance(cycle, expected_stage="observed", next_stage="diagnosed",
+                    evidence_refs=["diagnosis:1"])
+
+    def test_forged_evaluated_cycle_cannot_spawn_child(self):
+        cycle = complete_to_reviewed()
+        cycle["stage"] = "evaluated"
+        cycle["decision"] = "accepted_candidate"
+        with self.assertRaisesRegex(ImprovementRejected, "cycle_identity_mismatch"):
+            start_next_cycle(cycle, observation="next", source_refs=["run:2"],
+                             created_at="2026-11-13T11:00:00Z")
+
     def test_non_improvement_is_deferred(self):
         result = evaluate(complete_to_reviewed(), expected_stage="reviewed",
                           tests_passed=True, critic_verdict="pass",
