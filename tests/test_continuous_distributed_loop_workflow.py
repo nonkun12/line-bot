@@ -233,7 +233,7 @@ def test_unified_loop_is_the_only_scheduled_owner_in_pr_branch():
     ]
     for filename in retired:
         source = (root / filename).read_text(encoding="utf-8")
-        event_block = source.split("\\njobs:", 1)[0]
+        event_block = source.split("permissions:", 1)[0]
         assert "workflow_dispatch:" in event_block, filename
         assert "schedule:" not in event_block, filename
         assert "cron:" not in event_block, filename
