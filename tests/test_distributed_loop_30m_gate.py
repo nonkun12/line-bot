@@ -109,7 +109,7 @@ class BudgetGateTests(unittest.TestCase):
 
     def test_self_asserted_authority_without_valid_signature_blocks(self):
         payload = signed_payload()
-        payload["sources"][0]["limit_evidence_id"] = "fixture-evidence-001"
+        payload["meters"][0]["limit_evidence_id"] = "fixture-evidence-001"
         payload["attestation"]["signature"] = "0" * 64
         with self.assertRaisesRegex(GateBlocked, "budget_attestation_signature_invalid"):
             evaluate(payload)
@@ -157,16 +157,17 @@ class BudgetGateTests(unittest.TestCase):
         with self.assertRaisesRegex(GateBlocked, "budget_meter_identity_invalid"):
             evaluate(payload)
 
-    def test_partial_sampled_or_wrong_account_source_blocks(self):
+    def test_partial_sampled_or_wrong_account_meter_blocks(self):
         for override in ({"complete_account_coverage": False}, {"exact_counter": False},
-                         {"sampling_mode": "adaptive"}, {"coverage_status": "partial"},
-                         {"account_id": "other-account"}):
+                         {"sampling_mode": "adaptive"}, {"coverage_status": "partial"}):
             with self.subTest(override=override):
-                with self.assertRaisesRegex(GateBlocked, "budget_source_coverage_or_exactness_unproven"):
+                with self.assertRaisesRegex(GateBlocked, "budget_meter_coverage_or_exactness_unproven"):
                     evaluate(signed_payload({"cloudflare_workers": override}))
+        with self.assertRaisesRegex(GateBlocked, "budget_meter_provider_product_or_account_invalid"):
+            evaluate(signed_payload({"cloudflare_workers": {"account_id": "other-account"}}))
 
     def test_wrong_github_billing_account_blocks(self):
-        with self.assertRaisesRegex(GateBlocked, "budget_source_coverage_or_exactness_unproven"):
+        with self.assertRaisesRegex(GateBlocked, "budget_meter_provider_product_or_account_invalid"):
             evaluate(signed_payload({"github_actions": {"account_id": "untrusted-gh-owner"}}))
 
     def test_old_watermark_blocks_even_if_poll_is_recent(self):
@@ -190,13 +191,21 @@ class BudgetGateTests(unittest.TestCase):
 
     def test_missing_disabled_and_out_of_period_block(self):
         cases = [
-            ({"cloudflare_d1": {"enabled": None}}, "budget_source_not_confirmed_enabled"),
-            ({"cloudflare_d1": {"period_end": "2026-11-12T00:00:00Z"}}, "budget_period_not_current"),
+            ({"cloudflare_d1": {"enabled": None}}, "budget_meter_provider_product_or_account_invalid"),
+            ({"cloudflare.d1.rows_read.daily": {"period_end": "2026-11-12T00:00:00Z"}}, "budget_period_not_current"),
             ({"cloudflare_d1": {"limit_verified": False}}, "budget_limit_not_authoritatively_verified"),
         ]
         for overrides, reason in cases:
             with self.assertRaisesRegex(GateBlocked, reason):
                 evaluate(signed_payload(overrides))
+
+    def test_meter_period_kind_and_total_boundaries_are_enforced(self):
+        with self.assertRaisesRegex(GateBlocked, "budget_period_kind_invalid"):
+            evaluate(signed_payload({"cloudflare.workers.requests.daily": {"period_kind": "monthly"}}))
+        with self.assertRaisesRegex(GateBlocked, "budget_nonreset_meter_has_period_boundary"):
+            evaluate(signed_payload({"cloudflare.d1.storage_bytes.total": {
+                "period_start": MONTH_START, "period_end": MONTH_END
+            }}))
 
     def test_three_consecutive_failures_block(self):
         payload = signed_payload()
