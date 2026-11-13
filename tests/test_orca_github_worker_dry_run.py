@@ -99,6 +99,11 @@ class WorkerDryRunTests(unittest.TestCase):
         with self.assertRaisesRegex(WorkerDryRunRejected, "lease_expired"):
             dry_run_one(queue_state=state, envelope=self.envelope, now=self.now)
 
+    def test_naive_clock_blocks(self):
+        with self.assertRaisesRegex(WorkerDryRunRejected, "clock_timezone_missing"):
+            dry_run_one(queue_state=self.state, envelope=self.envelope,
+                        now=datetime(2026, 11, 13, 12, 0))
+
     def test_duplicate_or_inconsistent_queue_blocks(self):
         state = {**self.state, "tasks": self.state["tasks"] * 2}
         with self.assertRaises(WorkerDryRunRejected):
