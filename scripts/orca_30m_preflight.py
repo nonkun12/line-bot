@@ -115,6 +115,13 @@ def inspect_prerequisites(*, env: dict[str, str] | None = None, store: Any = Non
         task = sorted(queued, key=lambda row: (str(row.get("created_at", "")), str(row.get("task_id", ""))))[0]
         if not isinstance(task.get("task_id"), str) or not isinstance(task.get("request_hash"), str):
             raise ValueError("queued_task_identity_invalid")
+        run_id = values.get("GITHUB_RUN_ID", "")
+        guard = state.get("run_guard")
+        if not run_id or not isinstance(guard, dict) or guard.get("run_id") != run_id:
+            raise ValueError("run_guard_not_initialized_for_current_run")
+        from scripts.orca_github_runaway_guard import validate_and_consume_claim
+        current_time = now or datetime.now(timezone.utc)
+        validate_and_consume_claim(state=state, task_id=task["task_id"], now=current_time)
 
         from scripts.orca_github_execution_gate import evaluate_execution_gate
         approval = _json_env("ORCA_APPROVAL_JSON") if env is None else json.loads(values["ORCA_APPROVAL_JSON"])
@@ -133,7 +140,7 @@ def inspect_prerequisites(*, env: dict[str, str] | None = None, store: Any = Non
             budget_signing_key=values["ORCA_BUDGET_SIGNING_KEY"],
             billing_account_id=values["ORCA_BILLING_ACCOUNT_ID"],
             improvement_cycle=cycle,
-            now=now or datetime.now(timezone.utc),
+            now=current_time,
         )
         if result.get("status") != "PASS":
             raise ValueError("execution_gate_not_passed")
