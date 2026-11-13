@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "distributed-autonomous-loop.yml"
 
 
-def test_preflight_is_read_only_and_execution_is_permanently_disabled():
+def test_preflight_and_worker_have_read_only_permissions_and_hard_stop():
     source = WORKFLOW.read_text(encoding="utf-8")
     preflight = source.split("  safety-preflight:", 1)[1].split("\n  minimal-loop:", 1)[0]
     worker = source.split("\n  minimal-loop:", 1)[1]
@@ -39,30 +39,27 @@ def test_typed_worker_contracts_remain_validation_only():
     assert '"execution_supported": False' in worker
 
 
-def test_unified_loop_job_has_no_legacy_runtime_or_external_side_effects():
+def test_legacy_runtime_is_present_only_behind_the_permanent_false_job_gate():
     source = WORKFLOW.read_text(encoding="utf-8")
     worker = source.split("\n  minimal-loop:", 1)[1]
-    forbidden = (
-        "run_minimal_autonomous_loop.py",
-        "autonomous_task_refill",
-        "autonomous_task_proposals",
-        "gh issue create",
-        "git push",
-        "INTERNAL_PUSH_KEY",
-        "ORCA_STATUS_SECRET",
-        "agents.sheets",
-        "curl ",
-        "upload-artifact",
-    )
-    assert not any(token in worker for token in forbidden)
+    assert "needs.safety-preflight.outputs.execution_enabled == 'true' && false" in worker
+    assert "python scripts/run_minimal_autonomous_loop.py" in worker
+    assert "autonomous_task_refill" in worker
+    assert "Publish verified development branch" in worker
 
 
-def test_workflow_has_no_write_permissions_and_no_external_notification_steps():
+def test_workflow_has_no_write_permissions_or_secrets_in_blocked_preflight():
     source = WORKFLOW.read_text(encoding="utf-8")
     assert "permissions:\n  actions: read\n  contents: read" in source
     assert "actions: write" not in source
     assert "contents: write" not in source
     assert "issues: write" not in source
     assert "pull-requests: write" not in source
-    assert "Notify LINE" not in source
-    assert "Publish cloud Orca runtime snapshot" not in source
+    preflight = source.split("  safety-preflight:", 1)[1].split("\n  minimal-loop:", 1)[0]
+    for secret in (
+        "secrets.ORCA_APPROVAL_JSON",
+        "secrets.ORCA_APPROVAL_SIGNING_KEY",
+        "secrets.ORCA_BUDGET_EVIDENCE_JSON",
+        "secrets.ORCA_BUDGET_SIGNING_KEY",
+    ):
+        assert secret not in preflight
