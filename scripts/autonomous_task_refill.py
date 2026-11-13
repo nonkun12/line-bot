@@ -206,8 +206,8 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         elif trusted.get("execution_approved") is not True:
             skipped_unapproved_ids.append(task["id"])
         elif provider_free_targets is not None and (
-            provider_free_targets.get(task["id"]) != task["allowed_paths"][0]
-            or len(task["allowed_paths"]) != 1
+            len(task["allowed_paths"]) != 1
+            or provider_free_targets.get(task["id"]) != task["allowed_paths"][0]
         ):
             skipped_not_provider_free_ids.append(task["id"])
         elif task["id"] not in ineligible_ids:
@@ -227,8 +227,8 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         and (
             provider_free_targets is None
             or (
-                provider_free_targets.get(task["id"]) == task["allowed_paths"][0]
-                and len(task["allowed_paths"]) == 1
+                len(task["allowed_paths"]) == 1
+                and provider_free_targets.get(task["id"]) == task["allowed_paths"][0]
             )
         )
     ]
