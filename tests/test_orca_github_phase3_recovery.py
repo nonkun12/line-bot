@@ -13,6 +13,7 @@ from scripts.orca_github_task_queue import (
     QueueRejected, empty_state, enqueue, claim_next, finish, reclaim_expired,
 )
 from scripts.orca_github_worker_dry_run import WorkerDryRunRejected, dry_run_one
+from scripts.orca_github_runaway_guard import RunawayGuardRejected, finish_with_outcome
 
 
 NOW = "2026-11-13T12:00:00Z"
@@ -43,6 +44,7 @@ class Phase3RecoveryTests(unittest.TestCase):
             "tasks_claimed": 1, "attempts_by_task": {"task-1": 1},
             "consecutive_failures": 0, "circuit_breaker_until": None,
             "paid_services_enabled": False, "automatic_retry_enabled": False,
+            "outcomes_by_task": {},
         }
         return state
 
@@ -161,6 +163,39 @@ class Phase3RecoveryTests(unittest.TestCase):
                 done, expected_revision=done["revision"],
                 task_id="task-1", owner="worker-1", run_id="run-1",
                 now="2026-11-13T12:00:02Z", outcome="done",
+            )
+
+
+    def test_failure_outcome_opens_breaker_and_replay_is_idempotent(self):
+        state = self.claimed_state()
+        state["run_guard"]["consecutive_failures"] = 1
+        failed = finish_with_outcome(
+            state=state, expected_revision=state["revision"], task_id="task-1",
+            owner="worker-1", run_id="run-1", now="2026-11-13T12:00:01Z",
+            outcome="failed",
+        )
+        self.assertEqual(failed["tasks"][0]["status"], "failed")
+        self.assertEqual(failed["run_guard"]["consecutive_failures"], 2)
+        self.assertEqual(failed["run_guard"]["circuit_breaker_until"], "2026-11-13T13:00:01Z")
+        replay = finish_with_outcome(
+            state=failed, expected_revision=failed["revision"], task_id="task-1",
+            owner="worker-1", run_id="run-1", now="2026-11-13T12:00:02Z",
+            outcome="failed",
+        )
+        self.assertEqual(replay, failed)
+
+    def test_conflicting_outcome_replay_rejected(self):
+        state = self.claimed_state()
+        failed = finish_with_outcome(
+            state=state, expected_revision=state["revision"], task_id="task-1",
+            owner="worker-1", run_id="run-1", now="2026-11-13T12:00:01Z",
+            outcome="failed",
+        )
+        with self.assertRaisesRegex(RunawayGuardRejected, "conflicting_outcome_replay"):
+            finish_with_outcome(
+                state=failed, expected_revision=failed["revision"], task_id="task-1",
+                owner="worker-1", run_id="run-1", now="2026-11-13T12:00:02Z",
+                outcome="done",
             )
 
 
