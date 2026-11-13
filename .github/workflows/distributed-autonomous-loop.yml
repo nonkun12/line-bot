@@ -626,8 +626,12 @@ jobs:
           eligible = report.get("eligible_catalog_count")
           held = report.get("skipped_catalog_held_ids")
           review = report.get("skipped_catalog_review_ids")
+          non_provider_free = report.get("skipped_catalog_not_provider_free_ids")
+          unapproved = report.get("skipped_catalog_unapproved_ids")
           held_count = len(held) if isinstance(held, list) else 0
           review_count = len(review) if isinstance(review, list) else 0
+          non_provider_free_count = len(non_provider_free) if isinstance(non_provider_free, list) else 0
+          unapproved_count = len(unapproved) if isinstance(unapproved, list) else 0
           if type(eligible) is int and eligible == 0 and isinstance(held, list) and held:
               if review_count:
                   reason = f"catalog_exhausted_mixed:held={held_count},review={review_count}"
@@ -640,6 +644,14 @@ jobs:
               reason = f"catalog_exhausted_review_pending:{review_count}"
               Path("/tmp/autonomous-loop-held-tasks").write_text(reason + chr(10), encoding="utf-8")
               print(f"::warning::BLOCKED: {reason}; post-resume review is required.")
+          elif type(eligible) is int and eligible == 0 and non_provider_free_count:
+              reason = f"catalog_blocked_non_provider_free:{non_provider_free_count}"
+              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + chr(10), encoding="utf-8")
+              print(f"::warning::BLOCKED: {reason}; non-provider-free tasks cannot enter the free-only queue.")
+          elif type(eligible) is int and eligible == 0 and unapproved_count:
+              reason = f"catalog_blocked_unapproved:{unapproved_count}"
+              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + chr(10), encoding="utf-8")
+              print(f"::warning::BLOCKED: {reason}; explicit execution approval is missing.")
           else:
               Path("/tmp/autonomous-loop-not-run").write_text("queue_empty\n", encoding="utf-8")
               print("::notice::NOT_RUN: queue_empty - no task was executed.")
