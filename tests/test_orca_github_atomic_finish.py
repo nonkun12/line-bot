@@ -94,6 +94,17 @@ class AtomicFinishTests(unittest.TestCase):
         self.assertFalse(replay["persisted"])
         self.store.write.assert_not_called()
 
+    def test_replay_from_different_run_is_rejected_before_persistence(self):
+        first = self.call()
+        self.snapshot = first["snapshot"]
+        self.store.write.reset_mock()
+        with self.assertRaisesRegex(RunawayGuardRejected, "guard_run_id_mismatch"):
+            persist_task_outcome(
+                store=self.store, snapshot=self.snapshot, task_id=TASK_ID,
+                owner="worker-1", run_id="attacker-run", now=NOW, outcome="done",
+            )
+        self.store.write.assert_not_called()
+
     def test_wrong_owner_is_rejected_before_persistence(self):
         with self.assertRaisesRegex(RunawayGuardRejected, "lease_owner_mismatch"):
             self.call(owner="attacker")
