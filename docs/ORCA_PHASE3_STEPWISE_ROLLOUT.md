@@ -15,6 +15,33 @@ Global safety defaults remain:
 - Missing budget, approval, evidence, or state is BLOCKED.
 - Draft PR only; production state is not initialized or modified.
 
+## Human Emergency Stop (terminal + LINE)
+
+Both entrypoints latch the same durable `emergency_stop=true` field in the
+GitHub-native state document using the state store's non-force CAS write.
+The stop is checked before atomic claim and at the worker boundary. There is
+no automatic clear/reset path; clearing requires a separately reviewed,
+explicit human recovery procedure and audit trail.
+
+Terminal command (requires the configured GitHub state-store environment):
+
+```sh
+python -m scripts.orca_emergency_stop --reason "operator requested emergency stop"
+```
+
+LINE exact command examples:
+
+- `緊急停止`
+- `緊急停止: 暴走の兆候`
+- `ORCA STOP`
+- `EMERGENCY STOP`
+
+LINE must use the configured authorized-user allowlist. If the allowlist,
+GitHub token, state branch, or state document is unavailable, the request
+must be reported as not durably recorded and execution remains fail-closed.
+The LINE webhook must call the shared handler only after validating the
+platform webhook signature; user ID alone is not proof of message origin.
+
 ## Step 3-A — Unified execution gate
 
 **Purpose:** Validate the queue, Global HOLD, task identity and hash, signed
