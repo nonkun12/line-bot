@@ -197,6 +197,7 @@ class RuntimeStopWatcherTests(unittest.TestCase):
         self.assertIn("python scripts/distributed_loop_30m_gate.py", final_gate)
         self.assertIn("ORCA_30M_GATE_ALLOW:", final_gate)
         self.assertIn("steps.final_admission.outputs.allow == 'true'", workflow)
+        self.assertIn("steps.final_admission.outputs.allow == 'true'", workflow.split("id: persist_recovery_ai", 1)[1].split("name: Advisory Creator-Critic", 1)[0])
 
 
 if __name__ == "__main__":
