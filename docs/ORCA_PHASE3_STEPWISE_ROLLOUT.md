@@ -91,8 +91,9 @@ enable the schedule without explicit user approval.
 
 - Step 3-A gate: implementation present; latest full test suite and focused
   Orca status checks passed at commit `162b20fa15977545458fcda7322fc8e8a9dd93ce`.
-- Step 3-A2: atomic coordinator added; CI is the acceptance check in progress.
-- Steps 3-B onward: not started.
+- Step 3-A2: atomic approval-consumption + single-task claim coordinator added; syntax, independent review, whole pytest, and Orca status checks passed at commit `afca1797d8e425bfe7e6063fa4c7aba45e61951e`.
+- Step 3-B: side-effect-free single-task worker dry-run added; validates Global HOLD, exact envelope shape, canonical payload hash and size, claimed task, lease ownership/run, and lease expiry. It does not execute task code or perform side effects. CI pending at the current implementation commit.
+- Steps 3-C onward: not started.
 - Trusted budget collector and LINE approval identity/signing integration:
   not connected; live execution remains blocked.
 - State branch is not provisioned; no schedule is enabled.
