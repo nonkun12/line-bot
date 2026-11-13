@@ -158,30 +158,9 @@ jobs:
   minimal-loop:
     needs: safety-preflight
     if: ${{ needs.safety-preflight.outputs.execution_enabled == 'true' && false }}
-      needs.safety-preflight.outputs.execution_enabled == 'true' &&
-      (
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event_name == 'issue_comment' &&
-        github.event.issue.pull_request &&
-        (github.event.comment.body == '/distributed-loop' ||
-         github.event.comment.body == '/distributed-loop max_tasks=1' ||
-                                    startsWith(github.event.comment.body, '/distributed-loop resume_task_id=')) &&
-        (
-          github.event.comment.author_association == 'OWNER' ||
-          github.event.comment.author_association == 'MEMBER' ||
-          github.event.comment.author_association == 'COLLABORATOR'
-        )
-      ) ||
-      (
-        github.event_name == 'pull_request_target' &&
-        github.event.action == 'labeled' &&
-        github.event.label.name == 'distributed-loop-max1' &&
-        github.event.sender.login == 'nonkun12' &&
-        github.event.pull_request.user.login == 'nonkun12'
-      )
-      )
+    permissions:
+      actions: read
+      contents: read
     runs-on: ubuntu-latest
     # Match the independent Runaway Guard's hard 30-minute wall-clock ceiling.
     timeout-minutes: 30
