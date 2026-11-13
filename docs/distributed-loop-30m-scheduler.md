@@ -35,14 +35,14 @@ Thresholds are conservative internal policy, not vendor quota guarantees:
 - 90%: STOP; block new work.
 - Missing, unknown, or stale data: BLOCKED.
 
-The entire response must also carry an `attestation` object signed with HMAC-SHA256 over canonical JSON of the response with only the signature field removed. The signed attestation binds `account_id`, `collector_id`, `issued_at`, and `expires_at`; the gate checks the expected account and collector IDs, signature, a maximum 15-minute attestation lifetime, and a 10-minute issue-time freshness window. Source records must declare provider, account scope, complete account coverage, exact counter semantics, no sampling, complete coverage status, dataset identity, and a current source watermark. The workflow reads `ORCA_BUDGET_EVIDENCE_HMAC_SECRET` from a GitHub Secret and the expected Cloudflare account, GitHub billing account, and collector IDs from repository Variables. Missing configuration, invalid signatures, unknown providers, partial coverage, sampling, or stale watermarks BLOCK execution.
+The entire response, including the product inventory and all meter records, must carry an `attestation` object signed with HMAC-SHA256 over canonical JSON with only the signature field removed. The signed attestation binds `account_id`, `collector_id`, `issued_at`, and `expires_at`; the gate checks the expected account and collector IDs, signature, a maximum 15-minute attestation lifetime, and a 10-minute issue-time freshness window. Every meter declares provider/account scope, complete coverage, exact counter semantics, no sampling, dataset identity, and a current source watermark. The workflow reads `ORCA_BUDGET_EVIDENCE_HMAC_SECRET` from a GitHub Secret and the expected Cloudflare account, GitHub billing account, and collector IDs from repository Variables. Missing configuration, invalid signatures, unknown products, partial coverage, sampling, or stale watermarks BLOCK execution.
 
 The trusted live collector and signed budget endpoint are not part of this PR. Until they exist and produce independently verifiable evidence, scheduled and manual runs are blocked by design. Do not set dummy values or bypass the gate.
 
 
-## Multi-dimension quota inventory: current four-row schema is not sufficient
+## Multi-dimension quota inventory and account scope
 
-The current signed schema's four product-level rows are a transitional contract only. They must not be interpreted as complete free-plan coverage and must not authorize production activation. One row per product cannot represent multiple independently limited dimensions, units, and reset periods. The next enforcement schema must use unique `meter_id` records and a signed account product inventory.
+Schema v2 replaces the earlier four-product-row contract with unique `meter_id` records and a signed account product inventory. The current allowlist deliberately covers only Workers, Workers Logs, D1, SQLite Durable Objects, and GitHub Actions. If the inventory discovers any additional enabled product (for example KV, Hyperdrive, Queues, Workflows, R2, or Vectorize), the gate blocks until that product's full set of independent dimensions is added and validated.
 
 Minimum dimensions to model when the corresponding product is enabled (verify the account's current plan and product-specific terms before assigning a limit):
 
@@ -70,7 +70,7 @@ Required schema-v2 rules:
 - Each meter is evaluated independently. Do not combine requests, rows, storage, duration, steps, money, or runner SKUs into one percentage.
 - Per-invocation hard ceilings are enforced at the individual task/runtime boundary, not averaged into an account-level daily quota.
 - The HMAC binds the entire inventory and meter array. A collector assertion alone is not sufficient unless its provider query, coverage, pagination, freshness, and exactness have been independently validated.
-- The gate now parses schema v2 and tests per-meter inventory completeness. However, no production collector or signed endpoint emits this contract yet; a signed v1 four-row payload is rejected. Schema v2 is not production-admissible until its collector, authoritative provider coverage, and boundary tests are independently verified.
+- The gate now parses schema v2 and tests per-meter inventory completeness. No production collector or signed endpoint emits this contract yet; v1 four-row payloads are rejected. Schema v2 is not production-admissible until its collector, authoritative provider coverage, and boundary tests are independently verified.
 
 ## Cloudflare telemetry admissibility findings (2026-11-13)
 
