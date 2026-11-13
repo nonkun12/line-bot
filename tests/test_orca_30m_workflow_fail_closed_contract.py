@@ -43,5 +43,6 @@ def test_scheduled_runs_do_not_wake_render_or_consume_line_push_quota():
         "Wake Render before LINE final report",
         "Notify LINE of distributed loop final report",
     ):
-        section = source.split(f"      - name: {step_name}\\n", 1)[1].split("\\n      - name:", 1)[0]
-        assert "if: always() && github.event_name != 'schedule'" in section
+        lines = source.splitlines()
+        step_index = lines.index(f"      - name: {step_name}")
+        assert lines[step_index + 1].strip() == "if: always() && github.event_name != 'schedule'"
