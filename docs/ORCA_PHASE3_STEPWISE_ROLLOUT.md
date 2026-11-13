@@ -121,6 +121,9 @@ enable the schedule without explicit user approval.
 - Step 3-A2: atomic approval-consumption + single-task claim coordinator added; syntax, independent review, whole pytest, and Orca status checks passed at commit `afca1797d8e425bfe7e6063fa4c7aba45e61951e`.
 - Step 3-B: side-effect-free single-task worker dry-run added; validates Global HOLD, exact envelope shape, canonical payload hash and size, claimed task, lease ownership/run, and lease expiry. It does not execute task code or perform side effects. Syntax, independent review, full pytest, and Orca status tests passed at commit `3767eff73d365215ebe60e0b9e4804fec49d7aaa`.
 - Step 3-C: crash/recovery, duplicate delivery, expired lease, reclaim fencing, Global HOLD after claim, stale worker, and double-finish adversarial tests added; CI pending.
+- Durable free-only anti-runaway guard: one task and one attempt per run, 30-minute run ceiling, two-failure circuit breaker, one-hour minimum cooldown, paid services disabled, and automatic retries disabled. The guard is consumed atomically with the claim and rechecked at worker start.
+- Human Emergency Stop: shared terminal and LINE entrypoints now route to the same durable STOP latch. Terminal command is `python -m scripts.orca_emergency_stop --reason "暴走の兆候を検知"`; LINE aliases are `緊急停止`, `緊急停止: 理由`, `ORCA STOP`, and `EMERGENCY STOP`. LINE handler is prioritized before other AI/development routes and requires the configured user allowlist; LINE webhook signature validation remains in the existing SDK callback path.
+- Terminal/LINE Emergency Stop focused tests added; syntax and independent review passed on intermediate commits; full pytest and Orca focused tests pending for the latest head.
 - Steps 3-D onward: not started.
 - Trusted budget collector and LINE approval identity/signing integration:
   not connected; live execution remains blocked.
