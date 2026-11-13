@@ -5,15 +5,12 @@ on:
   workflow_dispatch:
     inputs:
       max_tasks:
-        description: 'Manual run task limit (1-4; each task is reselected and reauthorized against current HEAD)'
+        description: 'Manual run task limit (fixed at one task per run)'
         required: false
         default: '1'
         type: choice
         options:
           - '1'
-          - '2'
-          - '3'
-          - '4'
       request_id:
         description: 'Optional correlation ID for a LINE-queued request'
         required: false
@@ -77,7 +74,7 @@ on:
         default: false
         type: boolean
   # ChatGPT can request a bounded run by creating an authorized PR comment.
-  # The trigger defaults to four tasks and remains fail-closed.
+  # The trigger is fixed to one task and remains fail-closed.
   issue_comment:
     types: [created]
   # Reliable fallback trigger for ChatGPT: adding this exact label to a PR.
@@ -112,10 +109,7 @@ jobs:
         github.event.issue.pull_request &&
         (github.event.comment.body == '/distributed-loop' ||
          github.event.comment.body == '/distributed-loop max_tasks=1' ||
-         github.event.comment.body == '/distributed-loop max_tasks=2' ||
-         github.event.comment.body == '/distributed-loop max_tasks=3' ||
-         github.event.comment.body == '/distributed-loop max_tasks=4' ||
-         startsWith(github.event.comment.body, '/distributed-loop resume_task_id=')) &&
+                                    startsWith(github.event.comment.body, '/distributed-loop resume_task_id=')) &&
         (
           github.event.comment.author_association == 'OWNER' ||
           github.event.comment.author_association == 'MEMBER' ||
@@ -125,7 +119,7 @@ jobs:
       (
         github.event_name == 'pull_request_target' &&
         github.event.action == 'labeled' &&
-        github.event.label.name == 'distributed-loop-max4' &&
+        github.event.label.name == 'distributed-loop-max1' &&
         github.event.sender.login == 'nonkun12' &&
         github.event.pull_request.user.login == 'nonkun12'
       )
@@ -174,10 +168,7 @@ jobs:
         github.event.issue.pull_request &&
         (github.event.comment.body == '/distributed-loop' ||
          github.event.comment.body == '/distributed-loop max_tasks=1' ||
-         github.event.comment.body == '/distributed-loop max_tasks=2' ||
-         github.event.comment.body == '/distributed-loop max_tasks=3' ||
-         github.event.comment.body == '/distributed-loop max_tasks=4' ||
-         startsWith(github.event.comment.body, '/distributed-loop resume_task_id=')) &&
+                                    startsWith(github.event.comment.body, '/distributed-loop resume_task_id=')) &&
         (
           github.event.comment.author_association == 'OWNER' ||
           github.event.comment.author_association == 'MEMBER' ||
@@ -187,7 +178,7 @@ jobs:
       (
         github.event_name == 'pull_request_target' &&
         github.event.action == 'labeled' &&
-        github.event.label.name == 'distributed-loop-max4' &&
+        github.event.label.name == 'distributed-loop-max1' &&
         github.event.sender.login == 'nonkun12' &&
         github.event.pull_request.user.login == 'nonkun12'
       )
@@ -196,7 +187,7 @@ jobs:
     # Match the independent Runaway Guard's hard 30-minute wall-clock ceiling.
     timeout-minutes: 30
     env:
-      MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id=') && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || github.event_name == 'pull_request_target' && '4' || '1' }}
+      MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id=') && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || github.event_name == 'pull_request_target' && '1' || '1' }}
       TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'normal' }}
       INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_category || '' }}
       INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_detail || '' }}
@@ -292,7 +283,7 @@ jobs:
         run: |
           set -euo pipefail
           case "${REQUESTED_TASK_LIMIT}" in
-            1|2|3|4) ;;
+            1) ;;
             *) echo "::error::Invalid task limit: ${REQUESTED_TASK_LIMIT}"; exit 1 ;;
           esac
           expected="${REQUESTED_TASK_LIMIT}"
@@ -300,9 +291,6 @@ jobs:
             case "${COMMENT_BODY}" in
               "/distributed-loop") expected="1" ;;
               "/distributed-loop max_tasks=1") expected="1" ;;
-              "/distributed-loop max_tasks=2") expected="2" ;;
-              "/distributed-loop max_tasks=3") expected="3" ;;
-              "/distributed-loop max_tasks=4") expected="4" ;;
               *)
                 if [[ "${COMMENT_BODY}" =~ ^/distributed-loop[[:space:]]resume_task_id=([A-Za-z0-9._-]{1,100})[[:space:]]confirm_cause_fixed=true[[:space:]]reviewed=true$ ]]; then
                   expected="1"
@@ -317,7 +305,7 @@ jobs:
           elif [ "${EVENT_NAME}" = "schedule" ]; then
             expected="1"
           elif [ "${EVENT_NAME}" = "pull_request_target" ]; then
-            # The owner-only distributed-loop-max4 label requests a bounded four-task run.
+            # The owner-only distributed-loop-max1 label requests a bounded four-task run.
             expected="4"
           fi
           if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
