@@ -13,6 +13,7 @@ class AtomicClaimTests(unittest.TestCase):
             "schema_version": 1,
             "revision": 4,
             "global_hold": False,
+            "emergency_stop": False,
             "tasks": [{
                 "task_id": "task-1",
                 "request_hash": "a" * 64,
