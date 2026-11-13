@@ -505,9 +505,6 @@ new_sqlite_classes = ["OrcaWriteBroker"]
         self.assertEqual(status, 403)
         self.assertIn("valid task-bound LINE approval", result["error"])
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
 
     def test_loop_admission_preflight_requires_clear_durable_object_hold_and_fresh_budget(self):
         status, result = self.api("/control/loop-admission")
@@ -532,3 +529,7 @@ if __name__ == "__main__":
         status, blocked = self.api("/control/loop-admission")
         self.assertEqual(status, 423, blocked)
         self.assertFalse(blocked["allowed"])
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
