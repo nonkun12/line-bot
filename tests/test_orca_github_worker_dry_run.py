@@ -20,6 +20,13 @@ class WorkerDryRunTests(unittest.TestCase):
             "schema_version": 1,
             "revision": 5,
             "global_hold": False,
+            "emergency_stop": False,
+            "run_guard": {
+                "run_id": "run-1", "started_at": "2026-11-13T12:00:00Z",
+                "tasks_claimed": 1, "attempts_by_task": {"task-1": 1},
+                "consecutive_failures": 0, "circuit_breaker_until": None,
+                "paid_services_enabled": False, "automatic_retry_enabled": False,
+            },
             "tasks": [{
                 "task_id": "task-1",
                 "request_hash": self.digest,
