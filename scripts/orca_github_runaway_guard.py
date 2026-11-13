@@ -36,6 +36,57 @@ def _parse(value: Any, field: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+
+def initialize_run_guard(*, state: dict[str, Any], run_id: str,
+                         now: datetime) -> dict[str, Any]:
+    """Build a fresh per-run guard without erasing failure or cooldown history.
+
+    Caller must persist this in the same CAS write as the claim. This function
+    is pure and refuses STOP, HOLD, active leases, malformed history and an
+    open cooldown.
+    """
+    if not isinstance(state, dict) or state.get("emergency_stop") is not False:
+        raise RunawayGuardRejected("emergency_stop_active_or_unverifiable")
+    if state.get("global_hold") is not False:
+        raise RunawayGuardRejected("global_hold_active_or_unverifiable")
+    if state.get("active_lease") is not None:
+        raise RunawayGuardRejected("active_lease_present")
+    if not isinstance(run_id, str) or not run_id.strip():
+        raise RunawayGuardRejected("guard_run_id_invalid")
+    if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
+        raise RunawayGuardRejected("guard_clock_timezone_missing")
+    previous = state.get("run_guard")
+    failures = 0
+    cooldown = None
+    if previous is not None:
+        required = {"run_id", "started_at", "tasks_claimed", "attempts_by_task",
+                    "consecutive_failures", "circuit_breaker_until",
+                    "paid_services_enabled", "automatic_retry_enabled",
+                    "outcomes_by_task"}
+        if not isinstance(previous, dict) or set(previous) != required:
+            raise RunawayGuardRejected("durable_run_guard_schema_invalid")
+        failures = previous["consecutive_failures"]
+        if isinstance(failures, bool) or not isinstance(failures, int) or failures < 0:
+            raise RunawayGuardRejected("failure_counter_invalid")
+        cooldown = previous["circuit_breaker_until"]
+        current = now.astimezone(timezone.utc)
+        if cooldown is not None and current < _parse(cooldown, "circuit_breaker_until"):
+            raise RunawayGuardRejected("circuit_breaker_cooldown_active")
+        if failures >= MAX_CONSECUTIVE_FAILURES:
+            raise RunawayGuardRejected("failure_circuit_breaker_open")
+    return {
+        "run_id": run_id,
+        "started_at": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "tasks_claimed": 0,
+        "attempts_by_task": {},
+        "consecutive_failures": failures,
+        "circuit_breaker_until": cooldown,
+        "paid_services_enabled": False,
+        "automatic_retry_enabled": False,
+        "outcomes_by_task": {},
+    }
+
+
 def validate_and_consume_claim(*, state: dict[str, Any], task_id: str,
                                now: datetime) -> dict[str, Any]:
     """Validate durable run limits and return a copied guard with one slot consumed."""
