@@ -103,3 +103,10 @@ def test_dashboard_loop_lists_unified_main_loop_and_handoffs(orca_client):
     assert body["activation_preflight"]["status"] == "blocked"
     assert body["activation_preflight"]["execution_enabled"] is False
     assert body["budget_gate"]["status"] == "blocked"
+    assert body["schedule_owner"] == ".github/workflows/distributed-autonomous-loop.yml"
+    assert body["scheduled_workflow_count"] == 1
+    assert body["sidecar_schedules_enabled"] is False
+    assert body["observer_schedule_enabled"] is False
+    assert body["start_readiness"] == "BLOCKED"
+    assert "dedicated_worker_runtime_not_integrated" in body["start_blockers"]
+    assert body["execution_enabled"] is False
