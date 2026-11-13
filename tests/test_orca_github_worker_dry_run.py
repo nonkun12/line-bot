@@ -36,7 +36,7 @@ class WorkerDryRunTests(unittest.TestCase):
                 "created_at": "2026-11-13T11:59:00Z",
             }],
             "active_lease": {
-                "task_id": "task-1",
+                "task_id": self.task_id,
                 "owner": "worker-1",
                 "run_id": "run-1",
                 "expires_at": "2026-11-13T12:10:00Z",
@@ -44,7 +44,7 @@ class WorkerDryRunTests(unittest.TestCase):
             "consumed_approval_ids": ["a" * 64],
         }
         self.envelope = {
-            "task_id": "task-1",
+            "task_id": self.task_id,
             "request_hash": self.digest,
             "owner": "worker-1",
             "run_id": "run-1",
