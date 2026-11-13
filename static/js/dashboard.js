@@ -58,6 +58,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const cards=[
           ['🔄 Loop',l.execution_enabled?'🟢 実行許可あり':'🟡 提案・未稼働確認',`${l.target_cadence||'未設定'}間隔目標 ・ ${l.frequency_per_day||'—'}回/日相当 ・ ${(l.schedule_jst||[]).join(' / ')} JST`],
           ['🛡️ Safety Gate',s.fail_closed||l.fail_closed?'🟢 FAIL_CLOSED 有効':'⚪ 未確認',`Auto Merge: ${s.auto_merge?'有':'無'} ・ Auto Deploy: ${s.auto_deploy?'有':'無'}`],
+          ['💰 Budget Gate',l.budget_gate?.status==='verified'?'🟢 検証済み':'🟡 実行BLOCKED',l.budget_gate?.evidence||'無料枠の実証拠は未接続'],
+          ['🧯 Runaway Guard',l.runaway_guard?.status==='verified'?'🟢 検証済み':'🟡 部分実装・検証待ち',l.runaway_guard?.evidence||'結果台帳とBreakerを確認中'],
+          ['✋ Emergency Stop',l.emergency_stop?.status==='operational'?'🟢 運用可能':'🔴 運用未準備',l.emergency_stop?.evidence||'永続状態と停止経路を未確認'],
           ['📋 Sheets監査',l.sheets_audit?'🟢 有効':'⚪ 未確認',`Runtime telemetry: ${esc(l.runtime_telemetry||'unknown')}`],
           ['🧭 Hermes Adviser',s.hermes_role==='adviser'?'🟢 Adviser':'⚪ 未確認',s.hermes_is_auxiliary?'補助系統・Loop本体とは分離':'状態確認要'],
           ['✋ Hand Sign',h.camera_smoke_test==='implemented'?'🟢 Camera準備済み':'🔵 開発中',`Upload: ${h.camera_upload?'有':'無'} ・ Storage: ${h.camera_storage?'有':'無'}`],
