@@ -85,9 +85,8 @@ on:
   pull_request_target:
     types: [labeled]
   schedule:
-    # Run once per hour at minute 17 Japan time.
-    # Changing the cron expression also reactivates a deactivated scheduled workflow.
-    - cron: '17 * * * *'
+    # Single scheduler: every 30 minutes (JST). Side workflows are not independently scheduled.
+    - cron: '*/30 * * * *'
       timezone: 'Asia/Tokyo'
 
 permissions:
