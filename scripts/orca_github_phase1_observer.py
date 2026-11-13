@@ -37,7 +37,7 @@ def _request_json(
         method="GET",
     )
     try:
-        with opener(request, timeout=10) as response:
+        with opener(request, 10) as response:
             raw = response.read(1_000_000)
         value = json.loads(raw.decode("utf-8"))
     except urllib.error.HTTPError as exc:
