@@ -84,7 +84,7 @@ class WorkerDryRunTests(unittest.TestCase):
 
         missing = dict(self.state)
         missing.pop("emergency_stop")
-        with self.assertRaisesRegex(WorkerDryRunRejected, "emergency_stop_active"):
+        with self.assertRaisesRegex(WorkerDryRunRejected, "emergency_stop_missing_or_invalid"):
             dry_run_one(queue_state=missing, envelope=self.envelope, now=self.now)
 
     def test_runaway_guard_limits_are_rechecked_at_worker_boundary(self):
