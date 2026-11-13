@@ -40,13 +40,20 @@ counter without a verified plan limit.
 ## Next phases
 
 1. Implement and independently validate the account-level collector.
-2. Add a GitHub-native task queue/claim implementation with atomic claim and
-   lease-expiry tests. GitHub Issues alone are not an atomic queue.
-3. Add a common LINE identity + task-bound approval verifier.
-4. Add a latched GitHub-native Global HOLD. Missing/unreadable state blocks.
-5. Wire a single serialized workflow only after all preceding evidence exists.
-6. Run read-only, local contract, concurrency, replay, and failure-injection
-   tests before any one-task canary. Keep auto-patch and auto-deploy disabled.
+2. A pure GitHub-native task queue state machine and lease transition tests are
+   now included in this branch. It is a contract/reference model, NOT a durable
+   queue or atomic claim backend. The persistence adapter is still missing.
+3. Add a GitHub ref-backed append-only state store. Writers must be serialized,
+   compare the exact state revision, and update a dedicated state ref with a
+   non-force fast-forward; reject conflicts and retry from the newest state.
+   GitHub Issues alone are not an atomic queue, and Actions concurrency alone
+   is not a durable FIFO queue.
+4. Add a common LINE identity + task-bound approval verifier.
+5. Add a latched GitHub-native Global HOLD. Missing/unreadable state blocks.
+6. Wire a single serialized workflow only after all preceding evidence exists.
+7. Run read-only, local contract, real concurrent-writer, replay, and
+   failure-injection tests before any one-task canary. Keep auto-patch and
+   auto-deploy disabled.
 
 ## Safety invariants
 
