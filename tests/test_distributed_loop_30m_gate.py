@@ -1,6 +1,7 @@
-import hashlib,hmac,json,unittest
+import hashlib,hmac,json,unittest,os,tempfile
 from datetime import datetime,timedelta,timezone
-from scripts.distributed_loop_30m_gate import GateBlocked,decide_slot,evaluate_budget_snapshot
+from unittest.mock import patch
+from scripts.distributed_loop_30m_gate import GateBlocked,decide_slot,evaluate_budget_snapshot,main
 NOW=datetime(2026,11,13,0,0,tzinfo=timezone.utc); KEY="test-only-hmac-key-that-is-at-least-32-bytes"
 NAMES=("cloudflare_workers","cloudflare_d1","cloudflare_durable_objects")
 def signed(overrides=None,failures=0):
@@ -59,4 +60,16 @@ class SlotGateTests(unittest.TestCase):
   self.assertEqual(decide_slot(old,current_run_id="2",now=NOW),(True,"slot_available"))
   recent=[{"id":1,"run_started_at":(NOW-timedelta(minutes=20)).isoformat()}]
   self.assertFalse(decide_slot(recent,current_run_id="2",now=NOW)[0])
+
+class GateProcessTests(unittest.TestCase):
+ def test_blocked_gate_exits_nonzero_and_writes_false_output(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   output=os.path.join(tmp,"output"); summary=os.path.join(tmp,"summary")
+   env={"GITHUB_OUTPUT":output,"GITHUB_STEP_SUMMARY":summary,"GITHUB_EVENT_NAME":"schedule","CONTINUATION_DEPTH":"0"}
+   with patch.dict(os.environ,env,clear=False):
+    with patch("scripts.distributed_loop_30m_gate.check_global_hold",side_effect=GateBlocked("global_hold_active_or_unknown")):
+     self.assertEqual(main(),1)
+   with open(output,encoding="utf-8") as f: self.assertIn("allow=false",f.read())
+   with open(summary,encoding="utf-8") as f: self.assertIn("BLOCKED",f.read())
+
 if __name__=="__main__": unittest.main()
