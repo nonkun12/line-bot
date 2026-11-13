@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 
-from scripts.distributed_loop_30m_gate import GateBlocked, decide_slot, evaluate_budget_snapshot, main
+from scripts.distributed_loop_30m_gate import GateBlocked, check_loop_admission, decide_slot, evaluate_budget_snapshot, main
 
 NOW = datetime(2026, 11, 13, 0, 0, tzinfo=timezone.utc)
 DAILY_START, DAILY_END = "2026-11-13T00:00:00Z", "2026-11-14T00:00:00Z"
@@ -237,6 +237,30 @@ class BudgetGateTests(unittest.TestCase):
 
 
 
+class LoopAdmissionTests(unittest.TestCase):
+    def test_loop_admission_requires_explicit_hold_and_budget_clear(self):
+        good = {
+            "allowed": True,
+            "global_hold": {"clear": True, "value": "off", "blocked": False, "unresolved_operations": 0},
+            "budget_guard": {"allowed": True, "status": "WARN"},
+        }
+        with patch.dict("os.environ", {
+            "ORCA_CONTROL_API_URL": "https://control.example.test",
+            "ORCA_LOOP_PREFLIGHT_TOKEN": "unit-test-token",
+        }):
+            with patch("scripts.distributed_loop_30m_gate.request_json", return_value=good):
+                check_loop_admission()
+            bad = dict(good)
+            bad["budget_guard"] = {"allowed": False, "status": "STOP"}
+            with patch("scripts.distributed_loop_30m_gate.request_json", return_value=bad):
+                with self.assertRaisesRegex(GateBlocked, "orca_loop_admission_or_stop_latch_blocked"):
+                    check_loop_admission()
+            bad_hold = dict(good)
+            bad_hold["global_hold"] = dict(good["global_hold"], unresolved_operations=1)
+            with patch("scripts.distributed_loop_30m_gate.request_json", return_value=bad_hold):
+                with self.assertRaisesRegex(GateBlocked, "orca_loop_admission_or_stop_latch_blocked"):
+                    check_loop_admission()
+
 class GateMainTests(unittest.TestCase):
     def test_blocked_gate_returns_nonzero_exit_status(self):
         with patch("scripts.distributed_loop_30m_gate.check_global_hold",
@@ -282,6 +306,7 @@ class RuntimeStopWatcherTests(unittest.TestCase):
         self.assertIn('if [ "$http_code" != "200" ]', watcher)
         self.assertIn(".global_hold.clear == true", watcher)
         self.assertIn(".budget_guard.allowed == true", watcher)
+        self.assertIn(".global_hold.unresolved_operations == 0", watcher)
         self.assertIn("--stop-file \"$STOP_FILE\"", workflow)
 
 
