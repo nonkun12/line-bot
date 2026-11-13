@@ -53,7 +53,7 @@ def verify_github_actions_budget(
     *,
     expected_repository: str,
     expected_billing_account_id: str,
-    min_remaining_minutes: int = 30,
+    min_remaining_minutes: int = 45,
 ) -> dict[str, Any]:
     """Verify a signed, repository/account-bound, exact GitHub Actions snapshot."""
     if not isinstance(payload, dict):
