@@ -182,7 +182,8 @@ def evaluate_execution_gate(
     if queue_state.get("global_hold") is not False:
         raise ExecutionGateRejected("global_hold_active_or_unverifiable")
     tasks = queue_state.get("tasks")
-    if not isinstance(tasks, list) or "active_lease" not in queue_state:
+    if (not isinstance(tasks, list) or "active_lease" not in queue_state
+            or "consumed_approval_ids" not in queue_state):
         raise ExecutionGateRejected("queue_tasks_or_lease_missing")
     seen_task_ids = set()
     for row in tasks:
@@ -215,11 +216,15 @@ def evaluate_execution_gate(
     if task.get("request_hash") != request_hash or not isinstance(request_hash, str) or not _HEX_64.fullmatch(request_hash):
         raise ExecutionGateRejected("task_request_hash_mismatch")
 
-    if (not isinstance(consumed_approval_ids, list)
+    persisted_ledger = queue_state.get("consumed_approval_ids")
+    if (not isinstance(persisted_ledger, list)
             or any(not isinstance(value, str) or not _HEX_64.fullmatch(value)
-                   for value in consumed_approval_ids)
-            or len(consumed_approval_ids) != len(set(consumed_approval_ids))):
+                   for value in persisted_ledger)
+            or len(persisted_ledger) != len(set(persisted_ledger))):
         raise ExecutionGateRejected("approval_replay_ledger_missing_or_invalid")
+    if consumed_approval_ids != persisted_ledger:
+        raise ExecutionGateRejected("approval_replay_ledger_snapshot_mismatch")
+    consumed_approval_ids = persisted_ledger
     approval_id = verify_task_approval(
         approval, approval_signing_key, repository=repository,
         task_id=task_id, request_hash=request_hash, now=now,
