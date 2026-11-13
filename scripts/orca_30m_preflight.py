@@ -79,6 +79,9 @@ def inspect_prerequisites(*, env: dict[str, str] | None = None, store: Any = Non
                           now: datetime | None = None) -> dict[str, Any]:
     """Inspect durable prerequisites without writing state or claiming work."""
     values = os.environ if env is None else env
+    freshness_error = _scheduled_run_freshness(values)
+    if freshness_error:
+        return {"status": "BLOCKED", "reason": freshness_error, "execution_enabled": False}
     missing = [name for name in _REQUIRED_ENV if not values.get(name, "").strip()]
     if missing:
         return {
