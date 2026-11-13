@@ -172,5 +172,16 @@ class ExecutionGateTests(unittest.TestCase):
             self.evaluate(allowed_approvers=["different-owner"])
 
 
+    def test_missing_active_lease_field_blocks(self):
+        state = queue()
+        del state["active_lease"]
+        with self.assertRaisesRegex(ExecutionGateRejected, "queue_tasks_or_lease_missing"):
+            self.evaluate(queue_state=state)
+
+    def test_empty_approver_allowlist_blocks(self):
+        with self.assertRaisesRegex(ExecutionGateRejected, "approver_allowlist_invalid"):
+            self.evaluate(allowed_approvers=[])
+
+
 if __name__ == "__main__":
     unittest.main()
