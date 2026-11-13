@@ -4,10 +4,8 @@ from __future__ import annotations
 import json, math, os, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from scripts.orca_signed_budget_evidence import EvidenceRejected, REQUIRED_SOURCES, verify
 
-REQUIRED_SOURCES = ("cloudflare_workers", "cloudflare_d1", "github_actions")
-MAX_SNAPSHOT_AGE = timedelta(minutes=90)
-MAX_FUTURE_SKEW = timedelta(minutes=5)
 MIN_SLOT_INTERVAL = timedelta(minutes=30)
 
 class GateBlocked(RuntimeError):
@@ -24,61 +22,30 @@ def parse_time(value: Any) -> datetime:
         raise GateBlocked("timestamp_timezone_missing")
     return parsed.astimezone(timezone.utc)
 
-def evaluate_budget_snapshot(payload: Any, *, now: datetime) -> dict[str, Any]:
-    if not isinstance(payload, dict) or not isinstance(payload.get("sources"), list):
-        raise GateBlocked("budget_snapshot_missing")
-    failures = payload.get("consecutive_failures")
-    if isinstance(failures, bool) or not isinstance(failures, int) or failures < 0:
+def evaluate_budget_snapshot(payload: Any, *, now: datetime, evidence_key: str) -> dict[str, Any]:
+    try:
+        signed = verify(payload, evidence_key, now)
+    except EvidenceRejected as exc:
+        raise GateBlocked(str(exc)) from None
+    failures=signed.get("consecutive_failures")
+    if isinstance(failures,bool) or not isinstance(failures,int) or failures<0:
         raise GateBlocked("failure_counter_invalid")
-    if failures >= 3:
-        raise GateBlocked("consecutive_failure_limit_reached")
-    now = now.astimezone(timezone.utc)
-    by_name = {}
-    for source in payload["sources"]:
-        if not isinstance(source, dict):
-            raise GateBlocked("budget_source_invalid")
-        name = source.get("name")
-        if not isinstance(name, str) or not name or name in by_name:
-            raise GateBlocked("budget_source_identity_invalid")
-        by_name[name] = source
-    results = []
+    if failures>=3: raise GateBlocked("consecutive_failure_limit_reached")
+    by_name={row["name"]:row for row in signed["sources"]}
+    results=[]
     for name in REQUIRED_SOURCES:
-        source = by_name.get(name)
-        if source is None:
-            raise GateBlocked("budget_source_missing")
-        if source.get("enabled") is not True:
-            raise GateBlocked("budget_source_not_confirmed_enabled")
-        if (source.get("enforcement_eligible") is not True
-                or source.get("quality") != "exact"
-                or source.get("limit_verified") is not True
-                or not isinstance(source.get("limit_evidence_id"), str)
-                or not source["limit_evidence_id"].strip()):
-            raise GateBlocked("budget_limit_not_authoritatively_verified")
-        if (not isinstance(source.get("unit"), str) or not source["unit"].strip()
-                or not isinstance(source.get("limit_source"), str) or not source["limit_source"].strip()):
-            raise GateBlocked("budget_unit_or_limit_evidence_missing")
-        used, limit = source.get("used"), source.get("limit")
-        if (isinstance(used, bool) or not isinstance(used, (int, float))
-                or isinstance(limit, bool) or not isinstance(limit, (int, float))
-                or not math.isfinite(float(used)) or not math.isfinite(float(limit))
-                or used < 0 or limit <= 0):
+        source=by_name[name]; used=source.get("used"); limit=source.get("limit")
+        if (isinstance(used,bool) or not isinstance(used,(int,float)) or
+            isinstance(limit,bool) or not isinstance(limit,(int,float)) or
+            not math.isfinite(float(used)) or not math.isfinite(float(limit)) or used<0 or limit<=0):
             raise GateBlocked("budget_values_invalid")
-        observed = parse_time(source.get("observed_at"))
-        period_start = parse_time(source.get("period_start"))
-        period_end = parse_time(source.get("period_end"))
-        if observed > now + MAX_FUTURE_SKEW or now - observed > MAX_SNAPSHOT_AGE:
-            raise GateBlocked("budget_snapshot_stale_or_future")
-        if period_start >= period_end or not (period_start <= now < period_end):
-            raise GateBlocked("budget_period_not_current")
-        percent = float(used) / float(limit) * 100.0
-        state = ("STOP" if percent >= 90 else "SUPPRESS" if percent >= 80
-                 else "WARN" if percent >= 70 else "CLEAR")
-        results.append({"name": name, "unit": source["unit"], "percent": percent, "status": state})
-    rank = {"CLEAR": 0, "WARN": 1, "SUPPRESS": 2, "STOP": 3}
-    worst = max(results, key=lambda row: rank[row["status"]])["status"]
-    if worst in {"SUPPRESS", "STOP"}:
-        raise GateBlocked("budget_" + worst.lower())
-    return {"status": worst, "sources": results}
+        percent=float(used)/float(limit)*100
+        state="STOP" if percent>=90 else "SUPPRESS" if percent>=80 else "WARN" if percent>=70 else "CLEAR"
+        results.append({"name":name,"unit":source["unit"],"percent":percent,"status":state})
+    rank={"CLEAR":0,"WARN":1,"SUPPRESS":2,"STOP":3}
+    worst=max(results,key=lambda row:rank[row["status"]])["status"]
+    if worst in {"SUPPRESS","STOP"}: raise GateBlocked("budget_"+worst.lower())
+    return {"status":worst,"account_id":signed["account_id"],"sources":results}
 
 def decide_slot(runs: Any, *, current_run_id: str, now: datetime,
                 minimum_interval: timedelta = MIN_SLOT_INTERVAL) -> tuple[bool, str]:
@@ -135,7 +102,7 @@ def check_budget(now: datetime) -> dict[str, Any]:
     return evaluate_budget_snapshot(
         request_json(os.environ.get("ORCA_BUDGET_GATE_URL", ""),
                      os.environ.get("ORCA_BUDGET_GATE_TOKEN", "")),
-        now=now,
+        now=now,\n        evidence_key=os.environ.get("ORCA_BUDGET_EVIDENCE_HMAC_KEY", ""),
     )
 
 def check_slot(now: datetime) -> tuple[bool, str]:
