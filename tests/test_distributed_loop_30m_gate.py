@@ -152,5 +152,23 @@ class SlotGateTests(unittest.TestCase):
             self.assertFalse(decide_slot(runs, current_run_id="2", now=NOW)[0])
 
 
+class RuntimeStopWatcherTests(unittest.TestCase):
+    def test_live_watcher_fails_closed_on_network_or_admission_failure(self):
+        from pathlib import Path
+        workflow = (Path(__file__).resolve().parents[1] / ".github" / "workflows"
+                    / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+        watcher = workflow.split("STOP_FILE=/tmp/line-bot-autonomous-loop.stop", 1)[1].split(
+            "POLLER_PID=$!", 1
+        )[0]
+        self.assertIn("while sleep 15", watcher)
+        self.assertIn("if ! git fetch --quiet --no-tags --depth=1 origin main", watcher)
+        self.assertIn('touch "$STOP_FILE"', watcher)
+        self.assertIn("/control/loop-admission", watcher)
+        self.assertIn('if [ "$http_code" != "200" ]', watcher)
+        self.assertIn(".global_hold.clear == true", watcher)
+        self.assertIn(".budget_guard.allowed == true", watcher)
+        self.assertIn("--stop-file \"$STOP_FILE\"", workflow)
+
+
 if __name__ == "__main__":
     unittest.main()
