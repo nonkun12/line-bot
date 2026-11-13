@@ -690,7 +690,7 @@ jobs:
           retention-days: 14
 
       - name: Export sanitized Recovery RAG history
-        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' }}
+        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' && steps.final_admission.outputs.allow == 'true' }}
         env:
           RECOVERY_RAG_DB_PATH: /tmp/recovery-rag.sqlite3
           RECOVERY_RAG_NAMESPACE: distributed-loop
