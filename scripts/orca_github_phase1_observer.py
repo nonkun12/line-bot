@@ -157,7 +157,11 @@ def observe(
         )
         summary = summarize_state(state)
     except ObservationError as exc:
-        result.update({"status": "BLOCKED", "reason": str(exc)})
+        result.update({
+            "observation_status": "BLOCKED",
+            "execution_gate": "BLOCKED",
+            "reason": str(exc),
+        })
     else:
         result.update({
             "observation_status": "OBSERVED",
