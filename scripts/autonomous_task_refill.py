@@ -255,7 +255,11 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     skipped_catalog_unapproved_ids = sorted(catalog_ids_set - execution_approved_catalog_ids)
     skipped_catalog_not_provider_free_ids = sorted(
         task_id for task_id in catalog_ids_set
-        if catalog_by_id[task_id]["execution_approved"] is True
+        if task_id not in original_ids
+        and task_id not in completed_ids
+        and task_id not in held_ids
+        and task_id not in review_required_ids
+        and catalog_by_id[task_id]["execution_approved"] is True
         and provider_free_targets is not None
         and (
             len(catalog_by_id[task_id]["allowed_paths"]) != 1
