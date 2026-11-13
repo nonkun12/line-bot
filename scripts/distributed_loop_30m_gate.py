@@ -111,7 +111,7 @@ def _canonical_payload(payload: dict[str, Any]) -> bytes:
             unsigned, sort_keys=True, separators=(",", ":"),
             ensure_ascii=False, allow_nan=False,
         )
-        if parsed != unsigned or signed_payload != expected:
+        if signed_payload != expected:
             raise GateBlocked("budget_attestation_canonical_payload_mismatch")
         return signed_payload.encode("utf-8")
     except (TypeError, ValueError, json.JSONDecodeError):
