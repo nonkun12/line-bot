@@ -455,6 +455,8 @@ jobs:
             --completed-state /tmp/autonomous-loop-state.json \
             --output /tmp/autonomous-loop-runtime-queue.json \
             --history /tmp/line-bot-self-improvement.jsonl \
+            --provider-free-only \
+            --provider-free-map core/line_development_runtime.py \
             | tee /tmp/autonomous-loop-refill-report.json
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
 
