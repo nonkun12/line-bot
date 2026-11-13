@@ -179,6 +179,8 @@ def evaluate_execution_gate(
     revision = queue_state.get("revision")
     if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
         raise ExecutionGateRejected("queue_revision_invalid")
+    if queue_state.get("emergency_stop") is not False:
+        raise ExecutionGateRejected("emergency_stop_active_or_unverifiable")
     if queue_state.get("global_hold") is not False:
         raise ExecutionGateRejected("global_hold_active_or_unverifiable")
     tasks = queue_state.get("tasks")
