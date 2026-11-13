@@ -67,3 +67,17 @@ def test_stale_scheduled_run_is_discarded():
     assert scheduled_run_is_fresh("2026-11-13T11:50:00Z", now=now) is True
     assert scheduled_run_is_fresh("2026-11-13T11:40:00Z", now=now) is False
     assert scheduled_run_is_fresh("invalid", now=now) is False
+
+
+def test_scheduled_freshness_gate_runs_before_configuration_checks(monkeypatch):
+    import scripts.orca_30m_preflight as preflight
+    monkeypatch.setattr(
+        preflight, "_scheduled_run_freshness",
+        lambda values: "stale_scheduled_run_discarded",
+    )
+    result = inspect_prerequisites(env={"GITHUB_EVENT_NAME": "schedule"})
+    assert result == {
+        "status": "BLOCKED",
+        "reason": "stale_scheduled_run_discarded",
+        "execution_enabled": False,
+    }
