@@ -100,3 +100,6 @@ def test_dashboard_loop_lists_unified_main_loop_and_handoffs(orca_client):
     assert keys == ["main_loop"]
     assert {item["key"] for item in body["handoffs"]} == {"self_improvement", "line_readiness", "star_night", "muse"}
     assert body["execution_enabled"] is False
+    assert body["activation_preflight"]["status"] == "blocked"
+    assert body["activation_preflight"]["execution_enabled"] is False
+    assert body["budget_gate"]["status"] == "blocked"
