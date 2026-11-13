@@ -8,12 +8,26 @@ from datetime import datetime, timedelta, timezone
 from scripts.distributed_loop_30m_gate import GateBlocked, decide_slot, evaluate_budget_snapshot, main
 
 NOW = datetime(2026, 11, 13, 0, 0, tzinfo=timezone.utc)
-START, END, OBSERVED = "2026-11-01T00:00:00Z", "2026-12-01T00:00:00Z", "2026-11-13T00:00:00Z"
+DAILY_START, DAILY_END = "2026-11-13T00:00:00Z", "2026-11-14T00:00:00Z"
+MONTH_START, MONTH_END = "2026-11-01T00:00:00Z", "2026-12-01T00:00:00Z"
+OBSERVED = "2026-11-13T00:00:00Z"
 SECRET, ACCOUNT, COLLECTOR = "unit-test-only-secret", "account-test-001", "orca-budget-collector-test"
 GITHUB_ACCOUNT = "github-owner-test-001"
-NAMES = ("cloudflare_workers", "cloudflare_d1", "cloudflare_durable_objects", "github_actions")
-UNITS = {"cloudflare_workers": "requests", "cloudflare_d1": "rows",
-         "cloudflare_durable_objects": "requests", "github_actions": "runner_minutes"}
+METER_SPECS = {
+    "cloudflare.workers.requests.daily": ("cloudflare", "workers", "requests", "cloudflare_workers"),
+    "cloudflare.workers_logs.events.daily": ("cloudflare", "workers_logs", "events", "cloudflare_workers_logs"),
+    "cloudflare.d1.rows_read.daily": ("cloudflare", "d1", "rows", "cloudflare_d1"),
+    "cloudflare.d1.rows_written.daily": ("cloudflare", "d1", "rows", "cloudflare_d1"),
+    "cloudflare.d1.storage_bytes.total": ("cloudflare", "d1", "bytes", "cloudflare_d1"),
+    "cloudflare.durable_objects.requests.daily": ("cloudflare", "durable_objects", "requests", "cloudflare_durable_objects"),
+    "cloudflare.durable_objects.duration_gb_seconds.daily": ("cloudflare", "durable_objects", "GB-seconds", "cloudflare_durable_objects"),
+    "cloudflare.durable_objects.sqlite_rows_read.daily": ("cloudflare", "durable_objects", "rows", "cloudflare_durable_objects"),
+    "cloudflare.durable_objects.sqlite_rows_written.daily": ("cloudflare", "durable_objects", "rows", "cloudflare_durable_objects"),
+    "cloudflare.durable_objects.sqlite_storage_bytes.total": ("cloudflare", "durable_objects", "bytes", "cloudflare_durable_objects"),
+    "github.actions.compute_cost_usd.monthly": ("github", "actions", "USD", "github_actions"),
+    "github.actions.artifact_storage_bytes.monthly": ("github", "actions", "bytes", "github_actions"),
+}
+REQUIRED_PRODUCTS = ["actions", "d1", "durable_objects", "workers", "workers_logs"]
 
 
 def sign(payload):
@@ -27,29 +41,46 @@ def sign(payload):
     return payload
 
 
-def signed_payload(overrides=None, *, attestation_overrides=None):
+def signed_payload(overrides=None, *, attestation_overrides=None, inventory_overrides=None):
     overrides = overrides or {}
-    sources = []
-    for name in NAMES:
-        sources.append({
-            "name": name, "provider": "github" if name == "github_actions" else "cloudflare",
-            "enabled": True, "used": 10, "limit": 100,
-            "unit": UNITS[name], "limit_source": "vendor_verified_quota",
-            "quality": "exact", "enforcement_eligible": True,
-            "limit_verified": True, "limit_evidence_id": "vendor-evidence-001",
-            "dataset": "authoritative-account-meter-v1",
-            "account_id": GITHUB_ACCOUNT if name == "github_actions" else ACCOUNT,
+    meters = []
+    for meter_id, (provider, product_id, unit, alias) in METER_SPECS.items():
+        period_start, period_end = (MONTH_START, MONTH_END) if (
+            meter_id.endswith(".total") or ".monthly" in meter_id
+        ) else (DAILY_START, DAILY_END)
+        meters.append({
+            "meter_id": meter_id, "provider": provider, "product_id": product_id,
+            "account_id": GITHUB_ACCOUNT if provider == "github" else ACCOUNT,
+            "enabled": True, "used": 10, "limit": 100, "unit": unit,
+            "limit_source": "vendor_verified_quota", "quality": "exact",
+            "enforcement_eligible": True, "limit_verified": True,
+            "limit_evidence_id": "vendor-meter-evidence-v2",
+            "dataset": "authoritative-account-meter-v2",
             "complete_account_coverage": True, "exact_counter": True,
             "sampling_mode": "none", "coverage_status": "complete",
             "watermark_at": OBSERVED, "observed_at": OBSERVED,
-            "period_start": START, "period_end": END, **overrides.get(name, {}),
+            "period_start": period_start, "period_end": period_end,
+            **overrides.get(meter_id, overrides.get(alias, {})),
         })
-    payload = {"schema_version": 1, "sources": sources, "consecutive_failures": 0,
-               "attestation": {
-                   "algorithm": "hmac-sha256", "account_id": ACCOUNT,
-                   "collector_id": COLLECTOR, "issued_at": OBSERVED,
-                   "expires_at": "2026-11-13T00:10:00Z",
-               }}
+    inventory = {
+        "complete_account_coverage": True,
+        "cloudflare_account_id": ACCOUNT,
+        "github_account_id": GITHUB_ACCOUNT,
+        "enabled_products": list(REQUIRED_PRODUCTS),
+        "unresolved_products": [],
+        "observed_at": OBSERVED,
+        "watermark_at": OBSERVED,
+        **(inventory_overrides or {}),
+    }
+    payload = {
+        "schema_version": 2, "meters": meters, "meter_inventory": inventory,
+        "consecutive_failures": 0,
+        "attestation": {
+            "algorithm": "hmac-sha256", "account_id": ACCOUNT,
+            "collector_id": COLLECTOR, "issued_at": OBSERVED,
+            "expires_at": "2026-11-13T00:10:00Z",
+        },
+    }
     payload["attestation"].update(attestation_overrides or {})
     return sign(payload)
 
@@ -95,9 +126,29 @@ class BudgetGateTests(unittest.TestCase):
 
     def test_missing_or_unexpected_meter_blocks(self):
         payload = signed_payload()
-        payload["sources"] = [x for x in payload["sources"] if x["name"] != "cloudflare_durable_objects"]
+        payload["meters"] = [x for x in payload["meters"]
+                             if x["meter_id"] != "cloudflare.durable_objects.requests.daily"]
         sign(payload)
-        with self.assertRaisesRegex(GateBlocked, "budget_source_set_incomplete_or_unexpected"):
+        with self.assertRaisesRegex(GateBlocked, "budget_meter_set_incomplete_or_unexpected"):
+            evaluate(payload)
+
+    def test_incomplete_or_unknown_product_inventory_blocks(self):
+        payload = signed_payload()
+        payload.pop("meter_inventory")
+        sign(payload)
+        with self.assertRaisesRegex(GateBlocked, "budget_product_inventory_missing"):
+            evaluate(payload)
+        payload = signed_payload(inventory_overrides={
+            "enabled_products": REQUIRED_PRODUCTS + ["workers_kv"]
+        })
+        with self.assertRaisesRegex(GateBlocked, "budget_product_inventory_unexpected_or_incomplete"):
+            evaluate(payload)
+
+    def test_duplicate_meter_id_blocks(self):
+        payload = signed_payload()
+        payload["meters"].append(dict(payload["meters"][0]))
+        sign(payload)
+        with self.assertRaisesRegex(GateBlocked, "budget_meter_identity_invalid"):
             evaluate(payload)
 
     def test_partial_sampled_or_wrong_account_source_blocks(self):
