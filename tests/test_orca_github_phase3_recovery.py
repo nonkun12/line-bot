@@ -1,0 +1,155 @@
+"""Phase 3-C crash, replay, retry, and concurrency adversarial tests.
+
+These tests exercise only pure state transitions and the side-effect-free
+worker dry-run. They do not contact GitHub or execute task payloads.
+"""
+import copy
+import hashlib
+import json
+import unittest
+from datetime import datetime, timezone
+
+from scripts.orca_github_task_queue import (
+    QueueRejected, empty_state, enqueue, claim_next, finish, reclaim_expired,
+)
+from scripts.orca_github_worker_dry_run import WorkerDryRunRejected, dry_run_one
+
+
+NOW = "2026-11-13T12:00:00Z"
+NOW_DT = datetime(2026, 11, 13, 12, 0, tzinfo=timezone.utc)
+PAYLOAD = {"kind": "analysis", "input": "bounded-test"}
+PAYLOAD_BYTES = json.dumps(
+    PAYLOAD, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+).encode("utf-8")
+PAYLOAD_HASH = hashlib.sha256(PAYLOAD_BYTES).hexdigest()
+
+
+class Phase3RecoveryTests(unittest.TestCase):
+    def queued_state(self):
+        state = empty_state()
+        state["global_hold"] = False
+        return enqueue(
+            state, expected_revision=0, task_id="task-1",
+            request_hash=PAYLOAD_HASH, approved=True, created_at=NOW,
+        )
+
+    def claimed_state(self, *, run_id="run-1", lease_seconds=60):
+        return claim_next(
+            self.queued_state(), expected_revision=1, owner="worker-1",
+            run_id=run_id, now=NOW, lease_seconds=lease_seconds,
+        )
+
+    def envelope(self, *, run_id="run-1", owner="worker-1"):
+        return {
+            "task_id": "task-1", "request_hash": PAYLOAD_HASH,
+            "owner": owner, "run_id": run_id, "payload": copy.deepcopy(PAYLOAD),
+        }
+
+    def test_crash_after_durable_claim_can_only_resume_as_dry_run(self):
+        # Simulate process death immediately after claim commit: the durable
+        # state contains a lease, but no task code has been run.
+        state = self.claimed_state()
+        before = copy.deepcopy(state)
+        report = dry_run_one(queue_state=state, envelope=self.envelope(), now=NOW_DT)
+        self.assertEqual(report["status"], "DRY_RUN_PASS")
+        self.assertFalse(report["execution_started"])
+        self.assertFalse(report["side_effects_performed"])
+        self.assertEqual(state, before)
+
+    def test_duplicate_delivery_cannot_obtain_a_second_claim(self):
+        state = self.claimed_state()
+        with self.assertRaisesRegex(QueueRejected, "worker_already_has_active_lease"):
+            claim_next(
+                state, expected_revision=state["revision"], owner="worker-2",
+                run_id="run-2", now="2026-11-13T12:00:01Z",
+            )
+
+    def test_expired_claim_is_reclaimed_once_and_old_worker_is_fenced(self):
+        claimed = self.claimed_state(lease_seconds=30)
+        reclaimed = reclaim_expired(
+            claimed, expected_revision=claimed["revision"],
+            now="2026-11-13T12:00:31Z",
+        )
+        self.assertEqual(reclaimed["tasks"][0]["status"], "queued")
+        self.assertIsNone(reclaimed["active_lease"])
+        with self.assertRaisesRegex(QueueRejected, "no_expired_lease"):
+            reclaim_expired(
+                reclaimed, expected_revision=reclaimed["revision"],
+                now="2026-11-13T12:00:32Z",
+            )
+        with self.assertRaisesRegex(QueueRejected, "stale_revision_conflict"):
+            finish(
+                claimed, expected_revision=claimed["revision"] - 1,
+                task_id="task-1", owner="worker-1", run_id="run-1",
+                now="2026-11-13T12:00:32Z", outcome="done",
+            )
+
+    def test_reclaimed_task_gets_new_run_and_old_envelope_is_rejected(self):
+        claimed = self.claimed_state(lease_seconds=30)
+        reclaimed = reclaim_expired(
+            claimed, expected_revision=claimed["revision"],
+            now="2026-11-13T12:00:31Z",
+        )
+        new_claim = claim_next(
+            reclaimed, expected_revision=reclaimed["revision"],
+            owner="worker-2", run_id="run-2",
+            now="2026-11-13T12:00:32Z",
+        )
+        with self.assertRaisesRegex(WorkerDryRunRejected, "lease_owner_or_run_mismatch"):
+            dry_run_one(
+                queue_state=new_claim, envelope=self.envelope(),
+                now=datetime(2026, 11, 13, 12, 0, 33, tzinfo=timezone.utc),
+            )
+        new_report = dry_run_one(
+            queue_state=new_claim, envelope=self.envelope(run_id="run-2", owner="worker-2"),
+            now=datetime(2026, 11, 13, 12, 0, 33, tzinfo=timezone.utc),
+        )
+        self.assertEqual(new_report["status"], "DRY_RUN_PASS")
+
+    def test_global_hold_asserted_after_claim_blocks_worker(self):
+        state = self.claimed_state()
+        held = {**state, "global_hold": True}
+        with self.assertRaisesRegex(WorkerDryRunRejected, "global_hold"):
+            dry_run_one(queue_state=held, envelope=self.envelope(), now=NOW_DT)
+
+    def test_stale_lease_cannot_finish_after_expiry(self):
+        state = self.claimed_state(lease_seconds=30)
+        with self.assertRaisesRegex(QueueRejected, "lease_expired"):
+            finish(
+                state, expected_revision=state["revision"],
+                task_id="task-1", owner="worker-1", run_id="run-1",
+                now="2026-11-13T12:00:31Z", outcome="done",
+            )
+
+    def test_wrong_worker_cannot_finish_or_reclaim_before_expiry(self):
+        state = self.claimed_state()
+        with self.assertRaisesRegex(QueueRejected, "lease_owner_mismatch"):
+            finish(
+                state, expected_revision=state["revision"],
+                task_id="task-1", owner="worker-2", run_id="run-1",
+                now="2026-11-13T12:00:01Z", outcome="done",
+            )
+        with self.assertRaisesRegex(QueueRejected, "no_expired_lease"):
+            reclaim_expired(
+                state, expected_revision=state["revision"],
+                now="2026-11-13T12:00:10Z",
+            )
+
+    def test_completed_task_cannot_be_finished_twice(self):
+        state = self.claimed_state()
+        done = finish(
+            state, expected_revision=state["revision"],
+            task_id="task-1", owner="worker-1", run_id="run-1",
+            now="2026-11-13T12:00:01Z", outcome="done",
+        )
+        self.assertEqual(done["tasks"][0]["status"], "done")
+        with self.assertRaisesRegex(QueueRejected, "lease_owner_mismatch"):
+            finish(
+                done, expected_revision=done["revision"],
+                task_id="task-1", owner="worker-1", run_id="run-1",
+                now="2026-11-13T12:00:02Z", outcome="done",
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()
