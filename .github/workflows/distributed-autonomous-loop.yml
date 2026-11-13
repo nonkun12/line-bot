@@ -194,6 +194,8 @@ jobs:
       INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_job_id || '' }}
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
+      # Execution stays disabled until local/free provider and signed budget evidence are verified.
+      FREE_ONLY_EXECUTION_APPROVED: 'false'
       # Set repository Actions variable CONTROL_TOWER_KILL_SWITCH=true to stop
       # before queue reads/task launch; this never bypasses safety gates.
       CONTROL_TOWER_KILL_SWITCH: ${{ vars.CONTROL_TOWER_KILL_SWITCH || 'false' }}
@@ -553,8 +555,6 @@ jobs:
       # provider adapter and independently verifiable budget evidence are wired.
       - name: Enforce free-only provider evidence gate
         id: free_only_gate
-        env:
-          FREE_ONLY_EXECUTION_APPROVED: 'false'
         run: |
           set -euo pipefail
           if [ "${FREE_ONLY_EXECUTION_APPROVED}" != "true" ]; then
