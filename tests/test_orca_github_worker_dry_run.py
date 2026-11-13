@@ -24,13 +24,13 @@ class WorkerDryRunTests(unittest.TestCase):
             "emergency_stop": False,
             "run_guard": {
                 "run_id": "run-1", "started_at": "2026-11-13T12:00:00Z",
-                "tasks_claimed": 1, "attempts_by_task": {ai-speaker-empty-transcript-no-brain-call: 1},
+                "tasks_claimed": 1, "attempts_by_task": {self.task_id: 1},
                 "consecutive_failures": 0, "circuit_breaker_until": None,
                 "paid_services_enabled": False, "automatic_retry_enabled": False,
                 "outcomes_by_task": {},
             },
             "tasks": [{
-                "task_id": "task-1",
+                "task_id": self.task_id,
                 "request_hash": self.digest,
                 "status": "claimed",
                 "created_at": "2026-11-13T11:59:00Z",
