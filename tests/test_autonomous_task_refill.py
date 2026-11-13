@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.autonomous_task_refill import build_queue
+from scripts.autonomous_task_refill import build_queue, load_provider_free_task_targets
 
 
 def _write(path: Path, data: dict) -> Path:
@@ -674,3 +674,62 @@ def test_refill_selects_exactly_four_new_catalog_tasks_when_older_tasks_are_comp
         strict=True,
     ))
     assert queue.read_text(encoding="utf-8") == queue_before
+
+
+
+def test_provider_free_map_is_read_as_literal_and_excludes_review_coverage_tasks(tmp_path: Path):
+    runtime = tmp_path / "runtime.py"
+    runtime.write_text(
+        '_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {'
+        '"task-free-one": "tests/test_example.py", '
+        '"review-coverage-gap-abc123": "tests/test_example.py"}\\n',
+        encoding="utf-8",
+    )
+
+    assert load_provider_free_task_targets(runtime) == {
+        "task-free-one": "tests/test_example.py"
+    }
+
+
+def test_provider_free_refill_filters_unknown_and_mismatched_task_targets(tmp_path: Path):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        existing=[_task("task-free-existing"), _task("task-unknown-existing")],
+        candidates=[
+            _task("task-free-existing"),
+            _task("task-unknown-existing"),
+            _task("task-free-new"),
+            {**_task("task-wrong-path"), "allowed_paths": ["tests/test_other.py"]},
+        ],
+    )
+    runtime = tmp_path / "runtime.py"
+    runtime.write_text(
+        '_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {'
+        '"task-free-existing": "tests/test_example.py", '
+        '"task-free-new": "tests/test_example.py", '
+        '"task-wrong-path": "tests/test_example.py"}\\n',
+        encoding="utf-8",
+    )
+    output = tmp_path / "runtime-queue.json"
+
+    report = build_queue(
+        queue, catalog, completed, output,
+        provider_free_targets=load_provider_free_task_targets(runtime),
+    )
+    queued = json.loads(output.read_text(encoding="utf-8"))["tasks"]
+
+    assert [task["id"] for task in queued] == ["task-free-existing", "task-free-new"]
+    assert report["provider_free_only"] is True
+    assert report["skipped_not_provider_free_ids"] == ["task-unknown-existing"]
+    assert report["added_ids"] == ["task-free-new"]
+
+
+def test_provider_free_map_fails_closed_when_mapping_is_not_literal(tmp_path: Path):
+    runtime = tmp_path / "runtime.py"
+    runtime.write_text(
+        '_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = build_runtime_mapping()\\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="literal dictionary"):
+        load_provider_free_task_targets(runtime)
