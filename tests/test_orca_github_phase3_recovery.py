@@ -216,6 +216,8 @@ class Phase3RecoveryTests(unittest.TestCase):
         self.assertEqual(guard["attempts_by_task"], {})
         self.assertFalse(guard["paid_services_enabled"])
         self.assertFalse(guard["automatic_retry_enabled"])
+        with self.assertRaisesRegex(RunawayGuardRejected, "already_initialized"):
+            initialize_run_guard(state={**state, "run_guard": guard}, run_id="new-run", now=NOW_DT)
 
     def test_new_run_guard_initialization_refuses_hold_stop_lease_and_cooldown(self):
         from scripts.orca_github_runaway_guard import initialize_run_guard
