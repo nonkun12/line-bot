@@ -169,6 +169,11 @@ def test_distributed_loop_is_scheduled_every_30_minutes_in_tokyo_and_stays_bound
     assert "- cron: '*/30 * * * *'" in source
     assert "      MAX_TASKS: '1'" in source
     assert "github.event_name == 'schedule' ||" in source
+    assert "FREE_ONLY_EXECUTION_APPROVED: 'false'" in source
+    assert "Enforce free-only provider evidence gate" in source
+    assert "free_only_provider_and_budget_evidence_missing" in source
+    assert "steps.free_only_gate.outcome == 'success'" in source
+    assert "GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}" not in source
 
 
 def test_only_continuous_workflow_owns_automatic_dispatch():
