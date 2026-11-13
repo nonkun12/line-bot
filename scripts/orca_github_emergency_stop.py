@@ -38,11 +38,9 @@ def activate_emergency_stop(*, store: Any, snapshot: StateSnapshot,
     existing = state.get("emergency_stop_event")
     event_hash = hashlib.sha256(event_id.encode("utf-8")).hexdigest()
     if state.get("emergency_stop") is True:
-        if isinstance(existing, dict) and existing.get("event_hash") == event_hash:
-            return {"status": "ALREADY_STOPPED", "snapshot": snapshot, "write_performed": False}
-        raise EmergencyStopRejected("emergency_stop_already_latched")
-    if state.get("emergency_stop") is not False:
-        raise EmergencyStopRejected("emergency_stop_state_missing_or_invalid")
+        return {"status": "ALREADY_STOPPED", "snapshot": snapshot, "write_performed": False}
+    if "emergency_stop" in state and state.get("emergency_stop") is not False:
+        raise EmergencyStopRejected("emergency_stop_state_invalid")
     updated = copy.deepcopy(state)
     updated["emergency_stop"] = True
     updated["emergency_stop_event"] = {
