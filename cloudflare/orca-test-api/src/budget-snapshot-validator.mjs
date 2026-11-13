@@ -45,7 +45,15 @@ function canonicalPayload(payload) {
   const unsigned = structuredClone(payload);
   unsigned.attestation = { ...unsigned.attestation };
   delete unsigned.attestation.signature;
-  return JSON.stringify(stable(unsigned));
+  const signedPayload = unsigned.attestation.signed_payload;
+  delete unsigned.attestation.signed_payload;
+  if (typeof signedPayload !== "string" || !signedPayload) fail("budget_attestation_canonical_payload_missing");
+  let parsed;
+  try { parsed = JSON.parse(signedPayload); }
+  catch { fail("budget_attestation_canonical_payload_not_json"); }
+  if (JSON.stringify(stable(parsed)) !== JSON.stringify(stable(unsigned)))
+    fail("budget_attestation_canonical_payload_mismatch");
+  return signedPayload;
 }
 function hex(bytes) {
   return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
