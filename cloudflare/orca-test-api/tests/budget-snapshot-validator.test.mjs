@@ -107,3 +107,24 @@ test("rejects invalid periods and three consecutive collector failures", async (
   const failed = makePayload(); failed.consecutive_failures = 3; await sign(failed);
   await assert.rejects(validateBudgetSnapshot(failed, options), { code: "consecutive_failure_limit_reached" });
 });
+
+
+test("rejects monthly periods that are not aligned to UTC calendar-month boundaries", async () => {
+  const midMonth = makePayload();
+  const monthly = midMonth.meters.find((meter) => meter.period_kind === "monthly");
+  monthly.period_start = "2026-11-02T00:00:00.000Z";
+  monthly.period_end = "2026-12-02T00:00:00.000Z";
+  await sign(midMonth);
+  await assert.rejects(validateBudgetSnapshot(midMonth, options), {
+    code: "budget_monthly_period_alignment_invalid",
+  });
+
+  const wrongEnd = makePayload();
+  const secondMonthly = wrongEnd.meters.find((meter) => meter.period_kind === "monthly");
+  secondMonthly.period_start = "2026-11-01T00:00:00.000Z";
+  secondMonthly.period_end = "2026-12-02T00:00:00.000Z";
+  await sign(wrongEnd);
+  await assert.rejects(validateBudgetSnapshot(wrongEnd, options), {
+    code: "budget_monthly_period_alignment_invalid",
+  });
+});
