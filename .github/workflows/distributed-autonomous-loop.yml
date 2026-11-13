@@ -85,9 +85,9 @@ on:
   pull_request_target:
     types: [labeled]
   schedule:
-    # Run once per hour at minute 17 Japan time.
-    # Changing the cron expression also reactivates a deactivated scheduled workflow.
-    - cron: '17 * * * *'
+    # Tick every 30 minutes; cadence-gate controls actual loop execution.
+    # Low backlog runs hourly; high backlog runs every 30 minutes.
+    - cron: '0,30 * * * *'
       timezone: 'Asia/Tokyo'
 
 permissions:
@@ -99,14 +99,156 @@ permissions:
 concurrency:
   group: distributed-autonomous-loop
   cancel-in-progress: false
-  # Preserve multiple requests instead of replacing the latest pending run.
-  # LINE dispatch is separately capped at two outstanding runs.
-  queue: max
 
 jobs:
+  # Read-only admission preflight. Worker checks authoritative Durable Object HOLD + fresh D1 budget state.
+  budget-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require authenticated ORCA preflight access
+        env:
+          ORCA_CONTROL_API_URL: ${{ secrets.ORCA_CONTROL_API_URL }}
+          ORCA_LOOP_PREFLIGHT_TOKEN: ${{ secrets.ORCA_LOOP_PREFLIGHT_TOKEN }}
+          CONTROL_TOWER_KILL_SWITCH: ${{ vars.CONTROL_TOWER_KILL_SWITCH || 'false' }}
+        run: |
+          set -euo pipefail
+          if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ]; then
+            echo "::error::Global kill switch is ON; ORCA denies execution."
+            exit 1
+          fi
+          if [ -z "${ORCA_CONTROL_API_URL}" ] || [ -z "${ORCA_LOOP_PREFLIGHT_TOKEN}" ]; then
+            echo "::error::ORCA preflight credentials are missing; refusing execution."
+            exit 1
+          fi
+          case "${ORCA_CONTROL_API_URL}" in
+            https://*) ;;
+            *) echo "::error::ORCA preflight URL must use HTTPS."; exit 1 ;;
+          esac
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          http_code="$(curl --silent --show-error \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request GET "${ORCA_CONTROL_API_URL%/}/control/loop-admission" \
+            --header "Authorization: Bearer ${ORCA_LOOP_PREFLIGHT_TOKEN}" \
+            --header "Accept: application/json")"
+          python - "$response_file" "$http_code" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          def deny(reason):
+              print(f"::error::ORCA admission BLOCKED: {reason}")
+              raise SystemExit(1)
+
+          try:
+              payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          except Exception:
+              deny("preflight response is not valid JSON")
+          if sys.argv[2] != "200":
+              detail = "no response detail"
+              if isinstance(payload, dict):
+                  detail = payload.get("error") or detail
+                  budget_detail = payload.get("budget_guard")
+                  if isinstance(budget_detail, dict):
+                      detail = budget_detail.get("reason") or detail
+              deny(f"preflight HTTP {sys.argv[2]}: {detail}")
+          if not isinstance(payload, dict) or payload.get("allowed") is not True:
+              deny("preflight did not explicitly allow execution")
+          hold = payload.get("global_hold")
+          if not isinstance(hold, dict) or hold.get("clear") is not True or hold.get("value") != "off" or hold.get("blocked") is not False:
+              deny("authoritative Durable Object Global HOLD is active or unknown")
+          budget = payload.get("budget_guard")
+          if not isinstance(budget, dict) or budget.get("allowed") is not True or budget.get("status") not in ("CLEAR", "WARN"):
+              deny("Budget Guardian is not explicitly CLEAR/WARN")
+          print(f"ORCA admission PASS: Global HOLD clear; Budget Guardian={budget['status']}")
+          PY
+
+  cadence-gate:
+    needs: budget-gate
+    if: github.event_name == 'schedule' && needs.budget-gate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_loop: ${{ steps.cadence.outputs.run_loop }}
+      backlog: ${{ steps.cadence.outputs.backlog }}
+    steps:
+      - name: Checkout scheduler policy
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Load durable state for cadence decision
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin refs/heads/autonomous-loop-state:refs/remotes/origin/autonomous-loop-state
+          git show origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/cadence-state.json
+          python -m json.tool /tmp/cadence-state.json >/dev/null
+      - name: Capture scheduler minute
+        id: clock
+        run: echo "minute=$(date -u +%M)" >> "$GITHUB_OUTPUT"
+      - name: Decide hourly or 30-minute execution
+        id: cadence
+        env:
+          UTC_MINUTE: ${{ steps.clock.outputs.minute }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          queue = json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8"))
+          state = json.loads(Path("/tmp/cadence-state.json").read_text(encoding="utf-8"))
+          tasks = queue.get("tasks")
+          completed = state.get("completed")
+          recovery = state.get("recovery_ai")
+          if not isinstance(tasks, list) or not isinstance(completed, list) or not isinstance(recovery, dict):
+              raise SystemExit("cadence evidence missing or invalid; refusing scheduled execution")
+          if not all(isinstance(item, str) and item.strip() for item in completed):
+              raise SystemExit("completed task evidence invalid; refusing scheduled execution")
+          recovery_tasks = recovery.get("tasks")
+          if not isinstance(recovery_tasks, dict):
+              raise SystemExit("Recovery AI task state invalid; refusing scheduled execution")
+
+          completed_ids = set(completed)
+          seen = set()
+          pending = 0
+          for task in tasks:
+              if not isinstance(task, dict) or not isinstance(task.get("id"), str) or not task["id"].strip():
+                  raise SystemExit("queue task identity invalid; refusing scheduled execution")
+              task_id = task["id"]
+              if task_id in seen:
+                  raise SystemExit("duplicate queue task identity; refusing scheduled execution")
+              seen.add(task_id)
+              if task_id in completed_ids:
+                  continue
+              if task_id not in recovery_tasks:
+                  raise SystemExit("Recovery AI task state missing; refusing scheduled execution")
+              record = recovery_tasks[task_id]
+              if not isinstance(record, dict):
+                  raise SystemExit("Recovery AI task record invalid; refusing scheduled execution")
+              held = record.get("held")
+              review = record.get("resume_requires_review")
+              if not isinstance(held, bool) or not isinstance(review, bool):
+                  raise SystemExit("Recovery AI hold evidence ambiguous; refusing scheduled execution")
+              if not held and not review:
+                  pending += 1
+
+          # Two or more executable pending tasks is the high-workload threshold.
+          # At lower load, execute only on the hourly :00 tick.
+          minute = int(os.environ["UTC_MINUTE"])
+          run_loop = pending >= 2 or minute == 0
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"run_loop={'true' if run_loop else 'false'}\n")
+              output.write(f"backlog={pending}\n")
+          print(f"Adaptive cadence: backlog={pending}; interval={'30m' if pending >= 2 else '60m'}; run={run_loop}")
+          PY
+
   minimal-loop:
+    needs: [budget-gate, cadence-gate]
     if: >-
-      github.event_name == 'schedule' ||
+      always() && needs.budget-gate.result == 'success' && (
+        github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (
         github.event_name == 'issue_comment' &&
@@ -129,7 +271,7 @@ jobs:
         github.event.label.name == 'distributed-loop-max4' &&
         github.event.sender.login == 'nonkun12' &&
         github.event.pull_request.user.login == 'nonkun12'
-      )
+      )) && (github.event_name != 'schedule' || needs.cadence-gate.outputs.run_loop == 'true') && vars.CONTROL_TOWER_KILL_SWITCH != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -161,10 +303,21 @@ jobs:
       - name: Record distributed run base commit
         run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Check remote kill switch
+      - name: Check global and remote kill switches
+        env:
+          CONTROL_TOWER_KILL_SWITCH: ${{ vars.CONTROL_TOWER_KILL_SWITCH || 'false' }}
         run: |
-          if [ -f .autonomous-loop.stop ]; then
-            echo "REMOTE_KILL_SWITCH=ON"
+          set -euo pipefail
+          if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ]; then
+            echo "::error::CONTROL_TOWER_KILL_SWITCH is ON; refusing all task execution."
+            exit 1
+          fi
+          if ! git fetch --no-tags --depth=1 origin main; then
+            echo "::error::Unable to verify remote stop switch; failing closed."
+            exit 1
+          fi
+          if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+            echo "::error::REMOTE_KILL_SWITCH is ON; refusing all task execution."
             exit 1
           fi
 
@@ -362,6 +515,19 @@ jobs:
           RESUME_TASK_ID: ${{ steps.validate_resume_request.outputs.task_id }}
         run: |
           set -euo pipefail
+          # Recheck both stop controls immediately before held-task resume; network failure blocks.
+          if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ]; then
+            echo "::error::Global kill switch is ON; refusing held-task resume."
+            exit 1
+          fi
+          if ! git fetch --quiet --no-tags --depth=1 origin main; then
+            echo "::error::Unable to verify remote stop switch before held-task resume."
+            exit 1
+          fi
+          if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+            echo "::error::Remote stop switch is ON; refusing held-task resume."
+            exit 1
+          fi
           # Resume validates membership against the reviewed catalog, because
           # held tasks are intentionally absent from the tracked runtime queue.
           python -m scripts.resume_held_task \
@@ -489,6 +655,19 @@ jobs:
             echo "No new review-only task issues to create; see status and backlog diagnostics above."
             exit 0
           fi
+          # Recheck both stop controls immediately before review-only issue creation; network failure blocks.
+          if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ]; then
+            echo "::error::Global kill switch is ON; refusing review-only issue creation."
+            exit 1
+          fi
+          if ! git fetch --quiet --no-tags --depth=1 origin main; then
+            echo "::error::Unable to verify remote stop switch before review-only issue creation."
+            exit 1
+          fi
+          if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+            echo "::error::Remote stop switch is ON; refusing review-only issue creation."
+            exit 1
+          fi
           gh label create autonomous-task-candidate --color 0E8A16 --description "AI-generated task candidate; human review required" --force
           while IFS= read -r draft; do
             title="$(printf '%s' "$draft" | jq -r '.title')"
@@ -510,21 +689,41 @@ jobs:
           INCIDENT_CATEGORY: ${{ env.INCIDENT_CATEGORY }}
           INCIDENT_DETAIL: ${{ env.INCIDENT_DETAIL }}
           INCIDENT_JOB_ID: ${{ env.INCIDENT_JOB_ID }}
+          ORCA_CONTROL_API_URL: ${{ secrets.ORCA_CONTROL_API_URL }}
+          ORCA_LOOP_PREFLIGHT_TOKEN: ${{ secrets.ORCA_LOOP_PREFLIGHT_TOKEN }}
         run: |
           set -euo pipefail
           : > /tmp/minimal-autonomous-loop.jsonl
           STOP_FILE=/tmp/line-bot-autonomous-loop.stop
+          PREFLIGHT_FILE="$(mktemp)"
 
           (
             while sleep 15; do
-              if git fetch --quiet origin main 2>/dev/null && git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+              # Any inability to verify either authoritative stop control is a stop signal.
+              if ! git fetch --quiet --no-tags --depth=1 origin main 2>/dev/null; then
+                touch "$STOP_FILE"
+                exit 0
+              fi
+              if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+                touch "$STOP_FILE"
+                exit 0
+              fi
+              if [ -z "${ORCA_CONTROL_API_URL}" ] || [ -z "${ORCA_LOOP_PREFLIGHT_TOKEN}" ]; then
+                touch "$STOP_FILE"
+                exit 0
+              fi
+              http_code="$(curl --silent --show-error --output "$PREFLIGHT_FILE" --write-out '%{http_code}' \
+                --request GET "${ORCA_CONTROL_API_URL%/}/control/loop-admission" \
+                --header "Authorization: Bearer ${ORCA_LOOP_PREFLIGHT_TOKEN}" \
+                --header "Accept: application/json" 2>/dev/null || true)"
+              if [ "$http_code" != "200" ] || ! jq -e '.allowed == true and .global_hold.clear == true and .global_hold.value == "off" and .global_hold.blocked == false and .budget_guard.allowed == true and (.budget_guard.status == "CLEAR" or .budget_guard.status == "WARN")' "$PREFLIGHT_FILE" >/dev/null 2>&1; then
                 touch "$STOP_FILE"
                 exit 0
               fi
             done
           ) &
           POLLER_PID=$!
-          trap 'kill "$POLLER_PID" 2>/dev/null || true' EXIT
+          trap 'kill "$POLLER_PID" 2>/dev/null || true; rm -f "$PREFLIGHT_FILE"' EXIT
 
           # Never let a reused self-hosted runner carry result rows into this run.
           # Stale PASS rows could otherwise inflate the final task count for NOT_RUN.
@@ -654,6 +853,19 @@ jobs:
           MAX_TASKS: ${{ env.MAX_TASKS }}
         run: |
           set -euo pipefail
+          # Recheck immediately before publishing. Fetch failure is BLOCKED.
+          if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ]; then
+            echo "::error::Global kill switch is ON; refusing publication."
+            exit 1
+          fi
+          if ! git fetch --quiet --no-tags --depth=1 origin main; then
+            echo "::error::Unable to verify remote stop switch before publication."
+            exit 1
+          fi
+          if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+            echo "::error::Remote stop switch is ON; refusing publication."
+            exit 1
+          fi
           branch="line-dev/$GITHUB_RUN_ID"
           head="$(git rev-parse HEAD)"
 
@@ -782,6 +994,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Recheck both controls before changing durable completion state.
+          if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ]; then
+            echo "::error::Global kill switch is ON; refusing durable state update."
+            exit 1
+          fi
+          if ! git fetch --quiet --no-tags --depth=1 origin main; then
+            echo "::error::Unable to verify remote stop switch before durable state update."
+            exit 1
+          fi
+          if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+            echo "::error::Remote stop switch is ON; refusing durable state update."
+            exit 1
+          fi
           if [ -f /tmp/autonomous-loop-not-run ] || [ -f /tmp/autonomous-loop-held-tasks ]; then
             echo "No task completed: durable completion state unchanged."
             exit 0
@@ -917,6 +1142,19 @@ jobs:
                   or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
               raise SystemExit('invalid local Recovery AI state; durable update blocked')
           PY
+          # Recheck both stop controls immediately before Recovery AI durable state update; network failure blocks.
+          if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ]; then
+            echo "::error::Global kill switch is ON; refusing Recovery AI durable state update."
+            exit 1
+          fi
+          if ! git fetch --quiet --no-tags --depth=1 origin main; then
+            echo "::error::Unable to verify remote stop switch before Recovery AI durable state update."
+            exit 1
+          fi
+          if git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
+            echo "::error::Remote stop switch is ON; refusing Recovery AI durable state update."
+            exit 1
+          fi
           state_branch="autonomous-loop-state"
           auth_url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
           if ! git ls-remote --exit-code origin "refs/heads/$state_branch" >/dev/null 2>&1; then

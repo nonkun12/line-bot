@@ -1,5 +1,6 @@
 """Workflow wiring tests for the independent Chain Job AI continuation owner."""
 import os
+import sys
 from pathlib import Path
 import subprocess
 import textwrap
@@ -27,7 +28,7 @@ def _run_active_check(tmp_path, depth, *, active_count=0):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     gh = fake_bin / "gh"
-    gh.write_text(f"#!/bin/sh\nprintf '%s\\n' '{active_count}'\n", encoding="utf-8")
+    gh.write_text(f"#!/bin/sh\nprintf '%s\n' '{active_count}'\n", encoding="utf-8")
     gh.chmod(0o755)
     output = tmp_path / "github-output"
     env = os.environ.copy()
@@ -162,12 +163,23 @@ def test_continuation_stops_when_another_loop_is_queued_or_running(tmp_path):
     assert "next_depth=" not in output
 
 
-def test_distributed_loop_is_scheduled_hourly_in_tokyo_and_stays_bounded():
+def test_distributed_loop_uses_adaptive_30_or_60_minute_execution_cadence():
     path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml"
     source = path.read_text(encoding="utf-8")
     assert "timezone: 'Asia/Tokyo'" in source
-    assert "- cron: '17 * * * *'" in source
+    assert "- cron: '0,30 * * * *'" in source
+    assert "cadence-gate:" in source
+    assert "pending >= 2 or minute == 0" in source
+    assert "github.event_name != 'schedule' || needs.cadence-gate.outputs.run_loop == 'true'" in source
     assert "github.event_name == 'schedule' && '1'" in source
+    assert "cadence evidence missing or invalid; refusing scheduled execution" in source
+    assert "if task_id not in recovery_tasks:" in source
+    assert 'held = record.get("held")' in source
+    assert 'review = record.get("resume_requires_review")' in source
+    assert "Recovery AI task state missing; refusing scheduled execution" in source
+    assert "vars.CONTROL_TOWER_KILL_SWITCH != 'true'" in source
+    assert "CONTROL_TOWER_KILL_SWITCH is ON; refusing all task execution." in source
+    assert "REMOTE_KILL_SWITCH is ON; refusing all task execution." in source
 
 
 def test_only_continuous_workflow_owns_automatic_dispatch():
@@ -192,3 +204,182 @@ def test_line_notification_failure_does_not_block_verified_continuation():
     source = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     notification = source.split("      - name: Notify LINE of distributed loop final report", 1)[1].split("      - name:", 1)[0]
     assert "continue-on-error: true" in notification
+
+
+def _run_real_cadence_decision(tmp_path, tasks, completed, recovery, minute):
+    import json
+    import subprocess
+    import textwrap
+
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "distributed-autonomous-loop.yml"
+    )
+    source = workflow.read_text(encoding="utf-8")
+    marker = "      - name: Decide hourly or 30-minute execution"
+    start = source.index(marker)
+    run = source.index("        run: |\n", start) + len("        run: |\n")
+    end = source.index("\n      - name:", run)
+    block = source[run:end]
+    lines = block.splitlines()
+    # YAML removes the common workflow indentation. Extract only the Python
+    # heredoc body and execute it directly, avoiding shell heredoc indentation.
+    py_start = next(i for i, line in enumerate(lines) if line.strip() == "python - <<'PY'")
+    py_end = next(i for i in range(py_start + 1, len(lines)) if lines[i].strip() == "PY")
+    script = textwrap.dedent("\n".join(lines[py_start + 1:py_end])) + "\n"
+
+    state_path = tmp_path / "cadence-state.json"
+    queue_path = tmp_path / ".github" / "autonomous-loop-tasks.json"
+    queue_path.parent.mkdir(parents=True)
+    queue_path.write_text(json.dumps({"tasks": tasks}), encoding="utf-8")
+    state_path.write_text(
+        json.dumps({"completed": completed, "recovery_ai": {"tasks": recovery}}),
+        encoding="utf-8",
+    )
+    script = script.replace("/tmp/cadence-state.json", str(state_path))
+    output = tmp_path / "github-output"
+    env = os.environ.copy()
+    env.update({"UTC_MINUTE": minute, "GITHUB_OUTPUT": str(output)})
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return result, output.read_text(encoding="utf-8") if output.exists() else ""
+
+def test_adaptive_cadence_executes_hourly_at_low_load_and_every_30m_at_high_load(tmp_path):
+    def task(task_id):
+        return {"id": task_id}
+
+    def ready(task_id):
+        return {"held": False, "resume_requires_review": False}
+
+    cases = [
+        (0, "00", "true", "0"),
+        (1, "30", "false", "1"),
+        (2, "30", "true", "2"),
+        (4, "30", "true", "4"),
+    ]
+    for count, minute, expected_run, expected_backlog in cases:
+        case_dir = tmp_path / f"case-{count}-{minute}"
+        case_dir.mkdir()
+        tasks = [task(f"task-{i}") for i in range(count)]
+        recovery = {f"task-{i}": ready(f"task-{i}") for i in range(count)}
+        result, output = _run_real_cadence_decision(
+            case_dir, tasks, [], recovery, minute
+        )
+        assert result.returncode == 0, result.stderr
+        assert f"run_loop={expected_run}" in output
+        assert f"backlog={expected_backlog}" in output
+
+
+def test_adaptive_cadence_excludes_completed_held_and_review_tasks(tmp_path):
+    tasks = [{"id": "done"}, {"id": "held"}, {"id": "review"}]
+    recovery = {
+        "held": {"held": True, "resume_requires_review": False},
+        "review": {"held": False, "resume_requires_review": True},
+    }
+    result, output = _run_real_cadence_decision(
+        tmp_path, tasks, ["done"], recovery, "30"
+    )
+    assert result.returncode == 0, result.stderr
+    assert "run_loop=false" in output
+    assert "backlog=0" in output
+
+
+def test_adaptive_cadence_fails_closed_on_missing_or_ambiguous_recovery_evidence(tmp_path):
+    tasks = [{"id": "pending"}]
+    for recovery in ({}, {"pending": {"held": False}}):
+        case_dir = tmp_path / f"case-{len(list(tmp_path.iterdir()))}"
+        case_dir.mkdir()
+        result, output = _run_real_cadence_decision(
+            case_dir, tasks, [], recovery, "30"
+        )
+        assert result.returncode != 0
+        assert output == ""
+
+
+def test_adaptive_cadence_fails_closed_on_duplicate_task_ids(tmp_path):
+    tasks = [{"id": "same"}, {"id": "same"}]
+    recovery = {"same": {"held": False, "resume_requires_review": False}}
+    result, output = _run_real_cadence_decision(
+        tmp_path, tasks, [], recovery, "30"
+    )
+    assert result.returncode != 0
+    assert output == ""
+
+
+def test_adaptive_schedule_never_accumulates_an_unbounded_run_queue():
+    path = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "distributed-autonomous-loop.yml"
+    )
+    source = path.read_text(encoding="utf-8")
+    concurrency = source.split("concurrency:", 1)[1].split("\njobs:", 1)[0]
+    assert "cancel-in-progress: false" in concurrency
+    # GitHub Actions permits one pending run by default for a concurrency group.
+    assert "queue:" not in concurrency
+
+
+def test_stop_watcher_fails_closed_when_remote_control_cannot_be_verified():
+    path = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "distributed-autonomous-loop.yml"
+    )
+    source = path.read_text(encoding="utf-8")
+    watcher = source.split("STOP_FILE=/tmp/line-bot-autonomous-loop.stop", 1)[1].split(
+        "POLLER_PID=$!", 1
+    )[0]
+    assert "if ! git fetch --quiet --no-tags --depth=1 origin main" in watcher
+    assert 'touch "$STOP_FILE"' in watcher
+    assert "git cat-file -e FETCH_HEAD:.autonomous-loop.stop" in watcher
+    assert "/control/loop-admission" in watcher
+    assert "ORCA_LOOP_PREFLIGHT_TOKEN" in watcher
+    assert "jq -e '.allowed == true" in watcher
+
+
+def test_publish_and_durable_state_updates_recheck_stop_controls():
+    path = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "distributed-autonomous-loop.yml"
+    )
+    source = path.read_text(encoding="utf-8")
+    publish = source.split("- name: Publish verified development branch", 1)[1].split(
+        "- name: Persist completed task state", 1
+    )[0]
+    persist = source.split("- name: Persist completed task state", 1)[1]
+    for block in (publish, persist):
+        assert "CONTROL_TOWER_KILL_SWITCH,,}" in block
+        assert "git fetch --quiet --no-tags --depth=1 origin main" in block
+        assert "git cat-file -e FETCH_HEAD:.autonomous-loop.stop" in block
+
+
+def test_distributed_loop_requires_fresh_budget_guardian_state_before_any_execution():
+    path = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "distributed-autonomous-loop.yml"
+    )
+    source = path.read_text(encoding="utf-8")
+    gate = source.split("  budget-gate:", 1)[1].split("  cadence-gate:", 1)[0]
+    assert "secrets.ORCA_CONTROL_API_URL" in gate
+    assert "secrets.ORCA_LOOP_PREFLIGHT_TOKEN" in gate
+    assert "/control/loop-admission" in gate
+    assert 'payload.get("allowed") is not True' in gate
+    assert 'hold.get("clear") is not True' in gate
+    assert 'budget.get("status") not in ("CLEAR", "WARN")' in gate
+    assert "needs: budget-gate" in source
+    assert "needs: [budget-gate, cadence-gate]" in source
+    assert "needs.budget-gate.result == 'success'" in source
