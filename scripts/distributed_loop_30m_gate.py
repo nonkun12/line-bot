@@ -19,6 +19,7 @@ from typing import Any
 # until its complete meter set is added here.
 REQUIRED_METERS = {
     "cloudflare.workers.requests.daily": ("cloudflare", "workers"),
+    "cloudflare.workers.cpu_ms_per_invocation.max": ("cloudflare", "workers"),
     "cloudflare.workers_logs.events.daily": ("cloudflare", "workers_logs"),
     "cloudflare.d1.rows_read.daily": ("cloudflare", "d1"),
     "cloudflare.d1.rows_written.daily": ("cloudflare", "d1"),
@@ -36,6 +37,7 @@ REQUIRED_PRODUCTS = frozenset({
 })
 METER_UNITS = {
     "cloudflare.workers.requests.daily": "requests",
+    "cloudflare.workers.cpu_ms_per_invocation.max": "ms",
     "cloudflare.workers_logs.events.daily": "events",
     "cloudflare.d1.rows_read.daily": "rows",
     "cloudflare.d1.rows_written.daily": "rows",
@@ -47,6 +49,21 @@ METER_UNITS = {
     "cloudflare.durable_objects.sqlite_storage_bytes.total": "bytes",
     "github.actions.compute_cost_usd.monthly": "USD",
     "github.actions.artifact_storage_bytes.monthly": "bytes",
+}
+METER_PERIOD_KINDS = {
+    "cloudflare.workers.requests.daily": "daily",
+    "cloudflare.workers.cpu_ms_per_invocation.max": "per_invocation",
+    "cloudflare.workers_logs.events.daily": "daily",
+    "cloudflare.d1.rows_read.daily": "daily",
+    "cloudflare.d1.rows_written.daily": "daily",
+    "cloudflare.d1.storage_bytes.total": "total",
+    "cloudflare.durable_objects.requests.daily": "daily",
+    "cloudflare.durable_objects.duration_gb_seconds.daily": "daily",
+    "cloudflare.durable_objects.sqlite_rows_read.daily": "daily",
+    "cloudflare.durable_objects.sqlite_rows_written.daily": "daily",
+    "cloudflare.durable_objects.sqlite_storage_bytes.total": "total",
+    "github.actions.compute_cost_usd.monthly": "monthly",
+    "github.actions.artifact_storage_bytes.monthly": "monthly",
 }
 MAX_SNAPSHOT_AGE = timedelta(minutes=10)
 MAX_FUTURE_SKEW = timedelta(minutes=5)
@@ -211,13 +228,19 @@ def evaluate_budget_snapshot(
             raise GateBlocked("budget_watermark_after_observation")
         if observed > attestation_issued_at + MAX_FUTURE_SKEW:
             raise GateBlocked("budget_observation_after_attestation")
-        period_start = parse_time(meter.get("period_start"))
-        period_end = parse_time(meter.get("period_end"))
         if (observed > now + MAX_FUTURE_SKEW or now - observed > MAX_SNAPSHOT_AGE
                 or watermark > now + MAX_FUTURE_SKEW or now - watermark > MAX_SNAPSHOT_AGE):
             raise GateBlocked("budget_snapshot_stale_or_future")
-        if period_start >= period_end or not (period_start <= now < period_end):
-            raise GateBlocked("budget_period_not_current")
+        period_kind = METER_PERIOD_KINDS[meter_id]
+        if meter.get("period_kind") != period_kind:
+            raise GateBlocked("budget_period_kind_invalid")
+        if period_kind in {"daily", "monthly"}:
+            period_start = parse_time(meter.get("period_start"))
+            period_end = parse_time(meter.get("period_end"))
+            if period_start >= period_end or not (period_start <= now < period_end):
+                raise GateBlocked("budget_period_not_current")
+        elif meter.get("period_start") is not None or meter.get("period_end") is not None:
+            raise GateBlocked("budget_nonreset_meter_has_period_boundary")
         percent = float(used) / float(limit) * 100.0
         state = ("STOP" if percent >= 90 else "SUPPRESS" if percent >= 80
                  else "WARN" if percent >= 70 else "CLEAR")
