@@ -54,7 +54,7 @@ def new_cycle(*, observation: str, source_refs: list[str], created_at: str,
     if depth > 0 and (not isinstance(parent_cycle_id, str) or not _SHA.fullmatch(parent_cycle_id)):
         raise ImprovementRejected("parent_cycle_id_invalid")
     timestamp = _utc(created_at)
-    seed = f"{observation}\n{timestamp}\n{parent_cycle_id or ''}"
+    seed = f"{observation.strip()}\n{timestamp}\n{parent_cycle_id or ''}"
     cycle_id = hashlib.sha256(seed.encode("utf-8")).hexdigest()
     return {
         "schema_version": 1, "cycle_id": cycle_id,
