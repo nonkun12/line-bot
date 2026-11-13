@@ -167,7 +167,8 @@ def test_distributed_loop_is_scheduled_every_30_minutes_in_tokyo_and_stays_bound
     source = path.read_text(encoding="utf-8")
     assert "timezone: 'Asia/Tokyo'" in source
     assert "- cron: '*/30 * * * *'" in source
-    assert "github.event_name == 'schedule' && '1'" in source
+    assert "      MAX_TASKS: '1'" in source
+    assert "github.event_name == 'schedule' ||" in source
 
 
 def test_only_continuous_workflow_owns_automatic_dispatch():
