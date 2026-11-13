@@ -132,6 +132,8 @@ jobs:
           CONTINUATION_DEPTH: ${{ github.event.inputs.continuation_depth || '0' }}
           ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
           ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+          ORCA_CONTROL_API_URL: ${{ secrets.ORCA_CONTROL_API_URL }}
+          ORCA_LOOP_PREFLIGHT_TOKEN: ${{ secrets.ORCA_LOOP_PREFLIGHT_TOKEN }}
           ORCA_BUDGET_GATE_URL: ${{ secrets.ORCA_BUDGET_GATE_URL }}
           ORCA_BUDGET_GATE_TOKEN: ${{ secrets.ORCA_BUDGET_GATE_TOKEN }}
           ORCA_BUDGET_EVIDENCE_HMAC_SECRET: ${{ secrets.ORCA_BUDGET_EVIDENCE_HMAC_SECRET }}
@@ -577,7 +579,7 @@ jobs:
                 --request GET "${ORCA_CONTROL_API_URL%/}/control/loop-admission" \
                 --header "Authorization: Bearer ${ORCA_LOOP_PREFLIGHT_TOKEN}" \
                 --header "Accept: application/json" 2>/dev/null || true)"
-              if [ "$http_code" != "200" ] || ! jq -e '.allowed == true and .global_hold.clear == true and .global_hold.value == "off" and .global_hold.blocked == false and .budget_guard.allowed == true and (.budget_guard.status == "CLEAR" or .budget_guard.status == "WARN")' "$PREFLIGHT_FILE" >/dev/null 2>&1; then
+              if [ "$http_code" != "200" ] || ! jq -e '.allowed == true and .global_hold.clear == true and .global_hold.value == "off" and .global_hold.blocked == false and .global_hold.unresolved_operations == 0 and .budget_guard.allowed == true and (.budget_guard.status == "CLEAR" or .budget_guard.status == "WARN")' "$PREFLIGHT_FILE" >/dev/null 2>&1; then
                 touch "$STOP_FILE"
                 exit 0
               fi
@@ -717,6 +719,8 @@ jobs:
           CONTINUATION_DEPTH: ${{ github.event.inputs.continuation_depth || '0' }}
           ORCA_TASK_API_URL: ${{ secrets.ORCA_TASK_API_URL }}
           ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+          ORCA_CONTROL_API_URL: ${{ secrets.ORCA_CONTROL_API_URL }}
+          ORCA_LOOP_PREFLIGHT_TOKEN: ${{ secrets.ORCA_LOOP_PREFLIGHT_TOKEN }}
           ORCA_BUDGET_GATE_URL: ${{ secrets.ORCA_BUDGET_GATE_URL }}
           ORCA_BUDGET_GATE_TOKEN: ${{ secrets.ORCA_BUDGET_GATE_TOKEN }}
           ORCA_BUDGET_EVIDENCE_HMAC_SECRET: ${{ secrets.ORCA_BUDGET_EVIDENCE_HMAC_SECRET }}
