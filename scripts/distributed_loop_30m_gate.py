@@ -93,6 +93,7 @@ def verify_budget_attestation(
 def evaluate_budget_snapshot(
     payload: Any, *, now: datetime, attestation_secret: str = "",
     expected_account_id: str = "", trusted_collector_id: str = "",
+    expected_github_account_id: str = "",
 ) -> dict[str, Any]:
     if not isinstance(payload, dict) or not isinstance(payload.get("sources"), list):
         raise GateBlocked("budget_snapshot_missing")
@@ -137,9 +138,9 @@ def evaluate_budget_snapshot(
                 or not isinstance(source.get("dataset"), str) or not source["dataset"].strip()):
             raise GateBlocked("budget_unit_dataset_or_limit_evidence_missing")
         expected_provider = "github" if name == "github_actions" else "cloudflare"
-        if (source.get("provider") != expected_provider
-                or not isinstance(source.get("account_id"), str) or not source.get("account_id").strip()
-                or (expected_provider == "cloudflare" and source.get("account_id") != attestation_account_id(payload))
+        expected_source_account = attestation_account_id(payload) if expected_provider == "cloudflare" else expected_github_account_id
+        if (not expected_source_account or source.get("provider") != expected_provider
+                or source.get("account_id") != expected_source_account
                 or source.get("complete_account_coverage") is not True
                 or source.get("exact_counter") is not True
                 or source.get("sampling_mode") != "none"
@@ -238,6 +239,7 @@ def check_budget(now: datetime) -> dict[str, Any]:
         attestation_secret=os.environ.get("ORCA_BUDGET_EVIDENCE_HMAC_SECRET", ""),
         expected_account_id=os.environ.get("ORCA_BUDGET_EXPECTED_ACCOUNT_ID", ""),
         trusted_collector_id=os.environ.get("ORCA_BUDGET_TRUSTED_COLLECTOR_ID", ""),
+        expected_github_account_id=os.environ.get("ORCA_GITHUB_BILLING_ACCOUNT_ID", ""),
     )
 
 
