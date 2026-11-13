@@ -30,6 +30,19 @@ The entire response must also carry an `attestation` object signed with HMAC-SHA
 
 The trusted live collector and signed budget endpoint are not part of this PR. Until they exist and produce independently verifiable evidence, scheduled and manual runs are blocked by design. Do not set dummy values or bypass the gate.
 
+
+## Cloudflare telemetry admissibility findings (2026-11-13)
+
+The provider documentation does not currently establish a free, account-wide, exact, unsampled usage counter with a watermark no older than ten minutes for all required meters:
+
+- Cloudflare's GraphQL Analytics API is an analytics interface, not a billing meter. Cloudflare explicitly says GraphQL analytics should not be used as a measure of usage Cloudflare uses for billing. See https://developers.cloudflare.com/analytics/graphql-api/ and https://developers.cloudflare.com/analytics/graphql-api/limits/.
+- D1 GraphQL analytics expose rows read/written, but adaptive analytics records only requests that successfully reach SQL execution; requests failing before SQL execution are not represented. Per-query Workers Binding API row counts are precise for those queries, but do not independently prove complete account-wide coverage. See https://developers.cloudflare.com/d1/observability/metrics-analytics/.
+- Durable Objects expose several GraphQL datasets, including invocation, periodic, storage, and subrequest datasets. Their existence does not by itself prove that all billable dimensions are fully represented in one exact, unsampled account-wide counter. WebSocket request/message representation also varies by lifecycle and hibernation. See https://developers.cloudflare.com/durable-objects/observability/metrics-and-analytics/.
+- Cloudflare's Billable Usage API is a useful reconciliation source across usage-based products, but its published update cadence is daily, not ten-minute real-time. It cannot satisfy this gate's freshness requirement. See https://blog.cloudflare.com/billable-usage-api/.
+- Free-plan limits are metered across different periods and dimensions (for example, Workers requests and D1/DO daily limits, and other monthly dimensions). A single generic percentage is not valid unless the collector preserves each meter's exact unit, period, reset boundary, account scope, and authoritative limit. See https://developers.cloudflare.com/workers/platform/pricing/ and https://developers.cloudflare.com/durable-objects/platform/pricing/.
+
+Therefore, do not implement a collector that converts GraphQL analytics, a recent poll timestamp, partial local counters, or daily billable-usage data into a ten-minute enforcement snapshot. Those sources may be retained for observability and later reconciliation only. Unless Cloudflare exposes a documented exact near-real-time enforcement meter for every required dimension, the safe decision is BLOCKED; no secret/variable configuration or workflow activation can compensate for missing authoritative telemetry.
+
 ## Remaining rollout dependency
 
 This PR uses the existing GitHub Actions concurrency group plus the previous main-branch workflow-run history as a serialized 30-minute guard. It does not add the D1 atomic slot ledger described in the broader ORCA rollout plan. Keep this as the sole automatic loop scheduler; if another independent scheduler/dispatcher is introduced, add and verify a shared durable slot ledger before activation.
