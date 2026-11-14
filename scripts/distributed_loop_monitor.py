@@ -329,7 +329,10 @@ def main() -> int:
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"status": report["status"], "dispatch_allowed": False,
                       "failure_reason": report["failure_reason"]}, ensure_ascii=False))
-    return 0 if report["status"] in {"PASS", "BLOCKED"} else 1
+    # A BLOCKED report is still written and uploaded by the workflow's
+    # always()-guarded summary/artifact steps, but the run must be visibly red.
+    # Only a complete health PASS may produce a successful Actions conclusion.
+    return 0 if report["status"] == "PASS" else 1
 
 
 if __name__ == "__main__":
