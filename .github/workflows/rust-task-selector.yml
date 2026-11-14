@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "rust/task-selector/**"
+      - "scripts/autonomous_task_refill.py"
+      - "tests/test_autonomous_task_refill.py"
+      - "tests/test_rust_task_selector_shadow.py"
       - ".github/workflows/rust-task-selector.yml"
   push:
     branches:
@@ -33,3 +36,9 @@ jobs:
           rustup toolchain install stable --profile minimal
       - name: Run selector unit tests
         run: cargo +stable test --manifest-path rust/task-selector/Cargo.toml
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Run Python-Rust selector shadow parity
+        run: python -m unittest tests.test_rust_task_selector_shadow
