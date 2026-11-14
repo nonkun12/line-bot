@@ -149,6 +149,4 @@ mod tests {
         assert_eq!(select(&tasks, 1), Err(SelectionError::DuplicateTaskId("same-id".to_owned())));
     }
 
-    #[test]
-
 }
