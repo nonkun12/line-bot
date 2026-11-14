@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       max_tasks:
-        description: 'Manual run task limit (fixed at one task per run)'
+        description: 'Manual run task limit (1–4 tasks; all safety gates still apply)'
         required: false
         default: '1'
         type: choice
