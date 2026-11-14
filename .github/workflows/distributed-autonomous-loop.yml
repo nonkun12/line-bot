@@ -2,6 +2,13 @@ name: Distributed Autonomous Development Loop
 run-name: Distributed Loop (continuation_depth=${{ inputs.continuation_depth || '0' }}, request_id=${{ inputs.request_id || 'scheduled' }})
 
 on:
+  schedule:
+    - cron: "5 3 * * *"   # 03:05 JST
+      timezone: "Asia/Tokyo"
+    - cron: "5 15 * * *"  # 15:05 JST
+      timezone: "Asia/Tokyo"
+    - cron: "5 21 * * *"  # 21:05 JST
+      timezone: "Asia/Tokyo"
   workflow_dispatch:
     inputs:
       max_tasks:
