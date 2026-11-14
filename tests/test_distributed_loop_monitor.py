@@ -302,6 +302,22 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         self.assertEqual(activity["latest_run_attempt"], 2)
         self.assertEqual(activity["status"], "BLOCKED")
 
+    def test_same_attempt_conflicting_created_at_blocks(self):
+        first = main_run(id=250, created_at="2026-11-13T23:58:00Z")
+        conflicting = main_run(id=250, created_at="2026-11-13T23:57:00Z")
+        activity = self.evaluate(runs={"workflow_runs": [first, conflicting]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["status"], "BLOCKED")
+        self.assertEqual(activity["outcome"], "UNVERIFIED")
+        self.assertIn("conflicting records", activity["detail"])
+
+    def test_same_attempt_conflicting_run_number_blocks(self):
+        first = main_run(id=251, run_number=10)
+        conflicting = main_run(id=251, run_number=11)
+        activity = self.evaluate(runs={"workflow_runs": [first, conflicting]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["status"], "BLOCKED")
+        self.assertEqual(activity["outcome"], "UNVERIFIED")
+        self.assertIn("conflicting records", activity["detail"])
+
     def test_multiple_active_runs_block_as_overlap(self):
         first = main_run(id=301, created_at="2026-11-13T23:57:00Z")
         second = main_run(id=302, created_at="2026-11-13T23:58:00Z", event="schedule")
@@ -360,6 +376,25 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         activity = self.evaluate(runs={"workflow_runs": [future]})["checks"]["main_loop_activity"]
         self.assertEqual(activity["status"], "BLOCKED")
         self.assertIn("run_started_at is too far in the future", activity["detail"])
+
+    def test_run_started_before_created_at_beyond_skew_tolerance_blocks(self):
+        run = main_run(
+            created_at="2026-11-13T23:59:00Z",
+            run_started_at="2026-11-13T23:53:59Z",
+        )
+        activity = self.evaluate(runs={"workflow_runs": [run]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["status"], "BLOCKED")
+        self.assertEqual(activity["outcome"], "UNVERIFIED")
+        self.assertIn("earlier than created_at", activity["detail"])
+
+    def test_run_started_before_created_at_within_skew_tolerance_is_allowed(self):
+        run = main_run(
+            created_at="2026-11-13T23:59:00Z",
+            run_started_at="2026-11-13T23:55:00Z",
+        )
+        activity = self.evaluate(runs={"workflow_runs": [run]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["status"], "PASS")
+        self.assertEqual(activity["outcome"], "ACTIVE")
 
     def test_missing_or_invalid_run_started_at_blocks_in_progress(self):
         for value in (None, "not-a-timestamp"):
