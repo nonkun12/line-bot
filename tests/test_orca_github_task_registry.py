@@ -77,3 +77,12 @@ def test_allowlisted_tasks_are_validated_but_never_executable(task_id, target_pa
 def test_untyped_or_mismatched_payloads_are_rejected(task_id, payload):
     with pytest.raises(TaskContractRejected):
         validate_typed_task(task_id=task_id, payload=payload)
+
+
+@pytest.mark.parametrize("payload", [None, [], "not-an-object", 1])
+def test_non_object_payloads_are_rejected(payload):
+    with pytest.raises(TaskContractRejected):
+        validate_typed_task(
+            task_id="ai-speaker-empty-transcript-no-brain-call",
+            payload=payload,
+        )
