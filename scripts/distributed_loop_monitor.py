@@ -119,6 +119,18 @@ def evaluate_main_loop_runs(workflow_runs: list[dict[str, Any]], now: datetime) 
         if created is None:
             errors.append(f"Main LOOP run {run_id} has missing or invalid created_at")
             continue
+        if (created - now).total_seconds() > MAX_FUTURE_CLOCK_SKEW_SECONDS:
+            errors.append(f"Main LOOP run {run_id} created_at is too far in the future")
+            continue
+        run_started = None
+        if status == "in_progress":
+            run_started = parse_utc(item.get("run_started_at"))
+            if run_started is None:
+                errors.append(f"Main LOOP run {run_id} has missing or invalid run_started_at")
+                continue
+            if (run_started - now).total_seconds() > MAX_FUTURE_CLOCK_SKEW_SECONDS:
+                errors.append(f"Main LOOP run {run_id} run_started_at is too far in the future")
+                continue
         if not isinstance(item.get("event"), str) or not item["event"].strip():
             errors.append(f"Main LOOP run {run_id} has missing or invalid event")
             continue
@@ -137,7 +149,7 @@ def evaluate_main_loop_runs(workflow_runs: list[dict[str, Any]], now: datetime) 
                 errors.append(f"Main LOOP run {run_id} has conflicting records for the same attempt")
                 continue
         if previous is None or attempt > previous["run_attempt"]:
-            normalized[run_id] = item
+            normalized[run_id] = {**item, "_parsed_run_started_at": run_started}
 
     if errors:
         return {
@@ -187,11 +199,11 @@ def evaluate_main_loop_runs(workflow_runs: list[dict[str, Any]], now: datetime) 
     stale_running = [
         item for item in active
         if item["status"] == "in_progress"
-        and int((now - parse_utc(item["created_at"])).total_seconds()) > MAX_IN_PROGRESS_AGE_SECONDS
+        and int((now - item["_parsed_run_started_at"]).total_seconds()) > MAX_IN_PROGRESS_AGE_SECONDS
     ]
     if stale_running:
         stale = stale_running[0]
-        age_seconds = int((now - parse_utc(stale["created_at"])).total_seconds())
+        age_seconds = int((now - stale["_parsed_run_started_at"]).total_seconds())
         return {
             "status": "BLOCKED", "outcome": "STALE_IN_PROGRESS", "active_run_count": len(active),
             "latest_run_id": latest["id"], "latest_run_attempt": latest["run_attempt"],
