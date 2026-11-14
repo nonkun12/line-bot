@@ -59,3 +59,12 @@ def test_held_task_resume_uses_reviewed_catalog_not_only_tracked_queue():
     step = workflow.split("- name: Resume one explicitly approved held task", 1)[1].split("- name: Restore durable Recovery RAG history", 1)[0]
     assert "--queue .github/autonomous-loop-task-catalog.json" in step
     assert "--cause-fixed" in step
+
+def test_free_only_sheets_skip_artifact_is_accepted_by_postrun_verifier():
+    workflow = (ROOT / ".github/workflows/distributed-loop-postrun.yml").read_text(encoding="utf-8")
+    assert '"SKIPPED_FREE_MODE"' in workflow
+    assert 'sheets_result not in {"RECORDED", "ALREADY_RECORDED", "SKIPPED_FREE_MODE"}' in workflow
+    source = (ROOT / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert 'result = "SKIPPED_FREE_MODE"' in source
+    assert 'distributed-sheets-log-result.json' in source
+
