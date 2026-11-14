@@ -90,7 +90,7 @@ MAIN_LOOP_WORKFLOW_ID = 357086091
 MAX_QUEUED_SCHEDULE_AGE_SECONDS = 40 * 60
 MAX_IN_PROGRESS_AGE_SECONDS = 50 * 60
 VALID_RUN_STATUSES = {"queued", "in_progress", "completed"}
-FAILED_CONCLUSIONS = {"failure", "timed_out", "cancelled", "action_required", "startup_failure"}
+FAILED_CONCLUSIONS = {"failure", "timed_out", "cancelled", "action_required", "startup_failure", "stale"}
 
 
 def evaluate_main_loop_runs(workflow_runs: list[dict[str, Any]], now: datetime) -> dict[str, Any]:
@@ -119,8 +119,8 @@ def evaluate_main_loop_runs(workflow_runs: list[dict[str, Any]], now: datetime) 
         if created is None:
             errors.append(f"Main LOOP run {run_id} has missing or invalid created_at")
             continue
-        if item.get("event") not in {"schedule", "workflow_dispatch", "workflow_run", "issue_comment", "pull_request_target"}:
-            errors.append(f"Main LOOP run {run_id} has missing or unknown event")
+        if not isinstance(item.get("event"), str) or not item["event"].strip():
+            errors.append(f"Main LOOP run {run_id} has missing or invalid event")
             continue
         if status not in VALID_RUN_STATUSES:
             errors.append(f"Main LOOP run {run_id} has unknown status")
