@@ -211,3 +211,35 @@ def test_provider_error_holds_immediately_without_repair_retry(tmp_path):
     assert decision.action == "HOLD"
     assert decision.reason == "non_repairable_failure"
     assert decision.requires_human is True
+
+
+
+def test_recovery_document_timestamp_is_written_and_refreshed(tmp_path):
+    path = tmp_path / "state.json"
+    store = RecoveryStore(path)
+    store.record_failure("task-time", "timeout")
+    first = json.loads(path.read_text(encoding="utf-8"))["state_updated_at"]
+    assert isinstance(first, str) and first.endswith("+00:00")
+
+    store.record_failure("task-time", "timeout")
+    second = json.loads(path.read_text(encoding="utf-8"))["state_updated_at"]
+    assert isinstance(second, str) and second.endswith("+00:00")
+
+
+def test_legacy_recovery_document_gets_timestamp_on_first_write(tmp_path):
+    path = tmp_path / "state.json"
+    path.write_text(json.dumps({
+        "schema_version": 1, "checkpoint": None, "tasks": {}
+    }), encoding="utf-8")
+    RecoveryStore(path).record_failure("task-legacy", "timeout")
+    assert "state_updated_at" in json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_invalid_existing_recovery_document_timestamp_fails_closed(tmp_path):
+    path = tmp_path / "state.json"
+    path.write_text(json.dumps({
+        "schema_version": 1, "checkpoint": None, "tasks": {},
+        "state_updated_at": "not-a-timestamp",
+    }), encoding="utf-8")
+    with pytest.raises(RecoveryStateError, match="timestamp invalid"):
+        RecoveryStore(path).record_failure("task-invalid-time", "timeout")
