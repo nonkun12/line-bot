@@ -331,6 +331,20 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         self.assertIn("task-level result", report["checks"]["main_loop_activity"]["detail"])
 
 
+    def test_push_event_is_valid_but_skipped_is_not_execution(self):
+        skipped = main_run(status="completed", conclusion="skipped", event="push")
+        activity = self.evaluate(runs={"workflow_runs": [skipped]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["status"], "INFO")
+        self.assertEqual(activity["outcome"], "NOT_EXECUTED")
+
+    def test_missing_run_attempt_metadata_blocks(self):
+        incomplete = main_run()
+        del incomplete["run_attempt"]
+        activity = self.evaluate(runs={"workflow_runs": [incomplete]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["status"], "BLOCKED")
+        self.assertEqual(activity["outcome"], "UNVERIFIED")
+
+
 if __name__ == "__main__":
     unittest.main()
 
