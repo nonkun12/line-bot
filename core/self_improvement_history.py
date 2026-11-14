@@ -167,9 +167,14 @@ class SelfImprovementHistory:
     def _normalize_record(row: dict[str, object], line_number: int) -> dict[str, object]:
         if row.get("record_type") == "cycle_memory":
             required = {"record_type", "outcome", "cause", "improvements", "next_action", "target_path", "recurring_patterns"}
-            if set(row) != required:
+            if set(row) not in (required, required | {"cycle_id"}):
                 raise ValueError(f"cycle memory schema is invalid at line {line_number}")
             outcome = row.get("outcome")
+            cycle_id = row.get("cycle_id")
+            if "cycle_id" in row and (
+                not isinstance(cycle_id, str) or not re.fullmatch(r"[0-9]{1,20}", cycle_id)
+            ):
+                raise ValueError(f"cycle memory ID is invalid at line {line_number}")
             if outcome not in _MEMORY_CAUSES:
                 raise ValueError(f"cycle memory outcome is invalid at line {line_number}")
             # v1 memory could contain exception text and arbitrary paths. Keep
@@ -196,7 +201,17 @@ class SelfImprovementHistory:
                     "target_path": "",
                     "recurring_patterns": [],
                 }
-            return row
+            normalized = dict(row)
+            normalized["cause"] = _MEMORY_CAUSES[outcome]
+            normalized["improvements"] = list(row["improvements"]) if isinstance(row.get("improvements"), list) and all(item in _MEMORY_IMPROVEMENTS for item in row["improvements"]) else []
+            normalized["next_action"] = row["next_action"] if row.get("next_action") in _MEMORY_NEXT_ACTIONS else (
+                "continue bounded development loop after review" if outcome == "PASS"
+                else "require evidence and safety review before resume" if outcome == "BLOCKED"
+                else "review failure evidence before another attempt"
+            )
+            normalized["target_path"] = ""
+            normalized["recurring_patterns"] = list(row["recurring_patterns"]) if isinstance(row.get("recurring_patterns"), list) and all(item in _SAFE_PATTERN_CODES for item in row["recurring_patterns"]) else []
+            return normalized
 
         if set(row) != {"kind", "task_id", "detail"}:
             raise ValueError(f"self-improvement signal schema is invalid at line {line_number}")
