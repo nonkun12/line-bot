@@ -105,7 +105,7 @@ class SelfImprovementHistory:
         for signal in signals:
             if not isinstance(signal, ImprovementSignal):
                 raise TypeError("history entries must be ImprovementSignal")
-            records.append(asdict(signal))
+            records.append(self._normalize_record(asdict(signal), len(records) + 1))
         self._atomic_write(records)
 
     def append_memory(self, memory: SelfImprovementMemoryRecord) -> None:
