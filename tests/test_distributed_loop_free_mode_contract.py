@@ -15,7 +15,7 @@ def test_distributed_loop_uses_free_only_provider_free_task_execution():
     assert "AUTO_DEPLOY: 'false'" in text
     assert "GOOGLE_SHEETS_SPREADSHEET_ID" not in text
     assert "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON" not in text
-    assert "Skip optional Google Sheets ledger in free-only mode" in text
+    assert "Record explicit Google Sheets skip evidence in free-only mode" in text
 
 
 def test_distributed_loop_filters_queue_before_launching_any_task():
