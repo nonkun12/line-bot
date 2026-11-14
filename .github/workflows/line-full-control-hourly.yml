@@ -3,15 +3,6 @@ name: LINE Full Control Hourly Readiness
 on:
   # Manual-only; readiness checks will be invoked by the unified loop after integration.
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "line_development.py"
-      - "tests/test_line_development.py"
-      - "app.py"
-      - ".github/workflows/line-development-dispatch.yml"
-      - ".github/workflows/line-full-control-hourly.yml"
 
 permissions:
   contents: read
