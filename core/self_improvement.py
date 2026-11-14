@@ -89,9 +89,12 @@ class SelfImprovementEngine:
         if report.success and report.integration_ready:
             new.append(ImprovementSignal("success", None, "development reached the integration gate"))
         if report.repair_attempts:
+            task_id = report.failed_task_id
+            if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}", task_id):
+                task_id = None
             new.append(ImprovementSignal(
-                "repair", report.failed_task_id,
-                f"development required {report.repair_attempts} repair attempt(s)",
+                "repair", task_id,
+                "development required repair attempts",
             ))
         if report.failed_task_id and report.error:
             raw = str(report.error).casefold()
