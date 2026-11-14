@@ -18,6 +18,7 @@ from scripts.orca_github_state_ref import (
     RefWriteRejected, canonical_state_bytes, prepare_write, state_digest,
     verify_before_ref_update,
 )
+from scripts.orca_github_task_queue import empty_state
 
 
 class StateStoreError(RuntimeError):
@@ -77,6 +78,8 @@ class GitHubStateStore:
         except urllib.error.HTTPError as exc:
             if exc.code in (409, 422):
                 raise StateConflict("github_ref_fast_forward_conflict") from None
+            if exc.code == 404:
+                raise StateStoreError("github_resource_not_found") from None
             raise StateStoreError("github_state_api_rejected_request") from None
         except (urllib.error.URLError, TimeoutError, UnicodeError, json.JSONDecodeError):
             raise StateStoreError("github_state_api_unavailable_or_invalid") from None
@@ -106,6 +109,77 @@ class GitHubStateStore:
         if not isinstance(state, dict):
             raise StateStoreError("state_document_invalid")
         return StateSnapshot(ref_sha, state, str(content.get("sha", "")))
+
+    def initialize_hold_latched(self) -> StateSnapshot:
+        """Create the first queue document only when absent; never clear HOLD.
+
+        The candidate commit is parented to the exact observed state-ref SHA.
+        A non-force ref update makes concurrent initializers mutually exclusive.
+        """
+        repo = urllib.parse.quote(self.repository, safe="/")
+        branch = urllib.parse.quote(self.branch, safe="")
+        ref = self._request("GET", f"/repos/{repo}/git/ref/heads/{branch}")
+        parent_sha = ref.get("object", {}).get("sha")
+        if not isinstance(parent_sha, str) or len(parent_sha) != 40:
+            raise StateStoreError("state_ref_missing_or_invalid")
+
+        path = urllib.parse.quote(self.path, safe="/")
+        try:
+            self._request(
+                "GET", f"/repos/{repo}/contents/{path}?ref={parent_sha}"
+            )
+        except StateStoreError as exc:
+            if str(exc) != "github_resource_not_found":
+                raise
+        else:
+            raise StateConflict("state_document_already_exists")
+
+        parent = self._request(
+            "GET", f"/repos/{repo}/git/commits/{parent_sha}"
+        )
+        base_tree = parent.get("tree", {}).get("sha")
+        if not isinstance(base_tree, str):
+            raise StateStoreError("state_base_tree_missing")
+
+        initial = empty_state()
+        if initial.get("global_hold") is not True or initial.get("revision") != 0:
+            raise StateStoreError("unsafe_initial_state_defaults")
+
+        blob = self._request("POST", f"/repos/{repo}/git/blobs", {
+            "content": base64.b64encode(canonical_state_bytes(initial)).decode("ascii"),
+            "encoding": "base64",
+        })
+        blob_sha = blob.get("sha")
+        if not isinstance(blob_sha, str):
+            raise StateStoreError("state_blob_create_failed")
+        tree = self._request("POST", f"/repos/{repo}/git/trees", {
+            "base_tree": base_tree,
+            "tree": [{"path": self.path, "mode": "100644",
+                      "type": "blob", "sha": blob_sha}],
+        })
+        tree_sha = tree.get("sha")
+        if not isinstance(tree_sha, str):
+            raise StateStoreError("state_tree_create_failed")
+        candidate = self._request("POST", f"/repos/{repo}/git/commits", {
+            "message": "Initialize Orca state with Global HOLD latched",
+            "tree": tree_sha,
+            "parents": [parent_sha],
+        })
+        candidate_sha = candidate.get("sha")
+        if not isinstance(candidate_sha, str):
+            raise StateStoreError("state_commit_create_failed")
+
+        # Never force: a concurrent ref advance rejects this initialization.
+        self._request("PATCH", f"/repos/{repo}/git/refs/heads/{branch}", {
+            "sha": candidate_sha, "force": False,
+        })
+        verified = self.read()
+        if (verified.ref_sha != candidate_sha
+                or verified.state.get("global_hold") is not True
+                or verified.state.get("revision") != 0
+                or state_digest(verified.state) != state_digest(initial)):
+            raise StateConflict("state_initialization_readback_failed")
+        return verified
 
     def write(self, *, snapshot: StateSnapshot, next_state: dict[str, Any],
               expected_revision: int) -> StateSnapshot:
