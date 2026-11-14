@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "revision": 0,
+  "global_hold": true,
+  "emergency_stop": false,
+  "emergency_stop_event": null,
+  "tasks": [],
+  "active_lease": null,
+  "consumed_approval_ids": []
+}
