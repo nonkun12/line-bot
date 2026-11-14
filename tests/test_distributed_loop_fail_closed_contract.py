@@ -44,8 +44,14 @@ def test_held_catalog_exhaustion_is_blocked_not_misreported_as_queue_empty():
     assert 'eligible == 0 and isinstance(held, list) and held' in workflow
     assert 'catalog_exhausted_held:' in workflow
     assert 'catalog_exhausted_review_pending:' in workflow
-    assert "reason = held_reason" in workflow
-    assert "action = 'review_held_tasks'" in workflow
+    assert 'blocked_detail="$(cat /tmp/autonomous-loop-held-tasks)"' in workflow
+    assert "free_only_no_deterministic_tasks" in workflow
+    # Held tasks are not auto-released. Re-entry requires the explicit resume
+    # request validator plus both cause-fixed and reviewed confirmations.
+    assert "- name: Resume one explicitly approved held task" in workflow
+    assert "--queue .github/autonomous-loop-task-catalog.json" in workflow
+    assert "--cause-fixed" in workflow
+    assert "confirm_resume_review" in workflow
 
 
 def test_held_task_resume_uses_reviewed_catalog_not_only_tracked_queue():
@@ -53,3 +59,12 @@ def test_held_task_resume_uses_reviewed_catalog_not_only_tracked_queue():
     step = workflow.split("- name: Resume one explicitly approved held task", 1)[1].split("- name: Restore durable Recovery RAG history", 1)[0]
     assert "--queue .github/autonomous-loop-task-catalog.json" in step
     assert "--cause-fixed" in step
+
+def test_free_only_sheets_skip_artifact_is_accepted_by_postrun_verifier():
+    workflow = (ROOT / ".github/workflows/distributed-loop-postrun.yml").read_text(encoding="utf-8")
+    assert '"SKIPPED_FREE_MODE"' in workflow
+    assert 'sheets_result not in {"RECORDED", "ALREADY_RECORDED", "SKIPPED_FREE_MODE"}' in workflow
+    source = (ROOT / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert 'result = "SKIPPED_FREE_MODE"' in source
+    assert 'distributed-sheets-log-result.json' in source
+

@@ -134,7 +134,7 @@ jobs:
               issues.append("Task result evidence is missing or empty.")
           if not catalog_blocked and any(s not in {"PASS", "NO_CHANGE"} for s in statuses):
               issues.append("One or more task results are not PASS/NO_CHANGE: " + ", ".join(statuses))
-          if sheets_result not in {"RECORDED", "ALREADY_RECORDED"}:
+          if sheets_result not in {"RECORDED", "ALREADY_RECORDED", "SKIPPED_FREE_MODE"}:
               issues.append("Google Sheets evidence is not confirmed: " + sheets_result)
           report = [
               "# Distributed Loop Post-Run Verification",
@@ -190,7 +190,7 @@ jobs:
               print(f"- {item}")
           print("\n## Required follow-up")
           print("- Inspect the original run logs and uploaded evidence.")
-          print("- Verify the Google Sheets row directly; an artifact alone is not proof of a live row.")
+          print("- Verify the GitHub run artifacts and task evidence directly; do not infer an external ledger write from an artifact.")
           print("- Make only a reviewed, bounded fix. Do not auto-deploy, bypass safety gates, or loop-retry.")
           PY
           )"

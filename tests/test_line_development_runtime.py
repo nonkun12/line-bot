@@ -1468,3 +1468,28 @@ def test_new_refill_cli_tasks_use_bounded_deterministic_plans(monkeypatch, tmp_p
         assert expected_name in candidate
         assert expected_marker in candidate
         assert runtime.worker.validate_plan(plan, chosen) == (True, chosen)
+
+
+
+def test_free_only_mode_allows_registered_deterministic_tasks(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_FREE_MODE", "true")
+    monkeypatch.delenv("AUTONOMOUS_RUN_SOURCE", raising=False)
+    assert runtime._free_mode_block_reason("uhip-confidence-out-of-range-rejection") is None
+
+
+def test_free_only_mode_blocks_unknown_or_model_backed_tasks(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_FREE_MODE", "true")
+    monkeypatch.delenv("AUTONOMOUS_RUN_SOURCE", raising=False)
+    assert runtime._free_mode_block_reason("") == "free_only_mode_requires_registered_deterministic_task"
+    assert runtime._free_mode_block_reason("unregistered-model-task") == "free_only_mode_requires_registered_deterministic_task"
+
+
+def test_free_only_mode_blocks_review_gap_task(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_FREE_MODE", "true")
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
+    assert runtime._free_mode_block_reason("review-coverage-gap-703fa3c06b") == "free_only_mode_requires_registered_deterministic_task"
+
+
+def test_free_only_mode_disabled_preserves_existing_provider_selection(monkeypatch):
+    monkeypatch.delenv("AUTONOMOUS_FREE_MODE", raising=False)
+    assert runtime._free_mode_block_reason("unregistered-model-task") is None

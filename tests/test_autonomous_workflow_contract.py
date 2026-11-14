@@ -3,8 +3,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "overnight-development.yml"
 
-def test_autonomous_workflow_keeps_jst_schedule_slots():
-    text = WORKFLOW.read_text(encoding="utf-8")
+def test_free_only_distributed_loop_keeps_existing_jst_schedule_slots():
+    distributed = ROOT / ".github" / "workflows" / "distributed-autonomous-loop.yml"
+    text = distributed.read_text(encoding="utf-8")
     assert 'cron: "5 3 * * *"' in text
     assert 'cron: "5 15 * * *"' in text
     assert 'cron: "5 21 * * *"' in text
@@ -14,32 +15,28 @@ def test_autonomous_workflow_does_not_escape_github_or_shell_variables():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "\\${{" not in text
     assert "\\${AUTONOMOUS_" not in text
-    assert "GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}" in text
-    assert 'if [ -z "${GOOGLE_SHEETS_SPREADSHEET_ID:-}" ]; then' in text
-    assert 'if [ -z "${GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON:-}" ]; then' in text
-    assert '\\${GOOGLE_SHEETS_SPREADSHEET_ID' not in text
-    assert '\\${GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON' not in text
-    assert "GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}" in text
-    assert 'export AUTONOMOUS_SAFETY_GATE_RESULT="${AUTONOMOUS_SAFETY_GATE_RESULT:-BLOCKED}"' in text
-    assert 'SHEETS_LOGGING_RESULT: ${{ env.AUTONOMOUS_LOGGING_RESULT }}' in text
-
-def test_autonomous_workflow_surfaces_google_sheets_failures():
+    assert 'AUTONOMOUS_FREE_MODE: "true"' in text
+    assert "AUTONOMOUS_TASK_ID: ${{ inputs.autonomous_task_id }}" in text
+    assert "GROQ_API_KEY:" not in text
+    assert "HERMES_GROQ_API_KEY:" not in text
+    assert "GOOGLE_SHEETS_SPREADSHEET_ID:" not in text
+    assert "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON:" not in text
+    assert "SLACK_WEBHOOK_URL:" not in text
+    assert 'AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED' in text
+    assert 'AUTONOMOUS_SAFETY_GATE_RESULT=PASS' in text
+    assert 'missing_runtime_summary' in text
+def test_autonomous_workflow_disables_paid_and_external_integrations():
     text = WORKFLOW.read_text(encoding="utf-8")
-    audit_start = text.index("- name: Record autonomous development result to Google Sheets")
-    audit_end = text.index("- name: Notify Slack", audit_start)
-    audit = text[audit_start:audit_end]
-    assert "if: always()" in audit
-    assert "continue-on-error: true" not in audit
-    assert "set -euo pipefail" in audit
-    assert "Google Sheets logging verification failed" in audit
-
-
-def test_autonomous_workflow_pins_hermes_release_installer():
+    assert "Record autonomous development result to Google Sheets" not in text
+    assert "Verify autonomous ledger configuration" not in text
+    assert "Notify Slack" not in text
+    assert "Prepare Hermes advisor" not in text
+    assert 'HERMES_ADVISOR_ENABLED: "false"' in text
+    assert "Publish run summary" in text
+def test_autonomous_workflow_does_not_install_or_invoke_hermes():
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "345cd2b057a452236de401d3534b8502a7465e8d/scripts/install.sh" in text
-    assert "--commit 345cd2b057a452236de401d3534b8502a7465e8d" in text
-    assert "--skip-computer-use" in text
-
+    assert "hermes-agent" not in text
+    assert 'HERMES_ADVISOR_ENABLED: "false"' in text
 def test_autonomous_workflow_reuses_the_worker_pushed_branch_for_pr_creation():
     text = WORKFLOW.read_text(encoding="utf-8")
     guard = text[text.index("- name: Create GitHub PR"):text.index("- name: Persist self-improvement history")]
@@ -52,15 +49,16 @@ def test_autonomous_workflow_reuses_the_worker_pushed_branch_for_pr_creation():
     assert 'git ls-remote --exit-code origin "refs/heads/${BRANCH}"' not in guard
 
 
-def test_nightly_autonomous_worker_has_automatic_schedule():
+def test_legacy_nightly_worker_is_retired_without_paid_provider_or_schedule():
     worker = ROOT / ".github" / "workflows" / "nightly-autonomous-worker.yml"
     text = worker.read_text(encoding="utf-8")
-    schedule_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
-    assert "schedule:" in schedule_block
-    assert "cron: '0 4 * * *'" in schedule_block
-    assert "cron: '0 16 * * *'" in schedule_block
-    assert "cron: '0 22 * * *'" in schedule_block
-    assert "timezone: 'Asia/Tokyo'" in schedule_block
+    assert "schedule:" not in text
+    assert "secrets.GROQ_API_KEY" not in text
+    assert "GROQ_API_KEY:" not in text
+    assert "GOOGLE_SHEETS_" not in text
+    assert "record_autonomous_run" not in text
+    assert "Slack" not in text
+    assert "Legacy Autonomous Worker" in text
 
 
 def test_autonomous_workflow_has_final_safety_gate_before_pr_creation():
@@ -79,9 +77,9 @@ def test_autonomous_workflow_does_not_hardcode_one_development_target():
 def test_autonomous_workflow_persists_self_improvement_history_between_runs():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "Find previous completed autonomous run" in text
-    assert "Verify autonomous ledger configuration" in text
-    assert "missing GOOGLE_SHEETS_SPREADSHEET_ID" in text
-    assert "missing GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON" in text
+    assert "Verify autonomous ledger configuration" not in text
+    assert "GOOGLE_SHEETS_SPREADSHEET_ID" not in text
+    assert "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON" not in text
     assert "gh run list --workflow overnight-development.yml --branch main --status completed --limit 20" in text
     assert "--json databaseId,conclusion" in text
     assert 'select(.conclusion != "skipped")' in text
@@ -106,7 +104,7 @@ def test_autonomous_workflow_supports_explicit_on_demand_push_trigger():
     assert "push:" in event_block
     assert "branches:" in event_block
     assert "- main" in event_block
-    assert "schedule:" in event_block
+    assert "schedule:" not in event_block
     assert "workflow_dispatch:" in event_block
     assert "[run-autonomous-loop]" in text
     assert "github.event_name != 'push'" in text

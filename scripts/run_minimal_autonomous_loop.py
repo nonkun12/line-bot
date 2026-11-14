@@ -85,6 +85,11 @@ def classify_final_outcome(
 ) -> tuple[str, str]:
     """Fail closed when task evidence, requested work, or a post-run gate is missing."""
     successful = {"PASS", "NO_CHANGE"}
+
+    def gate_failed(name: str, outcome: str) -> bool:
+        # Google Sheets is optional in the free-only architecture. A skipped
+        # ledger must not block otherwise fully verified local/GitHub evidence.
+        return outcome != "success" and not (name == "sheets" and outcome == "skipped")
     # A catalog whose remaining tasks are all held must stay BLOCKED even when
     # the generated runtime queue is empty. Otherwise queue_empty masks the hold gate.
     if queue_empty and not all_tasks_held:
@@ -99,7 +104,7 @@ def classify_final_outcome(
                 # actually attempted/reported. Missing is not the same as failure.
                 *([("recovery_ai_persistence", recovery_outcome)] if recovery_outcome is not None else []),
             )
-            if outcome != "success"
+            if gate_failed(name, outcome)
         ]
         if failed_gates:
             return "BLOCKED", "queue_empty_post_run_gate_failed:" + ",".join(failed_gates)
@@ -127,7 +132,7 @@ def classify_final_outcome(
                 # actually attempted/reported. Missing is not the same as failure.
                 *([("recovery_ai_persistence", recovery_outcome)] if recovery_outcome is not None else []),
             )
-            if outcome != "success"
+            if gate_failed(name, outcome)
         ]
         if failed_gates:
             return "BLOCKED", "held_queue_post_run_gate_failed:" + ",".join(failed_gates)
@@ -149,7 +154,7 @@ def classify_final_outcome(
         gate_outcomes.append(("recovery_ai_persistence", recovery_outcome))
     failed_gates = [
         name for name, outcome in gate_outcomes
-        if outcome != "success"
+        if gate_failed(name, outcome)
     ]
     if failed_gates:
         return "FAILED", "post_run_gate_failed:" + ",".join(failed_gates)
