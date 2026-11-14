@@ -189,7 +189,7 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Publish read-only Recovery AI HOLD digest
+      - name: Publish read-only Recovery AI BLOCKED and FAILED digest
         run: |
           set -euo pipefail
           python -m scripts.recovery_hold_digest \
