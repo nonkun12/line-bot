@@ -35,7 +35,7 @@ class RustSelectorShadowParityTests(unittest.TestCase):
 
     def assert_parity(self, rows: list[tuple[str, int, int, bool]], limit: int) -> None:
         payload = "".join(
-            f"{task_id}\\t{score}\\t{order}\\t{str(eligible).lower()}\\n"
+            f"{task_id}\t{score}\t{order}\t{str(eligible).lower()}\n"
             for task_id, score, order, eligible in rows
         )
         result = subprocess.run(
