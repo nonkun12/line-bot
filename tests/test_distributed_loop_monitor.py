@@ -14,6 +14,7 @@ def valid_state():
             "schema_version": 1,
             "tasks": {},
             "checkpoint": None,
+            "state_updated_at": "2026-11-13T23:30:00Z",
         },
     }
 
@@ -140,3 +141,27 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+    def test_missing_recovery_update_timestamp_blocks(self):
+        state = valid_state()
+        del state["recovery_ai"]["state_updated_at"]
+        report = self.evaluate(state=state)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["checks"]["recovery_freshness"]["status"], "BLOCKED")
+
+
+    def test_stale_recovery_update_timestamp_blocks_even_if_outer_commit_is_fresh(self):
+        state = valid_state()
+        state["recovery_ai"]["state_updated_at"] = "2026-11-12T00:00:00Z"
+        report = self.evaluate(state=state)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["checks"]["recovery_freshness"]["status"], "BLOCKED")
+
+
+    def test_future_recovery_update_timestamp_blocks(self):
+        state = valid_state()
+        state["recovery_ai"]["state_updated_at"] = "2026-11-14T00:10:00Z"
+        report = self.evaluate(state=state)
+        self.assertEqual(report["status"], "BLOCKED")
