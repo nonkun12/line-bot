@@ -98,7 +98,7 @@ class Phase1ObserverTests(unittest.TestCase):
         ]
         seen = []
 
-        def opener(request, timeout):
+        def opener(request, *, timeout):
             seen.append(request.full_url)
             self.assertEqual(timeout, 10)
             return responses.pop(0)
