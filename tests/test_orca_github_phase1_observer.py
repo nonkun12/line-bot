@@ -77,7 +77,7 @@ class Phase1ObserverTests(unittest.TestCase):
             _Response({"encoding": "base64", "content": encoded}),
         ]
 
-        def opener(_request, _timeout):
+        def opener(_request, timeout):
             return responses.pop(0)
 
         result = observe(token="token", repository="owner/repo", opener=opener)
