@@ -103,11 +103,13 @@ class DistributedLoopMonitorTests(unittest.TestCase):
             self.assertEqual(report["status"], "BLOCKED")
             self.assertIs(report["dispatch_allowed"], False)
 
-    def test_valid_state_provenance_passes_but_never_dispatches(self):
+    def test_valid_state_provenance_passes_but_missing_main_loop_evidence_blocks(self):
         report = self.evaluate()
-        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertIn("No Main LOOP run found", report["failure_reason"])
         self.assertIs(report["dispatch_allowed"], False)
         self.assertEqual(report["checks"]["state_provenance"]["status"], "PASS")
+        self.assertEqual(report["checks"]["main_loop_activity"]["outcome"], "NO_CHANGE")
         self.assertEqual(report["checks"]["queue_and_approval"]["status"], "NOT_EVALUATED")
 
     def test_missing_actions_evidence_blocks(self):
@@ -169,8 +171,14 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         meta["state_commit_timestamp"] = "2026-11-12T22:00:00Z"
         self.assertEqual(self.evaluate(meta=meta, response=response)["status"], "BLOCKED")
 
-    def test_null_checkpoint_is_valid_initial_state(self):
-        self.assertEqual(self.evaluate()["status"], "PASS")
+    def test_null_checkpoint_is_valid_initial_state_but_missing_run_evidence_blocks(self):
+        report = self.evaluate()
+        self.assertEqual(report["checks"]["recovery_schema"]["status"], "PASS")
+        self.assertIsNone(valid_state()["recovery_ai"]["checkpoint"])
+        self.assertEqual(report["checks"]["main_loop_activity"]["status"], "INFO")
+        self.assertEqual(report["checks"]["main_loop_activity"]["outcome"], "NO_CHANGE")
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertIs(report["dispatch_allowed"], False)
 
     def test_unverified_checkpoint_blocks(self):
         state = valid_state()
