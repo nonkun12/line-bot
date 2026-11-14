@@ -21,7 +21,9 @@ def test_autonomous_workflow_does_not_escape_github_or_shell_variables():
     assert "GOOGLE_SHEETS_SPREADSHEET_ID:" not in text
     assert "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON:" not in text
     assert "SLACK_WEBHOOK_URL:" not in text
-    assert 'export AUTONOMOUS_SAFETY_GATE_RESULT="${AUTONOMOUS_SAFETY_GATE_RESULT:-BLOCKED}"' in text
+    assert 'AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED' in text
+    assert 'AUTONOMOUS_SAFETY_GATE_RESULT=PASS' in text
+    assert 'missing_runtime_summary' in text
 def test_autonomous_workflow_disables_paid_and_external_integrations():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "Record autonomous development result to Google Sheets" not in text
