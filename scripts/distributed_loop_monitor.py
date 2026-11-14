@@ -125,7 +125,17 @@ def evaluate_main_loop_runs(workflow_runs: list[dict[str, Any]], now: datetime) 
         if status not in VALID_RUN_STATUSES:
             errors.append(f"Main LOOP run {run_id} has unknown status")
             continue
+        run_number = item.get("run_number")
+        if type(run_number) is not int or run_number <= 0:
+            errors.append(f"Main LOOP run {run_id} has missing or invalid run_number")
+            continue
         previous = normalized.get(run_id)
+        if previous is not None and attempt == previous["run_attempt"]:
+            if (item.get("status"), item.get("conclusion"), item.get("updated_at")) != (
+                previous.get("status"), previous.get("conclusion"), previous.get("updated_at")
+            ):
+                errors.append(f"Main LOOP run {run_id} has conflicting records for the same attempt")
+                continue
         if previous is None or attempt > previous["run_attempt"]:
             normalized[run_id] = item
 
@@ -159,21 +169,41 @@ def evaluate_main_loop_runs(workflow_runs: list[dict[str, Any]], now: datetime) 
             "detail": "Multiple Main LOOP runs are queued or in progress; overlap/backlog detected",
         }
 
-    latest_created = parse_utc(latest["created_at"])
-    age_seconds = int((now - latest_created).total_seconds())
-    if latest["status"] == "queued" and latest.get("event") == "schedule" and age_seconds > MAX_QUEUED_SCHEDULE_AGE_SECONDS:
+    stale_queued = [
+        item for item in active
+        if item["status"] == "queued"
+        and item.get("event") == "schedule"
+        and int((now - parse_utc(item["created_at"])).total_seconds()) > MAX_QUEUED_SCHEDULE_AGE_SECONDS
+    ]
+    if stale_queued:
+        stale = stale_queued[0]
+        age_seconds = int((now - parse_utc(stale["created_at"])).total_seconds())
         return {
             "status": "BLOCKED", "outcome": "STALE_QUEUED", "active_run_count": len(active),
             "latest_run_id": latest["id"], "latest_run_attempt": latest["run_attempt"],
             "latest_conclusion": latest.get("conclusion"),
-            "detail": f"Scheduled Main LOOP run has waited {age_seconds}s; stale queue threshold is {MAX_QUEUED_SCHEDULE_AGE_SECONDS}s",
+            "detail": f"Scheduled Main LOOP run {stale['id']} has waited {age_seconds}s; stale queue threshold is {MAX_QUEUED_SCHEDULE_AGE_SECONDS}s",
         }
-    if latest["status"] == "in_progress" and age_seconds > MAX_IN_PROGRESS_AGE_SECONDS:
+    stale_running = [
+        item for item in active
+        if item["status"] == "in_progress"
+        and int((now - parse_utc(item["created_at"])).total_seconds()) > MAX_IN_PROGRESS_AGE_SECONDS
+    ]
+    if stale_running:
+        stale = stale_running[0]
+        age_seconds = int((now - parse_utc(stale["created_at"])).total_seconds())
         return {
             "status": "BLOCKED", "outcome": "STALE_IN_PROGRESS", "active_run_count": len(active),
             "latest_run_id": latest["id"], "latest_run_attempt": latest["run_attempt"],
             "latest_conclusion": latest.get("conclusion"),
-            "detail": f"Main LOOP run has been active for {age_seconds}s; stale threshold is {MAX_IN_PROGRESS_AGE_SECONDS}s",
+            "detail": f"Main LOOP run {stale['id']} has been active for {age_seconds}s; stale threshold is {MAX_IN_PROGRESS_AGE_SECONDS}s",
+        }
+    if active and latest not in active:
+        return {
+            "status": "BLOCKED", "outcome": "ACTIVE_RUN_NOT_LATEST", "active_run_count": len(active),
+            "latest_run_id": latest["id"], "latest_run_attempt": latest["run_attempt"],
+            "latest_conclusion": latest.get("conclusion"),
+            "detail": "An active Main LOOP run is older than a newer completed record; run ordering is inconsistent",
         }
     if latest["status"] in {"queued", "in_progress"}:
         return {
