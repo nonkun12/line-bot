@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   develop:
-    if: ${{ github.event_name != 'push' || startsWith(github.event.head_commit.message, '[run-autonomous-loop]') }}
+    if: ${{ contains(fromJSON('[]'), github.event_name) }} # TEMPORARY FAIL-CLOSED HOLD: empty allowlist; do not enable before signed task-bound approval is implemented.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

@@ -92,31 +92,7 @@ concurrency:
 
 jobs:
   minimal-loop:
-    if: >-
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event_name == 'issue_comment' &&
-        github.event.issue.pull_request &&
-        (github.event.comment.body == '/distributed-loop' ||
-         github.event.comment.body == '/distributed-loop max_tasks=1' ||
-         github.event.comment.body == '/distributed-loop max_tasks=2' ||
-         github.event.comment.body == '/distributed-loop max_tasks=3' ||
-         github.event.comment.body == '/distributed-loop max_tasks=4' ||
-         startsWith(github.event.comment.body, '/distributed-loop resume_task_id=')) &&
-        (
-          github.event.comment.author_association == 'OWNER' ||
-          github.event.comment.author_association == 'MEMBER' ||
-          github.event.comment.author_association == 'COLLABORATOR'
-        )
-      ) ||
-      (
-        github.event_name == 'pull_request_target' &&
-        github.event.action == 'labeled' &&
-        github.event.label.name == 'distributed-loop-max4' &&
-        github.event.sender.login == 'nonkun12' &&
-        github.event.pull_request.user.login == 'nonkun12'
-      )
+    if: ${{ contains(fromJSON('[]'), github.event_name) }} # TEMPORARY FAIL-CLOSED HOLD: empty allowlist; do not enable before signed task-bound approval is implemented.
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:

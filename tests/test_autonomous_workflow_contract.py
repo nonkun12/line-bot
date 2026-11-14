@@ -100,7 +100,7 @@ def test_autonomous_workflow_persists_self_improvement_history_between_runs():
     assert "branch: main" not in restore
 
 
-def test_autonomous_workflow_supports_explicit_on_demand_push_trigger():
+def test_autonomous_workflow_triggers_remain_declared_but_execution_is_held():
     text = WORKFLOW.read_text(encoding="utf-8")
     event_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
     assert "push:" in event_block
@@ -108,5 +108,31 @@ def test_autonomous_workflow_supports_explicit_on_demand_push_trigger():
     assert "- main" in event_block
     assert "schedule:" in event_block
     assert "workflow_dispatch:" in event_block
-    assert "[run-autonomous-loop]" in text
-    assert "github.event_name != 'push'" in text
+    assert "contains(fromJSON('[]'), github.event_name)" in text
+    assert "TEMPORARY FAIL-CLOSED HOLD" in text
+
+def test_recovery_resume_review_cannot_clear_holds_before_signed_approval():
+    workflow = ROOT / ".github" / "workflows" / "recovery-ai-resume-review.yml"
+    text = workflow.read_text(encoding="utf-8")
+    job = text.split("jobs:", 1)[1]
+    assert "confirm-resume-review:" in job
+    assert "contains(fromJSON('[]'), github.event_name)" in job
+    assert "TEMPORARY FAIL-CLOSED HOLD" in job
+
+
+def test_all_legacy_autonomous_entrypoints_remain_fail_closed():
+    workflows = (
+        "app-development.yml",
+        "continuous-distributed-loop.yml",
+        "distributed-autonomous-loop.yml",
+        "english-core-image-auto-batch.yml",
+        "line-development-dispatch.yml",
+        "line-development.yml",
+        "nightly-autonomous-worker.yml",
+        "overnight-development.yml",
+        "recovery-ai-resume-review.yml",
+    )
+    for filename in workflows:
+        source = (ROOT / ".github" / "workflows" / filename).read_text(encoding="utf-8")
+        assert "contains(fromJSON('[]'), github.event_name)" in source, filename
+        assert "TEMPORARY FAIL-CLOSED HOLD" in source, filename
