@@ -40,7 +40,7 @@ jobs:
           if gh api --paginate --slurp "repos/$REPOSITORY/actions/runs?per_page=100" --jq '{"workflow_runs": [.[].workflow_runs[]]}' > /tmp/monitor-runs.json; then
             echo "collected=true" >> "$GITHUB_OUTPUT"
           else
-            printf '%s\\n' '{}' > /tmp/monitor-runs.json
+            printf '%s\n' '{}' > /tmp/monitor-runs.json
             echo "collected=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -53,12 +53,12 @@ jobs:
           STATE_COMMIT_SHA="$(jq -er '.commit.sha' /tmp/state-branch.json)"
           gh api "repos/$REPOSITORY/commits/$STATE_COMMIT_SHA" > /tmp/state-commit.json
           gh api "repos/$REPOSITORY/contents/.autonomous-loop-state.json?ref=$STATE_COMMIT_SHA" > /tmp/monitor-state-response.json
-          jq -n \\
-            --arg branch_tip_sha "$STATE_COMMIT_SHA" \\
-            --arg state_commit_sha "$STATE_COMMIT_SHA" \\
-            --arg state_commit_timestamp "$(jq -er '.commit.committer.date' /tmp/state-commit.json)" \\
-            --arg contents_blob_sha "$(jq -er '.sha' /tmp/monitor-state-response.json)" \\
-            '{branch_tip_sha:$branch_tip_sha,state_commit_sha:$state_commit_sha,state_commit_timestamp:$state_commit_timestamp,contents_blob_sha:$contents_blob_sha}' \\
+          jq -n \
+            --arg branch_tip_sha "$STATE_COMMIT_SHA" \
+            --arg state_commit_sha "$STATE_COMMIT_SHA" \
+            --arg state_commit_timestamp "$(jq -er '.commit.committer.date' /tmp/state-commit.json)" \
+            --arg contents_blob_sha "$(jq -er '.sha' /tmp/monitor-state-response.json)" \
+            '{branch_tip_sha:$branch_tip_sha,state_commit_sha:$state_commit_sha,state_commit_timestamp:$state_commit_timestamp,contents_blob_sha:$contents_blob_sha}' \
             > /tmp/monitor-state-meta.json
           echo "collected=true" >> "$GITHUB_OUTPUT"
 
@@ -77,14 +77,14 @@ jobs:
               ("STATE_COLLECTION", "/tmp/monitor-state-response.json"),
           ):
               if os.environ.get(env_name) != "true":
-                  Path(path).write_text("{}\\n", encoding="utf-8")
+                  Path(path).write_text("{}\n", encoding="utf-8")
           if os.environ.get("STATE_COLLECTION") != "true":
-              Path("/tmp/monitor-state-meta.json").write_text("{}\\n", encoding="utf-8")
+              Path("/tmp/monitor-state-meta.json").write_text("{}\n", encoding="utf-8")
           PY
-          python scripts/distributed_loop_monitor.py \\
-            --runs-json /tmp/monitor-runs.json \\
-            --state-json /tmp/monitor-state-response.json \\
-            --state-meta-json /tmp/monitor-state-meta.json \\
+          python scripts/distributed_loop_monitor.py \
+            --runs-json /tmp/monitor-runs.json \
+            --state-json /tmp/monitor-state-response.json \
+            --state-meta-json /tmp/monitor-state-meta.json \
             --output artifacts/distributed-loop-monitor/monitor-report.json
 
       - name: Publish monitor summary
