@@ -63,3 +63,18 @@ def test_workflow_has_no_write_permissions_or_secrets_in_blocked_preflight():
         "secrets.ORCA_BUDGET_SIGNING_KEY",
     ):
         assert secret not in preflight
+
+
+def test_30m_preflight_runs_detailed_read_only_observer_first():
+    source = WORKFLOW.read_text(encoding="utf-8")
+    preflight = source.split("  safety-preflight:", 1)[1].split("\n  minimal-loop:", 1)[0]
+
+    observer_step = preflight.index("name: Read-only Phase 1 state observation")
+    preflight_step = preflight.index("name: Read-only activation preflight")
+    assert observer_step < preflight_step
+    assert "run: python scripts/orca_github_phase1_observer.py" in preflight
+    assert "GITHUB_TOKEN: ${{ github.token }}" in preflight
+    assert "ORCA_STATE_BRANCH:" in preflight
+    assert "ORCA_STATE_PATH:" in preflight
+    assert "permissions:\n      actions: read\n      contents: read" in preflight
+    assert "needs.safety-preflight.outputs.execution_enabled == 'true' && false" in source
