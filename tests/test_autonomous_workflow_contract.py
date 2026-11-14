@@ -3,8 +3,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "overnight-development.yml"
 
-def test_autonomous_workflow_keeps_jst_schedule_slots():
-    text = WORKFLOW.read_text(encoding="utf-8")
+def test_free_only_distributed_loop_keeps_existing_jst_schedule_slots():
+    distributed = ROOT / ".github" / "workflows" / "distributed-autonomous-loop.yml"
+    text = distributed.read_text(encoding="utf-8")
     assert 'cron: "5 3 * * *"' in text
     assert 'cron: "5 15 * * *"' in text
     assert 'cron: "5 21 * * *"' in text
@@ -48,15 +49,15 @@ def test_autonomous_workflow_reuses_the_worker_pushed_branch_for_pr_creation():
     assert 'git ls-remote --exit-code origin "refs/heads/${BRANCH}"' not in guard
 
 
-def test_nightly_autonomous_worker_has_automatic_schedule():
+def test_legacy_nightly_worker_is_retired_without_paid_provider_or_schedule():
     worker = ROOT / ".github" / "workflows" / "nightly-autonomous-worker.yml"
     text = worker.read_text(encoding="utf-8")
-    schedule_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
-    assert "schedule:" in schedule_block
-    assert "cron: '0 4 * * *'" in schedule_block
-    assert "cron: '0 16 * * *'" in schedule_block
-    assert "cron: '0 22 * * *'" in schedule_block
-    assert "timezone: 'Asia/Tokyo'" in schedule_block
+    assert "schedule:" not in text
+    assert "secrets.GROQ_API_KEY" not in text
+    assert "GROQ_API_KEY:" not in text
+    assert "Google Sheets" not in text
+    assert "Slack" not in text
+    assert "Legacy Autonomous Worker" in text
 
 
 def test_autonomous_workflow_has_final_safety_gate_before_pr_creation():
