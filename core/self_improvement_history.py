@@ -1,13 +1,14 @@
 """Bounded durable history for self-improvement signals and cycle memory.
 
-The store is provider-neutral and append-only. It persists structured feedback
-and bounded cycle outcomes, never model output or secrets. The caller chooses
-the filesystem path, which keeps repository policy outside this module.
+The store is provider-neutral and append-only. Persisted free text is never
+trusted: legacy v1 rows are normalized to allowlisted categories on read.
+Corrupt or unknown rows fail closed before any append can rewrite the file.
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -18,6 +19,48 @@ from .self_improvement import ImprovementSignal
 _DEFAULT_MAX_RECORDS = 200
 _MAX_MAX_RECORDS = 200
 _MAX_MEMORY_TEXT = 1200
+_TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
+_SAFE_DETAILS = {
+    "success": {"task passed or verified no-change"},
+    "repair": {"development required repair attempts"},
+    "failure": {
+        "development failure observed",
+        "development failure observed: pytest",
+        "development failure observed: timeout",
+        "development failure observed: import",
+        "development failure observed: assertion",
+        "development failure observed: blocked",
+        "development failure observed: runtime",
+    },
+}
+_MEMORY_CAUSES = {
+    "PASS": "development gate passed",
+    "FAIL": "development cycle failed",
+    "BLOCKED": "development cycle blocked",
+}
+_MEMORY_IMPROVEMENTS = {
+    "retain verified outcome for next cycle",
+    "review recurring development failure",
+    "resolve safety or evidence block before retry",
+}
+_MEMORY_NEXT_ACTIONS = {
+    "continue bounded development loop after review",
+    "review failure evidence before another attempt",
+    "require evidence and safety review before resume",
+}
+_SAFE_PATTERN_CODES = set().union(*_SAFE_DETAILS.values())
+
+
+def _safe_task_id(value: object) -> str | None:
+    return value if isinstance(value, str) and _TASK_ID.fullmatch(value) else None
+
+
+def _legacy_detail(kind: str) -> str:
+    return {
+        "success": "task passed or verified no-change",
+        "repair": "development required repair attempts",
+        "failure": "development failure observed",
+    }[kind]
 
 
 @dataclass(frozen=True)
@@ -32,19 +75,24 @@ class SelfImprovementMemoryRecord:
     recurring_patterns: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.outcome not in {"PASS", "FAIL", "BLOCKED"}:
+        if self.outcome not in _MEMORY_CAUSES:
             raise ValueError("invalid memory outcome")
-        for value in (self.cause, self.next_action, self.target_path):
-            if len(str(value)) > _MAX_MEMORY_TEXT:
-                raise ValueError("memory field exceeds bounded length")
+        if self.cause != _MEMORY_CAUSES[self.outcome]:
+            raise ValueError("memory cause must use an allowlisted outcome code")
+        if self.target_path:
+            raise ValueError("memory target_path must be empty")
+        if self.next_action not in _MEMORY_NEXT_ACTIONS:
+            raise ValueError("memory next_action is not allowlisted")
         if len(self.improvements) > 3 or len(self.recurring_patterns) > 5:
             raise ValueError("memory list exceeds bounded length")
-        if any(len(str(value)) > _MAX_MEMORY_TEXT for value in (*self.improvements, *self.recurring_patterns)):
-            raise ValueError("memory list item exceeds bounded length")
+        if any(value not in _MEMORY_IMPROVEMENTS for value in self.improvements):
+            raise ValueError("memory improvement is not allowlisted")
+        if any(value not in _SAFE_PATTERN_CODES for value in self.recurring_patterns):
+            raise ValueError("memory recurring pattern is not allowlisted")
 
 
 class SelfImprovementHistory:
-    """Persist a bounded signal history with fail-closed reads."""
+    """Persist a bounded signal history with strict, loss-preventing reads."""
 
     def __init__(self, path: str | Path, *, max_records: int = _DEFAULT_MAX_RECORDS) -> None:
         if max_records < 1 or max_records > _MAX_MAX_RECORDS:
@@ -53,7 +101,6 @@ class SelfImprovementHistory:
         self.max_records = max_records
 
     def append(self, signals: Iterable[ImprovementSignal]) -> None:
-        """Append validated signals and atomically rewrite the bounded history."""
         records = self._read_records()
         for signal in signals:
             if not isinstance(signal, ImprovementSignal):
@@ -62,7 +109,6 @@ class SelfImprovementHistory:
         self._atomic_write(records)
 
     def append_memory(self, memory: SelfImprovementMemoryRecord) -> None:
-        """Append one bounded cycle memory entry without changing signal semantics."""
         if not isinstance(memory, SelfImprovementMemoryRecord):
             raise TypeError("memory must be SelfImprovementMemoryRecord")
         records = self._read_records()
@@ -70,60 +116,98 @@ class SelfImprovementHistory:
         self._atomic_write(records)
 
     def load(self) -> tuple[ImprovementSignal, ...]:
-        """Load valid signal history; malformed records fail closed."""
         result: list[ImprovementSignal] = []
         for record in self._read_records():
-            try:
-                result.append(
-                    ImprovementSignal(
-                        kind=str(record["kind"]),
-                        task_id=None if record.get("task_id") is None else str(record["task_id"]),
-                        detail=str(record["detail"]),
-                    )
-                )
-            except (KeyError, TypeError, ValueError):
+            if record.get("record_type") == "cycle_memory":
                 continue
+            result.append(ImprovementSignal(
+                kind=str(record["kind"]),
+                task_id=record.get("task_id"),
+                detail=str(record["detail"]),
+            ))
         return tuple(result)
 
     def load_memory(self, *, limit: int = 5) -> tuple[SelfImprovementMemoryRecord, ...]:
-        """Load the newest bounded cycle memories; malformed records are ignored."""
         if limit < 1 or limit > 20:
             raise ValueError("limit must be between 1 and 20")
         result: list[SelfImprovementMemoryRecord] = []
         for record in self._read_records():
             if record.get("record_type") != "cycle_memory":
                 continue
-            try:
-                result.append(
-                    SelfImprovementMemoryRecord(
-                        outcome=str(record["outcome"]),
-                        cause=str(record.get("cause", ""))[:_MAX_MEMORY_TEXT],
-                        improvements=tuple(str(value)[:_MAX_MEMORY_TEXT] for value in record.get("improvements", ())),
-                        next_action=str(record["next_action"])[:_MAX_MEMORY_TEXT],
-                        target_path=str(record.get("target_path", ""))[:_MAX_MEMORY_TEXT],
-                        recurring_patterns=tuple(str(value)[:_MAX_MEMORY_TEXT] for value in record.get("recurring_patterns", ())),
-                    )
-                )
-            except (KeyError, TypeError, ValueError):
-                continue
+            result.append(SelfImprovementMemoryRecord(
+                outcome=str(record["outcome"]),
+                cause=str(record["cause"]),
+                improvements=tuple(record["improvements"]),
+                next_action=str(record["next_action"]),
+                target_path=str(record["target_path"]),
+                recurring_patterns=tuple(record["recurring_patterns"]),
+            ))
         return tuple(result[-limit:])
 
     def _read_records(self) -> list[dict[str, object]]:
         if not self.path.exists():
             return []
-        # Never treat an unreadable existing history as empty: append() would
-        # otherwise replace it with a truncated history and silently lose memory.
-        # Propagate I/O errors so callers fail closed before any write occurs.
+        # Scan every line, not only the retained tail: old corruption must not
+        # be silently discarded by a later bounded rewrite.
         lines = self.path.read_text(encoding="utf-8").splitlines()
         records: list[dict[str, object]] = []
-        for line in lines[-self.max_records:]:
+        for line_number, line in enumerate(lines, 1):
+            if not line.strip():
+                continue
             try:
                 value = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(value, dict):
-                records.append(value)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"history JSONL is corrupt at line {line_number}") from exc
+            if not isinstance(value, dict):
+                raise ValueError(f"history row is invalid at line {line_number}")
+            records.append(self._normalize_record(value, line_number))
         return records[-self.max_records:]
+
+    @staticmethod
+    def _normalize_record(row: dict[str, object], line_number: int) -> dict[str, object]:
+        if row.get("record_type") == "cycle_memory":
+            required = {"record_type", "outcome", "cause", "improvements", "next_action", "target_path", "recurring_patterns"}
+            if set(row) != required:
+                raise ValueError(f"cycle memory schema is invalid at line {line_number}")
+            outcome = row.get("outcome")
+            if outcome not in _MEMORY_CAUSES:
+                raise ValueError(f"cycle memory outcome is invalid at line {line_number}")
+            # v1 memory could contain exception text and arbitrary paths. Keep
+            # only the verified outcome; do not infer a more specific cause.
+            if (
+                row.get("cause") != _MEMORY_CAUSES[outcome]
+                or row.get("target_path") != ""
+                or row.get("next_action") not in _MEMORY_NEXT_ACTIONS
+                or not isinstance(row.get("improvements"), list)
+                or any(item not in _MEMORY_IMPROVEMENTS for item in row["improvements"])
+                or not isinstance(row.get("recurring_patterns"), list)
+                or any(item not in _SAFE_PATTERN_CODES for item in row["recurring_patterns"])
+            ):
+                return {
+                    "record_type": "cycle_memory",
+                    "outcome": outcome,
+                    "cause": _MEMORY_CAUSES[outcome],
+                    "improvements": [],
+                    "next_action": (
+                        "continue bounded development loop after review" if outcome == "PASS"
+                        else "require evidence and safety review before resume" if outcome == "BLOCKED"
+                        else "review failure evidence before another attempt"
+                    ),
+                    "target_path": "",
+                    "recurring_patterns": [],
+                }
+            return row
+
+        if set(row) != {"kind", "task_id", "detail"}:
+            raise ValueError(f"self-improvement signal schema is invalid at line {line_number}")
+        kind = row.get("kind")
+        if kind not in _SAFE_DETAILS:
+            raise ValueError(f"self-improvement signal kind is invalid at line {line_number}")
+        detail = row.get("detail")
+        # Existing v1 free-text details are deliberately downgraded to a
+        # generic category. Only new, exact allowlisted codes retain detail.
+        safe_detail = detail if detail in _SAFE_DETAILS[kind] else _legacy_detail(kind)
+        return {"kind": kind, "task_id": _safe_task_id(row.get("task_id")), "detail": safe_detail}
 
     def _atomic_write(self, records: list[dict[str, object]]) -> None:
         records = records[-self.max_records:]
@@ -131,11 +215,8 @@ class SelfImprovementHistory:
         temp_name = None
         try:
             with NamedTemporaryFile(
-                mode="w",
-                encoding="utf-8",
-                dir=self.path.parent,
-                prefix=f".{self.path.name}.",
-                delete=False,
+                mode="w", encoding="utf-8", dir=self.path.parent,
+                prefix=f".{self.path.name}.", delete=False,
             ) as temp:
                 temp_name = temp.name
                 for record in records:
