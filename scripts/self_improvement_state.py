@@ -98,7 +98,11 @@ def sanitize_records(records: object) -> list[dict[str, object]]:
         safe.append({
             "kind": kind,
             "task_id": task_id,
-            "detail": row.get("detail") if row.get("detail") in _SAFE_DETAIL[kind] else _SAFE_GENERIC_DETAIL[kind],
+            "detail": (
+                row.get("detail")
+                if isinstance(row.get("detail"), str) and row.get("detail") in _SAFE_DETAIL[kind]
+                else _SAFE_GENERIC_DETAIL[kind]
+            ),
         })
     return safe[-MAX_RECORDS:]
 
@@ -136,7 +140,10 @@ def validate_durable_history(records: object) -> list[dict[str, object]]:
                 "improvements": _MEMORY_IMPROVEMENTS[outcome],
                 "next_action": _MEMORY_NEXT_ACTION[outcome],
                 "target_path": "",
-                "recurring_patterns": [],
+                "recurring_patterns": [
+                    value for value in row.get("recurring_patterns", [])
+                    if isinstance(value, str) and value in _SAFE_PATTERN_CODES
+                ] if isinstance(row.get("recurring_patterns", []), list) else [],
             }
             if "cycle_id" in row:
                 cycle_id = row.get("cycle_id")
@@ -178,7 +185,6 @@ def read_jsonl(path: Path) -> list[dict[str, object]]:
             raise ValueError(f"self-improvement JSONL row is invalid at line {line_number}")
         rows.append(row)
     return rows[-MAX_RECORDS:]
-    return rows
 
 
 def atomic_write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
@@ -234,7 +240,7 @@ def append_loop_results(
             kind = "failure"
         else:
             continue
-        additions.append({"kind": kind, "task_id": task_id, "detail": _SAFE_DETAIL[kind]})
+        additions.append({"kind": kind, "task_id": task_id, "detail": _SAFE_GENERIC_DETAIL[kind]})
     merged = sanitize_records(read_jsonl(history_path) + additions)
     atomic_write_jsonl(history_path, merged)
     return len(additions)
