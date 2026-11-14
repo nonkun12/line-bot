@@ -45,7 +45,7 @@ def test_signal_buffer_is_bounded() -> None:
 def test_summary_is_compact_and_deterministic() -> None:
     engine = SelfImprovementEngine()
     signals = engine.observe(RuntimeReport((), failed_task_id="t1", error="timeout"))
-    assert summarize_signals(signals) == "failure:t1:timeout"
+    assert summarize_signals(signals) == "failure:t1:development failure observed: timeout"
 
 
 def test_signal_and_proposal_contracts_are_bounded_and_snapshot_signals() -> None:
