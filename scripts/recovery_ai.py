@@ -99,9 +99,19 @@ class RecoveryStore:
             raise RecoveryStateError("recovery task state invalid")
         if "checkpoint" not in data:
             raise RecoveryStateError("recovery checkpoint field missing")
+        if "state_updated_at" in data:
+            try:
+                updated = datetime.fromisoformat(str(data["state_updated_at"]).replace("Z", "+00:00"))
+                if updated.tzinfo is None:
+                    raise ValueError("timezone missing")
+            except (TypeError, ValueError) as exc:
+                raise RecoveryStateError("recovery state update timestamp invalid") from exc
         return data
 
     def _write(self, data: dict) -> None:
+        # Timestamp the Recovery AI document itself, not the outer Git commit.
+        # Legacy files gain this field on their first successful write.
+        data["state_updated_at"] = utc_now()
         parent = self.path.parent
         temp_name = None
         try:
