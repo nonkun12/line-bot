@@ -207,7 +207,7 @@ def evaluate_main_loop_runs(workflow_runs: list[dict[str, Any]], now: datetime) 
         }
     if latest["status"] in {"queued", "in_progress"}:
         return {
-            "status": "PASS", "outcome": latest["status"].upper(), "active_run_count": len(active),
+            "status": "PASS", "outcome": "ACTIVE" if latest["status"] == "in_progress" else "QUEUED", "active_run_count": len(active),
             "latest_run_id": latest["id"], "latest_run_attempt": latest["run_attempt"],
             "latest_conclusion": latest.get("conclusion"),
             "detail": "Latest Main LOOP run state verified; this is activity evidence only",
