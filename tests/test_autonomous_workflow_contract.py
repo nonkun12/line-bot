@@ -14,32 +14,26 @@ def test_autonomous_workflow_does_not_escape_github_or_shell_variables():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "\\${{" not in text
     assert "\\${AUTONOMOUS_" not in text
-    assert "GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}" in text
-    assert 'if [ -z "${GOOGLE_SHEETS_SPREADSHEET_ID:-}" ]; then' in text
-    assert 'if [ -z "${GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON:-}" ]; then' in text
-    assert '\\${GOOGLE_SHEETS_SPREADSHEET_ID' not in text
-    assert '\\${GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON' not in text
-    assert "GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}" in text
+    assert 'AUTONOMOUS_FREE_MODE: "true"' in text
+    assert "AUTONOMOUS_TASK_ID: ${{ inputs.autonomous_task_id }}" in text
+    assert "GROQ_API_KEY:" not in text
+    assert "HERMES_GROQ_API_KEY:" not in text
+    assert "GOOGLE_SHEETS_SPREADSHEET_ID:" not in text
+    assert "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON:" not in text
+    assert "SLACK_WEBHOOK_URL:" not in text
     assert 'export AUTONOMOUS_SAFETY_GATE_RESULT="${AUTONOMOUS_SAFETY_GATE_RESULT:-BLOCKED}"' in text
-    assert 'SHEETS_LOGGING_RESULT: ${{ env.AUTONOMOUS_LOGGING_RESULT }}' in text
-
-def test_autonomous_workflow_surfaces_google_sheets_failures():
+def test_autonomous_workflow_disables_paid_and_external_integrations():
     text = WORKFLOW.read_text(encoding="utf-8")
-    audit_start = text.index("- name: Record autonomous development result to Google Sheets")
-    audit_end = text.index("- name: Notify Slack", audit_start)
-    audit = text[audit_start:audit_end]
-    assert "if: always()" in audit
-    assert "continue-on-error: true" not in audit
-    assert "set -euo pipefail" in audit
-    assert "Google Sheets logging verification failed" in audit
-
-
-def test_autonomous_workflow_pins_hermes_release_installer():
+    assert "Record autonomous development result to Google Sheets" not in text
+    assert "Verify autonomous ledger configuration" not in text
+    assert "Notify Slack" not in text
+    assert "Prepare Hermes advisor" not in text
+    assert 'HERMES_ADVISOR_ENABLED: "false"' in text
+    assert "Publish run summary" in text
+def test_autonomous_workflow_does_not_install_or_invoke_hermes():
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "345cd2b057a452236de401d3534b8502a7465e8d/scripts/install.sh" in text
-    assert "--commit 345cd2b057a452236de401d3534b8502a7465e8d" in text
-    assert "--skip-computer-use" in text
-
+    assert "hermes-agent" not in text
+    assert 'HERMES_ADVISOR_ENABLED: "false"' in text
 def test_autonomous_workflow_reuses_the_worker_pushed_branch_for_pr_creation():
     text = WORKFLOW.read_text(encoding="utf-8")
     guard = text[text.index("- name: Create GitHub PR"):text.index("- name: Persist self-improvement history")]
@@ -79,9 +73,9 @@ def test_autonomous_workflow_does_not_hardcode_one_development_target():
 def test_autonomous_workflow_persists_self_improvement_history_between_runs():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "Find previous completed autonomous run" in text
-    assert "Verify autonomous ledger configuration" in text
-    assert "missing GOOGLE_SHEETS_SPREADSHEET_ID" in text
-    assert "missing GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON" in text
+    assert "Verify autonomous ledger configuration" not in text
+    assert "GOOGLE_SHEETS_SPREADSHEET_ID" not in text
+    assert "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON" not in text
     assert "gh run list --workflow overnight-development.yml --branch main --status completed --limit 20" in text
     assert "--json databaseId,conclusion" in text
     assert 'select(.conclusion != "skipped")' in text
