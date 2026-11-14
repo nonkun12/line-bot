@@ -7,7 +7,17 @@ This is the first isolated Rust component for the distributed development loop.
 - Deterministic ranking of already-validated, eligible task additions.
 - Matches the ordering stage in `scripts/autonomous_task_refill.py`: descending history priority score, then reviewed catalog order.
 - Python remains responsible for catalog/schema validation, history parsing and score calculation, eligibility (approval/HOLD/review/completed/already-queued exclusions), and retaining eligible existing queue entries.
-- Bounded result count and fail-closed duplicate/blank ID validation.
+- Result limit is restricted to 1–4, matching Python `build_queue`.
+- Task IDs use the same ASCII rule as Python: `^[a-z0-9][a-z0-9._-]{2,99}# Orca Rust Task Selector (shadow phase)
+
+This is the first isolated Rust component for the distributed development loop.
+
+## Scope
+
+- Deterministic ranking of already-validated, eligible task additions.
+- Matches the ordering stage in `scripts/autonomous_task_refill.py`: descending history priority score, then reviewed catalog order.
+- Python remains responsible for catalog/schema validation, history parsing and score calculation, eligibility (approval/HOLD/review/completed/already-queued exclusions), and retaining eligible existing queue entries.
+; duplicates and invalid IDs fail closed.
 - No dependencies outside the Rust standard library.
 
 ## Deliberate non-goals
